@@ -2999,7 +2999,7 @@ fn run_pre_walk_execution(
             // reported state, never folded into a generic failure.
             let cause = match fs::read_to_string("target/merge-admission-capture-refusal.txt") {
                 Ok(wire) => format!("capture refusal wire: {}", wire.trim()),
-                Err(_) => "typed child returned false with no capture-refusal wire (child died before writing its cause)".to_string(),
+                Err(_) => "typed child returned false with no capture-refusal wire (child died before writing its cause, or the wire write itself refused — indistinguishable from here: the Bool claim is the only surviving channel)".to_string(),
             };
             Err(format!(
                 "PRE-WALK-REFUSED plan_site={plan_site} transport={transport_entry}::{transport_function} claim={claim_entry}::{claim_function}: {cause}"
@@ -5885,23 +5885,36 @@ fn run_walk(
                         );
                     } else {
                         stage_failed = true;
+                        // A stage claim's channel is a Bool, so its typed cause crosses
+                        // as a durable refusal wire (merge_admission_walk
+                        // merge_admission_refresh_refusal_wire_note — the same pattern
+                        // as the pre-walk capture). Read fresh per failure; absent wire
+                        // is its own reported state.
+                        let stage_cause = match fs::read_to_string(
+                            "target/merge-admission-refresh-refusal.txt",
+                        ) {
+                            Ok(wire) => format!("; refusal wire: {}", wire.trim()),
+                            Err(_) => String::new(),
+                        };
                         println!(
                             "{}",
                             paint(
                                 &format!(
-                                    "✗ FAIL [on-success stage {}] {} ({})",
+                                    "✗ FAIL [on-success stage {}] {} ({}{})",
                                     si + 1,
                                     r.function,
-                                    r.detail
+                                    r.detail,
+                                    stage_cause
                                 ),
                                 sgr::ERROR
                             )
                         );
                         failure_details.push(format!(
-                            "on-success stage {} fn={} detail={}",
+                            "on-success stage {} fn={} detail={}{}",
                             si + 1,
                             r.function,
-                            r.detail
+                            r.detail,
+                            stage_cause
                         ));
                     }
                 }
