@@ -54,7 +54,7 @@ pub enum CostBasis {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct CostAccount<S: Clone> {
+pub struct CostAccount<S> {
     pub time: Rc<Measure<(), S, Nat>>,
     pub space: ByteSize,
     pub power: Watt,
@@ -62,7 +62,7 @@ pub struct CostAccount<S: Clone> {
     pub _phantom: std::marker::PhantomData<S>,
 }
 
-pub fn cost_account_predicted_zero<S: Clone>() -> Rc<CostAccount<S>> {
+pub fn cost_account_predicted_zero<S>() -> Rc<CostAccount<S>> {
     Rc::new(CostAccount {
         time: time_measure(0),
         space: byte_size(0),
@@ -72,7 +72,7 @@ pub fn cost_account_predicted_zero<S: Clone>() -> Rc<CostAccount<S>> {
     })
 }
 
-pub fn cost_account_measured<S: Clone>(time: Rc<Measure<(), S, i64>>) -> Rc<CostAccount<S>> {
+pub fn cost_account_measured<S>(time: Rc<Measure<(), S, i64>>) -> Rc<CostAccount<S>> {
     Rc::new(CostAccount {
         time: time.clone(),
         space: byte_size(0),
@@ -82,7 +82,7 @@ pub fn cost_account_measured<S: Clone>(time: Rc<Measure<(), S, i64>>) -> Rc<Cost
     })
 }
 
-pub fn cost_account_time_count<S: Clone>(account: Rc<CostAccount<S>>) -> Nat {
+pub fn cost_account_time_count<S>(account: Rc<CostAccount<S>>) -> Nat {
     measure_count(account.time.clone())
 }
 
@@ -1249,7 +1249,7 @@ pub fn runnable_selection_applied(r: Rc<Runnable>) -> bool {
 pub type Schedule = Rc<Vec<Rc<Vec<Rc<Runnable>>>>>;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct RealizationPlan<S: Clone> {
+pub struct RealizationPlan<S> {
     pub target: Rc<ContentHash>,
     pub objective: Rc<RealizationObjective>,
     pub schedule: Schedule,
@@ -1280,7 +1280,7 @@ pub fn schedule_batch_contains_label(batch: Rc<Vec<Rc<Runnable>>>, target: Strin
         })
 }
 
-pub fn schedule_generates_same_batch_count<S: Clone>(
+pub fn schedule_generates_same_batch_count<S>(
     left: Rc<RealizationPlan<S>>,
     right: Rc<RealizationPlan<S>>,
 ) -> bool {
@@ -1478,7 +1478,7 @@ continue;
     }
 }
 
-pub fn schedule_generates_identical_schedule<S: Clone>(
+pub fn schedule_generates_identical_schedule<S>(
     plan: Rc<RealizationPlan<S>>,
     schedule: Schedule,
 ) -> bool {
