@@ -4,10 +4,14 @@ import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree, infer }
 import v2.compiler.translate { translate }
 import v2.extdeps.languages.go { go_target_model }
+import v2.compiler.ingest { cross_language_compile }
 import v2.extdeps.languages.python {
   python_emitted_add_fn_node,
   python_target_model
 }
+import v2.extdeps.languages.typescript { ts_target_model }
+import v2.std.inhabitant_neutralization { neutralize_core_for_target }
+import v2.test.manual.python_grammar_claim { python_grammar_parse_fixture }
 import v2.extdeps.languages.rust {
   rust_inhabitant_atom,
   rust_named_edge,
@@ -369,6 +373,22 @@ fn translate_refuses_projection_absent_fold_bodied_arrow_underived_descendant() 
 fn translate_accepts_synthetic_empty_facts_tree() -> Bool {
   match translate(tree: sg2_mode2_inferred_tree, target: sg2_mode2_target()) {
     Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn cross_language_compile_refuses_canonical_underived_holds() -> Bool {
+  match python_grammar_parse_fixture() {
+    Accepted { value: parse_tree, diagnostics: _ } =>
+      match cross_language_compile(
+        parse_tree: parse_tree,
+        source_model: python_target_model(),
+        target_model: ts_target_model()
+      ) {
+        Rejected { diagnostics: d } =>
+          translate_refused_canonical_grounding(d: d)
+        Accepted { value: _, diagnostics: _ } => false
+      }
     Rejected { diagnostics: _ } => false
   }
 }

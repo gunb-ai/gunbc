@@ -2,7 +2,7 @@ module v2.test.manual.inhabitant_neutralization
 
 import v2.compiler.emit { emit }
 import v2.compiler.ingest { cross_language_compile }
-import v2.compiler.infer { infer, infer_emit_shape_frontier_inferred_tree }
+import v2.compiler.infer { infer }
 import v2.compiler.translate { translate }
 import v2.extdeps.languages.go {
   go_facts_float64,
@@ -20,7 +20,7 @@ import v2.extdeps.languages.python {
   python_emitted_add_fn_node,
   python_target_model
 }
-import v2.test.manual.ingest_bridge { ingest_cross_language_compile_holds }
+import v2.test.manual.ingest_bridge { ingest_cross_language_compile_refuses_underived_holds }
 import v2.test.manual.python_grammar_claim { python_grammar_parse_fixture }
 import v2.extdeps.languages.typescript { ts_source_text, ts_target_model }
 import v2.std.inhabitant_neutralization {
@@ -134,20 +134,18 @@ test fn inhabitant_neutralization_go_unqualified_std_projection_lookup_rejects_h
   }
 }
 
-fn inhabitant_neutralization_go_int64_to_ts_emit_holds() -> Bool {
+fn inhabitant_neutralization_go_int64_to_ts_emit_refuses_underived_holds() -> Bool {
   match neutralize_core_for_target(
     core: go_int64_falsifier_emitted_add_fn_node(),
     target: ts_target_model()
   ) {
     Accepted { value: neutralized, diagnostics: _ } =>
       match infer(tree: neutralized) {
-        Accepted { value: _inferred, diagnostics: _ } =>
-          match emit(
-            tree: infer_emit_shape_frontier_inferred_tree(root: neutralized),
-            target: ts_target_model()
-          ) {
-            Accepted { value: _, diagnostics: _ } => true
-            Rejected { diagnostics: _ } => false
+        Accepted { value: inferred, diagnostics: _ } =>
+          match emit(tree: inferred, target: ts_target_model()) {
+            Rejected { diagnostics: d } =>
+              d.head.reason == ^infer_grounding_not_derived
+            Accepted { value: _, diagnostics: _ } => false
           }
         Rejected { diagnostics: _ } => false
       }
@@ -173,23 +171,21 @@ test fn inhabitant_neutralization_third_inhabitant_falsifier_holds() -> Bool {
     && inhabitant_neutralization_go_int_additive_numeric_target_lookup_holds()
     && inhabitant_neutralization_go_additive_numeric_lookup_tiebreak_selects_platform_int_holds()
     && inhabitant_neutralization_neutralize_python_to_go_holds()
-    && inhabitant_neutralization_go_int64_to_ts_emit_holds()
+    && inhabitant_neutralization_go_int64_to_ts_emit_refuses_underived_holds()
 }
 
-test fn inhabitant_neutralization_emit_after_neutralize_holds() -> Bool {
+test fn inhabitant_neutralization_emit_after_neutralize_refuses_underived_holds() -> Bool {
   match neutralize_core_for_target(
     core: python_emitted_add_fn_node(),
     target: ts_target_model()
   ) {
     Accepted { value: neutralized, diagnostics: _ } =>
       match infer(tree: neutralized) {
-        Accepted { value: _inferred, diagnostics: _ } =>
-          match emit(
-            tree: infer_emit_shape_frontier_inferred_tree(root: neutralized),
-            target: ts_target_model()
-          ) {
-            Accepted { value: _, diagnostics: _ } => true
-            Rejected { diagnostics: _ } => false
+        Accepted { value: inferred, diagnostics: _ } =>
+          match emit(tree: inferred, target: ts_target_model()) {
+            Rejected { diagnostics: d } =>
+              d.head.reason == ^infer_grounding_not_derived
+            Accepted { value: _, diagnostics: _ } => false
           }
         Rejected { diagnostics: _ } => false
       }
@@ -209,23 +205,21 @@ fn inhabitant_neutralization_raw_emit_still_fails_closed() -> Bool {
 }
 
 fn inhabitant_neutralization_same_language_cross_language_compile_unchanged_holds() -> Bool {
-  ingest_cross_language_compile_holds()
+  ingest_cross_language_compile_refuses_underived_holds()
 }
 
-fn inhabitant_neutralization_same_flavor_python_emit_holds() -> Bool {
+fn inhabitant_neutralization_same_flavor_python_emit_refuses_underived_holds() -> Bool {
   match neutralize_core_for_target(
     core: python_emitted_add_fn_node(),
     target: python_target_model()
   ) {
     Accepted { value: neutralized, diagnostics: _ } =>
       match infer(tree: neutralized) {
-        Accepted { value: _inferred, diagnostics: _ } =>
-          match emit(
-            tree: infer_emit_shape_frontier_inferred_tree(root: neutralized),
-            target: python_target_model()
-          ) {
-            Accepted { value: _, diagnostics: _ } => true
-            Rejected { diagnostics: _ } => false
+        Accepted { value: inferred, diagnostics: _ } =>
+          match emit(tree: inferred, target: python_target_model()) {
+            Rejected { diagnostics: d } =>
+              d.head.reason == ^infer_grounding_not_derived
+            Accepted { value: _, diagnostics: _ } => false
           }
         Rejected { diagnostics: _ } => false
       }
@@ -235,7 +229,7 @@ fn inhabitant_neutralization_same_flavor_python_emit_holds() -> Bool {
 
 test fn inhabitant_neutralization_03_ingest_regression_guard_holds() -> Bool {
   inhabitant_neutralization_same_language_cross_language_compile_unchanged_holds()
-    && inhabitant_neutralization_same_flavor_python_emit_holds()
+    && inhabitant_neutralization_same_flavor_python_emit_refuses_underived_holds()
     && inhabitant_neutralization_raw_emit_still_fails_closed()
 }
 
