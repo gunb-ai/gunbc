@@ -568,6 +568,50 @@ fn declared_payload_len_over_cap_refuses_before_large_allocation() {
 }
 
 #[test]
+fn part_offset_overflow_refuses_as_backend_key_malformed() {
+    let dir = temp_dir("part-offset-overflow");
+    let (roots, a, _, _) = write_fixture(&dir);
+    let cache_dir = dir.join("cache");
+    fs::create_dir_all(&cache_dir).expect("cache dir");
+
+    let (graph, si) = resolve_entry_graph(&roots, &a).expect("resolve for digest");
+    let sources = load_sources_for_entry(&roots, &a).expect("sources");
+    let subject = subject_digest_for_closure(&sources);
+    let (request_key, semantic) = provider_keys_for_graph(
+        &roots,
+        &a,
+        &graph,
+        si.as_ref(),
+        &empty_compile_clean_diags(),
+    );
+    let mut bytes = build_valid_artifact_bytes(
+        &subject,
+        &graph,
+        si.as_ref(),
+        &empty_compile_clean_diags(),
+        &request_key,
+        &semantic,
+    )
+    .expect("valid bytes");
+    // Third part descriptor offset field (after magic+version+four digests+payload_len+two parts).
+    let part2_offset_off = 76 + 8 + 2 * 24;
+    let bogus_offset = u64::MAX - 5;
+    bytes[part2_offset_off..part2_offset_off + 8].copy_from_slice(&bogus_offset.to_le_bytes());
+    write_raw_artifact_for_test(&cache_dir, &subject, &bytes).expect("overflow write");
+
+    match probe(&cache_dir, &subject) {
+        CacheProbeResult::RejectedHit(CacheRejectReason::BackendKeyMalformed) => {}
+        other => panic!("expected BackendKeyMalformed RejectedHit, got {other:?}"),
+    }
+    match lookup(&cache_dir, &subject) {
+        CacheLookupResult::RejectedHit(CacheRejectReason::BackendKeyMalformed) => {}
+        other => panic!("expected BackendKeyMalformed lookup, got {other:?}"),
+    }
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn concurrent_resolve_write_once_no_torn_read() {
     let dir = temp_dir("race");
     let (roots, a, _, _) = write_fixture(&dir);

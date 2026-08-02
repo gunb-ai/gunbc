@@ -113,6 +113,10 @@ fn stored_disk_probe_hit_builds_provider_ctx_once() {
     let (roots, entry) = write_fixture(&dir);
     let (parts, closure, compiler, request_key, semantic) = fixture_parts_and_keys(&roots, &entry);
     let builds_before = materialization_provider_ctx_build_count_for_test();
+    assert!(
+        builds_before >= 1,
+        "fixture key derivation must boot provider ctx once before serve"
+    );
     let outcome = serve_resolved_graph_stored_disk_probe_for_test(
         &closure,
         &compiler,
@@ -124,8 +128,8 @@ fn stored_disk_probe_hit_builds_provider_ctx_once() {
     assert_eq!(outcome, ResolvedGraphProviderOutcome::Hit);
     assert_eq!(
         materialization_provider_ctx_build_count_for_test(),
-        builds_before + 1,
-        "first hit must build provider ctx exactly once"
+        builds_before,
+        "first hit must reuse provider ctx built during fixture setup"
     );
     let outcome2 = serve_resolved_graph_stored_disk_probe_for_test(
         &closure,
@@ -138,7 +142,7 @@ fn stored_disk_probe_hit_builds_provider_ctx_once() {
     assert_eq!(outcome2, ResolvedGraphProviderOutcome::Hit);
     assert_eq!(
         materialization_provider_ctx_build_count_for_test(),
-        builds_before + 1,
+        builds_before,
         "second hit must reuse provider ctx"
     );
     let _ = fs::remove_dir_all(&dir);
@@ -210,10 +214,13 @@ fn synthetic_wrong_semantic_parts_refuse_via_provider_serve() {
         union_digest: "0000000000000000".to_string(),
         union_bytes: 1,
     };
+    let request_key =
+        resolve_closure_request_key_from_digests("0000000000000000", "0000000000000000")
+            .expect("request key");
     let outcome = serve_resolved_graph_stored_disk_probe_for_test(
         "0000000000000000",
         "0000000000000000",
-        "0000000000000000",
+        &request_key,
         "0000000000000000",
         &parts,
     )

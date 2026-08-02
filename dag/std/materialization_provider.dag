@@ -4,11 +4,16 @@ import std.types { Bool, Int, List, String, NonEmptyStr }
 import std.content_hash {
   ContentHash,
   Fnv1a64Structural,
+  Fnv1a64StructuralDigestHex,
+  Sha256Digest,
+  Sha1Digest,
   content_hash_atom,
   content_hash_combine_structural,
   content_hash_tagged,
   content_hash_tagged_structural,
   as_content_hash_structural,
+  structural_content_hash,
+  serialize_content_hash,
 }
 import std.interface_summary { InterfaceHash, ModuleKey, TypedModuleKey, module_key, typed_module_key }
 import std.cache_identity {
@@ -23,6 +28,7 @@ import std.computation_identity {
 }
 import std.artifact_store { ArtifactStore, store_put, store_put_fold }
 import std.disposition { Disposition, Terminal }
+import std.measure { ByteSize, byte_size }
 
 data materialization_provider_note: String = "The typed materialization-provider CONTRACT (parent mandate 6B, model-only, 2026-07-28): the one interface cli_run's ad-hoc caches consume when they flip — consumers ask for an ARTIFACT by typed request and receive a TYPED result; no map is exposed, and the anti-pattern of replacing seven maps with one struct of seven maps is ruled out by construction: there is ONE keyed store model (std.artifact_store) and the request KIND lives inside the content key, so a new request family is a new constructor row, never a new carrier. A request is keyed by content + declared-input identity: subject_digest (what is transformed) plus every other read the transform performs as a DeclaredInput (ref + digest) — the typed_module_key precedent (extdeps.realization.reconcile_in_process: module source hash + direct-import interface hashes + compiler-binary identity) generalized to the contract grain. Outcomes are total and typed: hit, miss, kind-mismatch refusal, wrong-artifact refusal, wrong-content refusal, incomplete-artifact refusal, identity refusals on lookup; admitted-with-counted-evictions, the mirrored write refusals, budget-exhausted on admission. Every refusal names what it knows (section 5: refuse, never widen; no absorbing fallback arm exists in this vocabulary). Grounding, not minting (section 3): request kinds are the EXISTING std.cache_identity ArtifactKindId rows; placement/locality is NOT restated here — a provider realization binds this contract to a cited extdeps CacheInterfaceCatalogFacts row whose PersistenceLocality (std.cache_interface) says where the bytes live; the packed-store semantics reuse std.artifact_store verbatim (store_put, counted evictions)."
 
@@ -457,14 +463,42 @@ fn compiler_identity_input(digest: Fnv1a64Structural) -> DeclaredInput {
   DeclaredInput { ref: "compiler_binary_identity", digest: digest }
 }
 
+fn wire_fnv1a64_structural_hex(hex: Fnv1a64StructuralDigestHex) -> Fnv1a64Structural {
+  structural_content_hash(digest: hex)
+}
+
+fn wire_fnv1a64_content_hash_hex(hex: Fnv1a64StructuralDigestHex) -> ContentHash {
+  as_content_hash_structural(structural: wire_fnv1a64_structural_hex(hex: hex))
+}
+
+fn content_hash_as_fnv1a64_structural(hash: ContentHash) -> Fnv1a64Structural {
+  match hash {
+    Fnv1a64(s) => s
+    Sha256Hash(_) =>
+      content_hash_atom(value: "materialization-provider-sha256-at-fnv1a64-seam-refused")
+    Sha1Hash(_) =>
+      content_hash_atom(value: "materialization-provider-sha1-at-fnv1a64-seam-refused")
+  }
+}
+
+fn wire_content_hash_to_hex(hash: ContentHash) -> String {
+  serialize_content_hash(hash: hash)
+}
+
+fn wire_byte_size(count: Int) -> ByteSize {
+  byte_size(count: count)
+}
+
 fn resolve_closure_request_key_from_digests(
   closure_digest: ContentHash,
   compiler_digest: ContentHash
 ) -> ContentHash {
   request_key(
     req: ResolveClosureRequest {
-      closure_digest: closure_digest,
-      compiler: compiler_identity_input(digest: compiler_digest)
+      closure_digest: content_hash_as_fnv1a64_structural(hash: closure_digest),
+      compiler: compiler_identity_input(
+        digest: content_hash_as_fnv1a64_structural(hash: compiler_digest)
+      )
     }
   )
 }
@@ -480,15 +514,24 @@ fn resolved_graph_parts_semantic_digest(
   carried_outputs_digest(outputs: [
     positioned_part(
       id: output_resolved_graph,
-      part: ArtifactPart { digest: graph_digest, bytes: graph_bytes }
+      part: ArtifactPart {
+        digest: content_hash_as_fnv1a64_structural(hash: graph_digest),
+        bytes: graph_bytes
+      }
     ),
     positioned_part(
       id: output_source_indices,
-      part: ArtifactPart { digest: indices_digest, bytes: indices_bytes }
+      part: ArtifactPart {
+        digest: content_hash_as_fnv1a64_structural(hash: indices_digest),
+        bytes: indices_bytes
+      }
     ),
     positioned_part(
       id: output_compile_clean_diagnostic_union,
-      part: ArtifactPart { digest: union_digest, bytes: union_bytes }
+      part: ArtifactPart {
+        digest: content_hash_as_fnv1a64_structural(hash: union_digest),
+        bytes: union_bytes
+      }
     )
   ])
 }
@@ -505,15 +548,26 @@ fn serve_resolved_graph_stored_disk_probe(
   union_digest: ContentHash,
   union_bytes: ByteSize
 ) -> ProviderLookup {
+  let closure_structural = content_hash_as_fnv1a64_structural(hash: closure_digest)
+  let compiler_structural = content_hash_as_fnv1a64_structural(hash: compiler_digest)
   let req = ResolveClosureRequest {
-    closure_digest: closure_digest,
-    compiler: compiler_identity_input(digest: compiler_digest)
+    closure_digest: closure_structural,
+    compiler: compiler_identity_input(digest: compiler_structural)
   }
   let artifact = ResolvedGraphArtifact {
     request_key: stored_request_key,
-    resolved_graph: ArtifactPart { digest: graph_digest, bytes: graph_bytes },
-    source_indices: ArtifactPart { digest: indices_digest, bytes: indices_bytes },
-    compile_clean_diagnostic_union: ArtifactPart { digest: union_digest, bytes: union_bytes }
+    resolved_graph: ArtifactPart {
+      digest: content_hash_as_fnv1a64_structural(hash: graph_digest),
+      bytes: graph_bytes
+    },
+    source_indices: ArtifactPart {
+      digest: content_hash_as_fnv1a64_structural(hash: indices_digest),
+      bytes: indices_bytes
+    },
+    compile_clean_diagnostic_union: ArtifactPart {
+      digest: content_hash_as_fnv1a64_structural(hash: union_digest),
+      bytes: union_bytes
+    }
   }
   provider_serve(
     req: req,
@@ -530,9 +584,11 @@ fn serve_resolved_graph_incomplete_stored_disk_probe(
   indices_digest: ContentHash,
   indices_bytes: ByteSize
 ) -> ProviderLookup {
+  let closure_structural = content_hash_as_fnv1a64_structural(hash: closure_digest)
+  let compiler_structural = content_hash_as_fnv1a64_structural(hash: compiler_digest)
   let req = ResolveClosureRequest {
-    closure_digest: closure_digest,
-    compiler: compiler_identity_input(digest: compiler_digest)
+    closure_digest: closure_structural,
+    compiler: compiler_identity_input(digest: compiler_structural)
   }
   let artifact = LegacyIncompleteArtifact {
     kind: resolved_graph_artifact_kind,
@@ -540,11 +596,17 @@ fn serve_resolved_graph_incomplete_stored_disk_probe(
     carried_outputs: [
       positioned_part(
         id: output_resolved_graph,
-        part: ArtifactPart { digest: graph_digest, bytes: graph_bytes }
+        part: ArtifactPart {
+          digest: content_hash_as_fnv1a64_structural(hash: graph_digest),
+          bytes: graph_bytes
+        }
       ),
       positioned_part(
         id: output_source_indices,
-        part: ArtifactPart { digest: indices_digest, bytes: indices_bytes }
+        part: ArtifactPart {
+          digest: content_hash_as_fnv1a64_structural(hash: indices_digest),
+          bytes: indices_bytes
+        }
       )
     ]
   }

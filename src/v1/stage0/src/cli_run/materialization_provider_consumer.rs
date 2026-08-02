@@ -2,6 +2,7 @@ use crate::resolved_graph_cache::{
     faithful_probe_unavailable_gap, is_union_part_absent, supports_faithful_probe,
     FaithfulResolvedGraphProbeParts,
 };
+use crate::std_content_hash::fnv1a64_structural_hex_digest;
 use crate::v1_interpreter::{self, ExecutionMode, InterpContext, Value};
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -59,6 +60,38 @@ fn materialization_provider_ctx() -> Result<Rc<InterpContext>, String> {
         *slot.borrow_mut() = Some(ctx.clone());
         Ok(ctx)
     })
+}
+
+fn wire_digest_str(hex: &str) -> Result<Value, String> {
+    if fnv1a64_structural_hex_digest(hex.to_string()).is_none() {
+        return Err(format!("invalid fnv1a64 structural wire digest `{hex}`"));
+    }
+    Ok(Value::Str(hex.to_string()))
+}
+
+fn wire_fnv1a64_content_hash_value(ctx: &InterpContext, hex: &str) -> Result<Value, String> {
+    let wire = wire_digest_str(hex)?;
+    let args = [(Some("hex".to_string()), wire)];
+    v1_interpreter::run_in_context_with_args(ctx, "wire_fnv1a64_content_hash_hex", &args, false)
+        .map_err(|e| format!("wire_fnv1a64_content_hash_hex({hex}): {e}"))
+}
+
+fn wire_content_hash_to_hex(ctx: &InterpContext, hash: &Value) -> Result<String, String> {
+    let args = [(Some("hash".to_string()), hash.clone())];
+    match v1_interpreter::run_in_context_with_args(ctx, "wire_content_hash_to_hex", &args, false) {
+        Ok(Value::Str(hex)) => Ok(hex),
+        Ok(other) => Err(format!(
+            "wire_content_hash_to_hex returned `{}`, expected String",
+            ctx.format_value(&other)
+        )),
+        Err(e) => Err(format!("wire_content_hash_to_hex: {e}")),
+    }
+}
+
+fn wire_byte_size_value(ctx: &InterpContext, bytes: u64) -> Result<Value, String> {
+    let args = [(Some("count".to_string()), Value::Int(bytes as i64))];
+    v1_interpreter::run_in_context_with_args(ctx, "wire_byte_size", &args, false)
+        .map_err(|e| format!("wire_byte_size({bytes}): {e}"))
 }
 
 fn lookup_fold_outcome(
@@ -124,43 +157,43 @@ fn serve_resolved_graph_stored_disk_probe_in_ctx(
     let args = [
         (
             Some("closure_digest".to_string()),
-            Value::Str(closure_digest.to_string()),
+            wire_fnv1a64_content_hash_value(ctx, closure_digest)?,
         ),
         (
             Some("compiler_digest".to_string()),
-            Value::Str(compiler_digest.to_string()),
+            wire_fnv1a64_content_hash_value(ctx, compiler_digest)?,
         ),
         (
             Some("stored_request_key".to_string()),
-            Value::Str(stored_request_key.to_string()),
+            wire_fnv1a64_content_hash_value(ctx, stored_request_key)?,
         ),
         (
             Some("stored_semantic_digest".to_string()),
-            Value::Str(stored_semantic_digest.to_string()),
+            wire_fnv1a64_content_hash_value(ctx, stored_semantic_digest)?,
         ),
         (
             Some("graph_digest".to_string()),
-            Value::Str(parts.graph_digest.clone()),
+            wire_fnv1a64_content_hash_value(ctx, &parts.graph_digest)?,
         ),
         (
             Some("graph_bytes".to_string()),
-            Value::Int(parts.graph_bytes as i64),
+            wire_byte_size_value(ctx, parts.graph_bytes)?,
         ),
         (
             Some("indices_digest".to_string()),
-            Value::Str(parts.indices_digest.clone()),
+            wire_fnv1a64_content_hash_value(ctx, &parts.indices_digest)?,
         ),
         (
             Some("indices_bytes".to_string()),
-            Value::Int(parts.indices_bytes as i64),
+            wire_byte_size_value(ctx, parts.indices_bytes)?,
         ),
         (
             Some("union_digest".to_string()),
-            Value::Str(parts.union_digest.clone()),
+            wire_fnv1a64_content_hash_value(ctx, &parts.union_digest)?,
         ),
         (
             Some("union_bytes".to_string()),
-            Value::Int(parts.union_bytes as i64),
+            wire_byte_size_value(ctx, parts.union_bytes)?,
         ),
     ];
     let lookup = v1_interpreter::run_in_context_with_args(
@@ -186,31 +219,31 @@ fn serve_resolved_graph_incomplete_stored_disk_probe_in_ctx(
     let args = [
         (
             Some("closure_digest".to_string()),
-            Value::Str(closure_digest.to_string()),
+            wire_fnv1a64_content_hash_value(ctx, closure_digest)?,
         ),
         (
             Some("compiler_digest".to_string()),
-            Value::Str(compiler_digest.to_string()),
+            wire_fnv1a64_content_hash_value(ctx, compiler_digest)?,
         ),
         (
             Some("stored_request_key".to_string()),
-            Value::Str(stored_request_key.to_string()),
+            wire_fnv1a64_content_hash_value(ctx, stored_request_key)?,
         ),
         (
             Some("graph_digest".to_string()),
-            Value::Str(graph_digest.to_string()),
+            wire_fnv1a64_content_hash_value(ctx, graph_digest)?,
         ),
         (
             Some("graph_bytes".to_string()),
-            Value::Int(graph_bytes as i64),
+            wire_byte_size_value(ctx, graph_bytes)?,
         ),
         (
             Some("indices_digest".to_string()),
-            Value::Str(indices_digest.to_string()),
+            wire_fnv1a64_content_hash_value(ctx, indices_digest)?,
         ),
         (
             Some("indices_bytes".to_string()),
-            Value::Int(indices_bytes as i64),
+            wire_byte_size_value(ctx, indices_bytes)?,
         ),
     ];
     let lookup = v1_interpreter::run_in_context_with_args(
@@ -231,11 +264,11 @@ pub fn resolve_closure_request_key_from_digests(
     let args = [
         (
             Some("closure_digest".to_string()),
-            Value::Str(closure_digest.to_string()),
+            wire_fnv1a64_content_hash_value(&ctx, closure_digest)?,
         ),
         (
             Some("compiler_digest".to_string()),
-            Value::Str(compiler_digest.to_string()),
+            wire_fnv1a64_content_hash_value(&ctx, compiler_digest)?,
         ),
     ];
     match v1_interpreter::run_in_context_with_args(
@@ -244,11 +277,7 @@ pub fn resolve_closure_request_key_from_digests(
         &args,
         false,
     ) {
-        Ok(Value::Str(key)) => Ok(key),
-        Ok(other) => Err(format!(
-            "resolve_closure_request_key_from_digests returned `{}`, expected String",
-            ctx.format_value(&other)
-        )),
+        Ok(key) => wire_content_hash_to_hex(&ctx, &key),
         Err(e) => Err(format!("resolve_closure_request_key_from_digests: {e}")),
     }
 }
@@ -265,27 +294,27 @@ pub fn resolved_graph_parts_semantic_digest(
     let args = [
         (
             Some("graph_digest".to_string()),
-            Value::Str(graph_digest.to_string()),
+            wire_fnv1a64_content_hash_value(&ctx, graph_digest)?,
         ),
         (
             Some("graph_bytes".to_string()),
-            Value::Int(graph_bytes as i64),
+            wire_byte_size_value(&ctx, graph_bytes)?,
         ),
         (
             Some("indices_digest".to_string()),
-            Value::Str(indices_digest.to_string()),
+            wire_fnv1a64_content_hash_value(&ctx, indices_digest)?,
         ),
         (
             Some("indices_bytes".to_string()),
-            Value::Int(indices_bytes as i64),
+            wire_byte_size_value(&ctx, indices_bytes)?,
         ),
         (
             Some("union_digest".to_string()),
-            Value::Str(union_digest.to_string()),
+            wire_fnv1a64_content_hash_value(&ctx, union_digest)?,
         ),
         (
             Some("union_bytes".to_string()),
-            Value::Int(union_bytes as i64),
+            wire_byte_size_value(&ctx, union_bytes)?,
         ),
     ];
     match v1_interpreter::run_in_context_with_args(
@@ -294,11 +323,7 @@ pub fn resolved_graph_parts_semantic_digest(
         &args,
         false,
     ) {
-        Ok(Value::Str(digest)) => Ok(digest),
-        Ok(other) => Err(format!(
-            "resolved_graph_parts_semantic_digest returned `{}`, expected String",
-            ctx.format_value(&other)
-        )),
+        Ok(digest) => wire_content_hash_to_hex(&ctx, &digest),
         Err(e) => Err(format!("resolved_graph_parts_semantic_digest: {e}")),
     }
 }

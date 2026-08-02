@@ -487,12 +487,20 @@ fn parse_v3_header(
     }
     for i in 1..PART_COUNT {
         let prev = &parts[i - 1];
-        if parts[i].offset != prev.offset + prev.length {
+        let expected_offset = prev
+            .offset
+            .checked_add(prev.length)
+            .ok_or(CacheRejectReason::BackendKeyMalformed)?;
+        if parts[i].offset != expected_offset {
             return Err(CacheRejectReason::BackendKeyMalformed);
         }
     }
     let tail = &parts[PART_COUNT - 1];
-    if tail.offset + tail.length != payload_len {
+    let tail_end = tail
+        .offset
+        .checked_add(tail.length)
+        .ok_or(CacheRejectReason::BackendKeyMalformed)?;
+    if tail_end != payload_len {
         return Err(CacheRejectReason::BackendKeyMalformed);
     }
     Ok(V3Header {
@@ -1047,6 +1055,16 @@ pub fn write(
     }
 }
 
+fn publish_temp_without_replace(temp_path: &Path, final_path: &Path) -> std::io::Result<()> {
+    match fs::hard_link(temp_path, final_path) {
+        Ok(()) => {
+            let _ = fs::remove_file(temp_path);
+            Ok(())
+        }
+        Err(e) => Err(e),
+    }
+}
+
 fn commit_v3_temp_artifact(
     temp_path: &Path,
     final_path: &Path,
@@ -1059,26 +1077,44 @@ fn commit_v3_temp_artifact(
             "refusing v3 commit: unrecognized cache artifact at {:?}",
             final_path
         )),
-        ExistingArtifactDisposition::Absent | ExistingArtifactDisposition::LegacyV1Upgrade => {
-            match fs::rename(temp_path, final_path) {
+        ExistingArtifactDisposition::LegacyV1Upgrade => {
+            fs::remove_file(final_path).map_err(|e| {
+                format!(
+                    "refusing v3 commit: failed to remove legacy cache artifact {:?}: {e}",
+                    final_path
+                )
+            })?;
+            match publish_temp_without_replace(temp_path, final_path) {
                 Ok(()) => {
                     enforce_size_bound(cache_root, resolved_graph_cache_cap_bytes());
                     Ok(CacheWriteOutcome::Written)
                 }
-                Err(e) if final_path.exists() => {
+                Err(e) => Err(format!(
+                    "cache publish {:?} -> {:?}: {e}",
+                    temp_path, final_path
+                )),
+            }
+        }
+        ExistingArtifactDisposition::Absent => {
+            match publish_temp_without_replace(temp_path, final_path) {
+                Ok(()) => {
+                    enforce_size_bound(cache_root, resolved_graph_cache_cap_bytes());
+                    Ok(CacheWriteOutcome::Written)
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
                     match classify_existing_artifact(final_path, subject_digest)? {
                         ExistingArtifactDisposition::V3Present => {
                             Ok(CacheWriteOutcome::AlreadyExists)
                         }
                         other => Err(format!(
-                            "cache rename {:?} -> {:?} lost race ({other:?}): {e}",
+                            "cache publish {:?} -> {:?} lost race ({other:?}): {e}",
                             temp_path, final_path
                         )),
                     }
                 }
                 Err(e) => Err(format!(
-                    "cache rename {:?} -> {:?}: {}",
-                    temp_path, final_path, e
+                    "cache publish {:?} -> {:?}: {e}",
+                    temp_path, final_path
                 )),
             }
         }
