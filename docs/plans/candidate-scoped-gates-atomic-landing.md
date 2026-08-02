@@ -85,11 +85,14 @@ Two evaluation surfaces, explicitly distinct:
 ```dag
 type ExtdepsScopeEvaluation
   = CandidateAdmission { candidate: IntegrationCandidate }
-  | DefaultBranchAudit { tree: GitObjectId }
+  | DefaultBranchAudit { tree: GitTreeObjectId }
 ```
 
 `CandidateAdmission` judges only the candidate delta; `DefaultBranchAudit` walks the
-whole live population under the existing cover law and remains the backstop.
+whole live population under the existing cover law and remains the backstop. Its
+subject is the same tree-kind carrier as `candidate_tree` (review 47071 caught this
+row still generic after the `IntegrationCandidate` fix): every audit or admission
+subject in this charter is a tree by construction, never a bare object id.
 
 ## 2. One typed, located, accumulated verdict
 
