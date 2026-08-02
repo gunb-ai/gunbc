@@ -37,7 +37,7 @@ No shared generic "base" carrier. The three facts:
 type IntegrationCandidate {
   base_commit: CommitSha
   candidate_commit: CommitSha
-  candidate_tree: GitObjectId
+  candidate_tree: GitTreeObjectId
 }
 
 type CandidateAddedPathsObservation
@@ -60,10 +60,18 @@ type LegacyManifestDeltaObservation
 The commit identities carry the *ancestry* subjects — `merge-base` computes over
 commit ancestry, which tree objects do not have, and a bare `GitObjectId` could denote
 a blob or tag (review 46971 caught the earlier sketch feeding trees to `merge-base`,
-an unrealizable law). `candidate_tree` is retained separately as the *exact-tree
-admission* subject — the thing the landing boundary tests and lands — and is the
-tree of `candidate_commit`, carried so tree-identity claims never re-derive it
-through a revision walk at the admission boundary.
+an unrealizable law). For the same reason `candidate_tree` is typed `GitTreeObjectId`,
+a tree-kind refinement that does not exist in `extdeps.git.object_store` today — the
+implementation lane introduces it there (a kind-refined carrier over the same
+constructed-hex `GitObjectId` invariants), so a blob or tag object is unrepresentable
+as a landing subject rather than merely unexpected (review 47056; DESIGN §4). The
+same lane should re-ground `extdeps.git.object_store` `GitCommitObject`'s `tree`
+field (and its `SubtreeEntry`/gitlink kin where the kind is fixed by the format),
+which today carry the same generic-`GitObjectId` looseness — one carrier, every
+kind-fixed position, not a charter-local special. `candidate_tree` is retained
+separately as the *exact-tree admission* subject — the thing the landing boundary
+tests and lands — and is the tree of `candidate_commit`, carried so tree-identity
+claims never re-derive it through a revision walk at the admission boundary.
 
 Observation laws: candidate paths = `merge-base(base_commit, candidate_commit)...candidate_commit`;
 freeze = `legacy_manifest_freeze_sha..candidate_commit`; manifest delta =
@@ -236,3 +244,29 @@ candidate-scoped gate proves this candidate's new extdeps paths have valid place
 direct `ProcessExit` runnables preserve every located refusal through CI; merge queue
 (later the native merge actuator) proves the exact tree becoming main passed the
 current criteria.
+
+## HAND-RUST GATE receipt — rest replay bridge mints the modeled ContentHash
+
+This PR touches `v1_interpreter.rs` `rest_bound_invocation_value` (review 47056
+asked for this receipt). The class: a **model-conformance repair to an existing seed
+bridge**, not a new decision surface chosen in Rust. #7480 (landed) made
+`std.content_hash` `ContentHash` a family coproduct; the seed's replay-fixture
+bridge kept minting `input_digest` as a bare host string, so fixture-identity
+structural `==` silently compared a string against the modeled coproduct — the
+model↔realization fork DESIGN's open thread names, live. The hunk changes what the
+existing mint constructs (`Fnv1a64` wrapping `Fnv1a64Structural`) to the shape the
+single authority declares; no new capability, no new surface, arm count and fn
+census unmoved. Like the `CompilerDiagnostic` seed-projection receipt
+(`docs/plans/compile-clean-forcecheck.md`), this owes no separable dissolution
+schedule: the mint cannot live anywhere but the seed's projection of the modeled
+carrier, and it disappears exactly when the seed's rest transport bridge does
+(witness-realization / v2-adoption trigger, the same trigger the #7480 open-thread
+row already carries for the remaining v1 fingerprint calls). Checkable receipt, by
+execution: `dag/test/claim/rest_exchange_replay_test.dag` — 6 of 9 witnesses RED
+under the string mint (every fixture-matching test; the discriminating split), 9 of
+9 PASS after, reproducible via `claim_batch --entry` on that file. Found and fixed
+beside it, flagged for an owner rather than fixed here: the stage0 emitter resolves
+a fully-qualified module-local data reference
+(`extdeps.container.oci.digest.extdeps_external_authority_anchor`) into the wrong
+crate module (`extdeps_cargo`, E0308) — the first enrolled scope carrier inside the
+emitted set exposed it; dotted-path emitter bucket.
