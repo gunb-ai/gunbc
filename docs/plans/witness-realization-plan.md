@@ -64,6 +64,8 @@ schedule = realize: min(independence_width, budget / measured_peak)   [spine FLA
 
 **P6 — cutover + falsifier; F10 cleared.** `SubstrateInputsOnly` witnesses route native. A nightly sampled interpreted==native falsifier (the affected-set-falsifier pattern) keeps the agreement honest. The interpreter is retained for compile-time eval + bootstrap receipts only, each a counted frontier row with its dissolution trigger. The v1-deletion ordering constraint dissolves correctly: eviction and scheduling authority now live in P2/P4 carriers, not in v1 Rust.
 
+> **P6 selected-entry bundle first slice (2026-08-01):** [native selected-witness bundle](native-selected-witness-bundle-design.md) extends family-grain emission to the production-selection boundary: `SelectedWitnessPlan -> content-addressed native bundle -> one process -> direct calls -> typed receipt`. The first executable subset is the already-native-clean logic family; interpreter verdict equivalence and one discriminating RED per family remain the cutover wall. Floor scheduling is explicitly a later consumer, not part of this slice.
+
 **Horizon — verdict-level Share.** `TestClaimCacheKey` (`src/v2/compiler/05_eval.dag:925`) gets its store: a pure witness whose closure hash is unchanged makes the *run itself* a `Share`. Affected-set selection then becomes a derived special case of materialization instead of a parallel mechanism.
 
 ## FLAGs (operator sign-off)

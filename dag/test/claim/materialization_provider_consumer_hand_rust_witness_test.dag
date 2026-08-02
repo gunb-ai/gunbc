@@ -3,8 +3,11 @@ module test.claim.materialization_provider_consumer_hand_rust_witness
 import gunbc.materialization_provider_consumer_scaffold {
   materialization_provider_consumer_hand_rust_scaffold,
   materialization_provider_consumer_dissolve_trigger,
+  materialization_provider_consumer_hand_rust_loc_delta_net,
+  materialization_provider_consumer_hand_rust_paths,
   materialization_provider_consumer_receipt_plan_anchor,
-  materialization_provider_consumer_roadmap_lane_anchor
+  materialization_provider_consumer_roadmap_lane_anchor,
+  materialization_provider_consumer_witness_entry,
 }
 import test.claim.materialization_provider_witness {
   incomplete_v1_shape_artifact_refuses_naming_the_diagnostic_union,
@@ -12,6 +15,7 @@ import test.claim.materialization_provider_witness {
 }
 import std.disposition { Scaffold, SingleAuthority }
 import std.types { Bool }
+import v2.std.algebra { length }
 
 data witness_model_refusal_controls_note: String = "Model-layer control only: these imported witnesses are already on main, so this row does not exercise the Rust bridge."
 
@@ -26,6 +30,10 @@ test fn materialization_provider_consumer_scaffold_names_dissolve_trigger() -> B
   !(materialization_provider_consumer_dissolve_trigger == "")
     && !(materialization_provider_consumer_receipt_plan_anchor == "")
     && !(materialization_provider_consumer_roadmap_lane_anchor == "")
+    && materialization_provider_consumer_witness_entry ==
+      "dag/test/claim/materialization_provider_consumer_hand_rust_witness_test.dag"
+    && length(xs: materialization_provider_consumer_hand_rust_paths) == 2
+    && materialization_provider_consumer_hand_rust_loc_delta_net == 469
 }
 
 test fn witness_model_refusal_controls_remain_distinct() -> Bool {
