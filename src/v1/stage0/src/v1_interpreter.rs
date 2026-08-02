@@ -2437,6 +2437,9 @@ fn eval_binop(op: &BinOp, left: Value, right: Value, ctx: &InterpContext) -> Int
             if let Some(detail) = cross_representation_numeric_straddle(&left, &right) {
                 return Err(InterpError::CrossRepresentationEquality { detail });
             }
+            if let Some(detail) = cross_family_content_hash_straddle(&left, &right) {
+                return Err(InterpError::CrossRepresentationEquality { detail });
+            }
         }
         let result = if matches!(op, BinOp::Eq) {
             equal
@@ -2563,6 +2566,61 @@ fn cross_representation_numeric_straddle(a: &Value, b: &Value) -> Option<String>
             _ => None,
         },
     }
+}
+
+fn is_content_hash_family_variant(name: &str) -> bool {
+    matches!(name, "Fnv1a64" | "Sha256Hash" | "Sha1Hash")
+}
+
+fn is_content_hash_value(v: &Value) -> bool {
+    match v {
+        Value::Variant {
+            type_name,
+            variant_name,
+            ..
+        } => {
+            resolve_sym(*type_name) == "ContentHash"
+                && is_content_hash_family_variant(&resolve_sym(*variant_name))
+        }
+        _ => false,
+    }
+}
+
+fn cross_family_content_hash_straddle(a: &Value, b: &Value) -> Option<String> {
+    match (a, b) {
+        (va, vb) if is_content_hash_value(va) && is_content_hash_value(vb) => {
+            let (an, bn) = match (va, vb) {
+                (
+                    Value::Variant {
+                        variant_name: an, ..
+                    },
+                    Value::Variant {
+                        variant_name: bn, ..
+                    },
+                ) => (an, bn),
+                _ => return None,
+            };
+            if an == bn {
+                None
+            } else {
+                Some(format!(
+                    "{} vs {} — ContentHash families are not comparable; bare `==` would \
+                     silently fabricate `false` whereas structural fnv1a64 and cited \
+                     SHA-256/SHA-1 digests are different kinds with different remedies \
+                     (DESIGN §5 / feature:content-hash-family-grounded). Match on family \
+                     and use per-family eq, or admit_pin_integrity at union carriers.",
+                    describe_repr(a),
+                    describe_repr(b),
+                ))
+            }
+        }
+        _ => None,
+    }
+}
+
+#[cfg(any(test, feature = "interp_test_witness"))]
+pub fn cross_family_content_hash_straddle_for_witness(a: &Value, b: &Value) -> Option<String> {
+    cross_family_content_hash_straddle(a, b)
 }
 
 fn fields_numeric_straddle(af: &[(Symbol, Value)], bf: &[(Symbol, Value)]) -> Option<String> {

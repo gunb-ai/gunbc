@@ -3,9 +3,8 @@ module test.claim.merge_admission_producer_witness
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data scenario_base: ContentHash = "merge-admission-producer-base"
-data scenario_head: ContentHash = "abc1234def5678901234567890abcd1234567890"
-
+data scenario_base: GitObjectId = merge_admission_witness_git_tree(label: "merge-admission-producer-base")
+data scenario_head: CommitSha = "abc1234def5678901234567890abcd1234567890"
 data green_receipt: MergeAdmissionReceipt = stamp_floor_receipt(
   pr_number: Present { value: 5933 },
   head_sha: scenario_head,
@@ -76,8 +75,8 @@ test fn wire_roundtrip_preserves_admission_fields() -> Bool {
 test fn wire_missing_head_sha_returns_absent() -> Bool {
   let wire = concat(
     concat(
-      concat(scenario_base, "\n"),
-      concat(current_gate_roster_hash, "\n")
+      concat(git_object_id_wire_hex(oid: scenario_base), "\n"),
+      concat(render_gate_roster_hash_wire(hash: current_gate_roster_hash), "\n")
     ),
     check_conclusion_wire_label(c: Success)
   )
@@ -90,7 +89,7 @@ test fn wire_missing_head_sha_returns_absent() -> Bool {
 test fn wire_missing_pr_number_parses_as_absent_field() -> Bool {
   let wire = concat(
     concat(
-      concat(concat(scenario_base, "\n"), concat(current_gate_roster_hash, "\n")),
+      concat(concat(git_object_id_wire_hex(oid: scenario_base), "\n"), concat(render_gate_roster_hash_wire(hash: current_gate_roster_hash), "\n")),
       concat(check_conclusion_wire_label(c: Success), "\n")
     ),
     scenario_head
