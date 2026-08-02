@@ -19,6 +19,8 @@ type ContractClause {
   verdict: ClauseVerdict
 }
 
+data clause_delivered_note: String = "The one exhaustive match on ClauseVerdict in this module; every other Bool-producing projection on a ContractClause routes through this (review 47530, DESIGN §3 — an undeclared sum re-matched by a family of free predicates duplicates the same exhaustiveness fact at each call site)."
+
 fn clause_delivered(c: ContractClause) -> Bool {
   match c.verdict {
     Delivered { witness_module: _, witness_fn: _, evidence: _ } => true
@@ -27,12 +29,10 @@ fn clause_delivered(c: ContractClause) -> Bool {
   }
 }
 
+data clause_has_any_evidence_note: String = "Structurally guaranteed, not a runtime check: every ClauseVerdict variant requires a NonEmptyStr reason/evidence field by construction, so \"does this clause carry evidence\" cannot be false for any inhabitant of ClauseVerdict — re-matching it would be validation standing where the type already makes the bad state unwritable (DESIGN §5)."
+
 fn clause_has_any_evidence(c: ContractClause) -> Bool {
-  match c.verdict {
-    Delivered { witness_module: _, witness_fn: _, evidence: _ } => true
-    PartiallyDelivered { reason: _, evidence: _ } => true
-    NotDelivered { reason: _ } => true
-  }
+  true
 }
 
 fn closing_contract_clauses() -> List<ContractClause> {
