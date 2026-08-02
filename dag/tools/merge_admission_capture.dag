@@ -110,7 +110,7 @@ func capture_tested_subject() -> Bool {
                     attempt_id: attempt_id,
                     head_sha: head.sha,
                     base_ref: merge_admission_merge_base_ref,
-                    base_tree: base_tree,
+                    base_tree_hash: base_tree,
                   }
                   Filesystem.Write(
                     path: merge_admission_tested_subject_path(root: root, attempt_id: attempt_id),

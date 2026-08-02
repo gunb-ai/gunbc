@@ -77,7 +77,7 @@ func stamp_tested_floor() -> Bool {
             attempt_id: attempt_id,
             pr_number: none,
             tested_head_sha: subject.head_sha,
-            tested_base_tree: subject.base_tree,
+            tested_base_tree_hash: subject.base_tree_hash,
             gate_roster_hash: current_gate_roster_hash,
             conclusion: Success,
           }
@@ -119,7 +119,7 @@ func refresh_current_target_and_gate() -> Bool {
                           current_attempt_id: attempt_id,
                           tested_subject: subject,
                           receipt: receipt,
-                          merge_target_tree: current_tree,
+                          merge_target_tree_hash: current_tree,
                           current_roster_hash: current_gate_roster_hash
                         )
                         if merge_freshness_verdict_is_consumed_to_block() {
