@@ -43,7 +43,8 @@ import v2.std.optional {
 import v2.std.dependency { DataDependsOn, ResourceDependsOn, DependencyView }
 import v2.std.node { Atom, Node, TypeNode, SyntheticOccurrence }
 import v2.std.text { String }
-import std.types { ContentHash, Int }
+import std.types { Int }
+import std.content_hash { ContentHash, content_hash_of_value }
 import std.nat { Nat }
 import std.measure { Second, second, second_count }
 import std.realization_width { width_fold_objective_goals }
@@ -87,8 +88,7 @@ import v2.workflow.realization_runner {
   runner_schedule_store_covers_nodes
 }
 
-data ci_floor_target_digest: ContentHash = "gunbc-ci-floor-v1"
-
+data ci_floor_target_digest: ContentHash = content_hash_of_value(value: "gunbc-ci-floor-v1")
 data ci_floor_compile_gate_fn: String = "dag_compile_clean_gate_passes"
 
 data floor_gate_witness_entry: String = "dag/tools/floor_effect_gate_witness.dag"
@@ -976,8 +976,12 @@ fn gunbc_falsifier_native_cache_cold_batch() -> Runnable {
   }
 }
 
-fn gunbc_falsifier_native_cache_cold_batches() -> List<List<Runnable>> {
-  [[gunbc_falsifier_native_cache_cold_batch()]]
+fn gunbc_falsifier_native_cache_cold_plan() -> WalkPlan<NoWalkFinalization> {
+  WalkPlan {
+    batches: [[gunbc_falsifier_native_cache_cold_batch()]],
+    finalization: NoFinalizationDeclared {},
+    on_success_stages: [],
+  }
 }
 
 fn falsifier_batches_append_if_enrolled(acc: List<List<Runnable>>, enrolled: Bool, batch: Runnable) -> List<List<Runnable>> {
@@ -1258,7 +1262,7 @@ fn gunbc_ci_plan_artifact_ordinary_batches() -> List<List<Runnable>> {
   floor_compile_clean_batch(batches: gunbc_ci_floor_ordinary_batches())
 }
 
-data walk_plan_uniformity_note: String = "EVERY plan function returns WalkPlan<F>, including the three with no postconditions — on_success_stages: [] is a declared empty set, not an omission the executor papers over. The INSTANTIATION is where the four differ: this floor returns WalkPlan<FloorFinalization> while regen, plan-artifact, and falsifier return WalkPlan<NoWalkFinalization>. That DECLARES the intended finalization family and removes the std-level coproduct fork; it does not enforce either, because the typechecker does not check a declared return type against the body (probed by execution — std.realization_schedule walk_finalization_note carries it). Enforcement is the enrolled value witnesses in v2.test.claim.ci_floor_plan_witness plus the executor's runtime parser, and those dissolve when return-position checking lands. The executor has ONE strict parser for the record shape; there is deliberately NO fallback from a failed record parse to a bare-List<List<Runnable>> reading, because that fallback would let a malformed plan silently run with its success stages dropped — the exact silent-widen shape §5 forbids. The `_plan` names replace the `_batches` names in the same motion (operator ruling 2026-07-30): a function whose value now carries postcondition stages must not keep a name that says it returns only batches, or the next author reasonably assumes the stages are not part of the value. The four argv/step consumers follow automatically because they derive from the floor_plan_function / plan_artifact_plan_function / regen_floor_plan_function / falsifier_plan_function constants (gunbc.ci_spec, gunbc.falsifier_workflow) — those constants are the single naming authority, renamed with the functions."
+data walk_plan_uniformity_note: String = "EVERY plan function returns WalkPlan<F>, including the three with no postconditions — on_success_stages: [] is a declared empty set, not an omission the executor papers over. The INSTANTIATION is where the four differ: this floor returns WalkPlan<FloorFinalization> while regen, plan-artifact, and falsifier return WalkPlan<NoWalkFinalization>. That DECLARES the intended finalization family and removes the std-level coproduct fork; it does not enforce either, because the typechecker does not check a declared return type against the body (probed by execution — std.realization_schedule walk_finalization_note carries it). Enforcement is the enrolled value witnesses in v2.test.claim.ci_floor_plan_witness plus the executor's runtime parser, and those dissolve when return-position checking lands. The executor has ONE strict parser for the record shape; there is deliberately NO fallback from a failed record parse to a bare-List<List<Runnable>> reading, because that fallback would let a malformed plan silently run with its success stages dropped — the exact silent-widen shape §5 forbids. The `_plan` names replace the `_batches` names in the same motion (operator ruling 2026-07-30): a function whose value now carries postcondition stages must not keep a name that says it returns only batches, or the next author reasonably assumes the stages are not part of the value. The FIVE argv/step consumers follow automatically because a plan target is no longer a name at all: gunbc.cli_invoke PlanFunction is a closed coproduct and claim_executor_run_plan_shell takes a variant, so a rename edits one match arm and every consumer follows.\n\nTHIS CENSUS SAID FOUR FOR TWO DAYS, AND THE WRONG COUNT IS HOW THE FIFTH GOT MISSED — recorded here rather than quietly corrected, because the miss is the note's own failure mode and not the migrating author's. #7470 landed the rename declaring itself INCOMPLETE, migrated the four consumers this sentence enumerated, and left gunbc_falsifier_native_cache_cold_batches returning a bare List<List<Runnable>> under its old name. The executor's strict parser then refused it — correctly, exactly as the no-fallback clause above promises — and the falsifier's native-cache cold control step went red on every one of the 8 runs that reached it (0 successes) until this repair. It read as intermittent rather than permanent only because the step is SKIPPED whenever the falsifier step fails first, so a deterministic red hid behind whatever witness was failing that cycle.\n\nTHE ROOT CAUSE WAS NOT THE COUNT, IT WAS AN UNTYPED PARAMETER. The clause 'they derive from the constants' was TRUE of four and FALSE of the fifth: native_cache_cold_control_invoke passed plan_function: \"gunbc_falsifier_native_cache_cold_batches\" as an inline string literal, so it derived from nothing and no rename could reach it. Because plan_function was an unconstrained String, plan identity crossed the modeled boundary as an argv token nothing could check, and the completeness argument could only ever be a hand-maintained count.\n\nThe first repair added a fifth naming constant beside the other four. That was still validation — it fixed this site and left the next author free to type a fresh literal — so the constant was deleted again in the same change that introduced the closed coproduct (§4b dissolution-on-climb: the wall replaces the machinery it obsoletes rather than accumulating beside it). An inline literal at a plan_function argument is now a TYPE ERROR, and adding a production target without a variant is impossible, so THIS census is no longer what makes the set complete — it is a receipt for how the set came to be closed. What remains hand-authored is BOTH the variant-to-plan-value pairing in v2.test.claim.ci_floor_plan_witness plan_variant_is_walk_plan_shaped AND the roster that feeds it: the match is exhaustive, so no target can exist without an arm, but nothing forces that arm to be executed, so a wrongly-paired or unexecuted arm remains possible (review 46883). Dissolve-on: a typed DeclarationRef over a resolved plan symbol, at which point the name projection and the hand pairing both delete."
 
 fn gunbc_ci_on_success_stages() -> List<List<Runnable>> {
   []

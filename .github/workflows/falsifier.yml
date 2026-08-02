@@ -133,7 +133,7 @@ jobs:
       - name: native-cache cold control (warm-tier admission counterpart)
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          "$ROOT/target/release/claim_executor" --source-root dag --source-root src/v2 --plan-entry src/v2/workflow/ci_floor_plan.dag --plan-function gunbc_falsifier_native_cache_cold_batches
+          "$ROOT/target/release/claim_executor" --source-root dag --source-root src/v2 --plan-entry src/v2/workflow/ci_floor_plan.dag --plan-function gunbc_falsifier_native_cache_cold_plan
         env:
           GUNBC_CI_NATIVE_CACHE_COLD_CONTROL: 1
         timeout-minutes: 30

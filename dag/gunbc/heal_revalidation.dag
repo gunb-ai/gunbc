@@ -1,6 +1,7 @@
 module gunbc.heal_revalidation
 
-import std.types { CommitSha, ContentHash, NonEmptyStr }
+import std.content_hash { Fnv1a64Structural }
+import std.types { CommitSha, NonEmptyStr }
 import gunbc.merge_admission {
   CheckCoverage,
   check_coverage_admits
@@ -129,8 +130,8 @@ fn classify_workflow_dispatch_preflight(
 
 fn classify_heal_revalidation_admission(
   state: HealRevalidationState,
-  required_roster: ContentHash,
-  required_gates: List<ContentHash>,
+  required_roster: Fnv1a64Structural,
+  required_gates: List<Fnv1a64Structural>,
 ) -> HealRevalidationAdmissionVerdict {
   match state {
     HealRevalidationNotRequired { head } =>
@@ -160,8 +161,8 @@ fn classify_heal_revalidation_admission(
 
 fn heal_revalidation_admits(
   state: HealRevalidationState,
-  required_roster: ContentHash,
-  required_gates: List<ContentHash>,
+  required_roster: Fnv1a64Structural,
+  required_gates: List<Fnv1a64Structural>,
 ) -> Bool {
   match classify_heal_revalidation_admission(
     state: state,
