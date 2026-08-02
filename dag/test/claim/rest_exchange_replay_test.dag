@@ -14,6 +14,9 @@ import extdeps.transports.rest {
   RestResponseObserved, RestExchangeRefused,
   RestBoundOperationInvocation, RestExchangeObservation, RestExchangeFixture,
 }
+import std.content_hash {
+  as_content_hash_structural, structural_content_hash, Fnv1a64StructuralDigestHex,
+}
 import v2.std.operation_argv { OperationRef }
 import v2.std.witness_evaluation {
   WitnessEvaluationFrame, WitnessReturned, WitnessRefused,
@@ -41,7 +44,9 @@ fn probe_invocation(operation: String) -> RestBoundOperationInvocation {
     }
     method: GET
     target: probe_target
-    input_digest: "0000000000000000"
+    input_digest: as_content_hash_structural(
+      structural: structural_content_hash(digest: "0000000000000000" as Fnv1a64StructuralDigestHex)
+    )
     auth_identity: RestUnauthenticated
   }
 }
