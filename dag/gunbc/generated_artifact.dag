@@ -44,6 +44,12 @@ type CommitPolicy
   = CommitRequired { consumer: RepoConsumer }
   | NotCommitted
 
+type HealPolicy
+  = AutoHealable
+  | AuthorCommitRequired { consumer: RepoConsumer }
+
+data github_app_workflows_write_absent_note: String = "The GitHub App installation token used by CI carries contents:write but NOT workflows:write. GitHub therefore rejects any push that modifies .github/workflows/** (GH013 / repository-rule violation on workflow paths). Workflow generated artifacts remain CommitRequired — they must land in the repo — but the heal job must not attempt an auto-push the token cannot perform. AuthorCommitRequired is the typed outcome: regeneration may still run locally (main_wet), but committing workflow drift is the PR author's obligation."
+
 fn artifact_path(a: GeneratedArtifact) -> String {
   match a {
     CiYamlArtifact => ".github/workflows/ci.yml"
@@ -99,6 +105,38 @@ fn committed_generated_artifacts() -> List<GeneratedArtifact> {
 
 fn committed_generated_artifact_paths() -> List<String> {
   map(committed_generated_artifacts(), a => artifact_path(a: a))
+}
+
+fn artifact_heal_policy(a: GeneratedArtifact) -> HealPolicy {
+  match artifact_commit_policy(a: a) {
+    CommitRequired { consumer: GithubActionsWorkflow } =>
+      AuthorCommitRequired { consumer: GithubActionsWorkflow }
+    CommitRequired { consumer: _ } => AutoHealable
+    NotCommitted => AutoHealable
+  }
+}
+
+fn artifact_is_auto_healable(a: GeneratedArtifact) -> Bool {
+  match artifact_heal_policy(a: a) {
+    AutoHealable => true
+    AuthorCommitRequired { consumer: _ } => false
+  }
+}
+
+fn auto_healable_committed_artifacts() -> List<GeneratedArtifact> {
+  filter(committed_generated_artifacts(), a => artifact_is_auto_healable(a: a))
+}
+
+fn author_commit_required_committed_artifacts() -> List<GeneratedArtifact> {
+  filter(committed_generated_artifacts(), a => !artifact_is_auto_healable(a: a))
+}
+
+fn auto_healable_committed_artifact_paths() -> List<String> {
+  map(auto_healable_committed_artifacts(), a => artifact_path(a: a))
+}
+
+fn author_commit_required_committed_artifact_paths() -> List<String> {
+  map(author_commit_required_committed_artifacts(), a => artifact_path(a: a))
 }
 
 fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {

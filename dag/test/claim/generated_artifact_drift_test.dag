@@ -5,8 +5,12 @@ import gunbc.generated_artifact {
   GeneratedArtifact, CiYamlArtifact, FalsifierYamlArtifact, GitignoreArtifact, RoadmapArtifact, DesignArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, LiveDeployApplyScriptArtifact, LiveDeployRetractScriptArtifact, AutoinstallUserDataArtifact, ProxyDhcpDnsmasqArtifact, PlanArtifact,
   RepoConsumer, GitProtocol, GithubActionsWorkflow, ProjectDocumentation, HostReconciler,
   CommitPolicy, CommitRequired, NotCommitted,
+  HealPolicy, AutoHealable, AuthorCommitRequired,
   generated_artifact_registry,
-  committed_generated_artifacts, artifact_path, artifact_commit_policy, artifact_is_committed, registry_contains
+  committed_generated_artifacts, artifact_path, artifact_commit_policy, artifact_is_committed,
+  artifact_heal_policy, artifact_is_auto_healable,
+  auto_healable_committed_artifacts, author_commit_required_committed_artifacts,
+  registry_contains
 }
 import gunbc.generated_artifact_emit { artifact_generate, artifact_extra_valid }
 import gunbc.os_install { srv3_autoinstall_spec, fleet_autoinstall_specs, srv3_install_server_spec, fleet_install_server_specs }
@@ -152,6 +156,33 @@ test fn witness_commit_policy_reasons() -> Bool {
     && match artifact_commit_policy(a: RunnerDeployArtifact) { NotCommitted => true  _ => false }
     && match artifact_commit_policy(a: AutoinstallUserDataArtifact { spec: srv3_autoinstall_spec }) { NotCommitted => true  _ => false }
     && match artifact_commit_policy(a: ProxyDhcpDnsmasqArtifact { spec: srv3_install_server_spec }) { NotCommitted => true  _ => false }
+}
+
+fn heal_policy_is(a: GeneratedArtifact, expected: HealPolicy) -> Bool {
+  match artifact_heal_policy(a: a) {
+    AutoHealable => match expected { AutoHealable => true  _ => false }
+    AuthorCommitRequired { consumer } => match expected {
+      AuthorCommitRequired { consumer: expected_consumer } =>
+        match consumer {
+          GithubActionsWorkflow => match expected_consumer { GithubActionsWorkflow => true  _ => false }
+          GitProtocol => match expected_consumer { GitProtocol => true  _ => false }
+          ProjectDocumentation => match expected_consumer { ProjectDocumentation => true  _ => false }
+          HostReconciler => match expected_consumer { HostReconciler => true  _ => false }
+        }
+      AutoHealable => false
+    }
+  }
+}
+
+test fn witness_heal_policy_workflow_artifacts_require_author_commit() -> Bool {
+  heal_policy_is(a: CiYamlArtifact, expected: AuthorCommitRequired { consumer: GithubActionsWorkflow })
+    && heal_policy_is(a: FalsifierYamlArtifact, expected: AuthorCommitRequired { consumer: GithubActionsWorkflow })
+    && heal_policy_is(a: GitignoreArtifact, expected: AutoHealable)
+    && heal_policy_is(a: DesignArtifact, expected: AutoHealable)
+    && (count(author_commit_required_committed_artifacts()) == 2)
+    && (count(auto_healable_committed_artifacts()) == count(committed_generated_artifacts()) - 2)
+    && artifact_is_auto_healable(a: CiYamlArtifact) == false
+    && artifact_is_auto_healable(a: GitignoreArtifact) == true
 }
 
 test fn witness_extra_validation_wired() -> Bool {
