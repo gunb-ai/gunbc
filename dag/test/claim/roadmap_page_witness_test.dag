@@ -581,3 +581,7 @@ test fn witness_parity_refused_arm_carries_located_reason_open() -> Bool {
     && string_contains(s: h, pattern: "turn.completed with process unobserved: no exit was established")
     && string_contains(s: h, pattern: " open")
 }
+
+test fn probe_brief_violations() -> String {
+  fold(roadmap_ticket_brief_violations(), init: "violations:", f: (acc, v) => concat_str(a: acc, b: concat_str(a: " ", b: concat_str(a: v.node, b: concat_str(a: "=", b: int_to_string(n: v.words))))))
+}
