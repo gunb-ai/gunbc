@@ -18,6 +18,12 @@ type StageEmissionCandidate {
   emitted: Node
 }
 
+data candidate_generation_serializes_written_source_note: String = "DISSOLVE-ON: wire serialize_target composed with translate in generate_stage_candidate_from_ingest (CandidateGenerationSerializeTargetWiring). Until then StageEmissionCandidate carries translate output only — no serialized Rust source to receipt against producer provenance."
+
+fn candidate_generation_serializes_written_source() -> Bool {
+  false
+}
+
 fn generate_stage_candidate_from_ingest(
   ingest: SourceRootIngest,
   admission: Admission,
