@@ -258,11 +258,7 @@ fn serve_resolved_graph_incomplete_stored_disk_probe_in_ctx(
     lookup_fold_outcome(ctx, &lookup)
 }
 
-fn provider_lookup_refusal_err(
-    ctx: &InterpContext,
-    lookup: &Value,
-    prefix: &str,
-) -> String {
+fn provider_lookup_refusal_err(ctx: &InterpContext, lookup: &Value, prefix: &str) -> String {
     match lookup_fold_outcome(ctx, lookup) {
         Ok(outcome) => super::provider_integrity_refusal_message(outcome)
             .unwrap_or_else(|| format!("{prefix}: unexpected provider hit")),
