@@ -1,11 +1,14 @@
 module test.claim.legacy_test_inflow_witness_test
 
-import std.types { Bool, List, String }
+import std.types { Bool, Int, List, String }
 import gunbc.legacy_test_inflow {
-  inflow_observation_addition_ids,
-  inflow_observation_count,
+  InflowCountMeasured,
+  InflowCountUnavailable,
+  inflow_observation_tally,
+  LegacyTestInflowObservation,
   inflow_observation_is_measured,
   inflow_observation_of_diff,
+  inflow_tally_is_measured,
   inflow_observation_of_unified_diff_result,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -32,10 +35,25 @@ data fixture_renamed_legacy_test_zero_context_diff: String = "diff --git a/src/v
 
 data fixture_attribute_only_addition_zero_context_diff: String = "diff --git a/src/v1/tests/src/existing_module_test.rs b/src/v1/tests/src/existing_module_test.rs\n--- a/src/v1/tests/src/existing_module_test.rs\n+++ b/src/v1/tests/src/existing_module_test.rs\n@@ -20,0 +21 @@ fn helper() -> bool { true }\n+#[test]\n"
 
+
+fn inflow_measured_ids(observation: LegacyTestInflowObservation) -> List<String> {
+  match inflow_observation_tally(observation: observation) {
+    InflowCountMeasured { count: _, ids } => ids
+    InflowCountUnavailable { reason: _ } => ["REFUSED"]
+  }
+}
+
+fn inflow_measured_count(observation: LegacyTestInflowObservation) -> Int {
+  match inflow_observation_tally(observation: observation) {
+    InflowCountMeasured { count: n, ids: _ } => n
+    InflowCountUnavailable { reason: _ } => 0 - 1
+  }
+}
+
 test fn inflow_renamed_legacy_test_is_not_an_arrival() -> Bool {
   let observation = inflow_observation_of_diff(diff_text: fixture_renamed_legacy_test_zero_context_diff)
   inflow_observation_is_measured(observation: observation)
-    && inflow_observation_count(observation: observation) == 0
+    && inflow_measured_count(observation: observation) == 0
 }
 
 test fn inflow_attribute_only_addition_without_context_refuses_loudly() -> Bool {
@@ -45,45 +63,39 @@ test fn inflow_attribute_only_addition_without_context_refuses_loudly() -> Bool 
 }
 
 test fn inflow_planted_new_legacy_test_is_detected_by_name() -> Bool {
-  inflow_observation_addition_ids(
-    observation: inflow_observation_of_diff(diff_text: fixture_new_legacy_test_file_diff),
+  inflow_measured_ids(observation: inflow_observation_of_diff(diff_text: fixture_new_legacy_test_file_diff),
   ) == ["src/v1/tests/src/planted_inflow_test.rs::planted_arrival"]
 }
 
 test fn inflow_attribute_added_above_existing_fn_is_detected_by_name() -> Bool {
-  inflow_observation_addition_ids(
-    observation: inflow_observation_of_diff(diff_text: fixture_attribute_above_existing_fn_diff),
+  inflow_measured_ids(observation: inflow_observation_of_diff(diff_text: fixture_attribute_above_existing_fn_diff),
   ) == ["src/v1/tests/src/existing_module_test.rs::promoted_to_a_test"]
 }
 
 test fn inflow_added_floor_witness_is_not_an_arrival() -> Bool {
-  inflow_observation_count(
-    observation: inflow_observation_of_diff(diff_text: fixture_floor_witness_added_diff),
+  inflow_measured_count(observation: inflow_observation_of_diff(diff_text: fixture_floor_witness_added_diff),
   ) == 0
 }
 
 test fn inflow_touched_legacy_module_without_new_test_is_zero() -> Bool {
-  inflow_observation_count(
-    observation: inflow_observation_of_diff(diff_text: fixture_legacy_test_touched_without_arrival_diff),
+  inflow_measured_count(observation: inflow_observation_of_diff(diff_text: fixture_legacy_test_touched_without_arrival_diff),
   ) == 0
 }
 
 test fn inflow_removed_legacy_test_is_not_an_arrival() -> Bool {
-  inflow_observation_count(
-    observation: inflow_observation_of_diff(diff_text: fixture_legacy_test_removed_diff),
+  inflow_measured_count(observation: inflow_observation_of_diff(diff_text: fixture_legacy_test_removed_diff),
   ) == 0
 }
 
 test fn inflow_seed_test_outside_counted_population_is_zero() -> Bool {
-  inflow_observation_count(
-    observation: inflow_observation_of_diff(diff_text: fixture_seed_test_outside_population_diff),
+  inflow_measured_count(observation: inflow_observation_of_diff(diff_text: fixture_seed_test_outside_population_diff),
   ) == 0
 }
 
 test fn inflow_empty_diff_is_measured_zero_not_refused() -> Bool {
   let observation = inflow_observation_of_diff(diff_text: "")
   inflow_observation_is_measured(observation: observation)
-    && inflow_observation_count(observation: observation) == 0
+    && inflow_measured_count(observation: observation) == 0
 }
 
 test fn inflow_unresolved_attribute_refuses_rather_than_counting() -> Bool {
@@ -99,5 +111,16 @@ test fn inflow_failed_observation_refuses_rather_than_reporting_zero() -> Bool {
     failure_reason: "git diff exited nonzero",
   )
   !inflow_observation_is_measured(observation: observation)
-    && inflow_observation_count(observation: observation) == 0
+    && !inflow_tally_is_measured(tally: inflow_observation_tally(observation: observation))
+}
+
+test fn inflow_refusal_has_no_count_to_read() -> Bool {
+  let refused = inflow_observation_of_unified_diff_result(
+    observed: false,
+    diff_text: "",
+    failure_reason: "git diff exited nonzero",
+  )
+  let measured = inflow_observation_of_diff(diff_text: "")
+  inflow_measured_count(observation: refused) != inflow_measured_count(observation: measured)
+    && inflow_measured_count(observation: measured) == 0
 }

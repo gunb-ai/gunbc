@@ -1,12 +1,12 @@
 module v2.workflow.legacy_test_inflow_audit
 
-import std.types { Int, List, String }
+import std.types { String }
 import std.logic { Bool }
 import gunbc.legacy_test_inflow {
   LegacyTestInflowObservation,
-  inflow_observation_addition_ids,
-  inflow_observation_count,
-  inflow_observation_is_measured,
+  LegacyTestInflowTally,
+  inflow_observation_tally,
+  inflow_tally_is_measured,
   inflow_observation_of_unified_diff_result,
 }
 import v2.workflow.floor_diff_observe {
@@ -35,14 +35,10 @@ fn legacy_test_inflow_observe_live() -> LegacyTestInflowObservation {
   }
 }
 
-fn legacy_test_inflow_live_count() -> Int {
-  inflow_observation_count(observation: legacy_test_inflow_observe_live())
-}
-
-fn legacy_test_inflow_live_ids() -> List<String> {
-  inflow_observation_addition_ids(observation: legacy_test_inflow_observe_live())
+fn legacy_test_inflow_live_tally() -> LegacyTestInflowTally {
+  inflow_observation_tally(observation: legacy_test_inflow_observe_live())
 }
 
 fn legacy_test_inflow_live_observation_holds() -> Bool {
-  inflow_observation_is_measured(observation: legacy_test_inflow_observe_live())
+  inflow_tally_is_measured(tally: legacy_test_inflow_live_tally())
 }

@@ -8,6 +8,8 @@ import gunbc.legacy_test_behavior_disposition {
 
 data legacy_test_inflow_authority_note: String = "WHY THIS EXISTS: THE MECHANISM IS ABSENT, NOT THE RATIO. The v1-test-migration roadmap node declares in its own out_of_scope that adding a test written only in Rust, with no authority the substrate owns, 'counts against the finish line rather than toward it' because it grows the very population the node exists to drain. Nothing in the repository observes that inflow. The declared rule and the enforced rule differ, and the difference is invisible: the disposition graph measures the population and the frontier, both of which a steady arrival of new legacy tests moves without anyone deciding to move them. This carrier makes arrivals observable at the grain the rule is stated in. It is deliberately NOT justified by any measured arrival rate — a rate is one window's sample, and a mechanism argued from a sample invites deletion the first window the sample inverts. The rate is what this measures, never what establishes it."
 
+data legacy_test_inflow_no_scheduled_consumer_note: String = "DECLARED SCAFFOLD: THIS AUDIT HAS NO SCHEDULED CONSUMER YET, and saying so is the point (operator review, gunbc#7692). v2.workflow.legacy_test_inflow_audit exposes a live observation, but nothing in this repository schedules it, enrolls it in a cadence, persists its receipt, or renders it — so after merge the audit runs only when a person runs it by hand. That is an audit MECHANISM plus a local recipe, not an operating audit, and the distinction is exactly the one this lane raised against CoveredByWitness rows citing witnesses no lane executes: a mechanism that never runs reads as discharged while observing nothing. The claim is narrowed to match rather than the gap being papered over. Local recipe: GUNBC_CI_DIFF_BASE=<base> GUNBC_CI_DIFF_HEAD=<head> claim_batch --wet --source-root src/v2 --source-root dag --entry src/v2/workflow/legacy_test_inflow_audit.dag --functions legacy_test_inflow_live_observation_holds. DISSOLVES WHEN a non-blocking consumer lands — a persisted receipt carrying the subject and the InflowMeasured-or-InflowRefused observation, exposed to a cadence or the dashboard — at which point this note deletes and the promotion question below becomes answerable from measured windows rather than hand runs."
+
 data legacy_test_inflow_audit_mode_note: String = "AUDIT MODE, DELIBERATELY NOT A GATE (lane ruling 2026-08-02, following the acceptance-door split precedent: mechanism and audit first, refusal later). Every function here REPORTS; none refuses a change. The reason is throughput, not caution: a blocking rule here lands on every lane in the wave at once, and the decision to spend that throughput should be made against a measurement this carrier does not yet have. THE ONE THING AUDIT MODE DOES NOT RELAX IS FAIL-CLOSED OBSERVATION: a diff that cannot be observed, or an added attribute whose function line never arrives, yields InflowRefused carrying a typed reason — never InflowMeasured with an empty list. Not-observed and nothing-arrived are different states and this carrier keeps them apart, because collapsing them would make the counter silently report zero exactly when it is broken. PROMOTION TRIGGER: when a measured window supports a decision, InflowRefused and a nonempty InflowMeasured become a refusal at the change boundary; that promotion deletes this note, not the kernel."
 
 data legacy_test_inflow_scope_note: String = "SCOPE IS THE DISPOSITION GRAPH'S DENOMINATOR, EXACTLY. An arrival counts when it adds a line-anchored Rust `#[test]` function under src/v1/tests/src, because that is the population gunbc.legacy_test_behavior_disposition discovers and the frontier is measured against. Rust tests elsewhere in the seed — src/v1/stage0/src and its tests directory — are outside the counted population and are outside this counter too; that is a stated scope, not an oversight, and widening one without the other would make the counter and the frontier disagree about what they are counting. A change that adds a floor .dag `test fn` adds no arrival: it is the migration direction, and counting it would price the cure as the disease."
@@ -159,22 +161,31 @@ fn inflow_observation_of_diff(diff_text: String) -> LegacyTestInflowObservation 
   }
 }
 
-fn inflow_observation_addition_ids(observation: LegacyTestInflowObservation) -> List<String> {
+type LegacyTestInflowTally
+  = InflowCountMeasured { count: Int, ids: List<String> }
+  | InflowCountUnavailable { reason: NonEmptyStr }
+
+data legacy_test_inflow_tally_note: String = "THE PROJECTION CANNOT ERASE THE REFUSAL, because there is no arm on which to erase it (codex review, gunbc#7692). An earlier revision exposed inflow_observation_addition_ids and inflow_observation_count directly: both mapped InflowRefused to an empty list, and count of empty is zero, so an unobservable diff PROJECTED AS ZERO ARRIVALS unless every caller remembered to consult inflow_observation_is_measured first. The typed outcome existed precisely to remove that footgun and the projection put it back, one call-order mistake from the silent widening this carrier's own note forbids. A count and an id list now exist ONLY on InflowCountMeasured; a refusal projects to InflowCountUnavailable carrying its reason, which has no count to read. Fail-closed semantics is a property of the shape rather than of caller discipline."
+
+fn inflow_observation_tally(observation: LegacyTestInflowObservation) -> LegacyTestInflowTally {
   match observation {
-    InflowMeasured { additions } => additions |> map(a => legacy_test_behavior_id(behavior: a))
-    InflowRefused { reason: _ } => []
+    InflowMeasured { additions } => {
+      let ids = additions |> map(a => legacy_test_behavior_id(behavior: a))
+      InflowCountMeasured { count: count(ids), ids: ids }
+    }
+    InflowRefused { reason } => InflowCountUnavailable { reason: reason }
+  }
+}
+
+fn inflow_tally_is_measured(tally: LegacyTestInflowTally) -> Bool {
+  match tally {
+    InflowCountMeasured { count: _, ids: _ } => true
+    InflowCountUnavailable { reason: _ } => false
   }
 }
 
 fn inflow_observation_is_measured(observation: LegacyTestInflowObservation) -> Bool {
-  match observation {
-    InflowMeasured { additions: _ } => true
-    InflowRefused { reason: _ } => false
-  }
-}
-
-fn inflow_observation_count(observation: LegacyTestInflowObservation) -> Int {
-  count(inflow_observation_addition_ids(observation: observation))
+  inflow_tally_is_measured(tally: inflow_observation_tally(observation: observation))
 }
 
 fn inflow_observation_of_unified_diff_result(
