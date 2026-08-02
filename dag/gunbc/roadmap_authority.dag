@@ -2031,8 +2031,27 @@ fn roadmap_acceptance_receipts() -> List<RoadmapAcceptanceReceipt> {
       accepted_by: "operator",
       accepted_on: "2026-08-01",
     },
+    RoadmapAcceptanceReceipt {
+      node: nid(s: "v2-emitter-producer-provenance"),
+      criteria_digest: chash(s: "f1c76111c83a0a60"),
+      red_control: RedControlExecuted {
+        witness_module: "v2.test.claim.self_host.emitter_producer_provenance_witness_test",
+        witness_fn: "witness_restored_binding_without_executed_receipt_does_not_authorize_reds",
+        executed_on: "2026-08-02",
+      },
+      handback: HandbackDelivered {
+        first_artifact: "src/v2/compiler/self_host/frontier.dag",
+        further_artifacts: [
+          "src/v2/test/claim/self_host/emitter_producer_provenance_witness_test.dag",
+        ],
+      },
+      accepted_by: "operator",
+      accepted_on: "2026-08-02",
+    },
   ]
 }
+
+data v2_emitter_producer_provenance_acceptance_note: String = "ACCEPTANCE OF LANDED WORK, the exact state closing_contract_task_naming_correction_note names this node as the specimen of: bound, implemented, green, awaiting the operator act. The landing is the Gate-A oracle (#7408, operator-merged): SelfEmitted requires an executed probe receipt, so an emitter-produced claim without a receipt from the run that made it is unrepresentable — the ticket's own red control. Evidence, executed 2026-08-02 on the tree carrying this receipt: all 27 witness fns in the contract's entry file pass, including the bound closing validation (a restored binding without an executed receipt does not authorize) and its sibling refusal controls (hand-forged authorization, minted executed verdicts, synthesized digests, fabricated build-greens all red). The digest f1c76111c83a0a60 was DERIVED BY EXECUTION — node_criteria_digest run against the live node on this tree, not transcribed. The handback's three elements are on main: the relabelled roster (every frontier row producer-qualified), the retired single count (per-producer baselines, witness_producer_qualified_baselines_holds), and the refusal demonstration (the _reds suite). Acceptance is the operator's merge of the change adding this receipt; the receipt is authored by the roadmap steward as the vehicle, never as the act."
 
 fn accepted_roadmap_nodes() -> List<RoadmapNode> {
   let receipts = roadmap_acceptance_receipts()
