@@ -50,6 +50,7 @@ type RealizationObjective {
 type WitnessKind
   = CorpusWitnessKind
   | ExecutionWitnessKind
+  | NativeBundleWitnessKind
 
 type WitnessSeam {
   producer: String
@@ -62,8 +63,21 @@ type WitnessSpan
 
 fn witness_kind_eq(a: WitnessKind, b: WitnessKind) -> Bool {
   match a {
-    CorpusWitnessKind => match b { CorpusWitnessKind => true  ExecutionWitnessKind => false }
-    ExecutionWitnessKind => match b { ExecutionWitnessKind => true  CorpusWitnessKind => false }
+    CorpusWitnessKind => match b {
+      CorpusWitnessKind => true
+      ExecutionWitnessKind => false
+      NativeBundleWitnessKind => false
+    }
+    ExecutionWitnessKind => match b {
+      ExecutionWitnessKind => true
+      CorpusWitnessKind => false
+      NativeBundleWitnessKind => false
+    }
+    NativeBundleWitnessKind => match b {
+      NativeBundleWitnessKind => true
+      CorpusWitnessKind => false
+      ExecutionWitnessKind => false
+    }
   }
 }
 
