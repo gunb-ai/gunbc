@@ -3995,6 +3995,85 @@ pub fn build_data_item_index(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<HashMap<St
     )
 }
 
+pub fn build_qualified_item_registry(
+    modules: Rc<Vec<Rc<TypedModule>>>,
+) -> Rc<HashMap<String, Rc<ItemInfo>>> {
+    modules.clone().iter().cloned().fold(
+        v1_rt::rc_empty_map::<String, Rc<ItemInfo>>(),
+        |acc: Rc<HashMap<String, Rc<ItemInfo>>>, tm: Rc<TypedModule>| {
+            let module_name = authored_name_at(
+                tm.type_env.clone().source_indices.clone(),
+                tm.module.clone(),
+            );
+            Rc::new(v1_rt::map_keys(&tm.item_registry.clone()))
+                .iter()
+                .cloned()
+                .fold(
+                    acc,
+                    |acc2: Rc<HashMap<String, Rc<ItemInfo>>>, item_name: String| {
+                        match v1_rt::map_get(&tm.item_registry.clone(), item_name.clone()) {
+                            Some(info) => v1_rt::rc_map_insert(
+                                acc2.clone(),
+                                v1_rt::concat(
+                                    v1_rt::concat(module_name.clone(), ".".to_string()),
+                                    item_name.clone(),
+                                ),
+                                info.clone(),
+                            ),
+                            None => acc2.clone(),
+                        }
+                    },
+                )
+        },
+    )
+}
+
+pub fn merge_item_registries(
+    bare: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified: Rc<HashMap<String, Rc<ItemInfo>>>,
+) -> Rc<HashMap<String, Rc<ItemInfo>>> {
+    Rc::new(v1_rt::map_keys(&qualified)).iter().cloned().fold(
+        bare.clone(),
+        |acc: Rc<HashMap<String, Rc<ItemInfo>>>, key: String| match v1_rt::map_get(
+            &qualified,
+            key.clone(),
+        ) {
+            Some(info) => v1_rt::rc_map_insert(acc.clone(), key.clone(), info.clone()),
+            None => acc.clone(),
+        },
+    )
+}
+
+pub fn value_ref_leaf_key_collision_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Construction wall for the cross-module half of the qualified-value-reference dotted-render class (sibling of value_ref_self_module_normalization_note for the same-module half). #7685 keyed registry lookup on the leaf name so the is_data call-suffix decision fired for dotted references, but the flat item_registry is keyed by bare name with last-write-wins across the closure — so module_a.homonym_value could consult module_b's ItemInfo when both modules declare the same leaf. Fix: merge a qualified-name overlay (module.leaf -> ItemInfo, one authority per declaring module) at emit time and key cross-module lookups on the full normalized spelling; same-module references still normalize to bare before lookup. The qualifier prefix remains the module-path authority for emit_value_ref_ident.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn value_ref_registry_lookup_key(resolved_name: String) -> String {
+    {
+        let qualifier = value_ref_qualifier_prefix(resolved_name.clone());
+        if (qualifier.clone() == "".to_string()) {
+            value_ref_qualified_leaf(resolved_name.clone())
+        } else {
+            resolved_name.clone()
+        }
+    }
+}
+
+pub fn lookup_item_for_value_ref(
+    resolved_name: String,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+) -> Option<Rc<ItemInfo>> {
+    lookup_item(
+        registry.clone(),
+        value_ref_registry_lookup_key(resolved_name.clone()),
+    )
+}
+
 pub fn insert_scoped_data_item(
     scoped: Rc<HashMap<String, Rc<Vec<Rc<Node>>>>>,
     name: String,
@@ -4845,7 +4924,10 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
             fn_return_type: None,
         });
         let shared_types = emit_info.shared_types.clone();
-        let registry = typed.item_registry.clone();
+        let registry = merge_item_registries(
+            typed.item_registry.clone(),
+            build_qualified_item_registry(typed.modules.clone()),
+        );
         let data_items = build_data_item_index(typed.modules.clone());
         let workflow_funcs = collect_workflow_funcs(
             typed.modules.clone(),
@@ -17184,22 +17266,33 @@ pub fn emit_value_ref_ident(
     if v1_rt::string_contains(&name, ".".to_string()) {
         {
             let leaf = value_ref_qualified_leaf(name.clone());
-            match v1_rt::map_get(&registry, leaf.clone()) {
-                Some(info) => v1_rt::concat(
+            let qualifier = value_ref_qualifier_prefix(name.clone());
+            if (qualifier.clone() != "".to_string()) {
+                v1_rt::concat(
                     v1_rt::concat(
-                        v1_rt::concat(
-                            "crate::".to_string(),
-                            module_to_filename(info.module_name.clone()),
-                        ),
+                        v1_rt::concat("crate::".to_string(), module_to_filename(qualifier.clone())),
                         "::".to_string(),
                     ),
                     emit_import_name(leaf.clone(), registry.clone()),
-                ),
-                None => {
-                    if freemonoid_empty_from_emit_info(leaf.clone(), emit_info.clone()) {
-                        emit_freemonoid_empty_rc_value()
-                    } else {
-                        emit_ident(leaf.clone(), RenderTarget::Rust)
+                )
+            } else {
+                match v1_rt::map_get(&registry, leaf.clone()) {
+                    Some(info) => v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                "crate::".to_string(),
+                                module_to_filename(info.module_name.clone()),
+                            ),
+                            "::".to_string(),
+                        ),
+                        emit_import_name(leaf.clone(), registry.clone()),
+                    ),
+                    None => {
+                        if freemonoid_empty_from_emit_info(leaf.clone(), emit_info.clone()) {
+                            emit_freemonoid_empty_rc_value()
+                        } else {
+                            emit_ident(leaf.clone(), RenderTarget::Rust)
+                        }
                     }
                 }
             }
@@ -17307,62 +17400,67 @@ pub fn emit_var_ref(
                                 body.clone()
                             }
                         }
-                        None => match v1_rt::map_get(&registry, leaf_name.clone()) {
-                            Some(info) => {
-                                let is_data = (info.kind.clone() == ItemKind::DataItem);
-                                if is_data.clone() {
-                                    v1_rt::concat(to_snake(leaf_name.clone()), "()".to_string())
-                                } else {
-                                    {
-                                        let is_function_value =
-                                            match binding_kind.clone().as_deref().cloned() {
-                                                Some(VarBindingKind::FunctionValueBinding) => true,
-                                                _ => false,
-                                            };
-                                        let ident = emit_value_ref_ident(
-                                            resolved_name.clone(),
-                                            registry.clone(),
-                                            emit_info.clone(),
-                                        );
-                                        let ident_str = if is_function_value.clone() {
-                                            ident.clone()
-                                        } else {
-                                            if moves_by_value.clone() {
+                        None => {
+                            match lookup_item_for_value_ref(resolved_name.clone(), registry.clone())
+                            {
+                                Some(info) => {
+                                    let is_data = (info.kind.clone() == ItemKind::DataItem);
+                                    if is_data.clone() {
+                                        v1_rt::concat(to_snake(leaf_name.clone()), "()".to_string())
+                                    } else {
+                                        {
+                                            let is_function_value =
+                                                match binding_kind.clone().as_deref().cloned() {
+                                                    Some(VarBindingKind::FunctionValueBinding) => {
+                                                        true
+                                                    }
+                                                    _ => false,
+                                                };
+                                            let ident = emit_value_ref_ident(
+                                                resolved_name.clone(),
+                                                registry.clone(),
+                                                emit_info.clone(),
+                                            );
+                                            let ident_str = if is_function_value.clone() {
                                                 ident.clone()
                                             } else {
-                                                match resolved_type.clone() {
-                                                    Some(_) => apply_type_template1(
-                                                        sharing.clone_value.clone(),
-                                                        ident.clone(),
-                                                    ),
-                                                    _ => ident.clone(),
+                                                if moves_by_value.clone() {
+                                                    ident.clone()
+                                                } else {
+                                                    match resolved_type.clone() {
+                                                        Some(_) => apply_type_template1(
+                                                            sharing.clone_value.clone(),
+                                                            ident.clone(),
+                                                        ),
+                                                        _ => ident.clone(),
+                                                    }
                                                 }
-                                            }
-                                        };
-                                        ident_str.clone()
+                                            };
+                                            ident_str.clone()
+                                        }
                                     }
                                 }
+                                None => {
+                                    let ident = emit_value_ref_ident(
+                                        resolved_name.clone(),
+                                        registry.clone(),
+                                        emit_info.clone(),
+                                    );
+                                    let ident_str = if moves_by_value.clone() {
+                                        ident.clone()
+                                    } else {
+                                        match resolved_type.clone() {
+                                            Some(_) => apply_type_template1(
+                                                sharing.clone_value.clone(),
+                                                ident.clone(),
+                                            ),
+                                            _ => ident.clone(),
+                                        }
+                                    };
+                                    ident_str.clone()
+                                }
                             }
-                            None => {
-                                let ident = emit_value_ref_ident(
-                                    resolved_name.clone(),
-                                    registry.clone(),
-                                    emit_info.clone(),
-                                );
-                                let ident_str = if moves_by_value.clone() {
-                                    ident.clone()
-                                } else {
-                                    match resolved_type.clone() {
-                                        Some(_) => apply_type_template1(
-                                            sharing.clone_value.clone(),
-                                            ident.clone(),
-                                        ),
-                                        _ => ident.clone(),
-                                    }
-                                };
-                                ident_str.clone()
-                            }
-                        },
+                        }
                     };
                     ref_str
                 }
@@ -17447,11 +17545,18 @@ pub fn emit_typed_expr_base(
                                     }
                                 }
                             }
-                            None => match v1_rt::map_get(&registry, n.clone()) {
+                            None => match lookup_item_for_value_ref(
+                                value_ref_normalize_self_module(
+                                    n.clone(),
+                                    scope.module_name.clone(),
+                                ),
+                                registry.clone(),
+                            ) {
                                 Some(info) => {
                                     let is_data = (info.kind.clone() == ItemKind::DataItem);
+                                    let leaf_name = value_ref_qualified_leaf(n.clone());
                                     if is_data.clone() {
-                                        v1_rt::concat(to_snake(n.clone()), "()".to_string())
+                                        v1_rt::concat(to_snake(leaf_name.clone()), "()".to_string())
                                     } else {
                                         emit_value_ref_ident(
                                             n.clone(),
