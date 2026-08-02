@@ -1,16 +1,17 @@
 module v2.compiler.self_host.v2_emitter_direct_rust_door_contract
 
 import v2.compiler.self_host.candidate_generation {
-  mint_provenanced_rust_artifact,
+  generate_provenanced_rust_candidate_from_ingest,
   provenanced_rust_artifact_seed_independent
 }
 import v2.compiler.self_host.direct_rust_door_fixture {
-  direct_rust_door_inferred_tree,
+  direct_rust_door_admission,
+  direct_rust_door_ingest,
   direct_rust_door_module_path,
   direct_rust_door_target_model
 }
 import v2.compiler.self_host.emitter_producer_provenance {
-  v2_interpreted_emitter_closure_authority
+  realized_closure_for_v2_direct_rust_door_emit_run
 }
 import v2.compiler.translate {
   target_serialize_source_from_model,
@@ -98,11 +99,12 @@ fn refused(
 }
 
 fn assess_written_source_independent_of_seed_emitter() -> DirectRustDoorAdmission {
-  match mint_provenanced_rust_artifact(
-    inferred: direct_rust_door_inferred_tree,
+  match generate_provenanced_rust_candidate_from_ingest(
+    ingest: direct_rust_door_ingest(),
+    admission: direct_rust_door_admission(),
     target: direct_rust_door_target_model(),
     module_path: direct_rust_door_module_path,
-    realized_closure: v2_interpreted_emitter_closure_authority()
+    realized_closure: realized_closure_for_v2_direct_rust_door_emit_run()
   ) {
     Accepted { value: artifact, diagnostics: _ } =>
       if provenanced_rust_artifact_seed_independent(artifact: artifact) {

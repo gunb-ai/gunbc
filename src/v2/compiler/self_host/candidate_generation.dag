@@ -8,16 +8,14 @@ import v2.compiler.name_resolve { Admission }
 import v2.compiler.program_assembly { assemble_program_from_ingest }
 import v2.compiler.self_host.emitter_producer_provenance {
   advance_producer_emission_receipt_cargo_green,
-  BehavioralEquivalent,
-  BuildGreen,
-  BuildRefused,
   mint_producer_emission_receipt,
   ProducerEmissionReceipt,
   RealizedEmitterClosure,
   realized_closure_for_v2_direct_rust_door_emit_run,
   seed_emit_rust_reachable,
   source_produced_qualifications,
-  V2EmitterInterpreted
+  V2EmitterInterpreted,
+  BuildRefused
 }
 import v2.compiler.source_authority { SourceRootIngest }
 import v2.compiler.translate { translate }
@@ -282,6 +280,27 @@ fn generate_written_rust_candidate_from_ingest(
   realized_closure: RealizedEmitterClosure,
   workspace_dir: String
 ) -> Outcome<WrittenProvenancedRustArtifact> {
+  bind_outcome(
+    o: generate_provenanced_rust_candidate_from_ingest(
+      ingest: ingest,
+      admission: admission,
+      target: target,
+      module_path: module_path,
+      realized_closure: realized_closure
+    ),
+    f: fn(artifact) {
+      outcome_accepted(
+        value: WrittenProvenancedRustArtifact {
+          artifact: artifact,
+          write: write_rust_workspace(
+            workspace_dir: workspace_dir,
+            source: artifact.source
+          )
+        }
+      )
+    }
+  )
+}
 
 fn provenanced_rust_artifact_seed_independent(
   artifact: ProvenancedRustArtifact

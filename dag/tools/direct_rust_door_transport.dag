@@ -3,22 +3,25 @@ module tools.direct_rust_door_transport
 import extdeps.cargo_build
 import extdeps.shell
 import v2.compiler.self_host.candidate_generation {
-  mint_written_provenanced_rust_artifact,
+  advance_written_provenanced_rust_artifact_cargo_green,
+  generate_written_rust_candidate_from_ingest,
   written_provenanced_rust_artifact_ok
 }
 import v2.compiler.self_host.direct_rust_door_fixture {
-  direct_rust_door_inferred_tree,
+  direct_rust_door_admission,
+  direct_rust_door_ingest,
   direct_rust_door_module_path,
   direct_rust_door_target_model
 }
 import v2.compiler.self_host.emitter_producer_provenance {
-  v2_interpreted_emitter_closure_authority
+  realized_closure_for_v2_direct_rust_door_emit_run
 }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
+import v2.std.optional { Absent, Present }
 import v2.std.text { String }
 
-data direct_rust_door_transport_note: String = "Lane B wet transport: mint_written_provenanced_rust_artifact (candidate_generation write_rust_workspace authority) then cargo.Build.BuildManifest compile — the wet compile receipt for roadmap node v2-emitter-direct-rust-door. Closure excludes v1.compiler.emit_rust via v2_interpreted_emitter_closure."
+data direct_rust_door_transport_note: String = "Lane B wet transport: generate_written_rust_candidate_from_ingest (ingest-assemble-infer-emit-write) then advance_written_provenanced_rust_artifact_cargo_green after cargo.Build.BuildManifest — the wet compile receipt for roadmap node v2-emitter-direct-rust-door."
 
 fn direct_rust_door_compile_workspace(workspace_dir: String) -> Bool {
   let build = cargo.Build.BuildManifest(
@@ -33,16 +36,26 @@ fn direct_rust_door_compile_workspace(workspace_dir: String) -> Bool {
 fn run_direct_rust_door_emit_write_compile_smoke() -> Bool {
   let dir = shell.Mktemp.Dir()
   let src_dir = shell.Mkdir.Parents(path: concat(dir.path, "/src"))
-  let pipeline_ok = match mint_written_provenanced_rust_artifact(
-    inferred: direct_rust_door_inferred_tree,
+  let pipeline_ok = match generate_written_rust_candidate_from_ingest(
+    ingest: direct_rust_door_ingest(),
+    admission: direct_rust_door_admission(),
     target: direct_rust_door_target_model(),
     module_path: direct_rust_door_module_path,
-    realized_closure: v2_interpreted_emitter_closure_authority(),
+    realized_closure: realized_closure_for_v2_direct_rust_door_emit_run(),
     workspace_dir: dir.path
   ) {
     Accepted { value: written, diagnostics: _ } =>
-      written_provenanced_rust_artifact_ok(written: written)
-        && direct_rust_door_compile_workspace(workspace_dir: dir.path)
+      let compile_ok =
+        written_provenanced_rust_artifact_ok(written: written)
+          && direct_rust_door_compile_workspace(workspace_dir: dir.path)
+      match advance_written_provenanced_rust_artifact_cargo_green(
+        written: written,
+        cargo_green: compile_ok
+      ) {
+        Present { value: cargo_written } =>
+          written_provenanced_rust_artifact_ok(written: cargo_written)
+        Absent => false
+      }
     Rejected { diagnostics: _ } => false
   }
   let cleanup = shell.Remove.RecursiveForce(path: dir.path)
