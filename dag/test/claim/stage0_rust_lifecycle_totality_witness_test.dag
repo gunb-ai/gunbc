@@ -11,8 +11,6 @@ import gunbc.stage0_rust_lifecycle_totality {
   stage0_rust_lifecycle_totality_underived_axes,
   RetirementTrigger
 }
-import gunbc.stage0_rust_host_observation { RustManifestObserved }
-import std.content_hash { Fnv1a64Structural }
 import v2.std.algebra { length }
 
 test fn lifecycle_totality_note_cites_identity_join() -> Bool {
@@ -28,15 +26,8 @@ test fn lifecycle_totality_exact_unclassified_preserves_identity() -> Bool {
 }
 
 test fn lifecycle_totality_red_control_reports_exact_unclassified_path() -> Bool {
-  match lifecycle_totality_receipt(
-    observation: RustManifestObserved {
-      repository_revision: "deadbeef",
-      manifest_content_identity: Fnv1a64Structural { digest: "abc1230000000000" },
-      tracked_rust_repo_paths: ["classified.rs", "orphan.rs"],
-      prior_tracked_rust_repo_paths: ["classified.rs"],
-      cargo_bin_repo_paths: ["classified.rs"]
-    }
-  ) {
+  let observation = lifecycle_totality_witness_observation(extra_paths: ["orphan.rs"])
+  match lifecycle_totality_receipt(observation: observation) {
     LifecycleTotalityDerived {
       tracked_paths: tracked_paths,
       generated_paths: generated_paths,
@@ -47,17 +38,10 @@ test fn lifecycle_totality_red_control_reports_exact_unclassified_path() -> Bool
       role_without_disposition_paths: role_without_disposition_paths,
       ill_formed_maintenance_disposition_paths: ill_formed_maintenance_disposition_paths
     } =>
-      paths == ["orphan.rs"] && !lifecycle_decision_complete(
-        receipt: lifecycle_totality_receipt(
-          observation: RustManifestObserved {
-            repository_revision: "deadbeef",
-            manifest_content_identity: Fnv1a64Structural { digest: "abc1230000000000" },
-            tracked_rust_repo_paths: ["classified.rs", "orphan.rs"],
-            prior_tracked_rust_repo_paths: ["classified.rs"],
-            cargo_bin_repo_paths: ["classified.rs"]
-          }
+      paths == ["orphan.rs"]
+        && !lifecycle_decision_complete(
+          receipt: lifecycle_totality_receipt(observation: observation)
         )
-      )
     _ => false
   }
 }
