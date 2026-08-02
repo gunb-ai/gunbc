@@ -107,6 +107,8 @@ import gunbc.roadmap_dashboard_instance {
   srv1_live_dashboard_instance,
   dashboard_instance_provider_state_root,
   dashboard_instance_provider_executable,
+  dashboard_instance_dispatch_worktree_root,
+  dashboard_instance_dispatch_attempt_state_root,
 }
 import gunbc.roadmap_execution_contract {
   ExecutionCapability,
@@ -343,7 +345,7 @@ fn dispatch_tmux_session_name(node_id: RoadmapNodeId) -> String {
 data dispatch_attempt_note: String = "Dispatch is ATTEMPT-grain (U1, the redispatch fix, 2026-07-25; the operator's accidental spawn was the live receipt): branch and worktree carry an attempt key derived from (node_id x the spawn's clock observation) through std.content_hash; the Claude provider also derives its required session-id from that stamp, while Codex mints its own persisted thread identity and does not yet join it back to the attempt. A stopped attempt's debris therefore never collides with the next spawn, and NOTHING is deleted to make way. The tmux session name deliberately STAYS node-grain: it is what observe/reconcile key on, so already-live detection, kill, and tick idempotency are untouched. Same-instant duplicate spawns for one node collide on the attempt key and refuse at the git step, typed. A clock refusal refuses the spawn (step attempt-clock), never an unknown-stamped attempt."
 
 fn dispatch_attempt_key(node_id: RoadmapNodeId, probed_at: String) -> String {
-  content_hash_atom(value: join([node_id as String, "\n", probed_at], "") as NonEmptyStr) as String
+  content_hash_atom(value: join([node_id as String, "\n", probed_at], "") as NonEmptyStr).digest as String
 }
 
 fn dispatch_worktree_path(node_id: RoadmapNodeId, attempt_key: String) -> String {
@@ -356,7 +358,7 @@ fn dispatch_worktree_path_for_instance(
   attempt_key: String,
 ) -> String {
   join([
-    instance.dispatch_worktree_root as String,
+    dashboard_instance_dispatch_worktree_root(instance: instance) as String,
     "/",
     node_id as String,
     "-a",
@@ -370,7 +372,7 @@ fn dispatch_attempt_state_path_for_instance(
   attempt_key: String,
 ) -> String {
   join([
-    instance.dispatch_attempt_state_root as String,
+    dashboard_instance_dispatch_attempt_state_root(instance: instance) as String,
     "/",
     node_id as String,
     "-a",
@@ -541,6 +543,82 @@ fn dispatch_current_attempt_oracle_revision_path_for_instance(
   ], "")
 }
 
+data publication_receipt_is_head_addressed_note: String = "THE HEAD IS IN THE PATH, BECAUSE ONE ATTEMPT PUBLISHES MORE THAN ONCE. The ratified Review loop is head A -> findings -> worker correction -> head B, all inside a single implementation attempt. A single attempt-level receipt file has only bad answers to that: overwrite and lose A's real receipt, leave it and misreport B forever, or invent an update convention nobody else follows.\n\nAddressing by head makes the rounds independent rather than competing. Writing B's receipt cannot destroy A's, a reader asking about A gets A, and idempotence has an honest key - re-running for a head that already has a receipt is a no-op, while a new head is a new round by construction rather than by remembering to bump something.\n\nThis is also what lets the subject check stay a check rather than becoming the only defence. Even with per-head addressing a receipt can be copied or retained, so publication_evidence_for still compares all six subject fields; the path narrows what can be found and the comparison decides what counts."
+
+data publication_receipt_directory_is_named_once_note: String = "The directory is its own function because a reader has to establish that a receipt is ABSENT, and the only honest way to do that is to list the directory it would be in and not find it there. Filesystem.Read reports the same failure for a file that does not exist and one that cannot be read (review 46148), so absence inferred from a failed read is a guess; absence established by a successful listing is a fact. That makes the directory a load-bearing address rather than a path fragment, so it is named here once and the receipt path is built from it."
+
+fn dispatch_attempt_publication_dir_for_instance(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+) -> String {
+  join([
+    dispatch_attempt_state_path_for_instance(
+      instance: instance,
+      node_id: node_id,
+      attempt_key: attempt_key,
+    ),
+    "/publication",
+  ], "")
+}
+
+data publication_receipt_directory_segment: String = "publication"
+
+fn dispatch_attempt_publication_receipt_path_for_instance(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+  head_sha: String,
+) -> String {
+  join([
+    dispatch_attempt_publication_dir_for_instance(
+      instance: instance,
+      node_id: node_id,
+      attempt_key: attempt_key,
+    ),
+    "/",
+    head_sha,
+    ".json",
+  ], "")
+}
+
+data publication_receipt_has_no_current_alias_note: String = "EVERY OTHER RECEIPT ON THIS ROW HAS A `current` SPELLING AND THIS ONE DELIBERATELY DOES NOT. The alias exists so a reader that knows only a node can find the live attempt's evidence without first reading the attempt key. Publication cannot be reached that way: its address contains the head, and a reader that does not know the head has no path to build regardless of which attempt directory it starts from.\\n\\nSo the alias would buy nothing and cost the thing this lane is for. A reader holding a head already had to establish it, and establishing a head means reading the attempt - at which point the attempt-keyed path is available and the alias is a second spelling of it. Keeping it would have made the symlink an alternative route to a file whose identity is a head, which is how a receipt for one attempt gets read as evidence for another."
+
+data verification_receipt_is_head_addressed_note: String = "VERIFICATION AND PUBLICATION SHARE THE HEAD GRAIN. One implementation attempt may be verified at head A, receive findings, and be verified again at head B. An attempt-level file would either overwrite A or let A's verdict stand for B. The verification directory therefore mirrors publication: attempt/<attempt>/verification/<head_sha>.json, with no current alias because a reader that has not observed the head cannot name the verification subject. DISSOLVE-ON: the two legacy attempt-level paths below lose their last belt consumers and delete."
+
+fn dispatch_attempt_verification_dir_for_instance(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+) -> String {
+  join([
+    dispatch_attempt_state_path_for_instance(
+      instance: instance,
+      node_id: node_id,
+      attempt_key: attempt_key,
+    ),
+    "/verification",
+  ], "")
+}
+
+fn dispatch_attempt_verification_receipt_path_for_instance(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+  head_sha: String,
+) -> String {
+  join([
+    dispatch_attempt_verification_dir_for_instance(
+      instance: instance,
+      node_id: node_id,
+      attempt_key: attempt_key,
+    ),
+    "/",
+    head_sha,
+    ".json",
+  ], "")
+}
+
 fn dispatch_attempt_validation_receipt_path_for_instance(
   instance: HostDashboardInstance,
   node_id: RoadmapNodeId,
@@ -574,7 +652,7 @@ fn dispatch_current_attempt_state_path_for_instance(
   node_id: RoadmapNodeId,
 ) -> String {
   join([
-    instance.dispatch_attempt_state_root as String,
+    dashboard_instance_dispatch_attempt_state_root(instance: instance) as String,
     "/",
     node_id as String,
     "-current",

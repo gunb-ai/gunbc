@@ -1,6 +1,7 @@
 module gunbc.roadmap_publish_observe
 
 import std.types { String, NonEmptyStr, Int, Bool, List, CommitSha }
+import std.credentials { CredentialSource }
 import extdeps.git
 import extdeps.git {
   AdvertisedRef,
@@ -13,6 +14,19 @@ import gunbc.roadmap_publish {
   RemoteBranchObservation, RemoteBranchesRead, RemoteBranchesUnreadable,
   RemoteBranchReadFailure,
   RefAdvertisementRefused, AdvertisedLineUnparsed, AdvertisedRefProjectsEmptyBranch,
+  PullRequestObservation, PullRequestsRead, PullRequestsUnreadable,
+  PullRequestReadFailure,
+  PullRequestCredentialUnavailable, PullRequestStatusRefused,
+  PullRequestTransportRefused, PullRequestBodyUndecodable,
+  PublicationOutcome,
+  PublicationSubject,
+  publication_subject_remote,
+  adjudicate_publication,
+}
+import extdeps.github.github { Repository, github_https_clone_url }
+import extdeps.github.pulls { PullRequestState, Open }
+import extdeps.transports.rest {
+  RestOutcome, RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable,
 }
 
 data observer_role_note: String = "THIS IS THE HALF THAT TOUCHES THE NETWORK, SEPARATED FROM THE HALF THAT JUDGES. gunbc.roadmap_publish adjudicates observations a caller already holds, which is what makes every one of its arms reachable from constructed values in a witness. That property is worth keeping, so the reading lives here instead: this module calls the transport, decides what was learned, and hands back an ordinary value. The split is the reason the refusal arms are constructible at all - a function that called the service itself could not build them, because a transport failure there is not a value.\\n\\nWhat this module must never become is a second adjudicator. It reports what it saw and refuses when it could not see; which outcome that implies is roadmap_publish's business."
@@ -88,3 +102,126 @@ fn observe_remote_branches(remote: NonEmptyStr) -> RemoteBranchObservation {
     advertised: result.advertised,
   )
 }
+
+data worktree_repository_binding_note: String = "THE ONE READ NOBODY WAS DOING: WHETHER THE WORKTREE THE HEAD CAME FROM IS A CHECKOUT OF THE REPOSITORY BEING JUDGED. Both remote reads in this module are bound to one repository by construction — publication_subject_remote projects the clone URL from subject.repository, and the pull-request read takes owner and name from the same value, which is what repository_bound_observation_note establishes. That argument covers the two REMOTE reads and says nothing about the LOCAL one.\\n\\nThe attempt's exact head is read from a worktree on disk (worktree_head_observation_note). If that worktree's origin points at a different repository, every value in the judgment is individually well-formed and the conclusion is about the wrong subject: a head that exists in repository A is compared against branches and pull requests in repository B, and 'branch not published' is the ordinary-looking answer. Nothing in the outcome would reveal it, which is the same shape as the serve-handler defect gunbc.live_deploy.spec's deployment_service_handler_note records — every path-level check passes and the process simply operates on the wrong thing.\\n\\nDELIBERATELY NARROW (operator, 2026-08-01): this compares one observed remote against one derived clone URL and refuses on a mismatch. It is not a claim of worker exclusivity, not a lock, and not a statement that no other process may touch the tree — those are different properties needing different mechanisms, and conflating them here would buy an ownership guarantee this read cannot support.\\n\\nEMPTY STDOUT IS UNREADABLE, NOT A MISMATCH, following this module's own precedent rather than inventing a second rule: worktree_head_observation_note establishes that a zero exit with empty output is UNOBSERVED, because git can exit zero and print nothing. Reporting an empty observed URL as WorktreeBoundElsewhere would name a bound-to-something-else fact the read never established, and would put the empty string in a diagnostic as though it were an address."
+
+type WorktreeRepositoryBinding
+  = WorktreeBoundToRepository
+  | WorktreeBoundElsewhere { observed: String, expected: NonEmptyStr }
+  | WorktreeRemoteUnreadable { exit_code: Int, stderr: String }
+
+fn worktree_repository_binding_of(
+  exit_code: Int,
+  stderr: String,
+  url: String,
+  expected: NonEmptyStr,
+) -> WorktreeRepositoryBinding {
+  if exit_code != 0 {
+    WorktreeRemoteUnreadable { exit_code: exit_code, stderr: stderr }
+  } else {
+    let observed = url.trim()
+    let expected_url = expected as String
+    if string_length(s: observed) == 0 {
+      WorktreeRemoteUnreadable { exit_code: exit_code, stderr: stderr }
+    } else {
+      if observed == expected_url {
+        WorktreeBoundToRepository
+      } else {
+        WorktreeBoundElsewhere { observed: observed, expected: expected }
+      }
+    }
+  }
+}
+
+fn observe_worktree_repository_binding(
+  worktree: String,
+  repo: Repository,
+) -> WorktreeRepositoryBinding {
+  let result = git.Core.RemoteUrlIn(repository_path: worktree, remote: "origin")
+  worktree_repository_binding_of(
+    exit_code: result.exit_code,
+    stderr: result.stderr,
+    url: result.url,
+    expected: github_https_clone_url(repo: repo),
+  )
+}
+
+data open_state_is_supplied_not_defaulted_note: String ="THE STATE IS PASSED, NOT LEFT TO THE OPERATION'S DEFAULT, and the reason is a real failure rather than style. github.Pulls.List declares `state: PullRequestState = Open`, and the interpreter evaluates that default expression in the CALLER'S scope - so a caller whose module does not bind `Open` dies with `undefined variable: Open` at the moment of the call, which is the moment furthest from the declaration that caused it. A live probe hit exactly that.\\n\\nPassing it also states the domain fact rather than inheriting it. Publication asks whether a commit is ON OFFER, and a merged or closed pull request is not an offer, so Open is the answer this module wants and would still want if the operation's default changed."
+
+data pull_observation_transport_bound_note: String = "CONFIGURED IS NOT USABLE, AND THE LIVE 401 IS WHY THIS CARRIER IS NAMED FOR PRESENCE RATHER THAN VALIDITY. An earlier cut called this arm Present and its note called the credential usable, having established only that GITHUB_TOKEN exists and does not trim to empty. A live probe on 2026-08-01 supplied exactly such a token - present, nonempty, and rejected - and GitHub answered 401 Bad credentials. So the carrier asserted a fact it had no authority for. Usability is answerable only by the authority that answers it, which for this operation is the HTTP response; the environment can report configuration and nothing more.\\n\\nFOUR FACTS THAT MUST NOT COLLAPSE INTO TWO: a source that is absent means no request is made and the refusal is decided locally; a source that is configured but rejected means the request WAS made and a remote authority refused it; a transported request with a refused status is a remote answer; a request that never transported has no status at all. Folding the invalid token into the absent arm would report a local decision for a remote one and lose the only message that says what is actually wrong with the token.\\n\\nCLOSED BY THIS CARRIER, AND THE PRIOR STATE IS KEPT BECAUSE IT NAMES THE DEFECT: a non-2xx now reaches this function as a value. Until this change github.Pulls.List declared 200/401/404/422/5xx while dispatch_rest raised for any status at or above 400, so control never returned and CredentialSourceConfigured could not become a PullRequestsUnreadable by a real call - only by a caller that already held one. The 2026-08-01 probe executed that path and confirmed the raise escaped. The operation now declares outcome: RestOutcome, so the status is transported as data and this function matches it: RestOk reads, RestStatusRefused carries what the remote authority said, RestTransportRefused says no answer was obtained, and RestBodyUndecodable says an answer arrived but its body did not decode. The live receipt: an absent credential refused locally without a request, a present-but-rejected credential returned status 401 with the Bad credentials body intact, and a valid credential read 30 pulls - the last of these being the discriminating control, since a mis-wired outcome field would plausibly have emptied the pulls projection on success too. Publication therefore claims a live trip on evidence rather than on reasoning.\\n\\nWHY THE UNREADABLE ARM STILL EXISTS: a caller CAN hold a refusal - an absent source, a prior failed read, a cached observation, a receipt decoded from disk - and the adjudicator must answer it. Deleting the arm because one producer cannot reach it through one transport would push the ignorance-as-answer conflation back into every other producer."
+
+type PublicationCredentialSource
+  = CredentialSourceConfigured { source: CredentialSource }
+  | CredentialSourceAbsent { reason: String }
+
+fn observe_pull_requests(
+  credential: PublicationCredentialSource,
+  repo: Repository,
+) -> PullRequestObservation {
+  match credential {
+    CredentialSourceAbsent { reason } =>
+      PullRequestsUnreadable {
+        cause: PullRequestCredentialUnavailable {
+          repository: repo.full_name,
+          reason: reason,
+        },
+      }
+    CredentialSourceConfigured { source } => {
+      let result = github.Pulls.List(
+        auth_token: source,
+        owner: repo.owner,
+        repo: repo.name,
+        state: Open,
+      )
+      match result.outcome {
+        RestOk => PullRequestsRead { pulls: result.pulls }
+        RestStatusRefused { status, body } =>
+          PullRequestsUnreadable {
+            cause: PullRequestStatusRefused {
+              repository: repo.full_name,
+              status: status,
+              body: body,
+            },
+          }
+        RestTransportRefused { cause } =>
+          PullRequestsUnreadable {
+            cause: PullRequestTransportRefused {
+              repository: repo.full_name,
+              cause: cause,
+            },
+          }
+        RestBodyUndecodable { status, cause } =>
+          PullRequestsUnreadable {
+            cause: PullRequestBodyUndecodable {
+              repository: repo.full_name,
+              status: status,
+              cause: cause,
+            },
+          }
+      }
+    }
+  }
+}
+
+data pulls_read_is_only_the_ok_arm_note: String = "result.pulls IS READ ONLY UNDER RestOk, AND THAT IS A CORRECTNESS CONSTRAINT RATHER THAN TIDINESS. The realization projects an observation into the declared output record, and on any non-success outcome the ordinary body-derived fields are deliberately left uninhabited - RestOutcome is the only branch carrying a fact, so it is the only branch a caller may consume. Reading result.pulls outside the RestOk arm would therefore read the absence and report it as an empty list of open pull requests, which is the fabricated-plausible-output failure at its most damaging here: an empty list is a perfectly ordinary answer that means the branch is not published, so a 401 would be indistinguishable from a genuine not-yet-published state and the belt would write a receipt saying so.\\n\\nTHE PREVIOUS CUT DID NOT HAVE THIS CHOICE TO GET WRONG, because dispatch_rest raised on every status at or above 400 and control never returned. That is why `PullRequestsRead { pulls: result.pulls }` was unconditional and still correct: the only way to reach it was a 2xx. Making the outcome data is what makes the unconditional read newly WRONG, so the match is not an addition beside the old line - it is what the old line becomes."
+
+data repository_bound_observation_note: String = "BOTH READS NAME THE SAME REPOSITORY BY CONSTRUCTION, WHICH IS THE WHOLE REASON THIS FUNCTION EXISTS RATHER THAN TWO CALLS AT A CALL SITE. The remote is projected from the same Repository that supplies owner and name to the pull-request read, so there is no arrangement of arguments in which the ref advertisement and the pull request list describe different repositories.\\n\\nThe alternative that this deliberately forecloses is reading refs from the local alias `origin` while reading pull requests from an owner/name pair. Those two reads are only COINCIDENTALLY about one repository: `origin` is a fact about one checkout's configuration, and a checkout whose origin points elsewhere would produce a publication judgment that looks entirely ordinary and is about the wrong subject. Nothing in either result would reveal it. See repository_remote_url_note in extdeps.github.github for the projection and its citation.\\n\\nIT TAKES THE SUBJECT, NOT FOUR LOOSE FIELDS. The four arguments this function used to take are exactly four of PublicationSubject's six, so a caller could observe against one repository and one head while writing a receipt whose subject named others - and both values would look entirely ordinary. Taking the subject makes the observation and the receipt provably about the same question, because there is only one value.\\n\\nThis function calls the transport and adjudicates in one breath, which the observer note above otherwise warns against - so the boundary is stated: it performs no judgment of its own. It reads, and hands both observations to adjudicate_publication unchanged. Every arm of the result is decided there, over values, and remains reachable in a hermetic witness through that function directly."
+
+fn observe_publication_for_subject(
+  credential: PublicationCredentialSource,
+  subject: PublicationSubject,
+) -> PublicationOutcome {
+  let remote = publication_subject_remote(subject: subject)
+  adjudicate_publication(
+    pulls: observe_pull_requests(
+      credential: credential,
+      repo: subject.repository,
+    ),
+    remotes: observe_remote_branches(remote: remote),
+    remote: remote,
+    branch: subject.branch,
+    expected_base: subject.expected_base,
+    expected_head: subject.expected_head,
+  )
+}
+

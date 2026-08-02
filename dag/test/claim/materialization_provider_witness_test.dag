@@ -1,8 +1,12 @@
 module test.claim.materialization_provider_witness
 
-import std.types { Bool, Int, List, String, ContentHash }
-import std.measure { byte_size, measure_count }
-import std.content_hash { content_hash_atom }
+import std.types { Bool, Int, List, String }
+import std.content_hash {
+  ContentHash,
+  content_hash_atom,
+  as_content_hash_cryptographic,
+  sha256_hex_digest,
+}
 import std.interface_summary { InterfaceHash, module_key, typed_module_key }
 import std.cache_identity {
   parse_source_artifact_kind,
@@ -30,7 +34,9 @@ import std.materialization_provider {
   lookup_is_hit, lookup_is_miss,
   lookup_is_refused_kind_mismatch,
   lookup_is_refused_wrong_artifact, lookup_is_refused_wrong_content,
+  lookup_is_refused_cross_family_content_hash,
   lookup_refused_incomplete_missing, lookup_served_identity,
+  serve_resolved_graph_stored_disk_probe,
   admission_is_admitted, admission_evicted_keys,
   admission_is_budget_exhausted, admission_refused_incomplete_missing,
   admission_is_refused_incomplete_write, admission_is_refused_kind_mismatch_write,
@@ -238,6 +244,51 @@ test fn red_wrong_content_refuses_never_hits() -> Bool {
     }
   )
   lookup_is_refused_wrong_content(l: poisoned) && (lookup_is_hit(l: poisoned) == false)
+}
+
+test fn red_sha256_at_fnv1a64_seam_refuses_without_alias() -> Bool {
+  match sha256_hex_digest(
+    hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  ) {
+    Present { value: sha_a } =>
+      match sha256_hex_digest(
+        hex: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      ) {
+        Present { value: sha_b } => {
+          let refused_a = serve_resolved_graph_stored_disk_probe(
+            closure_digest: as_content_hash_cryptographic(digest: sha_a),
+            compiler_digest: content_hash_atom(value: "compiler-identity-1"),
+            stored_request_key: content_hash_atom(value: "closure-1"),
+            stored_semantic_digest: witness_closure_digest(),
+            graph_digest: content_hash_atom(value: "closure-graph-1"),
+            graph_bytes: byte_size(count: 60),
+            indices_digest: content_hash_atom(value: "closure-indices-1"),
+            indices_bytes: byte_size(count: 25),
+            union_digest: content_hash_atom(value: "closure-diagnostics-1"),
+            union_bytes: byte_size(count: 15)
+          )
+          let refused_b = serve_resolved_graph_stored_disk_probe(
+            closure_digest: as_content_hash_cryptographic(digest: sha_b),
+            compiler_digest: content_hash_atom(value: "compiler-identity-1"),
+            stored_request_key: content_hash_atom(value: "closure-1"),
+            stored_semantic_digest: witness_closure_digest(),
+            graph_digest: content_hash_atom(value: "closure-graph-1"),
+            graph_bytes: byte_size(count: 60),
+            indices_digest: content_hash_atom(value: "closure-indices-1"),
+            indices_bytes: byte_size(count: 25),
+            union_digest: content_hash_atom(value: "closure-diagnostics-1"),
+            union_bytes: byte_size(count: 15)
+          )
+          lookup_is_refused_cross_family_content_hash(l: refused_a)
+            && lookup_is_refused_cross_family_content_hash(l: refused_b)
+            && (lookup_is_hit(l: refused_a) == false)
+            && (lookup_is_hit(l: refused_b) == false)
+            && (refused_a != refused_b)
+        }
+        Absent => false
+      }
+    Absent => false
+  }
 }
 
 test fn incomplete_v1_shape_artifact_refuses_naming_the_diagnostic_union() -> Bool {

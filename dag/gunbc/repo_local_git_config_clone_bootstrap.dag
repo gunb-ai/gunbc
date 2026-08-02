@@ -1,0 +1,41 @@
+module gunbc.repo_local_git_config_clone_bootstrap
+
+import gunbc.repo_local_git_config {
+  repo_local_git_config_converge_entry,
+  repo_local_git_config_converge_function,
+}
+
+data repo_local_git_config_clone_bootstrap_authority_note: String = "Countable rollout carrier for repository-local Git config convergence on supported clone-creation paths (generated-file conflict policy charter, lane 2 operator second-pass 2026-08-01). Operator guidance alone ('run converge once per clone') is not deployment — this row tracks population coverage until every enrolled path invokes the modeled actuator. Population: session worktrees and the dev clone setup surface (DESIGN Building & checks core.hooksPath seed + gunbc run … converge). Session worktrees remain explicitly missing: no worktree-creation path invokes converge yet, so the population row must stay false until that execution carrier and receipt exist. Dissolve-on: every supported clone-creation path invokes repo_local_git_config converge and observed_missing_count stays zero."
+
+type RepoLocalGitConfigCloneBootstrapPopulation {
+  session_worktrees: Bool
+  dev_clone_setup_surface: Bool
+}
+
+data repo_local_git_config_clone_bootstrap_population: RepoLocalGitConfigCloneBootstrapPopulation = RepoLocalGitConfigCloneBootstrapPopulation {
+  session_worktrees: false,
+  dev_clone_setup_surface: true,
+}
+
+type RepoLocalGitConfigCloneBootstrapReceipt {
+  observed_converged_count: Int
+  observed_missing_count: Int
+}
+
+data repo_local_git_config_clone_bootstrap_dissolve_on: String = "dissolve-on: every supported clone-creation path invokes repo_local_git_config converge (observed_missing_count must stay zero); this carrier deletes when the population is fully enrolled and witnessed"
+
+data repo_local_git_config_clone_bootstrap_converge_invoke_entry: String = repo_local_git_config_converge_entry
+data repo_local_git_config_clone_bootstrap_converge_invoke_function: String = repo_local_git_config_converge_function
+
+fn repo_local_git_config_clone_bootstrap_enrolled_paths() -> List<String> {
+  [
+    "ci heal job (gunbc.ci_spec gunbc_ci_heal_repo_local_git_config_invoke — after release bin unpack, before first git merge)",
+    "generated pre-commit hook (githooks_repo_local_git_config_emit reconcile_install_argv)",
+    "generated pre-push hook (githooks_repo_local_git_config_emit reconcile_install_argv)",
+    "explicit per-clone: gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/repo_local_git_config.dag --function converge",
+  ]
+}
+
+fn repo_local_git_config_clone_bootstrap_enrolled_path_count() -> Int {
+  repo_local_git_config_clone_bootstrap_enrolled_paths().length()
+}

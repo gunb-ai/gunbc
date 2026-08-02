@@ -2,7 +2,7 @@ module v2.test.claim.rust_crate_partition_witness
 
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.perturbation { ForwardSameInSameOut, perturbation_consistent }
-import std.types { ContentHash, NonEmptyStr }
+import std.types { NonEmptyStr }
 import v2.std.collection { Absent, Present, empty_map, map_insert }
 import v2.std.compilers.compilation_unit {
   CompilationUnit,
@@ -21,7 +21,6 @@ import v2.std.compilers.compilation_unit {
   LinkageCycle,
   SccSplit,
   UnitGraphCycle,
-  compilation_unit_artifact_id,
   partition_fold_outcome,
   partition_provenance_eq,
   partition_provenance_hand_explicit,
@@ -66,11 +65,11 @@ data witness_red_control_note: String = "Discriminating RED: (1) assign std_alge
 data witness_mod_a: ModuleId = "witness.scc.a" as NonEmptyStr
 data witness_mod_b: ModuleId = "witness.scc.b" as NonEmptyStr
 data witness_mod_c: ModuleId = "witness.scc.c" as NonEmptyStr
-data witness_unit_x: CompilationUnitId = "witness-unit-x" as ContentHash
-data witness_unit_y: CompilationUnitId = "witness-unit-y" as ContentHash
+data witness_unit_x: CompilationUnitId = "witness-unit-x" as CompilationUnitId
+data witness_unit_y: CompilationUnitId = "witness-unit-y" as CompilationUnitId
 
-data witness_unit_p: CompilationUnitId = "witness-unit-p" as ContentHash
-data witness_unit_q: CompilationUnitId = "witness-unit-q" as ContentHash
+data witness_unit_p: CompilationUnitId = "witness-unit-p" as CompilationUnitId
+data witness_unit_q: CompilationUnitId = "witness-unit-q" as CompilationUnitId
 data witness_mod_p: ModuleId = "witness.unit.p" as NonEmptyStr
 data witness_mod_q: ModuleId = "witness.unit.q" as NonEmptyStr
 
@@ -131,15 +130,13 @@ fn witness_cyclic_unit_graph() -> List<CompilationUnit> {
       id: witness_unit_p,
       members: [witness_mod_p],
       interface: [],
-      deps: [witness_unit_q],
-      artifact: compilation_unit_artifact_id(unit_id: witness_unit_p)
+      deps: [witness_unit_q]
     },
     CompilationUnit {
       id: witness_unit_q,
       members: [witness_mod_q],
       interface: [],
-      deps: [witness_unit_p],
-      artifact: compilation_unit_artifact_id(unit_id: witness_unit_q)
+      deps: [witness_unit_p]
     }
   ]
 }
@@ -226,7 +223,7 @@ test fn witness_v1_infer_unit_members_holds() -> Bool {
     Stage0PartitionReceiptOk { units: units } =>
       match partition_unit_by_id(units: units, unit_id: stage0_unit_v1_infer) {
         Present { value: unit } =>
-          (unit.members |> count) == 6
+          (unit.members |> count) == 7
         Absent => false
       }
     Stage0PartitionReceiptResolveRefused { cause: _ } => false

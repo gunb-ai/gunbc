@@ -18,17 +18,24 @@ import gunbc.ci_workflow {
   gunbc_ci_selection_control_step_timeout_minutes,
   gunbc_ci_artifact_transfer_step_timeout_minutes
 }
+import v2.workflow.ci_floor_peak_emit {
+  ci_floor_phase_journal_env_name,
+  ci_floor_phase_journal_path
+}
 import gunbc.floor_component_receipt {
   floor_component_receipt_path,
   floor_component_receipt_artifact_name
 }
 import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec }
-import gunbc.ci_spec { plan_artifact_plan_function }
-import gunbc.merge_admission_produce { ci_repo_root_shell }
-import gunbc.ci_layer_roots { witness_layer_roots }
 import gunbc.cli_invoke {
+  CiPlanArtifactPlan,
+  FalsifierPlan,
+  FalsifierNativeCacheColdPlan,
+  plan_function_name,
   claim_executor_run_plan_shell
 }
+import gunbc.merge_admission_produce { ci_repo_root_shell }
+import gunbc.ci_layer_roots { witness_layer_roots }
 import extdeps.languages.yaml.emit { serialize_yaml }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
 import std.types { NonEmptyStr }
@@ -71,7 +78,7 @@ fn gunbc_falsifier_step_timeout_basis_is_measured_not_composed() -> Bool {
 
 data gunbc_falsifier_step_timeout_note: String = "120 -> 170 (2026-07-11, run 29135185172 receipt): the first corpus-reaching cold run was TIME-killed at the 120-min step ceiling with the corpus incomplete (1970 rows, closure 1396 modules, width 1) and floor peak 16146612224 bytes against a 16GiB slot budget, still growing - so 120 censored the measurement without bounding anything real (the memory cap is the true wall). 170 lets a nightly run reach either completion (exact-labeled receipt) or the cap kill (censored-labeled receipt); both are the falsifier doing its measurement job, and the job backstop DERIVES from this value so it stretches in step. Revisit down when the resolver graph-major module split (S2a move 2) shrinks cold-resolve wall and residency."
 
-data falsifier_plan_function: String = "gunbc_falsifier_plan"
+data falsifier_plan_function: String = plan_function_name(p: FalsifierPlan)
 
 fn falsifier_invoke() -> String {
   concat(
@@ -79,7 +86,7 @@ fn falsifier_invoke() -> String {
     claim_executor_run_plan_shell(
       source_roots: witness_layer_roots,
       plan_entry: "src/v2/workflow/ci_floor_plan.dag",
-      plan_function: falsifier_plan_function,
+      plan_function: FalsifierPlan,
       notice_title: Absent,
       rooted: false
     )
@@ -95,7 +102,8 @@ fn falsifier_step() -> Step {
     env: Present {
       value: [
         kv(key: "GUNBC_CI_DIFF_BASE", value: yaml_string(s: "HEAD~20")),
-        kv(key: "GUNBC_CI_DIFF_HEAD", value: yaml_string(s: "HEAD"))
+        kv(key: "GUNBC_CI_DIFF_HEAD", value: yaml_string(s: "HEAD")),
+        kv(key: ci_floor_phase_journal_env_name, value: yaml_string(s: ci_floor_phase_journal_path))
       ]
     },
     working_directory: none,
@@ -115,7 +123,7 @@ fn compile_clean_cold_control_invoke() -> String {
     claim_executor_run_plan_shell(
       source_roots: witness_layer_roots,
       plan_entry: "src/v2/workflow/ci_floor_plan.dag",
-      plan_function: plan_artifact_plan_function,
+      plan_function: CiPlanArtifactPlan,
       notice_title: Absent,
       rooted: false
     )
@@ -138,6 +146,8 @@ fn compile_clean_cold_control_step() -> Step {
   }
 }
 
+data falsifier_native_cache_cold_plan_target_note: String = "THE STEP WHOSE PLAN TARGET ESCAPED THE #7470 MIGRATION, kept as the receipt for why the target is now a typed variant instead of an argv token. Every other consumer derived its plan name from a constant, so the 2026-07-30 WalkPlan rename reached all four automatically; this step alone passed the inline literal \"gunbc_falsifier_native_cache_cold_batches\", derived from nothing, and was left behind returning a bare List<List<Runnable>>. The executor's strict parser then refused it on every one of the 8 falsifier runs that armed this step (0 successes), and it read as intermittent only because the step is skipped whenever the falsifier step fails first.\n\nThe first repair here added a naming constant beside the other four. That was still validation — it made the rename reach this site but left the next author free to type a fresh literal. The constant was therefore DELETED in the same change that introduced gunbc.cli_invoke PlanFunction: an inline literal at this argument is now a type error, so the roster is closed by construction and a String projection with no consumer would be exactly the inert carrier §2 forbids. Dissolution-on-climb (§4b): the wall replaces the lower-rung machinery rather than accumulating beside it."
+
 data gunbc_falsifier_native_cache_cold_control_timeout_minutes: Int = 30
 
 data gunbc_falsifier_native_cache_cold_control_note: String = "Native-cache cold control (P6 durable-cache rail, 2026-07-21): the nightly Wet emit-on-demand/self-host receipt batch re-executed with GUNBC_CI_NATIVE_CACHE_COLD_CONTROL=1, which makes emit_host_run_transport_cached ignore every .native_ready marker — the full emit+cargo+run chain runs cold on the falsifier cadence while the main falsifier_step's run of the same batch stays warm (the warm-rate receipt the per-PR enrollment decision reads). Widen-to-more-checking control arm, not an escape hatch: the env can only force the transport to do MORE work, never skip it. Mirrors compile_clean_cold_control_step."
@@ -148,7 +158,7 @@ fn native_cache_cold_control_invoke() -> String {
     claim_executor_run_plan_shell(
       source_roots: witness_layer_roots,
       plan_entry: "src/v2/workflow/ci_floor_plan.dag",
-      plan_function: "gunbc_falsifier_native_cache_cold_batches",
+      plan_function: FalsifierNativeCacheColdPlan,
       notice_title: Absent,
       rooted: false
     )

@@ -34,16 +34,53 @@ impl Drop for CacheEnvGuard {
     }
 }
 
+use im::HashMap;
+use im::Vector;
+use std::rc::Rc;
 use v1_compiler::cli_run::{
-    build_multi_entry_index, load_sources_for_entry, make_eval_context, resolve_entry_graph,
-    resolve_entry_with_index, run_claim, ClaimOutcome,
+    build_multi_entry_index, load_sources_for_entry, make_eval_context,
+    resolve_closure_request_key_from_digests, resolve_entry_graph, resolve_entry_with_index,
+    resolved_graph_parts_semantic_digest, run_claim, ClaimOutcome,
 };
 use v1_compiler::resolved_graph_cache::{
-    build_valid_artifact_bytes, decode_count, derive_subject_digest, lookup, probe,
-    subject_digest_for_closure, write_raw_artifact_for_test, CacheLookupResult, CacheProbeResult,
-    CacheRejectReason, KeyInputMaterials,
+    build_incomplete_v3_artifact_bytes, build_valid_artifact_bytes, closure_content_digest,
+    decode_count, derive_subject_digest, encode_resolved_graph_parts, lookup,
+    lookup_verified_probe, probe, subject_digest_for_closure, transform_content_digest,
+    write as write_resolved_graph_cache, write_raw_artifact_for_test, CacheLookupResult,
+    CacheProbeResult, CacheRejectReason, CacheWriteOutcome, KeyInputMaterials,
+    UNION_PART_ABSENT_DIGEST,
 };
 use v1_compiler::v1_interpreter::ExecutionMode;
+use v1_compiler::v1_rt::bytes_identity_hash;
+
+fn empty_compile_clean_diags() -> Vector<Rc<v1_compiler::v1_std_core::ErrorNode>> {
+    Vector::new()
+}
+
+fn provider_keys_for_graph(
+    roots: &[String],
+    entry: &str,
+    graph: &v1_compiler::v1_compiler_infer_items::ResolvedGraph,
+    si: &HashMap<String, Rc<v1_compiler::v1_std_core::NewlineIndex>>,
+    diags: &Vector<Rc<v1_compiler::v1_std_core::ErrorNode>>,
+) -> (String, String) {
+    let sources = load_sources_for_entry(roots, entry).expect("sources");
+    let closure_digest = closure_content_digest(&sources);
+    let compiler_digest = transform_content_digest();
+    let encoded = encode_resolved_graph_parts(graph, si, diags).expect("encode");
+    let request_key = resolve_closure_request_key_from_digests(&closure_digest, &compiler_digest)
+        .expect("request key");
+    let semantic = resolved_graph_parts_semantic_digest(
+        &encoded.graph_digest,
+        encoded.graph_bytes.len() as u64,
+        &encoded.indices_digest,
+        encoded.indices_bytes.len() as u64,
+        &encoded.union_digest,
+        encoded.union_bytes.len() as u64,
+    )
+    .expect("semantic digest");
+    (request_key, semantic)
+}
 
 fn temp_dir(label: &str) -> std::path::PathBuf {
     let nanos = SystemTime::now()
@@ -176,13 +213,16 @@ fn cross_process_cache_matches_cold_oracle_corpus() {
         let order_cache = cache_dir.join(format!("order-{i}"));
         fs::create_dir_all(&order_cache).expect("order cache");
         for entry in *order {
-            let _ = cached_verdict(&roots, entry, "witness_a_true", &order_cache);
+            with_cache_env(&order_cache, || {
+                let index = build_multi_entry_index(&roots);
+                resolve_entry_with_index(&index, entry).expect("warm v2 cache artifact");
+            });
         }
-        for (entry, _f, _expected) in witnesses {
-            let err = cached_resolve_err(&roots, entry, &order_cache);
-            assert!(
-                err.contains("provider refused faithful probe"),
-                "v1 disk artifact reuse must stop the line until union lands (part a): {err}"
+        for (entry, f, expected) in witnesses {
+            assert_eq!(
+                cached_verdict(&roots, entry, f, &order_cache),
+                expected,
+                "cached oracle for {f} in order-{i}"
             );
         }
     }
@@ -200,7 +240,22 @@ fn poisoned_hit_rejected_on_content_digest_mismatch() {
     let (graph, si) = resolve_entry_graph(&roots, &a).expect("resolve for digest");
     let sources = load_sources_for_entry(&roots, &a).expect("sources");
     let subject = subject_digest_for_closure(&sources);
-    let valid = build_valid_artifact_bytes(&subject, &graph, si.as_ref()).expect("valid bytes");
+    let (request_key, semantic) = provider_keys_for_graph(
+        &roots,
+        &a,
+        &graph,
+        si.as_ref(),
+        &empty_compile_clean_diags(),
+    );
+    let valid = build_valid_artifact_bytes(
+        &subject,
+        &graph,
+        si.as_ref(),
+        &empty_compile_clean_diags(),
+        &request_key,
+        &semantic,
+    )
+    .expect("valid bytes");
     let ctx = make_eval_context(&graph, si, ExecutionMode::Wet);
     let decodes_before = decode_count();
     let mut poisoned = valid;
@@ -218,7 +273,7 @@ fn poisoned_hit_rejected_on_content_digest_mismatch() {
         let index = build_multi_entry_index(&roots);
         let err = resolve_entry_with_index(&index, &a).expect_err("poisoned hit must refuse");
         assert!(
-            err.contains("provider refused faithful probe"),
+            err.contains("content digest mismatch") || err.contains("refused poisoned"),
             "poisoned hit must refuse before rebuilding: {err}"
         );
         assert_eq!(
@@ -246,7 +301,22 @@ fn malformed_header_probe_refuses_as_backend_key_malformed() {
     let (graph, si) = resolve_entry_graph(&roots, &a).expect("resolve for digest");
     let sources = load_sources_for_entry(&roots, &a).expect("sources");
     let subject = subject_digest_for_closure(&sources);
-    let mut bytes = build_valid_artifact_bytes(&subject, &graph, si.as_ref()).expect("valid bytes");
+    let (request_key, semantic) = provider_keys_for_graph(
+        &roots,
+        &a,
+        &graph,
+        si.as_ref(),
+        &empty_compile_clean_diags(),
+    );
+    let mut bytes = build_valid_artifact_bytes(
+        &subject,
+        &graph,
+        si.as_ref(),
+        &empty_compile_clean_diags(),
+        &request_key,
+        &semantic,
+    )
+    .expect("valid bytes");
     bytes[0] ^= 0xff;
     write_raw_artifact_for_test(&cache_dir, &subject, &bytes).expect("malformed write");
 
@@ -254,6 +324,15 @@ fn malformed_header_probe_refuses_as_backend_key_malformed() {
         CacheProbeResult::RejectedHit(CacheRejectReason::BackendKeyMalformed) => {}
         other => panic!("expected BackendKeyMalformed RejectedHit, got {other:?}"),
     }
+
+    with_cache_env(&cache_dir, || {
+        let index = build_multi_entry_index(&roots);
+        let err = resolve_entry_with_index(&index, &a).expect_err("malformed header must refuse");
+        assert!(
+            err.contains("backend key malformed"),
+            "malformed header must refuse before rebuilding: {err}"
+        );
+    });
 
     let _ = fs::remove_dir_all(&dir);
 }
@@ -268,7 +347,22 @@ fn malformed_header_truncated_read_refuses_as_backend_key_malformed() {
     let (graph, si) = resolve_entry_graph(&roots, &a).expect("resolve for digest");
     let sources = load_sources_for_entry(&roots, &a).expect("sources");
     let subject = subject_digest_for_closure(&sources);
-    let mut bytes = build_valid_artifact_bytes(&subject, &graph, si.as_ref()).expect("valid bytes");
+    let (request_key, semantic) = provider_keys_for_graph(
+        &roots,
+        &a,
+        &graph,
+        si.as_ref(),
+        &empty_compile_clean_diags(),
+    );
+    let mut bytes = build_valid_artifact_bytes(
+        &subject,
+        &graph,
+        si.as_ref(),
+        &empty_compile_clean_diags(),
+        &request_key,
+        &semantic,
+    )
+    .expect("valid bytes");
     bytes.truncate(7);
     write_raw_artifact_for_test(&cache_dir, &subject, &bytes).expect("malformed write");
 
@@ -276,6 +370,15 @@ fn malformed_header_truncated_read_refuses_as_backend_key_malformed() {
         CacheProbeResult::RejectedHit(CacheRejectReason::BackendKeyMalformed) => {}
         other => panic!("expected BackendKeyMalformed RejectedHit, got {other:?}"),
     }
+
+    with_cache_env(&cache_dir, || {
+        let index = build_multi_entry_index(&roots);
+        let err = resolve_entry_with_index(&index, &a).expect_err("truncated header must refuse");
+        assert!(
+            err.contains("backend key malformed"),
+            "truncated header must refuse before rebuilding: {err}"
+        );
+    });
 
     let _ = fs::remove_dir_all(&dir);
 }
@@ -290,8 +393,22 @@ fn poisoned_hit_rejected_on_subject_digest_mismatch() {
     let (graph, si) = resolve_entry_graph(&roots, &a).expect("resolve for digest");
     let sources = load_sources_for_entry(&roots, &a).expect("sources");
     let subject = subject_digest_for_closure(&sources);
-    let mut poisoned =
-        build_valid_artifact_bytes(&subject, &graph, si.as_ref()).expect("valid bytes");
+    let (request_key, semantic) = provider_keys_for_graph(
+        &roots,
+        &a,
+        &graph,
+        si.as_ref(),
+        &empty_compile_clean_diags(),
+    );
+    let mut poisoned = build_valid_artifact_bytes(
+        &subject,
+        &graph,
+        si.as_ref(),
+        &empty_compile_clean_diags(),
+        &request_key,
+        &semantic,
+    )
+    .expect("valid bytes");
     let subject_off = 8 + 4;
     poisoned[subject_off] ^= 0xff;
     write_raw_artifact_for_test(&cache_dir, &subject, &poisoned).expect("poison write");
@@ -303,15 +420,193 @@ fn poisoned_hit_rejected_on_subject_digest_mismatch() {
 
     with_cache_env(&cache_dir, || {
         let index = build_multi_entry_index(&roots);
-        let (recomputed, si2) =
-            resolve_entry_with_index(&index, &a).expect("recompute after subject poison");
-        let ctx = make_eval_context(&recomputed, si2, ExecutionMode::Wet);
-        assert_eq!(
-            outcome_tag(&run_claim(&ctx, "witness_a_true")),
-            "PASS",
-            "subject poison must fall through to fresh resolve"
+        let err = resolve_entry_with_index(&index, &a).expect_err("subject poison must refuse");
+        assert!(
+            err.contains("backend key malformed"),
+            "subject poison must refuse before rebuilding: {err}"
         );
     });
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn trailing_payload_bytes_refuse_as_backend_key_malformed() {
+    let dir = temp_dir("trailing-payload");
+    let (roots, a, _, _) = write_fixture(&dir);
+    let cache_dir = dir.join("cache");
+    fs::create_dir_all(&cache_dir).expect("cache dir");
+
+    let (graph, si) = resolve_entry_graph(&roots, &a).expect("resolve for digest");
+    let sources = load_sources_for_entry(&roots, &a).expect("sources");
+    let subject = subject_digest_for_closure(&sources);
+    let (request_key, semantic) = provider_keys_for_graph(
+        &roots,
+        &a,
+        &graph,
+        si.as_ref(),
+        &empty_compile_clean_diags(),
+    );
+    let mut bytes = build_valid_artifact_bytes(
+        &subject,
+        &graph,
+        si.as_ref(),
+        &empty_compile_clean_diags(),
+        &request_key,
+        &semantic,
+    )
+    .expect("valid bytes");
+    bytes.extend_from_slice(b"extra");
+    write_raw_artifact_for_test(&cache_dir, &subject, &bytes).expect("trailing write");
+
+    match probe(&cache_dir, &subject) {
+        CacheProbeResult::RejectedHit(CacheRejectReason::BackendKeyMalformed) => {}
+        other => panic!("expected BackendKeyMalformed RejectedHit, got {other:?}"),
+    }
+    match lookup(&cache_dir, &subject) {
+        CacheLookupResult::RejectedHit(CacheRejectReason::BackendKeyMalformed) => {}
+        other => panic!("expected BackendKeyMalformed lookup, got {other:?}"),
+    }
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn hash_verified_part_decode_failure_refuses_not_miss() {
+    const V3_HEADER_LEN: usize = 8 + 4 + 16 + 16 + 16 + 16 + 8 + 3 * (8 + 8 + 16);
+
+    let dir = temp_dir("decode-fail");
+    let (roots, a, _, _) = write_fixture(&dir);
+    let cache_dir = dir.join("cache");
+    fs::create_dir_all(&cache_dir).expect("cache dir");
+
+    let (graph, si) = resolve_entry_graph(&roots, &a).expect("resolve for digest");
+    let sources = load_sources_for_entry(&roots, &a).expect("sources");
+    let subject = subject_digest_for_closure(&sources);
+    let (request_key, semantic) = provider_keys_for_graph(
+        &roots,
+        &a,
+        &graph,
+        si.as_ref(),
+        &empty_compile_clean_diags(),
+    );
+    let mut bytes = build_valid_artifact_bytes(
+        &subject,
+        &graph,
+        si.as_ref(),
+        &empty_compile_clean_diags(),
+        &request_key,
+        &semantic,
+    )
+    .expect("valid bytes");
+    bytes[V3_HEADER_LEN] ^= 0x01;
+    let payload_len = u64::from_le_bytes(bytes[76..84].try_into().unwrap()) as usize;
+    let graph_len = u64::from_le_bytes(bytes[92..100].try_into().unwrap()) as usize;
+    let payload_slice = bytes[V3_HEADER_LEN..V3_HEADER_LEN + payload_len].to_vec();
+    let graph_digest = bytes_identity_hash(&payload_slice[0..graph_len]);
+    bytes[100..116].copy_from_slice(graph_digest.as_bytes());
+    let payload_integrity = bytes_identity_hash(&payload_slice);
+    bytes[28..44].copy_from_slice(payload_integrity.as_bytes());
+    write_raw_artifact_for_test(&cache_dir, &subject, &bytes).expect("corrupt write");
+
+    let decodes_before = decode_count();
+    match lookup(&cache_dir, &subject) {
+        CacheLookupResult::RejectedHit(CacheRejectReason::PartDecodeFailure) => {}
+        other => panic!("expected PartDecodeFailure RejectedHit, got {other:?}"),
+    }
+    assert_eq!(
+        decode_count(),
+        decodes_before,
+        "decode failure must refuse without cold rebuild"
+    );
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn declared_payload_len_over_cap_refuses_before_large_allocation() {
+    let dir = temp_dir("oversized-decl");
+    let (roots, a, _, _) = write_fixture(&dir);
+    let cache_dir = dir.join("cache");
+    fs::create_dir_all(&cache_dir).expect("cache dir");
+
+    let (graph, si) = resolve_entry_graph(&roots, &a).expect("resolve for digest");
+    let sources = load_sources_for_entry(&roots, &a).expect("sources");
+    let subject = subject_digest_for_closure(&sources);
+    let (request_key, semantic) = provider_keys_for_graph(
+        &roots,
+        &a,
+        &graph,
+        si.as_ref(),
+        &empty_compile_clean_diags(),
+    );
+    let mut bytes = build_valid_artifact_bytes(
+        &subject,
+        &graph,
+        si.as_ref(),
+        &empty_compile_clean_diags(),
+        &request_key,
+        &semantic,
+    )
+    .expect("valid bytes");
+    // payload_len field sits after magic+version+four 16-byte digests (offset 76).
+    let payload_len_off = 76;
+    let bogus_len = u64::MAX;
+    bytes[payload_len_off..payload_len_off + 8].copy_from_slice(&bogus_len.to_le_bytes());
+    write_raw_artifact_for_test(&cache_dir, &subject, &bytes).expect("oversized write");
+
+    match probe(&cache_dir, &subject) {
+        CacheProbeResult::RejectedHit(CacheRejectReason::BackendKeyMalformed) => {}
+        other => panic!("expected BackendKeyMalformed RejectedHit, got {other:?}"),
+    }
+    match lookup(&cache_dir, &subject) {
+        CacheLookupResult::RejectedHit(CacheRejectReason::BackendKeyMalformed) => {}
+        other => panic!("expected BackendKeyMalformed lookup, got {other:?}"),
+    }
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn part_offset_overflow_refuses_as_backend_key_malformed() {
+    let dir = temp_dir("part-offset-overflow");
+    let (roots, a, _, _) = write_fixture(&dir);
+    let cache_dir = dir.join("cache");
+    fs::create_dir_all(&cache_dir).expect("cache dir");
+
+    let (graph, si) = resolve_entry_graph(&roots, &a).expect("resolve for digest");
+    let sources = load_sources_for_entry(&roots, &a).expect("sources");
+    let subject = subject_digest_for_closure(&sources);
+    let (request_key, semantic) = provider_keys_for_graph(
+        &roots,
+        &a,
+        &graph,
+        si.as_ref(),
+        &empty_compile_clean_diags(),
+    );
+    let mut bytes = build_valid_artifact_bytes(
+        &subject,
+        &graph,
+        si.as_ref(),
+        &empty_compile_clean_diags(),
+        &request_key,
+        &semantic,
+    )
+    .expect("valid bytes");
+    // Third part descriptor offset field (after magic+version+four digests+payload_len+two parts).
+    let part2_offset_off = 76 + 8 + 2 * 24;
+    let bogus_offset = u64::MAX - 5;
+    bytes[part2_offset_off..part2_offset_off + 8].copy_from_slice(&bogus_offset.to_le_bytes());
+    write_raw_artifact_for_test(&cache_dir, &subject, &bytes).expect("overflow write");
+
+    match probe(&cache_dir, &subject) {
+        CacheProbeResult::RejectedHit(CacheRejectReason::BackendKeyMalformed) => {}
+        other => panic!("expected BackendKeyMalformed RejectedHit, got {other:?}"),
+    }
+    match lookup(&cache_dir, &subject) {
+        CacheLookupResult::RejectedHit(CacheRejectReason::BackendKeyMalformed) => {}
+        other => panic!("expected BackendKeyMalformed lookup, got {other:?}"),
+    }
 
     let _ = fs::remove_dir_all(&dir);
 }
@@ -488,21 +783,330 @@ fn two_processes_share_cache_without_torn_read() {
     let out1 = fs::read_to_string(&verdict1).expect("verdict1");
     let out2 = fs::read_to_string(&verdict2).expect("verdict2");
     for (label, verdict) in [("child1", out1.trim()), ("child2", out2.trim())] {
-        assert!(
-            verdict == "PASS" || verdict.contains("provider refused faithful probe"),
-            "{label} verdict must either cold-build or refuse faithfully: {verdict}"
+        assert_eq!(
+            verdict, "PASS",
+            "{label} must resolve green via cold-build or v2 disk hit: {verdict}"
         );
     }
-    assert!(
-        out1.trim() == "PASS" || out2.trim() == "PASS",
-        "at least one child must cold-build the cache: child1={out1:?} child2={out2:?}"
-    );
 
     let sources = load_sources_for_entry(&roots, &a).expect("sources");
     let subject = subject_digest_for_closure(&sources);
     match lookup(&cache_dir, &subject) {
         CacheLookupResult::Hit(_) => {}
         other => panic!("expected cache hit after cross-process warm, got {other:?}"),
+    }
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+fn build_legacy_v1_probe_artifact(subject: &str) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    bytes.extend_from_slice(b"gunbgrpc");
+    bytes.extend_from_slice(&1u32.to_le_bytes());
+    bytes.extend_from_slice(subject.as_bytes());
+    bytes.extend_from_slice(&[0u8; 16]);
+    bytes.extend_from_slice(&0u64.to_le_bytes());
+    bytes
+}
+
+/// Four-arm disposition matrix for the cross-process provider seam:
+/// complete v3 hit -> served; absent artifact -> cold compute; legacy v1 ->
+/// declared migration cold compute; incomplete provider verdict -> typed refusal
+/// with zero cold recompute.
+#[test]
+fn provider_disposition_four_arm_matrix() {
+    let dir = temp_dir("four-arm");
+    let (roots, a, _, _) = write_fixture(&dir);
+    let sources = load_sources_for_entry(&roots, &a).expect("sources");
+    let subject = subject_digest_for_closure(&sources);
+    let (graph, si) = resolve_entry_graph(&roots, &a).expect("resolve fixture");
+    let (request_key, semantic) = provider_keys_for_graph(
+        &roots,
+        &a,
+        &graph,
+        si.as_ref(),
+        &empty_compile_clean_diags(),
+    );
+    let encoded = encode_resolved_graph_parts(&graph, si.as_ref(), &empty_compile_clean_diags())
+        .expect("encode");
+    let v3_bytes = build_valid_artifact_bytes(
+        &subject,
+        &graph,
+        si.as_ref(),
+        &empty_compile_clean_diags(),
+        &request_key,
+        &semantic,
+    )
+    .expect("v3 bytes");
+
+    // Arm 2 — absent artifact: cold compute allowed.
+    let miss_dir = dir.join("miss-cache");
+    fs::create_dir_all(&miss_dir).expect("miss cache dir");
+    with_cache_env(&miss_dir, || {
+        let index = build_multi_entry_index(&roots);
+        let (g1, _) = resolve_entry_with_index(&index, &a).expect("cold resolve");
+        let (g2, _) = resolve_entry_with_index(&index, &a).expect("repeat resolve");
+        assert!(
+            std::rc::Rc::ptr_eq(&g1, &g2),
+            "repeat resolve must share memo after cold build"
+        );
+    });
+
+    // Arm 1 — complete v3 hit: served from disk; decode once on first install only.
+    let hit_dir = dir.join("hit-cache");
+    fs::create_dir_all(&hit_dir).expect("hit cache dir");
+    write_raw_artifact_for_test(&hit_dir, &subject, &v3_bytes).expect("v3 write");
+    with_cache_env(&hit_dir, || {
+        let decodes_before = decode_count();
+        let index = build_multi_entry_index(&roots);
+        let (g1, _) = resolve_entry_with_index(&index, &a).expect("v3 disk hit");
+        let index2 = build_multi_entry_index(&roots);
+        let (g2, _) = resolve_entry_with_index(&index2, &a).expect("v3 disk repeat");
+        assert!(
+            std::rc::Rc::ptr_eq(&g1, &g2),
+            "v3 disk hit must install into share"
+        );
+        assert_eq!(
+            decode_count(),
+            decodes_before + 1,
+            "first v3 disk hit decodes once; repeat must not"
+        );
+    });
+
+    // Arm 3 — legacy v1 on disk: LegacyFormatMiss -> cold compute, no provider probe.
+    let legacy_dir = dir.join("legacy-cache");
+    fs::create_dir_all(&legacy_dir).expect("legacy cache dir");
+    write_raw_artifact_for_test(
+        &legacy_dir,
+        &subject,
+        &build_legacy_v1_probe_artifact(&subject),
+    )
+    .expect("legacy write");
+    match probe(&legacy_dir, &subject) {
+        CacheProbeResult::LegacyMigrationRequired { format_version } => {
+            assert_eq!(format_version, 1, "legacy v1 must not expose v3 parts");
+        }
+        other => panic!("legacy v1 must probe as LegacyMigrationRequired: {other:?}"),
+    }
+    with_cache_env(&legacy_dir, || {
+        let decodes_before = decode_count();
+        let index = build_multi_entry_index(&roots);
+        resolve_entry_with_index(&index, &a).expect("legacy must cold-rebuild");
+        assert_eq!(
+            decode_count(),
+            decodes_before,
+            "legacy format must not decode incomplete v1 artifact"
+        );
+    });
+
+    // Arm 4 — semantically incomplete v3 on disk: typed refusal through live resolve.
+    let incomplete_semantic = resolved_graph_parts_semantic_digest(
+        &encoded.graph_digest,
+        encoded.graph_bytes.len() as u64,
+        &encoded.indices_digest,
+        encoded.indices_bytes.len() as u64,
+        UNION_PART_ABSENT_DIGEST,
+        0,
+    )
+    .expect("incomplete semantic");
+    let incomplete_bytes = build_incomplete_v3_artifact_bytes(
+        &subject,
+        &graph,
+        si.as_ref(),
+        &empty_compile_clean_diags(),
+        &request_key,
+        &incomplete_semantic,
+    )
+    .expect("incomplete bytes");
+    let incomplete_dir = dir.join("incomplete-cache");
+    fs::create_dir_all(&incomplete_dir).expect("incomplete cache dir");
+    write_raw_artifact_for_test(&incomplete_dir, &subject, &incomplete_bytes)
+        .expect("incomplete write");
+    match lookup(&incomplete_dir, &subject) {
+        CacheLookupResult::RejectedHit(CacheRejectReason::ContentDigestMismatch) => {}
+        other => panic!("incomplete v3 lookup must refuse, not widen to hit: {other:?}"),
+    }
+    with_cache_env(&incomplete_dir, || {
+        let decodes_before = decode_count();
+        let index = build_multi_entry_index(&roots);
+        let err = resolve_entry_with_index(&index, &a).expect_err("incomplete v3 must refuse");
+        assert!(
+            err.contains("incomplete") && err.contains("compile_clean_diagnostic_union"),
+            "typed incomplete refusal must name missing output: {err}"
+        );
+        assert_eq!(
+            decode_count(),
+            decodes_before,
+            "incomplete v3 must not decode or cold-rebuild"
+        );
+    });
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// review 46678: legacy v1 must not block v3 materialization — cold rebuild replaces
+/// the legacy row and a fresh index gets a verified v3 disk hit.
+#[test]
+fn legacy_v1_cold_rebuild_migrates_to_v3_on_fresh_index() {
+    let dir = temp_dir("legacy-migrate");
+    let (roots, a, _, _) = write_fixture(&dir);
+    let sources = load_sources_for_entry(&roots, &a).expect("sources");
+    let subject = subject_digest_for_closure(&sources);
+    let legacy_dir = dir.join("legacy-migrate-cache");
+    fs::create_dir_all(&legacy_dir).expect("legacy cache dir");
+    write_raw_artifact_for_test(
+        &legacy_dir,
+        &subject,
+        &build_legacy_v1_probe_artifact(&subject),
+    )
+    .expect("legacy write");
+
+    with_cache_env(&legacy_dir, || {
+        let index = build_multi_entry_index(&roots);
+        resolve_entry_with_index(&index, &a).expect("legacy cold rebuild must migrate");
+    });
+    match probe(&legacy_dir, &subject) {
+        CacheProbeResult::Hit(_hit) => {
+            // cold rebuild replaced legacy v1 with v3 on disk
+        }
+        other => panic!("expected v3 probe after migration: {other:?}"),
+    }
+
+    with_cache_env(&legacy_dir, || {
+        let decodes_before = decode_count();
+        let index2 = build_multi_entry_index(&roots);
+        resolve_entry_with_index(&index2, &a).expect("fresh index v3 disk hit");
+        assert_eq!(
+            decode_count(),
+            decodes_before + 1,
+            "fresh index must decode v3 once after legacy migration"
+        );
+    });
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// review 46697: commit revalidates disposition — a verified v3 row is never deleted
+/// because an earlier classify saw legacy.
+#[test]
+fn v3_write_refuses_when_verified_artifact_already_present() {
+    let dir = temp_dir("v3-write-refuse");
+    let (roots, a, _, _) = write_fixture(&dir);
+    let sources = load_sources_for_entry(&roots, &a).expect("sources");
+    let subject = subject_digest_for_closure(&sources);
+    let (graph, si) = resolve_entry_graph(&roots, &a).expect("resolve");
+    let (request_key, semantic) = provider_keys_for_graph(
+        &roots,
+        &a,
+        &graph,
+        si.as_ref(),
+        &empty_compile_clean_diags(),
+    );
+    let v3_bytes = build_valid_artifact_bytes(
+        &subject,
+        &graph,
+        si.as_ref(),
+        &empty_compile_clean_diags(),
+        &request_key,
+        &semantic,
+    )
+    .expect("v3 bytes");
+    let cache_dir = dir.join("v3-present");
+    fs::create_dir_all(&cache_dir).expect("cache dir");
+    write_raw_artifact_for_test(&cache_dir, &subject, &v3_bytes).expect("seed v3");
+    let artifact_path = cache_dir.join(&subject[..2]).join(format!("{subject}.bin"));
+
+    let outcome = write_resolved_graph_cache(
+        &cache_dir,
+        &subject,
+        &graph,
+        si.as_ref(),
+        &empty_compile_clean_diags(),
+        &request_key,
+        &semantic,
+    )
+    .expect("write against existing v3");
+    assert_eq!(
+        outcome,
+        CacheWriteOutcome::AlreadyExists,
+        "verified v3 must refuse overwrite"
+    );
+    let on_disk = fs::read(&artifact_path).expect("read v3 artifact");
+    assert_eq!(
+        on_disk, v3_bytes,
+        "write must not replace verified v3 bytes"
+    );
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// review 46613: provider-approved probe must bind the reopened artifact header before
+/// decode — a replacement file that is internally valid but header-mismatched refuses.
+#[test]
+fn verified_lookup_refuses_artifact_replaced_after_probe() {
+    let dir = temp_dir("verified-probe-toctou");
+    let (roots, a, _, _) = write_fixture(&dir);
+    let sources = load_sources_for_entry(&roots, &a).expect("sources");
+    let subject = subject_digest_for_closure(&sources);
+    let (graph, si) = resolve_entry_graph(&roots, &a).expect("resolve fixture");
+    let (request_key, semantic) = provider_keys_for_graph(
+        &roots,
+        &a,
+        &graph,
+        si.as_ref(),
+        &empty_compile_clean_diags(),
+    );
+    let correct_bytes = build_valid_artifact_bytes(
+        &subject,
+        &graph,
+        si.as_ref(),
+        &empty_compile_clean_diags(),
+        &request_key,
+        &semantic,
+    )
+    .expect("correct bytes");
+    let wrong_semantic = resolved_graph_parts_semantic_digest(
+        &encode_resolved_graph_parts(&graph, si.as_ref(), &empty_compile_clean_diags())
+            .expect("encode")
+            .graph_digest,
+        1,
+        &encode_resolved_graph_parts(&graph, si.as_ref(), &empty_compile_clean_diags())
+            .expect("encode")
+            .indices_digest,
+        1,
+        UNION_PART_ABSENT_DIGEST,
+        0,
+    )
+    .expect("wrong semantic");
+    assert_ne!(
+        semantic, wrong_semantic,
+        "test needs distinct semantic digests"
+    );
+    let swapped_bytes = build_valid_artifact_bytes(
+        &subject,
+        &graph,
+        si.as_ref(),
+        &empty_compile_clean_diags(),
+        &request_key,
+        &wrong_semantic,
+    )
+    .expect("swapped bytes");
+
+    let cache_dir = dir.join("toctou-cache");
+    fs::create_dir_all(&cache_dir).expect("cache dir");
+    write_raw_artifact_for_test(&cache_dir, &subject, &correct_bytes).expect("write correct");
+    let approved = match probe(&cache_dir, &subject) {
+        CacheProbeResult::Hit(hit) => hit,
+        other => panic!("expected probe hit: {other:?}"),
+    };
+    write_raw_artifact_for_test(&cache_dir, &subject, &swapped_bytes).expect("swap artifact");
+    match lookup_verified_probe(&cache_dir, &subject, &approved) {
+        CacheLookupResult::RejectedHit(_) => {}
+        other => panic!("verified lookup must refuse header mismatch after swap: {other:?}"),
+    }
+    match lookup(&cache_dir, &subject) {
+        CacheLookupResult::Hit(_) => {}
+        other => panic!("unverified lookup still decodes swapped artifact: {other:?}"),
     }
 
     let _ = fs::remove_dir_all(&dir);
@@ -558,11 +1162,10 @@ fn key_is_deterministic_in_its_axes() {
 
 // The ladder's tier ordering at the resolve seam (store fills share — never
 // replaces it): the per-process share serves repeats by reference; the store
-// would serve a process's first touch of a subject and install into the share
-// once the provider can serve a complete artifact (part a). Until then, a v1
-// disk hit is typed provider refusal and stops the line — no cold-resolve widen.
+// serves a fresh index's first touch of a subject and installs into the share
+// once the provider can serve a complete v2 artifact — no cold-resolve widen.
 #[test]
-fn same_subject_resolves_share_one_graph_store_refuses_v1_disk_hit() {
+fn same_subject_resolves_share_one_graph_store_hits_v2_disk() {
     let dir = temp_dir("share");
     let (roots, a, _b, _c) = write_fixture(&dir);
     let cache_dir = dir.join("cache");
@@ -584,15 +1187,22 @@ fn same_subject_resolves_share_one_graph_store_refuses_v1_disk_hit() {
         );
 
         let index2 = build_multi_entry_index(&roots);
-        let err = resolve_entry_with_index(&index2, &a).expect_err("v1 store hit must refuse");
+        let (g3, _) = resolve_entry_with_index(&index2, &a).expect("v2 store hit must install");
+        let decodes_after_disk = decode_count();
+        assert_eq!(
+            decodes_after_disk,
+            decodes_before + 1,
+            "first disk touch decodes once"
+        );
+        let (g4, _) = resolve_entry_with_index(&index2, &a).expect("memo after disk install");
         assert!(
-            err.contains("provider refused faithful probe"),
-            "fresh index must not cold-resolve through v1 disk hit: {err}"
+            std::rc::Rc::ptr_eq(&g3, &g4),
+            "disk hit must install into share; repeat must serve by reference"
         );
         assert_eq!(
             decode_count(),
-            decodes_before,
-            "provider refusal must not decode or rebuild"
+            decodes_after_disk,
+            "memo repeat must not decode again"
         );
     });
 }

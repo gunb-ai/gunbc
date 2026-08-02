@@ -1,8 +1,21 @@
 module std.materialization_provider
 
-import std.types { Bool, Int, List, String, NonEmptyStr, ContentHash }
-import std.measure { ByteSize, byte_size, measure_count, measure_add }
-import std.content_hash { content_hash_atom, content_hash_combine, content_hash_tagged }
+import std.types { Bool, Int, List, String, NonEmptyStr }
+import std.content_hash {
+  ContentHash,
+  Fnv1a64Structural,
+  Fnv1a64StructuralDigestHex,
+  HashFamily,
+  Sha256Family,
+  Sha1Family,
+  content_hash_atom,
+  content_hash_combine_structural,
+  content_hash_tagged,
+  content_hash_tagged_structural,
+  as_content_hash_structural,
+  structural_content_hash,
+  serialize_content_hash,
+}
 import std.interface_summary { InterfaceHash, ModuleKey, TypedModuleKey, module_key, typed_module_key }
 import std.cache_identity {
   ArtifactKindId,
@@ -16,6 +29,7 @@ import std.computation_identity {
 }
 import std.artifact_store { ArtifactStore, store_put, store_put_fold }
 import std.disposition { Disposition, Terminal }
+import std.measure { ByteSize, byte_size }
 
 data materialization_provider_note: String = "The typed materialization-provider CONTRACT (parent mandate 6B, model-only, 2026-07-28): the one interface cli_run's ad-hoc caches consume when they flip — consumers ask for an ARTIFACT by typed request and receive a TYPED result; no map is exposed, and the anti-pattern of replacing seven maps with one struct of seven maps is ruled out by construction: there is ONE keyed store model (std.artifact_store) and the request KIND lives inside the content key, so a new request family is a new constructor row, never a new carrier. A request is keyed by content + declared-input identity: subject_digest (what is transformed) plus every other read the transform performs as a DeclaredInput (ref + digest) — the typed_module_key precedent (extdeps.realization.reconcile_in_process: module source hash + direct-import interface hashes + compiler-binary identity) generalized to the contract grain. Outcomes are total and typed: hit, miss, kind-mismatch refusal, wrong-artifact refusal, wrong-content refusal, incomplete-artifact refusal, identity refusals on lookup; admitted-with-counted-evictions, the mirrored write refusals, budget-exhausted on admission. Every refusal names what it knows (section 5: refuse, never widen; no absorbing fallback arm exists in this vocabulary). Grounding, not minting (section 3): request kinds are the EXISTING std.cache_identity ArtifactKindId rows; placement/locality is NOT restated here — a provider realization binds this contract to a cited extdeps CacheInterfaceCatalogFacts row whose PersistenceLocality (std.cache_interface) says where the bytes live; the packed-store semantics reuse std.artifact_store verbatim (store_put, counted evictions)."
 
@@ -43,25 +57,25 @@ data output_compile_clean_diagnostic_union: ArtifactOutputId = "compile_clean_di
 
 type DeclaredInput {
   ref: NonEmptyStr
-  digest: ContentHash
+  digest: Fnv1a64Structural
 }
 
 data materialization_provider_request_construction_note: String = "The request is a COPRODUCT, not a freely-filled record (codex review 44175, DESIGN section 5 correctness-by-construction): a record carrying both the kind discriminator and a caller-supplied required_outputs list left the illegal state WRITABLE — a resolve request with an empty output roster would let provider_admit accept an artifact lacking the compile-clean diagnostic union, and helper constructors that merely offer the right shape do not forbid the wrong one. Here the caller can only name a request FAMILY; kind, declared inputs, and required outputs are all DERIVED from the variant through request_fold, so an under-specified obligation roster cannot be expressed at all. A new family is a new variant, and the fold's totality makes every derivation a type error until it is answered."
 
 type ArtifactRequest
-  = ParseModuleRequest { source_digest: ContentHash, compiler: DeclaredInput }
+  = ParseModuleRequest { source_digest: Fnv1a64Structural, compiler: DeclaredInput }
   | TypecheckModuleRequest {
-      source_digest: ContentHash,
+      source_digest: Fnv1a64Structural,
       direct_import_interfaces: List<InterfaceHash>,
       compiler: DeclaredInput
     }
-  | ResolveClosureRequest { closure_digest: ContentHash, compiler: DeclaredInput }
+  | ResolveClosureRequest { closure_digest: Fnv1a64Structural, compiler: DeclaredInput }
 
 fn request_fold<T>(
   req: ArtifactRequest,
-  parse_module: fn(ContentHash, DeclaredInput) -> T,
-  typecheck_module: fn(ContentHash, List<InterfaceHash>, DeclaredInput) -> T,
-  resolve_closure: fn(ContentHash, DeclaredInput) -> T
+  parse_module: fn(Fnv1a64Structural, DeclaredInput) -> T,
+  typecheck_module: fn(Fnv1a64Structural, List<InterfaceHash>, DeclaredInput) -> T,
+  resolve_closure: fn(Fnv1a64Structural, DeclaredInput) -> T
 ) -> T {
   match req {
     ParseModuleRequest { source_digest: sd, compiler: c } => parse_module(sd, c)
@@ -80,7 +94,7 @@ fn request_kind(req: ArtifactRequest) -> ArtifactKindId {
   )
 }
 
-fn request_subject_digest(req: ArtifactRequest) -> ContentHash {
+fn request_subject_digest(req: ArtifactRequest) -> Fnv1a64Structural {
   request_fold(
     req: req,
     parse_module: (sd, c) => sd,
@@ -109,14 +123,19 @@ fn request_required_outputs(req: ArtifactRequest) -> List<ArtifactOutputId> {
   )
 }
 
-fn declared_input_digest(input: DeclaredInput) -> ContentHash {
-  content_hash_combine(left: content_hash_atom(value: input.ref), right: input.digest)
+fn declared_input_digest(input: DeclaredInput) -> Fnv1a64Structural {
+  content_hash_combine_structural(
+    left: content_hash_atom(value: input.ref),
+    right: input.digest
+  )
 }
 
 fn declared_inputs_digest(inputs: List<DeclaredInput>) -> ContentHash {
-  inputs |> fold(
-    init: content_hash_atom(value: "materialization_provider.no_inputs"),
-    f: (acc, i) => content_hash_combine(left: acc, right: declared_input_digest(input: i))
+  as_content_hash_structural(
+    structural: inputs |> fold(
+      init: content_hash_atom(value: "materialization_provider.no_inputs"),
+      f: (acc, i) => content_hash_combine_structural(left: acc, right: declared_input_digest(input: i))
+    )
   )
 }
 
@@ -125,11 +144,17 @@ data materialization_provider_key_authority_note: String = "WHICH AUTHORITY EACH
 fn local_request_key(req: ArtifactRequest) -> ContentHash {
   content_hash_tagged(
     tag: "materialization_provider.request",
-    payload: content_hash_combine(
+    payload: content_hash_combine_structural(
       left: content_hash_atom(value: request_kind(req: req)),
-      right: content_hash_combine(
+      right: content_hash_combine_structural(
         left: request_subject_digest(req: req),
-        right: declared_inputs_digest(inputs: request_declared_inputs(req: req))
+        right: content_hash_tagged_structural(
+          tag: "materialization_provider.declared_inputs",
+          payload: request_declared_inputs(req: req) |> fold(
+            init: content_hash_atom(value: "materialization_provider.no_inputs"),
+            f: (acc, i) => content_hash_combine_structural(left: acc, right: declared_input_digest(input: i))
+          )
+        )
       )
     )
   )
@@ -152,13 +177,16 @@ data materialization_provider_payload_binding_note: String = "Why a carried outp
 
 type CarriedOutput {
   id: ArtifactOutputId
-  digest: ContentHash
+  digest: Fnv1a64Structural
   bytes: ByteSize
 }
 
-fn carried_output_digest(o: CarriedOutput) -> ContentHash {
-  content_hash_combine(
-    left: content_hash_combine(left: content_hash_atom(value: o.id), right: o.digest),
+fn carried_output_digest(o: CarriedOutput) -> Fnv1a64Structural {
+  content_hash_combine_structural(
+    left: content_hash_combine_structural(
+      left: content_hash_atom(value: o.id),
+      right: o.digest
+    ),
     right: content_hash_atom(value: concat("bytes:", to_string(measure_count(m: o.bytes))))
   )
 }
@@ -168,7 +196,7 @@ fn carried_outputs_digest(outputs: List<CarriedOutput>) -> ContentHash {
     tag: "materialization_provider.carried_outputs",
     payload: outputs |> fold(
       init: content_hash_atom(value: "materialization_provider.no_outputs"),
-      f: (acc, o) => content_hash_combine(left: acc, right: carried_output_digest(o: o))
+      f: (acc, o) => content_hash_combine_structural(left: acc, right: carried_output_digest(o: o))
     )
   )
 }
@@ -176,7 +204,7 @@ fn carried_outputs_digest(outputs: List<CarriedOutput>) -> ContentHash {
 data materialization_provider_artifact_construction_note: String = "The artifact is a COPRODUCT WITH REQUIRED PER-KIND PARTS (operator review, blocker 2), and this is a DIFFERENT fix from the digest-preimage work above — they are complementary. The preimage construction closed FORGERY: a producer can no longer CLAIM an output it does not carry, because the roster is the digest's preimage. What stayed open was OMISSION: while carried_outputs was a plain list, a resolved-graph artifact that simply LACKED the compile-clean diagnostic union was still WRITABLE — it merely got refused at the door. Section 5 says making the state unwritable beats catching it, which is the same argument this module already used on the request side when required_outputs became a coproduct (review 44175); applying it there and not here was inconsistent. So a complete artifact names its parts as REQUIRED FIELDS: ResolvedGraphArtifact cannot be constructed without its union, TypedModuleArtifact cannot drop its diagnostics, ParsedArtifact cannot drop its parse diagnostics. Note what did NOT change: a part is still (digest, bytes), never a payload — this contract still holds no bytes, so per-kind fields cost it nothing it was not already holding. Two further consequences follow from the derivation invariant. First, the part's ID is no longer carried: an ArtifactPart is (digest, bytes) and its id comes from its POSITION in the variant, so a mislabelled part is unwritable too — one more caller-asserted fact removed rather than checked. Second, v1's incomplete disk artifacts still have to be REPRESENTABLE, because refusing them is this contract's first named consumer target; they decode to the explicit LegacyIncompleteArtifact variant, which is the only shape carrying a free List<CarriedOutput>. So incompleteness is a NAMED VARIANT rather than a missing list element, artifact_completeness stays live (it is what LegacyIncompleteArtifact is measured by, and it is reached), and the day the resolved_graph FORMAT_VERSION persists the union, that variant is what deletes."
 
 type ArtifactPart {
-  digest: ContentHash
+  digest: Fnv1a64Structural
   bytes: ByteSize
 }
 
@@ -365,7 +393,20 @@ type ProviderLookup
   | ProviderRefusedKindMismatch { key: ContentHash, requested: ArtifactKindId, found: ArtifactKindId }
   | ProviderRefusedWrongArtifact { key: ContentHash, found_key: ContentHash }
   | ProviderRefusedWrongContent { key: ContentHash, recorded: ContentHash, observed: ContentHash }
+  | ProviderRefusedCrossFamilyContentHash { key: ContentHash, family: HashFamily }
   | ProviderRefusedIncomplete { key: ContentHash, missing: List<ArtifactOutputId> }
+
+type Fnv1a64StructuralAdmission
+  = Fnv1a64StructuralAdmitted { digest: Fnv1a64Structural }
+  | CrossFamilyContentHashRefused { family: HashFamily }
+
+type ResolveClosureRequestKeyOutcome
+  = ResolveClosureRequestKeyReady { key: ContentHash }
+  | ResolveClosureRequestKeyRefused { lookup: ProviderLookup }
+
+type ResolvedGraphPartsSemanticDigestOutcome
+  = ResolvedGraphPartsSemanticDigestReady { digest: ContentHash }
+  | ResolvedGraphPartsSemanticDigestRefused { lookup: ProviderLookup }
 
 fn provider_serve(req: ArtifactRequest, probe: ProviderProbe) -> ProviderLookup {
   let key = request_key(req: req)
@@ -432,22 +473,325 @@ fn provider_admit(
 
 data materialization_provider_request_family_note: String = "Each variant fixes its family's declared-input shape and required-output roster BY CONSTRUCTION, and the derivations above are the only readers: parse = source content + compiler identity, requiring the parse tree AND its diagnostics; typecheck = source content + direct-import interface digests + compiler identity (the typed_module_key facts, cited in extdeps.realization.reconcile_in_process), requiring the interface AND its diagnostics; resolve-closure = closure content + compiler identity (the resolved_graph_cache subject_digest facts, cited in extdeps.realization.resolved_graph), requiring graph, source indices, AND the compile-clean diagnostic union. Declared-input ORDER is fixed by request_declared_inputs, so the canonical-order duty request_key depends on is discharged by the fold rather than owed to the caller. Separate constructor functions were DELETED with the record shape (codex review 44175): a helper beside a freely-constructible record is an offer, not a wall, and a second way to spell a request is the redundancy section 2 forbids. A request family this module does not yet name lands as a new VARIANT — every derivation then fails to compile until it is answered — never a new outcome vocabulary."
 
-fn compiler_identity_input(digest: ContentHash) -> DeclaredInput {
+fn compiler_identity_input(digest: Fnv1a64Structural) -> DeclaredInput {
   DeclaredInput { ref: "compiler_binary_identity", digest: digest }
 }
 
-fn serve_resolved_graph_v1_disk_probe(
+fn wire_fnv1a64_structural_hex(hex: Fnv1a64StructuralDigestHex) -> Fnv1a64Structural {
+  structural_content_hash(digest: hex)
+}
+
+fn wire_fnv1a64_content_hash_hex(hex: Fnv1a64StructuralDigestHex) -> ContentHash {
+  as_content_hash_structural(structural: wire_fnv1a64_structural_hex(hex: hex))
+}
+
+fn admit_fnv1a64_structural(hash: ContentHash) -> Fnv1a64StructuralAdmission {
+  match hash {
+    Fnv1a64(s) => Fnv1a64StructuralAdmitted { digest: s }
+    Sha256Hash(_) => CrossFamilyContentHashRefused { family: Sha256Family }
+    Sha1Hash(_) => CrossFamilyContentHashRefused { family: Sha1Family }
+  }
+}
+
+fn cross_family_fnv1a64_seam_lookup_refusal(
+  hash: ContentHash,
+  refusal_key: ContentHash
+) -> ProviderLookup? {
+  match admit_fnv1a64_structural(hash: hash) {
+    CrossFamilyContentHashRefused { family: f } =>
+      Present {
+        value: ProviderRefusedCrossFamilyContentHash { key: refusal_key, family: f }
+      }
+    Fnv1a64StructuralAdmitted { digest: _ } => Absent
+  }
+}
+
+fn fnv1a64_structural_if_admitted(hash: ContentHash) -> Fnv1a64Structural? {
+  match admit_fnv1a64_structural(hash: hash) {
+    Fnv1a64StructuralAdmitted { digest: d } => Present { value: d }
+    CrossFamilyContentHashRefused { family: _ } => Absent
+  }
+}
+
+fn provider_refused_cross_family_from_admission(
+  key: ContentHash,
+  hash: ContentHash
+) -> ProviderLookup {
+  match admit_fnv1a64_structural(hash: hash) {
+    CrossFamilyContentHashRefused { family: f } =>
+      ProviderRefusedCrossFamilyContentHash { key: key, family: f }
+    Fnv1a64StructuralAdmitted { digest: _ } =>
+      ProviderMiss { key: key }
+  }
+}
+
+fn wire_content_hash_to_hex(hash: ContentHash) -> String {
+  serialize_content_hash(hash: hash)
+}
+
+fn wire_byte_size(count: Int) -> ByteSize {
+  byte_size(count: count)
+}
+
+fn resolve_closure_request_key_outcome(
   closure_digest: ContentHash,
   compiler_digest: ContentHash
-) -> ProviderLookup {
-  let req = ResolveClosureRequest {
-    closure_digest: closure_digest,
-    compiler: compiler_identity_input(digest: compiler_digest)
+) -> ResolveClosureRequestKeyOutcome {
+  match fnv1a64_structural_if_admitted(hash: closure_digest) {
+    Present { value: closure_admitted } =>
+      match fnv1a64_structural_if_admitted(hash: compiler_digest) {
+        Present { value: compiler_admitted } =>
+          ResolveClosureRequestKeyReady {
+            key: request_key(
+              req: ResolveClosureRequest {
+                closure_digest: closure_admitted,
+                compiler: compiler_identity_input(
+                  digest: compiler_admitted
+                )
+              }
+            )
+          }
+        Absent =>
+          ResolveClosureRequestKeyRefused {
+            lookup: provider_refused_cross_family_from_admission(
+              key: closure_digest,
+              hash: compiler_digest
+            )
+          }
+      }
+    Absent =>
+      ResolveClosureRequestKeyRefused {
+        lookup: provider_refused_cross_family_from_admission(
+          key: closure_digest,
+          hash: closure_digest
+        )
+      }
   }
-  provider_serve(
-    req: req,
-    probe: ProbeAbsent
-  )
+}
+
+fn resolved_graph_parts_semantic_digest_outcome(
+  graph_digest: ContentHash,
+  graph_bytes: ByteSize,
+  indices_digest: ContentHash,
+  indices_bytes: ByteSize,
+  union_digest: ContentHash,
+  union_bytes: ByteSize
+) -> ResolvedGraphPartsSemanticDigestOutcome {
+  match fnv1a64_structural_if_admitted(hash: graph_digest) {
+    Present { value: graph_admitted } =>
+      match fnv1a64_structural_if_admitted(hash: indices_digest) {
+        Present { value: indices_admitted } =>
+          match fnv1a64_structural_if_admitted(hash: union_digest) {
+            Present { value: union_admitted } =>
+              ResolvedGraphPartsSemanticDigestReady {
+                digest: carried_outputs_digest(outputs: [
+                  positioned_part(
+                    id: output_resolved_graph,
+                    part: ArtifactPart {
+                      digest: graph_admitted,
+                      bytes: graph_bytes
+                    }
+                  ),
+                  positioned_part(
+                    id: output_source_indices,
+                    part: ArtifactPart {
+                      digest: indices_admitted,
+                      bytes: indices_bytes
+                    }
+                  ),
+                  positioned_part(
+                    id: output_compile_clean_diagnostic_union,
+                    part: ArtifactPart {
+                      digest: union_admitted,
+                      bytes: union_bytes
+                    }
+                  )
+                ])
+              }
+            Absent =>
+              ResolvedGraphPartsSemanticDigestRefused {
+                lookup: provider_refused_cross_family_from_admission(
+                  key: graph_digest,
+                  hash: union_digest
+                )
+              }
+          }
+        Absent =>
+          ResolvedGraphPartsSemanticDigestRefused {
+            lookup: provider_refused_cross_family_from_admission(
+              key: graph_digest,
+              hash: indices_digest
+            )
+          }
+      }
+    Absent =>
+      ResolvedGraphPartsSemanticDigestRefused {
+        lookup: provider_refused_cross_family_from_admission(
+          key: graph_digest,
+          hash: graph_digest
+        )
+      }
+  }
+}
+
+fn serve_resolved_graph_stored_disk_probe(
+  closure_digest: ContentHash,
+  compiler_digest: ContentHash,
+  stored_request_key: ContentHash,
+  stored_semantic_digest: ContentHash,
+  graph_digest: ContentHash,
+  graph_bytes: ByteSize,
+  indices_digest: ContentHash,
+  indices_bytes: ByteSize,
+  union_digest: ContentHash,
+  union_bytes: ByteSize
+) -> ProviderLookup {
+  match fnv1a64_structural_if_admitted(hash: closure_digest) {
+    Present { value: closure_admitted } =>
+      match fnv1a64_structural_if_admitted(hash: compiler_digest) {
+        Present { value: compiler_admitted } =>
+          match fnv1a64_structural_if_admitted(hash: graph_digest) {
+            Present { value: graph_admitted } =>
+              match fnv1a64_structural_if_admitted(hash: indices_digest) {
+                Present { value: indices_admitted } =>
+                  match fnv1a64_structural_if_admitted(hash: union_digest) {
+                    Present { value: union_admitted } => {
+                      let req = ResolveClosureRequest {
+                        closure_digest: closure_admitted,
+                        compiler: compiler_identity_input(
+                          digest: compiler_admitted
+                        )
+                      }
+                      let artifact = ResolvedGraphArtifact {
+                        request_key: stored_request_key,
+                        resolved_graph: ArtifactPart {
+                          digest: graph_admitted,
+                          bytes: graph_bytes
+                        },
+                        source_indices: ArtifactPart {
+                          digest: indices_admitted,
+                          bytes: indices_bytes
+                        },
+                        compile_clean_diagnostic_union: ArtifactPart {
+                          digest: union_admitted,
+                          bytes: union_bytes
+                        }
+                      }
+                      provider_serve(
+                        req: req,
+                        probe: ProbeFound {
+                          artifact: artifact,
+                          observed_digest: stored_semantic_digest
+                        }
+                      )
+                    }
+                    Absent =>
+                      provider_refused_cross_family_from_admission(
+                        key: closure_digest,
+                        hash: union_digest
+                      )
+                  }
+                Absent =>
+                  provider_refused_cross_family_from_admission(
+                    key: closure_digest,
+                    hash: indices_digest
+                  )
+              }
+            Absent =>
+              provider_refused_cross_family_from_admission(
+                key: closure_digest,
+                hash: graph_digest
+              )
+          }
+        Absent =>
+          provider_refused_cross_family_from_admission(
+            key: closure_digest,
+            hash: compiler_digest
+          )
+      }
+    Absent =>
+      provider_refused_cross_family_from_admission(
+        key: closure_digest,
+        hash: closure_digest
+      )
+  }
+}
+
+fn serve_resolved_graph_incomplete_stored_disk_probe(
+  closure_digest: ContentHash,
+  compiler_digest: ContentHash,
+  stored_request_key: ContentHash,
+  graph_digest: ContentHash,
+  graph_bytes: ByteSize,
+  indices_digest: ContentHash,
+  indices_bytes: ByteSize
+) -> ProviderLookup {
+  match fnv1a64_structural_if_admitted(hash: closure_digest) {
+    Present { value: closure_admitted } =>
+      match fnv1a64_structural_if_admitted(hash: compiler_digest) {
+        Present { value: compiler_admitted } =>
+          match fnv1a64_structural_if_admitted(hash: graph_digest) {
+            Present { value: graph_admitted } =>
+              match fnv1a64_structural_if_admitted(hash: indices_digest) {
+                Present { value: indices_admitted } => {
+                  let req = ResolveClosureRequest {
+                    closure_digest: closure_admitted,
+                    compiler: compiler_identity_input(
+                      digest: compiler_admitted
+                    )
+                  }
+                  let artifact = LegacyIncompleteArtifact {
+                    kind: resolved_graph_artifact_kind,
+                    request_key: stored_request_key,
+                    carried_outputs: [
+                      positioned_part(
+                        id: output_resolved_graph,
+                        part: ArtifactPart {
+                          digest: graph_admitted,
+                          bytes: graph_bytes
+                        }
+                      ),
+                      positioned_part(
+                        id: output_source_indices,
+                        part: ArtifactPart {
+                          digest: indices_admitted,
+                          bytes: indices_bytes
+                        }
+                      )
+                    ]
+                  }
+                  provider_serve(
+                    req: req,
+                    probe: ProbeFound {
+                      artifact: artifact,
+                      observed_digest: artifact_content_digest(artifact: artifact)
+                    }
+                  )
+                }
+                Absent =>
+                  provider_refused_cross_family_from_admission(
+                    key: closure_digest,
+                    hash: indices_digest
+                  )
+              }
+            Absent =>
+              provider_refused_cross_family_from_admission(
+                key: closure_digest,
+                hash: graph_digest
+              )
+          }
+        Absent =>
+          provider_refused_cross_family_from_admission(
+            key: closure_digest,
+            hash: compiler_digest
+          )
+      }
+    Absent =>
+      provider_refused_cross_family_from_admission(
+        key: closure_digest,
+        hash: closure_digest
+      )
+  }
 }
 
 data materialization_provider_reader_predicate_contract: Disposition = Terminal {
@@ -464,6 +808,7 @@ fn lookup_fold<T>(
   kind_mismatch: fn(ContentHash, ArtifactKindId, ArtifactKindId) -> T,
   wrong_artifact: fn(ContentHash, ContentHash) -> T,
   wrong_content: fn(ContentHash, ContentHash, ContentHash) -> T,
+  cross_family: fn(ContentHash, HashFamily) -> T,
   incomplete: fn(ContentHash, List<ArtifactOutputId>) -> T
 ) -> T {
   match l {
@@ -472,6 +817,7 @@ fn lookup_fold<T>(
     ProviderRefusedKindMismatch { key: k, requested: r, found: f } => kind_mismatch(k, r, f)
     ProviderRefusedWrongArtifact { key: k, found_key: fk } => wrong_artifact(k, fk)
     ProviderRefusedWrongContent { key: k, recorded: r, observed: o } => wrong_content(k, r, o)
+    ProviderRefusedCrossFamilyContentHash { key: k, family: f } => cross_family(k, f)
     ProviderRefusedIncomplete { key: k, missing: m } => incomplete(k, m)
   }
 }
@@ -484,6 +830,7 @@ fn lookup_is_hit(l: ProviderLookup) -> Bool {
     kind_mismatch: (k, r, f) => false,
     wrong_artifact: (k, fk) => false,
     wrong_content: (k, r, o) => false,
+    cross_family: (k, f) => false,
     incomplete: (k, m) => false
   )
 }
@@ -496,6 +843,7 @@ fn lookup_is_miss(l: ProviderLookup) -> Bool {
     kind_mismatch: (k, r, f) => false,
     wrong_artifact: (k, fk) => false,
     wrong_content: (k, r, o) => false,
+    cross_family: (k, f) => false,
     incomplete: (k, m) => false
   )
 }
@@ -508,6 +856,7 @@ fn lookup_is_refused_kind_mismatch(l: ProviderLookup) -> Bool {
     kind_mismatch: (k, r, f) => true,
     wrong_artifact: (k, fk) => false,
     wrong_content: (k, r, o) => false,
+    cross_family: (k, f) => false,
     incomplete: (k, m) => false
   )
 }
@@ -520,6 +869,7 @@ fn lookup_is_refused_wrong_artifact(l: ProviderLookup) -> Bool {
     kind_mismatch: (k, r, f) => false,
     wrong_artifact: (k, fk) => true,
     wrong_content: (k, r, o) => false,
+    cross_family: (k, f) => false,
     incomplete: (k, m) => false
   )
 }
@@ -532,6 +882,20 @@ fn lookup_is_refused_wrong_content(l: ProviderLookup) -> Bool {
     kind_mismatch: (k, r, f) => false,
     wrong_artifact: (k, fk) => false,
     wrong_content: (k, r, o) => true,
+    cross_family: (k, f) => false,
+    incomplete: (k, m) => false
+  )
+}
+
+fn lookup_is_refused_cross_family_content_hash(l: ProviderLookup) -> Bool {
+  lookup_fold(
+    l: l,
+    hit: (a, i) => false,
+    miss: k => false,
+    kind_mismatch: (k, r, f) => false,
+    wrong_artifact: (k, fk) => false,
+    wrong_content: (k, r, o) => false,
+    cross_family: (k, f) => true,
     incomplete: (k, m) => false
   )
 }
@@ -544,6 +908,7 @@ fn lookup_served_identity(l: ProviderLookup) -> ComputationIdentity {
     kind_mismatch: (k, r, f) => IdentityUnknown { cause: MissingEnforcement { detail: "artifact kind disagrees with the request kind" } },
     wrong_artifact: (k, fk) => IdentityUnknown { cause: MissingEnforcement { detail: "artifact was keyed for a different request" } },
     wrong_content: (k, r, o) => IdentityUnknown { cause: MissingEnforcement { detail: "read-back content digest disagrees with the recorded digest" } },
+    cross_family: (k, f) => IdentityUnknown { cause: MissingEnforcement { detail: "content hash family is incompatible with the fnv1a64 structural seam" } },
     incomplete: (k, m) => IdentityUnknown { cause: MissingConcept { detail: "artifact does not carry every correctness-relevant output the request requires" } }
   )
 }
@@ -556,7 +921,21 @@ fn lookup_refused_incomplete_missing(l: ProviderLookup) -> List<ArtifactOutputId
     kind_mismatch: (k, r, f) => no_output_ids,
     wrong_artifact: (k, fk) => no_output_ids,
     wrong_content: (k, r, o) => no_output_ids,
+    cross_family: (k, f) => no_output_ids,
     incomplete: (k, m) => m
+  )
+}
+
+fn provider_lookup_outcome_tag(l: ProviderLookup) -> String {
+  lookup_fold(
+    l: l,
+    hit: (a, i) => "hit",
+    miss: k => "miss",
+    kind_mismatch: (k, r, f) => "kind_mismatch",
+    wrong_artifact: (k, fk) => "wrong_artifact",
+    wrong_content: (k, r, o) => "wrong_content",
+    cross_family: (k, f) => "cross_family_hash",
+    incomplete: (k, m) => "incomplete"
   )
 }
 

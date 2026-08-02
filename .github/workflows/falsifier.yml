@@ -112,6 +112,7 @@ jobs:
         env:
           GUNBC_CI_DIFF_BASE: HEAD~20
           GUNBC_CI_DIFF_HEAD: HEAD
+          GUNBC_FLOOR_PHASE_JOURNAL: target/floor-phase-journal.tsv
         timeout-minutes: 170
       - name: Upload floor component receipt (read by falsifier-alert)
         uses: actions/upload-artifact@v4
@@ -133,14 +134,23 @@ jobs:
       - name: native-cache cold control (warm-tier admission counterpart)
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          "$ROOT/target/release/claim_executor" --source-root dag --source-root src/v2 --plan-entry src/v2/workflow/ci_floor_plan.dag --plan-function gunbc_falsifier_native_cache_cold_batches
+          "$ROOT/target/release/claim_executor" --source-root dag --source-root src/v2 --plan-entry src/v2/workflow/ci_floor_plan.dag --plan-function gunbc_falsifier_native_cache_cold_plan
         env:
           GUNBC_CI_NATIVE_CACHE_COLD_CONTROL: 1
         timeout-minutes: 30
       - name: Floor cgroup peak post-read (calibration; survives a killed floor)
         run: |
+          # 🟡 dissolve-on: ci_floor_phase_journal_if — bounded foreign-executor (GitHub Actions run:) shell transport for exactly four journal leaves: FileExists, header log, prefixed file read, and absent log. If/else control flow is already v2.std.orchestration intent; only those leaves remain medium-as-string Run.command values. DISSOLVES WHEN bash-emit (#5828 / ROADMAP shell-effectplan-to-bash / shell→intent Phase 2) binds typed filesystem observation plus diagnostic-log operations through host_effect_apply, so ci_floor_phase_journal_if contains no opaque shell command text.
+          if [ -f "$GUNBC_FLOOR_PHASE_JOURNAL" ]; then
+          echo "[floor-phase-journal] unix_millis pid phase state detail"
+          sed 's/^/[floor-phase-journal] /' "$GUNBC_FLOOR_PHASE_JOURNAL"
+          else
+          echo "[floor-phase-journal] absent"
+          fi
           d="/sys/fs/cgroup$(awk -F: '$1=="0"{print $3}' /proc/self/cgroup)"
           while [ -n "$d" ] && [ "$d" != "/sys/fs/cgroup" ] && [ ! -f "$d/memory.peak" ]; do d=$(dirname "$d"); done
           if [ -f "$d/memory.peak" ]; then echo "[calibration] floor_peak_post=$(cat "$d/memory.peak") floor_outcome=${{ steps.floor.outcome }} cgroup=$d (observation label: floor_outcome=success is an EXACT point; any other outcome is a CENSORED lower bound - the process was killed while exceeding the read, so true demand is strictly greater. scope per the floor_peak_pre line: reset=ok means this IS the floor peak; scope=span compares against pre_peak)"; else echo "[calibration] floor_peak_post floor_outcome=${{ steps.floor.outcome }} scope=unavailable (no memory.peak ancestor)"; fi
+        env:
+          GUNBC_FLOOR_PHASE_JOURNAL: target/floor-phase-journal.tsv
         if: always()
         timeout-minutes: 5

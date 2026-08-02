@@ -9,6 +9,21 @@ import gunbc.roadmap_model {
   Sized,
 }
 import gunbc.roadmap_status { DerivableLine, Unsigned }
+import gunbc.roadmap_publish {
+  PublicationReceiptSource,
+  ReceiptSourceAbsent, ReceiptSourcePresent, ReceiptSourceUnreadable,
+  PublicationSubject,
+  PublicationSubjectObservation,
+  PublicationSubjectObserved, PublicationSubjectUnobserved,
+  PublicationOutcome, PublicationBound,
+  publication_receipt_of,
+  publication_receipt_json,
+  adjudicate_publication,
+  PullRequestsRead, RemoteBranchesRead,
+}
+import extdeps.github.pulls { PullRequest, PullRequestRef, Open }
+import extdeps.github.github { GitHubUser, User, Repository }
+import std.types { CommitSha }
 import gunbc.roadmap_execution_contract {
   ExecutionContractUnspecified,
   gunbc_claim_execution_contract,
@@ -50,6 +65,15 @@ import gunbc.roadmap_belt_actuate {
   belt_oracle_refs_for_contract,
   belt_verify_attempt_for_instance,
   belt_workflow_attempt_presentation_json,
+  belt_workflow_attempt_presentation_json_with_tick_read,
+  belt_verification_presentation_detail,
+  belt_tick_receipt_decode,
+  belt_tick_receipt_read_from_filesystem,
+  belt_tick_receipt_wire_json_from_read,
+  BeltTickReceiptRead,
+  BeltTickReceiptAbsent,
+  BeltTickReceiptPresent,
+  BeltTickReceiptUnreadable,
   BeltVerifyOutcome,
   VerifyDeferred,
   VerifyRecorded,
@@ -79,6 +103,28 @@ import gunbc.roadmap_belt_actuate {
   BeltFootprintAdmission, FootprintAdmitted, FootprintRefused,
   belt_footprint_admission_decision,
   belt_dispatch_footprint_roots,
+  WorktreeHeadObservation, WorktreeHeadObserved, WorktreeHeadUnobserved,
+  worktree_head_observation_of,
+  belt_publication_subject_for,
+  BeltPublishGate, PublishProceed, PublishHalted,
+  belt_publish_gate,
+  belt_listing_names_entry,
+  belt_publish_write_outcome,
+  BeltPublishOutcome,
+  PublishRecorded, PublishAlreadyRecorded, PublishEvidenceUnreadable,
+  PublishWriteFailed, PublishDeferred,
+  BeltPassOutcome,
+  BeltPassRecorded, BeltPassDeferred, BeltPassRefused, BeltPassFailed,
+  BeltTickReceipt,
+  belt_tick_receipt_from_result,
+  belt_tick_empty_reconcile,
+  BeltTickResult,
+  Running,
+  belt_dashboard_instance_lookup_for_spawn_workdir,
+  SpawnWorkdirInstanceResolved,
+  UnknownSpawnWorkdir,
+  srv1_live_dashboard_instance,
+  srv1_green_dashboard_instance,
 }
 import extdeps.languages.json.emit { serialize_json }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -760,6 +806,23 @@ fn completed_attempt_progress(node_id: String) -> WorkflowAttemptProgress {
     validation_summary: "gunbc run --claim-run",
     validation_receipt_readable: false,
     validation_receipt: "",
+    publication_subject: PublicationSubjectObserved {
+      subject: PublicationSubject {
+        node_id: "pub-fixture-node",
+        attempt_key: "feedfacefeedface",
+        repository: Repository {
+          owner: "gunb-ai",
+          name: "gunbc",
+          full_name: "gunb-ai/gunbc",
+          private: false,
+          default_branch: "main",
+        },
+        branch: "dispatch/pub-fixture-node-afeedfacefeedface" as NonEmptyStr,
+        expected_base: "main" as NonEmptyStr,
+        expected_head: "cafecafecafecafecafecafecafecafecafecafe" as CommitSha,
+      },
+    },
+    publication_source: ReceiptSourceAbsent,
   })
 }
 
@@ -815,6 +878,23 @@ test fn agent_incomplete_attempt_defers_verification() -> Bool {
       validation_summary: "gunbc run --claim-run",
       validation_receipt_readable: false,
       validation_receipt: "",
+      publication_subject: PublicationSubjectObserved {
+        subject: PublicationSubject {
+          node_id: "pub-fixture-node",
+          attempt_key: "feedfacefeedface",
+          repository: Repository {
+            owner: "gunb-ai",
+            name: "gunbc",
+            full_name: "gunb-ai/gunbc",
+            private: false,
+            default_branch: "main",
+          },
+          branch: "dispatch/pub-fixture-node-afeedfacefeedface" as NonEmptyStr,
+          expected_base: "main" as NonEmptyStr,
+          expected_head: "cafecafecafecafecafecafecafecafecafecafe" as CommitSha,
+        },
+      },
+      publication_source: ReceiptSourceAbsent,
     }),
   ) {
     VerifyDeferred { node_id: _, reason } =>
@@ -840,6 +920,225 @@ test fn dashboard_instance_dispatch_contract_keystone_holds() -> Bool {
     && oracle_refs_projection_runs_and_selects_pinnable_scopes()
     && unreadable_validation_receipt_refuses_instead_of_rerunning()
     && agent_incomplete_attempt_defers_verification()
+    && observe_refused_spawn_does_not_zero_verify_pass()
+    && observe_refused_with_empty_verify_is_deferred_not_recorded()
+    && unknown_spawn_workdir_refuses_instance_resolution()
+    && known_spawn_workdirs_resolve_to_distinct_instances()
+    && verification_presentation_absent_receipt_is_queued()
+    && verification_presentation_unreadable_receipt_is_blocked()
+    && verification_presentation_decouples_verify_from_spawn_observe_refusal()
+    && verification_presentation_verify_refused_is_blocked()
+    && verification_presentation_verify_failed_is_failed()
+    && verification_presentation_wire_carries_detail()
+    && malformed_pass_reason_makes_receipt_unreadable()
+    && belt_tick_receipt_missing_file_read_is_absent()
+    && belt_tick_receipt_io_failure_read_is_unreadable()
+}
+
+test fn unknown_spawn_workdir_refuses_instance_resolution() -> Bool {
+  match belt_dashboard_instance_lookup_for_spawn_workdir(workdir: "/typo/gunbc") {
+    UnknownSpawnWorkdir { workdir: w } => w == "/typo/gunbc"
+    SpawnWorkdirInstanceResolved { instance: _ } => false
+  }
+}
+
+test fn known_spawn_workdirs_resolve_to_distinct_instances() -> Bool {
+  match belt_dashboard_instance_lookup_for_spawn_workdir(
+    workdir: srv1_live_dashboard_instance().repo_root as String,
+  ) {
+    SpawnWorkdirInstanceResolved { instance: live } =>
+      match belt_dashboard_instance_lookup_for_spawn_workdir(
+        workdir: srv1_green_dashboard_instance().repo_root as String,
+      ) {
+        SpawnWorkdirInstanceResolved { instance: green } =>
+          (live.instance_id as String) != (green.instance_id as String)
+        UnknownSpawnWorkdir { workdir: _ } => false
+      }
+    UnknownSpawnWorkdir { workdir: _ } => false
+  }
+}
+
+data belt_tick_decouple_witness_note: String = "RED control (operator P1, 2026-08-02): a tmux-list refusal must NOT zero the verify pass. The defect class was belt_tick returning empty verify_outcomes on ObserveRefused — an absorbing fallback that made the whole tick look like verification never ran. The witness constructs the post-fix shape synthetically: spawn_pass is Refused while verify_pass is still Recorded when verify outcomes exist."
+
+test fn observe_refused_spawn_does_not_zero_verify_pass() -> Bool {
+  let result = BeltTickResult {
+    observe_refused: true,
+    observe_refusal_reason: "belt_observe: tmux ls failed; session containers are unknowable",
+    reconcile: belt_tick_empty_reconcile(state: Running),
+    spawn_outcomes: [],
+    teardown_outcomes: [],
+    verify_outcomes: [
+      VerifyRecorded {
+        node_id: "v2-emitter-producer-provenance",
+        verdict_key: "refused",
+        detail: "validation refused",
+      },
+    ],
+    publish_outcomes: [],
+  }
+  let receipt = belt_tick_receipt_from_result(
+    result: result,
+    observed_at: "2026-08-02T02:00:00Z",
+  )
+  match receipt.spawn_pass {
+    BeltPassRefused { reason: _ } => true
+    _ => false
+  }
+    && match receipt.verify_pass {
+      BeltPassRecorded => true
+      _ => false
+    }
+}
+
+test fn observe_refused_with_empty_verify_is_deferred_not_recorded() -> Bool {
+  let result = BeltTickResult {
+    observe_refused: true,
+    observe_refusal_reason: "tmux refused",
+    reconcile: belt_tick_empty_reconcile(state: Running),
+    spawn_outcomes: [],
+    teardown_outcomes: [],
+    verify_outcomes: [
+      VerifyDeferred {
+        node_id: "node-a",
+        reason: "agent obligation is not satisfied",
+      },
+    ],
+    publish_outcomes: [],
+  }
+  match belt_tick_receipt_from_result(
+    result: result,
+    observed_at: "2026-08-02T02:00:00Z",
+  ).verify_pass {
+    BeltPassDeferred { reason: _ } => true
+    BeltPassRecorded => false
+    BeltPassRefused { reason: _ } => false
+    BeltPassFailed { reason: _ } => false
+  }
+}
+
+data verification_presentation_witness_note: String = "review 47210 spec-without-execution: decoupling is witnessed at the receipt layer but the presentation join had no executing consumer. These rows execute belt_verification_presentation_detail and the wire join against synthetic tick reads so the headline strings ('Verification queued - next belt tick', 'Verification blocked · …', observe-refusal vs verify-recorded at the UI layer) cannot drift without going red."
+
+test fn verification_presentation_absent_receipt_is_queued() -> Bool {
+  belt_verification_presentation_detail(
+    progress: completed_attempt_progress(node_id: "pres-absent-node"),
+    tick_read: BeltTickReceiptAbsent,
+  ) == "Verification queued - next belt tick"
+}
+
+test fn verification_presentation_unreadable_receipt_is_blocked() -> Bool {
+  let detail = belt_verification_presentation_detail(
+    progress: completed_attempt_progress(node_id: "pres-unreadable-node"),
+    tick_read: BeltTickReceiptUnreadable { reason: "belt tick receipt schema is unknown" },
+  )
+  string_contains(s: detail, pattern: "Verification blocked · belt tick receipt unreadable: ")
+    && string_contains(s: detail, pattern: "schema is unknown")
+}
+
+test fn verification_presentation_decouples_verify_from_spawn_observe_refusal() -> Bool {
+  let receipt = belt_tick_receipt_from_result(
+    result: BeltTickResult {
+      observe_refused: true,
+      observe_refusal_reason: "belt_observe: tmux ls failed; session containers are unknowable",
+      reconcile: belt_tick_empty_reconcile(state: Running),
+      spawn_outcomes: [],
+      teardown_outcomes: [],
+      verify_outcomes: [
+        VerifyRecorded {
+          node_id: "v2-emitter-producer-provenance",
+          verdict_key: "refused",
+          detail: "validation refused",
+        },
+      ],
+      publish_outcomes: [],
+    },
+    observed_at: "2026-08-02T02:00:00Z",
+  )
+  let detail = belt_verification_presentation_detail(
+    progress: completed_attempt_progress(node_id: "pres-decouple-node"),
+    tick_read: BeltTickReceiptPresent { receipt: receipt },
+  )
+  !string_contains(s: detail, pattern: "tmux ls failed")
+    && string_contains(s: detail, pattern: "Verification queued")
+}
+
+test fn verification_presentation_verify_refused_is_blocked() -> Bool {
+  let receipt = BeltTickReceipt {
+    observed_at: "2026-08-02T02:00:00Z",
+    spawn_pass: BeltPassRecorded,
+    teardown_pass: BeltPassRecorded,
+    verify_pass: BeltPassRefused { reason: "validation receipt could not be read" },
+    publish_pass: BeltPassDeferred { reason: "publish waits on verify" },
+  }
+  let detail = belt_verification_presentation_detail(
+    progress: completed_attempt_progress(node_id: "pres-verify-refused-node"),
+    tick_read: BeltTickReceiptPresent { receipt: receipt },
+  )
+  detail == "Verification blocked · validation receipt could not be read"
+}
+
+test fn verification_presentation_verify_failed_is_failed() -> Bool {
+  let receipt = BeltTickReceipt {
+    observed_at: "2026-08-02T02:00:00Z",
+    spawn_pass: BeltPassRecorded,
+    teardown_pass: BeltPassRecorded,
+    verify_pass: BeltPassFailed { reason: "validation verdict failed" },
+    publish_pass: BeltPassDeferred { reason: "publish waits on verify" },
+  }
+  let detail = belt_verification_presentation_detail(
+    progress: completed_attempt_progress(node_id: "pres-verify-failed-node"),
+    tick_read: BeltTickReceiptPresent { receipt: receipt },
+  )
+  detail == "Verification failed · validation verdict failed"
+}
+
+test fn verification_presentation_wire_carries_detail() -> Bool {
+  let j = serialize_json(v: belt_workflow_attempt_presentation_json_with_tick_read(
+    progress: completed_attempt_progress(node_id: "pres-wire-node"),
+    tick_read: BeltTickReceiptAbsent,
+  ))
+  string_contains(s: j, pattern: "\"verification_presentation\": \"Verification queued - next belt tick\"")
+}
+
+test fn malformed_pass_reason_makes_receipt_unreadable() -> Bool {
+  let raw = join([
+    "{\"schema\":\"roadmap-belt-tick-receipt/v2\",",
+    "\"observed_at\":\"2026-08-02T02:00:00Z\",",
+    "\"spawn_pass\":{\"outcome\":\"recorded\"},",
+    "\"teardown_pass\":{\"outcome\":\"recorded\"},",
+    "\"verify_pass\":{\"outcome\":\"refused\"},",
+    "\"publish_pass\":{\"outcome\":\"recorded\"}}",
+  ], "")
+  match belt_tick_receipt_decode(raw: raw) {
+    BeltTickReceiptUnreadable { reason: r } =>
+      string_contains(s: r, pattern: "refused without reason")
+    BeltTickReceiptPresent { receipt: _ } => false
+    BeltTickReceiptAbsent => false
+  }
+}
+
+test fn belt_tick_receipt_missing_file_read_is_absent() -> Bool {
+  match belt_tick_receipt_read_from_filesystem(
+    success: false,
+    content: "",
+    error: "No such file or directory (os error 2)",
+  ) {
+    BeltTickReceiptAbsent => true
+    BeltTickReceiptPresent { receipt: _ } => false
+    BeltTickReceiptUnreadable { reason: _ } => false
+  }
+}
+
+test fn belt_tick_receipt_io_failure_read_is_unreadable() -> Bool {
+  match belt_tick_receipt_read_from_filesystem(
+    success: false,
+    content: "",
+    error: "Permission denied (os error 13)",
+  ) {
+    BeltTickReceiptUnreadable { reason: r } =>
+      string_contains(s: r, pattern: "Permission denied")
+    BeltTickReceiptPresent { receipt: _ } => false
+    BeltTickReceiptAbsent => false
+  }
 }
 
 data attempt_grain_home_note: String = "The attempt-grain claim (U1) is PURE — content hashes and string derivations, no host reach — so it lives in dag/test/claim/dispatch_attempts_witness_test.dag, which discovery scans on every affected PR. This file is BinWitnessWet-excluded because its witnesses execute real host commands; a pure row parked here is enrolled with zero executing consumers, which is exactly what the Phase 0(b) admission invariant refused (CI 30184138800). Deferral is a property of the EXECUTION the row needs, never of the module it happens to name."
@@ -944,4 +1243,325 @@ test fn witness_footprint_roots_cover_both_belt_write_targets() -> Bool {
   let has_worktrees = string_contains(s: paths, pattern: "attempts")
   let has_attempt_state = string_contains(s: paths, pattern: "attempt-state")
   has_worktrees && has_attempt_state
+}
+
+data belt_publish_producer_witness_note: String = "THE PRODUCER'S DECISION, EXERCISED WITHOUT A NETWORK OR A FILESYSTEM. belt_publish_attempt_for_instance performs three effects - read the existing receipt, observe the two remote surfaces, write the judgment - and every branch it takes is decided by belt_publish_gate and belt_publish_write_outcome, both pure. That split is what makes these claims possible at all: an arm that fires when a receipt on disk turns out to be about another attempt would otherwise be reachable only by arranging that state on a real host.\\n\\nTHE GATE'S JOB IS TO DECIDE WHETHER TO OBSERVE. Three of the five outcomes are settled by what is already on disk, and none of them should cost a GitHub read or risk overwriting evidence. The claims below pin each: a receipt for this exact subject halts as already-recorded, an undecodable one halts rather than being replaced, one about another subject halts rather than being corrected, and only genuine absence proceeds.\\n\\nTHE SUBJECT IS BUILT FROM AN OBSERVED HEAD OR NOT AT ALL. An attempt whose worktree head cannot be read has no subject, so the producer defers with the reason rather than adjudicating against a branch name - which is the lookup this whole lane replaced."
+
+data belt_pub_head: CommitSha = "1111111111111111111111111111111111111111"
+data belt_pub_other_head: CommitSha = "2222222222222222222222222222222222222222"
+
+fn belt_pub_subject(head: CommitSha, node_id: String) -> PublicationSubject {
+  PublicationSubject {
+    node_id: node_id,
+    attempt_key: "feedfacefeedface",
+    repository: Repository {
+      owner: "gunb-ai",
+      name: "gunbc",
+      full_name: "gunb-ai/gunbc",
+      private: false,
+      default_branch: "main",
+    },
+    branch: "dispatch/belt-pub-node-afeedfacefeedface" as NonEmptyStr,
+    expected_base: "main" as NonEmptyStr,
+    expected_head: head,
+  }
+}
+
+fn belt_pub_receipt(head: CommitSha, node_id: String) -> String {
+  publication_receipt_json(
+    receipt: publication_receipt_of(
+      subject: belt_pub_subject(head: head, node_id: node_id),
+      outcome: adjudicate_publication(
+        pulls: PullRequestsRead {
+          pulls: [
+            PullRequest {
+              number: 1234,
+              title: "a change",
+              body: none,
+              state: Open,
+              html_url: "https://github.com/gunb-ai/gunbc/pull/1234" as NonEmptyStr,
+              user: GitHubUser { login: "someone", id: 1, type: User },
+              head: PullRequestRef {
+                ref: "dispatch/belt-pub-node-afeedfacefeedface",
+                sha: head,
+                label: "head",
+              },
+              base: PullRequestRef { ref: "main", sha: belt_pub_other_head, label: "base" },
+              created_at: "2026-08-01T00:00:00Z",
+              updated_at: "2026-08-01T00:00:00Z",
+              merged_at: none,
+              draft: false,
+            },
+          ],
+        },
+        remotes: RemoteBranchesRead { branches: [] },
+        remote: "https://github.com/gunb-ai/gunbc.git" as NonEmptyStr,
+        branch: "dispatch/belt-pub-node-afeedfacefeedface" as NonEmptyStr,
+        expected_base: "main" as NonEmptyStr,
+        expected_head: head,
+      ),
+    ),
+  )
+}
+
+fn belt_pub_gate_key(gate: BeltPublishGate) -> String {
+  match gate {
+    PublishProceed => "proceed"
+    PublishHalted { outcome } =>
+      match outcome {
+        PublishAlreadyRecorded { node_id: _, head_sha: _ } => "already-recorded"
+        PublishEvidenceUnreadable { node_id: _, detail: _ } => "evidence-unreadable"
+        PublishRecorded { node_id: _, head_sha: _, outcome_key: _ } => "recorded"
+        PublishWriteFailed { node_id: _, detail: _ } => "write-failed"
+        PublishDeferred { node_id: _, reason: _ } => "deferred"
+      }
+  }
+}
+
+test fn an_absent_receipt_lets_the_publish_producer_proceed() -> Bool {
+  belt_pub_gate_key(
+    gate: belt_publish_gate(
+      node_id: "belt-pub-node",
+      subject: belt_pub_subject(head: belt_pub_head, node_id: "belt-pub-node"),
+      existing: ReceiptSourceAbsent,
+    ),
+  ) == "proceed"
+}
+
+test fn a_receipt_for_this_head_halts_the_publish_producer() -> Bool {
+  belt_pub_gate_key(
+    gate: belt_publish_gate(
+      node_id: "belt-pub-node",
+      subject: belt_pub_subject(head: belt_pub_head, node_id: "belt-pub-node"),
+      existing: ReceiptSourcePresent { text: belt_pub_receipt(head: belt_pub_head, node_id: "belt-pub-node") },
+    ),
+  ) == "already-recorded"
+}
+
+test fn a_receipt_about_another_subject_is_not_overwritten() -> Bool {
+  match belt_publish_gate(
+    node_id: "belt-pub-node",
+    subject: belt_pub_subject(head: belt_pub_head, node_id: "belt-pub-node"),
+    existing: ReceiptSourcePresent { text: belt_pub_receipt(head: belt_pub_head, node_id: "another-node") },
+  ) {
+    PublishProceed => false
+    PublishHalted { outcome } =>
+      match outcome {
+        PublishEvidenceUnreadable { node_id, detail } =>
+          node_id == "belt-pub-node"
+            && string_contains(s: detail, pattern: "another subject")
+            && string_contains(s: detail, pattern: "node_id")
+            && string_contains(s: detail, pattern: "refuses to overwrite")
+        PublishAlreadyRecorded { node_id: _, head_sha: _ } => false
+        PublishRecorded { node_id: _, head_sha: _, outcome_key: _ } => false
+        PublishWriteFailed { node_id: _, detail: _ } => false
+        PublishDeferred { node_id: _, reason: _ } => false
+      }
+  }
+}
+
+data unreadable_is_not_absent_note: String = "THE DEFECT THIS REFUSES, from review 46148: an I/O failure reading an existing receipt used to arrive at the gate as `readable=false`, which the evidence layer classified as EvidenceAbsent and the gate turned into PublishProceed - so a transient read fault would have OVERWRITTEN a receipt the belt could not read. Absent and unreadable have opposite correct actions, so the two are now distinct constructors and there is no spelling for the conflation.\\n\\nThese two claims are the pair, and only the pair discriminates: absent proceeds, unreadable halts. Asserting either alone would pass under the defect - the old code proceeded on both."
+
+test fn an_unreadable_receipt_halts_rather_than_being_overwritten() -> Bool {
+  match belt_publish_gate(
+    node_id: "belt-pub-node",
+    subject: belt_pub_subject(head: belt_pub_head, node_id: "belt-pub-node"),
+    existing: ReceiptSourceUnreadable { detail: "input/output error" },
+  ) {
+    PublishProceed => false
+    PublishHalted { outcome } =>
+      match outcome {
+        PublishEvidenceUnreadable { node_id: _, detail } =>
+          string_contains(s: detail, pattern: "cannot read")
+            && string_contains(s: detail, pattern: "input/output error")
+        PublishAlreadyRecorded { node_id: _, head_sha: _ } => false
+        PublishRecorded { node_id: _, head_sha: _, outcome_key: _ } => false
+        PublishWriteFailed { node_id: _, detail: _ } => false
+        PublishDeferred { node_id: _, reason: _ } => false
+      }
+  }
+}
+
+test fn a_present_but_empty_receipt_is_a_fault_not_an_absence() -> Bool {
+  match belt_publish_gate(
+    node_id: "belt-pub-node",
+    subject: belt_pub_subject(head: belt_pub_head, node_id: "belt-pub-node"),
+    existing: ReceiptSourcePresent { text: "  " },
+  ) {
+    PublishProceed => false
+    PublishHalted { outcome } =>
+      match outcome {
+        PublishEvidenceUnreadable { node_id: _, detail: _ } => true
+        PublishAlreadyRecorded { node_id: _, head_sha: _ } => false
+        PublishRecorded { node_id: _, head_sha: _, outcome_key: _ } => false
+        PublishWriteFailed { node_id: _, detail: _ } => false
+        PublishDeferred { node_id: _, reason: _ } => false
+      }
+  }
+}
+
+data listing_membership_note: String = "The line-exact membership test is what makes every ABSENCE conclusion in belt_publication_receipt_source a fact rather than a spelling coincidence. A plain substring test would find a head sha inside a longer one, or a receipt name inside its own .tmp sibling, and would then report a receipt PRESENT that is not there - or, worse under the opposite skew, miss one that is. The prefix and suffix cases are asserted, not just the positive."
+
+test fn listing_membership_is_line_exact_not_substring() -> Bool {
+  let listing = join(["alpha.json", "beta.json", "beta.json.tmp"], "\n")
+  belt_listing_names_entry(listing: listing, name: "alpha.json")
+    && belt_listing_names_entry(listing: listing, name: "beta.json")
+    && belt_listing_names_entry(listing: listing, name: "beta.json.tmp")
+    && !belt_listing_names_entry(listing: listing, name: "eta.json")
+    && !belt_listing_names_entry(listing: listing, name: "beta")
+    && !belt_listing_names_entry(listing: listing, name: "gamma.json")
+    && !belt_listing_names_entry(listing: "", name: "alpha.json")
+}
+
+test fn an_undecodable_receipt_is_not_overwritten_either() -> Bool {
+  match belt_publish_gate(
+    node_id: "belt-pub-node",
+    subject: belt_pub_subject(head: belt_pub_head, node_id: "belt-pub-node"),
+    existing: ReceiptSourcePresent { text: "not a receipt" },
+  ) {
+    PublishProceed => false
+    PublishHalted { outcome } =>
+      match outcome {
+        PublishEvidenceUnreadable { node_id: _, detail } =>
+          string_contains(s: detail, pattern: "cannot read")
+            && !string_contains(s: detail, pattern: "another subject")
+        PublishAlreadyRecorded { node_id: _, head_sha: _ } => false
+        PublishRecorded { node_id: _, head_sha: _, outcome_key: _ } => false
+        PublishWriteFailed { node_id: _, detail: _ } => false
+        PublishDeferred { node_id: _, reason: _ } => false
+      }
+  }
+}
+
+data write_failure_is_not_a_judgment_note: String = "A JUDGMENT REACHED AND THEN LOST IS NOT A JUDGMENT RECORDED. The write is the only thing that makes the adjudication durable, so a failed write must not report the outcome it computed - the next tick will find nothing on disk, and a caller told the head was published would be reading a fact that exists nowhere. The pair below asserts the same receipt produces different producer outcomes purely on whether the write succeeded."
+
+test fn a_failed_write_reports_loss_rather_than_the_outcome_it_computed() -> Bool {
+  let subject = belt_pub_subject(head: belt_pub_head, node_id: "belt-pub-node")
+  let receipt = publication_receipt_of(
+    subject: subject,
+    outcome: adjudicate_publication(
+      pulls: PullRequestsRead { pulls: [] },
+      remotes: RemoteBranchesRead { branches: [] },
+      remote: "https://github.com/gunb-ai/gunbc.git" as NonEmptyStr,
+      branch: "dispatch/belt-pub-node-afeedfacefeedface" as NonEmptyStr,
+      expected_base: "main" as NonEmptyStr,
+      expected_head: belt_pub_head,
+    ),
+  )
+  let ok = belt_publish_write_outcome(
+    node_id: "belt-pub-node",
+    subject: subject,
+    receipt: receipt,
+    write_success: true,
+    write_error: "",
+  )
+  let lost = belt_publish_write_outcome(
+    node_id: "belt-pub-node",
+    subject: subject,
+    receipt: receipt,
+    write_success: false,
+    write_error: "read-only file system",
+  )
+  match ok {
+    PublishRecorded { node_id: _, head_sha, outcome_key } =>
+      head_sha == (belt_pub_head as String)
+        && outcome_key == "branch-not-published"
+        && match lost {
+          PublishWriteFailed { node_id: _, detail } =>
+            string_contains(s: detail, pattern: "read-only file system")
+              && string_contains(s: detail, pattern: "reached and then lost")
+          PublishRecorded { node_id: _, head_sha: _, outcome_key: _ } => false
+          PublishAlreadyRecorded { node_id: _, head_sha: _ } => false
+          PublishEvidenceUnreadable { node_id: _, detail: _ } => false
+          PublishDeferred { node_id: _, reason: _ } => false
+        }
+    PublishWriteFailed { node_id: _, detail: _ } => false
+    PublishAlreadyRecorded { node_id: _, head_sha: _ } => false
+    PublishEvidenceUnreadable { node_id: _, detail: _ } => false
+    PublishDeferred { node_id: _, reason: _ } => false
+  }
+}
+
+fn subject_key(observation: PublicationSubjectObservation) -> String {
+  match observation {
+    PublicationSubjectObserved { subject } => subject.expected_head as String
+    PublicationSubjectUnobserved { reason: _ } => ""
+  }
+}
+
+test fn an_unreadable_worktree_head_yields_no_publication_subject() -> Bool {
+  let missing = belt_publication_subject_for(
+    node_id: "belt-pub-node",
+    attempt_key: "feedfacefeedface",
+    branch: "dispatch/belt-pub-node-afeedfacefeedface",
+    head: worktree_head_observation_of(
+      outcome: ExecFailed {
+        program: "git",
+        exit_code: 128,
+        stderr: "not a git repository",
+      },
+    ),
+  )
+  let observed = belt_publication_subject_for(
+    node_id: "belt-pub-node",
+    attempt_key: "feedfacefeedface",
+    branch: "dispatch/belt-pub-node-afeedfacefeedface",
+    head: worktree_head_observation_of(
+      outcome: ExecOk { stdout: (belt_pub_head as String) },
+    ),
+  )
+  subject_key(observation: missing) == ""
+    && subject_key(observation: observed) == (belt_pub_head as String)
+    && match missing {
+      PublicationSubjectUnobserved { reason } =>
+        string_contains(s: reason, pattern: "exact head")
+          && string_contains(s: reason, pattern: "not a git repository")
+      PublicationSubjectObserved { subject: _ } => false
+    }
+}
+
+data zero_exit_empty_stdout_is_unobserved_note: String = "THE DISCRIMINATING CONTROL FOR THE HEAD READ, and the reason the exit code alone is not the test. git rev-parse HEAD exits zero and prints nothing on a worktree whose branch carries no commit yet, which a freshly created dispatch worktree is until the worker commits. A reader that trusted the exit code would cast an empty string into a CommitSha, producing a subject whose head matches no commit and compares equal to every other empty head - so a receipt written for it would be evidence for any attempt in the same state."
+
+test fn a_zero_exit_with_no_revision_is_unobserved_not_an_empty_head() -> Bool {
+  match worktree_head_observation_of(outcome: ExecOk { stdout: "\n" }) {
+    WorktreeHeadUnobserved { reason } =>
+      string_contains(s: reason, pattern: "no revision")
+    WorktreeHeadObserved { revision: _ } => false
+  }
+}
+
+data unsettled_receipt_must_not_freeze_the_row_note: String = "THE CLAIM THAT PINS THE IDEMPOTENCE KEY, and the defect it would have caught. The obvious key is `a receipt exists for this head`, and under it the belt's FIRST observation of a head - which normally happens before the worker has pushed - records branch-not-published and then halts on its own record forever. The row would report `not published` for the rest of the attempt's life, and the halt would be caused by the very receipt that observed the absence.\\n\\nSo the pair below drives the gate with two receipts for the SAME subject, differing only in what the remote showed: a bound one halts, an unpublished one proceeds. A gate keyed on existence rather than on settlement returns already-recorded for both, and this goes red."
+
+fn belt_pub_unpublished_receipt(head: CommitSha, node_id: String) -> String {
+  publication_receipt_json(
+    receipt: publication_receipt_of(
+      subject: belt_pub_subject(head: head, node_id: node_id),
+      outcome: adjudicate_publication(
+        pulls: PullRequestsRead { pulls: [] },
+        remotes: RemoteBranchesRead { branches: [] },
+        remote: "https://github.com/gunb-ai/gunbc.git" as NonEmptyStr,
+        branch: "dispatch/belt-pub-node-afeedfacefeedface" as NonEmptyStr,
+        expected_base: "main" as NonEmptyStr,
+        expected_head: head,
+      ),
+    ),
+  )
+}
+
+test fn an_unsettled_receipt_is_re_observed_rather_than_halting_the_row() -> Bool {
+  let settled = belt_pub_gate_key(
+    gate: belt_publish_gate(
+      node_id: "belt-pub-node",
+      subject: belt_pub_subject(head: belt_pub_head, node_id: "belt-pub-node"),
+      existing: ReceiptSourcePresent { text: belt_pub_receipt(head: belt_pub_head, node_id: "belt-pub-node") },
+    ),
+  )
+  let unsettled = belt_pub_gate_key(
+    gate: belt_publish_gate(
+      node_id: "belt-pub-node",
+      subject: belt_pub_subject(head: belt_pub_head, node_id: "belt-pub-node"),
+      existing: ReceiptSourcePresent { text: belt_pub_unpublished_receipt(head: belt_pub_head, node_id: "belt-pub-node") },
+    ),
+  )
+  settled == "already-recorded" && unsettled == "proceed" && settled != unsettled
 }

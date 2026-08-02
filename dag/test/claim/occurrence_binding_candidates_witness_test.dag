@@ -1,0 +1,1036 @@
+module test.claim.occurrence_binding_candidates_witness_test
+
+import std.types { Bool, SourceSpan, NonEmptyStr, CommitSha, String }
+import std.occurrence_identity {
+  OccurrenceId,
+  OccurrenceContainmentPath,
+  OccurrenceProjection,
+  OccurrenceIndexEntry,
+  OccurrenceIndex,
+  OccurrenceTransport,
+  DeclarationOccurrence,
+  ReferenceOccurrence,
+  OccurrenceCategory,
+  LexicalValueOccurrence,
+  CallableOccurrence,
+  AuthoredTokenOrdinal,
+}
+import std.occurrence_binding_candidates {
+  OccurrenceModulePathRow,
+  DeclarationExposureRow,
+  DeclarationExposure,
+  LexicalExposure,
+  ModuleExposure,
+  RootExposure,
+  AuthoredOrderRow,
+  OccurrenceBindingCandidateInputs,
+  BoundReferenceProvider,
+  DirectModuleDependency,
+  DirectModuleDependencyListReady,
+  AllReferencesBound,
+  ReferenceBindingProjection,
+  ReferenceBindingProjectionBound,
+  ReferenceBindingProjectionUnbound,
+  ReferenceBindingProjectionAmbiguous,
+  ReferenceBindingProjectionTransportRefused,
+  ReferenceBindingProjectionModulePathRefused,
+  ReferenceBindingProjectionModulePathMissing,
+  ReferenceBindingProjectionExposureRefused,
+  ReferenceBindingProjectionAuthoredOrderRefused,
+  ReferenceBindingProjectionDeclarationBucketRefused,
+  DuplicateOccurrenceModulePathRow,
+  ConflictingDeclarationExposure,
+  ConflictingAuthoredOrderRow,
+  MissingDeclarationExposure,
+  MissingAuthoredOrderRow,
+  MissingOccurrenceModulePathRow,
+  DirectModuleDependencyPopulationRefused,
+  ReferencePopulationRefused,
+  DeclarationsByNameReady,
+  DeclarationsByNameMissingIndexEntry,
+  Section13ExactHeadExecutionObservation,
+  Section13PopulationLawRosterHolds,
+  Section13PopulationLawRosterRefusedMissingObservation,
+  Section13PopulationLawRosterRefusedFailedOrStaleObservation,
+  section13_executing_receipt,
+  section13_witness_module_path,
+  section13_population_law_roster_adjudicate,
+  section13_population_law_roster_denominator_holds,
+  declarations_by_name_build,
+  resolve_reference_binding_via_structural_candidates,
+  direct_module_dependencies_from_providers,
+  direct_module_dependencies_from_bound_population,
+}
+
+fn obc_module_path(dotted: String) -> NonEmptyStr {
+  dotted as NonEmptyStr
+}
+
+fn obc_same_module(left: NonEmptyStr, right: NonEmptyStr) -> Bool {
+  left == right
+}
+
+fn obc_edge_matches(
+  edge: DirectModuleDependency,
+  consumer: String,
+  provider: String
+) -> Bool {
+  obc_same_module(left: edge.consumer_module, right: obc_module_path(dotted: consumer))
+    && obc_same_module(left: edge.provider_module, right: obc_module_path(dotted: provider))
+}
+
+fn obc_authored_order(occurrence: OccurrenceId) -> AuthoredOrderRow {
+  AuthoredOrderRow {
+    occurrence: occurrence,
+    ordinal: AuthoredTokenOrdinal { value: occurrence.value },
+  }
+}
+
+fn obc_module_exposure(occurrence: OccurrenceId, module: String) -> DeclarationExposureRow {
+  DeclarationExposureRow {
+    occurrence: occurrence,
+    exposure: ModuleExposure { module: obc_module_path(dotted: module) },
+  }
+}
+
+fn obc_lexical_exposure(
+  occurrence: OccurrenceId,
+  scope: OccurrenceContainmentPath
+) -> DeclarationExposureRow {
+  DeclarationExposureRow {
+    occurrence: occurrence,
+    exposure: LexicalExposure { exposing_scope: scope },
+  }
+}
+
+fn obc_root_exposure(occurrence: OccurrenceId) -> DeclarationExposureRow {
+  DeclarationExposureRow {
+    occurrence: occurrence,
+    exposure: RootExposure,
+  }
+}
+
+fn obc_fixture_inputs(
+  module_paths: List<OccurrenceModulePathRow>,
+  exposure_rows: List<DeclarationExposureRow>,
+  authored_order_rows: List<AuthoredOrderRow>
+) -> OccurrenceBindingCandidateInputs {
+  OccurrenceBindingCandidateInputs {
+    module_paths: module_paths,
+    exposure_rows: exposure_rows,
+    authored_order_rows: authored_order_rows,
+  }
+}
+
+fn obc_fixture_span(file: String, start: Int, end: Int) -> SourceSpan {
+  SourceSpan { file: file, start: start, end: end }
+}
+
+fn obc_fixture_path(
+  ancestors: List<OccurrenceId>,
+  terminal: OccurrenceId
+) -> OccurrenceContainmentPath {
+  OccurrenceContainmentPath {
+    ancestors: ancestors,
+    terminal: terminal,
+  }
+}
+
+fn obc_fixture_index_entry(
+  occurrence: OccurrenceId,
+  authored_name: String,
+  containment: OccurrenceContainmentPath
+) -> OccurrenceIndexEntry {
+  OccurrenceIndexEntry {
+    projection: OccurrenceProjection {
+      occurrence: occurrence,
+      authored_name: authored_name,
+      diagnostic_span: obc_fixture_span(file: "fixture.dag", start: 0, end: 1),
+    },
+    containment: containment,
+  }
+}
+
+fn obc_fixture_declaration(
+  occurrence: OccurrenceId,
+  containment: OccurrenceContainmentPath,
+  category: OccurrenceCategory
+) -> DeclarationOccurrence {
+  DeclarationOccurrence {
+    occurrence: occurrence,
+    containment: containment,
+    category: category,
+    diagnostic_span: obc_fixture_span(file: "fixture.dag", start: 0, end: 1),
+  }
+}
+
+fn obc_fixture_reference(
+  occurrence: OccurrenceId,
+  containment: OccurrenceContainmentPath,
+  category: OccurrenceCategory
+) -> ReferenceOccurrence {
+  ReferenceOccurrence {
+    occurrence: occurrence,
+    containment: containment,
+    category: category,
+    diagnostic_span: obc_fixture_span(file: "fixture.dag", start: 0, end: 1),
+  }
+}
+
+data occurrence_binding_candidates_witness_module_note: String = "Module rule 1 fixture: two module-level functions declared as direct siblings (neither's occurrence id is an ancestor of the other's body) inside one module. fn_a = 10, fn_b's call-site reference to fn_a = 30, both rows carrying module_path \"app.sibling_module\". The reference's own containment ancestors are just fn_b's own occurrence (20) -- there is no lexical nesting between fn_a and the reference at all, so occurrence_containment_path_is_prefix_of alone can never expose fn_a to it; only the module-sibling rule can."
+
+fn obc_module_sibling_transport() -> OccurrenceTransport {
+  let fn_a = OccurrenceId { value: 10 }
+  let fn_b = OccurrenceId { value: 20 }
+  let call_ref = OccurrenceId { value: 30 }
+  let fn_a_path = obc_fixture_path(ancestors: [], terminal: fn_a)
+  let fn_b_path = obc_fixture_path(ancestors: [], terminal: fn_b)
+  let call_ref_path = obc_fixture_path(ancestors: [fn_b], terminal: call_ref)
+  OccurrenceTransport {
+    index: OccurrenceIndex {
+      entries: [
+        obc_fixture_index_entry(occurrence: fn_a, authored_name: "fn_a", containment: fn_a_path),
+        obc_fixture_index_entry(occurrence: fn_b, authored_name: "fn_b", containment: fn_b_path),
+        obc_fixture_index_entry(occurrence: call_ref, authored_name: "fn_a", containment: call_ref_path),
+      ],
+    },
+    declarations: [
+      obc_fixture_declaration(occurrence: fn_a, containment: fn_a_path, category: CallableOccurrence),
+      obc_fixture_declaration(occurrence: fn_b, containment: fn_b_path, category: CallableOccurrence),
+    ],
+    references: [
+      obc_fixture_reference(occurrence: call_ref, containment: call_ref_path, category: CallableOccurrence),
+    ],
+  }
+}
+
+fn obc_module_sibling_module_paths() -> List<OccurrenceModulePathRow> {
+  [
+    OccurrenceModulePathRow { occurrence: OccurrenceId { value: 10 }, module_path: obc_module_path(dotted: "app.sibling_module") },
+    OccurrenceModulePathRow { occurrence: OccurrenceId { value: 20 }, module_path: obc_module_path(dotted: "app.sibling_module") },
+    OccurrenceModulePathRow { occurrence: OccurrenceId { value: 30 }, module_path: obc_module_path(dotted: "app.sibling_module") },
+  ]
+}
+
+fn obc_module_sibling_inputs() -> OccurrenceBindingCandidateInputs {
+  obc_fixture_inputs(
+    module_paths: obc_module_sibling_module_paths(),
+    exposure_rows: [
+      obc_module_exposure(occurrence: OccurrenceId { value: 10 }, module: "app.sibling_module"),
+      obc_module_exposure(occurrence: OccurrenceId { value: 20 }, module: "app.sibling_module"),
+    ],
+    authored_order_rows: [
+      obc_authored_order(occurrence: OccurrenceId { value: 10 }),
+      obc_authored_order(occurrence: OccurrenceId { value: 20 }),
+      obc_authored_order(occurrence: OccurrenceId { value: 30 }),
+    ],
+  )
+}
+
+test fn module_scope_sibling_is_visible_holds() -> Bool {
+  match resolve_reference_binding_via_structural_candidates(
+    transport: obc_module_sibling_transport(),
+    inputs: obc_module_sibling_inputs(),
+    reference: obc_fixture_reference(
+      occurrence: OccurrenceId { value: 30 },
+      containment: obc_fixture_path(ancestors: [OccurrenceId { value: 20 }], terminal: OccurrenceId { value: 30 }),
+      category: CallableOccurrence,
+    ),
+  ) {
+    ReferenceBindingProjectionBound { provider: provider } =>
+      provider.declaration_occurrence.value == 10
+        && provider.reference_occurrence.value == 30
+        && obc_same_module(left: provider.consumer_module, right: obc_module_path(dotted: "app.sibling_module"))
+        && obc_same_module(left: provider.provider_module, right: obc_module_path(dotted: "app.sibling_module"))
+    _ => false
+  }
+}
+
+data occurrence_binding_candidates_witness_sibling_arm_note: String = "Rule 2 fixture: match arm 1 binds pattern variable y at occurrence 11 under containment ancestors [1, 2] (module=1, arm1=2); arm 2 binds a distinct y at occurrence 12 under ancestors [1, 3] (arm2=3) and its body references y at occurrence 21 under ancestors [1, 3, 12] (nested inside arm2's own pattern scope). Both binders are LexicalValueOccurrence, so the module-sibling rule never admits either; only occurrence 12 is a genuine containment ancestor of the reference, so occurrence 11 (the sibling arm's binder) must never appear in the exposed population despite identical spelling."
+
+fn obc_sibling_arm_transport() -> OccurrenceTransport {
+  let module_id = OccurrenceId { value: 1 }
+  let arm1 = OccurrenceId { value: 2 }
+  let arm2 = OccurrenceId { value: 3 }
+  let arm1_y = OccurrenceId { value: 11 }
+  let arm2_y = OccurrenceId { value: 12 }
+  let arm2_ref = OccurrenceId { value: 21 }
+  let arm1_y_path = obc_fixture_path(ancestors: [module_id, arm1], terminal: arm1_y)
+  let arm2_y_path = obc_fixture_path(ancestors: [module_id, arm2], terminal: arm2_y)
+  let arm2_ref_path = obc_fixture_path(ancestors: [module_id, arm2, arm2_y], terminal: arm2_ref)
+  OccurrenceTransport {
+    index: OccurrenceIndex {
+      entries: [
+        obc_fixture_index_entry(occurrence: arm1_y, authored_name: "y", containment: arm1_y_path),
+        obc_fixture_index_entry(occurrence: arm2_y, authored_name: "y", containment: arm2_y_path),
+        obc_fixture_index_entry(occurrence: arm2_ref, authored_name: "y", containment: arm2_ref_path),
+      ],
+    },
+    declarations: [
+      obc_fixture_declaration(occurrence: arm1_y, containment: arm1_y_path, category: LexicalValueOccurrence),
+      obc_fixture_declaration(occurrence: arm2_y, containment: arm2_y_path, category: LexicalValueOccurrence),
+    ],
+    references: [
+      obc_fixture_reference(occurrence: arm2_ref, containment: arm2_ref_path, category: LexicalValueOccurrence),
+    ],
+  }
+}
+
+fn obc_sibling_arm_module_paths() -> List<OccurrenceModulePathRow> {
+  [
+    OccurrenceModulePathRow { occurrence: OccurrenceId { value: 11 }, module_path: obc_module_path(dotted: "app.match_module") },
+    OccurrenceModulePathRow { occurrence: OccurrenceId { value: 12 }, module_path: obc_module_path(dotted: "app.match_module") },
+    OccurrenceModulePathRow { occurrence: OccurrenceId { value: 21 }, module_path: obc_module_path(dotted: "app.match_module") },
+  ]
+}
+
+fn obc_sibling_arm_inputs() -> OccurrenceBindingCandidateInputs {
+  let arm1_y_path = obc_fixture_path(
+    ancestors: [OccurrenceId { value: 1 }, OccurrenceId { value: 2 }],
+    terminal: OccurrenceId { value: 11 },
+  )
+  let arm2_y_path = obc_fixture_path(
+    ancestors: [OccurrenceId { value: 1 }, OccurrenceId { value: 3 }],
+    terminal: OccurrenceId { value: 12 },
+  )
+  obc_fixture_inputs(
+    module_paths: obc_sibling_arm_module_paths(),
+    exposure_rows: [
+      obc_lexical_exposure(occurrence: OccurrenceId { value: 11 }, scope: arm1_y_path),
+      obc_lexical_exposure(occurrence: OccurrenceId { value: 12 }, scope: arm2_y_path),
+    ],
+    authored_order_rows: [
+      obc_authored_order(occurrence: OccurrenceId { value: 11 }),
+      obc_authored_order(occurrence: OccurrenceId { value: 12 }),
+      obc_authored_order(occurrence: OccurrenceId { value: 21 }),
+    ],
+  )
+}
+
+test fn sibling_match_arm_not_visible_holds() -> Bool {
+  match resolve_reference_binding_via_structural_candidates(
+    transport: obc_sibling_arm_transport(),
+    inputs: obc_sibling_arm_inputs(),
+    reference: obc_fixture_reference(
+      occurrence: OccurrenceId { value: 21 },
+      containment: obc_fixture_path(
+        ancestors: [OccurrenceId { value: 1 }, OccurrenceId { value: 3 }, OccurrenceId { value: 12 }],
+        terminal: OccurrenceId { value: 21 },
+      ),
+      category: LexicalValueOccurrence,
+    ),
+  ) {
+    ReferenceBindingProjectionBound { provider: provider } =>
+      provider.declaration_occurrence.value == 12
+    _ => false
+  }
+}
+
+data occurrence_binding_candidates_witness_nested_lexical_note: String = "Rule 3 fixture: a let binder x at occurrence 41 nests a body under it (ancestors include 41); a reference to x sitting OUTSIDE that let's subtree (occurrence 51, ancestors just [module]) must see zero candidates -- containment enclosure only reaches descendants of the let, never siblings of it, and x's LexicalValueOccurrence category earns it no module-sibling exposure either."
+
+fn obc_nested_lexical_transport() -> OccurrenceTransport {
+  let module_id = OccurrenceId { value: 4 }
+  let let_x = OccurrenceId { value: 41 }
+  let outside_ref = OccurrenceId { value: 51 }
+  let let_x_path = obc_fixture_path(ancestors: [module_id], terminal: let_x)
+  let outside_ref_path = obc_fixture_path(ancestors: [module_id], terminal: outside_ref)
+  OccurrenceTransport {
+    index: OccurrenceIndex {
+      entries: [
+        obc_fixture_index_entry(occurrence: let_x, authored_name: "x", containment: let_x_path),
+        obc_fixture_index_entry(occurrence: outside_ref, authored_name: "x", containment: outside_ref_path),
+      ],
+    },
+    declarations: [
+      obc_fixture_declaration(occurrence: let_x, containment: let_x_path, category: LexicalValueOccurrence),
+    ],
+    references: [
+      obc_fixture_reference(occurrence: outside_ref, containment: outside_ref_path, category: LexicalValueOccurrence),
+    ],
+  }
+}
+
+fn obc_nested_lexical_module_paths() -> List<OccurrenceModulePathRow> {
+  [
+    OccurrenceModulePathRow { occurrence: OccurrenceId { value: 41 }, module_path: obc_module_path(dotted: "app.block_module") },
+    OccurrenceModulePathRow { occurrence: OccurrenceId { value: 51 }, module_path: obc_module_path(dotted: "app.block_module") },
+  ]
+}
+
+fn obc_nested_lexical_inputs() -> OccurrenceBindingCandidateInputs {
+  let let_x_path = obc_fixture_path(
+    ancestors: [OccurrenceId { value: 4 }],
+    terminal: OccurrenceId { value: 41 },
+  )
+  obc_fixture_inputs(
+    module_paths: obc_nested_lexical_module_paths(),
+    exposure_rows: [
+      obc_lexical_exposure(occurrence: OccurrenceId { value: 41 }, scope: let_x_path),
+    ],
+    authored_order_rows: [
+      obc_authored_order(occurrence: OccurrenceId { value: 41 }),
+      obc_authored_order(occurrence: OccurrenceId { value: 51 }),
+    ],
+  )
+}
+
+test fn nested_lexical_only_inside_scope_holds() -> Bool {
+  match resolve_reference_binding_via_structural_candidates(
+    transport: obc_nested_lexical_transport(),
+    inputs: obc_nested_lexical_inputs(),
+    reference: obc_fixture_reference(
+      occurrence: OccurrenceId { value: 51 },
+      containment: obc_fixture_path(ancestors: [OccurrenceId { value: 4 }], terminal: OccurrenceId { value: 51 }),
+      category: LexicalValueOccurrence,
+    ),
+  ) {
+    ReferenceBindingProjectionUnbound { occurrence: unbound } => unbound.value == 51
+    _ => false
+  }
+}
+
+data occurrence_binding_candidates_witness_source_order_note: String = "Rule 4 fixture: fn_later is declared AFTER the reference in authored source order (ordinal 70 > ordinal 60), both ModuleExposure in the same module. AuthoredTokenOrdinal comparison must keep fn_later out of the candidate population even when it is otherwise an eligible module sibling, so the reference is Unbound."
+
+fn obc_source_order_inputs() -> OccurrenceBindingCandidateInputs {
+  obc_fixture_inputs(
+    module_paths: obc_source_order_module_paths(),
+    exposure_rows: [
+      obc_module_exposure(occurrence: OccurrenceId { value: 70 }, module: "app.order_module"),
+    ],
+    authored_order_rows: [
+      obc_authored_order(occurrence: OccurrenceId { value: 60 }),
+      obc_authored_order(occurrence: OccurrenceId { value: 70 }),
+    ],
+  )
+}
+
+fn obc_source_order_transport() -> OccurrenceTransport {
+  let call_ref = OccurrenceId { value: 60 }
+  let fn_later = OccurrenceId { value: 70 }
+  let call_ref_path = obc_fixture_path(ancestors: [], terminal: call_ref)
+  let fn_later_path = obc_fixture_path(ancestors: [], terminal: fn_later)
+  OccurrenceTransport {
+    index: OccurrenceIndex {
+      entries: [
+        obc_fixture_index_entry(occurrence: call_ref, authored_name: "fn_later", containment: call_ref_path),
+        obc_fixture_index_entry(occurrence: fn_later, authored_name: "fn_later", containment: fn_later_path),
+      ],
+    },
+    declarations: [
+      obc_fixture_declaration(occurrence: fn_later, containment: fn_later_path, category: CallableOccurrence),
+    ],
+    references: [
+      obc_fixture_reference(occurrence: call_ref, containment: call_ref_path, category: CallableOccurrence),
+    ],
+  }
+}
+
+fn obc_source_order_module_paths() -> List<OccurrenceModulePathRow> {
+  [
+    OccurrenceModulePathRow { occurrence: OccurrenceId { value: 60 }, module_path: obc_module_path(dotted: "app.order_module") },
+    OccurrenceModulePathRow { occurrence: OccurrenceId { value: 70 }, module_path: obc_module_path(dotted: "app.order_module") },
+  ]
+}
+
+test fn declaration_below_occurrence_not_visible_holds() -> Bool {
+  match resolve_reference_binding_via_structural_candidates(
+    transport: obc_source_order_transport(),
+    inputs: obc_source_order_inputs(),
+    reference: obc_fixture_reference(
+      occurrence: OccurrenceId { value: 60 },
+      containment: obc_fixture_path(ancestors: [], terminal: OccurrenceId { value: 60 }),
+      category: CallableOccurrence,
+    ),
+  ) {
+    ReferenceBindingProjectionUnbound { occurrence: unbound } => unbound.value == 60
+    _ => false
+  }
+}
+
+data occurrence_binding_candidates_witness_ambiguous_note: String = "Rule 5 fixture: two distinct module-level CallableOccurrence declarations named helper (occurrence 80 and 81), both declared before the reference (occurrence 90) in the same module. Same authored spelling must never collapse to one candidate -- the producer supplies both distinct OccurrenceIds and P1's fold reports OccurrenceAmbiguous."
+
+fn obc_ambiguous_transport() -> OccurrenceTransport {
+  let helper_a = OccurrenceId { value: 80 }
+  let helper_b = OccurrenceId { value: 81 }
+  let call_ref = OccurrenceId { value: 90 }
+  let helper_a_path = obc_fixture_path(ancestors: [], terminal: helper_a)
+  let helper_b_path = obc_fixture_path(ancestors: [], terminal: helper_b)
+  let call_ref_path = obc_fixture_path(ancestors: [], terminal: call_ref)
+  OccurrenceTransport {
+    index: OccurrenceIndex {
+      entries: [
+        obc_fixture_index_entry(occurrence: helper_a, authored_name: "helper", containment: helper_a_path),
+        obc_fixture_index_entry(occurrence: helper_b, authored_name: "helper", containment: helper_b_path),
+        obc_fixture_index_entry(occurrence: call_ref, authored_name: "helper", containment: call_ref_path),
+      ],
+    },
+    declarations: [
+      obc_fixture_declaration(occurrence: helper_a, containment: helper_a_path, category: CallableOccurrence),
+      obc_fixture_declaration(occurrence: helper_b, containment: helper_b_path, category: CallableOccurrence),
+    ],
+    references: [
+      obc_fixture_reference(occurrence: call_ref, containment: call_ref_path, category: CallableOccurrence),
+    ],
+  }
+}
+
+fn obc_ambiguous_module_paths() -> List<OccurrenceModulePathRow> {
+  [
+    OccurrenceModulePathRow { occurrence: OccurrenceId { value: 80 }, module_path: obc_module_path(dotted: "app.ambiguous_module") },
+    OccurrenceModulePathRow { occurrence: OccurrenceId { value: 81 }, module_path: obc_module_path(dotted: "app.ambiguous_module") },
+    OccurrenceModulePathRow { occurrence: OccurrenceId { value: 90 }, module_path: obc_module_path(dotted: "app.ambiguous_module") },
+  ]
+}
+
+fn obc_ambiguous_inputs() -> OccurrenceBindingCandidateInputs {
+  obc_fixture_inputs(
+    module_paths: obc_ambiguous_module_paths(),
+    exposure_rows: [
+      obc_module_exposure(occurrence: OccurrenceId { value: 80 }, module: "app.ambiguous_module"),
+      obc_module_exposure(occurrence: OccurrenceId { value: 81 }, module: "app.ambiguous_module"),
+    ],
+    authored_order_rows: [
+      obc_authored_order(occurrence: OccurrenceId { value: 80 }),
+      obc_authored_order(occurrence: OccurrenceId { value: 81 }),
+      obc_authored_order(occurrence: OccurrenceId { value: 90 }),
+    ],
+  )
+}
+
+test fn same_text_distinct_identities_is_ambiguous_holds() -> Bool {
+  match resolve_reference_binding_via_structural_candidates(
+    transport: obc_ambiguous_transport(),
+    inputs: obc_ambiguous_inputs(),
+    reference: obc_fixture_reference(
+      occurrence: OccurrenceId { value: 90 },
+      containment: obc_fixture_path(ancestors: [], terminal: OccurrenceId { value: 90 }),
+      category: CallableOccurrence,
+    ),
+  ) {
+    ReferenceBindingProjectionAmbiguous { occurrence: ambiguous } => ambiguous.value == 90
+    _ => false
+  }
+}
+
+data occurrence_binding_candidates_witness_production_note: String = "Production control: an ordinary two-function module (gunbc.example.greeter) where greet() calls format_greeting() declared earlier in the same file -- the exact shape the pre-strip prefix-only bug rejected. No authored import list participates; the candidate producer resolves the call purely from structural sibling exposure plus source order, and the resulting BoundReferenceProvider/DirectModuleDependency projections are asserted directly."
+
+fn obc_production_transport() -> OccurrenceTransport {
+  let format_greeting = OccurrenceId { value: 100 }
+  let greet = OccurrenceId { value: 101 }
+  let call_ref = OccurrenceId { value: 110 }
+  let format_greeting_path = obc_fixture_path(ancestors: [], terminal: format_greeting)
+  let greet_path = obc_fixture_path(ancestors: [], terminal: greet)
+  let call_ref_path = obc_fixture_path(ancestors: [greet], terminal: call_ref)
+  OccurrenceTransport {
+    index: OccurrenceIndex {
+      entries: [
+        obc_fixture_index_entry(occurrence: format_greeting, authored_name: "format_greeting", containment: format_greeting_path),
+        obc_fixture_index_entry(occurrence: greet, authored_name: "greet", containment: greet_path),
+        obc_fixture_index_entry(occurrence: call_ref, authored_name: "format_greeting", containment: call_ref_path),
+      ],
+    },
+    declarations: [
+      obc_fixture_declaration(occurrence: format_greeting, containment: format_greeting_path, category: CallableOccurrence),
+      obc_fixture_declaration(occurrence: greet, containment: greet_path, category: CallableOccurrence),
+    ],
+    references: [
+      obc_fixture_reference(occurrence: call_ref, containment: call_ref_path, category: CallableOccurrence),
+    ],
+  }
+}
+
+fn obc_production_module_paths() -> List<OccurrenceModulePathRow> {
+  [
+    OccurrenceModulePathRow { occurrence: OccurrenceId { value: 100 }, module_path: obc_module_path(dotted: "gunbc.example.greeter") },
+    OccurrenceModulePathRow { occurrence: OccurrenceId { value: 101 }, module_path: obc_module_path(dotted: "gunbc.example.greeter") },
+    OccurrenceModulePathRow { occurrence: OccurrenceId { value: 110 }, module_path: obc_module_path(dotted: "gunbc.example.greeter") },
+  ]
+}
+
+fn obc_production_inputs() -> OccurrenceBindingCandidateInputs {
+  obc_fixture_inputs(
+    module_paths: obc_production_module_paths(),
+    exposure_rows: [
+      obc_module_exposure(occurrence: OccurrenceId { value: 100 }, module: "gunbc.example.greeter"),
+      obc_module_exposure(occurrence: OccurrenceId { value: 101 }, module: "gunbc.example.greeter"),
+    ],
+    authored_order_rows: [
+      obc_authored_order(occurrence: OccurrenceId { value: 100 }),
+      obc_authored_order(occurrence: OccurrenceId { value: 101 }),
+      obc_authored_order(occurrence: OccurrenceId { value: 110 }),
+    ],
+  )
+}
+
+test fn production_module_call_to_earlier_sibling_binds_holds() -> Bool {
+  match resolve_reference_binding_via_structural_candidates(
+    transport: obc_production_transport(),
+    inputs: obc_production_inputs(),
+    reference: obc_fixture_reference(
+      occurrence: OccurrenceId { value: 110 },
+      containment: obc_fixture_path(ancestors: [OccurrenceId { value: 101 }], terminal: OccurrenceId { value: 110 }),
+      category: CallableOccurrence,
+    ),
+  ) {
+    ReferenceBindingProjectionBound { provider: provider } =>
+      provider.reference_occurrence.value == 110
+        && provider.declaration_occurrence.value == 100
+        && obc_same_module(left: provider.consumer_module, right: obc_module_path(dotted: "gunbc.example.greeter"))
+        && obc_same_module(left: provider.provider_module, right: obc_module_path(dotted: "gunbc.example.greeter"))
+    _ => false
+  }
+}
+
+data occurrence_binding_candidates_witness_dependency_order_note: String = "RED control: direct_module_dependencies_from_bound_population must preserve first-seen provider-traversal order for cross-module edges and must project NO same-module self-edge (BoundReferenceProvider retained; M→M omitted). A hash-ordered map readback would permute the cross-module list and turn the witness red."
+
+test fn direct_module_dependency_dedupes_by_module_pair_holds() -> Bool {
+  let same_module_provider = BoundReferenceProvider {
+    reference_occurrence: OccurrenceId { value: 110 },
+    declaration_occurrence: OccurrenceId { value: 100 },
+    consumer_module: obc_module_path(dotted: "gunbc.example.greeter"),
+    provider_module: obc_module_path(dotted: "gunbc.example.greeter"),
+  }
+  let cross_module_provider_one = BoundReferenceProvider {
+    reference_occurrence: OccurrenceId { value: 200 },
+    declaration_occurrence: OccurrenceId { value: 300 },
+    consumer_module: obc_module_path(dotted: "app.consumer"),
+    provider_module: obc_module_path(dotted: "app.provider"),
+  }
+  let cross_module_provider_two = BoundReferenceProvider {
+    reference_occurrence: OccurrenceId { value: 201 },
+    declaration_occurrence: OccurrenceId { value: 300 },
+    consumer_module: obc_module_path(dotted: "app.consumer"),
+    provider_module: obc_module_path(dotted: "app.provider"),
+  }
+  let edges = match direct_module_dependencies_from_bound_population(
+    population: AllReferencesBound {
+      providers: [same_module_provider, cross_module_provider_one, cross_module_provider_two],
+    },
+  ) {
+    DirectModuleDependencyListReady { edges: edges } => edges
+    _ => []
+  }
+  (edges |> count) == 1
+    && match edges |> first {
+      Present { value: edge } => obc_edge_matches(edge: edge, consumer: "app.consumer", provider: "app.provider")
+      Absent => false
+    }
+}
+
+data occurrence_binding_candidates_witness_refused_population_never_empty_edges_note: String = "Blocker-3 residual RED (PR 7515): a ReferencePopulationRefused population must project as DirectModuleDependencyPopulationRefused — never DirectModuleDependencyListReady with an empty edge list. Empty edges are reachable only from AllReferencesBound with zero cross-module providers."
+
+test fn refused_population_never_projects_empty_edge_list_holds() -> Bool {
+  match direct_module_dependencies_from_bound_population(
+    population: ReferencePopulationRefused {
+      first_failure: ReferenceBindingProjectionUnbound {
+        occurrence: OccurrenceId { value: 30 },
+      },
+      more_failures: [],
+    },
+  ) {
+    DirectModuleDependencyPopulationRefused { population: _ } => true
+    DirectModuleDependencyListReady { edges: _ } => false
+  }
+}
+
+data occurrence_binding_candidates_witness_missing_module_path_note: String = "Fail-closed RED: a ModuleExposure declaration without an OccurrenceModulePathRow must refuse at index build — never silently drop from the sibling-exposure population and masquerade as OccurrenceUnbound."
+
+test fn module_scope_declaration_missing_module_path_refuses_holds() -> Bool {
+  match resolve_reference_binding_via_structural_candidates(
+    transport: obc_module_sibling_transport(),
+    inputs: obc_fixture_inputs(
+      module_paths: [
+        OccurrenceModulePathRow { occurrence: OccurrenceId { value: 20 }, module_path: obc_module_path(dotted: "app.sibling_module") },
+        OccurrenceModulePathRow { occurrence: OccurrenceId { value: 30 }, module_path: obc_module_path(dotted: "app.sibling_module") },
+      ],
+      exposure_rows: [
+        obc_module_exposure(occurrence: OccurrenceId { value: 10 }, module: "app.sibling_module"),
+        obc_module_exposure(occurrence: OccurrenceId { value: 20 }, module: "app.sibling_module"),
+      ],
+      authored_order_rows: [
+        obc_authored_order(occurrence: OccurrenceId { value: 20 }),
+        obc_authored_order(occurrence: OccurrenceId { value: 30 }),
+      ],
+    ),
+    reference: obc_fixture_reference(
+      occurrence: OccurrenceId { value: 30 },
+      containment: obc_fixture_path(ancestors: [OccurrenceId { value: 20 }], terminal: OccurrenceId { value: 30 }),
+      category: CallableOccurrence,
+    ),
+  ) {
+    ReferenceBindingProjectionModulePathRefused {
+      refusal: MissingOccurrenceModulePathRow { occurrence: occurrence },
+    } => occurrence.value == 10
+    _ => false
+  }
+}
+
+data occurrence_binding_candidates_witness_duplicate_module_path_note: String = "Fail-closed RED: conflicting OccurrenceModulePathRow values for the same occurrence must refuse at index build — never pick the last row and change exposure."
+
+test fn duplicate_module_path_row_refuses_holds() -> Bool {
+  match resolve_reference_binding_via_structural_candidates(
+    transport: obc_module_sibling_transport(),
+    inputs: obc_fixture_inputs(
+      module_paths: [
+        OccurrenceModulePathRow { occurrence: OccurrenceId { value: 10 }, module_path: obc_module_path(dotted: "app.sibling_module") },
+        OccurrenceModulePathRow { occurrence: OccurrenceId { value: 10 }, module_path: obc_module_path(dotted: "app.other_module") },
+        OccurrenceModulePathRow { occurrence: OccurrenceId { value: 20 }, module_path: obc_module_path(dotted: "app.sibling_module") },
+        OccurrenceModulePathRow { occurrence: OccurrenceId { value: 30 }, module_path: obc_module_path(dotted: "app.sibling_module") },
+      ],
+      exposure_rows: [
+        obc_module_exposure(occurrence: OccurrenceId { value: 10 }, module: "app.sibling_module"),
+        obc_module_exposure(occurrence: OccurrenceId { value: 20 }, module: "app.sibling_module"),
+      ],
+      authored_order_rows: [
+        obc_authored_order(occurrence: OccurrenceId { value: 10 }),
+        obc_authored_order(occurrence: OccurrenceId { value: 20 }),
+        obc_authored_order(occurrence: OccurrenceId { value: 30 }),
+      ],
+    ),
+    reference: obc_fixture_reference(
+      occurrence: OccurrenceId { value: 30 },
+      containment: obc_fixture_path(ancestors: [OccurrenceId { value: 20 }], terminal: OccurrenceId { value: 30 }),
+      category: CallableOccurrence,
+    ),
+  ) {
+    ReferenceBindingProjectionModulePathRefused {
+      refusal: DuplicateOccurrenceModulePathRow {
+        occurrence: occurrence,
+        first_module_path: first_module_path,
+        conflicting_module_path: conflicting_module_path,
+      },
+    } =>
+      occurrence.value == 10
+        && obc_same_module(left: first_module_path, right: obc_module_path(dotted: "app.sibling_module"))
+        && obc_same_module(left: conflicting_module_path, right: obc_module_path(dotted: "app.other_module"))
+    _ => false
+  }
+}
+
+data occurrence_binding_candidates_witness_duplicate_exposure_note: String = "Fail-closed RED: conflicting DeclarationExposureRow values for the same occurrence must refuse at index build — never pick the last row and change visibility."
+
+test fn duplicate_declaration_exposure_row_refuses_holds() -> Bool {
+  match resolve_reference_binding_via_structural_candidates(
+    transport: obc_module_sibling_transport(),
+    inputs: obc_fixture_inputs(
+      module_paths: obc_module_sibling_module_paths(),
+      exposure_rows: [
+        obc_module_exposure(occurrence: OccurrenceId { value: 10 }, module: "app.sibling_module"),
+        obc_module_exposure(occurrence: OccurrenceId { value: 10 }, module: "app.other_module"),
+        obc_module_exposure(occurrence: OccurrenceId { value: 20 }, module: "app.sibling_module"),
+      ],
+      authored_order_rows: [
+        obc_authored_order(occurrence: OccurrenceId { value: 10 }),
+        obc_authored_order(occurrence: OccurrenceId { value: 20 }),
+        obc_authored_order(occurrence: OccurrenceId { value: 30 }),
+      ],
+    ),
+    reference: obc_fixture_reference(
+      occurrence: OccurrenceId { value: 30 },
+      containment: obc_fixture_path(ancestors: [OccurrenceId { value: 20 }], terminal: OccurrenceId { value: 30 }),
+      category: CallableOccurrence,
+    ),
+  ) {
+    ReferenceBindingProjectionExposureRefused {
+      refusal: ConflictingDeclarationExposure {
+        occurrence: occurrence,
+        first_exposure: first_exposure,
+        conflicting_exposure: conflicting_exposure,
+      },
+    } =>
+      occurrence.value == 10
+        && match first_exposure {
+          ModuleExposure { module: first_module } =>
+            obc_same_module(left: first_module, right: obc_module_path(dotted: "app.sibling_module"))
+          _ => false
+        }
+        && match conflicting_exposure {
+          ModuleExposure { module: conflicting_module } =>
+            obc_same_module(left: conflicting_module, right: obc_module_path(dotted: "app.other_module"))
+          _ => false
+        }
+    _ => false
+  }
+}
+
+data occurrence_binding_candidates_witness_duplicate_authored_order_note: String = "Fail-closed RED: conflicting AuthoredOrderRow values for the same occurrence must refuse at index build — never pick the last row and change source-order gating."
+
+test fn duplicate_authored_order_row_refuses_holds() -> Bool {
+  match resolve_reference_binding_via_structural_candidates(
+    transport: obc_module_sibling_transport(),
+    inputs: obc_fixture_inputs(
+      module_paths: obc_module_sibling_module_paths(),
+      exposure_rows: [
+        obc_module_exposure(occurrence: OccurrenceId { value: 10 }, module: "app.sibling_module"),
+        obc_module_exposure(occurrence: OccurrenceId { value: 20 }, module: "app.sibling_module"),
+      ],
+      authored_order_rows: [
+        obc_authored_order(occurrence: OccurrenceId { value: 10 }),
+        AuthoredOrderRow {
+          occurrence: OccurrenceId { value: 10 },
+          ordinal: AuthoredTokenOrdinal { value: 99 },
+        },
+        obc_authored_order(occurrence: OccurrenceId { value: 20 }),
+        obc_authored_order(occurrence: OccurrenceId { value: 30 }),
+      ],
+    ),
+    reference: obc_fixture_reference(
+      occurrence: OccurrenceId { value: 30 },
+      containment: obc_fixture_path(ancestors: [OccurrenceId { value: 20 }], terminal: OccurrenceId { value: 30 }),
+      category: CallableOccurrence,
+    ),
+  ) {
+    ReferenceBindingProjectionAuthoredOrderRefused {
+      refusal: ConflictingAuthoredOrderRow {
+        occurrence: occurrence,
+        first_ordinal: first_ordinal,
+        conflicting_ordinal: conflicting_ordinal,
+      },
+    } =>
+      occurrence.value == 10
+        && first_ordinal.value == 10
+        && conflicting_ordinal.value == 99
+    _ => false
+  }
+}
+
+data occurrence_binding_candidates_witness_missing_exposure_note: String = "Fail-closed RED (PR 7515 blocker 2): a declaration with no DeclarationExposureRow must refuse MissingDeclarationExposure at index build — never silently fail the Bool visibility predicate and masquerade as OccurrenceUnbound."
+
+test fn missing_declaration_exposure_refuses_holds() -> Bool {
+  match resolve_reference_binding_via_structural_candidates(
+    transport: obc_module_sibling_transport(),
+    inputs: obc_fixture_inputs(
+      module_paths: obc_module_sibling_module_paths(),
+      exposure_rows: [
+        obc_module_exposure(occurrence: OccurrenceId { value: 20 }, module: "app.sibling_module"),
+      ],
+      authored_order_rows: [
+        obc_authored_order(occurrence: OccurrenceId { value: 10 }),
+        obc_authored_order(occurrence: OccurrenceId { value: 20 }),
+        obc_authored_order(occurrence: OccurrenceId { value: 30 }),
+      ],
+    ),
+    reference: obc_fixture_reference(
+      occurrence: OccurrenceId { value: 30 },
+      containment: obc_fixture_path(ancestors: [OccurrenceId { value: 20 }], terminal: OccurrenceId { value: 30 }),
+      category: CallableOccurrence,
+    ),
+  ) {
+    ReferenceBindingProjectionExposureRefused {
+      refusal: MissingDeclarationExposure { occurrence: occurrence },
+    } => occurrence.value == 10
+    _ => false
+  }
+}
+
+data occurrence_binding_candidates_witness_missing_authored_order_note: String = "Fail-closed RED (PR 7515 blocker 2): a reference (or declaration) with no AuthoredOrderRow must refuse MissingAuthoredOrderRow at index build — never treat missing ordinal as ordinary Unbound."
+
+test fn missing_authored_order_row_refuses_holds() -> Bool {
+  match resolve_reference_binding_via_structural_candidates(
+    transport: obc_module_sibling_transport(),
+    inputs: obc_fixture_inputs(
+      module_paths: obc_module_sibling_module_paths(),
+      exposure_rows: [
+        obc_module_exposure(occurrence: OccurrenceId { value: 10 }, module: "app.sibling_module"),
+        obc_module_exposure(occurrence: OccurrenceId { value: 20 }, module: "app.sibling_module"),
+      ],
+      authored_order_rows: [
+        obc_authored_order(occurrence: OccurrenceId { value: 10 }),
+        obc_authored_order(occurrence: OccurrenceId { value: 20 }),
+      ],
+    ),
+    reference: obc_fixture_reference(
+      occurrence: OccurrenceId { value: 30 },
+      containment: obc_fixture_path(ancestors: [OccurrenceId { value: 20 }], terminal: OccurrenceId { value: 30 }),
+      category: CallableOccurrence,
+    ),
+  ) {
+    ReferenceBindingProjectionAuthoredOrderRefused {
+      refusal: MissingAuthoredOrderRow { occurrence: occurrence },
+    } => occurrence.value == 30
+    _ => false
+  }
+}
+
+data occurrence_binding_candidates_witness_raw_containment_not_parallel_note: String = "Fail-closed RED (PR 7515 blocker 1): a declaration whose containment is a prefix of the reference but whose DeclarationExposure is ModuleExposure for a DIFFERENT module must NOT bind via raw containment. Exposure carrier alone decides — missing/wrong ModuleExposure is not rescued by declaration.containment."
+
+test fn raw_containment_without_matching_exposure_does_not_bind_holds() -> Bool {
+  let nested_decl = OccurrenceId { value: 10 }
+  let outer_fn = OccurrenceId { value: 20 }
+  let call_ref = OccurrenceId { value: 30 }
+  let nested_path = obc_fixture_path(ancestors: [], terminal: nested_decl)
+  let call_ref_path = obc_fixture_path(ancestors: [nested_decl, outer_fn], terminal: call_ref)
+  let transport = OccurrenceTransport {
+    index: OccurrenceIndex {
+      entries: [
+        obc_fixture_index_entry(occurrence: nested_decl, authored_name: "fn_a", containment: nested_path),
+        obc_fixture_index_entry(occurrence: outer_fn, authored_name: "fn_b", containment: obc_fixture_path(ancestors: [nested_decl], terminal: outer_fn)),
+        obc_fixture_index_entry(occurrence: call_ref, authored_name: "fn_a", containment: call_ref_path),
+      ],
+    },
+    declarations: [
+      obc_fixture_declaration(occurrence: nested_decl, containment: nested_path, category: CallableOccurrence),
+      obc_fixture_declaration(occurrence: outer_fn, containment: obc_fixture_path(ancestors: [nested_decl], terminal: outer_fn), category: CallableOccurrence),
+    ],
+    references: [
+      obc_fixture_reference(occurrence: call_ref, containment: call_ref_path, category: CallableOccurrence),
+    ],
+  }
+  match resolve_reference_binding_via_structural_candidates(
+    transport: transport,
+    inputs: obc_fixture_inputs(
+      module_paths: [
+        OccurrenceModulePathRow { occurrence: nested_decl, module_path: obc_module_path(dotted: "app.other_module") },
+        OccurrenceModulePathRow { occurrence: outer_fn, module_path: obc_module_path(dotted: "app.sibling_module") },
+        OccurrenceModulePathRow { occurrence: call_ref, module_path: obc_module_path(dotted: "app.sibling_module") },
+      ],
+      exposure_rows: [
+        obc_module_exposure(occurrence: nested_decl, module: "app.other_module"),
+        obc_module_exposure(occurrence: outer_fn, module: "app.sibling_module"),
+      ],
+      authored_order_rows: [
+        obc_authored_order(occurrence: nested_decl),
+        obc_authored_order(occurrence: outer_fn),
+        obc_authored_order(occurrence: call_ref),
+      ],
+    ),
+    reference: obc_fixture_reference(
+      occurrence: call_ref,
+      containment: call_ref_path,
+      category: CallableOccurrence,
+    ),
+  ) {
+    ReferenceBindingProjectionUnbound { occurrence: unbound } => unbound.value == 30
+    _ => false
+  }
+}
+
+data occurrence_binding_candidates_witness_root_exposure_note: String = "RootExposure authority control: a declaration carrying RootExposure binds on every candidate lookup regardless of containment ancestry or module siblinghood — visibility comes from RootExposure's own semantics, not raw containment."
+
+test fn root_exposure_is_visible_holds() -> Bool {
+  let root_decl = OccurrenceId { value: 10 }
+  let call_ref = OccurrenceId { value: 30 }
+  let root_path = obc_fixture_path(ancestors: [], terminal: root_decl)
+  let call_ref_path = obc_fixture_path(ancestors: [OccurrenceId { value: 20 }], terminal: call_ref)
+  match resolve_reference_binding_via_structural_candidates(
+    transport: OccurrenceTransport {
+      index: OccurrenceIndex {
+        entries: [
+          obc_fixture_index_entry(occurrence: root_decl, authored_name: "root_fn", containment: root_path),
+          obc_fixture_index_entry(occurrence: call_ref, authored_name: "root_fn", containment: call_ref_path),
+        ],
+      },
+      declarations: [
+        obc_fixture_declaration(occurrence: root_decl, containment: root_path, category: CallableOccurrence),
+      ],
+      references: [
+        obc_fixture_reference(occurrence: call_ref, containment: call_ref_path, category: CallableOccurrence),
+      ],
+    },
+    inputs: obc_fixture_inputs(
+      module_paths: [
+        OccurrenceModulePathRow { occurrence: root_decl, module_path: obc_module_path(dotted: "app.root_module") },
+        OccurrenceModulePathRow { occurrence: call_ref, module_path: obc_module_path(dotted: "app.other_module") },
+      ],
+      exposure_rows: [
+        obc_root_exposure(occurrence: root_decl),
+      ],
+      authored_order_rows: [
+        obc_authored_order(occurrence: root_decl),
+        obc_authored_order(occurrence: call_ref),
+      ],
+    ),
+    reference: obc_fixture_reference(
+      occurrence: call_ref,
+      containment: call_ref_path,
+      category: CallableOccurrence,
+    ),
+  ) {
+    ReferenceBindingProjectionBound { provider: provider } =>
+      provider.declaration_occurrence.value == 10
+        && provider.reference_occurrence.value == 30
+    _ => false
+  }
+}
+
+data occurrence_binding_candidates_witness_declarations_by_name_refuse_note: String = "Fail-closed RED (operator finding 3): declarations_by_name_build refuses MissingDeclarationIndexEntry when a declaration is absent from entries_by_id — never silent-skips and shrinks the candidate population."
+
+test fn declarations_by_name_missing_index_entry_refuses_holds() -> Bool {
+  let decl = OccurrenceId { value: 10 }
+  let decl_path = obc_fixture_path(ancestors: [], terminal: decl)
+  match declarations_by_name_build(
+    entries_by_id: empty_map(),
+    declarations: [
+      obc_fixture_declaration(occurrence: decl, containment: decl_path, category: CallableOccurrence),
+    ],
+  ) {
+    DeclarationsByNameMissingIndexEntry { occurrence: missing } => missing.value == 10
+    DeclarationsByNameReady { by_name: _ } => false
+  }
+}
+
+data section13_fixture_head: CommitSha = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
+fn obc_section13_observation(decl_name: String, passed: Bool) -> Section13ExactHeadExecutionObservation {
+  Section13ExactHeadExecutionObservation {
+    head: section13_fixture_head,
+    declaration: section13_executing_receipt(
+      module_path: section13_witness_module_path(),
+      decl_name: decl_name as NonEmptyStr,
+    ),
+    passed: passed,
+  }
+}
+
+fn obc_section13_joined_observations() -> List<Section13ExactHeadExecutionObservation> {
+  [
+    obc_section13_observation(decl_name: "module_scope_sibling_is_visible_holds", passed: true),
+    obc_section13_observation(decl_name: "sibling_match_arm_not_visible_holds", passed: true),
+    obc_section13_observation(decl_name: "nested_lexical_only_inside_scope_holds", passed: true),
+    obc_section13_observation(decl_name: "declaration_below_occurrence_not_visible_holds", passed: true),
+    obc_section13_observation(decl_name: "same_text_distinct_identities_is_ambiguous_holds", passed: true),
+  ]
+}
+
+data occurrence_binding_candidates_witness_section13_join_note: String = "Section-13 denominator: Executing rows join to exact-head observations (symbolic DeclarationRef module paths). GREEN supplies passed=true observations for every Executing receipt. RED controls: missing observation and failed observation refuse — inhabiting Section13PopulationLawExecuting alone never greens."
+
+test fn witness_section13_population_law_roster_denominator_holds() -> Bool {
+  section13_population_law_roster_denominator_holds(
+    observations: obc_section13_joined_observations(),
+    required_head: section13_fixture_head,
+  )
+}
+
+test fn section13_missing_observation_refuses_holds() -> Bool {
+  match section13_population_law_roster_adjudicate(
+    observations: [
+      obc_section13_observation(decl_name: "module_scope_sibling_is_visible_holds", passed: true),
+      obc_section13_observation(decl_name: "sibling_match_arm_not_visible_holds", passed: true),
+      obc_section13_observation(decl_name: "nested_lexical_only_inside_scope_holds", passed: true),
+      obc_section13_observation(decl_name: "declaration_below_occurrence_not_visible_holds", passed: true),
+    ],
+    required_head: section13_fixture_head,
+  ) {
+    Section13PopulationLawRosterRefusedMissingObservation { receipt: receipt } =>
+      receipt.decl_name == ("same_text_distinct_identities_is_ambiguous_holds" as NonEmptyStr)
+    _ => false
+  }
+}
+
+test fn section13_failed_observation_refuses_holds() -> Bool {
+  match section13_population_law_roster_adjudicate(
+    observations: [
+      obc_section13_observation(decl_name: "module_scope_sibling_is_visible_holds", passed: true),
+      obc_section13_observation(decl_name: "sibling_match_arm_not_visible_holds", passed: true),
+      obc_section13_observation(decl_name: "nested_lexical_only_inside_scope_holds", passed: true),
+      obc_section13_observation(decl_name: "declaration_below_occurrence_not_visible_holds", passed: true),
+      obc_section13_observation(decl_name: "same_text_distinct_identities_is_ambiguous_holds", passed: false),
+    ],
+    required_head: section13_fixture_head,
+  ) {
+    Section13PopulationLawRosterRefusedFailedOrStaleObservation { receipt: receipt } =>
+      receipt.decl_name == ("same_text_distinct_identities_is_ambiguous_holds" as NonEmptyStr)
+    Section13PopulationLawRosterHolds => false
+    _ => false
+  }
+}

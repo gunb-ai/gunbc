@@ -2,12 +2,16 @@ module test.claim.stage0_emit_model_witness
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data stage0_emit_model_witness_note: String = "Authority: gunbc.stage0_emit_model.generated_stage0_files. Positives catch a missing generated basename (the #7258 drift class); negatives keep hand-maintained files out of the generated set. Floor: generated_stage0_file_count >= 101 (post-#7258 repaired length) so a silent list shrink reds. Host construction close: regen_stage0 reads this list via lens_string_list_data — Rust unit generated_stage0_files_read_from_dag_authority_not_rust_const refuses a reintroduced GENERATED_STAGE0_FILES const."
+data stage0_emit_model_witness_note: String = "Authority: gunbc.stage0_emit_model.generated_stage0_files. Positives catch a missing generated basename (the #7258 drift class); negatives keep hand-maintained files out of the generated set. Floor: generated_stage0_file_count >= 112 (slice-A: identity stays generated; candidates/binding/resolve stage0 surfaces are hand-maintained until the B parser-walk emit edge pulls them into the regen closure). Host construction close: regen_stage0 reads this list via lens_string_list_data — Rust unit generated_stage0_files_read_from_dag_authority_not_rust_const refuses a reintroduced GENERATED_STAGE0_FILES const."
 
 test fn w_hand_maintained_not_classified_generated() -> Bool {
   !is_generated_stage0_file(basename: "cli_run.rs") &&
   !is_generated_stage0_file(basename: "v1_interpreter.rs") &&
   !is_generated_stage0_file(basename: "main.rs")
+}
+
+test fn w_occurrence_binding_identity_emit_enrolled_generated() -> Bool {
+  is_generated_stage0_file(basename: "std_occurrence_identity.rs")
 }
 
 test fn w_generated_files_classified_generated() -> Bool {
@@ -22,7 +26,7 @@ test fn w_generated_files_classified_generated() -> Bool {
 }
 
 test fn w_generated_file_count_floor_holds() -> Bool {
-  generated_stage0_file_count() >= 101
+  generated_stage0_file_count() >= 112
 }
 
 test fn w_emit_naming_rule() -> Bool {

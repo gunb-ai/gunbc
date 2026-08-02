@@ -1,6 +1,5 @@
 module test.claim.srv3_os_install_diagnostic
 
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn base_observations(
@@ -91,7 +90,7 @@ test fn wrong_iso_hash_refuses_serve_ready() -> Bool {
     process: ServeProcessesPresent,
     port: ServePortListening { port: extdeps.bmc.webui.nbd_proxy_serve.srv3_nbd_proxy_local_port, owner_matches_expected: true },
     session: TokenPresent,
-    iso: IsoPresent { observed_content_hash: "wrong-hash" },
+    iso: IsoPresent { observed_content_hash: content_hash_of_value(value: "wrong-hash") },
     intent: srv3_os_install_attempt_intent,
   ) {
     IsoHashMismatch => true

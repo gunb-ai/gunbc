@@ -15,9 +15,22 @@ import gunbc.ci_spec {
   ci_heal_generated_artifact_regen_function,
   ci_heal_generated_artifact_gate_entry,
   ci_heal_dispatch_entry,
-  gunbc_ci_heal_commit_push_script
+  ci_heal_author_commit_artifact_dir,
+  ci_heal_author_commit_artifact_name,
+  ci_heal_author_commit_regen_command,
+  ci_heal_repo_local_git_config_entry,
+  ci_heal_repo_local_git_config_function,
+  ci_heal_repo_local_git_config_shell_emit_scaffold,
+  ci_heal_repo_local_git_config_shell_emit_dissolution_trigger,
+  gunbc_ci_heal_commit_push_script,
+  gunbc_ci_heal_repo_local_git_config_invoke,
 }
-import gunbc.generated_artifact { committed_generated_artifact_paths, CiYamlArtifact, artifact_path }
+import std.disposition { Scaffold }
+import gunbc.generated_artifact {
+  auto_push_eligible_committed_artifact_paths,
+  author_commit_required_committed_artifact_paths,
+  CiYamlArtifact, FalsifierYamlArtifact, GitignoreArtifact, artifact_path
+}
 import gunbc.ci_workflow_expressions { ci_regen_heal_if }
 import extdeps.github.actions {
   Job, Workflow, WorkflowPermissions, PermissionLevel, PermWrite, PermRead,
@@ -25,7 +38,7 @@ import extdeps.github.actions {
   Step, UsesStep, RunStep
 }
 
-data ci_heal_job_witness_note: String = "Green-by-execution proof that the CI auto-heal job is wired correctly, over the actual Job/Workflow model (not a grep). The load-bearing safety control is contents_write_is_scoped_to_heal_only: it reds if the contents:write grant leaks to the workflow default, or onto the build/ci jobs, or if the heal job loses it — pinning least privilege (DESIGN 5) by construction, so the whole-corpus ci floor can never run with a push-capable token. heal_job_needs_build_not_ci is the second discriminating control: the drift gate lives inside ci, so a heal re-pointed to needs:[ci] would be skipped exactly when a drift reds ci — this witness goes red on that regression. The remaining witnesses pin enrollment, the pull_request-ONLY guard (heal_job_runs_on_pr_only — the heal repairs drift on PR branches; main is NOT auto-healed, its ci drift gate reds instead, operator-directed 2026-07-23 'disable main pushes for now', so this witness reds if the excluded `push` arm returns), the scoped write, and the regen target (main_wet on the generated-artifact drift gate). heal_commit_scope_is_artifact_only (review 41703) is the third discriminating control: the unattended push stages EXACTLY registry paths and decides on the STAGED diff (git add over committed_generated_artifact_paths, then git diff --cached), never git add -A — so it reds if the shell regresses to whole-tree staging that could sweep incidental runner dirt into a push. heal_git_add_is_existence_guarded is the fourth: each git add is `[ -e ]`-guarded and echoes a counted skip for a registered-but-absent artifact (the #7121 FleetConvergeArtifact incident), so it reds if the shell regresses to an unconditional git add that would exit-128 the whole heal on one missing path. heal_push_targets_triggering_branch is the fifth: the push target is the branch-aware `HEAD:${{ github.head_ref || github.ref_name }}` and NOT the old hardcoded `HEAD:main`, so it reds if the heal regresses to pushing only to main (which would never repair a PR branch)."
+data ci_heal_job_witness_note: String = "Green-by-execution proof that the CI auto-heal job is wired correctly, over the actual Job/Workflow model (not a grep). contents_write_is_scoped_to_heal_only pins least privilege. heal_job_needs_build_not_ci prevents heal from depending on ci. heal_commit_scope_is_auto_push_eligible_only: staging is auto_push_eligible_committed_artifact_paths() only — workflow YAML is AuthorCommitRequired and must never be git add'd. heal_workflow_drift_is_author_commit_required: detects drift, packages repair artifact, emits HealAuthorCommitRequired with regen command, never stages workflow paths. heal_author_commit_upload_step_enrolled: upload-artifact publishes heal-author-commit-required/ when workflow drift exists."
 
 fn perm_is_write(p: PermissionLevel) -> Bool {
   match p { PermWrite => true  _ => false }
@@ -131,23 +144,89 @@ test fn heal_regen_targets_generated_artifact_main_wet() -> Bool {
     && (ci_heal_generated_artifact_gate_entry == "dag/tools/generated_artifact_gate.dag")
 }
 
-test fn heal_commit_scope_is_artifact_only() -> Bool {
+test fn heal_converges_repo_local_git_config() -> Bool {
+  (ci_heal_repo_local_git_config_function == "converge")
+    && (ci_heal_repo_local_git_config_entry == "dag/gunbc/repo_local_git_config.dag")
+    && string_contains(
+      s: gunbc_ci_heal_repo_local_git_config_invoke(),
+      pattern: ci_heal_repo_local_git_config_shell_emit_dissolution_trigger
+    )
+    && string_contains(
+      s: gunbc_ci_heal_repo_local_git_config_invoke(),
+      pattern: "repo_local_git_config.dag"
+    )
+    && string_contains(
+      s: gunbc_ci_heal_repo_local_git_config_invoke(),
+      pattern: "--function converge"
+    )
+}
+
+test fn heal_repo_local_git_config_shell_emit_is_scaffold() -> Bool {
+  match ci_heal_repo_local_git_config_shell_emit_scaffold {
+    Scaffold { dissolves_to: _, bind: _ } => true
+    _ => false
+  }
+}
+
+test fn heal_commit_scope_is_auto_push_eligible_only() -> Bool {
   let script = gunbc_ci_heal_commit_push_script()
-  string_contains(s: script, pattern: concat("git add \"", artifact_path(a: CiYamlArtifact)))
+  string_contains(s: script, pattern: concat("git add \"", artifact_path(a: GitignoreArtifact)))
+    && !string_contains(s: script, pattern: concat("git add \"", artifact_path(a: CiYamlArtifact)))
+    && !string_contains(s: script, pattern: concat("git add \"", artifact_path(a: FalsifierYamlArtifact)))
     && string_contains(s: script, pattern: "git diff --cached --quiet")
     && !string_contains(s: script, pattern: "git add -A")
-    && (count(committed_generated_artifact_paths()) > 0)
+    && (count(auto_push_eligible_committed_artifact_paths()) > 0)
+    && (count(author_commit_required_committed_artifact_paths()) == 2)
 }
 
 test fn heal_git_add_is_existence_guarded() -> Bool {
   let script = gunbc_ci_heal_commit_push_script()
-  string_contains(s: script, pattern: concat("if [ -e \"", artifact_path(a: CiYamlArtifact)))
+  string_contains(s: script, pattern: concat("if [ -e \"", artifact_path(a: GitignoreArtifact)))
     && string_contains(s: script, pattern: "not staging:")
+}
+
+test fn heal_workflow_drift_is_author_commit_required() -> Bool {
+  let script = gunbc_ci_heal_commit_push_script()
+  string_contains(s: script, pattern: "HealAuthorCommitRequired")
+    && string_contains(s: script, pattern: "GitHubAppLacksWorkflowsWrite")
+    && string_contains(s: script, pattern: ci_heal_author_commit_regen_command)
+    && string_contains(s: script, pattern: concat("git diff --quiet -- \"", artifact_path(a: CiYamlArtifact)))
+    && string_contains(s: script, pattern: concat("git diff --quiet -- \"", artifact_path(a: FalsifierYamlArtifact)))
+    && string_contains(s: script, pattern: "AUTHOR_COMMIT_DRIFT=")
+    && string_contains(s: script, pattern: ci_heal_author_commit_artifact_dir)
+}
+
+fn step_uploads_author_commit_artifact(s: Step) -> Bool {
+  match s {
+    UsesStep { name: _, id: _, uses: _, with: w, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      match w {
+        Present { value: kvs } =>
+          fold(kvs, init: false, f: fn(found, row) {
+            found || (row.key == "name" && match row.value {
+              YamlString { value: v } => v == ci_heal_author_commit_artifact_name
+              YamlNull => false
+              YamlBool { value: _ } => false
+              YamlInt { lexeme: _ } => false
+              YamlFloat { lexeme: _ } => false
+              YamlSequence { elements: _ } => false
+              YamlMapping { entries: _ } => false
+            })
+          })
+        Absent => false
+      }
+    RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false
+  }
+}
+
+test fn heal_author_commit_upload_step_enrolled() -> Bool {
+  fold(ci_heal_generated_artifacts_job().steps, init: false, f: fn(found, step) {
+    found || step_uploads_author_commit_artifact(s: step)
+  })
 }
 
 test fn heal_push_targets_triggering_branch() -> Bool {
   let script = gunbc_ci_heal_commit_push_script()
-  string_contains(s: script, pattern: "git push origin HEAD:${{ github.head_ref || github.ref_name }}")
+  string_contains(s: script, pattern: "git -c core.hooksPath= push origin HEAD:${{ github.head_ref || github.ref_name }}")
     && !string_contains(s: script, pattern: "git push origin HEAD:main")
 }
 

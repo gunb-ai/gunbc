@@ -12,10 +12,10 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use v1_compiler::cli_run::{
-    format_resolution_divergence_census, resolution_divergence_census_live,
-    resolution_divergence_census_live_closure_scoped, resolution_divergence_census_source_roots,
-    resolution_divergence_fn_parent_first_hit_subset_refusal,
-    resolution_divergence_silent_pick_refusal, whole_tree_probe_exclusion_substrings,
+    project_resolution_divergence_census, record_resolution_divergence_phase,
+    resolution_divergence_census_live, resolution_divergence_census_live_closure_scoped,
+    resolution_divergence_census_source_roots, whole_tree_probe_exclusion_substrings,
+    ResolutionDivergencePhase, ResolutionDivergencePhaseState,
 };
 
 fn workspace_root() -> PathBuf {
@@ -87,28 +87,34 @@ fn run() -> Result<ExitCode, ExitCode> {
         eprintln!("resolution_divergence_census: resolve failed:\n{e}");
         ExitCode::from(2)
     })?;
-    let report = format_resolution_divergence_census(&census);
-    println!("{report}");
-    if census.sites_checked == 0 {
-        eprintln!("resolution_divergence_census: no bare call sites in resolved corpus");
-        return Err(ExitCode::from(2));
+    record_resolution_divergence_phase(
+        ResolutionDivergencePhase::OutputProjection,
+        ResolutionDivergencePhaseState::Started,
+        "format report and gate verdict",
+    )
+    .map_err(|e| {
+        eprintln!("resolution_divergence_census: {e}");
+        ExitCode::from(2)
+    })?;
+    let projection = project_resolution_divergence_census(&census);
+    println!("{}", projection.stdout);
+    if let Some(stderr) = &projection.stderr {
+        eprintln!("{stderr}");
     }
-    if let Some(refusal) = resolution_divergence_fn_parent_first_hit_subset_refusal(&census) {
-        eprintln!("{refusal}");
-        return Err(ExitCode::from(1));
+    record_resolution_divergence_phase(
+        ResolutionDivergencePhase::OutputProjection,
+        ResolutionDivergencePhaseState::Completed,
+        projection.receipt_detail,
+    )
+    .map_err(|e| {
+        eprintln!("resolution_divergence_census: {e}");
+        ExitCode::from(2)
+    })?;
+    if projection.exit_code == 0 {
+        Ok(ExitCode::SUCCESS)
+    } else {
+        Err(ExitCode::from(projection.exit_code))
     }
-    if let Some(refusal) = resolution_divergence_silent_pick_refusal(&census) {
-        eprintln!("{refusal}");
-        return Err(ExitCode::from(1));
-    }
-    let raw_telemetry_count = census.silent_pick_global_bare_lcp_rows.len()
-        + census.silent_pick_global_bare_lcp_tie_rows.len()
-        + census.silent_pick_fn_parent_first_hit_rows.len();
-    println!(
-        "SILENT-PICK-GATE: clean (0 genuine silent picks — {} raw telemetry site(s) filtered as benign whole-pool overlap via containment_ambiguous/diverge join, sites_checked={})",
-        raw_telemetry_count, census.sites_checked
-    );
-    Ok(ExitCode::SUCCESS)
 }
 
 fn main() -> ExitCode {

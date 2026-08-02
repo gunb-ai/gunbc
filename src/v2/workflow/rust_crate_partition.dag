@@ -8,7 +8,7 @@ import std.graph {
   graph_has_multi_node_scc
 }
 import std.disposition { RealizationDispatch }
-import std.types { ContentHash, List, String, Bool, Int, NonEmptyStr }
+import std.types { List, String, Bool, Int, NonEmptyStr }
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import v2.std.algebra { any, fold_list, length }
 import v2.std.collection {
@@ -92,22 +92,21 @@ data rust_crate_partition_note: String = "Rust R3 workflow realization of the sh
 
 data rust_crate_partition_dissolve_on: String = "dissolve-on: rust_crate_partition_interim_explicit — replace ExplicitPartition assignment with PolicyPartition { target_crate_count: declared_core_target } when balanced partition policy lands; provenance flips HandExplicit → PolicyDerived."
 
-data rust_crate_partition_declared_core_target: Int = 8
+data rust_crate_partition_declared_core_target: Int = 7
 
-data rust_crate_partition_module_bearing_unit_target: Int = 7
+data rust_crate_partition_module_bearing_unit_target: Int = 6
 
-data stage0_r3_emit_shell_note: String = "R3-only emit shell crate (reexport surface, NOT a partition_fold CompilationUnit): modules list is the reexport bundle for render at cutover; those modules remain owned by module-bearing units in stage0_interim_explicit_assignment. Physical crate count = module_bearing (7) + emit_shell (1) = declared_core_target (8)."
+data stage0_r3_emit_shell_note: String = "R3-only emit shell crate (reexport surface, NOT a partition_fold CompilationUnit): modules list is the reexport bundle for render at cutover; those modules remain owned by module-bearing units in stage0_interim_explicit_assignment. Physical crate count = module_bearing (6) + emit_shell (1) = declared_core_target (7)."
 
-data stage0_unit_runtime: CompilationUnitId = "stage0-unit-runtime" as ContentHash
-data stage0_unit_std_primitives: CompilationUnitId = "stage0-unit-std-primitives" as ContentHash
-data stage0_unit_std_core: CompilationUnitId = "stage0-unit-std-core" as ContentHash
-data stage0_unit_std_surface: CompilationUnitId = "stage0-unit-std-surface" as ContentHash
-data stage0_unit_extdeps: CompilationUnitId = "stage0-unit-extdeps" as ContentHash
-data stage0_unit_v1_infer: CompilationUnitId = "stage0-unit-v1-infer" as ContentHash
-data stage0_unit_extdeps_base: CompilationUnitId = "stage0-unit-extdeps-base" as ContentHash
-data stage0_unit_extdeps_languages: CompilationUnitId = "stage0-unit-extdeps-languages" as ContentHash
-data stage0_unit_v1_artifact: CompilationUnitId = "stage0-unit-v1-artifact" as ContentHash
-data stage0_unit_emit_core: CompilationUnitId = "stage0-unit-emit-core" as ContentHash
+data stage0_unit_runtime: CompilationUnitId = "stage0-unit-runtime" as CompilationUnitId
+data stage0_unit_std_primitives: CompilationUnitId = "stage0-unit-std-primitives" as CompilationUnitId
+data stage0_unit_std_core: CompilationUnitId = "stage0-unit-std-core" as CompilationUnitId
+data stage0_unit_std_surface: CompilationUnitId = "stage0-unit-std-surface" as CompilationUnitId
+data stage0_unit_extdeps: CompilationUnitId = "stage0-unit-extdeps" as CompilationUnitId
+data stage0_unit_v1_infer: CompilationUnitId = "stage0-unit-v1-infer" as CompilationUnitId
+data stage0_unit_extdeps_languages: CompilationUnitId = "stage0-unit-extdeps-languages" as CompilationUnitId
+data stage0_unit_v1_artifact: CompilationUnitId = "stage0-unit-v1-artifact" as CompilationUnitId
+data stage0_unit_emit_core: CompilationUnitId = "stage0-unit-emit-core" as CompilationUnitId
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: RealizationDispatch }
@@ -212,6 +211,13 @@ fn stage0_std_core_modules() -> List<String> {
       "std_induction",
       "std_iteration",
       "std_graph",
+      "extdeps_uri",
+      "extdeps_external_authority",
+      "extdeps_container_oci_digest",
+      "extdeps_units_dimensionless",
+      "extdeps_units_iec_80000_13",
+      "extdeps_units_iso8601",
+      "std_occurrence_identity",
       "v1_std_core"
     ])
 }
@@ -222,12 +228,9 @@ fn stage0_std_surface_modules() -> List<String> {
     "std_execution_mode",
     "std_interface_summary",
     "std_pareto",
-    "std_realization_schedule"
+    "std_realization_schedule",
+    "std_trait_derive_shape"
   ]
-}
-
-fn stage0_extdeps_base_modules() -> List<String> {
-  ["extdeps_external_authority", "extdeps_uri"]
 }
 
 fn stage0_extdeps_language_modules() -> List<String> {
@@ -248,8 +251,7 @@ fn stage0_extdeps_language_modules() -> List<String> {
 }
 
 fn stage0_extdeps_modules() -> List<String> {
-  stage0_extdeps_base_modules()
-    |> concat(stage0_extdeps_language_modules())
+  stage0_extdeps_language_modules()
 }
 
 fn stage0_v1_infer_modules() -> List<String> {
@@ -257,6 +259,7 @@ fn stage0_v1_infer_modules() -> List<String> {
     "v1_compiler_infer_emit_info",
     "v1_compiler_infer_env",
     "v1_compiler_infer_items",
+    "v1_compiler_infer_occurrence_binding",
     "v1_compiler_infer_service",
     "v1_compiler_infer_sigs",
     "v1_compiler_infer_types"
@@ -306,19 +309,15 @@ fn stage0_interim_explicit_assignment() -> Map<ModuleId, CompilationUnitId> {
         assignment: stage0_assign_modules_to_unit(
           assignment: stage0_assign_modules_to_unit(
             assignment: stage0_assign_modules_to_unit(
-              assignment: stage0_assign_modules_to_unit(
-                assignment: empty_map(),
-                modules: stage0_runtime_modules(),
-                unit_id: stage0_unit_runtime
-              ),
-              modules: stage0_std_core_modules(),
-              unit_id: stage0_unit_std_core
+              assignment: empty_map(),
+              modules: stage0_runtime_modules(),
+              unit_id: stage0_unit_runtime
             ),
-            modules: stage0_std_surface_modules(),
-            unit_id: stage0_unit_std_surface
+            modules: stage0_std_core_modules(),
+            unit_id: stage0_unit_std_core
           ),
-          modules: stage0_extdeps_base_modules(),
-          unit_id: stage0_unit_extdeps_base
+          modules: stage0_std_surface_modules(),
+          unit_id: stage0_unit_std_surface
         ),
         modules: stage0_extdeps_language_modules(),
         unit_id: stage0_unit_extdeps_languages
@@ -362,6 +361,9 @@ fn stage0_cross_unit_import_edges() -> List<ModuleDagEdge> {
     stage0_module_dag_edge(from: "std_induction", to: "std_computation"),
     stage0_module_dag_edge(from: "std_induction", to: "std_termination"),
     stage0_module_dag_edge(from: "std_graph", to: "std_termination"),
+    stage0_module_dag_edge(from: "std_measure", to: "extdeps_units_dimensionless"),
+    stage0_module_dag_edge(from: "std_measure", to: "extdeps_units_iec_80000_13"),
+    stage0_module_dag_edge(from: "std_measure", to: "extdeps_units_iso8601"),
     stage0_module_dag_edge(from: "std_effects", to: "std_types"),
     stage0_module_dag_edge(from: "std_execution_mode", to: "std_types"),
     stage0_module_dag_edge(from: "std_interface_summary", to: "std_decl_ref"),
@@ -377,6 +379,7 @@ fn stage0_cross_unit_import_edges() -> List<ModuleDagEdge> {
     stage0_module_dag_edge(from: "extdeps_languages_go_syntax", to: "std_syntax"),
     stage0_module_dag_edge(from: "extdeps_languages_python_syntax", to: "std_syntax"),
     stage0_module_dag_edge(from: "extdeps_languages_rust_syntax", to: "std_syntax"),
+    stage0_module_dag_edge(from: "extdeps_languages_rust_emit", to: "std_trait_derive_shape"),
     stage0_module_dag_edge(from: "v1_std_core", to: "std_algebra"),
     stage0_module_dag_edge(from: "v1_std_core", to: "std_induction"),
     stage0_module_dag_edge(from: "v1_std_core", to: "std_syntax"),
@@ -386,6 +389,8 @@ fn stage0_cross_unit_import_edges() -> List<ModuleDagEdge> {
     stage0_module_dag_edge(from: "v1_compiler_infer_service", to: "v1_compiler_infer_items"),
     stage0_module_dag_edge(from: "v1_compiler_infer_types", to: "v1_compiler_infer_items"),
     stage0_module_dag_edge(from: "v1_compiler_infer_env", to: "v1_compiler_infer_items"),
+    stage0_module_dag_edge(from: "v1_compiler_infer_env", to: "v1_compiler_infer_occurrence_binding"),
+    stage0_module_dag_edge(from: "v1_compiler_infer_sigs", to: "v1_compiler_infer_occurrence_binding"),
     stage0_module_dag_edge(from: "v1_compiler_infer_emit_info", to: "v1_compiler_infer_items"),
     stage0_module_dag_edge(from: "v1_compiler_artifact", to: "v1_compiler_languages"),
   ]
@@ -587,19 +592,6 @@ fn stage0_module_bearing_crate_rows() -> List<Stage0PartitionCrateRow> {
       carries_non_empty_wrappers: false
     },
     Stage0PartitionCrateRow {
-      unit_id: stage0_unit_extdeps_base,
-      package_name: "v1-stage0-extdeps-base",
-      crate_dir: "src/v1/stage0_extdeps_base",
-      kind: Stage0LayeredCoreCrate,
-      modules: stage0_extdeps_base_modules(),
-      reexport_packages: [
-        "v1-stage0-runtime",
-        "v1-stage0-std-core",
-        "v1-stage0-std-surface"
-      ],
-      carries_non_empty_wrappers: false
-    },
-    Stage0PartitionCrateRow {
       unit_id: stage0_unit_extdeps_languages,
       package_name: "v1-stage0-extdeps-languages",
       crate_dir: "src/v1/stage0_extdeps_languages",
@@ -608,8 +600,7 @@ fn stage0_module_bearing_crate_rows() -> List<Stage0PartitionCrateRow> {
       reexport_packages: [
         "v1-stage0-runtime",
         "v1-stage0-std-core",
-        "v1-stage0-std-surface",
-        "v1-stage0-extdeps-base"
+        "v1-stage0-std-surface"
       ],
       carries_non_empty_wrappers: false
     },
@@ -623,7 +614,6 @@ fn stage0_module_bearing_crate_rows() -> List<Stage0PartitionCrateRow> {
         "v1-stage0-runtime",
         "v1-stage0-std-core",
         "v1-stage0-std-surface",
-        "v1-stage0-extdeps-base",
         "v1-stage0-extdeps-languages"
       ],
       carries_non_empty_wrappers: false
@@ -638,7 +628,6 @@ fn stage0_module_bearing_crate_rows() -> List<Stage0PartitionCrateRow> {
         "v1-stage0-runtime",
         "v1-stage0-std-core",
         "v1-stage0-std-surface",
-        "v1-stage0-extdeps-base",
         "v1-stage0-extdeps-languages",
         "v1-stage0-v1-infer"
       ],

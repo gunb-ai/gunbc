@@ -1,10 +1,14 @@
 module extdeps.transports.rest
 
-import std.types { HttpMethod, FermiDepth, NonEmptyStr }
+import std.types { HttpMethod, GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS, FermiDepth, NonEmptyStr, HttpStatus, Bool, String, Int, List }
+import std.content_hash { Fnv1a64Structural }
 import std.serialization { WireFormat }
 import std.fidelity { TransportFidelity }
+import std.effect_grant { Envelope, HandlerBinding, Read, Write, CoveredBy, NoCoveringGrant, covering_grant, NamespacePosition, ServiceOpTree }
 import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
+import extdeps.uri { Uri, UriScheme, Http, Https, File, Ftp, Javascript, Data, Vbscript, Mailto }
+import v2.std.operation_argv { OperationRef }
+import v2.std.optional { Absent, Present }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -52,4 +56,181 @@ type RestTransportConfig {
   headers: Map<String, String>
   response_format: WireFormat
   tls: TlsPosture?
+}
+
+data rest_outcome_note: String = "A RESPONSE THAT IS NOT 2xx IS AN ANSWER, NOT AN ABSENCE OF ONE, and until this type existed the realization threw it away. Operations already declare what a status yields - github.Pulls.List declares 200/401/404/422/5xx and twenty-two other extdeps modules declare 204 such arms between them - and the v1 seed parsed every one of those declarations onto the operation node as a response_<status> property and then never read it. dispatch_rest raised InterpError::TypeError with a rendered 'HTTP \{status\}: \{body\}' string instead, so a caller could not reach the status, could not reach the body, and could not persist either without parsing a diagnostic meant for a human. That is specification-without-execution across the whole REST surface, and it is what made a live 401 unrepresentable to the Publication observer that provoked this type.\\n\\nFOUR STATES, DELIBERATELY NOT THREE. RestOk means the operation's declared output fields carry the decoded answer. RestStatusRefused means the request was transported and a remote authority answered with a status this operation does not treat as success - the status and the body it came with are both retained, because the body is usually the only place the remote says WHY. RestTransportRefused means no status exists at all: nothing was answered, so nothing may be reported as an answer. RestBodyUndecodable means a status arrived and the payload beneath it could not be read - the status is known and is carried, and the body is not fabricated as empty. Collapsing the last two would report 'the remote said nothing' for 'we never reached the remote', which are different facts with different remedies; collapsing an unreadable body into an empty one would report silence the remote never chose.\\n\\nWHY status IS HttpStatus AND NOT Int: std.types already carries HttpStatus with its 100-599 range, so a second unconstrained integer here would be a second name for one concept, and a transport-refusal arm would then be able to hold a status that no response can have. There is deliberately no status on RestTransportRefused for the same reason in the other direction - a sentinel zero would be a plausible-looking value standing where the honest answer is that the question does not apply.\\n\\nSCOPE, STATED SO IT IS NOT MISREAD AS COMPLETE: this outcome is carried by an operation that DECLARES an outcome field, and an operation that declares none keeps raising exactly as before. That opt-in is the narrow half of the repair, not its end state - the refusal body also stays a String here rather than being decoded into the shape the response block already names for it. Both dissolve together when the response block becomes the single authority for a result and output derives from its 2xx arm, at which point every operation carries this outcome without declaring it and this field deletes as redundant."
+
+type RestOutcome
+  = RestOk
+  | RestStatusRefused { status: HttpStatus, body: String }
+  | RestTransportRefused { cause: NonEmptyStr }
+  | RestBodyUndecodable { status: HttpStatus, cause: NonEmptyStr }
+
+data rest_exchange_observation_note: String = "THE HTTP CLIENT BOUNDARY REPORTS FACTS AND DECIDES NO OPERATION POLICY. RestResponseObserved says a status arrived and then says separately whether its body was readable; RestExchangeRefused says no response arrived, so no status can be fabricated. The operation-facing RestOutcome above is downstream: the same dispatch_rest fold consumes this carrier whether a real HTTP handler or an exact fixture replay produced it. A replay arm that returned the operation's final output would sit one layer too high and could green while dispatch_rest was broken - the defect in mock_response and the retired recorded-value fixture seam."
+
+type RestBodyObservation
+  = RestBodyRead { body: String }
+  | RestBodyReadRefused { cause: NonEmptyStr }
+
+type RestExchangeObservation
+  = RestResponseObserved { status: HttpStatus, body: RestBodyObservation }
+  | RestExchangeRefused { cause: NonEmptyStr }
+
+type RestAuthSensitiveIdentity
+  = RestUnauthenticated
+  | RestAuthenticated { scheme: NonEmptyStr, digest: Fnv1a64Structural }
+
+data rest_authenticated_digest_witness_note: String = "AUTHENTICATED ARM: EXECUTED PIN, REPLAY-PATH DEFERRAL TYPED (review 47041, gunbc#7648). RestAuthenticated.digest is Fnv1a64Structural and the seed mint rest_auth_identity_value produces it via atom_identity_hash over '<scheme>\\0<secret>' - the SAME fnv1a64 primitive std.content_hash.content_hash_atom realizes, so an authored fixture reproduces the digest through the modeled surface (content_hash_atom(value: \"<scheme>\\0<secret>\")); an earlier spelling hashed with the host DefaultHasher, a value from outside the family this carrier names, which no dag fixture could ever author. EXECUTED EVIDENCE: rest_authenticated_identity_matches_dag_constructed_value (src/v1/tests/src/cross_representation_equality_test.rs) pins the seed mint ==-equal to the dag-authored identity - RED under a bare-text digest, RED under a non-fnv1a64 digest - plus a secret-inequality control. WHAT REMAINS DEFERRED, AND WHY, TYPED: a full replay-path authenticated witness (fixture matched against a seed-produced invocation through the service dispatch) additionally requires the invocation input_digest, whose per-param limbs content_hash_service_inputs still derives via the host value_hash - not reproducible from .dag - so authoring the matching fixture is blocked on that limb pipeline migrating to the fnv1a64 primitives; that migration also moves the recorded-fixture store keys, so it is its own lane, not a fixture edit here. RUNG, CORRECTED FOR CI ENROLLMENT (calm-badger-682, verified against .github/workflows/ci.yml and gunbc.ci_layer_roots witness_layer_roots): the pin executes LOCALLY and is enrolled in NO executing CI path, so it is evidence a human can run rather than a mechanism that blocks. CI's only contact with that crate is the step named 'cargo check -p v1-compiler-tests --tests (compile gate; no test execution)', and witness_layer_roots is dag plus src/v2, so floor discovery never reaches src/v1/tests either; measured, the pin passes locally in 1.66s and reds nothing anywhere. DESIGN 4b defines mechanically preventable as a mechanism that reliably exposes AND blocks, with safety depending on it executing and staying enrolled - so the mint seam sits BELOW that rung, and calling it mechanically prevented is rung inflation, which 4b names as worse than sitting low because an inflated class never ranks for climbing. Deleting the seam guard would leave this control present, compiling, and mute. NOT NEW DEBT FROM THIS PR: content_hash_cross_family_eq_v1_seed_bridge_note cites the same unexecuted crate for the cross-family backstop, so the whole family of seed-bridge controls shares this gap and it is recorded here rather than fixed. The end-to-end authenticated replay path remains unexecuted and must not be reported above either. HAND-RUST RECEIPT (review 47065): the ROADMAP row 'Work through the remaining hand-written files the products need' (authority dag/gunbc/v1_deletion_plan.dag, v1-hand-queue-drain lane) owns the interim seed bridge in rest_auth_identity_value, fnv1a64_structural_value, and rest_authenticated_identity_for_witness. DISSOLVE-ON: that row migrates REST invocation construction out of v1_interpreter; the checkable receipt is deletion of those three hand-Rust symbols while this discriminating equality/inequality witness remains enrolled against the replacement realization. Independently, the input-digest limb migration lands and an authenticated replay witness executes against a seed-produced invocation; this note then deletes."
+
+data rest_bound_invocation_note: String = "REST needs a specialization of v2.std.operation_argv.BoundOperationInvocation rather than pretending its shell-only binding list is enough. OperationRef remains the declaration identity authority. The specialization adds the HTTP method, fully realized URI target, the digest of every declared input, and an auth-sensitive digest whose preimage never enters the fixture. Together those facts make a replay exact: a fixture for another operation, path/query/body input, method, target, or credential identity cannot satisfy this invocation. Query and body values are already in the declared-input digest; constants are fixed by OperationRef."
+
+type RestBoundOperationInvocation {
+  at: OperationRef
+  method: HttpMethod
+  target: Uri
+  input_digest: Fnv1a64Structural
+  auth_identity: RestAuthSensitiveIdentity
+}
+
+type RestExchangeFixture {
+  store: NonEmptyStr
+  invocation: RestBoundOperationInvocation
+  observation: RestExchangeObservation
+}
+
+type RestFixtureScan {
+  count: Int
+  observation: RestExchangeObservation?
+}
+
+type RestFixtureLookup
+  = RestFixtureFound { observation: RestExchangeObservation }
+  | RestFixtureAbsent { invocation: RestBoundOperationInvocation }
+  | RestFixtureAmbiguous { invocation: RestBoundOperationInvocation, count: Int }
+
+data invocation_identity_equality_note: String = "IDENTITY CONSUMES CANONICAL EQUALITY; IT DOES NOT RE-DERIVE IT. An earlier cut carried five hand-rolled predicates - rest_http_method_eq, rest_uri_scheme_eq, rest_uri_eq, rest_operation_ref_eq, rest_auth_identity_eq - each matching every variant of a closed coproduct to decide whether two of them were the same. That is a second representation of equality standing beside the one the substrate already provides, and it is the §2/§3 failure in its most literal form: adding a variant to HttpMethod or UriScheme would leave the predicate silently answering false for the new one, so the duplicate was not merely redundant but decayed differently from the type it claimed to compare (review 46769).\n\nWHAT IS DELIBERATELY NOT COLLAPSED: the field list below, rather than a whole-record a == b. Which facts constitute an exact invocation identity is a modeled decision - operation, method, fully realized target, input digest, and auth identity - and spelling them keeps that decision reviewable at the point it is made. The equality of each named fact is canonical; the choice of which facts to compare is not equality is business."
+
+fn rest_bound_invocation_eq(a: RestBoundOperationInvocation, b: RestBoundOperationInvocation) -> Bool {
+  a.at == b.at
+    && a.method == b.method
+    && a.target == b.target
+    && a.input_digest == b.input_digest
+    && a.auth_identity == b.auth_identity
+}
+
+fn rest_fixture_scan(
+  fixtures: List<RestExchangeFixture>,
+  store: NonEmptyStr,
+  invocation: RestBoundOperationInvocation,
+  scan: RestFixtureScan,
+) -> RestFixtureScan {
+  if fixtures.count() == 0 {
+    scan
+  } else {
+    let fixture = fixtures.first()
+    let matches = fixture.store == store
+      && rest_bound_invocation_eq(a: fixture.invocation, b: invocation)
+    let next = if matches {
+      RestFixtureScan {
+        count: scan.count + 1,
+        observation: Present { value: fixture.observation },
+      }
+    } else {
+      scan
+    }
+    rest_fixture_scan(
+      fixtures: fixtures.skip(n: 1),
+      store: store,
+      invocation: invocation,
+      scan: next,
+    )
+  }
+}
+
+fn rest_exchange_fixture_lookup(
+  fixtures: List<RestExchangeFixture>,
+  store: NonEmptyStr,
+  invocation: RestBoundOperationInvocation,
+) -> RestFixtureLookup {
+  let scan = rest_fixture_scan(
+    fixtures: fixtures,
+    store: store,
+    invocation: invocation,
+    scan: RestFixtureScan { count: 0, observation: Absent },
+  )
+  if scan.count == 0 {
+    RestFixtureAbsent { invocation: invocation }
+  } else if scan.count == 1 {
+    match scan.observation {
+      Present { value } => RestFixtureFound { observation: value }
+      Absent => RestFixtureAbsent { invocation: invocation }
+    }
+  } else {
+    RestFixtureAmbiguous { invocation: invocation, count: scan.count }
+  }
+}
+
+fn rest_method_verb(method: HttpMethod) -> std.effect_grant.Verb {
+  match method {
+    GET => Read
+    HEAD => Read
+    OPTIONS => Read
+    POST => Write
+    PUT => Write
+    PATCH => Write
+    DELETE => Write
+  }
+}
+
+fn rest_operation_position(at: OperationRef) -> NamespacePosition {
+  NamespacePosition {
+    tree: ServiceOpTree { service: at.service },
+    path: [at.operation],
+  }
+}
+
+type RestHandlerSelection
+  = RestHandlerSelected { binding: HandlerBinding }
+  | RestHandlerUncovered { invocation: RestBoundOperationInvocation }
+
+fn rest_handler_selection(env: Envelope, invocation: RestBoundOperationInvocation) -> RestHandlerSelection {
+  match covering_grant(
+    env: env,
+    verb: rest_method_verb(method: invocation.method),
+    target: rest_operation_position(at: invocation.at),
+  ) {
+    CoveredBy { grant } => RestHandlerSelected { binding: grant.binding }
+    NoCoveringGrant { verb: _, target: _, frame: _ } => RestHandlerUncovered { invocation: invocation }
+  }
+}
+
+type RestExchangeResolution
+  = RestRealExchangeRequired
+  | RestReplayExchangeFound { observation: RestExchangeObservation }
+  | RestReplayExchangeAbsent { invocation: RestBoundOperationInvocation }
+  | RestReplayExchangeAmbiguous { invocation: RestBoundOperationInvocation, count: Int }
+  | RestExchangeHandlerUncovered { invocation: RestBoundOperationInvocation }
+
+data rest_exchange_resolution_note: String = "THE SINGLE HANDLER-BINDING AND LOOKUP DECISION. Runtime code asks this function what the frame's existing effect grant selected; it does not re-read Hermetic/Wet and does not implement its own first-match. RealTransport asks the host HTTP client for a RestExchangeObservation. Replay names a fixture store and reaches the three-valued exact-invocation lookup above. Missing, ambiguous and uncovered are distinct refusals, and none has a real-transport fallback arm."
+
+fn rest_exchange_resolution(
+  env: Envelope,
+  fixtures: List<RestExchangeFixture>,
+  invocation: RestBoundOperationInvocation,
+) -> RestExchangeResolution {
+  match rest_handler_selection(env: env, invocation: invocation) {
+    RestHandlerUncovered { invocation: i } => RestExchangeHandlerUncovered { invocation: i }
+    RestHandlerSelected { binding } => match binding {
+      RealTransport => RestRealExchangeRequired
+      Replay { fixture_store } => match rest_exchange_fixture_lookup(
+        fixtures: fixtures,
+        store: fixture_store as NonEmptyStr,
+        invocation: invocation,
+      ) {
+        RestFixtureFound { observation } => RestReplayExchangeFound { observation: observation }
+        RestFixtureAbsent { invocation: i } => RestReplayExchangeAbsent { invocation: i }
+        RestFixtureAmbiguous { invocation: i, count } => RestReplayExchangeAmbiguous { invocation: i, count: count }
+      }
+    }
+  }
 }

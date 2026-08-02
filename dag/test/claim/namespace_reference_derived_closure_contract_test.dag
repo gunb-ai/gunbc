@@ -1,0 +1,284 @@
+module test.claim.namespace_reference_derived_closure_contract
+
+import gunbc.namespace_reference_derived_closure_contract {
+  ReferenceDerivedClosureAdmission,
+  ReferenceDerivedClosureRefused,
+  ReferenceDerivedClosureUnavailable,
+  SameFileEarlierNeighbourVisible,
+  SiblingDecisionBranchExcluded,
+  LaterDeclarationExcluded,
+  DistinctSameSpelledDeclarationsPreserved,
+  RepeatedMentionsCollapseDependency,
+  UnrelatedLoadedFileExcluded,
+  SameFileNeighbourMissing,
+  SiblingBranchLeaked,
+  LaterDeclarationLeaked,
+  DistinctDeclarationCollapsed,
+  RepeatedMentionDuplicatedDependency,
+  UnrelatedLoadedFileDependencyLeaked,
+  P2aStructuralCandidateProducer7515,
+  P2aReferenceDependencyProjection7515,
+  P2aPoolIndependentDependencyProjection7515,
+  SameFileNeighbourObservation,
+  SiblingBranchObservation,
+  LaterDeclarationObservation,
+  DistinctHomonymObservation,
+  RepeatedMentionDependencyObservation,
+  UnrelatedLoadedFileObservation,
+  assess_reference_derived_closure_observation,
+  reference_derived_closure_required_capabilities,
+  reference_derived_closure_closing_frontier_count,
+  reference_derived_closure_closing_contract_holds,
+  namespace_reference_derived_closure_acceptance_admissions,
+}
+import std.occurrence_identity {
+  OccurrenceId,
+  OccurrenceContainmentPath,
+  OccurrenceProjection,
+  OccurrenceIndexEntry,
+  OccurrenceIndex,
+  OccurrenceTransport,
+  DeclarationOccurrence,
+  ReferenceOccurrence,
+  LexicalValueOccurrence,
+}
+import std.occurrence_binding_resolve {
+  OccurrenceReferenceBindingOutcome,
+  resolve_reference_occurrence_binding,
+}
+import std.types { Bool, Int, List, SourceSpan, String }
+
+data namespace_reference_derived_closure_contract_witness_note: String = "CONTROLLED FIXTURES for the six-clause closing fold. The positive population independently authors one satisfying observation per roadmap clause. Each RED changes only the discriminating output: remove the same-file neighbour, leak the sibling branch, leak the later declaration, collapse one distinct homonym, duplicate one provider dependency, or admit one unrelated loaded file. These tests prove the contract rejects every bad state; they do not claim the gated production candidate producer exists. The quarantined acceptance witness imports no fixture from this module."
+
+fn oid(value: Int) -> OccurrenceId { OccurrenceId { value: value } }
+
+fn fixture_span() -> SourceSpan {
+  SourceSpan { file: "contract-fixture.dag", start: 1, end: 2 }
+}
+
+fn fixture_path(ancestor: OccurrenceId, terminal: OccurrenceId) -> OccurrenceContainmentPath {
+  OccurrenceContainmentPath { ancestors: [ancestor], terminal: terminal }
+}
+
+fn fixture_index_entry(
+  occurrence: OccurrenceId,
+  authored_name: String,
+  containment: OccurrenceContainmentPath,
+) -> OccurrenceIndexEntry {
+  OccurrenceIndexEntry {
+    projection: OccurrenceProjection {
+      occurrence: occurrence,
+      authored_name: authored_name,
+      diagnostic_span: fixture_span(),
+    },
+    containment: containment,
+  }
+}
+
+fn fixture_transport() -> OccurrenceTransport {
+  let first = oid(value: 1)
+  let second = oid(value: 2)
+  let later = oid(value: 3)
+  let reference = oid(value: 10)
+  let first_path = fixture_path(ancestor: oid(value: 20), terminal: first)
+  let second_path = fixture_path(ancestor: oid(value: 21), terminal: second)
+  let later_path = fixture_path(ancestor: oid(value: 22), terminal: later)
+  let reference_path = fixture_path(ancestor: oid(value: 23), terminal: reference)
+  OccurrenceTransport {
+    index: OccurrenceIndex { entries: [
+      fixture_index_entry(occurrence: first, authored_name: "x", containment: first_path),
+      fixture_index_entry(occurrence: second, authored_name: "x", containment: second_path),
+      fixture_index_entry(occurrence: later, authored_name: "x", containment: later_path),
+      fixture_index_entry(occurrence: reference, authored_name: "x", containment: reference_path),
+    ] },
+    declarations: [
+      DeclarationOccurrence {
+        occurrence: first,
+        containment: first_path,
+        category: LexicalValueOccurrence,
+        diagnostic_span: fixture_span(),
+      },
+      DeclarationOccurrence {
+        occurrence: second,
+        containment: second_path,
+        category: LexicalValueOccurrence,
+        diagnostic_span: fixture_span(),
+      },
+      DeclarationOccurrence {
+        occurrence: later,
+        containment: later_path,
+        category: LexicalValueOccurrence,
+        diagnostic_span: fixture_span(),
+      },
+    ],
+    references: [ReferenceOccurrence {
+      occurrence: reference,
+      containment: reference_path,
+      category: LexicalValueOccurrence,
+      diagnostic_span: fixture_span(),
+    }],
+  }
+}
+
+fn p1_outcome(supplied_candidates: List<OccurrenceId>) -> OccurrenceReferenceBindingOutcome {
+  resolve_reference_occurrence_binding(
+    transport: fixture_transport(),
+    occurrence: oid(value: 10),
+    supplied_candidates: supplied_candidates,
+  )
+}
+
+fn positive_admissions() -> List<ReferenceDerivedClosureAdmission> {
+  [
+    assess_reference_derived_closure_observation(observation: SameFileNeighbourObservation {
+      neighbour: oid(value: 1),
+      binding_outcome: p1_outcome(supplied_candidates: [oid(value: 1)]),
+    }),
+    assess_reference_derived_closure_observation(observation: SiblingBranchObservation {
+      own_branch_declaration: oid(value: 2),
+      sibling_branch_declaration: oid(value: 3),
+      binding_outcome: p1_outcome(supplied_candidates: [oid(value: 2)]),
+    }),
+    assess_reference_derived_closure_observation(observation: LaterDeclarationObservation {
+      later_declaration: oid(value: 3),
+      binding_outcome: p1_outcome(supplied_candidates: []),
+    }),
+    assess_reference_derived_closure_observation(observation: DistinctHomonymObservation {
+      first_declaration: oid(value: 1),
+      second_declaration: oid(value: 2),
+      binding_outcome: p1_outcome(supplied_candidates: [oid(value: 1), oid(value: 2)]),
+    }),
+    assess_reference_derived_closure_observation(observation: RepeatedMentionDependencyObservation {
+      provider_file: "dag/provider.dag",
+      projected_dependencies: ["dag/provider.dag"],
+    }),
+    assess_reference_derived_closure_observation(observation: UnrelatedLoadedFileObservation {
+      provider_file: "dag/provider.dag",
+      unrelated_loaded_file: "dag/unrelated.dag",
+      projected_dependencies: ["dag/provider.dag"],
+    }),
+  ]
+}
+
+test fn witness_positive_population_closes_exact_six_capabilities() -> Bool {
+  count(reference_derived_closure_required_capabilities()) == 6
+    && reference_derived_closure_closing_frontier_count(admissions: []) == 6
+    && reference_derived_closure_closing_contract_holds(admissions: positive_admissions())
+}
+
+test fn witness_each_production_clause_is_red_with_its_named_trigger() -> Bool {
+  let statuses = namespace_reference_derived_closure_acceptance_admissions()
+  count(statuses) == 6
+    && [
+      SameFileEarlierNeighbourVisible,
+      SiblingDecisionBranchExcluded,
+      LaterDeclarationExcluded,
+      DistinctSameSpelledDeclarationsPreserved,
+    ] |> all(capability => statuses |> any(status => match status {
+      ReferenceDerivedClosureUnavailable { capability: observed, trigger } =>
+        observed == capability && trigger == P2aStructuralCandidateProducer7515
+      _ => false
+    }))
+    && statuses |> any(status => match status {
+      ReferenceDerivedClosureUnavailable { capability, trigger } =>
+        capability == RepeatedMentionsCollapseDependency
+          && trigger == P2aReferenceDependencyProjection7515
+      _ => false
+    })
+    && statuses |> any(status => match status {
+      ReferenceDerivedClosureUnavailable { capability, trigger } =>
+        capability == UnrelatedLoadedFileExcluded
+          && trigger == P2aPoolIndependentDependencyProjection7515
+      _ => false
+    })
+    && reference_derived_closure_closing_frontier_count(admissions: statuses) == 6
+}
+
+test fn witness_same_file_neighbour_removal_fires_refusal() -> Bool {
+  match assess_reference_derived_closure_observation(observation: SameFileNeighbourObservation {
+    neighbour: oid(value: 1),
+    binding_outcome: p1_outcome(supplied_candidates: []),
+  }) {
+    ReferenceDerivedClosureRefused { capability, failure } =>
+      capability == SameFileEarlierNeighbourVisible && failure == SameFileNeighbourMissing
+    _ => false
+  }
+}
+
+test fn witness_sibling_branch_leak_fires_refusal() -> Bool {
+  match assess_reference_derived_closure_observation(observation: SiblingBranchObservation {
+    own_branch_declaration: oid(value: 1),
+    sibling_branch_declaration: oid(value: 2),
+    binding_outcome: p1_outcome(supplied_candidates: [oid(value: 1), oid(value: 2)]),
+  }) {
+    ReferenceDerivedClosureRefused { capability, failure } =>
+      capability == SiblingDecisionBranchExcluded && failure == SiblingBranchLeaked
+    _ => false
+  }
+}
+
+test fn witness_later_declaration_leak_fires_refusal() -> Bool {
+  match assess_reference_derived_closure_observation(observation: LaterDeclarationObservation {
+    later_declaration: oid(value: 3),
+    binding_outcome: p1_outcome(supplied_candidates: [oid(value: 3)]),
+  }) {
+    ReferenceDerivedClosureRefused { capability, failure } =>
+      capability == LaterDeclarationExcluded && failure == LaterDeclarationLeaked
+    _ => false
+  }
+}
+
+test fn witness_distinct_homonym_collapse_fires_refusal() -> Bool {
+  match assess_reference_derived_closure_observation(observation: DistinctHomonymObservation {
+    first_declaration: oid(value: 1),
+    second_declaration: oid(value: 2),
+    binding_outcome: p1_outcome(supplied_candidates: [oid(value: 1)]),
+  }) {
+    ReferenceDerivedClosureRefused { capability, failure } =>
+      capability == DistinctSameSpelledDeclarationsPreserved && failure == DistinctDeclarationCollapsed
+    _ => false
+  }
+}
+
+test fn witness_repeated_mention_dependency_duplication_fires_refusal() -> Bool {
+  match assess_reference_derived_closure_observation(observation: RepeatedMentionDependencyObservation {
+    provider_file: "dag/provider.dag",
+    projected_dependencies: ["dag/provider.dag", "dag/provider.dag"],
+  }) {
+    ReferenceDerivedClosureRefused { capability, failure } =>
+      capability == RepeatedMentionsCollapseDependency && failure == RepeatedMentionDuplicatedDependency
+    _ => false
+  }
+}
+
+test fn witness_unrelated_loaded_file_dependency_fires_refusal() -> Bool {
+  match assess_reference_derived_closure_observation(observation: UnrelatedLoadedFileObservation {
+    provider_file: "dag/provider.dag",
+    unrelated_loaded_file: "dag/unrelated.dag",
+    projected_dependencies: ["dag/provider.dag", "dag/unrelated.dag"],
+  }) {
+    ReferenceDerivedClosureRefused { capability, failure } =>
+      capability == UnrelatedLoadedFileExcluded && failure == UnrelatedLoadedFileDependencyLeaked
+    _ => false
+  }
+}
+
+test fn witness_duplicate_admission_cannot_erase_missing_capability() -> Bool {
+  let one = assess_reference_derived_closure_observation(observation: SameFileNeighbourObservation {
+    neighbour: oid(value: 1),
+    binding_outcome: p1_outcome(supplied_candidates: [oid(value: 1)]),
+  })
+  reference_derived_closure_closing_frontier_count(admissions: [one]) == 5
+    && reference_derived_closure_closing_frontier_count(admissions: [one, one]) == 5
+    && !reference_derived_closure_closing_contract_holds(admissions: [one, one])
+}
+
+test fn witness_refusal_vetoes_a_contradictory_established_receipt() -> Bool {
+  let refusal = assess_reference_derived_closure_observation(observation: SameFileNeighbourObservation {
+    neighbour: oid(value: 1),
+    binding_outcome: p1_outcome(supplied_candidates: []),
+  })
+  let contradictory = append(positive_admissions(), items: [refusal])
+  reference_derived_closure_closing_frontier_count(admissions: contradictory) == 1
+    && !reference_derived_closure_closing_contract_holds(admissions: contradictory)
+}

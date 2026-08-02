@@ -161,6 +161,11 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
+            "type_ref_hit_ne_bind_measure_active".to_string(),
+            bool_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
             "resolution_silent_pick_record_global_bare_lcp_pick".to_string(),
             unit_type(),
         );
@@ -173,6 +178,11 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
             m.clone(),
             "resolution_silent_pick_record_fn_parent_first_hit".to_string(),
             unit_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "resolution_divergence_silent_pick_gate_in_process".to_string(),
+            bool_type(),
         );
         let m = v1_rt::rc_map_insert(m.clone(), "to_string".to_string(), string_type());
         let m = v1_rt::rc_map_insert(m.clone(), "discriminant".to_string(), string_type());
@@ -247,6 +257,11 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "observed_peak_resident_bytes".to_string(),
+            int_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "observed_monotonic_nanos".to_string(),
             int_type(),
         );
         let m = v1_rt::rc_map_insert(m.clone(), "string_contains".to_string(), bool_type());
@@ -383,6 +398,21 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "test_migration_debt_known_covered_module_is_not_debt".to_string(),
+            bool_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "test_migration_legacy_behavior_ids".to_string(),
+            list_of_type_variable("test_migration_legacy_behavior_id_elem".to_string()),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "test_migration_witness_behavior_ids".to_string(),
+            list_of_type_variable("test_migration_witness_behavior_id_elem".to_string()),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "test_migration_behavior_discovery_holds".to_string(),
             bool_type(),
         );
         let m = v1_rt::rc_map_insert(

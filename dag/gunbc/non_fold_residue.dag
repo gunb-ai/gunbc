@@ -121,6 +121,16 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     trigger: TriggerProse { text: nfr_dissolve_frontier_probe },
   },
   FrontierRow {
+    subject: PathSubject { path: "src/v2/compiler/self_host/frontier_probe_types.dag::frontier_probe_located_stage_for_emit_outcome" },
+    reason: nfr_reason_frontier_probe,
+    trigger: TriggerProse { text: nfr_dissolve_frontier_probe },
+  },
+  FrontierRow {
+    subject: PathSubject { path: "src/v2/compiler/self_host/frontier_probe_types.dag::frontier_upstream_semantic_refusal_located_reason" },
+    reason: nfr_reason_frontier_probe,
+    trigger: TriggerProse { text: nfr_dissolve_frontier_probe },
+  },
+  FrontierRow {
     subject: PathSubject { path: "src/v2/compiler/05_emit_orchestration.dag::orch_emit_let_step" },
     reason: nfr_reason_orch_emit,
     trigger: TriggerProse { text: nfr_dissolve_orch_emit },
@@ -694,6 +704,26 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     subject: PathSubject { path: "dag/std/occurrence_binding_resolve.dag::occurrence_category_binding_verdict" },
     reason: nfr_reason_trait_derive_shape_table,
     trigger: TriggerProse { text: "DISSOLVE-ON: OccurrenceCategory×OccurrenceCategory compatibility becomes a total derived table (or inhabitance-derived admissibility) and the nested wildcard arms delete with the row" },
+  },
+  FrontierRow {
+    subject: PathSubject { path: "dag/std/occurrence_binding_candidates.dag::declaration_exposure_eq" },
+    reason: nfr_reason_structural_eq_mint,
+    trigger: TriggerProse { text: nfr_dissolve_derived_equality },
+  },
+  FrontierRow {
+    subject: PathSubject { path: "dag/std/occurrence_binding_candidates.dag::section13_population_law_id_eq" },
+    reason: nfr_reason_structural_eq_mint,
+    trigger: TriggerProse { text: "DISSOLVE-ON: Section13PopulationLawId equality becomes derived from inhabitance (dag/std/algebra, DESIGN §3/§4) and the hand nested-match equality fold deletes with the row" },
+  },
+  FrontierRow {
+    subject: PathSubject { path: "src/v2/lens/vacuity.dag::vacuity_operand_provenance_is_live_snapshot_duplicate_partner" },
+    reason: "hand-rolled subset predicate over TestClaimOperandProvenance (param scrutinee, off-variant wildcard arm returning false), sibling in shape to the structural-equality rows above; landed with the vacuity-lens item-5 consumer-witness fix (review 47124/46886, PR #7620) and surfaced by the whole-corpus nfr receipt after per-PR affected-set selection predict-skipped the corpus-read nfr witness at landing time (the masking class); declared so the ratchet re-arms. In-code disposition (owner v2.lens.vacuity, lane: vacuity-lens item-5 consumer-witness lane) lives at vacuity_operand_provenance_live_snapshot_duplicate_partner_predicate_disposition in src/v2/lens/vacuity.dag.",
+    trigger: TriggerProse { text: "DISSOLVE-ON: provenance is read from the containment-tree projection and live-snapshot-duplicate membership is construction-side (illegal states unrepresentable), or a single canonical accessor over TestClaimOperandProvenance answers both this and the independent-oracle question (operand_provenance_is_independent_oracle), replacing both hand-matched predicates at once — never two accessors surviving side by side once one canonical one exists (DESIGN §3 single authority). Same trigger as vacuity_operand_provenance_independent_oracle_predicate_dissolution_note's sibling note." },
+  },
+  FrontierRow {
+    subject: PathSubject { path: "dag/gunbc/repo_local_git_config.dag::apply_repo_local_git_config_action_at_repo" },
+    reason: nfr_reason_legacy_slice1_bridge,
+    trigger: TriggerProse { text: "DISSOLVE-ON: membership apply dispatch derives off-variant noop from MemberAction inhabitance (MemberTeardown/MemberTeardownRefused are construction-unreachable for Ensured bindings) and the wildcard arm deletes with the row" },
   },
 ]
 

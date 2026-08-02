@@ -1,6 +1,7 @@
 module test.claim.roadmap_authority
 
-import std.types { ContentHash, String }
+import std.content_hash { Fnv1a64Structural, content_hash_atom }
+import std.types { NonEmptyStr, String }
 import gunbc.roadmap_focus { RoadmapFocus, NoFocus }
 import gunbc.roadmap_authority {
   roadmap_authority_for,
@@ -92,9 +93,9 @@ fn active_nodes() -> List<RoadmapNode> { active_roadmap_nodes() }
 fn active_edges() -> List<RoadmapEdge> { active_roadmap_edges() }
 
 fn tnid(s: String) -> RoadmapNodeId { s }
-fn tchash(s: String) -> ContentHash { s }
+fn tchash(s: String) -> Fnv1a64Structural { content_hash_atom(value: s as NonEmptyStr) }
 
-fn digest_or_zero(rn: RoadmapNode) -> ContentHash {
+fn digest_or_zero(rn: RoadmapNode) -> Fnv1a64Structural {
   match node_criteria_digest(rn: rn) {
     Present { value } => value
     Absent => tchash(s: "0000000000000000")
@@ -105,7 +106,7 @@ fn declared_node(id: String) -> List<RoadmapNode> {
   nodes() |> filter(n => n.node == id)
 }
 
-fn receipt_fixture(node: String, digest: ContentHash) -> RoadmapAcceptanceReceipt {
+fn receipt_fixture(node: String, digest: Fnv1a64Structural) -> RoadmapAcceptanceReceipt {
   RoadmapAcceptanceReceipt {
     node: tnid(s: node),
     criteria_digest: digest,
@@ -599,6 +600,22 @@ test fn witness_accepted_scm_sequence_activates_authored_p1_slice() -> Bool {
     && !id_exists(id: "2-scm-design-partner-shadow")
 }
 
+test fn witness_namespace_reference_derived_closure_has_discriminating_contract() -> Bool {
+  match bound_execution_contract_for(id: "namespace-reference-derived-closure") {
+    ExecutionContractUnspecified => false
+    ExecutionContract { validations, extra_capabilities } =>
+      count(validations) == 1
+        && count(extra_capabilities) == 0
+        && validations |> any(validation => match validation {
+          GunbcClaimValidation { entry, function } =>
+            (entry as String) == "dag/test/claim/namespace_reference_derived_closure_acceptance_test.dag"
+              && function == "witness_namespace_reference_derived_closure_closing_contract_holds"
+          CargoTestValidation { filter: _ } => false
+          CargoFmtValidation => false
+        })
+  }
+}
+
 test fn witness_projection_is_active_only() -> Bool {
   let out = serialize_markdown_source(
     doc: project_roadmap_to_markdown(
@@ -653,6 +670,22 @@ test fn witness_every_binding_carries_a_validation() -> Bool {
         ExecutionContract { validations, extra_capabilities: _ } => count(validations) > 0
       },
   )
+}
+
+test fn witness_v1_test_migration_contract_names_behavior_frontier() -> Bool {
+  match bound_execution_contract_for(id: "v1-test-migration") {
+    ExecutionContractUnspecified => false
+    ExecutionContract { validations, extra_capabilities } =>
+      count(validations) == 1
+        && count(extra_capabilities) == 0
+        && validations |> any(validation => match validation {
+          GunbcClaimValidation { entry, function } =>
+            (entry as String) == "dag/test/claim/legacy_test_behavior_disposition_acceptance_test.dag"
+              && function == "legacy_test_behavior_unclassified_frontier_is_zero"
+          CargoTestValidation { filter: _ } => false
+          CargoFmtValidation => false
+        })
+  }
 }
 
 test fn witness_bound_pair_covers_both_verify_directions() -> Bool {

@@ -24,11 +24,17 @@ The operator question slice 2 answers: **how often does a repeated module member
 
 ---
 
-## B — the instrument
+## B — the retired instrument
 
-**Probe:** `measure_repeated_typecheck_attribution` (`src/v1/stage0/src/bin/measure_repeated_typecheck_attribution.rs`)
+**Historical probe (deleted after the merged-SHA receipt):**
+`measure_repeated_typecheck_attribution`
+(`src/v1/stage0/src/bin/measure_repeated_typecheck_attribution.rs`)
 
-**Mechanism:** production-selected entries (same machinery as slice 1) resolved sequentially against **one** `build_multi_entry_index` shell. Attribution hooks in `reconcile_with_typed_cache` and `try_reconcile_all_cache_hits` are **flag-gated** (`arm_repeated_typecheck_attribution_probe`); default resolve flow is unchanged.
+**Mechanism used for the archived measurement:** production-selected entries (same
+machinery as slice 1) resolved sequentially against **one** `build_multi_entry_index`
+shell. Attribution hooks in `reconcile_with_typed_cache` and
+`try_reconcile_all_cache_hits` were **flag-gated**
+(`arm_repeated_typecheck_attribution_probe`); default resolve flow was unchanged.
 
 ### Per (entry, typed module content key)
 
@@ -70,15 +76,17 @@ Diagnostic only: `cache_hit_ratio = hits / (hits + misses)`.
 
 ---
 
-## C — controls (proven by execution)
+## C — durable controls (proven by execution)
 
 | control | witness |
 |---|---|
-| Reordering entries preserves distinct compute set | `repeated_typecheck_attribution_reorder_preserves_distinct_computes` (union_resolve_receipts_test) |
-| Shared prefix observed as cache hit on second entry | `repeated_typecheck_attribution_records_shared_prefix_hits` |
-| Hits carry zero `typecheck_compute_ns` | `cache_hits_carry_zero_typecheck_compute_ns` (cli_run arithmetic) |
-| Refused is third state, not counted as hit | `refused_rows_are_not_counted_as_hits` |
-| Decision ratio arithmetic | `perfect_sharing_yields_zero_decision_ratio`, `repeated_recompute_raises_decision_ratio` |
+| One content key computes once; later requesters hit | `union_resolve_typechecks_each_node_once` (union_resolve_receipts_test) |
+| Reordering entries preserves the distinct content-key set | `shared_typecheck_distinct_compute_count_is_order_invariant` (union_resolve_receipts_test) |
+
+The one-shot decision instrument also executed controls for shared-prefix hits, zero-cost
+hits, refused rows, ratio arithmetic, and reordered miss sets. Their outcomes remain in
+the archived receipts, but their witnesses were deleted with the instrument after the
+merged-SHA integration receipt. They are historical controls, not enrolled regressions.
 
 ---
 
@@ -90,23 +98,20 @@ Diagnostic only: `cache_hit_ratio = hits / (hits + misses)`.
 
 ---
 
-## E — reproducing
+## E — reproduction boundary
+
+The production ratio instrument was deliberately deleted after its merged-SHA receipt,
+so the historical N<=50 matrix is not a permanently reproducible CLI surface. The
+retained structural law remains directly executable:
 
 ```sh
-# Fixture-scale (fast, no git diff required):
-cargo test -p v1-compiler-tests repeated_typecheck_attribution
-
-# Production-selected set (disjoint windows on dev host; build bin once, do not rebuild mid-matrix):
-cargo build --release -p v1-compiler --bin measure_repeated_typecheck_attribution
-GUNBC_CI_DIFF_BASE=<base-sha> measure_repeated_typecheck_attribution \
-  --source-root dag --source-root src/v2 \
-  --scan-dir dag/test/claim --scan-dir src/v2/test/claim/manual \
-  --scan-dir src/v2/test/claim/emit \
-  --entry-offset <offset> --max-entries 50 \
-  --receipt-out docs/plans/receipts/entry-graph-union-slice2/receipt-<name>.json
+cargo test -p v1-compiler-tests union_resolve_typechecks_each_node_once
+cargo test -p v1-compiler-tests shared_typecheck_distinct_compute_count_is_order_invariant
 ```
 
-Emits `[typecheck-attribution-measurement] {json}` on stdout; `--receipt-out` writes the full row-level receipt.
+Section F and the receipt directory preserve the historical matrix output. Recreating its
+ratio would require restoring retired orchestration and is intentionally unsupported:
+retain the cache law, not the one-shot instrument.
 
 ---
 
@@ -148,7 +153,8 @@ At every measured cell at N≤50: **repeated typecheck compute is zero**, order-
 
 Full per-row receipts: `docs/plans/receipts/entry-graph-union-slice2/receipt-*.json`.
 
-Reproduce disjoint cells (§E; three complete invocations — no shell orchestration):
+Historical exact invocations (archived for provenance; intentionally not runnable after
+the one-shot bin was deleted):
 
 ```sh
 GUNBC_CI_DIFF_BASE=e30621111f37 measure_repeated_typecheck_attribution \
@@ -177,7 +183,7 @@ GUNBC_CI_DIFF_BASE=0d6ffc4db975 measure_repeated_typecheck_attribution \
 
 ## G — post-verdict retention boundary
 
-**Retain (structural law — enrolled regression controls):**
+**Retained (structural law — enrolled regression controls):**
 
 Within one shared typed-cache authority:
 
@@ -185,9 +191,11 @@ Within one shared typed-cache authority:
 2. Later requesters observe **cache hits**, not recomputation.
 3. Entry resolve **order does not change** the distinct-computation set.
 
-Witnesses: `repeated_typecheck_attribution_records_shared_prefix_hits`, `repeated_typecheck_attribution_reorder_preserves_distinct_computes`, `repeated_typecheck_attribution_partial_probe_hit_single_row_per_module` (`v1-compiler-tests`); sibling `typecheck_compute_count` oracles in the same file.
+Witnesses: `union_resolve_typechecks_each_node_once` (first compute only; later requester
+adds fewer computes and re-resolves add zero) and
+`shared_typecheck_distinct_compute_count_is_order_invariant` (`v1-compiler-tests`).
 
-**Delete after merged-SHA provenance receipt** (one representative 50-entry cell + reorder control rerun on `main`, then archive):
+**Deleted after merged-SHA provenance receipt:**
 
 - `measure_repeated_typecheck_attribution` bin and orchestration (`measure_*`, production-selection roster path)
 - JSON receipt renderers (`render_repeated_typecheck_attribution_*`)
@@ -195,3 +203,21 @@ Witnesses: `repeated_typecheck_attribution_records_shared_prefix_hits`, `repeate
 - `repeated_typecheck_attribution_arithmetic` (ratio aggregation — historical instrument math, not the structural law)
 
 `decision_ratio=0` was the slice-2 hypothesis outcome, not a permanent structural invariant to defend via production CLI forever.
+
+### Post-merge integration receipt (provenance, not a second decision gate)
+
+The representative 50-entry cell was rerun from merged main with binary SHA-256
+`1e8aba324353aca22bce3a9586e368633263757bb4d87584c15e5345301b9b45`:
+4,302 hits, 680 first misses, zero refusals, and zero repeated misses. The seven-entry
+reorder control produced 225 hits and 400 first misses in each direction; the sorted
+distinct miss-key sets are identical.
+
+Receipts: `receipt-post-merge-representative-50.json`,
+`receipt-post-merge-reorder-a.json`, and `receipt-post-merge-reorder-b.json` under the
+slice-2 receipt directory. The reverse receipt names dashboard commit `a3b2c6dcb9` while
+the other two name `46c5c8fe71`: the dashboard committed only the representative JSON
+between the frozen-binary runs. The compiler tree and binary were identical, so this is a
+provenance wrinkle, not a source change or a second gate.
+
+The successor measurement is
+[per-entry assembly decomposition](per-entry-assembly-decomposition-measurement.md).

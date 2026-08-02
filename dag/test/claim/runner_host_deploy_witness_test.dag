@@ -163,6 +163,7 @@ fn witness_ready_receipt() -> BuildCacheInstanceReady {
 
 fn witness_ready_pool() -> HostCompilePoolReady {
   HostCompilePoolReady {
+    host: srv4_runner_host_deploy.host_label as HostIdentity,
     slice_unit: gunbc_managed_compile_pool_slice,
     pool_declared: true,
     pool_observed: true,
