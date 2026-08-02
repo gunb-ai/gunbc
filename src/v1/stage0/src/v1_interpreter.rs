@@ -2750,6 +2750,187 @@ fn native_map_absent_diagnostic_value(ctx: &InterpContext) -> Value {
     }
 }
 
+// HAND-RUST GATE explicit deferral (review 46616): bounded growth in the existing
+// seed interpreter, not a new Rust authority. The evaluation-boundary POLICY is
+// modeled — `v2.std.witness_evaluation` owns `WitnessEvaluation`/`WitnessEvaluationFrame`
+// and `extdeps.transports.rest` `rest_exchange_resolution` owns the lookup, equality,
+// and handler-selection decisions; what lives here is only the dynamic-extent
+// realization of pushing and popping a frame, which no modeled construct can express
+// while the seed is the evaluator.
+//
+// Lane: ROADMAP `v1-materialization-kernel` (rn_53JPH6BB7G588K7DMZNWM0E3AS,
+// docs/plans/witness-realization-plan.md) — the same lane
+// `extdeps.realization.emit_on_demand_host` `emit_on_demand_host_seed_deferral_note`
+// defers to; counted against `v1-honest-frontier` and terminating at
+// `v1-interpreter-quarantine` → `v1-interpreter-delete`.
+//
+// Deletion condition, checkable by execution: witnesses emit to native code and the
+// emitted runtime realizes the evaluation frame, at which point this stack, its
+// `WITNESS_EVALUATION_MODULE` dispatch, and `witness_evaluation_diagnostic_value`
+// delete together while `rest_replay_binding_does_not_escape_its_frame` stays green
+// without them. That witness is the regression control for the deletion, not just for
+// the frame — it fails if a binding survives its frame under either realization.
+//
+// Citation note: the two sibling deferrals in this file and in
+// `emit_on_demand_host_seed_deferral_note` name a
+// `dag/gunbc/v1_deletion_plan.dag ^witness_realization_kernel` deletion row. That row
+// no longer exists — the brick ledger it belonged to was retired 2026-07-28 by that
+// file's own `v1_exit_model_doc`, which moved per-node acceptance onto the roadmap
+// tickets. This deferral therefore names the live roadmap node instead of copying a
+// dead row forward; repointing the two stale siblings is left to the lane that owns
+// them rather than smuggled into this diff.
+thread_local! {
+    /// Dynamically scoped witness frames. The .dag carrier owns their contents;
+    /// this stack is only the v1 seed realization of the evaluation boundary.
+    /// A frame is pushed immediately before its subject closure and removed by
+    /// `WitnessFramePop`'s Drop on every exit path — returned, refused, or
+    /// unwound — so replay bindings cannot become ambient.
+    static WITNESS_EVALUATION_FRAMES: RefCell<Vec<Value>> = const { RefCell::new(Vec::new()) };
+}
+
+/// Pops the frame its constructor's caller pushed, on EVERY exit path including an
+/// unwind. The pop used to be an ordinary statement after `apply_closure`, which held
+/// only because no path between the two returned early — a property of the current
+/// body, not of the code, so the block comment's "removed on both returned/refused
+/// paths" was a promise the shape did not keep (review 46767).
+///
+/// The leak is worth closing by construction rather than by care because a leaked
+/// frame is no longer merely a stale binding: `dispatch_service` consults
+/// `current_witness_evaluation_frame()` to decide whether a hermetic op routes to the
+/// real dispatcher, so an escaped frame would silently route *subsequent* ops out of
+/// the mock layer. Drop makes the escape unwritable instead of merely unlikely (§5).
+struct WitnessFramePop;
+
+impl Drop for WitnessFramePop {
+    fn drop(&mut self) {
+        WITNESS_EVALUATION_FRAMES.with(|frames| {
+            let _ = frames.borrow_mut().pop();
+        });
+    }
+}
+
+const WITNESS_EVALUATION_MODULE: &str = "v2.std.witness_evaluation";
+
+fn witness_evaluation_diagnostic_value(
+    ctx: &InterpContext,
+    call_node: &Rc<Node>,
+    error: &InterpError,
+) -> Value {
+    let at = format!("{}:{}", call_node.span.file, call_node.span.start);
+    let locus = Value::Variant {
+        type_name: ctx.sym("Locus"),
+        variant_name: ctx.sym("PortLocus"),
+        fields: Rc::new(vec![(
+            ctx.sym("anchor"),
+            Value::Record {
+                type_name: ctx.sym("LocusAnchor"),
+                fields: Rc::new(vec![(ctx.sym("at"), Value::Str(at))]),
+            },
+        )]),
+    };
+    let correction = Value::Variant {
+        type_name: ctx.sym("Correction"),
+        variant_name: ctx.sym("Unavailable"),
+        fields: Rc::new(vec![(
+            ctx.sym("reason"),
+            Value::Variant {
+                type_name: ctx.sym("NoCorrectionReason"),
+                variant_name: ctx.sym("ExternalContractUnknown"),
+                fields: Rc::new(vec![]),
+            },
+        )]),
+    };
+    Value::Record {
+        type_name: ctx.sym("Diagnostic"),
+        fields: Rc::new(sorted_fields(vec![
+            (ctx.sym("at"), locus),
+            (ctx.sym("correction"), correction),
+            (ctx.sym("reason"), Value::Str(error.to_string())),
+        ])),
+    }
+}
+
+fn witness_evaluation_variant(
+    ctx: &InterpContext,
+    variant: &str,
+    field: &str,
+    value: Value,
+) -> Value {
+    Value::Variant {
+        type_name: ctx.sym("WitnessEvaluation"),
+        variant_name: ctx.sym(variant),
+        fields: Rc::new(vec![(ctx.sym(field), value)]),
+    }
+}
+
+fn current_witness_evaluation_frame() -> Option<Value> {
+    WITNESS_EVALUATION_FRAMES.with(|frames| frames.borrow().last().cloned())
+}
+
+fn try_witness_evaluation_dispatch(
+    ctx: &InterpContext,
+    call_node: &Rc<Node>,
+    fn_node: &Rc<Node>,
+    args: &[(Option<String>, Value)],
+    env: &Rc<Env>,
+) -> Option<InterpResult<Value>> {
+    let is_authority = ctx
+        .item_registry
+        .get(&fn_node.name)
+        .is_some_and(|info| info.module_name == WITNESS_EVALUATION_MODULE);
+    if !is_authority {
+        return None;
+    }
+    match fn_node.name.as_str() {
+        "witness_evaluation_frame_active" => Some(Ok(Value::Bool(
+            WITNESS_EVALUATION_FRAMES.with(|frames| !frames.borrow().is_empty()),
+        ))),
+        "witness_diagnostic_rendered_reason" => {
+            let diagnostic = args.first().map(|(_, value)| value);
+            let rendered = match diagnostic {
+                Some(Value::Record { fields, .. }) => ctx.field(fields, "reason").cloned(),
+                _ => None,
+            };
+            Some(rendered.ok_or_else(|| InterpError::TypeError {
+                msg: "witness diagnostic is malformed".to_string(),
+            }))
+        }
+        "evaluate_in_witness_frame" => {
+            let argument = |name: &str, position: usize| {
+                args.iter()
+                    .find(|(label, _)| label.as_deref() == Some(name))
+                    .or_else(|| args.get(position))
+                    .map(|(_, value)| value.clone())
+            };
+            let Some(frame) = argument("frame", 0) else {
+                return Some(Err(InterpError::TypeError {
+                    msg: "evaluate_in_witness_frame requires a frame".to_string(),
+                }));
+            };
+            let Some(subject) = argument("subject", 1) else {
+                return Some(Err(InterpError::TypeError {
+                    msg: "evaluate_in_witness_frame requires a subject".to_string(),
+                }));
+            };
+            WITNESS_EVALUATION_FRAMES.with(|frames| frames.borrow_mut().push(frame));
+            let evaluated = {
+                let _pop = WitnessFramePop;
+                apply_closure(&subject, &[Value::Bool(true)], env, ctx)
+            };
+            Some(Ok(match evaluated {
+                Ok(value) => witness_evaluation_variant(ctx, "WitnessReturned", "value", value),
+                Err(error) => witness_evaluation_variant(
+                    ctx,
+                    "WitnessRefused",
+                    "diagnostic",
+                    witness_evaluation_diagnostic_value(ctx, call_node, &error),
+                ),
+            }))
+        }
+        _ => None,
+    }
+}
+
 fn match_pattern(
     pattern: &MatchPattern,
     value: &Value,
@@ -3359,6 +3540,10 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
             }
         }
     };
+
+    if let Some(result) = try_witness_evaluation_dispatch(ctx, node, &fn_node, &args, env) {
+        return result;
+    }
 
     if let Some(result) = try_parse_table_memo_dispatch(ctx, &func_name, &fn_node, &args, env)? {
         return Ok(result);
@@ -5642,6 +5827,58 @@ fn eval_service_call(
             return crate::recorded_fixture::value_from_fixture_json(&fixture.response, ctx)
                 .map_err(|e| InterpError::TypeError { msg: e.to_string() });
         }
+        // An active witness replay frame OUTRANKS the published-mock layer, because the
+        // two answer different questions and only one of them is the seam under test.
+        // `eval_mock_response` replays the operation RESULT off the declaration; a replay
+        // frame supplies the transport OBSERVATION and requires the real dispatcher fold
+        // to run on top of it. Letting the mock answer first is the exact fail-open the
+        // seam exists to close: the fixture greens while the dispatcher is never reached,
+        // so a broken dispatcher is unobservable in the mode CI actually runs (hermetic).
+        // Measured: `rest_transport_failure_is_persistable` returns true under `gunbc run
+        // --claim-run` (Wet, reaches `dispatch_rest`) and false under `claim_batch`
+        // (Hermetic, answered here) on one binary and one tree.
+        //
+        // Fail-closed on both arms, never a widen (§5): for a REST transport this routes
+        // to the ordinary wet dispatch so `rest_exchange_selection` decides, and that
+        // selection already refuses `RestReplayExchangeAbsent`/`Ambiguous` BEFORE any
+        // socket is opened — so an active frame with no matching fixture is a typed
+        // refusal, not a live request escaping hermetic mode. Every other transport
+        // refuses here rather than falling through: a declared replay intent this
+        // machinery cannot honor must stop the line, not silently degrade to the mock
+        // (which would fabricate a plausible answer) nor to a real shell/file effect.
+        //
+        // HAND-RUST GATE — seed-retained, lane `v1-materialization-kernel`
+        // (rn_53JPH6BB7G588K7DMZNWM0E3AS, docs/plans/witness-realization-plan.md),
+        // terminating at `v1-interpreter-quarantine` → `v1-interpreter-delete`; the same
+        // lane the `WITNESS_EVALUATION_FRAMES` deferral above names. Deletion condition,
+        // checkable by execution: when witnesses emit to native code and the emitted
+        // runtime realizes the evaluation frame, this arm deletes with that stack while
+        // `rest_transport_failure_is_persistable` stays green under the corpus runner
+        // without it. That witness is this arm's regression control, not merely the
+        // frame's — it reds if the mock layer ever preempts a replay frame again.
+        if current_witness_evaluation_frame().is_some() {
+            if is_shell_transport(transport.clone())
+                || is_file_transport(transport.clone(), ctx.si())
+            {
+                return Err(InterpError::TypeError {
+                    msg: format!(
+                        "witness replay frame is active for {key}, but its transport has no \
+                         replay realization — refusing (only REST exchanges are replayable; \
+                         the frame is not silently ignored)"
+                    ),
+                });
+            }
+            return dispatch_service_wet(
+                service_node,
+                op_node,
+                transport,
+                &param_env,
+                ctx,
+                &key,
+                expected,
+            );
+        }
+
         trace_emit(
             OutputChannel::Instrumentation,
             &format!("[hermetic:mock] {}.{}", service_name, op_name),
@@ -7428,6 +7665,517 @@ fn rest_auth_authority_conflict(config_auth_resolved: bool, has_auth_basic: bool
     config_auth_resolved && has_auth_basic
 }
 
+/// HAND-RUST GATE explicit deferral (review 46616), covering this function and the
+/// REST outcome/replay bridge below it through `dispatch_rest`: bounded growth in the
+/// existing seed interpreter, not a new Rust authority and not a second transport
+/// convention. Every DECISION this bridge makes is modeled — the outcome states are
+/// `extdeps.transports.rest` `RestOutcome`, the observation states are
+/// `RestExchangeObservation`, replay identity and its 0/1/many lookup are
+/// `rest_bound_invocation_eq` / `rest_exchange_fixture_lookup`, and the resolution is
+/// selected by calling `rest_exchange_resolution` back into `.dag`. What is seed-side
+/// is the projection of those decisions onto the operation's declared output record,
+/// which requires the interpreter's own `Value`/`Node` representation.
+///
+/// Lane: ROADMAP `v1-interpreter-quarantine` → `v1-interpreter-delete`, counted against
+/// `v1-honest-frontier`.
+///
+/// EARLIER, NARROWER deletion condition than the lane's, and the one that should fire
+/// first — stated in the SCOPE paragraph of `rest_outcome_note`: when the `response`
+/// block becomes the single authority for a result and `output` is DERIVED from its 2xx
+/// arm, every operation carries its outcome without declaring one. At that point the
+/// opt-in disappears and `rest_outcome_output_field` deletes outright, because there is
+/// no longer a field to detect; the `if status >= 400` raise below it deletes in the
+/// same motion, since it exists only to serve operations that declared no outcome.
+/// Checkable by execution: `rest_operation_without_outcome_still_refuses` is the witness
+/// that pins the opt-in's existence, so it is the one that must be REPLACED (not merely
+/// kept green) when the seam dissolves — a `Legacy` operation with no outcome field can
+/// no longer exist.
+///
+/// The opt-in migration seam declared by extdeps.transports.rest.RestOutcome.
+///
+/// An operation asks for transport observations by declaring an output field whose
+/// type is RestOutcome. Operations without that field retain the legacy raise-on-
+/// failure behavior until the response table itself becomes the universal result
+/// authority; see rest_outcome_note. Inspect the field's TYPE, not its spelling, so
+/// callers may choose a domain-appropriate field name without creating another
+/// transport convention.
+fn rest_outcome_output_field(op_node: &Rc<Node>, ctx: &InterpContext) -> Option<String> {
+    let return_type = match op_node.inferred.as_deref()? {
+        InferredNode::Resolved { node } => node,
+        _ => return None,
+    };
+    return_type.children.iter().find_map(|field| {
+        let field_type = match field.inferred.as_deref()? {
+            InferredNode::Resolved { node } => node,
+            _ => return None,
+        };
+        let type_name = authored_name_at(ctx.si(), field_type.clone());
+        (type_name.rsplit('.').next() == Some("RestOutcome"))
+            .then(|| authored_name_at(ctx.si(), field.clone()))
+    })
+}
+
+fn rest_outcome_variant(
+    ctx: &InterpContext,
+    variant: &str,
+    mut fields: Vec<(Symbol, Value)>,
+) -> Value {
+    fields.sort_unstable_by_key(|(name, _)| name.0);
+    Value::Variant {
+        type_name: ctx.sym("RestOutcome"),
+        variant_name: ctx.sym(variant),
+        fields: Rc::new(fields),
+    }
+}
+
+fn rest_status_refused_value(ctx: &InterpContext, status: u16, body: String) -> Value {
+    rest_outcome_variant(
+        ctx,
+        "RestStatusRefused",
+        vec![
+            (ctx.sym("status"), Value::Int(status as i64)),
+            (ctx.sym("body"), Value::Str(body)),
+        ],
+    )
+}
+
+fn rest_transport_refused_value(ctx: &InterpContext, cause: String) -> Value {
+    rest_outcome_variant(
+        ctx,
+        "RestTransportRefused",
+        vec![(ctx.sym("cause"), Value::Str(cause))],
+    )
+}
+
+fn rest_body_undecodable_value(ctx: &InterpContext, status: u16, cause: String) -> Value {
+    rest_outcome_variant(
+        ctx,
+        "RestBodyUndecodable",
+        vec![
+            (ctx.sym("status"), Value::Int(status as i64)),
+            (ctx.sym("cause"), Value::Str(cause)),
+        ],
+    )
+}
+
+#[derive(Clone)]
+enum RestBodyObservationHost {
+    Read(String),
+    ReadRefused(String),
+}
+
+#[derive(Clone)]
+enum RestExchangeObservationHost {
+    Response {
+        status: u16,
+        body: RestBodyObservationHost,
+    },
+    ExchangeRefused(String),
+}
+
+enum RestExchangeSelectionHost {
+    Real,
+    Replay(RestExchangeObservationHost),
+}
+
+fn rest_variant(ctx: &InterpContext, type_name: &str, variant_name: &str) -> Value {
+    Value::Variant {
+        type_name: ctx.sym(type_name),
+        variant_name: ctx.sym(variant_name),
+        fields: Rc::new(vec![]),
+    }
+}
+
+fn rest_auth_identity_value(
+    auth: &AuthResolution,
+    basic_header: Option<&str>,
+    ctx: &InterpContext,
+) -> Value {
+    let secret_identity = match basic_header {
+        Some(header) => Some(("BasicCredentials".to_string(), header.to_string())),
+        None => match auth {
+            AuthResolution::Resolved { header, token } => Some((
+                if header == "Authorization" {
+                    "BearerToken".to_string()
+                } else {
+                    format!("HeaderToken:{}", header)
+                },
+                token.clone(),
+            )),
+            AuthResolution::NoAuthDeclared | AuthResolution::DeclaredButUnwired { .. } => None,
+        },
+    };
+    match secret_identity {
+        None => rest_variant(ctx, "RestAuthSensitiveIdentity", "RestUnauthenticated"),
+        Some((scheme, secret)) => {
+            // Only the hash crosses into the authored fixture carrier. The secret is
+            // never persisted in, or made displayable through, a replay identity.
+            let digest = format!(
+                "{:016x}",
+                value_hash_public(&Value::Str(format!("{}\0{}", scheme, secret)))
+            );
+            Value::Variant {
+                type_name: ctx.sym("RestAuthSensitiveIdentity"),
+                variant_name: ctx.sym("RestAuthenticated"),
+                fields: Rc::new(sorted_fields(vec![
+                    (ctx.sym("scheme"), Value::Str(scheme)),
+                    (ctx.sym("digest"), Value::Str(digest)),
+                ])),
+            }
+        }
+    }
+}
+
+fn rest_uri_value(url: &str, ctx: &InterpContext) -> InterpResult<Value> {
+    let (scheme, locator) = if let Some(locator) = url.strip_prefix("https://") {
+        ("Https", locator)
+    } else if let Some(locator) = url.strip_prefix("http://") {
+        ("Http", locator)
+    } else {
+        return Err(InterpError::TypeError {
+            msg: format!("REST target is not an absolute HTTP(S) URI: {}", url),
+        });
+    };
+    Ok(Value::Record {
+        type_name: ctx.sym("Uri"),
+        fields: Rc::new(sorted_fields(vec![
+            (ctx.sym("scheme"), rest_variant(ctx, "UriScheme", scheme)),
+            (ctx.sym("locator"), Value::Str(locator.to_string())),
+        ])),
+    })
+}
+
+fn rest_bound_invocation_value(
+    service_node: &Rc<Node>,
+    op_node: &Rc<Node>,
+    method: &str,
+    url: &str,
+    param_env: &Rc<Env>,
+    auth: &AuthResolution,
+    basic_header: Option<&str>,
+    ctx: &InterpContext,
+) -> InterpResult<Value> {
+    let service = authored_name_at(ctx.si(), service_node.clone());
+    let operation = authored_name_at(ctx.si(), op_node.clone());
+    let at = operation_ref_value(&op_node.span.file, &service, &operation, ctx);
+    let input_digest =
+        crate::recorded_fixture::content_hash_service_inputs(op_node, param_env, ctx);
+    Ok(Value::Record {
+        type_name: ctx.sym("RestBoundOperationInvocation"),
+        fields: Rc::new(sorted_fields(vec![
+            (ctx.sym("at"), at),
+            (ctx.sym("method"), rest_variant(ctx, "HttpMethod", method)),
+            (ctx.sym("target"), rest_uri_value(url, ctx)?),
+            (ctx.sym("input_digest"), Value::Str(input_digest)),
+            (
+                ctx.sym("auth_identity"),
+                rest_auth_identity_value(auth, basic_header, ctx),
+            ),
+        ])),
+    })
+}
+
+fn rest_observation_from_value(
+    value: &Value,
+    ctx: &InterpContext,
+) -> InterpResult<RestExchangeObservationHost> {
+    let malformed = || InterpError::TypeError {
+        msg: "REST replay fixture carried a malformed RestExchangeObservation".to_string(),
+    };
+    let Value::Variant {
+        variant_name,
+        fields,
+        ..
+    } = value
+    else {
+        return Err(malformed());
+    };
+    match ctx.resolve(*variant_name).as_str() {
+        "RestExchangeRefused" => match ctx.field(fields, "cause") {
+            Some(Value::Str(cause)) if !cause.is_empty() => {
+                Ok(RestExchangeObservationHost::ExchangeRefused(cause.clone()))
+            }
+            _ => Err(malformed()),
+        },
+        "RestResponseObserved" => {
+            let status = match ctx.field(fields, "status") {
+                Some(Value::Int(status)) if (100..=599).contains(status) => *status as u16,
+                _ => return Err(malformed()),
+            };
+            let body = match ctx.field(fields, "body") {
+                Some(Value::Variant {
+                    variant_name,
+                    fields,
+                    ..
+                }) if ctx.sym_eq(*variant_name, "RestBodyRead") => {
+                    match ctx.field(fields, "body") {
+                        Some(Value::Str(body)) => RestBodyObservationHost::Read(body.clone()),
+                        _ => return Err(malformed()),
+                    }
+                }
+                Some(Value::Variant {
+                    variant_name,
+                    fields,
+                    ..
+                }) if ctx.sym_eq(*variant_name, "RestBodyReadRefused") => {
+                    match ctx.field(fields, "cause") {
+                        Some(Value::Str(cause)) if !cause.is_empty() => {
+                            RestBodyObservationHost::ReadRefused(cause.clone())
+                        }
+                        _ => return Err(malformed()),
+                    }
+                }
+                _ => return Err(malformed()),
+            };
+            Ok(RestExchangeObservationHost::Response { status, body })
+        }
+        _ => Err(malformed()),
+    }
+}
+
+fn rest_exchange_selection(
+    invocation: Value,
+    ctx: &InterpContext,
+) -> InterpResult<RestExchangeSelectionHost> {
+    let Some(frame) = current_witness_evaluation_frame() else {
+        return Ok(RestExchangeSelectionHost::Real);
+    };
+    let Value::Record { fields, .. } = frame else {
+        return Err(InterpError::TypeError {
+            msg: "witness evaluation frame is malformed".to_string(),
+        });
+    };
+    let envelope =
+        ctx.field(&fields, "envelope")
+            .cloned()
+            .ok_or_else(|| InterpError::TypeError {
+                msg: "witness evaluation frame has no envelope".to_string(),
+            })?;
+    let fixtures = ctx
+        .field(&fields, "rest_fixtures")
+        .cloned()
+        .ok_or_else(|| InterpError::TypeError {
+            msg: "witness evaluation frame has no REST fixtures".to_string(),
+        })?;
+    let resolution = run_in_context_with_args(
+        ctx,
+        "rest_exchange_resolution",
+        &[
+            (Some("env".to_string()), envelope),
+            (Some("fixtures".to_string()), fixtures),
+            (Some("invocation".to_string()), invocation),
+        ],
+        false,
+    )?;
+    let Value::Variant {
+        variant_name,
+        fields,
+        ..
+    } = resolution
+    else {
+        return Err(InterpError::TypeError {
+            msg: "REST handler selection returned a malformed resolution".to_string(),
+        });
+    };
+    match ctx.resolve(variant_name).as_str() {
+        "RestRealExchangeRequired" => Ok(RestExchangeSelectionHost::Real),
+        "RestReplayExchangeFound" => {
+            let observation =
+                ctx.field(&fields, "observation")
+                    .ok_or_else(|| InterpError::TypeError {
+                        msg: "REST replay resolution omitted its observation".to_string(),
+                    })?;
+            Ok(RestExchangeSelectionHost::Replay(
+                rest_observation_from_value(observation, ctx)?,
+            ))
+        }
+        "RestReplayExchangeAbsent" => Err(InterpError::TypeError {
+            msg: "missing exact REST replay fixture for bound invocation; real transport refused"
+                .to_string(),
+        }),
+        "RestReplayExchangeAmbiguous" => {
+            let count = match ctx.field(&fields, "count") {
+                Some(Value::Int(count)) => *count,
+                _ => 0,
+            };
+            Err(InterpError::TypeError {
+                msg: format!(
+                    "ambiguous exact REST replay fixture for bound invocation: {} matches; real transport refused",
+                    count
+                ),
+            })
+        }
+        "RestExchangeHandlerUncovered" => Err(InterpError::TypeError {
+            msg: "REST invocation is not covered by the witness frame; real transport refused"
+                .to_string(),
+        }),
+        other => Err(InterpError::TypeError {
+            msg: format!("unrecognized REST exchange resolution: {}", other),
+        }),
+    }
+}
+
+fn observe_rest_exchange(
+    selection: RestExchangeSelectionHost,
+    request: ureq::Request,
+    body_json: Option<serde_json::Value>,
+) -> RestExchangeObservationHost {
+    if let RestExchangeSelectionHost::Replay(observation) = selection {
+        return observation;
+    }
+    let response = if let Some(json) = body_json {
+        request
+            .set("Content-Type", "application/json")
+            .send_string(&json.to_string())
+    } else {
+        request.call()
+    };
+    match response {
+        Ok(response) => {
+            let status = response.status();
+            let body = response.into_string().map_or_else(
+                |error| RestBodyObservationHost::ReadRefused(error.to_string()),
+                RestBodyObservationHost::Read,
+            );
+            RestExchangeObservationHost::Response { status, body }
+        }
+        Err(ureq::Error::Status(status, response)) => {
+            let body = response.into_string().map_or_else(
+                |error| RestBodyObservationHost::ReadRefused(error.to_string()),
+                RestBodyObservationHost::Read,
+            );
+            RestExchangeObservationHost::Response { status, body }
+        }
+        Err(error) => RestExchangeObservationHost::ExchangeRefused(error.to_string()),
+    }
+}
+
+fn decide_rest_exchange(
+    observation: RestExchangeObservationHost,
+    op_node: &Rc<Node>,
+    response_format: &str,
+    outcome_field: Option<&str>,
+    ctx: &InterpContext,
+) -> InterpResult<Value> {
+    let (status, body) = match observation {
+        RestExchangeObservationHost::ExchangeRefused(cause) => {
+            return match outcome_field {
+                Some(field) => Ok(attach_rest_outcome(
+                    None,
+                    op_node,
+                    field,
+                    rest_transport_refused_value(ctx, cause),
+                    ctx,
+                )),
+                None => Err(InterpError::TypeError {
+                    msg: format!("HTTP request failed: {}", cause),
+                }),
+            };
+        }
+        RestExchangeObservationHost::Response {
+            status,
+            body: RestBodyObservationHost::ReadRefused(cause),
+        } => {
+            return match outcome_field {
+                Some(field) => Ok(attach_rest_outcome(
+                    None,
+                    op_node,
+                    field,
+                    rest_body_undecodable_value(ctx, status, cause),
+                    ctx,
+                )),
+                None => Err(InterpError::TypeError {
+                    msg: format!("HTTP {} body unreadable: {}", status, cause),
+                }),
+            };
+        }
+        RestExchangeObservationHost::Response {
+            status,
+            body: RestBodyObservationHost::Read(body),
+        } => (status, body),
+    };
+    if !(200..300).contains(&status) {
+        if let Some(field) = outcome_field {
+            return Ok(attach_rest_outcome(
+                None,
+                op_node,
+                field,
+                rest_status_refused_value(ctx, status, body),
+                ctx,
+            ));
+        }
+    }
+    if status >= 400 {
+        return Err(InterpError::TypeError {
+            msg: format!("HTTP {}: {}", status, body),
+        });
+    }
+    let mapped = if response_format == "Text" {
+        map_response_to_value(&body, None, op_node, ctx)?
+    } else {
+        let json: serde_json::Value =
+            serde_json::from_str(&body).unwrap_or_else(|_| serde_json::Value::String(body));
+        map_response_to_value_json(&json, op_node, ctx)?
+    };
+    match outcome_field {
+        Some(field) => Ok(attach_rest_outcome(
+            Some(mapped),
+            op_node,
+            field,
+            rest_outcome_variant(ctx, "RestOk", vec![]),
+            ctx,
+        )),
+        None => Ok(mapped),
+    }
+}
+
+/// Project an observation into the operation's declared output record. On a
+/// non-success outcome the ordinary body-derived fields are deliberately Null:
+/// RestOutcome is the only inhabited branch and therefore the only fact a caller
+/// can consume. On RestOk, preserve the already-decoded body fields and replace
+/// just the outcome field.
+fn attach_rest_outcome(
+    mapped: Option<Value>,
+    op_node: &Rc<Node>,
+    outcome_field: &str,
+    outcome: Value,
+    ctx: &InterpContext,
+) -> Value {
+    let mut fields = match mapped {
+        Some(Value::Record { fields, .. }) => (*fields).clone(),
+        _ => op_node
+            .inferred
+            .as_deref()
+            .and_then(|inferred| match inferred {
+                InferredNode::Resolved { node } => Some(node),
+                _ => None,
+            })
+            .map(|return_type| {
+                return_type
+                    .children
+                    .iter()
+                    .map(|field| {
+                        (
+                            ctx.sym(&authored_name_at(ctx.si(), field.clone())),
+                            Value::Null,
+                        )
+                    })
+                    .collect()
+            })
+            .unwrap_or_default(),
+    };
+    let outcome_sym = ctx.sym(outcome_field);
+    match fields.iter_mut().find(|(name, _)| *name == outcome_sym) {
+        Some((_, value)) => *value = outcome,
+        None => fields.push((outcome_sym, outcome)),
+    }
+    fields.sort_unstable_by_key(|(name, _)| name.0);
+    Value::Record {
+        type_name: ctx.sym(&authored_name_at(ctx.si(), op_node.clone())),
+        fields: Rc::new(fields),
+    }
+}
+
 fn dispatch_rest(
     service_node: &Rc<Node>,
     op_node: &Rc<Node>,
@@ -7627,6 +8375,7 @@ fn dispatch_rest(
     // present `auth_basic` with a non-record shape, a missing username/password field, or a
     // non-Str credential value is a typed refusal, never an unauthenticated send or a
     // stringified-debug header.
+    let mut basic_auth_header: Option<String> = None;
     if let Some(basic_node) = find_property(
         transport.properties.clone(),
         "auth_basic".to_string(),
@@ -7661,6 +8410,7 @@ fn dispatch_rest(
         match (username, password) {
             (Some(u), Some(p)) => {
                 let header_val = rest_basic_auth_header_value(&u, &p);
+                basic_auth_header = Some(header_val.clone());
                 request = request.set("Authorization", &header_val);
             }
             _ => {
@@ -7679,42 +8429,29 @@ fn dispatch_rest(
         request = request.query(name, val);
     }
 
-    let response = if let Some(json) = body_json {
-        request
-            .set("Content-Type", "application/json")
-            .send_string(&json.to_string())
-    } else {
-        request.call()
-    };
-
-    match response {
-        Ok(resp) => {
-            let status = resp.status();
-            if status >= 400 {
-                let body = resp.into_string().unwrap_or_default();
-                return Err(InterpError::TypeError {
-                    msg: format!("HTTP {}: {}", status, body),
-                });
-            }
-            if response_format == "Text" {
-                let body = resp.into_string().unwrap_or_default();
-                return map_response_to_value(&body, None, op_node, ctx);
-            }
-            let body = resp.into_string().unwrap_or_default();
-            let json: serde_json::Value =
-                serde_json::from_str(&body).unwrap_or(serde_json::Value::String(body));
-            map_response_to_value_json(&json, op_node, ctx)
-        }
-        Err(ureq::Error::Status(status, resp)) => {
-            let body = resp.into_string().unwrap_or_default();
-            Err(InterpError::TypeError {
-                msg: format!("HTTP {}: {}", status, body),
-            })
-        }
-        Err(e) => Err(InterpError::TypeError {
-            msg: format!("HTTP request failed: {}", e),
-        }),
-    }
+    // Bind replay identity to the HTTP client's fully realized target, including
+    // its encoded query string, rather than the pre-query service/path join.
+    let realized_target = request.url().to_string();
+    let invocation = rest_bound_invocation_value(
+        service_node,
+        op_node,
+        &method,
+        &realized_target,
+        param_env,
+        &auth,
+        basic_auth_header.as_deref(),
+        ctx,
+    )?;
+    let selection = rest_exchange_selection(invocation, ctx)?;
+    let observation = observe_rest_exchange(selection, request, body_json);
+    let outcome_field = rest_outcome_output_field(op_node, ctx);
+    decide_rest_exchange(
+        observation,
+        op_node,
+        &response_format,
+        outcome_field.as_deref(),
+        ctx,
+    )
 }
 
 pub fn resolve_auth(

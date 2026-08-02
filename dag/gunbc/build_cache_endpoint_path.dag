@@ -152,9 +152,29 @@ fn unconditional_unlink_sketch(observed: EndpointPathState) -> Bool {
 
 data unconditional_unlink_sketch_note: String = "THE RED CONTROL, KEPT LIVE RATHER THAN DESCRIBED. This is ExecStartPre=rm -f written as a predicate: it answers 'unlink?' with true in all five path states, because that is precisely what the shell line does. It exists so the witnesses can assert the DIFFERENCE between it and admit_stale_socket_unlink on the two states where the difference is destructive — EndpointListening and EndpointPathConflict — rather than asserting the admission's behaviour alone. An assertion that the admission refuses proves nothing about whether the refusal was needed; the contrast is what makes the wall discriminating. It is never called by production code and it is not a scaffold to dissolve: per DESIGN section 4b, a class's discriminating control stays enrolled as the executing evidence that the higher rung stays real."
 
-fn admission_yields_unlink(admission: StaleSocketUnlinkAdmission) -> Bool {
-  match stale_socket_unlink_command(admission: admission) {
-    StaleSocketUnlinkCommandReady { command: _ } => true
-    StaleSocketUnlinkCommandRefused { reason: _ } => false
+type StaleSocketUnlinkOutcomeFold<R> {
+  ready: fn(ArgvCommand) -> R
+  refused: fn(NonEmptyStr) -> R
+}
+
+fn stale_socket_unlink_outcome_fold<R>(
+  outcome: StaleSocketUnlinkOutcome,
+  fold: StaleSocketUnlinkOutcomeFold<R>,
+) -> R {
+  match outcome {
+    StaleSocketUnlinkCommandReady { command } => fold.ready(command)
+    StaleSocketUnlinkCommandRefused { reason } => fold.refused(reason)
   }
+}
+
+data unlink_outcome_fold_note: String = "One named elimination surface for the outcome rather than a match at each consumer (review 46784 / review 46655). The reason is not style: a fold record makes adding an arm a COMPILE ERROR at every consumer, because each literal must gain a field, while a scattered match keeps compiling and quietly stops covering. Earlier in this lane a missed ProbeEffectOnSubjectFold literal was caught by exactly that mechanism."
+
+fn admission_yields_unlink(admission: StaleSocketUnlinkAdmission) -> Bool {
+  stale_socket_unlink_outcome_fold(
+    outcome: stale_socket_unlink_command(admission: admission),
+    fold: StaleSocketUnlinkOutcomeFold {
+      ready: fn(_) { true },
+      refused: fn(_) { false },
+    },
+  )
 }
