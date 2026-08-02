@@ -251,7 +251,7 @@ test fn green_scope_placement_admits_carrier_and_machinery_additions() -> Bool {
   (refused |> count) == 0
 }
 
-data base_split_witness_note: String = "THE discriminating controls for the two-base split. The defect they pin: while both arms read legacy_manifest_freeze_sha..HEAD, an unrostered file already on main refused every branch, so the blocked party was never the party at fault. unrostered_only_in_freeze_population_does_not_refuse_membership goes RED the moment the membership arm is fed the freeze-base population again, which is exactly the regression to catch — it cannot be satisfied by editing a roster, only by feeding the arm the wrong base. Its positive control sits beside it so the pair discriminates in both directions rather than passing because nothing refuses at all."
+data base_split_witness_note: String = "Controls for the placement KERNEL, and an explicit statement of what they do NOT cover. They exercise scope_placement_membership_verdict and scope_placement_freeze_verdict over hand-authored observations, so they pin the verdict shape in both directions: an unrostered path in the judged set refuses and names itself, a rostered one admits, and every unreadable-observation arm refuses rather than skipping. WHAT THEY CANNOT SEE (stated because an earlier draft of this note claimed otherwise): these fns are pure in the observation handed to them, so no assertion here can distinguish WHICH BASE produced that observation — the base is bound one frame above, in run_extdeps_scope_placement_gate_body, and a regression that fed the membership arm scope_placement_added_paths (the freeze base) instead of scope_placement_change_added_paths would leave every witness in this file green. The base wiring is covered by EXECUTION of the wet gate, not from here: with the session_dashboard roster row removed so the freeze population carries an unrostered file while the change adds none, the gate returns ExitSuccess under the split wiring and refuses under the old single-base wiring — that perturbation is the discriminating receipt, and it is recorded in the PR rather than encoded here because it requires mutating the roster and a live git observation. Closing that hole in-corpus needs a structural reader over the call graph (a lens asserting which observation fn feeds which arm), which is the honest next step and is not built."
 
 fn exit_reason_of(e: ProcessExit) -> String {
   scope_placement_failure_reason(exit: e)
@@ -270,7 +270,7 @@ test fn red_membership_arm_refuses_file_this_change_adds() -> Bool {
     && string_contains(s: exit_reason_of(e: verdict), pattern: "THIS CHANGE")
 }
 
-test fn unrostered_only_in_freeze_population_does_not_refuse_membership() -> Bool {
+test fn membership_arm_admits_an_empty_change_set() -> Bool {
   exit_is_success(
     e: scope_placement_membership_verdict(observation: AddedPathsObserved { paths: [] })
   )
