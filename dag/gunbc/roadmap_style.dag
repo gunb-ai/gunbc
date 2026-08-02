@@ -308,11 +308,17 @@ fn action_prominence_rules() -> List<BuildRule> {
       ],
     },
     StaticRule {
-      selector: RawSelector { text: ".dispatch-btn.action-live" },
+      selector: RawSelector { text: ".dispatch-btn.action-focal" },
       decls: [
         decl(prop: Color, value: state_var_ref(prefix: dispatch_state_family.var_prefix, key: dispatch_rest_band_key(), role: InkVar)),
         decl(prop: Background, value: state_var_ref(prefix: dispatch_state_family.var_prefix, key: dispatch_rest_band_key(), role: FillVar)),
         decl(prop: BorderColor, value: state_var_ref(prefix: dispatch_state_family.var_prefix, key: dispatch_rest_band_key(), role: FillVar)),
+      ],
+    },
+    StaticRule {
+      selector: RawSelector { text: "li.node:focus-visible" },
+      decls: [
+        decl(prop: Outline, value: scale_border(w: border_2, color_var: "var(--focus)")),
       ],
     },
   ]
