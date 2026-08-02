@@ -1,8 +1,5 @@
 module v2.test.claim.ci_floor_plan_witness
 
-import std.realization {
-  RunnableDiscoveryBatch,
-}
 import gunbc.cli_invoke {
   PlanFunction,
   CiFloorPlan,
@@ -80,7 +77,7 @@ import v2.compiler.self_host.wet_receipt_enrollment {
 }
 import gunbc.ci_spec { gunbc_ci_spec, gunbc_ci_floor_batch_clamp_params, ci_spec_with_witness_entries, ci_spec_with_discovery_scan_dirs, CiSpec, EmitHostGate, CheapClaimPoolGate, ExtdepsExternalAuthorityGate, GeneratedArtifactDriftGate, ExtdepsScopePlacementGate, DagCompileCleanGate, RegenVerifyGate, SourceRootIngestGate }
 import std.realization_schedule {
-  Runnable, RunnableSingleClaim, RunnableScopedWitnessBatch,
+  Runnable, RunnableSingleClaim, RunnableDiscoveryBatch, RunnableScopedWitnessBatch,
   RunnableOwnsBatchClamp, runnable_batch_clamp_source,
   SequentialChildProcess,
   ScopedWitnessExecutionReceiptDecoded, ScopedWitnessExecutionReceiptRefused,
