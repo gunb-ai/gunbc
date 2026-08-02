@@ -2,8 +2,12 @@
 # FROZEN — type_ref_debt_roster_freeze_state = Frozen; new-sites-refuse armed
 # key grain: TYPE x (file, span_start, span_end)
 # disposition	incidental_debt
-# types	608	sites	2849
+# types	610	sites	2853
 # TYPE	NonEmptyStr	455
+Empty	src/v2/compiler/06_translate.dag	9658	9663
+Empty	src/v2/compiler/06_translate.dag	10353	10358
+Empty	src/v2/compiler/06_translate.dag	10851	10856
+Empty	src/v2/compiler/06_translate.dag	12091	12096
 NonEmptyStr	dag/extdeps/access/aws_iam.dag	332	343
 NonEmptyStr	dag/extdeps/access/aws_iam.dag	385	396
 NonEmptyStr	dag/extdeps/access/aws_iam.dag	441	452
@@ -1015,26 +1019,26 @@ Time	dag/std/measure.dag	11666	11670
 Time	dag/std/measure.dag	11854	11858
 Time	dag/std/measure.dag	13198	13202
 Time	dag/std/measure.dag	13484	13488
-Time	dag/std/realization_measurement.dag	1719	1723
-Time	dag/std/realization_measurement.dag	1855	1859
-Time	dag/std/realization_measurement.dag	2058	2062
-Time	dag/std/realization_measurement.dag	2085	2089
-Time	dag/std/realization_measurement.dag	3139	3143
-Time	dag/std/realization_measurement.dag	3228	3232
-Time	dag/std/realization_measurement.dag	3254	3258
-Time	dag/std/realization_measurement.dag	3280	3284
-Time	dag/std/realization_measurement.dag	3514	3518
-Time	dag/std/realization_measurement.dag	3540	3544
-Time	dag/std/realization_measurement.dag	3566	3570
-Time	dag/std/realization_measurement.dag	3828	3832
-Time	dag/std/realization_measurement.dag	3855	3859
-Time	dag/std/realization_measurement.dag	4042	4046
-Time	dag/std/realization_measurement.dag	4069	4073
-Time	dag/std/realization_measurement.dag	4197	4201
-Time	dag/std/realization_measurement.dag	4225	4229
-Time	dag/std/realization_measurement.dag	4516	4520
-Time	dag/std/realization_measurement.dag	4715	4719
-Time	dag/std/realization_measurement.dag	4910	4914
+Time	dag/std/realization_measurement.dag	3119	3123
+Time	dag/std/realization_measurement.dag	3255	3259
+Time	dag/std/realization_measurement.dag	3458	3462
+Time	dag/std/realization_measurement.dag	3485	3489
+Time	dag/std/realization_measurement.dag	4539	4543
+Time	dag/std/realization_measurement.dag	4628	4632
+Time	dag/std/realization_measurement.dag	4654	4658
+Time	dag/std/realization_measurement.dag	4680	4684
+Time	dag/std/realization_measurement.dag	4914	4918
+Time	dag/std/realization_measurement.dag	4940	4944
+Time	dag/std/realization_measurement.dag	4966	4970
+Time	dag/std/realization_measurement.dag	5228	5232
+Time	dag/std/realization_measurement.dag	5255	5259
+Time	dag/std/realization_measurement.dag	5442	5446
+Time	dag/std/realization_measurement.dag	5469	5473
+Time	dag/std/realization_measurement.dag	5597	5601
+Time	dag/std/realization_measurement.dag	5625	5629
+Time	dag/std/realization_measurement.dag	5916	5920
+Time	dag/std/realization_measurement.dag	6115	6119
+Time	dag/std/realization_measurement.dag	6310	6314
 Time	dag/std/realization_schedule.dag	447	451
 Time	dag/std/realization_schedule.dag	747	751
 Time	dag/std/realization_width.dag	775	779

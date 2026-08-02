@@ -145,6 +145,7 @@ std.credentials.FactoryLogin	4
 std.languages.ConfigFormat	4
 v2.std.lens_verdict.LensVerdict	4
 v2.std.live_tree.LiveTreeDisposition	4
+Empty	4
 BmcFirmwareFamily	3
 BmcProtocol	3
 BudgetClaim	3
