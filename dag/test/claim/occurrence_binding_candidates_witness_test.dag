@@ -1,6 +1,6 @@
 module test.claim.occurrence_binding_candidates_witness_test
 
-import std.types { Bool, SourceSpan, NonEmptyStr }
+import std.types { Bool, SourceSpan, NonEmptyStr, CommitSha, String }
 import std.occurrence_identity {
   OccurrenceId,
   OccurrenceContainmentPath,
@@ -13,6 +13,7 @@ import std.occurrence_identity {
   OccurrenceCategory,
   LexicalValueOccurrence,
   CallableOccurrence,
+  AuthoredTokenOrdinal,
 }
 import std.occurrence_binding_candidates {
   OccurrenceModulePathRow,
@@ -20,8 +21,8 @@ import std.occurrence_binding_candidates {
   DeclarationExposure,
   LexicalExposure,
   ModuleExposure,
+  RootExposure,
   AuthoredOrderRow,
-  AuthoredTokenOrdinal,
   OccurrenceBindingCandidateInputs,
   BoundReferenceProvider,
   DirectModuleDependency,
@@ -36,6 +37,7 @@ import std.occurrence_binding_candidates {
   ReferenceBindingProjectionModulePathMissing,
   ReferenceBindingProjectionExposureRefused,
   ReferenceBindingProjectionAuthoredOrderRefused,
+  ReferenceBindingProjectionDeclarationBucketRefused,
   DuplicateOccurrenceModulePathRow,
   ConflictingDeclarationExposure,
   ConflictingAuthoredOrderRow,
@@ -44,10 +46,20 @@ import std.occurrence_binding_candidates {
   MissingOccurrenceModulePathRow,
   DirectModuleDependencyPopulationRefused,
   ReferencePopulationRefused,
+  DeclarationsByNameReady,
+  DeclarationsByNameMissingIndexEntry,
+  Section13ExactHeadExecutionObservation,
+  Section13PopulationLawRosterHolds,
+  Section13PopulationLawRosterRefusedMissingObservation,
+  Section13PopulationLawRosterRefusedFailedOrStaleObservation,
+  section13_executing_receipt,
+  section13_witness_module_path,
+  section13_population_law_roster_adjudicate,
+  section13_population_law_roster_denominator_holds,
+  declarations_by_name_build,
   resolve_reference_binding_via_structural_candidates,
   direct_module_dependencies_from_providers,
   direct_module_dependencies_from_bound_population,
-  section13_population_law_roster_denominator_holds,
 }
 
 fn obc_module_path(dotted: String) -> NonEmptyStr {
@@ -88,6 +100,13 @@ fn obc_lexical_exposure(
   DeclarationExposureRow {
     occurrence: occurrence,
     exposure: LexicalExposure { exposing_scope: scope },
+  }
+}
+
+fn obc_root_exposure(occurrence: OccurrenceId) -> DeclarationExposureRow {
+  DeclarationExposureRow {
+    occurrence: occurrence,
+    exposure: RootExposure,
   }
 }
 
@@ -886,6 +905,132 @@ test fn raw_containment_without_matching_exposure_does_not_bind_holds() -> Bool 
   }
 }
 
+data occurrence_binding_candidates_witness_root_exposure_note: String = "RootExposure authority control: a declaration carrying RootExposure binds on every candidate lookup regardless of containment ancestry or module siblinghood — visibility comes from RootExposure's own semantics, not raw containment."
+
+test fn root_exposure_is_visible_holds() -> Bool {
+  let root_decl = OccurrenceId { value: 10 }
+  let call_ref = OccurrenceId { value: 30 }
+  let root_path = obc_fixture_path(ancestors: [], terminal: root_decl)
+  let call_ref_path = obc_fixture_path(ancestors: [OccurrenceId { value: 20 }], terminal: call_ref)
+  match resolve_reference_binding_via_structural_candidates(
+    transport: OccurrenceTransport {
+      index: OccurrenceIndex {
+        entries: [
+          obc_fixture_index_entry(occurrence: root_decl, authored_name: "root_fn", containment: root_path),
+          obc_fixture_index_entry(occurrence: call_ref, authored_name: "root_fn", containment: call_ref_path),
+        ],
+      },
+      declarations: [
+        obc_fixture_declaration(occurrence: root_decl, containment: root_path, category: CallableOccurrence),
+      ],
+      references: [
+        obc_fixture_reference(occurrence: call_ref, containment: call_ref_path, category: CallableOccurrence),
+      ],
+    },
+    inputs: obc_fixture_inputs(
+      module_paths: [
+        OccurrenceModulePathRow { occurrence: root_decl, module_path: obc_module_path(dotted: "app.root_module") },
+        OccurrenceModulePathRow { occurrence: call_ref, module_path: obc_module_path(dotted: "app.other_module") },
+      ],
+      exposure_rows: [
+        obc_root_exposure(occurrence: root_decl),
+      ],
+      authored_order_rows: [
+        obc_authored_order(occurrence: root_decl),
+        obc_authored_order(occurrence: call_ref),
+      ],
+    ),
+    reference: obc_fixture_reference(
+      occurrence: call_ref,
+      containment: call_ref_path,
+      category: CallableOccurrence,
+    ),
+  ) {
+    ReferenceBindingProjectionBound { provider: provider } =>
+      provider.declaration_occurrence.value == 10
+        && provider.reference_occurrence.value == 30
+    _ => false
+  }
+}
+
+data occurrence_binding_candidates_witness_declarations_by_name_refuse_note: String = "Fail-closed RED (operator finding 3): declarations_by_name_build refuses MissingDeclarationIndexEntry when a declaration is absent from entries_by_id — never silent-skips and shrinks the candidate population."
+
+test fn declarations_by_name_missing_index_entry_refuses_holds() -> Bool {
+  let decl = OccurrenceId { value: 10 }
+  let decl_path = obc_fixture_path(ancestors: [], terminal: decl)
+  match declarations_by_name_build(
+    entries_by_id: empty_map(),
+    declarations: [
+      obc_fixture_declaration(occurrence: decl, containment: decl_path, category: CallableOccurrence),
+    ],
+  ) {
+    DeclarationsByNameMissingIndexEntry { occurrence: missing } => missing.value == 10
+    DeclarationsByNameReady { by_name: _ } => false
+  }
+}
+
+data section13_fixture_head: CommitSha = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
+fn obc_section13_observation(decl_name: String, passed: Bool) -> Section13ExactHeadExecutionObservation {
+  Section13ExactHeadExecutionObservation {
+    head: section13_fixture_head,
+    declaration: section13_executing_receipt(
+      module_path: section13_witness_module_path(),
+      decl_name: decl_name as NonEmptyStr,
+    ),
+    passed: passed,
+  }
+}
+
+fn obc_section13_joined_observations() -> List<Section13ExactHeadExecutionObservation> {
+  [
+    obc_section13_observation(decl_name: "module_scope_sibling_is_visible_holds", passed: true),
+    obc_section13_observation(decl_name: "sibling_match_arm_not_visible_holds", passed: true),
+    obc_section13_observation(decl_name: "nested_lexical_only_inside_scope_holds", passed: true),
+    obc_section13_observation(decl_name: "declaration_below_occurrence_not_visible_holds", passed: true),
+    obc_section13_observation(decl_name: "same_text_distinct_identities_is_ambiguous_holds", passed: true),
+  ]
+}
+
+data occurrence_binding_candidates_witness_section13_join_note: String = "Section-13 denominator: Executing rows join to exact-head observations (symbolic DeclarationRef module paths). GREEN supplies passed=true observations for every Executing receipt. RED controls: missing observation and failed observation refuse — inhabiting Section13PopulationLawExecuting alone never greens."
+
 test fn witness_section13_population_law_roster_denominator_holds() -> Bool {
-  section13_population_law_roster_denominator_holds()
+  section13_population_law_roster_denominator_holds(
+    observations: obc_section13_joined_observations(),
+    required_head: section13_fixture_head,
+  )
+}
+
+test fn section13_missing_observation_refuses_holds() -> Bool {
+  match section13_population_law_roster_adjudicate(
+    observations: [
+      obc_section13_observation(decl_name: "module_scope_sibling_is_visible_holds", passed: true),
+      obc_section13_observation(decl_name: "sibling_match_arm_not_visible_holds", passed: true),
+      obc_section13_observation(decl_name: "nested_lexical_only_inside_scope_holds", passed: true),
+      obc_section13_observation(decl_name: "declaration_below_occurrence_not_visible_holds", passed: true),
+    ],
+    required_head: section13_fixture_head,
+  ) {
+    Section13PopulationLawRosterRefusedMissingObservation { receipt: receipt } =>
+      receipt.decl_name == ("same_text_distinct_identities_is_ambiguous_holds" as NonEmptyStr)
+    _ => false
+  }
+}
+
+test fn section13_failed_observation_refuses_holds() -> Bool {
+  match section13_population_law_roster_adjudicate(
+    observations: [
+      obc_section13_observation(decl_name: "module_scope_sibling_is_visible_holds", passed: true),
+      obc_section13_observation(decl_name: "sibling_match_arm_not_visible_holds", passed: true),
+      obc_section13_observation(decl_name: "nested_lexical_only_inside_scope_holds", passed: true),
+      obc_section13_observation(decl_name: "declaration_below_occurrence_not_visible_holds", passed: true),
+      obc_section13_observation(decl_name: "same_text_distinct_identities_is_ambiguous_holds", passed: false),
+    ],
+    required_head: section13_fixture_head,
+  ) {
+    Section13PopulationLawRosterRefusedFailedOrStaleObservation { receipt: receipt } =>
+      receipt.decl_name == ("same_text_distinct_identities_is_ambiguous_holds" as NonEmptyStr)
+    Section13PopulationLawRosterHolds => false
+    _ => false
+  }
 }
