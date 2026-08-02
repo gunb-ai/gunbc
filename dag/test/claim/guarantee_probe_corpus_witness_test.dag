@@ -347,10 +347,11 @@ test fn wrong_expectation_does_not_fabricate_clean_receipt() -> Bool {
 }
 
 test fn subject_revision_is_content_derived_not_fabricated_constant() -> Bool {
-  synthetic_program_subject_revision(source: call_mislabel_source)
-    != synthetic_program_subject_revision(source: call_surplus_source)
-    && synthetic_program_harness_revision(probe: call_mislabel_red_probe)
-      != synthetic_program_harness_revision(probe: call_surplus_red_probe)
+  let mislabel_subject = synthetic_program_subject_revision(source: call_mislabel_source)
+  let surplus_subject = synthetic_program_subject_revision(source: call_surplus_source)
+  let mislabel_harness = synthetic_program_harness_revision(probe: call_mislabel_red_probe)
+  let surplus_harness = synthetic_program_harness_revision(probe: call_surplus_red_probe)
+  mislabel_subject != surplus_subject && mislabel_harness != surplus_harness
 }
 
 test fn receipt_probe_set_digest_matches_executed_probe_set() -> Bool {
