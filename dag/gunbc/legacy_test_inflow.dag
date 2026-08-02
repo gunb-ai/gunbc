@@ -1,0 +1,197 @@
+module gunbc.legacy_test_inflow
+
+import std.types { Bool, FilePath, Int, List, NonEmptyStr, String }
+
+data legacy_test_inflow_authority_note: String = "WHY THIS EXISTS: THE MECHANISM IS ABSENT, NOT THE RATIO. The v1-test-migration roadmap node declares in its own out_of_scope that adding a test written only in Rust, with no authority the substrate owns, 'counts against the finish line rather than toward it' because it grows the very population the node exists to drain. Nothing in the repository observes that inflow. The declared rule and the enforced rule differ, and the difference is invisible: the disposition graph measures the population and the frontier, both of which a steady arrival of new legacy tests moves without anyone deciding to move them. This carrier makes arrivals observable at the grain the rule is stated in. It is deliberately NOT justified by any measured arrival rate — a rate is one window's sample, and a mechanism argued from a sample invites deletion the first window the sample inverts. The rate is what this measures, never what establishes it."
+
+data legacy_test_inflow_audit_mode_note: String = "AUDIT MODE, DELIBERATELY NOT A GATE (lane ruling 2026-08-02, following the acceptance-door split precedent: mechanism and audit first, refusal later). Every function here REPORTS; none refuses a change. The reason is throughput, not caution: a blocking rule here lands on every lane in the wave at once, and the decision to spend that throughput should be made against a measurement this carrier does not yet have. THE ONE THING AUDIT MODE DOES NOT RELAX IS FAIL-CLOSED OBSERVATION: a diff that cannot be observed, or an added attribute whose function line never arrives, yields InflowRefused carrying a typed reason — never InflowMeasured with an empty list. Not-observed and nothing-arrived are different states and this carrier keeps them apart, because collapsing them would make the counter silently report zero exactly when it is broken. PROMOTION TRIGGER: when a measured window supports a decision, InflowRefused and a nonempty InflowMeasured become a refusal at the change boundary; that promotion deletes this note, not the kernel."
+
+data legacy_test_inflow_scope_note: String = "SCOPE IS THE DISPOSITION GRAPH'S DENOMINATOR, EXACTLY. An arrival counts when it adds a line-anchored Rust `#[test]` function under src/v1/tests/src, because that is the population gunbc.legacy_test_behavior_disposition discovers and the frontier is measured against. Rust tests elsewhere in the seed — src/v1/stage0/src and its tests directory — are outside the counted population and are outside this counter too; that is a stated scope, not an oversight, and widening one without the other would make the counter and the frontier disagree about what they are counting. A change that adds a floor .dag `test fn` adds no arrival: it is the migration direction, and counting it would price the cure as the disease."
+
+data legacy_test_inflow_extraction_fork_note: String = "A DECLARED SECOND READING OF ONE RULE, with the same dissolution trigger as the first. The identity of a legacy behavior — an added `#[test]` line, then the next line that is neither blank nor another attribute, then its function name after any pub/async — is authored twice: once over the live tree in the seed host bridge (cli_run.rs test_migration_named_fn_after_attribute, reached through the discovery report), and once here over unified diff text. The fork is not gratuitous: the host builtin walks the working tree and cannot be pointed at a diff, and .dag cannot yet enumerate a revision's files, so neither reading can call the other today. It carries the SAME dissolve-on as the discovery scaffold it mirrors — when .dag can read parsed declaration trees directly, both readings collapse onto that one authority and this fold deletes. Until then the divergence risk is real and is checked rather than asserted: inflow_addition_id serializes an addition into exactly the identity string gunbc.legacy_test_behavior_disposition builds from typed fields, so any arrival this counter names can be joined against the live discovered population by string identity."
+
+data legacy_test_inflow_arrival_versus_churn_note: String = "AN ARRIVAL IS NOT A POPULATION DELTA, AND THE DIFFERENCE IS RENAMES — measured, not reasoned. Over the first window this counter was run against (the merge of gunbc#7652 to the tree state at 9f978aa8df9), the discovered population gained 21 identities and lost 5, while this counter reported 18 arrivals. The gap is exactly three renamed test functions: renaming a test emits a removed and an added `fn` line with its `#[test]` line UNCHANGED, so an identity join over the two populations counts the rename as one departure plus one arrival, and this counter counts it as neither. The counter's reading is the one the roadmap rule is stated in — renaming a legacy test does not grow the population the migration must drain, so it is churn, not inflow. Anyone comparing the two numbers should expect them to differ by renames and should NOT reconcile them by adjusting either: they answer different questions, and only this one answers 'did a new legacy behavior arrive'.\\n\\nCONSEQUENCE FOR THE ZERO-CONTEXT TRANSPORT, stated because it is the shape most likely to be misread as a miss: the floor observes git diff with -U0, so a change that adds ONLY an attribute line above an already-existing function leaves that function's declaration outside the observed text entirely. That arrival is real and this carrier will not name it, so it REFUSES (InflowRefused, unresolved attribute) rather than reporting a count that silently omits it. Under a context-bearing diff the same fold resolves the declaration and reports it normally. Refusing a shape it cannot name is the fail-closed half of audit mode; quietly reporting one fewer arrival would be the absorbing fallback."
+
+type LegacyTestInflowAddition {
+  source_file: FilePath
+  test_fn: NonEmptyStr
+}
+
+type LegacyTestInflowObservation
+  = InflowMeasured { additions: List<LegacyTestInflowAddition> }
+  | InflowRefused { reason: NonEmptyStr }
+
+type InflowFoldState {
+  in_legacy_file: Bool
+  current_file: String
+  pending_attribute: Bool
+  additions: List<LegacyTestInflowAddition>
+  unresolved: Bool
+}
+
+data legacy_test_inflow_dir_prefix: String = "src/v1/tests/src/"
+
+fn inflow_addition_id(addition: LegacyTestInflowAddition) -> String {
+  concat(concat(addition.source_file as String, "::"), addition.test_fn as String)
+}
+
+fn inflow_path_is_legacy_test_module(path: String) -> Bool {
+  starts_with(s: path, prefix: legacy_test_inflow_dir_prefix) && ends_with(s: path, suffix: ".rs")
+}
+
+fn inflow_fn_name_of_declaration(declaration: String) -> String {
+  let after_visibility = if starts_with(s: declaration, prefix: "pub ") {
+    substring(s: declaration, start: 4, end: string_length(s: declaration))
+  } else {
+    declaration
+  }
+  let after_async = if starts_with(s: after_visibility, prefix: "async ") {
+    substring(s: after_visibility, start: 6, end: string_length(s: after_visibility))
+  } else {
+    after_visibility
+  }
+  if starts_with(s: after_async, prefix: "fn ") {
+    let rest = substring(s: after_async, start: 3, end: string_length(s: after_async))
+    trim(fold(split(s: rest, delimiter: "("), init: "", f: (acc, part) => match acc { "" => part _ => acc }))
+  } else {
+    ""
+  }
+}
+
+fn inflow_state_with_declaration(acc: InflowFoldState, declaration: String) -> InflowFoldState {
+  let name = inflow_fn_name_of_declaration(declaration: declaration)
+  if name == "" {
+    InflowFoldState {
+      in_legacy_file: acc.in_legacy_file,
+      current_file: acc.current_file,
+      pending_attribute: false,
+      additions: acc.additions,
+      unresolved: true,
+    }
+  } else {
+    InflowFoldState {
+      in_legacy_file: acc.in_legacy_file,
+      current_file: acc.current_file,
+      pending_attribute: false,
+      additions: concat(acc.additions, [LegacyTestInflowAddition {
+        source_file: acc.current_file as FilePath,
+        test_fn: name as NonEmptyStr,
+      }]),
+      unresolved: acc.unresolved,
+    }
+  }
+}
+
+fn inflow_state_entering_file(acc: InflowFoldState, path: String) -> InflowFoldState {
+  InflowFoldState {
+    in_legacy_file: inflow_path_is_legacy_test_module(path: path),
+    current_file: path,
+    pending_attribute: false,
+    additions: acc.additions,
+    unresolved: acc.unresolved || acc.pending_attribute,
+  }
+}
+
+fn inflow_body_line_fold(acc: InflowFoldState, trimmed: String) -> InflowFoldState {
+  if trimmed == "#[test]" {
+    InflowFoldState {
+      in_legacy_file: acc.in_legacy_file,
+      current_file: acc.current_file,
+      pending_attribute: true,
+      additions: acc.additions,
+      unresolved: acc.unresolved,
+    }
+  } else if !acc.pending_attribute {
+    acc
+  } else if trimmed == "" || starts_with(s: trimmed, prefix: "#[") {
+    acc
+  } else {
+    inflow_state_with_declaration(acc: acc, declaration: trimmed)
+  }
+}
+
+fn inflow_diff_line_fold(acc: InflowFoldState, line: String) -> InflowFoldState {
+  if starts_with(s: line, prefix: "diff --git ") {
+    inflow_state_entering_file(acc: acc, path: "")
+  } else if starts_with(s: line, prefix: "+++ b/") {
+    inflow_state_entering_file(
+      acc: acc,
+      path: substring(s: line, start: 6, end: string_length(s: line)),
+    )
+  } else if starts_with(s: line, prefix: "+++ ") || starts_with(s: line, prefix: "--- ") {
+    acc
+  } else if !acc.in_legacy_file {
+    acc
+  } else if starts_with(s: line, prefix: "@@") {
+    acc
+  } else if starts_with(s: line, prefix: "-") {
+    acc
+  } else if starts_with(s: line, prefix: "+") {
+    inflow_body_line_fold(
+      acc: acc,
+      trimmed: trim(substring(s: line, start: 1, end: string_length(s: line))),
+    )
+  } else if acc.pending_attribute && starts_with(s: line, prefix: " ") {
+    inflow_body_line_fold(
+      acc: acc,
+      trimmed: trim(substring(s: line, start: 1, end: string_length(s: line))),
+    )
+  } else {
+    acc
+  }
+}
+
+data legacy_test_inflow_context_line_note: String = "CONTEXT LINES ARE READ ONLY WHILE AN ADDED ATTRIBUTE IS PENDING, and that arm is load-bearing rather than defensive: writing `#[test]` above a function that already exists adds ONE line, so the function name arrives as CONTEXT and a fold that looked only at added lines would miss the arrival entirely. Outside a pending attribute, context is ignored — otherwise every unchanged test function in a touched module would be counted as arriving. Removed lines are skipped without clearing the pending attribute, so deleting a doc line between the attribute and its function does not lose the arrival; a removed `#[test]` is never an arrival, which is what makes this a counter of inflow rather than of churn."
+
+fn inflow_observation_of_diff(diff_text: String) -> LegacyTestInflowObservation {
+  let final_state = fold(
+    split(s: diff_text, delimiter: "\n"),
+    init: InflowFoldState {
+      in_legacy_file: false,
+      current_file: "",
+      pending_attribute: false,
+      additions: [],
+      unresolved: false,
+    },
+    f: (acc, line) => inflow_diff_line_fold(acc: acc, line: line),
+  )
+  if final_state.unresolved || final_state.pending_attribute {
+    InflowRefused {
+      reason: "a diff added a line-anchored #[test] whose function declaration never appeared in the observed text; the arrival is real but unnamed, so this refuses rather than reporting a count it cannot justify" as NonEmptyStr,
+    }
+  } else {
+    InflowMeasured { additions: final_state.additions }
+  }
+}
+
+fn inflow_observation_addition_ids(observation: LegacyTestInflowObservation) -> List<String> {
+  match observation {
+    InflowMeasured { additions } => additions |> map(a => inflow_addition_id(addition: a))
+    InflowRefused { reason: _ } => []
+  }
+}
+
+fn inflow_observation_is_measured(observation: LegacyTestInflowObservation) -> Bool {
+  match observation {
+    InflowMeasured { additions: _ } => true
+    InflowRefused { reason: _ } => false
+  }
+}
+
+fn inflow_observation_count(observation: LegacyTestInflowObservation) -> Int {
+  count(inflow_observation_addition_ids(observation: observation))
+}
+
+fn inflow_observation_of_unified_diff_result(
+  observed: Bool,
+  diff_text: String,
+  failure_reason: String,
+) -> LegacyTestInflowObservation {
+  if observed {
+    inflow_observation_of_diff(diff_text: diff_text)
+  } else {
+    InflowRefused {
+      reason: concat("the change diff could not be observed, so inflow is unknown rather than zero: ", failure_reason) as NonEmptyStr,
+    }
+  }
+}
