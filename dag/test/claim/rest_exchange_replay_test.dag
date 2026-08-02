@@ -1,7 +1,6 @@
 module test.claim.rest_exchange_replay_test
 
 import std.types { Bool, String, List, GET }
-import std.content_hash { content_hash_of_value }
 import std.materialization_ladder { Frame, SharedStateFrame }
 import std.effect_grant {
   Read, ServiceOpTree, NamespacePosition,
@@ -42,7 +41,7 @@ fn probe_invocation(operation: String) -> RestBoundOperationInvocation {
     }
     method: GET
     target: probe_target
-    input_digest: content_hash_of_value(value: "rest-replay-probe-input")
+    input_digest: "0000000000000000"
     auth_identity: RestUnauthenticated
   }
 }
