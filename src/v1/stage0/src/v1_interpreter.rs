@@ -7903,6 +7903,35 @@ fn rest_uri_value(url: &str, ctx: &InterpContext) -> InterpResult<Value> {
     })
 }
 
+/// The runtime `input_digest` crosses into the authored `RestBoundOperationInvocation`
+/// carrier, whose field is `std.content_hash.ContentHash` — so it must be minted as the
+/// SAME runtime shape `as_content_hash_structural(structural: structural_content_hash(
+/// digest: …))` evaluates to (Fnv1a64 family; positional coproduct payload field "0",
+/// per `parse_positional_variant_type_fields`). A bare `Value::Str` here is the
+/// model↔realization fork: `rest_bound_invocation_eq` compares Str-vs-Variant and every
+/// authored fixture silently fails to match (DESIGN §5; same class as the numeric-tower
+/// CrossRepresentationEquality). Pinned against the dag-evaluated constructor chain by
+/// `rest_input_digest_matches_dag_constructed_content_hash` in
+/// src/v1/tests/src/cross_representation_equality_test.rs.
+fn rest_input_digest_value(digest: &str, ctx: &InterpContext) -> Value {
+    Value::Variant {
+        type_name: ctx.sym("ContentHash"),
+        variant_name: ctx.sym("Fnv1a64"),
+        fields: Rc::new(vec![(
+            ctx.sym("0"),
+            Value::Record {
+                type_name: ctx.sym("Fnv1a64Structural"),
+                fields: Rc::new(vec![(ctx.sym("digest"), Value::Str(digest.to_string()))]),
+            },
+        )]),
+    }
+}
+
+#[cfg(any(test, feature = "interp_test_witness"))]
+pub fn rest_input_digest_value_for_witness(digest: &str, ctx: &InterpContext) -> Value {
+    rest_input_digest_value(digest, ctx)
+}
+
 fn rest_bound_invocation_value(
     service_node: &Rc<Node>,
     op_node: &Rc<Node>,
@@ -7924,7 +7953,10 @@ fn rest_bound_invocation_value(
             (ctx.sym("at"), at),
             (ctx.sym("method"), rest_variant(ctx, "HttpMethod", method)),
             (ctx.sym("target"), rest_uri_value(url, ctx)?),
-            (ctx.sym("input_digest"), Value::Str(input_digest)),
+            (
+                ctx.sym("input_digest"),
+                rest_input_digest_value(&input_digest, ctx),
+            ),
             (
                 ctx.sym("auth_identity"),
                 rest_auth_identity_value(auth, basic_header, ctx),

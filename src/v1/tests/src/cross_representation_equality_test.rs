@@ -223,11 +223,18 @@ import std.content_hash {
   Sha256DigestHex,
   content_hash_of_value,
   as_content_hash_cryptographic,
+  as_content_hash_structural,
+  structural_content_hash,
   content_hash_eq_structural,
 }
 import std.types { Bool }
 
 data structural: ContentHash = content_hash_of_value(value: "fp-a")
+data zero_digest_hash: ContentHash = as_content_hash_structural(
+  structural: structural_content_hash(digest: "0000000000000000")
+)
+
+fn zero_digest_value() -> ContentHash { zero_digest_hash }
 data sha256_row: ContentHash = as_content_hash_cryptographic(
   digest: Sha256Digest {
     hex: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" as Sha256DigestHex,
@@ -302,6 +309,28 @@ fn cross_family_content_hash_bare_eq_refuses() {
             Ok(Value::Bool(true)) => {}
             other => panic!("same_family_eq: expected Bool(true), got {other:?}"),
         }
+    });
+}
+
+/// Pins the seed-side REST `input_digest` mint (`rest_input_digest_value`,
+/// v1_interpreter.rs) to the value the dag constructor chain
+/// `as_content_hash_structural(structural: structural_content_hash(digest: …))`
+/// actually evaluates to. Discriminating RED: if the seed reverts to a bare
+/// `Value::Str` — or drifts on the positional payload field name — this fails,
+/// which is exactly the model↔realization fork that made every authored REST
+/// replay fixture silently non-matching (rest_exchange_replay_test 3/9 green).
+#[test]
+fn rest_input_digest_matches_dag_constructed_content_hash() {
+    with_content_hash_ctx(|ctx| {
+        let dag_side = v1_interpreter::run_in_context(ctx, "zero_digest_value", false)
+            .expect("zero_digest_value must evaluate");
+        let seed_side =
+            v1_interpreter::rest_input_digest_value_for_witness("0000000000000000", ctx);
+        assert_eq!(
+            dag_side, seed_side,
+            "seed REST input_digest mint diverged from the dag-evaluated ContentHash \
+             constructor chain; every authored replay fixture would silently fail to match"
+        );
     });
 }
 
