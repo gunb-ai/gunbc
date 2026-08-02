@@ -8,7 +8,6 @@ import std.content_hash {
   HashFamily,
   Sha256Family,
   Sha1Family,
-  Fnv1a64StructuralFamily,
   content_hash_atom,
   content_hash_combine_structural,
   content_hash_tagged,
@@ -507,21 +506,22 @@ fn cross_family_fnv1a64_seam_lookup_refusal(
   }
 }
 
-fn fnv1a64_seam_cross_family_extraction_bug_digest(family: HashFamily) -> Fnv1a64StructuralDigestHex {
-  match family {
-    Sha256Family => "BUG-XFAMILY-SHA256" as Fnv1a64StructuralDigestHex
-    Sha1Family => "BUG-XFAMILY-SHA1" as Fnv1a64StructuralDigestHex
-    Fnv1a64StructuralFamily => "BUG-XFAMILY-FNV" as Fnv1a64StructuralDigestHex
+fn fnv1a64_structural_if_admitted(hash: ContentHash) -> Fnv1a64Structural? {
+  match admit_fnv1a64_structural(hash: hash) {
+    Fnv1a64StructuralAdmitted { digest: d } => Present { value: d }
+    CrossFamilyContentHashRefused { family: _ } => Absent
   }
 }
 
-fn fnv1a64_structural_from_admitted(admission: Fnv1a64StructuralAdmission) -> Fnv1a64Structural {
-  match admission {
-    Fnv1a64StructuralAdmitted { digest: d } => d
+fn provider_refused_cross_family_from_admission(
+  key: ContentHash,
+  hash: ContentHash
+) -> ProviderLookup {
+  match admit_fnv1a64_structural(hash: hash) {
     CrossFamilyContentHashRefused { family: f } =>
-      structural_content_hash(
-        digest: fnv1a64_seam_cross_family_extraction_bug_digest(family: f)
-      )
+      ProviderRefusedCrossFamilyContentHash { key: key, family: f }
+    Fnv1a64StructuralAdmitted { digest: _ } =>
+      ProviderMiss { key: key }
   }
 }
 
@@ -537,24 +537,34 @@ fn resolve_closure_request_key_outcome(
   closure_digest: ContentHash,
   compiler_digest: ContentHash
 ) -> ResolveClosureRequestKeyOutcome {
-  match cross_family_fnv1a64_seam_lookup_refusal(hash: closure_digest, refusal_key: closure_digest) {
-    Present { value: lookup } =>
-      ResolveClosureRequestKeyRefused { lookup: lookup }
-    Absent =>
-      match cross_family_fnv1a64_seam_lookup_refusal(hash: compiler_digest, refusal_key: closure_digest) {
-        Present { value: lookup } =>
-          ResolveClosureRequestKeyRefused { lookup: lookup }
-        Absent =>
+  match fnv1a64_structural_if_admitted(hash: closure_digest) {
+    Present { value: closure_admitted } =>
+      match fnv1a64_structural_if_admitted(hash: compiler_digest) {
+        Present { value: compiler_admitted } =>
           ResolveClosureRequestKeyReady {
             key: request_key(
               req: ResolveClosureRequest {
-                closure_digest: fnv1a64_structural_from_admitted(admission: admit_fnv1a64_structural(hash: closure_digest)),
+                closure_digest: closure_admitted,
                 compiler: compiler_identity_input(
-                  digest: fnv1a64_structural_from_admitted(admission: admit_fnv1a64_structural(hash: compiler_digest))
+                  digest: compiler_admitted
                 )
               }
             )
           }
+        Absent =>
+          ResolveClosureRequestKeyRefused {
+            lookup: provider_refused_cross_family_from_admission(
+              key: closure_digest,
+              hash: compiler_digest
+            )
+          }
+      }
+    Absent =>
+      ResolveClosureRequestKeyRefused {
+        lookup: provider_refused_cross_family_from_admission(
+          key: closure_digest,
+          hash: closure_digest
+        )
       }
   }
 }
@@ -567,44 +577,59 @@ fn resolved_graph_parts_semantic_digest_outcome(
   union_digest: ContentHash,
   union_bytes: ByteSize
 ) -> ResolvedGraphPartsSemanticDigestOutcome {
-  match cross_family_fnv1a64_seam_lookup_refusal(hash: graph_digest, refusal_key: graph_digest) {
-    Present { value: lookup } =>
-      ResolvedGraphPartsSemanticDigestRefused { lookup: lookup }
-    Absent =>
-      match cross_family_fnv1a64_seam_lookup_refusal(hash: indices_digest, refusal_key: graph_digest) {
-        Present { value: lookup } =>
-          ResolvedGraphPartsSemanticDigestRefused { lookup: lookup }
-        Absent =>
-          match cross_family_fnv1a64_seam_lookup_refusal(hash: union_digest, refusal_key: graph_digest) {
-            Present { value: lookup } =>
-              ResolvedGraphPartsSemanticDigestRefused { lookup: lookup }
-            Absent =>
+  match fnv1a64_structural_if_admitted(hash: graph_digest) {
+    Present { value: graph_admitted } =>
+      match fnv1a64_structural_if_admitted(hash: indices_digest) {
+        Present { value: indices_admitted } =>
+          match fnv1a64_structural_if_admitted(hash: union_digest) {
+            Present { value: union_admitted } =>
               ResolvedGraphPartsSemanticDigestReady {
                 digest: carried_outputs_digest(outputs: [
                   positioned_part(
                     id: output_resolved_graph,
                     part: ArtifactPart {
-                      digest: fnv1a64_structural_from_admitted(admission: admit_fnv1a64_structural(hash: graph_digest)),
+                      digest: graph_admitted,
                       bytes: graph_bytes
                     }
                   ),
                   positioned_part(
                     id: output_source_indices,
                     part: ArtifactPart {
-                      digest: fnv1a64_structural_from_admitted(admission: admit_fnv1a64_structural(hash: indices_digest)),
+                      digest: indices_admitted,
                       bytes: indices_bytes
                     }
                   ),
                   positioned_part(
                     id: output_compile_clean_diagnostic_union,
                     part: ArtifactPart {
-                      digest: fnv1a64_structural_from_admitted(admission: admit_fnv1a64_structural(hash: union_digest)),
+                      digest: union_admitted,
                       bytes: union_bytes
                     }
                   )
                 ])
               }
+            Absent =>
+              ResolvedGraphPartsSemanticDigestRefused {
+                lookup: provider_refused_cross_family_from_admission(
+                  key: graph_digest,
+                  hash: union_digest
+                )
+              }
           }
+        Absent =>
+          ResolvedGraphPartsSemanticDigestRefused {
+            lookup: provider_refused_cross_family_from_admission(
+              key: graph_digest,
+              hash: indices_digest
+            )
+          }
+      }
+    Absent =>
+      ResolvedGraphPartsSemanticDigestRefused {
+        lookup: provider_refused_cross_family_from_admission(
+          key: graph_digest,
+          hash: graph_digest
+        )
       }
   }
 }
@@ -621,41 +646,34 @@ fn serve_resolved_graph_stored_disk_probe(
   union_digest: ContentHash,
   union_bytes: ByteSize
 ) -> ProviderLookup {
-  match cross_family_fnv1a64_seam_lookup_refusal(hash: closure_digest, refusal_key: closure_digest) {
-    Present { value: lookup } => lookup
-    Absent =>
-      match cross_family_fnv1a64_seam_lookup_refusal(hash: compiler_digest, refusal_key: closure_digest) {
-        Present { value: lookup } => lookup
-        Absent =>
-          match cross_family_fnv1a64_seam_lookup_refusal(hash: graph_digest, refusal_key: closure_digest) {
-            Present { value: lookup } => lookup
-            Absent =>
-              match cross_family_fnv1a64_seam_lookup_refusal(hash: indices_digest, refusal_key: closure_digest) {
-                Present { value: lookup } => lookup
-                Absent =>
-                  match cross_family_fnv1a64_seam_lookup_refusal(hash: union_digest, refusal_key: closure_digest) {
-                    Present { value: lookup } => lookup
-                    Absent => {
-                      let closure_structural =
-                        fnv1a64_structural_from_admitted(admission: admit_fnv1a64_structural(hash: closure_digest))
-                      let compiler_structural =
-                        fnv1a64_structural_from_admitted(admission: admit_fnv1a64_structural(hash: compiler_digest))
+  match fnv1a64_structural_if_admitted(hash: closure_digest) {
+    Present { value: closure_admitted } =>
+      match fnv1a64_structural_if_admitted(hash: compiler_digest) {
+        Present { value: compiler_admitted } =>
+          match fnv1a64_structural_if_admitted(hash: graph_digest) {
+            Present { value: graph_admitted } =>
+              match fnv1a64_structural_if_admitted(hash: indices_digest) {
+                Present { value: indices_admitted } =>
+                  match fnv1a64_structural_if_admitted(hash: union_digest) {
+                    Present { value: union_admitted } => {
                       let req = ResolveClosureRequest {
-                        closure_digest: closure_structural,
-                        compiler: compiler_identity_input(digest: compiler_structural)
+                        closure_digest: closure_admitted,
+                        compiler: compiler_identity_input(
+                          digest: compiler_admitted
+                        )
                       }
                       let artifact = ResolvedGraphArtifact {
                         request_key: stored_request_key,
                         resolved_graph: ArtifactPart {
-                          digest: fnv1a64_structural_from_admitted(admission: admit_fnv1a64_structural(hash: graph_digest)),
+                          digest: graph_admitted,
                           bytes: graph_bytes
                         },
                         source_indices: ArtifactPart {
-                          digest: fnv1a64_structural_from_admitted(admission: admit_fnv1a64_structural(hash: indices_digest)),
+                          digest: indices_admitted,
                           bytes: indices_bytes
                         },
                         compile_clean_diagnostic_union: ArtifactPart {
-                          digest: fnv1a64_structural_from_admitted(admission: admit_fnv1a64_structural(hash: union_digest)),
+                          digest: union_admitted,
                           bytes: union_bytes
                         }
                       }
@@ -667,10 +685,35 @@ fn serve_resolved_graph_stored_disk_probe(
                         }
                       )
                     }
+                    Absent =>
+                      provider_refused_cross_family_from_admission(
+                        key: closure_digest,
+                        hash: union_digest
+                      )
                   }
+                Absent =>
+                  provider_refused_cross_family_from_admission(
+                    key: closure_digest,
+                    hash: indices_digest
+                  )
               }
+            Absent =>
+              provider_refused_cross_family_from_admission(
+                key: closure_digest,
+                hash: graph_digest
+              )
           }
+        Absent =>
+          provider_refused_cross_family_from_admission(
+            key: closure_digest,
+            hash: compiler_digest
+          )
       }
+    Absent =>
+      provider_refused_cross_family_from_admission(
+        key: closure_digest,
+        hash: closure_digest
+      )
   }
 }
 
@@ -683,25 +726,19 @@ fn serve_resolved_graph_incomplete_stored_disk_probe(
   indices_digest: ContentHash,
   indices_bytes: ByteSize
 ) -> ProviderLookup {
-  match cross_family_fnv1a64_seam_lookup_refusal(hash: closure_digest, refusal_key: closure_digest) {
-    Present { value: lookup } => lookup
-    Absent =>
-      match cross_family_fnv1a64_seam_lookup_refusal(hash: compiler_digest, refusal_key: closure_digest) {
-        Present { value: lookup } => lookup
-        Absent =>
-          match cross_family_fnv1a64_seam_lookup_refusal(hash: graph_digest, refusal_key: closure_digest) {
-            Present { value: lookup } => lookup
-            Absent =>
-              match cross_family_fnv1a64_seam_lookup_refusal(hash: indices_digest, refusal_key: closure_digest) {
-                Present { value: lookup } => lookup
-                Absent => {
-                  let closure_structural =
-                    fnv1a64_structural_from_admitted(admission: admit_fnv1a64_structural(hash: closure_digest))
-                  let compiler_structural =
-                    fnv1a64_structural_from_admitted(admission: admit_fnv1a64_structural(hash: compiler_digest))
+  match fnv1a64_structural_if_admitted(hash: closure_digest) {
+    Present { value: closure_admitted } =>
+      match fnv1a64_structural_if_admitted(hash: compiler_digest) {
+        Present { value: compiler_admitted } =>
+          match fnv1a64_structural_if_admitted(hash: graph_digest) {
+            Present { value: graph_admitted } =>
+              match fnv1a64_structural_if_admitted(hash: indices_digest) {
+                Present { value: indices_admitted } => {
                   let req = ResolveClosureRequest {
-                    closure_digest: closure_structural,
-                    compiler: compiler_identity_input(digest: compiler_structural)
+                    closure_digest: closure_admitted,
+                    compiler: compiler_identity_input(
+                      digest: compiler_admitted
+                    )
                   }
                   let artifact = LegacyIncompleteArtifact {
                     kind: resolved_graph_artifact_kind,
@@ -710,14 +747,14 @@ fn serve_resolved_graph_incomplete_stored_disk_probe(
                       positioned_part(
                         id: output_resolved_graph,
                         part: ArtifactPart {
-                          digest: fnv1a64_structural_from_admitted(admission: admit_fnv1a64_structural(hash: graph_digest)),
+                          digest: graph_admitted,
                           bytes: graph_bytes
                         }
                       ),
                       positioned_part(
                         id: output_source_indices,
                         part: ArtifactPart {
-                          digest: fnv1a64_structural_from_admitted(admission: admit_fnv1a64_structural(hash: indices_digest)),
+                          digest: indices_admitted,
                           bytes: indices_bytes
                         }
                       )
@@ -731,9 +768,29 @@ fn serve_resolved_graph_incomplete_stored_disk_probe(
                     }
                   )
                 }
+                Absent =>
+                  provider_refused_cross_family_from_admission(
+                    key: closure_digest,
+                    hash: indices_digest
+                  )
               }
+            Absent =>
+              provider_refused_cross_family_from_admission(
+                key: closure_digest,
+                hash: graph_digest
+              )
           }
+        Absent =>
+          provider_refused_cross_family_from_admission(
+            key: closure_digest,
+            hash: compiler_digest
+          )
       }
+    Absent =>
+      provider_refused_cross_family_from_admission(
+        key: closure_digest,
+        hash: closure_digest
+      )
   }
 }
 

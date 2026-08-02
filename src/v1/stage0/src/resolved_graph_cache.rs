@@ -50,7 +50,8 @@ pub fn resolved_graph_cache_cap_bytes() -> u64 {
     RESOLVED_GRAPH_CACHE_CAP_BYTES
 }
 
-/// Test-only cap injection for eviction witnesses — not a production escape hatch.
+/// Test-only cap injection — gated on `test_hooks` feature (enabled by v1-compiler-tests only).
+#[cfg(feature = "test_hooks")]
 #[doc(hidden)]
 pub fn set_resolved_graph_cache_cap_bytes_for_test(cap: Option<u64>) {
     RESOLVED_GRAPH_CACHE_CAP_OVERRIDE.with(|c| *c.borrow_mut() = cap);

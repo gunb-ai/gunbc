@@ -7,6 +7,7 @@ edition = "2021"
 default = []
 text_lookup_work_counter = []
 interp_test_witness = []
+test_hooks = []
 
 [dependencies]
 # Persistent value carriers (ctrl#1533 phase 2). `im` and `im-rc` are the same
