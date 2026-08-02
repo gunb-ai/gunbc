@@ -611,6 +611,7 @@ pub fn scoped_witness_kind_label(kind: WitnessKind) -> String {
     match kind.clone() {
         WitnessKind::CorpusWitnessKind => "corpus".to_string(),
         WitnessKind::ExecutionWitnessKind => "execution".to_string(),
+        WitnessKind::NativeBundleWitnessKind => "native-bundle".to_string(),
     }
 }
 
@@ -621,7 +622,11 @@ pub fn scoped_witness_kind_from_label(label: String) -> Option<WitnessKind> {
         if (label.clone() == "execution".to_string()) {
             Some(WitnessKind::ExecutionWitnessKind)
         } else {
-            None
+            if (label.clone() == "native-bundle".to_string()) {
+                Some(WitnessKind::NativeBundleWitnessKind)
+            } else {
+                None
+            }
         }
     }
 }

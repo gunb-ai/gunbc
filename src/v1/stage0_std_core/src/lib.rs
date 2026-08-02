@@ -87,26 +87,5 @@ pub mod std_iteration;
 #[path = "../../stage0/src/std_graph.rs"]
 pub mod std_graph;
 #[rustfmt::skip]
-#[path = "../../stage0/src/extdeps_uri.rs"]
-pub mod extdeps_uri;
-#[rustfmt::skip]
-#[path = "../../stage0/src/extdeps_external_authority.rs"]
-pub mod extdeps_external_authority;
-#[rustfmt::skip]
-#[path = "../../stage0/src/extdeps_container_oci_digest.rs"]
-pub mod extdeps_container_oci_digest;
-#[rustfmt::skip]
-#[path = "../../stage0/src/extdeps_units_dimensionless.rs"]
-pub mod extdeps_units_dimensionless;
-#[rustfmt::skip]
-#[path = "../../stage0/src/extdeps_units_iec_80000_13.rs"]
-pub mod extdeps_units_iec_80000_13;
-#[rustfmt::skip]
-#[path = "../../stage0/src/extdeps_units_iso8601.rs"]
-pub mod extdeps_units_iso8601;
-#[rustfmt::skip]
-#[path = "../../stage0/src/std_occurrence_identity.rs"]
-pub mod std_occurrence_identity;
-#[rustfmt::skip]
 #[path = "../../stage0/src/v1_std_core.rs"]
 pub mod v1_std_core;

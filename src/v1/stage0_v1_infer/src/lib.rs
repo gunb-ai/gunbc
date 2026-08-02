@@ -18,6 +18,7 @@
 #![deny(unreachable_patterns)]
 #![recursion_limit = "256"]
 
+pub use v1_stage0_extdeps_base::*;
 pub use v1_stage0_extdeps_languages::*;
 pub use v1_stage0_runtime::*;
 pub use v1_stage0_std_core::*;
@@ -32,9 +33,6 @@ pub mod v1_compiler_infer_env;
 #[rustfmt::skip]
 #[path = "../../stage0/src/v1_compiler_infer_items.rs"]
 pub mod v1_compiler_infer_items;
-#[rustfmt::skip]
-#[path = "../../stage0/src/v1_compiler_infer_occurrence_binding.rs"]
-pub mod v1_compiler_infer_occurrence_binding;
 #[rustfmt::skip]
 #[path = "../../stage0/src/v1_compiler_infer_service.rs"]
 pub mod v1_compiler_infer_service;

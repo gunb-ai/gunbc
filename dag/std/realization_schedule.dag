@@ -301,6 +301,7 @@ fn scoped_witness_kind_label(kind: WitnessKind) -> String {
   match kind {
     CorpusWitnessKind => "corpus"
     ExecutionWitnessKind => "execution"
+    NativeBundleWitnessKind => "native-bundle"
   }
 }
 
@@ -309,6 +310,8 @@ fn scoped_witness_kind_from_label(label: String) -> WitnessKind? {
     Present { value: CorpusWitnessKind }
   } else if label == "execution" {
     Present { value: ExecutionWitnessKind }
+  } else if label == "native-bundle" {
+    Present { value: NativeBundleWitnessKind }
   } else {
     none
   }
