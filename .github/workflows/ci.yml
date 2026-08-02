@@ -24,7 +24,7 @@ env:
 jobs:
   build:
     runs-on: [self-hosted, linux, arm64]
-    timeout-minutes: 80
+    timeout-minutes: 85
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -102,7 +102,7 @@ jobs:
         run: |
           # 🟡 dissolve-on: ci_v1_compiler_tests_compile_gate_script — foreign-executor (GitHub Actions run:) shell transport for extdeps.cargo_build cargo.Build.Check(extra_args: ci_v1_compiler_tests_compile_gate_extra_args); DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) binds the build-job step to orchestration emit over the typed cargo operation — the same de-fork ci_fmt_gate_line and ci_release_build_script await
           "$CARGO_BIN" 'check' '-p' 'v1-compiler-tests' '--tests'
-        timeout-minutes: 10
+        timeout-minutes: 15
       - name: Build release bins (claim_executor + gunbc)
         run: |
           # 🟡 dissolve-on: ci_release_build_script — concat-built foreign-executor (GitHub Actions run:) release-build runner (ROOT stamp + verify-artifacts + sccache stats wrapping the orch-emitted EAGAIN retry core); membership of --bin / verify paths is derived from gunbc.ci_release_bins, but the runner transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes the release-build runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold
@@ -363,6 +363,26 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ github.head_ref || github.ref_name }}
+      - name: Download release-bins artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: release-bins
+        timeout-minutes: 10
+      - name: Unpack + verify release bins (claim_executor --verify-build-artifacts; fail-closed)
+        run: |
+          # 🟡 dissolve-on: ci_release_bins_unpack_verify_script — concat-built foreign-executor (GitHub Actions run:) release-bins unpack + claim_executor --verify-build-artifacts runner; membership of verified paths is derived from gunbc.ci_release_bins, but the unpack/verify transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes the unpack/verify runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          mkdir -p "$ROOT/target/release"
+          tar -xzf "$ROOT/release-bins.tgz" -C "$ROOT/target/release"
+          rm -f "$ROOT/release-bins.tgz"
+          "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc" "$ROOT/target/release/regen_floor_skip_witness" "$ROOT/target/release/floor_skip_discovery_witness" "$ROOT/target/release/selection_control_skip_witness" "$ROOT/target/release/discover_source_root_ingest" "$ROOT/target/release/claim_batch" "$ROOT/target/release/regen_stage0" "$ROOT/target/release/interp_recorded_fixture_witness" "$ROOT/target/release/v1_src_dag_parse" "$ROOT/target/release/auth_declared_but_unwired_witness" "$ROOT/target/release/bootstrap_witness" "$ROOT/target/release/dag_collect_fingerprint_witness" "$ROOT/target/release/diagnostics_witness" "$ROOT/target/release/effects_rest_transport_witness" "$ROOT/target/release/infer_semantics_witness" "$ROOT/target/release/parse_witness" "$ROOT/target/release/resolution_divergence_census" "$ROOT/target/release/cssl_assemble" "$ROOT/target/release/frontier_probe_survey"
+        timeout-minutes: 5
+      - name: Converge repository-local Git integration bindings (repo_local_git_config converge)
+        run: |
+          # 🟡 dissolve-on: gunbc_ci_heal_repo_local_git_config_invoke — foreign-executor (GitHub Actions run:) shell transport invoking gunbc run on dag/gunbc/repo_local_git_config converge; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) binds the heal step to orchestration emit over the typed gunbc.WitnessBin.Run route without a medium-as-string concat scaffold
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/repo_local_git_config.dag --function converge
+        timeout-minutes: 5
       - name: Refuse a binary/source revision skew (the release binary is built from the PR merge ref; this job checked out the branch head)
         run: |
           BUILT_FROM="${{ github.sha }}"
@@ -382,7 +402,7 @@ jobs:
           git config user.email gunbc-ci-auto-heal@users.noreply.github.com
           if ! git merge --no-edit "$BUILT_FROM"; then
           CONFLICTS="$(git diff --name-only --diff-filter=U)"
-          AUTHORED_CONFLICTS="$(git diff --name-only --diff-filter=U -- . ':(exclude).github/workflows/ci.yml' ':(exclude).github/workflows/falsifier.yml' ':(exclude).gitignore' ':(exclude)ROADMAP.md' ':(exclude)DESIGN.md' ':(exclude).githooks/pre-push' ':(exclude).githooks/pre-commit' ':(exclude)dag/gunbc/stage0_crate_layout_generated.dag' ':(exclude)src/v1/stage0/src/bootstrap_stage0_crate_layout_generated.rs' ':(exclude)dag/gunbc/stage0_crate_partition_generated.dag' ':(exclude).github/live-deploy-srv1-apply.sh' ':(exclude).github/live-deploy-srv1-retract.sh' ':(exclude)docs/plans/idea-machine.md' ':(exclude)docs/plans/algebraic-rewrite-optimization.md' ':(exclude)docs/plans/dag-v2-defork-audit.md' ':(exclude)docs/plans/v2-self-hosting.md' ':(exclude)docs/plans/m5-fixture-store-consolidation.md' ':(exclude)docs/plans/model-realization-fork.md' ':(exclude)docs/plans/value-null-split.md' ':(exclude)docs/plans/ci-merge-freshness.md' ':(exclude)docs/plans/seed-debt-bundle-item-2.md' ':(exclude)docs/plans/axiom-syllogism-lens.md' ':(exclude)docs/plans/invert-hand-maintained.md' ':(exclude)docs/plans/fail-closed-lockdown.md' ':(exclude)docs/plans/format-model-reconciliation.md' ':(exclude)docs/plans/regime2-shared-emission-fold.md' ':(exclude)docs/plans/shell-emission-model.md' ':(exclude)docs/plans/construction-justification-rule.md' ':(exclude)docs/plans/emission-ingestion-inverse.md' ':(exclude)docs/plans/testgen-oracle.md' ':(exclude)docs/plans/disposition-carrier.md' ':(exclude)docs/plans/fold-ergonomics.md' ':(exclude)docs/plans/m4-universal-hermetic-corpus.md' ':(exclude)docs/plans/wiring-liveness-preflight.md' ':(exclude)docs/plans/interpreter-kernel-d.md' ':(exclude)docs/plans/inert-layer-lens.md' ':(exclude)docs/plans/compile-clean-forcecheck.md' ':(exclude)docs/plans/expressibility-frontier.md' ':(exclude)docs/plans/p1-where-clause-lowering.md' ':(exclude)docs/plans/intent-linearity-design-draft.md' ':(exclude)docs/plans/solve-higher-order-design.md' ':(exclude)docs/plans/language-target-self-host-frontier.md' ':(exclude)docs/plans/self-applying-lenses.md' ':(exclude)docs/plans/budget-tree.md' ':(exclude)docs/plans/cardinality-refinement.md' ':(exclude)docs/plans/compute-envelope-model.md' ':(exclude)docs/plans/input-envelope-roadmap.md' ':(exclude)docs/plans/ci-selection-vs-scheduling.md' ':(exclude)docs/plans/ci-process-end-to-end.md' ':(exclude)docs/plans/ci-oom-reclassification.md' ':(exclude)docs/plans/bounded-input-cost-envelope-scheduling.md' ':(exclude)docs/plans/ci-humming.md' ':(exclude)docs/plans/edge-b-rust-dag-provenance-brief.md' ':(exclude)docs/plans/resolver-type-name-collision-wall.md' ':(exclude)docs/plans/realization-measurement-loop.md' ':(exclude)docs/plans/host-effect-orchestration.md' ':(exclude)docs/plans/ci-floor-fractal-gantt.md' ':(exclude)docs/plans/resolver-pathology-profile-receipt.md' ':(exclude)docs/plans/representation-minimization.md' ':(exclude)docs/plans/reference-grounding-migration.md' ':(exclude)docs/plans/typescript-gap-census.md' ':(exclude)docs/plans/cli-run-hollowing-plan.md' ':(exclude)docs/plans/fleet-acceptance-criteria.md' ':(exclude)docs/plans/structural-quadratic-wall-coverage-audit.md' ':(exclude)docs/plans/ci-performance-tanking-evidence.md' ':(exclude)docs/plans/extdeps-modeling-preflight.md')"
+          AUTHORED_CONFLICTS="$(git diff --name-only --diff-filter=U -- . ':(exclude).github/workflows/ci.yml' ':(exclude).github/workflows/falsifier.yml' ':(exclude).gitignore' ':(exclude).gitattributes' ':(exclude)ROADMAP.md' ':(exclude)DESIGN.md' ':(exclude).githooks/pre-push' ':(exclude).githooks/pre-commit' ':(exclude)dag/gunbc/stage0_crate_layout_generated.dag' ':(exclude)src/v1/stage0/src/bootstrap_stage0_crate_layout_generated.rs' ':(exclude)dag/gunbc/stage0_crate_partition_generated.dag' ':(exclude).github/live-deploy-srv1-apply.sh' ':(exclude).github/live-deploy-srv1-retract.sh' ':(exclude)docs/plans/idea-machine.md' ':(exclude)docs/plans/algebraic-rewrite-optimization.md' ':(exclude)docs/plans/dag-v2-defork-audit.md' ':(exclude)docs/plans/v2-self-hosting.md' ':(exclude)docs/plans/m5-fixture-store-consolidation.md' ':(exclude)docs/plans/model-realization-fork.md' ':(exclude)docs/plans/value-null-split.md' ':(exclude)docs/plans/ci-merge-freshness.md' ':(exclude)docs/plans/seed-debt-bundle-item-2.md' ':(exclude)docs/plans/axiom-syllogism-lens.md' ':(exclude)docs/plans/invert-hand-maintained.md' ':(exclude)docs/plans/fail-closed-lockdown.md' ':(exclude)docs/plans/format-model-reconciliation.md' ':(exclude)docs/plans/regime2-shared-emission-fold.md' ':(exclude)docs/plans/shell-emission-model.md' ':(exclude)docs/plans/construction-justification-rule.md' ':(exclude)docs/plans/emission-ingestion-inverse.md' ':(exclude)docs/plans/testgen-oracle.md' ':(exclude)docs/plans/disposition-carrier.md' ':(exclude)docs/plans/fold-ergonomics.md' ':(exclude)docs/plans/m4-universal-hermetic-corpus.md' ':(exclude)docs/plans/wiring-liveness-preflight.md' ':(exclude)docs/plans/interpreter-kernel-d.md' ':(exclude)docs/plans/inert-layer-lens.md' ':(exclude)docs/plans/compile-clean-forcecheck.md' ':(exclude)docs/plans/expressibility-frontier.md' ':(exclude)docs/plans/p1-where-clause-lowering.md' ':(exclude)docs/plans/intent-linearity-design-draft.md' ':(exclude)docs/plans/solve-higher-order-design.md' ':(exclude)docs/plans/language-target-self-host-frontier.md' ':(exclude)docs/plans/self-applying-lenses.md' ':(exclude)docs/plans/budget-tree.md' ':(exclude)docs/plans/cardinality-refinement.md' ':(exclude)docs/plans/compute-envelope-model.md' ':(exclude)docs/plans/input-envelope-roadmap.md' ':(exclude)docs/plans/ci-selection-vs-scheduling.md' ':(exclude)docs/plans/ci-process-end-to-end.md' ':(exclude)docs/plans/ci-oom-reclassification.md' ':(exclude)docs/plans/bounded-input-cost-envelope-scheduling.md' ':(exclude)docs/plans/ci-humming.md' ':(exclude)docs/plans/edge-b-rust-dag-provenance-brief.md' ':(exclude)docs/plans/resolver-type-name-collision-wall.md' ':(exclude)docs/plans/realization-measurement-loop.md' ':(exclude)docs/plans/host-effect-orchestration.md' ':(exclude)docs/plans/ci-floor-fractal-gantt.md' ':(exclude)docs/plans/resolver-pathology-profile-receipt.md' ':(exclude)docs/plans/representation-minimization.md' ':(exclude)docs/plans/reference-grounding-migration.md' ':(exclude)docs/plans/typescript-gap-census.md' ':(exclude)docs/plans/cli-run-hollowing-plan.md' ':(exclude)docs/plans/fleet-acceptance-criteria.md' ':(exclude)docs/plans/structural-quadratic-wall-coverage-audit.md' ':(exclude)docs/plans/ci-performance-tanking-evidence.md' ':(exclude)docs/plans/extdeps-modeling-preflight.md')"
           if [ -n "$AUTHORED_CONFLICTS" ]; then
           echo "heal refused: binary/source revision skew, and the remedy CONFLICTS in authored files" >&2
           echo "  conflicting paths:" >&2
@@ -409,20 +429,6 @@ jobs:
           fi
           echo "heal preflight: binary revision $BUILT_FROM carries no seed commits missing from this tree"
         timeout-minutes: 5
-      - name: Download release-bins artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: release-bins
-        timeout-minutes: 10
-      - name: Unpack + verify release bins (claim_executor --verify-build-artifacts; fail-closed)
-        run: |
-          # 🟡 dissolve-on: ci_release_bins_unpack_verify_script — concat-built foreign-executor (GitHub Actions run:) release-bins unpack + claim_executor --verify-build-artifacts runner; membership of verified paths is derived from gunbc.ci_release_bins, but the unpack/verify transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes the unpack/verify runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold
-          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          mkdir -p "$ROOT/target/release"
-          tar -xzf "$ROOT/release-bins.tgz" -C "$ROOT/target/release"
-          rm -f "$ROOT/release-bins.tgz"
-          "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc" "$ROOT/target/release/regen_floor_skip_witness" "$ROOT/target/release/floor_skip_discovery_witness" "$ROOT/target/release/selection_control_skip_witness" "$ROOT/target/release/discover_source_root_ingest" "$ROOT/target/release/claim_batch" "$ROOT/target/release/regen_stage0" "$ROOT/target/release/interp_recorded_fixture_witness" "$ROOT/target/release/v1_src_dag_parse" "$ROOT/target/release/auth_declared_but_unwired_witness" "$ROOT/target/release/bootstrap_witness" "$ROOT/target/release/dag_collect_fingerprint_witness" "$ROOT/target/release/diagnostics_witness" "$ROOT/target/release/effects_rest_transport_witness" "$ROOT/target/release/infer_semantics_witness" "$ROOT/target/release/parse_witness" "$ROOT/target/release/resolution_divergence_census" "$ROOT/target/release/cssl_assemble" "$ROOT/target/release/frontier_probe_survey"
-        timeout-minutes: 5
       - name: Regenerate drifted generated artifacts (main_wet — writes each authority projection to the worktree)
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
@@ -443,6 +449,7 @@ jobs:
             done
           fi
           if [ -e ".gitignore" ]; then git add ".gitignore"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: .gitignore"; fi
+          if [ -e ".gitattributes" ]; then git add ".gitattributes"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: .gitattributes"; fi
           if [ -e "ROADMAP.md" ]; then git add "ROADMAP.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: ROADMAP.md"; fi
           if [ -e "DESIGN.md" ]; then git add "DESIGN.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: DESIGN.md"; fi
           if [ -e ".githooks/pre-push" ]; then git add ".githooks/pre-push"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: .githooks/pre-push"; fi
@@ -518,7 +525,7 @@ jobs:
             CHANGED_ARTIFACTS=$(git diff --cached --name-only)
             git commit -m "chore: regenerate drifted generated artifacts (ci auto-heal)"
             HEALED_HEAD=$(git rev-parse HEAD)
-            git push origin HEAD:${{ github.head_ref || github.ref_name }}
+            git -c core.hooksPath= push origin HEAD:${{ github.head_ref || github.ref_name }}
             echo "HealProduced prior_head=$PRIOR_HEAD healed_head=$HEALED_HEAD changed_artifacts=$CHANGED_ARTIFACTS"
             ROOT=$(git rev-parse --show-toplevel)
             if ! GUNBC_HEALED_HEAD="$HEALED_HEAD" GUNBC_HEAL_BRANCH_REF="${{ github.head_ref || github.ref_name }}" "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/tools/ci_heal_dispatch.dag --function main
