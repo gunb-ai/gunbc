@@ -375,7 +375,7 @@ fn dispatch_verification_checkout_path_for_instance(
   head_sha: String,
 ) -> String {
   join([
-    instance.dispatch_worktree_root as String,
+    dashboard_instance_dispatch_worktree_root(instance: instance) as String,
     "/",
     node_id as String,
     "-a",
