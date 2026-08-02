@@ -15,6 +15,8 @@ import std.occurrence_identity {
   OccurrenceTransportRefused,
   DeclarationOccurrence,
   ReferenceOccurrence,
+  OccurrenceCategory,
+  TypeOccurrence,
   OccurrenceContainmentPath,
   occurrence_containment_path_is_prefix_of,
   occurrence_containment_paths_equal,
@@ -947,6 +949,21 @@ fn bound_reference_population_fold_step(
             more_failures_reversed: concat([projection], acc.more_failures_reversed),
           }
       }
+    ReferenceBindingProjectionWrongCategory { occurrence: _, observed: _ } =>
+      match acc.first_failure {
+        Absent =>
+          BoundReferencePopulationBuild {
+            providers_reversed: acc.providers_reversed,
+            first_failure: Present { value: projection },
+            more_failures_reversed: acc.more_failures_reversed,
+          }
+        Present { value: _ } =>
+          BoundReferencePopulationBuild {
+            providers_reversed: acc.providers_reversed,
+            first_failure: acc.first_failure,
+            more_failures_reversed: concat([projection], acc.more_failures_reversed),
+          }
+      }
   }
 }
 
@@ -1006,6 +1023,32 @@ type ReferenceBindingProjection
   | ReferenceBindingProjectionAuthoredOrderRefused { refusal: AuthoredOrderIndexRefusal }
   | ReferenceBindingProjectionDeclarationBucketRefused { occurrence: OccurrenceId }
   | ReferenceBindingProjectionModulePathMissing { occurrence: OccurrenceId }
+  | ReferenceBindingProjectionWrongCategory {
+      occurrence: OccurrenceId,
+      observed: OccurrenceCategory,
+    }
+
+data resolve_type_reference_containment_binding_note: String = "N2 typed entry (gunbc.type_reference_containment_binding slice 1): refuses non-TypeOccurrence references at the API boundary before candidate enumeration — category is part of the binding contract, not an after-the-fact filter. TypeOccurrence references delegate to resolve_reference_binding_via_structural_candidates unchanged."
+
+fn resolve_type_reference_containment_binding(
+  transport: OccurrenceTransport,
+  inputs: OccurrenceBindingCandidateInputs,
+  reference: ReferenceOccurrence
+) -> ReferenceBindingProjection {
+  match reference.category {
+    TypeOccurrence =>
+      resolve_reference_binding_via_structural_candidates(
+        transport: transport,
+        inputs: inputs,
+        reference: reference,
+      )
+    _ =>
+      ReferenceBindingProjectionWrongCategory {
+        occurrence: reference.occurrence,
+        observed: reference.category,
+      }
+  }
+}
 
 data resolve_reference_via_structural_candidates_note: String = "THE P2a entry point. It builds the exact candidate population for one reference from the precomputed index (candidate_occurrence_ids_for_reference) and hands that population to std.occurrence_binding_resolve.resolve_reference_occurrence_binding as supplied_candidates -- P1's fold over occurrence_binding_from_candidates is the only cardinality decision in this path. Only the OccurrenceBound arm is projected into a BoundReferenceProvider; Unbound and Ambiguous are surfaced as their own typed, located outcomes so a caller can never mistake 'no edge' for 'one edge'."
 
