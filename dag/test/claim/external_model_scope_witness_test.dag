@@ -18,7 +18,7 @@ import gunbc.extdeps_scope_frontier {
   scope_placement_refused_paths,
   manifest_line_observation,
   ManifestLineObservation, ManifestUntouched, ManifestIntroduced, ManifestLinesAdded, ManifestDiffUnreadable,
-  PostFreezeObservation, PostFreezeAdded, PostFreezeDiffFailed, PostFreezeParseTruncated,
+  DiffAddedObservation, DiffAdded, DiffObserveFailed, DiffParseTruncated,
 }
 import gunbc.plans.extdeps_modeling_preflight { extdeps_modeling_preflight_rows }
 import tools.extdeps_scope_placement_gate { manifest_remove_only_exit }
@@ -381,11 +381,11 @@ test fn carriers_declare_scope_on_disk() -> Bool {
 test fn red_manifest_freeze_refuses_post_freeze_row() -> Bool {
   manifest_freeze_holds(
     manifest: ["dag/extdeps/a.dag", "dag/extdeps/smuggled_new_module.dag"],
-    observation: PostFreezeAdded { paths: ["dag/extdeps/smuggled_new_module.dag"] }
+    observation: DiffAdded { paths: ["dag/extdeps/smuggled_new_module.dag"] }
   ) == false
 }
 
 test fn red_manifest_freeze_refuses_failed_diff() -> Bool {
-  manifest_freeze_holds(manifest: ["dag/extdeps/a.dag"], observation: PostFreezeDiffFailed) == false
-    && manifest_freeze_holds(manifest: ["dag/extdeps/a.dag"], observation: PostFreezeParseTruncated) == false
+  manifest_freeze_holds(manifest: ["dag/extdeps/a.dag"], observation: DiffObserveFailed) == false
+    && manifest_freeze_holds(manifest: ["dag/extdeps/a.dag"], observation: DiffParseTruncated) == false
 }

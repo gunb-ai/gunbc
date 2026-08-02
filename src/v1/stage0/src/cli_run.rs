@@ -12294,11 +12294,19 @@ pub fn whole_tree_ancestry_retention_probe(
     Ok(())
 }
 
-/// Companion to a `*_holds` witness: `emit_on_demand_family_crate_pr_native_agreement_holds`
+/// Companion to a Bool witness: `emit_on_demand_family_crate_pr_native_agreement_holds`
 /// → `emit_on_demand_family_crate_pr_native_agreement_failure_receipt`.
-fn failure_receipt_companion(function: &str) -> Option<String> {
+///
+/// Both witness-naming conventions in the corpus are recognized: `_holds` (claim witnesses)
+/// and `_passes` (the cheap-floor gate witnesses in `tools.floor_effect_gate_witness`). The
+/// gate witnesses were unreachable from this channel while only `_holds` was stripped, which
+/// is why ten consecutive `extdeps_scope_placement_gate_passes` reds reported nothing but
+/// `returned Bool(false)`. A missing companion stays "not declared" either way, so widening
+/// the derivation cannot invent a required hook for a witness that has none.
+pub fn failure_receipt_companion(function: &str) -> Option<String> {
     function
         .strip_suffix("_holds")
+        .or_else(|| function.strip_suffix("_passes"))
         .map(|base| format!("{base}_failure_receipt"))
 }
 
