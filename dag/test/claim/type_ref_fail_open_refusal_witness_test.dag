@@ -11,12 +11,16 @@ import gunbc.compile_diagnostic_census {
 import gunbc.type_ref_binding_authority_debt {
   type_ref_binding_authority_debt_dissolve_trigger,
   type_ref_census_sha,
+  type_ref_debt_roster_freeze_state,
+  Frozen,
+  ProvisionalUnfrozen,
   type_ref_roster_regenerator_choice,
   type_ref_roster_pure_regen_dissolve_trigger,
   type_ref_roster_host_effect_classify_procedure_note,
   type_ref_roster_host_effect_classify_optional_trigger,
   type_ref_debt_freeze_early_receipt,
-  type_ref_debt_provisional_combined_counts_note,
+  type_ref_debt_freeze_census_receipt,
+  type_ref_debt_freeze_vs_provisional_delta_note,
   type_ref_debt_site_disposition_note
 }
 import std.types { String, Bool }
@@ -24,7 +28,7 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-data type_ref_fail_open_witness_note: String = "import-strip section 14.1 acceptance probes as synthetic census sources (same observation surface as compile_diagnostic_census_witness). Row 1 GREEN (own import). Rows 3/4/5 RED blocking UnresolvedType: absent-from-pool, pool-present bare unreachable, and pool-present qualified unreachable share one refusal shape. Row 2 (transitive) stays a fixture-level control under dag/test/fixture/type_ref_fail_open_probe — advisory UnlistedImportUse is orthogonal. Admission predicate is type_ref_has_binding_authority (swappable; interim import/local)."
+data type_ref_fail_open_witness_note: String = "import-strip section 14.1 acceptance probes as synthetic census sources (same observation surface as compile_diagnostic_census_witness). Row 1 GREEN (own import from std.content_hash). Rows 3/4/5 RED blocking UnresolvedType: absent-from-pool, pool-present bare unreachable, and pool-present qualified unreachable share one refusal shape. Row 2 (transitive) stays a fixture-level control under dag/test/fixture/type_ref_fail_open_probe — advisory UnlistedImportUse is orthogonal. Admission predicate is type_ref_has_binding_authority (swappable; interim import/local)."
 
 fn census_of(source: String) -> CompileDiagnosticCensus {
   compile_dag_diagnostic_census(source)
@@ -43,13 +47,13 @@ fn unresolved_blocking_count(source: String) -> Int {
   }
 }
 
-data row1_own_import_source: String = "module type_ref_row1\nimport std.types { ContentHash }\nfn f(x: ContentHash) -> ContentHash { x }\n"
+data row1_own_import_source: String = "module type_ref_row1\nimport std.content_hash { ContentHash }\nfn f(x: ContentHash) -> ContentHash { x }\n"
 
 data row3_absent_source: String = "module type_ref_row3\nfn f(x: NoSuchTypeNameAnywhereZzz) -> NoSuchTypeNameAnywhereZzz { x }\n"
 
 data row4_bare_pool_present_source: String = "module type_ref_row4\nfn f(x: ContentHash) -> ContentHash { x }\n"
 
-data row5_qualified_pool_present_source: String = "module type_ref_row5\nfn f(x: std.types.ContentHash) -> std.types.ContentHash { x }\n"
+data row5_qualified_pool_present_source: String = "module type_ref_row5\nfn f(x: std.content_hash.ContentHash) -> std.content_hash.ContentHash { x }\n"
 
 test fn row1_own_import_stays_green() -> Bool {
   unresolved_blocking_count(source: row1_own_import_source) == 0
@@ -72,7 +76,14 @@ test fn debt_dissolve_trigger_names_n2() -> Bool {
 }
 
 test fn census_sha_is_pinned_on_carrier() -> Bool {
-  string_contains(s: type_ref_census_sha, pattern: "89dbea7d896b3ae95195117374a8c0c9454f341e")
+  string_contains(s: type_ref_census_sha, pattern: "f531ba548d01fd70d9b8eb825b17f542578ce485")
+}
+
+test fn freeze_state_is_frozen() -> Bool {
+  match type_ref_debt_roster_freeze_state {
+    Frozen => true
+    ProvisionalUnfrozen => false
+  }
 }
 
 test fn regenerator_declared_offline_authoring_tool() -> Bool {
@@ -83,16 +94,17 @@ test fn regenerator_declared_offline_authoring_tool() -> Bool {
     && string_contains(s: type_ref_roster_regenerator_choice, pattern: "HALF 2 HOST-EFFECT")
 }
 
-test fn pure_regen_dissolve_does_not_oblige_host_effect() -> Bool {
-  string_contains(s: type_ref_roster_pure_regen_dissolve_trigger, pattern: "HALF 1 PURE")
-    && string_contains(s: type_ref_roster_pure_regen_dissolve_trigger, pattern: "Does NOT obligate modeling the host-effect")
+test fn pure_regen_dissolve_landed_in_dag_fold() -> Bool {
+  string_contains(s: type_ref_roster_pure_regen_dissolve_trigger, pattern: "DISSOLVED")
+    && string_contains(s: type_ref_roster_pure_regen_dissolve_trigger, pattern: "type_ref_fold_labeled_sites_to_roster_buckets")
+    && string_contains(s: type_ref_roster_pure_regen_dissolve_trigger, pattern: "must not return as a second authority")
 }
 
 test fn host_effect_classify_is_procedure_not_scaffold() -> Bool {
   string_contains(s: type_ref_roster_host_effect_classify_procedure_note, pattern: "not a Scaffold")
     && string_contains(s: type_ref_roster_host_effect_classify_procedure_note, pattern: "No dissolve-on")
     && string_contains(s: type_ref_roster_host_effect_classify_optional_trigger, pattern: "OPTIONAL only")
-    && string_contains(s: type_ref_roster_host_effect_classify_optional_trigger, pattern: "Peel re-census does not fire this")
+    && string_contains(s: type_ref_roster_host_effect_classify_optional_trigger, pattern: "not a dissolve obligation")
 }
 
 test fn freeze_early_receipt_names_revealed_229_retired_0() -> Bool {
@@ -100,10 +112,16 @@ test fn freeze_early_receipt_names_revealed_229_retired_0() -> Bool {
     && string_contains(s: type_ref_debt_freeze_early_receipt, pattern: "retired_delta = 0")
 }
 
-test fn provisional_combined_counts_record_2998_beside_2155() -> Bool {
-  string_contains(s: type_ref_debt_provisional_combined_counts_note, pattern: "2155 (PROVISIONAL)")
-    && string_contains(s: type_ref_debt_provisional_combined_counts_note, pattern: "2998")
-    && string_contains(s: type_ref_debt_provisional_combined_counts_note, pattern: "dup_extra = 843")
+test fn freeze_census_receipt_pins_2854() -> Bool {
+  string_contains(s: type_ref_debt_freeze_census_receipt, pattern: "2854")
+    && string_contains(s: type_ref_debt_freeze_census_receipt, pattern: "3506")
+    && string_contains(s: type_ref_debt_freeze_census_receipt, pattern: "dup_extra = 652")
+}
+
+test fn freeze_vs_provisional_delta_closes_at_699() -> Bool {
+  string_contains(s: type_ref_debt_freeze_vs_provisional_delta_note, pattern: "988 − 289 = +699")
+    && string_contains(s: type_ref_debt_freeze_vs_provisional_delta_note, pattern: "435 pure-mint")
+    && string_contains(s: type_ref_debt_freeze_vs_provisional_delta_note, pattern: "zero-tolerance")
 }
 
 test fn incidental_outside_subset_is_by_subset_rule_not_construction() -> Bool {
