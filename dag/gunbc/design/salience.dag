@@ -1,0 +1,195 @@
+module gunbc.design.salience
+
+import std.types { Int, String, Bool, List }
+import extdeps.languages.css.values { CssLength, css_px }
+import gunbc.design.material { TimingToken, settle_spring }
+
+data salience_note: String = "REGISTER AMENDMENT: SELECTIVE SPECTACLE (operator recalibration, 2026-08-02). The earlier register overcorrected against cheap spectacle into uniform austerity: QuietSurface, the glare envelope, and still-until-touched prevented bad spectacle and good FOCAL spectacle alike, which is why the site read coherent but emotionally flat. The corrected thesis is calm field, luminous focus, physical response, every response true: showiness is not forbidden, it is SCARCE, FOCAL, and CAUSED. This module is the salience model that makes that lawful rather than vibes — a subject's salience role is DECIDED by the projection from real facts (selected subject, selected primary operation, active refusal needing action), and every energy channel (chroma, emission, motion, sound) is granted per role from one budget table. The reference specimen is the operator's dynamic-tierlist login control (read from source 2026-08-02): a three-layer corona at 1:2:3 blur ratios with decaying alphas, proximity-scaled brightness, and a low-pass drift whose LAG is the material — its lesson is one focal object can be unusually alive when the surrounding field gives it room, NOT that every row glows. The field stays calm because the subject gets the energy."
+
+type SalienceRole
+  = SalienceGround
+  | SalienceSupporting
+  | SalienceFocal
+  | SalienceCritical
+
+fn salience_key(role: SalienceRole) -> String {
+  match role {
+    SalienceGround => "ground"
+    SalienceSupporting => "supporting"
+    SalienceFocal => "focal"
+    SalienceCritical => "critical"
+  }
+}
+
+data salience_budget_note: String = "ONE budget table, derived per role — never per-site energy decisions (section 2: model once, derive every use). Ground is the world context: minimal chroma, no emission, no motion, no sound. Supporting is the ordinary sibling: restrained chroma, no emission, small interaction motion (hover/press responses it already owns), no sound. Focal is the selected subject or its primary operation: strong chroma, emission admissible, physical bounded motion, the detent/engage sounds. Critical is an active refusal needing action: strong-but-distinct chroma, emission admissible, sharp bounded motion, the blocked/refusal sound. Emission and physical motion are ENHANCEMENT channels by law — the projection that grants them must carry a non-emission discriminator (state class, text, shape), so reduced-motion and no-emission renderings preserve selection and operability by construction, and a steady glow can never be the only claim a state makes."
+
+type ChromaGrant
+  = MinimalChroma
+  | RestrainedChroma
+  | StrongChroma
+
+type MotionGrant
+  = NoMotionGrant
+  | InteractionMotionGrant
+  | PhysicalMotionGrant
+  | SharpBoundedMotionGrant
+
+type SalienceBudget {
+  chroma: ChromaGrant
+  emission_admissible: Bool
+  motion: MotionGrant
+  sound_admissible: Bool
+}
+
+fn salience_budget(role: SalienceRole) -> SalienceBudget {
+  match role {
+    SalienceGround => SalienceBudget {
+      chroma: MinimalChroma,
+      emission_admissible: false,
+      motion: NoMotionGrant,
+      sound_admissible: false,
+    }
+    SalienceSupporting => SalienceBudget {
+      chroma: RestrainedChroma,
+      emission_admissible: false,
+      motion: InteractionMotionGrant,
+      sound_admissible: false,
+    }
+    SalienceFocal => SalienceBudget {
+      chroma: StrongChroma,
+      emission_admissible: true,
+      motion: PhysicalMotionGrant,
+      sound_admissible: true,
+    }
+    SalienceCritical => SalienceBudget {
+      chroma: StrongChroma,
+      emission_admissible: true,
+      motion: SharpBoundedMotionGrant,
+      sound_admissible: true,
+    }
+  }
+}
+
+data emission_note: String = "MATERIAL AND EMISSION ARE SEPARATE LAYERS (the CRT model): a material is the matte surface or glass and stays inside the quiet envelope; emission is light PRODUCED by the active instrument, layered over the restrained material. Emission is therefore the register's second declared exemption lane beside DataVizArea — scoped by SALIENCE ROLE where DataVizArea is scoped by area, and admitted only through emission_for, whose refusals are typed: a Ground or Supporting subject cannot be granted emission at all, a spec outside the envelope refuses with the measured violation, and a grant with no non-emission discriminator refuses because emission may never be the only state discriminator. The envelope keeps the login reference's shape and rejects its excess: a crisp core near the object, one soft corona carrying identity, the corona strictly wider than the core and strictly low-alpha, total spread far below the reference's maximum bloom. EmissionSpec deliberately has NO pulse, duration, or animation field: a periodic glow is ambient motion (still-until-touched forbids it by construction — no constructor exists) and a steady glow cannot imply progress."
+
+type EmissionSpec {
+  core_radius: CssLength
+  corona_radius: CssLength
+  core_alpha_pct: Int
+  corona_alpha_pct: Int
+}
+
+data emission_corona_alpha_max_pct: Int = 25
+data emission_corona_radius_max_px: Int = 48
+
+fn emission_envelope(spec: EmissionSpec) -> Bool {
+  spec.core_alpha_pct >= 0
+    && spec.core_alpha_pct <= 100
+    && spec.corona_alpha_pct >= 0
+    && spec.corona_alpha_pct <= emission_corona_alpha_max_pct
+    && spec.core_radius.n >= 0
+    && spec.corona_radius.n > spec.core_radius.n
+    && spec.corona_radius.n <= emission_corona_radius_max_px
+}
+
+type EmissionGrant
+  = EmissionGranted { spec: EmissionSpec, discriminator: String }
+  | EmissionRefusedForRole { role: SalienceRole }
+  | EmissionOutsideEnvelope { corona_alpha_pct: Int, corona_radius_px: Int }
+  | EmissionSoleDiscriminatorRefused
+
+fn emission_for(role: SalienceRole, spec: EmissionSpec, discriminator: String) -> EmissionGrant {
+  let budget = salience_budget(role: role)
+  if !budget.emission_admissible {
+    EmissionRefusedForRole { role: role }
+  } else {
+    if discriminator.length() == 0 {
+      EmissionSoleDiscriminatorRefused
+    } else {
+      if emission_envelope(spec: spec) {
+        EmissionGranted { spec: spec, discriminator: discriminator }
+      } else {
+        EmissionOutsideEnvelope {
+          corona_alpha_pct: spec.corona_alpha_pct,
+          corona_radius_px: spec.corona_radius.n,
+        }
+      }
+    }
+  }
+}
+
+data focal_budget_note: String = "AT MOST ONE ORDINARY FOCAL SUBJECT PER INTERACTION REGION; CRITICAL MAY INTERRUPT. This is the law that makes showy compatible with hierarchy: the field stays calm because exactly one subject holds the energy, and the admission is computed over the region's actual assignments rather than trusted per site. A second Focal in one region is a typed, counted refusal (never a silent widen, section 5); Critical subjects are deliberately outside the ordinary budget — an active refusal needing action may interrupt the focal subject without dethroning it, because truth outranks visual quiet."
+
+type SalienceAssignment {
+  subject: String
+  role: SalienceRole
+}
+
+type FocalAdmission
+  = FocalAdmitted { focal_count: Int, critical_count: Int }
+  | FocalBudgetExceeded { region: String, focal_count: Int }
+
+fn role_is_focal(role: SalienceRole) -> Bool {
+  match role {
+    SalienceFocal => true
+    SalienceGround => false
+    SalienceSupporting => false
+    SalienceCritical => false
+  }
+}
+
+fn role_is_critical(role: SalienceRole) -> Bool {
+  match role {
+    SalienceCritical => true
+    SalienceGround => false
+    SalienceSupporting => false
+    SalienceFocal => false
+  }
+}
+
+fn count_roles(assignments: List<SalienceAssignment>, focal: Bool) -> Int {
+  fold(assignments, init: 0, f: (acc, a) =>
+    if focal {
+      if role_is_focal(role: a.role) { acc + 1 } else { acc }
+    } else {
+      if role_is_critical(role: a.role) { acc + 1 } else { acc }
+    })
+}
+
+fn region_focal_admission(region: String, assignments: List<SalienceAssignment>) -> FocalAdmission {
+  let focal_count = count_roles(assignments: assignments, focal: true)
+  let critical_count = count_roles(assignments: assignments, focal: false)
+  if focal_count > 1 {
+    FocalBudgetExceeded { region: region, focal_count: focal_count }
+  } else {
+    FocalAdmitted { focal_count: focal_count, critical_count: critical_count }
+  }
+}
+
+data attraction_note: String = "PHYSICAL RESPONSE MOVES THE VISUAL PLATE, NEVER THE HIT REGION. The reference login control follows the pointer across the whole viewport because it is the only target; a roadmap operation must never become an evasive moving target. AttractionField is therefore a bounded LOCAL field: the pointer entering activation_radius attracts the visual plate by at most max_travel inside a FIXED hit region, and the carrier structurally cannot express anything else — it has no position, offset, or hit-region field, so a realization that moved the target would need facts this authority does not carry (correctness by construction, section 5). The watery quality is inertia and damping, not a pre-authored path: settle borrows the register's one non-monotone easing (settle_spring, derived by reference — no second spring is minted), and the reference's ~16-second low-pass lag is recorded as the lesson LAG IS THE MATERIAL, to be realized inside these bounds at audition. Keyboard focus receives the same focal identity without displacement; touch presses and settles without pointer attraction; renderer-local motion is ephemera and never advances domain state or implies workflow progress."
+
+type AttractionField {
+  activation_radius: CssLength
+  max_travel: CssLength
+  settle: TimingToken
+}
+
+data attraction_travel_max_px: Int = 14
+data attraction_activation_min_px: Int = 96
+data attraction_activation_max_px: Int = 200
+
+fn attraction_envelope(f: AttractionField) -> Bool {
+  f.max_travel.n > 0
+    && f.max_travel.n <= attraction_travel_max_px
+    && f.activation_radius.n >= attraction_activation_min_px
+    && f.activation_radius.n <= attraction_activation_max_px
+    && f.activation_radius.n > f.max_travel.n
+}
+
+data focal_attraction: AttractionField = AttractionField {
+  activation_radius: css_px(150),
+  max_travel: css_px(12),
+  settle: settle_spring,
+}
+
+data reduced_motion_note: String = "REDUCED MOTION PRESERVES THE DISTINCTION, NOT THE DECORATION. Because emission and physical motion are enhancement channels granted only alongside a non-emission discriminator (emission_for refuses a grant with none), a reduced-motion or no-emission rendering keeps every selection, state, and operability fact intact by construction — the discriminator channel is what carries them. Muting the spectacle can therefore never mute the truth."
