@@ -2580,6 +2580,40 @@ pub fn value_ref_qualified_leaf(name: String) -> String {
     }
 }
 
+pub fn value_ref_self_module_normalization_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Construction wall for the SAME-MODULE half of the qualified-value-reference dotted-render class (sibling of value_ref_ident_dotted_fallback_note, which covers the general dotted-render/registry-miss case). A fully-qualified reference whose module qualifier names the CURRENT module (e.g. extdeps.container.oci.digest.extdeps_external_authority_anchor written inside extdeps.container.oci.digest itself) previously reached the bare-name registry (last-write-wins across every module sharing that leaf, since ordinary decl names are not disambiguated by qualifier) and resolved to whichever unrelated module happened to be inserted last, then rendered as a plain crate::wrong_module::ident value (never the is_data call-suffix decision, which is keyed on the still-dotted name and so never matches) wrapped in .clone() by the surrounding resolved_type sharing template — wrong module AND a fn-item value instead of the intended call. A same-module qualified reference names nothing a bare reference does not already name (the containment tree binds it to the enclosing module's own declaration, DESIGN §4), so the fix is to normalize it to the identical bare spelling before any registry lookup runs, rather than teaching the registry to disambiguate by qualifier — same-module resolution reuses the already-correct bare-name path instead of forking a second one. A genuine cross-module qualified reference (qualifier != current module) is untouched by this wall and keeps today's behavior.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn value_ref_qualifier_prefix(name: String) -> String {
+    {
+        let leaf = value_ref_qualified_leaf(name.clone());
+        if (leaf.clone() == name.clone()) {
+            "".to_string()
+        } else {
+            v1_rt::substring(
+                &name,
+                0,
+                ((v1_rt::string_length(&name) - v1_rt::string_length(&leaf)) - 1),
+            )
+        }
+    }
+}
+
+pub fn value_ref_normalize_self_module(name: String, module_name: String) -> String {
+    if (v1_rt::string_contains(&name, ".".to_string())
+        && (value_ref_qualifier_prefix(name.clone()) == module_name.clone()))
+    {
+        value_ref_qualified_leaf(name.clone())
+    } else {
+        name.clone()
+    }
+}
+
 pub fn rust_is_uppercase_letter(c: String) -> bool {
     ((((((((((((((((((((((((((c.clone() == "A".to_string())
         || (c.clone() == "B".to_string()))
@@ -17129,11 +17163,13 @@ pub fn emit_var_ref(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     emit_info: Rc<EmitGraphInfo>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    module_name: String,
 ) -> String {
     {
-        let leaf_name = value_ref_qualified_leaf(name.clone());
+        let resolved_name = value_ref_normalize_self_module(name.clone(), module_name.clone());
+        let leaf_name = value_ref_qualified_leaf(resolved_name.clone());
         let variant_parent = effective_variant_parent(
-            name.clone(),
+            resolved_name.clone(),
             binding_kind.clone(),
             resolved_type.clone(),
             emit_info.clone(),
@@ -17152,7 +17188,7 @@ pub fn emit_var_ref(
             } else {
                 {
                     let moves_by_value =
-                        v1_rt::set_contains(&emit_info.movable.clone(), name.clone());
+                        v1_rt::set_contains(&emit_info.movable.clone(), resolved_name.clone());
                     let sharing = language_spec(RenderTarget::Rust).sharing.clone();
                     let ref_str = match variant_parent.clone() {
                         Some(enum_name) => {
@@ -17191,11 +17227,11 @@ pub fn emit_var_ref(
                                 body.clone()
                             }
                         }
-                        None => match v1_rt::map_get(&registry, name.clone()) {
+                        None => match v1_rt::map_get(&registry, leaf_name.clone()) {
                             Some(info) => {
                                 let is_data = (info.kind.clone() == ItemKind::DataItem);
                                 if is_data.clone() {
-                                    v1_rt::concat(to_snake(name.clone()), "()".to_string())
+                                    v1_rt::concat(to_snake(leaf_name.clone()), "()".to_string())
                                 } else {
                                     {
                                         let is_function_value =
@@ -17204,7 +17240,7 @@ pub fn emit_var_ref(
                                                 _ => false,
                                             };
                                         let ident = emit_value_ref_ident(
-                                            name.clone(),
+                                            resolved_name.clone(),
                                             registry.clone(),
                                             emit_info.clone(),
                                         );
@@ -17229,7 +17265,7 @@ pub fn emit_var_ref(
                             }
                             None => {
                                 let ident = emit_value_ref_ident(
-                                    name.clone(),
+                                    resolved_name.clone(),
                                     registry.clone(),
                                     emit_info.clone(),
                                 );
@@ -17940,6 +17976,7 @@ pub fn emit_rust_expr_var(
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    module_name: String,
 ) -> String {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprVar {
@@ -17955,6 +17992,7 @@ pub fn emit_rust_expr_var(
                 registry.clone(),
                 emit_info.clone(),
                 source_indices.clone(),
+                module_name.clone(),
             )
         }
         _ => emit_error_expr(
@@ -18556,6 +18594,7 @@ pub fn emit_typed_expr(
                     shared_types.clone(),
                     emit_info.clone(),
                     scope.type_env.clone().source_indices.clone(),
+                    scope.module_name.clone(),
                 )
             },
             |expr| {
@@ -22619,6 +22658,7 @@ pub fn emit_typed_match_arm(
                         registry.clone(),
                         emit_info.clone(),
                         si.clone(),
+                        scope.module_name.clone(),
                     )
                 } else {
                     emit_typed_expr(
