@@ -39,7 +39,10 @@ import gunbc.guarantee_probe_corpus {
   build_v1_compile_receipt,
   receipt_joins_v1_compile_path,
   receipt_matches_probe_row,
+  receipt_matches_v1_compile_probe_row,
   active_probe_row,
+  active_v1_compile_probe_row,
+  executed_probe_ids_for_probe,
   resolve_canonical_probe_row,
   ProbeRowResolved,
   ProbeRowUnknown,
@@ -180,16 +183,18 @@ test fn conformance_green_control_has_zero_diagnostics() -> Bool {
 }
 
 test fn migrated_receipt_joins_its_v1_compile_path() -> Bool {
-  match active_probe_row(probe: call_mislabel_red_probe) {
+  match active_v1_compile_probe_row(probe: call_mislabel_red_probe) {
     Present { value: row } =>
+      let executed = executed_probe_ids_for_probe(probe: row.probe)
       let receipt = build_v1_compile_receipt(
         row: row,
         census: census_of(source: call_mislabel_source),
+        executed_probe_ids: executed,
         subject_revision: probe_subject_revision_placeholder,
         harness_revision: probe_harness_revision_placeholder,
       )
       receipt_joins_v1_compile_path(receipt: receipt)
-        && receipt_matches_probe_row(receipt: receipt, row: row)
+        && receipt_matches_v1_compile_probe_row(receipt: receipt, row: row)
         && (receipt.path as String) == (v1_compile_rust_path_id as String)
     Absent => false
   }
@@ -197,16 +202,17 @@ test fn migrated_receipt_joins_its_v1_compile_path() -> Bool {
 
 test fn blocking_refusal_observation_is_a_verdict() -> Bool {
   let census = census_of(source: method_missing_source)
-  match active_probe_row(probe: method_missing_red_probe) {
+  match active_v1_compile_probe_row(probe: method_missing_red_probe) {
     Present { value: row } =>
       let receipt = build_v1_compile_receipt(
         row: row,
         census: census,
+        executed_probe_ids: executed_probe_ids_for_probe(probe: row.probe),
         subject_revision: probe_subject_revision_placeholder,
         harness_revision: probe_harness_revision_placeholder,
       )
       observed_is_verdict(o: receipt.observed)
-        && receipt_matches_probe_row(receipt: receipt, row: row)
+        && receipt_matches_v1_compile_probe_row(receipt: receipt, row: row)
         && match census_blocking_count_for_class(census: census, wanted: "MethodNotFound") {
           Present { value: n } => observation_refused_count(o: receipt.observed) == n
           Absent => false
@@ -216,16 +222,17 @@ test fn blocking_refusal_observation_is_a_verdict() -> Bool {
 }
 
 test fn green_control_observation_is_accepted_clean() -> Bool {
-  match active_probe_row(probe: call_shape_green_probe) {
+  match active_v1_compile_probe_row(probe: call_shape_green_probe) {
     Present { value: row } =>
       let receipt = build_v1_compile_receipt(
         row: row,
         census: census_of(source: call_shape_green_source),
+        executed_probe_ids: executed_probe_ids_for_probe(probe: row.probe),
         subject_revision: probe_subject_revision_placeholder,
         harness_revision: probe_harness_revision_placeholder,
       )
       observation_is_clean(o: receipt.observed)
-        && receipt_matches_probe_row(receipt: receipt, row: row)
+        && receipt_matches_v1_compile_probe_row(receipt: receipt, row: row)
     Absent => false
   }
 }
@@ -314,23 +321,45 @@ test fn observation_fold_routes_blocking_refusal() -> Bool {
 test fn wrong_expectation_does_not_fabricate_clean_receipt() -> Bool {
   let census = census_of(source: call_mislabel_source)
   match active_probe_row(probe: call_mislabel_red_probe) {
-    Present { value: row } =>
-      match active_probe_row(probe: call_surplus_red_probe) {
-        Present { value: wrong_row } =>
-          probe_row_expectation_holds(census: census, row: row)
-            && !probe_row_expectation_holds(census: census, row: wrong_row)
-            && observation_is_blocking_refusal(
-              o: probe_observation_from_census(census: census),
-              wanted: "CallArgumentNameUnknown" as NonEmptyStr,
-            )
-            && observation_is_clean(o: build_v1_compile_receipt(
-              row: row,
-              census: census,
-              subject_revision: probe_subject_revision_placeholder,
-              harness_revision: probe_harness_revision_placeholder,
-            ).observed) == false
+    Present { value: registry_row } =>
+      match active_v1_compile_probe_row(probe: call_mislabel_red_probe) {
+        Present { value: row } =>
+          match active_probe_row(probe: call_surplus_red_probe) {
+            Present { value: wrong_row } =>
+              probe_row_expectation_holds(census: census, row: registry_row)
+                && !probe_row_expectation_holds(census: census, row: wrong_row)
+                && observation_is_blocking_refusal(
+                  o: probe_observation_from_census(census: census),
+                  wanted: "CallArgumentNameUnknown" as NonEmptyStr,
+                )
+                && observation_is_clean(o: build_v1_compile_receipt(
+                  row: row,
+                  census: census,
+                  executed_probe_ids: executed_probe_ids_for_probe(probe: row.probe),
+                  subject_revision: probe_subject_revision_placeholder,
+                  harness_revision: probe_harness_revision_placeholder,
+                ).observed) == false
+            Absent => false
+          }
         Absent => false
       }
+    Absent => false
+  }
+}
+
+test fn receipt_probe_set_digest_matches_executed_probe_set() -> Bool {
+  match active_v1_compile_probe_row(probe: call_mislabel_red_probe) {
+    Present { value: row } =>
+      let executed = executed_probe_ids_for_probe(probe: row.probe)
+      let receipt = build_v1_compile_receipt(
+        row: row,
+        census: census_of(source: call_mislabel_source),
+        executed_probe_ids: executed,
+        subject_revision: probe_subject_revision_placeholder,
+        harness_revision: probe_harness_revision_placeholder,
+      )
+      (receipt.probe_set_digest as String) == (probe_set_digest(probe_ids: executed) as String)
+        && !((receipt.probe_set_digest as String) == (probe_set_digest(probe_ids: guarantee_probe_ids()) as String))
     Absent => false
   }
 }

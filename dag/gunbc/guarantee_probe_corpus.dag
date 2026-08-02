@@ -37,7 +37,7 @@ data guarantee_probe_corpus_path_scope_note: String = "THREE PATHS FOR THE LANDE
 
 data guarantee_probe_corpus_probe_order_note: String = "CANONICAL PROBE ORDERING OBLIGATION (probe_set_digest note): guarantee_probe_ids lists the slice-1 MIGRATED probes in stable lexicographic order by branded id string. guarantee_probe_ids_reserved holds OPEN follow-on identities (gunbc#7555) outside the digest until their control merges. Callers must not re-sort; the active roster order here IS the probe-set digest authority for this stage."
 
-data guarantee_probe_corpus_revision_note: String = "subject_revision and harness_revision are REQUIRED on every receipt. build_v1_compile_receipt and build_v2_phase_receipt take a canonical GuaranteeProbeRow plus revisions from the caller — class, path, and probe are never independently threaded; witness fixtures own placeholder revisions until the baseline stage names real commits."
+data guarantee_probe_corpus_revision_note: String = "subject_revision and harness_revision are REQUIRED on every receipt. build_v1_compile_receipt and build_v2_infer_eval_receipt take a path-typed probe row plus the caller-supplied executed_probe_ids roster (probe_set_digest is derived from exactly that list, never silently widened to the full active registry). Witness fixtures own placeholder revisions until the baseline stage names real commits."
 
 data v1_compile_rust_path_id: GuaranteePathId = "v1-compile-rust" as GuaranteePathId
 data v2_infer_eval_path_id: GuaranteePathId = "v2-infer-eval" as GuaranteePathId
@@ -114,6 +114,18 @@ type GuaranteeProbeRow {
   probe: GuaranteeProbeId
   class: GuaranteeClassId
   path: GuaranteePathId
+  expectation: ProbeExpectation
+}
+
+type V1CompileProbeRow {
+  probe: GuaranteeProbeId
+  class: GuaranteeClassId
+  expectation: ProbeExpectation
+}
+
+type V2InferEvalProbeRow {
+  probe: GuaranteeProbeId
+  class: GuaranteeClassId
   expectation: ProbeExpectation
 }
 
@@ -235,6 +247,52 @@ fn active_probe_row(probe: GuaranteeProbeId) -> GuaranteeProbeRow? {
     ProbeRowUnknown { wanted: _ } => none
     ProbeRowDuplicate { wanted: _, matches: _ } => none
   }
+}
+
+fn v1_compile_probe_row_from_registry(row: GuaranteeProbeRow) -> V1CompileProbeRow? {
+  if (row.path as String) == (v1_compile_rust_path_id as String) {
+    Present {
+      value: V1CompileProbeRow {
+        probe: row.probe,
+        class: row.class,
+        expectation: row.expectation,
+      },
+    }
+  } else {
+    none
+  }
+}
+
+fn v2_infer_eval_probe_row_from_registry(row: GuaranteeProbeRow) -> V2InferEvalProbeRow? {
+  if (row.path as String) == (v2_infer_eval_path_id as String) {
+    Present {
+      value: V2InferEvalProbeRow {
+        probe: row.probe,
+        class: row.class,
+        expectation: row.expectation,
+      },
+    }
+  } else {
+    none
+  }
+}
+
+fn active_v1_compile_probe_row(probe: GuaranteeProbeId) -> V1CompileProbeRow? {
+  match active_probe_row(probe: probe) {
+    Present { value: row } => v1_compile_probe_row_from_registry(row: row)
+    Absent => none
+  }
+}
+
+fn active_v2_infer_eval_probe_row(probe: GuaranteeProbeId) -> V2InferEvalProbeRow? {
+  match active_probe_row(probe: probe) {
+    Present { value: row } => v2_infer_eval_probe_row_from_registry(row: row)
+    Absent => none
+  }
+}
+
+fn executed_probe_ids_for_probe(probe: GuaranteeProbeId) -> List<GuaranteeProbeId> {
+  [probe]
 }
 
 fn guarantee_probe_id_strings() -> List<String> {
@@ -387,6 +445,18 @@ fn receipt_matches_probe_row(receipt: GuaranteeMeasurementReceipt, row: Guarante
     && (receipt.path as String) == (row.path as String)
 }
 
+fn receipt_matches_v1_compile_probe_row(receipt: GuaranteeMeasurementReceipt, row: V1CompileProbeRow) -> Bool {
+  (receipt.probe as String) == (row.probe as String)
+    && (receipt.class as String) == (row.class as String)
+    && (receipt.path as String) == (v1_compile_rust_path_id as String)
+}
+
+fn receipt_matches_v2_infer_eval_probe_row(receipt: GuaranteeMeasurementReceipt, row: V2InferEvalProbeRow) -> Bool {
+  (receipt.probe as String) == (row.probe as String)
+    && (receipt.class as String) == (row.class as String)
+    && (receipt.path as String) == (v2_infer_eval_path_id as String)
+}
+
 fn observation_refused_count(o: ProbeObservation) -> Int {
   probe_observation_fold(
     o: o,
@@ -432,18 +502,19 @@ fn probe_observation_from_census(census: CompileDiagnosticCensus) -> ProbeObserv
 }
 
 fn build_v1_compile_receipt(
-  row: GuaranteeProbeRow,
+  row: V1CompileProbeRow,
   census: CompileDiagnosticCensus,
+  executed_probe_ids: List<GuaranteeProbeId>,
   subject_revision: CommitSha,
   harness_revision: CommitSha,
 ) -> GuaranteeMeasurementReceipt {
   GuaranteeMeasurementReceipt {
     class: row.class,
-    path: row.path,
+    path: v1_compile_rust_path_id,
     probe: row.probe,
     subject_revision: subject_revision,
     harness_revision: harness_revision,
-    probe_set_digest: probe_set_digest(probe_ids: guarantee_probe_ids()),
+    probe_set_digest: probe_set_digest(probe_ids: executed_probe_ids),
     observed: probe_observation_from_census(census: census),
   }
 }
@@ -456,19 +527,20 @@ fn receipt_joins_v1_compile_path(receipt: GuaranteeMeasurementReceipt) -> Bool {
   }
 }
 
-fn build_v2_phase_receipt(
-  row: GuaranteeProbeRow,
+fn build_v2_infer_eval_receipt(
+  row: V2InferEvalProbeRow,
   observed: ProbeObservation,
+  executed_probe_ids: List<GuaranteeProbeId>,
   subject_revision: CommitSha,
   harness_revision: CommitSha,
 ) -> GuaranteeMeasurementReceipt {
   GuaranteeMeasurementReceipt {
     class: row.class,
-    path: row.path,
+    path: v2_infer_eval_path_id,
     probe: row.probe,
     subject_revision: subject_revision,
     harness_revision: harness_revision,
-    probe_set_digest: probe_set_digest(probe_ids: guarantee_probe_ids()),
+    probe_set_digest: probe_set_digest(probe_ids: executed_probe_ids),
     observed: observed,
   }
 }

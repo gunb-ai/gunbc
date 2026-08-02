@@ -4,12 +4,13 @@ import gunbc.guarantee_probe_corpus {
   v2_frontier_red_probe,
   v2_frontier_green_probe,
   guarantee_probe_paths,
-  build_v2_phase_receipt,
+  build_v2_infer_eval_receipt,
   probe_observation_from_accepted_infer_diagnostics,
   non_empty_diagnostics_count_reason,
   observation_is_clean,
-  active_probe_row,
-  receipt_matches_probe_row,
+  active_v2_infer_eval_probe_row,
+  executed_probe_ids_for_probe,
+  receipt_matches_v2_infer_eval_probe_row,
 }
 import gunbc.guarantee_measurement {
   join_receipt_to_path,
@@ -274,23 +275,25 @@ test fn wall_frontier_receipt_joins_corpus_identity() -> Bool {
       match d {
         None => false
         Some { diagnostics: nes } =>
-          match active_probe_row(probe: v2_frontier_red_probe) {
+          match active_v2_infer_eval_probe_row(probe: v2_frontier_red_probe) {
             Present { value: row } =>
               wall_resolved_type_refused(root: root)
                 && nes.head.reason == ^infer_grounding_not_derived
-                && receipt_matches_probe_row(
-                  receipt: build_v2_phase_receipt(
+                && receipt_matches_v2_infer_eval_probe_row(
+                  receipt: build_v2_infer_eval_receipt(
                     row: row,
                     observed: probe_observation_from_accepted_infer_diagnostics(diagnostics: d),
+                    executed_probe_ids: executed_probe_ids_for_probe(probe: row.probe),
                     subject_revision: probe_subject_revision_placeholder,
                     harness_revision: probe_harness_revision_placeholder,
                   ),
                   row: row,
                 )
                 && match join_receipt_to_path(
-                  receipt: build_v2_phase_receipt(
+                  receipt: build_v2_infer_eval_receipt(
                     row: row,
                     observed: probe_observation_from_accepted_infer_diagnostics(diagnostics: d),
+                    executed_probe_ids: executed_probe_ids_for_probe(probe: row.probe),
                     subject_revision: probe_subject_revision_placeholder,
                     harness_revision: probe_harness_revision_placeholder,
                   ),
@@ -316,23 +319,25 @@ test fn wall_frontier_derived_green_receipt_joins_corpus_identity() -> Bool {
   match infer(tree: root) {
     Rejected { diagnostics: _ } => false
     Accepted { value: _, diagnostics: d } =>
-      match active_probe_row(probe: v2_frontier_green_probe) {
+      match active_v2_infer_eval_probe_row(probe: v2_frontier_green_probe) {
         Present { value: row } =>
           d == None
             && observation_is_clean(o: probe_observation_from_accepted_infer_diagnostics(diagnostics: d))
-            && receipt_matches_probe_row(
-              receipt: build_v2_phase_receipt(
+            && receipt_matches_v2_infer_eval_probe_row(
+              receipt: build_v2_infer_eval_receipt(
                 row: row,
                 observed: probe_observation_from_accepted_infer_diagnostics(diagnostics: d),
+                executed_probe_ids: executed_probe_ids_for_probe(probe: row.probe),
                 subject_revision: probe_subject_revision_placeholder,
                 harness_revision: probe_harness_revision_placeholder,
               ),
               row: row,
             )
             && match join_receipt_to_path(
-              receipt: build_v2_phase_receipt(
+              receipt: build_v2_infer_eval_receipt(
                 row: row,
                 observed: probe_observation_from_accepted_infer_diagnostics(diagnostics: d),
+                executed_probe_ids: executed_probe_ids_for_probe(probe: row.probe),
                 subject_revision: probe_subject_revision_placeholder,
                 harness_revision: probe_harness_revision_placeholder,
               ),
