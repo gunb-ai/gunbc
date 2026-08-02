@@ -58,7 +58,8 @@ import v1.compiler.coercion { coerce_primitive_type, is_copy, lookup_checkpoint 
 import v1.compiler.trait_derive_emit {
   v1_emit_enum_derives,
   v1_emit_struct_from_capability_table, v1_emit_enum_supplemental_impls,
-  v1_generic_params_needing_clone_bound, v1_emit_type_params_with_clone_bounds,
+  v1_generic_params_needing_clone_bound, v1_generic_params_needing_clone_bound_for_struct_item,
+  v1_emit_type_params_with_clone_bounds,
   rust_nominal_identity_carrier_shape_eligible, rust_symbol_wrapped_ord_carrier_shape_eligible
 }
 
@@ -4639,20 +4640,51 @@ fn function_type_params_have_collision(type_params: List<Node>) -> Bool {
   (names |> count) > (unique_strings(items: names) |> count)
 }
 
+fn emit_item_type_params_for_struct(params: List<Node>, field_type_exprs: List<Node>, source_indices: Map<String, NewlineIndex>) -> String {
+  let generic_param_names = params |> map(p => generic_param_name_at(n: p, source_indices: source_indices))
+  let clone_param_names = v1_generic_params_needing_clone_bound_for_struct_item(
+    generic_param_names: generic_param_names,
+    field_type_exprs: field_type_exprs,
+    source_indices: source_indices
+  )
+  if (clone_param_names |> count) > 0 {
+    v1_emit_type_params_with_clone_bounds(params: params, clone_param_names: clone_param_names, source_indices: source_indices)
+  } else {
+    emit_type_params(params: params, source_indices: source_indices)
+  }
+}
+
 fn emit_type_def_from_connective(item: Node, recursive_types: Set<String>, shared_types: Set<String>, env: TypeEnv, emit_info: EmitGraphInfo, wire_contract_item: Node?, data_items: Map<String, List<Node>>, module_items: List<Node>, imports: List<Node>) -> String {
-  let type_params = emit_type_params(params: item.params, source_indices: env.source_indices)
   let item_text = authored_name(env: env, node: item)
   let is_product = is_product_type(n: item)
   if is_product {
+    let has_fn_fields = type_has_fn_fields(name: item_text, emit_info: emit_info)
+    let capability_surface = v1_emit_struct_from_capability_table(
+      module_path: env.module_path,
+      name: item_text,
+      children: item.children,
+      shared_types: shared_types,
+      has_fn_fields: has_fn_fields,
+      source_indices: env.source_indices
+    )
+    let field_type_exprs = item.children |> map(c => resolved_type(n: c))
+    let type_params = if capability_surface.impl_bodies == "" && !has_fn_fields {
+      emit_item_type_params_for_struct(params: item.params, field_type_exprs: field_type_exprs, source_indices: env.source_indices)
+    } else {
+      emit_type_params(params: item.params, source_indices: env.source_indices)
+    }
     let generic_param_names = item.params |> map(p => generic_param_name_at(n: p, source_indices: env.source_indices))
     emit_struct_from_children(name: item_text, type_params: type_params, generic_param_names: generic_param_names, children: item.children, recursive_types: recursive_types, shared_types: shared_types, env: env, emit_info: emit_info)
   } else if is_host_optional_carrier_alias(name: item_text) {
+    let type_params = emit_type_params(params: item.params, source_indices: env.source_indices)
     let elem_csv = item.params |> map(p => to_pascal(name: generic_param_name_at(n: p, source_indices: env.source_indices))) |> join(separator: ", ")
     concat(rust_visibility_prefix(), "type ", item_text, type_params, " = Option<", elem_csv, ">;")
   } else if is_host_freemonoid_vec_alias(name: item_text) {
+    let type_params = emit_type_params(params: item.params, source_indices: env.source_indices)
     let elem_csv = item.params |> map(p => to_pascal(name: generic_param_name_at(n: p, source_indices: env.source_indices))) |> join(separator: ", ")
     concat(rust_visibility_prefix(), "type ", item_text, type_params, " = Vec<", elem_csv, ">;")
   } else if is_host_diagnostics_carrier_alias(name: item_text) {
+    let type_params = emit_type_params(params: item.params, source_indices: env.source_indices)
     concat(rust_visibility_prefix(), "type ", item_text, type_params, " = ", render_rust_diagnostics_carrier_applied(shared_types: shared_types), ";")
   } else {
     let all_unit_variants = item.children |> all(child => child.children |> count == 0)
@@ -4680,6 +4712,7 @@ fn emit_type_def_from_connective(item: Node, recursive_types: Set<String>, share
     } else {
       concat(policy_validation, "\n", rename_validations)
     }
+    let type_params = emit_type_params(params: item.params, source_indices: env.source_indices)
     let generic_param_names = item.params |> map(p => generic_param_name_at(n: p, source_indices: env.source_indices))
     let enum_text = emit_enum_from_children(name: item_text, type_params: type_params, generic_param_names: generic_param_names, children: item.children, recursive_types: recursive_types, shared_types: shared_types, env: env, serde_policy: serde_policy, emit_info: emit_info)
     if validations == "" {
@@ -6661,6 +6694,8 @@ fn emit_rust_expr_let(expr: Node, registry: Map<String, ItemInfo>, scope: InferS
   }
 }
 
+data concrete_peel_optional_ctor_note: String = "The concrete-type peel below replaces the AUTHORED record-literal name with the resolved concrete type name, which is right for an ordinary record literal whose type resolved to a nominal carrier. It was WRONG for the built-in optional constructors: a cast reaching the payload (Present { value: text as Carrier }) gives the literal a concrete resolved type, so the peel fired and overwrote the authored `Present` with the payload's concrete name, and emit_typed_record_lit then never recognised the literal as an optional constructor. The lowering fell through to the generic arm and fabricated `Optional::String { value: .. }` — not a Rust constructor, so the emitted crate failed with E0433. This was the actual name-loss point (gunbc#7480); it is in the CALLER, not in emit_typed_record_lit's variant_surface_name fallback, which was the standing hypothesis until the peel was read. The gate is deliberately narrow: the peel is suppressed ONLY when the authored name is a built-in optional constructor AND the concrete type does not itself declare a variant of that name. A user-defined enum that declares its own `Present` still peels exactly as before, because variant_belongs_to_enum finds it there — so the special case keys on the resolved parent genuinely being the built-in Optional rather than on the spelling alone. Ordinary variants are untouched: is_optional_variant_name is false for them, so the guard collapses and the peel proceeds unchanged. The variant identity is preserved rather than inferred from the payload type. Evidence: dag/test/claim/emitter_optional_payload_cast_witness_test.dag, whose cast poles flip from known-red to green with this repair, alongside the ordinary-enum Wrap::Holds control that must stay green. A SECOND, independently required narrowing landed beside the peel guard (review on gunbc#7480, 2026-08-01): the optional classification in emit_typed_record_lit briefly carried a function-wide `fn_returns_optional` disjunct, read off emit_info.fn_return_type. That is a fact about the ENCLOSING FUNCTION, not about this record literal's position, so it misclassified any optional-looking user constructor appearing anywhere inside an optional-returning function -- MyOpt::Present built inside `fn f(..) -> String?` emitted `Some(..)`, overriding an effective_parent that had ALREADY correctly resolved to the user enum. It also falsified this note's own claim to key on the resolved parent rather than the spelling. The disjunct was deleted rather than gated: `resolved_type.return_cardinality == CardOptional` is the expression-local statement of the same fact, and executing all seven poles with the function-wide arm removed showed it was load-bearing for NONE of them -- it was a second representation of an expression-local fact (DESIGN section 3), not a needed fallback. Its negative control is user_defined_present_inside_optional_returning_fn_is_unaffected, which requires MyOpt::Present and forbids `Some(`, and which was confirmed RED against the emitter before the removal. This does NOT address nested-refinement lowering, which remains separately tracked by emitter_nested_refinement_cast_witness_test.dag."
+
 fn emit_rust_expr_record_lit(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   match expr.expr_data {
     ExprRecordLit { parent_enum: parent_enum } =>
@@ -6672,7 +6707,13 @@ fn emit_rust_expr_record_lit(expr: Node, registry: Map<String, ItemInfo>, scope:
       let expanded_rt = expand_type_for_field_access(n: resolved_rt, env: scope.type_env, module_name: scope.module_name)
       let variant_name = match tn { Present { value: n } => n  Absent => "" }
 
-      let peeled_type_name = if parent_enum == none && expanded_rt.connective == Conj && expanded_rt.ident_span != none {
+      let concrete_peel_would_erase_optional_ctor = is_optional_variant_name(name: variant_name)
+        && !variant_belongs_to_enum(
+          type_summaries: emit_info.type_summaries,
+          variant_name: variant_name,
+          enum_name: authored_name_at(source_indices: si, node: expanded_rt)
+        )
+      let peeled_type_name = if parent_enum == none && expanded_rt.connective == Conj && expanded_rt.ident_span != none && !concrete_peel_would_erase_optional_ctor {
         let concrete = authored_name_at(source_indices: si, node: expanded_rt)
         if concrete != "" && concrete != variant_name { Present { value: concrete } } else { tn }
       } else { tn }
@@ -8297,6 +8338,10 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
     Present { value: pe } => Present { value: qualified_last_segment(name: pe) }
     Absent => none
   }
+  let variant_surface_name = match type_name {
+    Present { value: n } => n
+    Absent => match bare_qualified_name { Present { value: qn } => qn  Absent => "" }
+  }
   match bare_qualified_name {
     Absent =>
       let is_product = is_product_type(n: resolved_type)
@@ -8368,15 +8413,15 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
           } else { tn }
         }
       let ctor_alias_resolved = ctor_name != tn
-      let context_lookup = contextual_variant_parent(variant_name: tn, parent_enum: bare_parent_enum, resolved_type: resolved_type, emit_info: emit_info, source_indices: si)
+      let context_lookup = contextual_variant_parent(variant_name: variant_surface_name, parent_enum: bare_parent_enum, resolved_type: resolved_type, emit_info: emit_info, source_indices: si)
       let effective_parent = match context_lookup {
         Present { value: context_parent } => Present { value: context_parent }
         Absent =>
           let rt_is_type_var = if resolved_type.inferred != none { is_type_variable(inferred: resolved_type.inferred.value) } else { false }
           let rt_name = qualified_last_segment(name: authored_name_at(source_indices: si, node: resolved_type))
 
-          if resolved_type.ident_span != none && rt_name != tn && !rt_is_type_var && rt_name != "Error"
-            && variant_belongs_to_enum(type_summaries: emit_info.type_summaries, variant_name: tn, enum_name: rt_name) {
+          if resolved_type.ident_span != none && rt_name != variant_surface_name && !rt_is_type_var && rt_name != "Error"
+            && variant_belongs_to_enum(type_summaries: emit_info.type_summaries, variant_name: variant_surface_name, enum_name: rt_name) {
             Present { value: rt_name }
           } else {
             bare_parent_enum
@@ -8395,15 +8440,15 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
         }
         return concat("{ let mut __cons_v = (*", tail_val, ").clone(); __cons_v.insert(0, ", head_val, "); __cons_v }")
       }
-      let optional_variant = is_optional_variant_name(name: tn) && (is_optional_parent(parent_enum: bare_parent_enum) || is_optional_parent(parent_enum: effective_parent) || resolved_type.return_cardinality == CardOptional)
+      let optional_variant = is_optional_variant_name(name: variant_surface_name) && (is_optional_parent(parent_enum: bare_parent_enum) || is_optional_parent(parent_enum: effective_parent) || resolved_type.return_cardinality == CardOptional)
       let rust_tn = if optional_variant {
-        if is_some_like_variant_name(name: tn) { "Some" } else { "None" }
+        if is_some_like_variant_name(name: variant_surface_name) { "Some" } else { "None" }
       } else { tn }
       let display_tn = if optional_variant { rust_tn }
         else {
           rust_witness_variant_ctor_path(variant_name: rust_tn, ctor_name: ctor_name, effective_parent: effective_parent, resolved_type: resolved_type, fields: fields, shared_types: shared_types, emit_info: emit_info, source_indices: si)
         }
-      if optional_variant && is_some_like_variant_name(name: tn) && fields |> count == 1 {
+      if optional_variant && is_some_like_variant_name(name: variant_surface_name) && fields |> count == 1 {
         match fields |> first {
           Present { value: f } =>
             let inner = emit_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)

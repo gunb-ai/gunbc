@@ -3,9 +3,9 @@ module test.claim.realize_kernel
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data witness_store_id: CacheInterfaceId = "realize-kernel-witness-store"
-data subject_digest_a: ContentHash = "realize-kernel-witness-subject-a"
-data content_v1: ContentHash = "realize-kernel-witness-content-v1"
-data content_v2: ContentHash = "realize-kernel-witness-content-v2"
+data subject_digest_a: ContentHash = content_hash_of_value(value: "realize-kernel-witness-subject-a")
+data content_v1: ContentHash = content_hash_of_value(value: "realize-kernel-witness-content-v1")
+data content_v2: ContentHash = content_hash_of_value(value: "realize-kernel-witness-content-v2")
 data receipt_digest_v: ExecutionReceiptDigest = "realize-kernel-witness-receipt-digest"
 
 fn mk_receipt(content: ContentHash) -> CachedArtifactReceipt<ContentHash> {

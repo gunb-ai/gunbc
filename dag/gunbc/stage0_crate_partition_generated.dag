@@ -40,6 +40,7 @@ data generated_partition_crate_rows: List<GeneratedPartitionCrateRow> = [
         "std_coercion",
         "std_currency",
         "std_decl_ref",
+        "std_roster_frontier",
         "std_disposition",
         "std_error_primitives",
         "std_http_path",
@@ -86,6 +87,7 @@ data generated_partition_crate_rows: List<GeneratedPartitionCrateRow> = [
       crate_dir: "src/v1/stage0_extdeps_base",
       kind: GeneratedLayeredCoreCrate,
       modules: [
+        "extdeps_container_oci_digest",
         "extdeps_external_authority",
         "extdeps_uri"
       ],

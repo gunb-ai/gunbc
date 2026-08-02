@@ -336,11 +336,8 @@ fn partial_function_templates() -> List<AlgebraFieldTemplate> {
 }
 
 fn algebra_method_template_name(name: String) -> Bool {
-  [
-    OrderedRingProfile, ApproximateFieldProfile, BooleanAlgebraProfile,
-    BooleanAlgebraCollectionProfile, PointwisePowerCollectionProfile, FreeMonoidScalarProfile,
-    FreeMonoidCollectionProfile, PartialFunctionProfile
-  ] |> any(p => algebra_templates_for_profile(profile: p) |> any(t => t.name == name))
+  all_algebra_profiles()
+    |> any(profile => algebra_templates_for_profile(profile: profile) |> any(t => t.name == name))
 }
 
 fn algebra_templates_for_profile(profile: AlgebraProfile) -> List<AlgebraFieldTemplate> {
@@ -367,4 +364,26 @@ fn algebra_type_param_names(profile: AlgebraProfile) -> List<String> {
     FreeMonoidCollectionProfile => ["T"]
     PartialFunctionProfile => ["K", "V"]
   }
+}
+
+fn all_algebra_profiles() -> List<AlgebraProfile> {
+  [
+    OrderedRingProfile,
+    ApproximateFieldProfile,
+    BooleanAlgebraProfile,
+    BooleanAlgebraCollectionProfile,
+    PointwisePowerCollectionProfile,
+    FreeMonoidScalarProfile,
+    FreeMonoidCollectionProfile,
+    PartialFunctionProfile,
+  ]
+}
+
+fn all_algebra_field_templates() -> List<AlgebraFieldTemplate> {
+  all_algebra_profiles()
+    |> flat_map(profile => algebra_templates_for_profile(profile: profile))
+}
+
+fn all_algebra_template_names() -> List<String> {
+  all_algebra_field_templates() |> map(template => template.name)
 }

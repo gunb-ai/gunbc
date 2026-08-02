@@ -3,6 +3,8 @@ module test.claim.roadmap_publish_observe_witness_test
 import std.types { Bool, String, NonEmptyStr, Int, List, CommitSha }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.roadmap_publish_observe {
+  WorktreeBoundToRepository, WorktreeBoundElsewhere, WorktreeRemoteUnreadable,
+  worktree_repository_binding_of,
   remote_branch_observation_of,
   advertised_refs_projecting_empty_branch,
 }
@@ -214,3 +216,60 @@ test fn an_advertisement_at_another_head_adjudicates_as_diverged() -> Bool {
 }
 
 data divergence_is_the_point_note: String = "The two claims above are the same advertisement differing only in which commit the branch points at, and they must not produce the same answer. A name-shaped publication check reports both as published, which is precisely the defect the exact-head rewrite exists to remove: the ordinary state after a worker pushes a revision while a review is in flight is a branch whose name still matches and whose head no longer does."
+
+data worktree_binding_witness_note: String = "THESE ARE CONSTRUCTED, NOT OBSERVED, which is the property the observer/adjudicator split in gunbc.roadmap_publish_observe exists to buy. worktree_repository_binding_of takes the four facts a `git remote get-url` produces and decides; observe_worktree_repository_binding only feeds it. So every arm - including the two failure arms - is reachable here with no git, no worktree and no network, and a witness that needed a real misconfigured checkout to exercise the mismatch arm would never have been written."
+
+test fn worktree_bound_to_the_subject_repository_is_recognized() -> Bool {
+  match worktree_repository_binding_of(
+    exit_code: 0,
+    stderr: "",
+    url: "https://github.com/gunb-ai/gunbc.git\n",
+    expected: "https://github.com/gunb-ai/gunbc.git" as NonEmptyStr,
+  ) {
+    WorktreeBoundToRepository => true
+    WorktreeBoundElsewhere { observed: _, expected: _ } => false
+    WorktreeRemoteUnreadable { exit_code: _, stderr: _ } => false
+  }
+}
+
+test fn worktree_pointing_at_another_repository_refuses_and_names_both() -> Bool {
+  match worktree_repository_binding_of(
+    exit_code: 0,
+    stderr: "",
+    url: "https://github.com/someone-else/gunbc.git",
+    expected: "https://github.com/gunb-ai/gunbc.git" as NonEmptyStr,
+  ) {
+    WorktreeBoundElsewhere { observed: observed, expected: expected } =>
+      observed == "https://github.com/someone-else/gunbc.git"
+        && expected as String == "https://github.com/gunb-ai/gunbc.git"
+    WorktreeBoundToRepository => false
+    WorktreeRemoteUnreadable { exit_code: _, stderr: _ } => false
+  }
+}
+
+test fn worktree_remote_read_failure_is_not_a_mismatch() -> Bool {
+  match worktree_repository_binding_of(
+    exit_code: 128,
+    stderr: "fatal: not a git repository",
+    url: "",
+    expected: "https://github.com/gunb-ai/gunbc.git" as NonEmptyStr,
+  ) {
+    WorktreeRemoteUnreadable { exit_code: code, stderr: err } =>
+      code == 128 && err == "fatal: not a git repository"
+    WorktreeBoundToRepository => false
+    WorktreeBoundElsewhere { observed: _, expected: _ } => false
+  }
+}
+
+test fn empty_remote_url_is_unreadable_not_bound_elsewhere() -> Bool {
+  match worktree_repository_binding_of(
+    exit_code: 0,
+    stderr: "",
+    url: "   \n",
+    expected: "https://github.com/gunb-ai/gunbc.git" as NonEmptyStr,
+  ) {
+    WorktreeRemoteUnreadable { exit_code: _, stderr: _ } => true
+    WorktreeBoundElsewhere { observed: _, expected: _ } => false
+    WorktreeBoundToRepository => false
+  }
+}

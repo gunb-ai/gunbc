@@ -6,6 +6,8 @@ import gunbc.roadmap_component {
   roadmap_row_archetype, roadmap_row_grid_template,
   RoadmapRowRegion, RowPlacement, HeadTrack, InTitleFlow, UnderHead,
   node_mid_class, dispatch_reserved_width, workflow_controls_class,
+  roadmap_row_head_column, row_region_key,
+  RowRegion, StatusChipRegion, TitleRegion, ActuatorRegion,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -24,14 +26,36 @@ fn expected_node_head_block() -> String {
 fn expected_node_mid_block() -> String {
   join([
     ".", node_mid_class,
-    " { display: flex; align-items: center; gap: var(--space-4); flex-wrap: wrap; min-width: var(--space-0) }",
+    " { display: flex; align-items: center; gap: var(--space-4); flex-wrap: wrap; min-width: var(--space-0); grid-column: ",
+    to_string(roadmap_row_head_column(region_key: row_region_key(r: TitleRegion))),
+    " }",
   ], "")
+}
+
+data head_column_derivation_note: String = "A3 routine-state collapse receipts: once the status chip renders only when discriminating, head children can be fewer than tracks, so each cell carries an explicit grid-column DERIVED from the archetype's HeadTrack order (roadmap_row_head_column — the same authority the template folds). The expected blocks embed the derivation, so a hand-drifted column or an archetype edit the stylesheet misses reds; the column witness pins the three derived positions and refuses the 0 an off-head region would derive."
+
+fn expected_status_column_block() -> String {
+  join([
+    ".node-head > .status { grid-column: ",
+    to_string(roadmap_row_head_column(region_key: row_region_key(r: StatusChipRegion))),
+    " }",
+  ], "")
+}
+
+test fn roadmap_row_head_columns_derive_from_archetype() -> Bool {
+  roadmap_row_head_column(region_key: row_region_key(r: StatusChipRegion)) == 1
+    && roadmap_row_head_column(region_key: row_region_key(r: TitleRegion)) == 2
+    && roadmap_row_head_column(region_key: row_region_key(r: ActuatorRegion)) == 3
+    && roadmap_row_head_column(region_key: "activity") == 0
+    && string_contains(s: roadmap_css(), pattern: expected_status_column_block())
 }
 
 fn expected_workflow_controls_block() -> String {
   join([
     ".", workflow_controls_class,
-    " { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-4); flex-wrap: wrap; min-width: var(--space-0) }",
+    " { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-4); flex-wrap: wrap; min-width: var(--space-0); grid-column: ",
+    to_string(roadmap_row_head_column(region_key: row_region_key(r: ActuatorRegion))),
+    " }",
   ], "")
 }
 

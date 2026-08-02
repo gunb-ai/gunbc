@@ -1,7 +1,8 @@
 module v2.test.claim.interface_summary.interface_summary_firewall
 
 import std.interface_summary { export_entry_fingerprint }
-import std.types { ContentHash, NonEmptyStr, List }
+import std.types { NonEmptyStr, List }
+import std.content_hash { ContentHash }
 import std.disposition { Scaffold, Terminal }
 import v2.lens.interface_summary {
   interface_summary_for_module,

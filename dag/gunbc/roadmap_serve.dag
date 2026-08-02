@@ -65,11 +65,16 @@ import gunbc.roadmap_belt_actuate {
   BeltWorkflowAttempts, WorkflowAttemptsObserved, WorkflowAttemptsRefused,
   BeltStopResult, belt_stop_node, belt_stop_node_for_instance,
   belt_stop_result_json_value, belt_stop_http_status,
+  BeltPublishOutcome,
+  belt_publish_node_for_instance,
+  belt_publish_outcome_http_status,
+  belt_publish_outcome_json_value,
 }
 import gunbc.roadmap_dashboard_instance_apply { dashboard_provider_readiness_json }
 import gunbc.roadmap_dashboard_instance {
   dashboard_instance_health_schema,
   HostDashboardInstance,
+  DashboardObserveOnly, DashboardActuating,
   srv1_live_dashboard_instance,
   srv1_green_dashboard_instance,
   srv1_lab_dashboard_instance,
@@ -79,6 +84,15 @@ import gunbc.roadmap_dashboard_instance {
   dashboard_provision_transport_label,
   dashboard_instance_provision_plan_rows,
 }
+import gunbc.landing_workflow_runtime {
+  LandingQueueObservation,
+  landing_queue_observe, landing_queue_json, landing_queue_http_status,
+  landing_pr_detail_json, landing_pr_detail_http_status,
+  landing_review_artifact_observe, landing_review_artifact_http_status, landing_review_artifact_body,
+  landing_merge_intent_token_observe, landing_merge_with_intent, landing_merge_disabled,
+  landing_merge_result_json, landing_merge_result_http_status,
+}
+import gunbc.landing_workflow_page { landing_queue_page }
 
 data roadmap_serve_note: String = "The gunbc-served dashboard instantiation (docs/plans/gunbc-served-dashboard-design.md; belt B, parent-approved 2026-07-20). H = RoadmapServeHandler: every row is a DynamicRoute whose handler calls the SAME authority the static-site artifacts call (roadmap_page, roadmap_static_site) — the artifact table and this serve table are two projections of one authority set, never two copies of content, and every body is computed at request time so the served page is the LIVE roadmap, not a deploy-frozen snapshot (the section-3 dual-representation cost this module exists to remove). Dispatch: POST /dispatch/NODE_ID invokes gunbc.roadmap_belt_actuate.belt_dispatch_node IN-PROCESS — the single dispatch authority (#6914), no emitted JS, no subprocess exec, no env-var channel. The launch button that POSTs here is transport-agnostic and lands with belt A in roadmap_page (lane agreement 2026-07-20): the page never knows which backend answers."
 
@@ -110,6 +124,11 @@ type RoadmapServeHandler
   | AttemptsJsonHandler
   | WorkflowJsonHandler
   | BeltStopHandler
+  | BeltPublishHandler
+  | LandingQueueHandler
+  | LandingPrEvidenceHandler
+  | LandingMergeHandler
+  | LandingReviewArtifactHandler
 
 data roadmap_serve_table_build_note: String = "Fail-closed table construction (review 40286, the §5 catch: the earlier serve_tpl mapped MalformedPathTemplate to an EMPTY template, and an empty template matches exactly '/' — so a typo in any route literal would have silently become a second root matcher, a widen at the very seam §5 forbids). The build is now a typed fold: the FIRST malformed literal refuses the WHOLE table (RoadmapServeTableRefused carries raw/segment/reason — typed, located), and the serve entry answers EVERY request with a 500 naming the broken literal until it is fixed — a loudly broken dashboard, never silently wrong routing. The RED control is witness_malformed_route_literal_refuses_table (a bad literal through the same build fold -> Refused)."
 
@@ -140,8 +159,13 @@ fn roadmap_serve_route_specs() -> List<RoadmapServeRouteSpec> {
     RoadmapServeRouteSpec { method: GET, raw: sandbox_asset_path, handler: SandboxAssetHandler },
     RoadmapServeRouteSpec { method: POST, raw: "/sandbox/echo", handler: SandboxEchoHandler },
     RoadmapServeRouteSpec { method: POST, raw: "/dispatch/\{node_id\}", handler: BeltDispatchHandler },
+    RoadmapServeRouteSpec { method: POST, raw: "/publish/\{node_id\}", handler: BeltPublishHandler },
     RoadmapServeRouteSpec { method: POST, raw: "/cleanup/\{node_id\}", handler: BeltStopHandler },
     RoadmapServeRouteSpec { method: POST, raw: "/stop/\{node_id\}", handler: BeltStopHandler },
+    RoadmapServeRouteSpec { method: GET, raw: "/landing", handler: LandingQueueHandler },
+    RoadmapServeRouteSpec { method: GET, raw: "/landing/pr/\{number\}", handler: LandingPrEvidenceHandler },
+    RoadmapServeRouteSpec { method: POST, raw: "/landing/merge/\{number\}", handler: LandingMergeHandler },
+    RoadmapServeRouteSpec { method: GET, raw: "/landing/review/\{artifact_id\}", handler: LandingReviewArtifactHandler },
   ]
 }
 
@@ -210,6 +234,17 @@ fn serve_page_response(page: Fragment) -> ServeHttpResponse {
   }
 }
 
+fn serve_page_response_with_status(page: Fragment, status: HttpStatus) -> ServeHttpResponse {
+  match try_serialize_html_source(node: page) {
+    EmitOk { html } => serve_text_response(status: status, content_type: text_html_utf8, body: html)
+    EmitRejected { reason } => serve_text_response(
+      status: 500,
+      content_type: text_plain_utf8,
+      body: page_render_refusal_body(reason: reason),
+    )
+  }
+}
+
 data belt_dispatch_status_note: String = "TOTAL per-variant status mapping — every BeltDispatchResult arm has its own row, no lazy 200-or-500 collapse (DESIGN 5; parent review 2026-07-20). Spawned/AlreadyLive = 200 (the click achieved or already holds the desired state — the same idempotent-success fold the CLI's exit map uses); NodeNotFound = 404; AlreadyDone = 409 (the operator's signoff makes the node undisp atchable — a conflict with current state, retryable never); ObserveRefused = 503 (the live session set was unknowable, retry can succeed); SpawnFailed = 502 (actuation behind the server failed; the receipt carries step + detail)."
 
 fn belt_dispatch_status(r: BeltDispatchResult) -> HttpStatus {
@@ -248,6 +283,29 @@ fn serve_dispatch_handler_response_for_instance(
   } else {
     belt_dispatch_response(
       r: belt_dispatch_node_for_instance(instance: instance, node_id: node_id),
+    )
+  }
+}
+
+data serve_publish_note: String = "POST /publish/NODE_ID is the publication producer's live trigger, and it exists because belt_tick has none. Publication is wired into that actuation pass beside verification and nothing drives it, so without this route the receipt would never be written in production and the row's lamp could never move off pending - the same never-runs defect one layer out from the one this lane fixed.\\n\\nIT IS A POST BECAUSE IT WRITES. The workflow route reads and paints; this one observes two remote surfaces and persists a judgment, and putting that on the read path would make the browser poll the thing that queries GitHub - the split serve_workflow_note already draws for verification.\\n\\nTHE STATUS COMES FROM THE OUTCOME, not from whether the handler ran. A deferral is 409 and a belt-side failure is 500, so a caller can tell `the attempt is not ready` from `the belt could not do its job` without reading prose."
+
+fn serve_publish_handler_response_for_instance(
+  instance: HostDashboardInstance,
+  params: List<PathParamBinding>,
+) -> ServeHttpResponse {
+  let node_id = path_param_value(params: params, name: "node_id")
+  if node_id == "" {
+    serve_text_response(
+      status: 400,
+      content_type: text_plain_utf8,
+      body: "publish requires a node id path segment (fail-closed; empty binding is unreachable by construction)\n",
+    )
+  } else {
+    let outcome = belt_publish_node_for_instance(instance: instance, node_id: node_id)
+    serve_text_response(
+      status: belt_publish_outcome_http_status(o: outcome),
+      content_type: application_json_utf8,
+      body: serialize_json(v: belt_publish_outcome_json_value(o: outcome)),
     )
   }
 }
@@ -321,7 +379,7 @@ fn sandbox_echo_response(request: ServeHttpRequest) -> ServeHttpResponse {
   }
 }
 
-data serve_invoke_request_note: String = "Every handler receives the FULL modeled ServeHttpRequest (review 40314: the request body was formerly accepted at the seam and dropped before invoke, so a future body-reading POST handler would have silently seen the empty string — a latent widen). No handler consumes request.body today; when one does, the plumbing is already honest, and ServeHttpRequest gains its executing consumer here instead of sitting inert in extdeps."
+data serve_invoke_request_note: String = "Every handler receives the FULL modeled ServeHttpRequest (review 40314: the request body was formerly accepted at the seam and dropped before invoke, so a body-reading POST handler would have silently seen the empty string — a latent widen). LandingMergeHandler consumes request.body as the operator-intent proof before any admission observation or GitHub actuation."
 
 fn roadmap_serve_invoke_for_instance(
   instance: HostDashboardInstance,
@@ -357,6 +415,59 @@ fn roadmap_serve_invoke_for_instance(
     AttemptsJsonHandler => serve_attempts_response_for_instance(instance: instance)
     WorkflowJsonHandler => serve_workflow_response_for_instance(instance: instance)
     BeltStopHandler => serve_stop_handler_response_for_instance(instance: instance, params: params)
+    BeltPublishHandler => serve_publish_handler_response_for_instance(instance: instance, params: params)
+    LandingQueueHandler => {
+      let observed = landing_queue_observe()
+      serve_page_response_with_status(
+        page: landing_queue_page(observation: observed, intent_token: landing_merge_intent_token_observe()),
+        status: landing_queue_http_status(o: observed),
+      )
+    }
+    LandingPrEvidenceHandler => {
+      let number = path_param_value(params: params, name: "number")
+      match parse_int(s: number) {
+        Absent => serve_text_response(status: 400, content_type: text_plain_utf8, body: "landing evidence requires an integer pull-request number\n")
+        Present { value: pr_number } => {
+          let observed = landing_queue_observe()
+          serve_text_response(
+            status: landing_pr_detail_http_status(o: observed, pr_number: pr_number),
+            content_type: application_json_utf8,
+            body: landing_pr_detail_json(o: observed, pr_number: pr_number),
+          )
+        }
+      }
+    }
+    LandingMergeHandler => {
+      let number = path_param_value(params: params, name: "number")
+      match parse_int(s: number) {
+        Absent => serve_text_response(status: 400, content_type: text_plain_utf8, body: "landing merge requires an integer pull-request number\n")
+        Present { value: pr_number } => {
+          let result = match instance.actuation {
+            DashboardObserveOnly => landing_merge_disabled(instance_id: instance.instance_id)
+            DashboardActuating => landing_merge_with_intent(pr_number: pr_number, request_body: request.body)
+          }
+          serve_text_response(
+            status: landing_merge_result_http_status(r: result),
+            content_type: application_json_utf8,
+            body: landing_merge_result_json(r: result),
+          )
+        }
+      }
+    }
+    LandingReviewArtifactHandler => {
+      let raw_id = path_param_value(params: params, name: "artifact_id")
+      match parse_int(s: raw_id) {
+        Absent => serve_text_response(status: 400, content_type: text_plain_utf8, body: "landing review evidence requires an integer artifact id\n")
+        Present { value: artifact_id } => {
+          let observed = landing_review_artifact_observe(artifact_id: artifact_id)
+          serve_text_response(
+            status: landing_review_artifact_http_status(o: observed),
+            content_type: text_plain_utf8,
+            body: landing_review_artifact_body(o: observed),
+          )
+        }
+      }
+    }
   }
 }
 

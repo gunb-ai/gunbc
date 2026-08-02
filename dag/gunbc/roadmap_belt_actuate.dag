@@ -46,6 +46,10 @@ import gunbc.roadmap_dispatch_actuator {
   dispatch_attempt_oracle_revision_path_for_instance,
   dispatch_attempt_oracle_pin_refusal_path_for_instance,
   dispatch_attempt_validation_receipt_path_for_instance,
+  dispatch_attempt_publication_receipt_path_for_instance,
+  dispatch_attempt_publication_dir_for_instance,
+  dispatch_attempt_state_path_for_instance,
+  publication_receipt_directory_segment,
   dispatch_current_attempt_oracle_identity_path_for_instance,
   dispatch_current_attempt_oracle_revision_path_for_instance,
   dispatch_current_attempt_oracle_pin_refusal_path_for_instance,
@@ -68,7 +72,7 @@ import gunbc.roadmap_dispatch_actuator {
   tmux_ls_argv_for_instance,
   tmux_kill_session_argv,
   tmux_kill_session_argv_for_instance,
-  dispatch_live_sessions,
+  dispatch_live_sessions_from_entries,
   dispatch_live_sessions_with_process,
   DispatchStopRunningProcess,
   DispatchClearRetainedSession,
@@ -77,12 +81,19 @@ import gunbc.roadmap_dispatch_actuator {
   dispatch_session_cleanup_action,
   dispatch_session_cleanup_allowed,
   dispatch_session_cleanup_detail,
+  tmux_attempt_panes_argv_for_instance,
+  worker_process_from_attempt_pane,
+}
+import extdeps.tmux {
+  classify_tmux_session_list,
+  TmuxSessionsListed,
+  TmuxNoServer,
+  TmuxListUnknowable,
+  TmuxListStdoutRefused,
   TmuxAttemptPaneEntry,
   AttemptPanesParsed,
   AttemptPanesParseRefused,
   parse_tmux_attempt_panes_output,
-  tmux_attempt_panes_argv_for_instance,
-  worker_process_from_attempt_pane,
 }
 import extdeps.llm.cli_lifecycle {
   provider_kind_label,
@@ -102,7 +113,7 @@ import gunbc.worker_lifecycle {
   transcript_evidence_label,
   terminal_outcome_evidence_label,
 }
-import gunbc.host_layout { srv1_gunbc_repo_root }
+import gunbc.host_layout { srv1_gunbc_repo_root, belt_spawn_workdir_env_var }
 import gunbc.roadmap_dashboard_instance {
   HostDashboardInstance,
   DashboardObserveOnly,
@@ -129,6 +140,32 @@ import gunbc.roadmap_execution_contract {
   modeled_validation_command_wire,
   execution_contract_validation_summary,
 }
+import std.credentials { CredentialSource }
+import gunbc.repository { gunbc_repository }
+import gunbc.roadmap_publish {
+  PublicationSubject,
+  PublicationSubjectObservation,
+  PublicationSubjectObserved, PublicationSubjectUnobserved,
+  PublicationReceipt,
+  PublicationEvidence, EvidenceForSubject, EvidenceAbsent,
+  EvidenceUnreadable, EvidenceForAnotherSubject,
+  publication_evidence_for,
+  PublicationReceiptSource,
+  ReceiptSourceAbsent, ReceiptSourcePresent, ReceiptSourceUnreadable,
+  publication_receipt_of,
+  publication_receipt_json,
+  publication_receipt_outcome_key,
+  publication_receipt_offers_the_expected_head,
+}
+import gunbc.roadmap_publish_observe {
+  PublicationCredentialSource,
+  CredentialSourceConfigured, CredentialSourceAbsent,
+  observe_publication_for_subject,
+  WorktreeRepositoryBinding,
+  WorktreeBoundToRepository, WorktreeBoundElsewhere, WorktreeRemoteUnreadable,
+  observe_worktree_repository_binding,
+}
+import extdeps.github.github { Repository }
 import gunbc.roadmap_validation_oracle {
   ValidationOracleRef,
   OracleObservation,
@@ -156,6 +193,9 @@ import gunbc.roadmap_validation_oracle {
   validation_oracle_observe_from_source,
   validation_oracle_set_observe,
   validation_oracle_gate,
+  validation_oracle_parse_pinned_identity_wire,
+  validation_oracle_parse_pinned_revision_wire,
+  validation_oracle_pin_recorded,
   validation_verdict_key,
   validation_verdict_detail,
   validation_receipt_json,
@@ -163,7 +203,13 @@ import gunbc.roadmap_validation_oracle {
 import extdeps.git { shape_git_rev_parse_head_args }
 import gunbc.roadmap_provider_events { ProviderCompleted, provider_execution_activity }
 import extdeps.version { VersionIdentity }
-import std.types { ContentHash }
+import std.content_hash {
+  ContentHash,
+  serialize_content_hash,
+  content_hash_atom,
+  content_hash_combine_structural,
+  as_content_hash_structural,
+}
 import gunbc.roadmap_workflow_progress {
   WorkflowAttemptEvidence,
   WorkflowAttemptProgress,
@@ -188,7 +234,6 @@ import extdeps.llm.cli {
   claude_workspace_trust_seeded,
 }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.content_hash { content_hash_atom, content_hash_combine }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
@@ -225,7 +270,7 @@ type BeltExecOutcome
 
 data belt_program_available_note: String = "program-on-PATH probe via shell.Which.Check exit_success (Bool), NOT its .path field: the Which .path realization is a bare-stdout string wet (the Optional-over-Value::Null realization fork — DESIGN open thread), so the belt keys on the exit Bool and lets WitnessBin.Run's `env -C \{workdir\} \{bin_path\} args` resolve the bare program name via PATH (env execvp searches PATH). This keeps 'program missing' (refuse) distinct from 'program present, exited nonzero' (fail) without touching the Optional straddle."
 
-data belt_outcome_is_data_note: String = "The three probes in this module are annotated OutcomeIsData (operator ruling 2026-07-25): their exit codes are ANSWERS the belt adjudicates, not faults. belt_program_available's which-miss is the 'program missing' pole this module's belt_program_available_note already keeps deliberately distinct from 'present but exited nonzero'; belt_exec's nonzero exit becomes ExecFailed; belt_observe's becomes a typed BeltObserve arm. In every case the belt renders the fault loudly through its own per-variant status mapping, so the effect layer's anomaly glyph was a second, cruder judgment of an event that already has a real adjudicator. ADMISSIBILITY (§5 guard, gunbc.output_policy outcome_is_data_note): each annotated fn returns a typed value whose arms ARE the adjudication — Bool for the availability probe (consumed as the refuse/fail discriminator, never discarded), BeltExecOutcome, BeltObserve — never unit. Dispatch failure stays anomalous: it is not an exit code and does not travel this arm."
+data belt_outcome_is_data_note: String = "The probes in this module are annotated OutcomeIsData (operator ruling 2026-07-25): their exit codes are ANSWERS the belt adjudicates, not faults. belt_program_available's which-miss is the 'program missing' pole this module's belt_program_available_note already keeps deliberately distinct from 'present but exited nonzero'; belt_exec's nonzero exit becomes ExecFailed; belt_observe's becomes a typed BeltObserve arm. In every case the belt renders the fault loudly through its own per-variant status mapping, so the effect layer's anomaly glyph was a second, cruder judgment of an event that already has a real adjudicator. ADMISSIBILITY (§5 guard, gunbc.output_policy outcome_is_data_note): each annotated fn returns a typed value whose arms ARE the adjudication — Bool for the availability probe (consumed as the refuse/fail discriminator, never discarded), BeltExecOutcome, BeltObserve, PublicationCredentialSource — never unit. Dispatch failure stays anomalous: it is not an exit code and does not travel this arm."
 
 fn belt_program_available(program: String) -> Bool {
   shell.Which.Check(command: program as NonEmptyStr, expect: OutcomeIsData).exists
@@ -444,23 +489,60 @@ fn belt_oracle_observations_in_worktree(
     ))
 }
 
+data worktree_head_observation_note: String = "THE REVISION READ NOW CARRIES WHY IT FAILED, AND THE STRING PROJECTION SURVIVES AS A PROJECTION. belt_worktree_head_revision collapsed all three exec arms to the empty string, and its one consumer tested `== \\\"\\\"`, which was adequate exactly because the consumer's two branches took the same action either way.\\n\\nPublication cannot use it, and the reason is the point rather than an inconvenience. Publication is adjudicated against an EXACT HEAD; if the head cannot be read there is no subject, and a consumer with no subject cannot check a receipt against one. That state has to say what happened - git missing, git refused, worktree gone - because the operator's next action differs in each case, and because a Publication lamp that reads `unknown` must be able to prove it is not reading `unpublished`.\\n\\nSO THE TYPED OBSERVATION IS THE AUTHORITY AND THE STRING IS DERIVED FROM IT. Not a second reader: one exec, one decision function, and belt_worktree_head_revision becomes a two-line projection over it. Adding a parallel typed reader beside the string one would have been the fork this corpus keeps paying for.\\n\\nEMPTY STDOUT IS UNOBSERVED, NOT OBSERVED-AS-EMPTY. git rev-parse HEAD exits zero and prints nothing in cases this belt can reach - an unborn HEAD in a freshly created worktree is the ordinary one - so a zero exit is not by itself proof that a revision was read. Casting that empty string into a CommitSha would produce a subject whose head matches no commit and compares equal to any other empty head, which is the branded-empty defect empty_branch_projection_note describes on the ref side."
+
+type WorktreeHeadObservation
+  = WorktreeHeadObserved { revision: NonEmptyStr }
+  | WorktreeHeadUnobserved { reason: String }
+
+fn worktree_head_observation_of(outcome: BeltExecOutcome) -> WorktreeHeadObservation {
+  match outcome {
+    ExecOk { stdout } =>
+      if trim(stdout) == "" {
+        WorktreeHeadUnobserved {
+          reason: "git reported no revision for HEAD, which a worktree whose branch has no commit yet will do without failing",
+        }
+      } else {
+        WorktreeHeadObserved { revision: trim(stdout) as NonEmptyStr }
+      }
+    ExecFailed { program, exit_code, stderr } =>
+      WorktreeHeadUnobserved {
+        reason: join([
+          program, " could not read the worktree head (exit ", to_string(exit_code), "): ", stderr,
+        ], ""),
+      }
+    ExecRefused { program, reason } =>
+      WorktreeHeadUnobserved {
+        reason: join([program, " was not available to read the worktree head: ", reason], ""),
+      }
+  }
+}
+
+fn belt_worktree_head_observe(
+  instance: HostDashboardInstance,
+  worktree: String,
+) -> WorktreeHeadObservation {
+  worktree_head_observation_of(
+    outcome: belt_exec(
+      cmd: host_exec_argv(
+        program: dispatch_capability_program(
+          environment: instance.execution_environment,
+          cap: GitWorkspaceCapability,
+        ),
+        args: shape_git_rev_parse_head_args(),
+      ),
+      workdir: worktree,
+    ),
+  )
+}
+
 fn belt_worktree_head_revision(
   instance: HostDashboardInstance,
   worktree: String,
 ) -> String {
-  match belt_exec(
-    cmd: host_exec_argv(
-      program: dispatch_capability_program(
-        environment: instance.execution_environment,
-        cap: GitWorkspaceCapability,
-      ),
-      args: shape_git_rev_parse_head_args(),
-    ),
-    workdir: worktree,
-  ) {
-    ExecOk { stdout } => trim(stdout)
-    ExecFailed { program: _, exit_code: _, stderr: _ } => ""
-    ExecRefused { program: _, reason: _ } => ""
+  match belt_worktree_head_observe(instance: instance, worktree: worktree) {
+    WorktreeHeadObserved { revision } => revision as String
+    WorktreeHeadUnobserved { reason: _ } => ""
   }
 }
 
@@ -537,7 +619,7 @@ fn belt_persist_oracle_pin_for_instance(
           node_id: node.node,
           attempt_key: attempt_key,
         ),
-        content: identity as String,
+        content: serialize_content_hash(hash: identity) as String,
       )
       let revision_write = Filesystem.Write(
         path: dispatch_attempt_oracle_revision_path_for_instance(
@@ -1269,11 +1351,11 @@ fn belt_uuid_stamped_id(node_id: String, probed_at: String) -> NonEmptyStr {
 
 fn belt_uuid_hex32(node_id: String, probed_at: String) -> String {
   concat(
-    content_hash_atom(value: belt_uuid_stamped_id(node_id: node_id, probed_at: probed_at)) as String,
-    content_hash_combine(
+    content_hash_atom(value: belt_uuid_stamped_id(node_id: node_id, probed_at: probed_at)).digest as String,
+    content_hash_combine_structural(
       left: content_hash_atom(value: belt_uuid_stamped_id(node_id: node_id, probed_at: probed_at)),
       right: content_hash_atom(value: belt_session_uuid_salt),
-    ) as String,
+    ).digest as String,
   )
 }
 
@@ -1339,11 +1421,22 @@ type BeltObserve
   = Observed { live: List<DispatchLiveSession> }
   | ObserveRefused { reason: String }
 
-data belt_observe_note: String = "tmux-present is the FIRST precondition: tmux not on PATH -> ObserveRefused (the belt cannot know what is live). Once tmux is present the observe half must NOT widen an exec failure into a zero-session answer (the §5 absorbing-fallback / ⊤-as-answer-vs-⊤-as-ignorance conflation). So the decision (belt_observe_from_result) gates on exit success: `tmux ls` exit 0 -> parse stdout into the true session set. On FAILURE only tmux's two DOCUMENTED empty signals count as a genuine zero observation — stderr containing 'no server running' or 'no sessions' (grounded in the extdeps tmux.Session.List exit contract `1 => Unit \"No sessions\"`, dag/extdeps/tmux/tmux.dag) -> Observed []. EVERY OTHER failure (socket/permission/transient error, empty-stderr non-zero exit) is an UNKNOWABLE session set -> ObserveRefused (typed, located, carries stderr), never a blind spawn/reap. First-tick bootstrap still works: no server yields the documented 'no server running' signal -> Observed [] -> spawns proceed. The decision is a pure fn so every arm is witnessed (belt_observe_from_result witnesses); belt_observe only threads the live WitnessBin.Run result fields into it."
+data belt_observe_note: String = "tmux-present is the FIRST precondition: tmux not on PATH -> ObserveRefused (the belt cannot know what is live). Once tmux is present the observe half must NOT widen an exec failure into a zero-session answer (the §5 absorbing-fallback / ⊤-as-answer-vs-⊤-as-ignorance conflation). extdeps.tmux classify_tmux_session_list is the sole authority for tmux ls outcome facts (listed sessions, documented no-server signals, stdout parse refusal, unknowable stderr); this module maps those outcomes to belt policy only: TmuxSessionsListed -> filter dispatch sessions into Observed live rows; TmuxNoServer -> Observed []; TmuxListStdoutRefused and TmuxListUnknowable -> ObserveRefused with located evidence, never a blind spawn/reap. First-tick bootstrap works under either no-server spelling admitted by the classifier. The decision is a pure fn so every arm is witnessed (belt_observe_from_result witnesses); belt_observe only threads the live WitnessBin.Run result fields into it."
 
-fn tmux_ls_stderr_reports_empty(stderr: String) -> Bool {
-  string_contains(s: stderr, pattern: "no server running")
-    || string_contains(s: stderr, pattern: "no sessions")
+fn belt_ls_stdout_refusal_reason(
+  line_number: Int,
+  raw: String,
+  reason: String,
+) -> String {
+  join([
+    "belt_observe: tmux ls stdout parse refused at line ",
+    to_string(line_number),
+    ": ",
+    reason,
+    "; raw=",
+    raw,
+    " — the live session set is unknowable; fail-closed, no blind spawn/reap",
+  ], "")
 }
 
 fn belt_observe_from_result(
@@ -1351,19 +1444,28 @@ fn belt_observe_from_result(
   stdout: String,
   stderr: String,
 ) -> BeltObserve {
-  if success {
-    Observed { live: dispatch_live_sessions(tmux_ls_output: stdout) }
-  } else {
-    if tmux_ls_stderr_reports_empty(stderr: stderr) {
+  match classify_tmux_session_list(exit_ok: success, stdout: stdout, stderr: stderr) {
+    TmuxSessionsListed { entries } =>
+      Observed {
+        live: dispatch_live_sessions_from_entries(entries: entries),
+      }
+    TmuxNoServer { evidence: _ } =>
       Observed { live: [] }
-    } else {
+    TmuxListStdoutRefused { line_number, raw, reason } =>
+      ObserveRefused {
+        reason: belt_ls_stdout_refusal_reason(
+          line_number: line_number,
+          raw: raw,
+          reason: reason,
+        ),
+      }
+    TmuxListUnknowable { stderr: e } =>
       ObserveRefused {
         reason: concat(
           "belt_observe: tmux ls exited nonzero with no documented no-server/no-sessions signal — the live session set is unknowable; fail-closed, no blind spawn/reap. stderr: ",
-          stderr,
+          e,
         ),
       }
-    }
   }
 }
 
@@ -1401,6 +1503,7 @@ type BeltTickResult {
   spawn_outcomes: List<BeltSpawnOutcome>,
   teardown_outcomes: List<BeltTeardownOutcome>,
   verify_outcomes: List<BeltVerifyOutcome>,
+  publish_outcomes: List<BeltPublishOutcome>,
 }
 
 fn belt_tick_empty_reconcile(state: BeltRunState) -> BeltReconcile {
@@ -1432,6 +1535,7 @@ fn belt_tick(
         spawn_outcomes: [],
         teardown_outcomes: [],
         verify_outcomes: [],
+        publish_outcomes: [],
       }
     Observed { live: live } => {
       let r = belt_reconcile(state: state, frontier: frontier, live: live, cap: cap)
@@ -1442,6 +1546,7 @@ fn belt_tick(
         spawn_outcomes: r.spawns |> map(m => belt_actuate_spawn_member(m: m, workdir: spawn_workdir)),
         teardown_outcomes: r.teardowns |> map(m => belt_actuate_teardown_member(m: m)),
         verify_outcomes: belt_verify_attempts(),
+        publish_outcomes: belt_publish_attempts(),
       }
     }
   }
@@ -1483,12 +1588,17 @@ fn belt_tick_teardown_ok_count(t: BeltTickResult) -> Int {
 
 data belt_run_once_note: String = "The runnable belt entrypoint: one tick against the LIVE roadmap. Reads the roadmap authority + merged PRs, builds the ready frontier, and runs belt_tick_default_workdir (Running, default capacity, belt_actuate_workdir). Zero-arg so it is invokable directly (gunbc run --function belt_run_once_json, wet), spawning a real tmux session through dispatch_cli_provider on the host it runs on. belt_run_once returns the typed BeltTickResult; belt_run_once_json projects it to a receipt (observe verdict, occupied/free/deferred, per-node spawn/teardown outcomes, refusal count) so the operator sees exactly what one tick did — no fabricated summary. Idempotent: a spawned session is observed live next tick and reconciles to noop."
 
-fn belt_run_once() -> BeltTickResult {
-  belt_tick_default_workdir(
+fn belt_run_once_in(spawn_workdir: String) -> BeltTickResult {
+  belt_tick(
     state: roadmap_belt_default_run_state,
     frontier: spawn_frontier(doc: roadmap_authority(), merged: authored_merged_prs()),
     cap: roadmap_belt_default_capacity,
+    spawn_workdir: spawn_workdir,
   )
+}
+
+fn belt_run_once() -> BeltTickResult {
+  belt_run_once_in(spawn_workdir: belt_actuate_workdir as String)
 }
 
 fn belt_spawn_outcome_json(o: BeltSpawnOutcome) -> JsonValue {
@@ -1700,14 +1810,36 @@ fn belt_attempt_panes_observe_for_instance(
             ], ""),
           }
       }
-    } else if tmux_ls_stderr_reports_empty(stderr: result.stderr) {
-      BeltAttemptPanesObserved { panes: [] }
     } else {
-      BeltAttemptPanesRefused {
-        reason: join([
-          "tmux attempt-pane observation failed: ",
-          result.stderr,
-        ], ""),
+      match classify_tmux_session_list(
+        exit_ok: result.success,
+        stdout: result.stdout,
+        stderr: result.stderr,
+      ) {
+        TmuxNoServer { evidence: _ } =>
+          BeltAttemptPanesObserved { panes: [] }
+        TmuxSessionsListed { entries: _ } =>
+          BeltAttemptPanesRefused {
+            reason: join([
+              "tmux attempt-pane observation failed: ",
+              result.stderr,
+            ], ""),
+          }
+        TmuxListUnknowable { stderr: e } =>
+          BeltAttemptPanesRefused {
+            reason: join([
+              "tmux attempt-pane observation failed: ",
+              e,
+            ], ""),
+          }
+        TmuxListStdoutRefused { line_number, raw, reason } =>
+          BeltAttemptPanesRefused {
+            reason: belt_ls_stdout_refusal_reason(
+              line_number: line_number,
+              raw: raw,
+              reason: reason,
+            ),
+          }
       }
     }
   } else {
@@ -1731,32 +1863,78 @@ fn belt_sessions_observe_for_instance(
       expect: OutcomeIsData,
     )
     if result.success {
-      match belt_attempt_panes_observe_for_instance(instance: instance) {
-        BeltAttemptPanesObserved { panes } =>
-          Observed {
-            live: dispatch_live_sessions_with_process(
-              tmux_ls_output: result.stdout,
-              panes: panes,
-              pane_observation_refusal: "",
+      match classify_tmux_session_list(
+        exit_ok: result.success,
+        stdout: result.stdout,
+        stderr: result.stderr,
+      ) {
+        TmuxSessionsListed { entries } =>
+          match belt_attempt_panes_observe_for_instance(instance: instance) {
+            BeltAttemptPanesObserved { panes } =>
+              Observed {
+                live: dispatch_live_sessions_with_process(
+                  entries: entries,
+                  panes: panes,
+                  pane_observation_refusal: "",
+                ),
+              }
+            BeltAttemptPanesRefused { reason } =>
+              Observed {
+                live: dispatch_live_sessions_with_process(
+                  entries: entries,
+                  panes: [],
+                  pane_observation_refusal: reason,
+                ),
+              }
+          }
+        TmuxListStdoutRefused { line_number, raw, reason } =>
+          ObserveRefused {
+            reason: belt_ls_stdout_refusal_reason(
+              line_number: line_number,
+              raw: raw,
+              reason: reason,
             ),
           }
-        BeltAttemptPanesRefused { reason } =>
-          Observed {
-            live: dispatch_live_sessions_with_process(
-              tmux_ls_output: result.stdout,
-              panes: [],
-              pane_observation_refusal: reason,
+        TmuxNoServer { evidence: _ } =>
+          Observed { live: [] }
+        TmuxListUnknowable { stderr: e } =>
+          ObserveRefused {
+            reason: concat(
+              "belt_sessions_observe: tmux ls failed; session containers are unknowable. stderr: ",
+              e,
             ),
           }
       }
-    } else if tmux_ls_stderr_reports_empty(stderr: result.stderr) {
-      Observed { live: [] }
     } else {
-      ObserveRefused {
-        reason: concat(
-          "belt_sessions_observe: tmux ls failed; session containers are unknowable. stderr: ",
-          result.stderr,
-        ),
+      match classify_tmux_session_list(
+        exit_ok: result.success,
+        stdout: result.stdout,
+        stderr: result.stderr,
+      ) {
+        TmuxNoServer { evidence: _ } =>
+          Observed { live: [] }
+        TmuxSessionsListed { entries: _ } =>
+          ObserveRefused {
+            reason: concat(
+              "belt_sessions_observe: tmux ls failed; session containers are unknowable. stderr: ",
+              result.stderr,
+            ),
+          }
+        TmuxListUnknowable { stderr: e } =>
+          ObserveRefused {
+            reason: concat(
+              "belt_sessions_observe: tmux ls failed; session containers are unknowable. stderr: ",
+              e,
+            ),
+          }
+        TmuxListStdoutRefused { line_number, raw, reason } =>
+          ObserveRefused {
+            reason: belt_ls_stdout_refusal_reason(
+              line_number: line_number,
+              raw: raw,
+              reason: reason,
+            ),
+          }
       }
     }
   } else {
@@ -1887,6 +2065,98 @@ fn provider_event_projection_error(
   }
 }
 
+data belt_publication_receipt_read_note: String = "THE RECEIPT IS ADDRESSED BY HEAD, SO THERE IS NO PATH TO READ UNTIL THE HEAD IS KNOWN. That ordering is the point: the other receipts on this row live at one path per attempt and can be read before anything is decided, while a publication receipt is one per head, so the subject has to exist before the address does.\\n\\nTHE UNOBSERVED ARM ANSWERS ReceiptSourceAbsent AND THAT IS NOT A FABRICATED ABSENCE. publication_segment refuses on an unobserved subject before it consults the source at all, so this value never reaches a judgment; it exists because the evidence record carries a source for every stage and there is no address to consult for this one. If the projection ever stopped refusing first, this would become a real answer - which is why the refusal there is matched on the subject rather than inferred here.\\n\\nEVERY OTHER ARM ESTABLISHES ITS ANSWER POSITIVELY - see publication_receipt_absence_is_established_note. No arm of this walk turns a failure into an absence, which is the whole difference between it and the read it replaced."
+
+data listing_membership_is_line_exact_note: String = "Filesystem.List returns entry names joined by newlines, so a plain substring test would answer yes for a name that is merely a PREFIX or suffix of a real entry - `abc.json` would be found inside `abc.json.tmp`, and a head sha would be found inside a longer one. Wrapping both sides in newlines makes the test line-exact without needing a split the interpreter does not offer, and every conclusion drawn from it is a membership fact rather than a coincidence of spelling."
+
+fn belt_listing_names_entry(listing: String, name: String) -> Bool {
+  string_contains(
+    s: join(["\n", listing, "\n"], ""),
+    pattern: join(["\n", name, "\n"], ""),
+  )
+}
+
+data publication_receipt_absence_is_established_note: String = "ABSENCE IS ESTABLISHED BY A SUCCESSFUL LISTING, NEVER BY A FAILED READ (review 46148). Filesystem.Read answers success=false both for a receipt that does not exist and for one that exists and cannot be read, and those two worlds have opposite correct actions - observe and write, versus stop and preserve. This walk therefore never concludes absence from a failure of any kind.\\n\\nTHE LADDER STARTS AT A DIRECTORY THAT IS KNOWN TO EXIST, which is what makes each step decidable. The attempt state directory is created by dispatch when the attempt starts, and this producer only runs for an attempt whose worktree head it has already read, so a failure to list THAT directory is unambiguously a fault rather than a not-yet. From there each answer is positive: the publication directory is absent from a listing that succeeded, or the head's own file is absent from a listing that succeeded. Only when the file is listed does a read happen, and a read that then fails is unambiguously a fault because the entry was just observed to exist.\\n\\nWHAT THIS DELIBERATELY DOES NOT DO is widen on doubt. Every failure arm returns ReceiptSourceUnreadable carrying the path and the host error, which the gate turns into a typed, located, counted refusal that halts the row - it never falls back to `treat it as absent and rewrite`, which is the absorbing fallback DESIGN section 5 forbids and precisely the defect this replaced."
+
+fn belt_publication_receipt_source(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+  subject: PublicationSubjectObservation,
+) -> PublicationReceiptSource {
+  match subject {
+    PublicationSubjectUnobserved { reason: _ } => ReceiptSourceAbsent
+    PublicationSubjectObserved { subject: observed } => {
+      let attempt_dir = dispatch_attempt_state_path_for_instance(
+        instance: instance,
+        node_id: node_id,
+        attempt_key: attempt_key,
+      )
+      let attempt_listing = Filesystem.List(path: attempt_dir)
+      if !attempt_listing.success {
+        ReceiptSourceUnreadable {
+          detail: join([
+            "the attempt state directory could not be listed, so whether a publication receipt exists was not established: ",
+            attempt_dir,
+            " (",
+            attempt_listing.error,
+            ")",
+          ], ""),
+        }
+      } else if !belt_listing_names_entry(
+        listing: attempt_listing.entries,
+        name: publication_receipt_directory_segment,
+      ) {
+        ReceiptSourceAbsent
+      } else {
+        let publication_dir = dispatch_attempt_publication_dir_for_instance(
+          instance: instance,
+          node_id: node_id,
+          attempt_key: attempt_key,
+        )
+        let publication_listing = Filesystem.List(path: publication_dir)
+        if !publication_listing.success {
+          ReceiptSourceUnreadable {
+            detail: join([
+              "the publication receipt directory was named by the attempt listing but could not itself be listed: ",
+              publication_dir,
+              " (",
+              publication_listing.error,
+              ")",
+            ], ""),
+          }
+        } else if !belt_listing_names_entry(
+          listing: publication_listing.entries,
+          name: join([observed.expected_head as String, ".json"], ""),
+        ) {
+          ReceiptSourceAbsent
+        } else {
+          let path = dispatch_attempt_publication_receipt_path_for_instance(
+            instance: instance,
+            node_id: node_id,
+            attempt_key: attempt_key,
+            head_sha: observed.expected_head as String,
+          )
+          let read = Filesystem.Read(path: path)
+          if read.success {
+            ReceiptSourcePresent { text: read.content }
+          } else {
+            ReceiptSourceUnreadable {
+              detail: join([
+                "a publication receipt for this head was listed and then could not be read, so it exists and its content is unavailable: ",
+                path,
+                " (",
+                read.error,
+                ")",
+              ], ""),
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
 fn belt_workflow_progress_for_attempt_ref(
   instance: HostDashboardInstance,
   panes: BeltAttemptPanes,
@@ -1921,6 +2191,10 @@ fn belt_workflow_progress_for_attempt_ref(
       ),
       validation_receipt_readable: false,
       validation_receipt: "",
+      publication_subject: PublicationSubjectUnobserved {
+        reason: "this attempt has no modeled state pointer, so neither its attempt key nor its head is established",
+      },
+      publication_source: ReceiptSourceAbsent,
     })
   } else {
     let current_key = trim(key_read.content)
@@ -1946,6 +2220,28 @@ fn belt_workflow_progress_for_attempt_ref(
         instance: instance,
         node_id: node_id,
       ),
+    )
+    let publication_subject = belt_publication_subject_for(
+      node_id: attempt.node_id,
+      attempt_key: current_key,
+      branch: dispatch_branch_name(
+        node_id: node_id,
+        attempt_key: current_key,
+      ),
+      head: belt_worktree_head_observe(
+        instance: instance,
+        worktree: dispatch_worktree_path_for_instance(
+          instance: instance,
+          node_id: node_id,
+          attempt_key: current_key,
+        ),
+      ),
+    )
+    let publication_receipt = belt_publication_receipt_source(
+      instance: instance,
+      node_id: node_id,
+      attempt_key: current_key,
+      subject: publication_subject,
     )
     workflow_attempt_progress(evidence: WorkflowAttemptEvidence {
       node_id: attempt.node_id,
@@ -1978,6 +2274,8 @@ fn belt_workflow_progress_for_attempt_ref(
       ),
       validation_receipt_readable: validation_receipt.success,
       validation_receipt: validation_receipt.content,
+      publication_subject: publication_subject,
+      publication_source: publication_receipt,
     })
   }
 }
@@ -2132,17 +2430,23 @@ fn belt_verify_attempt_for_instance(
               contract: node.execution,
               worktree: worktree,
             )
-            let pinned_identity = belt_read_or_empty(
+            let pinned_identity_wire = belt_read_or_empty(
               path: dispatch_current_attempt_oracle_identity_path_for_instance(
                 instance: instance,
                 node_id: node_id,
               ),
             )
-            let pinned_revision = belt_read_or_empty(
+            let pinned_revision_wire = belt_read_or_empty(
               path: dispatch_current_attempt_oracle_revision_path_for_instance(
                 instance: instance,
                 node_id: node_id,
               ),
+            )
+            let pinned_identity = validation_oracle_parse_pinned_identity_wire(
+              text: pinned_identity_wire,
+            )
+            let pinned_revision = validation_oracle_parse_pinned_revision_wire(
+              text: pinned_revision_wire,
             )
             let pin_refusal = belt_read_or_empty(
               path: dispatch_current_attempt_oracle_pin_refusal_path_for_instance(
@@ -2150,13 +2454,25 @@ fn belt_verify_attempt_for_instance(
                 node_id: node_id,
               ),
             )
-            let pin_recorded = pinned_identity != "" && pinned_revision != ""
+            let pin_recorded = validation_oracle_pin_recorded(
+              identity: pinned_identity,
+              revision: pinned_revision,
+            )
             let verdict = match validation_oracle_gate(
               contract: node.execution,
               observations: observations,
               pin_recorded: pin_recorded,
-              expected_identity: pinned_identity as ContentHash,
-              revision: pinned_revision as VersionIdentity,
+              expected_identity: match pinned_identity {
+                Present { value: identity } => identity
+                Absent =>
+                  as_content_hash_structural(
+                    structural: content_hash_atom(value: "oracle-pin-unreadable")
+                  )
+              },
+              revision: match pinned_revision {
+                Present { value: revision } => revision
+                Absent => "oracle-pin-unreadable" as NonEmptyStr as VersionIdentity
+              },
               pin_read_detail: if pin_refusal == "" {
                 "no oracle identity was recorded for this attempt at dispatch"
               } else {
@@ -2562,8 +2878,23 @@ fn belt_run_once_json() -> String {
 
 data belt_run_once_cli_note: String = "The ProcessExit entrypoint — this is what `gunbc run --function belt_run_once_cli` invokes (belt_run_once_json returns String, which `gunbc run` rejects; belt_run_once_cli is its runnable wrapper). Fail-closed exit mapping, idiomatic per srv3_boot_once_cd / host_build_cache_provision: a clean idempotent tick -> ExitSuccess (exit 0, silent). ANY problem surfaces the FULL JSON receipt loudly on stderr via exit_failure(reason): observe_refused (the live session set was unknowable, so no actions were taken) -> exit_failure(receipt); or one-or-more spawn_failed outcomes (a git-worktree/tmux/which failure) -> exit_failure(receipt). The receipt is the whole BeltTickResult projection, so the operator reads exactly which node failed at which step. A verify outcome that could not be WRITTEN flips the exit for the same reason a spawn failure does — the belt failed to produce a receipt it was obliged to produce — while a recorded refusal or a recorded red does NOT, because those are the receipt working: the belt's obligation is to produce a verdict, never to produce a green, and flipping the exit on a refusal would make the tick's own success depend on what the validation said. Teardown failures are surfaced in the receipt but do NOT flip the exit — a reap that could not complete is not a reason to fail the tick (the session is still tracked and retried next tick); only a spawn failure or an unknowable observation is a hard stop. For always-on observation of a SUCCESSFUL tick's receipt, belt_run_once_json is the string form (witness/inspection)."
 
+data belt_spawn_workdir_is_a_parameter_note: String = "THE SPAWN ROOT IS SUPPLIED BY WHOEVER INVOKES THE TICK, AND MAKING IT A LITERAL WAS THE DEFECT. belt_actuate_workdir is a projection of srv1_gunbc_repo_root, so a tick spawned `git worktree add` into PRODUCTION's tree no matter which deployment invoked it. That was invisible while nothing invoked the belt on a cadence; the moment a deployment owns a timer it stops being invisible, because the srv1-lab twin would install a unit that actuates production — the failure gunbc.live_deploy.spec's deployment_service_handler_note records for the serve handler, where every path-level check passes and the process simply operates as production.\\n\\nIt enters through the environment for the same reason the node id does (belt_dispatch_node_cli_note): `gunbc run --function` cannot pass an argument, there is no --arg flag. So the deployment's belt unit sets GUNBC_BELT_SPAWN_WORKDIR to ITS instance's repo root, and each instance actuates its own tree.\\n\\nFAIL-CLOSED ON THE CHANNEL, and the choice matters more here than for a node id: defaulting an absent variable to belt_actuate_workdir would restore the exact defect, silently, for every caller that forgot to set it — the absorbing fallback DESIGN §5 forbids, with production's tree as the thing absorbed. A missing OR empty value refuses, and shell.Env.Get returns Present-but-empty for an unset var wet, so both fold into one refusal.\\n\\nbelt_run_once and belt_run_once_json keep the literal default: they are inspection surfaces invoked by hand against production, not the scheduled entrypoint, and belt_run_once_in is the one implementation both spellings route through so the parameterized and default paths cannot drift."
+
 fn belt_run_once_cli() -> ProcessExit {
-  let t = belt_run_once()
+  match shell.Env.Get(name: belt_spawn_workdir_env_var).value {
+    Absent =>
+      exit_failure(reason: "belt_run_once_cli: GUNBC_BELT_SPAWN_WORKDIR not set — the spawn root is a per-deployment fact and defaulting it would actuate production's tree (fail-closed)")
+    Present { value: workdir } =>
+      if string_length(s: workdir) == 0 {
+        exit_failure(reason: "belt_run_once_cli: GUNBC_BELT_SPAWN_WORKDIR is empty — the spawn root is a per-deployment fact and defaulting it would actuate production's tree (fail-closed)")
+      } else {
+        belt_run_once_cli_in(spawn_workdir: workdir)
+      }
+  }
+}
+
+fn belt_run_once_cli_in(spawn_workdir: String) -> ProcessExit {
+  let t = belt_run_once_in(spawn_workdir: spawn_workdir)
   let receipt = serialize_json(v: belt_tick_result_json_value(t: t))
   if t.observe_refused {
     exit_failure(reason: receipt)
@@ -2873,4 +3204,387 @@ fn belt_dispatch_node_cli() -> ProcessExit {
         }
       }
   }
+}
+
+data belt_publish_producer_note: String = "THE PRODUCER, WITHOUT WHICH THE PUBLICATION LAMP CANNOT MOVE. Every other piece of this lane existed before this function did - the observer, the adjudicator, the receipt format, the decoder, the path, the workflow projection - and none of them ever ran, because nothing wrote a receipt. A belt tick read an absent file and reported Pending forever, which is indistinguishable from a correct answer and is why the gap survived several reviews.\\n\\nTHE DECISION IS SEPARATED FROM THE THREE EFFECTS, for the same reason roadmap_publish is separated from roadmap_publish_observe. belt_publish_decide takes what the read found, what the observation concluded, and what the write reported, and returns the outcome; belt_publish_attempt_for_instance performs the read, the observation and the write and calls it. Every arm - already recorded, undecodable evidence, a receipt about another subject, an unwritable receipt - is therefore reachable in a hermetic witness from constructed values, which is the only way an arm that fires once a year gets proven at all.\\n\\nIT READS BEFORE WRITING, and an unreadable existing receipt REFUSES rather than being overwritten, because the belt must not destroy evidence it cannot see. The address is the difference from the verify producer: verification writes one receipt per attempt, publication writes one per head, so re-running against an already-recorded head is a no-op while a new head opens a new round.\\n\\nOBSERVATION FAILURE PERSISTS A REFUSED RECEIPT rather than aborting. Aborting before any receipt exists would leave the workflow showing an ordinary Pending, so an unavailable credential and a genuinely unpublished branch would look identical - the absence-versus-refusal collapse this whole lane exists to remove, reappearing at the outermost boundary. A refusal is a fact about an attempt and belongs on disk with the others."
+
+type BeltPublishOutcome
+  = PublishRecorded {
+      node_id: String,
+      head_sha: String,
+      outcome_key: String,
+    }
+  | PublishAlreadyRecorded { node_id: String, head_sha: String }
+  | PublishEvidenceUnreadable { node_id: String, detail: String }
+  | PublishWriteFailed { node_id: String, detail: String }
+  | PublishDeferred { node_id: String, reason: String }
+
+data belt_publication_subject_base_note: String = "expected_base IS main FOR THIS BELT, AND THAT IS A DEPLOYMENT FACT RATHER THAN A DEFAULT. adjudicate_publication uses the base to decide which pull requests are candidates at all, so two runs with different bases can reach different outcomes about one head; the value therefore belongs in the subject, gets recorded in the receipt, and gets compared when a consumer checks that receipt.\\n\\nWhat it must not become is a parameter nobody supplies. Threading it up through the belt would produce a call chain in which every caller passes the same literal, which is the spelling-repeated-N-times shape rather than one authority. When a roadmap node can target a base other than the repository's own default, this reads that fact from the node - and the receipt already records what was used, so the change is visible in the evidence rather than silent."
+
+fn belt_publication_subject_for(
+  node_id: String,
+  attempt_key: String,
+  branch: String,
+  head: WorktreeHeadObservation,
+) -> PublicationSubjectObservation {
+  match head {
+    WorktreeHeadUnobserved { reason } =>
+      PublicationSubjectUnobserved {
+        reason: join([
+          "publication is adjudicated against an exact head and this attempt has none: ",
+          reason,
+        ], ""),
+      }
+    WorktreeHeadObserved { revision } =>
+      if trim(branch) == "" {
+        PublicationSubjectUnobserved {
+          reason: "the attempt has no branch name, so there is nothing to look for on the remote",
+        }
+      } else {
+        PublicationSubjectObserved {
+          subject: PublicationSubject {
+            node_id: node_id,
+            attempt_key: attempt_key,
+            repository: gunbc_repository,
+            branch: branch as NonEmptyStr,
+            expected_base: gunbc_repository.default_branch as NonEmptyStr,
+            expected_head: revision as CommitSha,
+          },
+        }
+      }
+  }
+}
+
+data belt_publish_gate_note: String = "THE GATE DECIDES WHETHER TO OBSERVE AT ALL, WHICH IS WHY IT IS PURE AND WHY IT RUNS FIRST. Three of the five outcomes are settled entirely by what is already on disk - the head is on offer, the record does not decode, the record is about someone else - and none of them should cost a network read or risk a write. Deciding them before the effect is what makes them reachable in a witness from constructed values; deciding them after would make the arms untestable and would perform a GitHub read to learn something the filesystem already said.\\n\\nONLY A SETTLED RECEIPT HALTS, AND GETTING THIS WRONG WOULD HAVE FROZEN THE LAMP. The obvious idempotence key is `a receipt exists for this head`, and it is wrong: the belt ticks continuously, so the FIRST observation of a head usually happens before the worker has pushed. That observation is a perfectly good judgment - branch-not-published - and storing it as final would pin the row to `not published` forever, with every later tick halting on the very receipt that recorded the branch's absence. The negative answer would outlive the fact it described.\\n\\nSo the key is whether the receipt says the head is ON OFFER (publication_receipt_offers_the_expected_head, the same predicate a downstream obligation asks). Every other outcome is a snapshot of remote state that has not stopped moving, so the next tick re-observes and replaces it. That is not destroying evidence: it is the same question re-asked, and nothing downstream builds on a snapshot that answered no.\\n\\nA RECEIPT ABOUT ANOTHER SUBJECT AT THIS HEAD'S OWN ADDRESS IS NOT OVERWRITTEN, and that halt is unconditional. The address contains the head, so a mismatch here means something wrote a receipt for a different node, attempt, repository or base into this head's slot. That is unexplained state, and the belt's move on unexplained state is to stop rather than to correct it - overwriting would destroy the only evidence that it happened."
+
+type BeltPublishGate
+  = PublishProceed
+  | PublishHalted { outcome: BeltPublishOutcome }
+
+fn belt_publish_gate(
+  node_id: String,
+  subject: PublicationSubject,
+  existing: PublicationReceiptSource,
+) -> BeltPublishGate {
+  match publication_evidence_for(expected: subject, source: existing) {
+    EvidenceAbsent => PublishProceed
+    EvidenceForSubject { receipt } =>
+      if publication_receipt_offers_the_expected_head(outcome: receipt.outcome) {
+        PublishHalted {
+          outcome: PublishAlreadyRecorded {
+            node_id: node_id,
+            head_sha: subject.expected_head as String,
+          },
+        }
+      } else {
+        PublishProceed
+      }
+    EvidenceUnreadable { reason } =>
+      PublishHalted {
+        outcome: PublishEvidenceUnreadable {
+          node_id: node_id,
+          detail: join([
+            "a publication receipt for this head could not be read or does not decode, so the belt refuses to replace evidence it cannot read: ",
+            reason,
+          ], ""),
+        },
+      }
+    EvidenceForAnotherSubject { field, expected, found } =>
+      PublishHalted {
+        outcome: PublishEvidenceUnreadable {
+          node_id: node_id,
+          detail: join([
+            "a publication receipt at this head's own address is about another subject (",
+            field as String, " expected ", expected, ", found ", found,
+            "), which the belt refuses to overwrite because the mismatch is itself evidence of a state nobody has explained",
+          ], ""),
+        },
+      }
+  }
+}
+
+fn belt_publish_write_outcome(
+  node_id: String,
+  subject: PublicationSubject,
+  receipt: PublicationReceipt,
+  write_success: Bool,
+  write_error: String,
+) -> BeltPublishOutcome {
+  if write_success {
+    PublishRecorded {
+      node_id: node_id,
+      head_sha: subject.expected_head as String,
+      outcome_key: publication_receipt_outcome_key(outcome: receipt.outcome) as String,
+    }
+  } else {
+    PublishWriteFailed {
+      node_id: node_id,
+      detail: join([
+        "the publication receipt could not be written, so the judgment was reached and then lost: ",
+        write_error,
+      ], ""),
+    }
+  }
+}
+
+fn belt_publish_attempt_for_instance(
+  instance: HostDashboardInstance,
+  node_id: String,
+  attempt_key: String,
+  credential: PublicationCredentialSource,
+) -> BeltPublishOutcome {
+  let attempt_worktree = dispatch_worktree_path_for_instance(
+    instance: instance,
+    node_id: node_id as gunbc.roadmap_model.RoadmapNodeId,
+    attempt_key: attempt_key,
+  )
+  match belt_publication_subject_for(
+    node_id: node_id,
+    attempt_key: attempt_key,
+    branch: dispatch_branch_name(
+      node_id: node_id as gunbc.roadmap_model.RoadmapNodeId,
+      attempt_key: attempt_key,
+    ),
+    head: belt_worktree_head_observe(
+      instance: instance,
+      worktree: attempt_worktree,
+    ),
+  ) {
+    PublicationSubjectUnobserved { reason } =>
+      PublishDeferred { node_id: node_id, reason: reason }
+    PublicationSubjectObserved { subject } => {
+      match observe_worktree_repository_binding(
+        worktree: attempt_worktree,
+        repo: subject.repository,
+      ) {
+        WorktreeRemoteUnreadable { exit_code: code, stderr: err } =>
+          PublishEvidenceUnreadable {
+            node_id: node_id,
+            detail: join([
+              "the attempt worktree's origin remote could not be read, so it is unknown whether the head being published came from this repository (git exit ",
+              to_string(code), "): ", err,
+            ], ""),
+          }
+        WorktreeBoundElsewhere { observed: observed, expected: expected } =>
+          PublishEvidenceUnreadable {
+            node_id: node_id,
+            detail: join([
+              "the attempt worktree is a checkout of a different repository, so its head is not evidence about this subject — origin is ",
+              observed, " but this publication is about ", expected as String,
+            ], ""),
+          }
+        WorktreeBoundToRepository => {
+          let path = dispatch_attempt_publication_receipt_path_for_instance(
+            instance: instance,
+            node_id: node_id as gunbc.roadmap_model.RoadmapNodeId,
+            attempt_key: attempt_key,
+            head_sha: subject.expected_head as String,
+          )
+          match belt_publish_gate(
+            node_id: node_id,
+            subject: subject,
+            existing: belt_publication_receipt_source(
+              instance: instance,
+              node_id: node_id as gunbc.roadmap_model.RoadmapNodeId,
+              attempt_key: attempt_key,
+              subject: PublicationSubjectObserved { subject: subject },
+            ),
+          ) {
+            PublishHalted { outcome } => outcome
+            PublishProceed => {
+              let receipt = publication_receipt_of(
+                subject: subject,
+                outcome: observe_publication_for_subject(
+                  credential: credential,
+                  subject: subject,
+                ),
+              )
+              let write = Filesystem.Write(
+                path: path,
+                content: publication_receipt_json(receipt: receipt),
+              )
+              belt_publish_write_outcome(
+                node_id: node_id,
+                subject: subject,
+                receipt: receipt,
+                write_success: write.success,
+                write_error: write.error,
+              )
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+data belt_publish_credential_note: String = "THE CREDENTIAL IS PROBED FOR PRESENCE AND CARRIED AS A SOURCE, NEVER AS A VALUE. github.Pulls.List takes a CredentialSource - the same EnvVar row gunbc.tools.review_codex already passes - and the transport resolves it at the boundary, so the token itself never becomes a value in this graph. What this function establishes is only whether resolving it would find anything.\\n\\nWHY THE PROBE EXISTS AT ALL, rather than assuming presence: a publication read without a usable token is not a failed read, it is a read that must not be attempted. Sending an empty bearer produces a 401 whose only content is that we sent nothing - and the REST realization turns a 401 into a raise, so the most decidable failure on a fresh host would arrive as the least tractable kind of event. Probing turns it into an ordinary value that becomes a recorded refusal.\\n\\nTHE VALUE DOES TRANSIT, and pretending otherwise would be the overclaim. shell.Env.Get returns the variable's contents, so the token is briefly a String inside this process; only its emptiness escapes this function, and nothing stores or renders it. A presence probe that never read the value would need `test -n` against a variable this layer would have to name into a shell string, which is the composed-command shape the shell-to-intent lane exists to remove. Dissolve-on: a modeled presence-only environment probe, at which point this reads nothing.\\n\\nOutcomeIsData ADMISSIBILITY: printenv exits 1 when the variable is unset, and that exit IS the answer this function is asking for, not a fault. The result is a PublicationCredentialSource whose two arms ARE the adjudication - never unit - which is the shape belt_outcome_is_data_note requires of every annotated probe here."
+
+data belt_publication_credential_source: CredentialSource = std.credentials.EnvVar { name: "GITHUB_TOKEN" }
+
+fn belt_publication_credential() -> PublicationCredentialSource {
+  match shell.Env.Get(name: "GITHUB_TOKEN" as NonEmptyStr, expect: OutcomeIsData).value {
+    Present { value } =>
+      if trim(value) == "" {
+        CredentialSourceAbsent {
+          reason: "GITHUB_TOKEN is set to an empty value in the belt's environment",
+        }
+      } else {
+        CredentialSourceConfigured { source: belt_publication_credential_source }
+      }
+    Absent =>
+      CredentialSourceAbsent {
+        reason: "GITHUB_TOKEN is not set in the belt's environment",
+      }
+  }
+}
+
+data belt_publish_pass_note: String = "PUBLICATION RUNS ON THE SAME TICK AS SPAWN, TEARDOWN AND VERIFY, because it is the same kind of fact: a desired obligation reconciled against an observed one. A producer nobody calls is the defect this lane keeps producing - every piece of the publication path existed before this pass and none of it ever ran - so the wiring is the deliverable, not the type.\\n\\nIT RUNS PER ATTEMPT, OVER THE SAME OBSERVED LEDGER VERIFY USES, and it does NOT wait for the agent to finish. That is the difference from the verify pass and it is deliberate: verification is an action taken ON the attempt, so running it early would burn a validation against an unfinished tree, while publication is an OBSERVATION of the remote, so running it early records the true state - the branch is not published yet - and the next tick revises it. The gate is what makes that safe, since only a receipt saying the head is on offer stops the revisions.\\n\\nONE CREDENTIAL PROBE PER TICK, not one per attempt. The environment does not change between attempts within a tick, and probing per attempt would multiply a process spawn by the attempt count for an answer that cannot differ."
+
+fn belt_publish_attempts_for_instance(
+  instance: HostDashboardInstance,
+) -> List<BeltPublishOutcome> {
+  match belt_workflow_attempts_observe_for_instance(instance: instance) {
+    WorkflowAttemptsRefused { reason } =>
+      [
+        PublishDeferred {
+          node_id: "",
+          reason: join([
+            "the attempts ledger is unobservable, so no attempt's publication can be adjudicated: ",
+            reason,
+          ], ""),
+        },
+      ]
+    WorkflowAttemptsObserved { attempts } => {
+      let credential = belt_publication_credential()
+      map(attempts, progress => belt_publish_attempt_for_instance(
+        instance: instance,
+        node_id: progress.node_id,
+        attempt_key: progress.attempt_key,
+        credential: credential,
+      ))
+    }
+  }
+}
+
+fn belt_publish_attempts() -> List<BeltPublishOutcome> {
+  belt_publish_attempts_for_instance(
+    instance: srv1_live_dashboard_instance(),
+  )
+}
+
+data belt_publish_node_note: String = "THE PRODUCER NEEDS A LIVE TRIGGER, AND belt_tick IS NOT ONE. belt_tick is the belt's actuation pass and nothing calls it - not the serve routes, not a timer, not the CLI. That is a pre-existing gap it shares with the verification pass, which is wired into the same tick and is equally undriven; this lane did not create it and does not close it.\\n\\nWhat it does mean is that wiring publication into belt_tick alone would leave the receipt unproduced in production, which is the exact defect the recut exists to fix, one layer further out. So publication also gets a per-node entry the serve table can reach, mirroring belt_dispatch_node_for_instance: an operator presses it, the receipt is written, and the next read of the row paints from it.\\n\\nIT RESOLVES THE ATTEMPT ITSELF rather than taking one, because the caller is a route holding only a node id. The current attempt pointer is the same authority the workflow projection reads, so both are answering about the same attempt by construction rather than by the caller passing a matching key.\\n\\nOBSERVE-ONLY INSTANCES REFUSE, like dispatch. Publication performs a network read and a filesystem write against an instance's own attempt state, so an instance declared observe-only must not perform either - and the refusal names the posture rather than reporting an absence."
+
+fn belt_publish_node_for_instance(
+  instance: HostDashboardInstance,
+  node_id: String,
+) -> BeltPublishOutcome {
+  match instance.actuation {
+    DashboardObserveOnly =>
+      PublishDeferred {
+        node_id: node_id,
+        reason: join([
+          "dashboard instance ",
+          instance.instance_id as String,
+          " is observe-only, so publication was neither observed nor recorded",
+        ], ""),
+      }
+    DashboardActuating => {
+      let key_read = Filesystem.Read(
+        path: dispatch_current_attempt_key_path_for_instance(
+          instance: instance,
+          node_id: node_id as gunbc.roadmap_model.RoadmapNodeId,
+        ),
+      )
+      if !key_read.success || trim(key_read.content) == "" {
+        PublishDeferred {
+          node_id: node_id,
+          reason: "this node has no current attempt, so there is no branch or head for publication to be about",
+        }
+      } else {
+        belt_publish_attempt_for_instance(
+          instance: instance,
+          node_id: node_id,
+          attempt_key: trim(key_read.content),
+          credential: belt_publication_credential(),
+        )
+      }
+    }
+  }
+}
+
+data belt_publish_outcome_wire_note: String = "THE WIRE CARRIES THE OUTCOME KEY THE RECEIPT RECORDED, not a rendering of it. A caller that pressed publish wants to know which judgment was reached, and re-deriving that from a sentence is the prose-parsing move the receipt format itself was rewritten to remove. The detail is beside it for a human, never instead of it.\\n\\nTHE STATUS CODES SPLIT ON WHO HAS TO ACT. A recorded judgment and an already-recorded one are both 200, because the belt did what was asked and the row is now accurate either way. A deferral is 409 - the request was well formed and the attempt is not in a state where publication means anything yet. Unreadable evidence and a failed write are 500, because they are the belt's own problem and nothing about the request would change them."
+
+fn belt_publish_outcome_key(o: BeltPublishOutcome) -> String {
+  match o {
+    PublishRecorded { node_id: _, head_sha: _, outcome_key: _ } => "recorded"
+    PublishAlreadyRecorded { node_id: _, head_sha: _ } => "already-recorded"
+    PublishEvidenceUnreadable { node_id: _, detail: _ } => "evidence-unreadable"
+    PublishWriteFailed { node_id: _, detail: _ } => "write-failed"
+    PublishDeferred { node_id: _, reason: _ } => "deferred"
+  }
+}
+
+fn belt_publish_outcome_node_id(o: BeltPublishOutcome) -> String {
+  match o {
+    PublishRecorded { node_id, head_sha: _, outcome_key: _ } => node_id
+    PublishAlreadyRecorded { node_id, head_sha: _ } => node_id
+    PublishEvidenceUnreadable { node_id, detail: _ } => node_id
+    PublishWriteFailed { node_id, detail: _ } => node_id
+    PublishDeferred { node_id, reason: _ } => node_id
+  }
+}
+
+fn belt_publish_outcome_head_sha(o: BeltPublishOutcome) -> String {
+  match o {
+    PublishRecorded { node_id: _, head_sha, outcome_key: _ } => head_sha
+    PublishAlreadyRecorded { node_id: _, head_sha } => head_sha
+    PublishEvidenceUnreadable { node_id: _, detail: _ } => ""
+    PublishWriteFailed { node_id: _, detail: _ } => ""
+    PublishDeferred { node_id: _, reason: _ } => ""
+  }
+}
+
+fn belt_publish_outcome_publication_key(o: BeltPublishOutcome) -> String {
+  match o {
+    PublishRecorded { node_id: _, head_sha: _, outcome_key } => outcome_key
+    PublishAlreadyRecorded { node_id: _, head_sha: _ } => ""
+    PublishEvidenceUnreadable { node_id: _, detail: _ } => ""
+    PublishWriteFailed { node_id: _, detail: _ } => ""
+    PublishDeferred { node_id: _, reason: _ } => ""
+  }
+}
+
+fn belt_publish_outcome_detail(o: BeltPublishOutcome) -> String {
+  match o {
+    PublishRecorded { node_id: _, head_sha: _, outcome_key: _ } => ""
+    PublishAlreadyRecorded { node_id: _, head_sha: _ } => ""
+    PublishEvidenceUnreadable { node_id: _, detail } => detail
+    PublishWriteFailed { node_id: _, detail } => detail
+    PublishDeferred { node_id: _, reason } => reason
+  }
+}
+
+fn belt_publish_outcome_http_status(o: BeltPublishOutcome) -> Int {
+  match o {
+    PublishRecorded { node_id: _, head_sha: _, outcome_key: _ } => 200
+    PublishAlreadyRecorded { node_id: _, head_sha: _ } => 200
+    PublishDeferred { node_id: _, reason: _ } => 409
+    PublishEvidenceUnreadable { node_id: _, detail: _ } => 500
+    PublishWriteFailed { node_id: _, detail: _ } => 500
+  }
+}
+
+fn belt_publish_outcome_json_value(o: BeltPublishOutcome) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "schema", value: json_string(s: "roadmap-belt-publish/v1")),
+    json_kv(key: "outcome", value: json_string(s: belt_publish_outcome_key(o: o))),
+    json_kv(key: "node_id", value: json_string(s: belt_publish_outcome_node_id(o: o))),
+    json_kv(key: "head_sha", value: json_string(s: belt_publish_outcome_head_sha(o: o))),
+    json_kv(
+      key: "publication",
+      value: json_string(s: belt_publish_outcome_publication_key(o: o)),
+    ),
+    json_kv(key: "detail", value: json_string(s: belt_publish_outcome_detail(o: o))),
+  ])
 }

@@ -24,7 +24,16 @@ import std.upsert_decision {
   UpsertClassification,
 }
 import extdeps.git { shape_git_worktree_add_argv }
-import extdeps.tmux { shape_tmux_new_session_argv }
+import extdeps.tmux {
+  shape_tmux_new_session_argv,
+  parse_tmux_ls_output,
+  TmuxLsEntry,
+  TmuxLsParsed,
+  TmuxLsParseRefused,
+  AttemptPanesParsed,
+  AttemptPanesParseRefused,
+  parse_tmux_attempt_panes_output,
+}
 import extdeps.llm.cli {
   shape_claude_invoke_argv,
   shape_codex_exec_argv,
@@ -56,26 +65,20 @@ import gunbc.roadmap_dispatch_actuator {
   tmux_spawn_argv,
   tmux_kill_session_argv,
   tmux_ls_argv,
-  parse_tmux_ls_output,
   filter_dispatch_tmux_sessions,
   classify_dispatch_request,
   classify_dispatch_lease_upsert,
   classify_tmux_session,
   dispatch_tmux_session_scope,
-  dispatch_live_sessions,
+  dispatch_live_sessions_from_entries,
   session_lease_reuses_process_port_classifier_shape,
   hostile_node_id_stays_single_argv_token,
   DispatchPermitted,
   DispatchRefused,
-  TmuxLsEntry,
   SessionAbsent,
   SessionNameObserved,
   SessionObserved,
   SpawnSession,
-  TmuxAttemptPanesParse,
-  AttemptPanesParsed,
-  AttemptPanesParseRefused,
-  parse_tmux_attempt_panes_output,
   dispatch_current_attempt_events_projection_argv_for_instance,
 }
 import extdeps.llm.cli {
@@ -375,10 +378,15 @@ test fn witness_stop_argv_targets_session() -> Bool {
 
 test fn witness_tmux_ls_parse_filters_prefix() -> Bool {
   let output = "other: 1 windows (created Fri Jul  3 04:14:00 2026)\ngunbc-dispatch-node-4: 2 windows (created Fri Jul  3 04:15:00 2026)\n"
-  let entries = filter_dispatch_tmux_sessions(entries: parse_tmux_ls_output(output: output))
-  count(entries) == 1
-    && entries.first().session_name == "gunbc-dispatch-node-4"
-    && entries.first().windows == 2
+  match parse_tmux_ls_output(output: output) {
+    TmuxLsParsed { entries } => {
+      let filtered = filter_dispatch_tmux_sessions(entries: entries)
+      count(filtered) == 1
+        && filtered.first().session_name == "gunbc-dispatch-node-4"
+        && filtered.first().windows == 2
+    }
+    TmuxLsParseRefused { line_number: _, raw: _, reason: _ } => false
+  }
 }
 
 test fn witness_not_ready_node_refused() -> Bool {
@@ -435,11 +443,16 @@ test fn witness_hostile_node_id_single_argv_token() -> Bool {
 
 test fn witness_live_sessions_panel_rows() -> Bool {
   let output = "gunbc-dispatch-panel-a: 1 windows (created Fri Jul  3 04:14:00 2026)\n"
-  let rows = dispatch_live_sessions(tmux_ls_output: output)
-  count(rows) == 1
-    && rows.first().node_id == "panel-a"
-    && rows.first().session_name == "gunbc-dispatch-panel-a"
-    && rows.first().lease_verdict == UnknownRefused
+  match parse_tmux_ls_output(output: output) {
+    TmuxLsParsed { entries } => {
+      let rows = dispatch_live_sessions_from_entries(entries: entries)
+      count(rows) == 1
+        && rows.first().node_id == "panel-a"
+        && rows.first().session_name == "gunbc-dispatch-panel-a"
+        && rows.first().lease_verdict == UnknownRefused
+    }
+    TmuxLsParseRefused { line_number: _, raw: _, reason: _ } => false
+  }
 }
 
 test fn witness_name_only_observation_not_converged() -> Bool {

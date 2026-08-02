@@ -65,7 +65,7 @@ pub struct OccurrenceId {
 pub fn occurrence_containment_storage_projection_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "OccurrenceContainmentPath is the concrete compact storage projection of std.occurrence_binding.ContainmentPath<OccurrenceId>. It exists because the generic carrier cannot yet be emitted by the v1 stage0 backend without invented generic derive and match-clone obligations.".to_string()
+            "OccurrenceContainmentPath is the concrete compact storage projection of std.occurrence_binding.ContainmentPath<OccurrenceId>. Generic stage0 emission of ContainmentPath<N> with #[derive] carriers needed v1.compiler.trait_derive_emit item-level Clone bounds (PR #7570); that emitter work is prerequisite but does not by itself dissolve this projection — std_occurrence_binding is not on the stage0 roster until PR #7515 lands and proves ContainmentPath<OccurrenceId> compiles there.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -74,7 +74,7 @@ pub fn occurrence_containment_storage_projection_note() -> String {
 pub fn occurrence_containment_storage_projection_dissolve_on() -> String {
     thread_local! {
         static CACHED: String = {
-            "DISSOLVE-ON: generic stage0 emission accepts std.occurrence_binding.ContainmentPath<OccurrenceId> without supplemental derive bounds or match clones; then replace this projection with the canonical generic carrier and delete both storage-projection rows.".to_string()
+            "DISSOLVE-ON: PR #7515 lands std_occurrence_binding on the stage0 roster and proves ContainmentPath<OccurrenceId> compiles without supplemental derive bounds; then replace OccurrenceContainmentPath with std.occurrence_binding.ContainmentPath<OccurrenceId> across consumers and delete both storage-projection rows.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())

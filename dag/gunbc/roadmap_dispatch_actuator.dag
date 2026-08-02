@@ -59,6 +59,11 @@ import extdeps.tmux {
   shape_tmux_list_panes_argv_for,
   shape_tmux_attempt_panes_argv_for,
   TmuxPipeCommand,
+  TmuxLsEntry,
+  TmuxAttemptPaneEntry,
+  AttemptPanesParsed,
+  AttemptPanesParseRefused,
+  parse_tmux_attempt_panes_output,
 }
 import extdeps.llm.cli {
   shape_claude_invoke_argv,
@@ -211,11 +216,6 @@ data dispatch_brief_fields_invariant_note: String = "DispatchBriefFields contain
 
 data dispatch_brief_slot_note: String = "The template's workflow slots are REAL fields when the node is a TicketLine (remodel W2: the template was always the spec of the schema — its slot names became TicketFields), and honest stubs only on the legacy prose frontier: a legacy row's brief still repeats the title where a fact should be, which is exactly the burn-down pressure W2-bulk answers. A ticket node's brief carries its own displaced cost, current state, first slice, RED, scope, and hand-back conditions; paths come from the node's carriers."
 
-type TmuxLsEntry {
-  session_name: String
-  windows: Int
-}
-
 type TmuxSessionScope {
   session_name: NonEmptyStr
   expected_owner_label: NonEmptyStr
@@ -343,7 +343,7 @@ fn dispatch_tmux_session_name(node_id: RoadmapNodeId) -> String {
 data dispatch_attempt_note: String = "Dispatch is ATTEMPT-grain (U1, the redispatch fix, 2026-07-25; the operator's accidental spawn was the live receipt): branch and worktree carry an attempt key derived from (node_id x the spawn's clock observation) through std.content_hash; the Claude provider also derives its required session-id from that stamp, while Codex mints its own persisted thread identity and does not yet join it back to the attempt. A stopped attempt's debris therefore never collides with the next spawn, and NOTHING is deleted to make way. The tmux session name deliberately STAYS node-grain: it is what observe/reconcile key on, so already-live detection, kill, and tick idempotency are untouched. Same-instant duplicate spawns for one node collide on the attempt key and refuse at the git step, typed. A clock refusal refuses the spawn (step attempt-clock), never an unknown-stamped attempt."
 
 fn dispatch_attempt_key(node_id: RoadmapNodeId, probed_at: String) -> String {
-  content_hash_atom(value: join([node_id as String, "\n", probed_at], "") as NonEmptyStr) as String
+  content_hash_atom(value: join([node_id as String, "\n", probed_at], "") as NonEmptyStr).digest as String
 }
 
 fn dispatch_worktree_path(node_id: RoadmapNodeId, attempt_key: String) -> String {
@@ -540,6 +540,47 @@ fn dispatch_current_attempt_oracle_revision_path_for_instance(
     "/validation-oracle-revision",
   ], "")
 }
+
+data publication_receipt_is_head_addressed_note: String = "THE HEAD IS IN THE PATH, BECAUSE ONE ATTEMPT PUBLISHES MORE THAN ONCE. The ratified Review loop is head A -> findings -> worker correction -> head B, all inside a single implementation attempt. A single attempt-level receipt file has only bad answers to that: overwrite and lose A's real receipt, leave it and misreport B forever, or invent an update convention nobody else follows.\n\nAddressing by head makes the rounds independent rather than competing. Writing B's receipt cannot destroy A's, a reader asking about A gets A, and idempotence has an honest key - re-running for a head that already has a receipt is a no-op, while a new head is a new round by construction rather than by remembering to bump something.\n\nThis is also what lets the subject check stay a check rather than becoming the only defence. Even with per-head addressing a receipt can be copied or retained, so publication_evidence_for still compares all six subject fields; the path narrows what can be found and the comparison decides what counts."
+
+data publication_receipt_directory_is_named_once_note: String = "The directory is its own function because a reader has to establish that a receipt is ABSENT, and the only honest way to do that is to list the directory it would be in and not find it there. Filesystem.Read reports the same failure for a file that does not exist and one that cannot be read (review 46148), so absence inferred from a failed read is a guess; absence established by a successful listing is a fact. That makes the directory a load-bearing address rather than a path fragment, so it is named here once and the receipt path is built from it."
+
+fn dispatch_attempt_publication_dir_for_instance(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+) -> String {
+  join([
+    dispatch_attempt_state_path_for_instance(
+      instance: instance,
+      node_id: node_id,
+      attempt_key: attempt_key,
+    ),
+    "/publication",
+  ], "")
+}
+
+data publication_receipt_directory_segment: String = "publication"
+
+fn dispatch_attempt_publication_receipt_path_for_instance(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+  head_sha: String,
+) -> String {
+  join([
+    dispatch_attempt_publication_dir_for_instance(
+      instance: instance,
+      node_id: node_id,
+      attempt_key: attempt_key,
+    ),
+    "/",
+    head_sha,
+    ".json",
+  ], "")
+}
+
+data publication_receipt_has_no_current_alias_note: String = "EVERY OTHER RECEIPT ON THIS ROW HAS A `current` SPELLING AND THIS ONE DELIBERATELY DOES NOT. The alias exists so a reader that knows only a node can find the live attempt's evidence without first reading the attempt key. Publication cannot be reached that way: its address contains the head, and a reader that does not know the head has no path to build regardless of which attempt directory it starts from.\\n\\nSo the alias would buy nothing and cost the thing this lane is for. A reader holding a head already had to establish it, and establishing a head means reading the attempt - at which point the attempt-keyed path is available and the alias is a second spelling of it. Keeping it would have made the symlink an alternative route to a file whose identity is a head, which is how a receipt for one attempt gets read as evidence for another."
 
 fn dispatch_attempt_validation_receipt_path_for_instance(
   instance: HostDashboardInstance,
@@ -1294,55 +1335,6 @@ fn dispatch_spawn_commands(node: RoadmapNode, session_uuid: String, attempt_key:
   )
 }
 
-fn parse_tmux_ls_windows(rest: String) -> Int {
-  let parts = split(s: rest, delimiter: " ")
-  match parts.first() {
-    Present { value: s } => match parse_int(s) {
-      Present { value: n } => n
-      Absent => 0
-    }
-    Absent => 0
-  }
-}
-
-fn parse_tmux_ls_line(line: String) -> TmuxLsEntry? {
-  let trimmed = trim(line)
-  if trimmed == "" {
-    none
-  } else {
-    let colon_parts = split(s: trimmed, delimiter: ":")
-    let name = match colon_parts.first() {
-      Present { value: s } => trim(s)
-      Absent => ""
-    }
-    if name == "" {
-      none
-    } else {
-      let rest = match colon_parts.skip(n: 1).first() {
-        Present { value: s } => trim(s)
-        Absent => ""
-      }
-      Present {
-        value: TmuxLsEntry {
-          session_name: name,
-          windows: parse_tmux_ls_windows(rest: rest),
-        },
-      }
-    }
-  }
-}
-
-fn parse_tmux_ls_output(output: String) -> List<TmuxLsEntry> {
-  fold(
-    split(s: output, delimiter: "\n"),
-    init: [],
-    f: (acc, line) => match parse_tmux_ls_line(line: line) {
-      Present { value: e } => append(acc, [e])
-      Absent => acc
-    },
-  )
-}
-
 fn filter_dispatch_tmux_sessions(entries: List<TmuxLsEntry>) -> List<TmuxLsEntry> {
   entries |> filter(e => starts_with(s: e.session_name, prefix: dispatch_tmux_session_prefix))
 }
@@ -1522,9 +1514,11 @@ fn dispatch_live_session_for_entry(entry: TmuxLsEntry) -> DispatchLiveSession {
   live_session_row(entry: entry, scope: scope)
 }
 
-fn dispatch_live_sessions(tmux_ls_output: String) -> List<DispatchLiveSession> {
-  let entries = filter_dispatch_tmux_sessions(entries: parse_tmux_ls_output(output: tmux_ls_output))
-  entries |> map(e => dispatch_live_session_for_entry(entry: e))
+fn dispatch_live_sessions_from_entries(
+  entries: List<TmuxLsEntry>,
+) -> List<DispatchLiveSession> {
+  filter_dispatch_tmux_sessions(entries: entries)
+  |> map(e => dispatch_live_session_for_entry(entry: e))
 }
 
 data dispatch_attempt_refs_note: String = "U3 (result surfacing): the attempt branches ARE the results ledger — every spawn mints dispatch/<node>-a<key> (U1), so listing refs/heads/dispatch/ observes every attempt ever made, including pre-attempt-grain LEGACY branches (attempt_key empty — the operator's accidental ts-authority-converge spawn is one), which are real attempts and render as such, never filtered as noise. Parse discriminates by the LAST -a segment being exactly 16 chars (the content-hash key width); a node id that itself ends in -a<16 chars> would misparse — accepted and named, not papered over: node ids are roadmap-authored and none has that shape. Empty-node branches are rejected before constructing DispatchAttemptRef, whose node and branch are non-empty by construction; malformed debris cannot invalidate the whole attempts projection. v0 renders branch NAMES (copyable, true), never tree links that would be dead until a push — a dead link is a fabricated result; the PR half lands when push/PR state is observed, not guessed."
@@ -1664,131 +1658,6 @@ fn tmux_list_panes_argv_for_instance(instance: HostDashboardInstance) -> HostExe
   )
 }
 
-type TmuxAttemptPaneEntry {
-  session_name: String
-  dead: Bool
-  exit_code: Int?
-  command: String
-}
-
-type TmuxAttemptPanesParse
-  = AttemptPanesParsed { panes: List<TmuxAttemptPaneEntry> }
-  | AttemptPanesParseRefused {
-      line_number: Int,
-      raw: String,
-      reason: String,
-    }
-
-type TmuxAttemptPanesFold {
-  panes: List<TmuxAttemptPaneEntry>
-  next_line_number: Int
-  refused: Bool
-  refused_line_number: Int
-  refused_raw: String
-  refused_reason: String
-}
-
-data tmux_attempt_pane_parse_note: String = "The attempt observer uses one exact tmux format with four tab-delimited fields: session_name, pane_dead, pane_dead_status, and pane_current_command. Parsing is total and fail-closed. A live pane must report dead=0; a retained pane must report dead=1 plus an integer exit status. The first malformed non-empty row refuses the whole observation with its 1-based line and raw evidence. No malformed row is dropped into an apparently-empty process set."
-
-fn tmux_attempt_pane_field(parts: List<String>, n: Int) -> String {
-  match parts.skip(n: n).first() {
-    Present { value } => value
-    Absent => ""
-  }
-}
-
-fn parse_tmux_attempt_pane_line(
-  line: String,
-) -> TmuxAttemptPaneEntry? {
-  let parts = split(s: line, delimiter: "\t")
-  let name = tmux_attempt_pane_field(parts: parts, n: 0)
-  let dead = tmux_attempt_pane_field(parts: parts, n: 1)
-  let status = tmux_attempt_pane_field(parts: parts, n: 2)
-  let command = tmux_attempt_pane_field(parts: parts, n: 3)
-  if count(parts) != 4 || name == "" {
-    none
-  } else if dead == "0" && status == "" {
-    Present { value: TmuxAttemptPaneEntry {
-      session_name: name,
-      dead: false,
-      exit_code: none,
-      command: command,
-    } }
-  } else if dead == "1" {
-    match parse_int(status) {
-      Present { value: code } =>
-        Present { value: TmuxAttemptPaneEntry {
-          session_name: name,
-          dead: true,
-          exit_code: Present { value: code },
-          command: command,
-        } }
-      Absent => none
-    }
-  } else {
-    none
-  }
-}
-
-fn parse_tmux_attempt_panes_output(
-  output: String,
-) -> TmuxAttemptPanesParse {
-  let lines = split(s: output, delimiter: "\n")
-  let state = fold(
-    lines,
-    init: TmuxAttemptPanesFold {
-      panes: [],
-      next_line_number: 1,
-      refused: false,
-      refused_line_number: 0,
-      refused_raw: "",
-      refused_reason: "",
-    },
-    f: fn(acc, line) {
-      if acc.refused || trim(line) == "" {
-        TmuxAttemptPanesFold {
-          panes: acc.panes,
-          next_line_number: acc.next_line_number + 1,
-          refused: acc.refused,
-          refused_line_number: acc.refused_line_number,
-          refused_raw: acc.refused_raw,
-          refused_reason: acc.refused_reason,
-        }
-      } else {
-        match parse_tmux_attempt_pane_line(line: line) {
-          Present { value: pane } =>
-            TmuxAttemptPanesFold {
-              panes: append(acc.panes, [pane]),
-              next_line_number: acc.next_line_number + 1,
-              refused: false,
-              refused_line_number: 0,
-              refused_raw: "",
-              refused_reason: "",
-            }
-          Absent =>
-            TmuxAttemptPanesFold {
-              panes: acc.panes,
-              next_line_number: acc.next_line_number + 1,
-              refused: true,
-              refused_line_number: acc.next_line_number,
-              refused_raw: line,
-              refused_reason: "expected four tab-delimited tmux attempt-pane fields with a valid dead/status pair",
-            }
-        }
-      }
-    },
-  )
-  if state.refused {
-    AttemptPanesParseRefused {
-      line_number: state.refused_line_number,
-      raw: state.refused_raw,
-      reason: state.refused_reason,
-    }
-  } else {
-    AttemptPanesParsed { panes: state.panes }
-  }
-}
-
 type DispatchSessionCleanup
   = DispatchStopRunningProcess { session_name: String }
   | DispatchClearRetainedSession {
@@ -1911,13 +1780,11 @@ fn live_session_row_with_process(
 }
 
 fn dispatch_live_sessions_with_process(
-  tmux_ls_output: String,
+  entries: List<TmuxLsEntry>,
   panes: List<TmuxAttemptPaneEntry>,
   pane_observation_refusal: String,
 ) -> List<DispatchLiveSession> {
-  filter_dispatch_tmux_sessions(
-    entries: parse_tmux_ls_output(output: tmux_ls_output),
-  )
+  filter_dispatch_tmux_sessions(entries: entries)
     |> map(entry => {
       let node_id = dispatch_node_id_from_session_name(
         session_name: entry.session_name)

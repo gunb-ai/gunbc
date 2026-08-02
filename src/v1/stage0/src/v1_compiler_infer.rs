@@ -2,12 +2,20 @@
 // Source module: v1.compiler.infer
 
 use self::DescentSizeExpr::*;
+pub use crate::extdeps_container_oci_digest::{
+    oci_other_digest_algorithm, oci_other_digest_encoded,
+};
 use crate::std_algebra::CollectionSizeEffect::ShrinkEffect;
 pub use crate::std_algebra::{CollectionSizeEffect, FreeMonoid};
 pub use crate::std_coercion::{dag_can_cast, is_dag_cast_domain_type};
 pub use crate::std_computation::ShrinkFactor;
 use crate::std_computation::ShrinkFactor::{ConstantShrink, ProportionalShrink, UnitShrink};
-pub use crate::std_content_hash::{content_hash_atom, content_hash_combine, content_hash_tagged};
+use crate::std_content_hash::ContentHash::*;
+pub use crate::std_content_hash::{
+    content_hash_atom, content_hash_combine_structural, content_hash_tagged_structural,
+    content_hash_validate_lower_hex_length,
+};
+pub use crate::std_content_hash::{ContentHash, Fnv1a64Structural};
 use crate::std_induction::RecursionShape::{
     DirectRecursion, ListRecursion, MapValueRecursion, OptionalRecursion, SetRecursion,
 };
@@ -35,7 +43,7 @@ pub use crate::std_termination::{
     positive_descent_amount_from_positive_int, proportional_divisor_from_int_at_least_two,
 };
 pub use crate::std_types::{container_param_name, is_kernel_type, kernel_type_set};
-pub use crate::std_types::{ContentHash, NonEmptyStr, SourceSpan};
+pub use crate::std_types::{NonEmptyStr, SourceSpan};
 pub use crate::v1_compiler_infer_access::AccessCheckResultNode;
 pub use crate::v1_compiler_infer_access::{check_index_access_node, check_slice_access_node};
 pub use crate::v1_compiler_infer_cycle::detect_type_cycles_kahn;
@@ -1002,7 +1010,7 @@ pub fn type_mismatch_error(
 pub fn seed_node_traversal_frontier() -> String {
     thread_local! {
         static CACHED: String = {
-            "\\u{1F7E1} dissolve-on: v1_seed_deleted_at_v2_self_host (opened 2026-07-31) — the v1 seed reads and recurses substrate Node storage directly instead of consuming a canonical traversal surface. Recorded as ONE frontier row for the CLASS, because that is the honest grain: the idiom is 16 self-recursive `children |> flat_map` sites on origin/main across 04_emit_info, 04_sigs, 04_infer, 05_emit, 05_emit_rust, compile and complexity (collect_type_names_from_node, named_type_vars_in_node, collect_value_ref_names and siblings), plus 579 direct Node-storage field reads in 04_infer alone. collect_explicit_return_values is the 17th instance, not a new class, and a per-function row would assert separable work that does not exist while 16 identical siblings carried none (codex reviews 45570, 45580, 45666). SIBLING COUNT IS NOT THE JUSTIFICATION and the reviewer is right to reject that reading — precedent is debt, not permission. The justification is that no canonical surface is REACHABLE here: fold_node and node_query are v2 substrate, no v1 seed module imports v2, and v1 COMPILES v2, so routing seed inference through v2's fold inverts the bootstrap; and no shared v1 walker exists to route through, because every v1 collector recurses itself. DESIGN's fold_node line is scoped to the 7 v2 stages. COST OF CLOSING NOW, which is why this is retained rather than accepted: building a v1-local generic traversal for one call site adds a 17th shape without removing any of the 16, and migrating all 17 is a seed-wide refactor of the stage that IS the traversal — against a seed whose declared endpoint is deletion. DISSOLVES WHEN the v1 seed is deleted at v2 self-host, at which point every row in this class goes with it; the same trigger compiler_diagnostic_seed_projection_note carries for the hand-Rust arms, because it is the same seed and the same endpoint.".to_string()
+            "🟡 dissolve-on: v1_seed_deleted_at_v2_self_host (opened 2026-07-31) — the v1 seed reads and recurses substrate Node storage directly instead of consuming a canonical traversal surface. Recorded as ONE frontier row for the CLASS, because that is the honest grain: the idiom is 16 self-recursive `children |> flat_map` sites on origin/main across 04_emit_info, 04_sigs, 04_infer, 05_emit, 05_emit_rust, compile and complexity (collect_type_names_from_node, named_type_vars_in_node, collect_value_ref_names and siblings), plus 579 direct Node-storage field reads in 04_infer alone. collect_explicit_return_values is the 17th instance, not a new class, and a per-function row would assert separable work that does not exist while 16 identical siblings carried none (codex reviews 45570, 45580, 45666). SIBLING COUNT IS NOT THE JUSTIFICATION and the reviewer is right to reject that reading — precedent is debt, not permission. The justification is that no canonical surface is REACHABLE here: fold_node and node_query are v2 substrate, no v1 seed module imports v2, and v1 COMPILES v2, so routing seed inference through v2's fold inverts the bootstrap; and no shared v1 walker exists to route through, because every v1 collector recurses itself. DESIGN's fold_node line is scoped to the 7 v2 stages. COST OF CLOSING NOW, which is why this is retained rather than accepted: building a v1-local generic traversal for one call site adds a 17th shape without removing any of the 16, and migrating all 17 is a seed-wide refactor of the stage that IS the traversal — against a seed whose declared endpoint is deletion. DISSOLVES WHEN the v1 seed is deleted at v2 self-host, at which point every row in this class goes with it; the same trigger compiler_diagnostic_seed_projection_note carries for the hand-Rust arms, because it is the same seed and the same endpoint.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -1915,7 +1923,13 @@ pub fn where_refinement_is_int_literal_predicate(pred_name: String) -> bool {
 }
 
 pub fn where_refinement_is_string_literal_predicate(pred_name: String) -> bool {
-    (pred_name.clone() == "non_empty".to_string())
+    (((((((pred_name.clone() == "non_empty".to_string())
+        || (pred_name.clone() == "lower_hex_64".to_string()))
+        || (pred_name.clone() == "lower_hex_40".to_string()))
+        || (pred_name.clone() == "lower_hex_128".to_string()))
+        || (pred_name.clone() == "lower_hex_16".to_string()))
+        || (pred_name.clone() == "oci_other_digest_algorithm".to_string()))
+        || (pred_name.clone() == "oci_other_digest_encoded".to_string()))
 }
 
 pub fn where_refinement_is_deferred_predicate(pred_name: String) -> bool {
@@ -1933,7 +1947,31 @@ pub fn decidable_where_string_predicate_holds(pred_name: String, value: String) 
     if (pred_name.clone() == "non_empty".to_string()) {
         Some((v1_rt::string_length(&value) > 0))
     } else {
-        None
+        if (pred_name.clone() == "lower_hex_64".to_string()) {
+            Some(content_hash_validate_lower_hex_length(value.clone(), 64))
+        } else {
+            if (pred_name.clone() == "lower_hex_40".to_string()) {
+                Some(content_hash_validate_lower_hex_length(value.clone(), 40))
+            } else {
+                if (pred_name.clone() == "lower_hex_128".to_string()) {
+                    Some(content_hash_validate_lower_hex_length(value.clone(), 128))
+                } else {
+                    if (pred_name.clone() == "lower_hex_16".to_string()) {
+                        Some(content_hash_validate_lower_hex_length(value.clone(), 16))
+                    } else {
+                        if (pred_name.clone() == "oci_other_digest_algorithm".to_string()) {
+                            Some(oci_other_digest_algorithm(value.clone()))
+                        } else {
+                            if (pred_name.clone() == "oci_other_digest_encoded".to_string()) {
+                                Some(oci_other_digest_encoded(value.clone()))
+                            } else {
+                                None
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -14668,19 +14706,19 @@ pub fn export_kind_of_item_kind(kind: ItemKind) -> Option<ExportKind> {
 pub fn fn_signature_fingerprint(
     item: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> NonEmptyStr {
+) -> Rc<Fnv1a64Structural> {
     {
         let params_acc = item.params.clone().iter().cloned().fold(
             content_hash_atom("v1-interface-fn-sig-v0".to_string()),
-            |acc: NonEmptyStr, p: Rc<Node>| {
-                content_hash_combine(
+            |acc: Rc<Fnv1a64Structural>, p: Rc<Node>| {
+                content_hash_combine_structural(
                     acc,
                     content_hash_atom(resolved_type_name(p.clone(), source_indices.clone())),
                 )
             },
         );
         match item.inferred.clone().as_deref().cloned() {
-            Some(InferredNode::Resolved { node: rt, .. }) => content_hash_combine(
+            Some(InferredNode::Resolved { node: rt, .. }) => content_hash_combine_structural(
                 params_acc.clone(),
                 content_hash_atom(authored_name_at(source_indices.clone(), rt.clone())),
             ),
@@ -14702,9 +14740,9 @@ pub fn export_entry_from_item(
                 ExportKind::ExportFn => Some(Rc::new(ExportEntry {
                     name: name.clone(),
                     kind: kind.clone(),
-                    contract: signature_contract(content_hash_tagged(
+                    contract: signature_contract(content_hash_tagged_structural(
                         "v1-interface-fn-sig-v0".to_string(),
-                        content_hash_combine(
+                        content_hash_combine_structural(
                             content_hash_atom(name.clone()),
                             fn_signature_fingerprint(item.clone(), source_indices.clone()),
                         ),
@@ -14714,9 +14752,9 @@ pub fn export_entry_from_item(
                     Some(binding) => Some(Rc::new(ExportEntry {
                         name: name.clone(),
                         kind: kind.clone(),
-                        contract: signature_contract(content_hash_tagged(
+                        contract: signature_contract(content_hash_tagged_structural(
                             "v1-interface-sig-v0".to_string(),
-                            content_hash_combine(
+                            content_hash_combine_structural(
                                 content_hash_atom(binding.name.clone()),
                                 content_hash_atom(authored_name_at(
                                     source_indices.clone(),

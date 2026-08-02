@@ -1,0 +1,84 @@
+module extdeps.tools.wc
+
+import std.types { FilePath, String, NonEmptyStr }
+import std.measure { ByteSize, byte_size_count }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.tools { CliTool, SourceCoreutils }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.gnu.org/software/coreutils/manual/html_node/wc-invocation.html"
+  }
+}
+
+data wc_cli_tool: CliTool = CliTool {
+  name: "wc",
+  min_version: none,
+  installable_via: [SourceCoreutils],
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.tools.wc",
+      decl_name: "wc_cli_tool",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps.tools.wc.extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+service wc.ByteCount {
+  operation File {
+    input { path: FilePath }
+    output {
+      stdout: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["wc", "--bytes", "{path}"] }
+  }
+}
+
+type FileByteCountRead
+  = FileByteCountObserved { count: Int }
+  | FileByteCountUnavailable { reason: NonEmptyStr }
+
+type FileByteCountVerification
+  = FileByteCountMatches
+  | FileByteCountDiffers {
+      observed_count: Int,
+      expected: ByteSize,
+    }
+  | FileByteCountVerificationUnavailable { reason: NonEmptyStr }
+
+fn file_byte_count_via_wc(path: FilePath) -> FileByteCountRead {
+  let read = wc.ByteCount.File(path: path)
+  if !read.success {
+    FileByteCountUnavailable { reason: "wc --bytes failed" as NonEmptyStr }
+  } else {
+    match parse_int(s: split(s: trim(read.stdout), delimiter: " ").first()) {
+      Present { value: n } => if n < 0 {
+        FileByteCountUnavailable { reason: "wc returned a negative byte count" as NonEmptyStr }
+      } else {
+        FileByteCountObserved { count: n }
+      }
+      Absent => FileByteCountUnavailable { reason: "wc byte count was not an integer" as NonEmptyStr }
+    }
+  }
+}
+
+fn verify_file_byte_count(read: FileByteCountRead, expected: ByteSize) -> FileByteCountVerification {
+  match read {
+    FileByteCountObserved { count } => if count == byte_size_count(expected) {
+      FileByteCountMatches
+    } else {
+      FileByteCountDiffers { observed_count: count, expected: expected }
+    }
+    FileByteCountUnavailable { reason } => FileByteCountVerificationUnavailable { reason: reason }
+  }
+}

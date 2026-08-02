@@ -6,7 +6,7 @@ type Gate
   | ExtdepsExternalAuthorityGate
   | DagCompileCleanGate
   | GeneratedArtifactDriftGate
-  | PublicationPlacementGate
+  | ExtdepsScopePlacementGate
   | SourceRootIngestGate
   | RegenVerifyGate
   | SelfHostReadsRealBytesGate

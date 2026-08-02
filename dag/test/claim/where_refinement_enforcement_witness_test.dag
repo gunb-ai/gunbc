@@ -132,6 +132,78 @@ fn w_non_empty_string_cast_literal_red() -> Bool {
   )
 }
 
+fn w_lower_hex_64_cast_literal_red() -> Bool {
+  compile_dag_rust_emit_check(
+    "module whereref_lower_hex_64_cast_red\nimport std.content_hash { Sha256DigestHex }\nfn bad() -> Sha256DigestHex { \"E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855\" as Sha256DigestHex }\n",
+    "src/whereref_lower_hex_64_cast_red.rs",
+    [],
+    []
+  )
+}
+
+fn w_lower_hex_64_cast_literal_green() -> Bool {
+  compile_dag_rust_emit_check(
+    "module whereref_lower_hex_64_cast_green\nimport std.content_hash { Sha256DigestHex }\nfn ok() -> Sha256DigestHex { \"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\" as Sha256DigestHex }\n",
+    "src/whereref_lower_hex_64_cast_green.rs",
+    [],
+    []
+  )
+}
+
+fn w_lower_hex_40_cast_literal_red() -> Bool {
+  compile_dag_rust_emit_check(
+    "module whereref_lower_hex_40_cast_red\nimport std.content_hash { Sha1DigestHex }\nfn bad() -> Sha1DigestHex { \"4B825DC642CB6EB9A060E54BF8D69288FBEE4904\" as Sha1DigestHex }\n",
+    "src/whereref_lower_hex_40_cast_red.rs",
+    [],
+    []
+  )
+}
+
+fn w_lower_hex_40_cast_literal_green() -> Bool {
+  compile_dag_rust_emit_check(
+    "module whereref_lower_hex_40_cast_green\nimport std.content_hash { Sha1DigestHex }\nfn ok() -> Sha1DigestHex { \"4b825dc642cb6eb9a060e54bf8d69288fbee4904\" as Sha1DigestHex }\n",
+    "src/whereref_lower_hex_40_cast_green.rs",
+    [],
+    []
+  )
+}
+
+fn w_lower_hex_16_cast_literal_red() -> Bool {
+  compile_dag_rust_emit_check(
+    "module whereref_lower_hex_16_cast_red\nimport std.content_hash { Fnv1a64StructuralDigestHex }\nfn bad() -> Fnv1a64StructuralDigestHex { \"0123456789abcde\" as Fnv1a64StructuralDigestHex }\n",
+    "src/whereref_lower_hex_16_cast_red.rs",
+    [],
+    []
+  )
+}
+
+fn w_lower_hex_16_cast_literal_green() -> Bool {
+  compile_dag_rust_emit_check(
+    "module whereref_lower_hex_16_cast_green\nimport std.content_hash { Fnv1a64StructuralDigestHex }\nfn ok() -> Fnv1a64StructuralDigestHex { \"0123456789abcdef\" as Fnv1a64StructuralDigestHex }\n",
+    "src/whereref_lower_hex_16_cast_green.rs",
+    [],
+    []
+  )
+}
+
+fn w_oci_other_digest_algorithm_cast_literal_red() -> Bool {
+  compile_dag_rust_emit_check(
+    "module whereref_oci_other_algo_red\nimport extdeps.container.oci.digest { OciOtherDigestAlgorithm }\nfn bad() -> OciOtherDigestAlgorithm { \"sha256\" as OciOtherDigestAlgorithm }\n",
+    "src/whereref_oci_other_algo_red.rs",
+    [],
+    []
+  )
+}
+
+fn w_oci_other_digest_algorithm_cast_literal_green() -> Bool {
+  compile_dag_rust_emit_check(
+    "module whereref_oci_other_algo_green\nimport extdeps.container.oci.digest { OciOtherDigestAlgorithm }\nfn ok() -> OciOtherDigestAlgorithm { \"sha384\" as OciOtherDigestAlgorithm }\n",
+    "src/whereref_oci_other_algo_green.rs",
+    [],
+    []
+  )
+}
+
 fn w_declaration_ref_empty_bind_red() -> Bool {
   compile_dag_rust_emit_check(
     "module whereref_declref_red\nimport std.decl_ref { DeclarationRef, WholeDeclaration }\ndata r: DeclarationRef = DeclarationRef { module_path: \"\", decl_name: \"\", field: WholeDeclaration }\n",
@@ -204,6 +276,38 @@ test fn where_refinement_cast_literal_discard_refuses() -> Bool {
 
 test fn where_refinement_cast_literal_non_empty_string_refuses() -> Bool {
   !w_non_empty_string_cast_literal_red()
+}
+
+test fn where_refinement_cast_literal_lower_hex_64_refuses() -> Bool {
+  !w_lower_hex_64_cast_literal_red()
+}
+
+test fn where_refinement_cast_literal_lower_hex_64_accepts() -> Bool {
+  w_lower_hex_64_cast_literal_green()
+}
+
+test fn where_refinement_cast_literal_lower_hex_40_refuses() -> Bool {
+  !w_lower_hex_40_cast_literal_red()
+}
+
+test fn where_refinement_cast_literal_lower_hex_40_accepts() -> Bool {
+  w_lower_hex_40_cast_literal_green()
+}
+
+test fn where_refinement_cast_literal_lower_hex_16_refuses() -> Bool {
+  !w_lower_hex_16_cast_literal_red()
+}
+
+test fn where_refinement_cast_literal_lower_hex_16_accepts() -> Bool {
+  w_lower_hex_16_cast_literal_green()
+}
+
+test fn where_refinement_cast_literal_oci_other_digest_algorithm_refuses() -> Bool {
+  !w_oci_other_digest_algorithm_cast_literal_red()
+}
+
+test fn where_refinement_cast_literal_oci_other_digest_algorithm_accepts() -> Bool {
+  w_oci_other_digest_algorithm_cast_literal_green()
 }
 
 test fn where_refinement_declaration_ref_empty_bind_refuses() -> Bool {

@@ -1,6 +1,6 @@
 module test.claim.roadmap_publish_witness_test
 
-import std.types { Bool, String, NonEmptyStr, Int, CommitSha, List }
+import std.types { Bool, String, NonEmptyStr, Int, CommitSha, List, HttpStatus }
 import extdeps.github.pulls { PullRequest, PullRequestRef, PullRequestState, Open }
 import extdeps.github.github { GitHubUser, UserType, User }
 import gunbc.roadmap_publish {
@@ -8,6 +8,9 @@ import gunbc.roadmap_publish {
   PullRequestObservation, PullRequestsRead, PullRequestsUnreadable,
   RemoteBranchObservation, RemoteBranchesRead, RemoteBranchesUnreadable,
   RemoteBranchReadFailure, RefAdvertisementRefused,
+  PullRequestReadFailure, render_pull_request_read_failure,
+  PullRequestCredentialUnavailable, PullRequestStatusRefused,
+  PullRequestTransportRefused, PullRequestBodyUndecodable,
   PublicationOutcome,
   PublicationBound, PublicationHeadDiverged, PublicationBindingAmbiguous,
   RemoteBranchAtExpectedHeadWithoutPullRequest, RemoteBranchHeadDiverged,
@@ -16,6 +19,36 @@ import gunbc.roadmap_publish {
   adjudicate_publication,
   publication_detail,
   publication_offers_the_expected_head,
+  PublicationSubject,
+  PublicationReceipt,
+  PublicationReceiptOutcome,
+  ReceiptBound, ReceiptHeadDiverged, ReceiptBindingAmbiguous,
+  ReceiptRemoteBranchAtHeadWithoutPullRequest, ReceiptRemoteBranchHeadDiverged,
+  ReceiptRemoteBranchBindingAmbiguous, ReceiptBranchNotPublished,
+  ReceiptObservationRefused,
+  publication_receipt_of,
+  publication_receipt_outcome_key,
+  publication_receipt_json,
+  publication_subject_json,
+  publication_receipt_decode,
+  publication_receipt_schema,
+  PublicationReceiptDecode,
+  ReceiptDecoded, ReceiptUndecodable,
+  PublicationEvidence,
+  EvidenceForSubject, EvidenceAbsent, EvidenceUnreadable, EvidenceForAnotherSubject,
+  PublicationReceiptSource,
+  ReceiptSourceAbsent, ReceiptSourcePresent, ReceiptSourceUnreadable,
+  publication_evidence_for,
+}
+import extdeps.github.github { Repository, github_https_clone_url }
+import extdeps.languages.json.emit {
+  JsonValue,
+  json_string,
+  json_int,
+  json_bool,
+  json_object,
+  json_kv,
+  serialize_json,
 }
 
 data witness_scope_note: String = "What is claimed is the ADJUDICATION, not the fetch. adjudicate_publication is pure and total over observations the caller already holds, so every arm is reachable with no network and no token.\\n\\nWhat is NOT claimed, stated so the bound is visible: nothing here executes github.Pulls or git. A change that broke the reads while leaving the adjudication intact would keep these green. What the coproduct inputs buy is that a broken read is now REPRESENTABLE — the caller reports it and the refusal arm is exercised here — where an earlier cut could only raise."
@@ -301,11 +334,19 @@ data refusal_is_not_absence_note: String = "AN UNREADABLE OBSERVATION MUST NOT R
 
 test fn unreadable_pull_requests_refuse_rather_than_report_unpublished() -> Bool {
   match adjudicate_with(
-    pulls: PullRequestsUnreadable { detail: "401 from the forge" },
+    pulls: PullRequestsUnreadable {
+      cause: PullRequestStatusRefused {
+        repository: "gunb-ai/gunbc",
+        status: 401,
+        body: "Bad credentials",
+      },
+    },
     remotes: RemoteBranchesRead { branches: [] },
   ) {
     PublicationObservationRefused { detail } =>
-      string_contains(s: detail, pattern: "401 from the forge")
+      string_contains(s: detail, pattern: "401")
+        && string_contains(s: detail, pattern: "Bad credentials")
+        && string_contains(s: detail, pattern: "gunb-ai/gunbc")
     BranchNotPublished { branch: _, remote_branches_seen: _ } => false
     RemoteBranchAtExpectedHeadWithoutPullRequest { branch: _, head_sha: _ } => false
     RemoteBranchHeadDiverged { branch: _, remote_head: _, expected_head: _ } => false
@@ -345,7 +386,12 @@ test fn only_a_bound_pull_request_offers_the_expected_head() -> Bool {
     },
   )
   let refused = adjudicate_with(
-    pulls: PullRequestsUnreadable { detail: "no token" },
+    pulls: PullRequestsUnreadable {
+      cause: PullRequestCredentialUnavailable {
+        repository: "gunb-ai/gunbc",
+        reason: "GITHUB_TOKEN is not set in the belt's environment",
+      },
+    },
     remotes: RemoteBranchesRead { branches: [] },
   )
   publication_offers_the_expected_head(outcome: bound)
@@ -376,4 +422,581 @@ test fn the_bound_detail_distinguishes_draft_from_ready() -> Bool {
   string_contains(s: as_draft, pattern: "draft pull request #22")
     && !string_contains(s: as_ready, pattern: "draft")
     && string_contains(s: as_ready, pattern: "pull request #22")
+}
+
+data receipt_witness_scope_note: String = "What is claimed here is the RECEIPT ROUND TRIP - that what publication_receipt_json writes, publication_receipt_decode reads back with the same outcome AND the same subject, and that a document this emitter did not write refuses rather than decoding to something plausible.\\n\\nThe discriminating pair is deliberate: two receipts that differ ONLY in expected_head must decode to different subjects. A receipt format that dropped the subject would pass every positive claim above and fail that one, which is why it is here rather than left to inspection."
+
+
+data fixture_repository: Repository = Repository {
+  owner: "gunb-ai",
+  name: "gunbc",
+  full_name: "gunb-ai/gunbc",
+  private: false,
+  default_branch: "main",
+}
+
+data fixture_other_repository: Repository = Repository {
+  owner: "gunb-ai",
+  name: "not-gunbc",
+  full_name: "gunb-ai/not-gunbc",
+  private: false,
+  default_branch: "main",
+}
+
+fn subject_for(head: CommitSha) -> PublicationSubject {
+  PublicationSubject {
+    node_id: "some-node",
+    attempt_key: "a7",
+    repository: fixture_repository,
+    branch: fixture_branch,
+    expected_base: fixture_base,
+    expected_head: head,
+  }
+}
+
+fn receipt_for(outcome: PublicationOutcome, head: CommitSha) -> String {
+  publication_receipt_json(
+    receipt: publication_receipt_of(subject: subject_for(head: head), outcome: outcome),
+  )
+}
+
+fn bound_outcome() -> PublicationOutcome {
+  adjudicate_with(
+    pulls: one_pull(sha: fixture_expected, draft: false),
+    remotes: remotes_deliberately_unreadable(),
+  )
+}
+
+fn diverged_outcome() -> PublicationOutcome {
+  adjudicate_with(
+    pulls: one_pull(sha: fixture_older, draft: false),
+    remotes: remotes_deliberately_unreadable(),
+  )
+}
+
+test fn the_clone_url_names_the_repository_not_a_local_alias() -> Bool {
+  let url = github_https_clone_url(repo: fixture_repository) as String
+  url == "https://github.com/gunb-ai/gunbc.git" && url != "origin"
+}
+
+test fn a_receipt_round_trips_its_outcome_and_its_subject() -> Bool {
+  match publication_receipt_decode(
+    receipt: receipt_for(outcome: bound_outcome(), head: fixture_expected),
+  ) {
+    ReceiptUndecodable { reason: _ } => false
+    ReceiptDecoded { receipt } =>
+      receipt.subject.node_id == "some-node"
+        && receipt.subject.attempt_key == "a7"
+        && receipt.subject.repository.owner == "gunb-ai"
+        && receipt.subject.repository.name == "gunbc"
+        && receipt.subject.branch == fixture_branch
+        && receipt.subject.expected_base == fixture_base
+        && (receipt.subject.expected_head as String) == (fixture_expected as String)
+        && (publication_receipt_outcome_key(outcome: receipt.outcome) as String) == "publication-bound"
+  }
+}
+
+data receipt_preserves_the_binding_note: String = "THIS IS THE CLAIM THE EARLIER RECEIPT FORMAT COULD NOT MAKE, and the reason the schema went to v2. Review's entire input is the pull-request binding publication established: a number and a head. The previous format serialized an outcome key and a rendered English sentence, so a Review producer could recover the number only by parsing prose or by asking GitHub a second time - and a second query can disagree with the first, which is the divergence this lane exists to catch, reintroduced by the carrier meant to record it.\\n\\nSo this asserts the FIELDS survive the round trip, not that a string mentions them."
+
+test fn a_bound_receipt_preserves_the_pull_request_binding() -> Bool {
+  match publication_receipt_decode(
+    receipt: receipt_for(outcome: bound_outcome(), head: fixture_expected),
+  ) {
+    ReceiptUndecodable { reason: _ } => false
+    ReceiptDecoded { receipt } =>
+      match receipt.outcome {
+        ReceiptBound { pr_number, url, draft } =>
+          pr_number == 22
+            && (receipt.subject.expected_head as String) == (fixture_expected as String)
+            && (url as String) == "https://github.com/gunb-ai/gunbc/pull/1"
+            && !draft
+        ReceiptHeadDiverged { pr_number: _, pr_head: _, url: _ } => false
+        ReceiptBindingAmbiguous { pr_numbers: _ } => false
+        ReceiptRemoteBranchAtHeadWithoutPullRequest { head_sha: _ } => false
+        ReceiptRemoteBranchHeadDiverged { remote_head: _ } => false
+        ReceiptRemoteBranchBindingAmbiguous { refs_matched: _ } => false
+        ReceiptBranchNotPublished { remote_branches_seen: _ } => false
+        ReceiptObservationRefused { detail: _ } => false
+      }
+  }
+}
+
+test fn a_diverged_receipt_preserves_the_head_that_was_offered() -> Bool {
+  match publication_receipt_decode(
+    receipt: receipt_for(outcome: diverged_outcome(), head: fixture_expected),
+  ) {
+    ReceiptUndecodable { reason: _ } => false
+    ReceiptDecoded { receipt } =>
+      match receipt.outcome {
+        ReceiptHeadDiverged { pr_number, pr_head, url: _ } =>
+          pr_number == 22
+            && (pr_head as String) == (fixture_older as String)
+            && (pr_head as String) != (receipt.subject.expected_head as String)
+        ReceiptBound { pr_number: _, url: _, draft: _ } => false
+        ReceiptBindingAmbiguous { pr_numbers: _ } => false
+        ReceiptRemoteBranchAtHeadWithoutPullRequest { head_sha: _ } => false
+        ReceiptRemoteBranchHeadDiverged { remote_head: _ } => false
+        ReceiptRemoteBranchBindingAmbiguous { refs_matched: _ } => false
+        ReceiptBranchNotPublished { remote_branches_seen: _ } => false
+        ReceiptObservationRefused { detail: _ } => false
+      }
+  }
+}
+
+test fn a_receipt_records_the_head_that_was_asked_about() -> Bool {
+  match publication_receipt_decode(
+    receipt: receipt_for(outcome: bound_outcome(), head: fixture_expected),
+  ) {
+    ReceiptUndecodable { reason: _ } => false
+    ReceiptDecoded { receipt: r1 } =>
+      match publication_receipt_decode(
+        receipt: receipt_for(outcome: bound_outcome(), head: fixture_older),
+      ) {
+        ReceiptUndecodable { reason: _ } => false
+        ReceiptDecoded { receipt: r2 } =>
+          publication_receipt_outcome_key(outcome: r1.outcome) == publication_receipt_outcome_key(outcome: r2.outcome)
+            && (r1.subject.expected_head as String) != (r2.subject.expected_head as String)
+      }
+  }
+}
+
+data one_head_per_bound_receipt_note: String = "THE DEFECT THIS REFUSES, stated as the shape of the document rather than as a rule: a receipt that names THIS subject and simultaneously binds a DIFFERENT pull-request head. Under the earlier cut ReceiptBound carried its own pr_head and the decoder read it independently of the subject, so such a document decoded cleanly, matched the subject on all six subject fields, and completed publication for a head no pull request offered - the exact class this lane exists to catch, walked in through the carrier meant to record it. Reported by review 46116.\\n\\nWHY THERE IS NO CHECK TO TEST: the field is gone. A bound receipt has exactly one head, subject.expected_head, so the contradictory document cannot be constructed in this language at all - the fix is DESIGN section 5 construction, not validation, and the state is unwritable rather than rejected.\\n\\nWHAT THIS CLAIM THEREFORE ASSERTS, since an unwritable state cannot be handed to a decoder: a document carrying a STRAY pr_head inside its bound outcome - the doctored shape the old encoder would have produced - answers with the SUBJECT's head and never the stray one. Under the old code this returned the stray head; under this one the stray member has no meaning to read. The stray sha here is deliberately the other fixture, so the claim goes red if any reading of the outcome's head is ever restored."
+
+fn doctored_bound_receipt_carrying_a_stray_head() -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "schema", value: json_string(s: publication_receipt_schema as String)),
+    json_kv(key: "subject", value: publication_subject_json(subject: subject_for(head: fixture_expected))),
+    json_kv(key: "outcome", value: json_object(members: [
+      json_kv(key: "kind", value: json_string(s: "publication-bound")),
+      json_kv(key: "pr_number", value: json_int(n: 22)),
+      json_kv(key: "pr_head", value: json_string(s: fixture_older as String)),
+      json_kv(key: "url", value: json_string(s: "https://github.com/gunb-ai/gunbc/pull/1")),
+      json_kv(key: "draft", value: json_bool(b: false)),
+    ])),
+  ]))
+}
+
+test fn a_bound_receipt_binds_the_subject_head_and_no_other() -> Bool {
+  match publication_receipt_decode(receipt: doctored_bound_receipt_carrying_a_stray_head()) {
+    ReceiptUndecodable { reason: _ } => false
+    ReceiptDecoded { receipt } =>
+      (receipt.subject.expected_head as String) == (fixture_expected as String)
+        && (receipt.subject.expected_head as String) != (fixture_older as String)
+        && publication_receipt_outcome_key(outcome: receipt.outcome) == "publication-bound"
+  }
+}
+
+test fn a_stray_head_cannot_make_a_receipt_evidence_for_the_head_it_names() -> Bool {
+  match publication_evidence_for(
+    expected: subject_for(head: fixture_older),
+    source: ReceiptSourcePresent { text: doctored_bound_receipt_carrying_a_stray_head() },
+  ) {
+    EvidenceForSubject { receipt: _ } => false
+    EvidenceAbsent => false
+    EvidenceUnreadable { reason: _ } => false
+    EvidenceForAnotherSubject { field, expected: _, found: _ } =>
+      (field as String) == "expected_head"
+  }
+}
+
+test fn a_foreign_schema_refuses_rather_than_decoding() -> Bool {
+  match publication_receipt_decode(
+    receipt: "\{\"schema\": \"roadmap-validation-receipt/v1\", \"outcome\": \{\"kind\": \"publication-bound\"\}\}",
+  ) {
+    ReceiptDecoded { receipt: _ } => false
+    ReceiptUndecodable { reason: r } =>
+      string_contains(s: r, pattern: publication_receipt_schema as String)
+  }
+}
+
+data v1_receipt_is_refused_note: String = "THE VERSION IS A WALL, NOT A HINT, and this is the claim that makes it one. A v1 document carries an outcome key and a rendered sentence; the fields Review needs were never written into it, so there is no reading of a v1 receipt as a v2 receipt with absent optional members. Accepting one would hand a consumer a receipt whose pull-request binding does not exist while looking entirely well-formed.\\n\\nThe schema string in the fixture below is the real v1 spelling, so this claim goes red the moment the decoder is loosened to accept it."
+
+test fn a_v1_receipt_refuses_rather_than_decoding_without_its_binding() -> Bool {
+  match publication_receipt_decode(
+    receipt: "\{\"schema\": \"roadmap-publication-receipt/v1\", \"outcome\": \"publication-bound\", \"detail\": \"d\", \"repository\": \"r\", \"branch\": \"b\", \"expected_head\": \"h\"\}",
+  ) {
+    ReceiptDecoded { receipt: _ } => false
+    ReceiptUndecodable { reason: r } =>
+      string_contains(s: r, pattern: publication_receipt_schema as String)
+  }
+}
+
+test fn an_outcome_kind_this_emitter_never_writes_refuses() -> Bool {
+  match publication_receipt_decode(
+    receipt: "\{\"schema\": \"roadmap-publication-receipt/v2\", \"subject\": \{\"node_id\": \"n\", \"attempt_key\": \"a\", \"repository\": \{\"owner\": \"o\", \"name\": \"r\", \"full_name\": \"o/r\", \"private\": false, \"default_branch\": \"main\"\}, \"branch\": \"b\", \"expected_base\": \"main\", \"expected_head\": \"h\"\}, \"outcome\": \{\"kind\": \"published-ok\"\}\}",
+  ) {
+    ReceiptDecoded { receipt: _ } => false
+    ReceiptUndecodable { reason: r } => string_contains(s: r, pattern: "published-ok")
+  }
+}
+
+test fn a_bound_outcome_missing_its_pull_request_number_refuses() -> Bool {
+  match publication_receipt_decode(
+    receipt: "\{\"schema\": \"roadmap-publication-receipt/v2\", \"subject\": \{\"node_id\": \"n\", \"attempt_key\": \"a\", \"repository\": \{\"owner\": \"o\", \"name\": \"r\", \"full_name\": \"o/r\", \"private\": false, \"default_branch\": \"main\"\}, \"branch\": \"b\", \"expected_base\": \"main\", \"expected_head\": \"h\"\}, \"outcome\": \{\"kind\": \"publication-bound\", \"pr_head\": \"h\", \"url\": \"u\", \"draft\": false\}\}",
+  ) {
+    ReceiptDecoded { receipt: _ } => false
+    ReceiptUndecodable { reason: r } =>
+      string_contains(s: r, pattern: "publication-bound")
+        && string_contains(s: r, pattern: "pr_number")
+  }
+}
+
+data ambiguous_set_round_trips_note: String = "AN AMBIGUITY WHOSE MEMBERS ARE GONE IS NOT AN AMBIGUITY ANYONE CAN RESOLVE, and the decoder used to answer this arm with an empty list - discarding the very numbers the encoder had written. A receipt recording that two pull requests matched decoded to one recording that none did, reporting the same outcome kind, and every claim that checked only the kind stayed green."
+
+test fn an_ambiguous_binding_round_trips_its_pull_request_numbers() -> Bool {
+  match publication_receipt_decode(
+    receipt: publication_receipt_json(
+      receipt: publication_receipt_of(
+        subject: subject_for(head: fixture_expected),
+        outcome: adjudicate_with(
+          pulls: PullRequestsRead {
+            pulls: [
+              fixture_pull(
+                number: 11,
+                branch: fixture_branch as String,
+                base: fixture_base as String,
+                sha: fixture_expected,
+                draft: false,
+              ),
+              fixture_pull(
+                number: 12,
+                branch: fixture_branch as String,
+                base: fixture_base as String,
+                sha: fixture_expected,
+                draft: false,
+              ),
+            ],
+          },
+          remotes: remotes_deliberately_unreadable(),
+        ),
+      ),
+    ),
+  ) {
+    ReceiptUndecodable { reason: _ } => false
+    ReceiptDecoded { receipt } =>
+      match receipt.outcome {
+        ReceiptBindingAmbiguous { pr_numbers } =>
+          count(pr_numbers) == 2
+            && pr_numbers.first() == 11
+        ReceiptBound { pr_number: _, url: _, draft: _ } => false
+        ReceiptHeadDiverged { pr_number: _, pr_head: _, url: _ } => false
+        ReceiptRemoteBranchAtHeadWithoutPullRequest { head_sha: _ } => false
+        ReceiptRemoteBranchHeadDiverged { remote_head: _ } => false
+        ReceiptRemoteBranchBindingAmbiguous { refs_matched: _ } => false
+        ReceiptBranchNotPublished { remote_branches_seen: _ } => false
+        ReceiptObservationRefused { detail: _ } => false
+      }
+  }
+}
+
+data repository_round_trips_note: String = "THE DECODER USED TO REBUILD THE REPOSITORY IT DID NOT STORE - full_name by concatenation, private as false, and default_branch from the subject's expected_base. For this repository the base IS the default branch, so the round trip compared equal and nothing looked wrong. This claim uses a subject whose base is NOT the default branch, which is the case that would have produced a repository nobody recorded and a false wrong-subject refusal in the one function whose job is to tell those apart."
+
+test fn a_subject_against_a_non_default_base_still_round_trips_its_repository() -> Bool {
+  let subject = PublicationSubject {
+    node_id: "some-node",
+    attempt_key: "a7",
+    repository: fixture_repository,
+    branch: fixture_branch,
+    expected_base: "release-2026-08" as NonEmptyStr,
+    expected_head: fixture_expected,
+  }
+  let text = publication_receipt_json(
+    receipt: publication_receipt_of(subject: subject, outcome: bound_outcome()),
+  )
+  match publication_receipt_decode(receipt: text) {
+    ReceiptUndecodable { reason: _ } => false
+    ReceiptDecoded { receipt } =>
+      receipt.subject.repository.default_branch == "main"
+        && (receipt.subject.expected_base as String) == "release-2026-08"
+        && receipt.subject.repository.full_name == "gunb-ai/gunbc"
+        && match publication_evidence_for(
+             expected: subject,
+             source: ReceiptSourcePresent { text: text },
+           ) {
+             EvidenceForSubject { receipt: _ } => true
+             EvidenceAbsent => false
+             EvidenceUnreadable { reason: _ } => false
+             EvidenceForAnotherSubject { field: _, expected: _, found: _ } => false
+           }
+  }
+}
+
+test fn a_receipt_missing_its_subject_refuses() -> Bool {
+  match publication_receipt_decode(
+    receipt: "\{\"schema\": \"roadmap-publication-receipt/v2\", \"outcome\": \{\"kind\": \"branch-not-published\", \"remote_branches_seen\": 0\}\}",
+  ) {
+    ReceiptDecoded { receipt: _ } => false
+    ReceiptUndecodable { reason: r } => string_contains(s: r, pattern: "subject")
+  }
+}
+
+test fn a_receipt_that_is_not_json_refuses() -> Bool {
+  match publication_receipt_decode(receipt: "not a receipt") {
+    ReceiptDecoded { receipt: _ } => false
+    ReceiptUndecodable { reason: r } =>
+      string_contains(s: r, pattern: "complete JSON value")
+  }
+}
+
+data subject_check_witness_note: String = "THE NEGATIVE HALF IS THE POINT. A claim that a bound receipt paints the lamp green proves only that the happy path works; it would stay green under the exact defect this rewrite exists to remove, which is a consumer that finds a receipt at a path and trusts it.\\n\\nSo each claim below pairs one receipt with TWO expectations - the subject it was written for, and a subject differing in exactly one field - and asserts that the first is evidence and the second is not. Six fields, six ways to be about the wrong question, and heads are only one of them: attempt keys and node ids collide far more readily than shas do, so a head-only comparison would pass these claims and still be wrong."
+
+fn evidence_for_subject_of(expected: PublicationSubject, receipt: String) -> PublicationEvidence {
+  publication_evidence_for(
+    expected: expected,
+    source: ReceiptSourcePresent { text: receipt },
+  )
+}
+
+fn is_evidence(e: PublicationEvidence) -> Bool {
+  match e {
+    EvidenceForSubject { receipt: _ } => true
+    EvidenceAbsent => false
+    EvidenceUnreadable { reason: _ } => false
+    EvidenceForAnotherSubject { field: _, expected: _, found: _ } => false
+  }
+}
+
+fn differing_field(e: PublicationEvidence) -> String {
+  match e {
+    EvidenceForAnotherSubject { field, expected: _, found: _ } => field as String
+    EvidenceForSubject { receipt: _ } => ""
+    EvidenceAbsent => ""
+    EvidenceUnreadable { reason: _ } => ""
+  }
+}
+
+test fn a_receipt_is_evidence_for_the_subject_it_was_written_for() -> Bool {
+  is_evidence(
+    e: evidence_for_subject_of(
+      expected: subject_for(head: fixture_expected),
+      receipt: receipt_for(outcome: bound_outcome(), head: fixture_expected),
+    ),
+  )
+}
+
+test fn a_receipt_for_another_head_is_not_evidence_for_this_one() -> Bool {
+  let e = evidence_for_subject_of(
+    expected: subject_for(head: fixture_older),
+    receipt: receipt_for(outcome: bound_outcome(), head: fixture_expected),
+  )
+  !is_evidence(e: e) && differing_field(e: e) == "expected_head"
+}
+
+test fn a_receipt_for_another_node_is_not_evidence_for_this_one() -> Bool {
+  let expected = PublicationSubject {
+    node_id: "another-node",
+    attempt_key: "a7",
+    repository: fixture_repository,
+    branch: fixture_branch,
+    expected_base: fixture_base,
+    expected_head: fixture_expected,
+  }
+  let e = evidence_for_subject_of(
+    expected: expected,
+    receipt: receipt_for(outcome: bound_outcome(), head: fixture_expected),
+  )
+  !is_evidence(e: e) && differing_field(e: e) == "node_id"
+}
+
+test fn a_receipt_for_another_attempt_of_this_node_is_not_evidence() -> Bool {
+  let expected = PublicationSubject {
+    node_id: "some-node",
+    attempt_key: "a8",
+    repository: fixture_repository,
+    branch: fixture_branch,
+    expected_base: fixture_base,
+    expected_head: fixture_expected,
+  }
+  let e = evidence_for_subject_of(
+    expected: expected,
+    receipt: receipt_for(outcome: bound_outcome(), head: fixture_expected),
+  )
+  !is_evidence(e: e) && differing_field(e: e) == "attempt_key"
+}
+
+data repository_identity_is_owner_and_name_note: String = "THE REPOSITORY IS COMPARED BY ITS IDENTITY, WHICH IS OWNER AND NAME, and the refusal names which half differs rather than saying `repository`. Those are different situations for a reader: a different owner usually means a fork or another organization, while a different name under the same owner usually means the receipt is about a sibling repository - and the remedies diverge from there. The receipt also records full_name, private and default_branch, which are ATTRIBUTES the judgment was made against rather than identity, so they round trip and are not part of the match."
+
+test fn a_receipt_about_a_repository_of_another_name_is_not_evidence() -> Bool {
+  let expected = PublicationSubject {
+    node_id: "some-node",
+    attempt_key: "a7",
+    repository: fixture_other_repository,
+    branch: fixture_branch,
+    expected_base: fixture_base,
+    expected_head: fixture_expected,
+  }
+  let e = evidence_for_subject_of(
+    expected: expected,
+    receipt: receipt_for(outcome: bound_outcome(), head: fixture_expected),
+  )
+  !is_evidence(e: e) && differing_field(e: e) == "repository_name"
+}
+
+test fn a_receipt_about_another_owners_repository_is_not_evidence() -> Bool {
+  let expected = PublicationSubject {
+    node_id: "some-node",
+    attempt_key: "a7",
+    repository: Repository {
+      owner: "someone-else",
+      name: "gunbc",
+      full_name: "someone-else/gunbc",
+      private: false,
+      default_branch: "main",
+    },
+    branch: fixture_branch,
+    expected_base: fixture_base,
+    expected_head: fixture_expected,
+  }
+  let e = evidence_for_subject_of(
+    expected: expected,
+    receipt: receipt_for(outcome: bound_outcome(), head: fixture_expected),
+  )
+  !is_evidence(e: e) && differing_field(e: e) == "repository_owner"
+}
+
+test fn a_receipt_against_another_base_is_not_evidence() -> Bool {
+  let expected = PublicationSubject {
+    node_id: "some-node",
+    attempt_key: "a7",
+    repository: fixture_repository,
+    branch: fixture_branch,
+    expected_base: "release" as NonEmptyStr,
+    expected_head: fixture_expected,
+  }
+  let e = evidence_for_subject_of(
+    expected: expected,
+    receipt: receipt_for(outcome: bound_outcome(), head: fixture_expected),
+  )
+  !is_evidence(e: e) && differing_field(e: e) == "expected_base"
+}
+
+data three_worlds_note: String = "Three inputs that a Bool carrier collapsed into one answer, and the correct answers are not the same. Absent means nothing was ever written for this head - go observe. Present-and-empty means somebody wrote a file and its content is gone, which is a fault, not a report that nothing was published. Present-and-garbage is the same fault with different bytes. Only the first permits the producer to write, so this claim asserts the FIRST is absent and the other two are refusals - it is the discriminator for review 46148 at the pure layer, and it goes red if empty ever reads as absent again."
+
+test fn an_absent_receipt_is_absent_and_present_but_unusable_ones_refuse() -> Bool {
+  let absent = publication_evidence_for(
+    expected: subject_for(head: fixture_expected),
+    source: ReceiptSourceAbsent,
+  )
+  let empty = publication_evidence_for(
+    expected: subject_for(head: fixture_expected),
+    source: ReceiptSourcePresent { text: "   " },
+  )
+  let garbage = publication_evidence_for(
+    expected: subject_for(head: fixture_expected),
+    source: ReceiptSourcePresent { text: "not a receipt" },
+  )
+  let faulted = publication_evidence_for(
+    expected: subject_for(head: fixture_expected),
+    source: ReceiptSourceUnreadable { detail: "input/output error" },
+  )
+  evidence_key(e: absent) == "absent"
+    && evidence_key(e: empty) == "unreadable"
+    && evidence_key(e: garbage) == "unreadable"
+    && evidence_key(e: faulted) == "unreadable"
+}
+
+fn evidence_key(e: PublicationEvidence) -> String {
+  match e {
+    EvidenceAbsent => "absent"
+    EvidenceUnreadable { reason: _ } => "unreadable"
+    EvidenceForSubject { receipt: _ } => "for-subject"
+    EvidenceForAnotherSubject { field: _, expected: _, found: _ } => "another-subject"
+  }
+}
+
+data four_causes_stay_four_note: String = "THE COLLAPSE THIS FILE MUST KEEP FAILING TO PRODUCE. PullRequestsUnreadable used to carry a single detail String, and the four failures that reach it were flattened into prose at the point of construction. A caller could then only re-derive which one it held by matching on substrings, which is the classifier-by-substring move DESIGN removes - and the case that matters most is the most decidable one: a 401 is the single clearest failure in this path and would have arrived as the least tractable kind of value.\\n\\nWHAT THIS ASSERTS, and why the key projection rather than the sentence: render_pull_request_read_failure is a PROJECTION of the cause, so asserting only its text would let a future edit collapse two arms into one sentence while both still typechecked, and the claim would stay green. Matching the coproduct gives four distinct keys, so a collapse is a compile error rather than a silently identical string. The rendering is asserted SEPARATELY below, for the facts a reader of the refusal actually needs.\\n\\nWHY NO ARM IS OMITTED: each is reachable from a different producer state - a credential decided locally before any request, a status a remote authority chose, an exchange that never produced a status, and a payload that arrived and could not be decoded. Three of the four were unreachable through the real transport until the REST outcome became data, which is why they are witnessed here rather than assumed."
+
+fn pull_request_failure_key(cause: PullRequestReadFailure) -> String {
+  match cause {
+    PullRequestCredentialUnavailable { repository: _, reason: _ } => "credential"
+    PullRequestStatusRefused { repository: _, status: _, body: _ } => "status"
+    PullRequestTransportRefused { repository: _, cause: _ } => "transport"
+    PullRequestBodyUndecodable { repository: _, status: _, cause: _ } => "body"
+  }
+}
+
+fn fixture_repository_name() -> String { "gunb-ai/gunbc" }
+
+fn fixture_pull_request_failures() -> List<PullRequestReadFailure> {
+  [
+    PullRequestCredentialUnavailable {
+      repository: fixture_repository_name(),
+      reason: "GITHUB_TOKEN is not set in the belt's environment",
+    },
+    PullRequestStatusRefused {
+      repository: fixture_repository_name(),
+      status: 401,
+      body: "Bad credentials",
+    },
+    PullRequestTransportRefused {
+      repository: fixture_repository_name(),
+      cause: "connection refused" as NonEmptyStr,
+    },
+    PullRequestBodyUndecodable {
+      repository: fixture_repository_name(),
+      status: 200,
+      cause: "response body was not valid utf-8" as NonEmptyStr,
+    },
+  ]
+}
+
+test fn four_pull_request_read_failures_stay_four_distinct_causes() -> Bool {
+  let keys = map(fixture_pull_request_failures(), c => pull_request_failure_key(cause: c))
+  count(keys) == 4
+    && count(filter(keys, k => k == "credential")) == 1
+    && count(filter(keys, k => k == "status")) == 1
+    && count(filter(keys, k => k == "transport")) == 1
+    && count(filter(keys, k => k == "body")) == 1
+}
+
+data refusal_names_the_operation_not_the_url_note: String = "THE RENDERER NAMES github.Pulls.List THROUGH ITS OperationRef, following the discipline ls_remote_operation_ref_note derives for the sibling reader: a path-and-query spelling is ONE realization of an operation and changes when the invocation is derived, while the operation identity does not. So a refusal that quoted /repos/OWNER/REPO/pulls would carry a fact with a shorter shelf life than the failure it describes.\\n\\nEACH ARM MUST ALSO CARRY WHAT ITS OWN REMEDY NEEDS, which is why this asserts fields rather than just the operation label. A status refusal is actionable only with the status AND the body - the body is usually the only place the remote says why, and 401 alone does not distinguish a missing scope from a revoked token. A transport refusal has no status to carry, and asserting its absence is the point: a sentinel zero would be a plausible-looking value standing where the honest answer is that the question does not apply."
+
+test fn a_status_refusal_renders_operation_repository_status_and_body() -> Bool {
+  let rendered = render_pull_request_read_failure(
+    cause: PullRequestStatusRefused {
+      repository: fixture_repository_name(),
+      status: 401,
+      body: "Bad credentials",
+    },
+  )
+  string_contains(s: rendered, pattern: "github.Pulls.List")
+    && string_contains(s: rendered, pattern: fixture_repository_name())
+    && string_contains(s: rendered, pattern: "401")
+    && string_contains(s: rendered, pattern: "Bad credentials")
+    && !string_contains(s: rendered, pattern: "/repos/")
+}
+
+test fn a_transport_refusal_carries_no_status_at_all() -> Bool {
+  let rendered = render_pull_request_read_failure(
+    cause: PullRequestTransportRefused {
+      repository: fixture_repository_name(),
+      cause: "connection refused" as NonEmptyStr,
+    },
+  )
+  string_contains(s: rendered, pattern: "github.Pulls.List")
+    && string_contains(s: rendered, pattern: "connection refused")
+    && string_contains(s: rendered, pattern: "no status exists")
+    && !string_contains(s: rendered, pattern: "status 0")
+}
+
+data every_cause_refuses_note: String = "TOTALITY OVER THE ADJUDICATOR, ASSERTED RATHER THAN ASSUMED. adjudicate_publication answers a PullRequestObservation, and the arm that matters is that NONE of the four causes may produce an ordinary negative result. BranchNotPublished and a refusal are both negative, so a collapse in that direction passes any claim asserting only 'it did not conclude bound' - and it points the operator at the wrong action entirely, since the remedy for 'not published' is to push and the remedy for 'we could not find out' is not.\\n\\nThe remotes are deliberately READ-and-empty here rather than unreadable, so the only thing that can produce a refusal is the pull-request side. If a cause were ever handled by falling through to the remote branch reading, this witness would see BranchNotPublished and red."
+
+test fn every_pull_request_read_failure_refuses_rather_than_reporting_unpublished() -> Bool {
+  all(
+    fixture_pull_request_failures(),
+    c => match adjudicate_with(
+      pulls: PullRequestsUnreadable { cause: c },
+      remotes: RemoteBranchesRead { branches: [] },
+    ) {
+      PublicationObservationRefused { detail } =>
+        string_contains(s: detail, pattern: "github.Pulls.List")
+      BranchNotPublished { branch: _, remote_branches_seen: _ } => false
+      RemoteBranchAtExpectedHeadWithoutPullRequest { branch: _, head_sha: _ } => false
+      RemoteBranchHeadDiverged { branch: _, remote_head: _, expected_head: _ } => false
+      RemoteBranchBindingAmbiguous { branch: _, remote: _, refs_matched: _ } => false
+      PublicationBound { branch: _, pr_number: _, pr_head: _, url: _, draft: _ } => false
+      PublicationHeadDiverged { branch: _, pr_number: _, pr_head: _, expected_head: _, url: _ } => false
+      PublicationBindingAmbiguous { branch: _, base_ref: _, pr_numbers: _ } => false
+    },
+  )
 }
