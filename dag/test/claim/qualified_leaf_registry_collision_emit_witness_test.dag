@@ -4,7 +4,7 @@ data qualified_leaf_registry_collision_emit_witness_note: String = "Discriminati
 
 fn w_cross_module_same_leaf_binds_qualifier_module() -> Bool {
   compile_dag_rust_emit_check(
-    "module test.claim.leaf_key_collision_consumer\n\nimport test.fixture.leaf_key_collision.module_a { }\nimport std.types { Int }\n\ndata derived: Int = test.fixture.leaf_key_collision.module_a.homonym_value\n",
+    "module test.claim.leaf_key_collision_consumer\n\nimport test.fixture.leaf_key_collision.module_a\nimport test.fixture.leaf_key_collision.module_b\nimport std.types { Int }\n\ndata derived: Int = test.fixture.leaf_key_collision.module_a.homonym_value\n",
     "src/test_claim_leaf_key_collision_consumer.rs",
     ["test_fixture_leaf_key_collision_module_a::homonym_value()"],
     ["test_fixture_leaf_key_collision_module_b::homonym_value"]
