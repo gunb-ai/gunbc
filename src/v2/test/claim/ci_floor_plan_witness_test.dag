@@ -723,7 +723,7 @@ test fn falsifier_native_cache_cold_plan_carries_no_finalization() -> Bool {
   plan_carries_no_finalization(plan: gunbc_falsifier_native_cache_cold_plan())
 }
 
-data plan_roster_exhaustiveness_note: String = "THE ROW THAT MAKES THE PRECEDING FIVE A CLOSED SET RATHER THAN A LIST SOMEONE REMEMBERED TO EXTEND. Each sibling row above proves ONE plan carries its declared finalization; none of them, alone or together, proves that those are ALL the production plan targets. That missing quantifier is the actual #7470 defect: its completeness argument was a hand-maintained count of four, and a fifth target existed that no row mentioned, so every individual row stayed green while the roster was wrong.\\n\\nWHY THIS IS NOT ANOTHER HAND LIST. plan_variant_is_walk_plan_shaped matches over gunbc.cli_invoke PlanFunction, the coproduct that is now the ONLY way to name a plan target at claim_executor_run_plan_shell. A sixth production target cannot be authored without adding a variant, and adding a variant makes this match non-exhaustive — so this file fails to COMPILE until the new target is given a shape proof. The guarantee is therefore structural: not 'someone counted five' but 'the set of targets and the set of proofs are the same set, by construction'.\\n\\nTHE BOUND, stated because a closed roster is easy to over-read. This proves every DECLARED target's plan value carries the finalization its family declares. It does not prove the argv token resolves to that function — the variant-to-value pairing in the match below is hand-authored, since resolving a name to a declaration needs the containment SymbolIndex the namespace lane is building. So a variant mapped to the wrong plan value would still pass. Dissolve-on is the same as the coproduct's: a typed DeclarationRef over a resolved plan symbol, at which point the pairing is derived and this bound deletes."
+data plan_roster_exhaustiveness_note: String = "WHAT THIS ROW ENFORCES, AND WHAT IT DOES NOT — the second half corrected after review 46883 caught this note claiming a guarantee it does not deliver, which is the rung-inflation failure DESIGN 4b names and is worth more than a quiet edit because the overclaim repeated the very completeness failure this change exists to remove.\n\nWHAT IS ENFORCED. plan_variant_is_walk_plan_shaped matches over gunbc.cli_invoke PlanFunction, the only way to name a plan target at claim_executor_run_plan_shell. Adding a sixth variant makes that match non-exhaustive, so this file STOPS COMPILING until the new target is given an arm. That is real and it is compile-time.\n\nWHAT IS NOT ENFORCED, stated plainly because an earlier revision of this note said the opposite. Compile-time forces the arm to EXIST; it does NOT force the arm to be EXECUTED. plan_target_roster below is hand-maintained, so an author who adds a variant, writes its arm, and does not extend the roster leaves that arm unrun while this row stays green — and because the typechecker does not check a declared return type against a body (floor_finalization_witness_note carries the probe), a malformed arm can sit there green. So the claim is NOT that the target set and the proof set are the same set by construction. The claim is narrower: every target IN THE ROSTER carries its declared finalization, and no target can exist without at least an arm.\n\nWHERE THE REAL TEETH ARE for the class that caused this incident: every_emitted_plan_target_names_its_variant and no_emitted_plan_target_retains_the_batches_shape read the GENERATED workflows, which are what CI actually executes. An emitted target is the only kind that can break CI, and those rows tie emissions to declared variants rather than to this roster.\n\nDissolve-on: variant enumeration over a closed coproduct (a total roster derived from the type rather than authored beside it), at which point plan_target_roster is derived, the gap above closes, and this paragraph deletes. Nothing in the language offers that today, so the residue is named rather than implied."
 
 fn plan_variant_is_walk_plan_shaped(p: PlanFunction) -> Bool {
   match p {
@@ -735,21 +735,23 @@ fn plan_variant_is_walk_plan_shaped(p: PlanFunction) -> Bool {
   }
 }
 
+data plan_target_roster: List<PlanFunction> = [
+  CiFloorPlan,
+  CiRegenFloorPlan,
+  CiPlanArtifactPlan,
+  FalsifierPlan,
+  FalsifierNativeCacheColdPlan
+]
+
 fn every_plan_target_shaped(targets: List<PlanFunction>) -> Bool {
   fold(targets, init: true, f: (acc, p) => acc && plan_variant_is_walk_plan_shaped(p: p))
 }
 
-test fn every_production_plan_target_is_walk_plan_shaped() -> Bool {
-  every_plan_target_shaped(targets: [
-    CiFloorPlan,
-    CiRegenFloorPlan,
-    CiPlanArtifactPlan,
-    FalsifierPlan,
-    FalsifierNativeCacheColdPlan
-  ])
+test fn declared_plan_targets_are_walk_plan_shaped() -> Bool {
+  every_plan_target_shaped(targets: plan_target_roster)
 }
 
-data plan_roster_control_placement_note: String = "THERE IS DELIBERATELY NO RUNTIME RED CONTROL FOR THE EXHAUSTIVENESS ITSELF, and writing one would have been a lie worth naming. The obvious candidate — fold a deliberately-short target list and assert it refuses — is a tautology: every variant in this roster IS correctly shaped, so a short list returns true and the assertion would pass for the wrong reason, reporting coverage while discriminating nothing. The exhaustiveness guarantee is COMPILE-TIME: adding a sixth PlanFunction variant makes plan_variant_is_walk_plan_shaped non-exhaustive and this file stops compiling. Its control is therefore a compile failure, not a Bool, and the honest thing is to say so rather than ship a green row that cannot go red.\\n\\nWhat DOES carry runtime teeth is per-variant and already enrolled: forked_declared_count_is_refused_by_the_same_predicate forks the floor's declared count and requires the same predicate to refuse, and the three no-finalization rows carry the substitution control floor_finalization_witness_note describes. no_emitted_plan_target_retains_the_batches_shape below is the regression control for THIS incident specifically — it goes red if the pre-repair literal ever returns to either emitted artifact, and it stays enrolled permanently rather than retiring now that the wall has landed (§4b: dissolution deletes the obsoleted production machinery, never the evidence)."
+data plan_roster_control_placement_note: String = "THERE IS DELIBERATELY NO RUNTIME RED CONTROL FOR THE ROSTER ROW, and writing one would have been a lie worth naming. The obvious candidate — fold a deliberately-short target list and assert it refuses — is a tautology: every variant in the roster IS correctly shaped, so a short list returns true and the assertion would pass for the wrong reason, reporting coverage while discriminating nothing.\n\nThe compile-time half likewise has no Bool control: its failure mode is a build error, not a false value, so its control is a compile failure. Note the bound plan_roster_exhaustiveness_note states — that half forces an arm to exist, not to be executed — so neither the runtime nor the compile-time half is a universal-coverage claim, and this row must not be read as one.\n\nWhat DOES carry runtime teeth is per-variant and already enrolled: forked_declared_count_is_refused_by_the_same_predicate forks the floor declared count and requires the same predicate to refuse, and the three no-finalization rows carry the substitution control floor_finalization_witness_note describes. no_emitted_plan_target_retains_the_batches_shape is the regression control for THIS incident — it goes red if the pre-repair literal returns to either emitted artifact, and stays enrolled permanently rather than retiring now that the wall landed (4b: dissolution deletes the obsoleted production machinery, never the evidence)."
 
 test fn every_emitted_plan_target_names_its_variant() -> Bool {
   string_contains(s: expected_ci_yml(), pattern: concat("--plan-function ", plan_function_name(p: CiFloorPlan)))
