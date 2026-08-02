@@ -22,6 +22,7 @@ import gunbc.guarantee_measurement {
   ReceiptPathUnknown,
   ReceiptPathDuplicate,
   InferToEval,
+  GuaranteeProbeId,
   ProbeObservation,
   probe_observation_fold,
   ProbeObservationFold,
@@ -41,6 +42,7 @@ import v2.compiler.infer {
 import v2.extdeps.languages.dag { dag_int_literal_fixture_one, dag_pick_if_body_fixture }
 import v2.std.algebra { list_snoc_item }
 import v2.std.diagnostic { Accepted, Rejected, Some, None, NonEmptyDiagnostics }
+import v2.std.optional { Present, Absent }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node {
   Node,
