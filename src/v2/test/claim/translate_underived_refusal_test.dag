@@ -1,0 +1,393 @@
+module v2.test.claim.translate_underived_refusal
+
+import v2.compiler.emit { emit }
+import v2.compiler.infer { InferredFacts, InferredTree, infer }
+import v2.compiler.translate { translate }
+import v2.extdeps.languages.go { go_target_model }
+import v2.extdeps.languages.rust {
+  rust_inhabitant_atom,
+  rust_named_edge,
+  rust_selection_policy_node,
+  rust_source_text,
+  rust_target_model
+}
+import v2.extdeps.languages.rust_test {
+  rust_pick_binding_spellings,
+  rust_pick_lex,
+  rust_pick_serialize_source_node,
+  rust_pick_source_text,
+  rust_pick_translation_rules_node
+}
+import v2.std.compilers.target_model {
+  TargetModel,
+  target_model_emit_transforms_empty
+}
+import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
+import v2.std.algebra { list_snoc_item }
+import v2.std.collection { Map }
+import v2.std.diagnostic {
+  Accepted,
+  None,
+  NonEmptyDiagnostics,
+  Outcome,
+  Rejected,
+  bind_outcome,
+  outcome_accepted
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node {
+  ComputationNode,
+  Conj,
+  Disj,
+  Edge,
+  Node,
+  Positional,
+  SyntheticOccurrence,
+  TypeNode,
+  Value,
+  content_hash,
+  node_rebuild
+}
+import v2.std.optional { Absent, Optional, optional_absent }
+import v2.test.complexity_gate.table_fixture_add_subject_producer {
+  table_fixture_add_arrow_with_body
+}
+import v2.test.manual.rust_add_emit_translate {
+  rust_add_emitted_root,
+  rust_add_inferred_facts_for,
+  rust_add_inferred_tree
+}
+import v2.test.manual.sg2_mode2_non_grammar_emit {
+  sg2_mode2_inferred_tree,
+  sg2_mode2_target
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data translate_underived_refusal_note: String = "Discriminating witnesses for v2-translate-underived-refusal. gunbc#7485 made infer surface GroundingNotDerived on the Accepted path, but 06_translate's projection-absent coerce fallback swallowed canonical_grounding_for_node's Rejected arm and continued via translate_type_fold_init — and ComputationNode leaves bypassed grounding entirely. Eval already refuses via inferred_facts_for_eval; translate must agree at the same class minimum. translate_grounding_derived_gate routes Holds through canonical_grounding_from_inferred_facts and propagates its typed rejection; Violates (lookup miss) remains the orch-emit compatibility frontier (review 46789). translate_grounding_derived_gate_at_producer applies that gate at producer entry; translate_derived_parent_underived_child_gate re-applies it on every fold attach; translate_grounding_derived_gate_subtree covers bodied-arrow/import shortcuts and translate_projection_absent_bodied_arrow_fold_init (review 46681, review 46766). Synthetic empty-facts trees remain on the named orch-emit frontier until v2-inferred-tree-completeness."
+
+fn translate_refused_canonical_grounding(d: NonEmptyDiagnostics) -> Bool {
+  d.head.reason == ^infer_grounding_not_derived
+}
+
+data translate_underived_value_specimen: Node = Node {
+  kind: ComputationNode { behavior: Value },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+fn translate_underived_conj_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn translate_underived_disj_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Disj },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn translate_underived_value_node() -> Node {
+  translate_underived_value_specimen
+}
+
+fn translate_underived_value_specimen_facts() -> Optional<InferredFacts> {
+  match infer(tree: translate_underived_value_specimen) {
+    Accepted { value: tree, diagnostics: _ } =>
+      tree.facts.lookup(translate_underived_value_specimen)
+    Rejected { diagnostics: _ } => optional_absent()
+  }
+}
+
+fn translate_mixed_tree_root() -> Node {
+  node_rebuild(
+    n: rust_add_emitted_root,
+    children: list_snoc_item(
+      xs: rust_add_emitted_root.children,
+      item: Edge { label: Positional, target: translate_underived_value_specimen }
+    )
+  )
+}
+
+fn translate_mixed_tree_facts_lookup(key: Node) -> Optional<InferredFacts> {
+  if content_hash(n: key) == content_hash(n: translate_underived_value_specimen) {
+    translate_underived_value_specimen_facts()
+  } else if content_hash(n: key) == content_hash(n: translate_mixed_tree_root()) {
+    rust_add_inferred_facts_for(node: rust_add_emitted_root)
+  } else {
+    rust_add_inferred_facts_for(node: key)
+  }
+}
+
+data translate_mixed_derived_root_underived_child_tree: InferredTree = InferredTree {
+  root: translate_mixed_tree_root(),
+  facts: Map { lookup: translate_mixed_tree_facts_lookup }
+}
+
+fn translate_absent_parent_underived_child_facts_lookup(key: Node) -> Optional<InferredFacts> {
+  if content_hash(n: key) == content_hash(n: translate_underived_value_specimen) {
+    translate_underived_value_specimen_facts()
+  } else {
+    Absent
+  }
+}
+
+data translate_absent_parent_underived_child_tree: InferredTree = InferredTree {
+  root: translate_mixed_tree_root(),
+  facts: Map { lookup: translate_absent_parent_underived_child_facts_lookup }
+}
+
+fn translate_bodied_arrow_shortcut_root() -> Outcome<Node> {
+  bind_outcome(
+    o: table_fixture_add_arrow_with_body(),
+    f: fn(arrow) {
+      outcome_accepted(
+        value: node_rebuild(
+          n: arrow,
+          children: list_snoc_item(
+            xs: arrow.children,
+            item: Edge {
+              label: Positional,
+              target: translate_underived_value_specimen
+            }
+          )
+        )
+      )
+    }
+  )
+}
+
+fn translate_bodied_arrow_shortcut_facts_lookup(key: Node) -> Optional<InferredFacts> {
+  if content_hash(n: key) == content_hash(n: translate_underived_value_specimen) {
+    translate_underived_value_specimen_facts()
+  } else {
+    Absent
+  }
+}
+
+fn translate_bodied_arrow_shortcut_underived_descendant_tree() -> Outcome<InferredTree> {
+  bind_outcome(
+    o: translate_bodied_arrow_shortcut_root(),
+    f: fn(root) {
+      outcome_accepted(
+        value: InferredTree {
+          root: root,
+          facts: Map { lookup: translate_bodied_arrow_shortcut_facts_lookup }
+        }
+      )
+    }
+  )
+}
+
+fn translate_projection_absent_fold_bodied_arrow_wrapped_root() -> Outcome<Node> {
+  bind_outcome(
+    o: translate_bodied_arrow_shortcut_root(),
+    f: fn(arrow) {
+      outcome_accepted(
+        value: Node {
+          kind: TypeNode { connective: Conj },
+          children: [
+            Edge { label: Positional, target: arrow }
+          ],
+          occurrence_id: SyntheticOccurrence
+        }
+      )
+    }
+  )
+}
+
+fn translate_projection_absent_fold_bodied_arrow_underived_descendant_tree() -> Outcome<InferredTree> {
+  bind_outcome(
+    o: translate_projection_absent_fold_bodied_arrow_wrapped_root(),
+    f: fn(root) {
+      outcome_accepted(
+        value: InferredTree {
+          root: root,
+          facts: Map { lookup: translate_bodied_arrow_shortcut_facts_lookup }
+        }
+      )
+    }
+  )
+}
+
+fn translate_underived_grammar_match_atom_node() -> Node {
+  rust_inhabitant_atom(id: ^rust_surface_fn_item)
+}
+
+fn translate_underived_grammar_match_bundle() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      rust_named_edge(
+        name: ^target_model_edge_translation_rules,
+        target: rust_pick_translation_rules_node()
+      ),
+      rust_named_edge(
+        name: ^target_model_edge_serialize_source,
+        target: rust_pick_serialize_source_node()
+      ),
+      rust_named_edge(
+        name: ^target_model_edge_selection_policy,
+        target: rust_selection_policy_node()
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+data translate_underived_grammar_match_target: TargetModel = TargetModel {
+  bundle: translate_underived_grammar_match_bundle(),
+  lex: rust_pick_lex(),
+  binding_spellings: rust_pick_binding_spellings(),
+  token_class_emit_transforms: target_model_emit_transforms_empty,
+  authority_source_text: rust_pick_source_text,
+  runtime_row: target_emit_host_runtime_row_unconfigured
+}
+
+fn translate_refuses_underived_root_for_target(root: Node, target: TargetModel) -> Bool {
+  match infer(tree: root) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      match translate(tree: tree, target: target) {
+        Rejected { diagnostics: d } =>
+          translate_refused_canonical_grounding(d: d)
+        Accepted { value: _, diagnostics: _ } => false
+      }
+  }
+}
+
+fn translate_refuses_underived_root(root: Node) -> Bool {
+  translate_refuses_underived_root_for_target(root: root, target: rust_target_model())
+}
+
+fn translate_refuses_underived_bodied_arrow() -> Bool {
+  match table_fixture_add_arrow_with_body() {
+    Accepted { value: root, diagnostics: _ } =>
+      translate_refuses_underived_root_for_target(root: root, target: go_target_model())
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn translate_refuses_mixed_derived_root_underived_child() -> Bool {
+  match translate(
+    tree: translate_mixed_derived_root_underived_child_tree,
+    target: rust_target_model()
+  ) {
+    Rejected { diagnostics: d } =>
+      translate_refused_canonical_grounding(d: d)
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+fn translate_refuses_absent_parent_underived_child() -> Bool {
+  match translate(
+    tree: translate_absent_parent_underived_child_tree,
+    target: rust_target_model()
+  ) {
+    Rejected { diagnostics: d } =>
+      translate_refused_canonical_grounding(d: d)
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+fn translate_refuses_bodied_arrow_shortcut_underived_descendant() -> Bool {
+  match translate_bodied_arrow_shortcut_underived_descendant_tree() {
+    Accepted { value: tree, diagnostics: _ } =>
+      match translate(tree: tree, target: go_target_model()) {
+        Rejected { diagnostics: d } =>
+          translate_refused_canonical_grounding(d: d)
+        Accepted { value: _, diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn translate_refuses_projection_absent_fold_bodied_arrow_underived_descendant() -> Bool {
+  match translate_projection_absent_fold_bodied_arrow_underived_descendant_tree() {
+    Accepted { value: tree, diagnostics: _ } =>
+      match translate(tree: tree, target: go_target_model()) {
+        Rejected { diagnostics: d } =>
+          translate_refused_canonical_grounding(d: d)
+        Accepted { value: _, diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn translate_accepts_synthetic_empty_facts_tree() -> Bool {
+  match translate(tree: sg2_mode2_inferred_tree, target: sg2_mode2_target()) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn translate_accepts_derived_rust_add_tree() -> Bool {
+  match translate(tree: rust_add_inferred_tree, target: rust_target_model()) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn translate_derived_emit_byte_identical_to_before() -> Bool {
+  match emit(tree: rust_add_inferred_tree, target: rust_target_model()) {
+    Accepted { value: source, diagnostics: d } =>
+      (source.carried == rust_source_text) && (d == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn translate_refuses_underived_conj_holds() -> Bool {
+  translate_refuses_underived_root(root: translate_underived_conj_node())
+}
+
+test fn translate_refuses_underived_disj_holds() -> Bool {
+  translate_refuses_underived_root(root: translate_underived_disj_node())
+}
+
+test fn translate_refuses_underived_value_holds() -> Bool {
+  translate_refuses_underived_root(root: translate_underived_value_node())
+}
+
+test fn translate_refuses_underived_bodied_arrow_holds() -> Bool {
+  translate_refuses_underived_bodied_arrow()
+}
+
+test fn translate_refuses_underived_grammar_match_holds() -> Bool {
+  translate_refuses_underived_root_for_target(
+    root: translate_underived_grammar_match_atom_node(),
+    target: translate_underived_grammar_match_target
+  )
+}
+
+test fn translate_refuses_mixed_derived_root_underived_child_holds() -> Bool {
+  translate_refuses_mixed_derived_root_underived_child()
+}
+
+test fn translate_refuses_absent_parent_underived_child_holds() -> Bool {
+  translate_refuses_absent_parent_underived_child()
+}
+
+test fn translate_refuses_bodied_arrow_shortcut_underived_descendant_holds() -> Bool {
+  translate_refuses_bodied_arrow_shortcut_underived_descendant()
+}
+
+test fn translate_refuses_projection_absent_fold_bodied_arrow_underived_descendant_holds() -> Bool {
+  translate_refuses_projection_absent_fold_bodied_arrow_underived_descendant()
+}
+
+test fn translate_accepts_synthetic_empty_facts_tree_holds() -> Bool {
+  translate_accepts_synthetic_empty_facts_tree()
+}
+
+test fn translate_accepts_derived_corpus_module_holds() -> Bool {
+  translate_accepts_derived_rust_add_tree()
+}
+
+test fn translate_derived_emit_byte_identical_to_before_holds() -> Bool {
+  translate_derived_emit_byte_identical_to_before()
+}

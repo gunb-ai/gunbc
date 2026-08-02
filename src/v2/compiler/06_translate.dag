@@ -29,9 +29,13 @@ import v2.std.compilers.target_model {
   target_value_expression_tokens_from_target
 }
 import v2.compiler.infer {
+  DerivedGrounding,
+  GroundingNotDerived,
   InferredTree,
   algebra_ref_is_grounded,
-  canonical_grounding_for_node
+  canonical_grounding_for_node,
+  canonical_grounding_from_inferred_facts,
+  inferred_facts_witness_for_node
 }
 import v2.compiler.wrap_decision { wrap_decision_gate }
 import v2.std.coercion {
@@ -60,6 +64,7 @@ import v2.std.diagnostic {
   outcome_rejected,
   rejected_with_pending
 }
+import v2.std.witness { Holds, Violates }
 import v2.std.node {
   Arrow,
   Atom,
@@ -79,10 +84,14 @@ import v2.std.node {
   fold_node,
   node_rebuild,
   node_subtree_count,
+  node_subtree_nodes,
   well_formed,
   SyntheticOccurrence
 }
-import v2.std.node_query { find_named_child, node_positional_child_targets }
+import v2.std.node_query {
+  find_named_child,
+  node_positional_child_targets
+}
 import v2.std.fold_assembly { node_list_from_node }
 import v2.std.compilers.target_model {
   ConcreteSyntaxToken,
@@ -264,6 +273,95 @@ fn token_sequence_serialize_measure(tokens: List<Node>, target: TargetModel) -> 
 type TokenSequenceItemKind
   = TokenSequenceConcreteToken
   | TokenSequenceNonterminal
+
+data translate_grounding_gate_absent_facts_note: String = "Refuse only recorded GroundingNotDerived on the Holds arm, routing that variant through canonical_grounding_from_inferred_facts so the typed ^infer_grounding_not_derived diagnostic propagates (review 46789). DerivedGrounding on Holds accepts without re-running canonical admission: staging composed-facts trees (manual emit witnesses) carry DerivedGrounding with atom algebra refs that infer already admitted for test purposes but canonical_grounding_from_inferred_facts would refuse via algebra_ref_is_grounded — that coherence class is infer's on the Accepted path, not translate's underived containment slice. infer_facts_lookup_miss (Violates) is a different class: emit_orchestration's synthetic InferredTree carries an empty facts map by construction (orch_emit_facts_lookup), so lookup miss means no infer judgment exists, not an underived one recorded on the Accepted path. Eval refuses lookup miss because eval never runs on synthetic trees; translate is also consumed by emit, so absence is a named compatibility frontier until v2-inferred-tree-completeness splits the carrier. translate() opens with translate_grounding_derived_gate_subtree so mixed derived-root/underived-child trees cannot bypass fold attach or bodied-arrow shortcuts. translate_grounding_derived_gate_at_producer is the producer-entry call site for that same gate — no carve-out for recorded underived facts. translate_derived_parent_underived_child_gate applies translate_grounding_derived_gate on every fold attach; translate_grounding_derived_gate_subtree covers bodied-arrow and import-carrier shortcuts that preserve producer IR without fold_node (review 46681). TranslateFoldAcc retains the source parent/child nodes because fold init rebuilds with empty children and facts.lookup keys on structural node equality."
+
+fn translate_grounding_derived_gate(tree: InferredTree, node: Node) -> Outcome<Empty> {
+  match inferred_facts_witness_for_node(tree: tree, node: node) {
+    Holds { value: facts } =>
+      match facts.grounding {
+        GroundingNotDerived { node: _ } =>
+          match canonical_grounding_from_inferred_facts(node: node, facts: facts) {
+            Accepted { value: _, diagnostics: _ } => outcome_accepted(Empty)
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+          }
+        DerivedGrounding { grounding: _ } =>
+          outcome_accepted(Empty)
+      }
+    Violates { diagnostic: _ } =>
+      outcome_accepted(Empty)
+  }
+}
+
+fn translate_derived_parent_underived_child_gate(
+  tree: InferredTree,
+  parent: Node,
+  child: Node
+) -> Outcome<Empty> {
+  translate_grounding_derived_gate(tree: tree, node: child)
+}
+
+fn translate_grounding_derived_gate_subtree(
+  tree: InferredTree,
+  root: Node
+) -> Outcome<Empty> {
+  fold_list(
+    xs: node_subtree_nodes(root: root),
+    empty: outcome_accepted(Empty),
+    cons: fn(acc, n) {
+      bind_outcome(
+        o: acc,
+        f: fn(_) {
+          translate_grounding_derived_gate(tree: tree, node: n)
+        }
+      )
+    }
+  )
+}
+
+fn translate_bodied_arrow_shortcut_after_subtree_gate(
+  tree: InferredTree,
+  arrow: Node
+) -> Outcome<Node> {
+  bind_outcome(
+    o: translate_grounding_derived_gate_subtree(tree: tree, root: arrow),
+    f: fn(_) {
+      translate_bodied_arrow_preserve_producer_ir(arrow: arrow)
+    }
+  )
+}
+
+fn translate_projection_absent_bodied_arrow_fold_init(
+  tree: InferredTree,
+  node: Node
+) -> Outcome<Node> {
+  bind_outcome(
+    o: translate_grounding_derived_gate_subtree(tree: tree, root: node),
+    f: fn(_) {
+      translate_type_fold_init(node: node)
+    }
+  )
+}
+
+fn translate_import_shortcut_after_subtree_gate(
+  tree: InferredTree,
+  import_node: Node
+) -> Outcome<Node> {
+  bind_outcome(
+    o: translate_grounding_derived_gate_subtree(tree: tree, root: import_node),
+    f: fn(_) {
+      translate_import_production_to_carrier(import_node: import_node)
+    }
+  )
+}
+
+fn translate_grounding_derived_gate_at_producer(
+  tree: InferredTree,
+  node: Node
+) -> Outcome<Empty> {
+  translate_grounding_derived_gate(tree: tree, node: node)
+}
+
 fn translate_target_bundle_malformed_diagnostic(target: TargetModel) -> Diagnostic {
   Diagnostic {
     reason: ^translate_target_bundle_malformed,
@@ -3494,19 +3592,51 @@ fn translate_type_fold_init(node: Node) -> Outcome<Node> {
     diagnostics: None
   }
 }
-fn translate_computation_fold_init(node: Node) -> Outcome<Node> {
 
-  translate_type_fold_init(node: node)
+type TranslateFoldAcc = {
+  source: Node,
+  rebuilt: Node
 }
-fn translate_fold_init(
+
+fn translate_type_fold_init_acc(node: Node) -> Outcome<TranslateFoldAcc> {
+  match translate_type_fold_init(node: node) {
+    Accepted { value: rebuilt, diagnostics: d } =>
+      Accepted {
+        value: TranslateFoldAcc { source: node, rebuilt: rebuilt },
+        diagnostics: d
+      }
+    Rejected { diagnostics: r } =>
+      Rejected { diagnostics: r }
+  }
+}
+
+fn translate_projection_absent_fold_init_acc(
   node: Node,
   tree: InferredTree,
   target: TargetModel
-) -> Outcome<Node> {
-  match node.kind {
-    TypeNode { connective: _ } => translate_type_fold_init(node: node)
-    ComputationNode { behavior: _ } => translate_computation_fold_init(node: node)
+) -> Outcome<TranslateFoldAcc> {
+  match translate_projection_absent_fold_init(node: node, tree: tree, target: target) {
+    Accepted { value: rebuilt, diagnostics: d } =>
+      Accepted {
+        value: TranslateFoldAcc { source: node, rebuilt: rebuilt },
+        diagnostics: d
+      }
+    Rejected { diagnostics: r } =>
+      Rejected { diagnostics: r }
   }
+}
+
+fn translate_fold_acc_rebuilt(o: Outcome<TranslateFoldAcc>) -> Outcome<Node> {
+  match o {
+    Accepted { value: acc, diagnostics: d } =>
+      Accepted { value: acc.rebuilt, diagnostics: d }
+    Rejected { diagnostics: r } =>
+      Rejected { diagnostics: r }
+  }
+}
+fn translate_computation_fold_init(node: Node) -> Outcome<Node> {
+
+  translate_type_fold_init(node: node)
 }
 fn translate_projection_absent_coerce_from_grounding_or_evidence(
   node: Node,
@@ -3535,9 +3665,8 @@ fn translate_projection_absent_coerce_from_grounding_or_evidence(
 
             translate_type_fold_init(node: node)
           }
-        Rejected { diagnostics: _ } =>
-
-          translate_type_fold_init(node: node)
+        Rejected { diagnostics: r } =>
+          Rejected { diagnostics: r }
       }
   }
 }
@@ -3550,7 +3679,7 @@ fn translate_projection_absent_fold_init(
     TypeNode { connective: Arrow } =>
 
       if target_value_expr_arrow_has_value_expression_body(arrow: node) {
-        translate_type_fold_init(node: node)
+        translate_projection_absent_bodied_arrow_fold_init(tree: tree, node: node)
       } else {
         match coerce_grounded_node(source: node, tree: tree, target: target) {
           Accepted { value: coerced, diagnostics: d } =>
@@ -3596,27 +3725,36 @@ fn translate_type_expression_tree(
   target: TargetModel,
   projection: TargetTypeExpressionProjection
 ) -> Outcome<Node> {
-  if target_value_expr_arrow_has_value_expression_body(arrow: node) {
-    translate_bodied_arrow_preserve_producer_ir(arrow: node)
-  } else {
-    bind_outcome(
-      o: fold_node(
-        n: node,
-        algebra: NodeFold {
-          init: fn(n0) { translate_type_fold_init(node: n0) },
-          step: fn(acc, e, child) { translate_fold_step(acc: acc, edge: e, child: child) }
-        }
-      ),
-      f: fn(n) {
+  bind_outcome(
+    o: translate_grounding_derived_gate_at_producer(tree: tree, node: node),
+    f: fn(_) {
+      if target_value_expr_arrow_has_value_expression_body(arrow: node) {
+        translate_bodied_arrow_shortcut_after_subtree_gate(tree: tree, arrow: node)
+      } else {
+        bind_outcome(
+          o: translate_fold_acc_rebuilt(
+            o: fold_node(
+              n: node,
+              algebra: NodeFold {
+                init: fn(n0) { translate_type_fold_init_acc(node: n0) },
+                step: fn(acc, e, child) {
+                  translate_fold_step(acc: acc, edge: e, child: child, tree: tree)
+                }
+              }
+            )
+          ),
+          f: fn(n) {
 
-        match translate_grammar_relation_row_match(target: target, emitted: n) {
-          Accepted { value: _, diagnostics: _ } => outcome_accepted(n)
-          Rejected { diagnostics: _ } =>
-            translate_type_expression_project(node: n, target: target, projection: projection)
-        }
+            match translate_grammar_relation_row_match(target: target, emitted: n) {
+              Accepted { value: _, diagnostics: _ } => outcome_accepted(n)
+              Rejected { diagnostics: _ } =>
+                translate_type_expression_project(node: n, target: target, projection: projection)
+            }
+          }
+        )
       }
-    )
-  }
+    }
+  )
 }
 fn translate_node_with_projection(
   node: Node,
@@ -3702,11 +3840,20 @@ fn translate_node_computation(
   tree: InferredTree,
   target: TargetModel
 ) -> Outcome<Node> {
-  fold_node(
-    n: node,
-    algebra: NodeFold {
-      init: fn(n0) { translate_fold_init(node: n0, tree: tree, target: target) },
-      step: fn(acc, e, child) { translate_fold_step(acc: acc, edge: e, child: child) }
+  bind_outcome(
+    o: translate_grounding_derived_gate_at_producer(tree: tree, node: node),
+    f: fn(_) {
+      translate_fold_acc_rebuilt(
+        o: fold_node(
+          n: node,
+          algebra: NodeFold {
+            init: fn(n0) { translate_type_fold_init_acc(node: n0) },
+            step: fn(acc, e, child) {
+              translate_fold_step(acc: acc, edge: e, child: child, tree: tree)
+            }
+          }
+        )
+      )
     }
   )
 }
@@ -3715,12 +3862,22 @@ fn translate_node_projection_absent_fold(
   tree: InferredTree,
   target: TargetModel
 ) -> Outcome<Node> {
-  fold_node(
-    n: node,
-    algebra: NodeFold {
-      init: fn(n0) { translate_projection_absent_fold_init(node: n0, tree: tree, target: target) },
-      step: fn(acc, e, child) { translate_fold_step(acc: acc, edge: e, child: child) }
-    }
+  translate_fold_acc_rebuilt(
+    o: fold_node(
+      n: node,
+      algebra: NodeFold {
+        init: fn(n0) {
+          translate_projection_absent_fold_init_acc(
+            node: n0,
+            tree: tree,
+            target: target
+          )
+        },
+        step: fn(acc, e, child) {
+          translate_fold_step(acc: acc, edge: e, child: child, tree: tree)
+        }
+      }
+    )
   )
 }
 fn is_dag_import_production_node(node: Node) -> Bool {
@@ -3824,29 +3981,38 @@ fn translate_node_projection_absent(
   tree: InferredTree,
   target: TargetModel
 ) -> Outcome<Node> {
-  if target_value_expr_arrow_has_value_expression_body(arrow: node) {
-    translate_bodied_arrow_preserve_producer_ir(arrow: node)
-  } else if is_dag_import_production_node(node: node) {
-    translate_import_production_to_carrier(import_node: node)
-  } else {
-    bind_outcome(
-      o: fold_node(
-        n: node,
-        algebra: NodeFold {
-          init: fn(n0) { translate_type_fold_init(node: n0) },
-          step: fn(acc, e, child) { translate_fold_step(acc: acc, edge: e, child: child) }
-        }
-      ),
-      f: fn(raw) {
+  bind_outcome(
+    o: translate_grounding_derived_gate_at_producer(tree: tree, node: node),
+    f: fn(_) {
+      if target_value_expr_arrow_has_value_expression_body(arrow: node) {
+        translate_bodied_arrow_shortcut_after_subtree_gate(tree: tree, arrow: node)
+      } else if is_dag_import_production_node(node: node) {
+        translate_import_shortcut_after_subtree_gate(tree: tree, import_node: node)
+      } else {
+        bind_outcome(
+          o: translate_fold_acc_rebuilt(
+            o: fold_node(
+              n: node,
+              algebra: NodeFold {
+                init: fn(n0) { translate_type_fold_init_acc(node: n0) },
+                step: fn(acc, e, child) {
+                  translate_fold_step(acc: acc, edge: e, child: child, tree: tree)
+                }
+              }
+            )
+          ),
+          f: fn(raw) {
 
-        match translate_grammar_relation_row_match(target: target, emitted: raw) {
-          Accepted { value: _, diagnostics: _ } => outcome_accepted(raw)
-          Rejected { diagnostics: _ } =>
-            translate_node_projection_absent_fold(node: node, tree: tree, target: target)
-        }
+            match translate_grammar_relation_row_match(target: target, emitted: raw) {
+              Accepted { value: _, diagnostics: _ } => outcome_accepted(raw)
+              Rejected { diagnostics: _ } =>
+                translate_node_projection_absent_fold(node: node, tree: tree, target: target)
+            }
+          }
+        )
       }
-    )
-  }
+    }
+  )
 }
 fn translate_node(
   node: Node,
@@ -3882,25 +4048,38 @@ fn target_bundle_child_optional_type_expr_projection(
   }
 }
 fn translate_fold_step(
-  acc: Outcome<Node>,
+  acc: Outcome<TranslateFoldAcc>,
   edge: Edge,
-  child: Outcome<Node>
-) -> Outcome<Node> {
+  child: Outcome<TranslateFoldAcc>,
+  tree: InferredTree
+) -> Outcome<TranslateFoldAcc> {
   match acc {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
-    Accepted { value: parent, diagnostics: ad } =>
+    Accepted { value: parent_acc, diagnostics: ad } =>
       match child {
-        Accepted { value: translated_child, diagnostics: cd } =>
-          Accepted {
-            value: node_rebuild(
-              n: parent,
-              children: list_snoc_item(
-                xs: parent.children,
-                item: Edge { label: edge.label, target: translated_child }
-              )
+        Accepted { value: child_acc, diagnostics: cd } =>
+          bind_outcome(
+            o: translate_derived_parent_underived_child_gate(
+              tree: tree,
+              parent: parent_acc.source,
+              child: child_acc.source
             ),
-            diagnostics: diagnostics_merge(outer: ad, inner: cd)
-          }
+            f: fn(_) {
+              Accepted {
+                value: TranslateFoldAcc {
+                  source: parent_acc.source,
+                  rebuilt: node_rebuild(
+                    n: parent_acc.rebuilt,
+                    children: list_snoc_item(
+                      xs: parent_acc.rebuilt.children,
+                      item: Edge { label: edge.label, target: child_acc.rebuilt }
+                    )
+                  )
+                },
+                diagnostics: diagnostics_merge(outer: ad, inner: cd)
+              }
+            }
+          )
         Rejected { diagnostics: r } =>
           Rejected {
             diagnostics: rejected_with_pending(pending: ad, rejected: r)
@@ -3912,7 +4091,12 @@ fn translate(
   tree: InferredTree,
   target: TargetModel
 ) -> Outcome<TargetNodeTree> {
-  translate_node(node: tree.root, tree: tree, target: target)
+  bind_outcome(
+    o: translate_grounding_derived_gate_subtree(tree: tree, root: tree.root),
+    f: fn(_) {
+      translate_node(node: tree.root, tree: tree, target: target)
+    }
+  )
 }
 
 fn translate_emitted_node(tree: InferredTree, target: TargetModel) -> Outcome<Node> {
