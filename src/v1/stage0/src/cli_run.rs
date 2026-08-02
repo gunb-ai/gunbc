@@ -26247,6 +26247,45 @@ fn resolution_divergence_phase_receipt_timestamp_ms() -> u128 {
         .as_millis()
 }
 
+fn resolution_divergence_phase_receipt_pressure_avg10(path: &str) -> String {
+    std::fs::read_to_string(path)
+        .ok()
+        .and_then(|body| {
+            body.lines()
+                .find(|line| line.starts_with("some "))
+                .and_then(|line| {
+                    line.split_whitespace()
+                        .find(|field| field.starts_with("avg10="))
+                })
+                .and_then(|field| field.strip_prefix("avg10="))
+                .map(str::to_string)
+        })
+        .unwrap_or_else(|| "unavailable".to_string())
+}
+
+fn resolution_divergence_phase_receipt_contention() -> (String, String, String, String) {
+    let host = std::env::var("RUNNER_NAME")
+        .ok()
+        .filter(|name| !name.is_empty())
+        .or_else(|| {
+            std::fs::read_to_string("/etc/hostname")
+                .ok()
+                .map(|name| name.trim().to_string())
+                .filter(|name| !name.is_empty())
+        })
+        .unwrap_or_else(|| "unavailable".to_string());
+    let loadavg_1m = std::fs::read_to_string("/proc/loadavg")
+        .ok()
+        .and_then(|body| body.split_whitespace().next().map(str::to_string))
+        .unwrap_or_else(|| "unavailable".to_string());
+    (
+        host,
+        loadavg_1m,
+        resolution_divergence_phase_receipt_pressure_avg10("/proc/pressure/cpu"),
+        resolution_divergence_phase_receipt_pressure_avg10("/proc/pressure/memory"),
+    )
+}
+
 fn resolution_divergence_phase_elapsed_ms(
     phase: ResolutionDivergencePhase,
     state: ResolutionDivergencePhaseState,
@@ -26304,19 +26343,25 @@ fn write_resolution_divergence_phase_receipt_row_at(
     if is_new {
         writeln!(
             file,
-            "timestamp_ms\tpid\tprocess\tphase\tstate\telapsed_ms\tdetail"
+            "timestamp_ms\tpid\tprocess\thost\tloadavg_1m\tcpu_psi_some_avg10\tmemory_psi_some_avg10\tphase\tstate\telapsed_ms\tdetail"
         )
         .map_err(|e| format!("resolution-divergence phase receipt: header write: {e}"))?;
     }
     let elapsed_ms = resolution_divergence_phase_elapsed_ms(phase, state)
         .map(|n| n.to_string())
         .unwrap_or_default();
+    let (host, loadavg_1m, cpu_psi_some_avg10, memory_psi_some_avg10) =
+        resolution_divergence_phase_receipt_contention();
     writeln!(
         file,
-        "{}\t{}\t{}\t{}\t{}\t{}\t{}",
+        "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
         resolution_divergence_phase_receipt_timestamp_ms(),
         std::process::id(),
         resolution_divergence_phase_receipt_process_name(),
+        resolution_divergence_phase_receipt_sanitize(&host),
+        loadavg_1m,
+        cpu_psi_some_avg10,
+        memory_psi_some_avg10,
         phase.label(),
         state.label(),
         elapsed_ms,
@@ -26349,7 +26394,7 @@ pub fn reset_resolution_divergence_phase_receipt() -> Result<(), String> {
     })?;
     writeln!(
         file,
-        "timestamp_ms\tpid\tprocess\tphase\tstate\telapsed_ms\tdetail"
+        "timestamp_ms\tpid\tprocess\thost\tloadavg_1m\tcpu_psi_some_avg10\tmemory_psi_some_avg10\tphase\tstate\telapsed_ms\tdetail"
     )
     .map_err(|e| format!("resolution-divergence phase receipt: header write: {e}"))?;
     file.sync_data().map_err(|e| {
@@ -28188,8 +28233,8 @@ mod resolution_divergence_census_tests {
         assert!(lines[0].contains("elapsed_ms"));
         assert!(lines[1].contains("\tcensus_traversal\tstarted\t\tfixture start"));
         assert!(lines[2].contains("\tcensus_traversal\tcompleted\t"));
-        assert_eq!(lines[1].split('\t').count(), 7);
-        assert_eq!(lines[2].split('\t').count(), 7);
+        assert_eq!(lines[1].split('\t').count(), 11);
+        assert_eq!(lines[2].split('\t').count(), 11);
         let _ = std::fs::remove_file(receipt);
     }
 
