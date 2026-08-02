@@ -1028,9 +1028,12 @@ fn gunbc_falsifier_native_cache_cold_batch() -> Runnable {
 
 fn gunbc_falsifier_native_cache_cold_plan() -> WalkPlan<NoWalkFinalization> {
   WalkPlan {
+    pre_walk_execution: NoPreWalkExecution {},
     batches: [[gunbc_falsifier_native_cache_cold_batch()]],
     finalization: NoFinalizationDeclared {},
     on_success_stages: [],
+    ordinary_budget_ms: none,
+    on_success_budget_ms: none,
   }
 }
 
