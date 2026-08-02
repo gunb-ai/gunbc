@@ -643,7 +643,7 @@ fn bin_witness_corpus_runnable_for() -> Runnable {
   }
 }
 
-fn floor_nodes(spec: CiSpec, include_admission_capture: Bool) -> List<Node> {
+fn floor_nodes(spec: CiSpec) -> List<Node> {
   let roots = corpus_plan_nodes(spec: spec)
   fold(spec.gates, init: roots, f: fn(acc, g) {
     list_snoc_item(xs: acc, item: gate_node(g: g))
@@ -729,7 +729,7 @@ fn floor_spec_has_compile_gate(spec: CiSpec) -> Bool {
   })
 }
 
-fn floor_data_dependencies(spec: CiSpec, include_admission_capture: Bool) -> List<DependencyView> {
+fn floor_data_dependencies(spec: CiSpec) -> List<DependencyView> {
   if floor_spec_has_compile_gate(spec: spec) {
     concat(
       floor_cheap_gates_precede_compile_edges(spec: spec),
@@ -830,8 +830,8 @@ fn floor_resource_dependencies(spec: CiSpec) -> List<DependencyView> {
   )
 }
 
-fn floor_dependencies_with(spec: CiSpec, serialize_heavy: Bool, include_admission_capture: Bool) -> List<DependencyView> {
-  let data_deps = floor_data_dependencies(spec: spec, include_admission_capture: include_admission_capture)
+fn floor_dependencies_with(spec: CiSpec, serialize_heavy: Bool) -> List<DependencyView> {
+  let data_deps = floor_data_dependencies(spec: spec)
   if serialize_heavy {
     concat(data_deps, floor_resource_dependencies(spec: spec))
   } else {
@@ -873,14 +873,14 @@ fn runnables_for_executor_batches(batches: List<ExecutorBatch>, spec: CiSpec) ->
   })
 }
 
-fn floor_schedule_via_runner_for(spec: CiSpec, serialize_heavy: Bool, include_admission_capture: Bool) -> List<List<Runnable>> {
+fn floor_schedule_via_runner_for(spec: CiSpec, serialize_heavy: Bool) -> List<List<Runnable>> {
   match runner_schedule_plan_from_dependencies(
-    nodes: floor_nodes(spec: spec, include_admission_capture: include_admission_capture),
-    dependencies: floor_dependencies_with(spec: spec, serialize_heavy: serialize_heavy, include_admission_capture: include_admission_capture),
+    nodes: floor_nodes(spec: spec),
+    dependencies: floor_dependencies_with(spec: spec, serialize_heavy: serialize_heavy),
     value: runner_ordering_only
   ) {
     RunnerScheduleComplete { batches: batches, store: store } =>
-      if runner_schedule_store_covers_nodes(store: store, nodes: floor_nodes(spec: spec, include_admission_capture: include_admission_capture)) {
+      if runner_schedule_store_covers_nodes(store: store, nodes: floor_nodes(spec: spec)) {
         runnables_for_executor_batches(batches: batches, spec: spec)
       } else {
         [[floor_unrunnable_sentinel()]]
@@ -889,16 +889,12 @@ fn floor_schedule_via_runner_for(spec: CiSpec, serialize_heavy: Bool, include_ad
   }
 }
 
-fn floor_schedule_for_with_capture(spec: CiSpec, serialize_heavy: Bool, include_admission_capture: Bool) -> List<List<Runnable>> {
-  floor_schedule_via_runner_for(spec: spec, serialize_heavy: serialize_heavy, include_admission_capture: include_admission_capture)
-}
-
 fn floor_schedule_for(spec: CiSpec, serialize_heavy: Bool) -> List<List<Runnable>> {
-  floor_schedule_for_with_capture(spec: spec, serialize_heavy: serialize_heavy, include_admission_capture: false)
+  floor_schedule_via_runner_for(spec: spec, serialize_heavy: serialize_heavy)
 }
 
 fn gunbc_ci_floor_schedule_inner() -> List<List<Runnable>> {
-  floor_schedule_for_with_capture(spec: gunbc_ci_spec, serialize_heavy: true, include_admission_capture: true)
+  floor_schedule_for(spec: gunbc_ci_spec, serialize_heavy: true)
 }
 
 fn gunbc_ci_floor_realization_plan_for(spec: CiSpec) -> RealizationPlan {
