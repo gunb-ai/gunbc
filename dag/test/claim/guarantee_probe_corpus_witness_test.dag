@@ -51,6 +51,8 @@ import gunbc.guarantee_probe_corpus {
   census_any_count_for_class,
   guarantee_probe_id_strings,
   probe_ids_are_lexicographically_ordered,
+  synthetic_program_subject_revision,
+  synthetic_program_harness_revision,
 }
 import gunbc.guarantee_measurement {
   observed_is_verdict,
@@ -65,16 +67,13 @@ import gunbc.compile_diagnostic_census {
   census_rows_of_class,
   census_total_count,
 }
-import std.types { String, NonEmptyStr, Bool, Int, List, CommitSha }
+import std.types { String, NonEmptyStr, Bool, Int, List }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import v2.std.optional { Present, Absent }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 data guarantee_probe_corpus_witness_scope_note: String = "SLICE 1 MIGRATION RECEIPT: the landed wall controls from the THREE MERGED PRs gunbc#7519 (call-label-and-surplus), gunbc#7484 (method-established-surface + declared-conformance-ground-fragment), and gunbc#7485 (InferToEval self-grounding frontier) execute through gunbc.guarantee_measurement identities. gunbc#7555 (InferToTranslate) is OPEN — class/path/probe rows are reserved for layout only; no control is copied from that branch and translate probes stay out of guarantee_probe_ids until #7555 merges. Each v1 probe compiles synthetic source via compile_dag_diagnostic_census, asserts the class-specific expectation through probe_observation_fold (never hand-matching ProbeObservation arms), and builds a GuaranteeMeasurementReceipt that joins its declared path. Mutation controls below prove the expectations discriminate — a green witness asserting the wrong contract would defend the defect (census_rows [] incident). The dark-suite originals in compiler_tests.rs remain until gap analysis sec 11 item 9 dispositiones them — this file is the durable enrolled copy keyed by identity, not a second test family. v2 InferToEval executing evidence joins the registry from src/v2/test/claim/infer_self_grounding_wall_test.dag."
-
-data probe_subject_revision_placeholder: CommitSha = "0000000000000000000000000000000000000000"
-data probe_harness_revision_placeholder: CommitSha = "1111111111111111111111111111111111111111"
 
 fn census_of(source: String) -> CompileDiagnosticCensus {
   compile_dag_diagnostic_census(source)
@@ -190,8 +189,8 @@ test fn migrated_receipt_joins_its_v1_compile_path() -> Bool {
         row: row,
         census: census_of(source: call_mislabel_source),
         executed_probe_ids: executed,
-        subject_revision: probe_subject_revision_placeholder,
-        harness_revision: probe_harness_revision_placeholder,
+        subject_revision: synthetic_program_subject_revision(source: call_mislabel_source),
+        harness_revision: synthetic_program_harness_revision(probe: row.probe),
       )
       receipt_joins_v1_compile_path(receipt: receipt)
         && receipt_matches_v1_compile_probe_row(receipt: receipt, row: row)
@@ -208,8 +207,8 @@ test fn blocking_refusal_observation_is_a_verdict() -> Bool {
         row: row,
         census: census,
         executed_probe_ids: executed_probe_ids_for_probe(probe: row.probe),
-        subject_revision: probe_subject_revision_placeholder,
-        harness_revision: probe_harness_revision_placeholder,
+        subject_revision: synthetic_program_subject_revision(source: method_missing_source),
+        harness_revision: synthetic_program_harness_revision(probe: row.probe),
       )
       observed_is_verdict(o: receipt.observed)
         && receipt_matches_v1_compile_probe_row(receipt: receipt, row: row)
@@ -228,8 +227,8 @@ test fn green_control_observation_is_accepted_clean() -> Bool {
         row: row,
         census: census_of(source: call_shape_green_source),
         executed_probe_ids: executed_probe_ids_for_probe(probe: row.probe),
-        subject_revision: probe_subject_revision_placeholder,
-        harness_revision: probe_harness_revision_placeholder,
+        subject_revision: synthetic_program_subject_revision(source: call_shape_green_source),
+        harness_revision: synthetic_program_harness_revision(probe: row.probe),
       )
       observation_is_clean(o: receipt.observed)
         && receipt_matches_v1_compile_probe_row(receipt: receipt, row: row)
@@ -336,8 +335,8 @@ test fn wrong_expectation_does_not_fabricate_clean_receipt() -> Bool {
                   row: row,
                   census: census,
                   executed_probe_ids: executed_probe_ids_for_probe(probe: row.probe),
-                  subject_revision: probe_subject_revision_placeholder,
-                  harness_revision: probe_harness_revision_placeholder,
+                  subject_revision: synthetic_program_subject_revision(source: call_mislabel_source),
+                  harness_revision: synthetic_program_harness_revision(probe: row.probe),
                 ).observed) == false
             Absent => false
           }
@@ -345,6 +344,13 @@ test fn wrong_expectation_does_not_fabricate_clean_receipt() -> Bool {
       }
     Absent => false
   }
+}
+
+test fn subject_revision_is_content_derived_not_fabricated_constant() -> Bool {
+  synthetic_program_subject_revision(source: call_mislabel_source)
+    != synthetic_program_subject_revision(source: call_surplus_source)
+    && synthetic_program_harness_revision(probe: call_mislabel_red_probe)
+      != synthetic_program_harness_revision(probe: call_surplus_red_probe)
 }
 
 test fn receipt_probe_set_digest_matches_executed_probe_set() -> Bool {
@@ -355,8 +361,8 @@ test fn receipt_probe_set_digest_matches_executed_probe_set() -> Bool {
         row: row,
         census: census_of(source: call_mislabel_source),
         executed_probe_ids: executed,
-        subject_revision: probe_subject_revision_placeholder,
-        harness_revision: probe_harness_revision_placeholder,
+        subject_revision: synthetic_program_subject_revision(source: call_mislabel_source),
+        harness_revision: synthetic_program_harness_revision(probe: row.probe),
       )
       (receipt.probe_set_digest as String) == (probe_set_digest(probe_ids: executed) as String)
         && !((receipt.probe_set_digest as String) == (probe_set_digest(probe_ids: guarantee_probe_ids()) as String))

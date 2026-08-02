@@ -1,6 +1,7 @@
 module gunbc.guarantee_probe_corpus
 
 import std.types { String, NonEmptyStr, Bool, Int, List, CommitSha }
+import std.content_hash { content_hash_atom, content_hash_tagged_structural }
 import std.string_type { string_is_lexicographically_before }
 import std.nat { Nat }
 import gunbc.guarantee_measurement {
@@ -37,7 +38,25 @@ data guarantee_probe_corpus_path_scope_note: String = "THREE PATHS FOR THE LANDE
 
 data guarantee_probe_corpus_probe_order_note: String = "CANONICAL PROBE ORDERING OBLIGATION (probe_set_digest note): guarantee_probe_ids lists the slice-1 MIGRATED probes in stable lexicographic order by branded id string. guarantee_probe_ids_reserved holds OPEN follow-on identities (gunbc#7555) outside the digest until their control merges. Callers must not re-sort; the active roster order here IS the probe-set digest authority for this stage."
 
-data guarantee_probe_corpus_revision_note: String = "subject_revision and harness_revision are REQUIRED on every receipt. build_v1_compile_receipt and build_v2_infer_eval_receipt take a path-typed probe row plus the caller-supplied executed_probe_ids roster (probe_set_digest is derived from exactly that list, never silently widened to the full active registry). Witness fixtures own placeholder revisions until the baseline stage names real commits."
+data guarantee_probe_corpus_revision_note: String = "subject_revision and harness_revision are REQUIRED on every receipt. build_v1_compile_receipt and build_v2_infer_eval_receipt take a path-typed probe row plus the caller-supplied executed_probe_ids roster (probe_set_digest is derived from exactly that list, never silently widened to the full active registry). Until the baseline stage supplies anchor git commits, witness fixtures derive revisions from measured content: synthetic_program_subject_revision fingerprints the compiled source text; synthetic_infer_eval_subject_revision fingerprints the named infer fixture; synthetic_program_harness_revision fingerprints the executing probe id under a stable harness tag. These are honest SyntheticProgram identities, not git SHAs — dissolve-on ladder-baseline stage naming real subject_revision/harness_revision commits."
+
+fn synthetic_program_subject_revision(source: String) -> CommitSha {
+  content_hash_atom(value: source as NonEmptyStr).digest as CommitSha
+}
+
+fn synthetic_infer_eval_subject_revision(fixture_label: NonEmptyStr) -> CommitSha {
+  content_hash_tagged_structural(
+    tag: "v2-infer-eval-subject-v1" as NonEmptyStr,
+    payload: content_hash_atom(value: fixture_label),
+  ).digest as CommitSha
+}
+
+fn synthetic_program_harness_revision(probe: GuaranteeProbeId) -> CommitSha {
+  content_hash_tagged_structural(
+    tag: "guarantee-probe-harness-v1" as NonEmptyStr,
+    payload: content_hash_atom(value: probe as NonEmptyStr),
+  ).digest as CommitSha
+}
 
 data v1_compile_rust_path_id: GuaranteePathId = "v1-compile-rust" as GuaranteePathId
 data v2_infer_eval_path_id: GuaranteePathId = "v2-infer-eval" as GuaranteePathId
