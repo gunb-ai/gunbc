@@ -195,6 +195,8 @@ fn blocker_variant_emit(blocker: &Value, ctx: &InterpContext) -> Result<String, 
                 let reason_sym = value_symbol_name(reason)?;
                 Ok(format!("{name} {{ reason: {reason_sym} }}"))
             } else if name == "UpstreamSemanticRefusal" {
+                // HAND-RUST GATE (+12 LOC): mechanical serialize arm for new coproduct variant —
+                // see v2.compiler.self_host.frontier_probe_survey::frontier_probe_survey_blocker_variant_emit_rust_gate_note
                 let diagnostic_class = ctx
                     .field(fields, "diagnostic_class")
                     .ok_or_else(|| format!("{name} missing diagnostic_class"))?;
