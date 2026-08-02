@@ -1,0 +1,1194 @@
+module gunbc.emission_admission
+
+import gunbc.bootstrap {
+  CompilerStage,
+  Complexity,
+  Emit,
+  Infer,
+  Normalize,
+  Ownership,
+  Parse,
+  Resolve,
+  Tokenize,
+  compiler_stage_eq
+}
+import gunbc.generated_artifact {
+  GeneratedArtifact,
+  artifact_path,
+  committed_generated_artifact_paths
+}
+import gunbc.stage0_emit_plan_generated { generated_stage0_paths }
+import std.content_hash { content_hash_atom }
+import v2.compiler.self_host.emitter_producer_provenance {
+  AuthorizedEmitterProducedDisposition,
+  EmitterProducer,
+  V1SeedEmitter,
+  V2EmitterInterpreted,
+  V2EmitterNative,
+  authorized_emitter_produced_disposition_mint_consistent,
+  producer_emission_oracle_rows
+}
+import v2.compiler.self_host.frontier {
+  CompilerModuleFrontierRow,
+  EmitterProduced,
+  SeedRetained,
+  compiler_frontier_roster
+}
+import v2.std.algebra { any, fold_list, length }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.node { Hash, Symbol, combine_hash, symbol_identity_digest }
+import v2.std.optional {
+  Absent,
+  Optional,
+  Present,
+  optional_absent,
+  optional_present
+}
+import v2.std.text { String }
+
+data emission_admission_authority_note: String = "Generation admission model for the emission-admission design (docs/plans/emission-admission-stage-aware-pipeline-design.md, merged #7681). MODEL ONLY: this carrier lands the vocabulary, the construction walls, and the pure folds. It wires no CI gate, no merge admission, and no regen path — every live projection here reads authorities that already exist (v2.compiler.self_host.frontier compiler_frontier_roster, v2.compiler.self_host.emitter_producer_provenance producer_emission_oracle_rows, gunbc.generated_artifact committed_generated_artifact_paths, gunbc.stage0_emit_plan_generated generated_stage0_paths) and mints nothing into them. The three named slices: G0 the admission model (revision identity, declared transition, stage stamps, delta classification), G1 the emit binding (a surface exists only when an existing authority names it; behavioral evidence exists only as an AuthorizedEmitterProducedDisposition, which is unwritable at baseline), G2 promotion and recovery (successor capability, recovery anchor, lineage progress including the deadlock state)."
+
+data emission_admission_design_divergence_note: String = "FOUR PLACES THIS MODEL DOES NOT COPY THE DESIGN SKETCH, each because the sketch's shape would be dishonest in the substrate. (1) RequirementRevision.revision_id is NOT a field: the design sketch stores it, and a stored identity is transcribable — requirement_revision_id derives it, so a forged id is unrepresentable rather than validated (DESIGN 4b, construction over proof over validation). (2) RecoveryAnchor.retained_until: PromotedSuccessor named a state that does not exist when the anchor is minted, so storing it would fabricate at construction; anchor_retention DERIVES RetentionPending | RetentionDischarged from the successor that actually exists. (3) FixForwardProof was a field name and a comment in the design; here its subject must be a surface the DeclaredTransition itself names, because a fixture minted to satisfy the gate proves nothing about the requirement change that motivated it. (4) The design's temporal graph has no state for anchor-defective-and-no-viable-successor — the actual bricking case, the inverse of the refused-candidate case section 5 does cover; LineageDeadlocked names it, because a situation the model can represent and does not name is a silence, not a guarantee."
+
+// ---------------------------------------------------------------------------
+// G1 (existence half) — an emission surface is a position an existing authority
+// already names. There is no free-string surface.
+// ---------------------------------------------------------------------------
+
+type EmissionSurface
+  = CompilerModuleSurface { module_path: String }
+  | GeneratedArtifactSurface { artifact_path: String }
+
+fn emission_surface_path(surface: EmissionSurface) -> String {
+  match surface {
+    CompilerModuleSurface { module_path } => module_path
+    GeneratedArtifactSurface { artifact_path } => artifact_path
+  }
+}
+
+fn emission_surface_eq(left: EmissionSurface, right: EmissionSurface) -> Bool {
+  match left {
+    CompilerModuleSurface { module_path: left_path } =>
+      match right {
+        CompilerModuleSurface { module_path: right_path } => left_path == right_path
+        GeneratedArtifactSurface { artifact_path: _ } => false
+      }
+    GeneratedArtifactSurface { artifact_path: left_path } =>
+      match right {
+        CompilerModuleSurface { module_path: _ } => false
+        GeneratedArtifactSurface { artifact_path: right_path } => left_path == right_path
+      }
+  }
+}
+
+data emission_surface_admission_note: String = "Q4 (unknown surfaces refuse at authoritative admission) is a CONSTRUCTION question, not a validation one: a surface that no authority names has no admissible identity at all. admit_compiler_module_surface consults the live self-host frontier roster; admit_generated_artifact_surface consults the live committed generated-artifact paths. SurfaceUnknown carries the path it refused and a typed cause so the refusal is counted rather than widened into an accept-anyway."
+
+type EmissionSurfaceAdmission
+  = SurfaceKnown { surface: EmissionSurface }
+  | SurfaceUnknown { path: String, cause: Symbol }
+
+fn frontier_roster_names_module(module_path: String) -> Bool {
+  any(
+    xs: compiler_frontier_roster,
+    predicate: fn(row) { row.module_path == module_path }
+  )
+}
+
+fn admit_compiler_module_surface(module_path: String) -> EmissionSurfaceAdmission {
+  if frontier_roster_names_module(module_path: module_path) {
+    SurfaceKnown { surface: CompilerModuleSurface { module_path: module_path } }
+  } else {
+    SurfaceUnknown {
+      path: module_path,
+      cause: ^surface_unknown_no_frontier_row
+    }
+  }
+}
+
+fn committed_artifact_paths_name(artifact_path_value: String) -> Bool {
+  any(
+    xs: committed_generated_artifact_paths(),
+    predicate: fn(path) { path == artifact_path_value }
+  )
+}
+
+fn admit_generated_artifact_surface(artifact_path_value: String) -> EmissionSurfaceAdmission {
+  if committed_artifact_paths_name(artifact_path_value: artifact_path_value) {
+    SurfaceKnown {
+      surface: GeneratedArtifactSurface { artifact_path: artifact_path_value }
+    }
+  } else {
+    SurfaceUnknown {
+      path: artifact_path_value,
+      cause: ^surface_unknown_not_a_committed_generated_artifact
+    }
+  }
+}
+
+fn readmit_emission_surface(surface: EmissionSurface) -> EmissionSurfaceAdmission {
+  match surface {
+    CompilerModuleSurface { module_path } =>
+      admit_compiler_module_surface(module_path: module_path)
+    GeneratedArtifactSurface { artifact_path: path } =>
+      admit_generated_artifact_surface(artifact_path_value: path)
+  }
+}
+
+fn emission_surface_is_admissible(surface: EmissionSurface) -> Bool {
+  match readmit_emission_surface(surface: surface) {
+    SurfaceKnown { surface: _ } => true
+    SurfaceUnknown { path: _, cause: _ } => false
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Q2 — the evidence a moved surface owes, DERIVED. Never an authored label.
+// ---------------------------------------------------------------------------
+
+data surface_evidence_requirement_note: String = "Q2 says formatting-only byte-contract artifacts may close on digest alone while executable and semantic compiler surfaces owe build and behavioral evidence. That distinction is only safe if it is DERIVED — an authored `formatting_only: Bool` is Q1's human override wearing a different hat, since the author who wants the digest-only path is exactly the author who sets the flag. Two derivations are grounded today: a self-host frontier module is an executable compiler surface (BuildAndBehavioral), and a generated artifact whose path is in gunbc.stage0_emit_plan_generated generated_stage0_paths is emitted stage0 Rust (BuildAndBehavioral). NOTHING ELSE IS DERIVABLE. gunbc.generated_artifact's own axes do not discriminate executability — RepoConsumer puts src/v1/stage0/src/bootstrap_stage0_crate_layout_generated.rs and .gitignore both under GitProtocol — so every other registered artifact answers EvidenceRequirementUnderived, a typed, located, counted refusal that names the missing fact instead of guessing at it. There is deliberately no ByteContractOnly arm: minting one today would require exactly the authored label this note refuses. Dissolve-on: gunbc.generated_artifact grows a derived executability axis (which artifacts are inputs to a build or a host reconciler, and which are byte contracts read only by humans or by git), at which point ByteContractOnly becomes derivable and this arm splits."
+
+type SurfaceEvidenceRequirement
+  = BuildAndBehavioral
+  | EvidenceRequirementUnderived { cause: Symbol }
+
+fn path_is_emitted_stage0_rust(path: String) -> Bool {
+  any(xs: generated_stage0_paths, predicate: fn(known) { known == path })
+}
+
+fn surface_evidence_requirement(surface: EmissionSurface) -> SurfaceEvidenceRequirement {
+  match surface {
+    CompilerModuleSurface { module_path: _ } => BuildAndBehavioral
+    GeneratedArtifactSurface { artifact_path: path } =>
+      if path_is_emitted_stage0_rust(path: path) {
+        BuildAndBehavioral
+      } else {
+        EvidenceRequirementUnderived {
+          cause: ^generated_artifact_executability_axis_absent
+        }
+      }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// G0 — requirement revision identity and revision compatibility.
+// ---------------------------------------------------------------------------
+
+data requirement_revision_note: String = "A requirement revision is the compiler's obligation set at a point in time: the authority modules whose contracts the compiler must honour, plus the digest of the enrolled witness roster. It is NOT a git commit and NOT a generation index — two generations may share a revision. The identity is DERIVED (requirement_revision_id), never stored, so no row can carry an id that disagrees with its own content. authority_modules is ordered as its authority presents it and duplicate-free; mint_requirement_revision refuses a duplicate rather than silently deduplicating, because a duplicate means the caller joined two rosters that disagree about membership and the answer to that is a stop, not a merge."
+
+type RequirementRevision {
+  authority_modules: List<String>
+  witness_roster_digest: Hash
+}
+
+fn digest_of_string_list(xs: List<String>) -> Hash {
+  fold_list(
+    xs: xs,
+    empty: symbol_identity_digest(sym: ^emission_admission_empty_string_list),
+    cons: fn(acc, item) { combine_hash(a: acc, b: content_hash_atom(value: item)) }
+  )
+}
+
+fn requirement_revision_id(revision: RequirementRevision) -> Hash {
+  combine_hash(
+    a: combine_hash(
+      a: symbol_identity_digest(sym: ^requirement_revision_identity),
+      b: digest_of_string_list(xs: revision.authority_modules)
+    ),
+    b: revision.witness_roster_digest
+  )
+}
+
+fn requirement_revision_eq(left: RequirementRevision, right: RequirementRevision) -> Bool {
+  requirement_revision_id(revision: left) == requirement_revision_id(revision: right)
+}
+
+fn string_list_count_occurrences(xs: List<String>, target: String) -> Int {
+  fold_list(
+    xs: xs,
+    empty: 0,
+    cons: fn(count, item) { if item == target { count + 1 } else { count } }
+  )
+}
+
+fn string_list_is_duplicate_free(xs: List<String>) -> Bool {
+  fold_list(
+    xs: xs,
+    empty: true,
+    cons: fn(ok, item) {
+      ok && (string_list_count_occurrences(xs: xs, target: item) == 1)
+    }
+  )
+}
+
+fn string_list_contains_all(outer: List<String>, inner: List<String>) -> Bool {
+  fold_list(
+    xs: inner,
+    empty: true,
+    cons: fn(ok, item) {
+      ok && any(xs: outer, predicate: fn(candidate) { candidate == item })
+    }
+  )
+}
+
+fn mint_requirement_revision(
+  authority_modules: List<String>,
+  witness_roster_digest: Hash
+) -> Optional<RequirementRevision> {
+  if length(xs: authority_modules) == 0 {
+    optional_absent()
+  } else if !string_list_is_duplicate_free(xs: authority_modules) {
+    optional_absent()
+  } else {
+    optional_present(
+      value: RequirementRevision {
+        authority_modules: authority_modules,
+        witness_roster_digest: witness_roster_digest
+      }
+    )
+  }
+}
+
+data revision_compatibility_note: String = "THE COMPATIBILITY STATEMENT the design owed and did not give. RequirementRevision carries witness_roster_digest, so enrolling a witness changes the revision id. Read naively against design section 3.2 that would make every witness enrollment a revision bump requiring a declared transition — which is not what anyone intends and would price enrollment out of existence. The resolution is that a revision BUMP and a declared-transition OBLIGATION are different questions: revision_compatibility classifies how two revisions differ, and transition_requirement maps that classification onto what the transition must supply. A witness-roster-only change is compatible by construction (the obligation set did not move; the evidence for it grew), so it needs a derived transition and no bridge. An authority extension — the contract surface grew — needs a DECLARED transition naming the surfaces that may move. An authority module that DISAPPEARED, or a simultaneous roster and authority change, is not provably compatible by inclusion alone and needs the bridge protocol of design section 3.7."
+
+type RevisionCompatibility
+  = RevisionIdentical
+  | RevisionWitnessRosterOnly
+  | RevisionAuthorityExtension
+  | RevisionIncompatible { cause: Symbol }
+
+fn revision_compatibility(
+  from_revision: RequirementRevision,
+  to_revision: RequirementRevision
+) -> RevisionCompatibility {
+  let same_roster = from_revision.witness_roster_digest == to_revision.witness_roster_digest
+  let authority_retained = string_list_contains_all(
+    outer: to_revision.authority_modules,
+    inner: from_revision.authority_modules
+  )
+  let authority_identical = authority_retained
+    && (length(xs: from_revision.authority_modules)
+      == length(xs: to_revision.authority_modules))
+  if !authority_retained {
+    RevisionIncompatible { cause: ^revision_authority_module_departed }
+  } else if authority_identical && same_roster {
+    RevisionIdentical
+  } else if authority_identical {
+    RevisionWitnessRosterOnly
+  } else if same_roster {
+    RevisionAuthorityExtension
+  } else {
+    RevisionIncompatible { cause: ^revision_authority_and_roster_moved_together }
+  }
+}
+
+type TransitionRequirement
+  = NoTransitionRequired
+  | DerivedTransitionSufficient
+  | DeclaredTransitionRequired
+  | BridgeRequired { cause: Symbol }
+
+fn transition_requirement(
+  from_revision: RequirementRevision,
+  to_revision: RequirementRevision
+) -> TransitionRequirement {
+  match revision_compatibility(from_revision: from_revision, to_revision: to_revision) {
+    RevisionIdentical => NoTransitionRequired
+    RevisionWitnessRosterOnly => DerivedTransitionSufficient
+    RevisionAuthorityExtension => DeclaredTransitionRequired
+    RevisionIncompatible { cause } => BridgeRequired { cause: cause }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// G0 — declared transition. Q1: a human declaration is an INPUT, never an
+// override of missing machine evidence.
+// ---------------------------------------------------------------------------
+
+data transition_evidence_note: String = "Q1 is constructed, not checked. TransitionEvidence is a RECORD with a required machine leg (SelectionEvidence, the affected-set projection) and an optional human leg (operator_declaration). It is deliberately not a coproduct: a coproduct would let OperatorDeclaration STAND WHERE the selection evidence was missing, which is exactly the override Q1 forbids. SelectionRefused therefore refuses the whole transition no matter what the operator wrote, and an operator declaration can only ever narrow — it can never supply the leg that is absent."
+
+type SelectionEvidence
+  = SelectionApplied { selection_digest: Hash }
+  | SelectionRefused { cause: Symbol }
+
+type TransitionEvidence {
+  selection: SelectionEvidence
+  operator_declaration: Optional<String>
+}
+
+data bridge_declaration_note: String = "Design section 3.7: expand, migrate, contract, in that order. A bridge that omits a phase, or runs them in another order, is not a bridge — the whole point is that the anchor understands the EXPANDED obligation surface before any artifact migrates, and that the promoted revision is strictly smaller than the expansion. bridge_declaration_complete checks the exact three-phase sequence; anything else refuses."
+
+type BridgePhase
+  = RequirementExpand
+  | ArtifactMigrate
+  | RequirementContract
+
+fn bridge_phase_eq(left: BridgePhase, right: BridgePhase) -> Bool {
+  match left {
+    RequirementExpand =>
+      match right {
+        RequirementExpand => true
+        ArtifactMigrate => false
+        RequirementContract => false
+      }
+    ArtifactMigrate =>
+      match right {
+        RequirementExpand => false
+        ArtifactMigrate => true
+        RequirementContract => false
+      }
+    RequirementContract =>
+      match right {
+        RequirementExpand => false
+        ArtifactMigrate => false
+        RequirementContract => true
+      }
+  }
+}
+
+type BridgeDeclaration {
+  phases: List<BridgePhase>
+}
+
+data bridge_expected_phase_order: List<BridgePhase> = [
+  RequirementExpand,
+  ArtifactMigrate,
+  RequirementContract
+]
+
+type BridgePhaseScan {
+  position: Int
+  ordered: Bool
+}
+
+fn bridge_expected_phase_at(index: Int) -> Optional<BridgePhase> {
+  if index == 0 {
+    optional_present(value: RequirementExpand)
+  } else if index == 1 {
+    optional_present(value: ArtifactMigrate)
+  } else if index == 2 {
+    optional_present(value: RequirementContract)
+  } else {
+    optional_absent()
+  }
+}
+
+fn bridge_declaration_complete(bridge: BridgeDeclaration) -> Bool {
+  if length(xs: bridge.phases) != length(xs: bridge_expected_phase_order) {
+    false
+  } else {
+    fold_list(
+      xs: bridge.phases,
+      empty: BridgePhaseScan { position: 0, ordered: true },
+      cons: fn(acc, phase) {
+        BridgePhaseScan {
+          position: acc.position + 1,
+          ordered: acc.ordered
+            && match bridge_expected_phase_at(index: acc.position) {
+              Present { value: expected } => bridge_phase_eq(left: phase, right: expected)
+              Absent => false
+            }
+        }
+      }
+    ).ordered
+  }
+}
+
+type DeclaredTransition {
+  from_revision: RequirementRevision
+  to_revision: RequirementRevision
+  allowed_surface_moves: List<EmissionSurface>
+  affected_stages: List<CompilerStage>
+  evidence: TransitionEvidence
+  bridge: Optional<BridgeDeclaration>
+}
+
+type TransitionAdmission
+  = TransitionAdmitted
+  | TransitionRefusedSelectionAbsent { cause: Symbol }
+  | TransitionRefusedSurfaceUnknown { path: String, cause: Symbol }
+  | TransitionRefusedBridgeRequired { cause: Symbol }
+  | TransitionRefusedBridgeIncomplete { cause: Symbol }
+  | TransitionRefusedUndeclaredStages { cause: Symbol }
+
+fn transition_declares_surface(
+  transition: DeclaredTransition,
+  surface: EmissionSurface
+) -> Bool {
+  any(
+    xs: transition.allowed_surface_moves,
+    predicate: fn(declared) { emission_surface_eq(left: declared, right: surface) }
+  )
+}
+
+fn transition_declares_stage(transition: DeclaredTransition, stage: CompilerStage) -> Bool {
+  any(
+    xs: transition.affected_stages,
+    predicate: fn(declared) { compiler_stage_eq(left: declared, right: stage) }
+  )
+}
+
+fn transition_first_unknown_surface(
+  transition: DeclaredTransition
+) -> Optional<EmissionSurface> {
+  fold_list(
+    xs: transition.allowed_surface_moves,
+    empty: optional_absent(),
+    cons: fn(acc, surface) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          if emission_surface_is_admissible(surface: surface) {
+            optional_absent()
+          } else {
+            optional_present(value: surface)
+          }
+      }
+    }
+  )
+}
+
+fn declared_transition_admission(transition: DeclaredTransition) -> TransitionAdmission {
+  match transition.evidence.selection {
+    SelectionRefused { cause } => TransitionRefusedSelectionAbsent { cause: cause }
+    SelectionApplied { selection_digest: _ } =>
+      match transition_first_unknown_surface(transition: transition) {
+        Present { value: unknown } =>
+          TransitionRefusedSurfaceUnknown {
+            path: emission_surface_path(surface: unknown),
+            cause: ^transition_declares_unknown_surface
+          }
+        Absent =>
+          if (length(xs: transition.allowed_surface_moves) > 0)
+            && (length(xs: transition.affected_stages) == 0) {
+            TransitionRefusedUndeclaredStages {
+              cause: ^transition_moves_surfaces_without_stages
+            }
+          } else {
+            match transition_requirement(
+              from_revision: transition.from_revision,
+              to_revision: transition.to_revision
+            ) {
+              BridgeRequired { cause } =>
+                match transition.bridge {
+                  Absent => TransitionRefusedBridgeRequired { cause: cause }
+                  Present { value: bridge } =>
+                    if bridge_declaration_complete(bridge: bridge) {
+                      TransitionAdmitted
+                    } else {
+                      TransitionRefusedBridgeIncomplete {
+                        cause: ^bridge_phases_not_expand_migrate_contract
+                      }
+                    }
+                }
+              NoTransitionRequired => TransitionAdmitted
+              DerivedTransitionSufficient => TransitionAdmitted
+              DeclaredTransitionRequired => TransitionAdmitted
+            }
+          }
+      }
+  }
+}
+
+fn declared_transition_is_admitted(transition: DeclaredTransition) -> Bool {
+  match declared_transition_admission(transition: transition) {
+    TransitionAdmitted => true
+    TransitionRefusedSelectionAbsent { cause: _ } => false
+    TransitionRefusedSurfaceUnknown { path: _, cause: _ } => false
+    TransitionRefusedBridgeRequired { cause: _ } => false
+    TransitionRefusedBridgeIncomplete { cause: _ } => false
+    TransitionRefusedUndeclaredStages { cause: _ } => false
+  }
+}
+
+// ---------------------------------------------------------------------------
+// G0 — stage stamps. The design's headline cost is that a stage-local failure
+// has no receipt naming WHICH stage failed; RefusedStageMismatch does not
+// answer that, it catches a mis-declaration.
+// ---------------------------------------------------------------------------
+
+data stage_stamp_note: String = "StageStamp is the carrier design sections 6.1 and stage 3 assume and never type. It is what makes 'infer accepted, emit refused' a located receipt instead of one mismatch bit: each stamp names a CompilerStage and that stage's own outcome, so the FIRST refused stamp is the located failure and everything after it is not run. The producing stage is the last stamp — the stage that actually rendered the artifact — which is what a declared-stage mismatch is measured against. Empty stamps are not an accept: an observation with no stage evidence refuses, because 'no stage refused' and 'no stage was measured' are different states."
+
+type StageOutcome
+  = StageAccepted { digest: Hash }
+  | StageRefused { cause: Symbol }
+
+type StageStamp {
+  stage: CompilerStage
+  outcome: StageOutcome
+}
+
+fn first_refused_stage_stamp(stamps: List<StageStamp>) -> Optional<StageStamp> {
+  fold_list(
+    xs: stamps,
+    empty: optional_absent(),
+    cons: fn(acc, stamp) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          match stamp.outcome {
+            StageRefused { cause: _ } => optional_present(value: stamp)
+            StageAccepted { digest: _ } => optional_absent()
+          }
+      }
+    }
+  )
+}
+
+fn producing_stage_stamp(stamps: List<StageStamp>) -> Optional<StageStamp> {
+  fold_list(
+    xs: stamps,
+    empty: optional_absent(),
+    cons: fn(_acc, stamp) { optional_present(value: stamp) }
+  )
+}
+
+// ---------------------------------------------------------------------------
+// G0 + G1 — emission observation and delta classification.
+// ---------------------------------------------------------------------------
+
+data delta_evidence_note: String = "G1's evidence half. BuildBehavioralEvidence does not carry a Bool or a label — it carries an AuthorizedEmitterProducedDisposition, the existing construction wall in v2.compiler.self_host.emitter_producer_provenance, which is unwritable at baseline because producer_emission_executed_digest_is_execution_measured is false until witness-realization binds host-measured verdict digests. So Q2's law — a digest must NEVER be relabelled BehavioralEquivalent — holds by construction here rather than by a check: there is no arm that turns a digest into behavioral evidence, and the only arm that carries behavioral evidence cannot be minted from declarative fields. This is a JOIN onto that wall, not a second one."
+
+type DeltaEvidence
+  = DigestOnlyEvidence
+  | BuildBehavioralEvidence { authorization: AuthorizedEmitterProducedDisposition }
+
+type EmissionDelta {
+  surface: EmissionSurface
+  before_digest: Hash
+  after_digest: Hash
+}
+
+fn emission_delta_moved(delta: EmissionDelta) -> Bool {
+  delta.before_digest != delta.after_digest
+}
+
+type EmissionObservation {
+  delta: EmissionDelta
+  stage_stamps: List<StageStamp>
+  evidence: DeltaEvidence
+  observed_revision_id: Hash
+  substrate_revision_id: Hash
+}
+
+type EmissionAdmissionVerdict
+  = AdmittedUnchanged { surface: EmissionSurface }
+  | AdmittedDeclared { surface: EmissionSurface, stage: CompilerStage }
+  | RefusedSurfaceUnknown { path: String, cause: Symbol }
+  | RefusedTransitionInadmissible { admission: TransitionAdmission }
+  | RefusedRevisionMismatch { expected: Hash, observed: Hash }
+  | RefusedStaleSubstrate { expected: Hash, observed: Hash }
+  | RefusedStageLocal { stage: CompilerStage, cause: Symbol }
+  | RefusedStageEvidenceAbsent { cause: Symbol }
+  | RefusedUndeclaredDelta { surface: EmissionSurface }
+  | RefusedStageMismatch { declared: List<CompilerStage>, observed: CompilerStage }
+  | RefusedEvidenceRequirementUnderived { surface: EmissionSurface, cause: Symbol }
+  | RefusedRegression { surface: EmissionSurface, cause: Symbol }
+
+data classify_emission_delta_note: String = "Fail fast, in dependency order, and never widen. Surface identity first (an unnamed surface has no admissible identity at all), then the transition's own admissibility (a refused selection cannot be rescued by anything downstream), then revision and substrate agreement (a comparison across revisions or against a stale materialization is not a comparison), then the located stage refusal (the design's headline receipt), then movement, then declaration, then stage agreement, then the evidence the surface owes. Every arm that is not an admission is a typed, located refusal — none of them widens to rerun-everything or accept-anyway, and RefusedEvidenceRequirementUnderived is what an unmodelled executability axis produces instead of a guess."
+
+fn classify_emission_delta(
+  transition: DeclaredTransition,
+  observation: EmissionObservation,
+  substrate_revision_id: Hash
+) -> EmissionAdmissionVerdict {
+  let surface = observation.delta.surface
+  match readmit_emission_surface(surface: surface) {
+    SurfaceUnknown { path, cause } => RefusedSurfaceUnknown { path: path, cause: cause }
+    SurfaceKnown { surface: _ } =>
+      match declared_transition_admission(transition: transition) {
+        TransitionRefusedSelectionAbsent { cause } =>
+          RefusedTransitionInadmissible {
+            admission: TransitionRefusedSelectionAbsent { cause: cause }
+          }
+        TransitionRefusedSurfaceUnknown { path, cause } =>
+          RefusedTransitionInadmissible {
+            admission: TransitionRefusedSurfaceUnknown { path: path, cause: cause }
+          }
+        TransitionRefusedBridgeRequired { cause } =>
+          RefusedTransitionInadmissible {
+            admission: TransitionRefusedBridgeRequired { cause: cause }
+          }
+        TransitionRefusedBridgeIncomplete { cause } =>
+          RefusedTransitionInadmissible {
+            admission: TransitionRefusedBridgeIncomplete { cause: cause }
+          }
+        TransitionRefusedUndeclaredStages { cause } =>
+          RefusedTransitionInadmissible {
+            admission: TransitionRefusedUndeclaredStages { cause: cause }
+          }
+        TransitionAdmitted =>
+          if observation.observed_revision_id
+            != requirement_revision_id(revision: transition.to_revision) {
+            RefusedRevisionMismatch {
+              expected: requirement_revision_id(revision: transition.to_revision),
+              observed: observation.observed_revision_id
+            }
+          } else if observation.substrate_revision_id != substrate_revision_id {
+            RefusedStaleSubstrate {
+              expected: substrate_revision_id,
+              observed: observation.substrate_revision_id
+            }
+          } else {
+            match first_refused_stage_stamp(stamps: observation.stage_stamps) {
+              Present { value: refused } =>
+                match refused.outcome {
+                  StageRefused { cause } =>
+                    RefusedStageLocal { stage: refused.stage, cause: cause }
+                  StageAccepted { digest: _ } =>
+                    RefusedStageEvidenceAbsent {
+                      cause: ^stage_stamp_refusal_lost_its_cause
+                    }
+                }
+              Absent =>
+                if !emission_delta_moved(delta: observation.delta) {
+                  AdmittedUnchanged { surface: surface }
+                } else if !transition_declares_surface(
+                  transition: transition,
+                  surface: surface
+                ) {
+                  RefusedUndeclaredDelta { surface: surface }
+                } else {
+                  match producing_stage_stamp(stamps: observation.stage_stamps) {
+                    Absent =>
+                      RefusedStageEvidenceAbsent {
+                        cause: ^observation_carries_no_stage_stamp
+                      }
+                    Present { value: producing } =>
+                      if !transition_declares_stage(
+                        transition: transition,
+                        stage: producing.stage
+                      ) {
+                        RefusedStageMismatch {
+                          declared: transition.affected_stages,
+                          observed: producing.stage
+                        }
+                      } else {
+                        admit_moved_surface_evidence(
+                          surface: surface,
+                          evidence: observation.evidence,
+                          stage: producing.stage
+                        )
+                      }
+                  }
+                }
+            }
+          }
+      }
+  }
+}
+
+fn admit_moved_surface_evidence(
+  surface: EmissionSurface,
+  evidence: DeltaEvidence,
+  stage: CompilerStage
+) -> EmissionAdmissionVerdict {
+  match surface_evidence_requirement(surface: surface) {
+    EvidenceRequirementUnderived { cause } =>
+      RefusedEvidenceRequirementUnderived { surface: surface, cause: cause }
+    BuildAndBehavioral =>
+      match evidence {
+        DigestOnlyEvidence =>
+          RefusedRegression {
+            surface: surface,
+            cause: ^digest_only_evidence_for_behavioral_surface
+          }
+        BuildBehavioralEvidence { authorization } =>
+          if authorized_emitter_produced_disposition_mint_consistent(
+            module_path: emission_surface_path(surface: surface),
+            authorization: authorization
+          ) {
+            AdmittedDeclared { surface: surface, stage: stage }
+          } else {
+            RefusedRegression {
+              surface: surface,
+              cause: ^behavioral_authorization_not_mint_consistent
+            }
+          }
+      }
+  }
+}
+
+fn emission_admission_is_admitted(verdict: EmissionAdmissionVerdict) -> Bool {
+  match verdict {
+    AdmittedUnchanged { surface: _ } => true
+    AdmittedDeclared { surface: _, stage: _ } => true
+    RefusedSurfaceUnknown { path: _, cause: _ } => false
+    RefusedTransitionInadmissible { admission: _ } => false
+    RefusedRevisionMismatch { expected: _, observed: _ } => false
+    RefusedStaleSubstrate { expected: _, observed: _ } => false
+    RefusedStageLocal { stage: _, cause: _ } => false
+    RefusedStageEvidenceAbsent { cause: _ } => false
+    RefusedUndeclaredDelta { surface: _ } => false
+    RefusedStageMismatch { declared: _, observed: _ } => false
+    RefusedEvidenceRequirementUnderived { surface: _, cause: _ } => false
+    RefusedRegression { surface: _, cause: _ } => false
+  }
+}
+
+// ---------------------------------------------------------------------------
+// G2 — generation lineage. There is no hand-authored generation row anywhere in
+// this module: the lineage root is DERIVED from the live self-host frontier.
+// ---------------------------------------------------------------------------
+
+type ArtifactBinding
+  = CompilerModuleBinding { row: CompilerModuleFrontierRow }
+  | GeneratedArtifactBinding { artifact: GeneratedArtifact }
+
+fn artifact_binding_surface(binding: ArtifactBinding) -> EmissionSurface {
+  match binding {
+    CompilerModuleBinding { row } => CompilerModuleSurface { module_path: row.module_path }
+    GeneratedArtifactBinding { artifact } =>
+      GeneratedArtifactSurface { artifact_path: artifact_path(a: artifact) }
+  }
+}
+
+type GenerationState
+  = GenerationOrigin
+  | GenerationCandidate
+  | GenerationPromoted { successor_capability: SuccessorCapabilityReceipt }
+
+type CompilerGeneration {
+  index: Int
+  revision: RequirementRevision
+  producer: EmitterProducer
+  bindings: List<ArtifactBinding>
+  state: GenerationState
+}
+
+fn generation_is_authoritative(generation: CompilerGeneration) -> Bool {
+  match generation.state {
+    GenerationOrigin => true
+    GenerationPromoted { successor_capability: _ } => true
+    GenerationCandidate => false
+  }
+}
+
+// ---------------------------------------------------------------------------
+// G2 — successor capability. Design section 3.8 gave this a field name and a
+// comment; the wall is that its subject must be one the transition NAMES.
+// ---------------------------------------------------------------------------
+
+data fix_forward_proof_note: String = "THE WALL THAT MATTERS. A successor-capability receipt is supposed to prove that generation N+1 can build and validate the CHANGED successor — not that it can reproduce generation N's output. The fabrication that shape invites is obvious and cheap: synthesize an artifact the anchor happens to fail on, watch the candidate accept it, call that fix-forward. So the proof's subject is not a free field. changed_requirement_surface must be a surface the DeclaredTransition itself declares movable, which means the proof can only ever be about the requirement change that motivated the transition. Reproduction is refused explicitly and separately: if the anchor ALSO accepts the subject, nothing was proven about fix-forward capability, however green both sides are. And the candidate's own acceptance is an AuthorizedEmitterProducedDisposition, not a Bool, so it inherits the same execution-measured wall the emission evidence does."
+
+type CapabilityOutcome
+  = CapabilityAccepted { authorization: AuthorizedEmitterProducedDisposition }
+  | CapabilityRefused { cause: Symbol }
+
+type FixForwardProof {
+  changed_requirement_surface: EmissionSurface
+  candidate_outcome: CapabilityOutcome
+  anchor_outcome: CapabilityOutcome
+}
+
+type SuccessorCapabilityReceipt {
+  anchor_generation: Int
+  candidate_generation: Int
+  transition: DeclaredTransition
+  fix_forward: FixForwardProof
+}
+
+type SuccessorCapabilityAdmission
+  = SuccessorCapabilityAdmitted
+  | SuccessorCapabilityRefusedTransitionInadmissible { admission: TransitionAdmission }
+  | SuccessorCapabilityRefusedSubjectNotDeclared { surface: EmissionSurface, cause: Symbol }
+  | SuccessorCapabilityRefusedReproductionOnly { cause: Symbol }
+  | SuccessorCapabilityRefusedCandidateNotCapable { cause: Symbol }
+  | SuccessorCapabilityRefusedLineageOrder { anchor: Int, candidate: Int, cause: Symbol }
+  | SuccessorCapabilityRefusedRevisionMismatch { cause: Symbol }
+
+fn successor_capability_admission(
+  receipt: SuccessorCapabilityReceipt,
+  anchor: CompilerGeneration,
+  candidate: CompilerGeneration
+) -> SuccessorCapabilityAdmission {
+  match declared_transition_admission(transition: receipt.transition) {
+    TransitionRefusedSelectionAbsent { cause } =>
+      SuccessorCapabilityRefusedTransitionInadmissible {
+        admission: TransitionRefusedSelectionAbsent { cause: cause }
+      }
+    TransitionRefusedSurfaceUnknown { path, cause } =>
+      SuccessorCapabilityRefusedTransitionInadmissible {
+        admission: TransitionRefusedSurfaceUnknown { path: path, cause: cause }
+      }
+    TransitionRefusedBridgeRequired { cause } =>
+      SuccessorCapabilityRefusedTransitionInadmissible {
+        admission: TransitionRefusedBridgeRequired { cause: cause }
+      }
+    TransitionRefusedBridgeIncomplete { cause } =>
+      SuccessorCapabilityRefusedTransitionInadmissible {
+        admission: TransitionRefusedBridgeIncomplete { cause: cause }
+      }
+    TransitionRefusedUndeclaredStages { cause } =>
+      SuccessorCapabilityRefusedTransitionInadmissible {
+        admission: TransitionRefusedUndeclaredStages { cause: cause }
+      }
+    TransitionAdmitted =>
+      if (receipt.anchor_generation != anchor.index)
+        || (receipt.candidate_generation != candidate.index)
+        || (receipt.candidate_generation != anchor.index + 1) {
+        SuccessorCapabilityRefusedLineageOrder {
+          anchor: receipt.anchor_generation,
+          candidate: receipt.candidate_generation,
+          cause: ^successor_receipt_does_not_name_its_own_generations
+        }
+      } else if !requirement_revision_eq(
+        left: receipt.transition.from_revision,
+        right: anchor.revision
+      ) {
+        SuccessorCapabilityRefusedRevisionMismatch {
+          cause: ^successor_transition_from_revision_is_not_the_anchor_revision
+        }
+      } else if !requirement_revision_eq(
+        left: receipt.transition.to_revision,
+        right: candidate.revision
+      ) {
+        SuccessorCapabilityRefusedRevisionMismatch {
+          cause: ^successor_transition_to_revision_is_not_the_candidate_revision
+        }
+      } else if !transition_declares_surface(
+        transition: receipt.transition,
+        surface: receipt.fix_forward.changed_requirement_surface
+      ) {
+        SuccessorCapabilityRefusedSubjectNotDeclared {
+          surface: receipt.fix_forward.changed_requirement_surface,
+          cause: ^fix_forward_subject_not_named_by_the_transition
+        }
+      } else {
+        match receipt.fix_forward.candidate_outcome {
+          CapabilityRefused { cause: _ } =>
+            SuccessorCapabilityRefusedCandidateNotCapable {
+              cause: ^candidate_refused_the_changed_requirement_subject
+            }
+          CapabilityAccepted { authorization } =>
+            if !authorized_emitter_produced_disposition_mint_consistent(
+              module_path: emission_surface_path(
+                surface: receipt.fix_forward.changed_requirement_surface
+              ),
+              authorization: authorization
+            ) {
+              SuccessorCapabilityRefusedCandidateNotCapable {
+                cause: ^candidate_acceptance_authorization_not_mint_consistent
+              }
+            } else {
+              match receipt.fix_forward.anchor_outcome {
+                CapabilityAccepted { authorization: _ } =>
+                  SuccessorCapabilityRefusedReproductionOnly {
+                    cause: ^anchor_also_accepted_the_subject_so_only_reproduction_is_proven
+                  }
+                CapabilityRefused { cause: _ } => SuccessorCapabilityAdmitted
+              }
+            }
+        }
+      }
+  }
+}
+
+fn successor_capability_is_admitted(admission: SuccessorCapabilityAdmission) -> Bool {
+  match admission {
+    SuccessorCapabilityAdmitted => true
+    SuccessorCapabilityRefusedTransitionInadmissible { admission: _ } => false
+    SuccessorCapabilityRefusedSubjectNotDeclared { surface: _, cause: _ } => false
+    SuccessorCapabilityRefusedReproductionOnly { cause: _ } => false
+    SuccessorCapabilityRefusedCandidateNotCapable { cause: _ } => false
+    SuccessorCapabilityRefusedLineageOrder { anchor: _, candidate: _, cause: _ } => false
+    SuccessorCapabilityRefusedRevisionMismatch { cause: _ } => false
+  }
+}
+
+// ---------------------------------------------------------------------------
+// G2 — promotion. A candidate cannot be the sole authority promoting itself.
+// ---------------------------------------------------------------------------
+
+type PromotionVerdict
+  = PromotionAdmitted
+  | PromotionRefusedSelfPromotion { cause: Symbol }
+  | PromotionRefusedAnchorNotAuthoritative { cause: Symbol }
+  | PromotionRefusedCandidateState { cause: Symbol }
+  | PromotionRefusedCapability { admission: SuccessorCapabilityAdmission }
+
+fn promotion_admission(
+  anchor: CompilerGeneration,
+  candidate: CompilerGeneration,
+  receipt: SuccessorCapabilityReceipt
+) -> PromotionVerdict {
+  if anchor.index == candidate.index {
+    PromotionRefusedSelfPromotion {
+      cause: ^candidate_and_anchor_are_the_same_generation
+    }
+  } else if !generation_is_authoritative(generation: anchor) {
+    PromotionRefusedAnchorNotAuthoritative {
+      cause: ^anchor_is_a_candidate_not_an_authoritative_generation
+    }
+  } else {
+    match candidate.state {
+      GenerationOrigin =>
+        PromotionRefusedCandidateState { cause: ^origin_generation_is_not_promotable }
+      GenerationPromoted { successor_capability: _ } =>
+        PromotionRefusedCandidateState { cause: ^generation_is_already_promoted }
+      GenerationCandidate => {
+        let admission = successor_capability_admission(
+          receipt: receipt,
+          anchor: anchor,
+          candidate: candidate
+        )
+        if successor_capability_is_admitted(admission: admission) {
+          PromotionAdmitted
+        } else {
+          PromotionRefusedCapability { admission: admission }
+        }
+      }
+    }
+  }
+}
+
+data mint_promoted_generation_note: String = "The sole minter of GenerationPromoted. The receipt lives INSIDE the variant, so a promoted generation without a successor-capability receipt is unrepresentable rather than merely refused — and this fn is the only place the variant is built from a candidate. At baseline it cannot succeed on any live generation, and not because of a hardcoded false: the receipt's candidate acceptance is an AuthorizedEmitterProducedDisposition, which mint_authorized_emitter_produced_disposition cannot produce until witness-realization binds execution-measured verdict digests. Promotion is therefore gated by the emission wall that already exists, not by a second wall beside it."
+
+fn mint_promoted_generation(
+  anchor: CompilerGeneration,
+  candidate: CompilerGeneration,
+  receipt: SuccessorCapabilityReceipt
+) -> Optional<CompilerGeneration> {
+  match promotion_admission(anchor: anchor, candidate: candidate, receipt: receipt) {
+    PromotionAdmitted =>
+      optional_present(
+        value: CompilerGeneration {
+          index: candidate.index,
+          revision: candidate.revision,
+          producer: candidate.producer,
+          bindings: candidate.bindings,
+          state: GenerationPromoted { successor_capability: receipt }
+        }
+      )
+    PromotionRefusedSelfPromotion { cause: _ } => optional_absent()
+    PromotionRefusedAnchorNotAuthoritative { cause: _ } => optional_absent()
+    PromotionRefusedCandidateState { cause: _ } => optional_absent()
+    PromotionRefusedCapability { admission: _ } => optional_absent()
+  }
+}
+
+// ---------------------------------------------------------------------------
+// G2 — recovery anchor and lineage progress, including the deadlock the design
+// leaves unnamed.
+// ---------------------------------------------------------------------------
+
+data recovery_anchor_note: String = "The design's RecoveryAnchor carried retained_until: PromotedSuccessor — a state that does not exist at the moment the anchor is minted, so storing it would either fabricate the successor or leave a field that lies until something backfills it. Retention is DERIVED instead: anchor_retention answers RetentionPending when no promoted successor exists and RetentionDischarged when one does. A refused candidate therefore cannot discharge an anchor by existing, which is exactly design section 5's retention law, and the anchor holds with no field to go stale."
+
+type RecoveryAnchor {
+  generation: CompilerGeneration
+}
+
+fn mint_recovery_anchor(generation: CompilerGeneration) -> Optional<RecoveryAnchor> {
+  if generation_is_authoritative(generation: generation) {
+    optional_present(value: RecoveryAnchor { generation: generation })
+  } else {
+    optional_absent()
+  }
+}
+
+type AnchorRetention
+  = RetentionPending { anchor_generation: Int }
+  | RetentionDischarged { successor_generation: Int }
+
+fn anchor_retention(
+  anchor: RecoveryAnchor,
+  successor: Optional<CompilerGeneration>
+) -> AnchorRetention {
+  match successor {
+    Absent => RetentionPending { anchor_generation: anchor.generation.index }
+    Present { value: generation } =>
+      match generation.state {
+        GenerationPromoted { successor_capability: receipt } =>
+          if receipt.anchor_generation == anchor.generation.index {
+            RetentionDischarged { successor_generation: generation.index }
+          } else {
+            RetentionPending { anchor_generation: anchor.generation.index }
+          }
+        GenerationCandidate => RetentionPending { anchor_generation: anchor.generation.index }
+        GenerationOrigin => RetentionPending { anchor_generation: anchor.generation.index }
+      }
+  }
+}
+
+data lineage_deadlock_note: String = "THE CASE THE DESIGN CANNOT SAY. Section 5's retention law covers the candidate being defective: N stays authoritative, a refused candidate does not demote it, and the tree is fine. The bricking case is the inverse — the ANCHOR is the defective generation and no candidate can prove successor capability — and for that the temporal graph has no state at all. Cannot move forward and cannot stay is a real, reachable situation, and a model that can represent it while having no name for it is not silent by accident: it reads as healthy. LineageDeadlocked names it with the anchor's own defect cause and the count of candidates that failed, so the situation is typed, located, and counted the moment it exists rather than discovered later from a stuck tree. Note that git rollback does not dissolve it: rolling back reaches the same defective anchor."
+
+type AnchorHealth
+  = AnchorBuildable
+  | AnchorDefective { cause: Symbol }
+
+type LineageProgress
+  = LineageProgressing { successor_generation: Int }
+  | LineageHeldOnAnchor { anchor_generation: Int }
+  | LineageDeadlocked {
+      anchor_generation: Int,
+      anchor_cause: Symbol,
+      refused_candidates: Int
+    }
+
+fn lineage_progress(
+  anchor: RecoveryAnchor,
+  health: AnchorHealth,
+  admitted_successor: Optional<CompilerGeneration>,
+  refused_candidates: Int
+) -> LineageProgress {
+  match anchor_retention(anchor: anchor, successor: admitted_successor) {
+    RetentionDischarged { successor_generation } =>
+      LineageProgressing { successor_generation: successor_generation }
+    RetentionPending { anchor_generation } =>
+      match health {
+        AnchorBuildable => LineageHeldOnAnchor { anchor_generation: anchor_generation }
+        AnchorDefective { cause } =>
+          LineageDeadlocked {
+            anchor_generation: anchor_generation,
+            anchor_cause: cause,
+            refused_candidates: refused_candidates
+          }
+      }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// G2 — the lineage root. Generation 0 is DERIVED from the live seed frontier;
+// no row asserts it.
+// ---------------------------------------------------------------------------
+
+data lineage_root_note: String = "THERE IS NO GENERATION 0 IN THE DESIGN, and the available wrong answer is to author one — a row declaring the current tree Promoted, which is precisely the self-promotion section 3.4 forbids, performed by hand instead of by a candidate. So the root is derived and it is not Promoted. The seed lineage root is the live self-host frontier read as a generation: index 0, producer V1SeedEmitter, one binding per roster row, revision derived from the roster's own module paths and the enrolled behavioral probe roster, state GenerationOrigin. GenerationOrigin is authoritative for being an anchor — it is the thing that can still build — but it is NOT Promoted, because nothing promoted it and no successor-capability receipt exists or could exist for it: fix-forward is a relation between two generations and the root has no predecessor. If an EmitterProduced row ever appears on the frontier while the promoted roster is still empty, the tree has emitted artifacts that no promoted generation accounts for, and lineage_root answers LineageUnrooted rather than continuing to report a seed origin that is no longer the whole story."
+
+type LineageRoot
+  = SeedOrigin { generation: CompilerGeneration }
+  | ProducedLineage { promoted: List<CompilerGeneration> }
+  | LineageUnrooted { cause: Symbol }
+
+fn frontier_row_is_emitter_produced(row: CompilerModuleFrontierRow) -> Bool {
+  match row.disposition {
+    EmitterProduced { authorization_binding: _ } => true
+    SeedRetained { reason: _, migration_trigger: _ } => false
+  }
+}
+
+fn frontier_has_emitter_produced_row() -> Bool {
+  any(xs: compiler_frontier_roster, predicate: fn(row) { frontier_row_is_emitter_produced(row: row) })
+}
+
+fn seed_origin_authority_modules() -> List<String> {
+  list_map(xs: compiler_frontier_roster, f: fn(row) { row.module_path })
+}
+
+fn seed_origin_witness_roster_digest() -> Hash {
+  fold_list(
+    xs: producer_emission_oracle_rows,
+    empty: symbol_identity_digest(sym: ^seed_origin_witness_roster),
+    cons: fn(acc, row) {
+      combine_hash(
+        a: acc,
+        b: combine_hash(
+          a: content_hash_atom(value: row.behavioral_probe_entry),
+          b: content_hash_atom(value: row.behavioral_probe_function)
+        )
+      )
+    }
+  )
+}
+
+fn seed_origin_bindings() -> List<ArtifactBinding> {
+  list_map(xs: compiler_frontier_roster, f: fn(row) { CompilerModuleBinding { row: row } })
+}
+
+fn seed_origin_generation() -> Optional<CompilerGeneration> {
+  match mint_requirement_revision(
+    authority_modules: seed_origin_authority_modules(),
+    witness_roster_digest: seed_origin_witness_roster_digest()
+  ) {
+    Absent => optional_absent()
+    Present { value: revision } =>
+      optional_present(
+        value: CompilerGeneration {
+          index: 0,
+          revision: revision,
+          producer: V1SeedEmitter,
+          bindings: seed_origin_bindings(),
+          state: GenerationOrigin
+        }
+      )
+  }
+}
+
+data promoted_generations_note: String = "Baseline empty, and empty for the same reason emitter_produced_baseline is zero: no promoted generation can exist until witness-realization binds execution-measured verdict digests, because mint_promoted_generation needs a successor-capability receipt whose candidate acceptance is an AuthorizedEmitterProducedDisposition. This roster is NOT a hand-edited ledger — when a promotion becomes mintable it lands here through mint_promoted_generation with its receipt, and the baseline below moves in the same commit so the flip is a declared act rather than a silent append."
+
+fn promoted_generations() -> List<CompilerGeneration> {
+  []
+}
+
+fn lineage_root() -> LineageRoot {
+  if length(xs: promoted_generations()) > 0 {
+    ProducedLineage { promoted: promoted_generations() }
+  } else if frontier_has_emitter_produced_row() {
+    LineageUnrooted { cause: ^emitter_produced_rows_without_a_promoted_generation }
+  } else {
+    match seed_origin_generation() {
+      Present { value: generation } => SeedOrigin { generation: generation }
+      Absent => LineageUnrooted { cause: ^seed_frontier_roster_yields_no_revision }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Live baselines. These read authorities that exist; they mint nothing.
+// ---------------------------------------------------------------------------
+
+data promoted_generation_baseline: Int = 0
+
+fn promoted_generation_count() -> Int {
+  length(xs: promoted_generations())
+}
+
+fn promoted_generation_baseline_holds() -> Bool {
+  promoted_generation_count() == promoted_generation_baseline
+}
+
+fn lineage_root_is_seed_origin_holds() -> Bool {
+  match lineage_root() {
+    SeedOrigin { generation } =>
+      (generation.index == 0)
+        && (length(xs: generation.bindings) == length(xs: compiler_frontier_roster))
+        && (length(xs: generation.bindings) > 0)
+        && match generation.state {
+          GenerationOrigin => true
+          GenerationCandidate => false
+          GenerationPromoted { successor_capability: _ } => false
+        }
+    ProducedLineage { promoted: _ } => false
+    LineageUnrooted { cause: _ } => false
+  }
+}
+
+fn seed_origin_is_not_promoted_holds() -> Bool {
+  match seed_origin_generation() {
+    Absent => false
+    Present { value: generation } =>
+      match generation.state {
+        GenerationPromoted { successor_capability: _ } => false
+        GenerationCandidate => false
+        GenerationOrigin => generation_is_authoritative(generation: generation)
+      }
+  }
+}
+
+fn every_frontier_surface_is_admissible_holds() -> Bool {
+  fold_list(
+    xs: compiler_frontier_roster,
+    empty: true,
+    cons: fn(ok, row) {
+      ok && emission_surface_is_admissible(
+        surface: CompilerModuleSurface { module_path: row.module_path }
+      )
+    }
+  )
+}
+
+fn emission_admission_live_baselines_hold() -> Bool {
+  promoted_generation_baseline_holds()
+    && lineage_root_is_seed_origin_holds()
+    && seed_origin_is_not_promoted_holds()
+    && every_frontier_surface_is_admissible_holds()
+}
