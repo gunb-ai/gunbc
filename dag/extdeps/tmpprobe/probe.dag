@@ -1,0 +1,5 @@
+module extdeps.tmpprobe.probe
+
+import std.types { String }
+
+data probe_note: String = "temporary discriminating probe; deleted in the same session"
