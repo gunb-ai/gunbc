@@ -28,9 +28,6 @@ operator stated it:
 > and behavior receipts establish successor capability, under an explicit **BootstrapGenesis**
 > and a retained anchor with a named **`NoTrustedFixForwardPath`** failure state.
 
-This document confers **no** merge readiness, **no** promotion authority, and **no** roadmap
-acceptance (§11).
-
 Parent context: v1-deletion / self-host lane (`still-bat-561`). The operator framing:
 self-host must not collapse to one boolean fixed-point check. Each compiler stage needs
 durable provenance — implementation, inputs, outputs, refusal, seed fallback, and named
