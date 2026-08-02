@@ -2217,6 +2217,13 @@ pub fn emittable_graph(resolved: Rc<ResolvedPipelineResult>) -> Option<Rc<Emitta
         let blocking = Rc::new({
             let mut __result = Vec::new();
             for d in resolved.diagnostics.clone().iter().cloned() {
+                // Share type-ref debt / expect-red admission with compile-clean and
+                // resolve/run (cli_run::is_resolve_or_run_blocking_diagnostic). Without
+                // this, regen_stage0 self-compile refused on provisional UnresolvedType
+                // while heal/compile-clean admitted the same identities.
+                if crate::cli_run::type_ref_unresolved_admitted_for_compile_clean(&d) {
+                    continue;
+                }
                 if is_interpreter_blocking_diagnostic(d.diagnostic.clone()) {
                     __result.push(d);
                 }
@@ -2568,6 +2575,9 @@ pub fn interpreter_blocking_diagnostic_messages(
         for d in Rc::new({
             let mut __result = Vec::new();
             for d in diagnostics.clone().iter().cloned() {
+                if crate::cli_run::type_ref_unresolved_admitted_for_compile_clean(&d) {
+                    continue;
+                }
                 if is_interpreter_blocking_diagnostic(d.diagnostic.clone()) {
                     __result.push(d);
                 }
