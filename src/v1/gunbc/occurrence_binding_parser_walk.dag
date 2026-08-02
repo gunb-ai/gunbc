@@ -74,7 +74,22 @@ fn parse_authored_occurrence_binding_source(
   }
 }
 
-data declaration_exposure_from_containment_note: String = "Exposure derivation site: inputs are containment prefix shape and module path only — OccurrenceCategory is not consulted. Empty or single-ancestor chain => ModuleExposure; nested declaration => LexicalExposure with parent scope path. Raw containment derives the exposure row; P2a decisions read only DeclarationExposure."
+data declaration_exposure_from_containment_note: String = "Exposure derivation site: inputs are containment prefix shape and module path only — OccurrenceCategory is not consulted. Ancestors are root-first (module … parent), per occurrence_ancestors_push. Empty or single-ancestor chain (direct module child) => ModuleExposure; nested declaration => LexicalExposure whose exposing_scope is the nearest ancestor (last in the root-first list) as terminal with that ancestor's prefix. Binder-as-own-path LexicalExposure (the hand-built §13 fixture shape) is correct only when uses nest under the binder in the parse tree (lets do; match-arm bodies currently do not — see parser_sibling_match_arm_pattern_binder_holds_note)."
+
+fn occurrence_containment_parent_scope(
+  ancestors: FreeMonoid<OccurrenceId>
+) -> OccurrenceContainmentPath? {
+  match reverse(ancestors) {
+    Empty => none
+    Cons { head: parent_terminal, tail: parent_ancestors_reversed } =>
+      Present {
+        value: OccurrenceContainmentPath {
+          ancestors: reverse(parent_ancestors_reversed),
+          terminal: parent_terminal,
+        },
+      }
+  }
+}
 
 fn declaration_exposure_from_containment(
   module_path: NonEmptyStr,
@@ -84,12 +99,12 @@ fn declaration_exposure_from_containment(
     Empty => ModuleExposure { module: module_path }
     Cons { head: _, tail: Empty } =>
       ModuleExposure { module: module_path }
-    Cons { head: parent_terminal, tail: rest } =>
-      LexicalExposure {
-        exposing_scope: OccurrenceContainmentPath {
-          ancestors: rest,
-          terminal: parent_terminal,
-        },
+    Cons { head: _, tail: Cons { head: _, tail: _ } } =>
+      match occurrence_containment_parent_scope(ancestors: containment.ancestors) {
+        Present { value: exposing_scope } =>
+          LexicalExposure { exposing_scope: exposing_scope }
+        Absent =>
+          ModuleExposure { module: module_path }
       }
   }
 }

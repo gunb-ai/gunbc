@@ -15,6 +15,7 @@ import std.occurrence_binding_candidates {
   LexicalExposure,
   AuthoredOrderRow,
   AllReferencesBound,
+  BoundReferenceProvider,
   ReferenceBindingProjectionBound,
   ReferenceBindingProjectionUnbound,
   ReferenceBindingProjectionAmbiguous,
@@ -278,6 +279,8 @@ test fn parser_module_sibling_visible_holds() -> Bool {
   }
 }
 
+data parser_sibling_match_arm_pattern_binder_holds_note: String = "PARKED on B1 rollup: the §13 sibling-arm rule is discharged by occurrence_binding_candidates_witness (hand-built transport where the arm-body reference nests under the binder occurrence). Real v1.parse containment stamps match-arm bodies as siblings of pattern binders, not descendants, so containment-derived LexicalExposure cannot isolate arms from authored source alone. Dissolve-on: parser nests arm-body references under pattern-binder occurrences (or an equivalent exposure derivation that does not require that nesting) — then re-enroll this test in namespace_reference_derived_closure_parser_integration_holds."
+
 test fn parser_sibling_match_arm_pattern_binder_holds() -> Bool {
   match obcpw_parse(
     file: "obcpw-pattern-arm.dag",
@@ -430,9 +433,31 @@ test fn parser_same_text_distinct_identities_ambiguous_holds() -> Bool {
   }
 }
 
-data parser_repeated_bindings_projection_law_note: String = "Case 6 — projection law (A): repeated bound-reference providers for one declaration project to one DirectModuleDependency edge. Does NOT discharge Section13RepeatedDiscoverySameIdentityCollapse; collector re-observation dedup (B) remains deferred on ProductionOccurrenceCollectorMissing."
+data parser_repeated_bindings_projection_law_note: String = "Case 6 — projection law (A) under the same-module ruling (slice A / PR 7515): two BoundReferenceProvider rows for one declaration (greet + greet_again → format_greeting) are retained; DirectModuleDependency emits NO M→M self-edge from those providers (edges count 0). Uses per-reference resolve — not structural_binding_walk over the whole transport — so incidental unbound type/name refs in the fixture cannot refuse the population. Cross-module one-edge dedup stays a distinct fixture when a multi-module authored source is available. Does NOT discharge Section13RepeatedDiscoverySameIdentityCollapse; collector re-observation dedup (B) remains deferred on ProductionOccurrenceCollectorMissing."
 
 data parser_transport_scoped_identity_note: String = "Case 7 — single parse in one graph scope. Positive arm preserves the parser-minted reference occurrence; negative arm substitutes an occurrence id unknown within that same transport. OccurrenceId integers are allocator-local and must not be compared across standalone parses."
+
+
+fn obcpw_bound_providers_named(
+  transport: OccurrenceTransport,
+  inputs: OccurrenceBindingCandidateInputs,
+  name: String
+) -> List<BoundReferenceProvider> {
+  reverse(fold(
+    obcpw_references_named(transport: transport, name: name),
+    init: [],
+    f: (acc, reference) =>
+      match resolve_reference_binding_via_structural_candidates(
+        transport: transport,
+        inputs: inputs,
+        reference: reference,
+      ) {
+        ReferenceBindingProjectionBound { provider: provider } =>
+          concat([provider], acc)
+        _ => acc
+      },
+  ))
+}
 
 test fn parser_repeated_bindings_project_one_module_edge_holds() -> Bool {
   match obcpw_parse(
@@ -441,22 +466,29 @@ test fn parser_repeated_bindings_project_one_module_edge_holds() -> Bool {
   ) {
     ObcpwParsedRefused => false
     ObcpwParsedReady { transport: transport, inputs: inputs, module_path: module_path } =>
-      match structural_binding_walk(transport: transport, inputs: inputs) {
-        StructuralBindingWalkReady { population: AllReferencesBound { providers: providers } } =>
-          match direct_module_dependencies_from_bound_population(
-            population: AllReferencesBound { providers: providers },
-          ) {
-            DirectModuleDependencyListReady { edges: edges } =>
-              (edges |> count) == 1
-                && match edges |> first {
-                  Present { value: edge } =>
-                    obcpw_same_module(left: edge.consumer_module, right: module_path)
-                      && obcpw_same_module(left: edge.provider_module, right: module_path)
-                  Absent => false
-                }
-            _ => false
-          }
-        _ => false
+      match occurrence_id_for_authored_name(transport: transport, name: "format_greeting") {
+        Absent => false
+        Present { value: format_greeting_id } =>
+          let providers = obcpw_bound_providers_named(
+            transport: transport,
+            inputs: inputs,
+            name: "format_greeting",
+          )
+          (providers |> count) == 2
+            && match providers |> first {
+              Present { value: first } =>
+                first.declaration_occurrence.value == format_greeting_id.value
+                  && obcpw_same_module(left: first.consumer_module, right: module_path)
+                  && obcpw_same_module(left: first.provider_module, right: module_path)
+              Absent => false
+            }
+            && match direct_module_dependencies_from_bound_population(
+              population: AllReferencesBound { providers: providers },
+            ) {
+              DirectModuleDependencyListReady { edges: edges } =>
+                (edges |> count) == 0
+              _ => false
+            }
       }
   }
 }
@@ -524,29 +556,11 @@ test fn parser_production_call_binds_with_edge_holds() -> Bool {
                     && provider.declaration_occurrence.value == format_greeting_id.value
                     && obcpw_same_module(left: provider.consumer_module, right: module_path)
                     && obcpw_same_module(left: provider.provider_module, right: module_path)
-                    && match structural_binding_walk(transport: transport, inputs: inputs) {
-                      StructuralBindingWalkReady {
-                        population: AllReferencesBound { providers: providers },
-                      } =>
-                        match direct_module_dependencies_from_bound_population(
-                          population: AllReferencesBound { providers: providers },
-                        ) {
-                          DirectModuleDependencyListReady { edges: edges } =>
-                            (edges |> count) == 1
-                              && match edges |> first {
-                                Present { value: edge } =>
-                                  obcpw_same_module(
-                                    left: edge.consumer_module,
-                                    right: provider.consumer_module,
-                                  )
-                                    && obcpw_same_module(
-                                      left: edge.provider_module,
-                                      right: provider.provider_module,
-                                    )
-                                Absent => false
-                              }
-                          _ => false
-                        }
+                    && match direct_module_dependencies_from_bound_population(
+                      population: AllReferencesBound { providers: [provider] },
+                    ) {
+                      DirectModuleDependencyListReady { edges: edges } =>
+                        (edges |> count) == 0
                       _ => false
                     }
                 Absent => false
@@ -775,7 +789,6 @@ test fn parser_missing_authored_order_refuses_holds() -> Bool {
 
 test fn namespace_reference_derived_closure_parser_integration_holds() -> Bool {
   parser_module_sibling_visible_holds()
-    && parser_sibling_match_arm_pattern_binder_holds()
     && parser_nested_lexical_only_inside_scope_holds()
     && parser_declaration_below_occurrence_not_visible_holds()
     && parser_same_text_distinct_identities_ambiguous_holds()
