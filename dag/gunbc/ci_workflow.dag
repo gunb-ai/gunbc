@@ -13,8 +13,8 @@ import gunbc.ci_spec {
   ci_release_bins_archive_name,
   gunbc_ci_heal_regen_invoke, gunbc_ci_heal_commit_push_script,
   gunbc_ci_heal_binary_source_skew_guard_script,
-  gunbc_ci_heal_repo_local_git_config_invoke,
   ci_heal_author_commit_artifact_dir, ci_heal_author_commit_artifact_name,
+  gunbc_ci_heal_repo_local_git_config_invoke,
 }
 import v2.workflow.ci_merge_admission_gate_emit {
   ci_merge_admission_gate_script,
@@ -29,6 +29,8 @@ import gunbc.ci_compile_jobs { ci_compile_jobs, compile_jobs_count_or_serial }
 import gunbc.ci_floor_measurement { gunbc_ci_runner_slot_ram_speed_ceiling }
 import v2.workflow.ci_floor_peak_emit {
   ci_cgroup_peak_locate_shell,
+  ci_floor_phase_journal_env_name,
+  ci_floor_phase_journal_path,
   ci_floor_peak_pre_script,
   ci_floor_peak_post_script
 }
@@ -325,7 +327,9 @@ fn ci_floor_step() -> Step {
     id: Present { value: "floor" },
     run: gunbc_ci_floor_run(spec: ci_floor_spec_from_roster()),
     shell: none,
-    env: none,
+    env: Present {
+      value: [kv(key: ci_floor_phase_journal_env_name, value: yaml_string(s: ci_floor_phase_journal_path))]
+    },
     working_directory: none,
     if_condition: none,
     continue_on_error: none,
@@ -419,7 +423,9 @@ fn ci_floor_peak_post_step() -> Step {
     id: none,
     run: ci_floor_peak_post_script(),
     shell: none,
-    env: none,
+    env: Present {
+      value: [kv(key: ci_floor_phase_journal_env_name, value: yaml_string(s: ci_floor_phase_journal_path))]
+    },
     working_directory: none,
     if_condition: Present { value: "always()" },
     continue_on_error: none,
@@ -494,9 +500,9 @@ data gunbc_ci_step_timeout_measure_grounding_disposition: Disposition = Scaffold
 
 data gunbc_ci_aux_step_timeout_minutes: Int = 5
 
-data gunbc_ci_v1_compiler_tests_compile_gate_timeout_minutes: Duration = 10
+data gunbc_ci_v1_compiler_tests_compile_gate_timeout_minutes: Duration = 15
 
-data gunbc_ci_v1_compiler_tests_compile_gate_timeout_note: String = "v1-compiler-tests compile gate step budget (operator ruling 2026-08-01, PR #7533 receipt): cargo check -p v1-compiler-tests --tests exceeded the 5m aux cap on cold native-cache hosts (run 30692671758 @ 6f20329: srv1-05, step killed at 5m00s while still compiling deps; warm-cache runs complete in ~50s). 10m is the fleet-pressure envelope for a cold compile-only gate after main growth — not RustMonolithGate re-enrollment."
+data gunbc_ci_v1_compiler_tests_compile_gate_timeout_note: String = "v1-compiler-tests compile gate step budget (operator ruling 2026-08-01, PR #7533 receipt): cargo check -p v1-compiler-tests --tests exceeded the 5m aux cap on cold native-cache hosts (run 30692671758 @ 6f20329: srv1-05, step killed at 5m00s while still compiling deps; warm-cache runs complete in ~50s). Raised 10m -> 15m after run 30719671973 @ 6945446401 (srv1-01, cache hit): step killed at 10m00s while Checking v1-compiler-tests — deps consumed the full prior budget. 15m is the cold-host envelope after that receipt — not RustMonolithGate re-enrollment."
 
 data gunbc_ci_artifact_transfer_step_timeout_minutes: Int = 10
 
@@ -565,7 +571,7 @@ fn ci_deploy_jobs() -> List<Job> {
 }
 
 fn gunbc_ci_heal_job_backstop_timeout_minutes() -> Int {
-  gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
+  gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
 }
 
 fn ci_heal_binary_source_skew_guard_step() -> Step {
@@ -647,7 +653,7 @@ fn ci_heal_author_commit_upload_step() -> Step {
   }
 }
 
-data ci_heal_job_note: String = "CI auto-heal for the DERIVABLE red class remains pull_request-only and independent of ci. Auto-push-eligible generated artifacts follow the HealProduced push+dispatch path. Workflow projections (.github/workflows/**) are AuthorCommitRequired: the GitHub App lacks workflows:write, so the heal job regenerates them, packages the corrected bytes as an artifact, emits a typed HealAuthorCommitRequired diagnostic naming every affected path and the local regen command, and never attempts a push it knows GitHub will reject. Before any possible push the modeled floor-gate toolchain step installs cargo and rustfmt, so the generated pre-push hook runs repository-local config convergence and cargo fmt normally; the writer has no hook-bypass toggle. The drift gate stays red until the authoring branch commits the workflow bytes. contents:write and actions:write remain scoped to this job only. Main is not auto-healed."
+data ci_heal_job_note: String = "CI auto-heal for the DERIVABLE red class remains pull_request-only and independent of ci. Auto-push-eligible generated artifacts follow the HealProduced push+dispatch path. Workflow projections (.github/workflows/**) are AuthorCommitRequired: the GitHub App lacks workflows:write, so the heal job regenerates them, packages the corrected bytes as an artifact, emits a typed HealAuthorCommitRequired diagnostic naming every affected path and the local regen command, and never attempts a push it knows GitHub will reject. The drift gate stays red until the authoring branch commits the workflow bytes. contents:write and actions:write remain scoped to this job only. Main is not auto-healed."
 
 fn ci_heal_generated_artifacts_job() -> Job {
   Job {
@@ -656,7 +662,7 @@ fn ci_heal_generated_artifacts_job() -> Job {
     runner: gunbc_ci_selected_runner_spec(),
     steps: concat(
       [ci_heal_branch_head_checkout_step()],
-      [ci_floor_gate_toolchain_step(), ci_release_bins_download_step(), ci_release_bins_unpack_verify_step(), ci_heal_repo_local_git_config_step(), ci_heal_binary_source_skew_guard_step(), ci_heal_regen_step(), ci_heal_commit_push_step(), ci_heal_author_commit_upload_step()]
+      [ci_release_bins_download_step(), ci_release_bins_unpack_verify_step(), ci_heal_repo_local_git_config_step(), ci_heal_binary_source_skew_guard_step(), ci_heal_regen_step(), ci_heal_commit_push_step(), ci_heal_author_commit_upload_step()]
     ),
     needs: ["build"],
     env: none,

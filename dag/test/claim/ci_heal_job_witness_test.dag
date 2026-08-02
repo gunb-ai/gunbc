@@ -15,15 +15,15 @@ import gunbc.ci_spec {
   ci_heal_generated_artifact_regen_function,
   ci_heal_generated_artifact_gate_entry,
   ci_heal_dispatch_entry,
+  ci_heal_author_commit_artifact_dir,
+  ci_heal_author_commit_artifact_name,
+  ci_heal_author_commit_regen_command,
   ci_heal_repo_local_git_config_entry,
   ci_heal_repo_local_git_config_function,
   ci_heal_repo_local_git_config_shell_emit_scaffold,
   ci_heal_repo_local_git_config_shell_emit_dissolution_trigger,
   gunbc_ci_heal_commit_push_script,
   gunbc_ci_heal_repo_local_git_config_invoke,
-  ci_heal_author_commit_artifact_dir,
-  ci_heal_author_commit_artifact_name,
-  ci_heal_author_commit_regen_command
 }
 import std.disposition { Scaffold }
 import gunbc.generated_artifact {
@@ -226,8 +226,7 @@ test fn heal_author_commit_upload_step_enrolled() -> Bool {
 
 test fn heal_push_targets_triggering_branch() -> Bool {
   let script = gunbc_ci_heal_commit_push_script()
-  string_contains(s: script, pattern: "git push origin HEAD:${{ github.head_ref || github.ref_name }}")
-    && !string_contains(s: script, pattern: "core.hooksPath= push")
+  string_contains(s: script, pattern: "git -c core.hooksPath= push origin HEAD:${{ github.head_ref || github.ref_name }}")
     && !string_contains(s: script, pattern: "git push origin HEAD:main")
 }
 

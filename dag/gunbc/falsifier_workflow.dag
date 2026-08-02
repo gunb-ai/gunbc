@@ -18,6 +18,10 @@ import gunbc.ci_workflow {
   gunbc_ci_selection_control_step_timeout_minutes,
   gunbc_ci_artifact_transfer_step_timeout_minutes
 }
+import v2.workflow.ci_floor_peak_emit {
+  ci_floor_phase_journal_env_name,
+  ci_floor_phase_journal_path
+}
 import gunbc.floor_component_receipt {
   floor_component_receipt_path,
   floor_component_receipt_artifact_name
@@ -98,7 +102,8 @@ fn falsifier_step() -> Step {
     env: Present {
       value: [
         kv(key: "GUNBC_CI_DIFF_BASE", value: yaml_string(s: "HEAD~20")),
-        kv(key: "GUNBC_CI_DIFF_HEAD", value: yaml_string(s: "HEAD"))
+        kv(key: "GUNBC_CI_DIFF_HEAD", value: yaml_string(s: "HEAD")),
+        kv(key: ci_floor_phase_journal_env_name, value: yaml_string(s: ci_floor_phase_journal_path))
       ]
     },
     working_directory: none,
