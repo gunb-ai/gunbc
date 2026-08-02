@@ -1,0 +1,153 @@
+module test.claim.roadmap_verification_receipt_witness_test
+
+import std.types { Bool, String, NonEmptyStr, FilePath, CommitSha }
+import std.content_hash {
+  Fnv1a64Structural,
+  content_hash_of_value,
+  content_hash_atom,
+}
+import gunbc.roadmap_model { RoadmapNodeIdentity }
+import gunbc.roadmap_execution_contract {
+  GunbcClaimValidation,
+  ModeledValidationCommand,
+}
+import gunbc.roadmap_validation_oracle {
+  ValidationPassed,
+}
+import gunbc.roadmap_verification_receipt {
+  VerificationSubject,
+  ValidationExecution,
+  VerificationReceipt,
+  VerificationSubjectMatches,
+  VerificationSubjectDiffers,
+  ExactHeadVerificationReceipt,
+  LegacyAttemptValidationReceipt,
+  VerificationEvidenceForSubject,
+  VerificationEvidenceForAnotherSubject,
+  VerificationEvidenceLegacyAttemptLevel,
+  verification_subject_match,
+  verification_evidence_for,
+  verification_evidence_moves_lamp,
+}
+import gunbc.roadmap_dashboard_instance { srv2_lab_dashboard_instance }
+import gunbc.roadmap_dispatch_actuator {
+  dispatch_attempt_verification_receipt_path_for_instance,
+}
+
+data verification_receipt_witness_note: String = "GREEN-BY-CONSTRUCTION witness for the exact-head verification model. The fixture supplies every required subject field, one structural validation operation, one realized program-plus-argv command, and separated exit/stdout/stderr evidence. The discriminating RED changes only head_sha: the old receipt remains readable and passed, but verification_evidence_moves_lamp refuses it for the new head. The legacy control supplies the old decoder's most favourable value, passed, and still cannot move the lamp because no subject can be recovered from it."
+
+fn subject_at(head: CommitSha) -> VerificationSubject {
+  VerificationSubject {
+    node_identity: "node-identity-019" as NonEmptyStr as RoadmapNodeIdentity,
+    criteria_digest: content_hash_atom(value: "criteria-v3"),
+    attempt_key: "feedfacefeedface",
+    branch: "dispatch/exact-head-afeedfacefeedface" as NonEmptyStr,
+    head_sha: head,
+  }
+}
+
+fn exact_head_receipt(head: CommitSha) -> VerificationReceipt {
+  VerificationReceipt {
+    subject: subject_at(head: head),
+    oracle_identity: content_hash_of_value(value: "pinned-oracle"),
+    executions: [
+      ValidationExecution {
+        validation: GunbcClaimValidation {
+          entry: "dag/test/claim/exact_head_test.dag" as FilePath,
+          function: "exact_head_holds" as NonEmptyStr,
+        },
+        command: ModeledValidationCommand {
+          label: "gunbc-claim" as NonEmptyStr,
+          program: "/opt/gunbc/bin/gunbc" as FilePath,
+          args: [
+            "run", "--claim-run", "--entry",
+            "dag/test/claim/exact_head_test.dag", "--function", "exact_head_holds",
+          ],
+        },
+        exit_code: 0,
+        stdout: "true\n",
+        stderr: "",
+      },
+    ],
+    verdict: ValidationPassed {
+      command: "/opt/gunbc/bin/gunbc run --claim-run",
+      oracle_identity: content_hash_of_value(value: "pinned-oracle"),
+    },
+  }
+}
+
+data head_a: CommitSha = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as CommitSha
+data head_b: CommitSha = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" as CommitSha
+
+test fn complete_exact_head_receipt_constructs_and_matches() -> Bool {
+  let expected = subject_at(head: head_a)
+  let receipt = exact_head_receipt(head: head_a)
+  match verification_evidence_for(
+    expected: expected,
+    source: ExactHeadVerificationReceipt { receipt: receipt },
+  ) {
+    VerificationEvidenceForSubject { receipt: found } =>
+      count(found.executions) == 1
+        && found.executions.first().command.args.first() == "run"
+        && verification_evidence_moves_lamp(
+          evidence: VerificationEvidenceForSubject { receipt: found },
+        )
+    _ => false
+  }
+}
+
+test fn passed_receipt_for_old_head_refuses_to_move_new_head_lamp() -> Bool {
+  let evidence = verification_evidence_for(
+    expected: subject_at(head: head_b),
+    source: ExactHeadVerificationReceipt {
+      receipt: exact_head_receipt(head: head_a),
+    },
+  )
+  match evidence {
+    VerificationEvidenceForAnotherSubject { field, expected, found } =>
+      (field as String) == "head_sha"
+        && expected == (head_b as String)
+        && found == (head_a as String)
+        && !verification_evidence_moves_lamp(evidence: evidence)
+    _ => false
+  }
+}
+
+test fn attempt_level_pass_is_typed_legacy_and_never_evidence() -> Bool {
+  let evidence = verification_evidence_for(
+    expected: subject_at(head: head_a),
+    source: LegacyAttemptValidationReceipt { verdict_key: "passed" },
+  )
+  match evidence {
+    VerificationEvidenceLegacyAttemptLevel { verdict_key } =>
+      verdict_key == "passed"
+        && !verification_evidence_moves_lamp(evidence: evidence)
+    _ => false
+  }
+}
+
+test fn one_attempt_addresses_multiple_heads_without_overwrite() -> Bool {
+  let instance = srv2_lab_dashboard_instance()
+  let path_a = dispatch_attempt_verification_receipt_path_for_instance(
+    instance: instance,
+    node_id: "exact-head-node" as NonEmptyStr as gunbc.roadmap_model.RoadmapNodeId,
+    attempt_key: "feedfacefeedface",
+    head_sha: head_a as String,
+  )
+  let path_b = dispatch_attempt_verification_receipt_path_for_instance(
+    instance: instance,
+    node_id: "exact-head-node" as NonEmptyStr as gunbc.roadmap_model.RoadmapNodeId,
+    attempt_key: "feedfacefeedface",
+    head_sha: head_b as String,
+  )
+  path_a != path_b
+    && string_contains(s: path_a, pattern: "/verification/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json")
+    && string_contains(s: path_b, pattern: "/verification/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.json")
+}
+
+test fn roadmap_verification_receipt_keystone_holds() -> Bool {
+  complete_exact_head_receipt_constructs_and_matches()
+    && passed_receipt_for_old_head_refuses_to_move_new_head_lamp()
+    && attempt_level_pass_is_typed_legacy_and_never_evidence()
+    && one_attempt_addresses_multiple_heads_without_overwrite()
+}
