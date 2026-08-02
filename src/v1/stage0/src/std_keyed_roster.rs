@@ -67,7 +67,7 @@ pub enum KeyedRosterSecondRowScan<K: Clone, V: Clone> {
     KeyedRosterSecondRowScanAwaitingSecond,
     KeyedRosterSecondRowScanFound { row: Rc<KeyedRow<K, V>> },
 }
-impl<K, V> KeyedRosterSecondRowScan<K, V> {
+impl<K: Clone, V: Clone> KeyedRosterSecondRowScan<K, V> {
     pub fn row(&self) -> Rc<KeyedRow<K, V>> {
         match self {
             KeyedRosterSecondRowScan::KeyedRosterSecondRowScanAbsent => {
