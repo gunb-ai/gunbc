@@ -1,6 +1,6 @@
 module v2.std.materialize
 
-import std.types { ContentHash }
+import std.content_hash { ContentHash }
 import v2.std.node { Node, content_hash, node_subtree_nodes }
 import std.realization { Materialization, Recompute, Memoize, Share }
 import std.computation_identity { ComputationIdentity, StructurallyIdentical, IdentityUnknown, MissingConcept, identity_permits_share }

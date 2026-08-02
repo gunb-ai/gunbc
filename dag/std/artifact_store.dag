@@ -1,7 +1,15 @@
 module std.artifact_store
 
-import std.types { ContentHash, NonEmptyStr, List, Int, Bool, String }
-import std.content_hash { content_hash_atom, content_hash_combine, content_hash_tagged }
+import std.types { NonEmptyStr, List, Int, Bool, String }
+import std.content_hash {
+  ContentHash,
+  Fnv1a64Structural,
+  content_hash_atom,
+  content_hash_combine_structural,
+  content_hash_tagged,
+  content_hash_tagged_structural,
+  as_content_hash_structural,
+}
 import std.measure { ByteSize, byte_size, measure_count }
 import std.materialization_ladder { CacheProvider, EvictionClass, ScopeExit, SpacePacked }
 import std.disposition { Disposition, Terminal }
@@ -9,7 +17,7 @@ import std.disposition { Disposition, Terminal }
 data artifact_store_module_note: String = "Witness-realization plan P2 (pure-spec half): the content-addressed artifact store - the corpus's first CacheProvider whose eviction field is READ (memory-control audit F5: eviction was write-only; here it gates construction and drives packing). The store is modeled as a pure fold: get bumps recency, put packs to budget by least-recent eviction with every eviction COUNTED in the returned receipt (a failure arm must refuse or count, never widen - DESIGN section 5). Keying is ContentHash BY SHAPE: no mtime, no existence input exists to consult, so ExistenceKeyed is unwritable here (the #6352 wall by construction). The host transport (real artifact directory + build wiring) is P2's second half; this spec is its single authority. Dissolve-on for the budget parameter: EvictionClass's budget field currently carries cited upstream policy PROSE in extdeps rows (two concepts in one field - our enforceable budget vs their described mechanism); when that splits into typed variants, store_over_provider derives the budget from the row instead of taking it beside the row."
 
 type ArtifactKey {
-  closure_digest: ContentHash
+  closure_digest: Fnv1a64Structural
   emitter_identity: NonEmptyStr
   target_language: NonEmptyStr
   toolchain: NonEmptyStr
@@ -17,23 +25,25 @@ type ArtifactKey {
 
 type ArtifactRealizationInput {
   identity: NonEmptyStr
-  content_digest: ContentHash
+  content_digest: Fnv1a64Structural
 }
 
-fn artifact_realization_input_digest(realization_input: ArtifactRealizationInput) -> ContentHash {
-  content_hash_tagged(
+fn artifact_realization_input_digest(realization_input: ArtifactRealizationInput) -> Fnv1a64Structural {
+  content_hash_tagged_structural(
     tag: realization_input.identity,
     payload: realization_input.content_digest
   )
 }
 
 fn artifact_realization_digest(inputs: List<ArtifactRealizationInput>) -> ContentHash {
-  fold(
-    inputs,
-    init: content_hash_atom(value: "artifact_store.realization"),
-    f: (acc, realization_input) => content_hash_combine(
-      left: acc,
-      right: artifact_realization_input_digest(realization_input: realization_input)
+  as_content_hash_structural(
+    structural: fold(
+      inputs,
+      init: content_hash_atom(value: "artifact_store.realization"),
+      f: (acc, realization_input) => content_hash_combine_structural(
+        left: acc,
+        right: artifact_realization_input_digest(realization_input: realization_input)
+      )
     )
   )
 }
@@ -41,11 +51,11 @@ fn artifact_realization_digest(inputs: List<ArtifactRealizationInput>) -> Conten
 fn artifact_key_hash(key: ArtifactKey) -> ContentHash {
   content_hash_tagged(
     tag: "artifact_store.key",
-    payload: content_hash_combine(
+    payload: content_hash_combine_structural(
       left: key.closure_digest,
-      right: content_hash_combine(
+      right: content_hash_combine_structural(
         left: content_hash_atom(value: key.emitter_identity),
-        right: content_hash_combine(
+        right: content_hash_combine_structural(
           left: content_hash_atom(value: key.target_language),
           right: content_hash_atom(value: key.toolchain)
         )

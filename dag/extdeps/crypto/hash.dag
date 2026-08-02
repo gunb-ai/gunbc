@@ -1,6 +1,8 @@
 module extdeps.crypto.hash
 
-import std.types { NonEmptyStr, ContentHash, String }
+import std.types { NonEmptyStr, String }
+import std.content_hash { as_content_hash_cryptographic, ContentHash, sha256_hex_digest }
+
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -31,10 +33,14 @@ fn digest_shell_verify_line(digest: Digest, file_path: NonEmptyStr) -> String {
   }
 }
 
-data sha256_digest_content_hash_convergence_note: String = "THE BRIDGE from extdeps.crypto.hash.Digest to std.types.ContentHash for artifact pins — NOT a merge with std.content_hash's fnv1a64 structural fingerprint (dag/std/content_hash.dag, dag/extdeps/provisioning/ubuntu_install_media_fetch.dag install_media_fetch_hash_convergence_note). Digest is a cited cryptographic SHA-256 authority value; ContentHash is the branded carrier Pin and OCI descriptors use for expected_identity. sha256_digest_content_hash renders the cited hex into the OCI-style sha256:<hex> wire form already used by extdeps.container.oci.descriptor and extdeps.container.oci.ctrl_session_witness — one rendering rule, not a second digest concept and not a silent cast between unrelated hash families."
+data sha256_digest_content_hash_convergence_note: String = "THE BRIDGE from extdeps.crypto.hash.Digest to std.content_hash.ContentHash for artifact pins — NOT a merge with std.content_hash's fnv1a64 structural fingerprint (dag/std/content_hash.dag, dag/extdeps/provisioning/ubuntu_install_media_fetch.dag install_media_fetch_hash_convergence_note). Digest is a cited cryptographic SHA-256 authority value; ContentHash is the family-grounded coproduct carrier (Sha256Hash arm for this bridge). sha256_digest_content_hash validates hex via sha256_hex_digest then mints through as_content_hash_cryptographic — construction-walled, refuses invalid hex. Wire serialization (sha256:<hex>) is std.content_hash.serialize_content_hash, not a second rendering rule here."
 
-fn sha256_digest_content_hash(digest: Digest) -> ContentHash {
+fn sha256_digest_content_hash(digest: Digest) -> ContentHash? {
   match digest.algorithm {
-    Sha256 => join(["sha256:", digest.hex as String], "") as ContentHash
+    Sha256 =>
+      match sha256_hex_digest(hex: digest.hex as String) {
+        Present { value: d } => Present { value: as_content_hash_cryptographic(digest: d) }
+        Absent => none
+      }
   }
 }

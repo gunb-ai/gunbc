@@ -1,5 +1,6 @@
 module extdeps.container.oci.image_config
 
+import extdeps.container.oci.digest { OciContentDigest }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -18,7 +19,7 @@ type ContainerImageConfig {
 }
 
 type ImageRootfs
-  = RootfsLayers { diff_ids: List<ContentHash> }
+  = RootfsLayers { diff_ids: List<OciContentDigest> }
 
 type ImageConfiguration {
   architecture: Architecture

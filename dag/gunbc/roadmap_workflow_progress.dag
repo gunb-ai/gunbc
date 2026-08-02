@@ -75,6 +75,30 @@ import gunbc.roadmap_validation_oracle {
   ValidationReceiptUndecodable,
   validation_receipt_decode,
 }
+import gunbc.roadmap_publish {
+  PublicationSubject,
+  PublicationSubjectObservation,
+  PublicationSubjectObserved,
+  PublicationSubjectUnobserved,
+  PublicationReceipt,
+  PublicationReceiptOutcome,
+  ReceiptBound,
+  ReceiptHeadDiverged,
+  ReceiptBindingAmbiguous,
+  ReceiptRemoteBranchAtHeadWithoutPullRequest,
+  ReceiptRemoteBranchHeadDiverged,
+  ReceiptRemoteBranchBindingAmbiguous,
+  ReceiptBranchNotPublished,
+  ReceiptObservationRefused,
+  PublicationEvidence,
+  EvidenceForSubject,
+  EvidenceAbsent,
+  EvidenceUnreadable,
+  EvidenceForAnotherSubject,
+  PublicationReceiptSource,
+  ReceiptSourceAbsent, ReceiptSourcePresent, ReceiptSourceUnreadable,
+  publication_evidence_for,
+}
 import gunbc.worker_lifecycle {
   WorkerProcessEvidence,
   WorkerProcessUnobserved,
@@ -99,6 +123,8 @@ type WorkflowAttemptEvidence {
   validation_summary: String
   validation_receipt_readable: Bool
   validation_receipt: String
+  publication_subject: PublicationSubjectObservation
+  publication_source: PublicationReceiptSource
 }
 
 type WorkflowAttemptProgress {
@@ -310,6 +336,144 @@ fn provider_workflow_segment(
 
 data verification_segment_receipt_note: String = "Verify moves on ITS OWN receipt and on nothing else. The lamp used to be hardcoded pending, which was honest while no producer existed but stopped being honest the moment one did. What it must never become is a projection of the Agent obligation: a provider that completed has produced a diff, not a verified one, and painting Verify from provider completion would fabricate the very fact the receipt exists to establish. So the receipt's ABSENCE is still pending — the same answer as before — and only a decodable receipt moves the lamp. The three verdicts land on three different segment states because they mean three different things to whoever reads the row: a pass satisfies the obligation, a failure is the subject's problem, and a refusal is the mechanism declining to answer, which is not a red and must not be shown as one. An undecodable document is refused rather than ignored, because a receipt this reader cannot decode at the attempt's own path is a fact about that attempt, not an absence."
 
+data publication_segment_reads_a_receipt_note: String = "THIS ARM WAS A CONSTANT, AND THAT IS THE DEFECT IT REPLACES. It returned WorkflowSegmentPending with a fixed sentence no matter what had happened, so a row whose branch was published at exactly the head under judgment looked identical to one nobody had pushed. A constant cannot be wrong about a particular attempt because it is not about any attempt - which also means it can never become right.\\n\\nAND THE FIRST REPLACEMENT WAS STILL WRONG, IN A WAY WORTH RECORDING BECAUSE IT IS THE HARDER DEFECT. It decoded the receipt found at the attempt's path and mapped a bound outcome straight to Complete, comparing nothing. A receipt is a document about a subject; finding one at a path establishes that somebody wrote it there, not that it answers THIS row's question. So the projection had reintroduced the branch lookup this whole lane exists to remove, with a file location standing in for the branch name.\\n\\nSO THE PROJECTION NOW HOLDS AN EXPECTED SUBJECT AND publication_evidence_for DECIDES. Four cases, and only one of them is evidence: absent, unreadable, about another subject, or about this one. A readable receipt about another subject is the case that matters, because it is the one that looks entirely healthy.\\n\\nAND THE SUBJECT ITSELF CAN BE MISSING, which is a fifth state and not a sixth phrasing of pending. The head is read from the attempt's worktree and that read can fail; with no head there is no subject, nothing to compare against, and the honest answer is a refusal that names what could not be read - never a pending that a reader would take for `not published yet`.\\n\\nTHE EIGHT OUTCOMES LAND ON FOUR STATES AND THE MAPPING IS EXHAUSTIVE OVER THE COPRODUCT, not over strings. An earlier cut matched outcome keys with a trailing else, so a ninth outcome would have silently become Refused and nothing would have failed to compile. Matching the variants means adding one forces this function to decide what it means."
+
+fn publication_outcome_segment_state(
+  outcome: PublicationReceiptOutcome,
+) -> WorkflowSegmentState {
+  match outcome {
+    ReceiptBound { pr_number: _, url: _, draft: _ } => WorkflowSegmentComplete
+    ReceiptHeadDiverged { pr_number: _, pr_head: _, url: _ } => WorkflowSegmentFailed
+    ReceiptRemoteBranchHeadDiverged { remote_head: _ } => WorkflowSegmentFailed
+    ReceiptBranchNotPublished { remote_branches_seen: _ } => WorkflowSegmentPending
+    ReceiptRemoteBranchAtHeadWithoutPullRequest { head_sha: _ } => WorkflowSegmentPending
+    ReceiptBindingAmbiguous { pr_numbers: _ } => WorkflowSegmentRefused
+    ReceiptRemoteBranchBindingAmbiguous { refs_matched: _ } => WorkflowSegmentRefused
+    ReceiptObservationRefused { detail: _ } => WorkflowSegmentRefused
+  }
+}
+
+data bound_detail_reads_the_subject_head_note: String = "THE HEAD IN THE BOUND SENTENCE COMES FROM THE SUBJECT, NOT FROM THE OUTCOME. ReceiptBound carries no head of its own - see roadmap_publish's receipt_bound_carries_no_head_note - because the head it offers is the subject's expected_head by the meaning of the variant. So this projection takes that head as a parameter and renders the one copy that exists, which is why the sentence cannot disagree with the judgment it describes."
+
+fn publication_outcome_segment_detail(
+  outcome: PublicationReceiptOutcome,
+  expected_head: CommitSha,
+) -> String {
+  match outcome {
+    ReceiptBound { pr_number, url, draft } =>
+      join([
+        "published as pull request #", to_string(pr_number),
+        " at the expected head ", expected_head as String,
+        if draft { " (draft)" } else { "" },
+        ": ", url as String,
+      ], "")
+    ReceiptHeadDiverged { pr_number, pr_head, url } =>
+      join([
+        "pull request #", to_string(pr_number),
+        " exists for this branch but offers ", pr_head as String,
+        ", which is not the commit under judgment: ", url as String,
+      ], "")
+    ReceiptBindingAmbiguous { pr_numbers } =>
+      join([
+        "two or more pull requests match this branch and base (",
+        to_string(pr_numbers.count()),
+        " of them), so no single one is the publication",
+      ], "")
+    ReceiptRemoteBranchAtHeadWithoutPullRequest { head_sha } =>
+      join([
+        "the branch is pushed at the expected head ", head_sha as String,
+        " and no pull request offers it, so there is nothing to review yet",
+      ], "")
+    ReceiptRemoteBranchHeadDiverged { remote_head } =>
+      join([
+        "the branch is pushed at ", remote_head as String,
+        ", which is not the commit under judgment, and no pull request offers either",
+      ], "")
+    ReceiptRemoteBranchBindingAmbiguous { refs_matched } =>
+      join([
+        "the remote advertised ", to_string(refs_matched),
+        " refs for this branch name, so its head was not established",
+      ], "")
+    ReceiptBranchNotPublished { remote_branches_seen } =>
+      join([
+        "the branch is not on the remote (",
+        to_string(remote_branches_seen),
+        " branches advertised), so nothing has been published for this attempt",
+      ], "")
+    ReceiptObservationRefused { detail } =>
+      join(["publication could not be observed: ", detail], "")
+  }
+}
+
+fn publication_evidence_segment(
+  evidence: PublicationEvidence,
+) -> WorkflowSegment {
+  match evidence {
+    EvidenceAbsent =>
+      WorkflowSegment {
+        kind: PublicationWorkflowSegment,
+        state: WorkflowSegmentPending,
+        detail: "publication has not been adjudicated for this attempt's head: no receipt exists yet. This is an absent observation, not a judgment that the branch is unpublished",
+      }
+    EvidenceUnreadable { reason } =>
+      WorkflowSegment {
+        kind: PublicationWorkflowSegment,
+        state: WorkflowSegmentRefused,
+        detail: join([
+          "a publication receipt exists for this attempt's head and this reader cannot decode it: ",
+          reason,
+        ], ""),
+      }
+    EvidenceForAnotherSubject { field, expected, found } =>
+      WorkflowSegment {
+        kind: PublicationWorkflowSegment,
+        state: WorkflowSegmentRefused,
+        detail: join([
+          "a publication receipt was read for this attempt and it answers a different question: ",
+          field as String, " should be ", expected, " and the receipt records ", found,
+        ], ""),
+      }
+    EvidenceForSubject { receipt } =>
+      WorkflowSegment {
+        kind: PublicationWorkflowSegment,
+        state: publication_outcome_segment_state(outcome: receipt.outcome),
+        detail: join([
+          publication_outcome_segment_detail(
+            outcome: receipt.outcome,
+            expected_head: receipt.subject.expected_head,
+          ),
+          " (", receipt.subject.branch as String,
+          " at ", receipt.subject.expected_head as String,
+          " in ", receipt.subject.repository.full_name, ")",
+        ], ""),
+      }
+  }
+}
+
+fn publication_segment(
+  publication_subject: PublicationSubjectObservation,
+  publication_source: PublicationReceiptSource,
+) -> WorkflowSegment {
+  match publication_subject {
+    PublicationSubjectUnobserved { reason } =>
+      WorkflowSegment {
+        kind: PublicationWorkflowSegment,
+        state: WorkflowSegmentRefused,
+        detail: join([
+          "this attempt has no exact head to adjudicate publication against, so no receipt can be checked for it: ",
+          reason,
+        ], ""),
+      }
+    PublicationSubjectObserved { subject } =>
+      publication_evidence_segment(
+        evidence: publication_evidence_for(
+          expected: subject,
+          source: publication_source,
+        ),
+      )
+  }
+}
+
 fn verification_receipt_segment(receipt: String) -> WorkflowSegment {
   match validation_receipt_decode(receipt: receipt) {
     ValidationReceiptUndecodable { reason } =>
@@ -435,11 +599,10 @@ fn workflow_segment_from_evidence(
         validation_receipt: evidence.validation_receipt,
       )
     PublicationWorkflowSegment =>
-      WorkflowSegment {
-        kind: kind,
-        state: WorkflowSegmentPending,
-        detail: "awaiting a verified change-set, publication intent, remote branch read-back, and pull-request binding",
-      }
+      publication_segment(
+        publication_subject: evidence.publication_subject,
+        publication_source: evidence.publication_source,
+      )
     ReviewWorkflowSegment =>
       WorkflowSegment {
         kind: kind,
