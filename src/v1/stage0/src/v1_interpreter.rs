@@ -7918,13 +7918,34 @@ fn rest_bound_invocation_value(
     let at = operation_ref_value(&op_node.span.file, &service, &operation, ctx);
     let input_digest =
         crate::recorded_fixture::content_hash_service_inputs(op_node, param_env, ctx);
+    // HAND-RUST GATE receipt — model-conformance repair to the existing seed bridge,
+    // not a new Rust decision surface. std.content_hash grounded ContentHash on hash
+    // family (#7480), so this mint must project Fnv1a64(Fnv1a64Structural); the old
+    // bare Str made 6/9 rest_exchange_replay witnesses red, while this shape makes
+    // 9/9 pass. Function/arm census is unchanged. Explicit deferral: ROADMAP v1-exit
+    // finish lines "interpreter deleted" / "zero hand-maintained Rust"; this code
+    // deletes with the seed rest-transport bridge on witness-realization/v2 adoption.
+    let input_digest_value = Value::Variant {
+        type_name: ctx.sym("ContentHash"),
+        variant_name: ctx.sym("Fnv1a64"),
+        fields: Rc::new(vec![(
+            ctx.sym("0"),
+            Value::Record {
+                type_name: ctx.sym("Fnv1a64Structural"),
+                fields: Rc::new(sorted_fields(vec![(
+                    ctx.sym("digest"),
+                    Value::Str(input_digest),
+                )])),
+            },
+        )]),
+    };
     Ok(Value::Record {
         type_name: ctx.sym("RestBoundOperationInvocation"),
         fields: Rc::new(sorted_fields(vec![
             (ctx.sym("at"), at),
             (ctx.sym("method"), rest_variant(ctx, "HttpMethod", method)),
             (ctx.sym("target"), rest_uri_value(url, ctx)?),
-            (ctx.sym("input_digest"), Value::Str(input_digest)),
+            (ctx.sym("input_digest"), input_digest_value),
             (
                 ctx.sym("auth_identity"),
                 rest_auth_identity_value(auth, basic_header, ctx),
