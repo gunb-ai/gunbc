@@ -1,6 +1,7 @@
 module test.claim.ci_workflow_witness_test
 
 import std.types { Bool, Int }
+import std.measure { minute_count }
 import gunbc.ci_workflow {
   gunbc_ci_job_backstop_timeout_minutes,
   gunbc_ci_build_job_backstop_timeout_minutes,
@@ -38,8 +39,8 @@ test fn ci_workflow_witness_holds() -> Bool {
   ci_job_backstop_is_step_sum_plus_prelude()
     && ci_build_job_backstop_is_step_sum_plus_prelude()
     && ci_job_backstop_dropped_the_selection_control_term()
-    && (gunbc_ci_ordinary_floor_budget_minutes == 55)
-    && (gunbc_ci_admission_postcondition_budget_minutes == 5)
-    && (gunbc_ci_workflow_wrapper_budget_minutes() == 60)
-    && (gunbc_ci_workflow_wrapper_timeout_minutes == gunbc_ci_workflow_wrapper_budget_minutes())
+    && (minute_count(m: gunbc_ci_ordinary_floor_budget_minutes) == 55)
+    && (minute_count(m: gunbc_ci_admission_postcondition_budget_minutes) == 5)
+    && (minute_count(m: gunbc_ci_workflow_wrapper_budget_minutes()) == 60)
+    && (gunbc_ci_workflow_wrapper_timeout_minutes == minute_count(m: gunbc_ci_workflow_wrapper_budget_minutes()))
 }

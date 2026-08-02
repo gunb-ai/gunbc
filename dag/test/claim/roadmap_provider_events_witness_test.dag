@@ -28,14 +28,14 @@ test fn codex_stream_classifies_running_activity() -> Bool {
     text: "{\"type\":\"thread.started\",\"thread_id\":\"thread-1\"}\n{\"type\":\"turn.started\"}\n{\"type\":\"item.started\",\"item\":{\"type\":\"command_execution\"}}\n",
   )
   match provider_execution_state(parsed: parsed) {
-    ProviderRunning { activity } => activity == "running command"
+    ProviderRunning { activity } => activity == "Agent working · running command"
     _ => false
   }
 }
 
 test fn codex_completed_is_terminal_only_from_provider_event() -> Bool {
   match provider_execution_state(parsed: parse_codex_jsonl(text: successful_codex_jsonl)) {
-    ProviderCompleted { activity } => activity == "agent turn completed"
+    ProviderCompleted { activity } => activity == "Agent complete"
     _ => false
   }
 }
@@ -49,7 +49,7 @@ test fn codex_completed_state_is_terminal() -> Bool {
       ], ""),
     ),
   ) {
-    ProviderCompleted { activity } => activity == "agent turn completed"
+    ProviderCompleted { activity } => activity == "Agent complete"
     _ => false
   }
 }
@@ -168,7 +168,7 @@ test fn refusal_marks_prior_activity_as_historical() -> Bool {
   )
   match provider_execution_state(parsed: parsed) {
     ProviderEventsRefused { activity, detail } =>
-      activity == "last observed · running command"
+      activity == "last observed · Agent working · running command"
         && string_contains(s: detail, pattern: "observation line budget 80")
     _ => false
   }
@@ -195,6 +195,20 @@ fn activity_of(text: String) -> String {
   }
 }
 
+test fn codex_agent_message_completed_is_finishing_not_complete() -> Bool {
+  match provider_execution_state(parsed: parse_codex_jsonl(
+    text: join([
+      "{\"type\":\"thread.started\",\"thread_id\":\"thread-1\"}\n",
+      "{\"type\":\"turn.started\"}\n",
+      "{\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"text\":\"done\"}}\n",
+    ], ""),
+  )) {
+    ProviderRunning { activity } => activity == "Agent finishing"
+    ProviderCompleted { activity: _ } => false
+    _ => false
+  }
+}
+
 test fn codex_item_activity_ignores_a_quoted_type_in_the_payload() -> Bool {
   let forged = activity_of(
     text: "{\"type\":\"item.started\",\"item\":{\"type\":\"agent_message\"},\"echo\":{\"type\":\"file_change\"}}\n",
@@ -202,11 +216,12 @@ test fn codex_item_activity_ignores_a_quoted_type_in_the_payload() -> Bool {
   let genuine = activity_of(
     text: "{\"type\":\"item.started\",\"item\":{\"type\":\"file_change\"}}\n",
   )
-  forged == "reporting" && genuine == "editing files"
+  forged == "Agent working · reporting" && genuine == "Agent working · editing files"
 }
 
 test fn roadmap_provider_events_keystone_holds() -> Bool {
   codex_stream_classifies_running_activity()
+    && codex_agent_message_completed_is_finishing_not_complete()
     && codex_completed_is_terminal_only_from_provider_event()
     && codex_completed_state_is_terminal()
     && codex_turn_failed_preserves_raw_provider_evidence()

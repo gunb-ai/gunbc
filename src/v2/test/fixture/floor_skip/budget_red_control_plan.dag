@@ -31,8 +31,8 @@ fn gunbc_ci_floor_plan() -> WalkPlan<FloorFinalization> {
       declared_resolve_count: 1,
     },
     on_success_stages: [],
-    ordinary_budget_ms: none,
-    on_success_budget_ms: none,
+    ordinary_budget: none,
+    on_success_budget: none,
   }
 }
 

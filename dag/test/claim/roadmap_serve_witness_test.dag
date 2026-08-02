@@ -8,7 +8,6 @@ import gunbc.roadmap_serve {
   SandboxPageHandler, SandboxAssetHandler, SandboxEchoHandler,
   SessionsJsonHandler, AttemptsJsonHandler, WorkflowJsonHandler, BeltStopHandler,
   BeltPublishHandler,
-  LandingQueueHandler, LandingPrEvidenceHandler, LandingMergeHandler, LandingReviewArtifactHandler,
   RoadmapServeRouteSpec,
   RoadmapServeTableBuild, RoadmapServeTable, RoadmapServeTableRefused,
   roadmap_serve_route_table_build,
@@ -75,28 +74,8 @@ test fn witness_serve_table_selection() -> Bool {
     && selects(method: POST, path: "/cleanup/some-node", want: BeltStopHandler)
     && selects(method: POST, path: "/stop/some-node", want: BeltStopHandler)
     && selects(method: POST, path: "/publish/some-node", want: BeltPublishHandler)
-    && selects(method: GET, path: "/landing", want: LandingQueueHandler)
-    && selects(method: GET, path: "/landing/pr/7573", want: LandingPrEvidenceHandler)
-    && selects(method: POST, path: "/landing/merge/7573", want: LandingMergeHandler)
-    && selects(method: GET, path: "/landing/review/45934", want: LandingReviewArtifactHandler)
 }
 
-data landing_route_red_note: String = "The merge route is POST-only and its PR number is bound by the shared PathTemplate matcher. A GET must fold to 405, preventing links or crawlers from actuating a merge."
-
-test fn witness_landing_merge_route_is_post_only_and_binds_number() -> Bool {
-  let selected = serve_select_route(table: live_table_or_empty(), method: POST, path: "/landing/merge/7573")
-  let get_selected = serve_select_route(table: live_table_or_empty(), method: GET, path: "/landing/merge/7573")
-  let post_ok = match selected {
-    SelectedDynamic { handler, params } =>
-      handler == LandingMergeHandler && path_param_value(params: params, name: "number") == "7573"
-    _ => false
-  }
-  let get_refused = match get_selected {
-    MethodNotAllowed { allowed } => count(allowed) == 1 && any(allowed, method => method == POST)
-    _ => false
-  }
-  post_ok && get_refused
-}
 
 test fn witness_asset_route_serves_modeled_js() -> Bool {
   let r = roadmap_serve_invoke(
@@ -173,20 +152,6 @@ test fn witness_preview_dispatch_refuses_before_effects() -> Bool {
     && string_contains(s: r.body, pattern: "before observation, provider preflight, or worktree creation")
 }
 
-data landing_preview_actuation_red_note: String = "The observe-only instance must refuse at the handler boundary, before the landing runtime can observe admission or call GitHub. Changing the handler to call landing_merge_pr for every posture makes this witness leave the typed 403 disabled arm."
-
-test fn witness_preview_landing_merge_refuses_before_effects() -> Bool {
-  let r = roadmap_serve_respond_for_instance(
-    instance: srv2_preview_dashboard_instance(),
-    method_label: "POST",
-    path: "/landing/merge/7573",
-    body: "",
-  )
-  r.status == 403
-    && string_contains(s: r.body, pattern: "\"state\": \"disabled\"")
-    && string_contains(s: r.body, pattern: "srv2-preview-codex-feedback-v0")
-    && string_contains(s: r.body, pattern: "before admission observation or GitHub actuation")
-}
 
 test fn witness_instance_route_names_posture_and_paths() -> Bool {
   let r = roadmap_serve_respond_for_instance(

@@ -1,5 +1,6 @@
 module gunbc.ci_workflow
 
+import std.measure { minute_count }
 import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv }
 import gunbc.ci_workflow_expressions {
   ci_concurrency_group, ci_setup_rust_home, ci_cache_path, ci_cache_key, ci_cache_restore_keys,
@@ -15,6 +16,7 @@ import gunbc.ci_spec {
   gunbc_ci_heal_binary_source_skew_guard_script,
   gunbc_ci_workflow_wrapper_budget_minutes,
   ci_heal_author_commit_artifact_dir, ci_heal_author_commit_artifact_name,
+  gunbc_ci_heal_repo_local_git_config_invoke,
 }
 import v2.workflow.ci_heal_revalidation_preflight_emit {
   ci_heal_revalidation_preflight_script,
@@ -26,6 +28,8 @@ import gunbc.ci_compile_jobs { ci_compile_jobs, compile_jobs_count_or_serial }
 import gunbc.ci_floor_measurement { gunbc_ci_runner_slot_ram_speed_ceiling }
 import v2.workflow.ci_floor_peak_emit {
   ci_cgroup_peak_locate_shell,
+  ci_floor_phase_journal_env_name,
+  ci_floor_phase_journal_path,
   ci_floor_peak_pre_script,
   ci_floor_peak_post_script
 }
@@ -322,11 +326,13 @@ fn ci_floor_step() -> Step {
     id: Present { value: "floor" },
     run: gunbc_ci_floor_run(spec: ci_floor_spec_from_roster()),
     shell: none,
-    env: none,
+    env: Present {
+      value: [kv(key: ci_floor_phase_journal_env_name, value: yaml_string(s: ci_floor_phase_journal_path))]
+    },
     working_directory: none,
     if_condition: none,
     continue_on_error: none,
-    timeout_minutes: Present { value: gunbc_ci_workflow_wrapper_budget_minutes() }
+    timeout_minutes: Present { value: minute_count(m: gunbc_ci_workflow_wrapper_budget_minutes()) }
   }
 }
 
@@ -416,7 +422,9 @@ fn ci_floor_peak_post_step() -> Step {
     id: none,
     run: ci_floor_peak_post_script(),
     shell: none,
-    env: none,
+    env: Present {
+      value: [kv(key: ci_floor_phase_journal_env_name, value: yaml_string(s: ci_floor_phase_journal_path))]
+    },
     working_directory: none,
     if_condition: Present { value: "always()" },
     continue_on_error: none,
@@ -452,7 +460,7 @@ fn ci_deploy_step(stage: DeployStage) -> Step {
   }
 }
 
-data gunbc_ci_workflow_wrapper_timeout_minutes: Duration = gunbc_ci_workflow_wrapper_budget_minutes()
+data gunbc_ci_workflow_wrapper_timeout_minutes: Duration = minute_count(m: gunbc_ci_workflow_wrapper_budget_minutes())
 
 data gunbc_ci_regen_step_timeout_minutes: Duration = 15
 
@@ -471,9 +479,9 @@ data gunbc_ci_step_timeout_measure_grounding_disposition: Disposition = Scaffold
 
 data gunbc_ci_aux_step_timeout_minutes: Int = 5
 
-data gunbc_ci_v1_compiler_tests_compile_gate_timeout_minutes: Duration = 10
+data gunbc_ci_v1_compiler_tests_compile_gate_timeout_minutes: Duration = 15
 
-data gunbc_ci_v1_compiler_tests_compile_gate_timeout_note: String = "v1-compiler-tests compile gate step budget (operator ruling 2026-08-01, PR #7533 receipt): cargo check -p v1-compiler-tests --tests exceeded the 5m aux cap on cold native-cache hosts (run 30692671758 @ 6f20329: srv1-05, step killed at 5m00s while still compiling deps; warm-cache runs complete in ~50s). 10m is the fleet-pressure envelope for a cold compile-only gate after main growth — not RustMonolithGate re-enrollment."
+data gunbc_ci_v1_compiler_tests_compile_gate_timeout_note: String = "v1-compiler-tests compile gate step budget (operator ruling 2026-08-01, PR #7533 receipt): cargo check -p v1-compiler-tests --tests exceeded the 5m aux cap on cold native-cache hosts (run 30692671758 @ 6f20329: srv1-05, step killed at 5m00s while still compiling deps; warm-cache runs complete in ~50s). Raised 10m -> 15m after run 30719671973 @ 6945446401 (srv1-01, cache hit): step killed at 10m00s while Checking v1-compiler-tests — deps consumed the full prior budget. 15m is the cold-host envelope after that receipt — not RustMonolithGate re-enrollment."
 
 data gunbc_ci_artifact_transfer_step_timeout_minutes: Int = 10
 
@@ -573,6 +581,20 @@ fn ci_heal_regen_step() -> Step {
   }
 }
 
+fn ci_heal_repo_local_git_config_step() -> Step {
+  RunStep {
+    name: Present { value: "Converge repository-local Git integration bindings (repo_local_git_config converge)" },
+    id: none,
+    run: gunbc_ci_heal_repo_local_git_config_invoke(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
 fn ci_heal_commit_push_step() -> Step {
   RunStep {
     name: Present { value: "Commit + push auto-push-eligible regenerated artifacts (workflow paths are author-commit-required)" },
@@ -619,7 +641,7 @@ fn ci_heal_generated_artifacts_job() -> Job {
     runner: gunbc_ci_selected_runner_spec(),
     steps: concat(
       [ci_heal_branch_head_checkout_step()],
-      [ci_heal_binary_source_skew_guard_step(), ci_release_bins_download_step(), ci_release_bins_unpack_verify_step(), ci_heal_regen_step(), ci_heal_commit_push_step(), ci_heal_author_commit_upload_step()]
+      [ci_release_bins_download_step(), ci_release_bins_unpack_verify_step(), ci_heal_repo_local_git_config_step(), ci_heal_binary_source_skew_guard_step(), ci_heal_regen_step(), ci_heal_commit_push_step(), ci_heal_author_commit_upload_step()]
     ),
     needs: ["build"],
     env: none,
