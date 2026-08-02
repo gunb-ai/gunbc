@@ -26,13 +26,13 @@ import v2.compiler.self_host.v2_emitter_direct_rust_door_contract {
   v2_emitter_direct_rust_door_acceptance_admissions,
   v2_emitter_direct_rust_door_closing_contract_holds,
 }
-import v2.std.algebra { count }
+import v2.std.algebra { any, length }
 import v2.std.logic { Bool }
 
 data v2_emitter_direct_rust_door_contract_witness_note: String = "CONTROLLED FIXTURES for the two-clause closing fold. The production admission seam establishes MissingTranslationRuleRefuses through the rust_add missing-rules fixture and derives WrittenSourceIndependentOfSeedEmitter from producer provenance — structural seed-closure refusal plus v2-closure admissibility execute green, then a typed unavailable row names CandidateGenerationSerializeTargetWiring because candidate_generation still stops before serialized source. These tests prove the fold rejects a planted accept-despite-gap admission, that duplicate established rows cannot erase the unavailable second clause, and that the second clause is assessed rather than hand-asserted."
 
 test fn witness_required_capability_population_is_two() -> Bool {
-  count(direct_rust_door_required_capabilities()) == 2
+  length(direct_rust_door_required_capabilities()) == 2
 }
 
 test fn witness_missing_rule_assessment_establishes_on_fixture() -> Bool {
@@ -69,7 +69,7 @@ test fn witness_written_source_assessment_derives_unavailable_from_pipeline() ->
 
 test fn witness_production_admissions_leave_one_capability_open() -> Bool {
   let admissions = v2_emitter_direct_rust_door_acceptance_admissions()
-  count(admissions) == 2
+  length(admissions) == 2
     && direct_rust_door_closing_frontier_count(admissions: admissions) == 1
     && !v2_emitter_direct_rust_door_closing_contract_holds(admissions: admissions)
     && admissions |> any(admission => match admission {

@@ -21,8 +21,8 @@ import v2.extdeps.languages.rust {
   rust_fixture_emitted_add_fn,
   rust_fn_add_lex,
 }
-import v2.std.algebra { count }
-import v2.std.collection { empty_map }
+import v2.std.algebra { any, filter, length }
+import v2.std.collection { empty_map, List }
 import v2.std.compilers.target_model {
   TargetModel,
   target_model_emit_transforms_empty,
@@ -36,7 +36,9 @@ import v2.std.node {
   TypeNode,
 }
 import v2.std.optional { Absent, Present }
-import v2.std.types { Bool, Int, List, String }
+import v2.std.logic { Bool }
+import v2.std.integer { Int }
+import v2.std.text { String }
 
 data v2_emitter_direct_rust_door_contract_note: String = "THE CLOSING CONDITION for roadmap node v2-emitter-direct-rust-door, transcribed at the node's two-clause red control. MissingTranslationRuleRefuses: a deliberately incomplete Rust TargetModel must refuse through target_serialize_source_from_model with TargetBundleMalformed rather than accepting guessed source. WrittenSourceIndependentOfSeedEmitter: derives from producer provenance — the v2 interpreted closure must be mint-admissible without v1.compiler.emit_rust, a V2EmitterInterpreted claim in the seed-linked harness closure must refuse, candidate_generation must serialize written source, and v2-written modules must carry executed producer receipts — never a hand-asserted flag. Missing, refused, and unavailable evidence all remain in the derived frontier; duplicate admissions cannot erase a missing capability, and zero progress on the second clause stays red even when the first is already established."
 
@@ -195,7 +197,7 @@ fn direct_rust_door_missing_capabilities(
 fn direct_rust_door_closing_frontier_count(
   admissions: List<DirectRustDoorAdmission>,
 ) -> Int {
-  count(direct_rust_door_missing_capabilities(admissions: admissions))
+  length(direct_rust_door_missing_capabilities(admissions: admissions))
 }
 
 fn v2_emitter_direct_rust_door_closing_contract_holds(
