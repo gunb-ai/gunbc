@@ -58,8 +58,10 @@ import v1.compiler.coercion { coerce_primitive_type, is_copy, lookup_checkpoint 
 import v1.compiler.trait_derive_emit {
   v1_emit_enum_derives,
   v1_emit_struct_from_capability_table, v1_emit_enum_supplemental_impls,
-  v1_generic_params_needing_clone_bound, v1_generic_params_needing_clone_bound_for_struct_item,
+  v1_generic_params_needing_clone_bound,
   v1_emit_type_params_with_clone_bounds,
+  v1_clone_bounded_type_params, v1_item_clone_bounded_param_names, v1_item_clone_undecided_head,
+  v1_trait_derive_refuse,
   rust_nominal_identity_carrier_shape_eligible, rust_symbol_wrapped_ord_carrier_shape_eligible
 }
 
@@ -1104,6 +1106,22 @@ fn value_ref_qualified_leaf(name: String) -> String {
   if string_contains(s: name, pattern: ".") { qualified_last_segment(name: name) } else { name }
 }
 
+data value_ref_self_module_normalization_note: String = "Construction wall for the SAME-MODULE half of the qualified-value-reference dotted-render class (sibling of value_ref_ident_dotted_fallback_note, which covers the general dotted-render/registry-miss case). A fully-qualified reference whose module qualifier names the CURRENT module (e.g. extdeps.container.oci.digest.extdeps_external_authority_anchor written inside extdeps.container.oci.digest itself) previously reached the bare-name registry (last-write-wins across every module sharing that leaf, since ordinary decl names are not disambiguated by qualifier) and resolved to whichever unrelated module happened to be inserted last, then rendered as a plain crate::wrong_module::ident value (never the is_data call-suffix decision, which is keyed on the still-dotted name and so never matches) wrapped in .clone() by the surrounding resolved_type sharing template — wrong module AND a fn-item value instead of the intended call. A same-module qualified reference names nothing a bare reference does not already name (the containment tree binds it to the enclosing module's own declaration, DESIGN §4), so the fix is to normalize it to the identical bare spelling before any registry lookup runs, rather than teaching the registry to disambiguate by qualifier — same-module resolution reuses the already-correct bare-name path instead of forking a second one. A genuine cross-module qualified reference (qualifier != current module) is untouched by this wall and keeps today's behavior."
+
+fn value_ref_qualifier_prefix(name: String) -> String {
+  let leaf = value_ref_qualified_leaf(name: name)
+  if leaf == name { "" }
+  else { substring(s: name, start: 0, end: string_length(s: name) - string_length(s: leaf) - 1) }
+}
+
+fn value_ref_normalize_self_module(name: String, module_name: String) -> String {
+  if string_contains(s: name, pattern: ".") && value_ref_qualifier_prefix(name: name) == module_name {
+    value_ref_qualified_leaf(name: name)
+  } else {
+    name
+  }
+}
+
 fn rust_is_uppercase_letter(c: String) -> Bool {
   c == "A" || c == "B" || c == "C" || c == "D" || c == "E" || c == "F" || c == "G" || c == "H" || c == "I" || c == "J" || c == "K" || c == "L" || c == "M" || c == "N" || c == "O" || c == "P" || c == "Q" || c == "R" || c == "S" || c == "T" || c == "U" || c == "V" || c == "W" || c == "X" || c == "Y" || c == "Z"
 }
@@ -2092,11 +2110,19 @@ fn group_unlisted_type_names(diags: List<ErrorNode>) -> Map<String, List<String>
     })
 }
 
+fn merged_module_source_indices(modules: List<TypedModule>) -> Map<String, NewlineIndex> {
+  modules |> fold(init: empty_map(), f: (acc, m) => map_merge(acc, m.type_env.source_indices))
+}
+
 fn emit_rust(typed: ResolvedGraph) -> EmitResult {
   let has_v1_seed = corpus_has_v1_seed_source_indices(modules: typed.modules)
   let base_info = build_emit_graph_info(modules: typed.modules, has_v1_seed: has_v1_seed)
   let ownership = build_ownership_results(modules: typed.modules)
   let shared = build_shared_types(type_summaries: base_info.type_summaries, recursive_type_set: base_info.recursive_type_set, target: Rust)
+  let clone_bounded = v1_clone_bounded_type_params(
+    type_decl_items: base_info.type_decl_items,
+    source_indices: merged_module_source_indices(modules: typed.modules)
+  )
   let emit_info = EmitGraphInfo {
     type_summaries: base_info.type_summaries,
     type_decl_items: base_info.type_decl_items,
@@ -2110,6 +2136,7 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
     owned_bindings: empty_set(),
     read_only_params_index: ownership.read_only_params_index,
     read_only_params: empty_set(),
+    clone_bounded_type_params: clone_bounded,
     corpus_repr: base_info.corpus_repr,
     fn_generic_param_names: base_info.fn_generic_param_names,
     fn_type_env: base_info.fn_type_env,
@@ -2250,6 +2277,10 @@ fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> Te
   let has_v1_seed = corpus_has_v1_seed_source_indices(modules: [typed_module])
   let base_info = build_emit_graph_info(modules: [typed_module], has_v1_seed: has_v1_seed)
   let shared = build_shared_types(type_summaries: base_info.type_summaries, recursive_type_set: base_info.recursive_type_set, target: Rust)
+  let clone_bounded = v1_clone_bounded_type_params(
+    type_decl_items: base_info.type_decl_items,
+    source_indices: merged_module_source_indices(modules: [typed_module])
+  )
   let emit_info = EmitGraphInfo {
     type_summaries: base_info.type_summaries,
     type_decl_items: base_info.type_decl_items,
@@ -2263,6 +2294,7 @@ fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> Te
     owned_bindings: empty_set(),
     read_only_params_index: base_info.read_only_params_index,
     read_only_params: empty_set(),
+    clone_bounded_type_params: clone_bounded,
     corpus_repr: base_info.corpus_repr,
     fn_generic_param_names: base_info.fn_generic_param_names,
     fn_type_env: base_info.fn_type_env,
@@ -4571,6 +4603,7 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
       owned_bindings: empty_set(),
       read_only_params_index: emit_info.read_only_params_index,
       read_only_params: fn_read_only,
+      clone_bounded_type_params: emit_info.clone_bounded_type_params,
       corpus_repr: emit_info.corpus_repr,
       fn_generic_param_names: emit_info.fn_generic_param_names,
       fn_type_env: emit_info.fn_type_env,
@@ -4658,17 +4691,34 @@ fn function_type_params_have_collision(type_params: List<Node>) -> Bool {
   (names |> count) > (unique_strings(items: names) |> count)
 }
 
-fn emit_item_type_params_for_struct(params: List<Node>, field_type_exprs: List<Node>, source_indices: Map<String, NewlineIndex>) -> String {
+fn emit_item_type_params_with_clone_bounds(item_name: String, params: List<Node>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String {
   let generic_param_names = params |> map(p => generic_param_name_at(n: p, source_indices: source_indices))
-  let clone_param_names = v1_generic_params_needing_clone_bound_for_struct_item(
+  let clone_param_names = v1_item_clone_bounded_param_names(
+    item_name: item_name,
     generic_param_names: generic_param_names,
-    field_type_exprs: field_type_exprs,
-    source_indices: source_indices
+    bounds: emit_info.clone_bounded_type_params
   )
   if (clone_param_names |> count) > 0 {
     v1_emit_type_params_with_clone_bounds(params: params, clone_param_names: clone_param_names, source_indices: source_indices)
   } else {
     emit_type_params(params: params, source_indices: source_indices)
+  }
+}
+
+fn emit_item_clone_bound_refusal(item: Node, item_name: String, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String {
+  if (item.params |> count) == 0 {
+    ""
+  } else {
+    let head = v1_item_clone_undecided_head(
+      item: item,
+      type_decl_items: emit_info.type_decl_items,
+      source_indices: source_indices
+    )
+    if head == "" {
+      ""
+    } else {
+      v1_trait_derive_refuse(concat("trait_derive_emit: generic item '", item_name, "' has a field applying type '", head, "', whose declared parameter list is not readable in this closure — the Clone bound it may require on '", item_name, "' cannot be decided (see trait_derive_emit_item_clone_bound_wf_propagation_note)"))
+    }
   }
 }
 
@@ -4685,14 +4735,15 @@ fn emit_type_def_from_connective(item: Node, recursive_types: Set<String>, share
       has_fn_fields: has_fn_fields,
       source_indices: env.source_indices
     )
-    let field_type_exprs = item.children |> map(c => resolved_type(n: c))
     let type_params = if capability_surface.impl_bodies == "" && !has_fn_fields {
-      emit_item_type_params_for_struct(params: item.params, field_type_exprs: field_type_exprs, source_indices: env.source_indices)
+      emit_item_type_params_with_clone_bounds(item_name: item_text, params: item.params, emit_info: emit_info, source_indices: env.source_indices)
     } else {
       emit_type_params(params: item.params, source_indices: env.source_indices)
     }
     let generic_param_names = item.params |> map(p => generic_param_name_at(n: p, source_indices: env.source_indices))
-    emit_struct_from_children(name: item_text, type_params: type_params, generic_param_names: generic_param_names, children: item.children, recursive_types: recursive_types, shared_types: shared_types, env: env, emit_info: emit_info)
+    let clone_bound_refusal = emit_item_clone_bound_refusal(item: item, item_name: item_text, emit_info: emit_info, source_indices: env.source_indices)
+    let struct_text = emit_struct_from_children(name: item_text, type_params: type_params, generic_param_names: generic_param_names, children: item.children, recursive_types: recursive_types, shared_types: shared_types, env: env, emit_info: emit_info)
+    if clone_bound_refusal == "" { struct_text } else { concat(clone_bound_refusal, "\n", struct_text) }
   } else if is_host_optional_carrier_alias(name: item_text) {
     let type_params = emit_type_params(params: item.params, source_indices: env.source_indices)
     let elem_csv = item.params |> map(p => to_pascal(name: generic_param_name_at(n: p, source_indices: env.source_indices))) |> join(separator: ", ")
@@ -4730,9 +4781,17 @@ fn emit_type_def_from_connective(item: Node, recursive_types: Set<String>, share
     } else {
       concat(policy_validation, "\n", rename_validations)
     }
-    let type_params = emit_type_params(params: item.params, source_indices: env.source_indices)
+    let type_params = emit_item_type_params_with_clone_bounds(item_name: item_text, params: item.params, emit_info: emit_info, source_indices: env.source_indices)
     let generic_param_names = item.params |> map(p => generic_param_name_at(n: p, source_indices: env.source_indices))
+    let clone_bound_refusal = emit_item_clone_bound_refusal(item: item, item_name: item_text, emit_info: emit_info, source_indices: env.source_indices)
     let enum_text = emit_enum_from_children(name: item_text, type_params: type_params, generic_param_names: generic_param_names, children: item.children, recursive_types: recursive_types, shared_types: shared_types, env: env, serde_policy: serde_policy, emit_info: emit_info)
+    let validations = if clone_bound_refusal == "" {
+      validations
+    } else if validations == "" {
+      clone_bound_refusal
+    } else {
+      concat(validations, "\n", clone_bound_refusal)
+    }
     if validations == "" {
       enum_text
     } else {
@@ -6331,14 +6390,15 @@ fn emit_none_keyword_for_resolved_type(resolved_type: InferredNode?) -> String {
   }
 }
 
-fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: InferredNode?, shared_types: Set<String>, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String {
-  let leaf_name = value_ref_qualified_leaf(name: name)
-  let variant_parent = effective_variant_parent(name: name, binding_kind: binding_kind, resolved_type: resolved_type, emit_info: emit_info, source_indices: source_indices)
+fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: InferredNode?, shared_types: Set<String>, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>, module_name: String) -> String {
+  let resolved_name = value_ref_normalize_self_module(name: name, module_name: module_name)
+  let leaf_name = value_ref_qualified_leaf(name: resolved_name)
+  let variant_parent = effective_variant_parent(name: resolved_name, binding_kind: binding_kind, resolved_type: resolved_type, emit_info: emit_info, source_indices: source_indices)
   if (leaf_name == "none" || leaf_name == "None") && variant_parent == none { emit_none_keyword_for_resolved_type(resolved_type: resolved_type) }
   else if leaf_name == "true" || leaf_name == "false" { emit_keyword(key: leaf_name, target: Rust) }
   else {
 
-    let moves_by_value = set_contains(emit_info.movable, name)
+    let moves_by_value = set_contains(emit_info.movable, resolved_name)
     let sharing = language_spec(target: Rust).sharing
     let ref_str = match variant_parent {
       Present { value: enum_name } =>
@@ -6353,16 +6413,16 @@ fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: Infe
           concat("Rc::new(", body, ")")
         } else { body }
       Absent =>
-        match map_get(registry, name) {
+        match map_get(registry, leaf_name) {
           Present { value: info } =>
             let is_data = info.kind == DataItem
-            if is_data { concat(to_snake(name: name), "()") }
+            if is_data { concat(to_snake(name: leaf_name), "()") }
             else {
               let is_function_value = match binding_kind {
                 Present { value: FunctionValueBinding } => true
                 _ => false
               }
-              let ident = emit_value_ref_ident(name: name, registry: registry, emit_info: emit_info)
+              let ident = emit_value_ref_ident(name: resolved_name, registry: registry, emit_info: emit_info)
               let ident_str = if is_function_value {
                 ident
               } else if moves_by_value {
@@ -6374,7 +6434,7 @@ fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: Infe
               ident_str
             }
           Absent =>
-            let ident = emit_value_ref_ident(name: name, registry: registry, emit_info: emit_info)
+            let ident = emit_value_ref_ident(name: resolved_name, registry: registry, emit_info: emit_info)
             let ident_str = if moves_by_value {
               ident
             } else { match resolved_type {
@@ -6633,11 +6693,11 @@ fn rust_wrap_runtime_collection_result(call_str: String, function_name: String, 
   }
 }
 
-fn emit_rust_expr_var(expr: Node, registry: Map<String, ItemInfo>, shared_types: Set<String>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String {
+fn emit_rust_expr_var(expr: Node, registry: Map<String, ItemInfo>, shared_types: Set<String>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>, module_name: String) -> String {
   match expr.expr_data {
     ExprVar { binding_kind: binding_kind } =>
       let n = expr_var_name_at(texpr: expr, source_indices: source_indices)
-      emit_var_ref(name: n, binding_kind: binding_kind, resolved_type: expr.inferred, shared_types: shared_types, registry: registry, emit_info: emit_info, source_indices: source_indices)
+      emit_var_ref(name: n, binding_kind: binding_kind, resolved_type: expr.inferred, shared_types: shared_types, registry: registry, emit_info: emit_info, source_indices: source_indices, module_name: module_name)
     _ => emit_error_expr(message: "emit_rust_expr_var expected ExprVar", target: Rust)
   }
 }
@@ -6836,7 +6896,7 @@ fn emit_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: InferSco
     source_indices: scope.type_env.source_indices,
     wrap_result: result => result,
     recurse: child => emit_typed_expr(texpr: child, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: fuel - 1),
-    emit_var: expr => emit_rust_expr_var(expr: expr, registry: registry, shared_types: shared_types, emit_info: emit_info, source_indices: scope.type_env.source_indices),
+    emit_var: expr => emit_rust_expr_var(expr: expr, registry: registry, shared_types: shared_types, emit_info: emit_info, source_indices: scope.type_env.source_indices, module_name: scope.module_name),
     emit_field_access: expr => emit_rust_expr_field_access(expr: expr, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info),
     emit_call: expr => emit_rust_expr_call(expr: expr, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info),
     emit_method_call: expr => emit_rust_expr_method_call(expr: expr, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info),
@@ -7403,6 +7463,7 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
               owned_bindings: set_insert(emit_info.owned_bindings, acc_name),
               read_only_params_index: emit_info.read_only_params_index,
               read_only_params: emit_info.read_only_params,
+              clone_bounded_type_params: emit_info.clone_bounded_type_params,
               corpus_repr: emit_info.corpus_repr,
               fn_generic_param_names: emit_info.fn_generic_param_names,
               fn_type_env: emit_info.fn_type_env,
@@ -7431,6 +7492,7 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
               owned_bindings: emit_info.owned_bindings,
               read_only_params_index: emit_info.read_only_params_index,
               read_only_params: emit_info.read_only_params,
+              clone_bounded_type_params: emit_info.clone_bounded_type_params,
               corpus_repr: emit_info.corpus_repr,
               fn_generic_param_names: emit_info.fn_generic_param_names,
               fn_type_env: emit_info.fn_type_env,
@@ -8000,7 +8062,7 @@ fn emit_typed_match_arm(arm: Node, registry: Map<String, ItemInfo>, scope: Infer
     ExprVar { binding_kind: body_binding_kind } =>
       let body_name = expr_var_name_at(texpr: arm_b, source_indices: si)
       if variant_parent_from_binding_kind(binding_kind: body_binding_kind) != none {
-        emit_var_ref(name: body_name, binding_kind: body_binding_kind, resolved_type: Present { value: Resolved { node: match_result_type } }, shared_types: shared_types, registry: registry, emit_info: emit_info, source_indices: si)
+        emit_var_ref(name: body_name, binding_kind: body_binding_kind, resolved_type: Present { value: Resolved { node: match_result_type } }, shared_types: shared_types, registry: registry, emit_info: emit_info, source_indices: si, module_name: scope.module_name)
       } else {
         emit_typed_expr(texpr: arm_b, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
       }
