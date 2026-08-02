@@ -1,0 +1,148 @@
+module gunbc.roadmap_verification_receipt
+
+import std.types { String, NonEmptyStr, Int, List, CommitSha }
+import std.content_hash {
+  ContentHash,
+  Fnv1a64Structural,
+  content_hash_eq_structural,
+}
+import gunbc.roadmap_model { RoadmapNodeIdentity }
+import gunbc.roadmap_execution_contract {
+  ValidationOperation,
+  ModeledValidationCommand,
+}
+import gunbc.roadmap_validation_oracle {
+  ValidationVerdict,
+  validation_verdict_key,
+}
+
+data verification_subject_note: String = "ONE VERIFICATION QUESTION HAS ONE SUBJECT. A verdict is about one durable roadmap node identity under one criteria revision, in one attempt and branch, at one committed head. None of those five fields is Optional: a receipt that cannot name any one of them cannot state which question it answered and therefore cannot be constructed as VerificationReceipt. The node's durable identity is RoadmapNodeIdentity rather than its editable slug; criteria_digest is the Fnv1a64Structural value derived by gunbc.roadmap_model node_criteria_digest; head_sha is std.types CommitSha rather than an anonymous revision string.\n\nTHE HEAD IS OBSERVED, NOT INFERRED FROM THE BRANCH. A branch is a moving publication handle and remains in the subject because it locates the attempt's line of work. The committed head is the verification identity: head A and head B in the same attempt are different subjects, so findings against A can coexist with a later green receipt for B without either overwriting or impersonating the other."
+
+type VerificationSubject {
+  node_identity: RoadmapNodeIdentity
+  criteria_digest: Fnv1a64Structural
+  attempt_key: String
+  branch: NonEmptyStr
+  head_sha: CommitSha
+}
+
+data validation_execution_note: String = "AN EXECUTION RECORDS THE DECLARED OPERATION, THE REALIZED COMMAND, AND THE PROCESS EVIDENCE AS STRUCTURE. ValidationOperation is the existing semantic validation authority; ModeledValidationCommand keeps program and argv separate instead of persisting a shell sentence; exit_code, stdout and stderr preserve the three observations without rendering them into explanatory prose. A command that never ran contributes no ValidationExecution — its reason belongs to the existing ValidationRefused verdict. This is why executions is a list: a contract may declare several validations, and one summary command string cannot honestly describe all of them."
+
+type ValidationExecution {
+  validation: ValidationOperation
+  command: ModeledValidationCommand
+  exit_code: Int
+  stdout: String
+  stderr: String
+}
+
+data verification_receipt_note: String = "THE RECEIPT KEEPS THE QUESTION, THE PINNED ORACLE, EVERY EXECUTION, AND THE EXISTING TYPED VERDICT. It does not store a rendered detail string as authority. Commands and process evidence live only in ValidationExecution's fields; presentation may render them but no consumer parses that rendering back. oracle_identity reuses std.content_hash ContentHash because the pin boundary is subject-generic, while the criteria digest stays on its actual structural family rather than widening to the union.\n\nValidationVerdict remains owned by gunbc.roadmap_validation_oracle. Its current command/detail-bearing arms are the compatibility surface the live attempt-level belt producer still constructs; they are not a second execution authority here. When the belt wiring migrates, it constructs executions from the declared operation, realized argv and process result and projects the verdict through the same ValidationVerdict authority."
+
+type VerificationReceipt {
+  subject: VerificationSubject
+  oracle_identity: ContentHash
+  executions: List<ValidationExecution>
+  verdict: ValidationVerdict
+}
+
+data verification_subject_match_note: String = "A READABLE RECEIPT ABOUT ANOTHER SUBJECT IS NOT EVIDENCE. The comparison is total over all five required fields and returns the first differing field with both values, mirroring gunbc.roadmap_publish publication_receipt_subject_match. In particular, an old head's passed receipt cannot move the lamp for a new head merely because node, criteria, attempt and branch still agree."
+
+type VerificationSubjectMatch
+  = VerificationSubjectMatches
+  | VerificationSubjectDiffers {
+      field: NonEmptyStr,
+      expected: String,
+      found: String,
+    }
+
+fn verification_subject_match(
+  expected: VerificationSubject,
+  found: VerificationSubject,
+) -> VerificationSubjectMatch {
+  if (found.node_identity as String) != (expected.node_identity as String) {
+    VerificationSubjectDiffers {
+      field: "node_identity",
+      expected: expected.node_identity as String,
+      found: found.node_identity as String,
+    }
+  } else if !content_hash_eq_structural(
+    left: found.criteria_digest,
+    right: expected.criteria_digest,
+  ) {
+    VerificationSubjectDiffers {
+      field: "criteria_digest",
+      expected: expected.criteria_digest as String,
+      found: found.criteria_digest as String,
+    }
+  } else if found.attempt_key != expected.attempt_key {
+    VerificationSubjectDiffers {
+      field: "attempt_key",
+      expected: expected.attempt_key,
+      found: found.attempt_key,
+    }
+  } else if (found.branch as String) != (expected.branch as String) {
+    VerificationSubjectDiffers {
+      field: "branch",
+      expected: expected.branch as String,
+      found: found.branch as String,
+    }
+  } else if (found.head_sha as String) != (expected.head_sha as String) {
+    VerificationSubjectDiffers {
+      field: "head_sha",
+      expected: expected.head_sha as String,
+      found: found.head_sha as String,
+    }
+  } else {
+    VerificationSubjectMatches
+  }
+}
+
+data legacy_attempt_validation_receipt_note: String = "DECLARED LEGACY STATE — DISSOLVE-ON: belt verification writes and reads gunbc.roadmap_verification_receipt VerificationReceipt at dispatch_attempt_verification_receipt_path_for_instance. Before exact-head receipts, gunbc.roadmap_validation_oracle validation_receipt_decode recovered only an attempt-level verdict key from validation-receipt.json. That document carries no node identity, criteria digest, attempt key, branch or head, so it cannot be upgraded or guessed into a VerificationSubject. Pre-receipt attempts therefore arrive as LegacyAttemptValidationReceipt and refuse to move Verify; they are re-dispatched or explicitly migrated by a producer that can observe every required subject fact. The srv1 evidence-unreadable loop becomes this typed disposition rather than an endlessly retried parse failure."
+
+type VerificationReceiptSource
+  = ExactHeadVerificationReceipt { receipt: VerificationReceipt }
+  | LegacyAttemptValidationReceipt { verdict_key: String }
+
+type VerificationEvidence
+  = VerificationEvidenceForSubject { receipt: VerificationReceipt }
+  | VerificationEvidenceForAnotherSubject {
+      field: NonEmptyStr,
+      expected: String,
+      found: String,
+    }
+  | VerificationEvidenceLegacyAttemptLevel { verdict_key: String }
+
+fn verification_evidence_for(
+  expected: VerificationSubject,
+  source: VerificationReceiptSource,
+) -> VerificationEvidence {
+  match source {
+    LegacyAttemptValidationReceipt { verdict_key } =>
+      VerificationEvidenceLegacyAttemptLevel { verdict_key: verdict_key }
+    ExactHeadVerificationReceipt { receipt } =>
+      match verification_subject_match(
+        expected: expected,
+        found: receipt.subject,
+      ) {
+        VerificationSubjectMatches =>
+          VerificationEvidenceForSubject { receipt: receipt }
+        VerificationSubjectDiffers { field, expected: e, found: f } =>
+          VerificationEvidenceForAnotherSubject {
+            field: field,
+            expected: e,
+            found: f,
+          }
+      }
+  }
+}
+
+fn verification_evidence_moves_lamp(evidence: VerificationEvidence) -> Bool {
+  match evidence {
+    VerificationEvidenceForSubject { receipt } =>
+      validation_verdict_key(verdict: receipt.verdict) == "passed"
+    VerificationEvidenceForAnotherSubject {
+      field: _, expected: _, found: _,
+    } => false
+    VerificationEvidenceLegacyAttemptLevel { verdict_key: _ } => false
+  }
+}
