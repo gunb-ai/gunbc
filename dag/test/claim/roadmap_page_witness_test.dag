@@ -596,7 +596,8 @@ test fn witness_selection_grammar_ships_in_client_asset() -> Bool {
     && string_contains(s: js, pattern: ".node-head .dispatch-btn.action-primary")
     && string_contains(s: js, pattern: "classList.add('action-focal')")
     && string_contains(s: js, pattern: "e.key === 'Escape'")
-    && string_contains(s: js, pattern: "closest('button, a, details, input, select, textarea')")
+    && string_contains(s: js, pattern: "closest('summary, button, a, input, select, textarea')")
+    && !string_contains(s: js, pattern: "closest('button, a, details, input, select, textarea')")
     && !string_contains(s: js, pattern: "action-live")
 }
 
