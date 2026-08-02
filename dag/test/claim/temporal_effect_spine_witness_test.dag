@@ -1,9 +1,8 @@
 module test.claim.temporal_effect_spine
 
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data witness_intent_hash: ContentHash = "temporal-spine-witness-intent-v1"
+data witness_intent_hash: ContentHash = content_hash_of_value(value: "temporal-spine-witness-intent-v1" as NonEmptyStr)
 data witness_escalation_id: NonEmptyStr = "srv3-boot-once-cd" as NonEmptyStr
 data witness_observed_at: Timestamp = "2026-07-02T23:05:00Z"
 
@@ -21,32 +20,32 @@ data witness_lease_key: NonEmptyStr = "srv3-nbd-proxy-10809" as NonEmptyStr
 
 data foreign_lease: HeldLease = HeldLease {
   lease_key: witness_lease_key,
-  resource_fingerprint: "seeded-iso-fp" as ContentHash,
-  owner_fingerprint: "foreign-owner" as ContentHash,
+  resource_fingerprint: content_hash_of_value(value: "seeded-iso-fp" as NonEmptyStr),
+  owner_fingerprint: content_hash_of_value(value: "foreign-owner" as NonEmptyStr),
   generation: 1,
   observed: LeasePortForeign,
 }
 
 data stale_lease: HeldLease = HeldLease {
   lease_key: witness_lease_key,
-  resource_fingerprint: "seeded-iso-fp" as ContentHash,
-  owner_fingerprint: "expected-owner" as ContentHash,
+  resource_fingerprint: content_hash_of_value(value: "seeded-iso-fp" as NonEmptyStr),
+  owner_fingerprint: content_hash_of_value(value: "expected-owner" as NonEmptyStr),
   generation: 2,
   observed: LeaseRunningStale,
 }
 
 data expected_lease: HeldLease = HeldLease {
   lease_key: witness_lease_key,
-  resource_fingerprint: "seeded-iso-fp" as ContentHash,
-  owner_fingerprint: "expected-owner" as ContentHash,
+  resource_fingerprint: content_hash_of_value(value: "seeded-iso-fp" as NonEmptyStr),
+  owner_fingerprint: content_hash_of_value(value: "expected-owner" as NonEmptyStr),
   generation: 3,
   observed: LeaseRunningExpected,
 }
 
 data absent_lease: HeldLease = HeldLease {
   lease_key: witness_lease_key,
-  resource_fingerprint: "seeded-iso-fp" as ContentHash,
-  owner_fingerprint: "no-owner" as ContentHash,
+  resource_fingerprint: content_hash_of_value(value: "seeded-iso-fp" as NonEmptyStr),
+  owner_fingerprint: content_hash_of_value(value: "no-owner" as NonEmptyStr),
   generation: 0,
   observed: LeaseAbsent,
 }
@@ -55,7 +54,7 @@ fn converged_serve_receipt() -> EffectStepReceipt {
   EffectStepReceipt {
     attempt_id: witness_intent.attempt_id,
     step_id: witness_step_serve,
-    observation_digest: "obs" as ContentHash,
+    observation_digest: content_hash_of_value(value: "obs" as NonEmptyStr),
     verdict_label: "Converged" as NonEmptyStr,
     plan_label: "Noop" as NonEmptyStr,
     applied: EffectApplied { effect_id: "nbd-serve-effect-1" as NonEmptyStr },
@@ -137,7 +136,7 @@ test fn applied_without_read_back_refuses() -> Bool {
   let bad_receipt = EffectStepReceipt {
     attempt_id: witness_intent.attempt_id,
     step_id: witness_step_serve,
-    observation_digest: "obs" as ContentHash,
+    observation_digest: content_hash_of_value(value: "obs" as NonEmptyStr),
     verdict_label: "Stale" as NonEmptyStr,
     plan_label: "Apply" as NonEmptyStr,
     applied: EffectApplied { effect_id: "nbd-serve-effect-1" as NonEmptyStr },
@@ -230,7 +229,7 @@ test fn derived_cursor_uses_last_receipt_step() -> Bool {
     EffectStepReceipt {
       attempt_id: witness_intent.attempt_id,
       step_id: "toolchain-ensure" as NonEmptyStr,
-      observation_digest: "a" as ContentHash,
+      observation_digest: content_hash_of_value(value: "a" as NonEmptyStr),
       verdict_label: "Converged" as NonEmptyStr,
       plan_label: "Noop" as NonEmptyStr,
       applied: NoEffectApplied,
@@ -240,7 +239,7 @@ test fn derived_cursor_uses_last_receipt_step() -> Bool {
     EffectStepReceipt {
       attempt_id: witness_intent.attempt_id,
       step_id: witness_step_serve,
-      observation_digest: "b" as ContentHash,
+      observation_digest: content_hash_of_value(value: "b" as NonEmptyStr),
       verdict_label: "Stale" as NonEmptyStr,
       plan_label: "DrainThenStart" as NonEmptyStr,
       applied: NoEffectApplied,
@@ -315,8 +314,8 @@ test fn inaccessible_lease_refuses() -> Bool {
     grant: GrantAbsent,
     lease: HeldLease {
       lease_key: witness_lease_key,
-      resource_fingerprint: "seeded-iso-fp" as ContentHash,
-      owner_fingerprint: "no-owner" as ContentHash,
+      resource_fingerprint: content_hash_of_value(value: "seeded-iso-fp" as NonEmptyStr),
+      owner_fingerprint: content_hash_of_value(value: "no-owner" as NonEmptyStr),
       generation: 0,
       observed: LeaseInaccessible,
     },

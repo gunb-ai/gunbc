@@ -199,7 +199,7 @@ fn live_deploy_fold(
     fixture_host: fixture_host
   )
   match gate {
-    Deny { reason: _ } =>
+    Deny { refusal: _ } =>
       live_deploy_mutation_denied(
         target: target,
         effect: effect,
@@ -383,7 +383,7 @@ fn live_deploy_access_preflight_for(access: DeployAccess) -> Reconciliation<Host
           },
           applied: intent,
         }
-      Deny { reason: _ } =>
+      Deny { refusal: _ } =>
         NotConverged {
           reason: deploy_access_decision_reason(d: gate),
           applied: HostEffectIntent {

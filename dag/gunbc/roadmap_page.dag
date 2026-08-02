@@ -17,6 +17,7 @@ import gunbc.roadmap_altitude { section_counts, section_counts_wire, statuses_al
 import gunbc.roadmap_authority {
   roadmap_authority, authored_merged_prs,
   accepted_roadmap_node_ids,
+  ClosingContractTaskPair, closing_contract_task_pairs, closing_contract_family_claim,
 }
 import gunbc.roadmap_spawner { spawn_frontier, SpawnFrontier, doc_all_nodes, doc_all_edges }
 import gunbc.roadmap_component {
@@ -49,6 +50,9 @@ import gunbc.roadmap_presentation {
   DailyWorkspaceView, daily_workspace_view,
   ObservationImpactView, ObservationsNominal, WorkspaceObservationImpact,
   observation_impact_view, workspace_covers_row_activity,
+  lifecycle_chip_renders,
+  WorkFamilyDecl, WorkFamilyMemberFact, WorkFamilyView,
+  WorkBandEntry, BandRow, BandFamily,
 }
 import gunbc.roadmap_workflow_progress { WorkflowAttemptProgress }
 import gunbc.roadmap_workflow_stage {
@@ -451,18 +455,25 @@ fn activity_region_nodes(a: ActivityView) -> List<Fragment> {
   }
 }
 
+fn status_chip_nodes(view: WorkRowView) -> List<Fragment> {
+  if lifecycle_chip_renders(l: view.lifecycle) {
+    let status = work_lifecycle_key(l: view.lifecycle)
+    [ el_class("span", concat("status status-", status), [ txt(status) ]) ]
+  } else {
+    []
+  }
+}
+
 fn render_work_row_head(view: WorkRowView) -> Fragment {
-  let status = work_lifecycle_key(l: view.lifecycle)
   el_class("div", "node-head", concat(
-    [
-      el_class("span", concat("status status-", status), [ txt(status) ]),
-      el_class("span", node_mid_class, concat(
-        concat(
-          [ el_class("span", "title", inline_md_nodes(text: view.headline)) ],
-          superseded_badge_of(view: view),
-        ),
-        dependency_line_nodes(view: view))),
-    ],
+    concat(
+      status_chip_nodes(view: view),
+      [ el_class("span", node_mid_class, concat(
+          concat(
+            [ el_class("span", "title", inline_md_nodes(text: view.headline)) ],
+            superseded_badge_of(view: view),
+          ),
+          dependency_line_nodes(view: view))) ]),
     workflow_controls_nodes(view: view)))
 }
 
@@ -586,15 +597,43 @@ fn workspace_rows_ul(rows: List<WorkRowView>, observation: ObservationImpactView
   el("ul", map(rows, v => workspace_row_li(view: v, observation: observation)))
 }
 
-fn workspace_band(label: String, cls: String, rows: List<WorkRowView>, observation: ObservationImpactView) -> List<Fragment> {
-  if count(rows) == 0 && cls == "active" {
+fn family_group_li(family: WorkFamilyView, observation: ObservationImpactView) -> Fragment {
+  el_class("li", "family-group", [
+    el_class("div", "family-head", [
+      el_class("span", "family-claim", [ txt(family.claim) ]),
+      el_class("span", "family-count", [ txt(concat(to_string(count(family.rows)), " nodes")) ]),
+    ]),
+    el_class("ul", "family-rows", map(family.rows, v => workspace_row_li(view: v, observation: observation))),
+  ])
+}
+
+fn band_entry_li(entry: WorkBandEntry, observation: ObservationImpactView) -> Fragment {
+  match entry {
+    BandRow { row } => workspace_row_li(view: row, observation: observation)
+    BandFamily { family } => family_group_li(family: family, observation: observation)
+  }
+}
+
+fn band_entry_statuses(entry: WorkBandEntry) -> List<String> {
+  match entry {
+    BandRow { row } => [ work_lifecycle_key(l: row.lifecycle) ]
+    BandFamily { family } => map(family.rows, v => work_lifecycle_key(l: v.lifecycle))
+  }
+}
+
+fn workspace_entries_ul(entries: List<WorkBandEntry>, observation: ObservationImpactView) -> Fragment {
+  el("ul", map(entries, e => band_entry_li(entry: e, observation: observation)))
+}
+
+fn workspace_band(label: String, cls: String, entries: List<WorkBandEntry>, observation: ObservationImpactView) -> List<Fragment> {
+  if count(entries) == 0 && cls == "active" {
     []
   } else {
     [ altitude_section(
         cls: concat("frontier-bucket frontier-", cls),
         title_nodes: [ el("h2", [ txt(label) ]) ],
-        statuses: map(rows, v => work_lifecycle_key(l: v.lifecycle)),
-        body: [ workspace_rows_ul(rows: rows, observation: observation) ]) ]
+        statuses: fold(entries, init: [], f: (acc, e) => concat(acc, band_entry_statuses(entry: e))),
+        body: [ workspace_entries_ul(entries: entries, observation: observation) ]) ]
   }
 }
 
@@ -623,10 +662,10 @@ fn workspace_observation_banner(observation: ObservationImpactView) -> List<Frag
 fn workspace_markup(ws: DailyWorkspaceView) -> Fragment {
   el_class("section", "roadmap-frontier", concat(
     workspace_active_band(rows: ws.active, observation: ws.observation),
-    concat(workspace_band(label: "Ready", cls: "ready", rows: ws.ready, observation: ws.observation),
-      concat(workspace_band(label: "Upcoming", cls: "upcoming", rows: ws.upcoming, observation: ws.observation),
-        concat(workspace_band(label: "Done", cls: "done", rows: ws.done, observation: ws.observation),
-          workspace_band(label: "Superseded", cls: "superseded", rows: ws.superseded, observation: ws.observation))))))
+    concat(workspace_band(label: "Ready", cls: "ready", entries: ws.ready, observation: ws.observation),
+      concat(workspace_band(label: "Upcoming", cls: "upcoming", entries: ws.upcoming, observation: ws.observation),
+        concat(workspace_band(label: "Done", cls: "done", entries: ws.done, observation: ws.observation),
+          workspace_band(label: "Superseded", cls: "superseded", entries: ws.superseded, observation: ws.observation))))))
 }
 
 fn v1_exit_program_progress_view(ready_count: Int) -> ProgramProgressView {
@@ -669,6 +708,22 @@ fn daily_row_activity(node_id: String, attempts: List<WorkflowAttemptProgress>, 
   }
 }
 
+data closing_contract_family_wiring_note: String = "The live family facts: one WorkFamilyDecl for the closing-contract family (claim = the authority's closing_contract_family_claim, stated once) and one member fact per generator pair, each carrying the gated node's typed headline as the row subject. Fixtures construct their own decls/members, so the grouping stays witnessable without live counts."
+
+fn closing_contract_family_id() -> String { "closing-contract" }
+
+fn live_work_family_decls() -> List<WorkFamilyDecl> {
+  [ WorkFamilyDecl { id: closing_contract_family_id(), claim: closing_contract_family_claim } ]
+}
+
+fn live_work_family_members() -> List<WorkFamilyMemberFact> {
+  closing_contract_task_pairs() |> map(p => WorkFamilyMemberFact {
+    family_id: closing_contract_family_id(),
+    task_node: p.task.node as String,
+    subject: p.subject,
+  })
+}
+
 fn daily_workspace_view_of(doc: RoadmapDocument, merged: List<Int>, attempts: List<WorkflowAttemptProgress>, attempts_refused: String?) -> DailyWorkspaceView {
   let nodes = doc_all_nodes(doc: doc)
   let edges = doc_all_edges(doc: doc)
@@ -681,7 +736,9 @@ fn daily_workspace_view_of(doc: RoadmapDocument, merged: List<Int>, attempts: Li
   daily_workspace_view(
     rows: rows,
     program: Present { value: v1_exit_program_progress_view(ready_count: ready_count) },
-    observation: observation)
+    observation: observation,
+    families: live_work_family_decls(),
+    members: live_work_family_members())
 }
 
 fn roadmap_daily_workspace_page_impl(doc: RoadmapDocument, merged: List<Int>, main_prefix: List<Fragment>, attempts: List<WorkflowAttemptProgress>, attempts_refused: String?) -> Fragment {

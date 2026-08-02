@@ -242,7 +242,9 @@ test fn witness_page_places_ready_node_in_ready_bucket() -> Bool {
   let doc = fixture_doc(nodes: [node], edges: [])
   let h = daily_workspace_html(doc: doc, merged: [])
   string_contains(s: h, pattern: "Spawn Me Now")
-    && string_contains(s: h, pattern: "class=\"status status-open\"")
+    && string_contains(s: h, pattern: "class=\"frontier-bucket frontier-ready\"")
+    && string_contains(s: h, pattern: "class=\"node node-open\" data-node=\"spawn-me\"")
+    && !string_contains(s: h, pattern: "class=\"status status-open\"")
 }
 
 test fn witness_authority_daily_workspace_serializes() -> Bool {

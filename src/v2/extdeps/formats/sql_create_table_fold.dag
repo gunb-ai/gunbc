@@ -578,6 +578,8 @@ fn sql_fold_emit_transforms() -> Map<Symbol, fn(String) -> String> {
   map_insert(m0, ^sql_fold_stmt_kind_tag, sql_fold_kind_emit_transform)
 }
 
+data sql_fold_stmt_kind_sentinel: String = "\u{0002}"
+
 fn sql_fold_lex_rules() -> LexRuleSet {
   LexRuleSet {
     rules: [
@@ -590,7 +592,7 @@ fn sql_fold_lex_rules() -> LexRuleSet {
       sql_lex_rule(token_class: ^sql_token_not_null, text: " NOT NULL"),
       sql_lex_rule(token_class: ^sql_token_primary_key, text: ", PRIMARY KEY ("),
       sql_lex_rule(token_class: ^sql_token_pk_rparen, text: ")"),
-      sql_lex_rule(token_class: ^sql_fold_stmt_kind_tag, text: "\u{0002}")
+      sql_lex_rule(token_class: ^sql_fold_stmt_kind_tag, text: sql_fold_stmt_kind_sentinel)
     ]
   }
 }

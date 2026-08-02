@@ -1,6 +1,7 @@
 module gunbc.scm_compatibility.mercurial
 
-import std.types { ContentHash, List, NonEmptyStr, String }
+import std.types { List, NonEmptyStr, String }
+import std.content_hash { Fnv1a64Structural }
 import std.integer { UInt8 }
 import extdeps.mercurial {
   MercurialNamedBranchName,
@@ -203,7 +204,7 @@ fn mercurial_compatibility_history_handle(
 fn mercurial_compatibility_node_identity(
   tag: NonEmptyStr,
   node: MercurialNodeId,
-) -> ContentHash {
+) -> Fnv1a64Structural {
   compatibility_identity_text(
     tag: tag,
     value: mercurial_node_id_text(node: node),
@@ -213,7 +214,7 @@ fn mercurial_compatibility_node_identity(
 fn mercurial_compatibility_octets_identity(
   tag: NonEmptyStr,
   octets: List<UInt8>,
-) -> ContentHash {
+) -> Fnv1a64Structural {
   compatibility_identity_sequence(
     tag: tag,
     members: octets
@@ -229,7 +230,7 @@ fn mercurial_compatibility_octets_identity(
 fn mercurial_compatibility_path_identity(
   tag: NonEmptyStr,
   path: MercurialPath,
-) -> ContentHash {
+) -> Fnv1a64Structural {
   mercurial_compatibility_octets_identity(
     tag: tag,
     octets: path.octets,
@@ -238,7 +239,7 @@ fn mercurial_compatibility_path_identity(
 
 fn mercurial_compatibility_local_revision_identity(
   entry: MercurialLocalRevisionEntry,
-) -> ContentHash {
+) -> Fnv1a64Structural {
   compatibility_identity_sequence(
     tag: "mercurial-local-revision",
     members: [
@@ -256,7 +257,7 @@ fn mercurial_compatibility_local_revision_identity(
 
 fn mercurial_compatibility_bookmark_identity(
   bookmark: MercurialBookmark,
-) -> ContentHash {
+) -> Fnv1a64Structural {
   compatibility_identity_sequence(
     tag: "mercurial-bookmark",
     members: [
@@ -274,7 +275,7 @@ fn mercurial_compatibility_bookmark_identity(
 
 fn mercurial_compatibility_tag_source_identity(
   source: MercurialTagSource,
-) -> ContentHash {
+) -> Fnv1a64Structural {
   let label = match source {
     MercurialVersionedTag => "versioned"
     MercurialLocalTag => "local"
@@ -287,7 +288,7 @@ fn mercurial_compatibility_tag_source_identity(
 
 fn mercurial_compatibility_tag_identity(
   tag: MercurialTag,
-) -> ContentHash {
+) -> Fnv1a64Structural {
   compatibility_identity_sequence(
     tag: "mercurial-tag",
     members: [
@@ -306,7 +307,7 @@ fn mercurial_compatibility_tag_identity(
 
 fn mercurial_compatibility_phase_value_identity(
   phase: MercurialPhase,
-) -> ContentHash {
+) -> Fnv1a64Structural {
   let label = match phase {
     MercurialPublic => "public"
     MercurialDraft => "draft"
@@ -320,7 +321,7 @@ fn mercurial_compatibility_phase_value_identity(
 
 fn mercurial_compatibility_phase_identity(
   entry: MercurialPhaseEntry,
-) -> ContentHash {
+) -> Fnv1a64Structural {
   compatibility_identity_sequence(
     tag: "mercurial-phase-entry",
     members: [
@@ -335,7 +336,7 @@ fn mercurial_compatibility_phase_identity(
 
 fn mercurial_compatibility_publishing_identity(
   publishing: MercurialPublishingBehavior,
-) -> ContentHash {
+) -> Fnv1a64Structural {
   let label = match publishing {
     MercurialPublishingServer => "publishing"
     MercurialNonPublishingServer => "non-publishing"
@@ -348,7 +349,7 @@ fn mercurial_compatibility_publishing_identity(
 
 fn mercurial_compatibility_subrepository_identity(
   repository: MercurialSubrepository,
-) -> ContentHash {
+) -> Fnv1a64Structural {
   compatibility_identity_sequence(
     tag: "mercurial-subrepository",
     members: [
@@ -370,7 +371,7 @@ fn mercurial_compatibility_subrepository_identity(
 
 fn mercurial_compatibility_marker_identity(
   marker: MercurialObsolescenceMarker,
-) -> ContentHash {
+) -> Fnv1a64Structural {
   compatibility_identity_sequence(
     tag: "mercurial-obsolescence-marker",
     members: [
@@ -398,7 +399,7 @@ fn mercurial_compatibility_marker_identity(
 
 fn mercurial_compatibility_evolution_identity(
   evolution: MercurialEvolutionMetadata,
-) -> ContentHash {
+) -> Fnv1a64Structural {
   match evolution {
     MercurialEvolutionNotEnabled =>
       compatibility_identity_sequence(
@@ -418,7 +419,7 @@ fn mercurial_compatibility_evolution_identity(
 
 fn mercurial_compatibility_completeness_identity(
   completeness: MercurialRepositoryCompleteness,
-) -> ContentHash {
+) -> Fnv1a64Structural {
   mercurial_repository_completeness_fold(
     completeness: completeness,
     fold: MercurialRepositoryCompletenessFold {
@@ -475,7 +476,7 @@ fn mercurial_compatibility_completeness_identity(
 
 fn mercurial_compatibility_observed_state_identity(
   repository: MercurialRepositoryState,
-) -> ContentHash {
+) -> Fnv1a64Structural {
   let contents = repository.contents
   compatibility_identity_sequence(
     tag: "mercurial-readback-state-v1",

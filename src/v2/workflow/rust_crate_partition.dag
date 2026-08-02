@@ -8,7 +8,7 @@ import std.graph {
   graph_has_multi_node_scc
 }
 import std.disposition { RealizationDispatch }
-import std.types { ContentHash, List, String, Bool, Int, NonEmptyStr }
+import std.types { List, String, Bool, Int, NonEmptyStr }
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import v2.std.algebra { any, fold_list, length }
 import v2.std.collection {
@@ -98,16 +98,16 @@ data rust_crate_partition_module_bearing_unit_target: Int = 7
 
 data stage0_r3_emit_shell_note: String = "R3-only emit shell crate (reexport surface, NOT a partition_fold CompilationUnit): modules list is the reexport bundle for render at cutover; those modules remain owned by module-bearing units in stage0_interim_explicit_assignment. Physical crate count = module_bearing (7) + emit_shell (1) = declared_core_target (8)."
 
-data stage0_unit_runtime: CompilationUnitId = "stage0-unit-runtime" as ContentHash
-data stage0_unit_std_primitives: CompilationUnitId = "stage0-unit-std-primitives" as ContentHash
-data stage0_unit_std_core: CompilationUnitId = "stage0-unit-std-core" as ContentHash
-data stage0_unit_std_surface: CompilationUnitId = "stage0-unit-std-surface" as ContentHash
-data stage0_unit_extdeps: CompilationUnitId = "stage0-unit-extdeps" as ContentHash
-data stage0_unit_v1_infer: CompilationUnitId = "stage0-unit-v1-infer" as ContentHash
-data stage0_unit_extdeps_base: CompilationUnitId = "stage0-unit-extdeps-base" as ContentHash
-data stage0_unit_extdeps_languages: CompilationUnitId = "stage0-unit-extdeps-languages" as ContentHash
-data stage0_unit_v1_artifact: CompilationUnitId = "stage0-unit-v1-artifact" as ContentHash
-data stage0_unit_emit_core: CompilationUnitId = "stage0-unit-emit-core" as ContentHash
+data stage0_unit_runtime: CompilationUnitId = "stage0-unit-runtime" as CompilationUnitId
+data stage0_unit_std_primitives: CompilationUnitId = "stage0-unit-std-primitives" as CompilationUnitId
+data stage0_unit_std_core: CompilationUnitId = "stage0-unit-std-core" as CompilationUnitId
+data stage0_unit_std_surface: CompilationUnitId = "stage0-unit-std-surface" as CompilationUnitId
+data stage0_unit_extdeps: CompilationUnitId = "stage0-unit-extdeps" as CompilationUnitId
+data stage0_unit_v1_infer: CompilationUnitId = "stage0-unit-v1-infer" as CompilationUnitId
+data stage0_unit_extdeps_base: CompilationUnitId = "stage0-unit-extdeps-base" as CompilationUnitId
+data stage0_unit_extdeps_languages: CompilationUnitId = "stage0-unit-extdeps-languages" as CompilationUnitId
+data stage0_unit_v1_artifact: CompilationUnitId = "stage0-unit-v1-artifact" as CompilationUnitId
+data stage0_unit_emit_core: CompilationUnitId = "stage0-unit-emit-core" as CompilationUnitId
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: RealizationDispatch }
@@ -188,6 +188,7 @@ fn stage0_std_primitive_modules() -> List<String> {
     "std_coercion",
     "std_currency",
     "std_decl_ref",
+    "std_roster_frontier",
     "std_disposition",
     "std_error_primitives",
     "std_http_path",
@@ -226,7 +227,7 @@ fn stage0_std_surface_modules() -> List<String> {
 }
 
 fn stage0_extdeps_base_modules() -> List<String> {
-  ["extdeps_external_authority", "extdeps_uri"]
+  ["extdeps_container_oci_digest", "extdeps_external_authority", "extdeps_uri"]
 }
 
 fn stage0_extdeps_language_modules() -> List<String> {
@@ -370,6 +371,8 @@ fn stage0_cross_unit_import_edges() -> List<ModuleDagEdge> {
     stage0_module_dag_edge(from: "std_realization_schedule", to: "std_measure"),
     stage0_module_dag_edge(from: "std_realization_schedule", to: "std_pareto"),
     stage0_module_dag_edge(from: "extdeps_external_authority", to: "extdeps_uri"),
+    stage0_module_dag_edge(from: "extdeps_external_authority", to: "std_roster_frontier"),
+    stage0_module_dag_edge(from: "std_roster_frontier", to: "std_decl_ref"),
     stage0_module_dag_edge(from: "extdeps_languages_dag_syntax", to: "std_syntax"),
     stage0_module_dag_edge(from: "extdeps_languages_go_syntax", to: "std_syntax"),
     stage0_module_dag_edge(from: "extdeps_languages_python_syntax", to: "std_syntax"),
