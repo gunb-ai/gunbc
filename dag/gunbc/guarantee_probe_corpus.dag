@@ -368,6 +368,14 @@ fn guarantee_probe_ids_reserved() -> List<GuaranteeProbeId> {
   guarantee_probe_rows_reserved() |> map(row => row.probe)
 }
 
+fn canonical_probe_rows() -> List<GuaranteeProbeRow> {
+  append(guarantee_probe_rows(), items: guarantee_probe_rows_reserved())
+}
+
+fn guarantee_probe_ids_canonical() -> List<GuaranteeProbeId> {
+  canonical_probe_rows() |> map(row => row.probe)
+}
+
 fn resolve_guarantee_probe_row(rows: List<GuaranteeProbeRow>, wanted: GuaranteeProbeId) -> ProbeRowResolution {
   let hits = rows |> filter(row => (row.probe as String) == (wanted as String))
   if count(hits) == 0 {
@@ -383,11 +391,24 @@ fn resolve_guarantee_probe_row(rows: List<GuaranteeProbeRow>, wanted: GuaranteeP
 }
 
 fn resolve_canonical_probe_row(wanted: GuaranteeProbeId) -> ProbeRowResolution {
-  match resolve_guarantee_probe_row(rows: guarantee_probe_rows(), wanted: wanted) {
-    ProbeRowResolved { row: row } => ProbeRowResolved { row: row }
-    ProbeRowUnknown { wanted: w } =>
-      resolve_guarantee_probe_row(rows: guarantee_probe_rows_reserved(), wanted: w)
-    ProbeRowDuplicate { wanted: w, matches: m } => ProbeRowDuplicate { wanted: w, matches: m }
+  resolve_guarantee_probe_row(rows: canonical_probe_rows(), wanted: wanted)
+}
+
+fn canonical_probe_row_resolution_refuses_duplicate_population() -> Bool {
+  match active_probe_row(probe: call_mislabel_red_probe) {
+    Present { value: row } =>
+      match resolve_guarantee_probe_row(rows: canonical_probe_rows(), wanted: call_mislabel_red_probe) {
+        ProbeRowResolved { row: _ } =>
+          match resolve_guarantee_probe_row(
+            rows: append(guarantee_probe_rows(), items: [row]),
+            wanted: call_mislabel_red_probe,
+          ) {
+            ProbeRowDuplicate { wanted: _, matches: 2 } => true
+            _ => false
+          }
+        _ => false
+      }
+    Absent => false
   }
 }
 

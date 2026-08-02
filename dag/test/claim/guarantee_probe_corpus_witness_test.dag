@@ -13,6 +13,7 @@ import gunbc.guarantee_probe_corpus {
   guarantee_probe_class_ids_reserved,
   guarantee_probe_ids,
   guarantee_probe_ids_reserved,
+  guarantee_probe_ids_canonical,
   call_label_surplus_class,
   method_established_surface_class,
   declared_conformance_ground_class,
@@ -46,6 +47,7 @@ import gunbc.guarantee_probe_corpus {
   active_v1_compile_probe_row,
   executed_probe_ids_for_probe,
   resolve_canonical_probe_row,
+  canonical_probe_row_resolution_refuses_duplicate_population,
   ProbeRowResolved,
   ProbeRowUnknown,
   ProbeRowDuplicate,
@@ -415,6 +417,7 @@ test fn receipt_probe_set_digest_matches_executed_probe_set() -> Bool {
 test fn canonical_probe_rows_bind_class_path_and_probe() -> Bool {
   count(guarantee_probe_rows()) == count(guarantee_probe_ids())
     && guarantee_probe_ids_unique(ids: guarantee_probe_ids())
+    && guarantee_probe_ids_unique(ids: guarantee_probe_ids_canonical())
     && count(guarantee_probe_rows_reserved()) == count(guarantee_probe_ids_reserved())
     && match resolve_canonical_probe_row(wanted: v2_frontier_red_probe) {
       ProbeRowResolved { row: row } =>
@@ -430,6 +433,10 @@ test fn canonical_probe_rows_bind_class_path_and_probe() -> Bool {
           && (row.path as String) == (v1_compile_rust_path_id as String)
       Absent => false
     }
+}
+
+test fn canonical_probe_resolution_refuses_duplicate_population() -> Bool {
+  canonical_probe_row_resolution_refuses_duplicate_population()
 }
 
 test fn dark_suite_dispositions_cover_migrated_v1_probes() -> Bool {
