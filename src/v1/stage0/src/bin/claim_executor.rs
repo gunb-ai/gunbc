@@ -9357,6 +9357,26 @@ mod tests {
     }
 
     #[test]
+    fn floor_phase_journal_persists_a_completed_path() {
+        let journal = std::env::temp_dir().join(format!(
+            "claim-executor-floor-phase-positive-control-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_file(&journal);
+        std::env::set_var(FLOOR_PHASE_JOURNAL_ENV, &journal);
+        append_floor_phase_journal("positive-control", "completed", "known-green-path");
+        std::env::remove_var(FLOOR_PHASE_JOURNAL_ENV);
+
+        let persisted = fs::read_to_string(&journal)
+            .expect("the synced out-of-band journal must be readable after a completed path");
+        let _ = fs::remove_file(&journal);
+        assert!(
+            persisted.contains("\tpositive-control\tcompleted\tknown-green-path\n"),
+            "the persisted row must retain the phase, state, and detail: {persisted:?}"
+        );
+    }
+
+    #[test]
     fn floor_worker_terminal_crosses_receipt_with_exit_status() {
         let terminal = std::env::temp_dir().join(format!(
             "claim-executor-worker-terminal-cross-{}",
