@@ -33,7 +33,7 @@ test fn materialization_provider_consumer_scaffold_names_dissolve_trigger() -> B
     && materialization_provider_consumer_witness_entry ==
       "dag/test/claim/materialization_provider_consumer_hand_rust_witness_test.dag"
     && length(xs: materialization_provider_consumer_hand_rust_paths) == 2
-    && materialization_provider_consumer_hand_rust_loc_delta_net == 393
+    && materialization_provider_consumer_hand_rust_loc_delta_net == 469
 }
 
 test fn witness_model_refusal_controls_remain_distinct() -> Bool {
