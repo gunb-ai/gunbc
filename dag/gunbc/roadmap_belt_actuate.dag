@@ -2842,17 +2842,13 @@ type BeltValidationRun {
 
 data belt_verification_detached_checkout_note: String = "Validations run in a detached checkout of the observed head, never in the mutable implementation worktree. The checkout path is head-addressed and idempotent: an existing tree at the same revision is reused; a tree at a different revision refuses rather than validating the wrong commit."
 
-type BeltVerificationCheckout
-  = VerificationCheckoutReady { worktree: String }
-  | VerificationCheckoutRefused { reason: String }
-
 fn belt_verification_detached_checkout(
   instance: HostDashboardInstance,
   node_id: RoadmapNodeId,
   attempt_key: String,
   head_sha: String,
   repo_root: String,
-) -> BeltVerificationCheckout {
+) -> String? {
   let checkout_path = dispatch_verification_checkout_path_for_instance(
     instance: instance,
     node_id: node_id,
@@ -2862,18 +2858,9 @@ fn belt_verification_detached_checkout(
   match belt_worktree_head_observe(instance: instance, worktree: checkout_path) {
     WorktreeHeadObserved { revision } =>
       if revision as String == head_sha {
-        VerificationCheckoutReady { worktree: checkout_path }
+        Present { value: checkout_path }
       } else {
-        VerificationCheckoutRefused {
-          reason: join([
-            "a verification checkout already exists at ",
-            checkout_path,
-            " but its head is ",
-            revision as String,
-            " instead of the observed ",
-            head_sha,
-          ], ""),
-        }
+        Absent
       }
     WorktreeHeadUnobserved { reason: _ } =>
       match belt_exec(
@@ -2884,28 +2871,62 @@ fn belt_verification_detached_checkout(
         ),
         workdir: repo_root,
       ) {
-        ExecOk { stdout: _ } =>
-          VerificationCheckoutReady { worktree: checkout_path }
+        ExecOk { stdout: _ } => Present { value: checkout_path }
+        ExecFailed { program: _, exit_code: _, stderr: _ } => Absent
+        ExecRefused { program: _, reason: _ } => Absent
+      }
+  }
+}
+
+fn belt_verification_detached_checkout_refusal(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+  head_sha: String,
+  repo_root: String,
+) -> String {
+  let checkout_path = dispatch_verification_checkout_path_for_instance(
+    instance: instance,
+    node_id: node_id,
+    attempt_key: attempt_key,
+    head_sha: head_sha,
+  )
+  match belt_worktree_head_observe(instance: instance, worktree: checkout_path) {
+    WorktreeHeadObserved { revision } =>
+      join([
+        "a verification checkout already exists at ",
+        checkout_path,
+        " but its head is ",
+        revision as String,
+        " instead of the observed ",
+        head_sha,
+      ], "")
+    WorktreeHeadUnobserved { reason: _ } =>
+      match belt_exec(
+        cmd: git_worktree_add_detached_argv_for_instance(
+          instance: instance,
+          worktree_path: checkout_path,
+          commit_sha: head_sha,
+        ),
+        workdir: repo_root,
+      ) {
+        ExecOk { stdout: _ } => ""
         ExecFailed { program, exit_code, stderr } =>
-          VerificationCheckoutRefused {
-            reason: join([
-              program,
-              " could not create a detached verification checkout at ",
-              head_sha,
-              " (exit ",
-              to_string(exit_code),
-              "): ",
-              stderr,
-            ], ""),
-          }
+          join([
+            program,
+            " could not create a detached verification checkout at ",
+            head_sha,
+            " (exit ",
+            to_string(exit_code),
+            "): ",
+            stderr,
+          ], "")
         ExecRefused { program, reason } =>
-          VerificationCheckoutRefused {
-            reason: join([
-              program,
-              " was not available to create a detached verification checkout: ",
-              reason,
-            ], ""),
-          }
+          join([
+            program,
+            " was not available to create a detached verification checkout: ",
+            reason,
+          ], "")
       }
   }
 }
@@ -3230,7 +3251,7 @@ fn belt_verify_run_and_persist(
     head_sha: subject.head_sha as String,
     repo_root: instance.repo_root as String,
   ) {
-    VerificationCheckoutRefused { reason } =>
+    Absent =>
       belt_verify_persist_receipt(
         instance: instance,
         progress: progress,
@@ -3241,7 +3262,13 @@ fn belt_verify_run_and_persist(
           verdict: ValidationRefused {
             cause: ValidationCommandRefused {
               program: "git",
-              reason: reason,
+              reason: belt_verification_detached_checkout_refusal(
+                instance: instance,
+                node_id: node_id,
+                attempt_key: progress.attempt_key,
+                head_sha: subject.head_sha as String,
+                repo_root: instance.repo_root as String,
+              ),
             },
           },
         },
@@ -3249,7 +3276,7 @@ fn belt_verify_run_and_persist(
           structural: content_hash_atom(value: "verification-checkout-refused")
         ),
       )
-    VerificationCheckoutReady { worktree } =>
+    Present { value: worktree } =>
       belt_verify_persist_receipt(
         instance: instance,
         progress: progress,
