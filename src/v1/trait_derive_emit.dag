@@ -41,7 +41,7 @@ data trait_derive_emit_bool_host_bridge_dissolve_on: String = "dissolve-on: v1_e
 
 data trait_derive_emit_item_clone_bound_rule_note: String = "Item-level Clone bound rule: for each generic type parameter P on a derive-only struct (no fn fields, no supplemental impl_bodies from v1_emit_struct_from_capability_table), emit P: Clone when P is a bare resolved field type or a direct element of a container/FreeMonoid field (same structural trigger as v1_generic_param_used_as_collection_element on field type exprs). Enum items keep bare item params — derive emits per-impl bounds; variant-payload mention does not add declaration bounds. Phantom-only params receive no bound. Callable-field structs and arithmetic carriers with supplemental impl blocks keep bare item params. Not wired from target_derive_supplemental_generic_bound_contract."
 
-data trait_derive_emit_item_clone_bound_wf_propagation_note: String = "SECOND, INDEPENDENT trigger for an item-level Clone bound, distinct from the derive/lowering trigger above and NOT a widening of it: WELL-FORMEDNESS PROPAGATION. Naming a declared generic type G<A..> at all requires satisfying G's own declared bounds, so if G's i-th parameter already carries `: Clone` and the i-th argument's Clone impl requires P: Clone, then the item declaring that field is ill-formed without P: Clone -- rustc E0277 at the field, before any derive is considered. This applies to STRUCTS AND ENUMS alike, because it is a property of naming the type, not of deriving Clone for it; the rule note above correctly scopes the DERIVE trigger to structs (derive emits per-impl bounds) and that scoping is unchanged here. The two axes are grounded differently and can disagree: im::Vector<A> carries NO declaration bound (checked against im-15.1.0 vector::Vector), so a container field is a derive-trigger fact only, while Boxed<T: Clone> is a well-formedness fact that propagates through Nested<T> { boxed: Boxed<T> } and List<Boxed<T>> alike. The requirement is a LEAST FIXPOINT over the declared-type graph (v1_clone_bounded_type_params), not a one-field-shape-deep read: each round derives every declared generic type's bounded parameters from the current approximation and stops when a round adds nothing, so a chain Boxed -> Nested -> TwoHop propagates all the way and a recursive type (Cyclic<T> { self_ref: Cyclic<T>? }) saturates instead of diverging. Two sub-predicates, deliberately separate because they answer different questions about the same type expression: v1_type_expr_clone_impl_requirement asks whether `tau: Clone` requires P: Clone (every derive(Clone) type and every container bounds all of its parameters, so this reduces to `P occurs in tau`), while v1_type_expr_wf_clone_requirement asks whether NAMING tau requires it (only the argument positions the fixpoint has already bounded count). A type application whose head is neither a container nor a declared type in the closure is CloneRequirementUndecided and refuses at the emit site -- never silently treated as `no bound needed` and never widened to `bound everything`, which would zero the deficit's frequency by construction (DESIGN section 5, absorbing fallback). Dead in corpus as of this landing; kept as the fail-closed arm."
+data trait_derive_emit_item_clone_bound_wf_propagation_note: String = "SECOND, INDEPENDENT trigger for an item-level Clone bound, distinct from the derive/lowering trigger above and NOT a widening of it: WELL-FORMEDNESS PROPAGATION. Naming a declared generic type G<A..> at all requires satisfying G's own declared bounds, so if G's i-th parameter already carries `: Clone` and the i-th argument's Clone impl requires P: Clone, then the item declaring that field is ill-formed without P: Clone -- rustc E0277 at the field, before any derive is considered. This applies to STRUCTS AND ENUMS alike, because it is a property of naming the type, not of deriving Clone for it; the rule note above correctly scopes the DERIVE trigger to structs (derive emits per-impl bounds) and that scoping is unchanged here. The two axes are grounded differently and can disagree: im::Vector<A> carries NO declaration bound (checked against im-15.1.0 vector::Vector), so a container field is a derive-trigger fact only, while Boxed<T: Clone> is a well-formedness fact that propagates through Nested<T> { boxed: Boxed<T> } and List<Boxed<T>> alike. The requirement is a LEAST FIXPOINT over the declared-type graph (v1_clone_bounded_type_params), not a one-field-shape-deep read: each round derives every declared generic type's bounded parameters from the current approximation and stops when a round adds nothing, so a chain Boxed -> Nested -> TwoHop propagates all the way and a recursive type (Cyclic<T> { self_ref: Cyclic<T>? }) saturates instead of diverging. The derive trigger SEEDS the fixpoint (v1_clone_bound_seed_for_item, structs only, reusing v1_item_type_param_needs_clone_bound_struct verbatim rather than restating it) and then propagates, because Boxed<T: Clone> earns its bound from the derive trigger and Nested<T> { boxed: Boxed<T> } inherits it from well-formedness. Two sub-predicates, deliberately separate because they answer different questions about the same type expression: v1_type_expr_clone_impl_needs_param asks whether `tau: Clone` requires P: Clone (every derive(Clone) type and every container bounds all of its parameters, so this reduces to `P occurs in tau`), while v1_type_expr_wf_needs_clone_param asks whether NAMING tau requires it (only the argument positions the fixpoint has already bounded count). The undecidable residue is answered by its own total function rather than fused into either Bool: a type application whose head is neither a container nor a declared type in the closure has no readable parameter list, so v1_type_expr_clone_undecided_head names it and the emit site refuses with compile_error!. It is NOT silently treated as `no bound needed` and NOT widened to `bound everything` -- widening would zero the deficit's frequency by construction (DESIGN section 5, absorbing fallback). Dead in corpus as of this landing; kept as the fail-closed arm."
 
 data trait_derive_emit_item_clone_bound_contract_fork_note: String = "MODEL-REALIZATION FORK (counted): supplemental generic bounds are also modeled at v2.std.compilers.target_model target_derive_supplemental_generic_bound_contract (trait_derive_supplemental_generic_bound_contract_test.dag) for target collection representation choices. That carrier has no consumer in v1 seed emit today; it is inhabited with cited upstream impl authorities (v2.extdeps.languages.rust) and consumed by the v2 translate path (v2.compiler.06_translate via target_derive_supplemental_generic_bound_contract_catalog_from_node). This v1 structural rule is a separate interim authority for generic struct item type-param bounds (bare field or direct container element) — an approximation of cited upstream requirements pending v2 emitter subsumption at that grain; dissolution re-grounds onto upstream impl requirements, not a mechanical lift of the same predicate — the two can disagree at the edges."
 
@@ -219,173 +219,142 @@ fn v1_item_type_param_needs_clone_bound_struct(
   )
 }
 
-fn v1_generic_params_needing_clone_bound_for_struct_item(
-  generic_param_names: List<String>,
-  field_type_exprs: List<Node>,
-  source_indices: Map<String, NewlineIndex>
-) -> List<String> {
-  generic_param_names |> filter(g =>
-    v1_item_type_param_needs_clone_bound_struct(
-      param_name: g,
-      field_type_exprs: field_type_exprs,
-      source_indices: source_indices
-    )
-  )
-}
-
-type CloneRequirement
-  = CloneRequired
-  | CloneNotRequired
-  | CloneRequirementUndecided { head: String }
-
-fn v1_clone_requirement_join(left: CloneRequirement, right: CloneRequirement) -> CloneRequirement {
-  match left {
-    CloneRequired => CloneRequired
-    CloneRequirementUndecided { head: h } =>
-      match right {
-        CloneRequired => CloneRequired
-        _ => CloneRequirementUndecided { head: h }
-      }
-    CloneNotRequired => right
-  }
-}
-
-fn v1_clone_requirement_join_list(items: List<CloneRequirement>) -> CloneRequirement {
-  items |> fold(init: CloneNotRequired, f: (acc, r) => v1_clone_requirement_join(left: acc, right: r))
-}
-
-fn v1_clone_requirement_is_required(r: CloneRequirement) -> Bool {
-  match r {
-    CloneRequired => true
-    _ => false
-  }
-}
-
-fn v1_clone_requirement_undecided_head(r: CloneRequirement) -> String {
-  match r {
-    CloneRequirementUndecided { head: h } => h
-    _ => ""
-  }
-}
-
 fn v1_type_expr_is_bare_param(param_name: String, type_expr: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   authored_name_at(source_indices: source_indices, node: type_expr) == param_name
     && type_expr.connective == NoConnective
     && (type_expr.children |> count) == 0
 }
 
-fn v1_type_expr_clone_impl_requirement(
+fn v1_type_expr_head_is_known(
+  name: String,
+  type_decl_items: Map<String, Node>
+) -> Bool {
+  is_container_type(name: name) || map_get(type_decl_items, name) != none
+}
+
+fn v1_type_expr_clone_undecided_head(
+  type_expr: Node,
+  type_decl_items: Map<String, Node>,
+  source_indices: Map<String, NewlineIndex>
+) -> String {
+  let name = authored_name_at(source_indices: source_indices, node: type_expr)
+  if (type_expr.children |> count) == 0 {
+    ""
+  } else if v1_type_expr_head_is_known(name: name, type_decl_items: type_decl_items) {
+    type_expr.children |> fold(init: "", f: (acc, c) =>
+      if acc != "" {
+        acc
+      } else {
+        v1_type_expr_clone_undecided_head(
+          type_expr: child_type_node(ch: c),
+          type_decl_items: type_decl_items,
+          source_indices: source_indices
+        )
+      }
+    )
+  } else {
+    name
+  }
+}
+
+fn v1_type_expr_clone_impl_needs_param(
   param_name: String,
   type_expr: Node,
   type_decl_items: Map<String, Node>,
   source_indices: Map<String, NewlineIndex>
-) -> CloneRequirement {
+) -> Bool {
   let name = authored_name_at(source_indices: source_indices, node: type_expr)
   if v1_type_expr_is_bare_param(param_name: param_name, type_expr: type_expr, source_indices: source_indices) {
-    CloneRequired
+    true
   } else if (type_expr.children |> count) == 0 {
-    CloneNotRequired
-  } else if is_container_type(name: name) || map_get(type_decl_items, name) != none {
-    v1_clone_requirement_join_list(items: type_expr.children |> map(c =>
-      v1_type_expr_clone_impl_requirement(
+    false
+  } else if v1_type_expr_head_is_known(name: name, type_decl_items: type_decl_items) {
+    type_expr.children |> any(c =>
+      v1_type_expr_clone_impl_needs_param(
         param_name: param_name,
         type_expr: child_type_node(ch: c),
         type_decl_items: type_decl_items,
         source_indices: source_indices
       )
-    ))
+    )
   } else {
-    CloneRequirementUndecided { head: name }
+    false
   }
 }
 
-fn v1_declared_arg_positions_clone_requirement(
+fn v1_declared_arg_positions_need_clone_param(
   param_name: String,
   decl_params: List<Node>,
   type_args: List<Node>,
   bound_params: Set<String>,
   type_decl_items: Map<String, Node>,
   source_indices: Map<String, NewlineIndex>
-) -> CloneRequirement {
+) -> Bool {
   match decl_params |> first {
-    Absent => CloneNotRequired
+    Absent => false
     Present { value: decl_param } =>
       match type_args |> first {
-        Absent => CloneNotRequired
+        Absent => false
         Present { value: type_arg } =>
-          let here = if set_contains(bound_params, generic_param_name_at(n: decl_param, source_indices: source_indices)) {
-            v1_type_expr_clone_impl_requirement(
+          let here = set_contains(bound_params, generic_param_name_at(n: decl_param, source_indices: source_indices))
+            && v1_type_expr_clone_impl_needs_param(
               param_name: param_name,
               type_expr: child_type_node(ch: type_arg),
               type_decl_items: type_decl_items,
               source_indices: source_indices
             )
-          } else {
-            CloneNotRequired
-          }
-          v1_clone_requirement_join(
-            left: here,
-            right: v1_declared_arg_positions_clone_requirement(
-              param_name: param_name,
-              decl_params: decl_params |> skip(1),
-              type_args: type_args |> skip(1),
-              bound_params: bound_params,
-              type_decl_items: type_decl_items,
-              source_indices: source_indices
-            )
+          here || v1_declared_arg_positions_need_clone_param(
+            param_name: param_name,
+            decl_params: decl_params |> skip(1),
+            type_args: type_args |> skip(1),
+            bound_params: bound_params,
+            type_decl_items: type_decl_items,
+            source_indices: source_indices
           )
       }
   }
 }
 
-fn v1_type_expr_wf_clone_requirement(
+fn v1_type_expr_wf_needs_clone_param(
   param_name: String,
   type_expr: Node,
   bounds: Map<String, Set<String>>,
   type_decl_items: Map<String, Node>,
   source_indices: Map<String, NewlineIndex>
-) -> CloneRequirement {
+) -> Bool {
   let name = authored_name_at(source_indices: source_indices, node: type_expr)
   if (type_expr.children |> count) == 0 {
-    CloneNotRequired
+    false
   } else {
-    let nested = v1_clone_requirement_join_list(items: type_expr.children |> map(c =>
-      v1_type_expr_wf_clone_requirement(
+    let nested = type_expr.children |> any(c =>
+      v1_type_expr_wf_needs_clone_param(
         param_name: param_name,
         type_expr: child_type_node(ch: c),
         bounds: bounds,
         type_decl_items: type_decl_items,
         source_indices: source_indices
       )
-    ))
+    )
     match map_get(type_decl_items, name) {
       Present { value: decl } =>
         let bound_params = match map_get(bounds, name) {
           Present { value: s } => s
           Absent => empty_set()
         }
-        v1_clone_requirement_join(
-          left: v1_declared_arg_positions_clone_requirement(
-            param_name: param_name,
-            decl_params: decl.params,
-            type_args: type_expr.children,
-            bound_params: bound_params,
-            type_decl_items: type_decl_items,
-            source_indices: source_indices
-          ),
-          right: nested
+        nested || v1_declared_arg_positions_need_clone_param(
+          param_name: param_name,
+          decl_params: decl.params,
+          type_args: type_expr.children,
+          bound_params: bound_params,
+          type_decl_items: type_decl_items,
+          source_indices: source_indices
         )
-      Absent =>
-        if is_container_type(name: name) {
-          nested
-        } else {
-          CloneRequirementUndecided { head: name }
-        }
+      Absent => nested
     }
   }
 }
 
-fn v1_item_field_type_exprs(item: Node, source_indices: Map<String, NewlineIndex>) -> List<Node> {
+fn v1_item_field_type_exprs(item: Node) -> List<Node> {
   if is_coproduct_type(n: item) {
     item.children |> flat_map(variant => variant.children |> map(f => child_type_node(ch: f)))
   } else {
@@ -393,23 +362,39 @@ fn v1_item_field_type_exprs(item: Node, source_indices: Map<String, NewlineIndex
   }
 }
 
-fn v1_item_param_wf_clone_requirement(
+fn v1_item_param_wf_needs_clone(
   param_name: String,
   item: Node,
   bounds: Map<String, Set<String>>,
   type_decl_items: Map<String, Node>,
   source_indices: Map<String, NewlineIndex>
-) -> CloneRequirement {
-  v1_clone_requirement_join_list(items:
-    v1_item_field_type_exprs(item: item, source_indices: source_indices) |> map(te =>
-      v1_type_expr_wf_clone_requirement(
-        param_name: param_name,
+) -> Bool {
+  v1_item_field_type_exprs(item: item) |> any(te =>
+    v1_type_expr_wf_needs_clone_param(
+      param_name: param_name,
+      type_expr: te,
+      bounds: bounds,
+      type_decl_items: type_decl_items,
+      source_indices: source_indices
+    )
+  )
+}
+
+fn v1_item_clone_undecided_head(
+  item: Node,
+  type_decl_items: Map<String, Node>,
+  source_indices: Map<String, NewlineIndex>
+) -> String {
+  v1_item_field_type_exprs(item: item) |> fold(init: "", f: (acc, te) =>
+    if acc != "" {
+      acc
+    } else {
+      v1_type_expr_clone_undecided_head(
         type_expr: te,
-        bounds: bounds,
         type_decl_items: type_decl_items,
         source_indices: source_indices
       )
-    )
+    }
   )
 }
 
@@ -446,18 +431,43 @@ fn v1_clone_bound_round_for_item(
 ) -> CloneBoundRound {
   item.params |> fold(init: round, f: (acc, p) =>
     let param_name = generic_param_name_at(n: p, source_indices: source_indices)
-    if v1_clone_requirement_is_required(r: v1_item_param_wf_clone_requirement(
+    if v1_item_param_wf_needs_clone(
       param_name: param_name,
       item: item,
       bounds: acc.bounds,
       type_decl_items: type_decl_items,
       source_indices: source_indices
-    )) {
+    ) {
       v1_clone_bound_round_add(round: acc, type_name: type_name, param_name: param_name)
     } else {
       acc
     }
   )
+}
+
+fn v1_clone_bound_seed_for_item(
+  round: CloneBoundRound,
+  type_name: String,
+  item: Node,
+  source_indices: Map<String, NewlineIndex>
+) -> CloneBoundRound {
+  if is_coproduct_type(n: item) {
+    round
+  } else {
+    let field_type_exprs = v1_item_field_type_exprs(item: item)
+    item.params |> fold(init: round, f: (acc, p) =>
+      let param_name = generic_param_name_at(n: p, source_indices: source_indices)
+      if v1_item_type_param_needs_clone_bound_struct(
+        param_name: param_name,
+        field_type_exprs: field_type_exprs,
+        source_indices: source_indices
+      ) {
+        v1_clone_bound_round_add(round: acc, type_name: type_name, param_name: param_name)
+      } else {
+        acc
+      }
+    )
+  }
 }
 
 fn v1_clone_bound_fixpoint_loop(
@@ -497,10 +507,7 @@ fn v1_clone_bound_fixpoint_loop(
   }
 }
 
-fn v1_generic_declared_type_names(
-  type_decl_items: Map<String, Node>,
-  source_indices: Map<String, NewlineIndex>
-) -> List<String> {
+fn v1_generic_declared_type_names(type_decl_items: Map<String, Node>) -> List<String> {
   map_keys(type_decl_items) |> filter(n =>
     match map_get(type_decl_items, n) {
       Present { value: item } => (item.params |> count) > 0
@@ -513,33 +520,26 @@ fn v1_clone_bounded_type_params(
   type_decl_items: Map<String, Node>,
   source_indices: Map<String, NewlineIndex>
 ) -> Map<String, Set<String>> {
-  let generic_type_names = v1_generic_declared_type_names(type_decl_items: type_decl_items, source_indices: source_indices)
+  let generic_type_names = v1_generic_declared_type_names(type_decl_items: type_decl_items)
+  let seeded = generic_type_names |> fold(init: CloneBoundRound { bounds: empty_map(), added: 0 }, f: (acc, type_name) =>
+    match map_get(type_decl_items, type_name) {
+      Present { value: item } =>
+        v1_clone_bound_seed_for_item(
+          round: acc,
+          type_name: type_name,
+          item: item,
+          source_indices: source_indices
+        )
+      Absent => acc
+    }
+  )
   v1_clone_bound_fixpoint_loop(
     generic_type_names: generic_type_names,
     type_decl_items: type_decl_items,
-    bounds: empty_map(),
+    bounds: seeded.bounds,
     remaining: (generic_type_names |> count) + 1,
     source_indices: source_indices
   )
-}
-
-fn v1_item_clone_bound_undecided_head(
-  item: Node,
-  bounds: Map<String, Set<String>>,
-  type_decl_items: Map<String, Node>,
-  source_indices: Map<String, NewlineIndex>
-) -> String {
-  v1_clone_requirement_undecided_head(r: v1_clone_requirement_join_list(items:
-    item.params |> map(p =>
-      v1_item_param_wf_clone_requirement(
-        param_name: generic_param_name_at(n: p, source_indices: source_indices),
-        item: item,
-        bounds: bounds,
-        type_decl_items: type_decl_items,
-        source_indices: source_indices
-      )
-    )
-  ))
 }
 
 fn v1_item_clone_bounded_param_names(
