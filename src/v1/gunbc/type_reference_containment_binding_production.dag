@@ -14,7 +14,7 @@ import gunbc.type_reference_binding_context {
 import v1.compiler.resolve { ModuleGraph, ResolvedModule }
 import v1.std.core { authored_name_at, NewlineIndex }
 
-data type_reference_containment_binding_production_note: String = "N2 slice 2 PR-B adapter (quiet-hawk-219): projects v1 ModuleGraph ResolvedModule rows into gunbc.type_reference_binding_context.ModuleOccurrenceBindingSource for resolve_node_bounded threading. PR-A authority lives in dag/gunbc/type_reference_binding_context.dag. DISSOLVE-ON: gunbc.type_reference_containment_binding type_reference_containment_binding_dissolve_on."
+data type_reference_containment_binding_production_note: String = "N2 slice 2 PR-B adapter (quiet-hawk-219): projects v1 ModuleGraph ResolvedModule rows into gunbc.type_reference_binding_context.ModuleOccurrenceBindingSource for resolve_node_bounded threading on the RESOLVE path only — not emit (emit_var_ref / emit_value_ref_ident item_registry leaf-key collision remains a separate surviving instance per gunbc.type_reference_binding_context type_reference_binding_context_path_scope_note). PR-A authority lives in dag/gunbc/type_reference_binding_context.dag. DISSOLVE-ON: gunbc.type_reference_containment_binding type_reference_containment_binding_dissolve_on."
 
 fn module_occurrence_binding_sources_from_graph(
   modules: List<ResolvedModule>,
