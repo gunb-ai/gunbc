@@ -1242,6 +1242,7 @@ mod tests {
         );
         for required in [
             "std_execution_mode.rs",
+            "std_occurrence_identity.rs",
             "v1_compiler_closure_stub_v2_std_integer_rust.rs",
             "v1_compiler_closure_stub_v2_std_text_rust.rs",
             "lib.rs",

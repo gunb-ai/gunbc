@@ -847,6 +847,34 @@ fn lookup_type_by_name(env: TypeEnv, name: String) -> Node? {
   }
 }
 
+data type_ref_hit_ne_bind_measure_active_note: String = "Host bracket in v1_rt (type_ref_hit_ne_bind_measure_active / _set / with_type_ref_hit_ne_bind_measure) — same shape as name_resolution_policy_is_namespace_only. Armed only by compile_dag_diagnostic_census for the nested synthetic compile (N1a). Default false = production fail-open. Zero production gates consult this. No .dag body can flip it."
+
+data type_ref_measure_binding_authority_fn_note: String = "MEASUREMENT-ONLY — see gunbc.type_ref_hit_ne_bind_measure type_ref_measure_binding_authority_note. Two arms: bare exact import/local key; qualified self/ancestor containment + symbol_index hit. No same-leaf×span OR-arm."
+
+fn type_ref_module_path_is_containment_prefix(ancestor: String, descendant: String) -> Bool {
+  let a_segs = module_path_segments(path: ancestor)
+  let d_segs = module_path_segments(path: descendant)
+  (a_segs |> count) > 0 && segment_lcp_len(a: a_segs, b: d_segs) == (a_segs |> count)
+}
+
+fn type_ref_measure_binding_authority(env: TypeEnv, name: String) -> Bool {
+  if map_has(m: env.str_bindings, key: name) || map_has(m: env.ancestry_str_bindings, key: name) {
+    true
+  } else if contains(name, ".") {
+    let prefix = qualified_all_but_last(name: name)
+    if type_ref_module_path_is_containment_prefix(ancestor: prefix, descendant: env.module_path) {
+      match symbol_index_lookup(index: env.symbol_index, qualified_name: name) {
+        Present { value: _ } => true
+        Absent => false
+      }
+    } else {
+      false
+    }
+  } else {
+    false
+  }
+}
+
 fn variant_arm_type_projection(env: TypeEnv, owner: Node, name: String) -> Node? {
   match owner.connective {
     Disj =>

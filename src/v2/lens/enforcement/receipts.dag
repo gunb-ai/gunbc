@@ -54,7 +54,7 @@ fn subject_qn_of(fact: DeclFact) -> QualifiedName {
   qualified_name_from_dotted_string(dotted: fact.qualified_name)
 }
 
-fn discovered_fn_subjects(facts: List<DeclFact>) -> SubjectRoster {
+fn discovered_subject_names(facts: List<DeclFact>) -> SubjectRoster {
   let discovered_entries = fold(facts, init: Empty, f: fn(acc, fact) {
     if decl_facts_is_fn_like(kind: fact.kind) {
       Cons { head: subject_qn_of(fact: fact), tail: acc }
@@ -112,7 +112,7 @@ fn scope_satisfaction_for(
   }
 }
 
-fn consumer_observed_for(
+fn consumer_enrolled_for(
   binding: ConsumerWitnessBinding,
   ci_entries: List<ScheduleWitnessEntry>,
   prepush_entries: List<ScheduleWitnessEntry>
@@ -121,7 +121,7 @@ fn consumer_observed_for(
     NoConsumerWitness => NoConsumer
     BoundConsumerWitness { witness } =>
       if contains(xs: ci_entries, item: witness, eq: schedule_witness_entry_eq) {
-        FloorGate
+        EnrolledInFloorRoster
       } else if contains(xs: prepush_entries, item: witness, eq: schedule_witness_entry_eq) {
         PrePushHook
       } else {
@@ -130,12 +130,19 @@ fn consumer_observed_for(
   }
 }
 
-fn consumer_receipt_ref_for(binding: ConsumerWitnessBinding, observed: ConsumerKind) -> ReceiptRef {
+fn lens_contract_is_unbound(c: LensContract) -> Bool {
+  consumer_kind_eq(
+    a: consumer_enrolled_for(binding: c.consumer_witness, ci_entries: [], prepush_entries: []),
+    b: NoConsumer
+  )
+}
+
+fn consumer_entry_identity_for(binding: ConsumerWitnessBinding, enrolled: ConsumerKind) -> ReceiptRef {
   match binding {
     NoConsumerWitness => NoReceiptRef
     BoundConsumerWitness { witness } =>
-      match observed {
-        FloorGate => HasReceiptRef { ref: concat(witness.entry, "::", witness.function) }
+      match enrolled {
+        EnrolledInFloorRoster => HasReceiptRef { ref: concat(witness.entry, "::", witness.function) }
         PrePushHook => HasReceiptRef { ref: concat(witness.entry, "::", witness.function) }
         _ => NoReceiptRef
       }
@@ -183,6 +190,14 @@ fn red_control_status_for(probe: Node) -> RedControlStatus {
   }
 }
 
+fn red_control_status_for_contract(contract: LensContract) -> RedControlStatus {
+  if lens_id_v0_eq(left: contract.entry.lens_id, right: Cost) {
+    red_control_status_for(probe: cost_red_control_probe)
+  } else {
+    RedControlAbsent
+  }
+}
+
 fn fact_is_self_subject(fact: DeclFact, module_prefix: String) -> Bool {
   decl_facts_is_fn_like(kind: fact.kind)
     && string_starts_with(s: fact.qualified_name, prefix: module_prefix)
@@ -190,7 +205,7 @@ fn fact_is_self_subject(fact: DeclFact, module_prefix: String) -> Bool {
 
 fn self_application_for(facts: List<DeclFact>, module_prefix: String) -> SelfApplicationStatus {
   if any(xs: facts, predicate: fn(fact) { fact_is_self_subject(fact: fact, module_prefix: module_prefix) }) {
-    SelfAppliesObserved
+    LensModuleFunctionObserved
   } else {
     SelfApplicationAbsent
   }
@@ -202,26 +217,25 @@ fn derive_receipt(
   self_module_prefix: String,
   facts: List<DeclFact>,
   ci_entries: List<ScheduleWitnessEntry>,
-  prepush_entries: List<ScheduleWitnessEntry>,
-  red_probe: Node
-) -> CoverageReceipt {
-  let discovered = discovered_fn_subjects(facts: facts)
-  let observed = consumer_observed_for(
+  prepush_entries: List<ScheduleWitnessEntry>
+) -> EnrollmentDiscoveryReceipt {
+  let discovered = discovered_subject_names(facts: facts)
+  let enrolled = consumer_enrolled_for(
     binding: contract.consumer_witness,
     ci_entries: ci_entries,
     prepush_entries: prepush_entries
   )
-  CoverageReceipt {
+  EnrollmentDiscoveryReceipt {
     contract_id: contract.entry.lens_id,
-    discovered_subjects: discovered,
+    discovered_subject_names: discovered,
     scope_satisfaction: scope_satisfaction_for(
       claimed_scope: contract.claimed_scope,
       desired_scope: desired_scope,
       facts: facts
     ),
-    consumer_observed: observed,
-    consumer_receipt_ref: consumer_receipt_ref_for(binding: contract.consumer_witness, observed: observed),
-    red_control_status: red_control_status_for(probe: red_probe),
+    consumer_enrolled: enrolled,
+    consumer_entry_identity: consumer_entry_identity_for(binding: contract.consumer_witness, enrolled: enrolled),
+    red_control_status: red_control_status_for_contract(contract: contract),
     self_application_status: self_application_for(facts: facts, module_prefix: self_module_prefix)
   }
 }

@@ -16,7 +16,7 @@ import v2.lens.enforcement.vocab {
   SelfApplicationStatus, self_application_ok
 }
 import v2.lens.enforcement.contract {
-  LensContract, CoverageReceipt
+  LensContract, EnrollmentDiscoveryReceipt
 }
 import v2.lens.enforcement.lens_module_gate {
   LensInvariantSurface,
@@ -92,7 +92,7 @@ type IntentVerdict {
   self_application: LegVerdict
 }
 
-type ReceiptLookup = ReceiptFound { value: CoverageReceipt } | ReceiptAbsent
+type ReceiptLookup = ReceiptFound { value: EnrollmentDiscoveryReceipt } | ReceiptAbsent
 
 type ContractLookup = ContractFound { value: LensContract } | ContractAbsent
 
@@ -122,11 +122,11 @@ fn contract_answers(c: LensContract, p: IntentProperty) -> Bool {
   }
 }
 
-fn receipt_matches(r: CoverageReceipt, cid: LensIdV0) -> Bool {
+fn receipt_matches(r: EnrollmentDiscoveryReceipt, cid: LensIdV0) -> Bool {
   lens_id_v0_eq(left: r.contract_id, right: cid)
 }
 
-fn find_receipt(cid: LensIdV0, receipts: List<CoverageReceipt>) -> ReceiptLookup {
+fn find_receipt(cid: LensIdV0, receipts: List<EnrollmentDiscoveryReceipt>) -> ReceiptLookup {
   match list_head(xs: filter(xs: receipts, predicate: fn(r) { receipt_matches(r: r, cid: cid) })) {
     HeadFound { value: r } => ReceiptFound { value: r }
     HeadAbsent => ReceiptAbsent
@@ -176,7 +176,7 @@ fn claimed_mode_leg(c: LensContract, intent: StandingIntent) -> LegVerdict {
   )
 }
 
-fn intent_family_verdict(intent: StandingIntent, contracts: List<LensContract>, receipts: List<CoverageReceipt>) -> IntentVerdict {
+fn intent_family_verdict(intent: StandingIntent, contracts: List<LensContract>, receipts: List<EnrollmentDiscoveryReceipt>) -> IntentVerdict {
   match find_answering_contract(intent: intent, contracts: contracts) {
     ContractAbsent => IntentVerdict {
       intent_id: intent.id,
@@ -201,8 +201,8 @@ fn intent_family_verdict(intent: StandingIntent, contracts: List<LensContract>, 
         intent_id: intent.id,
         claimed: claimed_mode_leg(c: c, intent: intent),
         scope_covered: scope_leg(intent: intent, s: r.scope_satisfaction),
-        subjects_covered: leg_of(ok: discovered_covers_required(required_subjects: intent.required_subjects, discovered: r.discovered_subjects), reason: "discovered subjects do not cover required_subjects (the decl_facts / v1-reach gap, e.g. build_type_env)"),
-        live_consumer: leg_of(ok: consumer_satisfies(actual: r.consumer_observed, required: intent.required_consumer), reason: "observed consumer does not satisfy the required consumer"),
+        subjects_covered: leg_of(ok: discovered_covers_required(required_subjects: intent.required_subjects, discovered: r.discovered_subject_names), reason: "discovered subjects do not cover required_subjects (the decl_facts / v1-reach gap, e.g. build_type_env)"),
+        live_consumer: leg_of(ok: consumer_satisfies(actual: r.consumer_enrolled, required: intent.required_consumer), reason: "enrolled consumer does not satisfy the required consumer"),
         red_control: leg_of(ok: red_control_passed(s: r.red_control_status), reason: "red control did not pass by execution"),
         self_application: leg_of(ok: self_ok(required: intent.self_application_required, s: r.self_application_status), reason: "lens does not self-apply and carries no exemption")
       }
@@ -219,14 +219,14 @@ fn intent_verdict_holds(v: IntentVerdict) -> Bool {
     && leg_holds(l: v.self_application)
 }
 
-fn intent_family_holds(intent: StandingIntent, contracts: List<LensContract>, receipts: List<CoverageReceipt>) -> Bool {
+fn intent_family_holds(intent: StandingIntent, contracts: List<LensContract>, receipts: List<EnrollmentDiscoveryReceipt>) -> Bool {
   intent_verdict_holds(v: intent_family_verdict(intent: intent, contracts: contracts, receipts: receipts))
 }
 
-fn contract_internally_consistent(c: LensContract, receipts: List<CoverageReceipt>) -> Bool {
+fn contract_internally_consistent(c: LensContract, receipts: List<EnrollmentDiscoveryReceipt>) -> Bool {
   match c.mode {
     Blocking => match find_receipt(cid: c.entry.lens_id, receipts: receipts) {
-      ReceiptFound { value: r } => consumer_is_live(k: r.consumer_observed)
+      ReceiptFound { value: r } => consumer_is_live(k: r.consumer_enrolled)
       ReceiptAbsent => false
     }
     AuditOnly => true
@@ -234,15 +234,15 @@ fn contract_internally_consistent(c: LensContract, receipts: List<CoverageReceip
   }
 }
 
-fn enforcement_consistency_holds(contracts: List<LensContract>, receipts: List<CoverageReceipt>) -> Bool {
+fn blocking_consumers_enrolled(contracts: List<LensContract>, receipts: List<EnrollmentDiscoveryReceipt>) -> Bool {
   for_all(xs: contracts, predicate: fn(c) { contract_internally_consistent(c: c, receipts: receipts) })
 }
 
-fn receipt_self_ok(r: CoverageReceipt) -> Bool {
+fn receipt_self_ok(r: EnrollmentDiscoveryReceipt) -> Bool {
   self_application_ok(s: r.self_application_status)
 }
 
-fn lenses_self_apply_or_exempt_holds(receipts: List<CoverageReceipt>) -> Bool {
+fn lenses_self_apply_or_exempt_holds(receipts: List<EnrollmentDiscoveryReceipt>) -> Bool {
   for_all(xs: receipts, predicate: fn(r) { receipt_self_ok(r: r) })
 }
 
