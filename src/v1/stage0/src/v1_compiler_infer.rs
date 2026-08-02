@@ -18126,6 +18126,15 @@ pub struct TypecheckModuleResult {
     pub binding_forks: Rc<Vec<Rc<TypeEnvCacheMergeConflict>>>,
 }
 
+pub fn typecheck_unresolved_type_func_env_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "UnresolvedType must not abort typecheck via emptied func_env (items: [], local sigs gone) — that yields declared:[] / Primitive(callee) cascades. UnlistedImportUse is already excluded from is_error_diagnostic for the same reason; treat UnresolvedType the same at this boundary. Debt/expect-red admission still governs whether the diagnostic blocks compile-clean / resolve / run; this only preserves func_env. Diagnostics remain in env_diags either way.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn typecheck_module(
     resolved: Rc<ResolvedModule>,
     parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
@@ -18149,19 +18158,10 @@ pub fn typecheck_module(
         let env_errors = Rc::new({
             let mut __result = Vec::new();
             for d in env_diags.clone().iter().cloned() {
-                // UnresolvedType must not abort typecheck via emptied func_env
-                // (items: [], local sigs gone) — that yields declared:[] /
-                // Primitive(callee) cascades. UnlistedImportUse is already
-                // excluded from is_error_diagnostic for the same reason; treat
-                // UnresolvedType the same at this boundary. Debt/expect-red
-                // admission still governs whether the diagnostic *blocks*
-                // compile-clean / resolve / run; this only preserves func_env.
-                // Diagnostics remain in env_diags either way.
-                let is_unresolved_type = matches!(
-                    d.diagnostic.as_ref(),
-                    CompilerDiagnostic::UnresolvedType { .. }
-                );
-                if is_error_diagnostic(d.diagnostic.clone()) && !is_unresolved_type {
+                if match (*d.diagnostic.clone()).clone() {
+                    CompilerDiagnostic::UnresolvedType { .. } => false,
+                    _ => is_error_diagnostic(d.diagnostic.clone()),
+                } {
                     __result.push(d);
                 }
             }

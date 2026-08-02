@@ -770,6 +770,15 @@ pub fn resolve_node_bounded_masked_boundary() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
+pub fn type_ref_pool_present_refusal_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "import-strip §14.3 / DESIGN §5: at a USE-SITE type position (masked), a lookup hit without binding authority must REFUSE like an absent-from-pool miss — never fabricate Product(<anon>). Admission = type_ref_has_binding_authority (interim: import/local; N2 swaps the predicate body to containment). Honest asymmetry: values/fns bind namespace-only since #7178; types refuse-unless-imported until N2. Grounding (masked=false) keeps the prior peel. Keep the pool hit's structure while emitting UnresolvedType — debt admission covers this diagnostic class only.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn resolve_node_bounded(
     n: Rc<Node>,
     env: Rc<TypeEnv>,
@@ -1676,106 +1685,77 @@ pub fn resolve_node_bounded(
                                                 };
                                                 let type_name =
                                                     authored_name(env.clone(), n.clone());
-                                                // import-strip §14.3 / DESIGN §5: at a
-                                                // USE-SITE type position (masked), a
-                                                // lookup hit without binding
-                                                // authority must REFUSE like an
-                                                // absent-from-pool miss — never
-                                                // fabricate Product(<anon>).
-                                                // Admission = type_ref_has_binding_authority
-                                                // (interim: import/local; N2 swaps
-                                                // the predicate body to containment).
-                                                // Honest asymmetry: values/fns bind
-                                                // namespace-only since #7178; types
-                                                // refuse-unless-imported until N2.
-                                                // Grounding (masked=false) keeps the
-                                                // prior peel: defining-module structure
-                                                // is that module's import responsibility.
-                                                if (masked.clone()
+                                                if (((masked.clone()
                                                     && (type_ref_has_binding_authority(
                                                         env.clone(),
                                                         type_name.clone(),
-                                                    ) == false)
-                                                    && (is_kernel_type(type_name.clone()) == false)
+                                                    ) == false))
+                                                    && (is_kernel_type(type_name.clone())
+                                                        == false))
                                                     && (is_kernel_type(qualified_last_segment(
                                                         type_name.clone(),
                                                     )) == false))
                                                 {
-                                                    // Refuse with UnresolvedType (same class as
-                                                    // absent-from-pool) while keeping the pool hit's
-                                                    // structure. Dropping to `n` recreated silent
-                                                    // Product(<anon>)-class cascades as TypeMismatch
-                                                    // / call-shape reds that debt admission cannot
-                                                    // cover — the debt contract admits this
-                                                    // diagnostic class only. Structure from the hit
-                                                    // is not fabrication-without-signal: the
-                                                    // diagnostic is the refusal (DESIGN §5).
-                                                    v1_rt::type_ref_fail_open_record_pool_present_unreachable(
-                                                        module_name.clone(),
-                                                        type_name.clone(),
-                                                        n.span.clone().file.clone(),
-                                                        n.span.clone().start.clone(),
-                                                        n.span.clone().end.clone(),
-                                                    );
-                                                    let is_optional =
-                                                        (n.return_cardinality.clone()
-                                                            == Cardinality::CardOptional);
-                                                    let final_resolved = if is_optional.clone() {
-                                                        with_optional_cardinality(
-                                                            structurally_resolved.clone(),
-                                                        )
-                                                    } else {
-                                                        structurally_resolved.clone()
-                                                    };
-                                                    Rc::new(NodeResolveResult {
-                                                        resolved: final_resolved,
-                                                        diagnostics: Rc::new(vec![
-                                                            make_error_node(
-                                                                bare_name_miss_diagnostic(
-                                                                    env.clone(),
-                                                                    type_name.clone(),
-                                                                    n.span.clone(),
-                                                                ),
-                                                                module_name.clone(),
-                                                            ),
-                                                        ]),
-                                                    })
-                                                } else {
-                                                    let is_optional =
-                                                        (n.return_cardinality.clone()
-                                                            == Cardinality::CardOptional);
-                                                    let final_resolved = if is_optional.clone() {
-                                                        with_optional_cardinality(
-                                                            structurally_resolved.clone(),
-                                                        )
-                                                    } else {
-                                                        structurally_resolved.clone()
-                                                    };
-                                                    let unlisted_diags = if ((masked.clone()
-                                                        && (v1_rt::map_is_empty(
-                                                            &env.source_visible_names.clone(),
-                                                        ) == false))
-                                                        && (v1_rt::map_has(
-                                                            &env.source_visible_names.clone(),
-                                                            type_name.clone(),
-                                                        ) == false))
                                                     {
-                                                        Rc::new(vec![make_error_node(
-                                                        Rc::new(
-                                                            CompilerDiagnostic::UnlistedImportUse {
-                                                                name: type_name.clone(),
-                                                                span: n.span.clone(),
-                                                            },
-                                                        ),
-                                                        module_name.clone(),
-                                                    )])
-                                                    } else {
-                                                        Rc::new(vec![])
-                                                    };
-                                                    Rc::new(NodeResolveResult {
-                                                        resolved: final_resolved.clone(),
-                                                        diagnostics: unlisted_diags.clone(),
-                                                    })
+                                                        let is_optional =
+                                                            (n.return_cardinality.clone()
+                                                                == Cardinality::CardOptional);
+                                                        let final_resolved = if is_optional.clone()
+                                                        {
+                                                            with_optional_cardinality(
+                                                                structurally_resolved.clone(),
+                                                            )
+                                                        } else {
+                                                            structurally_resolved.clone()
+                                                        };
+                                                        Rc::new(NodeResolveResult {
+                                                            resolved: final_resolved.clone(),
+                                                            diagnostics: Rc::new(vec![
+                                                                make_error_node(
+                                                                    bare_name_miss_diagnostic(
+                                                                        env.clone(),
+                                                                        type_name.clone(),
+                                                                        n.span.clone(),
+                                                                    ),
+                                                                    module_name.clone(),
+                                                                ),
+                                                            ]),
+                                                        })
+                                                    }
+                                                } else {
+                                                    {
+                                                        let is_optional =
+                                                            (n.return_cardinality.clone()
+                                                                == Cardinality::CardOptional);
+                                                        let final_resolved = if is_optional.clone()
+                                                        {
+                                                            with_optional_cardinality(
+                                                                structurally_resolved.clone(),
+                                                            )
+                                                        } else {
+                                                            structurally_resolved.clone()
+                                                        };
+                                                        let unlisted_diags = if ((masked.clone()
+                                                            && (v1_rt::map_is_empty(
+                                                                &env.source_visible_names.clone(),
+                                                            ) == false))
+                                                            && (v1_rt::map_has(
+                                                                &env.source_visible_names.clone(),
+                                                                type_name.clone(),
+                                                            ) == false))
+                                                        {
+                                                            Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::UnlistedImportUse {
+    name: type_name.clone(),
+    span: n.span.clone(),
+}), module_name.clone())])
+                                                        } else {
+                                                            Rc::new(vec![])
+                                                        };
+                                                        Rc::new(NodeResolveResult {
+                                                            resolved: final_resolved.clone(),
+                                                            diagnostics: unlisted_diags.clone(),
+                                                        })
+                                                    }
                                                 }
                                             }
                                             None => {

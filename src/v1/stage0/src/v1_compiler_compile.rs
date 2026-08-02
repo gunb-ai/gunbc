@@ -60,7 +60,7 @@ use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::CallSemantics::*;
 use crate::v1_std_core::Cardinality::*;
 use crate::v1_std_core::CompilerDiagnostic::{
-    InternalError, OccurrenceTransportViolation, OwnershipViolation,
+    InternalError, OccurrenceTransportViolation, OwnershipViolation, UnresolvedType,
 };
 use crate::v1_std_core::Connective::{Arrow, NoConnective};
 use crate::v1_std_core::ExprData::*;
@@ -2212,19 +2212,28 @@ pub struct EmittableGraph {
     pub graph: Rc<ResolvedGraph>,
 }
 
+pub fn emittable_unresolved_type_admit_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Emit/self-compile treats UnresolvedType as non-blocking so the frozen type-ref debt population does not stop regen_stage0. New-sites-refuse for UnresolvedType remains on compile-clean / resolve / run via type_ref_unresolved_admitted_for_compile_clean (cli_run). Dissolve-on: model that admission predicate in .dag so emit and floor share one ErrorNode-taking authority (charter: regen shares identity-grain debt admission).".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn is_emittable_blocking_diagnostic(d: Rc<ErrorNode>) -> bool {
+    match (*d.diagnostic.clone()).clone() {
+        CompilerDiagnostic::UnresolvedType { .. } => false,
+        _ => is_interpreter_blocking_diagnostic(d.diagnostic.clone()),
+    }
+}
+
 pub fn emittable_graph(resolved: Rc<ResolvedPipelineResult>) -> Option<Rc<EmittableGraph>> {
     {
         let blocking = Rc::new({
             let mut __result = Vec::new();
             for d in resolved.diagnostics.clone().iter().cloned() {
-                // Share type-ref debt / expect-red admission with compile-clean and
-                // resolve/run (cli_run::is_resolve_or_run_blocking_diagnostic). Without
-                // this, regen_stage0 self-compile refused on provisional UnresolvedType
-                // while heal/compile-clean admitted the same identities.
-                if crate::cli_run::type_ref_unresolved_admitted_for_compile_clean(&d) {
-                    continue;
-                }
-                if is_interpreter_blocking_diagnostic(d.diagnostic.clone()) {
+                if is_emittable_blocking_diagnostic(d.clone()) {
                     __result.push(d);
                 }
             }
@@ -2575,10 +2584,7 @@ pub fn interpreter_blocking_diagnostic_messages(
         for d in Rc::new({
             let mut __result = Vec::new();
             for d in diagnostics.clone().iter().cloned() {
-                if crate::cli_run::type_ref_unresolved_admitted_for_compile_clean(&d) {
-                    continue;
-                }
-                if is_interpreter_blocking_diagnostic(d.diagnostic.clone()) {
+                if is_emittable_blocking_diagnostic(d.clone()) {
                     __result.push(d);
                 }
             }

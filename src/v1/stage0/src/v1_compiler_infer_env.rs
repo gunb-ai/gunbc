@@ -27,7 +27,7 @@ use crate::v1_std_core::InferredNode::*;
 pub use crate::v1_std_core::{
     authored_name_at, empty_intern_table, find_child_named, intern, intern_find, intern_str,
     kernel_span, merge_intern_tables, module_path_segments, param_node_name_at,
-    param_node_type_expr, source_text_at,
+    param_node_type_expr, qualified_last_segment, source_text_at,
 };
 pub use crate::v1_std_core::{
     Cardinality, CompilerDiagnostic, Connective, ExprData, InferredNode, InternTable, NewlineIndex,
@@ -155,47 +155,6 @@ pub fn empty_type_env() -> Rc<TypeEnv> {
 
 pub fn symbol_index_lookup(index: Rc<SymbolIndex>, qualified_name: String) -> Option<Rc<Node>> {
     v1_rt::map_get(&index.entries.clone(), qualified_name.clone())
-}
-
-/// Import/local reachability for a TYPE reference spelling (bare or qualified).
-/// A name is reachable iff it (or, for a dotted spelling, its leaf) sits in
-/// this module's own `str_bindings` or `ancestry_str_bindings` — the import
-/// chain surface. Corpus-wide `global_bare` / `symbol_index` hits are NOT
-/// reachability. Used by the use-site (`masked`) resolve arm to refuse
-/// pool-present-but-not-import-reachable type refs (import-strip §14.3).
-/// Whether a resolved type name has *binding authority* at this env — the
-/// admission predicate for the type-ref refusal arm (`hit without binding
-/// authority → UnresolvedType`).
-///
-/// INTERIM body: import / local reachability (`str_bindings` ∪
-/// `ancestry_str_bindings`, plus qualified-leaf). Values/fns already bind
-/// namespace-only (#7178); types refuse-unless-imported until N2 extends the
-/// containment walk to type positions and **swaps this body**. The refusal
-/// arm itself stays "no binding authority → refuse"; only *what grants*
-/// authority is pluggable here — do not fuse import-reachability into the
-/// arm's type shape (quiet-hawk-219 direction).
-pub fn type_ref_has_binding_authority(env: Rc<TypeEnv>, name: String) -> bool {
-    type_ref_binding_authority_import_local(env, name)
-}
-
-/// Today's (interim) binding-authority grant for type refs: present in the
-/// module's import-or-local string bindings. N2 replaces the call above;
-/// keep this helper named for the census / debt-contract consumer.
-pub fn type_ref_binding_authority_import_local(env: Rc<TypeEnv>, name: String) -> bool {
-    if v1_rt::map_has(&env.str_bindings.clone(), name.clone())
-        || v1_rt::map_has(&env.ancestry_str_bindings.clone(), name.clone())
-    {
-        return true;
-    }
-    if v1_rt::contains(name.clone(), ".".to_string()) {
-        let leaf = crate::v1_std_core::qualified_last_segment(name.clone());
-        if v1_rt::map_has(&env.str_bindings.clone(), leaf.clone())
-            || v1_rt::map_has(&env.ancestry_str_bindings.clone(), leaf.clone())
-        {
-            return true;
-        }
-    }
-    false
 }
 
 pub fn global_bare_candidates_contain(
@@ -876,25 +835,14 @@ pub fn lookup_qualified_module_projection(
 ) -> Option<Rc<TypeBinding>> {
     match v1_rt::contains(name.clone(), ".".to_string()) {
         false => None,
-        true => {
-            let hit = symbol_index_lookup(env.symbol_index.clone(), name.clone());
-            // Row-5 discriminator (quiet-hawk-219): record whether
-            // symbol_index_lookup was consulted on the qualified path and
-            // whether it hit. enable via type_ref_fail_open_telemetry_enable.
-            v1_rt::type_ref_fail_open_record_symbol_index_lookup(
-                env.module_path.clone(),
-                name.clone(),
-                hit.clone().is_some(),
-            );
-            match hit {
-                Some(resolved) => Some(Rc::new(TypeBinding {
-                    name: name.clone(),
-                    resolved: resolved.clone(),
-                    provenance: Rc::new(SubValueRelation::SubValueUnknown),
-                })),
-                None => None,
-            }
-        }
+        true => match symbol_index_lookup(env.symbol_index.clone(), name.clone()) {
+            Some(resolved) => Some(Rc::new(TypeBinding {
+                name: name.clone(),
+                resolved: resolved.clone(),
+                provenance: Rc::new(SubValueRelation::SubValueUnknown),
+            })),
+            None => None,
+        },
     }
 }
 
@@ -1571,6 +1519,37 @@ pub fn lookup_type_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc<Node>> {
         },
         None => None,
     }
+}
+
+pub fn type_ref_binding_authority_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Whether a resolved type name has binding authority at this env — the admission predicate for the type-ref refusal arm (hit without binding authority → UnresolvedType). INTERIM body: import/local reachability (str_bindings ∪ ancestry_str_bindings, plus qualified-leaf). Values/fns already bind namespace-only since #7178; types refuse-unless-imported until N2 extends the containment walk to type positions and swaps this body. The refusal arm itself stays 'no binding authority → refuse'; only what grants authority is pluggable here.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn type_ref_binding_authority_import_local(env: Rc<TypeEnv>, name: String) -> bool {
+    if (v1_rt::map_has(&env.str_bindings.clone(), name.clone())
+        || v1_rt::map_has(&env.ancestry_str_bindings.clone(), name.clone()))
+    {
+        true
+    } else {
+        if v1_rt::contains(name.clone(), ".".to_string()) {
+            {
+                let leaf = qualified_last_segment(name.clone());
+                (v1_rt::map_has(&env.str_bindings.clone(), leaf.clone())
+                    || v1_rt::map_has(&env.ancestry_str_bindings.clone(), leaf.clone()))
+            }
+        } else {
+            false
+        }
+    }
+}
+
+pub fn type_ref_has_binding_authority(env: Rc<TypeEnv>, name: String) -> bool {
+    type_ref_binding_authority_import_local(env.clone(), name.clone())
 }
 
 pub fn variant_arm_type_projection(
