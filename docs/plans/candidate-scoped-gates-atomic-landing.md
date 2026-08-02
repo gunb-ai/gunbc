@@ -100,24 +100,36 @@ One scheduled gate (cost), three independently typed laws, refusals accumulated:
 
 ```dag
 type ExtdepsScopeRefusal
-  = AddedExtdepsPathUnenrolled { path: String, candidate: IntegrationCandidate }
-  | LegacyManifestNamesPostFreezePath { path: String, freeze_commit: CommitSha, candidate_commit: CommitSha }
-  | LegacyManifestRowAdded { row: String, candidate: IntegrationCandidate }
-  | CandidateDiffUnreadable { candidate: IntegrationCandidate, cause: String }
-  | CandidateDiffParseTruncated { candidate: IntegrationCandidate }
-  | FreezeDiffUnreadable { freeze_commit: CommitSha, candidate_commit: CommitSha, cause: String }
-  | FreezeDiffParseTruncated { freeze_commit: CommitSha, candidate_commit: CommitSha }
-  | ManifestDeltaUnreadable { candidate: IntegrationCandidate, cause: String }
+  = AddedExtdepsPathUnenrolled { path: String }
+  | LegacyManifestNamesPostFreezePath { path: String, freeze_commit: CommitSha }
+  | LegacyManifestRowAdded { row: String }
+  | CandidateDiffUnreadable { cause: String }
+  | CandidateDiffParseTruncated
+  | FreezeDiffUnreadable { freeze_commit: CommitSha, cause: String }
+  | FreezeDiffParseTruncated { freeze_commit: CommitSha }
+  | ManifestDeltaUnreadable { cause: String }
 
 type ExtdepsScopeVerdict
   = ExtdepsScopeAdmitted { candidate: IntegrationCandidate, introduced_extdeps_paths: List<String> }
-  | ExtdepsScopeRefused { first: ExtdepsScopeRefusal, rest: List<ExtdepsScopeRefusal> }
+  | DefaultBranchAuditCovered { tree: GitTreeObjectId }
+  | ExtdepsScopeRefused { subject: ExtdepsScopeEvaluation, first: ExtdepsScopeRefusal, rest: List<ExtdepsScopeRefusal> }
 ```
+
+The verdict is total over both evaluation surfaces (review 47097 caught the earlier
+sketch admitting only candidates, leaving `DefaultBranchAudit` with no faithful
+success result): a clean audit lands `DefaultBranchAuditCovered`, and `ExtdepsScopeRefused`
+carries the run's `ExtdepsScopeEvaluation` subject once, at the wrapper — so every
+refusal row inherits its subject identities (candidate base/tree under
+`CandidateAdmission`, audit tree under `DefaultBranchAudit`) by construction, and the
+per-arm `candidate` fields the earlier sketch duplicated across six arms are gone
+(§2: the arms keep only their law-local facts, e.g. `freeze_commit`; the subject
+flows forward on the wrapper, never re-derived and never fabricated).
 
 Load-bearing: **no early exit between the independent laws** (an unrostered path and
 an illegal manifest row both report in one run), and **no empty refusal population**
-(`first + rest`). The process boundary renders every refusal with refusal code, path,
-candidate base/tree identities, and remediation class.
+(`first + rest`). The process boundary renders every refusal with refusal code, path
+or row, the identities its carrier and the wrapper subject flow forward, and
+remediation class.
 
 ## 3. Stop running effectful gates through Boolean claims
 
@@ -249,6 +261,12 @@ direct `ProcessExit` runnables preserve every located refusal through CI; merge 
 current criteria.
 
 ## HAND-RUST GATE receipt — rest replay bridge mints the modeled ContentHash
+
+**Explicit deferral. Lane: v1 exit (ROADMAP §"eleven lanes" row — finish lines
+"interpreter deleted" and "zero hand-maintained Rust"); near trigger: the
+witness-realization plan's native rest-transport bridge, which deletes this seed
+mint wholesale.** (Receipt form per review 47097; the class argument below says why
+no separable schedule exists beyond those triggers.)
 
 This PR touches `v1_interpreter.rs` `rest_bound_invocation_value` (review 47056
 asked for this receipt). The class: a **model-conformance repair to an existing seed
