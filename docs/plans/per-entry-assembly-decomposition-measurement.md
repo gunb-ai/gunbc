@@ -1,7 +1,7 @@
 # Per-entry assembly decomposition measurement
 
-**Lane:** five-minute-ci-gate / #7597  
-**Predecessor:** [entry-graph-union slice 2](entry-graph-union-slice2-typecheck-attribution.md)  
+**Lane:** five-minute-ci-gate / #7597
+**Predecessor:** [entry-graph-union slice 2](entry-graph-union-slice2-typecheck-attribution.md)
 **Status:** measurement complete; no mechanism selected by this change
 
 ## Question and denominator
