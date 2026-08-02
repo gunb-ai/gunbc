@@ -12,7 +12,7 @@ pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_infer_env::{
     authored_name, bare_name_miss_diagnostic, env_with_type_variable_bindings, is_recursive_type,
     is_recursive_type_by_name, is_recursive_type_for, lookup_type, lookup_type_by_name,
-    lookup_type_for,
+    lookup_type_for, type_ref_measure_binding_authority,
 };
 pub use crate::v1_compiler_infer_env::{TypeBinding, TypeEnv};
 pub use crate::v1_compiler_infer_types::{
@@ -765,6 +765,15 @@ pub fn resolve_node_bounded_masked_boundary() -> String {
     thread_local! {
         static CACHED: String = {
             "Selective-import fail-closed (§5): 'masked' is TRUE at the resolve_node source entry and INHERITS through structural recursions (product base :391, product child rt :406, optional inner :426, variant field rt :444, generic args :477, map k/v :519/:522, list elem :538), so every use-site type-argument reaches the leaf mask check masked. It flips FALSE only into GROUNDING recursions (peel_nominal_alias_identity :150/:151/:154/:163, resolve_alias_target :342, parameterized-alias target :494, resolved-name grounding :561), which descend into DEFINING-module structure (the import responsibility of that module, not the use-site). INVARIANT (reviewed lively-raven-355 2026-07-06): grounding recursions must only ever descend into defining-module structure; the :561 arm relies on the resolved.children==0 leaf guard AND the :550-552 coproduct-container short-circuit — if a future refactor lets a parameterized use reach :561, a use-site arg could be inlined into grounding and skipped (a false-NEGATIVE / missing diagnostic once this is a hard refusal, not an availability bug in diagnostic-collect). Mask check (:568 Present arm) emits UnlistedImportUse when masked && name NOT in env.source_visible_names; keeps 'resolved' intact (diagnostic-collect, advisory). source_visible_names = locals + kernel + selective specific_names + is_all-module exports + type-params (:971). SCAFFOLD dissolve-on (§6): the advisory/non-erroring posture (is_error_diagnostic=false, 00_core.dag) is diagnostic-collect, NOT the final wall. Dissolves when (a) family-closure SVN lands — each imported name resolves to its whole coproduct family (owner + ALL siblings, lively-raven-355 ruling 2026-07-06) so the variant-owner-reverse false-positive class (import variant B then use owner E, or sibling A) is gone, AND (b) the corpus burndown of genuine unlisted uses (Symbol in v2/std/diagnostic.dag, NonEmptyStr in gcp, ...) reaches zero — at which point UnlistedImportUse promotes to a hard UnresolvedType/Refused joining §5's fail-closed wall, and the empty-source_visible_names guard (:345 count>0, a §3 dual-signal with 'masked' — flagged by claude-opus-4-7) collapses so 'masked' is the sole authority.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn type_ref_hit_ne_bind_measure_resolve_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "N1a MEASUREMENT ARM (quiet-hawk-219): when type_ref_hit_ne_bind_measure_active (v1_rt host bracket), a masked leaf pool-hit without type_ref_measure_binding_authority emits UnresolvedType via bare_name_miss_diagnostic — never Product(<anon>). Production (measure off) keeps the UnlistedImportUse advisory path. Leaf path only; is_user_generic_use_site unchanged. Dissolve-on: gunbc.type_ref_hit_ne_bind_measure type_ref_hit_ne_bind_measure_dissolve_trigger.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -1674,6 +1683,8 @@ pub fn resolve_node_bounded(
                                                 } else {
                                                     resolved.clone()
                                                 };
+                                                let type_name =
+                                                    authored_name(env.clone(), n.clone());
                                                 let is_optional = (n.return_cardinality.clone()
                                                     == Cardinality::CardOptional);
                                                 let final_resolved = if is_optional.clone() {
@@ -1683,34 +1694,55 @@ pub fn resolve_node_bounded(
                                                 } else {
                                                     structurally_resolved.clone()
                                                 };
-                                                let unlisted_diags = if ((masked.clone()
-                                                    && (v1_rt::map_is_empty(
-                                                        &env.source_visible_names.clone(),
+                                                if ((((masked.clone()
+                                                    && v1_rt::type_ref_hit_ne_bind_measure_active())
+                                                    && (type_ref_measure_binding_authority(
+                                                        env.clone(),
+                                                        type_name.clone(),
                                                     ) == false))
-                                                    && (v1_rt::map_has(
-                                                        &env.source_visible_names.clone(),
-                                                        authored_name(env.clone(), n.clone()),
-                                                    ) == false))
+                                                    && (is_kernel_type(type_name.clone())
+                                                        == false))
+                                                    && (is_kernel_type(qualified_last_segment(
+                                                        type_name.clone(),
+                                                    )) == false))
                                                 {
-                                                    Rc::new(vec![make_error_node(
-                                                        Rc::new(
-                                                            CompilerDiagnostic::UnlistedImportUse {
-                                                                name: authored_name(
+                                                    Rc::new(NodeResolveResult {
+                                                        resolved: final_resolved.clone(),
+                                                        diagnostics: Rc::new(vec![
+                                                            make_error_node(
+                                                                bare_name_miss_diagnostic(
                                                                     env.clone(),
-                                                                    n.clone(),
+                                                                    type_name.clone(),
+                                                                    n.span.clone(),
                                                                 ),
-                                                                span: n.span.clone(),
-                                                            },
-                                                        ),
-                                                        module_name.clone(),
-                                                    )])
+                                                                module_name.clone(),
+                                                            ),
+                                                        ]),
+                                                    })
                                                 } else {
-                                                    Rc::new(vec![])
-                                                };
-                                                Rc::new(NodeResolveResult {
-                                                    resolved: final_resolved.clone(),
-                                                    diagnostics: unlisted_diags.clone(),
-                                                })
+                                                    {
+                                                        let unlisted_diags = if ((masked.clone()
+                                                            && (v1_rt::map_is_empty(
+                                                                &env.source_visible_names.clone(),
+                                                            ) == false))
+                                                            && (v1_rt::map_has(
+                                                                &env.source_visible_names.clone(),
+                                                                type_name.clone(),
+                                                            ) == false))
+                                                        {
+                                                            Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::UnlistedImportUse {
+    name: type_name.clone(),
+    span: n.span.clone(),
+}), module_name.clone())])
+                                                        } else {
+                                                            Rc::new(vec![])
+                                                        };
+                                                        Rc::new(NodeResolveResult {
+                                                            resolved: final_resolved.clone(),
+                                                            diagnostics: unlisted_diags.clone(),
+                                                        })
+                                                    }
+                                                }
                                             }
                                             None => {
                                                 let n_is_error = if (n.inferred.clone() != None) {

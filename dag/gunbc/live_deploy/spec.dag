@@ -36,6 +36,8 @@ import gunbc.roadmap_dashboard_instance {
   HostDashboardInstance,
   srv1_live_dashboard_instance,
   srv1_green_dashboard_instance,
+  dashboard_instance_dispatch_worktree_root,
+  dashboard_instance_dispatch_attempt_state_root,
 }
 import extdeps.http.server { HttpServerListenConfig }
 import product.network_topology { NetworkEndpoint }
@@ -257,8 +259,8 @@ fn deployment_owned_steps(
   [
     DeploymentArtifactStep { kind: GunbcSourceTree, path: instance.repo_root as String as NonEmptyStr },
     DeploymentArtifactStep { kind: ServeBinary, path: instance.serve_binary as String as NonEmptyStr },
-    DeploymentArtifactStep { kind: DispatchWorktreeRoot, path: instance.dispatch_worktree_root as String as NonEmptyStr },
-    DeploymentArtifactStep { kind: AttemptStateRoot, path: instance.dispatch_attempt_state_root as String as NonEmptyStr },
+    DeploymentArtifactStep { kind: DispatchWorktreeRoot, path: dashboard_instance_dispatch_worktree_root(instance: instance) as String as NonEmptyStr },
+    DeploymentArtifactStep { kind: AttemptStateRoot, path: dashboard_instance_dispatch_attempt_state_root(instance: instance) as String as NonEmptyStr },
     DeploymentArtifactStep { kind: SystemdUnit, path: deployment_systemd_unit_path(names: names) },
     DeploymentArtifactStep { kind: BeltTimerUnit, path: deployment_belt_timer_unit_path(names: names) },
     DeploymentArtifactStep { kind: TailscaleServeMapping, path: tailscale_serve_endpoint_key(endpoint: names.tailscale_serve_endpoint) },

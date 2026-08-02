@@ -5,9 +5,16 @@ operator-signed product boundary, six sub-lanes, and the **dependency sequence**
 in `gunbc.roadmap_authority` so dispatch, witnesses, and receipts share one
 program identity.
 
-**Product boundary (verbatim):** an ordinary source edit reaches a required CI
-verdict in five minutes without recomputing any semantic fact whose inputs did
-not change.
+**Product boundary (re-anchored by operator ruling 2026-08-02):** every required
+operation performs the bare minimum computation needed to serve it — an ordinary
+source edit's verdict recomputes no semantic fact whose inputs did not change,
+and its cost is the touched closure's delta, not the corpus. **Five minutes is
+not the contract** — the operator's words: the earlier sentence presenting it as
+the contract was a mistake; five minutes is the distress ceiling ("holy crap
+this is hard / not working well"), retained only as the Stage C checkpoint
+bound. Reaching 5:00 does not complete the program while redundant computation
+remains on a required path; the bar is scoped by the realization/materialization
+goals, and wall-clock falls out of them.
 
 **This is a program, not a PR.** Each sub-lane is independently dispatchable;
 the parent carries the end-to-end contract and the ordered sequence below.
@@ -48,7 +55,7 @@ Registered as roadmap edges where noted; order is binding for dispatch.
 | 3 | **Immediately** cut over a bounded production witness population to the native execution kind | **NEXT** — #7599 owner; first major CI slice after merge |
 | 4 | Continue **#7534** as shared materialization substrate — no default CI savings credited until ordinary invocations consume it | **NEXT** under `module-grain-materialization` |
 | 5 | Union program **closed** per #7533; remaining assembly observation → `per-entry-assembly-decomposition` (narrow measured lane) | **CLOSED** / **NEXT** |
-| 6 | This program (`five-minute-ci-gate`) makes the five-minute objective and this graph explicit | this registration |
+| 6 | This program (`five-minute-ci-gate`) makes the bare-minimum-computation contract and this graph explicit; five minutes stays the distress checkpoint (Stage C bound), never the completion criterion | this registration |
 
 **Materialization hierarchy** (step 4 feeds step 3, not a parallel fork):
 
