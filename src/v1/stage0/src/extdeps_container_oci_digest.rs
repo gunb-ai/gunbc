@@ -2,11 +2,15 @@
 // Source module: extdeps.container.oci.digest
 
 use self::OciContentDigest::*;
-pub use crate::extdeps_external_authority::ExternalAuthority;
+pub use crate::extdeps_external_authority::{
+    ExternalAuthority, ExternalModelScope, ExternalSubjectRef,
+};
 use crate::extdeps_uri::UriScheme::Https;
 pub use crate::extdeps_uri::{Uri, UriScheme};
 pub use crate::std_content_hash::Sha256Digest;
 pub use crate::std_content_hash::{content_hash_validate_lower_hex_length, sha256_hex_digest};
+use crate::std_decl_ref::DeclField::WholeDeclaration;
+pub use crate::std_decl_ref::{DeclField, DeclarationRef};
 pub use crate::std_types::NonEmptyStr;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -27,6 +31,25 @@ pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
             };
         }
     CACHED.with(|c: &Rc<ExternalAuthority>| c.clone())
+}
+
+pub fn extdeps_model_scope() -> Rc<ExternalModelScope> {
+    thread_local! {
+            static CACHED: Rc<ExternalModelScope> = {
+                Rc::new(ExternalModelScope {
+        subject: Rc::new(ExternalSubjectRef {
+        declaration: Rc::new(DeclarationRef {
+        module_path: "extdeps.container.oci.digest".to_string(),
+        decl_name: "OciContentDigest".to_string(),
+        field: Rc::new(DeclField::WholeDeclaration),
+    }),
+    }),
+        first_citation: extdeps_external_authority_anchor(),
+        further_citations: Rc::new(vec![]),
+    })
+            };
+        }
+    CACHED.with(|c: &Rc<ExternalModelScope>| c.clone())
 }
 
 pub fn oci_content_digest_note() -> String {
