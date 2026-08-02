@@ -5124,8 +5124,12 @@ fn emit_enum_shared_accessors(name: String, type_params: String, generic_param_n
     concat("    pub fn ", emit_ident(name: fname, target: Rust), "(&self) -> ", ty, " {\n        match self {\n", arms_str, "\n        }\n    }")
   )
   let fns_str = accessor_fns |> join(separator: "\n")
+<<<<<<< HEAD
   let type_application_params = emit_bare_type_params(generic_param_names: generic_param_names)
   concat("impl", type_params, " ", name, type_application_params, " {\n", fns_str, "\n}")
+=======
+  concat("impl", type_params, " ", name, type_params, " {\n", fns_str, "\n}")
+>>>>>>> 22ba186480 (Drop superseded enum clone-bound emitter fork after rebase onto #7695.)
 }
 
 fn string_without_prefix(value: String, prefix: String) -> String? {

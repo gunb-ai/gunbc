@@ -49,8 +49,6 @@ data trait_derive_emit_item_clone_bound_contract_fork_note: String = "MODEL-REAL
 
 data trait_derive_emit_item_clone_bound_contract_fork_dissolve_on: String = "DISSOLVE-ON: v2 Rust emitter consumes target_derive_supplemental_generic_bound_contract for item-level generic bounds; then delete this structural implementation — do not accumulate beside the contract."
 
-data trait_derive_emit_node_traversal_frontier_note: String = "v1_type_expr_contains_param_name (clone-bound type-expr walk) is the 18th self-recursive Node.children walk in the seed_node_traversal_frontier class (04_infer seed_node_traversal_frontier; codex review 47248). No separate per-fn frontier row — same dissolve-on trigger: v1_seed_deleted_at_v2_self_host. No canonical v1 traversal surface is reachable here (fold_node/node_query are v2 substrate; v1 compiles v2, so routing through v2 inverts bootstrap)."
-
 type StructCapabilityEmit {
   derive_attr: String
   impl_bodies: String
@@ -148,52 +146,15 @@ fn v1_emit_enum_derives(children: List<Node>, source_indices: Map<String, Newlin
   }
 }
 
-fn v1_type_expr_contains_param_name(
-  param_name: String,
-  type_expr: Node,
-  source_indices: Map<String, NewlineIndex>
-) -> Bool {
-  if authored_name_at(source_indices: source_indices, node: type_expr) == param_name {
-    true
-  } else {
-    type_expr.children |> any(c =>
-      v1_type_expr_contains_param_name(
-        param_name: param_name,
-        type_expr: c,
-        source_indices: source_indices
-      )
-    )
-  }
-}
-
 fn v1_generic_param_used_as_collection_element(
   param_name: String,
   value_params: List<Node>,
   source_indices: Map<String, NewlineIndex>
 ) -> Bool {
   value_params |> any(vp =>
-    let te = child_type_node(ch: param_node_type_expr(n: vp))
+    let te = param_node_type_expr(n: vp)
     is_container_type(name: authored_name_at(source_indices: source_indices, node: te))
-      && te.children |> any(c =>
-        v1_type_expr_contains_param_name(
-          param_name: param_name,
-          type_expr: child_type_node(ch: c),
-          source_indices: source_indices
-        )
-      )
-  )
-}
-
-fn v1_generic_param_used_as_bare_value_param_type(
-  param_name: String,
-  value_params: List<Node>,
-  source_indices: Map<String, NewlineIndex>
-) -> Bool {
-  value_params |> any(vp =>
-    let te = child_type_node(ch: param_node_type_expr(n: vp))
-    authored_name_at(source_indices: source_indices, node: te) == param_name
-      && te.connective == NoConnective
-      && (te.children |> count) == 0
+      && (te.children |> any(c => authored_name_at(source_indices: source_indices, node: c) == param_name))
   )
 }
 
@@ -207,7 +168,6 @@ fn v1_type_param_needs_clone_bound(
 ) -> Bool {
   let structural = (return_is_bare_generic && !body_is_param_ref && param_name == ret_name)
     || v1_generic_param_used_as_collection_element(param_name: param_name, value_params: value_params, source_indices: source_indices)
-    || v1_generic_param_used_as_bare_value_param_type(param_name: param_name, value_params: value_params, source_indices: source_indices)
   structural
 }
 
@@ -255,111 +215,6 @@ fn v1_field_type_expr_needs_clone_bound_for_param_narrow(
   } else {
     false
   }
-}
-
-fn v1_type_expr_param_nested_non_root(
-  param_name: String,
-  type_expr: Node,
-  source_indices: Map<String, NewlineIndex>
-) -> Bool {
-  type_expr.children |> any(child =>
-    v1_type_expr_contains_param_name(
-      param_name: param_name,
-      type_expr: child,
-      source_indices: source_indices
-    )
-  )
-}
-
-fn v1_type_expr_param_in_named_application(
-  param_name: String,
-  type_expr: Node,
-  application_name: String,
-  source_indices: Map<String, NewlineIndex>
-) -> Bool {
-  let name = authored_name_at(source_indices: source_indices, node: type_expr)
-  if name == application_name {
-    type_expr.children |> any(c =>
-      v1_type_expr_contains_param_name(
-        param_name: param_name,
-        type_expr: c,
-        source_indices: source_indices
-      )
-    )
-  } else {
-    type_expr.children |> any(c =>
-      v1_type_expr_param_in_named_application(
-        param_name: param_name,
-        type_expr: c,
-        application_name: application_name,
-        source_indices: source_indices
-      )
-    )
-  }
-}
-
-fn v1_type_expr_clone_bound_via_field_type_application(
-  param_name: String,
-  type_expr: Node,
-  source_indices: Map<String, NewlineIndex>
-) -> Bool {
-  let outer_name = authored_name_at(source_indices: source_indices, node: type_expr)
-  if outer_name != param_name && outer_name != "" && (type_expr.children |> count) > 0 {
-    type_expr.children |> any(c =>
-      v1_type_expr_contains_param_name(
-        param_name: param_name,
-        type_expr: c,
-        source_indices: source_indices
-      )
-    )
-  } else {
-    type_expr.children |> any(c =>
-      v1_type_expr_clone_bound_via_field_type_application(
-        param_name: param_name,
-        type_expr: c,
-        source_indices: source_indices
-      )
-    )
-  }
-}
-
-fn v1_item_type_param_needs_clone_bound_enum(
-  param_name: String,
-  field_type_exprs: List<Node>,
-  source_indices: Map<String, NewlineIndex>
-) -> Bool {
-  field_type_exprs |> any(te =>
-    v1_type_expr_param_nested_non_root(
-      param_name: param_name,
-      type_expr: te,
-      source_indices: source_indices
-    )
-    || v1_type_expr_clone_bound_via_field_type_application(
-      param_name: param_name,
-      type_expr: te,
-      source_indices: source_indices
-    )
-    || v1_type_expr_param_in_named_application(
-      param_name: param_name,
-      type_expr: te,
-      application_name: "KeyedRow",
-      source_indices: source_indices
-    )
-  )
-}
-
-fn v1_generic_params_needing_clone_bound_for_enum_item(
-  generic_param_names: List<String>,
-  field_type_exprs: List<Node>,
-  source_indices: Map<String, NewlineIndex>
-) -> List<String> {
-  generic_param_names |> filter(g =>
-    v1_item_type_param_needs_clone_bound_enum(
-      param_name: g,
-      field_type_exprs: field_type_exprs,
-      source_indices: source_indices
-    )
-  )
 }
 
 fn v1_item_type_param_needs_clone_bound_struct(
