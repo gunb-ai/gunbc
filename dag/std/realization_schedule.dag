@@ -1,11 +1,6 @@
 module std.realization_schedule
 
-<<<<<<< HEAD
-import std.types { ContentHash, CommitSha, NonEmptyStr, Bool, String, List, Int }
-=======
-import std.types { Bool, String, List, Int }
-import std.content_hash { ContentHash }
->>>>>>> origin/main
+import std.types { CommitSha, NonEmptyStr, Bool, String, List, Int }
 import std.execution_mode { ExecutionMode, Hermetic, execution_mode_eq }
 import std.nat { Nat }
 import std.measure {
@@ -14,7 +9,15 @@ import std.measure {
   byte_size, byte_size_count, watt, time_measure, measure_count
 }
 import std.pareto { AxisGoal }
-import std.content_hash { content_hash_atom, content_hash_combine }
+import std.content_hash { ContentHash }
+import std.content_hash {
+  Fnv1a64Structural,
+  content_hash_atom,
+  content_hash_combine_structural,
+  as_content_hash_structural,
+  serialize_content_hash,
+  fnv1a64_structural_hex_digest
+}
 import std.algebra { Empty, Cons }
 
 type CostBasis
@@ -202,9 +205,9 @@ type ScopedWitnessBatch {
   resource_profile: ScopedWitnessBatchResourceProfile
 }
 
-fn scoped_witness_source_roots_digest(source_roots: List<String>) -> ContentHash {
+fn scoped_witness_source_roots_digest(source_roots: List<String>) -> Fnv1a64Structural {
   fold(source_roots, init: content_hash_atom(value: "scoped-witness-source-roots"), f: fn(acc, root) {
-    content_hash_combine(acc, content_hash_atom(value: root))
+    content_hash_combine_structural(left: acc, right: content_hash_atom(value: root))
   })
 }
 
@@ -236,7 +239,7 @@ type ScopedWitnessExecutionOutcome
 type ScopedWitnessExecutionResult {
   head_sha: CommitSha
   batch_id: String
-  source_roots_digest: String
+  source_roots_digest: Fnv1a64Structural
   entry: String
   function: String
   witness_kind: WitnessKind
@@ -253,16 +256,22 @@ data scoped_witness_execution_receipt_path: ScopedWitnessExecutionReceiptPath = 
 
 data scoped_witness_execution_receipt_header: String = "head_sha\tbatch_id\tsource_roots_digest\tentry\tfunction\twitness_kind\toutcome\tdetail"
 
-data scoped_witness_execution_receipt_wire_note: String = "ScopedWitnessExecutionResult and ScopedWitnessExecutionOutcome are the semantic API; the TSV path, header, and labels are their single storage projection for the declared filesystem_read consumer, never a second result schema. Every scheduled head carries one row per expanded roster entry: ScopedWitnessExecuted is execution evidence, while ScopedWitnessSelectionSkipped is a typed nonfailure retaining the selection provenance — never absence-as-pass and never coverage. The decoder returns the modeled rows directly and refuses malformed columns, unknown kinds, unknown outcomes, missing exact-head identity, and empty receipts. The decoded batch_id and source_roots_digest are validated nonempty wire identity text rather than authored ScopedWitnessBatchId or ContentHash values: this boundary observes a worker projection and cannot honestly construct either brand from arbitrary TSV text; joins compare the retained exact text against the scheduled manifest authority. 🟡 feature:scoped-witness-receipt-typed-tabular-codec dissolve-on: a std tabular-codec carrier derives the header and row parser from the result product and outcome coproduct, deleting these hand-written wire labels while preserving ScopedWitnessExecutionReceiptPath and the decoded model surface."
+data scoped_witness_execution_receipt_wire_note: String = "ScopedWitnessExecutionResult and ScopedWitnessExecutionOutcome are the semantic API; the TSV path, header, and labels are their single storage projection for the declared filesystem_read consumer, never a second result schema. Every scheduled head carries one row per expanded roster entry: ScopedWitnessExecuted is execution evidence, while ScopedWitnessSelectionSkipped is a typed nonfailure retaining the selection provenance — never absence-as-pass and never coverage. The decoder returns the modeled rows directly and refuses malformed columns, unknown kinds, unknown outcomes, missing exact-head identity, and empty receipts. The decoded batch_id is validated nonempty wire identity text rather than an authored ScopedWitnessBatchId: this boundary observes a worker projection and cannot honestly construct that brand from arbitrary TSV text. The source_roots_digest carrier is family-narrow Fnv1a64Structural: wrong-family assignment is structurally impossible, while external text remains honestly guarded at rung two by fnv1a64_structural_hex_digest. The union exists only at the wire seam immediately before serialize_content_hash. The decoder intentionally refuses Sha1 and Sha256 wire identities rather than widening this structural-fingerprint field; RED controls pin both refusals. 🟡 feature:scoped-witness-receipt-typed-tabular-codec dissolve-on: a std tabular-codec carrier derives the header and row parser from the result product and outcome coproduct, deleting these hand-written wire labels while preserving ScopedWitnessExecutionReceiptPath and the decoded model surface."
 
-data scoped_witness_execution_receipt_refined_identity_scaffold_note: String = "DESIGN section 4b guarantee-ladder scaffold for exactly two fields: ScopedWitnessExecutionResult.batch_id and ScopedWitnessExecutionResult.source_roots_digest. PREVIOUS RUNG: the decoded product named ScopedWitnessBatchId and ContentHash, but reached them by unchecked casts from arbitrary TSV text; that was rung inflation, not validation, and canonical stage0 emission exposed both casts as runtime panic. TEMPORARY RUNG: nonempty String identity text admitted only after the receipt decoder's exact-arity and nonempty checks. REASON AND ATTAINABLE CEILING: the bootstrap has no validating constructor for refined carriers at this boundary; this is the existing ROADMAP capability row `The capability audit: sole_constructor completeness, then seal the proof-carriers`, whose unverified population explicitly includes generic refinements and casts. BOUNDED POPULATION: only these two decoded wire fields; ScopedWitnessBatch.batch_id and the scheduling-side source-roots digest remain branded where their authority constructs them. CROSS-REPRESENTATION JOIN: a consumer compares decoded text only with scoped_witness_batch_id_wire_text or scoped_witness_source_roots_digest_wire_text projected from the scheduled authority, never through an implicit cast. RESTORATION TRIGGER: the sole_constructor completeness audit lands a validating constructor for refined carrier text; the decoder calls it, restores ScopedWitnessBatchId and ContentHash fields, and this scaffold deletes."
+data scoped_witness_execution_receipt_refined_identity_scaffold_note: String = "DESIGN section 4b guarantee-ladder scaffold for exactly one field: ScopedWitnessExecutionResult.batch_id. PREVIOUS RUNG: the decoded product named ScopedWitnessBatchId but reached it by an unchecked cast from arbitrary TSV text; that was rung inflation, not validation, and canonical stage0 emission exposed the cast as runtime panic. TEMPORARY RUNG: nonempty String identity text admitted only after the receipt decoder's exact-arity and nonempty check. REASON AND ATTAINABLE CEILING: the bootstrap has no validating constructor for this branded refined carrier at the decode boundary; this is the existing ROADMAP capability row `The capability audit: sole_constructor completeness, then seal the proof-carriers`, whose unverified population explicitly includes generic refinements and casts. BOUNDED POPULATION: only decoded ScopedWitnessExecutionResult.batch_id; ScopedWitnessBatch.batch_id remains branded where its authority constructs it. CROSS-REPRESENTATION JOIN: a consumer compares decoded text only with scoped_witness_batch_id_wire_text projected from the scheduled authority, never through an implicit cast. CLIMB ALREADY CONSUMED: #7480 grounded hash families, so source_roots_digest now reaches rung four against wrong-family assignment as Fnv1a64Structural; the minimum in-scope rung remains two at the external-text path, where fnv1a64_structural_hex_digest is the permanent validating mint and refusal is honest rather than debt. RESTORATION TRIGGER: the sole_constructor completeness audit lands a validating ScopedWitnessBatchId constructor for wire text; the decoder calls it, restores that field, and this scaffold deletes."
 
 fn scoped_witness_batch_id_wire_text(batch_id: ScopedWitnessBatchId) -> String {
   concat("", batch_id)
 }
 
-fn scoped_witness_source_roots_digest_wire_text(source_roots_digest: ContentHash) -> String {
-  concat("", source_roots_digest)
+fn scoped_witness_source_roots_digest_wire_text(source_roots_digest: Fnv1a64Structural) -> String {
+  concat("", serialize_content_hash(hash: as_content_hash_structural(structural: source_roots_digest)))
+}
+
+fn scoped_witness_source_roots_digest_for_wire(source_roots: List<String>) -> String {
+  scoped_witness_source_roots_digest_wire_text(
+    source_roots_digest: scoped_witness_source_roots_digest(source_roots: source_roots),
+  )
 }
 
 fn scoped_witness_kind_label(kind: WitnessKind) -> String {
@@ -304,7 +313,7 @@ fn scoped_witness_execution_result_tsv_row(row: ScopedWitnessExecutionResult) ->
   join([
     row.head_sha,
     row.batch_id,
-    row.source_roots_digest,
+    scoped_witness_source_roots_digest_wire_text(source_roots_digest: row.source_roots_digest),
     row.entry,
     row.function,
     scoped_witness_kind_label(kind: row.witness_kind),
@@ -364,25 +373,29 @@ fn scoped_witness_execution_result_from_columns(columns: List<String>) -> Scoped
                         || function == "" {
                         none
                       } else {
-                        match scoped_witness_kind_from_label(label: witness_kind_label) {
+                        match fnv1a64_structural_hex_digest(hex: source_roots_digest) {
                           Absent => none
-                          Present { value: kind } =>
-                            match scoped_witness_execution_outcome_from_wire(
-                              label: outcome_label,
-                              detail: outcome_detail,
-                            ) {
+                          Present { value: decoded_source_roots_digest } =>
+                            match scoped_witness_kind_from_label(label: witness_kind_label) {
                               Absent => none
-                              Present { value: outcome } => Present {
-                                value: ScopedWitnessExecutionResult {
-                                  head_sha: head_sha,
-                                  batch_id: batch_id,
-                                  source_roots_digest: source_roots_digest,
-                                  entry: entry,
-                                  function: function,
-                                  witness_kind: kind,
-                                  outcome: outcome,
+                              Present { value: kind } =>
+                                match scoped_witness_execution_outcome_from_wire(
+                                  label: outcome_label,
+                                  detail: outcome_detail,
+                                ) {
+                                  Absent => none
+                                  Present { value: outcome } => Present {
+                                    value: ScopedWitnessExecutionResult {
+                                      head_sha: head_sha,
+                                      batch_id: batch_id,
+                                      source_roots_digest: decoded_source_roots_digest,
+                                      entry: entry,
+                                      function: function,
+                                      witness_kind: kind,
+                                      outcome: outcome,
+                                    }
+                                  }
                                 }
-                              }
                             }
                         }
                       }

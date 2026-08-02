@@ -342,7 +342,7 @@ test fn witness_scoped_batch_is_singleton_and_outside_positional_clamps() -> Boo
 }
 
 test fn scoped_witness_execution_receipt_decoder_accepts_writer_projection() -> Bool {
-  match scoped_witness_execution_receipt_decode(text: "head_sha\tbatch_id\tsource_roots_digest\tentry\tfunction\twitness_kind\toutcome\tdetail\naaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\tv1-claim-scoped-witnesses\tdigest\tsrc/v1/tests/claim/caret_parse_smoke_test.dag\tw_caret_tokenizes_as_sh_caret\tcorpus\texecuted\ttrue\n") {
+  match scoped_witness_execution_receipt_decode(text: "head_sha\tbatch_id\tsource_roots_digest\tentry\tfunction\twitness_kind\toutcome\tdetail\naaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\tv1-claim-scoped-witnesses\t0123456789abcdef\tsrc/v1/tests/claim/caret_parse_smoke_test.dag\tw_caret_tokenizes_as_sh_caret\tcorpus\texecuted\ttrue\n") {
     ScopedWitnessExecutionReceiptDecoded { rows: rows } =>
       length(xs: rows) == 1
         && match rows.first().outcome {
@@ -361,7 +361,7 @@ test fn scoped_witness_execution_receipt_decoder_refuses_empty_ledger() -> Bool 
 }
 
 test fn scoped_witness_execution_receipt_decoder_preserves_selection_skip_provenance() -> Bool {
-  match scoped_witness_execution_receipt_decode(text: "head_sha\tbatch_id\tsource_roots_digest\tentry\tfunction\twitness_kind\toutcome\tdetail\naaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\tv1-claim-scoped-witnesses\tdigest\tsrc/v1/tests/claim/caret_parse_smoke_test.dag\tw_caret_tokenizes_as_sh_caret\tcorpus\tselection-skipped\tskip-before-resolve-fast-path\n") {
+  match scoped_witness_execution_receipt_decode(text: "head_sha\tbatch_id\tsource_roots_digest\tentry\tfunction\twitness_kind\toutcome\tdetail\naaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\tv1-claim-scoped-witnesses\t0123456789abcdef\tsrc/v1/tests/claim/caret_parse_smoke_test.dag\tw_caret_tokenizes_as_sh_caret\tcorpus\tselection-skipped\tskip-before-resolve-fast-path\n") {
     ScopedWitnessExecutionReceiptDecoded { rows: rows } =>
       length(xs: rows) == 1
         && match rows.first().outcome {
@@ -369,6 +369,20 @@ test fn scoped_witness_execution_receipt_decoder_preserves_selection_skip_proven
           _ => false
         }
     ScopedWitnessExecutionReceiptRefused { detail: _ } => false
+  }
+}
+
+test fn scoped_witness_execution_receipt_decoder_refuses_sha1_digest_family() -> Bool {
+  match scoped_witness_execution_receipt_decode(text: "head_sha\tbatch_id\tsource_roots_digest\tentry\tfunction\twitness_kind\toutcome\tdetail\naaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\tv1-claim-scoped-witnesses\t0123456789abcdef0123456789abcdef01234567\tsrc/v1/tests/claim/caret_parse_smoke_test.dag\tw_caret_tokenizes_as_sh_caret\tcorpus\texecuted\ttrue\n") {
+    ScopedWitnessExecutionReceiptDecoded { rows: _ } => false
+    ScopedWitnessExecutionReceiptRefused { detail: detail } => detail != ""
+  }
+}
+
+test fn scoped_witness_execution_receipt_decoder_refuses_sha256_digest_family() -> Bool {
+  match scoped_witness_execution_receipt_decode(text: "head_sha\tbatch_id\tsource_roots_digest\tentry\tfunction\twitness_kind\toutcome\tdetail\naaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\tv1-claim-scoped-witnesses\t0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\tsrc/v1/tests/claim/caret_parse_smoke_test.dag\tw_caret_tokenizes_as_sh_caret\tcorpus\texecuted\ttrue\n") {
+    ScopedWitnessExecutionReceiptDecoded { rows: _ } => false
+    ScopedWitnessExecutionReceiptRefused { detail: detail } => detail != ""
   }
 }
 

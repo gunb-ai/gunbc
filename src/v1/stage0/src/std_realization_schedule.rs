@@ -18,13 +18,13 @@ use self::ScopedWitnessExecutionReceiptDecode::*;
 use self::ScopedWitnessProcessIsolation::*;
 use self::WitnessKind::*;
 use self::WitnessSpan::*;
-<<<<<<< HEAD
 pub use crate::std_algebra::FreeMonoid;
-pub use crate::std_content_hash::{content_hash_atom, content_hash_combine};
-=======
-pub use crate::std_content_hash::ContentHash;
 use crate::std_content_hash::ContentHash::*;
->>>>>>> origin/main
+pub use crate::std_content_hash::{
+    as_content_hash_structural, content_hash_atom, content_hash_combine_structural,
+    fnv1a64_structural_hex_digest, serialize_content_hash,
+};
+pub use crate::std_content_hash::{ContentHash, Fnv1a64Structural};
 pub use crate::std_execution_mode::execution_mode_eq;
 pub use crate::std_execution_mode::ExecutionMode;
 use crate::std_execution_mode::ExecutionMode::Hermetic;
@@ -35,11 +35,7 @@ pub use crate::std_nat::Nat;
 pub use crate::std_pareto::AxisGoal;
 use crate::std_pareto::AxisGoal::*;
 use crate::std_types::Bool::*;
-<<<<<<< HEAD
-pub use crate::std_types::{Bool, CommitSha, ContentHash, List, NonEmptyStr};
-=======
-pub use crate::std_types::{Bool, List};
->>>>>>> origin/main
+pub use crate::std_types::{Bool, CommitSha, List, NonEmptyStr};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
@@ -457,10 +453,12 @@ pub struct ScopedWitnessBatch {
     pub resource_profile: Rc<ScopedWitnessBatchResourceProfile>,
 }
 
-pub fn scoped_witness_source_roots_digest(source_roots: Rc<Vec<String>>) -> NonEmptyStr {
+pub fn scoped_witness_source_roots_digest(source_roots: Rc<Vec<String>>) -> Rc<Fnv1a64Structural> {
     source_roots.clone().iter().cloned().fold(
         content_hash_atom("scoped-witness-source-roots".to_string()),
-        |acc: NonEmptyStr, root: String| content_hash_combine(acc, content_hash_atom(root.clone())),
+        |acc: Rc<Fnv1a64Structural>, root: String| {
+            content_hash_combine_structural(acc, content_hash_atom(root.clone()))
+        },
     )
 }
 
@@ -496,7 +494,7 @@ pub enum ScopedWitnessExecutionOutcome {
 pub struct ScopedWitnessExecutionResult {
     pub head_sha: CommitSha,
     pub batch_id: String,
-    pub source_roots_digest: String,
+    pub source_roots_digest: Rc<Fnv1a64Structural>,
     pub entry: String,
     pub function: String,
     pub witness_kind: WitnessKind,
@@ -538,7 +536,7 @@ pub fn scoped_witness_execution_receipt_header() -> String {
 pub fn scoped_witness_execution_receipt_wire_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "ScopedWitnessExecutionResult and ScopedWitnessExecutionOutcome are the semantic API; the TSV path, header, and labels are their single storage projection for the declared filesystem_read consumer, never a second result schema. Every scheduled head carries one row per expanded roster entry: ScopedWitnessExecuted is execution evidence, while ScopedWitnessSelectionSkipped is a typed nonfailure retaining the selection provenance — never absence-as-pass and never coverage. The decoder returns the modeled rows directly and refuses malformed columns, unknown kinds, unknown outcomes, missing exact-head identity, and empty receipts. The decoded batch_id and source_roots_digest are validated nonempty wire identity text rather than authored ScopedWitnessBatchId or ContentHash values: this boundary observes a worker projection and cannot honestly construct either brand from arbitrary TSV text; joins compare the retained exact text against the scheduled manifest authority. 🟡 feature:scoped-witness-receipt-typed-tabular-codec dissolve-on: a std tabular-codec carrier derives the header and row parser from the result product and outcome coproduct, deleting these hand-written wire labels while preserving ScopedWitnessExecutionReceiptPath and the decoded model surface.".to_string()
+            "ScopedWitnessExecutionResult and ScopedWitnessExecutionOutcome are the semantic API; the TSV path, header, and labels are their single storage projection for the declared filesystem_read consumer, never a second result schema. Every scheduled head carries one row per expanded roster entry: ScopedWitnessExecuted is execution evidence, while ScopedWitnessSelectionSkipped is a typed nonfailure retaining the selection provenance — never absence-as-pass and never coverage. The decoder returns the modeled rows directly and refuses malformed columns, unknown kinds, unknown outcomes, missing exact-head identity, and empty receipts. The decoded batch_id is validated nonempty wire identity text rather than an authored ScopedWitnessBatchId: this boundary observes a worker projection and cannot honestly construct that brand from arbitrary TSV text. The source_roots_digest carrier is family-narrow Fnv1a64Structural: wrong-family assignment is structurally impossible, while external text remains honestly guarded at rung two by fnv1a64_structural_hex_digest. The union exists only at the wire seam immediately before serialize_content_hash. The decoder intentionally refuses Sha1 and Sha256 wire identities rather than widening this structural-fingerprint field; RED controls pin both refusals. 🟡 feature:scoped-witness-receipt-typed-tabular-codec dissolve-on: a std tabular-codec carrier derives the header and row parser from the result product and outcome coproduct, deleting these hand-written wire labels while preserving ScopedWitnessExecutionReceiptPath and the decoded model surface.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -547,7 +545,7 @@ pub fn scoped_witness_execution_receipt_wire_note() -> String {
 pub fn scoped_witness_execution_receipt_refined_identity_scaffold_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "DESIGN section 4b guarantee-ladder scaffold for exactly two fields: ScopedWitnessExecutionResult.batch_id and ScopedWitnessExecutionResult.source_roots_digest. PREVIOUS RUNG: the decoded product named ScopedWitnessBatchId and ContentHash, but reached them by unchecked casts from arbitrary TSV text; that was rung inflation, not validation, and canonical stage0 emission exposed both casts as runtime panic. TEMPORARY RUNG: nonempty String identity text admitted only after the receipt decoder's exact-arity and nonempty checks. REASON AND ATTAINABLE CEILING: the bootstrap has no validating constructor for refined carriers at this boundary; this is the existing ROADMAP capability row `The capability audit: sole_constructor completeness, then seal the proof-carriers`, whose unverified population explicitly includes generic refinements and casts. BOUNDED POPULATION: only these two decoded wire fields; ScopedWitnessBatch.batch_id and the scheduling-side source-roots digest remain branded where their authority constructs them. CROSS-REPRESENTATION JOIN: a consumer compares decoded text only with scoped_witness_batch_id_wire_text or scoped_witness_source_roots_digest_wire_text projected from the scheduled authority, never through an implicit cast. RESTORATION TRIGGER: the sole_constructor completeness audit lands a validating constructor for refined carrier text; the decoder calls it, restores ScopedWitnessBatchId and ContentHash fields, and this scaffold deletes.".to_string()
+            "DESIGN section 4b guarantee-ladder scaffold for exactly one field: ScopedWitnessExecutionResult.batch_id. PREVIOUS RUNG: the decoded product named ScopedWitnessBatchId but reached it by an unchecked cast from arbitrary TSV text; that was rung inflation, not validation, and canonical stage0 emission exposed the cast as runtime panic. TEMPORARY RUNG: nonempty String identity text admitted only after the receipt decoder's exact-arity and nonempty check. REASON AND ATTAINABLE CEILING: the bootstrap has no validating constructor for this branded refined carrier at the decode boundary; this is the existing ROADMAP capability row `The capability audit: sole_constructor completeness, then seal the proof-carriers`, whose unverified population explicitly includes generic refinements and casts. BOUNDED POPULATION: only decoded ScopedWitnessExecutionResult.batch_id; ScopedWitnessBatch.batch_id remains branded where its authority constructs it. CROSS-REPRESENTATION JOIN: a consumer compares decoded text only with scoped_witness_batch_id_wire_text projected from the scheduled authority, never through an implicit cast. CLIMB ALREADY CONSUMED: #7480 grounded hash families, so source_roots_digest now reaches rung four against wrong-family assignment as Fnv1a64Structural; the minimum in-scope rung remains two at the external-text path, where fnv1a64_structural_hex_digest is the permanent validating mint and refusal is honest rather than debt. RESTORATION TRIGGER: the sole_constructor completeness audit lands a validating ScopedWitnessBatchId constructor for wire text; the decoder calls it, restores that field, and this scaffold deletes.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -557,8 +555,19 @@ pub fn scoped_witness_batch_id_wire_text(batch_id: NonEmptyStr) -> String {
     v1_rt::concat("".to_string(), batch_id.clone())
 }
 
-pub fn scoped_witness_source_roots_digest_wire_text(source_roots_digest: NonEmptyStr) -> String {
-    v1_rt::concat("".to_string(), source_roots_digest.clone())
+pub fn scoped_witness_source_roots_digest_wire_text(
+    source_roots_digest: Rc<Fnv1a64Structural>,
+) -> String {
+    v1_rt::concat(
+        "".to_string(),
+        serialize_content_hash(as_content_hash_structural(source_roots_digest.clone())),
+    )
+}
+
+pub fn scoped_witness_source_roots_digest_for_wire(source_roots: Rc<Vec<String>>) -> String {
+    scoped_witness_source_roots_digest_wire_text(scoped_witness_source_roots_digest(
+        source_roots.clone(),
+    ))
 }
 
 pub fn scoped_witness_kind_label(kind: WitnessKind) -> String {
@@ -627,7 +636,7 @@ pub fn scoped_witness_execution_result_tsv_row(row: Rc<ScopedWitnessExecutionRes
     Rc::new(vec![
         row.head_sha.clone(),
         row.batch_id.clone(),
-        row.source_roots_digest.clone(),
+        scoped_witness_source_roots_digest_wire_text(row.source_roots_digest.clone()),
         row.entry.clone(),
         row.function.clone(),
         scoped_witness_kind_label(row.witness_kind.clone()),
@@ -799,19 +808,22 @@ pub fn scoped_witness_execution_result_from_columns(
                                                                             if ((((!scoped_witness_exact_head_text_holds(head_sha.clone()) || (batch_id.clone() == "".to_string())) || (source_roots_digest.clone() == "".to_string())) || (entry.clone() == "".to_string())) || (function.clone() == "".to_string())) {
         None
     } else {
-        match scoped_witness_kind_from_label(witness_kind_label.clone()) {
+        match fnv1a64_structural_hex_digest(source_roots_digest.clone()) {
+    None => None,
+    Some(decoded_source_roots_digest) => match scoped_witness_kind_from_label(witness_kind_label.clone()) {
     None => None,
     Some(kind) => match scoped_witness_execution_outcome_from_wire(outcome_label.clone(), outcome_detail.clone()) {
     None => None,
     Some(outcome) => Some(Rc::new(ScopedWitnessExecutionResult {
     head_sha: head_sha.clone(),
     batch_id: batch_id.clone(),
-    source_roots_digest: source_roots_digest.clone(),
+    source_roots_digest: decoded_source_roots_digest.clone(),
     entry: entry.clone(),
     function: function.clone(),
     witness_kind: kind.clone(),
     outcome: outcome.clone(),
 })),
+},
 },
 }
     }

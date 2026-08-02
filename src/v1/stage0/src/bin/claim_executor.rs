@@ -996,7 +996,7 @@ fn runnable_from_value(value: &Value, ctx: &InterpContext) -> Result<Runnable, S
             };
             let source_roots_digest = match run_in_context_with_args(
                 ctx,
-                "scoped_witness_source_roots_digest",
+                "scoped_witness_source_roots_digest_for_wire",
                 &[(
                     (Some("source_roots".to_string())),
                     str_list_value(&source_roots),
@@ -1006,12 +1006,14 @@ fn runnable_from_value(value: &Value, ctx: &InterpContext) -> Result<Runnable, S
                 Ok(Value::Str(digest)) if !digest.is_empty() => digest,
                 Ok(other) => {
                     return Err(format!(
-                        "scoped_witness_source_roots_digest returned {}, expected ContentHash",
+                        "scoped_witness_source_roots_digest_for_wire returned {}, expected String",
                         other.type_label_public()
                     ))
                 }
                 Err(msg) => {
-                    return Err(format!("scoped_witness_source_roots_digest refused: {msg}"))
+                    return Err(format!(
+                        "scoped_witness_source_roots_digest_for_wire refused: {msg}"
+                    ))
                 }
             };
             let entries = match ctx.field(batch, "entries") {
