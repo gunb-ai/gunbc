@@ -52,10 +52,10 @@ pub(crate) mod test_module_hygiene_bridge;
 #[doc(hidden)]
 pub use materialization_provider_consumer::{
     materialization_provider_ctx_build_count_for_test, provider_ctx_reentrancy_refusal_for_test,
-    reset_materialization_provider_ctx_for_test,
-    resolve_closure_request_key_from_digests, resolved_graph_parts_semantic_digest,
-    serve_resolved_graph_stored_disk_probe, serve_resolved_graph_stored_disk_probe_for_test,
-    ResolvedGraphProviderOutcome, OUTPUT_COMPILE_CLEAN_DIAGNOSTIC_UNION,
+    reset_materialization_provider_ctx_for_test, resolve_closure_request_key_from_digests,
+    resolved_graph_parts_semantic_digest, serve_resolved_graph_stored_disk_probe,
+    serve_resolved_graph_stored_disk_probe_for_test, ResolvedGraphProviderOutcome,
+    OUTPUT_COMPILE_CLEAN_DIAGNOSTIC_UNION,
 };
 pub use phase_profile::{set_phase, FloorPhase, PhaseProfile};
 
