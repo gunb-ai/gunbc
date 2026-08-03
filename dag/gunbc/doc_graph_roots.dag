@@ -258,7 +258,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
   HandAuthoredDocBind {
     home: PlanDoc,
     slug: "witness-realization-plan",
-    primary_work: DeclarationRef { module_path: "v2.workflow.ci_floor_plan", decl_name: "gunbc_ci_floor_batches", field: WholeDeclaration },
+    primary_work: DeclarationRef { module_path: "v2.workflow.ci_floor_plan", decl_name: "gunbc_ci_floor_plan", field: WholeDeclaration },
     additional_works: [],
     dissolution: HasTrigger { text: "dissolves into a registered gunbc.plan.Plan row when its P1 lands" },
   },
@@ -279,7 +279,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
   HandAuthoredDocBind {
     home: PlanDoc,
     slug: "progress-observation-design",
-    primary_work: DeclarationRef { module_path: "v2.workflow.ci_floor_plan", decl_name: "gunbc_ci_floor_batches", field: WholeDeclaration },
+    primary_work: DeclarationRef { module_path: "v2.workflow.ci_floor_plan", decl_name: "gunbc_ci_floor_plan", field: WholeDeclaration },
     additional_works: [],
     dissolution: HasTrigger { text: "P0 lands the observation laws + glyph authority as .dag data rows (roadmap 2d ts-obs-model) — the carriers become the authority and this doc stays as the design record" },
   },
