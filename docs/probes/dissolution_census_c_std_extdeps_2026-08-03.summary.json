@@ -1,0 +1,91 @@
+{
+  "head": "44126ca1de0",
+  "scope": "dag/std + dag/extdeps",
+  "lane": "C",
+  "primary_cohort": {
+    "files": 39,
+    "markers": 56,
+    "bytes": 46044
+  },
+  "extended_cohort": {
+    "files": 79,
+    "markers": 132,
+    "bytes": 127353,
+    "extended_only_markers": 76
+  },
+  "std_files": 31,
+  "extdeps_files": 48,
+  "structural_groups": {
+    "dissolution_note": 92,
+    "dissolve_on_row": 25,
+    "dissolution_prose": 14,
+    "already_typed": 1
+  },
+  "semantic_classes": {
+    "SPEC_NORM": 126,
+    "RATIONALE": 2,
+    "RECEIPT": 2,
+    "XREF": 2
+  },
+  "disposition_classes": {
+    "authority_note_mixed": 46,
+    "Scaffold_candidate": 78,
+    "EVENT_fired_scaffold": 7,
+    "already_migrated": 1
+  },
+  "construction_mechanisms": {
+    "RealizationDispatch": 61,
+    "SubstrateMandatoryTag": 18,
+    "SingleAuthority": 52,
+    "Scaffold": 1
+  },
+  "topic_groups": {
+    "other": {
+      "markers": 82,
+      "bytes": 89200
+    },
+    "std_identity_hash_pin": {
+      "markers": 13,
+      "bytes": 19161
+    },
+    "emit_derive_surface": {
+      "markers": 10,
+      "bytes": 4513
+    },
+    "std_occurrence_binding": {
+      "markers": 9,
+      "bytes": 3598
+    },
+    "extdeps_bmc": {
+      "markers": 7,
+      "bytes": 3017
+    },
+    "extdeps_econ_sec": {
+      "markers": 6,
+      "bytes": 4709
+    },
+    "extdeps_realization_handlers": {
+      "markers": 5,
+      "bytes": 3155
+    }
+  },
+  "dissolution_buckets": {
+    "A_primary_dissolve_on_rows": "26 data *dissolve_on/*dissolution_trigger String rows with explicit scaffold marker \u2014 first migration wave to typed Disposition",
+    "B_dissolution_notes": "Notes recording rationale + trigger in one String (anemic serialization per dag-note-prose-census \u00a72) \u2014 split to N typed marks per disposition-carrier \u00a72a",
+    "C_already_typed": "Disposition-typed rows (bytes.dag pattern) \u2014 prose trigger row may remain until scaffold deletes",
+    "D_fired_history": "EVENT_fired_scaffold class \u2014 candidate for event-log row or crisp deletion (dag-note-prose-census \u00a73)",
+    "E_realization_dispatch": "extdeps/realization/* \u2014 RealizationDispatch mechanism; pairs with transport_argv_anemia Lane A"
+  },
+  "brief_count_reconciliation": {
+    "primary_files_at_head": 39,
+    "extended_files_at_head": 79,
+    "brief_claimed_files": 59,
+    "note": "Brief 59 sits between primary cohort (39 files with explicit dissolve-on:/dissolve-named rows) and extended cohort (79 files with any dissolution prose in data String). Likely counts files with \u22651 prose dissolve-on scaffold marker plus dissolution_note rows in a subset not matching strict prefix filter, or snapshot before recent additions. Extended cohort is the honest superset at HEAD."
+  },
+  "migration_sequencing": {
+    "1_closure_trigger_rows": "dhcp/v4 closure:|trigger:| format \u2014 21 rows, field structure agreed (dag-note-prose-census \u00a75)",
+    "2_realization_handlers": "extdeps/realization/* dissolve_on \u2014 RealizationDispatch, transport_argv Lane A sibling",
+    "3_std_substrate_walls": "occurrence_binding, content_hash, trait_derive_shape \u2014 SubstrateMandatoryTag",
+    "4_extdeps_interface_notes": "service upstream closed-vocabulary notes \u2014 mostly Terminal once _contracts region lands (disposition-carrier \u00a76)"
+  }
+}
