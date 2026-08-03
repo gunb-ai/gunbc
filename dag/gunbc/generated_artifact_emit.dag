@@ -39,7 +39,9 @@ import gunbc.stage0_emit_plan_emit {
   expected_stage0_emit_plan_generated_dag
 }
 import gunbc.v1_interpreter_dispatch_emit {
-  expected_v1_interpreter_dispatch_generated_rs
+  expected_v1_interpreter_dispatch_generated_rs,
+  V1InterpreterDispatchGenerated,
+  V1InterpreterDispatchGenerationRefused,
 }
 import gunbc.live_deploy.emit {
   expected_live_deploy_apply_script,
@@ -75,7 +77,11 @@ fn artifact_generate(a: GeneratedArtifact) -> ArtifactGenerationOutcome {
       Stage0EmitPlanGenerated { content } => artifact_generated(content: content)
       Stage0EmitPlanGenerationRefused => ArtifactGenerationRefused { reason: "stage0 emission plan refused" }
     }
-    V1InterpreterDispatchGeneratedRsArtifact => artifact_generated(content: expected_v1_interpreter_dispatch_generated_rs())
+    V1InterpreterDispatchGeneratedRsArtifact => match expected_v1_interpreter_dispatch_generated_rs() {
+      V1InterpreterDispatchGenerated { content } => artifact_generated(content: content)
+      V1InterpreterDispatchGenerationRefused { reason: _ } =>
+        ArtifactGenerationRefused { reason: "dispatch emit refused: roster row maps to unknown emit site" }
+    }
     LiveDeployApplyScriptArtifact => artifact_generated(content: expected_live_deploy_apply_script())
     LiveDeployRetractScriptArtifact => artifact_generated(content: expected_live_deploy_retract_script())
     AutoinstallUserDataArtifact { spec } => artifact_generated(content: autoinstall_user_data(payload: spec.payload))
