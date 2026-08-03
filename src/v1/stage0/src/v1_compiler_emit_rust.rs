@@ -4068,7 +4068,7 @@ pub fn value_ref_leaf_key_collision_note() -> String {
 pub fn duplicate_qualified_item_registry_marker_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Fail-closed marker row for duplicate exact module.leaf keys in the qualified item_registry overlay. build_qualified_item_registry inserts this sentinel instead of last-write-wins. emit_value_ref_ident / emit_var_ref / emit_typed_expr_base refuse via compile_error! when the sentinel is reached — is_duplicate_qualified_item_registry_marker is the single predicate those sites share (DEFINE-AND-CONSUME, not define-only).".to_string()
+            "Fail-closed marker row for duplicate exact module.leaf keys in the qualified item_registry overlay. build_qualified_item_registry inserts this sentinel instead of last-write-wins. Consumers: emit_qualified_value_ref_crate_ident (dotted Present path), value_ref_item_info_refusal (emit_var_ref / emit_typed_expr_base Present arms) — both refuse via emit_error_expr when is_duplicate_qualified_item_registry_marker holds. DEFINE-AND-CONSUME, not define-only.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -4091,16 +4091,6 @@ pub fn is_duplicate_qualified_item_registry_marker(info: Rc<ItemInfo>) -> bool {
     (info.module_name.clone() == "__DUPLICATE_QUALIFIED_ITEM_REGISTRY_KEY__".to_string())
 }
 
-pub fn emit_duplicate_qualified_item_registry_refuse(qualified_name: String) -> String {
-    v1_rt::concat(
-        v1_rt::concat(
-            "compile_error!(\"duplicate qualified item_registry key: ".to_string(),
-            qualified_name.clone(),
-        ),
-        "\")".to_string(),
-    )
-}
-
 pub fn value_ref_registry_lookup_key(resolved_name: String) -> String {
     {
         let qualifier = value_ref_qualifier_prefix(resolved_name.clone());
@@ -4119,6 +4109,38 @@ pub fn lookup_item_for_value_ref(
     lookup_item(
         registry.clone(),
         value_ref_registry_lookup_key(resolved_name.clone()),
+    )
+}
+
+pub fn emit_qualified_value_ref_crate_ident(
+    leaf: String,
+    info: Rc<ItemInfo>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+) -> String {
+    if is_duplicate_qualified_item_registry_marker(info.clone()) {
+        emit_error_expr(
+            "duplicate qualified item_registry key — refuse ambiguous module.leaf overlay"
+                .to_string(),
+            RenderTarget::Rust,
+        )
+    } else {
+        v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    "crate::".to_string(),
+                    module_to_filename(info.module_name.clone()),
+                ),
+                "::".to_string(),
+            ),
+            emit_import_name(leaf.clone(), registry.clone()),
+        )
+    }
+}
+
+pub fn value_ref_item_info_refusal(info: Rc<ItemInfo>) -> String {
+    emit_error_expr(
+        "duplicate qualified item_registry key — refuse ambiguous module.leaf overlay".to_string(),
+        RenderTarget::Rust,
     )
 }
 
@@ -17311,49 +17333,23 @@ pub fn emit_value_ref_ident(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
-    match lookup_item_for_value_ref(name.clone(), registry.clone()) {
-        Some(info) => {
-            if is_duplicate_qualified_item_registry_marker(info.clone()) {
-                emit_duplicate_qualified_item_registry_refuse(value_ref_registry_lookup_key(
-                    name.clone(),
-                ))
+    if v1_rt::string_contains(&name, ".".to_string()) {
+        {
+            let leaf = value_ref_qualified_leaf(name.clone());
+            let qualifier = value_ref_qualifier_prefix(name.clone());
+            if (qualifier.clone() != "".to_string()) {
+                match lookup_item_for_value_ref(name.clone(), registry.clone()) {
+    Some(info) => emit_qualified_value_ref_crate_ident(leaf.clone(), info.clone(), registry.clone()),
+    None => emit_error_expr("qualified value reference missing exact registry row — refuse authored qualifier".to_string(), RenderTarget::Rust),
+}
             } else {
-                if v1_rt::string_contains(&name, ".".to_string()) {
-                    {
-                        let leaf = value_ref_qualified_leaf(name.clone());
-                        v1_rt::concat(
-                            v1_rt::concat(
-                                v1_rt::concat(
-                                    "crate::".to_string(),
-                                    module_to_filename(info.module_name.clone()),
-                                ),
-                                "::".to_string(),
-                            ),
-                            emit_import_name(leaf.clone(), registry.clone()),
-                        )
-                    }
-                } else {
-                    emit_ident(name.clone(), RenderTarget::Rust)
-                }
-            }
-        }
-        None => {
-            if v1_rt::string_contains(&name, ".".to_string()) {
-                {
-                    let leaf = value_ref_qualified_leaf(name.clone());
-                    let qualifier = value_ref_qualifier_prefix(name.clone());
-                    if (qualifier.clone() != "".to_string()) {
-                        v1_rt::concat(
-                            v1_rt::concat(
-                                v1_rt::concat(
-                                    "crate::".to_string(),
-                                    module_to_filename(qualifier.clone()),
-                                ),
-                                "::".to_string(),
-                            ),
-                            emit_import_name(leaf.clone(), registry.clone()),
-                        )
-                    } else {
+                match v1_rt::map_get(&registry, leaf.clone()) {
+                    Some(info) => emit_qualified_value_ref_crate_ident(
+                        leaf.clone(),
+                        info.clone(),
+                        registry.clone(),
+                    ),
+                    None => {
                         if freemonoid_empty_from_emit_info(leaf.clone(), emit_info.clone()) {
                             emit_freemonoid_empty_rc_value()
                         } else {
@@ -17361,10 +17357,10 @@ pub fn emit_value_ref_ident(
                         }
                     }
                 }
-            } else {
-                emit_ident(name.clone(), RenderTarget::Rust)
             }
         }
+    } else {
+        emit_ident(name.clone(), RenderTarget::Rust)
     }
 }
 
@@ -17471,9 +17467,7 @@ pub fn emit_var_ref(
                             {
                                 Some(info) => {
                                     if is_duplicate_qualified_item_registry_marker(info.clone()) {
-                                        emit_duplicate_qualified_item_registry_refuse(
-                                            value_ref_registry_lookup_key(resolved_name.clone()),
-                                        )
+                                        value_ref_item_info_refusal(info.clone())
                                     } else {
                                         {
                                             let is_data = (info.kind.clone() == ItemKind::DataItem);
@@ -17629,53 +17623,44 @@ pub fn emit_typed_expr_base(
                                     }
                                 }
                             }
-                            None => {
-                                let resolved_name = value_ref_normalize_self_module(
+                            None => match lookup_item_for_value_ref(
+                                value_ref_normalize_self_module(
                                     n.clone(),
                                     scope.module_name.clone(),
-                                );
-                                match lookup_item_for_value_ref(
-                                    resolved_name.clone(),
-                                    registry.clone(),
-                                ) {
-                                    Some(info) => {
-                                        if is_duplicate_qualified_item_registry_marker(info.clone())
+                                ),
+                                registry.clone(),
+                            ) {
+                                Some(info) => {
+                                    if is_duplicate_qualified_item_registry_marker(info.clone()) {
+                                        value_ref_item_info_refusal(info.clone())
+                                    } else {
                                         {
-                                            emit_duplicate_qualified_item_registry_refuse(
-                                                value_ref_registry_lookup_key(
-                                                    resolved_name.clone(),
-                                                ),
-                                            )
-                                        } else {
-                                            {
-                                                let is_data =
-                                                    (info.kind.clone() == ItemKind::DataItem);
-                                                if is_data.clone() {
-                                                    v1_rt::concat(
-                                                        emit_value_ref_ident(
-                                                            n.clone(),
-                                                            registry.clone(),
-                                                            emit_info.clone(),
-                                                        ),
-                                                        "()".to_string(),
-                                                    )
-                                                } else {
+                                            let is_data = (info.kind.clone() == ItemKind::DataItem);
+                                            if is_data.clone() {
+                                                v1_rt::concat(
                                                     emit_value_ref_ident(
                                                         n.clone(),
                                                         registry.clone(),
                                                         emit_info.clone(),
-                                                    )
-                                                }
+                                                    ),
+                                                    "()".to_string(),
+                                                )
+                                            } else {
+                                                emit_value_ref_ident(
+                                                    n.clone(),
+                                                    registry.clone(),
+                                                    emit_info.clone(),
+                                                )
                                             }
                                         }
                                     }
-                                    None => emit_value_ref_ident(
-                                        n.clone(),
-                                        registry.clone(),
-                                        emit_info.clone(),
-                                    ),
                                 }
-                            }
+                                None => emit_value_ref_ident(
+                                    n.clone(),
+                                    registry.clone(),
+                                    emit_info.clone(),
+                                ),
+                            },
                         }
                     }
                 }
