@@ -22,7 +22,7 @@ use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
-pub enum EffectShape<K: Clone> {
+pub enum EffectShape<K> {
     ReadEffect,
     UpsertEffect { key_source: K },
     DeleteEffect { key_source: K },

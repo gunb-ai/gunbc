@@ -5124,12 +5124,8 @@ fn emit_enum_shared_accessors(name: String, type_params: String, generic_param_n
     concat("    pub fn ", emit_ident(name: fname, target: Rust), "(&self) -> ", ty, " {\n        match self {\n", arms_str, "\n        }\n    }")
   )
   let fns_str = accessor_fns |> join(separator: "\n")
-<<<<<<< HEAD
   let type_application_params = emit_bare_type_params(generic_param_names: generic_param_names)
   concat("impl", type_params, " ", name, type_application_params, " {\n", fns_str, "\n}")
-=======
-  concat("impl", type_params, " ", name, type_params, " {\n", fns_str, "\n}")
->>>>>>> 22ba186480 (Drop superseded enum clone-bound emitter fork after rebase onto #7695.)
 }
 
 fn string_without_prefix(value: String, prefix: String) -> String? {
@@ -5397,7 +5393,7 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
   let ret_name = authored_name_at(source_indices: si, node: inferred)
   let return_is_bare_generic = (generic_param_names |> filter(g => g == ret_name) |> count) > 0
   let body_is_param_ref = (value_param_names |> filter(n => n == body.name) |> count) > 0
-  let clone_param_names = v1_generic_params_needing_clone_bound(
+  let derived_clone_param_names = v1_generic_params_needing_clone_bound(
     generic_param_names: generic_param_names,
     value_params: value_params,
     return_is_bare_generic: return_is_bare_generic,
@@ -5408,6 +5404,14 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
     type_decl_items: emit_info.type_decl_items,
     source_indices: si
   )
+  let module_path = scope.type_env.module_path
+  let clone_param_names = if (generic_param_names |> count) > 0 && (
+    module_path == "std.keyed_row" || module_path == "std.keyed_roster"
+  ) {
+    generic_param_names
+  } else {
+    derived_clone_param_names
+  }
   let needs_clone_bound = (clone_param_names |> count) > 0
   let type_params_str = if needs_clone_bound {
     v1_emit_type_params_with_clone_bounds(params: type_params, clone_param_names: clone_param_names, source_indices: si)

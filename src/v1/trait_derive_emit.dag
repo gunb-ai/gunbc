@@ -261,7 +261,7 @@ fn v1_generic_params_needing_clone_bound(
   type_decl_items: Map<String, Node>,
   source_indices: Map<String, NewlineIndex>
 ) -> List<String> {
-  generic_param_names |> filter(g =>
+  let seed = generic_param_names |> filter(g =>
     v1_type_param_needs_clone_bound(
       param_name: g,
       return_is_bare_generic: return_is_bare_generic,
@@ -285,6 +285,11 @@ fn v1_generic_params_needing_clone_bound(
       source_indices: source_indices
     )
   )
+  if (seed |> count) == 0 {
+    seed
+  } else {
+    generic_param_names
+  }
 }
 
 fn v1_field_type_expr_needs_clone_bound_for_param_narrow(
