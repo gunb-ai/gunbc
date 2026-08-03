@@ -2713,7 +2713,11 @@ fn compile_clean_scope_plan_from_touched_paths(
         } if ctx.sym_eq(*variant_name, "RefuseShardRosterDuplicate") => {
             let reason = match ctx.field(fields, "reason") {
                 Some(v1_interpreter::Value::Str(r)) => r.clone(),
-                _ => "shard roster duplicate path key refused at admission".to_string(),
+                _ => {
+                    return Err(
+                        "RefuseShardRosterDuplicate missing `reason` string field".to_string(),
+                    )
+                }
             };
             eprintln!("compile-clean scope: refused ({reason})");
             Ok(CompileCleanScopePlan::Refused { reason })
