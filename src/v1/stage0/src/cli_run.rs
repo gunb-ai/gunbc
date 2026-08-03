@@ -8824,6 +8824,146 @@ fn emit_floor_drain_receipt(
     );
 }
 
+const SELECTION_DEGRADATION_RECEIPT_ENTRY: &str = "dag/gunbc/selection_degradation_receipt.dag";
+
+/// Kept so `gunbc.observation_emit_census` roster hygiene cannot go stale after the
+/// raw `[selection-degradation]` receipt line dissolves into the observation projection.
+#[allow(dead_code)]
+pub const SELECTION_DEGRADATION_CENSUS_MARKER: &str = "[selection-degradation]";
+
+fn node_frontier_selection_mode_tag(mode: NodeFrontierSelectionMode) -> &'static str {
+    match mode {
+        NodeFrontierSelectionMode::Off => "off",
+        NodeFrontierSelectionMode::Applied => "applied",
+        NodeFrontierSelectionMode::PredictOnly => "predict_only",
+    }
+}
+
+/// Measured selection-degradation facts finalized at discovery completion.
+#[derive(Debug, Clone)]
+pub struct SelectionDegradationSnapshot {
+    pub selection_mode_tag: String,
+    pub selected_entry_groups: usize,
+    pub total_entry_groups: usize,
+    pub categorization_unavailable: bool,
+    pub categorization_reason: String,
+}
+
+impl SelectionDegradationSnapshot {
+    pub fn from_summary(selection: NodeFrontierSelectionMode, summary: &DiscoverySummary) -> Self {
+        Self {
+            selection_mode_tag: node_frontier_selection_mode_tag(selection).to_string(),
+            selected_entry_groups: summary.selected_entry_groups,
+            total_entry_groups: summary.total_entry_groups,
+            categorization_unavailable: summary.selection_categorization_reason.is_some(),
+            categorization_reason: summary
+                .selection_categorization_reason
+                .clone()
+                .unwrap_or_default(),
+        }
+    }
+}
+
+fn selection_degradation_interp_ctx(
+    source_roots: &[String],
+) -> Result<(v1_interpreter::InterpContext, String), String> {
+    let entry = resolve_entry_file_under_roots(source_roots, SELECTION_DEGRADATION_RECEIPT_ENTRY)
+        .map_err(|_| {
+        format!(
+            "selection-degradation receipt REFUSED — {SELECTION_DEGRADATION_RECEIPT_ENTRY} \
+                 not found under source roots"
+        )
+    })?;
+    let (graph, indices) = resolve_entry_graph_shared(source_roots, &entry)
+        .map_err(|e| format!("selection-degradation receipt REFUSED — resolve {entry}: {e}"))?;
+    Ok((
+        make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic),
+        entry,
+    ))
+}
+
+fn selection_degradation_dag_args(
+    snapshot: &SelectionDegradationSnapshot,
+) -> Vec<(Option<String>, v1_interpreter::Value)> {
+    vec![
+        (
+            Some("selection_mode_tag".to_string()),
+            v1_interpreter::Value::Str(snapshot.selection_mode_tag.clone()),
+        ),
+        (
+            Some("selected".to_string()),
+            v1_interpreter::Value::Int(snapshot.selected_entry_groups as i64),
+        ),
+        (
+            Some("total".to_string()),
+            v1_interpreter::Value::Int(snapshot.total_entry_groups as i64),
+        ),
+        (
+            Some("categorization_unavailable".to_string()),
+            v1_interpreter::Value::Bool(snapshot.categorization_unavailable),
+        ),
+        (
+            Some("categorization_reason".to_string()),
+            v1_interpreter::Value::Str(snapshot.categorization_reason.clone()),
+        ),
+    ]
+}
+
+fn eval_selection_degradation_fn(
+    source_roots: &[String],
+    fn_name: &str,
+    snapshot: &SelectionDegradationSnapshot,
+) -> Result<String, String> {
+    let (ctx, entry) = selection_degradation_interp_ctx(source_roots)?;
+    match v1_interpreter::run_in_context_with_args(
+        &ctx,
+        fn_name,
+        &selection_degradation_dag_args(snapshot),
+        false,
+    ) {
+        Ok(v1_interpreter::Value::Str(line)) => Ok(line),
+        Ok(other) => Err(format!(
+            "selection-degradation receipt REFUSED — {fn_name} returned `{}`, expected Str \
+             (entry {entry})",
+            ctx.format_value(&other)
+        )),
+        Err(e) => Err(format!(
+            "selection-degradation receipt REFUSED — {fn_name} eval: {e}"
+        )),
+    }
+}
+
+/// Bracket-tagged stderr line for discovery completion (also embedded in `[measurement]`).
+pub fn render_selection_degradation_receipt_line(
+    source_roots: &[String],
+    snapshot: &SelectionDegradationSnapshot,
+) -> Result<String, String> {
+    eval_selection_degradation_fn(source_roots, "selection_degradation_receipt_line", snapshot)
+}
+
+/// Key=value body written to `target/floor-selection-degradation-receipt.txt` and appended to
+/// `floor-resolve-receipt.txt`.
+pub fn render_selection_degradation_receipt_body(
+    source_roots: &[String],
+    snapshot: &SelectionDegradationSnapshot,
+) -> Result<String, String> {
+    eval_selection_degradation_fn(source_roots, "selection_degradation_receipt_body", snapshot)
+}
+
+/// P2 floor prep-tax receipt on stderr after every discovery completion.
+pub fn emit_selection_degradation_receipt(
+    source_roots: &[String],
+    selection: NodeFrontierSelectionMode,
+    summary: &DiscoverySummary,
+) {
+    let _ = SELECTION_DEGRADATION_CENSUS_MARKER;
+    let snapshot = SelectionDegradationSnapshot::from_summary(selection, summary);
+    match render_selection_degradation_receipt_line(source_roots, &snapshot) {
+        Ok(line) => eprintln!("{line}"),
+        Err(msg) => eprintln!("{msg}"),
+    }
+}
+
 /// Enforce the host-budget-derived entry cap on the private typed cache. Evictions
 /// are counted and logged — a typed, located diagnostic, never a silent widen.
 /// Victim selection is arbitrary (first `HashMap` key), not LRU or load-aware:
@@ -15037,6 +15177,13 @@ pub struct DiscoverySummary {
     /// module names is a property of the source closure: independent of cache warmth, resolve order,
     /// and — critically for a calibration datum — of the diff under test.
     pub roster_closure_nodes: usize,
+    /// Entry-group grain of the discovery roster (`entry_row_groups`); set at completion.
+    pub total_entry_groups: usize,
+    /// Distinct entries with at least one executed witness (not selection-skipped only).
+    pub selected_entry_groups: usize,
+    /// When Applied mode could not run upfront import-closure categorization; per-shard
+    /// selection remains authoritative and the completion receipt still publishes counts.
+    pub selection_categorization_reason: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -19262,6 +19409,7 @@ pub fn run_discovery_corpus_with_options(
     options: DiscoveryCorpusOptions,
 ) -> Result<DiscoverySummary, String> {
     let pump_started = std::time::Instant::now();
+    let selection = options.node_frontier_selection;
     let out = run_discovery_corpus_with_options_inner(
         source_roots,
         scan_dirs,
@@ -19274,6 +19422,9 @@ pub fn run_discovery_corpus_with_options(
         &discovery_phase_totals::PUMP_WALL_MS,
         pump_started.elapsed(),
     );
+    if let Ok(summary) = &out {
+        emit_selection_degradation_receipt(source_roots, selection, summary);
+    }
     out
 }
 
@@ -19558,6 +19709,23 @@ fn run_discovery_corpus_with_options_inner(
         &diff_edits,
         &changed_paths,
     );
+    let selection_categorization_reason =
+        if options.node_frontier_selection == NodeFrontierSelectionMode::Applied {
+            let declared_paths = index.module_graph_facts.declared_repo_paths();
+            let touched: Vec<String> = diff_edits.touched_entry_files.iter().cloned().collect();
+            match discovery_entry_fast_skip_without_resolve(
+                &rows,
+                &index.module_graph_facts,
+                &declared_paths,
+                &touched,
+                &diff_edits,
+            ) {
+                Ok(_) => None,
+                Err(e) => Some(e),
+            }
+        } else {
+            None
+        };
     // Derive every leg for the WHOLE roster here, above the width dispatch, while this
     // thread's shared index is warm. At width > 1 the pool hands each worker its own chunk
     // of rows, so priming inside `run_discovery_rows` would build one interpreter context
@@ -19624,7 +19792,13 @@ fn run_discovery_corpus_with_options_inner(
                 "[calibration] closure consistency: pre-resolve loader-closure union == post-resolve union == {} node(s)",
                 pre_resolve_closure_nodes
             );
-            Ok(attach_deferred_discovery_rows(summary, deferred_rows))
+            Ok(finalize_discovery_summary(
+                summary,
+                &rows,
+                options.node_frontier_selection,
+                selection_categorization_reason.clone(),
+                deferred_rows,
+            ))
         }
         DiscoveryWidthPolicy::Adaptive(governor) => {
             // Adaptive pool: entry-groups drain through governor-admitted workers. Each worker
@@ -19723,8 +19897,11 @@ fn run_discovery_corpus_with_options_inner(
                     drain_prev = snap;
                 }
                 emit_floor_drain_receipt(&index, total_groups, &drain_peaks);
-                return Ok(attach_deferred_discovery_rows(
+                return Ok(finalize_discovery_summary(
                     merge_discovery_summaries(summaries),
+                    &rows,
+                    options.node_frontier_selection,
+                    selection_categorization_reason.clone(),
                     deferred_rows,
                 ));
             }
@@ -19899,19 +20076,33 @@ fn run_discovery_corpus_with_options_inner(
              worker error — scheduler invariant violated; refusing a partial corpus"
         ));
             }
-            Ok(attach_deferred_discovery_rows(
+            Ok(finalize_discovery_summary(
                 merge_discovery_summaries(summaries),
+                &rows,
+                options.node_frontier_selection,
+                selection_categorization_reason,
                 deferred_rows,
             ))
         }
     };
 }
 
-fn attach_deferred_discovery_rows(
+fn finalize_discovery_summary(
     mut summary: DiscoverySummary,
+    rows: &[DiscoveryRow],
+    _selection: NodeFrontierSelectionMode,
+    selection_categorization_reason: Option<String>,
     deferred_rows: Vec<DeferredDiscoveryRow>,
 ) -> DiscoverySummary {
     summary.deferred_rows = deferred_rows;
+    summary.total_entry_groups = entry_row_groups(rows).len();
+    summary.selected_entry_groups = summary
+        .witness_outcomes
+        .iter()
+        .map(|o| o.entry.as_str())
+        .collect::<std::collections::HashSet<_>>()
+        .len();
+    summary.selection_categorization_reason = selection_categorization_reason;
     summary
 }
 
@@ -19955,6 +20146,9 @@ fn merge_discovery_summaries(summaries: Vec<DiscoverySummary>) -> DiscoverySumma
         performance_receipts: Vec::new(),
         total_measured_nanos: 0,
         roster_closure_nodes: 0,
+        total_entry_groups: 0,
+        selected_entry_groups: 0,
+        selection_categorization_reason: None,
     };
     for summary in summaries {
         merged.total += summary.total;
@@ -20284,6 +20478,9 @@ fn run_discovery_rows(
         performance_receipts: Vec::new(),
         total_measured_nanos: 0,
         roster_closure_nodes: 0,
+        total_entry_groups: 0,
+        selected_entry_groups: 0,
+        selection_categorization_reason: None,
     };
     let skip_enabled = selection != NodeFrontierSelectionMode::Off;
     // This shard's SUBJECT union closure, accumulated from the graphs it resolves. An ordinary
@@ -24681,11 +24878,13 @@ mod moduleless_entry_skip_tests {
 #[cfg(test)]
 mod discovery_summary_merge_tests {
     use super::{
-        compute_histogram_data, merge_discovery_summaries, project_witness_cost_receipt,
+        compute_histogram_data, finalize_discovery_summary, merge_discovery_summaries,
+        project_witness_cost_receipt, render_selection_degradation_receipt_line,
         repo_relative_dag_path, run_discovery_corpus_with_options, top_n_slowest_witnesses,
-        witness_execution_leg_cache_put, ClaimOutcome, DiscoveryCorpusOptions, DiscoverySummary,
-        DiscoveryWidthPolicy, DiscoveryWitnessOutcome, EntryResolveReceipt,
-        NodeFrontierSelectionMode, ResolveStageNanos,
+        witness_execution_leg_cache_put, ClaimOutcome, DiscoveryCorpusOptions, DiscoveryRow,
+        DiscoverySummary, DiscoveryWidthPolicy, DiscoveryWitnessOutcome, EntryResolveReceipt,
+        NodeFrontierSelectionMode, ResolveStageNanos, SelectionDegradationSnapshot,
+        SelectionSkippedDiscoveryRow,
     };
     use crate::v1_interpreter::{ExecutionMode, PerformanceReceipt};
 
@@ -24774,6 +24973,9 @@ mod discovery_summary_merge_tests {
             ],
             total_measured_nanos: 56_000,
             roster_closure_nodes: 42,
+            total_entry_groups: 2,
+            selected_entry_groups: 2,
+            selection_categorization_reason: None,
         }
     }
 
@@ -24789,6 +24991,93 @@ mod discovery_summary_merge_tests {
         b.roster_closure_nodes = 71;
         let merged = merge_discovery_summaries(vec![a, b]);
         assert_eq!(merged.roster_closure_nodes, 71);
+    }
+
+    /// RED control: skip-before-resolve records `selection_skipped_rows` but does NOT add
+    /// `witness_outcomes` for those entries. `selected_entry_groups` must count executed
+    /// entry groups only — otherwise narrowed Applied runs mislabel as Superset.
+    #[test]
+    fn finalize_discovery_summary_selected_entry_groups_exclude_skip_before_resolve() {
+        let rows = vec![
+            DiscoveryRow {
+                label: "w1".into(),
+                entry: "entry_a.dag".into(),
+                function: "f1".into(),
+                reads_live_tree: false,
+            },
+            DiscoveryRow {
+                label: "w2".into(),
+                entry: "entry_b.dag".into(),
+                function: "f2".into(),
+                reads_live_tree: false,
+            },
+            DiscoveryRow {
+                label: "w3".into(),
+                entry: "entry_c.dag".into(),
+                function: "f3".into(),
+                reads_live_tree: false,
+            },
+        ];
+        let summary = DiscoverySummary {
+            total: 2,
+            passed: 2,
+            skipped: 1,
+            deferred_rows: Vec::new(),
+            predicted_unaffected: Vec::new(),
+            selection_skipped_rows: vec![SelectionSkippedDiscoveryRow {
+                entry: "entry_c.dag".into(),
+                function: "f3".into(),
+                provenance: "skip-before-resolve-fast-path".into(),
+            }],
+            divergences: Vec::new(),
+            failures: Vec::new(),
+            witness_outcomes: vec![
+                DiscoveryWitnessOutcome {
+                    entry: "entry_a.dag".into(),
+                    module_path: "test.a".into(),
+                    function: "f1".into(),
+                    outcome: ClaimOutcome::Pass,
+                    execution_leg: "InterpretedLeg".into(),
+                },
+                DiscoveryWitnessOutcome {
+                    entry: "entry_b.dag".into(),
+                    module_path: "test.b".into(),
+                    function: "f2".into(),
+                    outcome: ClaimOutcome::Pass,
+                    execution_leg: "InterpretedLeg".into(),
+                },
+            ],
+            entry_resolve_receipts: Vec::new(),
+            total_resolve_nanos: 0,
+            total_stage_nanos: ResolveStageNanos::default(),
+            performance_receipts: Vec::new(),
+            total_measured_nanos: 0,
+            roster_closure_nodes: 0,
+            total_entry_groups: 0,
+            selected_entry_groups: 0,
+            selection_categorization_reason: None,
+        };
+        let finalized = finalize_discovery_summary(
+            summary,
+            &rows,
+            NodeFrontierSelectionMode::Applied,
+            None,
+            Vec::new(),
+        );
+        assert_eq!(finalized.total_entry_groups, 3);
+        assert_eq!(finalized.selected_entry_groups, 2);
+        let snapshot = SelectionDegradationSnapshot::from_summary(
+            NodeFrontierSelectionMode::Applied,
+            &finalized,
+        );
+        let line =
+            render_selection_degradation_receipt_line(&source_roots(), &snapshot).expect("receipt");
+        assert!(
+            line.contains("selection_state=SelectionApplied"),
+            "skip-before-resolve must not inflate selected to total (would read Superset): {line}"
+        );
+        assert!(line.contains("selected_entry_groups=2"));
+        assert!(line.contains("total_entry_groups=3"));
     }
 
     #[test]
