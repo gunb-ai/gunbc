@@ -450,27 +450,27 @@ data compiler_frontier_measured_upstream_unresolved_blocker: FrontierBlockerClas
 data compiler_frontier_row_00_compile: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
   module_path: "src/v2/compiler/00_compile.dag",
   closure_reads: 102,
-  measured_blocker: compiler_frontier_measured_upstream_unresolved_blocker,
-  located_stage: ProbeStageSemanticDerivation,
-  located_reason: gate_a_flip_probe_unresolved_compiler_error_reason,
-  migration_trigger: ^migrate_when_closure_self_emits_cargo_green
+  measured_blocker: NameResolutionGap,
+  located_stage: ProbeStageAssemble,
+  located_reason: ^resolve_module_not_found,
+  migration_trigger: ^migrate_when_namespace_only_resolution_lands
 )
 
 data compiler_frontier_row_01_tokenize: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
   module_path: "src/v2/compiler/01_tokenize.dag",
   closure_reads: 17,
-  measured_blocker: EmitSurfaceGap,
-  located_stage: ProbeStageEmit,
-  located_reason: curated_cargo_probe_type_ref_import_missing_reason,
+  measured_blocker: RealizationGap,
+  located_stage: ProbeStageAssemble,
+  located_reason: ^parse_grammar_choice_overlap_residue,
   migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
 
 data compiler_frontier_row_02_parse: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
   module_path: "src/v2/compiler/02_parse.dag",
   closure_reads: 65,
-  measured_blocker: compiler_frontier_measured_upstream_unresolved_blocker,
-  located_stage: ProbeStageSemanticDerivation,
-  located_reason: gate_a_flip_probe_unresolved_compiler_error_reason,
+  measured_blocker: RealizationGap,
+  located_stage: ProbeStageAssemble,
+  located_reason: ^parse_grammar_choice_overlap_residue,
   migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
 
@@ -483,10 +483,10 @@ data compiler_frontier_row_03_body_producer: CompilerModuleFrontierRow = quarant
 data compiler_frontier_row_03_ingest: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
   module_path: "src/v2/compiler/03_ingest.dag",
   closure_reads: 104,
-  measured_blocker: compiler_frontier_measured_upstream_unresolved_blocker,
-  located_stage: ProbeStageSemanticDerivation,
-  located_reason: gate_a_flip_probe_unresolved_compiler_error_reason,
-  migration_trigger: ^migrate_when_closure_self_emits_cargo_green
+  measured_blocker: NameResolutionGap,
+  located_stage: ProbeStageAssemble,
+  located_reason: ^resolve_module_not_found,
+  migration_trigger: ^migrate_when_namespace_only_resolution_lands
 )
 
 data compiler_frontier_row_03_name_resolve: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
@@ -516,18 +516,18 @@ data compiler_frontier_row_03_resolve: CompilerModuleFrontierRow = execution_mea
 data compiler_frontier_row_04_infer: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
   module_path: "src/v2/compiler/04_infer.dag",
   closure_reads: 44,
-  measured_blocker: compiler_frontier_measured_upstream_unresolved_blocker,
-  located_stage: ProbeStageSemanticDerivation,
-  located_reason: gate_a_flip_probe_unresolved_compiler_error_reason,
+  measured_blocker: RealizationGap,
+  located_stage: ProbeStageAssemble,
+  located_reason: ^parse_grammar_choice_overlap_residue,
   migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
 
 data compiler_frontier_row_05_emit: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
   module_path: "src/v2/compiler/05_emit.dag",
   closure_reads: 52,
-  measured_blocker: compiler_frontier_measured_upstream_unresolved_blocker,
-  located_stage: ProbeStageSemanticDerivation,
-  located_reason: gate_a_flip_probe_unresolved_compiler_error_reason,
+  measured_blocker: RealizationGap,
+  located_stage: ProbeStageAssemble,
+  located_reason: ^parse_grammar_choice_overlap_residue,
   migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
 
@@ -543,31 +543,37 @@ data compiler_frontier_row_05_emit_orchestration: CompilerModuleFrontierRow = ex
 data compiler_frontier_row_05_eval: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
   module_path: "src/v2/compiler/05_eval.dag",
   closure_reads: 51,
-  measured_blocker: compiler_frontier_measured_upstream_unresolved_blocker,
-  located_stage: ProbeStageSemanticDerivation,
-  located_reason: gate_a_flip_probe_unresolved_compiler_error_reason,
+  measured_blocker: RealizationGap,
+  located_stage: ProbeStageAssemble,
+  located_reason: ^parse_grammar_choice_overlap_residue,
   migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
 
 data compiler_frontier_row_06_translate: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
   module_path: "src/v2/compiler/06_translate.dag",
   closure_reads: 51,
-  measured_blocker: compiler_frontier_measured_upstream_unresolved_blocker,
-  located_stage: ProbeStageSemanticDerivation,
-  located_reason: gate_a_flip_probe_unresolved_compiler_error_reason,
+  measured_blocker: RealizationGap,
+  located_stage: ProbeStageAssemble,
+  located_reason: ^parse_grammar_choice_overlap_residue,
   migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
 
-data compiler_frontier_row_07_target_carriers: CompilerModuleFrontierRow = quarantine_seed_retained_row_from_oracle(
-  oracle_row: producer_emission_oracle_row_07_target_carriers,
+data compiler_frontier_row_07_target_carriers: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
+  module_path: "src/v2/compiler/07_target_carriers.dag",
   closure_reads: 36,
-  pre_flip_blocker: EmitSurfaceGap
+  measured_blocker: RealizationGap,
+  located_stage: ProbeStageAssemble,
+  located_reason: ^parse_grammar_choice_overlap_residue,
+  migration_trigger: ^migrate_when_cssl_assemble_wet_receipt_greens
 )
 
-data compiler_frontier_row_discovery_enumeration: CompilerModuleFrontierRow = quarantine_seed_retained_row_from_oracle(
-  oracle_row: producer_emission_oracle_row_discovery_enumeration,
+data compiler_frontier_row_discovery_enumeration: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
+  module_path: "src/v2/compiler/discovery_enumeration.dag",
   closure_reads: 12,
-  pre_flip_blocker: EmitSurfaceGap
+  measured_blocker: RealizationGap,
+  located_stage: ProbeStageAssemble,
+  located_reason: ^parse_grammar_choice_overlap_residue,
+  migration_trigger: ^migrate_when_cssl_assemble_wet_receipt_greens
 )
 
 data compiler_frontier_row_emit_host: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
@@ -609,25 +615,28 @@ data compiler_frontier_row_emit_semantic_decl: CompilerModuleFrontierRow = execu
 data compiler_frontier_row_fold_lowering: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
   module_path: "src/v2/compiler/fold_lowering.dag",
   closure_reads: 36,
-  measured_blocker: EmitSurfaceGap,
-  located_stage: ProbeStageEmit,
-  located_reason: curated_cargo_probe_type_ref_import_missing_reason,
+  measured_blocker: RealizationGap,
+  located_stage: ProbeStageAssemble,
+  located_reason: ^parse_grammar_choice_overlap_residue,
   migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
 
 data compiler_frontier_row_materialization_carriers: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
   module_path: "src/v2/compiler/materialization_carriers.dag",
   closure_reads: 35,
-  measured_blocker: compiler_frontier_measured_upstream_unresolved_blocker,
-  located_stage: ProbeStageSemanticDerivation,
-  located_reason: gate_a_flip_probe_unresolved_compiler_error_reason,
+  measured_blocker: RealizationGap,
+  located_stage: ProbeStageAssemble,
+  located_reason: ^parse_grammar_choice_overlap_residue,
   migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
 
-data compiler_frontier_row_parse_engine_hooks: CompilerModuleFrontierRow = quarantine_seed_retained_row_from_oracle(
-  oracle_row: producer_emission_oracle_row_parse_engine_hooks,
+data compiler_frontier_row_parse_engine_hooks: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
+  module_path: "src/v2/compiler/parse_engine_hooks.dag",
   closure_reads: 2,
-  pre_flip_blocker: EmitSurfaceGap
+  measured_blocker: RealizationGap,
+  located_stage: ProbeStageAssemble,
+  located_reason: ^parse_grammar_choice_overlap_residue,
+  migration_trigger: ^migrate_when_cssl_assemble_wet_receipt_greens
 )
 
 data compiler_frontier_row_program_assembly: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
@@ -642,32 +651,37 @@ data compiler_frontier_row_program_assembly: CompilerModuleFrontierRow = executi
 data compiler_frontier_row_program_partition: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
   module_path: "src/v2/compiler/program_partition.dag",
   closure_reads: 58,
-  measured_blocker: compiler_frontier_measured_upstream_unresolved_blocker,
-  located_stage: ProbeStageSemanticDerivation,
-  located_reason: gate_a_flip_probe_unresolved_compiler_error_reason,
+  measured_blocker: RealizationGap,
+  located_stage: ProbeStageAssemble,
+  located_reason: ^parse_grammar_choice_overlap_residue,
   migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
 
-data compiler_frontier_row_self_host: CompilerModuleFrontierRow = knowledge_attributed_blocker_class_seed_retained_row(
+data compiler_frontier_row_self_host: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
   module_path: "src/v2/compiler/self_host.dag",
   closure_reads: 28,
-  measured_blocker: EmitSurfaceGap,
+  measured_blocker: RealizationGap,
+  located_stage: ProbeStageAssemble,
+  located_reason: ^parse_grammar_choice_overlap_residue,
   migration_trigger: ^migrate_when_frontier_harness_repurposed
 )
 
 data compiler_frontier_row_source_authority: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
   module_path: "src/v2/compiler/source_authority.dag",
   closure_reads: 87,
-  measured_blocker: compiler_frontier_measured_upstream_unresolved_blocker,
-  located_stage: ProbeStageSemanticDerivation,
-  located_reason: gate_a_flip_probe_unresolved_compiler_error_reason,
-  migration_trigger: ^migrate_when_closure_self_emits_cargo_green
+  measured_blocker: NameResolutionGap,
+  located_stage: ProbeStageAssemble,
+  located_reason: ^resolve_module_not_found,
+  migration_trigger: ^migrate_when_namespace_only_resolution_lands
 )
 
-data compiler_frontier_row_use_site_verdict: CompilerModuleFrontierRow = quarantine_seed_retained_row_from_oracle(
-  oracle_row: producer_emission_oracle_row_use_site_verdict,
+data compiler_frontier_row_use_site_verdict: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
+  module_path: "src/v2/compiler/use_site_verdict.dag",
   closure_reads: 9,
-  pre_flip_blocker: EmitSurfaceGap
+  measured_blocker: RealizationGap,
+  located_stage: ProbeStageAssemble,
+  located_reason: ^parse_grammar_choice_overlap_residue,
+  migration_trigger: ^migrate_when_cssl_assemble_wet_receipt_greens
 )
 
 data compiler_frontier_roster: List<CompilerModuleFrontierRow> = [
