@@ -169,7 +169,7 @@ Operator pause — **last dispatch wave of this stretch**. No new PRs or childre
 | P2 receipts | `warm-wolf-777` | [#7722](https://github.com/gunb-ai/gunbc/pull/7722) | `684dd67e044b` | 2/2 | pending | `selection_degradation_receipt.dag` + cli_run emit paths; E0425 fix landed |
 | P3 width-2 | `merry-ibex-227` | — | — | — | — | **HOLD** — needs P1 banked **and** Rc→Arc index share |
 | P4 broad native | `sharp-carp-537` | — | — | — | — | **HOLD** — after D1 amortized (P1 redirect) |
-| Closeout | `warm-lynx-428` | — | — | — | — | Track only (do not open PRs; #7726 was closed) |
+| Closeout | `warm-lynx-428` | — | — | — | — | Track only (do not open PRs; #7726 and #7731 closed — stacked P1+P2 forks) |
 
 **Sibling (do not duplicate):** [#7720](https://github.com/gunb-ai/gunbc/pull/7720) (sleek-dove) — selection skip + release≠eviction log accounting; still OPEN at park; absorb after merge.
 
