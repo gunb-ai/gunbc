@@ -129,6 +129,7 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/container/oci/digest.dag",
   "dag/extdeps/git/publication_transport.dag",
   "dag/extdeps/github/actions_environment.dag",
+  "dag/extdeps/numeric/ieee754_float.dag",
   "dag/extdeps/os/debian.dag",
   "dag/extdeps/tools/wc.dag",
   "dag/extdeps/vendor/atlassian.dag",
