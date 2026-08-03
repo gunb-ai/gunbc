@@ -1,0 +1,24 @@
+module std.keyed_row
+
+import std.types { List }
+
+data keyed_row_note: String = "Minimal keyed-row carrier split from std.change for stage0 emit: KeyedRow plus keyed_row_find only. std.change retains merge/diff/three-way patch machinery; this module is the stage0-safe surface keyed_roster and other path-keyed construction carriers import without pulling Monoid/Rc closure emit that fails the v1-compiler-tests compile gate."
+
+type KeyedRow<K, V> {
+  row_key: K
+  value: V
+}
+
+fn keyed_row_find<K, V>(
+  rows: List<KeyedRow<K, V>>,
+  wanted_key: K,
+  key_eq: fn(K, K) -> Bool,
+) -> KeyedRow<K, V>? {
+  fold(rows, init: none, f: fn(acc, row) {
+    if key_eq(a: row.row_key, b: wanted_key) {
+      Present { value: row }
+    } else {
+      acc
+    }
+  })
+}

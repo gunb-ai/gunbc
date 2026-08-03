@@ -21,6 +21,7 @@ import v2.workflow.floor_naming_hygiene {
   floor_discovery_first_token_before_space,
   floor_discovery_scan_test_decl_names
 }
+import gunbc.explicit_witness_admission { explicit_witness_admission_covers }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree, SubstrateInputsOnly }
 import v2.std.optional {
   Absent,
@@ -411,15 +412,19 @@ fn floor_discovery_apply_test_sidecar_rules(
           test_names,
           init: state,
           f: fn(acc, name) {
-            floor_discovery_append_row(
-              state: acc,
-              row: FloorDiscoveryRow {
-                label: name,
-                entry: repo_path,
-                function: name,
-                reads_live_tree: reads_live
-              }
-            )
+            if explicit_witness_admission_covers(entry: repo_path, function: name) {
+              acc
+            } else {
+              floor_discovery_append_row(
+                state: acc,
+                row: FloorDiscoveryRow {
+                  label: name,
+                  entry: repo_path,
+                  function: name,
+                  reads_live_tree: reads_live
+                }
+              )
+            }
           }
         )
       } else if length(xs: test_names) > 0 {
@@ -695,6 +700,8 @@ fn floor_discovery_wire_contract_sidecar_refusal_for_content(
     optional_absent()
   }
 }
+
+data floor_discovery_exact_admission_note: String = "The per-PR discovery roster is shrunk by TWO independent facts, checked at their own grains. The exclude_substrings parameter carries PATH POLICY (gunbc.ci_layer_roots witness_exclusion_frontier) and is applied to whole files while walking, because a directory home is a statement about a place. explicit_witness_admission_covers carries EXACT ADMISSION (gunbc.explicit_witness_admission) and is applied per test declaration as rows are appended, because an admission is a statement about one witness and must not reach its siblings. Reading the admission authority here rather than accepting it as a parameter is deliberate: it is the same single authority the falsifier roster projects, so a quarantined witness cannot be scheduled and discovered, or excluded and unscheduled, by two lists disagreeing. A green sibling of an admitted witness stays in this roster and runs per-PR — under the previous file-grain exclusion it was swept out with its neighbour, which is the defect this closes."
 
 data floor_discovery_producer_note: String = "Floor discovery producer: enrolled witness roster = pure fold over Filesystem.List/Read host facts, owned-data transport records (host-materialized from scan_dirs by invoke_floor_discovery_producer before the producer call — scan_dirs is not a producer parameter), witness_exclusion_substrings, and *_test.dag naming rules. List/read failures increment walk_failures with a located Optional path; finalize refuses, never an empty roster. Interior directory candidates (basename has no '.') are descended; dotted basenames are skipped as non-dag files."
 

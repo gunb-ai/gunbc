@@ -1,11 +1,12 @@
 module test.claim.roadmap_dispatch_actuator
 
+import v2.std.optional { Present }
 import std.types { NonEmptyStr, GitRef, FilePath }
 import std.disposition { Scaffold, Terminal }
 import gunbc.roadmap_model {
   RoadmapNodeId,
   RoadmapNode, RoadmapEdge,
-  IntricacyHigh, VolumeMedium,
+  Intricacy, IntricacyHigh, IntricacyLow, VolumeMedium,
   PrsMerged,
   NodeSizing, Sized, Unsized,
   SectionElement, Group, SectionGroup,
@@ -40,8 +41,16 @@ import extdeps.llm.cli {
   CodexExecSpec,
   CodexWorkspaceWrite,
   CodexApprovalNever,
+  ReasoningHigh,
+  ReasoningMedium,
+  reasoning_effort_label,
 }
 import gunbc.roadmap_dispatch_actuator {
+  dispatch_actuator_selection,
+  dispatch_actuator_selection_for_provider,
+  DispatchActuatorSelectionOk,
+  DispatchActuatorSelectionRefused,
+  ClaudeCodeProvider,
   dispatch_tmux_session_name,
   dispatch_tmux_session_prefix,
   dispatch_tmux_process_fingerprint_observation_dissolution_trigger,
@@ -49,9 +58,7 @@ import gunbc.roadmap_dispatch_actuator {
   dispatch_brief_fields,
   filled_dispatch_brief_for_node,
   dispatch_cli_provider,
-  CodexCliProvider,
-  dispatch_reasoning_effort_for_intricacy,
-  claude_effort_for_intricacy,
+  CodexDispatchProvider,
   claude_spawn_argv,
   codex_spawn_argv,
   dispatch_codex_home,
@@ -81,11 +88,14 @@ import gunbc.roadmap_dispatch_actuator {
   SpawnSession,
   dispatch_current_attempt_events_projection_argv_for_instance,
 }
-import extdeps.llm.cli {
-  ReasoningHigh,
-  ReasoningMedium,
-  reasoning_effort_label,
+import gunbc.dispatch_selection {
+  ProfileAutomatic,
+  ProviderSelectionRequest,
+  SelectCodex,
+  default_provider_selection_request,
+  dispatch_codex_default_model,
 }
+import gunbc.provider_account { codex_roadmap_account_selection }
 import gunbc.dispatch_pipe_pane_emit {
   PipeEmitted,
   PipeEmitRefused,
@@ -97,6 +107,19 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn nid(s: String) -> RoadmapNodeId { s }
+
+fn sized_with_intricacy(id: String, intricacy: Intricacy, title: String) -> RoadmapNode {
+  RoadmapNode {
+    identity: "rnfx_R2PE6DBK7RVVR2NHNQN0" as RoadmapNodeIdentity,
+    node: nid(s: id),
+    line: DerivableLine { prs: [1], title: title, description: "" },
+    carriers: [],
+    sizing: Sized { intricacy: intricacy, volume: VolumeMedium, repo: "gunbc", acceptance: PrsMerged },
+    execution: ExecutionContractUnspecified,
+    owner: "",
+    signoff: Unsigned,
+  }
+}
 
 fn sized_derivable(id: String, prs: List<Int>, title: String) -> RoadmapNode {
   RoadmapNode {
@@ -140,14 +163,20 @@ test fn witness_brief_fill_includes_node_metadata() -> Bool {
     && string_contains(s: brief, pattern: "Brief Title")
 }
 
-test fn witness_claude_effort_high_for_high_intricacy() -> Bool {
-  reasoning_effort_label(effort: claude_effort_for_intricacy(i: IntricacyHigh)) == "high"
-    && reasoning_effort_label(
-      effort: dispatch_reasoning_effort_for_intricacy(i: IntricacyHigh),
-    ) == "high"
-    && reasoning_effort_label(
-      effort: dispatch_reasoning_effort_for_intricacy(i: IntricacyLow),
-    ) == "medium"
+test fn witness_dispatch_effort_ignores_intricacy() -> Bool {
+  let high = sized_with_intricacy(id: "high-node", intricacy: IntricacyHigh, title: "High")
+  let low = sized_with_intricacy(id: "low-node", intricacy: IntricacyLow, title: "Low")
+  match dispatch_actuator_selection(node_sizing: high.sizing) {
+    DispatchActuatorSelectionOk { provider: _, effort: high_effort, process_fingerprint: _ } =>
+      match dispatch_actuator_selection(node_sizing: low.sizing) {
+        DispatchActuatorSelectionOk { provider: _, effort: low_effort, process_fingerprint: _ } =>
+          reasoning_effort_label(effort: high_effort) == "medium"
+            && reasoning_effort_label(effort: low_effort) == "medium"
+            && high_effort == low_effort
+        DispatchActuatorSelectionRefused { reason: _ } => false
+      }
+    DispatchActuatorSelectionRefused { reason: _ } => false
+  }
 }
 
 test fn witness_claude_argv_uses_dangerous_skip_permissions() -> Bool {
@@ -191,12 +220,28 @@ test fn witness_tmux_spawn_argv_threads_claude_argv() -> Bool {
 }
 
 test fn witness_codex_provider_is_selected_explicitly() -> Bool {
-  dispatch_cli_provider == CodexCliProvider
+  match dispatch_cli_provider() {
+    Present { value: provider } => provider == CodexDispatchProvider
+    none => false
+  }
+}
+
+test fn witness_actuator_projection_refuses_missing_provider() -> Bool {
+  match dispatch_actuator_selection_for_provider(
+    provider: ClaudeCodeProvider,
+    node_sizing: Unsized,
+  ) {
+    DispatchActuatorSelectionRefused { reason: _ } => true
+    DispatchActuatorSelectionOk { provider: _, effort: _, process_fingerprint: _ } => false
+  }
 }
 
 test fn witness_codex_npm_launcher_fingerprint_is_live_receipt() -> Bool {
-  let scope = dispatch_tmux_session_scope(node_id: nid(s: "codex-fingerprint"))
-  scope.expected_process_fingerprint == ("node" as NonEmptyStr)
+  match dispatch_tmux_session_scope(node_id: nid(s: "codex-fingerprint")) {
+    Present { value: scope } =>
+      scope.expected_process_fingerprint == ("node" as NonEmptyStr)
+    none => false
+  }
 }
 
 test fn witness_codex_argv_is_unattended_but_sandboxed() -> Bool {
@@ -236,7 +281,7 @@ test fn witness_selected_provider_shapes_codex_tmux_command() -> Bool {
     node: node,
     session_uuid: "uuid-unused-by-codex",
     attempt_key: "feedfacefeedface",
-    provider: CodexCliProvider,
+    provider: CodexDispatchProvider,
   ) {
     DispatchSpawnRefused { step: _, detail: _ } => false
     DispatchSpawnReady { commands: cmds } =>
@@ -291,7 +336,12 @@ test fn witness_lab_instance_moves_repo_tmux_and_codex_state_together() -> Bool 
     ),
     session_uuid: "00000000-0000-4000-8000-000000000001",
     attempt_key: "feedfacefeedface",
-    provider: CodexCliProvider,
+    request: SelectCodex {
+      profile: ProfileAutomatic,
+      account: codex_roadmap_account_selection(),
+      model: dispatch_codex_default_model,
+      effort: ReasoningMedium,
+    },
   ) {
     DispatchSpawnRefused { step: _, detail: _ } => false
     DispatchSpawnReady { commands } =>
@@ -411,7 +461,7 @@ test fn witness_ready_node_permitted_without_live_session() -> Bool {
         && string_contains(s: w, pattern: "ready-node-afeedfacefeedface")
         && b == "dispatch/ready-node-afeedfacefeedface"
         && string_contains(s: br, pattern: "Ready")
-        && reasoning_effort_label(effort: e) == "high"
+        && reasoning_effort_label(effort: e) == "medium"
     _ => false
   }
 }
@@ -430,10 +480,13 @@ test fn witness_live_lease_refused() -> Bool {
 }
 
 test fn witness_absent_lease_classifies_spawn() -> Bool {
-  let scope = dispatch_tmux_session_scope(node_id: nid(s: "lease-absent"))
-  match classify_dispatch_lease_upsert(scope: scope, obs: SessionAbsent) {
-    UpsertClassification { verdict: Absent, decision: Apply { plan: SpawnSession } } => true
-    _ => false
+  match dispatch_tmux_session_scope(node_id: nid(s: "lease-absent")) {
+    Present { value: scope } =>
+      match classify_dispatch_lease_upsert(scope: scope, obs: SessionAbsent) {
+        UpsertClassification { verdict: Absent, decision: Apply { plan: SpawnSession } } => true
+        _ => false
+      }
+    none => false
   }
 }
 
@@ -456,33 +509,39 @@ test fn witness_live_sessions_panel_rows() -> Bool {
 }
 
 test fn witness_name_only_observation_not_converged() -> Bool {
-  let scope = dispatch_tmux_session_scope(node_id: nid(s: "name-only"))
-  match classify_tmux_session(
-    scope: scope,
-    obs: SessionNameObserved {
-      session_name: "gunbc-dispatch-name-only" as NonEmptyStr,
-      windows: 1,
-    },
-  ) {
-    UnknownRefused => true
-    Converged => false
-    _ => false
+  match dispatch_tmux_session_scope(node_id: nid(s: "name-only")) {
+    Present { value: scope } =>
+      match classify_tmux_session(
+        scope: scope,
+        obs: SessionNameObserved {
+          session_name: "gunbc-dispatch-name-only" as NonEmptyStr,
+          windows: 1,
+        },
+      ) {
+        UnknownRefused => true
+        Converged => false
+        _ => false
+      }
+    none => false
   }
 }
 
 test fn witness_foreign_process_fingerprint_is_conflict() -> Bool {
-  let scope = dispatch_tmux_session_scope(node_id: nid(s: "foreign-proc"))
-  match classify_dispatch_lease_upsert(
-    scope: scope,
-    obs: SessionObserved {
-      session_name: "gunbc-dispatch-foreign-proc" as NonEmptyStr,
-      windows: 1,
-      process_fingerprint: "foreign-shell" as NonEmptyStr,
-    },
-  ) {
-    UpsertClassification { verdict: Conflict, decision: Refuse { reason: _ } } => true
-    UpsertClassification { verdict: Converged, decision: _ } => false
-    _ => false
+  match dispatch_tmux_session_scope(node_id: nid(s: "foreign-proc")) {
+    Present { value: scope } =>
+      match classify_dispatch_lease_upsert(
+        scope: scope,
+        obs: SessionObserved {
+          session_name: "gunbc-dispatch-foreign-proc" as NonEmptyStr,
+          windows: 1,
+          process_fingerprint: "foreign-shell" as NonEmptyStr,
+        },
+      ) {
+        UpsertClassification { verdict: Conflict, decision: Refuse { reason: _ } } => true
+        UpsertClassification { verdict: Converged, decision: _ } => false
+        _ => false
+      }
+    none => false
   }
 }
 

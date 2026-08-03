@@ -14,7 +14,12 @@ import std.occurrence_identity {
   occurrence_id_eq,
   occurrence_id_allocator_advance_to,
   node_occurrence_identity_minted,
-  occurrence_identity_consumer_red_debts,
+  occurrence_identity_acceptance_law_rebuilt_reference,
+  occurrence_identity_acceptance_law_collector_dedupe,
+  occurrence_identity_acceptance_law_distinct_occurrences,
+  occurrence_identity_acceptance_law_pattern_reachability,
+  occurrence_identity_acceptance_law_parser_isolation,
+  occurrence_identity_acceptance_laws,
 }
 import v2.std.node {
   NodeOccurrenceId,
@@ -127,41 +132,12 @@ test fn occurrence_identity_v2_shared_constructor_equivalence_holds() -> Bool {
   }
 }
 
-data occurrence_identity_consumer_red_debt_owner_witness_note: String = "The expected owner is a PARAMETER, not a constant, because the roadmap recut split the single broad namespace node and the six rows no longer share one owner. Pinning each row to its own expected node is strictly stronger than the previous form, which only asserted that all six agreed with each other and would have stayed green if every row had been rehomed to the same wrong node."
-
-fn occurrence_identity_consumer_red_debt_has(id: String, owner: String) -> Bool {
-  occurrence_identity_consumer_red_debts
-    |> any(row =>
-      row.id == id &&
-      row.owner == owner &&
-      string_contains(row.dissolve_on, "DISSOLVE-ON:")
-    )
-}
-
-test fn occurrence_identity_consumer_red_debt_is_counted_holds() -> Bool {
-  (occurrence_identity_consumer_red_debts |> count) == 6 &&
-  occurrence_identity_consumer_red_debt_has(
-    id: "rebuilt-reference-identity-preservation",
-    owner: "namespace-reference-derived-closure",
-  ) &&
-  occurrence_identity_consumer_red_debt_has(
-    id: "one-occurrence-collector-dedupe",
-    owner: "namespace-reference-derived-closure",
-  ) &&
-  occurrence_identity_consumer_red_debt_has(
-    id: "structurally-equal-distinct-occurrences",
-    owner: "namespace-reference-derived-closure",
-  ) &&
-  occurrence_identity_consumer_red_debt_has(
-    id: "pattern-declaration-reachability",
-    owner: "namespace-reference-derived-closure",
-  ) &&
-  occurrence_identity_consumer_red_debt_has(
-    id: "inferred-target-anchor-identity",
-    owner: "namespace-canonical-binding",
-  ) &&
-  occurrence_identity_consumer_red_debt_has(
-    id: "same-spelling-parser-declaration-isolation",
-    owner: "namespace-reference-derived-closure",
-  )
+test fn occurrence_identity_acceptance_law_denominator_is_exact_holds() -> Bool {
+  occurrence_identity_acceptance_laws == [
+    occurrence_identity_acceptance_law_rebuilt_reference,
+    occurrence_identity_acceptance_law_collector_dedupe,
+    occurrence_identity_acceptance_law_distinct_occurrences,
+    occurrence_identity_acceptance_law_pattern_reachability,
+    occurrence_identity_acceptance_law_parser_isolation,
+  ]
 }
