@@ -103,6 +103,16 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
   },
   HandAuthoredDocBind {
     home: PlanDoc,
+    slug: "floor-prep-tax-program",
+    primary_work: DeclarationRef { module_path: "gunbc.executor_schedule_retention", decl_name: "schedule_retention_policy_note", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "gunbc.roadmap_authority", decl_name: "five_minute_ci_gate_program_note", field: WholeDeclaration },
+      DeclarationRef { module_path: "gunbc.roadmap_authority", decl_name: "roadmap_authority_for", field: WholeDeclaration }
+    ],
+    dissolution: HasTrigger { text: "floor receipts show amortized prep (entries 2..N ≪ ~2s setup), selection receipts expose state/ratio/fallback on every affected run, and width>1 / broad native decisions cite those receipts (and the index-share conjunction) — or the operator folds this bridge into the five-minute / materialization authorities and this bind deletes with the doc." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
     slug: "accelerator-demo-roundtrip",
     primary_work: DeclarationRef { module_path: "extdeps.languages.simd.kernel", decl_name: "simd_kernel_medium", field: WholeDeclaration },
     additional_works: [DeclarationRef { module_path: "gunbc.accelerator_demo_plan", decl_name: "AcceleratorRecognitionOutcome", field: WholeDeclaration }],
