@@ -14,6 +14,7 @@ import gunbc.roadmap_workflow_progress {
   workflow_attempt_progress_json_value,
   receipt_records_admission,
 }
+import gunbc.roadmap_workflow_command { legacy_attempt_supersedable_label }
 import gunbc.roadmap_dispatch_environment {
   DispatchEnvironmentAdmission,
   EnvironmentAdmitted,
@@ -432,8 +433,9 @@ test fn legacy_attempt_refuses_unobserved_early_stages() -> Bool {
     publication_source: ReceiptSourceAbsent,
   })
   match progress.provider {
-    ProviderEventsRefused { activity: "legacy attempt", detail: _ } =>
-      segment_state(progress.segments, "environment") == "refused"
+    ProviderEventsRefused { activity, detail: _ } =>
+      activity == legacy_attempt_supersedable_label
+        && segment_state(progress.segments, "environment") == "refused"
         && segment_state(progress.segments, "workspace") == "refused"
         && progress.reconciliation.observed_refusal_count == 4
     _ => false

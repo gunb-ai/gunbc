@@ -4,6 +4,7 @@ import std.realization_schedule {
   Runnable,
   RunnableSingleClaim,
   WalkPlan,
+  NoPreWalkExecution,
   runnable_resource_profile_negligible
 }
 import gunbc.ci_materialization { FloorFinalization }
@@ -24,11 +25,14 @@ data budget_red_control_declared_resolve_note: String = "The fixture DECLARES it
 
 fn gunbc_ci_floor_plan() -> WalkPlan<FloorFinalization> {
   WalkPlan {
+    pre_walk_execution: NoPreWalkExecution {},
     batches: [[budget_red_control_claim()]],
     finalization: FloorFinalization {
       declared_resolve_count: 1,
     },
     on_success_stages: [],
+    ordinary_budget: none,
+    on_success_budget: none,
   }
 }
 

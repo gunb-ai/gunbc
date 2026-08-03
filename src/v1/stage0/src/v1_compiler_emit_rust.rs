@@ -104,9 +104,10 @@ pub use crate::v1_compiler_resolve::get_exported_names;
 pub use crate::v1_compiler_runtime_rust::rust_runtime_source;
 pub use crate::v1_compiler_trait_derive_emit::{
     rust_nominal_identity_carrier_shape_eligible, rust_symbol_wrapped_ord_carrier_shape_eligible,
-    v1_emit_enum_derives, v1_emit_enum_supplemental_impls, v1_emit_struct_from_capability_table,
-    v1_emit_type_params_with_clone_bounds, v1_generic_params_needing_clone_bound,
-    v1_generic_params_needing_clone_bound_for_struct_item,
+    v1_clone_bounded_type_params, v1_emit_enum_derives, v1_emit_enum_supplemental_impls,
+    v1_emit_struct_from_capability_table, v1_emit_type_params_with_clone_bounds,
+    v1_generic_params_needing_clone_bound, v1_item_clone_bounded_param_names,
+    v1_item_clone_undecided_head, v1_trait_derive_refuse,
 };
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -2580,6 +2581,40 @@ pub fn value_ref_qualified_leaf(name: String) -> String {
     }
 }
 
+pub fn value_ref_self_module_normalization_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Construction wall for the SAME-MODULE half of the qualified-value-reference dotted-render class (sibling of value_ref_ident_dotted_fallback_note, which covers the general dotted-render/registry-miss case). A fully-qualified reference whose module qualifier names the CURRENT module (e.g. extdeps.container.oci.digest.extdeps_external_authority_anchor written inside extdeps.container.oci.digest itself) previously reached the bare-name registry (last-write-wins across every module sharing that leaf, since ordinary decl names are not disambiguated by qualifier) and resolved to whichever unrelated module happened to be inserted last, then rendered as a plain crate::wrong_module::ident value (never the is_data call-suffix decision, which is keyed on the still-dotted name and so never matches) wrapped in .clone() by the surrounding resolved_type sharing template — wrong module AND a fn-item value instead of the intended call. A same-module qualified reference names nothing a bare reference does not already name (the containment tree binds it to the enclosing module's own declaration, DESIGN §4), so the fix is to normalize it to the identical bare spelling before any registry lookup runs, rather than teaching the registry to disambiguate by qualifier — same-module resolution reuses the already-correct bare-name path instead of forking a second one. A genuine cross-module qualified reference (qualifier != current module) is untouched by this wall and keeps today's behavior.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn value_ref_qualifier_prefix(name: String) -> String {
+    {
+        let leaf = value_ref_qualified_leaf(name.clone());
+        if (leaf.clone() == name.clone()) {
+            "".to_string()
+        } else {
+            v1_rt::substring(
+                &name,
+                0,
+                ((v1_rt::string_length(&name) - v1_rt::string_length(&leaf)) - 1),
+            )
+        }
+    }
+}
+
+pub fn value_ref_normalize_self_module(name: String, module_name: String) -> String {
+    if (v1_rt::string_contains(&name, ".".to_string())
+        && (value_ref_qualifier_prefix(name.clone()) == module_name.clone()))
+    {
+        value_ref_qualified_leaf(name.clone())
+    } else {
+        name.clone()
+    }
+}
+
 pub fn rust_is_uppercase_letter(c: String) -> bool {
     ((((((((((((((((((((((((((c.clone() == "A".to_string())
         || (c.clone() == "B".to_string()))
@@ -4765,6 +4800,17 @@ pub fn group_unlisted_type_names(
     )
 }
 
+pub fn merged_module_source_indices(
+    modules: Rc<Vec<Rc<TypedModule>>>,
+) -> Rc<HashMap<String, Rc<NewlineIndex>>> {
+    modules.clone().iter().cloned().fold(
+        v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+        |acc: Rc<HashMap<String, Rc<NewlineIndex>>>, m: Rc<TypedModule>| {
+            v1_rt::rc_map_merge(acc, m.type_env.clone().source_indices.clone())
+        },
+    )
+}
+
 pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
     {
         let has_v1_seed = corpus_has_v1_seed_source_indices(typed.modules.clone());
@@ -4774,6 +4820,10 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
             base_info.type_summaries.clone(),
             base_info.recursive_type_set.clone(),
             RenderTarget::Rust,
+        );
+        let clone_bounded = v1_clone_bounded_type_params(
+            base_info.type_decl_items.clone(),
+            merged_module_source_indices(typed.modules.clone()),
         );
         let emit_info = Rc::new(EmitGraphInfo {
             type_summaries: base_info.type_summaries.clone(),
@@ -4788,6 +4838,7 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
             owned_bindings: v1_rt::rc_empty_set::<String>(),
             read_only_params_index: ownership.read_only_params_index.clone(),
             read_only_params: v1_rt::rc_empty_set::<String>(),
+            clone_bounded_type_params: clone_bounded.clone(),
             corpus_repr: base_info.corpus_repr.clone(),
             fn_generic_param_names: base_info.fn_generic_param_names.clone(),
             fn_type_env: base_info.fn_type_env.clone(),
@@ -5162,6 +5213,10 @@ pub fn emit_module(
             base_info.recursive_type_set.clone(),
             RenderTarget::Rust,
         );
+        let clone_bounded = v1_clone_bounded_type_params(
+            base_info.type_decl_items.clone(),
+            merged_module_source_indices(Rc::new(vec![typed_module.clone()])),
+        );
         let emit_info = Rc::new(EmitGraphInfo {
             type_summaries: base_info.type_summaries.clone(),
             type_decl_items: base_info.type_decl_items.clone(),
@@ -5175,6 +5230,7 @@ pub fn emit_module(
             owned_bindings: v1_rt::rc_empty_set::<String>(),
             read_only_params_index: base_info.read_only_params_index.clone(),
             read_only_params: v1_rt::rc_empty_set::<String>(),
+            clone_bounded_type_params: clone_bounded.clone(),
             corpus_repr: base_info.corpus_repr.clone(),
             fn_generic_param_names: base_info.fn_generic_param_names.clone(),
             fn_type_env: base_info.fn_type_env.clone(),
@@ -11537,6 +11593,9 @@ pub fn emit_typed_item(
                                 owned_bindings: v1_rt::rc_empty_set::<String>(),
                                 read_only_params_index: emit_info.read_only_params_index.clone(),
                                 read_only_params: fn_read_only.clone(),
+                                clone_bounded_type_params: emit_info
+                                    .clone_bounded_type_params
+                                    .clone(),
                                 corpus_repr: emit_info.corpus_repr.clone(),
                                 fn_generic_param_names: emit_info.fn_generic_param_names.clone(),
                                 fn_type_env: emit_info.fn_type_env.clone(),
@@ -11687,6 +11746,27 @@ pub fn emit_type_params(
     }
 }
 
+pub fn emit_bare_type_params(generic_param_names: Rc<Vec<String>>) -> String {
+    if ((generic_param_names.clone().len() as i64) == 0) {
+        "".to_string()
+    } else {
+        v1_rt::concat(
+            v1_rt::concat(
+                "<".to_string(),
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for n in generic_param_names.clone().iter().cloned() {
+                        __result.push(to_pascal(n.clone()));
+                    }
+                    __result
+                })
+                .join(&", ".to_string()),
+            ),
+            ">".to_string(),
+        )
+    }
+}
+
 pub fn emit_type_params_with_clone_bound(
     params: Rc<Vec<Rc<Node>>>,
     clone_param: String,
@@ -11772,9 +11852,10 @@ pub fn function_type_params_have_collision(type_params: Rc<Vec<Rc<Node>>>) -> bo
     }
 }
 
-pub fn emit_item_type_params_for_struct(
+pub fn emit_item_type_params_with_clone_bounds(
+    item_name: String,
     params: Rc<Vec<Rc<Node>>>,
-    field_type_exprs: Rc<Vec<Rc<Node>>>,
+    emit_info: Rc<EmitGraphInfo>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
@@ -11785,10 +11866,10 @@ pub fn emit_item_type_params_for_struct(
             }
             __result
         });
-        let clone_param_names = v1_generic_params_needing_clone_bound_for_struct_item(
+        let clone_param_names = v1_item_clone_bounded_param_names(
+            item_name.clone(),
             generic_param_names.clone(),
-            field_type_exprs.clone(),
-            source_indices.clone(),
+            emit_info.clone_bounded_type_params.clone(),
         );
         if ((clone_param_names.clone().len() as i64) > 0) {
             v1_emit_type_params_with_clone_bounds(
@@ -11798,6 +11879,30 @@ pub fn emit_item_type_params_for_struct(
             )
         } else {
             emit_type_params(params.clone(), source_indices.clone())
+        }
+    }
+}
+
+pub fn emit_item_clone_bound_refusal(
+    item: Rc<Node>,
+    item_name: String,
+    emit_info: Rc<EmitGraphInfo>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    if ((item.params.clone().len() as i64) == 0) {
+        "".to_string()
+    } else {
+        {
+            let head = v1_item_clone_undecided_head(
+                item.clone(),
+                emit_info.type_decl_items.clone(),
+                source_indices.clone(),
+            );
+            if (head.clone() == "".to_string()) {
+                "".to_string()
+            } else {
+                v1_trait_derive_refuse(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("trait_derive_emit: generic item '".to_string(), item_name.clone()), "' has a field applying type '".to_string()), head.clone()), "', whose declared parameter list is not readable in this closure — the Clone bound it may require on '".to_string()), item_name.clone()), "' cannot be decided (see trait_derive_emit_item_clone_bound_wf_propagation_note)".to_string()))
+            }
         }
     }
 }
@@ -11827,19 +11932,13 @@ pub fn emit_type_def_from_connective(
                     has_fn_fields.clone(),
                     env.source_indices.clone(),
                 );
-                let field_type_exprs = Rc::new({
-                    let mut __result = Vec::new();
-                    for c in item.children.clone().iter().cloned() {
-                        __result.push(resolved_type(c.clone()));
-                    }
-                    __result
-                });
                 let type_params = if ((capability_surface.impl_bodies.clone() == "".to_string())
                     && !has_fn_fields.clone())
                 {
-                    emit_item_type_params_for_struct(
+                    emit_item_type_params_with_clone_bounds(
+                        item_text.clone(),
                         item.params.clone(),
-                        field_type_exprs.clone(),
+                        emit_info.clone(),
                         env.source_indices.clone(),
                     )
                 } else {
@@ -11852,7 +11951,13 @@ pub fn emit_type_def_from_connective(
                     }
                     __result
                 });
-                emit_struct_from_children(
+                let clone_bound_refusal = emit_item_clone_bound_refusal(
+                    item.clone(),
+                    item_text.clone(),
+                    emit_info.clone(),
+                    env.source_indices.clone(),
+                );
+                let struct_text = emit_struct_from_children(
                     item_text.clone(),
                     type_params.clone(),
                     generic_param_names.clone(),
@@ -11861,7 +11966,15 @@ pub fn emit_type_def_from_connective(
                     shared_types.clone(),
                     env.clone(),
                     emit_info.clone(),
-                )
+                );
+                if (clone_bound_refusal.clone() == "".to_string()) {
+                    struct_text
+                } else {
+                    v1_rt::concat(
+                        v1_rt::concat(clone_bound_refusal.clone(), "\n".to_string()),
+                        struct_text,
+                    )
+                }
             }
         } else {
             if is_host_optional_carrier_alias(item_text.clone()) {
@@ -12016,8 +12129,12 @@ pub fn emit_type_def_from_connective(
                                     )
                                 }
                             };
-                            let type_params =
-                                emit_type_params(item.params.clone(), env.source_indices.clone());
+                            let type_params = emit_item_type_params_with_clone_bounds(
+                                item_text.clone(),
+                                item.params.clone(),
+                                emit_info.clone(),
+                                env.source_indices.clone(),
+                            );
                             let generic_param_names = Rc::new({
                                 let mut __result = Vec::new();
                                 for p in item.params.clone().iter().cloned() {
@@ -12028,6 +12145,12 @@ pub fn emit_type_def_from_connective(
                                 }
                                 __result
                             });
+                            let clone_bound_refusal = emit_item_clone_bound_refusal(
+                                item.clone(),
+                                item_text.clone(),
+                                emit_info.clone(),
+                                env.source_indices.clone(),
+                            );
                             let enum_text = emit_enum_from_children(
                                 item_text.clone(),
                                 type_params.clone(),
@@ -12039,6 +12162,18 @@ pub fn emit_type_def_from_connective(
                                 serde_policy.clone(),
                                 emit_info.clone(),
                             );
+                            let validations = if (clone_bound_refusal.clone() == "".to_string()) {
+                                validations.clone()
+                            } else {
+                                if (validations.clone() == "".to_string()) {
+                                    clone_bound_refusal.clone()
+                                } else {
+                                    v1_rt::concat(
+                                        v1_rt::concat(validations.clone(), "\n".to_string()),
+                                        clone_bound_refusal.clone(),
+                                    )
+                                }
+                            };
                             if (validations.clone() == "".to_string()) {
                                 enum_text
                             } else {
@@ -13125,6 +13260,7 @@ pub fn emit_enum_shared_accessors(
             __result
         });
         let fns_str = accessor_fns.clone().join(&"\n".to_string());
+        let type_application_params = emit_bare_type_params(generic_param_names.clone());
         v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(
@@ -13136,7 +13272,7 @@ pub fn emit_enum_shared_accessors(
                             ),
                             name.clone(),
                         ),
-                        type_params.clone(),
+                        type_application_params.clone(),
                     ),
                     " {\n".to_string(),
                 ),
@@ -13825,6 +13961,9 @@ pub fn emit_fn_def(
                     return_is_bare_generic.clone(),
                     ret_name.clone(),
                     body_is_param_ref.clone(),
+                    inferred.clone(),
+                    emit_info.clone_bounded_type_params.clone(),
+                    emit_info.type_decl_items.clone(),
                     si.clone(),
                 );
                 let needs_clone_bound = ((clone_param_names.clone().len() as i64) > 0);
@@ -17129,11 +17268,13 @@ pub fn emit_var_ref(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     emit_info: Rc<EmitGraphInfo>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    module_name: String,
 ) -> String {
     {
-        let leaf_name = value_ref_qualified_leaf(name.clone());
+        let resolved_name = value_ref_normalize_self_module(name.clone(), module_name.clone());
+        let leaf_name = value_ref_qualified_leaf(resolved_name.clone());
         let variant_parent = effective_variant_parent(
-            name.clone(),
+            resolved_name.clone(),
             binding_kind.clone(),
             resolved_type.clone(),
             emit_info.clone(),
@@ -17152,7 +17293,7 @@ pub fn emit_var_ref(
             } else {
                 {
                     let moves_by_value =
-                        v1_rt::set_contains(&emit_info.movable.clone(), name.clone());
+                        v1_rt::set_contains(&emit_info.movable.clone(), resolved_name.clone());
                     let sharing = language_spec(RenderTarget::Rust).sharing.clone();
                     let ref_str = match variant_parent.clone() {
                         Some(enum_name) => {
@@ -17191,11 +17332,11 @@ pub fn emit_var_ref(
                                 body.clone()
                             }
                         }
-                        None => match v1_rt::map_get(&registry, name.clone()) {
+                        None => match v1_rt::map_get(&registry, leaf_name.clone()) {
                             Some(info) => {
                                 let is_data = (info.kind.clone() == ItemKind::DataItem);
                                 if is_data.clone() {
-                                    v1_rt::concat(to_snake(name.clone()), "()".to_string())
+                                    v1_rt::concat(to_snake(leaf_name.clone()), "()".to_string())
                                 } else {
                                     {
                                         let is_function_value =
@@ -17204,7 +17345,7 @@ pub fn emit_var_ref(
                                                 _ => false,
                                             };
                                         let ident = emit_value_ref_ident(
-                                            name.clone(),
+                                            resolved_name.clone(),
                                             registry.clone(),
                                             emit_info.clone(),
                                         );
@@ -17229,7 +17370,7 @@ pub fn emit_var_ref(
                             }
                             None => {
                                 let ident = emit_value_ref_ident(
-                                    name.clone(),
+                                    resolved_name.clone(),
                                     registry.clone(),
                                     emit_info.clone(),
                                 );
@@ -17940,6 +18081,7 @@ pub fn emit_rust_expr_var(
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    module_name: String,
 ) -> String {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprVar {
@@ -17955,6 +18097,7 @@ pub fn emit_rust_expr_var(
                 registry.clone(),
                 emit_info.clone(),
                 source_indices.clone(),
+                module_name.clone(),
             )
         }
         _ => emit_error_expr(
@@ -18556,6 +18699,7 @@ pub fn emit_typed_expr(
                     shared_types.clone(),
                     emit_info.clone(),
                     scope.type_env.clone().source_indices.clone(),
+                    scope.module_name.clone(),
                 )
             },
             |expr| {
@@ -20424,6 +20568,7 @@ pub fn emit_rust_fold_method_call(
                             ),
                             read_only_params_index: emit_info.read_only_params_index.clone(),
                             read_only_params: emit_info.read_only_params.clone(),
+                            clone_bounded_type_params: emit_info.clone_bounded_type_params.clone(),
                             corpus_repr: emit_info.corpus_repr.clone(),
                             fn_generic_param_names: emit_info.fn_generic_param_names.clone(),
                             fn_type_env: emit_info.fn_type_env.clone(),
@@ -20461,6 +20606,9 @@ pub fn emit_rust_fold_method_call(
                                 owned_bindings: emit_info.owned_bindings.clone(),
                                 read_only_params_index: emit_info.read_only_params_index.clone(),
                                 read_only_params: emit_info.read_only_params.clone(),
+                                clone_bounded_type_params: emit_info
+                                    .clone_bounded_type_params
+                                    .clone(),
                                 corpus_repr: emit_info.corpus_repr.clone(),
                                 fn_generic_param_names: emit_info.fn_generic_param_names.clone(),
                                 fn_type_env: emit_info.fn_type_env.clone(),
@@ -22619,6 +22767,7 @@ pub fn emit_typed_match_arm(
                         registry.clone(),
                         emit_info.clone(),
                         si.clone(),
+                        scope.module_name.clone(),
                     )
                 } else {
                     emit_typed_expr(

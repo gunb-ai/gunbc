@@ -54,6 +54,7 @@ type CssPropertyName
   | MinHeight
   | MinWidth
   | Opacity
+  | Outline
   | Overflow
   | Padding
   | PaddingLeft
@@ -112,6 +113,7 @@ fn css_property_wire(p: CssPropertyName) -> String {
     MinHeight => "min-height"
     MinWidth => "min-width"
     Opacity => "opacity"
+    Outline => "outline"
     Overflow => "overflow"
     Padding => "padding"
     PaddingLeft => "padding-left"

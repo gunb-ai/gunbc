@@ -2,6 +2,7 @@ module v2.workflow.ci_heal_skew_guard_emit_test
 
 import v2.workflow.ci_heal_skew_guard_emit {
   ci_heal_binary_source_skew_guard_script,
+  ci_heal_skew_excluded_paths,
   ci_heal_skew_excluded_pathspec_words,
   ci_heal_skew_guard_refused_poison,
   ci_heal_skew_shell_single_quoted
@@ -56,14 +57,21 @@ test fn ci_heal_skew_guard_red_when_shell_loop_survives_holds() -> Bool {
 
 test fn ci_heal_skew_guard_excludes_every_registered_artifact_holds() -> Bool {
   let s = ci_heal_skew_guard_script_text()
-  fold(committed_generated_artifact_paths(), init: true, f: fn(acc, p) {
+  fold(ci_heal_skew_excluded_paths(), init: true, f: fn(acc, p) {
     acc && string_contains(s: s, pattern: ci_heal_skew_shell_single_quoted(word: concat(":(exclude)", p)))
   })
 }
 
+test fn ci_heal_skew_guard_excludes_stage0_emitted_rust_holds() -> Bool {
+  let s = ci_heal_skew_guard_script_text()
+  string_contains(s: s, pattern: ci_heal_skew_shell_single_quoted(word: ":(exclude)src/v1/stage0/src/std_algebra.rs"))
+    && ci_heal_skew_excluded_paths() |> any(p => p == "src/v1/stage0/src/std_algebra.rs")
+}
+
 test fn ci_heal_skew_guard_exclusion_roster_is_nonempty_holds() -> Bool {
   length(committed_generated_artifact_paths()) > 0
-    && length(ci_heal_skew_excluded_pathspec_words()) == length(committed_generated_artifact_paths())
+    && length(ci_heal_skew_excluded_paths()) > length(committed_generated_artifact_paths())
+    && length(ci_heal_skew_excluded_pathspec_words()) == length(ci_heal_skew_excluded_paths())
 }
 
 test fn ci_heal_skew_guard_red_when_an_artifact_is_unexcluded_holds() -> Bool {

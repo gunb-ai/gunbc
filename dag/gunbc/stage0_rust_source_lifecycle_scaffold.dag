@@ -11,10 +11,8 @@ import gunbc.stage0_rust_host_observation {
   RustSourceHostObservation,
   current_stage0_rust_source_observation
 }
-import gunbc.stage0_emit_model {
-  generated_stage0_files,
-  is_generated_stage0_file
-}
+import gunbc.stage0_emit_model { is_generated_stage0_file }
+import gunbc.stage0_emit_plan_generated { generated_stage0_files }
 import std.content_hash { Fnv1a64Structural }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
@@ -281,17 +279,25 @@ fn rust_source_manifest_state_verdict(observation: RustSourceHostObservation) ->
   }
 }
 
+data rust_source_prefix_test_harness: String = "src/v1/tests/"
+
+data rust_source_prefix_stage0_test: String = "src/v1/stage0/tests/"
+
+data rust_source_prefix_stage0_example: String = "src/v1/stage0/examples/"
+
+data rust_source_prefix_tooling: String = "dag/tools/"
+
 data rust_source_discovery_prefix_hints: List<String> = [
-  "src/v1/tests/",
-  "dag/tools/",
-  "src/v1/stage0/tests/",
-  "src/v1/stage0/examples/"
+  rust_source_prefix_test_harness,
+  rust_source_prefix_tooling,
+  rust_source_prefix_stage0_test,
+  rust_source_prefix_stage0_example
 ]
 
 data stage0_src_repo_prefix: String = "src/v1/stage0/src/"
 
 data generated_stage0_files_authority_ref: DeclarationRef = DeclarationRef {
-  module_path: "gunbc.stage0_emit_model",
+  module_path: "gunbc.stage0_emit_plan_generated",
   decl_name: "generated_stage0_files",
   field: WholeDeclaration
 }
