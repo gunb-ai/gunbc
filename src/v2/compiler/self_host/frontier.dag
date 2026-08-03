@@ -1439,7 +1439,8 @@ data seed_retained_scaffold_registrations: List<SeedRetainedScaffoldRegistration
   SeedRetainedScaffoldRegistration { basename: "v2_compiler_resolve" },
   SeedRetainedScaffoldRegistration { basename: "v2_compiler_program_partition" },
   SeedRetainedScaffoldRegistration { basename: "v2_compiler_tokenize" },
-  SeedRetainedScaffoldRegistration { basename: "v2_compiler_infer" }
+  SeedRetainedScaffoldRegistration { basename: "v2_compiler_infer" },
+  SeedRetainedScaffoldRegistration { basename: "v1_interpreter_dispatch_generated" }
 ]
 
 fn intrinsic_pub_mod_basename_from_row(row: SeedRetainedIntrinsicRegistration) -> List<String> {

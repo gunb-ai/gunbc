@@ -34,7 +34,7 @@ fn planted_row(identity: String, spelling: String, symbol: String) -> Interprete
   }
 }
 
-fn known_dispatch_sites_derive_their_rows() -> Bool {
+fn known_dispatch_sites_contribute_rows() -> Bool {
   let symbols = [
     "eval_builtin_inner",
     "eval_algebra_method_inner",
@@ -43,7 +43,6 @@ fn known_dispatch_sites_derive_their_rows() -> Bool {
     "try_parse_table_memo_dispatch",
   ]
   symbols |> all(s => v1_interpreter_derived_arms() |> any(r => r.dispatch_symbol == s))
-    && (v1_interpreter_derived_arms() |> all(r => r.enumeration == DerivedFromDispatch))
 }
 
 fn duplicate_row_keys_refuse() -> Bool {
@@ -95,7 +94,7 @@ fn unrecognised_form_refuses_rather_than_defaulting() -> Bool {
 }
 
 test fn v1_interpreter_primitive_roster_acceptance_contract_holds() -> Bool {
-  known_dispatch_sites_derive_their_rows()
+  known_dispatch_sites_contribute_rows()
     && duplicate_row_keys_refuse()
     && shadows_are_exactly_the_known_named_set()
     && declared_rows_carry_exact_triggers()

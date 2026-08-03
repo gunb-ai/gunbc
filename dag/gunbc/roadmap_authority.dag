@@ -237,7 +237,7 @@ fn observation_raw_print_retirement_execution_contract() -> WorkItemExecutionCon
   )
 }
 
-data v1_rust_source_observation_execution_contract_note: String = "The node closes only on the nullary wet claim that reads the runner's GITHUB_SHA independently through shell.Env.Get, observes checkout HEAD through the existing Git path, and admits only their exact match — with a grep-visible executed pass line in a real CI job log (not enrollment alone). Binding the contract to the pure fold would permit constructed constants to stand in for liveness; binding it to the older population-only witness would prove only that Git returned paths, not that the paths belonged to the workflow subject. Per-row wet-batch execution is currently unobservable in Actions job logs after discovery corpus completes (gunbc.ci_layer_roots bin_witness_wet_per_row_actions_log_observation_gap_note); dissolve-on is coordinator replay of per-row outcomes."
+data v1_rust_source_observation_execution_contract_note: String = "The node closes only on the nullary wet claim that reads the runner's GITHUB_SHA independently through shell.Env.Get, observes checkout HEAD through the existing Git path, and admits only their exact match. Binding the contract to the pure fold would permit constructed constants to stand in for liveness; binding it to the older population-only witness would prove only that Git returned paths, not that the paths belonged to the workflow subject."
 
 fn v1_rust_source_observation_execution_contract() -> WorkItemExecutionContract {
   gunbc_claim_execution_contract(
@@ -261,6 +261,15 @@ fn v1_interpreter_primitive_roster_execution_contract() -> WorkItemExecutionCont
   gunbc_claim_execution_contract(
     entry: "dag/test/claim/v1_interpreter_primitive_roster_acceptance_test.dag" as FilePath,
     function: "v1_interpreter_primitive_roster_acceptance_contract_holds" as NonEmptyStr,
+  )
+}
+
+data v1_interpreter_primitive_dispatch_authority_execution_contract_note: String = "THE CLOSING CHECK FOR v1-interpreter-primitive-dispatch-authority. R1 inverts the roster: gunbc.v1_interpreter_primitive_surface v1_interpreter_authored_roster_arms is the canonical authority as authored InterpreterPrimitiveDispatchArm rows; v1_interpreter_dispatch_emit derives Rust enum variant names from arm identity and generates lookup tables. Compile-time exhaustiveness has no Bool half. Structural properties that survive roster growth are asserted here; R0 discriminating controls remain in v1_interpreter_primitive_surface_witness_test."
+
+fn v1_interpreter_primitive_dispatch_authority_execution_contract() -> WorkItemExecutionContract {
+  gunbc_claim_execution_contract(
+    entry: "dag/test/claim/v1_interpreter_primitive_dispatch_authority_acceptance_test.dag" as FilePath,
+    function: "v1_interpreter_primitive_dispatch_authority_acceptance_contract_holds" as NonEmptyStr,
   )
 }
 
@@ -1351,7 +1360,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The roster; three derived denominators -- dispatch sites, distinct arm identities, distinct authored spellings -- rather than one conflated count, each derived from the roster rather than pinned as a literal; row-grain enumeration provenance, since a row's provenance is a fact about that row and not about its dispatch form; a reconciliation of every quoted dispatch line in the seed file into either a row or a named non-primitive residue; a typed disposition for the Rust the scaffold adds, naming every symbol and the exact deletion condition; and witnesses whose exact assertions are grounded in named identities or controlled fixtures rather than in counts copied from the tree, each detector carrying both a discriminating red and a positive control."
       )
     ), v1_interpreter_primitive_roster_execution_contract()),
-    active(
+    with_execution(active(
       identity: "rn_5PWQ9J3XZM8TKB2NHR6VD0FCAS",
       id: "v1-interpreter-primitive-dispatch-authority",
       owner: "self-host",
@@ -1365,7 +1374,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         out_of_scope: "Semantic primitive identity, which stays with the identity join. Deleting the interpreter, which is downstream. Any widening of what counts as a primitive: this node changes who decides, not the population.",
         handback: "The generated identity and lookup; the exhaustive handler match with its compile-time refusal demonstrated by a red control; deletion of the R0 macro authorities, the roster functions and the interpreter_dispatch_arm_rows self-reading bridge; a stated disposition for each of the two declared R0 residual rows -- either moved into the authority or retained with its own independently justified non-primitive reason; and the hand-Rust line delta the inversion removes."
       )
-    ),
+    ), v1_interpreter_primitive_dispatch_authority_execution_contract()),
     active(
       identity: "rn_J4Q81A4BJ8TXN6ZE4481RMB3Y9",
       id: "v1-interpreter-quarantine",
