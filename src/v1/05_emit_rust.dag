@@ -8872,7 +8872,7 @@ fn emit_rust_tco_non_self_call(frame: TcoFrame, registry: Map<String, ItemInfo>,
   }
 }
 
-fn emit_rust_tco_if(frame: TcoFrame, fn_name: String, params: List<Node>, registry: Map<String, ItemInfo>, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
+fn emit_rust_tco_if(frame: TcoFrame, fn_name: String, params: List<Node>, registry: Map<String, ItemInfo>, qualified_item_registry: QualifiedItemRegistryBuild, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   match frame.expr.expr_data {
     ExprIf =>
       let c = if_condition(texpr: frame.expr)
@@ -8937,7 +8937,7 @@ fn emit_native_freemonoid_tco_match(scrut_str: String, arms: List<Node>, fn_name
   }
 }
 
-fn emit_rust_tco_match(frame: TcoFrame, fn_name: String, params: List<Node>, registry: Map<String, ItemInfo>, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
+fn emit_rust_tco_match(frame: TcoFrame, fn_name: String, params: List<Node>, registry: Map<String, ItemInfo>, qualified_item_registry: QualifiedItemRegistryBuild, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   match frame.expr.expr_data {
     ExprMatch =>
       let s = match_scrutinee(texpr: frame.expr)
@@ -8977,7 +8977,7 @@ fn emit_rust_tco_match(frame: TcoFrame, fn_name: String, params: List<Node>, reg
   }
 }
 
-fn emit_rust_tco_let(frame: TcoFrame, fn_name: String, params: List<Node>, registry: Map<String, ItemInfo>, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
+fn emit_rust_tco_let(frame: TcoFrame, fn_name: String, params: List<Node>, registry: Map<String, ItemInfo>, qualified_item_registry: QualifiedItemRegistryBuild, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   match frame.expr.expr_data {
     ExprLet =>
       let n = let_binding_name_at(texpr: frame.expr, source_indices: frame.scope.type_env.source_indices)
@@ -8996,7 +8996,7 @@ fn emit_rust_tco_let(frame: TcoFrame, fn_name: String, params: List<Node>, regis
   }
 }
 
-fn emit_rust_tco_block(frame: TcoFrame, fn_name: String, params: List<Node>, registry: Map<String, ItemInfo>, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
+fn emit_rust_tco_block(frame: TcoFrame, fn_name: String, params: List<Node>, registry: Map<String, ItemInfo>, qualified_item_registry: QualifiedItemRegistryBuild, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   match frame.expr.expr_data {
     ExprBlock =>
       let ss = frame.expr.children
@@ -9004,7 +9004,7 @@ fn emit_rust_tco_block(frame: TcoFrame, fn_name: String, params: List<Node>, reg
         "break;"
       } else {
         let init_state = emit_tco_init_block_stmts(
-          remaining: ss, text: [], scope: frame.scope, registry: registry, depth: frame.depth, shared_types: shared_types, emit_info: emit_info, params: params)
+          remaining: ss, text: [], scope: frame.scope, registry: registry, qualified_item_registry: qualified_item_registry, depth: frame.depth, shared_types: shared_types, emit_info: emit_info, params: params)
         let last_str = match ss |> last {
           Present { value: last_expr } =>
             emit_typed_tco_expr(texpr: last_expr, fn_name: fn_name, params: params, registry: registry, qualified_item_registry: qualified_item_registry, scope: init_state.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info)
@@ -9016,7 +9016,7 @@ fn emit_rust_tco_block(frame: TcoFrame, fn_name: String, params: List<Node>, reg
   }
 }
 
-fn emit_rust_tco_default_return(frame: TcoFrame, registry: Map<String, ItemInfo>, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
+fn emit_rust_tco_default_return(frame: TcoFrame, registry: Map<String, ItemInfo>, qualified_item_registry: QualifiedItemRegistryBuild, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let val_str = emit_typed_expr(texpr: frame.expr, registry: registry, qualified_item_registry: qualified_item_registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
   concat("break ", val_str, ";")
 }
@@ -9027,11 +9027,11 @@ fn emit_typed_tco_expr(texpr: Node, fn_name: String, params: List<Node>, registr
     fn_name: fn_name,
     emit_self_call_reassign: input => emit_typed_tco_reassign(args: input.args, params: params, registry: registry, scope: input.scope, depth: input.depth, shared_types: shared_types, emit_info: emit_info),
     emit_non_self_call: frame => emit_rust_tco_non_self_call(frame: frame, registry: registry, qualified_item_registry: qualified_item_registry, shared_types: shared_types, emit_info: emit_info),
-    emit_if: frame => emit_rust_tco_if(frame: frame, fn_name: fn_name, params: params, registry: registry, shared_types: shared_types, emit_info: emit_info),
-    emit_match: frame => emit_rust_tco_match(frame: frame, fn_name: fn_name, params: params, registry: registry, shared_types: shared_types, emit_info: emit_info),
-    emit_let: frame => emit_rust_tco_let(frame: frame, fn_name: fn_name, params: params, registry: registry, shared_types: shared_types, emit_info: emit_info),
-    emit_block: frame => emit_rust_tco_block(frame: frame, fn_name: fn_name, params: params, registry: registry, shared_types: shared_types, emit_info: emit_info),
-    emit_default_return: frame => emit_rust_tco_default_return(frame: frame, registry: registry, shared_types: shared_types, emit_info: emit_info))
+    emit_if: frame => emit_rust_tco_if(frame: frame, fn_name: fn_name, params: params, registry: registry, qualified_item_registry: qualified_item_registry, shared_types: shared_types, emit_info: emit_info),
+    emit_match: frame => emit_rust_tco_match(frame: frame, fn_name: fn_name, params: params, registry: registry, qualified_item_registry: qualified_item_registry, shared_types: shared_types, emit_info: emit_info),
+    emit_let: frame => emit_rust_tco_let(frame: frame, fn_name: fn_name, params: params, registry: registry, qualified_item_registry: qualified_item_registry, shared_types: shared_types, emit_info: emit_info),
+    emit_block: frame => emit_rust_tco_block(frame: frame, fn_name: fn_name, params: params, registry: registry, qualified_item_registry: qualified_item_registry, shared_types: shared_types, emit_info: emit_info),
+    emit_default_return: frame => emit_rust_tco_default_return(frame: frame, registry: registry, qualified_item_registry: qualified_item_registry, shared_types: shared_types, emit_info: emit_info))
 }
 
 fn emit_typed_tco_match_arm(arm: Node, fn_name: String, params: List<Node>, registry: Map<String, ItemInfo>, qualified_item_registry: QualifiedItemRegistryBuild, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo, scrut_type: String) -> String {
