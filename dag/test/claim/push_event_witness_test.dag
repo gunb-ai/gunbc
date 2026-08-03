@@ -1,0 +1,87 @@
+module test.claim.push_event_witness
+
+import std.logic { Bool }
+import extdeps.filesystem.filesystem_io
+import extdeps.github.push_event {
+  push_before_from_event_json,
+  push_before_from_event_path,
+  PushBeforeObserved,
+  PushBeforeAbsent,
+  PushBeforeZeroSha,
+  PushBeforeMalformed,
+  PushEventPayloadReadRefused
+}
+import extdeps.git.hooks { zero_sha }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data push_event_fixture_path: String = "dag/test/fixture/github_push_event/main_push.json"
+
+data push_event_witness_note: String = "Executing consumer for extdeps.github.push_event: JSON ingest, git object-id validation before CommitSha minting, and payload read refusal separated from malformed JSON. witness_push_before_from_fixture_file is the WET event-file projection (checklist step 5)."
+
+test fn witness_push_before_observed_from_json() -> Bool {
+  match push_before_from_event_json(
+    text: "{\"before\":\"abc123def4567890abc123def4567890abc12345\",\"after\":\"fedcba09\"}"
+  ) {
+    PushBeforeObserved { sha: sha } =>
+      (sha as String) == "abc123def4567890abc123def4567890abc12345"
+    PushBeforeAbsent { detail: _ } => false
+    PushBeforeZeroSha => false
+    PushBeforeMalformed { detail: _ } => false
+    PushEventPayloadReadRefused { path: _, cause: _ } => false
+  }
+}
+
+test fn witness_push_before_zero_sha_from_json() -> Bool {
+  match push_before_from_event_json(
+    text: concat("{\"before\":\"", concat(zero_sha, "\",\"after\":\"abc\"}"))
+  ) {
+    PushBeforeZeroSha => true
+    PushBeforeObserved { sha: _ } => false
+    PushBeforeAbsent { detail: _ } => false
+    PushBeforeMalformed { detail: _ } => false
+    PushEventPayloadReadRefused { path: _, cause: _ } => false
+  }
+}
+
+test fn witness_push_before_absent_member_refuses() -> Bool {
+  match push_before_from_event_json(text: "{\"after\":\"abc\"}") {
+    PushBeforeAbsent { detail: _ } => true
+    PushBeforeObserved { sha: _ } => false
+    PushBeforeZeroSha => false
+    PushBeforeMalformed { detail: _ } => false
+    PushEventPayloadReadRefused { path: _, cause: _ } => false
+  }
+}
+
+test fn witness_push_before_malformed_json_refuses() -> Bool {
+  match push_before_from_event_json(text: "not json") {
+    PushBeforeMalformed { detail: _ } => true
+    PushBeforeObserved { sha: _ } => false
+    PushBeforeAbsent { detail: _ } => false
+    PushBeforeZeroSha => false
+    PushEventPayloadReadRefused { path: _, cause: _ } => false
+  }
+}
+
+test fn witness_push_before_invalid_sha_refuses_before_minting() -> Bool {
+  match push_before_from_event_json(text: "{\"before\":\"not-a-valid-git-object-id\"}") {
+    PushBeforeMalformed { detail: detail } =>
+      detail == "push event before member is not a valid git object id"
+    PushBeforeObserved { sha: _ } => false
+    PushBeforeAbsent { detail: _ } => false
+    PushBeforeZeroSha => false
+    PushEventPayloadReadRefused { path: _, cause: _ } => false
+  }
+}
+
+test fn witness_push_before_payload_read_refused_on_missing_path() -> Bool {
+  match push_before_from_event_path(path: "__gunbc_missing_push_event_fixture__.json") {
+    PushEventPayloadReadRefused { path: _, cause: _ } => true
+    PushBeforeObserved { sha: _ } => false
+    PushBeforeAbsent { detail: _ } => false
+    PushBeforeZeroSha => false
+    PushBeforeMalformed { detail: _ } => false
+  }
+}

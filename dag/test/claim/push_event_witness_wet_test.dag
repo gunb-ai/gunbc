@@ -1,0 +1,30 @@
+module test.claim.push_event_witness_wet
+
+import std.logic { Bool }
+import extdeps.filesystem.filesystem_io
+import extdeps.github.push_event {
+  push_before_from_event_path,
+  PushBeforeObserved,
+  PushBeforeAbsent,
+  PushBeforeZeroSha,
+  PushBeforeMalformed,
+  PushEventPayloadReadRefused
+}
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data push_event_fixture_path: String = "dag/test/fixture/github_push_event/main_push.json"
+
+data push_event_wet_witness_note: String = "WET event-file projection for extdeps.github.push_event (operator undraft checklist step 5): reads the planted main-push fixture from disk via Filesystem.Read before JSON ingest."
+
+test fn witness_push_before_from_fixture_file() -> Bool {
+  match push_before_from_event_path(path: push_event_fixture_path) {
+    PushBeforeObserved { sha: sha } =>
+      (sha as String) == "1111111111111111111111111111111111111111"
+    PushBeforeAbsent { detail: _ } => false
+    PushBeforeZeroSha => false
+    PushBeforeMalformed { detail: _ } => false
+    PushEventPayloadReadRefused { path: _, cause: _ } => false
+  }
+}
