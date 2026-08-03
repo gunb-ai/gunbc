@@ -85,6 +85,27 @@ fn roster_rows_with_unknown_emit_site() -> List<InterpreterPrimitiveDispatchArm>
     |> filter(r => !roster_row_emit_site_is_known(row: r))
 }
 
+data dispatch_emit_site_routing_scaffold_note: String = "INTERIM ROUTING AUTHORITY: roster_site_key derives the dispatch emit site from dispatch_symbol plus string prefix conventions (v4_bridge., native_intercept.) and known_dispatch_emit_site_keys validates the result. This is a hand-rolled undeclared sum, not a modeled InterpreterDispatchSite field on each row. Dissolve-on: each InterpreterPrimitiveDispatchArm carries a closed dispatch_emit_site field; roster_site_key reads that field; prefix conventions and the parallel validator delete together."
+
+fn site_has_rust_variant_collision(site_rows: List<InterpreterPrimitiveDispatchArm>) -> Bool {
+  count(distinct_identities(rows: site_rows)) != count(distinct_rust_variants(rows: site_rows))
+}
+
+fn roster_site_has_rust_variant_collision(site_key: String, rows: List<InterpreterPrimitiveDispatchArm>) -> Bool {
+  site_has_rust_variant_collision(site_rows: filter_roster_site(rows: rows, site_key: site_key))
+}
+
+fn any_roster_site_has_rust_variant_collision(rows: List<InterpreterPrimitiveDispatchArm>) -> Bool {
+  known_dispatch_emit_site_keys()
+    |> any(site_key => roster_site_has_rust_variant_collision(site_key: site_key, rows: rows))
+}
+
+fn rust_variant_collision_synthetic_red_control() -> Bool {
+  arm_identity_to_rust_variant(identity: "synthetic.one_two")
+    == arm_identity_to_rust_variant(identity: "synthetic.one.two")
+    && "synthetic.one_two" != "synthetic.one.two"
+}
+
 fn dispatch_emit_site_key_is_emittable(site_key: String) -> Bool {
   known_dispatch_emit_site_keys() |> any(k => k == site_key)
 }
@@ -253,6 +274,10 @@ fn expected_v1_interpreter_dispatch_generated_rs() -> V1InterpreterDispatchEmitO
   if count(unknown) > 0 {
     V1InterpreterDispatchGenerationRefused {
       reason: "authored roster row maps to unknown dispatch emit site — every row must map to known_dispatch_emit_site_keys via roster_site_key"
+    }
+  } else if any_roster_site_has_rust_variant_collision(rows: rows) {
+    V1InterpreterDispatchGenerationRefused {
+      reason: "two distinct arm identities collapse to the same PascalCase enum variant within one dispatch emit site — arm_identity_to_rust_variant must be injective per site"
     }
   } else {
     V1InterpreterDispatchGenerated { content: render_dispatch_generated_rs(rows: rows) }

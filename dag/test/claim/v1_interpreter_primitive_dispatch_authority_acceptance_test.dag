@@ -2,9 +2,12 @@ module test.claim.v1_interpreter_primitive_dispatch_authority_acceptance
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.v1_interpreter_dispatch_emit {
+  any_roster_site_has_rust_variant_collision,
   dispatch_emit_site_key_is_emittable,
+  dispatch_emit_site_routing_scaffold_note,
   expected_v1_interpreter_dispatch_generated_rs,
   roster_rows_with_unknown_emit_site,
+  rust_variant_collision_synthetic_red_control,
   V1InterpreterDispatchGenerated,
   V1InterpreterDispatchGenerationRefused,
 }
@@ -24,7 +27,7 @@ import gunbc.v1_interpreter_primitive_surface {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data closing_contract_note: String = "THE CLOSING CHECK FOR v1-interpreter-primitive-dispatch-authority. R1 inverts the roster: gunbc.v1_interpreter_primitive_surface v1_interpreter_authored_roster_arms is the canonical authority; generated lookup in v1_interpreter_dispatch_generated.rs routes spellings to typed arm identities derived from arm identity, and the interpreter dispatch macros consult that lookup before matching handler bodies. The checks here are structural properties that survive roster growth -- not population pins.\n\nCOMPILE-TIME EXHAUSTIVENESS (site-scoped): on single-family sites (eval_builtin_inner, eval_algebra_method_inner, try_v2_std_collection_map_primitive_grounding, try_parse_table_memo_dispatch) a roster row without a handler macro arm fails cargo build via a non-exhaustive inner match on the generated enum — no Bool half, no wildcard. On multi-family shared-enum sites (eval_call_bridge, eval_call_native_intercept) each family guard expands only its subset of EvalCallBridgeArm / EvalCallNativeInterceptArm and requires a wildcard arm, so a roster row added to an active family without a matching handler body degrades to runtime unreachable! rather than a compile error; per-family enum split is the follow-up construction wall. EMIT-SITE COVERAGE refuses generation when any authored row maps outside known_dispatch_emit_site_keys (review 47777 class: bare eval_call site key must not silently omit rows). The positive control is a green build; the discriminating RED is documented in src/v1/stage0/tests/interpreter_dispatch_authority.rs as a roster/lookup alignment witness executed alongside this contract.\n\nWHAT MAKES THIS ABLE TO FAIL. Reverting derived rows to DerivedFromDispatch, reintroducing the interpreter_dispatch_arm_rows bridge spelling, dropping a declared residual row's dissolution trigger, removing the generated lookup path, or allowing unknown emit-site roster rows each reds a clause."
+data closing_contract_note: String = "THE CLOSING CHECK FOR v1-interpreter-primitive-dispatch-authority. R1 inverts the roster: gunbc.v1_interpreter_primitive_surface v1_interpreter_authored_roster_arms is the canonical authority; generated lookup in v1_interpreter_dispatch_generated.rs routes spellings to typed arm identities derived from arm identity, and the interpreter dispatch macros consult that lookup before matching handler bodies. The checks here are structural properties that survive roster growth -- not population pins.\n\nCOMPILE-TIME EXHAUSTIVENESS (site-scoped): on single-family sites (eval_builtin_inner, eval_algebra_method_inner, try_v2_std_collection_map_primitive_grounding, try_parse_table_memo_dispatch) a roster row without a handler macro arm fails cargo build via a non-exhaustive inner match on the generated enum — no Bool half, no wildcard. On multi-family shared-enum sites (eval_call_bridge, eval_call_native_intercept) each family guard expands only its subset of EvalCallBridgeArm / EvalCallNativeInterceptArm and requires a wildcard arm, so a roster row added to an active family without a matching handler body degrades to runtime unreachable! rather than a compile error; per-family enum split is the follow-up construction wall. EMIT-SITE COVERAGE refuses generation when any authored row maps outside known_dispatch_emit_site_keys (review 47777 class: bare eval_call site key must not silently omit rows). VARIANT COLLISION refuses generation when two distinct arm identities within one emit site collapse to the same PascalCase enum name (distinct_rust_variants must not silently deduplicate). POSITIVE CONTROLS: dispatch_emit_succeeds_on_live_roster and src/v1/stage0/tests/interpreter_dispatch_authority.rs lookup coverage per site. DISCRIMINATING REDS ENROLLED HERE: bare_eval_call_site_key_is_not_emittable_red_control and rust_variant_collision_synthetic_red_control; single-family compile-time exhaustiveness is cargo build itself, not a separate enrolled mismatch RED in the Rust integration test file.\n\nWHAT MAKES THIS ABLE TO FAIL. Reverting derived rows to DerivedFromDispatch, reintroducing the interpreter_dispatch_arm_rows bridge spelling, dropping a declared residual row's dissolution trigger, removing the generated lookup path, allowing unknown emit-site roster rows, or allowing variant-colliding identities each reds a clause."
 
 fn roster_rows_are_authored_in_roster_not_transcribed_from_rust() -> Bool {
   count(v1_interpreter_derived_arms()) > 0
@@ -74,12 +77,25 @@ fn bare_eval_call_site_key_is_not_emittable_red_control() -> Bool {
     && dispatch_emit_site_key_is_emittable(site_key: "eval_call_bridge")
 }
 
+fn live_roster_has_no_rust_variant_collisions() -> Bool {
+  count(v1_interpreter_authored_roster_arms()) > 0
+    && !any_roster_site_has_rust_variant_collision(rows: v1_interpreter_authored_roster_arms())
+}
+
+fn dispatch_site_routing_scaffold_names_dissolution_trigger() -> Bool {
+  string_contains(s: dispatch_emit_site_routing_scaffold_note, pattern: "Dissolve-on:")
+    && string_contains(s: dispatch_emit_site_routing_scaffold_note, pattern: "dispatch_emit_site")
+}
+
 test fn v1_interpreter_primitive_dispatch_authority_acceptance_contract_holds() -> Bool {
   roster_rows_are_authored_in_roster_not_transcribed_from_rust()
     && self_reading_bridge_arm_is_deleted()
     && declared_residual_rows_retain_independent_dispositions()
     && handler_body_scaffold_names_remaining_residue()
+    && dispatch_site_routing_scaffold_names_dissolution_trigger()
     && every_authored_roster_row_maps_to_known_emit_site()
+    && live_roster_has_no_rust_variant_collisions()
     && dispatch_emit_succeeds_on_live_roster()
     && bare_eval_call_site_key_is_not_emittable_red_control()
+    && rust_variant_collision_synthetic_red_control()
 }

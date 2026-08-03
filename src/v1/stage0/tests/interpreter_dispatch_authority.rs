@@ -1,8 +1,8 @@
-//! Positive control for R1 dispatch-authority compile-time exhaustiveness.
+//! Positive control for R1 dispatch-authority lookup routing.
 //! On single-family sites, a roster row without a matching handler macro arm fails
-//! `cargo build` via a non-exhaustive inner `match` on the generated enum. Bridge and
-//! native-intercept families share one enum per site but expand per-family subsets
-//! with a wildcard — those sites rely on runtime `unreachable!` for the same class.
+//! `cargo build` via a non-exhaustive inner `match` on the generated enum (not exercised
+//! here). Bridge and native-intercept families share one enum per site but expand
+//! per-family subsets with a wildcard — those sites rely on runtime `unreachable!`.
 
 use v1_compiler::v1_interpreter_dispatch_generated::{
     lookup_eval_algebra_method_inner, lookup_eval_builtin_inner, lookup_eval_call_bridge,
