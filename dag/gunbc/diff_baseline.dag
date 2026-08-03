@@ -28,6 +28,7 @@ type DiffBaseline
 
 type PushBeforeInput
   = PushBeforeSha { sha: String }
+  | PushBeforeZeroShaInput
   | PushBeforeInputRefused { reason: String }
 
 type CiDiffEvent {
@@ -76,6 +77,10 @@ fn resolve_push_before(push_before: PushBeforeInput?, head_sha: String?) -> Diff
       }
     Present { value: PushBeforeInputRefused { reason: reason } } =>
       BaselineRefused { reason: reason }
+    Present { value: PushBeforeZeroShaInput } =>
+      BaselineRefused {
+        reason: "push event before SHA is the zero SHA (new branch creation) — no prior commit to diff against; halting the floor (AFFECTED-SET REFUSAL)"
+      }
     Present { value: PushBeforeSha { sha: before } } =>
       if before == "" {
         BaselineRefused {

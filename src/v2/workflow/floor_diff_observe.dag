@@ -16,6 +16,7 @@ import gunbc.diff_baseline {
   PushBefore,
   PushBeforeInput,
   PushBeforeSha,
+  PushBeforeZeroShaInput,
   PushBeforeInputRefused,
   resolve_diff_baseline,
   diff_baseline_ref
@@ -38,7 +39,6 @@ import extdeps.git {
 }
 import extdeps.github.actions { github_event_name_env, github_base_ref_env, github_event_name_push }
 import extdeps.github.actions_environment { github_sha_variable_name }
-import extdeps.git.hooks { zero_sha }
 import extdeps.github.push_event {
   github_event_path_env,
   push_before_from_event_path,
@@ -108,7 +108,7 @@ fn floor_observe_push_before_input(event_name: String) -> PushBeforeInput? {
                 )
               }
             PushBeforeZeroSha =>
-              Present { value: PushBeforeSha { sha: zero_sha } }
+              Present { value: PushBeforeZeroShaInput }
             PushBeforeMalformed { detail: detail } =>
               Present {
                 value: floor_push_before_refusal(

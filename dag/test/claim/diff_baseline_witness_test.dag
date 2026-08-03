@@ -12,6 +12,7 @@ import gunbc.diff_baseline {
   OperatorOverride,
   PushBeforeInput,
   PushBeforeSha,
+  PushBeforeZeroShaInput,
   PushBeforeInputRefused,
   BaselineSelected,
   BaselineRefused,
@@ -128,6 +129,22 @@ test fn witness_push_observation_read_refusal_propagates() -> Bool {
   ) == "refused"
 }
 
+test fn witness_push_observation_absent_propagates() -> Bool {
+  arm_tag(
+    res: resolve_case(
+      override_ref: none,
+      event_name: "push",
+      base_ref: none,
+      push_before: Present {
+        value: PushBeforeInputRefused {
+          reason: "push event before SHA absent — push event payload has no before member; halting the floor (AFFECTED-SET REFUSAL)"
+        }
+      },
+      head_sha: Present { value: "fedcba0987654321fedcba0987654321fedcba09" }
+    )
+  ) == "refused"
+}
+
 test fn witness_push_observation_refusal_propagates() -> Bool {
   arm_tag(
     res: resolve_case(
@@ -150,7 +167,7 @@ test fn witness_push_zero_before_refuses() -> Bool {
       override_ref: none,
       event_name: "push",
       base_ref: none,
-      push_before: Present { value: PushBeforeSha { sha: zero_sha } },
+      push_before: Present { value: PushBeforeZeroShaInput },
       head_sha: Present { value: "fedcba0987654321fedcba0987654321fedcba09" }
     )
   ) == "refused"
