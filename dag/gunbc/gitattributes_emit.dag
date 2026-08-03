@@ -1,0 +1,74 @@
+module gunbc.gitattributes_emit
+
+import gunbc.generated_projection_paths {
+  GeneratedProjectionPathsAccepted,
+  GeneratedProjectionPathsRefused,
+  deterministic_generated_projection_paths
+}
+
+type GitattributesGenerationOutcome
+  = GitattributesGenerated { content: String }
+  | GitattributesGenerationRefused
+
+data gitattributes_emit_authority_note: String = "THE committed byte projection through which Git receives the relevant subset of the modeled repository-path policy (generated-file conflict policy charter, lane 2, operator-ruled 2026-08-01). Presentation-policy rows (linguist) and integration-policy rows (merge driver attribute) are orthogonal facts derived from separate authorities — generated provenance does not imply linguist-hidden, and neither row is hand-authored in the committed file. The merge-attribute population is gunbc.generated_projection_paths.deterministic_generated_projection_paths(), joining committed generated artifacts with plan-derived stage0 Rust and refusing duplicate paths before row emission; committed_generated_artifact_paths() remains the heal/registry authority. .gitattributes classifies itself through the same derivation with no handwritten self-row. The merge-driver DEFINITION lives in repository-local Git config (gunbc.repo_local_git_config), not in this file."
+
+data generated_projection_paths_join_seam_note: String = "Seam for #7609 (operator sequence step 4, crisp-bat-830 2026-08-01): merry-deer-815 owns deterministic_generated_projection_paths() = committed_generated_artifact_paths ++ stage0-derived repo paths. Single consumer: generated_projection_merge_policy_lines() below. Duplicate refusal is fail-closed inside that fn (counted diagnostic), not silent dedup. still-carp-272 does not author a parallel join — reviews the stacked #7609 change only."
+
+data dag_linguist_presentation_policy_pattern: String = "**/*.dag"
+data dag_linguist_presentation_policy_attribute: String = "linguist-language=Rust"
+data generated_projection_merge_attribute: String = "merge=generated-artifact"
+
+fn gitattributes_header_lines() -> List<String> {
+  [
+    "# gunbc .gitattributes — generated from dag/gunbc/gitattributes_emit.dag — do not hand-edit.",
+    "# Authority: docs/plans/generated-file-conflict-policy.md (lane 2).",
+    ""
+  ]
+}
+
+fn presentation_policy_lines() -> List<String> {
+  [
+    "# Presentation policy — linguist classification is independent of merge/integration policy.",
+    concat(concat(dag_linguist_presentation_policy_pattern, " "), dag_linguist_presentation_policy_attribute),
+    ""
+  ]
+}
+
+fn generated_projection_merge_policy_lines() -> GitattributesGenerationOutcome {
+  let header = [
+    "# Integration policy — deterministic generated projections: provisional ours during merge,",
+    "# then regenerate from merged authorities before commit (charter four-case policy row 1).",
+    ""
+  ]
+  match deterministic_generated_projection_paths() {
+    GeneratedProjectionPathsRefused { cause: _ } => GitattributesGenerationRefused
+    GeneratedProjectionPathsAccepted { paths } => GitattributesGenerated {
+      content: join_lines(lines: concat(header, map(paths, p => concat(concat(p, " "), generated_projection_merge_attribute))))
+    }
+  }
+}
+
+fn join_lines(lines: List<String>) -> String {
+  fold(lines, init: "", f: fn(acc, line) {
+    if acc == "" { line } else { concat(concat(acc, "\n"), line) }
+  })
+}
+
+fn expected_gitattributes() -> GitattributesGenerationOutcome {
+  match generated_projection_merge_policy_lines() {
+    GitattributesGenerationRefused => GitattributesGenerationRefused
+    GitattributesGenerated { content } => GitattributesGenerated {
+      content: concat(
+        concat(join_lines(lines: concat(gitattributes_header_lines(), presentation_policy_lines())), "\n"),
+        concat(content, "\n")
+      )
+    }
+  }
+}
+
+fn gitattributes_drifted(committed: String) -> Bool {
+  match expected_gitattributes() {
+    GitattributesGenerationRefused => true
+    GitattributesGenerated { content } => !(committed == content)
+  }
+}

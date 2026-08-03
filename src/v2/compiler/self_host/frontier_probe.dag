@@ -7,10 +7,11 @@ import v2.compiler.name_resolve { Admission }
 import v2.compiler.program_assembly { assemble_program_from_ingest }
 import v2.compiler.self_host.frontier_probe_types {
   FrontierProbeReceipt,
-  ProbeStageAssemble,
   ProbeStageEmit,
   UnknownProbeCause,
-  frontier_classify_rejection_reason
+  frontier_classify_rejection_reason,
+  frontier_probe_located_stage_for_assemble_outcome,
+  frontier_probe_located_stage_for_emit_outcome
 }
 import v2.compiler.source_authority { SourceRootIngest }
 import v2.extdeps.languages.dag { dag_language_model }
@@ -30,13 +31,15 @@ fn frontier_probe_emit_from_ingest(
     admission: admission,
     lm: dag_language_model()
   ) {
-    Rejected { diagnostics: d } =>
+    Rejected { diagnostics: d } => {
+      let blocker = frontier_classify_rejection_reason(reason: d.head.reason)
       FrontierProbeReceipt {
         module_path: module_path,
-        blocker_class: frontier_classify_rejection_reason(reason: d.head.reason),
-        located_stage: ProbeStageAssemble,
+        blocker_class: blocker,
+        located_stage: frontier_probe_located_stage_for_assemble_outcome(blocker: blocker),
         located_reason: d.head.reason
       }
+    }
     Accepted { value: _, diagnostics: _ } =>
       match emit_compiler_import_closure_from_ingest(
         ingest: ingest,
@@ -52,13 +55,15 @@ fn frontier_probe_emit_from_ingest(
             located_stage: ProbeStageEmit,
             located_reason: ^probe_emit_accept_self_host_bar_unbound
           }
-        Rejected { diagnostics: d } =>
+        Rejected { diagnostics: d } => {
+          let blocker = frontier_classify_rejection_reason(reason: d.head.reason)
           FrontierProbeReceipt {
             module_path: module_path,
-            blocker_class: frontier_classify_rejection_reason(reason: d.head.reason),
-            located_stage: ProbeStageEmit,
+            blocker_class: blocker,
+            located_stage: frontier_probe_located_stage_for_emit_outcome(blocker: blocker),
             located_reason: d.head.reason
           }
+        }
       }
   }
 }

@@ -75,6 +75,20 @@ type DashboardProviderStateBinding
       binding: AdmittedAccountBinding,
     }
 
+data dispatch_state_scope_note: String = "WHOSE STATE THE DISPATCH ROOTS ARE IS A DECLARATION, NOT AN INFERENCE, and it is the axis this record was missing when blue/green landed. An instance owns two roots a dispatch WRITES — the worktree root and the published attempt-state root — and until now both were derived from instance_root for every instance, which silently answered a question nobody had asked: that dispatch evidence belongs to the SLOT.\\n\\nFor an isolated lab that answer is right and load-bearing. A lab exists to be disjoint from production, and handing it the host-shared roots would let one lab's apply or retract disturb another lab's live worktrees and published attempts. For a production blue/green SLOT the same answer is wrong, and wrong in two directions at once. The cutover retracts the retiring slot, so slot-scoped roots put a teardown of live dispatch evidence on the per-push path — the empty-directory wall then refuses, correctly, and every main push reds (measured 2026-08-01: seven consecutive deploy jobs, alternating by candidate, both directions failing once each slot had served long enough to accumulate evidence). And because each slot reads its OWN roots, a flip moves the dashboard to a process that cannot see the attempts dispatched under its predecessor.\\n\\nThe defect is not that either answer is wrong. It is that ONE derivation answered for both kinds of instance, so the two could not disagree. Making it a field with no default means an instance cannot come into existence without stating which it is, and the two laws below read the declaration rather than guessing from instance_root, instance_id, or actuation posture — none of which separate a lab from a production slot, since labs and slots are both DashboardActuating.\\n\\nTHIS DOES NOT REOPEN isolated_instance_own_binary_note (operator ruling, 2026-07-30). That ruling is about serve_binary and its argument is mutual exclusion of PROCESSES: a lab testing a new seed must not overwrite the binary production executes, and retract tears Owned members down. Nothing here touches serve_binary, which stays instance-derived for labs and instance-declared for production under both scopes. The two rulings partition cleanly because they are about different members with opposite sharing requirements — the binary must NOT be shared because a retract would delete a running program, and the dispatch state MUST be shared across production slots because a flip would otherwise orphan live agent sessions."
+
+data dispatch_state_scope_carries_its_roots_note: String = "THE SCOPE AND THE ROOTS TRAVEL TOGETHER, because as three independent fields they could disagree and the model could only NOTICE that afterwards (codex review 47405, #7637 follow-up). The first cut declared a bare two-variant scope beside dispatch_worktree_root and dispatch_attempt_state_root, so a slot could be labelled host-shared while carrying roots derived from its own instance root — exactly the state the change existed to eliminate. The tell was in the evidence: the RED witness had to CONSTRUCT that combination to prove the law caught it, which is DESIGN §4b rung two, mechanically preventable, standing where rung four was available.\\n\\nCarrying the roots in the variant moves it up. An instance-owned scope carries the CHILD NAMES its roots hang under, and the roots are derived beneath instance_root; a host-shared scope carries the layout roots themselves. There is no third field to contradict either, so the MISLABELLED slot — host-shared in name while its roots derive from its own instance root — has no representation rather than a check that finds it.\n\nBE EXACT ABOUT WHAT THIS DOES NOT CLOSE, because overstating a rung is worse than sitting at it (DESIGN §4b rung honesty). A host-shared variant still carries two free FilePath values, so a production slot CAN be authored with roots that are not the layout rows. That state remains representable and dashboard_instances_dispatch_state_is_consistent is what refuses it — mechanically preventable, not structurally impossible — and a_production_slot_keeping_its_own_dispatch_state_is_refused is the live discriminating red proving the law still executes. What DID climb is the instance-owned side, which carries child names only and therefore cannot reach outside its instance root at all. Next-rung trigger, so this is a tracked stall rather than a silent one: host-shared roots DERIVED from a total host-identity-to-layout lookup instead of carried. Dissolve-on feature:host-dispatch-roots-derived.\\n\\nTHE CHILD NAMES ARE CARRIED RATHER THAN FIXED, and that is not incidental: production hangs its worktrees under dispatch-worktrees while isolated labs use attempts. A uniform derivation would have silently RENAMED production's live worktree root — the kind of quiet migration a refactor produces when it assumes regularity the corpus does not have."
+
+type DispatchStateScope
+  = DispatchStateInstanceOwned {
+      worktree_child: NonEmptyStr,
+      attempt_state_child: NonEmptyStr,
+    }
+  | DispatchStateHostShared {
+      worktree_root: FilePath,
+      attempt_state_root: FilePath,
+    }
+
 type HostDashboardInstance {
   instance_id: NonEmptyStr
   host_identity: NonEmptyStr
@@ -84,8 +98,7 @@ type HostDashboardInstance {
   local_origin_publish_ref: NonEmptyStr
   repo_root: FilePath
   dispatch_base_ref: NonEmptyStr
-  dispatch_worktree_root: FilePath
-  dispatch_attempt_state_root: FilePath
+  dispatch_state_scope: DispatchStateScope
   execution_environment: DispatchHostEnvironment
   provider_state: DashboardProviderStateBinding
   serve_binary: FilePath
@@ -329,8 +342,10 @@ fn srv1_live_dashboard_instance() -> HostDashboardInstance {
     local_origin_publish_ref: "refs/heads/main" as NonEmptyStr,
     repo_root: srv1_gunbc_repo_root,
     dispatch_base_ref: "origin/main" as NonEmptyStr,
-    dispatch_worktree_root: srv1_dispatch_worktree_root,
-    dispatch_attempt_state_root: srv1_dispatch_attempt_state_root,
+    dispatch_state_scope: DispatchStateHostShared {
+      worktree_root: srv1_dispatch_worktree_root,
+      attempt_state_root: srv1_dispatch_attempt_state_root,
+    },
     execution_environment: dashboard_execution_environment(
       serve_binary: srv1_gunbc_serve_binary,
     ),
@@ -353,7 +368,7 @@ fn srv1_live_dashboard_instance() -> HostDashboardInstance {
   }
 }
 
-data srv1_green_dashboard_instance_note: String = "The second production slot for the operator-signed 2026-08-01 blue/green cutover. It is a full HostDashboardInstance rather than a port override: source, binary, dispatch worktrees, attempt evidence, tmux server, unit handler and listen port move together, so preparing this idle slot cannot mutate the instance that Tailscale still serves. Provider credentials are referenced from the same admitted account binding, never copied. The slot is actuating and serves the production handler surface; it is not the pre-existing feedback lab, whose source ref and handler intentionally describe a different product."
+data srv1_green_dashboard_instance_note: String = "The second production slot for the operator-signed 2026-08-01 blue/green cutover. It is a full HostDashboardInstance rather than a port override: source, binary, unit handler and listen port move together, so preparing this idle slot cannot mutate the instance that Tailscale still serves. Provider credentials are referenced from the same admitted account binding, never copied. The slot is actuating and serves the production handler surface; it is not the pre-existing feedback lab, whose source ref and handler intentionally describe a different product.\\n\\nDISPATCH STATE AND THE TMUX SERVER DELIBERATELY DO NOT MOVE WITH THE SLOT, and an earlier revision of this note listed dispatch worktrees, attempt evidence and the tmux server among the things that do (operator ruling, 2026-08-01). Moving them was wrong twice over. It put a teardown of live dispatch evidence on the per-push cutover path, where the empty-directory wall correctly refused and reded every main push; and it meant a flip handed the dashboard to a process reading an empty attempt-state root and a differently-named tmux server, so attempts dispatched under the predecessor went invisible and their sessions unmanageable. Blue/green is sound for a stateless server, and this instance is stateful — so the stateful members are host-shared and the slot carries only what a slot may safely own."
 
 fn srv1_green_dashboard_instance() -> HostDashboardInstance {
   let root = "/opt/gunbc-green" as FilePath
@@ -367,8 +382,10 @@ fn srv1_green_dashboard_instance() -> HostDashboardInstance {
     local_origin_publish_ref: "refs/heads/main" as NonEmptyStr,
     repo_root: dashboard_instance_child(root: root, child: "gunbc"),
     dispatch_base_ref: "origin/main" as NonEmptyStr,
-    dispatch_worktree_root: dashboard_instance_child(root: root, child: "dispatch-worktrees"),
-    dispatch_attempt_state_root: dashboard_instance_child(root: root, child: "attempt-state"),
+    dispatch_state_scope: DispatchStateHostShared {
+      worktree_root: srv1_dispatch_worktree_root,
+      attempt_state_root: srv1_dispatch_attempt_state_root,
+    },
     execution_environment: dashboard_execution_environment(serve_binary: binary),
     provider_state: DashboardExistingProviderState {
       root: srv1_roadmap_codex_home,
@@ -382,7 +399,7 @@ fn srv1_green_dashboard_instance() -> HostDashboardInstance {
     serve_function: "roadmap_serve_handle_srv1_green" as NonEmptyStr,
     listen_host: "0.0.0.0" as NonEmptyStr,
     listen_port: 18080,
-    tmux_server: dashboard_named_tmux_server(instance_id: srv1_dashboard_green_id),
+    tmux_server: DefaultTmuxServer,
     actuation: DashboardActuating,
     provision_transport: DashboardSshProvision { host: "srv1" as NonEmptyStr },
     source_seed: DashboardExistingRepo { anchor_ref: "origin/main" as NonEmptyStr },
@@ -414,8 +431,10 @@ fn isolated_dashboard_instance(
     local_origin_publish_ref: "refs/heads/main" as NonEmptyStr,
     repo_root: dashboard_instance_child(root: root, child: "source"),
     dispatch_base_ref: "origin/main" as NonEmptyStr,
-    dispatch_worktree_root: dashboard_instance_child(root: root, child: "attempts"),
-    dispatch_attempt_state_root: dashboard_instance_child(root: root, child: "attempt-state"),
+    dispatch_state_scope: DispatchStateInstanceOwned {
+      worktree_child: "attempts" as NonEmptyStr,
+      attempt_state_child: "attempt-state" as NonEmptyStr,
+    },
     execution_environment: dashboard_execution_environment(
       serve_binary: dashboard_instance_child(root: root, child: "bin/gunbc"),
     ),
@@ -494,20 +513,68 @@ fn dashboard_path_is_under(path: FilePath, root: FilePath) -> Bool {
 
 data owned_paths_omitted_the_binary_note: String = "serve_binary WAS MISSING FROM THE CANONICAL OWNED SET while live_deploy treated it as an Owned artifact and removed it on retract — two models of one fact, one saying owned-and-retractable and the other saying neither (review, 2026-07-30). The omission was correct while instances BORROWED production's binary: a path you do not own does not belong in your owned set. Making it instance-derived changed the answer and nothing propagated it here.\\n\\nThe consequence was concrete rather than tidy. dashboard_instances_have_disjoint_owned_paths reads this roster, so the disjointness check could not see the one path two instances actually shared — which is why the twin witness had to assert binary inequality as a SEPARATE conjunct rather than getting it from the canonical set. A check that needs a hand-written supplement to cover the thing it exists to cover is not covering it.\\n\\nIt belongs here for both instance shapes: srv1-live's /opt/gunbc/bin/gunbc sits under its instance_root /opt/gunbc, and an isolated lab's sits under its own root by derivation, so dashboard_instance_paths_are_owned's containment law holds for both without exception. The twin claim can now drop its supplemental conjunct and read the roster."
 
-fn dashboard_instance_owned_paths(instance: HostDashboardInstance) -> List<FilePath> {
+data owned_paths_split_by_scope_note: String = "ONE ROSTER USED TO CARRY TWO KINDS OF MEMBER, and the disjointness law could not be right about both once production slots began sharing dispatch state. The roster mixed paths that are the instance's own FOOTPRINT — its origin, its source tree, its binary — with paths that hold DISPATCH EVIDENCE, and then applied a single rule to the union: every path sits under instance_root, and no two instances share any path.\\n\\nThat rule is exactly right for the footprint and exactly wrong for host-shared dispatch state, whose whole purpose is to be the same path in two slots. Weakening the law to admit overlap would have been the cheap fix and the wrong one: overlap is precisely the hazard owned_paths_omitted_the_binary_note records, where a lab's retract would have deleted the binary production was executing. So the roster splits and each half keeps the law that is true of it, rather than one roster keeping a law that is true of neither.\\n\\nFootprint paths keep BOTH original laws at full strength, for every instance and every scope. Dispatch-state paths get the law their scope declares: instance-owned must sit under instance_root and stay disjoint from every other instance, which is the old behaviour preserved for labs; host-shared must EQUAL the layout rows and therefore agree with every other host-shared instance on the same host. Agreement is a stronger statement than the absence of a check — it goes red if a production slot is given its own attempt-state root, which is the regression this change exists to prevent recurring."
+
+fn dashboard_instance_footprint_paths(instance: HostDashboardInstance) -> List<FilePath> {
   [
     instance.local_origin_root,
     instance.repo_root,
-    instance.dispatch_worktree_root,
-    instance.dispatch_attempt_state_root,
     instance.serve_binary,
   ]
 }
 
+fn dashboard_instance_dispatch_worktree_root(instance: HostDashboardInstance) -> FilePath {
+  match instance.dispatch_state_scope {
+    DispatchStateInstanceOwned { worktree_child, attempt_state_child: _ } =>
+      dashboard_instance_child(root: instance.instance_root, child: worktree_child)
+    DispatchStateHostShared { worktree_root, attempt_state_root: _ } => worktree_root
+  }
+}
+
+fn dashboard_instance_dispatch_attempt_state_root(instance: HostDashboardInstance) -> FilePath {
+  match instance.dispatch_state_scope {
+    DispatchStateInstanceOwned { worktree_child: _, attempt_state_child } =>
+      dashboard_instance_child(root: instance.instance_root, child: attempt_state_child)
+    DispatchStateHostShared { worktree_root: _, attempt_state_root } => attempt_state_root
+  }
+}
+
+fn dashboard_instance_dispatch_state_paths(instance: HostDashboardInstance) -> List<FilePath> {
+  [
+    dashboard_instance_dispatch_worktree_root(instance: instance),
+    dashboard_instance_dispatch_attempt_state_root(instance: instance),
+  ]
+}
+
+fn dashboard_paths_all_under(paths: List<FilePath>, root: FilePath) -> Bool {
+  all(paths, path => dashboard_path_is_under(path: path, root: root))
+}
+
 fn dashboard_instance_paths_are_owned(instance: HostDashboardInstance) -> Bool {
+  dashboard_paths_all_under(
+    paths: dashboard_instance_footprint_paths(instance: instance),
+    root: instance.instance_root,
+  )
+    && match instance.dispatch_state_scope {
+      DispatchStateInstanceOwned { worktree_child: _, attempt_state_child: _ } =>
+        dashboard_paths_all_under(
+          paths: dashboard_instance_dispatch_state_paths(instance: instance),
+          root: instance.instance_root,
+        )
+      DispatchStateHostShared { worktree_root: _, attempt_state_root: _ } => true
+    }
+}
+
+fn dashboard_paths_are_disjoint(a: List<FilePath>, b: List<FilePath>) -> Bool {
   all(
-    dashboard_instance_owned_paths(instance: instance),
-    path => dashboard_path_is_under(path: path, root: instance.instance_root),
+    a,
+    ap => all(
+      b,
+      bp =>
+        ap != bp
+          && !dashboard_path_is_under(path: ap, root: bp)
+          && !dashboard_path_is_under(path: bp, root: ap),
+    ),
   )
 }
 
@@ -515,16 +582,40 @@ fn dashboard_instances_have_disjoint_owned_paths(
   a: HostDashboardInstance,
   b: HostDashboardInstance,
 ) -> Bool {
-  all(
-    dashboard_instance_owned_paths(instance: a),
-    ap => all(
-      dashboard_instance_owned_paths(instance: b),
-      bp =>
-        ap != bp
-          && !dashboard_path_is_under(path: ap, root: bp)
-          && !dashboard_path_is_under(path: bp, root: ap),
-    ),
+  dashboard_paths_are_disjoint(
+    a: dashboard_instance_footprint_paths(instance: a),
+    b: dashboard_instance_footprint_paths(instance: b),
   )
+    && dashboard_instances_dispatch_state_is_consistent(a: a, b: b)
+}
+
+data dispatch_state_agreement_is_the_law_note: String = "THE REPLACEMENT FOR BLANKET DISJOINTNESS IS AGREEMENT, NOT ABSENCE. Two production slots on one host must resolve dispatch state to the SAME roots, and that is a checkable claim rather than a hole where a check used to be — a slot given its own attempt-state root fails this, which is precisely the shape that put a teardown of live dispatch evidence on the per-push path.\\n\\nTHE DIFFERENT-HOST ARM IS EXPLICIT BECAUSE THE FIRST CUT GOT IT WRONG (codex review 47405). This note already argued that two host-shared instances on different machines describe different directories and that disjointness is not the question their scope asks — and then the code routed exactly that pair into the disjointness branch anyway, where srv1 and srv2 layout paths, which gunbc_host_layout_note states are byte-identical by convention, would compare EQUAL and refuse a legitimate configuration. The prose was right and the fold contradicted it, which is the §3 stale-citation class turned inward: no live pair exercised it, so it stayed green. The arm now returns a valid outcome by name rather than by falling through.\\n\\nThe remaining pairings say which is which rather than defaulting: a host-shared instance beside an instance-owned one is a production slot beside a lab, and the lab exists to keep its dispatch evidence away from production, so disjointness is exactly right there.\\n\\nThis is the pairwise law. The population law it serves — every production slot on a host agrees with every other — is what the witness asserts over the declared slots, because a pairwise predicate cannot quantify over a roster it does not receive."
+
+fn dashboard_instances_dispatch_state_is_consistent(
+  a: HostDashboardInstance,
+  b: HostDashboardInstance,
+) -> Bool {
+  match a.dispatch_state_scope {
+    DispatchStateInstanceOwned { worktree_child: _, attempt_state_child: _ } =>
+      dashboard_paths_are_disjoint(
+        a: dashboard_instance_dispatch_state_paths(instance: a),
+        b: dashboard_instance_dispatch_state_paths(instance: b),
+      )
+    DispatchStateHostShared { worktree_root: a_worktree, attempt_state_root: a_attempts } =>
+      match b.dispatch_state_scope {
+        DispatchStateInstanceOwned { worktree_child: _, attempt_state_child: _ } =>
+          dashboard_paths_are_disjoint(
+            a: dashboard_instance_dispatch_state_paths(instance: a),
+            b: dashboard_instance_dispatch_state_paths(instance: b),
+          )
+        DispatchStateHostShared { worktree_root: b_worktree, attempt_state_root: b_attempts } =>
+          if a.host_identity == b.host_identity {
+            a_worktree == b_worktree && a_attempts == b_attempts
+          } else {
+            true
+          }
+      }
+  }
 }
 
 data serve_binary_ensure_note: String = "NOTHING INSTALLED A LAB'S BINARY, BECAUSE LABS USED TO BORROW PRODUCTION'S. Before serve_binary became instance-derived, every isolated instance resolved it to the host layout's /opt/gunbc/bin/gunbc — the file production is executing. That is why the plan had no install step: there was nothing to install, only something to point at. It is also exactly the hazard the twin witness caught, since ServeBinary is an Owned deployment artifact and a lab retract would have removed the binary out from under the running service.\\n\\nSo closing that hazard opened this gap, and the two belong in one change. An instance that owns its binary needs a step that puts one there, or the dashboard apply refuses at target-dependencies against a path only it was ever going to create — a chain that terminates in nobody's responsibility.\\n\\nIt copies rather than builds. The controller's already-built target/release/gunbc is the source, staged and moved into place through the same atomic copy the source bundle uses, so a half-written binary is never observable at the destination. Building is deliberately NOT modeled here: a provisioner that silently compiled would make apply's duration and its toolchain requirements invisible, and a stale or missing build should refuse with the path it looked for rather than quietly producing one that differs from what the operator tested."
@@ -606,8 +697,8 @@ fn dashboard_instance_provision_plan(instance: HostDashboardInstance) -> List<Da
   }
   let common = [
     DashboardEnsureDirectory { path: instance.instance_root },
-    DashboardEnsureDirectory { path: instance.dispatch_worktree_root },
-    DashboardEnsureDirectory { path: instance.dispatch_attempt_state_root },
+    DashboardEnsureDirectory { path: dashboard_instance_dispatch_worktree_root(instance: instance) },
+    DashboardEnsureDirectory { path: dashboard_instance_dispatch_attempt_state_root(instance: instance) },
     DashboardEnsureProviderStateRoot {
       path: dashboard_instance_provider_state_root(instance: instance),
     },
@@ -956,7 +1047,7 @@ fn dashboard_instance_retract_plan(
             instance_id: instance.instance_id,
             tmux_server: instance.tmux_server,
           },
-          DashboardRefuseUnlessAttemptsEmpty { path: instance.dispatch_worktree_root },
+          DashboardRefuseUnlessAttemptsEmpty { path: dashboard_instance_dispatch_worktree_root(instance: instance) },
           DashboardRemoveSourceRepo { path: instance.repo_root },
           DashboardRemoveLocalOrigin { path: instance.local_origin_root },
           DashboardPreserveSourceBundle { path: staged_bundle },

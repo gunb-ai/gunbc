@@ -1,0 +1,225 @@
+module gunbc.stage0_rust_product_reachability
+
+import gunbc.stage0_rust_host_observation {
+  GitObservationRefused,
+  RustManifestObserved,
+  RustManifestParseRefused,
+  RustManifestReadRefused,
+  RustSourceHostObservation
+}
+import gunbc.stage0_rust_source_lifecycle_scaffold {
+  path_has_prefix,
+  path_in_list,
+  rust_source_prefix_stage0_test,
+  rust_source_prefix_test_harness
+}
+import std.content_hash { Fnv1a64Structural }
+import v2.std.algebra { fold_list, list_map, list_snoc_item }
+import v2.std.collection { List }
+import v2.std.text { String }
+
+data stage0_rust_product_reachability_note: String = "C2 carrier (Lane C / v1-honest-frontier): product reachability from observed shipping Cargo bin roots only. A path being tracked, generated, test-imported, or textually referenced is NOT proof of product reachability. Module-dependency closure is not modeled yet — every non-root, non-test-harness path refuses with ReachabilityRefused naming the missing edge. Path location or directory prefix does NOT prove non-reachability. exact_*_paths helpers return ProductReachabilityExactPathsRefused on observation refusal — never an empty list."
+
+data empty_string_list: List<String> = []
+
+data rust_module_dependency_graph_unresolved_edge: String = "Rust module dependency graph not modeled — cannot walk from cargo bin roots to dependent source files"
+
+fn path_is_test_harness(path: String) -> Bool {
+  path_has_prefix(path: path, prefix: rust_source_prefix_test_harness)
+    || path_has_prefix(path: path, prefix: rust_source_prefix_stage0_test)
+}
+
+type RustProductReachabilityVerdict
+  = ProductReachable { path: String, entry_path: String }
+  | TestOnlyReachable { path: String }
+  | ReachabilityRefused { path: String, unresolved_edge: String }
+
+type ProductReachabilityReceipt
+  = ProductReachabilityDerived {
+      cargo_root_paths: List<String>,
+      verdicts: List<RustProductReachabilityVerdict>
+    }
+  | ProductReachabilityObservationRefused
+
+type ProductReachabilityExactPaths
+  = ProductReachabilityExactPathsDerived { paths: List<String> }
+  | ProductReachabilityExactPathsRefused
+
+fn product_reachability_verdict_for_path(
+  path: String,
+  cargo_bin_repo_paths: List<String>
+) -> RustProductReachabilityVerdict {
+  if path_in_list(path: path, paths: cargo_bin_repo_paths) {
+    ProductReachable { path: path, entry_path: path }
+  } else if path_is_test_harness(path: path) {
+    TestOnlyReachable { path: path }
+  } else {
+    ReachabilityRefused {
+      path: path,
+      unresolved_edge: rust_module_dependency_graph_unresolved_edge
+    }
+  }
+}
+
+fn product_reachability_verdicts_for_paths(
+  tracked_paths: List<String>,
+  cargo_bin_repo_paths: List<String>
+) -> List<RustProductReachabilityVerdict> {
+  list_map(
+    xs: tracked_paths,
+    f: fn(path) {
+      product_reachability_verdict_for_path(
+        path: path,
+        cargo_bin_repo_paths: cargo_bin_repo_paths
+      )
+    }
+  )
+}
+
+fn product_reachability_receipt(
+  observation: RustSourceHostObservation
+) -> ProductReachabilityReceipt {
+  match observation {
+    RustManifestObserved {
+      repository_revision: revision,
+      tracked_rust_repo_paths: tracked_paths,
+      cargo_bin_repo_paths: cargo_bin_repo_paths,
+      manifest_content_identity: _,
+      prior_tracked_rust_repo_paths: _
+    } =>
+      if revision == "" {
+        ProductReachabilityObservationRefused
+      } else {
+        ProductReachabilityDerived {
+          cargo_root_paths: cargo_bin_repo_paths,
+          verdicts: product_reachability_verdicts_for_paths(
+            tracked_paths: tracked_paths,
+            cargo_bin_repo_paths: cargo_bin_repo_paths
+          )
+        }
+      }
+    RustManifestReadRefused { detail: detail } => ProductReachabilityObservationRefused
+    RustManifestParseRefused { detail: detail } => ProductReachabilityObservationRefused
+    GitObservationRefused { detail: detail } => ProductReachabilityObservationRefused
+  }
+}
+
+fn exact_paths_from_verdicts(
+  verdicts: List<RustProductReachabilityVerdict>,
+  include_product: Bool,
+  include_test_only: Bool,
+  include_refused: Bool
+) -> List<String> {
+  fold_list(
+    xs: verdicts,
+    empty: empty_string_list,
+    cons: fn(acc, verdict) {
+      match verdict {
+        ProductReachable { path: path, entry_path: entry_path } =>
+          if include_product {
+            list_snoc_item(xs: acc, item: path)
+          } else {
+            acc
+          }
+        TestOnlyReachable { path: path } =>
+          if include_test_only {
+            list_snoc_item(xs: acc, item: path)
+          } else {
+            acc
+          }
+        ReachabilityRefused { path: path, unresolved_edge: unresolved_edge } =>
+          if include_refused {
+            list_snoc_item(xs: acc, item: path)
+          } else {
+            acc
+          }
+      }
+    }
+  )
+}
+
+fn exact_product_reachable_paths_from_verdicts(
+  verdicts: List<RustProductReachabilityVerdict>
+) -> List<String> {
+  exact_paths_from_verdicts(
+    verdicts: verdicts,
+    include_product: true,
+    include_test_only: false,
+    include_refused: false
+  )
+}
+
+fn exact_reachability_refused_paths_from_verdicts(
+  verdicts: List<RustProductReachabilityVerdict>
+) -> List<String> {
+  exact_paths_from_verdicts(
+    verdicts: verdicts,
+    include_product: false,
+    include_test_only: false,
+    include_refused: true
+  )
+}
+
+fn exact_product_reachable_paths(
+  receipt: ProductReachabilityReceipt
+) -> ProductReachabilityExactPaths {
+  match receipt {
+    ProductReachabilityDerived { cargo_root_paths: cargo_root_paths, verdicts: verdicts } =>
+      ProductReachabilityExactPathsDerived {
+        paths: exact_paths_from_verdicts(
+          verdicts: verdicts,
+          include_product: true,
+          include_test_only: false,
+          include_refused: false
+        )
+      }
+    ProductReachabilityObservationRefused => ProductReachabilityExactPathsRefused
+  }
+}
+
+fn exact_test_only_reachable_paths(
+  receipt: ProductReachabilityReceipt
+) -> ProductReachabilityExactPaths {
+  match receipt {
+    ProductReachabilityDerived { cargo_root_paths: cargo_root_paths, verdicts: verdicts } =>
+      ProductReachabilityExactPathsDerived {
+        paths: exact_paths_from_verdicts(
+          verdicts: verdicts,
+          include_product: false,
+          include_test_only: true,
+          include_refused: false
+        )
+      }
+    ProductReachabilityObservationRefused => ProductReachabilityExactPathsRefused
+  }
+}
+
+fn exact_reachability_refused_paths(
+  receipt: ProductReachabilityReceipt
+) -> ProductReachabilityExactPaths {
+  match receipt {
+    ProductReachabilityDerived { cargo_root_paths: cargo_root_paths, verdicts: verdicts } =>
+      ProductReachabilityExactPathsDerived {
+        paths: exact_paths_from_verdicts(
+          verdicts: verdicts,
+          include_product: false,
+          include_test_only: false,
+          include_refused: true
+        )
+      }
+    ProductReachabilityObservationRefused => ProductReachabilityExactPathsRefused
+  }
+}
+
+fn product_reachability_witness_observation(
+  tracked_paths: List<String>,
+  cargo_bin_repo_paths: List<String>
+) -> RustManifestObserved {
+  RustManifestObserved {
+    repository_revision: "witness-deadbeef",
+    manifest_content_identity: Fnv1a64Structural { digest: "abc1230000000000" },
+    tracked_rust_repo_paths: tracked_paths,
+    prior_tracked_rust_repo_paths: tracked_paths,
+    cargo_bin_repo_paths: cargo_bin_repo_paths
+  }
+}

@@ -1,0 +1,1516 @@
+module std.occurrence_binding_candidates
+
+import std.types { String, Int, Bool, List, NonEmptyStr, CommitSha }
+import std.occurrence_binding {
+  OccurrenceBound,
+  OccurrenceUnbound,
+  OccurrenceAmbiguous,
+}
+import std.occurrence_identity {
+  OccurrenceId,
+  OccurrenceIndexEntry,
+  OccurrenceTransport,
+  OccurrenceTransportRefusal,
+  OccurrenceTransportValidated,
+  OccurrenceTransportRefused,
+  DeclarationOccurrence,
+  ReferenceOccurrence,
+  OccurrenceCategory,
+  TypeOccurrence,
+  OccurrenceContainmentPath,
+  occurrence_containment_path_is_prefix_of,
+  occurrence_containment_paths_equal,
+  ValidatedOccurrenceTransport,
+  occurrence_transport_validate,
+  AuthoredTokenOrdinal,
+  authored_token_ordinal_before,
+  authored_token_ordinal_eq,
+}
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.roster_frontier { declaration_ref_eq }
+import std.occurrence_binding_resolve {
+  resolve_reference_occurrence_binding,
+  OccurrenceReferenceBindingDecided,
+  OccurrenceReferenceBindingTransportRefused,
+}
+
+data occurrence_binding_candidates_authority_note: String = "P2a: THE structural candidate producer that hands supplied candidates to std.occurrence_binding_resolve.resolve_reference_occurrence_binding (P1). P1 owns exact-identity transport validation, category admissibility, and the single occurrence_binding_from_candidates cardinality fold; it decides nothing about which declarations are structurally exposed to a reference. This module owns exactly that: exposure (namespace-resolution-design.md 13 / namespace-unique-on-chain-operational-plan.md 2), deterministic source-order gating, an indexed candidate catalogue (declarations bucketed by authored spelling, so per-reference lookup is not an O(declarations) rescan), and the BoundReferenceProvider / DirectModuleDependency projections of an accepted P1 decision. It never folds cardinality itself and never treats an authored import list as visibility evidence. ROADMAP lane: namespace-reference-derived-closure."
+
+data occurrence_binding_candidates_roadmap_anchor: String = "gunbc.roadmap_authority namespace-reference-derived-closure"
+
+data occurrence_binding_candidates_prefix_bug_note: String = "The pre-strip P1 exposure predicate (git show ba4d1f22671^:dag/std/occurrence_binding_resolve.dag, declaration_exposed_on_reference_chain) tested only occurrence_containment_path_is_prefix_of(declaration.containment, reference.containment): a declaration is exposed exactly when its own occurrence id sits somewhere on the reference's ancestor chain. That is correct for genuine lexical nesting (a let, a lambda/function parameter, a pattern binder all scope-wrap what they enclose, so the binder's own node is a literal ancestor of every reference inside it) but it structurally MISSES module-scope siblings: two ordinary functions declared side by side in one module do not nest inside each other, so neither's occurrence id is ever an ancestor of a reference in the other's body, and the prefix test alone always answers false. occurrence_containment_path_is_prefix_of is imported from std.occurrence_identity (single authority) and the module-sibling disjunct is added beside it, never in place of it."
+
+data occurrence_module_path_row_note: String = "OccurrenceModulePathRow is the P2a-owned association between one occurrence and the module path its authored text belongs to — which authored source unit the text lives in. It is deliberately independent of OccurrenceContainmentPath and of DeclarationExposure: module membership for projection is not proof of module-scope exposure, and a nested declaration can share a module path without being a module sibling candidate."
+
+data occurrence_module_path_convergence_note: String = "Convergence, not fork: OccurrenceModulePathRow.module_path matches std.decl_ref.DeclarationRef.module_path (NonEmptyStr) — the single declaration-identity authority's existing representation, not a weaker String parallel and not a premature v2.std.qualified_name import (zero dag/std→v2 imports exist today). module_path becomes v2.std.qualified_name.QualifiedName when the namespace and module-identity lanes land those carriers (same trigger as std.observation observation_segment_grounding_note). Until then the representation is std's existing one, so there is nothing new to migrate."
+
+data declaration_exposure_note: String = "DeclarationExposure is THE deciding authority for whether a declaration is structurally exposed to a reference (namespace-resolution-design.md 13 / namespace-unique-on-chain-operational-plan.md 2). LexicalExposure\{exposing_scope\} exposes exactly when its exposing_scope contains the reference (occurrence_containment_path_is_prefix_of); ModuleExposure\{module\} exposes when the reference shares that module and the declaration's AuthoredTokenOrdinal is strictly before the reference's; RootExposure exposes on every candidate lookup (root declarations on every applicable chain). Raw declaration.containment must never remain a parallel binding rule beside the carrier — containment may derive LexicalExposure when rows are produced, but the decision reads only DeclarationExposure. Category must never be substituted for exposure."
+
+type DeclarationExposure
+  = LexicalExposure { exposing_scope: OccurrenceContainmentPath }
+  | ModuleExposure { module: NonEmptyStr }
+  | RootExposure
+
+type DeclarationExposureRow {
+  occurrence: OccurrenceId
+  exposure: DeclarationExposure
+}
+
+data authored_order_note: String = "AuthoredOrderRow carries the authored token ordinal for one occurrence — the source-order axis, distinct from OccurrenceId identity. Module-sibling gating compares ordinals only; never OccurrenceId.value as a proxy for authored order. AuthoredTokenOrdinal authority is std.occurrence_identity (feature:occurrence-ordinal-value-measure dissolve-on) — this module does not mint a parallel Int brand."
+
+type AuthoredOrderRow {
+  occurrence: OccurrenceId
+  ordinal: AuthoredTokenOrdinal
+}
+
+type OccurrenceBindingCandidateInputs {
+  module_paths: List<OccurrenceModulePathRow>
+  exposure_rows: List<DeclarationExposureRow>
+  authored_order_rows: List<AuthoredOrderRow>
+}
+
+type OccurrenceModulePathRow {
+  occurrence: OccurrenceId
+  module_path: NonEmptyStr
+}
+
+type OccurrenceModulePathIndexRefusal
+  = DuplicateOccurrenceModulePathRow {
+      occurrence: OccurrenceId,
+      first_module_path: NonEmptyStr,
+      conflicting_module_path: NonEmptyStr,
+    }
+  | MissingOccurrenceModulePathRow { occurrence: OccurrenceId }
+
+type OccurrenceModulePathIndexBuild {
+  module_by_occurrence: Map<Int, NonEmptyStr>
+  refusal: OccurrenceModulePathIndexRefusal?
+}
+
+fn module_by_occurrence_fold_step(
+  build: OccurrenceModulePathIndexBuild,
+  row: OccurrenceModulePathRow
+) -> OccurrenceModulePathIndexBuild {
+  match build.refusal {
+    Present { value: _ } => build
+    Absent =>
+      match map_get(build.module_by_occurrence, row.occurrence.value) {
+        Present { value: existing } =>
+          if existing == row.module_path {
+            build
+          } else {
+            OccurrenceModulePathIndexBuild {
+              module_by_occurrence: build.module_by_occurrence,
+              refusal: Present {
+                value: DuplicateOccurrenceModulePathRow {
+                  occurrence: row.occurrence,
+                  first_module_path: existing,
+                  conflicting_module_path: row.module_path,
+                },
+              },
+            }
+          }
+        Absent =>
+          OccurrenceModulePathIndexBuild {
+            module_by_occurrence: map_insert(
+              build.module_by_occurrence,
+              row.occurrence.value,
+              row.module_path,
+            ),
+            refusal: none,
+          }
+      }
+  }
+}
+
+fn module_by_occurrence_build(
+  rows: List<OccurrenceModulePathRow>
+) -> OccurrenceModulePathIndexBuild {
+  fold(
+    rows,
+    init: OccurrenceModulePathIndexBuild {
+      module_by_occurrence: empty_map(),
+      refusal: none,
+    },
+    f: (build, row) => module_by_occurrence_fold_step(build: build, row: row),
+  )
+}
+
+type DeclarationExposureIndexRefusal
+  = MissingDeclarationExposure {
+      occurrence: OccurrenceId,
+    }
+  | ConflictingDeclarationExposure {
+      occurrence: OccurrenceId,
+      first_exposure: DeclarationExposure,
+      conflicting_exposure: DeclarationExposure,
+    }
+
+type DeclarationExposureIndexBuild {
+  exposure_by_occurrence: Map<Int, DeclarationExposure>
+  refusal: DeclarationExposureIndexRefusal?
+}
+
+fn declaration_exposure_eq(
+  left: DeclarationExposure,
+  right: DeclarationExposure
+) -> Bool {
+  match left {
+    LexicalExposure { exposing_scope: left_scope } =>
+      match right {
+        LexicalExposure { exposing_scope: right_scope } =>
+          occurrence_containment_paths_equal(left: left_scope, right: right_scope)
+        _ => false
+      }
+    ModuleExposure { module: left_module } =>
+      match right {
+        ModuleExposure { module: right_module } => left_module == right_module
+        _ => false
+      }
+    RootExposure =>
+      match right {
+        RootExposure => true
+        _ => false
+      }
+  }
+}
+
+fn declaration_exposure_fold_step(
+  build: DeclarationExposureIndexBuild,
+  row: DeclarationExposureRow
+) -> DeclarationExposureIndexBuild {
+  match build.refusal {
+    Present { value: _ } => build
+    Absent =>
+      match map_get(build.exposure_by_occurrence, row.occurrence.value) {
+        Present { value: existing } =>
+          if declaration_exposure_eq(left: existing, right: row.exposure) {
+            build
+          } else {
+            DeclarationExposureIndexBuild {
+              exposure_by_occurrence: build.exposure_by_occurrence,
+              refusal: Present {
+                value: ConflictingDeclarationExposure {
+                  occurrence: row.occurrence,
+                  first_exposure: existing,
+                  conflicting_exposure: row.exposure,
+                },
+              },
+            }
+          }
+        Absent =>
+          DeclarationExposureIndexBuild {
+            exposure_by_occurrence: map_insert(
+              build.exposure_by_occurrence,
+              row.occurrence.value,
+              row.exposure,
+            ),
+            refusal: none,
+          }
+      }
+  }
+}
+
+fn exposure_by_occurrence_build(
+  rows: List<DeclarationExposureRow>
+) -> DeclarationExposureIndexBuild {
+  fold(
+    rows,
+    init: DeclarationExposureIndexBuild {
+      exposure_by_occurrence: empty_map(),
+      refusal: none,
+    },
+    f: (build, row) => declaration_exposure_fold_step(build: build, row: row),
+  )
+}
+
+type AuthoredOrderIndexRefusal
+  = MissingAuthoredOrderRow {
+      occurrence: OccurrenceId,
+    }
+  | ConflictingAuthoredOrderRow {
+      occurrence: OccurrenceId,
+      first_ordinal: AuthoredTokenOrdinal,
+      conflicting_ordinal: AuthoredTokenOrdinal,
+    }
+
+type AuthoredOrderIndexBuild {
+  order_by_occurrence: Map<Int, AuthoredTokenOrdinal>
+  refusal: AuthoredOrderIndexRefusal?
+}
+
+fn authored_order_fold_step(
+  build: AuthoredOrderIndexBuild,
+  row: AuthoredOrderRow
+) -> AuthoredOrderIndexBuild {
+  match build.refusal {
+    Present { value: _ } => build
+    Absent =>
+      match map_get(build.order_by_occurrence, row.occurrence.value) {
+        Present { value: existing } =>
+          if authored_token_ordinal_eq(left: existing, right: row.ordinal) {
+            build
+          } else {
+            AuthoredOrderIndexBuild {
+              order_by_occurrence: build.order_by_occurrence,
+              refusal: Present {
+                value: ConflictingAuthoredOrderRow {
+                  occurrence: row.occurrence,
+                  first_ordinal: existing,
+                  conflicting_ordinal: row.ordinal,
+                },
+              },
+            }
+          }
+        Absent =>
+          AuthoredOrderIndexBuild {
+            order_by_occurrence: map_insert(
+              build.order_by_occurrence,
+              row.occurrence.value,
+              row.ordinal,
+            ),
+            refusal: none,
+          }
+      }
+  }
+}
+
+fn authored_order_by_occurrence_build(
+  rows: List<AuthoredOrderRow>
+) -> AuthoredOrderIndexBuild {
+  fold(
+    rows,
+    init: AuthoredOrderIndexBuild {
+      order_by_occurrence: empty_map(),
+      refusal: none,
+    },
+    f: (build, row) => authored_order_fold_step(build: build, row: row),
+  )
+}
+
+fn ordinal_of_occurrence(
+  order_by_occurrence: Map<Int, AuthoredTokenOrdinal>,
+  occurrence: OccurrenceId
+) -> AuthoredTokenOrdinal? {
+  map_get(order_by_occurrence, occurrence.value)
+}
+
+fn exposure_of_occurrence(
+  exposure_by_occurrence: Map<Int, DeclarationExposure>,
+  occurrence: OccurrenceId
+) -> DeclarationExposure? {
+  map_get(exposure_by_occurrence, occurrence.value)
+}
+
+fn module_exposure_declaration_missing_path_refusal(
+  module_by_occurrence: Map<Int, NonEmptyStr>,
+  exposure_by_occurrence: Map<Int, DeclarationExposure>,
+  declaration: DeclarationOccurrence
+) -> OccurrenceModulePathIndexRefusal? {
+  match map_get(exposure_by_occurrence, declaration.occurrence.value) {
+    Absent => none
+    Present { value: exposure } =>
+      match exposure {
+        ModuleExposure { module: _ } =>
+          match map_get(module_by_occurrence, declaration.occurrence.value) {
+            Absent =>
+              Present {
+                value: MissingOccurrenceModulePathRow {
+                  occurrence: declaration.occurrence,
+                },
+              }
+            Present { value: _ } => none
+          }
+        LexicalExposure { exposing_scope: _ } => none
+        RootExposure => none
+      }
+  }
+}
+
+fn reference_missing_module_path_refusal(
+  module_by_occurrence: Map<Int, NonEmptyStr>,
+  reference: ReferenceOccurrence
+) -> OccurrenceModulePathIndexRefusal? {
+  match map_get(module_by_occurrence, reference.occurrence.value) {
+    Absent =>
+      Present {
+        value: MissingOccurrenceModulePathRow {
+          occurrence: reference.occurrence,
+        },
+      }
+    Present { value: _ } => none
+  }
+}
+
+fn module_paths_validate_transport(
+  transport: ValidatedOccurrenceTransport,
+  module_by_occurrence: Map<Int, NonEmptyStr>,
+  exposure_by_occurrence: Map<Int, DeclarationExposure>
+) -> OccurrenceModulePathIndexRefusal? {
+  let declaration_refusal = fold(
+    transport.declarations,
+    init: none,
+    f: (refusal, declaration) =>
+      match refusal {
+        Present { value: _ } => refusal
+        Absent =>
+          module_exposure_declaration_missing_path_refusal(
+            module_by_occurrence: module_by_occurrence,
+            exposure_by_occurrence: exposure_by_occurrence,
+            declaration: declaration,
+          )
+      },
+  )
+  match declaration_refusal {
+    Present { value: refusal } => Present { value: refusal }
+    Absent =>
+      fold(
+        transport.references,
+        init: none,
+        f: (refusal, reference) =>
+          match refusal {
+            Present { value: _ } => refusal
+            Absent =>
+              reference_missing_module_path_refusal(
+                module_by_occurrence: module_by_occurrence,
+                reference: reference,
+              )
+          },
+      )
+  }
+}
+
+fn module_of_occurrence(
+  module_by_occurrence: Map<Int, NonEmptyStr>,
+  occurrence: OccurrenceId
+) -> NonEmptyStr? {
+  map_get(module_by_occurrence, occurrence.value)
+}
+
+fn exposure_validate_transport_declarations(
+  declarations: List<DeclarationOccurrence>,
+  exposure_by_occurrence: Map<Int, DeclarationExposure>
+) -> DeclarationExposureIndexRefusal? {
+  fold(
+    declarations,
+    init: none,
+    f: (refusal, declaration) =>
+      match refusal {
+        Present { value: _ } => refusal
+        Absent =>
+          match map_get(exposure_by_occurrence, declaration.occurrence.value) {
+            Present { value: _ } => none
+            Absent =>
+              Present {
+                value: MissingDeclarationExposure {
+                  occurrence: declaration.occurrence,
+                },
+              }
+          }
+      },
+  )
+}
+
+fn authored_order_validate_transport_occurrence(
+  order_by_occurrence: Map<Int, AuthoredTokenOrdinal>,
+  occurrence: OccurrenceId
+) -> AuthoredOrderIndexRefusal? {
+  match map_get(order_by_occurrence, occurrence.value) {
+    Present { value: _ } => none
+    Absent =>
+      Present {
+        value: MissingAuthoredOrderRow {
+          occurrence: occurrence,
+        },
+      }
+  }
+}
+
+fn authored_order_validate_transport(
+  transport: ValidatedOccurrenceTransport,
+  order_by_occurrence: Map<Int, AuthoredTokenOrdinal>
+) -> AuthoredOrderIndexRefusal? {
+  let declaration_refusal = fold(
+    transport.declarations,
+    init: none,
+    f: (refusal, declaration) =>
+      match refusal {
+        Present { value: _ } => refusal
+        Absent =>
+          authored_order_validate_transport_occurrence(
+            order_by_occurrence: order_by_occurrence,
+            occurrence: declaration.occurrence,
+          )
+      },
+  )
+  match declaration_refusal {
+    Present { value: refusal } => Present { value: refusal }
+    Absent =>
+      fold(
+        transport.references,
+        init: none,
+        f: (refusal, reference) =>
+          match refusal {
+            Present { value: _ } => refusal
+            Absent =>
+              authored_order_validate_transport_occurrence(
+                order_by_occurrence: order_by_occurrence,
+                occurrence: reference.occurrence,
+              )
+          },
+      )
+  }
+}
+
+data occurrence_module_sibling_exposure_note: String = "ModuleExposure arm of the DeclarationExposure authority (namespace-unique-on-chain-operational-plan.md 2, rule 1): a declaration is exposed as a module sibling only when its DeclarationExposure is ModuleExposure for the same module as the reference, the declaration's AuthoredTokenOrdinal is strictly before the reference's ordinal (rule 4 — never a declaration below the occurrence), and both module paths are present for projection. OccurrenceCategory is not consulted. LexicalExposure and RootExposure are decided on their own arms — never by falling through to a raw containment-prefix test. Index build refuses MissingDeclarationExposure / MissingAuthoredOrderRow before any reference is answered, so Absent ordinal/exposure arms below are defensive dead code, never a silent Unbound."
+
+fn declaration_lexically_exposed(
+  exposing_scope: OccurrenceContainmentPath,
+  reference: ReferenceOccurrence
+) -> Bool {
+  occurrence_containment_path_is_prefix_of(
+    prefix: exposing_scope,
+    path: reference.containment,
+  )
+}
+
+fn declaration_module_sibling_exposed(
+  declaration: DeclarationOccurrence,
+  reference: ReferenceOccurrence,
+  exposure_module: NonEmptyStr,
+  module_by_occurrence: Map<Int, NonEmptyStr>,
+  order_by_occurrence: Map<Int, AuthoredTokenOrdinal>
+) -> Bool {
+  match ordinal_of_occurrence(
+    order_by_occurrence: order_by_occurrence,
+    occurrence: declaration.occurrence,
+  ) {
+    Absent => false
+    Present { value: declaration_ordinal } =>
+      match ordinal_of_occurrence(
+        order_by_occurrence: order_by_occurrence,
+        occurrence: reference.occurrence,
+      ) {
+        Absent => false
+        Present { value: reference_ordinal } =>
+          authored_token_ordinal_before(
+            earlier: declaration_ordinal,
+            later: reference_ordinal,
+          ) && match module_of_occurrence(
+            module_by_occurrence: module_by_occurrence,
+            occurrence: reference.occurrence,
+          ) {
+            Absent => false
+            Present { value: reference_module } =>
+              reference_module == exposure_module
+          }
+      }
+  }
+}
+
+fn declaration_exposed_on_reference_chain(
+  declaration: DeclarationOccurrence,
+  reference: ReferenceOccurrence,
+  module_by_occurrence: Map<Int, NonEmptyStr>,
+  exposure_by_occurrence: Map<Int, DeclarationExposure>,
+  order_by_occurrence: Map<Int, AuthoredTokenOrdinal>
+) -> Bool {
+  match exposure_of_occurrence(
+    exposure_by_occurrence: exposure_by_occurrence,
+    occurrence: declaration.occurrence,
+  ) {
+    Absent => false
+    Present { value: exposure } =>
+      match exposure {
+        LexicalExposure { exposing_scope: exposing_scope } =>
+          declaration_lexically_exposed(
+            exposing_scope: exposing_scope,
+            reference: reference,
+          )
+        ModuleExposure { module: exposure_module } =>
+          declaration_module_sibling_exposed(
+            declaration: declaration,
+            reference: reference,
+            exposure_module: exposure_module,
+            module_by_occurrence: module_by_occurrence,
+            order_by_occurrence: order_by_occurrence,
+          )
+        RootExposure => true
+      }
+  }
+}
+
+data occurrence_candidate_index_note: String = "OccurrenceCandidateIndex is built exactly once per transport (occurrence_candidate_index_build). declarations_by_name buckets every declaration by its authored spelling so a single reference's candidate lookup is a map_get plus a scan of only the same-spelled declarations, never a rescan of the whole declaration population -- the O(declarations x references) shape the pre-strip candidate scan had. entries_by_id is the same validated lookup authority std.occurrence_binding_resolve builds internally; it is retained here only to read authored_name, never to re-decide cardinality."
+
+type OccurrenceCandidateIndex {
+  entries_by_id: Map<Int, OccurrenceIndexEntry>
+  declarations_by_name: Map<String, List<DeclarationOccurrence>>
+  module_by_occurrence: Map<Int, NonEmptyStr>
+  exposure_by_occurrence: Map<Int, DeclarationExposure>
+  order_by_occurrence: Map<Int, AuthoredTokenOrdinal>
+}
+
+fn declarations_by_name_insert(
+  acc: Map<String, List<DeclarationOccurrence>>,
+  name: String,
+  declaration: DeclarationOccurrence
+) -> Map<String, List<DeclarationOccurrence>> {
+  match map_get(acc, name) {
+    Absent => map_insert(acc, name, [declaration])
+    Present { value: existing } =>
+      map_insert(acc, name, concat([declaration], existing))
+  }
+}
+
+data declarations_by_name_build_note: String = "declarations_by_name_build refuses MissingDeclarationIndexEntry when a transported declaration is absent from entries_by_id — never silent-skips (Absent => acc). A vanished declaration would shrink the candidate population and reopen the vanishing-population fail-open. After occurrence_transport_validate the Absent arm is unreachable (declaration_occurrence_refusal already demands index membership); the typed refusal keeps that impossibility loud if the constructor is ever reached with an inconsistent pair."
+
+type DeclarationsByNameBuild
+  = DeclarationsByNameReady {
+      by_name: Map<String, List<DeclarationOccurrence>>,
+    }
+  | DeclarationsByNameMissingIndexEntry {
+      occurrence: OccurrenceId,
+    }
+
+type DeclarationsByNameFold
+  = DeclarationsByNameFoldReady {
+      by_name: Map<String, List<DeclarationOccurrence>>,
+    }
+  | DeclarationsByNameFoldMissing {
+      occurrence: OccurrenceId,
+    }
+
+fn declarations_by_name_build(
+  entries_by_id: Map<Int, OccurrenceIndexEntry>,
+  declarations: List<DeclarationOccurrence>
+) -> DeclarationsByNameBuild {
+  let fold_result = fold(
+    declarations,
+    init: DeclarationsByNameFoldReady { by_name: empty_map() },
+    f: (acc, declaration) =>
+      match acc {
+        DeclarationsByNameFoldMissing { occurrence: _ } => acc
+        DeclarationsByNameFoldReady { by_name: by_name } =>
+          match map_get(entries_by_id, declaration.occurrence.value) {
+            Absent =>
+              DeclarationsByNameFoldMissing {
+                occurrence: declaration.occurrence,
+              }
+            Present { value: entry } =>
+              DeclarationsByNameFoldReady {
+                by_name: declarations_by_name_insert(
+                  acc: by_name,
+                  name: entry.projection.authored_name,
+                  declaration: declaration,
+                ),
+              }
+          }
+      },
+  )
+  match fold_result {
+    DeclarationsByNameFoldReady { by_name: by_name } =>
+      DeclarationsByNameReady { by_name: by_name }
+    DeclarationsByNameFoldMissing { occurrence: occurrence } =>
+      DeclarationsByNameMissingIndexEntry { occurrence: occurrence }
+  }
+}
+
+type OccurrenceCandidateIndexBuild
+  = OccurrenceCandidateIndexReady { index: OccurrenceCandidateIndex }
+  | OccurrenceCandidateIndexTransportRefused { refusal: OccurrenceTransportRefusal }
+  | OccurrenceCandidateIndexModulePathRefused { refusal: OccurrenceModulePathIndexRefusal }
+  | OccurrenceCandidateIndexExposureRefused { refusal: DeclarationExposureIndexRefusal }
+  | OccurrenceCandidateIndexAuthoredOrderRefused { refusal: AuthoredOrderIndexRefusal }
+  | OccurrenceCandidateIndexDeclarationBucketRefused { occurrence: OccurrenceId }
+
+fn occurrence_candidate_index_build(
+  transport: OccurrenceTransport,
+  inputs: OccurrenceBindingCandidateInputs
+) -> OccurrenceCandidateIndexBuild {
+  match occurrence_transport_validate(transport: transport) {
+    OccurrenceTransportRefused { refusal: refusal } =>
+      OccurrenceCandidateIndexTransportRefused { refusal: refusal }
+    OccurrenceTransportValidated { transport: validated } =>
+      let module_path_build = module_by_occurrence_build(rows: inputs.module_paths)
+      let exposure_build = exposure_by_occurrence_build(rows: inputs.exposure_rows)
+      let order_build = authored_order_by_occurrence_build(rows: inputs.authored_order_rows)
+      match module_path_build.refusal {
+        Present { value: refusal } =>
+          OccurrenceCandidateIndexModulePathRefused { refusal: refusal }
+        Absent =>
+          match exposure_build.refusal {
+            Present { value: refusal } =>
+              OccurrenceCandidateIndexExposureRefused { refusal: refusal }
+            Absent =>
+              match order_build.refusal {
+                Present { value: refusal } =>
+                  OccurrenceCandidateIndexAuthoredOrderRefused { refusal: refusal }
+                Absent =>
+                  match module_paths_validate_transport(
+                    transport: validated,
+                    module_by_occurrence: module_path_build.module_by_occurrence,
+                    exposure_by_occurrence: exposure_build.exposure_by_occurrence,
+                  ) {
+                    Present { value: refusal } =>
+                      OccurrenceCandidateIndexModulePathRefused { refusal: refusal }
+                    Absent =>
+                      match exposure_validate_transport_declarations(
+                        declarations: validated.declarations,
+                        exposure_by_occurrence: exposure_build.exposure_by_occurrence,
+                      ) {
+                        Present { value: refusal } =>
+                          OccurrenceCandidateIndexExposureRefused { refusal: refusal }
+                        Absent =>
+                          match authored_order_validate_transport(
+                            transport: validated,
+                            order_by_occurrence: order_build.order_by_occurrence,
+                          ) {
+                            Present { value: refusal } =>
+                              OccurrenceCandidateIndexAuthoredOrderRefused { refusal: refusal }
+                            Absent =>
+                              match declarations_by_name_build(
+                                entries_by_id: validated.entries_by_id,
+                                declarations: validated.declarations,
+                              ) {
+                                DeclarationsByNameMissingIndexEntry {
+                                  occurrence: occurrence,
+                                } =>
+                                  OccurrenceCandidateIndexDeclarationBucketRefused {
+                                    occurrence: occurrence,
+                                  }
+                                DeclarationsByNameReady { by_name: by_name } =>
+                                  OccurrenceCandidateIndexReady {
+                                    index: OccurrenceCandidateIndex {
+                                      entries_by_id: validated.entries_by_id,
+                                      declarations_by_name: by_name,
+                                      module_by_occurrence: module_path_build.module_by_occurrence,
+                                      exposure_by_occurrence: exposure_build.exposure_by_occurrence,
+                                      order_by_occurrence: order_build.order_by_occurrence,
+                                    },
+                                  }
+                              }
+                          }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+data occurrence_candidate_cardinality_note: String = "candidate_occurrence_ids_for_reference produces a population, never a decision: zero, one, or many exposed declarations all pass through unchanged as a plain List<OccurrenceId>. Cardinality (0/1/many -> Unbound/Bound/Ambiguous) is decided exactly once, downstream, by std.occurrence_binding_resolve.resolve_reference_occurrence_binding's call into std.occurrence_binding.occurrence_binding_from_candidates -- never here, and never by deduping same-spelled candidates: two structurally exposed declarations with equal text are two distinct OccurrenceIds and both are supplied (namespace-unique-on-chain-operational-plan.md 2 rule 5)."
+
+fn candidate_occurrence_ids_for_reference(
+  index: OccurrenceCandidateIndex,
+  reference: ReferenceOccurrence
+) -> List<OccurrenceId> {
+  match map_get(index.entries_by_id, reference.occurrence.value) {
+    Absent => []
+    Present { value: entry } =>
+      match map_get(index.declarations_by_name, entry.projection.authored_name) {
+        Absent => []
+        Present { value: same_spelling } =>
+          reverse(same_spelling)
+            |> filter(declaration => declaration_exposed_on_reference_chain(
+              declaration: declaration,
+              reference: reference,
+              module_by_occurrence: index.module_by_occurrence,
+              exposure_by_occurrence: index.exposure_by_occurrence,
+              order_by_occurrence: index.order_by_occurrence,
+            ))
+            |> map(declaration => declaration.occurrence)
+      }
+  }
+}
+
+data bound_reference_provider_note: String = "BoundReferenceProvider is the post-bind projection of one accepted OccurrenceBound decision: which reference resolved to which declaration, and which module each side's authored text belongs to. It is produced only from OccurrenceBound (never Unbound or Ambiguous) and only when both occurrences carry an OccurrenceModulePathRow -- a missing module row is a typed, located ReferenceBindingProjectionModulePathMissing refusal, never a silently-omitted edge. Same-module ruling (operator on PR 7515 / slice A): a BoundReferenceProvider whose consumer_module equals provider_module is retained as a binding receipt; the DirectModuleDependency projection emits NO M→M self-edge from it."
+
+type BoundReferenceProvider {
+  reference_occurrence: OccurrenceId
+  declaration_occurrence: OccurrenceId
+  consumer_module: NonEmptyStr
+  provider_module: NonEmptyStr
+}
+
+data direct_module_dependency_note: String = "DirectModuleDependency is a projection of accepted bindings, never a second authored dependency statement (namespace-resolution-design.md 7.2 / roadmap recut 7517): it dedupes BoundReferenceProvider down to the distinct (consumer_module, provider_module) pairs the bindings require — the reference-derived successor to an authored import list. Same-module ruling (carrier law): same-module BoundReferenceProvider rows are preserved; this projection emits NO DirectModuleDependency self-edge (consumer_module == provider_module is skipped in direct_module_dependency_dedup_step — M→M is not a dependency and invites self-cycles). Dedup happens ONLY at this module-edge projection via a typed two-level index (Map consumer_module → Set provider_module; membership is map_get + set_contains, never a NUL-concatenated string key), with first-seen edges accumulated in provider-traversal order (prepend during fold, single reverse at end — never map_values hash-order readback). Output order is first occurrence of each cross-module edge in the input provider list. direct_module_dependencies_from_bound_population refuses unless BoundReferencePopulation is AllReferencesBound — a refused population never becomes an empty edge list."
+
+type DirectModuleDependency {
+  consumer_module: NonEmptyStr
+  provider_module: NonEmptyStr
+}
+
+fn direct_module_dependency_from_provider(
+  provider: BoundReferenceProvider
+) -> DirectModuleDependency {
+  DirectModuleDependency {
+    consumer_module: provider.consumer_module,
+    provider_module: provider.provider_module,
+  }
+}
+
+type DirectModuleDependencyDedupBuild {
+  providers_by_consumer: Map<NonEmptyStr, Set<String>>
+  edges_first_seen: List<DirectModuleDependency>
+}
+
+fn direct_module_dependency_dedup_step(
+  acc: DirectModuleDependencyDedupBuild,
+  provider: BoundReferenceProvider
+) -> DirectModuleDependencyDedupBuild {
+  let edge = direct_module_dependency_from_provider(provider: provider)
+  if edge.consumer_module == edge.provider_module {
+    acc
+  } else {
+    match map_get(acc.providers_by_consumer, edge.consumer_module) {
+      Absent =>
+        DirectModuleDependencyDedupBuild {
+          providers_by_consumer: map_insert(
+            acc.providers_by_consumer,
+            edge.consumer_module,
+            set_insert(empty_set(), edge.provider_module as String),
+          ),
+          edges_first_seen: concat([edge], acc.edges_first_seen),
+        }
+      Present { value: existing_providers } =>
+        if set_contains(existing_providers, edge.provider_module as String) {
+          acc
+        } else {
+          DirectModuleDependencyDedupBuild {
+            providers_by_consumer: map_insert(
+              acc.providers_by_consumer,
+              edge.consumer_module,
+              set_insert(existing_providers, edge.provider_module as String),
+            ),
+            edges_first_seen: concat([edge], acc.edges_first_seen),
+          }
+        }
+    }
+  }
+}
+
+fn direct_module_dependencies_from_providers(
+  providers: List<BoundReferenceProvider>
+) -> List<DirectModuleDependency> {
+  reverse(
+    fold(
+      providers,
+      init: DirectModuleDependencyDedupBuild {
+        providers_by_consumer: empty_map(),
+        edges_first_seen: [],
+      },
+      f: (acc, provider) => direct_module_dependency_dedup_step(acc: acc, provider: provider),
+    ).edges_first_seen,
+  )
+}
+
+type BoundReferencePopulation
+  = AllReferencesBound { providers: List<BoundReferenceProvider> }
+  | ReferencePopulationRefused {
+      first_failure: ReferenceBindingProjection
+      more_failures: List<ReferenceBindingProjection>
+    }
+
+data bound_reference_population_note: String = "BoundReferencePopulation is total over a required reference projection list: either every reference is ReferenceBindingProjectionBound (AllReferencesBound) or at least one failure is surfaced (ReferencePopulationRefused with a nonempty failure list). No direct module dependency graph may be derived from a partial success — callers must use bound_reference_population_from_projections and refuse on ReferencePopulationRefused rather than fabricating a partial provider list."
+
+type BoundReferencePopulationBuild {
+  providers_reversed: List<BoundReferenceProvider>
+  first_failure: ReferenceBindingProjection?
+  more_failures_reversed: List<ReferenceBindingProjection>
+}
+
+fn bound_reference_population_fold_step(
+  acc: BoundReferencePopulationBuild,
+  projection: ReferenceBindingProjection
+) -> BoundReferencePopulationBuild {
+  match projection {
+    ReferenceBindingProjectionBound { provider: provider } =>
+      BoundReferencePopulationBuild {
+        providers_reversed: concat([provider], acc.providers_reversed),
+        first_failure: acc.first_failure,
+        more_failures_reversed: acc.more_failures_reversed,
+      }
+    ReferenceBindingProjectionUnbound { occurrence: _ } =>
+      match acc.first_failure {
+        Absent =>
+          BoundReferencePopulationBuild {
+            providers_reversed: acc.providers_reversed,
+            first_failure: Present { value: projection },
+            more_failures_reversed: acc.more_failures_reversed,
+          }
+        Present { value: _ } =>
+          BoundReferencePopulationBuild {
+            providers_reversed: acc.providers_reversed,
+            first_failure: acc.first_failure,
+            more_failures_reversed: concat([projection], acc.more_failures_reversed),
+          }
+      }
+    ReferenceBindingProjectionAmbiguous { occurrence: _ } =>
+      match acc.first_failure {
+        Absent =>
+          BoundReferencePopulationBuild {
+            providers_reversed: acc.providers_reversed,
+            first_failure: Present { value: projection },
+            more_failures_reversed: acc.more_failures_reversed,
+          }
+        Present { value: _ } =>
+          BoundReferencePopulationBuild {
+            providers_reversed: acc.providers_reversed,
+            first_failure: acc.first_failure,
+            more_failures_reversed: concat([projection], acc.more_failures_reversed),
+          }
+      }
+    ReferenceBindingProjectionTransportRefused { refusal: _ } =>
+      match acc.first_failure {
+        Absent =>
+          BoundReferencePopulationBuild {
+            providers_reversed: acc.providers_reversed,
+            first_failure: Present { value: projection },
+            more_failures_reversed: acc.more_failures_reversed,
+          }
+        Present { value: _ } =>
+          BoundReferencePopulationBuild {
+            providers_reversed: acc.providers_reversed,
+            first_failure: acc.first_failure,
+            more_failures_reversed: concat([projection], acc.more_failures_reversed),
+          }
+      }
+    ReferenceBindingProjectionModulePathRefused { refusal: _ } =>
+      match acc.first_failure {
+        Absent =>
+          BoundReferencePopulationBuild {
+            providers_reversed: acc.providers_reversed,
+            first_failure: Present { value: projection },
+            more_failures_reversed: acc.more_failures_reversed,
+          }
+        Present { value: _ } =>
+          BoundReferencePopulationBuild {
+            providers_reversed: acc.providers_reversed,
+            first_failure: acc.first_failure,
+            more_failures_reversed: concat([projection], acc.more_failures_reversed),
+          }
+      }
+    ReferenceBindingProjectionExposureRefused { refusal: _ } =>
+      match acc.first_failure {
+        Absent =>
+          BoundReferencePopulationBuild {
+            providers_reversed: acc.providers_reversed,
+            first_failure: Present { value: projection },
+            more_failures_reversed: acc.more_failures_reversed,
+          }
+        Present { value: _ } =>
+          BoundReferencePopulationBuild {
+            providers_reversed: acc.providers_reversed,
+            first_failure: acc.first_failure,
+            more_failures_reversed: concat([projection], acc.more_failures_reversed),
+          }
+      }
+    ReferenceBindingProjectionAuthoredOrderRefused { refusal: _ } =>
+      match acc.first_failure {
+        Absent =>
+          BoundReferencePopulationBuild {
+            providers_reversed: acc.providers_reversed,
+            first_failure: Present { value: projection },
+            more_failures_reversed: acc.more_failures_reversed,
+          }
+        Present { value: _ } =>
+          BoundReferencePopulationBuild {
+            providers_reversed: acc.providers_reversed,
+            first_failure: acc.first_failure,
+            more_failures_reversed: concat([projection], acc.more_failures_reversed),
+          }
+      }
+    ReferenceBindingProjectionDeclarationBucketRefused { occurrence: _ } =>
+      match acc.first_failure {
+        Absent =>
+          BoundReferencePopulationBuild {
+            providers_reversed: acc.providers_reversed,
+            first_failure: Present { value: projection },
+            more_failures_reversed: acc.more_failures_reversed,
+          }
+        Present { value: _ } =>
+          BoundReferencePopulationBuild {
+            providers_reversed: acc.providers_reversed,
+            first_failure: acc.first_failure,
+            more_failures_reversed: concat([projection], acc.more_failures_reversed),
+          }
+      }
+    ReferenceBindingProjectionModulePathMissing { occurrence: _ } =>
+      match acc.first_failure {
+        Absent =>
+          BoundReferencePopulationBuild {
+            providers_reversed: acc.providers_reversed,
+            first_failure: Present { value: projection },
+            more_failures_reversed: acc.more_failures_reversed,
+          }
+        Present { value: _ } =>
+          BoundReferencePopulationBuild {
+            providers_reversed: acc.providers_reversed,
+            first_failure: acc.first_failure,
+            more_failures_reversed: concat([projection], acc.more_failures_reversed),
+          }
+      }
+    ReferenceBindingProjectionWrongCategory { occurrence: _, observed: _ } =>
+      match acc.first_failure {
+        Absent =>
+          BoundReferencePopulationBuild {
+            providers_reversed: acc.providers_reversed,
+            first_failure: Present { value: projection },
+            more_failures_reversed: acc.more_failures_reversed,
+          }
+        Present { value: _ } =>
+          BoundReferencePopulationBuild {
+            providers_reversed: acc.providers_reversed,
+            first_failure: acc.first_failure,
+            more_failures_reversed: concat([projection], acc.more_failures_reversed),
+          }
+      }
+  }
+}
+
+fn bound_reference_population_from_projections(
+  projections: List<ReferenceBindingProjection>
+) -> BoundReferencePopulation {
+  let build = fold(
+    projections,
+    init: BoundReferencePopulationBuild {
+      providers_reversed: [],
+      first_failure: none,
+      more_failures_reversed: [],
+    },
+    f: (acc, projection) => bound_reference_population_fold_step(acc: acc, projection: projection),
+  )
+  match build.first_failure {
+    Absent =>
+      AllReferencesBound {
+        providers: reverse(build.providers_reversed),
+      }
+    Present { value: first_failure } =>
+      ReferencePopulationRefused {
+        first_failure: first_failure,
+        more_failures: reverse(build.more_failures_reversed),
+      }
+  }
+}
+
+type DirectModuleDependencyBuild
+  = DirectModuleDependencyListReady { edges: List<DirectModuleDependency> }
+  | DirectModuleDependencyPopulationRefused {
+      population: BoundReferencePopulation
+    }
+
+fn direct_module_dependencies_from_bound_population(
+  population: BoundReferencePopulation
+) -> DirectModuleDependencyBuild {
+  match population {
+    AllReferencesBound { providers: providers } =>
+      DirectModuleDependencyListReady {
+        edges: direct_module_dependencies_from_providers(providers: providers),
+      }
+    ReferencePopulationRefused { first_failure: _, more_failures: _ } =>
+      DirectModuleDependencyPopulationRefused {
+        population: population,
+      }
+  }
+}
+
+type ReferenceBindingProjection
+  = ReferenceBindingProjectionBound { provider: BoundReferenceProvider }
+  | ReferenceBindingProjectionUnbound { occurrence: OccurrenceId }
+  | ReferenceBindingProjectionAmbiguous { occurrence: OccurrenceId }
+  | ReferenceBindingProjectionTransportRefused { refusal: OccurrenceTransportRefusal }
+  | ReferenceBindingProjectionModulePathRefused { refusal: OccurrenceModulePathIndexRefusal }
+  | ReferenceBindingProjectionExposureRefused { refusal: DeclarationExposureIndexRefusal }
+  | ReferenceBindingProjectionAuthoredOrderRefused { refusal: AuthoredOrderIndexRefusal }
+  | ReferenceBindingProjectionDeclarationBucketRefused { occurrence: OccurrenceId }
+  | ReferenceBindingProjectionModulePathMissing { occurrence: OccurrenceId }
+  | ReferenceBindingProjectionWrongCategory {
+      occurrence: OccurrenceId,
+      observed: OccurrenceCategory,
+    }
+
+data resolve_type_reference_containment_binding_note: String = "N2 typed entry (gunbc.type_reference_containment_binding slice 1): refuses non-TypeOccurrence references at the API boundary before candidate enumeration — category is part of the binding contract, not an after-the-fact filter. TypeOccurrence references delegate to resolve_reference_binding_via_structural_candidates unchanged."
+
+fn resolve_type_reference_containment_binding(
+  transport: OccurrenceTransport,
+  inputs: OccurrenceBindingCandidateInputs,
+  reference: ReferenceOccurrence
+) -> ReferenceBindingProjection {
+  match reference.category {
+    TypeOccurrence =>
+      resolve_reference_binding_via_structural_candidates(
+        transport: transport,
+        inputs: inputs,
+        reference: reference,
+      )
+    _ =>
+      ReferenceBindingProjectionWrongCategory {
+        occurrence: reference.occurrence,
+        observed: reference.category,
+      }
+  }
+}
+
+data resolve_reference_via_structural_candidates_note: String = "THE P2a entry point. It builds the exact candidate population for one reference from the precomputed index (candidate_occurrence_ids_for_reference) and hands that population to std.occurrence_binding_resolve.resolve_reference_occurrence_binding as supplied_candidates -- P1's fold over occurrence_binding_from_candidates is the only cardinality decision in this path. Only the OccurrenceBound arm is projected into a BoundReferenceProvider; Unbound and Ambiguous are surfaced as their own typed, located outcomes so a caller can never mistake 'no edge' for 'one edge'."
+
+fn resolve_reference_via_structural_candidates(
+  transport: OccurrenceTransport,
+  index: OccurrenceCandidateIndex,
+  reference: ReferenceOccurrence
+) -> ReferenceBindingProjection {
+  let candidates = candidate_occurrence_ids_for_reference(
+    index: index,
+    reference: reference,
+  )
+  match resolve_reference_occurrence_binding(
+    transport: transport,
+    occurrence: reference.occurrence,
+    supplied_candidates: candidates,
+  ) {
+    OccurrenceReferenceBindingTransportRefused { refusal: refusal } =>
+      ReferenceBindingProjectionTransportRefused { refusal: refusal }
+    OccurrenceReferenceBindingDecided { result: result } =>
+      match result {
+        OccurrenceUnbound { occurrence: _ } =>
+          ReferenceBindingProjectionUnbound { occurrence: reference.occurrence }
+        OccurrenceAmbiguous { occurrence: _, candidates: _ } =>
+          ReferenceBindingProjectionAmbiguous { occurrence: reference.occurrence }
+        OccurrenceBound { binding: binding } =>
+          let declaration_occurrence = binding.candidate.containment.terminal
+          match module_of_occurrence(
+            module_by_occurrence: index.module_by_occurrence,
+            occurrence: reference.occurrence,
+          ) {
+            Absent =>
+              ReferenceBindingProjectionModulePathMissing {
+                occurrence: reference.occurrence,
+              }
+            Present { value: consumer_module } =>
+              match module_of_occurrence(
+                module_by_occurrence: index.module_by_occurrence,
+                occurrence: declaration_occurrence,
+              ) {
+                Absent =>
+                  ReferenceBindingProjectionModulePathMissing {
+                    occurrence: declaration_occurrence,
+                  }
+                Present { value: provider_module } =>
+                  ReferenceBindingProjectionBound {
+                    provider: BoundReferenceProvider {
+                      reference_occurrence: reference.occurrence,
+                      declaration_occurrence: declaration_occurrence,
+                      consumer_module: consumer_module,
+                      provider_module: provider_module,
+                    },
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn resolve_reference_binding_via_structural_candidates(
+  transport: OccurrenceTransport,
+  inputs: OccurrenceBindingCandidateInputs,
+  reference: ReferenceOccurrence
+) -> ReferenceBindingProjection {
+  match occurrence_candidate_index_build(transport: transport, inputs: inputs) {
+    OccurrenceCandidateIndexTransportRefused { refusal: refusal } =>
+      ReferenceBindingProjectionTransportRefused { refusal: refusal }
+    OccurrenceCandidateIndexModulePathRefused { refusal: refusal } =>
+      ReferenceBindingProjectionModulePathRefused { refusal: refusal }
+    OccurrenceCandidateIndexExposureRefused { refusal: refusal } =>
+      ReferenceBindingProjectionExposureRefused { refusal: refusal }
+    OccurrenceCandidateIndexAuthoredOrderRefused { refusal: refusal } =>
+      ReferenceBindingProjectionAuthoredOrderRefused { refusal: refusal }
+    OccurrenceCandidateIndexDeclarationBucketRefused { occurrence: occurrence } =>
+      ReferenceBindingProjectionDeclarationBucketRefused { occurrence: occurrence }
+    OccurrenceCandidateIndexReady { index: index } =>
+      resolve_reference_via_structural_candidates(
+        transport: transport,
+        index: index,
+        reference: reference,
+      )
+  }
+}
+
+fn resolve_all_references_via_structural_candidates(
+  transport: OccurrenceTransport,
+  index: OccurrenceCandidateIndex,
+  references: List<ReferenceOccurrence>
+) -> List<ReferenceBindingProjection> {
+  references |> map(reference => resolve_reference_via_structural_candidates(
+    transport: transport,
+    index: index,
+    reference: reference,
+  ))
+}
+
+data occurrence_binding_candidates_section13_conformance_note: String = "P2a first-slice scoped conformance roster (namespace-unique-on-chain-operational-plan.md section 2 population laws). Acceptance requires zero declared laws lacking either a joined exact-head executing observation or an explicitly admitted deferred row — the closed-denominator pattern. Section13PopulationLawExecuting is never self-attesting: section13_population_law_roster_adjudicate joins each Executing receipt to an exact-head Section13ExactHeadExecutionObservation (passed=true at required_head). DeclarationRef.module_path rows are symbolic module names (test.claim.x), never file paths. Section13RepeatedDiscoverySameIdentityCollapse stays Deferred with blocker ProductionOccurrenceCollectorMissing (dissolve_on occurrence_safe_collector_dedup_receipt). No roster-count pin: coverage is derived by section13_roster_covers_all_laws, not (count == N)."
+
+data occurrence_safe_collector_dedup_receipt: String = "SCAFFOLD: production occurrence collector must deduplicate repeated discovery of the same identity before candidate binding. Dissolves when a live collector path executes the receipt and Section13RepeatedDiscoverySameIdentityCollapse moves to Executing via exact-head join."
+
+type Section13PopulationLawId
+  = Section13StructuralVisibility
+  | Section13SiblingArmExclusion
+  | Section13LexicalEnclosure
+  | Section13SourceOrderGate
+  | Section13DistinctIdentityAmbiguity
+  | Section13RepeatedDiscoverySameIdentityCollapse
+
+type Section13ExactHeadExecutionObservation {
+  head: CommitSha
+  declaration: DeclarationRef
+  passed: Bool
+}
+
+type Section13PopulationLawEvidence
+  = Section13PopulationLawExecuting { receipt: DeclarationRef }
+  | Section13PopulationLawDeferredProductionOccurrenceCollectorMissing {
+      dissolve_on: DeclarationRef?,
+    }
+
+type Section13PopulationLawRosterRow {
+  law: Section13PopulationLawId
+  evidence: Section13PopulationLawEvidence
+}
+
+type Section13PopulationLawRosterVerdict
+  = Section13PopulationLawRosterHolds
+  | Section13PopulationLawRosterRefusedDuplicateLaw {
+      law: Section13PopulationLawId,
+    }
+  | Section13PopulationLawRosterRefusedUncoveredLaw {
+      law: Section13PopulationLawId,
+    }
+  | Section13PopulationLawRosterRefusedPositionalModulePath {
+      receipt: DeclarationRef,
+    }
+  | Section13PopulationLawRosterRefusedMissingObservation {
+      receipt: DeclarationRef,
+    }
+  | Section13PopulationLawRosterRefusedFailedOrStaleObservation {
+      receipt: DeclarationRef,
+    }
+  | Section13PopulationLawRosterRefusedDeferredMissingTrigger
+
+fn section13_executing_receipt(
+  module_path: NonEmptyStr,
+  decl_name: NonEmptyStr
+) -> DeclarationRef {
+  DeclarationRef {
+    module_path: module_path,
+    decl_name: decl_name,
+    field: WholeDeclaration,
+  }
+}
+
+fn section13_collector_dedup_dissolve_on() -> DeclarationRef {
+  DeclarationRef {
+    module_path: "std.occurrence_binding_candidates" as NonEmptyStr,
+    decl_name: "occurrence_safe_collector_dedup_receipt" as NonEmptyStr,
+    field: WholeDeclaration,
+  }
+}
+
+fn section13_witness_module_path() -> NonEmptyStr {
+  "test.claim.occurrence_binding_candidates_witness_test" as NonEmptyStr
+}
+
+data section13_population_law_roster: List<Section13PopulationLawRosterRow> = [
+  Section13PopulationLawRosterRow {
+    law: Section13StructuralVisibility,
+    evidence: Section13PopulationLawExecuting {
+      receipt: section13_executing_receipt(
+        module_path: section13_witness_module_path(),
+        decl_name: "module_scope_sibling_is_visible_holds" as NonEmptyStr,
+      ),
+    },
+  },
+  Section13PopulationLawRosterRow {
+    law: Section13SiblingArmExclusion,
+    evidence: Section13PopulationLawExecuting {
+      receipt: section13_executing_receipt(
+        module_path: section13_witness_module_path(),
+        decl_name: "sibling_match_arm_not_visible_holds" as NonEmptyStr,
+      ),
+    },
+  },
+  Section13PopulationLawRosterRow {
+    law: Section13LexicalEnclosure,
+    evidence: Section13PopulationLawExecuting {
+      receipt: section13_executing_receipt(
+        module_path: section13_witness_module_path(),
+        decl_name: "nested_lexical_only_inside_scope_holds" as NonEmptyStr,
+      ),
+    },
+  },
+  Section13PopulationLawRosterRow {
+    law: Section13SourceOrderGate,
+    evidence: Section13PopulationLawExecuting {
+      receipt: section13_executing_receipt(
+        module_path: section13_witness_module_path(),
+        decl_name: "declaration_below_occurrence_not_visible_holds" as NonEmptyStr,
+      ),
+    },
+  },
+  Section13PopulationLawRosterRow {
+    law: Section13DistinctIdentityAmbiguity,
+    evidence: Section13PopulationLawExecuting {
+      receipt: section13_executing_receipt(
+        module_path: section13_witness_module_path(),
+        decl_name: "same_text_distinct_identities_is_ambiguous_holds" as NonEmptyStr,
+      ),
+    },
+  },
+  Section13PopulationLawRosterRow {
+    law: Section13RepeatedDiscoverySameIdentityCollapse,
+    evidence: Section13PopulationLawDeferredProductionOccurrenceCollectorMissing {
+      dissolve_on: Present {
+        value: section13_collector_dedup_dissolve_on(),
+      },
+    },
+  },
+]
+
+fn section13_population_law_id_eq(
+  left: Section13PopulationLawId,
+  right: Section13PopulationLawId
+) -> Bool {
+  match left {
+    Section13StructuralVisibility =>
+      match right {
+        Section13StructuralVisibility => true
+        _ => false
+      }
+    Section13SiblingArmExclusion =>
+      match right {
+        Section13SiblingArmExclusion => true
+        _ => false
+      }
+    Section13LexicalEnclosure =>
+      match right {
+        Section13LexicalEnclosure => true
+        _ => false
+      }
+    Section13SourceOrderGate =>
+      match right {
+        Section13SourceOrderGate => true
+        _ => false
+      }
+    Section13DistinctIdentityAmbiguity =>
+      match right {
+        Section13DistinctIdentityAmbiguity => true
+        _ => false
+      }
+    Section13RepeatedDiscoverySameIdentityCollapse =>
+      match right {
+        Section13RepeatedDiscoverySameIdentityCollapse => true
+        _ => false
+      }
+  }
+}
+
+data section13_module_path_is_symbolic_note: String = "Interim oracle only: refuses DeclarationRef.module_path strings that look positional (contain '/' or '.dag'). This is a §5 heuristic standing where a type should stand — the same class occurrence_module_path_convergence_note names. It is NOT the long-term authority for symbolic vs positional module identity."
+
+data section13_module_path_is_symbolic_dissolve_on: String = "feature:module-path-qualified-name — DISSOLVE-ON: DeclarationRef.module_path / OccurrenceModulePathRow.module_path become v2.std.qualified_name.QualifiedName (same trigger as occurrence_module_path_convergence_note / std.observation observation_segment_grounding_note); then positional file-path inhabitance is unwritable, this string-grep oracle deletes, and section13_adjudicate_row stops calling it."
+
+fn section13_module_path_is_symbolic(module_path: NonEmptyStr) -> Bool {
+  let path = module_path as String
+  !string_contains(s: path, pattern: "/")
+    && !string_contains(s: path, pattern: ".dag")
+}
+
+fn section13_roster_has_law(
+  rows: List<Section13PopulationLawRosterRow>,
+  law: Section13PopulationLawId
+) -> Bool {
+  rows |> any(row => section13_population_law_id_eq(left: row.law, right: law))
+}
+
+fn section13_roster_covers_all_laws(rows: List<Section13PopulationLawRosterRow>) -> Bool {
+  section13_roster_has_law(rows: rows, law: Section13StructuralVisibility)
+    && section13_roster_has_law(rows: rows, law: Section13SiblingArmExclusion)
+    && section13_roster_has_law(rows: rows, law: Section13LexicalEnclosure)
+    && section13_roster_has_law(rows: rows, law: Section13SourceOrderGate)
+    && section13_roster_has_law(rows: rows, law: Section13DistinctIdentityAmbiguity)
+    && section13_roster_has_law(
+      rows: rows,
+      law: Section13RepeatedDiscoverySameIdentityCollapse,
+    )
+}
+
+fn section13_roster_has_duplicate_law(rows: List<Section13PopulationLawRosterRow>) -> Bool {
+  fold(
+    rows,
+    init: false,
+    f: (found, row) =>
+      match found {
+        true => true
+        false =>
+          fold(
+            rows,
+            init: 0,
+            f: (count, other) =>
+              match section13_population_law_id_eq(left: row.law, right: other.law) {
+                true => count + 1
+                false => count
+              },
+          ) > 1
+      },
+  )
+}
+
+fn section13_first_duplicate_law(
+  rows: List<Section13PopulationLawRosterRow>
+) -> Section13PopulationLawId? {
+  fold(
+    rows,
+    init: none,
+    f: (found, row) =>
+      match found {
+        Present { value: _ } => found
+        Absent =>
+          if fold(
+            rows,
+            init: 0,
+            f: (count, other) =>
+              match section13_population_law_id_eq(left: row.law, right: other.law) {
+                true => count + 1
+                false => count
+              },
+          ) > 1 {
+            Present { value: row.law }
+          } else {
+            none
+          }
+      },
+  )
+}
+
+fn section13_first_uncovered_law(
+  rows: List<Section13PopulationLawRosterRow>
+) -> Section13PopulationLawId? {
+  if !section13_roster_has_law(rows: rows, law: Section13StructuralVisibility) {
+    Present { value: Section13StructuralVisibility }
+  } else if !section13_roster_has_law(rows: rows, law: Section13SiblingArmExclusion) {
+    Present { value: Section13SiblingArmExclusion }
+  } else if !section13_roster_has_law(rows: rows, law: Section13LexicalEnclosure) {
+    Present { value: Section13LexicalEnclosure }
+  } else if !section13_roster_has_law(rows: rows, law: Section13SourceOrderGate) {
+    Present { value: Section13SourceOrderGate }
+  } else if !section13_roster_has_law(rows: rows, law: Section13DistinctIdentityAmbiguity) {
+    Present { value: Section13DistinctIdentityAmbiguity }
+  } else if !section13_roster_has_law(
+    rows: rows,
+    law: Section13RepeatedDiscoverySameIdentityCollapse,
+  ) {
+    Present { value: Section13RepeatedDiscoverySameIdentityCollapse }
+  } else {
+    none
+  }
+}
+
+fn section13_observation_joins_receipt(
+  receipt: DeclarationRef,
+  observations: List<Section13ExactHeadExecutionObservation>,
+  required_head: CommitSha
+) -> Bool? {
+  fold(
+    observations,
+    init: none,
+    f: (found, observation) =>
+      match found {
+        Present { value: _ } => found
+        Absent =>
+          if declaration_ref_eq(
+            a: observation.declaration,
+            b: receipt,
+          ) && observation.head == required_head {
+            Present { value: observation.passed }
+          } else {
+            none
+          }
+      },
+  )
+}
+
+fn section13_adjudicate_row(
+  row: Section13PopulationLawRosterRow,
+  observations: List<Section13ExactHeadExecutionObservation>,
+  required_head: CommitSha
+) -> Section13PopulationLawRosterVerdict {
+  match row.evidence {
+    Section13PopulationLawExecuting { receipt: receipt } =>
+      if !section13_module_path_is_symbolic(module_path: receipt.module_path) {
+        Section13PopulationLawRosterRefusedPositionalModulePath { receipt: receipt }
+      } else {
+        match section13_observation_joins_receipt(
+          receipt: receipt,
+          observations: observations,
+          required_head: required_head,
+        ) {
+          Absent =>
+            Section13PopulationLawRosterRefusedMissingObservation { receipt: receipt }
+          Present { value: false } =>
+            Section13PopulationLawRosterRefusedFailedOrStaleObservation { receipt: receipt }
+          Present { value: true } => Section13PopulationLawRosterHolds
+        }
+      }
+    Section13PopulationLawDeferredProductionOccurrenceCollectorMissing {
+      dissolve_on: dissolve_on,
+    } =>
+      match dissolve_on {
+        Present { value: trigger } =>
+          if section13_module_path_is_symbolic(module_path: trigger.module_path) {
+            Section13PopulationLawRosterHolds
+          } else {
+            Section13PopulationLawRosterRefusedPositionalModulePath { receipt: trigger }
+          }
+        Absent => Section13PopulationLawRosterRefusedDeferredMissingTrigger
+      }
+  }
+}
+
+fn section13_population_law_roster_adjudicate(
+  observations: List<Section13ExactHeadExecutionObservation>,
+  required_head: CommitSha
+) -> Section13PopulationLawRosterVerdict {
+  let rows = section13_population_law_roster
+  match section13_first_duplicate_law(rows: rows) {
+    Present { value: law } =>
+      Section13PopulationLawRosterRefusedDuplicateLaw { law: law }
+    Absent =>
+      match section13_first_uncovered_law(rows: rows) {
+        Present { value: law } =>
+          Section13PopulationLawRosterRefusedUncoveredLaw { law: law }
+        Absent =>
+          fold(
+            rows,
+            init: Section13PopulationLawRosterHolds,
+            f: (verdict, row) =>
+              match verdict {
+                Section13PopulationLawRosterHolds =>
+                  section13_adjudicate_row(
+                    row: row,
+                    observations: observations,
+                    required_head: required_head,
+                  )
+                _ => verdict
+              },
+          )
+      }
+  }
+}
+
+fn section13_population_law_roster_denominator_holds(
+  observations: List<Section13ExactHeadExecutionObservation>,
+  required_head: CommitSha
+) -> Bool {
+  match section13_population_law_roster_adjudicate(
+    observations: observations,
+    required_head: required_head,
+  ) {
+    Section13PopulationLawRosterHolds => true
+    _ => false
+  }
+}

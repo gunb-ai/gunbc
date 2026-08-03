@@ -2,7 +2,7 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::ExitCode;
+use std::process::{Command, ExitCode, ExitStatus};
 use std::rc::Rc;
 use std::sync::Arc;
 use std::thread;
@@ -13,11 +13,14 @@ use v1_compiler::cli_run::workspace_root;
 use v1_compiler::cli_run::{
     compute_histogram_data, enable_floor_compile_clean_lazy_install, heartbeat_feed_enter_batch,
     heartbeat_feed_entry_completed, heartbeat_feed_snapshot, install_floor_compile_clean_receipt,
-    make_eval_context, project_witness_cost_receipt, resolve_entry_graph,
+    make_eval_context, project_witness_cost_receipt, record_resolution_divergence_phase,
+    reset_resolution_divergence_phase_receipt, resolution_divergence_parent_plan_capture_begin,
+    resolution_divergence_parent_plan_capture_finish, resolve_entry_graph,
     resolve_entry_graph_shared, run_claim, run_discovery_corpus_with_options, run_value, set_phase,
     top_n_slowest_witnesses, BudgetKind, ClaimOutcome, DiscoveryCorpusOptions, DiscoverySummary,
     DiscoveryWidthPolicy, FloorPhase, HistogramData, NodeFrontierSelectionMode, PhaseProfile,
-    TimingPercentiles, DEFAULT_SLOWEST_WITNESS_ATTRIBUTION_N,
+    ResolutionDivergencePhase, ResolutionDivergencePhaseState, TimingPercentiles,
+    DEFAULT_SLOWEST_WITNESS_ATTRIBUTION_N,
 };
 use v1_compiler::memory_governor::{
     binding_cap_cgroup_dir, binding_high_cgroup_dir, floor_budget_below_minimum_footprint,
@@ -25,7 +28,8 @@ use v1_compiler::memory_governor::{
     AdmittedSlot, MemoryGovernor,
 };
 use v1_compiler::v1_interpreter::{
-    color_enabled, paint, run_in_context_with_args, sgr, ExecutionMode, InterpContext, Value,
+    color_enabled, paint, run_in_context, run_in_context_with_args, sgr, ExecutionMode,
+    InterpContext, Value,
 };
 
 /// Per-LANE budgets for the falsifier's rostered batches, each keyed by the lane's own
@@ -567,11 +571,50 @@ enum Runnable {
         source_roots: Vec<String>,
         scan_dirs: Vec<String>,
         explicit_entries: Vec<(String, String)>,
+        native_bundle_entries: Vec<(String, String)>,
         node_frontier_selection: NodeFrontierSelectionMode,
         exclude_substrings: Vec<String>,
         discovery_scope_dirs: Vec<String>,
         execution_mode: ExecutionMode,
     },
+    ScopedWitnessBatch {
+        batch_id: String,
+        source_roots: Vec<String>,
+        source_roots_digest: String,
+        entries: Vec<ScopedScheduleEntry>,
+        scan_dirs: Vec<String>,
+        node_frontier_selection: NodeFrontierSelectionMode,
+        execution_authority: ScopedWitnessExecutionAuthority,
+        profile: ParsedRunnableProfile,
+        clamp: (u128, u128),
+        process_isolation: ScopedProcessIsolation,
+    },
+}
+
+#[derive(Clone)]
+struct ScopedScheduleEntry {
+    entry: String,
+    function: String,
+    witness_kind: String,
+}
+
+#[derive(Clone)]
+struct ScopedReceiptBatch {
+    batch_id: String,
+    source_roots_digest: String,
+    entries: Vec<ScopedScheduleEntry>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ScopedProcessIsolation {
+    SharedWalkProcess,
+    SequentialChildProcess,
+    FreshJobProcess,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ScopedWitnessExecutionAuthority {
+    InheritedWalkSourceRoots,
 }
 
 /// The runnable's declared effect envelope, read from its profile's `execution_mode`
@@ -715,6 +758,27 @@ fn str_field(
     }
 }
 
+fn nonnegative_measure_count(
+    value: Option<&Value>,
+    owner: &str,
+    ctx: &InterpContext,
+) -> Result<u128, String> {
+    let fields = match value {
+        Some(Value::Record { fields, .. }) | Some(Value::Variant { fields, .. }) => fields,
+        Some(other) => {
+            return Err(format!(
+                "{owner} must be a std.measure Measure value, got {}",
+                other.type_label_public()
+            ))
+        }
+        None => return Err(format!("{owner} is absent")),
+    };
+    match ctx.field(fields, "count") {
+        Some(Value::Int(n)) if *n >= 0 => Ok(*n as u128),
+        _ => Err(format!("{owner}.count must be a nonnegative Int")),
+    }
+}
+
 /// Parse the whole `RunnableResourceProfile`. An ABSENT profile field yields the
 /// fail-closed undeclared profile; a profile that EXISTS but omits a field is a
 /// REFUSAL, not a default — the `node_frontier_selection` precedent, so a stale plan
@@ -838,9 +902,12 @@ fn runnable_from_value(value: &Value, ctx: &InterpContext) -> Result<Runnable, S
                 Some(v) => str_list_from_value(v, ctx)?,
                 None => return Err("RunnableDiscoveryBatch missing field `scan_dirs`".to_string()),
             };
-            let explicit_entries = match ctx.field(fields, "explicit_entries") {
+            let (explicit_entries, native_bundle_entries) = match ctx
+                .field(fields, "explicit_entries")
+            {
                 Some(v) => {
                     let mut out = Vec::new();
+                    let mut native = Vec::new();
                     for elem in free_monoid_elems(v, ctx)? {
                         let efields = match elem {
                             Value::Record { fields, .. } => fields,
@@ -852,14 +919,48 @@ fn runnable_from_value(value: &Value, ctx: &InterpContext) -> Result<Runnable, S
                                 ))
                             }
                         };
-                        out.push((
-                            str_field(efields, "entry", "explicit_entries", ctx)?,
-                            str_field(efields, "function", "explicit_entries", ctx)?,
-                        ));
+                        let entry = str_field(efields, "entry", "explicit_entries", ctx)?;
+                        let function = str_field(efields, "function", "explicit_entries", ctx)?;
+                        match ctx.field(efields, "kind") {
+                            Some(Value::Variant { variant_name, .. })
+                                if ctx.sym_eq(*variant_name, "CorpusWitnessKind")
+                                    || ctx.sym_eq(*variant_name, "ExecutionWitnessKind") =>
+                            {
+                                out.push((entry, function));
+                            }
+                            Some(Value::Variant { variant_name, .. })
+                                if ctx.sym_eq(*variant_name, "NativeBundleWitnessKind") =>
+                            {
+                                native.push((entry, function));
+                            }
+                            Some(Value::Variant { variant_name, .. }) => {
+                                return Err(format!(
+                                    "RunnableDiscoveryBatch explicit entry {entry}::{function}: \
+                                     unhandled WitnessKind `{}` (kind_dispatch_refusal_count=1); \
+                                     refusing instead of interpreting",
+                                    ctx.resolve(*variant_name)
+                                ));
+                            }
+                            Some(other) => {
+                                return Err(format!(
+                                    "RunnableDiscoveryBatch explicit entry {entry}::{function}: \
+                                     WitnessKind is {}, not a variant \
+                                     (kind_dispatch_refusal_count=1)",
+                                    other.type_label_public()
+                                ));
+                            }
+                            None => {
+                                return Err(format!(
+                                    "RunnableDiscoveryBatch explicit entry {entry}::{function}: \
+                                     WitnessKind is absent (kind_dispatch_refusal_count=1); \
+                                     refusing instead of interpreting"
+                                ));
+                            }
+                        }
                     }
-                    out
+                    (out, native)
                 }
-                None => Vec::new(),
+                None => (Vec::new(), Vec::new()),
             };
             let node_frontier_selection = match ctx.field(fields, "node_frontier_selection") {
                 Some(Value::Variant { variant_name, .. }) => {
@@ -915,10 +1016,209 @@ fn runnable_from_value(value: &Value, ctx: &InterpContext) -> Result<Runnable, S
                 source_roots,
                 scan_dirs,
                 explicit_entries,
+                native_bundle_entries,
                 node_frontier_selection,
                 exclude_substrings,
                 discovery_scope_dirs,
                 execution_mode,
+            })
+        }
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } if ctx.sym_eq(*variant_name, "RunnableScopedWitnessBatch") => {
+            let batch = match ctx.field(fields, "batch") {
+                Some(Value::Record { fields, .. }) | Some(Value::Variant { fields, .. }) => fields,
+                Some(other) => {
+                    return Err(format!(
+                    "RunnableScopedWitnessBatch.batch must be a ScopedWitnessBatch record, got {}",
+                    other.type_label_public()
+                ))
+                }
+                None => return Err("RunnableScopedWitnessBatch missing field `batch`".to_string()),
+            };
+            let batch_id = str_field(batch, "batch_id", "ScopedWitnessBatch", ctx)?;
+            let source_roots = match ctx.field(batch, "source_roots") {
+                Some(v) => str_list_from_value(v, ctx)?,
+                None => return Err("ScopedWitnessBatch missing field `source_roots`".to_string()),
+            };
+            let source_roots_digest = match run_in_context_with_args(
+                ctx,
+                "scoped_witness_source_roots_digest_for_wire",
+                &[(
+                    (Some("source_roots".to_string())),
+                    str_list_value(&source_roots),
+                )],
+                false,
+            ) {
+                Ok(Value::Str(digest)) if !digest.is_empty() => digest,
+                Ok(other) => {
+                    return Err(format!(
+                        "scoped_witness_source_roots_digest_for_wire returned {}, expected String",
+                        other.type_label_public()
+                    ))
+                }
+                Err(msg) => {
+                    return Err(format!(
+                        "scoped_witness_source_roots_digest_for_wire refused: {msg}"
+                    ))
+                }
+            };
+            let entries = match ctx.field(batch, "entries") {
+                Some(v) => {
+                    let mut out = Vec::new();
+                    for elem in free_monoid_elems(v, ctx)? {
+                        let efields = match elem {
+                            Value::Record { fields, .. } | Value::Variant { fields, .. } => fields,
+                            other => {
+                                return Err(format!(
+                                    "ScopedWitnessBatch.entries element is {}, not a ScheduleWitnessEntry record",
+                                    other.type_label_public()
+                                ))
+                            }
+                        };
+                        let witness_kind = match ctx.field(efields, "kind") {
+                            Some(Value::Variant { variant_name, .. })
+                                if ctx.sym_eq(*variant_name, "CorpusWitnessKind") =>
+                            {
+                                "corpus"
+                            }
+                            Some(Value::Variant { variant_name, .. })
+                                if ctx.sym_eq(*variant_name, "ExecutionWitnessKind") =>
+                            {
+                                "execution"
+                            }
+                            Some(other) => {
+                                return Err(format!(
+                                    "ScopedWitnessBatch.entries.kind must be WitnessKind, got {}",
+                                    other.type_label_public()
+                                ))
+                            }
+                            None => {
+                                return Err(
+                                    "ScopedWitnessBatch.entries row missing `kind`".to_string()
+                                )
+                            }
+                        };
+                        out.push(ScopedScheduleEntry {
+                            entry: str_field(efields, "entry", "ScopedWitnessBatch.entries", ctx)?,
+                            function: str_field(
+                                efields,
+                                "function",
+                                "ScopedWitnessBatch.entries",
+                                ctx,
+                            )?,
+                            witness_kind: witness_kind.to_string(),
+                        });
+                    }
+                    out
+                }
+                None => return Err("ScopedWitnessBatch missing field `entries`".to_string()),
+            };
+            let scan_dirs = match ctx.field(batch, "scan_dirs") {
+                Some(v) => str_list_from_value(v, ctx)?,
+                None => return Err("ScopedWitnessBatch missing field `scan_dirs`".to_string()),
+            };
+            let node_frontier_selection = match ctx.field(batch, "node_frontier_selection") {
+                Some(Value::Variant { variant_name, .. })
+                    if ctx.sym_eq(*variant_name, "SelectionOff") => NodeFrontierSelectionMode::Off,
+                Some(Value::Variant { variant_name, .. })
+                    if ctx.sym_eq(*variant_name, "SelectionApplied") => NodeFrontierSelectionMode::Applied,
+                Some(Value::Variant { variant_name, .. })
+                    if ctx.sym_eq(*variant_name, "SelectionPredictOnly") => NodeFrontierSelectionMode::PredictOnly,
+                Some(other) => {
+                    return Err(format!(
+                        "ScopedWitnessBatch.node_frontier_selection must be NodeFrontierSelection, got {}",
+                        other.type_label_public()
+                    ))
+                }
+                None => return Err("ScopedWitnessBatch missing field `node_frontier_selection`".to_string()),
+            };
+            let execution_authority = match ctx.field(batch, "execution_authority") {
+                Some(Value::Variant { variant_name, .. })
+                    if ctx.sym_eq(*variant_name, "InheritedWalkSourceRoots") =>
+                {
+                    ScopedWitnessExecutionAuthority::InheritedWalkSourceRoots
+                }
+                Some(other) => {
+                    return Err(format!(
+                        "ScopedWitnessBatch.execution_authority must be ScopedWitnessExecutionAuthority, got {}",
+                        other.type_label_public()
+                    ))
+                }
+                None => {
+                    return Err("ScopedWitnessBatch missing field `execution_authority`".to_string())
+                }
+            };
+            let resource = match ctx.field(batch, "resource_profile") {
+                Some(Value::Record { fields, .. }) | Some(Value::Variant { fields, .. }) => fields,
+                Some(other) => {
+                    return Err(format!(
+                        "ScopedWitnessBatch.resource_profile must be a record, got {}",
+                        other.type_label_public()
+                    ))
+                }
+                None => {
+                    return Err("ScopedWitnessBatch missing field `resource_profile`".to_string())
+                }
+            };
+            let profile = parsed_runnable_profile_from_field(
+                ctx.field(resource, "runnable"),
+                "ScopedWitnessBatch.resource_profile.runnable",
+                ctx,
+            )?;
+            let clamp_fields = match ctx.field(resource, "clamp") {
+                Some(Value::Record { fields, .. }) | Some(Value::Variant { fields, .. }) => fields,
+                Some(other) => {
+                    return Err(format!(
+                    "ScopedWitnessBatch.resource_profile.clamp must be RunnableBatchClamp, got {}",
+                    other.type_label_public()
+                ))
+                }
+                None => {
+                    return Err("ScopedWitnessBatch.resource_profile missing `clamp`".to_string())
+                }
+            };
+            let overhead_seconds = nonnegative_measure_count(
+                ctx.field(clamp_fields, "overhead"),
+                "ScopedWitnessBatch.resource_profile.clamp.overhead",
+                ctx,
+            )?;
+            if overhead_seconds == 0 {
+                return Err("ScopedWitnessBatch clamp overhead must be positive".to_string());
+            }
+            let per_unit_ms = nonnegative_measure_count(
+                ctx.field(clamp_fields, "per_unit"),
+                "ScopedWitnessBatch.resource_profile.clamp.per_unit",
+                ctx,
+            )?;
+            let process_isolation = match ctx.field(resource, "process_isolation") {
+                Some(Value::Variant { variant_name, .. })
+                    if ctx.sym_eq(*variant_name, "SharedWalkProcess") => ScopedProcessIsolation::SharedWalkProcess,
+                Some(Value::Variant { variant_name, .. })
+                    if ctx.sym_eq(*variant_name, "SequentialChildProcess") => ScopedProcessIsolation::SequentialChildProcess,
+                Some(Value::Variant { variant_name, .. })
+                    if ctx.sym_eq(*variant_name, "FreshJobProcess") => ScopedProcessIsolation::FreshJobProcess,
+                Some(other) => {
+                    return Err(format!(
+                        "ScopedWitnessBatch.resource_profile.process_isolation must be ScopedWitnessProcessIsolation, got {}",
+                        other.type_label_public()
+                    ))
+                }
+                None => return Err("ScopedWitnessBatch.resource_profile missing `process_isolation`".to_string()),
+            };
+            Ok(Runnable::ScopedWitnessBatch {
+                batch_id,
+                source_roots,
+                source_roots_digest,
+                entries,
+                scan_dirs,
+                node_frontier_selection,
+                execution_authority,
+                profile,
+                clamp: (overhead_seconds * 1000, per_unit_ms),
+                process_isolation,
             })
         }
         other => Err(format!(
@@ -940,6 +1240,21 @@ fn batches_from_plan(plan: &Value, ctx: &InterpContext) -> Result<Vec<Vec<Runnab
     Ok(batches)
 }
 
+fn scoped_batch_clamp(batch: &[Runnable]) -> Result<Option<(u128, u128)>, String> {
+    let mut owned = None;
+    for runnable in batch {
+        if let Runnable::ScopedWitnessBatch { clamp, .. } = runnable {
+            if batch.len() != 1 {
+                return Err("RunnableScopedWitnessBatch must occupy a singleton batch".to_string());
+            }
+            if owned.replace(*clamp).is_some() {
+                return Err("batch carries more than one scoped witness clamp".to_string());
+            }
+        }
+    }
+    Ok(owned)
+}
+
 /// The parsed form of `std.realization_schedule.WalkPlan` — the ONE plan shape every
 /// plan function returns (see `walk_plan_note` on the carrier). Two populations with
 /// different ordering laws: `batches` are the ordinary floor under the walk's
@@ -947,9 +1262,109 @@ fn batches_from_plan(plan: &Value, ctx: &InterpContext) -> Result<Vec<Vec<Runnab
 /// completed AND its receipts wrote, each stage a barrier, always fail-fast between
 /// stages regardless of the ordinary stop policy.
 struct ParsedWalkPlan {
+    pre_walk_execution: PreWalkExecution,
     batches: Vec<Vec<Runnable>>,
     finalization: Option<FloorFinalization>,
     on_success_stages: Vec<Vec<Runnable>>,
+    ordinary_budget_ms: Option<u64>,
+    on_success_budget_ms: Option<u64>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum PreWalkExecution {
+    None,
+    TypedClaimSubprocess {
+        transport_entry: String,
+        transport_function: String,
+        source_roots: Vec<String>,
+        claim_entry: String,
+        claim_function: String,
+    },
+}
+
+fn pre_walk_execution_from_value(
+    value: &Value,
+    ctx: &InterpContext,
+) -> Result<PreWalkExecution, String> {
+    let Value::Variant {
+        variant_name,
+        fields,
+        ..
+    } = value
+    else {
+        return Err(format!(
+            "WalkPlan.pre_walk_execution must be NoPreWalkExecution or TypedClaimSubprocess, got {}",
+            ctx.format_value(value)
+        ));
+    };
+    if ctx.sym_eq(*variant_name, "NoPreWalkExecution") {
+        return Ok(PreWalkExecution::None);
+    }
+    if !ctx.sym_eq(*variant_name, "TypedClaimSubprocess") {
+        return Err(format!(
+            "WalkPlan.pre_walk_execution has unknown variant {}",
+            ctx.format_value(value)
+        ));
+    }
+    let string_field = |name: &str| -> Result<String, String> {
+        match ctx.field(fields, name) {
+            Some(Value::Str(s)) if !s.trim().is_empty() => Ok(s.clone()),
+            other => Err(format!(
+                "TypedClaimSubprocess.{name} must be a non-empty String, got {other:?}"
+            )),
+        }
+    };
+    let roots = ctx
+        .field(fields, "source_roots")
+        .ok_or_else(|| "TypedClaimSubprocess.source_roots is missing".to_string())?;
+    let source_roots = str_list_from_value(roots, ctx)?;
+    if source_roots.is_empty() || source_roots.iter().any(|root| root.trim().is_empty()) {
+        return Err("TypedClaimSubprocess.source_roots must contain non-empty paths".to_string());
+    }
+    Ok(PreWalkExecution::TypedClaimSubprocess {
+        transport_entry: string_field("transport_entry")?,
+        transport_function: string_field("transport_function")?,
+        source_roots,
+        claim_entry: string_field("claim_entry")?,
+        claim_function: string_field("claim_function")?,
+    })
+}
+
+fn optional_walk_budget_ms(
+    value: &Value,
+    ctx: &InterpContext,
+    field: &str,
+) -> Result<Option<u64>, String> {
+    match value {
+        Value::Null => Ok(None),
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } if ctx.sym_eq(*variant_name, "Present") => match ctx.field(fields, "value") {
+            // The budget is a std.measure Millisecond — a Measure record whose `count`
+            // carries the magnitude; the unit lives in the type, never in a field name.
+            Some(measure @ (Value::Record { .. } | Value::Variant { .. })) => {
+                let count =
+                    nonnegative_measure_count(Some(measure), &format!("WalkPlan.{field}"), ctx)?;
+                if count == 0 {
+                    return Err(format!(
+                        "WalkPlan.{field} must be a positive Millisecond, got count 0"
+                    ));
+                }
+                u64::try_from(count)
+                    .map(Some)
+                    .map_err(|_| format!("WalkPlan.{field} exceeds the executor's u64 range"))
+            }
+            other => Err(format!(
+                "WalkPlan.{field} Present.value must be a std.measure Millisecond, got {other:?}"
+            )),
+        },
+        other => Err(format!(
+            "WalkPlan.{field} must be Present {{ value: Millisecond }} or Absent, got {}",
+            ctx.format_value(other)
+        )),
+    }
 }
 
 /// Parse the plan-carried finalization VALUE (walk_finalization_note). The executor
@@ -1040,6 +1455,9 @@ fn walk_plan_from_plan(plan: &Value, ctx: &InterpContext) -> Result<ParsedWalkPl
     let batches_val = ctx
         .field(fields, "batches")
         .ok_or_else(|| "WalkPlan missing field `batches`".to_string())?;
+    let pre_walk_execution_val = ctx.field(fields, "pre_walk_execution").ok_or_else(|| {
+        "WalkPlan missing field `pre_walk_execution` — a plan with no pre-walk effect declares NoPreWalkExecution; the parser never invents absence".to_string()
+    })?;
     let stages_val = ctx.field(fields, "on_success_stages").ok_or_else(|| {
         "WalkPlan missing field `on_success_stages` — a plan with no postconditions \
          declares an empty list, never omits the field"
@@ -1050,13 +1468,26 @@ fn walk_plan_from_plan(plan: &Value, ctx: &InterpContext) -> Result<ParsedWalkPl
          NoFinalizationDeclared, never omits the field"
             .to_string()
     })?;
+    let ordinary_budget_val = ctx.field(fields, "ordinary_budget").ok_or_else(|| {
+        "WalkPlan missing field `ordinary_budget` — unbounded plans declare Absent; the parser never invents a budget".to_string()
+    })?;
+    let on_success_budget_val = ctx.field(fields, "on_success_budget").ok_or_else(|| {
+        "WalkPlan missing field `on_success_budget` — plans without bounded postconditions declare Absent; the parser never invents a budget".to_string()
+    })?;
     Ok(ParsedWalkPlan {
+        pre_walk_execution: pre_walk_execution_from_value(pre_walk_execution_val, ctx)?,
         batches: batches_from_plan(batches_val, ctx)
             .map_err(|msg| format!("WalkPlan.batches: {msg}"))?,
         finalization: finalization_from_value(finalization_val, ctx)
             .map_err(|msg| format!("WalkPlan.finalization: {msg}"))?,
         on_success_stages: batches_from_plan(stages_val, ctx)
             .map_err(|msg| format!("WalkPlan.on_success_stages: {msg}"))?,
+        ordinary_budget_ms: optional_walk_budget_ms(ordinary_budget_val, ctx, "ordinary_budget")?,
+        on_success_budget_ms: optional_walk_budget_ms(
+            on_success_budget_val,
+            ctx,
+            "on_success_budget",
+        )?,
     })
 }
 
@@ -1064,6 +1495,37 @@ fn walk_plan_from_plan(plan: &Value, ctx: &InterpContext) -> Result<ParsedWalkPl
 /// explicitly keeps a reader from parsing a blank `entry` as "unknown" when the truth is
 /// "not one entry" — the state-space conflation this field exists to avoid.
 const DISCOVERY_AGGREGATE_ENTRY: &str = "<discovery corpus — many entries>";
+
+/// PAIRED LITERALS (review 47596): the .dag single authorities are
+/// `tools.merge_admission_capture` `merge_admission_capture_refusal_wire_relpath` and
+/// `tools.merge_admission_walk` `merge_admission_refresh_refusal_wire_relpath`; the seed
+/// cannot import a .dag datum, so the pairing is these consts plus the sentence on each
+/// datum naming this file — the floor-population-budget-refusal.txt precedent, under the
+/// same walk_plan_run_stage_claim_executor_seed_deferral. A rename lands on both sides
+/// or the wire read degrades to the loud wire-absent arm, never a silent success.
+const MERGE_ADMISSION_CAPTURE_REFUSAL_WIRE: &str = "target/merge-admission-capture-refusal.txt";
+const MERGE_ADMISSION_REFRESH_REFUSAL_WIRE: &str = "target/merge-admission-refresh-refusal.txt";
+
+/// The .dag writers anchor both wires at `git.Inspect.Toplevel()` while these reads run
+/// from the executor's cwd; anchoring the read on the same toplevel keeps a non-root cwd
+/// from turning a written typed cause into a false "wire absent" (review 47663). A failed
+/// toplevel resolution falls back to the bare relpath — the pre-anchor behavior — because
+/// the wire read is itself a diagnostic path: degrading its precision is acceptable,
+/// swallowing the stage failure it decorates is not.
+fn merge_admission_wire_read(relpath: &str) -> std::io::Result<String> {
+    let toplevel = std::process::Command::new("git")
+        .args(["rev-parse", "--show-toplevel"])
+        .output()
+        .ok()
+        .filter(|out| out.status.success())
+        .and_then(|out| String::from_utf8(out.stdout).ok())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    match toplevel {
+        Some(root) => fs::read_to_string(Path::new(&root).join(relpath)),
+        None => fs::read_to_string(relpath),
+    }
+}
 
 struct ClaimResult {
     function: String,
@@ -1131,6 +1593,11 @@ enum BatchUnit {
     UnrunnableSentinel {
         function: String,
     },
+    NativeBundle {
+        entry: String,
+        selector_function: String,
+        execution_mode: ExecutionMode,
+    },
     Discovery {
         source_roots: Vec<String>,
         scan_dirs: Vec<String>,
@@ -1138,6 +1605,16 @@ enum BatchUnit {
         node_frontier_selection: NodeFrontierSelectionMode,
         exclude_substrings: Vec<String>,
         discovery_scope_dirs: Vec<String>,
+        execution_mode: ExecutionMode,
+    },
+    ScopedDiscovery {
+        batch_id: String,
+        source_roots_digest: String,
+        entries_with_kind: Vec<ScopedScheduleEntry>,
+        source_roots: Vec<String>,
+        scan_dirs: Vec<String>,
+        node_frontier_selection: NodeFrontierSelectionMode,
+        execution_authority: ScopedWitnessExecutionAuthority,
         execution_mode: ExecutionMode,
     },
 }
@@ -1196,25 +1673,88 @@ fn group_batch_units(batch: &[Runnable]) -> Vec<BatchUnit> {
                 source_roots,
                 scan_dirs,
                 explicit_entries,
+                native_bundle_entries,
                 node_frontier_selection,
                 exclude_substrings,
                 discovery_scope_dirs,
                 execution_mode,
-            } => units.push(BatchUnit::Discovery {
+            } => {
+                if !scan_dirs.is_empty() || !explicit_entries.is_empty() {
+                    units.push(BatchUnit::Discovery {
+                        source_roots: source_roots.clone(),
+                        scan_dirs: scan_dirs.clone(),
+                        explicit_entries: explicit_entries.clone(),
+                        node_frontier_selection: *node_frontier_selection,
+                        exclude_substrings: exclude_substrings.clone(),
+                        discovery_scope_dirs: discovery_scope_dirs.clone(),
+                        execution_mode: *execution_mode,
+                    });
+                }
+                for (entry, selector_function) in native_bundle_entries {
+                    units.push(BatchUnit::NativeBundle {
+                        entry: entry.clone(),
+                        selector_function: selector_function.clone(),
+                        execution_mode: *execution_mode,
+                    });
+                }
+            }
+            Runnable::ScopedWitnessBatch {
+                batch_id,
+                source_roots,
+                source_roots_digest,
+                entries,
+                scan_dirs,
+                node_frontier_selection,
+                execution_authority,
+                profile,
+                ..
+            } => units.push(BatchUnit::ScopedDiscovery {
+                batch_id: batch_id.clone(),
+                source_roots_digest: source_roots_digest.clone(),
+                entries_with_kind: entries.clone(),
                 source_roots: source_roots.clone(),
                 scan_dirs: scan_dirs.clone(),
-                explicit_entries: explicit_entries.clone(),
                 node_frontier_selection: *node_frontier_selection,
-                exclude_substrings: exclude_substrings.clone(),
-                discovery_scope_dirs: discovery_scope_dirs.clone(),
-                execution_mode: *execution_mode,
+                execution_authority: *execution_authority,
+                execution_mode: profile.execution_mode,
             }),
         }
     }
     units
 }
 
+/// `ctx` exists solely to reach the failure-receipt companion on a red witness.
+///
+/// `cli_run`'s summary path has projected companion receipts since the Lane B agreement work,
+/// but THIS binary — the one the CI floor actually runs — did not, so the same witness was
+/// loud locally and mute in CI. That divergence is what let ten consecutive
+/// `extdeps_scope_placement_gate_passes` reds on main report only `returned Bool(false)`,
+/// naming neither the refusing arm nor the offending path. Both surfaces now read the one
+/// derivation (`cli_run::failure_receipt_companion`) and the one runner
+/// (`cli_run::run_claim_failure_receipt`); a witness with no companion is unchanged.
+///
+/// HAND-RUST DISPOSITION (DESIGN §7 seed-shrinks-toward-zero; review 47022 asked for this
+/// receipt explicitly). This edit is DEFERRED seed retention, not a new scaffold and not a
+/// census movement: it adds zero tracked-Rust paths (both touched files are already tracked
+/// and neither carries a `rust_source_lifecycle_residue_rows` row), so the path-grain
+/// population `gunbc.stage0_rust_honest_frontier_projection` measures is unchanged by it.
+/// The line-grain axis that would price it, `HandAuthoredLOC`, is one of the three axes that
+/// projection's own note declares explicitly deferred, so there is no line census to shrink
+/// here and claiming one would be a fabricated receipt.
+///
+/// Lane: **v1 exit**, whose fourth finish line is zero hand-maintained Rust.
+/// ROADMAP row: "Get hand-written Rust in this repository down to zero"
+/// (authority `dag/gunbc/v1_deletion_plan.dag`).
+/// Dissolution trigger: this projection is floor-runner plumbing and has no independent
+/// lifetime — it is deleted WITH `claim_executor` when witness execution leaves the
+/// hand-maintained seed runner, not migrated ahead of it. Writing the receipt in `.dag`
+/// first is not available: the failure-receipt channel is the seed's own witness-reporting
+/// surface, and `.dag` has no print primitive to surface a reason through.
+///
+/// The alternative was to leave the reason discarded, which is the DESIGN §5 trap this whole
+/// PR exists to close — a refusal that cannot be located is not a refusal anyone can act on.
 fn claim_result_for_outcome(
+    ctx: &InterpContext,
     function: String,
     entry: String,
     outcome: ClaimOutcome,
@@ -1236,10 +1776,21 @@ fn claim_result_for_outcome(
             budget_refusal: None,
         },
         ClaimOutcome::Fail => ClaimResult {
+            detail: {
+                let mut detail = "returned Bool(false)".to_string();
+                if let Some(companion) = v1_compiler::cli_run::failure_receipt_companion(&function)
+                {
+                    let receipt = v1_compiler::cli_run::run_claim_failure_receipt(ctx, &companion);
+                    if !receipt.is_empty() {
+                        detail.push_str(" | ");
+                        detail.push_str(&receipt);
+                    }
+                }
+                detail
+            },
             function,
             entry: entry.clone(),
             ok: false,
-            detail: "returned Bool(false)".to_string(),
             wall_nanos,
             resolve_nanos,
             corpus_resolve_nanos: 0,
@@ -1308,6 +1859,457 @@ fn claim_result_for_outcome(
     }
 }
 
+#[derive(Clone)]
+struct NativeBundleProcessSpec {
+    workspace_dir: String,
+    bundle_identity: String,
+    selected_count: u64,
+    bundle_count: u64,
+    shard_count: u64,
+    files: Vec<(String, String)>,
+    build: Vec<Vec<String>>,
+    run: Vec<String>,
+    expected_stdout: Vec<u8>,
+}
+
+struct NativeTransportObservation {
+    success: bool,
+    compile_skipped: bool,
+    stdout: Vec<u8>,
+    artifact_lookup_nanos: u128,
+    cold_compile_nanos: u128,
+    native_execution_nanos: u128,
+}
+
+fn native_bundle_u64_field(
+    fields: &[(v1_compiler::v1_interpreter::Symbol, Value)],
+    name: &str,
+    ctx: &InterpContext,
+) -> Result<u64, String> {
+    match ctx.field(fields, name) {
+        Some(Value::Int(n)) if *n >= 0 => Ok(*n as u64),
+        Some(other) => Err(format!(
+            "native bundle spec field `{name}` must be a non-negative Int, got {}",
+            other.type_label_public()
+        )),
+        None => Err(format!("native bundle spec missing field `{name}`")),
+    }
+}
+
+fn native_bundle_string_list(value: &Value, ctx: &InterpContext) -> Result<Vec<String>, String> {
+    free_monoid_elems(value, ctx)?
+        .into_iter()
+        .map(|item| match item {
+            Value::Str(s) => Ok(s.clone()),
+            other => Err(format!(
+                "native bundle argv element must be String, got {}",
+                other.type_label_public()
+            )),
+        })
+        .collect()
+}
+
+fn native_bundle_spec_from_value(
+    value: &Value,
+    ctx: &InterpContext,
+) -> Result<NativeBundleProcessSpec, String> {
+    let outcome_fields = match value {
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } if ctx.sym_eq(*variant_name, "Accepted") => fields,
+        Value::Variant { variant_name, .. } if ctx.sym_eq(*variant_name, "Rejected") => {
+            return Err("native bundle selector returned typed Rejected".to_string())
+        }
+        other => {
+            return Err(format!(
+            "native bundle selector must return Outcome<NativeSelectedBundleProcessSpec>, got {}",
+            other.type_label_public()
+        ))
+        }
+    };
+    let spec = ctx
+        .field(outcome_fields, "value")
+        .ok_or_else(|| "native bundle Accepted outcome missing `value`".to_string())?;
+    let fields = match spec {
+        Value::Record { fields, .. } | Value::Variant { fields, .. } => fields,
+        other => {
+            return Err(format!(
+                "native bundle selector value must be a record, got {}",
+                other.type_label_public()
+            ))
+        }
+    };
+    let workspace_dir = str_field(fields, "workspace_dir", "native bundle spec", ctx)?;
+    let bundle_identity = str_field(fields, "bundle_identity", "native bundle spec", ctx)?;
+    if bundle_identity.is_empty() || !workspace_dir.contains(&bundle_identity) {
+        return Err(
+            "native bundle artifact identity is absent from its workspace path".to_string(),
+        );
+    }
+    let files_value = ctx
+        .field(fields, "files")
+        .ok_or_else(|| "native bundle spec missing `files`".to_string())?;
+    let mut files = Vec::new();
+    for file in free_monoid_elems(files_value, ctx)? {
+        let ff = match file {
+            Value::Record { fields, .. } | Value::Variant { fields, .. } => fields,
+            other => {
+                return Err(format!(
+                    "native bundle file must be a record, got {}",
+                    other.type_label_public()
+                ))
+            }
+        };
+        files.push((
+            str_field(ff, "path", "native bundle file", ctx)?,
+            str_field(ff, "text", "native bundle file", ctx)?,
+        ));
+    }
+    let build_value = ctx
+        .field(fields, "build")
+        .ok_or_else(|| "native bundle spec missing `build`".to_string())?;
+    let build = free_monoid_elems(build_value, ctx)?
+        .into_iter()
+        .map(|argv| native_bundle_string_list(argv, ctx))
+        .collect::<Result<Vec<_>, _>>()?;
+    let run = native_bundle_string_list(
+        ctx.field(fields, "run")
+            .ok_or_else(|| "native bundle spec missing `run`".to_string())?,
+        ctx,
+    )?;
+    let expected_stdout = free_monoid_elems(
+        ctx.field(fields, "expected_stdout_octets")
+            .ok_or_else(|| "native bundle spec missing `expected_stdout_octets`".to_string())?,
+        ctx,
+    )?
+    .into_iter()
+    .map(|octet| match octet {
+        Value::Int(n) if (0..=255).contains(n) => Ok(*n as u8),
+        _ => Err("native bundle expected stdout contains a non-octet".to_string()),
+    })
+    .collect::<Result<Vec<_>, _>>()?;
+    let spec = NativeBundleProcessSpec {
+        workspace_dir,
+        bundle_identity,
+        selected_count: native_bundle_u64_field(fields, "selected_count", ctx)?,
+        bundle_count: native_bundle_u64_field(fields, "bundle_count", ctx)?,
+        shard_count: native_bundle_u64_field(fields, "shard_count", ctx)?,
+        files,
+        build,
+        run,
+        expected_stdout,
+    };
+    if spec.selected_count != 3 || spec.bundle_count != 1 || spec.shard_count != 1 {
+        return Err(format!(
+            "native bundle bounded-population refusal: selected={} bundle={} shard={} (required 3/1/1)",
+            spec.selected_count, spec.bundle_count, spec.shard_count
+        ));
+    }
+    if spec.files.is_empty() || spec.build.is_empty() || spec.run.is_empty() {
+        return Err("native bundle process spec has empty files/build/run".to_string());
+    }
+    Ok(spec)
+}
+
+fn native_transport_observation(
+    value: &Value,
+    ctx: &InterpContext,
+) -> Result<NativeTransportObservation, String> {
+    let fields = match value {
+        Value::Record { fields, .. } | Value::Variant { fields, .. } => fields,
+        other => {
+            return Err(format!(
+                "native transport result must be a record, got {}",
+                other.type_label_public()
+            ))
+        }
+    };
+    let boolean = |name: &str| match ctx.field(fields, name) {
+        Some(Value::Bool(v)) => Ok(*v),
+        _ => Err(format!("native transport result missing Bool `{name}`")),
+    };
+    let nanos = |name: &str| native_bundle_u64_field(fields, name, ctx).map(u128::from);
+    let stdout = free_monoid_elems(
+        ctx.field(fields, "stdout_octets")
+            .ok_or_else(|| "native transport result missing stdout".to_string())?,
+        ctx,
+    )?
+    .into_iter()
+    .map(|v| match v {
+        Value::Int(n) if (0..=255).contains(n) => Ok(*n as u8),
+        _ => Err("native transport stdout contains a non-octet".to_string()),
+    })
+    .collect::<Result<Vec<_>, _>>()?;
+    Ok(NativeTransportObservation {
+        success: boolean("success")?,
+        compile_skipped: boolean("compile_skipped")?,
+        stdout,
+        artifact_lookup_nanos: nanos("artifact_lookup_nanos")?,
+        cold_compile_nanos: nanos("cold_compile_nanos")?,
+        native_execution_nanos: nanos("native_execution_nanos")?,
+    })
+}
+
+fn run_native_transport(
+    spec: &NativeBundleProcessSpec,
+    ctx: &InterpContext,
+) -> Result<NativeTransportObservation, String> {
+    let value = v1_compiler::v1_interpreter::run_native_bundle_process_cached(
+        ctx,
+        spec.workspace_dir.clone(),
+        &spec.files,
+        &spec.build,
+        &spec.run,
+    )
+    .map_err(|e| e.to_string())?;
+    native_transport_observation(&value, ctx)
+}
+
+fn write_native_transition_receipt(body: &str) -> Result<(), String> {
+    let path = Path::new("target/native-selected-witness-transition-receipt.tsv");
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("native transition receipt mkdir: {e}"))?;
+    }
+    fs::write(path, body).map_err(|e| format!("native transition receipt write: {e}"))
+}
+
+/// Acceptance and fallback are gated on DIFFERENT planted-red evidence, and the
+/// difference is the outage/divergence split (CI receipt run 30764923923, review 47508's
+/// advisory made real: srv4-03's native toolchain refused, the planted RED's native run
+/// therefore also refused, and the old gate — fallback requires planted-red NATIVE
+/// equivalence — made the counted-fallback arm unreachable in exactly the outage it was
+/// modeled for, turning a toolchain outage into a hard floor red).
+///
+/// - ACCEPTED (native-consumed) still requires the full native bar: native ran green
+///   twice, the interpreter oracle agrees, and the planted RED built and reproduced its
+///   wrong output natively (planted_red_equivalent).
+/// - FALLBACK (counted interpretation) arms only on an OUTAGE — the native transport
+///   refused or its process failed — never on a DIVERGENCE (native ran successfully but
+///   produced unexpected output: that is the hard-refusal class, an auto-pick would mask
+///   it). The discriminating-RED evidence for the thing actually being consumed (the
+///   interpreter oracle) is the planted RED's ORACLE discriminating; demanding the
+///   planted NATIVE run in an outage would demand the outage not exist.
+fn native_transition_decision(
+    native_ok: bool,
+    native_diverged: bool,
+    oracle_green: bool,
+    planted_oracle_discriminates: bool,
+    planted_red_equivalent: bool,
+) -> (bool, bool) {
+    let accepted = native_ok && oracle_green && planted_red_equivalent;
+    let fallback = !native_ok && !native_diverged && oracle_green && planted_oracle_discriminates;
+    (accepted, fallback)
+}
+
+fn native_transition_population_counts(
+    selected: u64,
+    native_ok: bool,
+    fallback: bool,
+) -> (u64, u64, u64, u64) {
+    let native_count = if native_ok { selected } else { 0 };
+    let interpreted_count = if fallback { selected } else { 0 };
+    let unavailable_count = if native_ok { 0 } else { selected };
+    let fallback_count = if fallback { selected } else { 0 };
+    (
+        native_count,
+        interpreted_count,
+        unavailable_count,
+        fallback_count,
+    )
+}
+
+fn run_native_bundle_unit(
+    source_roots: &[String],
+    entry: String,
+    selector_function: String,
+    execution_mode: ExecutionMode,
+) -> ClaimResult {
+    let started = Instant::now();
+    let fail = |detail: String| ClaimResult {
+        function: selector_function.clone(),
+        entry: entry.clone(),
+        ok: false,
+        detail,
+        wall_nanos: started.elapsed().as_nanos(),
+        resolve_nanos: 0,
+        corpus_resolve_nanos: 0,
+        corpus_eval_nanos: 0,
+        corpus_witnesses: 3,
+        witness_row_costs: Vec::new(),
+        budget_refusal: None,
+    };
+    if execution_mode != ExecutionMode::Wet {
+        return fail(
+            "NativeBundle handler requires Wet execution_mode (typed envelope refusal)".to_string(),
+        );
+    }
+    let resolve_started = Instant::now();
+    let (graph, indices) = match resolve_entry_graph(source_roots, &entry) {
+        Ok(v) => v,
+        Err(e) => return fail(format!("native bundle selector resolve refusal: {e}")),
+    };
+    let resolve_nanos = resolve_started.elapsed().as_nanos();
+    let ctx = make_eval_context(&graph, indices, ExecutionMode::Wet);
+    let primary = match run_in_context(&ctx, &selector_function, false)
+        .map_err(|e| e.to_string())
+        .and_then(|v| native_bundle_spec_from_value(&v, &ctx))
+    {
+        Ok(spec) => spec,
+        Err(e) => return fail(format!("native bundle selector refusal: {e}")),
+    };
+    let planted = run_in_context(&ctx, "native_selected_logic_planted_red_spec", false)
+        .map_err(|e| e.to_string())
+        .and_then(|v| native_bundle_spec_from_value(&v, &ctx));
+
+    let cold = run_native_transport(&primary, &ctx);
+    let warm = match &cold {
+        Ok(obs) if obs.success => run_native_transport(&primary, &ctx),
+        _ => Err("primary cold artifact unavailable".to_string()),
+    };
+    let planted_native = planted
+        .as_ref()
+        .map_err(Clone::clone)
+        .and_then(|spec| run_native_transport(spec, &ctx));
+
+    let oracle_started = Instant::now();
+    let oracle_green = matches!(
+        run_claim(&ctx, "native_selected_logic_interpreter_oracle_holds"),
+        ClaimOutcome::Pass
+    );
+    let planted_oracle = matches!(
+        run_claim(&ctx, "native_selected_logic_planted_red_oracle_holds"),
+        ClaimOutcome::Pass
+    );
+    let interpreter_oracle_wall_nanos = oracle_started.elapsed().as_nanos();
+
+    let native_ok = matches!((&cold, &warm), (Ok(c), Ok(w))
+        if c.success && w.success && w.compile_skipped
+            && c.stdout == primary.expected_stdout && w.stdout == primary.expected_stdout);
+    // Divergence = the native realization RAN (process success) and produced output the
+    // spec did not declare. Distinct from an outage (transport Err / process failure):
+    // divergence hard-refuses, outage is fallback-eligible.
+    let leg_diverged = |leg: &Result<NativeTransportObservation, String>| matches!(leg, Ok(obs) if obs.success && obs.stdout != primary.expected_stdout);
+    let native_diverged = leg_diverged(&cold) || leg_diverged(&warm);
+    let planted_red_equivalent = planted
+        .as_ref()
+        .ok()
+        .zip(planted_native.as_ref().ok())
+        .map(|(spec, obs)| obs.success && obs.stdout == spec.expected_stdout && planted_oracle)
+        .unwrap_or(false);
+    let (accepted, fallback) = native_transition_decision(
+        native_ok,
+        native_diverged,
+        oracle_green,
+        planted_oracle,
+        planted_red_equivalent,
+    );
+    // The transport causes are the located half of any non-accepted verdict; dropping
+    // them made CI's outage red opaque (run 30764923923 refused with no cause on the
+    // wire). Rendered into the FAIL/fallback detail and stderr, never into the TSV
+    // receipt (its shape is a parsed contract).
+    let leg_cause = |name: &str, leg: &Result<NativeTransportObservation, String>| match leg {
+        Ok(obs) if obs.success && obs.stdout == primary.expected_stdout => None,
+        Ok(obs) if obs.success => Some(format!(
+            "{name}: ran but diverged (stdout {} bytes != expected {} bytes)",
+            obs.stdout.len(),
+            primary.expected_stdout.len()
+        )),
+        Ok(_) => Some(format!("{name}: process failed")),
+        Err(e) => Some(format!("{name}: {e}")),
+    };
+    let transport_causes: Vec<String> = [
+        leg_cause("cold", &cold),
+        leg_cause("warm", &warm),
+        match &planted_native {
+            Ok(obs) if obs.success => None,
+            Ok(_) => Some("planted-native: process failed".to_string()),
+            Err(e) => Some(format!("planted-native: {e}")),
+        },
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+    if !transport_causes.is_empty() {
+        eprintln!(
+            "[native-selected-bundle] transport causes: {}",
+            transport_causes.join(" | ")
+        );
+    }
+    let selected = primary.selected_count;
+    let (native_count, interpreted_count, unavailable_count, fallback_count) =
+        native_transition_population_counts(selected, native_ok, fallback);
+    let cold_compile_wall = cold
+        .as_ref()
+        .ok()
+        .map(|o| o.cold_compile_nanos)
+        .unwrap_or(0);
+    let warm_artifact_hit_wall = warm
+        .as_ref()
+        .ok()
+        .map(|o| o.artifact_lookup_nanos)
+        .unwrap_or(0);
+    let native_execution_wall = warm
+        .as_ref()
+        .ok()
+        .map(|o| o.native_execution_nanos)
+        .unwrap_or(0);
+    let rss_peak = peak_rss_bytes().unwrap_or(0);
+    let cgroup_peak = cgroup_job_measurement().map(|m| m.leaf_peak).unwrap_or(0);
+    let verdict = if accepted {
+        "accepted"
+    } else if fallback {
+        "fallback:native_realization_refused"
+    } else if native_diverged {
+        "refused:native_divergence"
+    } else {
+        "refused:equivalence_or_planted_red"
+    };
+    let receipt = format!(
+        "selected_witness_count\t{selected}\nnative_count\t{native_count}\ninterpreted_count\t{interpreted_count}\nunavailable_count\t{unavailable_count}\nbundle_count\t{}\nshard_count\t{}\ncold_compile_wall_nanos\t{cold_compile_wall}\nwarm_artifact_hit_wall_nanos\t{warm_artifact_hit_wall}\nnative_execution_wall_nanos\t{native_execution_wall}\ninterpreter_oracle_wall_nanos\t{interpreter_oracle_wall_nanos}\nfallback_count\t{fallback_count}\nrss_peak_bytes\t{rss_peak}\ncgroup_peak_bytes\t{cgroup_peak}\nverdict\t{verdict}\nplanted_red_equivalent\t{planted_red_equivalent}\nbundle_identity\t{}\n",
+        primary.bundle_count, primary.shard_count, primary.bundle_identity
+    );
+    if let Err(e) = write_native_transition_receipt(&receipt) {
+        return fail(e);
+    }
+    eprintln!("[native-selected-bundle] {}", receipt.replace('\n', " "));
+    ClaimResult {
+        function: selector_function,
+        entry,
+        ok: accepted || fallback,
+        detail: if accepted {
+            receipt
+        } else if fallback {
+            format!(
+                "counted native fallback ({}); {receipt}",
+                transport_causes.join(" | ")
+            )
+        } else {
+            format!(
+                "native transition refused ({}); {receipt}",
+                transport_causes.join(" | ")
+            )
+        },
+        wall_nanos: started.elapsed().as_nanos(),
+        resolve_nanos,
+        corpus_resolve_nanos: 0,
+        corpus_eval_nanos: interpreter_oracle_wall_nanos,
+        corpus_witnesses: selected as usize,
+        witness_row_costs: Vec::new(),
+        budget_refusal: None,
+    }
+}
+
+fn scoped_execution_authority_source_roots(
+    authority: ScopedWitnessExecutionAuthority,
+    walk_source_roots: &[String],
+) -> Vec<String> {
+    match authority {
+        ScopedWitnessExecutionAuthority::InheritedWalkSourceRoots => walk_source_roots.to_vec(),
+    }
+}
+
 fn run_batch_unit(
     source_roots: Vec<String>,
     unit: BatchUnit,
@@ -1332,6 +2334,18 @@ fn run_batch_unit(
             witness_row_costs: Vec::new(),
             budget_refusal: None,
         }],
+        BatchUnit::NativeBundle {
+            entry,
+            selector_function,
+            execution_mode,
+        } => {
+            let mut slot =
+                AdmittedSlot::acquire_blocking(&governor, &format!("native-bundle {entry}"));
+            let result =
+                run_native_bundle_unit(&source_roots, entry, selector_function, execution_mode);
+            slot.note_unit_complete();
+            vec![result]
+        }
         BatchUnit::Discovery {
             source_roots: roots,
             scan_dirs,
@@ -1356,8 +2370,10 @@ fn run_batch_unit(
                 &falsifier_self_host_wet_budgets.hermetic_known_red_entry_paths,
                 &falsifier_self_host_wet_budgets.known_red_entry_paths,
             );
+            let execution_authority_source_roots = roots.clone();
             vec![run_discovery_batch_node(
                 roots,
+                execution_authority_source_roots,
                 scan_dirs,
                 explicit_entries,
                 node_frontier_selection,
@@ -1369,6 +2385,44 @@ fn run_batch_unit(
                 wet_wall_budget_ms,
                 wet_interp_budget_ms,
                 expect_red,
+                None,
+            )]
+        }
+        BatchUnit::ScopedDiscovery {
+            batch_id,
+            source_roots_digest,
+            entries_with_kind,
+            source_roots: roots,
+            scan_dirs,
+            node_frontier_selection,
+            execution_authority,
+            execution_mode,
+        } => {
+            let explicit_entries: Vec<(String, String)> = entries_with_kind
+                .iter()
+                .map(|row| (row.entry.clone(), row.function.clone()))
+                .collect();
+            let execution_authority_source_roots =
+                scoped_execution_authority_source_roots(execution_authority, &source_roots);
+            vec![run_discovery_batch_node(
+                roots,
+                execution_authority_source_roots,
+                scan_dirs,
+                explicit_entries,
+                node_frontier_selection,
+                Vec::new(),
+                Vec::new(),
+                governor,
+                execution_mode,
+                fast_lane_eval_budget_ms,
+                None,
+                None,
+                false,
+                Some(ScopedReceiptBatch {
+                    batch_id,
+                    source_roots_digest,
+                    entries: entries_with_kind,
+                }),
             )]
         }
         BatchUnit::SharedClaims {
@@ -1436,7 +2490,14 @@ fn run_shared_entry_claims(
             } else {
                 0
             };
-            claim_result_for_outcome(function.clone(), entry.to_string(), outcome, wall_nanos, rn)
+            claim_result_for_outcome(
+                &ctx,
+                function.clone(),
+                entry.to_string(),
+                outcome,
+                wall_nanos,
+                rn,
+            )
         })
         .collect()
 }
@@ -1507,7 +2568,14 @@ fn run_memo_shared_claims(
             } else {
                 0
             };
-            claim_result_for_outcome(function.clone(), entry.to_string(), outcome, wall_nanos, rn)
+            claim_result_for_outcome(
+                ctx,
+                function.clone(),
+                entry.to_string(),
+                outcome,
+                wall_nanos,
+                rn,
+            )
         })
         .collect()
 }
@@ -1887,6 +2955,128 @@ fn discovery_budget_refusal(summary: &DiscoverySummary) -> Option<BudgetRefusal>
         })
 }
 
+const SCOPED_WITNESS_RECEIPT_PATH: &str = "target/scoped-witness-execution-receipt.tsv";
+const SCOPED_WITNESS_RECEIPT_HEADER: &str =
+    "head_sha\tbatch_id\tsource_roots_digest\tentry\tfunction\twitness_kind\toutcome\tdetail";
+
+fn scoped_witness_head_sha() -> Result<String, String> {
+    let head = std::env::var("GITHUB_SHA")
+        .map_err(|_| "scoped witness execution requires explicit GITHUB_SHA".to_string())?;
+    if head.len() == 40
+        && head
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    {
+        Ok(head)
+    } else {
+        Err("scoped witness execution requires lowercase 40-hex GITHUB_SHA".to_string())
+    }
+}
+
+fn initialize_scoped_witness_receipt() -> Result<(), String> {
+    let path = Path::new(SCOPED_WITNESS_RECEIPT_PATH);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| format!("create {}: {e}", parent.display()))?;
+    }
+    std::fs::write(path, SCOPED_WITNESS_RECEIPT_HEADER)
+        .map_err(|e| format!("write {}: {e}", path.display()))
+}
+
+fn scoped_wire_text(text: &str) -> String {
+    text.replace(['\t', '\r', '\n'], " ")
+}
+
+fn scoped_witness_summary_outcome(
+    summary: &DiscoverySummary,
+    entry: &str,
+    function: &str,
+) -> Option<(&'static str, String)> {
+    if let Some(found) = summary
+        .witness_outcomes
+        .iter()
+        .find(|row| row.entry == entry && row.function == function)
+    {
+        return Some(match &found.outcome {
+            ClaimOutcome::Pass => ("executed", "true".to_string()),
+            ClaimOutcome::Fail
+            | ClaimOutcome::NotBool { .. }
+            | ClaimOutcome::RuntimeError { .. } => ("executed", "false".to_string()),
+            ClaimOutcome::TimedOut {
+                elapsed_ms,
+                budget_ms,
+                kind,
+            } => (
+                "budget-killed",
+                format!(
+                    "{} elapsed_ms={} budget_ms={}",
+                    kind.label(),
+                    elapsed_ms,
+                    budget_ms
+                ),
+            ),
+        });
+    }
+    summary
+        .selection_skipped_rows
+        .iter()
+        .find(|row| row.entry == entry && row.function == function)
+        .map(|row| ("selection-skipped", row.provenance.clone()))
+}
+
+fn append_scoped_witness_receipt_rows(
+    batch_id: &str,
+    source_roots_digest: &str,
+    entries: &[ScopedScheduleEntry],
+    summary: Option<&DiscoverySummary>,
+    scheduling_detail: Option<&str>,
+) -> Result<(), String> {
+    let head = scoped_witness_head_sha()?;
+    let pairs: Vec<(String, String)> = entries
+        .iter()
+        .map(|row| (row.entry.clone(), row.function.clone()))
+        .collect();
+    let expanded = v1_compiler::cli_run::expand_explicit_witness_entries(&pairs)?;
+    let mut body = String::new();
+    for (entry, function) in expanded {
+        let kind = entries
+            .iter()
+            .find(|row| row.entry == entry && (row.function.is_empty() || row.function == function))
+            .map(|row| row.witness_kind.as_str())
+            .ok_or_else(|| {
+                format!("expanded scoped witness row {entry}::{function} has no schedule kind")
+            })?;
+        let (outcome, detail) = if let Some(reason) = scheduling_detail {
+            ("scheduling-refused", reason.to_string())
+        } else if let Some(outcome) =
+            summary.and_then(|s| scoped_witness_summary_outcome(s, &entry, &function))
+        {
+            outcome
+        } else {
+            (
+                "scheduling-refused",
+                "enrolled row produced no execution or selection fact".to_string(),
+            )
+        };
+        body.push_str(&format!(
+            "\n{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+            head,
+            scoped_wire_text(batch_id),
+            scoped_wire_text(source_roots_digest),
+            scoped_wire_text(&entry),
+            scoped_wire_text(&function),
+            kind,
+            outcome,
+            scoped_wire_text(&detail),
+        ));
+    }
+    use std::io::Write;
+    std::fs::OpenOptions::new()
+        .append(true)
+        .open(SCOPED_WITNESS_RECEIPT_PATH)
+        .and_then(|mut file| file.write_all(body.as_bytes()))
+        .map_err(|e| format!("append {SCOPED_WITNESS_RECEIPT_PATH}: {e}"))
+}
+
 fn discovery_claim_result(
     function: String,
     ok: bool,
@@ -1946,6 +3136,7 @@ fn discovery_claim_result(
 #[allow(clippy::too_many_arguments)]
 fn run_discovery_batch_node(
     source_roots: Vec<String>,
+    execution_authority_source_roots: Vec<String>,
     scan_dirs: Vec<String>,
     explicit_entries: Vec<(String, String)>,
     node_frontier_selection: NodeFrontierSelectionMode,
@@ -1957,8 +3148,16 @@ fn run_discovery_batch_node(
     wet_receipt_wall_budget_ms: Option<u64>,
     wet_receipt_interp_eval_budget_ms: Option<u64>,
     expect_red: bool,
+    scoped_receipt: Option<ScopedReceiptBatch>,
 ) -> ClaimResult {
     set_phase(FloorPhase::Discovery, "discovery-corpus");
+    // Post-discovery projections are executor machinery too.  Scoped batches keep
+    // their witness subjects under the narrow `source_roots`, while the authored
+    // timing projector and its renderers live in the enclosing walk universe.  Keep
+    // that authority available after the options value moves into discovery; using
+    // subject roots here makes a fully-green scoped roster refuse while resolving
+    // `gunbc.witness_row_cost` and tempts callers to widen the subject envelope.
+    let execution_projection_source_roots = execution_authority_source_roots.clone();
     let label = format!(
         "discovery-corpus[{} root(s)+{} explicit, adaptive width{}]",
         source_roots.len(),
@@ -1973,6 +3172,7 @@ fn run_discovery_batch_node(
         DiscoveryWidthPolicy::Adaptive(governor),
         DiscoveryCorpusOptions {
             node_frontier_selection,
+            execution_authority_source_roots,
             explicit_roster_only: false,
             exclude_substrings,
             discovery_scope_dirs,
@@ -1982,6 +3182,29 @@ fn run_discovery_batch_node(
         },
     ) {
         Ok(summary) if summary.failures.is_empty() => {
+            if let Some(scoped) = &scoped_receipt {
+                if let Err(msg) = append_scoped_witness_receipt_rows(
+                    &scoped.batch_id,
+                    &scoped.source_roots_digest,
+                    &scoped.entries,
+                    Some(&summary),
+                    None,
+                ) {
+                    return ClaimResult {
+                        function: label,
+                        entry: DISCOVERY_AGGREGATE_ENTRY.to_string(),
+                        ok: false,
+                        detail: format!("scoped witness receipt refused: {msg}"),
+                        wall_nanos: 0,
+                        resolve_nanos: 0,
+                        corpus_resolve_nanos: summary.total_resolve_nanos,
+                        corpus_eval_nanos: summary.total_measured_nanos,
+                        corpus_witnesses: summary.total,
+                        witness_row_costs: Vec::new(),
+                        budget_refusal: discovery_budget_refusal(&summary),
+                    };
+                }
+            }
             eprintln!(
                 "[measurement] discovery corpus: {} witness(es) ({} skipped, {} deferred), resolve {:.3}ms, evalu {:.3}ms, CostAccount.time basis=Measured {}ns, roster-closure {} nodes (max shard)",
                 summary.total,
@@ -2009,14 +3232,26 @@ fn run_discovery_batch_node(
                     .saturating_sub(st.attributed_total())),
             );
             eprintln!(
-                "[assembly-split] schedule={:.1}ms probe={:.1}ms registry={:.1}ms services={:.1}ms rewire={:.1}ms emit_info={:.1}ms residue={:.1}ms",
+                "[assembly-split] schedule={:.1}ms probe={:.1}ms graph={:.1}ms symbol_index={:.1}ms pool_fill={:.1}ms symbol_index_merge={:.1}ms variant_base={:.1}ms root_symbol_index={:.1}ms root_variant_base={:.1}ms environment={:.1}ms diagnostics={:.1}ms registry={:.1}ms services={:.1}ms rewire_type_env={:.1}ms rewire_import_str={:.1}ms rewire_func_env={:.1}ms emit_info={:.1}ms other={:.1}ms rewire_total_observation={:.1}ms",
                 ms(st.assembly_schedule),
                 ms(st.assembly_probe),
+                ms(st.assembly_graph),
+                ms(st.assembly_symbol_index),
+                ms(st.assembly_pool_fill),
+                ms(st.assembly_symbol_index_merge),
+                ms(st.assembly_variant_base),
+                ms(st.assembly_root_symbol_index),
+                ms(st.assembly_root_variant_base),
+                ms(st.assembly_environment),
+                ms(st.assembly_diagnostics),
                 ms(st.assembly_registry),
                 ms(st.assembly_services),
-                ms(st.assembly_rewire),
+                ms(st.assembly_rewire_type_env),
+                ms(st.assembly_rewire_import_str),
+                ms(st.assembly_rewire_func_env),
                 ms(st.assembly_emit_info),
                 ms(st.reconcile_assembly),
+                ms(st.assembly_rewire),
             );
             // Both halves come from the SAME per-entry spans here (`total_resolve_nanos`
             // and `total_stage_nanos` are accumulated entry by entry at the same two call
@@ -2065,10 +3300,14 @@ fn run_discovery_batch_node(
                     )
                 );
             }
-            let projected = project_witness_cost_receipt(&source_roots, &summary);
+            let projected =
+                project_witness_cost_receipt(&execution_projection_source_roots, &summary);
             match &projected {
                 Ok(rows) => {
-                    match render_timing_histogram(&source_roots, &compute_histogram_data(rows)) {
+                    match render_timing_histogram(
+                        &execution_projection_source_roots,
+                        &compute_histogram_data(rows),
+                    ) {
                         Ok(histogram) => eprintln!("{histogram}"),
                         Err(e) => eprintln!("[histogram] render failed (timings unaffected): {e}"),
                     }
@@ -2076,7 +3315,7 @@ fn run_discovery_batch_node(
                 Err(msg) => eprintln!("{msg}"),
             }
             if let Ok(rows) = &projected {
-                emit_slowest_witness_attribution(&source_roots, rows);
+                emit_slowest_witness_attribution(&execution_projection_source_roots, rows);
             }
             if expect_red && summary.total > 0 {
                 // All green on an expect-red probe = stale quarantine (dissolve-on fired).
@@ -2101,7 +3340,31 @@ fn run_discovery_batch_node(
             }
         }
         Ok(summary) => {
-            let projected = project_witness_cost_receipt(&source_roots, &summary);
+            if let Some(scoped) = &scoped_receipt {
+                if let Err(msg) = append_scoped_witness_receipt_rows(
+                    &scoped.batch_id,
+                    &scoped.source_roots_digest,
+                    &scoped.entries,
+                    Some(&summary),
+                    None,
+                ) {
+                    return ClaimResult {
+                        function: label,
+                        entry: DISCOVERY_AGGREGATE_ENTRY.to_string(),
+                        ok: false,
+                        detail: format!("scoped witness receipt refused: {msg}"),
+                        wall_nanos: 0,
+                        resolve_nanos: 0,
+                        corpus_resolve_nanos: summary.total_resolve_nanos,
+                        corpus_eval_nanos: summary.total_measured_nanos,
+                        corpus_witnesses: summary.total,
+                        witness_row_costs: Vec::new(),
+                        budget_refusal: discovery_budget_refusal(&summary),
+                    };
+                }
+            }
+            let projected =
+                project_witness_cost_receipt(&execution_projection_source_roots, &summary);
             if expect_red {
                 eprintln!(
                     "[expect-red] known-red probe still red: {} of {} failed (agreement — quarantine holds)",
@@ -2131,6 +3394,16 @@ fn run_discovery_batch_node(
             }
         }
         Err(msg) => {
+            let scoped_write_error = scoped_receipt.as_ref().and_then(|scoped| {
+                append_scoped_witness_receipt_rows(
+                    &scoped.batch_id,
+                    &scoped.source_roots_digest,
+                    &scoped.entries,
+                    None,
+                    Some(&msg),
+                )
+                .err()
+            });
             if expect_red {
                 // Resolve-refuse is the documented known-red shape for logic_ground_truth
                 // (imported bare variants unbound in expression position).
@@ -2155,7 +3428,10 @@ fn run_discovery_batch_node(
                     function: label,
                     entry: DISCOVERY_AGGREGATE_ENTRY.to_string(),
                     ok: false,
-                    detail: format!("discovery corpus failed: {msg}"),
+                    detail: match scoped_write_error {
+                        Some(receipt) => format!("discovery corpus failed: {msg}; scoped witness receipt refused: {receipt}"),
+                        None => format!("discovery corpus failed: {msg}"),
+                    },
                     wall_nanos: 0,
                     resolve_nanos: 0,
                     corpus_resolve_nanos: 0,
@@ -2194,6 +3470,90 @@ fn eval_plan(
         .map_err(|msg| format!("resolve failed for plan {}:\n{}", plan_entry, msg))?;
     let plan_ctx = make_eval_context(&plan_graph, plan_indices, ExecutionMode::Hermetic);
     eval_plan_in_ctx(&plan_ctx, plan_entry, plan_function)
+}
+
+fn run_pre_walk_execution(
+    executor_source_roots: &[String],
+    plan_site: &str,
+    execution: &PreWalkExecution,
+) -> Result<(), String> {
+    let PreWalkExecution::TypedClaimSubprocess {
+        transport_entry,
+        transport_function,
+        source_roots,
+        claim_entry,
+        claim_function,
+    } = execution
+    else {
+        return Ok(());
+    };
+    let started = Instant::now();
+    let memory_before = stage_memory_snapshot();
+    eprintln!(
+        "claim_executor: pre-walk typed claim subprocess — transport={transport_entry}::{transport_function} claim={claim_entry}::{claim_function}"
+    );
+    let (graph, indices) = resolve_entry_graph(executor_source_roots, transport_entry).map_err(
+        |msg| {
+            format!(
+                "PRE-WALK-REFUSED plan_site={plan_site} transport={transport_entry}::{transport_function} claim={claim_entry}::{claim_function}: transport resolve failed: {msg}"
+            )
+        },
+    )?;
+    let ctx = make_eval_context(&graph, indices, ExecutionMode::Wet);
+    let result = run_in_context_with_args(
+        &ctx,
+        transport_function,
+        &[
+            (
+                Some("source_roots".to_string()),
+                str_list_value(source_roots),
+            ),
+            (
+                Some("claim_entry".to_string()),
+                Value::Str(claim_entry.clone()),
+            ),
+            (
+                Some("claim_function".to_string()),
+                Value::Str(claim_function.clone()),
+            ),
+        ],
+        false,
+    );
+    drop(ctx);
+    drop(graph);
+    let wall_ms = started.elapsed().as_millis();
+    let memory_after = stage_memory_snapshot();
+    eprintln!(
+        "claim_executor: pre-walk typed claim subprocess receipt — wall_ms={wall_ms} memory_current_before={} memory_current_after={} memory_peak_after={} swap_after={} high_events_after={}",
+        receipt_optional_u64(memory_before.current_bytes),
+        receipt_optional_u64(memory_after.current_bytes),
+        receipt_optional_u64(memory_after.peak_bytes),
+        receipt_optional_u64(memory_after.swap_bytes),
+        receipt_optional_u64(memory_after.high_events),
+    );
+    match result {
+        Ok(Value::Bool(true)) => Ok(()),
+        Ok(Value::Bool(false)) => {
+            // The claim channel is a Bool, so the typed cause crosses as the durable
+            // refusal wire the capture writes before returning false (the
+            // floor-population-budget-refusal.txt pattern; merge_admission_capture
+            // merge_admission_capture_refusal_wire_note). Wire-absent is its own
+            // reported state, never folded into a generic failure.
+            let cause = match merge_admission_wire_read(MERGE_ADMISSION_CAPTURE_REFUSAL_WIRE) {
+                Ok(wire) => format!("capture refusal wire: {}", wire.trim()),
+                Err(_) => "typed child returned false with no capture-refusal wire (child died before writing its cause, or the wire write itself refused — indistinguishable from here: the Bool claim is the only surviving channel)".to_string(),
+            };
+            Err(format!(
+                "PRE-WALK-REFUSED plan_site={plan_site} transport={transport_entry}::{transport_function} claim={claim_entry}::{claim_function}: {cause}"
+            ))
+        }
+        Ok(other) => Err(format!(
+            "PRE-WALK-REFUSED plan_site={plan_site} transport={transport_entry}::{transport_function} claim={claim_entry}::{claim_function}: transport returned {other:?}, expected Bool"
+        )),
+        Err(msg) => Err(format!(
+            "PRE-WALK-REFUSED plan_site={plan_site} transport={transport_entry}::{transport_function} claim={claim_entry}::{claim_function}: transport evaluation failed: {msg}"
+        )),
+    }
 }
 
 /// An infrastructure fault the walk observed directly, kept as data.
@@ -2363,10 +3723,12 @@ fn psi_avg10_to_basis_points(avg10: &str) -> Option<u64> {
 }
 
 fn batch_heartbeat_label(batch: &[Runnable]) -> String {
-    if batch
-        .iter()
-        .any(|r| matches!(r, Runnable::DiscoveryBatch { .. }))
-    {
+    if batch.iter().any(|r| {
+        matches!(
+            r,
+            Runnable::DiscoveryBatch { .. } | Runnable::ScopedWitnessBatch { .. }
+        )
+    }) {
         // Canonical crawl-window subject — matches the seed oracle's batch label.
         "witness discovery".to_string()
     } else if let Some(Runnable::SingleClaim { function, .. }) = batch.first() {
@@ -2690,11 +4052,18 @@ struct BatchRecord {
 fn batch_selection_tag(batch: &[Runnable]) -> &'static str {
     let mut seen: Vec<&'static str> = Vec::new();
     for r in batch {
-        if let Runnable::DiscoveryBatch {
-            node_frontier_selection,
-            ..
-        } = r
-        {
+        let selection = match r {
+            Runnable::DiscoveryBatch {
+                node_frontier_selection,
+                ..
+            }
+            | Runnable::ScopedWitnessBatch {
+                node_frontier_selection,
+                ..
+            } => Some(node_frontier_selection),
+            Runnable::SingleClaim { .. } => None,
+        };
+        if let Some(node_frontier_selection) = selection {
             let tag = match node_frontier_selection {
                 NodeFrontierSelectionMode::Off => "off",
                 NodeFrontierSelectionMode::Applied => "applied",
@@ -3485,6 +4854,38 @@ fn write_on_success_stage_receipt(
     body.push_str(&format!("unit_count={}\n", run.unit_count));
     body.push_str(&format!("resolves={resolves}\n"));
     body.push_str(&format!("wall_ms={}\n", run.wall_nanos / 1_000_000));
+    body.push_str(&format!(
+        "memory_current_before_bytes={}\n",
+        receipt_optional_u64(run.memory_before.current_bytes)
+    ));
+    body.push_str(&format!(
+        "memory_current_after_bytes={}\n",
+        receipt_optional_u64(run.memory_after.current_bytes)
+    ));
+    body.push_str(&format!(
+        "memory_peak_before_bytes={}\n",
+        receipt_optional_u64(run.memory_before.peak_bytes)
+    ));
+    body.push_str(&format!(
+        "memory_peak_after_bytes={}\n",
+        receipt_optional_u64(run.memory_after.peak_bytes)
+    ));
+    body.push_str(&format!(
+        "memory_swap_before_bytes={}\n",
+        receipt_optional_u64(run.memory_before.swap_bytes)
+    ));
+    body.push_str(&format!(
+        "memory_swap_after_bytes={}\n",
+        receipt_optional_u64(run.memory_after.swap_bytes)
+    ));
+    body.push_str(&format!(
+        "memory_high_events_before={}\n",
+        receipt_optional_u64(run.memory_before.high_events)
+    ));
+    body.push_str(&format!(
+        "memory_high_events_after={}\n",
+        receipt_optional_u64(run.memory_after.high_events)
+    ));
     // Recorded rather than omitted so a future DECLARED stage clamp shows up as a value
     // change here instead of a new field a reader has to notice.
     body.push_str(&format!(
@@ -3869,8 +5270,24 @@ fn batch_unit_lane(
         {
             UnitLane::Memo
         }
-        BatchUnit::Discovery { .. } => UnitLane::MainThread,
+        BatchUnit::Discovery { .. } | BatchUnit::ScopedDiscovery { .. } => UnitLane::MainThread,
         _ => UnitLane::Spawned,
+    }
+}
+
+/// Population-semantic refinement of the shared lane decision. Green-only claims that
+/// would spawn instead stay on the executor's main thread, where the process-shared
+/// module index is already warm. The claim still runs through `run_batch_unit`, so this
+/// changes placement only — not governor admission, grouping, or verdict semantics.
+fn population_unit_lane(
+    population: StagePopulation,
+    unit: &BatchUnit,
+    memo: &std::collections::HashMap<(String, ExecutionMode), InterpContext>,
+    memo_path_entries: &std::collections::HashSet<(String, ExecutionMode)>,
+) -> UnitLane {
+    match (population, batch_unit_lane(unit, memo, memo_path_entries)) {
+        (StagePopulation::OnSuccessStage, UnitLane::Spawned) => UnitLane::MainThread,
+        (_, lane) => lane,
     }
 }
 
@@ -3990,6 +5407,10 @@ fn validate_on_success_stage_admissibility(stages: &[Vec<Runnable>]) -> Vec<Stri
                 Runnable::DiscoveryBatch { .. } => refusals.push(format!(
                     "on-success stage {} contains a RunnableDiscoveryBatch — stages admit single \
                      claims only; a discovery batch has no defined green-only meaning",
+                    si + 1
+                )),
+                Runnable::ScopedWitnessBatch { .. } => refusals.push(format!(
+                    "on-success stage {} contains a RunnableScopedWitnessBatch — scoped batches belong to the ordinary execution population",
                     si + 1
                 )),
             }
@@ -4144,10 +5565,11 @@ fn join_units(handles: Vec<thread::JoinHandle<Vec<ClaimResult>>>) -> (Vec<ClaimR
     (results, panicked)
 }
 
-/// Which of the walk's two populations a stage belongs to. It selects LABELS only —
-/// the execution path below is byte-identical for both, which is the entire point of
-/// the extraction (`std.realization_schedule.walk_plan_note`). Ordering and failure
-/// policy live in the callers, where the two populations genuinely differ.
+/// Which of the walk's two populations a stage belongs to. Besides labels, this selects
+/// the one population-semantic placement difference: on-success units that would be
+/// spawned execute through `run_batch_unit` on the main thread so they consume its warm
+/// thread-local index. Ordinary spawned units stay unchanged. Ordering and failure
+/// policy continue to live in the callers.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum StagePopulation {
     OrdinaryBatch,
@@ -4191,6 +5613,44 @@ struct StageRun {
     thread_panicked: bool,
     /// The stage exceeded its derived clamp. Already printed as a typed refusal.
     over_budget: bool,
+    memory_before: StageMemorySnapshot,
+    memory_after: StageMemorySnapshot,
+}
+
+#[derive(Clone, Copy, Default)]
+struct StageMemorySnapshot {
+    current_bytes: Option<u64>,
+    peak_bytes: Option<u64>,
+    swap_bytes: Option<u64>,
+    high_events: Option<u64>,
+}
+
+fn stage_memory_snapshot() -> StageMemorySnapshot {
+    let Some(dir) = binding_high_cgroup_dir()
+        .or_else(binding_cap_cgroup_dir)
+        .or_else(leaf_cgroup_dir)
+    else {
+        return StageMemorySnapshot::default();
+    };
+    let high_events = read_cgroup_raw(&dir, "memory.events").and_then(|events| {
+        events.lines().find_map(|line| {
+            let mut fields = line.split_whitespace();
+            match (fields.next(), fields.next()) {
+                (Some("high"), Some(value)) => value.parse::<u64>().ok(),
+                _ => None,
+            }
+        })
+    });
+    StageMemorySnapshot {
+        current_bytes: read_cgroup_u64(&dir, "memory.current"),
+        peak_bytes: read_cgroup_u64(&dir, "memory.peak"),
+        swap_bytes: read_cgroup_u64(&dir, "memory.swap.current"),
+        high_events,
+    }
+}
+
+fn receipt_optional_u64(value: Option<u64>) -> String {
+    value.map_or_else(|| "unreadable".to_string(), |n| n.to_string())
 }
 
 /// ONE stage of a walk, and the SINGLE execution path both populations share.
@@ -4225,10 +5685,12 @@ fn run_stage(
     // pending (filled when the roster's entry-group count is known); SingleClaim arms
     // immediately with the claim count. Never a fabricated 0-of-0.
     let label = batch_heartbeat_label(stage);
-    let entry_total = if stage
-        .iter()
-        .any(|r| matches!(r, Runnable::DiscoveryBatch { .. }))
-    {
+    let entry_total = if stage.iter().any(|r| {
+        matches!(
+            r,
+            Runnable::DiscoveryBatch { .. } | Runnable::ScopedWitnessBatch { .. }
+        )
+    }) {
         None
     } else if stage.is_empty() {
         None
@@ -4244,14 +5706,20 @@ fn run_stage(
         units.len(),
         governor.current_target_width()
     );
+    let memory_before = stage_memory_snapshot();
     let stage_start = Instant::now();
-    // Partition units into lanes (decision table: `batch_unit_lane`): memo and Discovery
-    // units stay on the main thread; others spawn.
+    // Partition units into lanes (decision table: `batch_unit_lane`). Ordinary spawned
+    // units remain worker-thread units. On-success units that would otherwise spawn run
+    // through the SAME run_batch_unit path on the main thread: they still acquire an
+    // AdmittedSlot, but now consume this thread's already-warm process_shared_index
+    // instead of rebuilding a cold index in a fresh thread-local. The WalkPlan contract
+    // deliberately permits withdrawing sibling overlap, and the live roster's stages are
+    // singletons. Memo and Discovery placement is unchanged.
     let mut memo_units: Vec<BatchUnit> = Vec::new();
     let mut main_thread_units: Vec<BatchUnit> = Vec::new();
     let mut thread_units: Vec<BatchUnit> = Vec::new();
     for unit in units {
-        match batch_unit_lane(&unit, memo, memo_path_entries) {
+        match population_unit_lane(population, &unit, memo, memo_path_entries) {
             UnitLane::Memo => memo_units.push(unit),
             UnitLane::MainThread => main_thread_units.push(unit),
             UnitLane::Spawned => thread_units.push(unit),
@@ -4310,9 +5778,10 @@ fn run_stage(
             memo_results.extend(results);
         }
     }
-    // Discovery pumps on the main thread (see the partition above): the pump's
-    // `process_shared_index` is this thread's — the one the eager compile-clean receipt
-    // install warmed — so the corpus reads the gate's typed store.
+    // Main-thread units include Discovery pumps and on-success spawned-eligible claims.
+    // Both intentionally consume this thread's process_shared_index — the one the eager
+    // compile-clean receipt install warmed. run_batch_unit itself preserves governor-slot
+    // acquisition for the claim case; Discovery keeps its existing admission behavior.
     for unit in main_thread_units {
         memo_results.extend(run_batch_unit(
             source_roots.to_vec(),
@@ -4332,15 +5801,18 @@ fn run_stage(
     }
     // SingleClaim path: discovery advances the feed via `index_schedule_entry_completed`;
     // gate stages have no schedule retention, so each claim result is the per-entry tick.
-    if !stage
-        .iter()
-        .any(|r| matches!(r, Runnable::DiscoveryBatch { .. }))
-    {
+    if !stage.iter().any(|r| {
+        matches!(
+            r,
+            Runnable::DiscoveryBatch { .. } | Runnable::ScopedWitnessBatch { .. }
+        )
+    }) {
         for _ in &results {
             heartbeat_feed_entry_completed();
         }
     }
     let wall_nanos = stage_start.elapsed().as_nanos();
+    let memory_after = stage_memory_snapshot();
     // THE COST WALL (Piece 3 derived clamp): the per-stage clamp is overhead + runtime
     // unit count * rate, computed HERE where the affected-set-selected count is known
     // (the schedule holds one opaque discovery runnable; the count is runtime).
@@ -4387,7 +5859,143 @@ fn run_stage(
         clamp_ms,
         thread_panicked,
         over_budget,
+        memory_before,
+        memory_after,
     }
+}
+
+fn arm_population_budget_watchdog(
+    population: &'static str,
+    plan_site: &str,
+    budget_ms: Option<u64>,
+    progress: PopulationBudgetProgress,
+) -> Arc<std::sync::atomic::AtomicBool> {
+    let armed = Arc::new(std::sync::atomic::AtomicBool::new(budget_ms.is_some()));
+    let Some(budget_ms) = budget_ms else {
+        return armed;
+    };
+    let watchdog_armed = armed.clone();
+    let site = plan_site.to_string();
+    let started = Instant::now();
+    let _ = std::thread::Builder::new()
+        .name(format!("{population}-budget-watchdog"))
+        .spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(budget_ms));
+            if watchdog_armed.load(std::sync::atomic::Ordering::Acquire) {
+                let elapsed_ms = started.elapsed().as_millis().min(u128::from(u64::MAX)) as u64;
+                let locus = progress.snapshot();
+                let receipt = PopulationBudgetRefusal {
+                    population,
+                    plan_site: &site,
+                    population_index: locus.population_index,
+                    active_unit: &locus.active_unit,
+                    elapsed_ms,
+                    budget_ms,
+                };
+                let receipt_path = write_population_budget_refusal_at(Path::new("target"), &receipt)
+                    .map(|path| path.display().to_string())
+                    .unwrap_or_else(|error| format!("UNWRITABLE ({error})"));
+                use std::io::Write as _;
+                let mut stderr = std::io::stderr().lock();
+                let _ = writeln!(
+                    stderr,
+                    "claim_executor: {}-OVER-BUDGET — plan_site={} population_index={} active_unit={} elapsed_ms={} budget_ms={} receipt={}; executor refusing inside the population boundary",
+                    population.to_ascii_uppercase().replace('_', "-"),
+                    site,
+                    locus.population_index,
+                    locus.active_unit,
+                    elapsed_ms,
+                    budget_ms,
+                    receipt_path,
+                );
+                let _ = stderr.flush();
+                std::process::exit(1);
+            }
+        });
+    armed
+}
+
+#[derive(Clone, Debug)]
+struct PopulationBudgetLocus {
+    population_index: usize,
+    active_unit: String,
+}
+
+#[derive(Clone)]
+struct PopulationBudgetProgress(Arc<std::sync::Mutex<PopulationBudgetLocus>>);
+
+impl PopulationBudgetProgress {
+    fn before_first_unit() -> Self {
+        Self(Arc::new(std::sync::Mutex::new(PopulationBudgetLocus {
+            population_index: 0,
+            active_unit: "<before first unit>".to_string(),
+        })))
+    }
+
+    fn enter(&self, population_index: usize, active_unit: String) {
+        let mut locus = self
+            .0
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        *locus = PopulationBudgetLocus {
+            population_index,
+            active_unit,
+        };
+    }
+
+    fn snapshot(&self) -> PopulationBudgetLocus {
+        self.0
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone()
+    }
+}
+
+struct PopulationBudgetRefusal<'a> {
+    population: &'a str,
+    plan_site: &'a str,
+    population_index: usize,
+    active_unit: &'a str,
+    elapsed_ms: u64,
+    budget_ms: u64,
+}
+
+fn population_budget_refusal_body(receipt: &PopulationBudgetRefusal<'_>) -> String {
+    format!(
+        "population={}\nplan_site={}\npopulation_index={}\nactive_unit={}\nelapsed_ms={}\nbudget_ms={}\noutcome=refused\n",
+        receipt.population,
+        receipt.plan_site,
+        receipt.population_index,
+        receipt.active_unit,
+        receipt.elapsed_ms,
+        receipt.budget_ms,
+    )
+}
+
+fn write_population_budget_refusal_at(
+    base: &Path,
+    receipt: &PopulationBudgetRefusal<'_>,
+) -> std::io::Result<PathBuf> {
+    fs::create_dir_all(base)?;
+    let path = base.join("floor-population-budget-refusal.txt");
+    fs::write(&path, population_budget_refusal_body(receipt))?;
+    Ok(path)
+}
+
+fn budget_unit_label(stage: &[Runnable]) -> String {
+    stage
+        .iter()
+        .map(|runnable| match runnable {
+            Runnable::SingleClaim {
+                entry, function, ..
+            } => format!("{entry}::{function}"),
+            Runnable::DiscoveryBatch { .. } => "<discovery batch>".to_string(),
+            Runnable::ScopedWitnessBatch { batch_id, .. } => {
+                format!("<scoped witness batch {batch_id}>")
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(",")
 }
 
 fn run_walk(
@@ -4396,14 +6004,17 @@ fn run_walk(
     batches: &[Vec<Runnable>],
     on_success_stages: &[Vec<Runnable>],
     floor_finalization: Option<&FloorFinalization>,
+    ordinary_budget_ms: Option<u64>,
+    on_success_budget_ms: Option<u64>,
     governor: &Arc<MemoryGovernor>,
     fast_lane_eval_budget_ms: Option<u64>,
     falsifier_self_host_wet_budgets: FalsifierSelfHostWetBudgets,
     stop_policy: FloorBatchStopPolicy,
-    batch_clamp_params: Option<&[(u128, u128)]>,
+    batch_clamp_params: Option<&[Option<(u128, u128)>]>,
     budget_tighten_ms: Option<u128>,
     falsifier_cadence: bool,
     witness_row_cost_basis_path: &Path,
+    emit_ordinary_floor_receipts: bool,
     // The observed walk-attempt identity. `None` is legitimate ONLY for a plan with no
     // on-success stages: nothing writes an attempt-scoped receipt, so nothing needs the
     // identity. With stages present the arm-time check has already refused an unidentified
@@ -4417,6 +6028,14 @@ fn run_walk(
     let mut failure_details: Vec<String> = Vec::new();
     let mut infra_faults: Vec<InfraFault> = Vec::new();
     let walk_start = Instant::now();
+    let ordinary_start = Instant::now();
+    let ordinary_budget_progress = PopulationBudgetProgress::before_first_unit();
+    let ordinary_budget_armed = arm_population_budget_watchdog(
+        "ordinary_floor",
+        plan_site,
+        ordinary_budget_ms,
+        ordinary_budget_progress.clone(),
+    );
     let mut batch_records: Vec<BatchRecord> = Vec::new();
     // Cross-batch resolve memo: SharedClaims whose runnable does a heavy whole-tree resolve
     // run on the main thread and share a single resolved InterpContext per entry across all batches.
@@ -4430,7 +6049,23 @@ fn run_walk(
         std::collections::HashMap::new();
     let memo_path_entries = memo_path_entry_keys(batches);
     for (bi, batch) in batches.iter().enumerate() {
+        if ordinary_budget_ms
+            .is_some_and(|budget| ordinary_start.elapsed().as_millis() >= u128::from(budget))
+        {
+            let budget = ordinary_budget_ms.expect("checked Some above");
+            any_failed = true;
+            failure_details.push(format!(
+                "ordinary floor exceeded its population budget before batch {}: budget_ms={budget}",
+                bi + 1
+            ));
+            eprintln!(
+                "claim_executor: ORDINARY-FLOOR-OVER-BUDGET before batch {} — budget_ms={budget}; admission postcondition allowance remains reserved",
+                bi + 1
+            );
+            break;
+        }
         batches_run = bi + 1;
+        ordinary_budget_progress.enter(bi + 1, budget_unit_label(batch));
         let StageRun {
             results: batch_results,
             label,
@@ -4439,6 +6074,8 @@ fn run_walk(
             clamp_ms: batch_clamp_ms,
             thread_panicked,
             over_budget,
+            memory_before: _,
+            memory_after: _,
         } = run_stage(
             source_roots,
             batch,
@@ -4450,7 +6087,10 @@ fn run_walk(
             governor,
             fast_lane_eval_budget_ms,
             &falsifier_self_host_wet_budgets,
-            batch_clamp_params.and_then(|p| p.get(bi)).copied(),
+            batch_clamp_params
+                .and_then(|p| p.get(bi))
+                .copied()
+                .flatten(),
             budget_tighten_ms,
         );
         for result in &batch_results {
@@ -4554,12 +6194,25 @@ fn run_walk(
     }
     let total_wall_nanos = walk_start.elapsed().as_nanos();
     emit_gantt(&batch_records, total_wall_nanos);
-    let resolve_receipt_ok = write_resolve_receipt(&batch_records);
-    let batch_wall_receipt_ok = write_batch_wall_receipt(&batch_records);
-    let gate_warm_cost_receipt_ok = write_gate_warm_cost_receipt(&batch_records, falsifier_cadence);
-    let witness_row_cost_receipt_ok =
-        write_witness_row_cost_receipt(&batch_records, falsifier_cadence);
-    let witness_row_cost_drift_receipt_ok = if falsifier_cadence {
+    trace_floor_phase("resolve-receipt", "started", "");
+    let resolve_receipt_ok = !emit_ordinary_floor_receipts || write_resolve_receipt(&batch_records);
+    trace_floor_phase("resolve-receipt", "completed", "");
+    trace_floor_phase("batch-wall-receipt", "started", "");
+    let batch_wall_receipt_ok =
+        !emit_ordinary_floor_receipts || write_batch_wall_receipt(&batch_records);
+    trace_floor_phase("batch-wall-receipt", "completed", "");
+    trace_floor_phase("gate-warm-cost-receipt", "started", "");
+    let gate_warm_cost_receipt_ok = !emit_ordinary_floor_receipts
+        || write_gate_warm_cost_receipt(&batch_records, falsifier_cadence);
+    trace_floor_phase("gate-warm-cost-receipt", "completed", "");
+    trace_floor_phase("witness-row-cost-receipt", "started", "");
+    let witness_row_cost_receipt_ok = !emit_ordinary_floor_receipts
+        || write_witness_row_cost_receipt(&batch_records, falsifier_cadence);
+    trace_floor_phase("witness-row-cost-receipt", "completed", "");
+    trace_floor_phase("witness-row-cost-drift-receipt", "started", "");
+    let witness_row_cost_drift_receipt_ok = if !emit_ordinary_floor_receipts {
+        true
+    } else if falsifier_cadence {
         write_witness_row_cost_drift_receipt_at(
             std::path::Path::new("target"),
             &batch_records,
@@ -4569,18 +6222,29 @@ fn run_walk(
     } else {
         true
     };
+    trace_floor_phase("witness-row-cost-drift-receipt", "completed", "");
     // Written on EVERY exit path, red included — a red run is precisely when the
     // alert needs to know which component failed (gunbc.floor_component_receipt).
-    let floor_component_receipt_ok = write_floor_component_receipt_at(
-        std::path::Path::new("target"),
-        source_roots,
-        &batch_records,
-        batches.len(),
-    );
+    trace_floor_phase("floor-component-receipt", "started", "");
+    let floor_component_receipt_ok = !emit_ordinary_floor_receipts
+        || write_floor_component_receipt_at(
+            std::path::Path::new("target"),
+            source_roots,
+            &batch_records,
+            batches.len(),
+        );
+    trace_floor_phase("floor-component-receipt", "completed", "");
     // Memo contexts absorb their ledger totals into the process accumulator on
     // Drop, so they must die before the materialization receipt is written.
+    trace_floor_phase(
+        "materialization-ledger-harvest",
+        "started",
+        &format!("contexts={}", walk_memo.len()),
+    );
     drop(walk_memo);
-    let materialization_receipt_ok = write_materialization_receipt();
+    trace_floor_phase("materialization-ledger-harvest", "completed", "");
+    let materialization_receipt_ok =
+        !emit_ordinary_floor_receipts || write_materialization_receipt();
     // Ordinary-floor verdict INCLUDING receipt construction: a receipt-write failure
     // is an ordinary-floor failure, so success stages are gated on the whole floor
     // contract this process owns, not just the batch verdicts (ruling 2026-07-30).
@@ -4617,20 +6281,24 @@ fn run_walk(
             }
         }
     }
+    ordinary_budget_armed.store(false, std::sync::atomic::Ordering::Release);
     // On-success stages: run only on a fully-green ordinary floor; each stage is a
     // barrier and stage-to-stage execution is ALWAYS fail-fast — FloorBatchStopPolicy
     // is an ordinary-floor policy and never applies between stages. Members run through
     // `run_stage`, the SAME executor the ordinary batches use — same unit grouping, same
-    // lane partition, same CLAMP MECHANISM, same per-lane admission rule. Three of those
+    // lane decision, same CLAMP MECHANISM, same per-lane admission rule. On-success
+    // spawned-eligible units have one population-semantic placement refinement: they run
+    // on this main thread to consume its warm thread-local index. Three of those
     // are deliberately weaker than an earlier draft's wording (review 2026-07-31). NOT
-    // "same governor admission": admission is PER-LANE, and only the spawned lane acquires
-    // a slot. NOT "same derived clamp": ordinary batches SUPPLY clamp parameters, stages
+    // "same governor admission": admission is PER-LANE. Ordinary spawned units and
+    // on-success main-thread claim units both reach run_batch_unit and acquire a slot;
+    // memo and Discovery lanes do not. NOT "same derived clamp": ordinary batches SUPPLY clamp parameters, stages
     // deliberately pass None and stay inside a narrow admissible profile instead — the
     // mechanism is shared, the parameters are not. And NOT "concurrent exactly as the
-    // contract says": the contract promises only that distinct spawned groups MAY overlap.
-    // The two
-    // populations differ here only in ordering and failure policy, which is the whole
-    // claim of the extraction. Their memo contexts drop AFTER
+    // contract says": the contract never guarantees sibling overlap, and on-success
+    // placement deliberately withdraws it to preserve index warmth. The two populations
+    // differ where their semantics require it: ordering/failure policy and warm-index
+    // placement for postconditions. Their memo contexts drop AFTER
     // write_materialization_receipt above, so stage materialization is structurally NOT
     // folded into the floor receipt. A second attempt-scoped receipt harvests the stage
     // population after stage_memo drops.
@@ -4662,6 +6330,14 @@ fn run_walk(
                 ),
             }
         } else {
+            let on_success_start = Instant::now();
+            let on_success_budget_progress = PopulationBudgetProgress::before_first_unit();
+            let on_success_budget_armed = arm_population_budget_watchdog(
+                "on_success",
+                plan_site,
+                on_success_budget_ms,
+                on_success_budget_progress.clone(),
+            );
             let mut stage_rows: Vec<(usize, bool)> = Vec::new();
             let mut stage_resolves: u64 = 0;
             let mut stage_memo: std::collections::HashMap<(String, ExecutionMode), InterpContext> =
@@ -4669,10 +6345,28 @@ fn run_walk(
             // The stage population's own memo-path set. The stage memo is SEPARATE from
             // `walk_memo` by lifecycle, not by accident: stage contexts must drop after
             // `write_materialization_receipt` above so stage materialization is
-            // structurally not folded into the floor receipt. One entry shared by several
-            // stages still resolves once, within that separate map.
+            // structurally not folded into the floor receipt. Only heavy claims enroll in
+            // the memo lane, and those refuse stage admission today; non-heavy claims in
+            // separate stages therefore resolve independently. The map remains because it
+            // is the common run_stage interface, not as a cross-stage reuse promise.
             let stage_memo_path_entries = memo_path_entry_keys(on_success_stages);
             for (si, stage) in on_success_stages.iter().enumerate() {
+                if on_success_budget_ms.is_some_and(|budget| {
+                    on_success_start.elapsed().as_millis() >= u128::from(budget)
+                }) {
+                    let budget = on_success_budget_ms.expect("checked Some above");
+                    on_success_failed = true;
+                    failure_details.push(format!(
+                        "on-success population exceeded its budget before stage {}: budget_ms={budget}",
+                        si + 1
+                    ));
+                    eprintln!(
+                        "claim_executor: ON-SUCCESS-OVER-BUDGET before stage {} — budget_ms={budget}",
+                        si + 1
+                    );
+                    break;
+                }
+                on_success_budget_progress.enter(si + 1, budget_unit_label(stage));
                 let run = run_stage(
                     source_roots,
                     stage,
@@ -4733,23 +6427,35 @@ fn run_walk(
                         );
                     } else {
                         stage_failed = true;
+                        // A stage claim's channel is a Bool, so its typed cause crosses
+                        // as a durable refusal wire (merge_admission_walk
+                        // merge_admission_refresh_refusal_wire_note — the same pattern
+                        // as the pre-walk capture). Read fresh per failure; absent wire
+                        // is its own reported state.
+                        let stage_cause =
+                            match merge_admission_wire_read(MERGE_ADMISSION_REFRESH_REFUSAL_WIRE) {
+                                Ok(wire) => format!("; refusal wire: {}", wire.trim()),
+                                Err(_) => String::new(),
+                            };
                         println!(
                             "{}",
                             paint(
                                 &format!(
-                                    "✗ FAIL [on-success stage {}] {} ({})",
+                                    "✗ FAIL [on-success stage {}] {} ({}{})",
                                     si + 1,
                                     r.function,
-                                    r.detail
+                                    r.detail,
+                                    stage_cause
                                 ),
                                 sgr::ERROR
                             )
                         );
                         failure_details.push(format!(
-                            "on-success stage {} fn={} detail={}",
+                            "on-success stage {} fn={} detail={}{}",
                             si + 1,
                             r.function,
-                            r.detail
+                            r.detail,
+                            stage_cause
                         ));
                     }
                 }
@@ -4832,6 +6538,7 @@ fn run_walk(
             if !aggregate_written {
                 on_success_failed = true;
             }
+            on_success_budget_armed.store(false, std::sync::atomic::Ordering::Release);
         }
     }
     WalkOutcome {
@@ -5009,6 +6716,7 @@ fn run_perturb_check(
                         source_roots: roots,
                         scan_dirs,
                         explicit_entries,
+                        native_bundle_entries,
                         node_frontier_selection,
                         exclude_substrings,
                         discovery_scope_dirs,
@@ -5017,10 +6725,43 @@ fn run_perturb_check(
                         source_roots: roots.iter().map(|r| remap_root(r)).collect(),
                         scan_dirs: scan_dirs.iter().map(|d| remap_root(d)).collect(),
                         explicit_entries: explicit_entries.clone(),
+                        native_bundle_entries: native_bundle_entries.clone(),
                         node_frontier_selection: *node_frontier_selection,
                         exclude_substrings: exclude_substrings.clone(),
                         discovery_scope_dirs: discovery_scope_dirs.clone(),
                         execution_mode: *execution_mode,
+                    },
+                    Runnable::ScopedWitnessBatch {
+                        batch_id,
+                        source_roots,
+                        source_roots_digest,
+                        entries,
+                        scan_dirs,
+                        node_frontier_selection,
+                        execution_authority,
+                        profile,
+                        clamp,
+                        process_isolation,
+                    } => Runnable::ScopedWitnessBatch {
+                        batch_id: batch_id.clone(),
+                        source_roots: source_roots.iter().map(|r| remap_root(r)).collect(),
+                        source_roots_digest: source_roots_digest.clone(),
+                        entries: entries
+                            .iter()
+                            .map(|row| ScopedScheduleEntry {
+                                entry: remap_entry_for_temp(primary, &temp_src, &row.entry)
+                                    .to_string_lossy()
+                                    .into_owned(),
+                                function: row.function.clone(),
+                                witness_kind: row.witness_kind.clone(),
+                            })
+                            .collect(),
+                        scan_dirs: scan_dirs.iter().map(|d| remap_root(d)).collect(),
+                        node_frontier_selection: *node_frontier_selection,
+                        execution_authority: *execution_authority,
+                        profile: *profile,
+                        clamp: *clamp,
+                        process_isolation: *process_isolation,
                     },
                 })
                 .collect()
@@ -5039,6 +6780,8 @@ fn run_perturb_check(
         &remapped,
         &[],
         None,
+        None,
+        None,
         &Arc::new(MemoryGovernor::from_environment(1)),
         None,
         FalsifierSelfHostWetBudgets::default(),
@@ -5047,6 +6790,7 @@ fn run_perturb_check(
         None,
         false,
         Path::new("dag/gunbc/witness_row_cost_basis.tsv"),
+        true,
         // The perturb re-walk passes `&[]` for stages, so no attempt-scoped receipt is
         // written and no identity is owed.
         None,
@@ -5072,6 +6816,504 @@ fn run_perturb_check(
     }
 }
 
+const FLOOR_WORKER_TERMINAL_ENV: &str = "GUNBC_FLOOR_WORKER_TERMINAL_RECEIPT";
+const FLOOR_PHASE_JOURNAL_ENV: &str = "GUNBC_FLOOR_PHASE_JOURNAL";
+const SCOPED_WITNESS_BATCH_MANIFEST_PATH: &str = "target/scoped-witness-batch-manifest.tsv";
+const FLOOR_WORKER_OBSERVATION_RECEIPT_PATH: &str = "target/floor-worker-observation-receipt.tsv";
+
+fn append_floor_phase_journal(phase: &str, state: &str, detail: &str) {
+    let Some(path) = std::env::var_os(FLOOR_PHASE_JOURNAL_ENV) else {
+        return;
+    };
+    let path = PathBuf::from(path);
+    if let Some(parent) = path.parent() {
+        if let Err(e) = fs::create_dir_all(parent) {
+            eprintln!(
+                "claim_executor: create floor phase journal directory {}: {e}",
+                parent.display()
+            );
+            return;
+        }
+    }
+    let mut file = match fs::OpenOptions::new().create(true).append(true).open(&path) {
+        Ok(file) => file,
+        Err(e) => {
+            eprintln!(
+                "claim_executor: open floor phase journal {}: {e}",
+                path.display()
+            );
+            return;
+        }
+    };
+    let unix_millis = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis();
+    let clean_detail = detail.replace(['\t', '\r', '\n'], " ");
+    let row = format!(
+        "{unix_millis}\t{}\t{phase}\t{state}\t{clean_detail}\n",
+        std::process::id()
+    );
+    use std::io::Write as _;
+    if let Err(e) = file
+        .write_all(row.as_bytes())
+        .and_then(|()| file.flush())
+        .and_then(|()| file.sync_data())
+    {
+        eprintln!(
+            "claim_executor: persist floor phase journal {}: {e}",
+            path.display()
+        );
+    }
+}
+
+fn trace_floor_phase(phase: &str, state: &str, detail: &str) {
+    // Persist first: stdout is the channel under diagnosis and may block before
+    // the runner can surface the marker.  The workflow reads this synced journal
+    // from an always-running post-step after the floor process group is gone.
+    append_floor_phase_journal(phase, state, detail);
+    if detail.is_empty() {
+        eprintln!("[floor-phase] phase={phase} state={state}");
+    } else {
+        eprintln!("[floor-phase] phase={phase} state={state} {detail}");
+    }
+}
+
+#[derive(Clone, PartialEq, Eq)]
+enum FloorWorkerRole {
+    Ordinary,
+    Scoped { batch_id: String },
+}
+
+struct ObservedFloorWorker {
+    worker: String,
+    termination: FloorWorkerTermination,
+    terminal_receipt: FloorWorkerTerminalReceipt,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum FloorWorkerTermination {
+    Exited(i32),
+    Signaled(i32),
+    Unobserved,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum FloorWorkerTerminalReceipt {
+    Observed(FloorWorkerTerminalReport),
+    Missing,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum FloorWorkerTerminalReport {
+    Completed(String),
+    Refused(String),
+    Failed(String),
+    Malformed(String),
+}
+
+struct DerivedFloorWorkerOutcome {
+    label: &'static str,
+    detail: String,
+}
+
+fn write_floor_worker_terminal(outcome: &str, detail: &str) -> Result<(), String> {
+    let Some(path) = std::env::var_os(FLOOR_WORKER_TERMINAL_ENV) else {
+        return Ok(());
+    };
+    let path = PathBuf::from(path);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|e| format!("create worker terminal directory {}: {e}", parent.display()))?;
+    }
+    let tmp = path.with_extension(format!("tmp-{}", std::process::id()));
+    fs::write(&tmp, format!("{outcome}\t{detail}\n"))
+        .map_err(|e| format!("write worker terminal {}: {e}", tmp.display()))?;
+    fs::rename(&tmp, &path).map_err(|e| format!("publish worker terminal {}: {e}", path.display()))
+}
+
+fn write_scoped_witness_batch_manifest(batch_ids: &[String]) -> Result<(), String> {
+    let path = Path::new(SCOPED_WITNESS_BATCH_MANIFEST_PATH);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|e| format!("create scoped manifest directory {}: {e}", parent.display()))?;
+    }
+    let mut body = String::from("batch_id\n");
+    for batch_id in batch_ids {
+        if batch_id.is_empty()
+            || !batch_id
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_')
+        {
+            return Err(format!(
+                "ScopedWitnessBatchId `{batch_id}` is not transport-safe for the worker manifest"
+            ));
+        }
+        body.push_str(batch_id);
+        body.push('\n');
+    }
+    fs::write(path, body).map_err(|e| format!("write scoped manifest {}: {e}", path.display()))
+}
+
+fn read_scoped_witness_batch_manifest() -> Result<Vec<String>, String> {
+    let path = Path::new(SCOPED_WITNESS_BATCH_MANIFEST_PATH);
+    let body = fs::read_to_string(path)
+        .map_err(|e| format!("read scoped manifest {}: {e}", path.display()))?;
+    let mut lines = body.lines();
+    if lines.next() != Some("batch_id") {
+        return Err(format!(
+            "scoped manifest {} has an invalid header",
+            path.display()
+        ));
+    }
+    let mut ids = Vec::new();
+    for id in lines {
+        if id.is_empty()
+            || !id
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_')
+        {
+            return Err(format!(
+                "scoped manifest {} contains invalid batch id `{id}`",
+                path.display()
+            ));
+        }
+        if ids.iter().any(|existing| existing == id) {
+            return Err(format!(
+                "scoped manifest {} contains duplicate batch id `{id}`",
+                path.display()
+            ));
+        }
+        ids.push(id.to_string());
+    }
+    Ok(ids)
+}
+
+fn exit_status_termination(status: &ExitStatus) -> FloorWorkerTermination {
+    if let Some(code) = status.code() {
+        return FloorWorkerTermination::Exited(code);
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::ExitStatusExt as _;
+        if let Some(signal) = status.signal() {
+            return FloorWorkerTermination::Signaled(signal);
+        }
+    }
+    FloorWorkerTermination::Unobserved
+}
+
+fn floor_worker_termination_label(termination: &FloorWorkerTermination) -> String {
+    match termination {
+        FloorWorkerTermination::Exited(code) => format!("exited:{code}"),
+        FloorWorkerTermination::Signaled(signal) => format!("signaled:{signal}"),
+        FloorWorkerTermination::Unobserved => "termination-unobserved".to_string(),
+    }
+}
+
+fn floor_worker_terminal_report_label(report: &FloorWorkerTerminalReport) -> &'static str {
+    match report {
+        FloorWorkerTerminalReport::Completed(_) => "completed",
+        FloorWorkerTerminalReport::Refused(_) => "refused",
+        FloorWorkerTerminalReport::Failed(_) => "failed",
+        FloorWorkerTerminalReport::Malformed(_) => "malformed",
+    }
+}
+
+fn floor_worker_observation_outcome(row: &ObservedFloorWorker) -> DerivedFloorWorkerOutcome {
+    let termination = floor_worker_termination_label(&row.termination);
+    match &row.terminal_receipt {
+        FloorWorkerTerminalReceipt::Missing => DerivedFloorWorkerOutcome {
+            label: "died-without-terminal-receipt",
+            detail: format!(
+                "worker `{}` terminated as {termination}; no terminal receipt was observed",
+                row.worker
+            ),
+        },
+        FloorWorkerTerminalReceipt::Observed(report) => match (&row.termination, report) {
+            (FloorWorkerTermination::Exited(0), FloorWorkerTerminalReport::Completed(detail)) => {
+                DerivedFloorWorkerOutcome {
+                    label: "completed",
+                    detail: detail.clone(),
+                }
+            }
+            (FloorWorkerTermination::Exited(code), FloorWorkerTerminalReport::Refused(detail))
+                if *code != 0 =>
+            {
+                DerivedFloorWorkerOutcome {
+                    label: "refused",
+                    detail: detail.clone(),
+                }
+            }
+            (_, FloorWorkerTerminalReport::Failed(detail))
+            | (_, FloorWorkerTerminalReport::Malformed(detail)) => DerivedFloorWorkerOutcome {
+                label: "failed",
+                detail: detail.clone(),
+            },
+            (FloorWorkerTermination::Signaled(signal), _) => DerivedFloorWorkerOutcome {
+                label: "failed",
+                detail: format!(
+                    "worker `{}` reported {} but died from signal {signal}",
+                    row.worker,
+                    floor_worker_terminal_report_label(report)
+                ),
+            },
+            (FloorWorkerTermination::Unobserved, _) => DerivedFloorWorkerOutcome {
+                label: "failed",
+                detail: format!(
+                    "worker `{}` reported {} but process termination was unobserved",
+                    row.worker,
+                    floor_worker_terminal_report_label(report)
+                ),
+            },
+            (FloorWorkerTermination::Exited(code), _) => DerivedFloorWorkerOutcome {
+                label: "failed",
+                detail: format!(
+                    "worker `{}` report {} contradicted exit code {code}",
+                    row.worker,
+                    floor_worker_terminal_report_label(report)
+                ),
+            },
+        },
+    }
+}
+
+fn observe_floor_worker(
+    worker: &str,
+    status: ExitStatus,
+    terminal_path: &Path,
+) -> ObservedFloorWorker {
+    let termination = exit_status_termination(&status);
+    let terminal = fs::read_to_string(terminal_path).ok();
+    let terminal_receipt = match terminal {
+        None => FloorWorkerTerminalReceipt::Missing,
+        Some(body) => {
+            let line = body.trim_end_matches(['\r', '\n']);
+            let (label, terminal_detail) = line.split_once('\t').unwrap_or((line, ""));
+            let report = match label {
+                "completed" => FloorWorkerTerminalReport::Completed(terminal_detail.to_string()),
+                "refused" => FloorWorkerTerminalReport::Refused(terminal_detail.to_string()),
+                "failed" => FloorWorkerTerminalReport::Failed(terminal_detail.to_string()),
+                _ => FloorWorkerTerminalReport::Malformed(format!(
+                    "unknown worker terminal report `{label}`: {terminal_detail}"
+                )),
+            };
+            FloorWorkerTerminalReceipt::Observed(report)
+        }
+    };
+    ObservedFloorWorker {
+        worker: worker.to_string(),
+        termination,
+        terminal_receipt,
+    }
+}
+
+fn append_floor_worker_observation(row: &ObservedFloorWorker) -> Result<(), String> {
+    let path = Path::new(FLOOR_WORKER_OBSERVATION_RECEIPT_PATH);
+    let needs_header = !path.exists();
+    let mut options = fs::OpenOptions::new();
+    options.create(true).append(true);
+    let mut file = options
+        .open(path)
+        .map_err(|e| format!("open floor worker observation {}: {e}", path.display()))?;
+    use std::io::Write as _;
+    if needs_header {
+        writeln!(
+            file,
+            "worker\ttermination\tterminal_receipt\tterminal_report\toutcome\tdetail"
+        )
+        .map_err(|e| format!("write floor worker observation header: {e}"))?;
+    }
+    let outcome = floor_worker_observation_outcome(row);
+    let (receipt_label, report_label) = match &row.terminal_receipt {
+        FloorWorkerTerminalReceipt::Missing => ("missing", "absent"),
+        FloorWorkerTerminalReceipt::Observed(report) => {
+            ("observed", floor_worker_terminal_report_label(report))
+        }
+    };
+    let clean_detail = outcome.detail.replace(['\t', '\r', '\n'], " ");
+    writeln!(
+        file,
+        "{}\t{}\t{}\t{}\t{}\t{}",
+        row.worker,
+        floor_worker_termination_label(&row.termination),
+        receipt_label,
+        report_label,
+        outcome.label,
+        clean_detail
+    )
+    .map_err(|e| format!("write floor worker observation row: {e}"))
+}
+
+fn floor_worker_succeeded(row: &ObservedFloorWorker) -> bool {
+    floor_worker_observation_outcome(row).label == "completed"
+}
+
+fn journal_floor_worker_observation(row: &ObservedFloorWorker) {
+    let outcome = floor_worker_observation_outcome(row);
+    append_floor_phase_journal(
+        "coordinator-observation",
+        outcome.label,
+        &format!(
+            "worker={} termination={} detail={}",
+            row.worker,
+            floor_worker_termination_label(&row.termination),
+            outcome.detail.replace(['\t', '\r', '\n'], " ")
+        ),
+    );
+}
+
+fn spawn_floor_worker(
+    base_args: &[String],
+    role: &str,
+    batch_id: Option<&str>,
+    ordinal: usize,
+) -> Result<ObservedFloorWorker, String> {
+    let worker = match batch_id {
+        Some(id) => format!("scoped:{id}"),
+        None => "ordinary".to_string(),
+    };
+    let terminal_path = PathBuf::from(format!(
+        "target/floor-worker-terminal-{ordinal}-{}.tsv",
+        worker.replace(':', "-")
+    ));
+    let _ = fs::remove_file(&terminal_path);
+    let exe = std::env::current_exe().map_err(|e| format!("locate claim_executor: {e}"))?;
+    let mut command = Command::new(exe);
+    command.args(base_args).arg("--floor-worker-role").arg(role);
+    if let Some(id) = batch_id {
+        command.arg("--scoped-batch-id").arg(id);
+    }
+    command.env(FLOOR_WORKER_TERMINAL_ENV, &terminal_path);
+    // The worker's post-walk ledger harvest can spend minutes dropping its memo
+    // contexts after the final discovery line.  A blocking `Command::status`
+    // made that whole interval silent: the worker's own heartbeat shares its
+    // allocator and can stop making progress during the drop, while the thin
+    // coordinator had no chance to say that the child was still alive.  Keep
+    // the execution and receipt ordering unchanged, but let the coordinator
+    // observe the wait and emit a pulse from its independent process.
+    let mut child = command
+        .spawn()
+        .map_err(|e| format!("spawn floor worker `{worker}`: {e}"))?;
+    let wait_started = Instant::now();
+    let status = loop {
+        match child
+            .try_wait()
+            .map_err(|e| format!("observe floor worker `{worker}`: {e}"))?
+        {
+            Some(status) => {
+                append_floor_phase_journal(
+                    "coordinator-wait",
+                    "completed",
+                    &format!(
+                        "worker={worker} elapsed_seconds={}",
+                        wait_started.elapsed().as_secs()
+                    ),
+                );
+                break status;
+            }
+            None => {
+                append_floor_phase_journal(
+                    "coordinator-wait",
+                    "running",
+                    &format!(
+                        "worker={worker} elapsed_seconds={}",
+                        wait_started.elapsed().as_secs()
+                    ),
+                );
+                eprintln!(
+                    "[floor-worker-wait] worker={worker} elapsed_seconds={} state=running",
+                    wait_started.elapsed().as_secs()
+                );
+                std::thread::sleep(std::time::Duration::from_secs(30));
+            }
+        }
+    };
+    let observed = observe_floor_worker(&worker, status, &terminal_path);
+    append_floor_worker_observation(&observed)?;
+    let outcome = floor_worker_observation_outcome(&observed);
+    // The Actions log transport can drop the worker's inherited stderr after a
+    // large discovery run. Persist the derived verdict before reporting it on
+    // that channel so the existing always() post-step still surfaces the exact
+    // failure arm and detail.
+    journal_floor_worker_observation(&observed);
+    eprintln!(
+        "[floor-worker-observation] worker={} termination={} terminal_receipt={:?} outcome={} detail={}",
+        observed.worker,
+        floor_worker_termination_label(&observed.termination),
+        observed.terminal_receipt,
+        outcome.label,
+        outcome.detail
+    );
+    Ok(observed)
+}
+
+fn floor_plan_function_arg(args: &[String]) -> Option<&str> {
+    args.windows(2)
+        .find(|pair| pair[0] == "--plan-function")
+        .map(|pair| pair[1].as_str())
+}
+
+fn maybe_run_floor_coordinator(args: &[String]) -> Option<ExitCode> {
+    if args.iter().any(|arg| arg == "--floor-worker-role")
+        || floor_plan_function_arg(args) != Some("gunbc_ci_floor_plan")
+    {
+        return None;
+    }
+    if let Some(parent) = Path::new(FLOOR_WORKER_OBSERVATION_RECEIPT_PATH).parent() {
+        if let Err(e) = fs::create_dir_all(parent) {
+            eprintln!("claim_executor: floor coordinator receipt directory refusal: {e}");
+            return Some(ExitCode::from(1));
+        }
+    }
+    let _ = fs::remove_file(FLOOR_WORKER_OBSERVATION_RECEIPT_PATH);
+    let _ = fs::remove_file(SCOPED_WITNESS_BATCH_MANIFEST_PATH);
+    if let Some(path) = std::env::var_os(FLOOR_PHASE_JOURNAL_ENV) {
+        let _ = fs::remove_file(path);
+    }
+    if let Err(msg) = initialize_scoped_witness_receipt() {
+        eprintln!("claim_executor: floor coordinator receipt arm refusal: {msg}");
+        return Some(ExitCode::from(1));
+    }
+    let ordinary = match spawn_floor_worker(args, "ordinary", None, 0) {
+        Ok(observed) => observed,
+        Err(msg) => {
+            eprintln!("claim_executor: floor coordinator ordinary-worker refusal: {msg}");
+            return Some(ExitCode::from(1));
+        }
+    };
+    if !floor_worker_succeeded(&ordinary) {
+        eprintln!(
+            "claim_executor: floor coordinator stopping before scoped workers: ordinary worker did not complete"
+        );
+        return Some(ExitCode::from(1));
+    }
+    let batch_ids = match read_scoped_witness_batch_manifest() {
+        Ok(ids) => ids,
+        Err(msg) => {
+            eprintln!("claim_executor: floor coordinator manifest refusal: {msg}");
+            return Some(ExitCode::from(1));
+        }
+    };
+    for (index, batch_id) in batch_ids.iter().enumerate() {
+        let scoped =
+            match spawn_floor_worker(args, "scoped", Some(batch_id), index.saturating_add(1)) {
+                Ok(observed) => observed,
+                Err(msg) => {
+                    eprintln!("claim_executor: floor coordinator scoped-worker refusal: {msg}");
+                    return Some(ExitCode::from(1));
+                }
+            };
+        if !floor_worker_succeeded(&scoped) {
+            eprintln!(
+                "claim_executor: floor coordinator stopping after scoped worker `{batch_id}` did not complete"
+            );
+            return Some(ExitCode::from(1));
+        }
+    }
+    Some(ExitCode::SUCCESS)
+}
+
 fn run() -> Result<ExitCode, ExitCode> {
     let args: Vec<String> = std::env::args().collect();
     let mut source_roots: Vec<String> = Vec::new();
@@ -5082,6 +7324,8 @@ fn run() -> Result<ExitCode, ExitCode> {
     let mut measure_cgroup_peak = false;
     let mut verify_artifacts: Vec<String> = Vec::new();
     let mut verify_artifacts_mode = false;
+    let mut floor_worker_role: Option<FloorWorkerRole> = None;
+    let mut scoped_batch_id: Option<String> = None;
 
     let mut i = 1;
     while i < args.len() {
@@ -5114,12 +7358,41 @@ fn run() -> Result<ExitCode, ExitCode> {
             }
             "--perturb-check" => perturb_check = true,
             "--measure-cgroup-peak" => measure_cgroup_peak = true,
+            "--floor-worker-role" => {
+                i += 1;
+                let role = require_value(&args, i, "--floor-worker-role")?;
+                floor_worker_role = match role.as_str() {
+                    "ordinary" => Some(FloorWorkerRole::Ordinary),
+                    "scoped" => Some(FloorWorkerRole::Scoped {
+                        batch_id: String::new(),
+                    }),
+                    _ => {
+                        eprintln!("claim_executor: invalid --floor-worker-role `{role}`");
+                        return Err(ExitCode::from(2));
+                    }
+                };
+            }
+            "--scoped-batch-id" => {
+                i += 1;
+                scoped_batch_id = Some(require_value(&args, i, "--scoped-batch-id")?);
+            }
             other => {
                 eprintln!("claim_executor: unknown argument: {}", other);
                 return Err(ExitCode::from(2));
             }
         }
         i += 1;
+    }
+
+    if matches!(floor_worker_role, Some(FloorWorkerRole::Scoped { .. })) {
+        let Some(batch_id) = scoped_batch_id else {
+            eprintln!("claim_executor: scoped floor worker requires --scoped-batch-id");
+            return Err(ExitCode::from(2));
+        };
+        floor_worker_role = Some(FloorWorkerRole::Scoped { batch_id });
+    } else if scoped_batch_id.is_some() {
+        eprintln!("claim_executor: --scoped-batch-id requires --floor-worker-role scoped");
+        return Err(ExitCode::from(2));
     }
 
     // Build-artifact verification (no plan run): the floor's bootstrap `cargo build` is followed by
@@ -5237,13 +7510,44 @@ fn run() -> Result<ExitCode, ExitCode> {
     // Resolve the plan entry ONCE and evaluate both the batches (hermetic) and the
     // spawn width (wet) from the same resolved graph — this resolve was previously
     // paid twice back-to-back (the §2 double-paid-compute trap, at minutes each).
+    let resolution_divergence_receipt_armed = plan_function == "gunbc_falsifier_plan";
+    if resolution_divergence_receipt_armed {
+        if let Err(e) = reset_resolution_divergence_phase_receipt()
+            .and_then(|()| {
+                record_resolution_divergence_phase(
+                    ResolutionDivergencePhase::ParentPlanResolve,
+                    ResolutionDivergencePhaseState::Started,
+                    &format!("{plan_entry}::{plan_function}"),
+                )
+            })
+            .and_then(|()| resolution_divergence_parent_plan_capture_begin())
+        {
+            eprintln!("claim_executor: {e}");
+            return Err(ExitCode::from(1));
+        }
+    }
     let (plan_graph, plan_indices) = match resolve_entry_graph_shared(&source_roots, &plan_entry) {
         Ok(resolved) => resolved,
         Err(msg) => {
+            if resolution_divergence_receipt_armed {
+                let _ = resolution_divergence_parent_plan_capture_finish();
+            }
             eprintln!("claim_executor: resolve failed for plan {plan_entry}:\n{msg}");
             return Err(ExitCode::from(1));
         }
     };
+    if resolution_divergence_receipt_armed {
+        if let Err(e) = resolution_divergence_parent_plan_capture_finish().and_then(|()| {
+            record_resolution_divergence_phase(
+                ResolutionDivergencePhase::ParentPlanResolve,
+                ResolutionDivergencePhaseState::Completed,
+                &format!("{plan_entry}::{plan_function}"),
+            )
+        }) {
+            eprintln!("claim_executor: {e}");
+            return Err(ExitCode::from(1));
+        }
+    }
     phase_mark("plan resolve");
 
     let plan_ctx = make_eval_context(&plan_graph, plan_indices.clone(), ExecutionMode::Hermetic);
@@ -5254,8 +7558,73 @@ fn run() -> Result<ExitCode, ExitCode> {
             return Err(ExitCode::from(1));
         }
     };
-    let batches = walk_plan.batches;
-    let on_success_stages = walk_plan.on_success_stages;
+    let pre_walk_execution = walk_plan.pre_walk_execution;
+    let ordinary_budget_ms = walk_plan.ordinary_budget_ms;
+    let on_success_budget_ms = walk_plan.on_success_budget_ms;
+    let mut batches = walk_plan.batches;
+    let mut on_success_stages = walk_plan.on_success_stages;
+    let mut floor_finalization: Option<FloorFinalization> = walk_plan.finalization;
+    match floor_worker_role.as_ref() {
+        Some(FloorWorkerRole::Ordinary) => {
+            let child_batch_ids: Vec<String> = batches
+                .iter()
+                .flatten()
+                .filter_map(|runnable| match runnable {
+                    Runnable::ScopedWitnessBatch {
+                        batch_id,
+                        process_isolation:
+                            ScopedProcessIsolation::SequentialChildProcess
+                            | ScopedProcessIsolation::FreshJobProcess,
+                        ..
+                    } => Some(batch_id.clone()),
+                    _ => None,
+                })
+                .collect();
+            if let Err(msg) = write_scoped_witness_batch_manifest(&child_batch_ids) {
+                eprintln!("claim_executor: ordinary floor worker manifest refusal: {msg}");
+                return Err(ExitCode::from(1));
+            }
+            batches.retain(|batch| {
+                !batch.iter().any(|runnable| {
+                    matches!(
+                        runnable,
+                        Runnable::ScopedWitnessBatch {
+                            process_isolation: ScopedProcessIsolation::SequentialChildProcess
+                                | ScopedProcessIsolation::FreshJobProcess,
+                            ..
+                        }
+                    )
+                })
+            });
+        }
+        Some(FloorWorkerRole::Scoped { batch_id }) => {
+            let mut selected = Vec::new();
+            for batch in &batches {
+                for runnable in batch {
+                    if let Runnable::ScopedWitnessBatch {
+                        batch_id: candidate,
+                        ..
+                    } = runnable
+                    {
+                        if candidate == batch_id {
+                            selected.push(runnable.clone());
+                        }
+                    }
+                }
+            }
+            if selected.len() != 1 {
+                eprintln!(
+                    "claim_executor: scoped floor worker batch id `{batch_id}` resolved to {} rows; expected exactly one",
+                    selected.len()
+                );
+                return Err(ExitCode::from(1));
+            }
+            batches = vec![selected];
+            on_success_stages.clear();
+            floor_finalization = None;
+        }
+        None => {}
+    }
     // Plan-shape validation BEFORE the governor arms and before any batch runs.
     {
         let refusals = validate_on_success_stage_admissibility(&on_success_stages);
@@ -5285,14 +7654,15 @@ fn run() -> Result<ExitCode, ExitCode> {
     // Floor finalization is carried BY the plan value (walk_finalization_note) — the
     // name-keyed read this replaces was the same seed-roster convention the carrier
     // was built to remove, reintroduced and then caught in review.
-    let floor_finalization: Option<FloorFinalization> = walk_plan.finalization;
     // Fast-lane 5s rule (operator 2026-07-12): a plan that schedules a discovery batch
     // must declare the per-witness eval budget; a missing/mistyped row refuses the run
     // (fail-closed), while discovery-free plans (regen, plan-artifact) never read it.
-    let schedules_discovery = batches
-        .iter()
-        .flatten()
-        .any(|r| matches!(r, Runnable::DiscoveryBatch { .. }));
+    let schedules_discovery = batches.iter().flatten().any(|r| {
+        matches!(
+            r,
+            Runnable::DiscoveryBatch { .. } | Runnable::ScopedWitnessBatch { .. }
+        )
+    });
     let fast_lane_eval_budget_ms: Option<u64> = if schedules_discovery {
         match run_value(&plan_ctx, "gunbc_ci_fast_lane_eval_budget_ms") {
             Ok(Value::Int(n)) if n > 0 => Some(n as u64),
@@ -5413,8 +7783,20 @@ fn run() -> Result<ExitCode, ExitCode> {
     // fail-closed at arm time (the fast-lane-budget pattern). Scoped to the full floor plan only:
     // the plan-artifact shortcut runs a single batch of the same schedule and the falsifier
     // carries its own receipt budgets, so neither reads these lists.
-    let batch_clamp_params: Option<Vec<(u128, u128)>> = if plan_function == "gunbc_ci_floor_plan" {
-        match read_floor_batch_clamp_params(&plan_ctx, batches.len()) {
+    let scoped_clamps: Vec<Option<(u128, u128)>> = match batches
+        .iter()
+        .map(|batch| scoped_batch_clamp(batch))
+        .collect::<Result<Vec<_>, _>>()
+    {
+        Ok(v) => v,
+        Err(msg) => {
+            eprintln!("claim_executor: scoped witness batch refusal: {msg}");
+            return Err(ExitCode::from(1));
+        }
+    };
+    let positional_count = scoped_clamps.iter().filter(|clamp| clamp.is_none()).count();
+    let positional_clamps = if plan_function == "gunbc_ci_floor_plan" && positional_count > 0 {
+        match read_floor_batch_clamp_params(&plan_ctx, positional_count) {
             Ok(v) => Some(v),
             Err(msg) => {
                 eprintln!("{msg}");
@@ -5424,6 +7806,24 @@ fn run() -> Result<ExitCode, ExitCode> {
     } else {
         None
     };
+    let batch_clamp_params: Option<Vec<Option<(u128, u128)>>> =
+        if positional_clamps.is_some() || scoped_clamps.iter().any(|clamp| clamp.is_some()) {
+            let mut positional_index = 0usize;
+            let mut aligned = Vec::with_capacity(batches.len());
+            for owned in scoped_clamps {
+                if let Some(clamp) = owned {
+                    aligned.push(Some(clamp));
+                } else if let Some(rows) = &positional_clamps {
+                    aligned.push(rows.get(positional_index).copied());
+                    positional_index += 1;
+                } else {
+                    aligned.push(None);
+                }
+            }
+            Some(aligned)
+        } else {
+            None
+        };
     let budget_tighten_ms: Option<u128> = match read_floor_batch_budget_tighten_ms() {
         Ok(v) => v,
         Err(msg) => {
@@ -5434,19 +7834,21 @@ fn run() -> Result<ExitCode, ExitCode> {
     // Compile-clean leg clamp constants (prelude coverage follow-up (a)): read for the
     // two plan shapes that arm the compile-clean gate, at the same fail-closed arm point
     // as the batch clamps; enforcement runs post-walk where the leg's cost snapshot exists.
-    let compile_clean_clamp: Option<(u128, u128)> = if plan_function == "gunbc_ci_floor_plan"
-        || plan_function == "gunbc_ci_plan_artifact_plan"
-    {
-        match read_compile_clean_clamp(&plan_ctx) {
-            Ok(v) => Some(v),
-            Err(msg) => {
-                eprintln!("{msg}");
-                return Err(ExitCode::from(1));
+    let compile_clean_clamp: Option<(u128, u128)> =
+        if !matches!(floor_worker_role, Some(FloorWorkerRole::Scoped { .. }))
+            && (plan_function == "gunbc_ci_floor_plan"
+                || plan_function == "gunbc_ci_plan_artifact_plan")
+        {
+            match read_compile_clean_clamp(&plan_ctx) {
+                Ok(v) => Some(v),
+                Err(msg) => {
+                    eprintln!("{msg}");
+                    return Err(ExitCode::from(1));
+                }
             }
-        }
-    } else {
-        None
-    };
+        } else {
+            None
+        };
     let compile_clean_tighten_ms: Option<u128> = match read_compile_clean_budget_tighten_ms() {
         Ok(v) => v,
         Err(msg) => {
@@ -5454,7 +7856,74 @@ fn run() -> Result<ExitCode, ExitCode> {
             return Err(ExitCode::from(1));
         }
     };
+    let scoped_rows: Vec<&Runnable> = batches
+        .iter()
+        .flat_map(|batch| batch.iter())
+        .filter(|runnable| matches!(runnable, Runnable::ScopedWitnessBatch { .. }))
+        .collect();
+    if !scoped_rows.is_empty() {
+        let receipt_arm = scoped_witness_head_sha().and_then(|_| {
+            if floor_worker_role.is_none() {
+                initialize_scoped_witness_receipt()
+            } else {
+                Ok(())
+            }
+        });
+        if let Err(msg) = receipt_arm {
+            eprintln!("claim_executor: scoped witness receipt arm refusal: {msg}");
+            return Err(ExitCode::from(1));
+        }
+        let isolation_refusal = scoped_rows.iter().find_map(|runnable| match runnable {
+            Runnable::ScopedWitnessBatch {
+                process_isolation: ScopedProcessIsolation::FreshJobProcess,
+                ..
+            } => Some("FreshJobProcess scoped witness execution has no workflow realization; it refuses rather than degrading to SequentialChildProcess"),
+            Runnable::ScopedWitnessBatch {
+                process_isolation: ScopedProcessIsolation::SequentialChildProcess,
+                ..
+            } if !matches!(floor_worker_role, Some(FloorWorkerRole::Scoped { .. })) => Some(
+                "SequentialChildProcess scoped witness execution requires the thin floor coordinator; the shared walk refuses rather than retaining both closures",
+            ),
+            Runnable::ScopedWitnessBatch {
+                process_isolation: ScopedProcessIsolation::SharedWalkProcess,
+                ..
+            } if matches!(floor_worker_role, Some(FloorWorkerRole::Scoped { .. })) => Some(
+                "SharedWalkProcess scoped witness execution was routed to a child worker; the mismatched realization refuses",
+            ),
+            _ => None,
+        });
+        if let Some(detail) = isolation_refusal {
+            for runnable in scoped_rows {
+                if let Runnable::ScopedWitnessBatch {
+                    batch_id,
+                    source_roots_digest,
+                    entries,
+                    ..
+                } = runnable
+                {
+                    if let Err(msg) = append_scoped_witness_receipt_rows(
+                        batch_id,
+                        source_roots_digest,
+                        entries,
+                        None,
+                        Some(detail),
+                    ) {
+                        eprintln!(
+                            "claim_executor: scoped witness scheduling receipt refusal: {msg}"
+                        );
+                        return Err(ExitCode::from(1));
+                    }
+                }
+            }
+            eprintln!("claim_executor: scoped witness scheduling refusal: {detail}");
+            if matches!(floor_worker_role, Some(FloorWorkerRole::Scoped { .. })) {
+                let _ = write_floor_worker_terminal("refused", detail);
+            }
+            return Err(ExitCode::from(1));
+        }
+    }
     drop(plan_ctx);
+    drop(plan_graph);
     phase_mark("plan eval");
 
     eprintln!(
@@ -5470,7 +7939,20 @@ fn run() -> Result<ExitCode, ExitCode> {
         return Err(ExitCode::from(1));
     }
 
-    drop(plan_graph);
+    // Pre-walk execution belongs to the whole-floor walk, not to a scoped child: a
+    // Scoped worker executes exactly its selected batch, and re-running the capture
+    // effect per child would duplicate an effect the ordinary worker already owns.
+    if !matches!(floor_worker_role, Some(FloorWorkerRole::Scoped { .. })) {
+        if let Err(msg) = run_pre_walk_execution(
+            &source_roots,
+            &format!("{plan_entry}::{plan_function}"),
+            &pre_walk_execution,
+        ) {
+            eprintln!("claim_executor: {msg}");
+            return Err(ExitCode::from(1));
+        }
+        phase_mark("pre-walk execution");
+    }
     // Adaptive width: no plan-evaluated spawn width and no pinned per-shard constants —
     // the governor admits workers against the slot's own declared budget (AIMD), so the
     // width story for the run is its announce line here plus its end-of-run receipt.
@@ -5492,7 +7974,10 @@ fn run() -> Result<ExitCode, ExitCode> {
     // in-run whole-tree compile receipt, so these plans must arm the lazy install.
     // `gunbc_ci_plan_artifact_plan` is batch 1 of the floor schedule (the docs-only
     // shortcut) — same gate node, same receipt dependency.
-    if plan_function == "gunbc_ci_floor_plan" || plan_function == "gunbc_ci_plan_artifact_plan" {
+    if !matches!(floor_worker_role, Some(FloorWorkerRole::Scoped { .. }))
+        && (plan_function == "gunbc_ci_floor_plan"
+            || plan_function == "gunbc_ci_plan_artifact_plan")
+    {
         enable_floor_compile_clean_lazy_install(&source_roots);
         // Eager install on the MAIN thread (lever 1, PR #6766): the receipt compile
         // rides this thread's `process_shared_index` — the same thread-local universe
@@ -5513,6 +7998,8 @@ fn run() -> Result<ExitCode, ExitCode> {
         &batches,
         &on_success_stages,
         floor_finalization.as_ref(),
+        ordinary_budget_ms,
+        on_success_budget_ms,
         &governor,
         fast_lane_eval_budget_ms,
         falsifier_self_host_wet_budgets,
@@ -5521,6 +8008,7 @@ fn run() -> Result<ExitCode, ExitCode> {
         budget_tighten_ms,
         plan_function == "gunbc_falsifier_plan",
         Path::new("dag/gunbc/witness_row_cost_basis.tsv"),
+        !matches!(floor_worker_role, Some(FloorWorkerRole::Scoped { .. })),
         walk_attempt_id.as_deref(),
     );
     // Floor receipts block — data, not outcomes. One named group; pulse glyphs only
@@ -5688,12 +8176,27 @@ fn walk_exit_code(any_failed: bool) -> i32 {
 /// `walk_exit_code(any_failed)` — behavior-identical to the ExitCode return it replaces.
 fn floor_terminal_fast_exit(code: i32) -> ! {
     use std::io::Write as _;
+    let terminal_outcome = if code == 0 { "completed" } else { "failed" };
+    let final_code = match write_floor_worker_terminal(
+        terminal_outcome,
+        &format!("walk terminal exit code {code}"),
+    ) {
+        Ok(()) => code,
+        Err(msg) => {
+            eprintln!("claim_executor: floor worker terminal receipt refusal: {msg}");
+            1
+        }
+    };
     let _ = std::io::stdout().flush();
     let _ = std::io::stderr().flush();
-    std::process::exit(code)
+    std::process::exit(final_code)
 }
 
 fn main() -> ExitCode {
+    let coordinator_args: Vec<String> = std::env::args().skip(1).collect();
+    if let Some(code) = maybe_run_floor_coordinator(&coordinator_args) {
+        return code;
+    }
     // The materialization demand receipt is mandatory on the floor: enable the
     // interpreter's recompute-trace ledger unless the environment already set
     // it. An explicit =0 zeroes the receipt, and the derived ci.yml gate fails
@@ -5701,15 +8204,83 @@ fn main() -> ExitCode {
     if std::env::var_os("GUNBC_RECOMPUTE_TRACE").is_none() {
         std::env::set_var("GUNBC_RECOMPUTE_TRACE", "1");
     }
-    match run() {
+    let code = match run() {
         Ok(code) => code,
         Err(code) => code,
+    };
+    if std::env::var_os(FLOOR_WORKER_TERMINAL_ENV).is_some() {
+        let terminal_exists = std::env::var_os(FLOOR_WORKER_TERMINAL_ENV)
+            .map(PathBuf::from)
+            .is_some_and(|path| path.exists());
+        if !terminal_exists {
+            let _ = write_floor_worker_terminal(
+                "failed",
+                "worker returned before producing a walk terminal receipt",
+            );
+        }
     }
+    code
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn population_budget_watchdog_refuses_and_writes_located_receipt() {
+        const CHILD_MARKER: &str = "GUNBC_POPULATION_BUDGET_WATCHDOG_CHILD";
+        if std::env::var(CHILD_MARKER).as_deref() == Ok("1") {
+            let progress = PopulationBudgetProgress::before_first_unit();
+            progress.enter(3, "dag/tools/fixture.dag::bounded_stage_claim".to_string());
+            let _armed = arm_population_budget_watchdog(
+                "ordinary_floor",
+                "fixture::bounded_plan",
+                Some(50),
+                progress,
+            );
+            std::thread::sleep(std::time::Duration::from_secs(2));
+            panic!("watchdog did not terminate the child");
+        }
+
+        let dir = std::env::temp_dir().join(format!(
+            "gunbc-population-budget-watchdog-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).expect("create watchdog fixture directory");
+        let output = std::process::Command::new(std::env::current_exe().expect("current test exe"))
+            .arg("--exact")
+            .arg("tests::population_budget_watchdog_refuses_and_writes_located_receipt")
+            .arg("--nocapture")
+            .env(CHILD_MARKER, "1")
+            .current_dir(&dir)
+            .output()
+            .expect("run watchdog child");
+        assert!(!output.status.success(), "budget child must refuse");
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stderr.contains("ORDINARY-FLOOR-OVER-BUDGET")
+                && stderr.contains("fixture::bounded_plan")
+                && stderr.contains("population_index=3")
+                && stderr.contains("dag/tools/fixture.dag::bounded_stage_claim")
+                && stderr.contains("elapsed_ms=")
+                && stderr.contains("budget_ms=50"),
+            "refusal must be typed and located, got: {stderr}"
+        );
+        let receipt = fs::read_to_string(dir.join("target/floor-population-budget-refusal.txt"))
+            .expect("watchdog refusal receipt");
+        assert!(
+            receipt.contains("population=ordinary_floor")
+                && receipt.contains("plan_site=fixture::bounded_plan")
+                && receipt.contains("population_index=3")
+                && receipt.contains("active_unit=dag/tools/fixture.dag::bounded_stage_claim")
+                && receipt.contains("elapsed_ms=")
+                && receipt.contains("budget_ms=50")
+                && receipt.contains("outcome=refused"),
+            "receipt must carry the refused population and its subject: {receipt}"
+        );
+        fs::remove_dir_all(&dir).expect("remove watchdog fixture directory");
+    }
 
     // Process-wide eval-recompute totals are shared across every test in this
     // binary. Tests that drain or assert on the accumulator must serialize so
@@ -6313,6 +8884,49 @@ mod tests {
         assert_eq!(
             batch_unit_lane(&cheap_units[0], &empty_memo, &no_heavy),
             UnitLane::Spawned
+        );
+    }
+
+    #[test]
+    fn on_success_spawned_claims_move_to_warm_main_thread_only() {
+        let runnable = Runnable::SingleClaim {
+            entry: "dag/tools/merge_admission_walk.dag".to_string(),
+            function: "stamp_tested_floor".to_string(),
+            profile: ParsedRunnableProfile {
+                provenance: ParsedProfileProvenance::Declared,
+                heavy_whole_tree_resolve: false,
+                spawns_host_compiler: false,
+                memory: ParsedMemoryClass::Negligible,
+                execution_mode: ExecutionMode::Wet,
+            },
+        };
+        let units = group_batch_units(&[runnable]);
+        let memo = std::collections::HashMap::new();
+        let memo_entries = std::collections::HashSet::new();
+        assert_eq!(
+            batch_unit_lane(&units[0], &memo, &memo_entries),
+            UnitLane::Spawned,
+            "the shared lane authority remains unchanged"
+        );
+        assert_eq!(
+            population_unit_lane(
+                StagePopulation::OrdinaryBatch,
+                &units[0],
+                &memo,
+                &memo_entries,
+            ),
+            UnitLane::Spawned,
+            "ordinary claim placement must remain unchanged"
+        );
+        assert_eq!(
+            population_unit_lane(
+                StagePopulation::OnSuccessStage,
+                &units[0],
+                &memo,
+                &memo_entries,
+            ),
+            UnitLane::MainThread,
+            "green-only claim must consume the warm main-thread index"
         );
     }
 
@@ -7097,6 +9711,8 @@ mod tests {
             &ordinary_batch,
             on_success_stages,
             None,
+            None,
+            None,
             &Arc::new(MemoryGovernor::from_environment(1)),
             None,
             FalsifierSelfHostWetBudgets::default(),
@@ -7105,6 +9721,7 @@ mod tests {
             None,
             false,
             Path::new("dag/gunbc/witness_row_cost_basis.tsv"),
+            true,
             walk_attempt_id,
         )
     }
@@ -7283,6 +9900,7 @@ mod tests {
             source_roots: vec!["src/v2".to_string()],
             scan_dirs: vec![],
             explicit_entries: vec![],
+            native_bundle_entries: vec![],
             node_frontier_selection: NodeFrontierSelectionMode::Applied,
             exclude_substrings: vec![],
             discovery_scope_dirs: vec![],
@@ -7308,7 +9926,9 @@ mod tests {
                 BatchUnit::UnrunnableSentinel { function } => {
                     out.push((String::new(), function.clone()));
                 }
-                BatchUnit::Discovery { .. } => {}
+                BatchUnit::Discovery { .. }
+                | BatchUnit::ScopedDiscovery { .. }
+                | BatchUnit::NativeBundle { .. } => {}
             }
         }
         out
@@ -7338,6 +9958,81 @@ mod tests {
             }
             _ => panic!("expected a SharedClaims unit"),
         }
+    }
+
+    #[test]
+    fn native_bundle_kind_becomes_only_a_native_unit() {
+        let batch = vec![Runnable::DiscoveryBatch {
+            source_roots: vec!["src/v2".to_string(), "dag".to_string()],
+            scan_dirs: vec![],
+            explicit_entries: vec![],
+            native_bundle_entries: vec![("bundle.dag".to_string(), "bundle_spec".to_string())],
+            node_frontier_selection: NodeFrontierSelectionMode::Applied,
+            exclude_substrings: vec![],
+            discovery_scope_dirs: vec![],
+            execution_mode: ExecutionMode::Wet,
+        }];
+        let units = group_batch_units(&batch);
+        assert_eq!(
+            units.len(),
+            1,
+            "native kind must not create an interpreter discovery unit"
+        );
+        assert!(matches!(
+            &units[0],
+            BatchUnit::NativeBundle { entry, selector_function, execution_mode }
+                if entry == "bundle.dag"
+                    && selector_function == "bundle_spec"
+                    && *execution_mode == ExecutionMode::Wet
+        ));
+    }
+
+    #[test]
+    fn native_bundle_fallback_arms_on_outage_never_divergence() {
+        // Outage (no divergence), interpreter oracle green, planted-red ORACLE
+        // discriminates: counted fallback — even though the planted NATIVE run also
+        // failed (planted_red_equivalent=false), because in an outage it must.
+        assert_eq!(
+            native_transition_decision(false, false, true, true, false),
+            (false, true)
+        );
+        // Same outage but the planted-red oracle does NOT discriminate: no fallback —
+        // the thing we would fall back to has no proven RED.
+        assert_eq!(
+            native_transition_decision(false, false, true, false, false),
+            (false, false)
+        );
+        // Divergence (native ran, wrong output): NEVER fallback, regardless of oracles.
+        assert_eq!(
+            native_transition_decision(false, true, true, true, true),
+            (false, false)
+        );
+        // Oracle red: neither acceptance nor fallback.
+        assert_eq!(
+            native_transition_decision(false, false, false, true, false),
+            (false, false)
+        );
+        // Full native bar: accepted requires planted-red NATIVE equivalence.
+        assert_eq!(
+            native_transition_decision(true, false, true, true, true),
+            (true, false)
+        );
+        assert_eq!(
+            native_transition_decision(true, false, true, true, false),
+            (false, false)
+        );
+        assert_eq!(
+            native_transition_population_counts(3, true, false),
+            (3, 0, 0, 0)
+        );
+        assert_eq!(
+            native_transition_population_counts(3, false, true),
+            (0, 3, 3, 3)
+        );
+        assert_eq!(
+            native_transition_population_counts(3, false, false),
+            (0, 0, 3, 0)
+        );
     }
 
     #[test]
@@ -7709,6 +10404,7 @@ mod tests {
             total: 1,
             passed: 0,
             skipped: 0,
+            selection_skipped_rows: Vec::new(),
             deferred_rows: Vec::new(),
             predicted_unaffected: Vec::new(),
             divergences: Vec::new(),
@@ -7778,6 +10474,7 @@ mod tests {
             total: 1,
             passed: 0,
             skipped: 0,
+            selection_skipped_rows: Vec::new(),
             deferred_rows: Vec::new(),
             predicted_unaffected: Vec::new(),
             divergences: Vec::new(),
@@ -7815,6 +10512,46 @@ mod tests {
             result.detail.contains("witness row-cost receipt refused"),
             "receipt refusal must also be present, got: {}",
             result.detail
+        );
+    }
+
+    #[test]
+    fn scoped_selection_skip_is_a_provenanced_nonfailure_receipt_outcome() {
+        use v1_compiler::cli_run::{
+            DiscoverySummary, EntryResolveReceipt, ResolveStageNanos, SelectionSkippedDiscoveryRow,
+        };
+        let summary = DiscoverySummary {
+            total: 0,
+            passed: 0,
+            skipped: 1,
+            deferred_rows: Vec::new(),
+            predicted_unaffected: Vec::new(),
+            selection_skipped_rows: vec![SelectionSkippedDiscoveryRow {
+                entry: "src/v1/tests/claim/caret_parse_smoke_test.dag".into(),
+                function: "w_caret_tokenizes_as_sh_caret".into(),
+                provenance: "skip-before-resolve-fast-path".into(),
+            }],
+            divergences: Vec::new(),
+            failures: Vec::new(),
+            witness_outcomes: Vec::new(),
+            entry_resolve_receipts: Vec::<EntryResolveReceipt>::new(),
+            total_resolve_nanos: 0,
+            total_stage_nanos: ResolveStageNanos::default(),
+            performance_receipts: Vec::new(),
+            total_measured_nanos: 0,
+            roster_closure_nodes: 0,
+        };
+        let (label, provenance) = scoped_witness_summary_outcome(
+            &summary,
+            "src/v1/tests/claim/caret_parse_smoke_test.dag",
+            "w_caret_tokenizes_as_sh_caret",
+        )
+        .expect("an unaffected enrolled row must remain present in the receipt");
+        assert_eq!(label, "selection-skipped");
+        assert_eq!(provenance, "skip-before-resolve-fast-path");
+        assert!(
+            summary.failures.is_empty(),
+            "selection skip is not a refusal"
         );
     }
 
@@ -8018,5 +10755,171 @@ mod tests {
             walk_attempt_id_segment_is_safe("30654655022-1-ci"),
             "a real composed identity must be accepted — else the negatives above prove nothing"
         );
+    }
+
+    #[test]
+    fn floor_worker_missing_terminal_receipt_is_an_observed_death() {
+        let terminal = std::env::temp_dir().join(format!(
+            "claim-executor-worker-missing-terminal-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_file(&terminal);
+        let status = Command::new("sh").arg("-c").arg("exit 0").status().unwrap();
+        let observed = observe_floor_worker("ordinary", status, &terminal);
+        let outcome = floor_worker_observation_outcome(&observed);
+        assert_eq!(
+            observed.terminal_receipt,
+            FloorWorkerTerminalReceipt::Missing
+        );
+        assert_eq!(outcome.label, "died-without-terminal-receipt");
+        assert!(outcome.detail.contains("ordinary"));
+        assert!(outcome.detail.contains("no terminal receipt"));
+        assert!(
+            !floor_worker_succeeded(&observed),
+            "an OS-success exit cannot turn receipt absence into floor success"
+        );
+    }
+
+    #[test]
+    fn floor_phase_journal_persists_a_completed_path() {
+        let journal = std::env::temp_dir().join(format!(
+            "claim-executor-floor-phase-positive-control-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_file(&journal);
+        std::env::set_var(FLOOR_PHASE_JOURNAL_ENV, &journal);
+        append_floor_phase_journal("positive-control", "completed", "known-green-path");
+        std::env::remove_var(FLOOR_PHASE_JOURNAL_ENV);
+
+        let persisted = fs::read_to_string(&journal)
+            .expect("the synced out-of-band journal must be readable after a completed path");
+        let _ = fs::remove_file(&journal);
+        assert!(
+            persisted.contains("\tpositive-control\tcompleted\tknown-green-path\n"),
+            "the persisted row must retain the phase, state, and detail: {persisted:?}"
+        );
+    }
+
+    #[test]
+    fn floor_worker_verdict_reaches_the_durable_journal() {
+        let journal = std::env::temp_dir().join(format!(
+            "claim-executor-floor-worker-verdict-journal-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_file(&journal);
+        std::env::set_var(FLOOR_PHASE_JOURNAL_ENV, &journal);
+        journal_floor_worker_observation(&ObservedFloorWorker {
+            worker: "scoped:batch-a".to_string(),
+            termination: FloorWorkerTermination::Exited(1),
+            terminal_receipt: FloorWorkerTerminalReceipt::Observed(
+                FloorWorkerTerminalReport::Failed("witness row was red".to_string()),
+            ),
+        });
+        std::env::remove_var(FLOOR_PHASE_JOURNAL_ENV);
+
+        let persisted = fs::read_to_string(&journal)
+            .expect("the synced worker verdict must survive on the out-of-band journal");
+        let _ = fs::remove_file(&journal);
+        assert!(
+            persisted.contains(
+                "\tcoordinator-observation\tfailed\tworker=scoped:batch-a termination=exited:1 detail=witness row was red\n"
+            ),
+            "the journal must retain the derived verdict rather than only process completion: {persisted:?}"
+        );
+    }
+
+    #[test]
+    fn scoped_execution_authority_inherits_walk_roots_without_widening_subject_roots() {
+        let walk_roots = vec!["dag".to_string(), "src/v2".to_string()];
+        let subject_roots = vec!["dag".to_string(), "src/v1".to_string()];
+        let authority_roots = scoped_execution_authority_source_roots(
+            ScopedWitnessExecutionAuthority::InheritedWalkSourceRoots,
+            &walk_roots,
+        );
+
+        assert_eq!(authority_roots, walk_roots);
+        assert_eq!(subject_roots, ["dag", "src/v1"]);
+        assert_ne!(
+            authority_roots, subject_roots,
+            "the selector authority must not be fused into the scoped witness subject envelope"
+        );
+    }
+
+    #[test]
+    fn floor_worker_terminal_crosses_receipt_with_exit_status() {
+        let terminal = std::env::temp_dir().join(format!(
+            "claim-executor-worker-terminal-cross-{}",
+            std::process::id()
+        ));
+        fs::write(&terminal, "completed\twalk said complete\n").unwrap();
+        let status = Command::new("sh").arg("-c").arg("exit 7").status().unwrap();
+        let observed = observe_floor_worker("scoped:batch-a", status, &terminal);
+        let _ = fs::remove_file(&terminal);
+        assert_eq!(observed.termination, FloorWorkerTermination::Exited(7));
+        assert!(matches!(
+            observed.terminal_receipt,
+            FloorWorkerTerminalReceipt::Observed(FloorWorkerTerminalReport::Completed(_))
+        ));
+        assert_eq!(floor_worker_observation_outcome(&observed).label, "failed");
+        assert!(
+            !floor_worker_succeeded(&observed),
+            "a completed receipt cannot normalize a failing process exit"
+        );
+    }
+
+    #[test]
+    fn floor_worker_refusal_remains_distinct_from_failure() {
+        let terminal = std::env::temp_dir().join(format!(
+            "claim-executor-worker-refused-{}",
+            std::process::id()
+        ));
+        fs::write(&terminal, "refused\tFreshJobProcess has no realization\n").unwrap();
+        let status = Command::new("sh").arg("-c").arg("exit 1").status().unwrap();
+        let observed = observe_floor_worker("scoped:batch-a", status, &terminal);
+        let _ = fs::remove_file(&terminal);
+        let outcome = floor_worker_observation_outcome(&observed);
+        assert_eq!(outcome.label, "refused");
+        assert!(outcome.detail.contains("FreshJobProcess"));
+        assert!(!floor_worker_succeeded(&observed));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn floor_worker_signal_death_is_not_flattened_to_an_exit_code() {
+        let terminal = std::env::temp_dir().join(format!(
+            "claim-executor-worker-signaled-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_file(&terminal);
+        let status = Command::new("sh")
+            .arg("-c")
+            .arg("kill -TERM $$")
+            .status()
+            .unwrap();
+        let observed = observe_floor_worker("scoped:batch-a", status, &terminal);
+        assert!(matches!(
+            observed.termination,
+            FloorWorkerTermination::Signaled(_)
+        ));
+        assert_eq!(
+            floor_worker_observation_outcome(&observed).label,
+            "died-without-terminal-receipt"
+        );
+        assert!(!floor_worker_succeeded(&observed));
+    }
+
+    #[test]
+    fn floor_worker_signal_overrules_a_completed_terminal_report() {
+        let observed = ObservedFloorWorker {
+            worker: "scoped:batch-a".to_string(),
+            termination: FloorWorkerTermination::Signaled(9),
+            terminal_receipt: FloorWorkerTerminalReceipt::Observed(
+                FloorWorkerTerminalReport::Completed("walk said complete".to_string()),
+            ),
+        };
+        let outcome = floor_worker_observation_outcome(&observed);
+        assert_eq!(outcome.label, "failed");
+        assert!(outcome.detail.contains("signal 9"));
+        assert!(!floor_worker_succeeded(&observed));
     }
 }

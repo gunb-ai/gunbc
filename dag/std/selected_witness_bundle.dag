@@ -1,0 +1,654 @@
+module std.selected_witness_bundle
+
+import std.types { NonEmptyStr, List, Int, Bool }
+import std.verification { NanosecondDuration }
+import std.measure { ByteSize }
+import std.content_hash {
+  Fnv1a64Structural,
+  content_hash_atom,
+  content_hash_combine_structural,
+  content_hash_eq_structural,
+  content_hash_tagged_structural,
+}
+
+data selected_witness_bundle_note: NonEmptyStr = "Selected-entry native execution authority (native-selected-witness-bundle, 2026-08-01). Selection and realization remain separate facts: SelectedWitnessPlan records the complete production-selected population; each member is either NativeSelected or a counted InterpreterFrontier row with a reason and dissolution trigger. A native bundle contains only NativeSelected members, runs them as direct calls in one process, and returns a typed receipt. InterpreterFrontier is coverage-preserving compatibility, never an uncounted skip. During cutover the interpreter is the equivalence oracle; a family enters native-consumed production only after every selected member has executed verdict equivalence and the family has a live discriminating RED. Native-vs-interpreter divergence is a hard refusal, never an auto-pick."
+
+type SelectedWitnessIdentity {
+  entry: NonEmptyStr
+  function: NonEmptyStr
+  subject_digest: Fnv1a64Structural
+}
+
+type NativeRealizationIdentity {
+  family: NonEmptyStr
+  realization_digest: Fnv1a64Structural
+}
+
+type NativeUnavailableCause
+  = NativeRealizationAbsent
+  | NativeRealizationRefused { reason: NonEmptyStr }
+
+type SelectedWitnessMember
+  = NativeSelected {
+      witness: SelectedWitnessIdentity
+      realization: NativeRealizationIdentity
+    }
+  | InterpreterFrontier {
+      witness: SelectedWitnessIdentity
+      cause: NativeUnavailableCause
+      reason: NonEmptyStr
+      dissolve_on: NonEmptyStr
+    }
+
+type NativeBundleShardPolicy
+  = OneSelectedBundle { reason: NonEmptyStr }
+  | StableBundleShards { shard_count: Int, reason: NonEmptyStr }
+
+type SelectedWitnessPlan {
+  compiler_identity: Fnv1a64Structural
+  shard_policy: NativeBundleShardPolicy
+  members: List<SelectedWitnessMember>
+}
+
+type NativeWitnessBundleIdentity {
+  structural_fingerprint: Fnv1a64Structural
+}
+
+type NativeWitnessBundleMember {
+  witness: SelectedWitnessIdentity
+  realization: NativeRealizationIdentity
+}
+
+type NativeWitnessBundle {
+  identity: NativeWitnessBundleIdentity
+  compiler_identity: Fnv1a64Structural
+  members: List<NativeWitnessBundleMember>
+}
+
+fn selected_witness_identity_hash(witness: SelectedWitnessIdentity) -> Fnv1a64Structural {
+  content_hash_tagged_structural(
+    tag: "selected-witness-identity",
+    payload: content_hash_combine_structural(
+      left: content_hash_atom(value: witness.entry),
+      right: content_hash_combine_structural(
+        left: content_hash_atom(value: witness.function),
+        right: witness.subject_digest
+      )
+    )
+  )
+}
+
+fn native_realization_identity_hash(realization: NativeRealizationIdentity) -> Fnv1a64Structural {
+  content_hash_tagged_structural(
+    tag: "selected-witness-native-realization",
+    payload: content_hash_combine_structural(
+      left: content_hash_atom(value: realization.family),
+      right: realization.realization_digest
+    )
+  )
+}
+
+fn native_bundle_member_hash(member: NativeWitnessBundleMember) -> Fnv1a64Structural {
+  content_hash_tagged_structural(
+    tag: "selected-witness-native-member",
+    payload: content_hash_combine_structural(
+      left: selected_witness_identity_hash(witness: member.witness),
+      right: native_realization_identity_hash(realization: member.realization)
+    )
+  )
+}
+
+fn native_bundle_members_hash(members: List<NativeWitnessBundleMember>) -> Fnv1a64Structural {
+  fold(
+    members,
+    init: content_hash_atom(value: "selected-witness-native-members"),
+    f: (acc, member) => content_hash_combine_structural(
+      left: acc,
+      right: native_bundle_member_hash(member: member)
+    )
+  )
+}
+
+fn selected_witness_identity_eq(
+  left: SelectedWitnessIdentity,
+  right: SelectedWitnessIdentity
+) -> Bool {
+  left.entry == right.entry
+    && left.function == right.function
+    && content_hash_eq_structural(
+      left: left.subject_digest,
+      right: right.subject_digest
+    )
+}
+
+fn native_realization_identity_eq(
+  left: NativeRealizationIdentity,
+  right: NativeRealizationIdentity
+) -> Bool {
+  left.family == right.family
+    && content_hash_eq_structural(
+      left: left.realization_digest,
+      right: right.realization_digest
+    )
+}
+
+fn native_bundle_member_eq(
+  left: NativeWitnessBundleMember,
+  right: NativeWitnessBundleMember
+) -> Bool {
+  selected_witness_identity_eq(left: left.witness, right: right.witness)
+    && native_realization_identity_eq(
+      left: left.realization,
+      right: right.realization
+    )
+}
+
+fn native_bundle_members_eq(
+  left: List<NativeWitnessBundleMember>,
+  right: List<NativeWitnessBundleMember>
+) -> Bool {
+  if left.count() != right.count() {
+    false
+  } else if left.count() == 0 {
+    true
+  } else {
+    native_bundle_member_eq(left: left.first(), right: right.first())
+      && native_bundle_members_eq(
+        left: left.skip(n: 1),
+        right: right.skip(n: 1)
+      )
+  }
+}
+
+fn selected_witness_plan_native_members(plan: SelectedWitnessPlan) -> List<NativeWitnessBundleMember> {
+  reverse(fold(
+    plan.members,
+    init: [],
+    f: (acc, member) => match member {
+      NativeSelected { witness: witness, realization: realization } =>
+        concat([NativeWitnessBundleMember {
+          witness: witness,
+          realization: realization
+        }], acc)
+      InterpreterFrontier { witness: _, cause: _, reason: _, dissolve_on: _ } => acc
+    }
+  ))
+}
+
+fn selected_witness_plan_interpreter_frontier_count(plan: SelectedWitnessPlan) -> Int {
+  fold(
+    plan.members,
+    init: 0,
+    f: (count, member) => match member {
+      NativeSelected { witness: _, realization: _ } => count
+      InterpreterFrontier { witness: _, cause: _, reason: _, dissolve_on: _ } => count + 1
+    }
+  )
+}
+
+fn native_bundle_shard_policy_hash(policy: NativeBundleShardPolicy) -> Fnv1a64Structural {
+  match policy {
+    OneSelectedBundle { reason: _ } => content_hash_atom(value: "one-selected-bundle")
+    StableBundleShards { shard_count: count, reason: _ } => content_hash_tagged_structural(
+      tag: "stable-selected-bundle-shards",
+      payload: native_bundle_shard_count_hash(count: count)
+    )
+  }
+}
+
+fn native_bundle_shard_count_hash(count: Int) -> Fnv1a64Structural {
+  if count <= 0 {
+    content_hash_atom(value: "selected-bundle-shard-count-zero")
+  } else {
+    content_hash_tagged_structural(
+      tag: "selected-bundle-shard-count-successor",
+      payload: native_bundle_shard_count_hash(count: count - 1)
+    )
+  }
+}
+
+fn native_witness_bundle_identity(plan: SelectedWitnessPlan) -> NativeWitnessBundleIdentity {
+  let members = selected_witness_plan_native_members(plan: plan)
+  let member_fingerprint = native_bundle_members_hash(members: members)
+  NativeWitnessBundleIdentity {
+    structural_fingerprint: content_hash_tagged_structural(
+      tag: "selected-witness-native-bundle-v1",
+      payload: content_hash_combine_structural(
+        left: plan.compiler_identity,
+        right: content_hash_combine_structural(
+          left: native_bundle_shard_policy_hash(policy: plan.shard_policy),
+          right: member_fingerprint
+        )
+      )
+    )
+  }
+}
+
+fn native_witness_bundle_from_plan(plan: SelectedWitnessPlan) -> NativeWitnessBundle {
+  NativeWitnessBundle {
+    identity: native_witness_bundle_identity(plan: plan),
+    compiler_identity: plan.compiler_identity,
+    members: selected_witness_plan_native_members(plan: plan)
+  }
+}
+
+type NativeBundleAdmission
+  = NativeBundleAdmitted { bundle: NativeWitnessBundle }
+  | NativeBundleRefusedStaleCompiler {
+      bundle_compiler_identity: Fnv1a64Structural
+      current_compiler_identity: Fnv1a64Structural
+    }
+  | NativeBundleRefusedStalePlanCompiler {
+      plan_compiler_identity: Fnv1a64Structural
+      current_compiler_identity: Fnv1a64Structural
+    }
+  | NativeBundleRefusedPlanIdentity {
+      observed: NativeWitnessBundleIdentity
+      required: NativeWitnessBundleIdentity
+    }
+  | NativeBundleRefusedMemberCoverage {
+      observed: List<NativeWitnessBundleMember>
+      required: List<NativeWitnessBundleMember>
+    }
+
+fn native_witness_bundle_admit(
+  plan: SelectedWitnessPlan,
+  bundle: NativeWitnessBundle,
+  current_compiler_identity: Fnv1a64Structural
+) -> NativeBundleAdmission {
+  let required = native_witness_bundle_identity(plan: plan)
+  let required_members = selected_witness_plan_native_members(plan: plan)
+  if !content_hash_eq_structural(
+    left: bundle.compiler_identity,
+    right: current_compiler_identity
+  ) {
+    NativeBundleRefusedStaleCompiler {
+      bundle_compiler_identity: bundle.compiler_identity,
+      current_compiler_identity: current_compiler_identity
+    }
+  } else if !content_hash_eq_structural(
+    left: plan.compiler_identity,
+    right: current_compiler_identity
+  ) {
+    NativeBundleRefusedStalePlanCompiler {
+      plan_compiler_identity: plan.compiler_identity,
+      current_compiler_identity: current_compiler_identity
+    }
+  } else if !content_hash_eq_structural(
+    left: bundle.identity.structural_fingerprint,
+    right: required.structural_fingerprint
+  ) {
+    NativeBundleRefusedPlanIdentity {
+      observed: bundle.identity,
+      required: required
+    }
+  } else if !native_bundle_members_eq(left: bundle.members, right: required_members) {
+    NativeBundleRefusedMemberCoverage {
+      observed: bundle.members,
+      required: required_members
+    }
+  } else {
+    NativeBundleAdmitted { bundle: bundle }
+  }
+}
+
+type SelectedWitnessVerdict
+  = SelectedWitnessPassed
+  | SelectedWitnessFailed
+
+type NativeBundleMemberEquivalence {
+  witness: SelectedWitnessIdentity
+  family: NonEmptyStr
+  interpreted: SelectedWitnessVerdict
+  native: SelectedWitnessVerdict
+}
+
+type NativeWitnessBundleExecutionReceipt {
+  bundle_identity: NativeWitnessBundleIdentity
+  compiler_identity: Fnv1a64Structural
+  process_count: Int
+  compile_skipped: Bool
+  native_wall_nanos: NanosecondDuration
+  interpreted_wall_nanos: NanosecondDuration
+  member_equivalence: List<NativeBundleMemberEquivalence>
+  interpreter_frontier_count: Int
+}
+
+type NativeProductionTransitionVerdict
+  = NativeProductionTransitionAccepted
+  | NativeProductionTransitionFallback { cause: NativeUnavailableCause }
+  | NativeProductionTransitionRefused { reason: NonEmptyStr }
+
+type NativeWitnessProductionTransitionReceipt {
+  selected_count: Int
+  native_count: Int
+  interpreted_count: Int
+  unavailable_count: Int
+  bundle_count: Int
+  shard_count: Int
+  cold_compile_wall_nanos: NanosecondDuration
+  warm_artifact_hit_wall_nanos: NanosecondDuration
+  native_execution_wall_nanos: NanosecondDuration
+  interpreter_oracle_wall_nanos: NanosecondDuration
+  fallback_count: Int
+  rss_peak_bytes: ByteSize
+  cgroup_peak_bytes: ByteSize
+  verdict: NativeProductionTransitionVerdict
+  planted_red_equivalent: Bool
+}
+
+data native_production_transition_population_note: String = "🟡 The population law is a VALIDATOR over the flat-count receipt (review 47496): counts and verdict are authored separately, so an inconsistent pair is representable and this fn is what discriminates it. Executing consumers: the witness-unit controls in v2.test.claim.pr_native_batch_test — an accepted positive control plus discriminating REDs per verdict arm, enrolled in per-PR discovery. The seed's TSV transition-receipt projection does not yet route through this law; that wire belongs to native_selected_bundle_process_seed_deferral. dissolve-on: counts carried on the verdict variants so an inconsistent receipt is unwritable, or the executor walk emitting receipts from .dag — whichever lands first; then this validator and this note delete together."
+
+fn native_production_transition_population_holds(
+  receipt: NativeWitnessProductionTransitionReceipt
+) -> Bool {
+  receipt.selected_count > 0
+    && receipt.bundle_count == 1
+    && receipt.shard_count == 1
+    && receipt.native_count >= 0
+    && receipt.interpreted_count >= 0
+    && receipt.unavailable_count >= 0
+    && receipt.fallback_count >= 0
+    && match receipt.verdict {
+      NativeProductionTransitionAccepted =>
+        receipt.native_count == receipt.selected_count
+          && receipt.interpreted_count == 0
+          && receipt.unavailable_count == 0
+          && receipt.fallback_count == 0
+      NativeProductionTransitionFallback { cause: _ } =>
+        receipt.native_count + receipt.interpreted_count == receipt.selected_count
+          && receipt.unavailable_count == receipt.fallback_count
+          && receipt.fallback_count <= receipt.interpreted_count
+      NativeProductionTransitionRefused { reason: _ } =>
+        receipt.native_count + receipt.interpreted_count <= receipt.selected_count
+          && receipt.unavailable_count <= receipt.selected_count
+          && receipt.fallback_count <= receipt.interpreted_count
+    }
+}
+
+type NativeBundleFamilyCutoverEvidence {
+  planted_plan: SelectedWitnessPlan
+  execution: NativeWitnessBundleExecutionReceipt
+}
+
+type NativeWitnessBundleExecutionVerdict
+  = NativeBundleExecutionAccepted { receipt: NativeWitnessBundleExecutionReceipt }
+  | NativeBundleExecutionRefusedNoNativeMembers
+  | NativeBundleExecutionRefusedStaleCompiler {
+      receipt_compiler_identity: Fnv1a64Structural
+      current_compiler_identity: Fnv1a64Structural
+    }
+  | NativeBundleExecutionRefusedStalePlanCompiler {
+      plan_compiler_identity: Fnv1a64Structural
+      current_compiler_identity: Fnv1a64Structural
+    }
+  | NativeBundleExecutionRefusedPlanIdentity {
+      observed: NativeWitnessBundleIdentity
+      required: NativeWitnessBundleIdentity
+    }
+  | NativeBundleExecutionRefusedMemberCoverage {
+      observed: Fnv1a64Structural
+      required: Fnv1a64Structural
+    }
+  | NativeBundleExecutionRefusedFrontierCount { observed: Int, required: Int }
+  | NativeBundleExecutionRefusedDivergence {
+      witness: SelectedWitnessIdentity
+      interpreted: SelectedWitnessVerdict
+      native: SelectedWitnessVerdict
+    }
+  | NativeBundleExecutionRefusedMissingDiscriminatingRed { family: NonEmptyStr }
+  | NativeBundleExecutionRefusedProcessCount { observed: Int }
+  | NativeBundleExecutionRefusedWarmArtifactMiss
+
+fn native_bundle_execution_member_hash(
+  witness: SelectedWitnessIdentity,
+  family: NonEmptyStr
+) -> Fnv1a64Structural {
+  content_hash_tagged_structural(
+    tag: "selected-witness-executed-member",
+    payload: content_hash_combine_structural(
+      left: selected_witness_identity_hash(witness: witness),
+      right: content_hash_atom(value: family)
+    )
+  )
+}
+
+fn native_bundle_required_execution_roster_hash(
+  members: List<NativeWitnessBundleMember>
+) -> Fnv1a64Structural {
+  fold(
+    members,
+    init: content_hash_atom(value: "selected-witness-execution-roster"),
+    f: (acc, member) => content_hash_combine_structural(
+      left: acc,
+      right: native_bundle_execution_member_hash(
+        witness: member.witness,
+        family: member.realization.family
+      )
+    )
+  )
+}
+
+fn native_bundle_observed_execution_roster_hash(
+  rows: List<NativeBundleMemberEquivalence>
+) -> Fnv1a64Structural {
+  fold(
+    rows,
+    init: content_hash_atom(value: "selected-witness-execution-roster"),
+    f: (acc, row) => content_hash_combine_structural(
+      left: acc,
+      right: native_bundle_execution_member_hash(
+        witness: row.witness,
+        family: row.family
+      )
+    )
+  )
+}
+
+type NativeBundleDivergenceSearch
+  = NativeBundleDivergenceAbsent
+  | NativeBundleDivergenceFound { row: NativeBundleMemberEquivalence }
+
+fn first_native_bundle_divergence(
+  rows: List<NativeBundleMemberEquivalence>
+) -> NativeBundleDivergenceSearch {
+  fold(
+    rows,
+    init: NativeBundleDivergenceAbsent,
+    f: (found, row) => match found {
+      NativeBundleDivergenceFound { row: prior } =>
+        NativeBundleDivergenceFound { row: prior }
+      NativeBundleDivergenceAbsent =>
+        if row.interpreted == row.native {
+          NativeBundleDivergenceAbsent
+        } else {
+          NativeBundleDivergenceFound { row: row }
+        }
+    }
+  )
+}
+
+fn native_bundle_red_receipt_matches_plan(
+  evidence: NativeBundleFamilyCutoverEvidence,
+  current_compiler_identity: Fnv1a64Structural
+) -> Bool {
+  let planted_bundle = native_witness_bundle_from_plan(plan: evidence.planted_plan)
+  let required_members = planted_bundle.members
+  let required_roster = native_bundle_required_execution_roster_hash(members: required_members)
+  let observed_roster = native_bundle_observed_execution_roster_hash(
+    rows: evidence.execution.member_equivalence
+  )
+  content_hash_eq_structural(
+    left: evidence.planted_plan.compiler_identity,
+    right: current_compiler_identity
+  )
+    && content_hash_eq_structural(
+      left: evidence.execution.compiler_identity,
+      right: current_compiler_identity
+    )
+    && evidence.execution.process_count == 1
+    && content_hash_eq_structural(
+      left: evidence.execution.bundle_identity.structural_fingerprint,
+      right: planted_bundle.identity.structural_fingerprint
+    )
+    && evidence.execution.interpreter_frontier_count == selected_witness_plan_interpreter_frontier_count(
+      plan: evidence.planted_plan
+    )
+    && required_members.count() > 0
+    && content_hash_eq_structural(left: observed_roster, right: required_roster)
+}
+
+fn planted_red_row_matches_production_member(
+  row: NativeBundleMemberEquivalence,
+  family: NonEmptyStr,
+  production_members: List<NativeWitnessBundleMember>
+) -> Bool {
+  fold(
+    production_members,
+    init: false,
+    f: (found, member) => found || (
+      member.realization.family == family
+        && row.family == family
+        && row.witness.entry == member.witness.entry
+        && row.witness.function == member.witness.function
+        && !content_hash_eq_structural(
+          left: row.witness.subject_digest,
+          right: member.witness.subject_digest
+        )
+        && row.interpreted == SelectedWitnessPassed
+        && row.native == SelectedWitnessFailed
+    )
+  )
+}
+
+fn family_has_discriminating_red(
+  family: NonEmptyStr,
+  production_plan: SelectedWitnessPlan,
+  current_compiler_identity: Fnv1a64Structural,
+  evidence: List<NativeBundleFamilyCutoverEvidence>
+) -> Bool {
+  let production_members = selected_witness_plan_native_members(plan: production_plan)
+  fold(
+    evidence,
+    init: false,
+    f: (found, candidate) => found || (
+      native_bundle_red_receipt_matches_plan(
+        evidence: candidate,
+        current_compiler_identity: current_compiler_identity
+      ) && fold(
+        candidate.execution.member_equivalence,
+        init: false,
+        f: (row_found, row) => row_found || planted_red_row_matches_production_member(
+          row: row,
+          family: family,
+          production_members: production_members
+        )
+      )
+    )
+  )
+}
+
+type NativeBundleFamilyRedSearch
+  = NativeBundleFamiliesHaveRed
+  | NativeBundleFamilyMissingRed { family: NonEmptyStr }
+
+fn first_native_bundle_family_without_red(
+  rows: List<NativeBundleMemberEquivalence>,
+  production_plan: SelectedWitnessPlan,
+  current_compiler_identity: Fnv1a64Structural,
+  evidence: List<NativeBundleFamilyCutoverEvidence>
+) -> NativeBundleFamilyRedSearch {
+  fold(
+    rows,
+    init: NativeBundleFamiliesHaveRed,
+    f: (found, row) => match found {
+      NativeBundleFamilyMissingRed { family: prior } =>
+        NativeBundleFamilyMissingRed { family: prior }
+      NativeBundleFamiliesHaveRed =>
+        if family_has_discriminating_red(
+          family: row.family,
+          production_plan: production_plan,
+          current_compiler_identity: current_compiler_identity,
+          evidence: evidence
+        ) {
+          NativeBundleFamiliesHaveRed
+        } else {
+          NativeBundleFamilyMissingRed { family: row.family }
+        }
+    }
+  )
+}
+
+fn native_witness_bundle_execution_admit(
+  plan: SelectedWitnessPlan,
+  current_compiler_identity: Fnv1a64Structural,
+  receipt: NativeWitnessBundleExecutionReceipt,
+  family_evidence: List<NativeBundleFamilyCutoverEvidence>
+) -> NativeWitnessBundleExecutionVerdict {
+  let required_bundle = native_witness_bundle_from_plan(plan: plan)
+  let required_members = required_bundle.members
+  let required_frontier_count = selected_witness_plan_interpreter_frontier_count(plan: plan)
+  let required_roster = native_bundle_required_execution_roster_hash(members: required_members)
+  let observed_roster = native_bundle_observed_execution_roster_hash(
+    rows: receipt.member_equivalence
+  )
+  if receipt.process_count != 1 {
+    NativeBundleExecutionRefusedProcessCount { observed: receipt.process_count }
+  } else if !content_hash_eq_structural(
+    left: receipt.compiler_identity,
+    right: current_compiler_identity
+  ) {
+    NativeBundleExecutionRefusedStaleCompiler {
+      receipt_compiler_identity: receipt.compiler_identity,
+      current_compiler_identity: current_compiler_identity
+    }
+  } else if !content_hash_eq_structural(
+    left: plan.compiler_identity,
+    right: current_compiler_identity
+  ) {
+    NativeBundleExecutionRefusedStalePlanCompiler {
+      plan_compiler_identity: plan.compiler_identity,
+      current_compiler_identity: current_compiler_identity
+    }
+  } else if !content_hash_eq_structural(
+    left: receipt.bundle_identity.structural_fingerprint,
+    right: required_bundle.identity.structural_fingerprint
+  ) {
+    NativeBundleExecutionRefusedPlanIdentity {
+      observed: receipt.bundle_identity,
+      required: required_bundle.identity
+    }
+  } else if required_members.count() == 0 {
+    NativeBundleExecutionRefusedNoNativeMembers
+  } else if receipt.interpreter_frontier_count != required_frontier_count {
+    NativeBundleExecutionRefusedFrontierCount {
+      observed: receipt.interpreter_frontier_count,
+      required: required_frontier_count
+    }
+  } else if !content_hash_eq_structural(left: observed_roster, right: required_roster) {
+    NativeBundleExecutionRefusedMemberCoverage {
+      observed: observed_roster,
+      required: required_roster
+    }
+  } else if !receipt.compile_skipped {
+    NativeBundleExecutionRefusedWarmArtifactMiss
+  } else {
+    match first_native_bundle_divergence(rows: receipt.member_equivalence) {
+      NativeBundleDivergenceFound { row: row } => NativeBundleExecutionRefusedDivergence {
+        witness: row.witness,
+        interpreted: row.interpreted,
+        native: row.native
+      }
+      NativeBundleDivergenceAbsent => match first_native_bundle_family_without_red(
+        rows: receipt.member_equivalence,
+        production_plan: plan,
+        current_compiler_identity: current_compiler_identity,
+        evidence: family_evidence
+      ) {
+        NativeBundleFamilyMissingRed { family: family } =>
+          NativeBundleExecutionRefusedMissingDiscriminatingRed { family: family }
+        NativeBundleFamiliesHaveRed => NativeBundleExecutionAccepted { receipt: receipt }
+      }
+    }
+  }
+}

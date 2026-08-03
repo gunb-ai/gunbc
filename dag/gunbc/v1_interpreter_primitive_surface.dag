@@ -105,6 +105,13 @@ fn v1_interpreter_declared_arms() -> List<InterpreterPrimitiveDispatchArm> {
   ]
 }
 
+fn arm_declares_dissolution_trigger(arm: InterpreterPrimitiveDispatchArm) -> Bool {
+  match arm.enumeration {
+    DeclaredHere { dissolve_on } => string_contains(s: dissolve_on, pattern: "dissolves when")
+    DerivedFromDispatch => false
+  }
+}
+
 fn v1_interpreter_primitive_arms() -> List<InterpreterPrimitiveDispatchArm> {
   v1_interpreter_derived_arms() |> concat(v1_interpreter_declared_arms())
 }

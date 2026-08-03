@@ -560,6 +560,10 @@ fn minute_count(m: Minute) -> Nat {
   measure_count(m)
 }
 
+fn minute_to_millisecond(m: Minute) -> Millisecond {
+  millisecond(count: minute_count(m) * seconds_per_minute() * milliseconds_per_second())
+}
+
 type Percent = Measure<Dimensionless, One, Nat>
 
 fn percent(count: Nat) -> Percent {

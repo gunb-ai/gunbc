@@ -18,7 +18,7 @@ pub use crate::std_trait_derive_shape::{
 };
 pub use crate::std_types::is_container_type;
 pub use crate::v1_compiler_emit::to_pascal;
-pub use crate::v1_compiler_infer_types::child_type_node;
+pub use crate::v1_compiler_infer_types::{child_type_node, is_coproduct_type};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Connective::NoConnective;
@@ -68,7 +68,25 @@ pub fn trait_derive_emit_bool_host_bridge_dissolve_on() -> String {
 pub fn trait_derive_emit_item_clone_bound_rule_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Item-level Clone bound rule: for each generic type parameter P on a derive-only struct (no fn fields, no supplemental impl_bodies from v1_emit_struct_from_capability_table), emit P: Clone when P is a bare resolved field type or a direct element of a container/FreeMonoid field (same structural trigger as v1_generic_param_used_as_collection_element on field type exprs). Enum items keep bare item params — derive emits per-impl bounds; variant-payload mention does not add declaration bounds. Phantom-only params receive no bound. Callable-field structs and arithmetic carriers with supplemental impl blocks keep bare item params. Not wired from target_derive_supplemental_generic_bound_contract.".to_string()
+            "Item-level Clone bound rule: for each generic type parameter P on a derive-only struct (no fn fields, no supplemental impl_bodies from v1_emit_struct_from_capability_table), emit P: Clone when P is a bare resolved field type or a direct element of a container/FreeMonoid field (same structural trigger as v1_generic_param_used_as_collection_element on field type exprs). Under THIS trigger enum items keep bare item params — derive emits per-impl bounds, so variant-payload mention does not add declaration bounds. That is a statement about the derive trigger only, and it is not the whole rule for enums: the well-formedness trigger below DOES bound enum params, because naming a Clone-bounded declared type in a variant payload is ill-formed without the bound whatever the derive does. Read the two notes together before concluding an enum keeps bare params. Phantom-only params receive no bound. Callable-field structs and arithmetic carriers with supplemental impl blocks keep bare item params. Not wired from target_derive_supplemental_generic_bound_contract.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn trait_derive_emit_item_clone_bound_wf_propagation_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "SECOND, INDEPENDENT trigger for an item-level Clone bound, distinct from the derive/lowering trigger above and NOT a widening of it: WELL-FORMEDNESS PROPAGATION. Naming a declared generic type G<A..> at all requires satisfying G's own declared bounds, so if G's i-th parameter already carries `: Clone` and the i-th argument's Clone impl requires P: Clone, then the item declaring that field is ill-formed without P: Clone -- rustc E0277 at the field, before any derive is considered. This applies to STRUCTS AND ENUMS alike, because it is a property of naming the type, not of deriving Clone for it; the rule note above correctly scopes the DERIVE trigger to structs (derive emits per-impl bounds) and that scoping is unchanged here. The two axes are grounded differently and can disagree: im::Vector<A> carries NO declaration bound (checked against im-15.1.0 vector::Vector), so a container field is a derive-trigger fact only, while Boxed<T: Clone> is a well-formedness fact that propagates through Nested<T> { boxed: Boxed<T> } and List<Boxed<T>> alike. The requirement is a LEAST FIXPOINT over the declared-type graph (v1_clone_bounded_type_params), not a one-field-shape-deep read: each round derives every declared generic type's bounded parameters from the current approximation and stops when a round adds nothing, so a chain Boxed -> Nested -> TwoHop propagates all the way and a recursive type (Cyclic<T> { self_ref: Cyclic<T>? }) saturates instead of diverging. The derive trigger SEEDS the fixpoint (v1_clone_bound_seed_for_item, structs only, reusing v1_item_type_param_needs_clone_bound_struct verbatim rather than restating it) and then propagates, because Boxed<T: Clone> earns its bound from the derive trigger and Nested<T> { boxed: Boxed<T> } inherits it from well-formedness. Two sub-predicates, deliberately separate because they answer different questions about the same type expression: v1_type_expr_clone_impl_needs_param asks whether `tau: Clone` requires P: Clone (every derive(Clone) type and every container bounds all of its parameters, so this reduces to `P occurs in tau`), while v1_type_expr_wf_needs_clone_param asks whether NAMING tau requires it (only the argument positions the fixpoint has already bounded count). The undecidable residue is answered by its own total function rather than fused into either Bool: a type application whose head is neither a container nor a declared type in the closure has no readable parameter list, so v1_type_expr_clone_undecided_head names it and the emit site refuses with compile_error!. It is NOT silently treated as `no bound needed` and NOT widened to `bound everything` -- widening would zero the deficit's frequency by construction (DESIGN section 5, absorbing fallback). Dead in corpus as of this landing; kept as the fail-closed arm.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn trait_derive_emit_fn_clone_bound_wf_propagation_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "THIRD site for the SAME well-formedness trigger (trait_derive_emit_item_clone_bound_wf_propagation_note above), applied to FN declarations rather than item (struct/enum) declarations: naming a Clone-bounded declared type G<A..> in a fn's value-param or return type is exactly as ill-formed as naming it in a field, so a fn generic parameter P earns `: Clone` when v1_fn_param_wf_needs_clone finds it occupying a Clone-bounded argument position of some declared type mentioned in a value param or the return type — reusing v1_type_expr_wf_needs_clone_param verbatim against the same v1_clone_bounded_type_params fixpoint (EmitGraphInfo.clone_bounded_type_params), not a second fixpoint or a restated predicate. This is additive to, not a replacement for, the existing structural fn trigger (v1_type_param_needs_clone_bound: bare-generic return or direct container-element usage) computed in v1_generic_params_needing_clone_bound — the two triggers answer different questions (usage-shape vs. naming-a-bounded-declared-type) and a fn param needing either earns the bound. Enum/struct IMPL surfaces (accessor impl blocks, supplemental impls) already inherit their item's bounded type_params string from emit_item_type_params_with_clone_bounds at the struct/enum decl site, so no separate IMPL-side propagation is needed there; the gap closed here is specifically free FN declarations, whose type_params were computed independently of the item-level fixpoint. Discovered live (not hypothetical) in deep-heron's honest regen of dag/std/occurrence_binding.dag: occurrence_binding_from_candidates<N> names BindingOccurrence<N> and BindingCandidate<N> (each well-formedness-bounded because their field ContainmentPath<N> is FreeMonoid<N>-derive-bounded) at value-param position without the fn declaring N: Clone, and OccurrenceBindingResult<N> at the return position — E0277 at both without this trigger.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -306,19 +324,29 @@ pub fn v1_generic_params_needing_clone_bound(
     return_is_bare_generic: bool,
     ret_name: String,
     body_is_param_ref: bool,
+    ret: Rc<Node>,
+    bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
+    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<String>> {
     Rc::new({
         let mut __result = Vec::new();
         for g in generic_param_names.clone().iter().cloned() {
-            if v1_type_param_needs_clone_bound(
+            if (v1_type_param_needs_clone_bound(
                 g.clone(),
                 return_is_bare_generic.clone(),
                 ret_name.clone(),
                 body_is_param_ref.clone(),
                 value_params.clone(),
                 source_indices.clone(),
-            ) {
+            ) || v1_fn_param_wf_needs_clone(
+                g.clone(),
+                value_params.clone(),
+                ret.clone(),
+                bounds.clone(),
+                type_decl_items.clone(),
+                source_indices.clone(),
+            )) {
                 __result.push(g);
             }
         }
@@ -378,24 +406,523 @@ pub fn v1_item_type_param_needs_clone_bound_struct(
     }
 }
 
-pub fn v1_generic_params_needing_clone_bound_for_struct_item(
-    generic_param_names: Rc<Vec<String>>,
-    field_type_exprs: Rc<Vec<Rc<Node>>>,
+pub fn v1_wf_child_type_node(
+    ch: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Node> {
+    {
+        let resolved = child_type_node(ch.clone());
+        if (authored_name_at(source_indices.clone(), resolved.clone()) != "".to_string()) {
+            resolved.clone()
+        } else {
+            ch.clone()
+        }
+    }
+}
+
+pub fn v1_type_expr_is_bare_param(
+    param_name: String,
+    type_expr: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    (((authored_name_at(source_indices.clone(), type_expr.clone()) == param_name.clone())
+        && (type_expr.connective.clone() == Connective::NoConnective))
+        && ((type_expr.children.clone().len() as i64) == 0))
+}
+
+pub fn v1_type_expr_head_is_known(
+    name: String,
+    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+) -> bool {
+    (is_container_type(name.clone()) || (v1_rt::map_get(&type_decl_items, name.clone()) != None))
+}
+
+pub fn v1_type_expr_clone_undecided_head(
+    type_expr: Rc<Node>,
+    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let name = authored_name_at(source_indices.clone(), type_expr.clone());
+        if ((type_expr.children.clone().len() as i64) == 0) {
+            "".to_string()
+        } else {
+            if v1_type_expr_head_is_known(name.clone(), type_decl_items.clone()) {
+                type_expr.children.clone().iter().cloned().fold(
+                    "".to_string(),
+                    |acc: String, c: Rc<Node>| {
+                        if (acc.clone() != "".to_string()) {
+                            acc.clone()
+                        } else {
+                            v1_type_expr_clone_undecided_head(
+                                child_type_node(c.clone()),
+                                type_decl_items.clone(),
+                                source_indices.clone(),
+                            )
+                        }
+                    },
+                )
+            } else {
+                name.clone()
+            }
+        }
+    })
+}
+
+pub fn v1_type_expr_clone_impl_needs_param(
+    param_name: String,
+    type_expr: Rc<Node>,
+    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let name = authored_name_at(source_indices.clone(), type_expr.clone());
+        if v1_type_expr_is_bare_param(
+            param_name.clone(),
+            type_expr.clone(),
+            source_indices.clone(),
+        ) {
+            true
+        } else {
+            if ((type_expr.children.clone().len() as i64) == 0) {
+                false
+            } else {
+                if v1_type_expr_head_is_known(name.clone(), type_decl_items.clone()) {
+                    {
+                        let mut __found = false;
+                        for c in type_expr.children.clone().iter().cloned() {
+                            if v1_type_expr_clone_impl_needs_param(
+                                param_name.clone(),
+                                v1_wf_child_type_node(c.clone(), source_indices.clone()),
+                                type_decl_items.clone(),
+                                source_indices.clone(),
+                            ) {
+                                __found = true;
+                                break;
+                            }
+                        }
+                        __found
+                    }
+                } else {
+                    false
+                }
+            }
+        }
+    })
+}
+
+pub fn v1_declared_arg_positions_need_clone_param(
+    param_name: String,
+    decl_params: Rc<Vec<Rc<Node>>>,
+    type_args: Rc<Vec<Rc<Node>>>,
+    bound_params: Rc<BTreeSet<String>>,
+    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        match decl_params.clone().first().cloned() {
+            None => false,
+            Some(decl_param) => match type_args.clone().first().cloned() {
+                None => false,
+                Some(type_arg) => {
+                    let here = (v1_rt::set_contains(
+                        &bound_params,
+                        generic_param_name_at(decl_param.clone(), source_indices.clone()),
+                    ) && v1_type_expr_clone_impl_needs_param(
+                        param_name.clone(),
+                        v1_wf_child_type_node(type_arg.clone(), source_indices.clone()),
+                        type_decl_items.clone(),
+                        source_indices.clone(),
+                    ));
+                    (here.clone()
+                        || v1_declared_arg_positions_need_clone_param(
+                            param_name.clone(),
+                            Rc::new(
+                                decl_params
+                                    .clone()
+                                    .iter()
+                                    .cloned()
+                                    .skip(1 as usize)
+                                    .collect::<Vec<_>>(),
+                            ),
+                            Rc::new(
+                                type_args
+                                    .clone()
+                                    .iter()
+                                    .cloned()
+                                    .skip(1 as usize)
+                                    .collect::<Vec<_>>(),
+                            ),
+                            bound_params.clone(),
+                            type_decl_items.clone(),
+                            source_indices.clone(),
+                        ))
+                }
+            },
+        }
+    })
+}
+
+pub fn v1_type_expr_wf_needs_clone_param(
+    param_name: String,
+    type_expr: Rc<Node>,
+    bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
+    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let name = authored_name_at(source_indices.clone(), type_expr.clone());
+        if ((type_expr.children.clone().len() as i64) == 0) {
+            false
+        } else {
+            {
+                let nested = {
+                    let mut __found = false;
+                    for c in type_expr.children.clone().iter().cloned() {
+                        if v1_type_expr_wf_needs_clone_param(
+                            param_name.clone(),
+                            v1_wf_child_type_node(c.clone(), source_indices.clone()),
+                            bounds.clone(),
+                            type_decl_items.clone(),
+                            source_indices.clone(),
+                        ) {
+                            __found = true;
+                            break;
+                        }
+                    }
+                    __found
+                };
+                match v1_rt::map_get(&type_decl_items, name.clone()) {
+                    Some(decl) => {
+                        let bound_params = match v1_rt::map_get(&bounds, name.clone()) {
+                            Some(s) => s.clone(),
+                            None => v1_rt::rc_empty_set::<String>(),
+                        };
+                        (nested.clone()
+                            || v1_declared_arg_positions_need_clone_param(
+                                param_name.clone(),
+                                decl.params.clone(),
+                                type_expr.children.clone(),
+                                bound_params.clone(),
+                                type_decl_items.clone(),
+                                source_indices.clone(),
+                            ))
+                    }
+                    None => nested.clone(),
+                }
+            }
+        }
+    })
+}
+
+pub fn v1_item_field_type_exprs(item: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
+    if is_coproduct_type(item.clone()) {
+        Rc::new({
+            let mut __result = Vec::new();
+            for variant in item.children.clone().iter().cloned() {
+                __result.extend(
+                    (*Rc::new({
+                        let mut __result = Vec::new();
+                        for f in variant.children.clone().iter().cloned() {
+                            __result.push(child_type_node(f.clone()));
+                        }
+                        __result
+                    }))
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        })
+    } else {
+        Rc::new({
+            let mut __result = Vec::new();
+            for f in item.children.clone().iter().cloned() {
+                __result.push(child_type_node(f.clone()));
+            }
+            __result
+        })
+    }
+}
+
+pub fn v1_item_param_wf_needs_clone(
+    param_name: String,
+    item: Rc<Node>,
+    bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
+    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    {
+        let mut __found = false;
+        for te in v1_item_field_type_exprs(item.clone()).iter().cloned() {
+            if v1_type_expr_wf_needs_clone_param(
+                param_name.clone(),
+                te.clone(),
+                bounds.clone(),
+                type_decl_items.clone(),
+                source_indices.clone(),
+            ) {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    }
+}
+
+pub fn v1_fn_param_wf_needs_clone(
+    param_name: String,
+    value_params: Rc<Vec<Rc<Node>>>,
+    ret: Rc<Node>,
+    bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
+    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    ({
+        let mut __found = false;
+        for vp in value_params.clone().iter().cloned() {
+            if v1_type_expr_wf_needs_clone_param(
+                param_name.clone(),
+                param_node_type_expr(vp.clone()),
+                bounds.clone(),
+                type_decl_items.clone(),
+                source_indices.clone(),
+            ) {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    } || v1_type_expr_wf_needs_clone_param(
+        param_name.clone(),
+        ret.clone(),
+        bounds.clone(),
+        type_decl_items.clone(),
+        source_indices.clone(),
+    ))
+}
+
+pub fn v1_item_clone_undecided_head(
+    item: Rc<Node>,
+    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    v1_item_field_type_exprs(item.clone()).iter().cloned().fold(
+        "".to_string(),
+        |acc: String, te: Rc<Node>| {
+            if (acc.clone() != "".to_string()) {
+                acc.clone()
+            } else {
+                v1_type_expr_clone_undecided_head(
+                    te.clone(),
+                    type_decl_items.clone(),
+                    source_indices.clone(),
+                )
+            }
+        },
+    )
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct CloneBoundRound {
+    pub bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
+    pub added: i64,
+}
+
+pub fn v1_clone_bound_round_add(
+    round: Rc<CloneBoundRound>,
+    type_name: String,
+    param_name: String,
+) -> Rc<CloneBoundRound> {
+    {
+        let current = match v1_rt::map_get(&round.bounds.clone(), type_name.clone()) {
+            Some(s) => s.clone(),
+            None => v1_rt::rc_empty_set::<String>(),
+        };
+        if v1_rt::set_contains(&current, param_name.clone()) {
+            round.clone()
+        } else {
+            Rc::new(CloneBoundRound {
+                bounds: v1_rt::rc_map_insert(
+                    round.bounds.clone(),
+                    type_name.clone(),
+                    v1_rt::rc_set_insert(current.clone(), param_name.clone()),
+                ),
+                added: (round.added.clone() + 1),
+            })
+        }
+    }
+}
+
+pub fn v1_clone_bound_round_for_item(
+    round: Rc<CloneBoundRound>,
+    type_name: String,
+    item: Rc<Node>,
+    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<CloneBoundRound> {
+    item.params.clone().iter().cloned().fold(
+        round.clone(),
+        |acc: Rc<CloneBoundRound>, p: Rc<Node>| {
+            let param_name = generic_param_name_at(p.clone(), source_indices.clone());
+            if v1_item_param_wf_needs_clone(
+                param_name.clone(),
+                item.clone(),
+                acc.bounds.clone(),
+                type_decl_items.clone(),
+                source_indices.clone(),
+            ) {
+                v1_clone_bound_round_add(acc.clone(), type_name.clone(), param_name.clone())
+            } else {
+                acc.clone()
+            }
+        },
+    )
+}
+
+pub fn v1_clone_bound_seed_for_item(
+    round: Rc<CloneBoundRound>,
+    type_name: String,
+    item: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<CloneBoundRound> {
+    if is_coproduct_type(item.clone()) {
+        round
+    } else {
+        {
+            let field_type_exprs = v1_item_field_type_exprs(item.clone());
+            item.params.clone().iter().cloned().fold(
+                round,
+                |acc: Rc<CloneBoundRound>, p: Rc<Node>| {
+                    let param_name = generic_param_name_at(p.clone(), source_indices.clone());
+                    if v1_item_type_param_needs_clone_bound_struct(
+                        param_name.clone(),
+                        field_type_exprs.clone(),
+                        source_indices.clone(),
+                    ) {
+                        v1_clone_bound_round_add(acc.clone(), type_name.clone(), param_name.clone())
+                    } else {
+                        acc.clone()
+                    }
+                },
+            )
+        }
+    }
+}
+
+pub fn v1_clone_bound_fixpoint_loop(
+    mut generic_type_names: Rc<Vec<String>>,
+    mut type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    mut bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
+    mut remaining: i64,
+    mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<HashMap<String, Rc<BTreeSet<String>>>> {
+    loop {
+        if (remaining.clone() <= 0) {
+            break bounds;
+        } else {
+            let round = generic_type_names.clone().iter().cloned().fold(
+                Rc::new(CloneBoundRound {
+                    bounds: bounds,
+                    added: 0,
+                }),
+                |acc: Rc<CloneBoundRound>, type_name: String| match v1_rt::map_get(
+                    &type_decl_items,
+                    type_name.clone(),
+                ) {
+                    Some(item) => v1_clone_bound_round_for_item(
+                        acc.clone(),
+                        type_name.clone(),
+                        item.clone(),
+                        type_decl_items.clone(),
+                        source_indices.clone(),
+                    ),
+                    None => acc.clone(),
+                },
+            );
+            if (round.added.clone() == 0) {
+                break round.bounds.clone();
+            } else {
+                {
+                    let __tco_0 = round.bounds.clone();
+                    let __tco_1 = (remaining - 1);
+                    bounds = __tco_0;
+                    remaining = __tco_1;
+                    continue;
+                }
+            }
+        }
+    }
+}
+
+pub fn v1_generic_declared_type_names(
+    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
 ) -> Rc<Vec<String>> {
     Rc::new({
         let mut __result = Vec::new();
-        for g in generic_param_names.clone().iter().cloned() {
-            if v1_item_type_param_needs_clone_bound_struct(
-                g.clone(),
-                field_type_exprs.clone(),
-                source_indices.clone(),
-            ) {
-                __result.push(g);
+        for n in Rc::new(v1_rt::map_keys(&type_decl_items)).iter().cloned() {
+            if match v1_rt::map_get(&type_decl_items, n.clone()) {
+                Some(item) => ((item.params.clone().len() as i64) > 0),
+                None => false,
+            } {
+                __result.push(n);
             }
         }
         __result
     })
+}
+
+pub fn v1_clone_bounded_type_params(
+    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<HashMap<String, Rc<BTreeSet<String>>>> {
+    {
+        let generic_type_names = v1_generic_declared_type_names(type_decl_items.clone());
+        let seeded = generic_type_names.clone().iter().cloned().fold(
+            Rc::new(CloneBoundRound {
+                bounds: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
+                added: 0,
+            }),
+            |acc: Rc<CloneBoundRound>, type_name: String| match v1_rt::map_get(
+                &type_decl_items,
+                type_name.clone(),
+            ) {
+                Some(item) => v1_clone_bound_seed_for_item(
+                    acc.clone(),
+                    type_name.clone(),
+                    item.clone(),
+                    source_indices.clone(),
+                ),
+                None => acc.clone(),
+            },
+        );
+        v1_clone_bound_fixpoint_loop(
+            generic_type_names.clone(),
+            type_decl_items.clone(),
+            seeded.bounds.clone(),
+            ((generic_type_names.clone().len() as i64) + 1),
+            source_indices.clone(),
+        )
+    }
+}
+
+pub fn v1_item_clone_bounded_param_names(
+    item_name: String,
+    generic_param_names: Rc<Vec<String>>,
+    bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
+) -> Rc<Vec<String>> {
+    match v1_rt::map_get(&bounds, item_name.clone()) {
+        Some(s) => Rc::new({
+            let mut __result = Vec::new();
+            for g in generic_param_names.clone().iter().cloned() {
+                if v1_rt::set_contains(&s, g.clone()) {
+                    __result.push(g);
+                }
+            }
+            __result
+        }),
+        None => Rc::new(vec![]),
+    }
 }
 
 pub fn v1_emit_type_params_with_clone_bounds(

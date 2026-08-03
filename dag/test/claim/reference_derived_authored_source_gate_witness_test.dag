@@ -1,0 +1,31 @@
+module test.claim.reference_derived_authored_source_gate_witness_test
+
+data reference_derived_authored_source_gate_witness_note: String = "Discriminating controls for the authored-source gate law inside reference_derived_use_lines (production authority: v1.compiler.emit_rust.reference_derived_candidate_spelled_in_module). Floor compile-clean's witness_layer_roots do not close over src/v1, so this witness cannot import that module without an unresolved-import hard diagnostic; the oracle below is the same total predicate (module_source != \"\" && string_contains) and must stay identical to the production fn. GREEN: a name spelled in module source is admitted. RED: AuthoredTokenOrdinal-shaped over-collection against an http_path-like source that never mentions it is refused — the exact fabrication that previously emitted pub use crate::std_occurrence_binding_candidates::AuthoredTokenOrdinal from std.http_path with no .dag authority. Empty source refuses all (fail-closed). Integration receipt (quiet-hawk): regen without hand-pinning std_http_path.rs on a tree that enrolls occurrence-binding candidates must leave AuthoredTokenOrdinal absent, and the generated stage0 crate must build green. Dissolve-on: (1) derive use-lines from BoundReferenceProvider / P2a candidate-producer — this text-presence gate is interim; (2) floor compile-clean closes over src/v1 for this import OR the predicate lives in a dag-reachable shared module — then delete the local oracle and import the production symbol."
+
+fn authored_source_gate_oracle(module_source: String, name: String) -> Bool {
+  module_source != "" && string_contains(s: module_source, pattern: name)
+}
+
+test fn authored_spelling_admits_candidate_holds() -> Bool {
+  authored_source_gate_oracle(
+    module_source: "type UrlPathToken = Segment | Slash\nfn join_path(parts: List<String>) -> String { parts }",
+    name: "UrlPathToken",
+  )
+}
+
+test fn unspelled_authored_token_ordinal_refused_holds() -> Bool {
+  !authored_source_gate_oracle(
+    module_source: "type UrlPathToken = Segment | Slash\nfn join_path(parts: List<String>) -> String { parts }",
+    name: "AuthoredTokenOrdinal",
+  )
+}
+
+test fn empty_module_source_refuses_all_holds() -> Bool {
+  !authored_source_gate_oracle(
+    module_source: "",
+    name: "AuthoredTokenOrdinal",
+  ) && !authored_source_gate_oracle(
+    module_source: "",
+    name: "UrlPathToken",
+  )
+}

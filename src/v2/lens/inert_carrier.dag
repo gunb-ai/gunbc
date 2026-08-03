@@ -1,6 +1,9 @@
 module v2.lens.inert_carrier
 
 import std.roster_frontier { FrontierRow, frontier_row, frontier_units }
+import std.disposition { RealizationDispatch }
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import v2.std.collection { fold_list }
 
 data inert_carrier_local_alias_roster_note: String = "Floor hygiene: roster LocalAlias for inert G1 fixture type in qualified_module_projection_stripped_fixture.dag (latent main gap; exposed by W1.2 broad affected set; not W3.1 reachability migration)."
 
@@ -14,7 +17,6 @@ data inert_carrier_roster: List<FrontierRow> = [
   inert_row(unit: "DownstreamSupportRoster", reason: "modeled downstream coverage-roster carrier from the extdeps modeling preflight (#7571): it is the declared home for support/coverage rows that an upstream module may not carry, and the plan text names it, but no module constructs or reads one yet"),
   inert_row(unit: "CargoDependency", reason: "modeled cargo-manifest carrier awaiting the emitted-crate-partition consumer"),
   inert_row(unit: "CargoPackage", reason: "modeled cargo-manifest carrier awaiting the emitted-crate-partition consumer"),
-  inert_row(unit: "CompileDiagnosticCensus", reason: "the census coproduct outlived its only production consumer: gunbc.compile_diagnostic_census deliberately deleted census_rows(c: CompileDiagnosticCensus) so that reading a row list out of the CensusNotRunnable arm became structurally unwritable (codex review 46144), and the surviving selectors all take List<CompileDiagnosticCensusRow>. Every remaining reference is the declaration itself or a witness, so the type is inert BY the construction climb rather than by being unfinished — correct, and awaiting the producer that matches on it"),
   inert_row(unit: "FloorWitnessRow", reason: "modeled floor-receipt carrier with no live consumer yet"),
   inert_row(unit: "FreeOutput", reason: "modeled output carrier with no live consumer yet"),
   inert_row(unit: "GcpProject", reason: "modeled gcp extdeps carrier with no live consumer yet"),

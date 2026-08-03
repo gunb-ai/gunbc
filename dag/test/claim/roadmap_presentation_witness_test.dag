@@ -22,7 +22,7 @@ import gunbc.worker_lifecycle {
   WorkerProcessEvidence, WorkerProcessExited, WorkerProcessRunning,
 }
 import gunbc.roadmap_presentation {
-  ActivityView, NoActiveWork, ActiveWork, ActiveWorkRefused,
+  ActivityView, NoActiveWork, ActiveWork, ActiveWorkRefused, LegacySupersedableAttempt,
   CompletedWork, ActivityUnobservable,
   WorkAttemptFacts, NoActiveAttempt, AttemptUnobservable,
   activity_view_of,
@@ -85,6 +85,7 @@ test fn witness_specimen_summary_states_consequence_and_next_obligation() -> Boo
         && match attention { ActivityRoutine => true ActivityAnomalous => false }
     NoActiveWork => false
     ActiveWorkRefused { summary: _, located_reason: _, evidence: _ } => false
+    LegacySupersedableAttempt { summary: _, located_reason: _, attempt_key: _, evidence: _ } => false
     CompletedWork { outcome: _, evidence: _ } => false
     ActivityUnobservable { reason: _ } => false
   }
@@ -99,6 +100,7 @@ test fn witness_specimen_evidence_rows_carry_raw_facts_as_evidence() -> Bool {
         && count(obligations) == 7
     NoActiveWork => false
     ActiveWorkRefused { summary: _, located_reason: _, evidence: _ } => false
+    LegacySupersedableAttempt { summary: _, located_reason: _, attempt_key: _, evidence: _ } => false
     CompletedWork { outcome: _, evidence: _ } => false
     ActivityUnobservable { reason: _ } => false
   }
@@ -121,6 +123,7 @@ test fn witness_agent_running_reads_as_working_not_completed() -> Bool {
       summary == "Agent working"
     NoActiveWork => false
     ActiveWorkRefused { summary: _, located_reason: _, evidence: _ } => false
+    LegacySupersedableAttempt { summary: _, located_reason: _, attempt_key: _, evidence: _ } => false
     CompletedWork { outcome: _, evidence: _ } => false
     ActivityUnobservable { reason: _ } => false
   }
@@ -144,6 +147,7 @@ test fn witness_refused_segment_projects_located_reason() -> Bool {
         && located_reason == "turn.completed with process unobserved: no exit was established"
     ActiveWork { summary: _, obligations: _, remaining_obligation_count: _, current_activity: _, attention: _, evidence: _ } => false
     NoActiveWork => false
+    LegacySupersedableAttempt { summary: _, located_reason: _, attempt_key: _, evidence: _ } => false
     CompletedWork { outcome: _, evidence: _ } => false
     ActivityUnobservable { reason: _ } => false
   }
@@ -164,6 +168,7 @@ test fn witness_failed_segment_is_anomalous_active_work() -> Bool {
         && match attention { ActivityAnomalous => true ActivityRoutine => false }
     NoActiveWork => false
     ActiveWorkRefused { summary: _, located_reason: _, evidence: _ } => false
+    LegacySupersedableAttempt { summary: _, located_reason: _, attempt_key: _, evidence: _ } => false
     CompletedWork { outcome: _, evidence: _ } => false
     ActivityUnobservable { reason: _ } => false
   }
@@ -205,6 +210,7 @@ test fn witness_no_attempt_projects_zero_furniture() -> Bool {
     NoActiveWork => true
     ActiveWork { summary: _, obligations: _, remaining_obligation_count: _, current_activity: _, attention: _, evidence: _ } => false
     ActiveWorkRefused { summary: _, located_reason: _, evidence: _ } => false
+    LegacySupersedableAttempt { summary: _, located_reason: _, attempt_key: _, evidence: _ } => false
     CompletedWork { outcome: _, evidence: _ } => false
     ActivityUnobservable { reason: _ } => false
   }
@@ -216,6 +222,7 @@ test fn witness_unobservable_preserves_located_reason() -> Bool {
     NoActiveWork => false
     ActiveWork { summary: _, obligations: _, remaining_obligation_count: _, current_activity: _, attention: _, evidence: _ } => false
     ActiveWorkRefused { summary: _, located_reason: _, evidence: _ } => false
+    LegacySupersedableAttempt { summary: _, located_reason: _, attempt_key: _, evidence: _ } => false
     CompletedWork { outcome: _, evidence: _ } => false
   }
 }
@@ -240,6 +247,7 @@ test fn witness_all_complete_ledger_is_terminal_not_active() -> Bool {
     ActiveWork { summary: _, obligations: _, remaining_obligation_count: _, current_activity: _, attention: _, evidence: _ } => false
     NoActiveWork => false
     ActiveWorkRefused { summary: _, located_reason: _, evidence: _ } => false
+    LegacySupersedableAttempt { summary: _, located_reason: _, attempt_key: _, evidence: _ } => false
     ActivityUnobservable { reason: _ } => false
   }
 }
@@ -406,7 +414,7 @@ test fn witness_work_row_view_composes_from_fixture() -> Bool {
     && match row.summary { Absent => true Present { value: _ } => false }
     && fold(row.supporting_facts, init: false, f: (acc, fact) => acc || fact.label == "sizing")
     && !fold(row.supporting_facts, init: false, f: (acc, fact) => acc || fact.label == "owner")
-    && match row.activity { NoActiveWork => true ActiveWork { summary: _, obligations: _, remaining_obligation_count: _, current_activity: _, attention: _, evidence: _ } => false ActiveWorkRefused { summary: _, located_reason: _, evidence: _ } => false CompletedWork { outcome: _, evidence: _ } => false ActivityUnobservable { reason: _ } => false }
+    && match row.activity { NoActiveWork => true ActiveWork { summary: _, obligations: _, remaining_obligation_count: _, current_activity: _, attention: _, evidence: _ } => false ActiveWorkRefused { summary: _, located_reason: _, evidence: _ } => false LegacySupersedableAttempt { summary: _, located_reason: _, attempt_key: _, evidence: _ } => false CompletedWork { outcome: _, evidence: _ } => false ActivityUnobservable { reason: _ } => false }
 }
 
 data scheduling_typed_position_note: String = "The scheduling axis discriminates by the SAME predicates spawn_frontier filters (operator blocker 2: ready was a caller-assertable Bool; now the position is projected, not asserted). The fixtures cover the five arms: a sized dependency-met node is Ready; a sized node under an open parent is Upcoming CARRYING that blocker; an unsized node is Unplanned (never conflated with Upcoming — it has no blockers to fabricate); a superseded line is Superseded whatever else holds; and the dependency line renders only for an Upcoming row with more than one blocker."

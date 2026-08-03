@@ -172,6 +172,19 @@ type InferredTree {
   facts: Map<Node, InferredFacts>
 }
 
+data infer_emit_shape_frontier_note: String = "Test-only emit-shape frontier (review 47246): empty facts map for orch-emit-compatible mock proofs (`orch_emit_facts_lookup`, `ingested_emit_shape_frontier_tree_from_source` in emit-host witnesses). Not a production carrier — production emit paths pass canonical infer output facts-flow-forward; erasing or relabeling infer judgments is forbidden (review 47234, review 47246). dissolve-on: v2-inferred-tree-completeness makes incomplete InferredTree unwritable on the production emit path."
+
+fn infer_emit_shape_frontier_inferred_tree(root: Node) -> InferredTree {
+  InferredTree {
+    root: root,
+    facts: Map {
+      lookup: fn(_key) {
+        Absent
+      }
+    }
+  }
+}
+
 type InferredFactsEntry {
   node: Node
   facts: InferredFacts

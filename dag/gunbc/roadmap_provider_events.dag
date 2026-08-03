@@ -459,16 +459,25 @@ fn provider_execution_fold_event(
         CodexThreadStarted => ProviderStarting { activity: "thread started" }
         CodexTurnStarted => ProviderRunning { activity: "agent started" }
         CodexItemStarted { activity } =>
-          ProviderRunning { activity: codex_item_activity_label(activity: activity) }
-        CodexItemCompleted { activity } =>
           ProviderRunning {
             activity: join(
-              [codex_item_activity_label(activity: activity), " completed"],
+              ["Agent working · ", codex_item_activity_label(activity: activity)],
               "",
             ),
           }
+        CodexItemCompleted { activity } =>
+          ProviderRunning {
+            activity: match activity {
+              CodexReporting => "Agent finishing"
+              _ =>
+                join(
+                  ["Agent working · ", codex_item_activity_label(activity: activity)],
+                  "",
+                ),
+            },
+          }
         CodexTurnCompleted =>
-          ProviderCompleted { activity: "agent turn completed" }
+          ProviderCompleted { activity: "Agent complete" }
         CodexTurnFailed =>
           ProviderFailed { activity: "agent turn failed", detail: event.raw }
         CodexError =>
@@ -534,11 +543,11 @@ fn provider_execution_state_label(state: ProviderExecutionState) -> String {
 
 fn provider_execution_activity(state: ProviderExecutionState) -> String {
   match state {
-    ProviderNotStarted => "waiting for provider events"
-    ProviderStarting { activity } => activity
+    ProviderNotStarted => "Agent waiting"
+    ProviderStarting { activity: _ } => "Agent working"
     ProviderRunning { activity } => activity
-    ProviderCompleted { activity } => activity
-    ProviderFailed { activity, detail: _ } => activity
+    ProviderCompleted { activity: _ } => "Agent complete"
+    ProviderFailed { activity: _, detail: _ } => "Agent failed"
     ProviderEventsRefused { activity, detail: _ } => activity
   }
 }

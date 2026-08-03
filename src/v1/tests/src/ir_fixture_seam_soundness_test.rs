@@ -85,6 +85,7 @@ fn strip_intern_table_from_fixture(cached: CachedResolvedGraph) -> CachedResolve
             emit_graph_info: graph.emit_graph_info.clone(),
         }),
         source_indices: cached.source_indices,
+        compile_clean_diags: cached.compile_clean_diags,
         content_digest: cached.content_digest,
         payload_byte_count: cached.payload_byte_count,
     }
@@ -133,6 +134,7 @@ fn remap_binding_intern_name_mismatch(cached: CachedResolvedGraph) -> CachedReso
             emit_graph_info: graph.emit_graph_info.clone(),
         }),
         source_indices: cached.source_indices,
+        compile_clean_diags: cached.compile_clean_diags,
         content_digest: cached.content_digest,
         payload_byte_count: cached.payload_byte_count,
     }

@@ -134,19 +134,52 @@ test fn witness_archetype_verbs_match_declared_elements() -> Bool {
 
 data header_wordmark_witness_note: String = "Replaced witness_header_carries_shared_mark at A1 (presentation recon, operator-signed 2026-08-01): the header's brand element is the TEXT wordmark, not the site mark — the mark that stood here was gunbc.site.mark candidate A, an unselected brand experiment whose aria-label said gunb.ai on a gunbc tool surface (rationale on gunbc.roadmap_page.roadmap_wordmark_note). The structural claim is the same shape as before: the header Fragment contains the exact wordmark node, on both page instantiations."
 
-fn header_children_contain_wordmark(h: Fragment) -> Bool {
+data header_frame_scan_note: String = "Amended for the A2 hierarchy closeout: the header's children now sit inside one div.header-inner composition frame (header_composition_frame_note — header and content share the page measure), so the wordmark no longer sits at direct-child depth. The scan is a RECURSIVE descent over the header's Fragment subtree, not a depth-pinned adjacency check: the CLAIM is 'the header carries the wordmark', and a fixed depth constant would only be the accidental nesting pinned one level looser — the same re-pin the A1 header note warns against, and it would red spuriously the next time a wrapper lands. Descent is on the Fragment sub-value relation (a node's children), so it terminates on the tree it walks (the std.layout render_go shape)."
+
+fn fragment_is_wordmark(c: Fragment) -> Bool {
+  c == el_class("span", "wordmark", [ txt("gunbc") ])
+}
+
+fn subtree_carries_wordmark(f: Fragment) -> Bool {
+  fragment_is_wordmark(c: f)
+    || (match f {
+      Element { tag: _, attributes: _, children } =>
+        fold(children, init: false, f: (acc, c) => acc || subtree_carries_wordmark(f: c))
+      FragmentText { content: _ } => false
+      RawNode { content: _ } => false
+    })
+}
+
+fn header_subtree_carries_wordmark(h: Fragment) -> Bool {
   match h {
     Element { tag, attributes: _, children } =>
       tag == "header"
-        && fold(children, init: false, f: (acc, c) => acc || c == el_class("span", "wordmark", [ txt("gunbc") ]))
+        && fold(children, init: false, f: (acc, c) => acc || subtree_carries_wordmark(f: c))
     FragmentText { content: _ } => false
     RawNode { content: _ } => false
   }
 }
 
 test fn witness_header_carries_wordmark() -> Bool {
-  header_children_contain_wordmark(h: roadmap_header(page: "roadmap"))
-    && header_children_contain_wordmark(h: roadmap_header(page: "daily workspace"))
+  header_subtree_carries_wordmark(h: roadmap_header(page: "roadmap"))
+    && header_subtree_carries_wordmark(h: roadmap_header(page: "daily workspace"))
+}
+
+data header_scan_discrimination_note: String = "An unbounded subtree search buys depth-independence at the cost of being easy to satisfy, so it owes a control proving the two bounds it still holds. Arm 1: the scan matches the wordmark NODE, not its text — a header carrying the bare string 'gunbc' at any depth is not a wordmark. Arm 2: the header tag guard still bites — the exact wordmark node under a non-header root does not satisfy 'the HEADER carries it'. Without both arms an always-true search would read identically to the real claim."
+
+test fn witness_header_wordmark_scan_discriminates() -> Bool {
+  !header_subtree_carries_wordmark(h: Element {
+    tag: "header",
+    attributes: [],
+    children: [
+      Element { tag: "div", attributes: [], children: [ txt("gunbc") ] },
+    ],
+  })
+    && !header_subtree_carries_wordmark(h: Element {
+      tag: "div",
+      attributes: [],
+      children: [ el_class("span", "wordmark", [ txt("gunbc") ]) ],
+    })
 }
 
 fn theme_with_role_material(t: Theme, target: ThemeRole, m: Material) -> Theme {

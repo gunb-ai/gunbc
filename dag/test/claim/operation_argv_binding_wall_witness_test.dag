@@ -121,6 +121,38 @@ test fn operation_argv_declared_default_is_read_from_the_declaration() -> Bool {
   ) == "git diff origin/main HEAD"
 }
 
+test fn git_fetch_no_tags_materializes_its_typed_stall_deadline() -> Bool {
+  argv_text(
+    m: shell_materialize_operation_argv(
+      git_path,
+      git_service,
+      "FetchNoTags",
+      [
+        operation_argv_bind_text(name: "remote", text: "origin"),
+        operation_argv_bind_text(name: "ref", text: "main"),
+        operation_argv_bind_text(name: "stall_deadline_seconds", text: "240")
+      ]
+    )
+  ) == "git -c http.lowSpeedLimit=1 -c http.lowSpeedTime=240 fetch --no-tags origin main"
+}
+
+test fn git_fetch_no_tags_RED_missing_stall_deadline_is_refused() -> Bool {
+  string_contains(
+    operation_argv_refusal_label(
+      m: shell_materialize_operation_argv(
+        git_path,
+        git_service,
+        "FetchNoTags",
+        [
+          operation_argv_bind_text(name: "remote", text: "origin"),
+          operation_argv_bind_text(name: "ref", text: "main")
+        ]
+      )
+    ),
+    "DeclaredInputUnbound:stall_deadline_seconds"
+  )
+}
+
 test fn operation_argv_list_valued_input_expands_to_tokens() -> Bool {
   argv_text(
     m: shell_materialize_operation_argv(

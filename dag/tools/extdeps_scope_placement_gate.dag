@@ -1,7 +1,7 @@
 module tools.extdeps_scope_placement_gate
 
 import std.types { GitRef, List, String }
-import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import extdeps.filesystem.filesystem_io
 import extdeps.git {
   DiffAddedStatus, DiffCopiedStatus, DiffRenamedStatus,
@@ -16,22 +16,19 @@ import gunbc.extdeps_scope_frontier {
   scope_placement_refused_paths, manifest_freeze_holds,
   manifest_line_observation,
   ManifestLineObservation, ManifestUntouched, ManifestIntroduced, ManifestLinesAdded, ManifestDiffUnreadable,
-  PostFreezeObservation, PostFreezeAdded, PostFreezeDiffFailed, PostFreezeParseTruncated,
+  DiffAddedObservation, AddedPathsObserved, DiffObserveFailed, DiffParseTruncated,
 }
 
-data extdeps_scope_placement_gate_note: String = "Server-side per-PR wall for the ExternalModelScope disk-to-roster direction (codex review 46281; modeled on the publication placement gate pattern, whose own gate was deleted by operator ruling in #7591 — this gate is independent and remains). It diffs gunbc.extdeps_scope_frontier legacy_manifest_freeze_sha to HEAD with git.Core.DiffNameStatus, collects Added/Copied/Renamed paths, and refuses when (a) an added dag/extdeps .dag file is in neither scope_carrier_paths nor scope_machinery_exempt_paths (scope_placement_refused_paths — the frozen manifest is deliberately NOT an admission channel for a new file), (b) any frozen-manifest row names a post-freeze-added file (manifest_freeze_holds — the smuggling channel), or (c) the change itself ADDS a line to the manifest (manifest_line_observation folded to a verdict by manifest_remove_only_exit, over git.Core.DiffUnified0 against origin/main merge-base — the remove-only lifecycle made mechanical, codex review 46378; the sole admitted arm is the manifest file absent at the merge base, i.e. the PR that first introduces it, unforgeable once it exists on main). Diff failure and parse truncation are refusals, never skips. Diff-grain keeps the legacy population green by construction: only paths the change itself introduces are judged, so this gate never retroactively reds the frozen manifest population. The wet live-cover witness (dag/test/claim/external_model_scope_live_cover_witness_test.dag) remains the whole-population re-verification. This gate dissolves with the whole storage-grain frontier into the v2.lens.mandatory_tag region promotion (compile-grain, module-name grain)."
+data extdeps_scope_placement_gate_note: String = "Server-side per-PR wall for the ExternalModelScope disk-to-roster direction (codex review 46281; modeled on the publication placement gate pattern, whose own gate was deleted by operator ruling in #7591 — this gate is independent and remains). It collects Added/Copied/Renamed paths with git.Core.DiffNameStatus at TWO bases, one per question (scope_placement_base_split_note), and refuses when (a) a dag/extdeps .dag file added by THIS CHANGE — the merge base origin/main...HEAD — is in neither scope_carrier_paths nor scope_machinery_exempt_paths (scope_placement_refused_paths — the frozen manifest is deliberately NOT an admission channel for a new file), (b) any frozen-manifest row names a file added after the freeze anchor, read over the whole post-freeze population at legacy_manifest_freeze_sha..HEAD (manifest_freeze_holds — the smuggling channel), or (c) the change itself ADDS a line to the manifest (manifest_line_observation folded to a verdict by manifest_remove_only_exit, over git.Core.DiffUnified0 against origin/main merge-base — the remove-only lifecycle made mechanical, codex review 46378; the sole admitted arm is the manifest file absent at the merge base, i.e. the PR that first introduces it, unforgeable once it exists on main). Diff failure and parse truncation are refusals, never skips. Merge-base grain on the membership arm is what makes the refusal attributable: only paths the change itself introduces are judged there, so this gate neither retroactively reds the frozen manifest population nor blocks a lane for a file some other lane landed. The wet live-cover witness (dag/test/claim/external_model_scope_live_cover_witness_test.dag) remains the whole-population re-verification. This gate dissolves with the whole storage-grain frontier into the v2.lens.mandatory_tag region promotion (compile-grain, module-name grain)."
 
-fn scope_placement_added_paths() -> PostFreezeObservation {
-  let diff = git.Core.DiffNameStatus(
-    base: legacy_manifest_freeze_sha as GitRef,
-    head: "HEAD" as GitRef,
-    range: TwoDot,
-  )
-  if diff.success {
-    match git_diff_name_status_parse(raw: diff.raw) {
-      GitDiffNameStatusTruncated { pending: _, entries: _ } => PostFreezeParseTruncated
+data diff_added_observation_note: String = "ONE fold over a name-status diff, read at two different bases (DESIGN section 2 horizontal: one concept, every breadth). The base is the caller's parameter because WHICH base answers WHICH question is a workflow fact, not a property of the git operation (DESIGN section 3: business policy must not fuse into the extdeps interface)."
+
+fn diff_added_paths_observation(success: Bool, raw: String) -> DiffAddedObservation {
+  if success {
+    match git_diff_name_status_parse(raw: raw) {
+      GitDiffNameStatusTruncated { pending: _, entries: _ } => DiffParseTruncated
       GitDiffNameStatusComplete { entries: entries } =>
-        PostFreezeAdded {
+        AddedPathsObserved {
           paths: fold(entries, init: [], f: fn(acc, entry) {
             match entry.status {
               DiffAddedStatus => concat(acc, [entry.path])
@@ -43,8 +40,26 @@ fn scope_placement_added_paths() -> PostFreezeObservation {
         }
     }
   } else {
-    PostFreezeDiffFailed
+    DiffObserveFailed
   }
+}
+
+fn scope_placement_added_paths() -> DiffAddedObservation {
+  let diff = git.Core.DiffNameStatus(
+    base: legacy_manifest_freeze_sha as GitRef,
+    head: "HEAD" as GitRef,
+    range: TwoDot,
+  )
+  diff_added_paths_observation(success: diff.success, raw: diff.raw)
+}
+
+fn scope_placement_change_added_paths() -> DiffAddedObservation {
+  let diff = git.Core.DiffNameStatus(
+    base: "origin/main" as GitRef,
+    head: "HEAD" as GitRef,
+    range: ThreeDot,
+  )
+  diff_added_paths_observation(success: diff.success, raw: diff.raw)
 }
 
 data manifest_remove_only_exit_note: String = "THE one verdict surface over ManifestLineObservation (codex review 46387: a parallel Bool predicate beside this match was two verdict authorities — deleted; the hermetic witness controls and the wet gate both route through THIS fn)."
@@ -80,45 +95,94 @@ fn manifest_remove_only_verdict() -> ProcessExit {
   }
 }
 
-fn scope_placement_gate_verdict(observation: PostFreezeObservation) -> ProcessExit {
+data scope_placement_base_split_note: String = "The two arms read DIFFERENT bases because they answer different questions (the defect this splits, gunbc#7644 diagnosis): the PLACEMENT arm asks 'does THIS CHANGE introduce an unrostered dag/extdeps file', which is the merge base origin/main...HEAD; the FREEZE arm asks 'does any manifest row name a file created after the freeze anchor', which is inherently the whole post-freeze population and therefore stays at legacy_manifest_freeze_sha..HEAD. Before the split both arms read the freeze base, so ONE unrostered file merged to main refused EVERY branch — the party blocked was never the party at fault (gunbc#7573 added dag/extdeps/session_dashboard.dag eleven seconds after the gate landed, its own CI ran against a gate-less base, and main then refused ten consecutive runs while unrelated lanes burned sessions proving the red was not theirs). DECLARED COVERAGE NARROWING (DESIGN section 4b meta-obligation 3, no silent regression): the freeze-base placement read incidentally re-verified roster membership over the WHOLE post-freeze population on every run; the merge-base read does not, so a file that reaches main unrostered is no longer re-refused per-PR. Bounded population: dag/extdeps .dag files added after legacy_manifest_freeze_sha whose introducing PR never executed this gate — reachable only when the gate itself changes between a PR's last CI run and its merge. Residual detection: the wet live-cover witness (test.claim.external_model_scope_live_cover_witness) still walks disk and re-verifies the whole population under its documented local recipe, and the manifest-smuggling class keeps whole-population coverage here because the freeze arm is unchanged. Restoration trigger: the v2.lens.mandatory_tag region promotion, which replaces this storage-grain gate with a compile-grain wall over every module and makes the population question structural rather than diffed."
+
+fn scope_placement_membership_verdict(observation: DiffAddedObservation) -> ProcessExit {
   match observation {
-    PostFreezeDiffFailed => exit_failure(
-      reason: "extdeps scope placement gate: git.Core.DiffNameStatus(freeze..HEAD) failed — refusing, never skipping (DESIGN section 5)"
+    DiffObserveFailed => exit_failure(
+      reason: "extdeps scope placement gate: git.Core.DiffNameStatus(origin/main...HEAD) failed — refusing, never skipping (DESIGN section 5)"
     )
-    PostFreezeParseTruncated => exit_failure(
-      reason: "extdeps scope placement gate: diff parse truncated — refusing, never skipping (DESIGN section 5)"
+    DiffParseTruncated => exit_failure(
+      reason: "extdeps scope placement gate: merge-base diff parse truncated — refusing, never skipping (DESIGN section 5)"
     )
-    PostFreezeAdded { paths: added } => {
+    AddedPathsObserved { paths: added } => {
       let refused = scope_placement_refused_paths(
         added: added,
         carriers: scope_carrier_paths,
         machinery: scope_machinery_exempt_paths,
       )
-      let manifest = parse_frontier_manifest(
-        content: filesystem_read(path: legacy_extdeps_scope_frontier_manifest_path).content
-      )
       if (refused |> count) > 0 {
         exit_failure(
           reason: concat(
-            "extdeps scope placement gate: added dag/extdeps file(s) enrolled in neither scope_carrier_paths nor scope_machinery_exempt_paths (a new extdeps module must declare extdeps_model_scope: ExternalModelScope and join scope_carrier_paths, or be genuinely citation/mock machinery; the frozen legacy manifest is not a landing state): ",
+            "extdeps scope placement gate: THIS CHANGE adds dag/extdeps file(s) enrolled in neither scope_carrier_paths nor scope_machinery_exempt_paths (a new extdeps module must declare extdeps_model_scope: ExternalModelScope and join scope_carrier_paths, or be genuinely citation/mock machinery; the frozen legacy manifest is not a landing state): ",
             join(refused, ", ")
           )
         )
       } else {
-        if manifest_freeze_holds(manifest: manifest, observation: PostFreezeAdded { paths: added }) {
-          manifest_remove_only_verdict()
-        } else {
-          exit_failure(
-            reason: "extdeps scope placement gate: a frozen-manifest row names a file added after legacy_manifest_freeze_sha — the manifest is remove-only and a new module cannot be smuggled into the legacy population"
-          )
-        }
+        ExitSuccess
+      }
+    }
+  }
+}
+
+fn scope_placement_freeze_verdict(observation: DiffAddedObservation) -> ProcessExit {
+  match observation {
+    DiffObserveFailed => exit_failure(
+      reason: "extdeps scope placement gate: git.Core.DiffNameStatus(freeze..HEAD) failed — refusing, never skipping (DESIGN section 5)"
+    )
+    DiffParseTruncated => exit_failure(
+      reason: "extdeps scope placement gate: freeze-base diff parse truncated — refusing, never skipping (DESIGN section 5)"
+    )
+    AddedPathsObserved { paths: added } => {
+      let manifest = parse_frontier_manifest(
+        content: filesystem_read(path: legacy_extdeps_scope_frontier_manifest_path).content
+      )
+      if manifest_freeze_holds(manifest: manifest, observation: AddedPathsObserved { paths: added }) {
+        ExitSuccess
+      } else {
+        exit_failure(
+          reason: "extdeps scope placement gate: a frozen-manifest row names a file added after legacy_manifest_freeze_sha — the manifest is remove-only and a new module cannot be smuggled into the legacy population"
+        )
+      }
+    }
+  }
+}
+
+fn scope_placement_gate_verdict(
+  change_observation: DiffAddedObservation,
+  freeze_observation: DiffAddedObservation,
+) -> ProcessExit {
+  let membership = scope_placement_membership_verdict(observation: change_observation)
+  match membership {
+    ExitFailure { code: _, reason: _ } => membership
+    ExitSuccess => {
+      let freeze = scope_placement_freeze_verdict(observation: freeze_observation)
+      match freeze {
+        ExitFailure { code: _, reason: _ } => freeze
+        ExitSuccess => manifest_remove_only_verdict()
       }
     }
   }
 }
 
 func run_extdeps_scope_placement_gate_body() -> ProcessExit {
-  scope_placement_gate_verdict(observation: scope_placement_added_paths())
+  scope_placement_gate_verdict(
+    change_observation: scope_placement_change_added_paths(),
+    freeze_observation: scope_placement_added_paths(),
+  )
+}
+
+data scope_placement_failure_receipt_note: String = "The loudness half (gunbc#7644 diagnosis): the floor witness collapses this gate's ProcessExit to Bool via tools.ci_gates.exit_ok, so ten consecutive main runs reported the bare string 'returned Bool(false)' and named neither the refusing arm nor the offending path — the located diagnostic scope_placement_gate_verdict already builds was discarded one frame above it. This projects the SAME verdict (one authority, never a second decision path) into the claim_executor failure-receipt companion channel, the mechanism v2.std.native_agreement established for exactly this class."
+
+fn scope_placement_failure_reason(exit: ProcessExit) -> String {
+  match exit {
+    ExitSuccess => ""
+    ExitFailure { code: _, reason: reason } => reason
+  }
+}
+
+func scope_placement_failure_receipt() -> String {
+  scope_placement_failure_reason(exit: run_extdeps_scope_placement_gate_body())
 }
 
 func main() -> ProcessExit {

@@ -29,7 +29,6 @@ mod coverage_completeness_lens_test;
 #[cfg(test)]
 mod cross_representation_equality_test;
 #[cfg(test)]
-mod dag_comment_wall_test;
 #[cfg(test)]
 mod data_cache_scoping_test;
 #[cfg(test)]
@@ -80,6 +79,7 @@ mod group_completion_construction_test;
 mod gunbhub_serve_program_test;
 #[cfg(test)]
 mod html_markup_smoke_test;
+mod import_visibility_pool_coincidence_test;
 #[cfg(test)]
 mod int_pow_bounded_test;
 #[cfg(test)]

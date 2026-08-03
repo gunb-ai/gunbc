@@ -2,12 +2,24 @@ module test.claim.merge_admission_attempt_witness
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { NonEmptyStr, CommitSha, String }
-import extdeps.git.object_store { GitObjectId, git_object_id_eq, git_object_id_wire_hex }
+import extdeps.git.object_store { GitObjectId, git_object_id_eq, git_object_id_wire_hex, git_sha1_object_id }
 import extdeps.github.checks { Success, Failure }
-import gunbc.merge_admission {
+import tools.merge_admission_walk { merge_admission_fetch_stall_deadline_seconds }
+import gunbc.merge_admission_subject {
   TestedSubject,
   WalkAttemptId,
   walk_attempt_id,
+  merge_admission_tested_subject_schema,
+  merge_admission_tested_subject_path,
+  merge_admission_floor_receipt_path,
+  compose_walk_attempt_id,
+  compose_explicit_walk_attempt_id,
+  render_tested_subject_wire,
+  parse_tested_subject_wire,
+  render_git_object_id_wire,
+  parse_git_object_id_wire,
+}
+import gunbc.merge_admission {
   MergeAdmissionReceiptV2,
   MergeAdmissionVerdict,
   MergeAdmitted,
@@ -29,18 +41,9 @@ import gunbc.commit_workflow {
 }
 import gunbc.merge_admission_produce {
   merge_admission_receipt_schema_v2,
-  merge_admission_tested_subject_schema,
-  merge_admission_tested_subject_path,
-  merge_admission_floor_receipt_path,
-  compose_walk_attempt_id,
-  compose_explicit_walk_attempt_id,
-  render_tested_subject_wire,
-  parse_tested_subject_wire,
   render_receipt_wire_v2,
   parse_receipt_wire_v2,
   render_receipt_wire,
-  render_git_object_id_wire,
-  parse_git_object_id_wire,
   render_gate_roster_hash_wire,
   parse_gate_roster_hash_wire,
   stamp_floor_receipt_with_conclusion,
@@ -343,6 +346,27 @@ test fn tested_subject_wire_roundtrips() -> Bool {
         && (parsed.base_ref == "origin/main")
         && git_object_id_eq(left: parsed.base_tree_hash, right: base_tree_fx())
     Absent => false
+  }
+}
+
+data tested_subject_wire_move_byte_lock_note: String = "MOVE-not-fork control for the gunbc.merge_admission_subject de-fusion: this is the exact five-line byte sequence emitted before the move. A round-trip alone would miss a coordinated writer/reader drift; this literal makes any schema, ordering, object-family prefix, newline, or field-byte change red."
+
+data merge_admission_fetch_deadline_evaluation_witness_note: String = "Forces the live stage-2 deadline row to evaluate. A direct Int-to-Seconds cast typechecks but the interpreter cannot evaluate it; that defect reached the first production on-success run and refused refresh_current_target_and_gate before FetchNoTags. Reading the branded scalar here makes the unevaluable authoring shape red in the focused admission witness instead of after the ordinary floor."
+
+test fn merge_admission_fetch_deadline_is_a_usable_duration() -> Bool {
+  merge_admission_fetch_stall_deadline_seconds == 240
+}
+
+test fn tested_subject_wire_bytes_are_unchanged_by_subject_defusion() -> Bool {
+  match git_sha1_object_id(hex: "1111111111111111111111111111111111111111") {
+    Absent => false
+    Present { value: pre_defusion_tree } =>
+      render_tested_subject_wire(
+        subject: subject_fx(attempt: attempt_a(), tree: pre_defusion_tree, head: head_sha_fx)
+      ) == concat(
+        "gunbc.merge_admission_tested_subject.v1\n12345-1-ci\norigin/main\nsha1:1111111111111111111111111111111111111111\n",
+        head_sha_fx
+      )
   }
 }
 

@@ -4,7 +4,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data generic_item_clone_bound_witness_note: String = "Executing floor witness for v1.compiler.trait_derive_emit item-level Clone bounds. compile_dag_rust_emit_check is the per-PR enrolled consumer here; it compiles inline fixtures and asserts emitted Rust spellings. Per-PR rustc evidence is the build job cargo-checking the whole stage0 crate (generated std modules compile only when bounds are correct). Rule: struct items bound P when P is a bare field type or container/FreeMonoid element; enum items keep bare params; unused phantom-only params stay bare."
+data generic_item_clone_bound_witness_note: String = "Executing floor witness for v1.compiler.trait_derive_emit item-level Clone bounds. compile_dag_rust_emit_check is the per-PR enrolled consumer here; it compiles inline fixtures and asserts emitted Rust spellings. Per-PR rustc evidence is the build job cargo-checking the whole stage0 crate (generated std modules compile only when bounds are correct). TWO INDEPENDENT TRIGGERS, and the negative controls below are what keep them from collapsing into one widening rule. DERIVE trigger (structs only): bound P when P is a bare field type or a container/FreeMonoid element; enum items keep bare params, because derive emits per-impl bounds. WELL-FORMEDNESS trigger (structs AND enums): naming a declared generic type G<A..> requires satisfying G's own declared bounds, so if G's i-th parameter already carries `: Clone` and the i-th argument's Clone impl needs P, the declaring item is ill-formed without P: Clone -- rustc E0277 at the field, before any derive is considered. The second trigger is a LEAST FIXPOINT over the declared-type graph, so it propagates along a chain and saturates on a recursive type. Unused phantom-only params stay bare under both triggers. Two rows exist specifically to prove the triggers do not collapse into a dual representation: both_triggers_render_single_bound emits an item where BOTH triggers fire and asserts the bound renders exactly ONCE (the union is a guarded set-insert, so it is idempotent by construction, and the refusals assert the doubled spellings never appear); unbounded_declared_container_negative_control emits an item reached ONLY through a declared generic type whose own parameter the fixpoint leaves unbounded (FreeMonoid) and asserts no bound propagates, which is the case where trigger 2 must stay silent while trigger 1 alone carries ContainmentPath. That row locks in existing behavior rather than asserting new behavior."
 
 fn w_containment_path_emits_clone_bound() -> Bool {
   compile_dag_rust_emit_check(
@@ -24,10 +24,151 @@ fn w_unused_param_no_spurious_clone_bound() -> Bool {
   )
 }
 
+fn w_bound_propagates_through_declared_generic_type() -> Bool {
+  compile_dag_rust_emit_check(
+    "module generic_item_witness.propagate\nimport std.algebra { FreeMonoid }\n\ntype ContainmentPath<N> {\n  ancestors: FreeMonoid<N>\n  terminal: N\n}\n\ntype BindingOccurrence<N> {\n  containment: ContainmentPath<N>\n}\n\ntype BindingCandidate<N> {\n  occurrence: BindingOccurrence<N>\n}\n\ntype CandidateRows<N> {\n  rows: FreeMonoid<BindingOccurrence<N>>\n}\n",
+    "src/generic_item_witness_propagate.rs",
+    [
+      "struct ContainmentPath<N: Clone>",
+      "struct BindingOccurrence<N: Clone>",
+      "struct BindingCandidate<N: Clone>",
+      "struct CandidateRows<N: Clone>"
+    ],
+    [
+      "struct BindingOccurrence<N>",
+      "struct BindingCandidate<N>",
+      "struct CandidateRows<N>"
+    ]
+  )
+}
+
+fn w_bound_propagates_into_coproduct_item() -> Bool {
+  compile_dag_rust_emit_check(
+    "module generic_item_witness.coproduct\nimport std.algebra { FreeMonoid }\n\ntype ContainmentPath<N> {\n  ancestors: FreeMonoid<N>\n  terminal: N\n}\n\ntype OccurrenceBinding<N>\n  = BoundTo { path: ContainmentPath<N> }\n  | Unbound { reason: String }\n",
+    "src/generic_item_witness_coproduct.rs",
+    ["enum OccurrenceBinding<N: Clone>"],
+    ["enum OccurrenceBinding<N>"]
+  )
+}
+
+fn w_coproduct_bare_payload_param_stays_bare() -> Bool {
+  compile_dag_rust_emit_check(
+    "module generic_item_witness.coproduct_bare\n\ntype PlainChoice<N>\n  = Payload { value: N }\n  | Nothing { reason: String }\n",
+    "src/generic_item_witness_coproduct_bare.rs",
+    ["enum PlainChoice<N>"],
+    ["enum PlainChoice<N: Clone>"]
+  )
+}
+
+fn w_unbounded_declared_generic_type_propagates_nothing() -> Bool {
+  compile_dag_rust_emit_check(
+    "module generic_item_witness.no_propagate\n\ntype Holder<N> {\n  tag: Int\n}\n\ntype UsesHolder<N> {\n  held: Holder<N>\n}\n",
+    "src/generic_item_witness_no_propagate.rs",
+    ["struct UsesHolder<N>"],
+    ["struct UsesHolder<N: Clone>"]
+  )
+}
+
+fn w_recursive_declared_type_saturates() -> Bool {
+  compile_dag_rust_emit_check(
+    "module generic_item_witness.recursive\nimport std.algebra { FreeMonoid }\n\ntype ContainmentPath<N> {\n  ancestors: FreeMonoid<N>\n  terminal: N\n}\n\ntype Spine<N> {\n  parent: Spine<N>?\n  path: ContainmentPath<N>\n}\n",
+    "src/generic_item_witness_recursive.rs",
+    ["struct Spine<N: Clone>"],
+    ["struct Spine<N>"]
+  )
+}
+
+fn w_both_triggers_render_one_bound() -> Bool {
+  compile_dag_rust_emit_check(
+    "module generic_item_witness.both_triggers\nimport std.algebra { FreeMonoid }\n\ntype Boxed<T> {\n  inner: T\n}\n\ntype BothTriggers<T> {\n  boxed: Boxed<T>\n  bare: T\n  listed: FreeMonoid<T>\n}\n",
+    "src/generic_item_witness_both_triggers.rs",
+    ["struct BothTriggers<T: Clone>"],
+    ["struct BothTriggers<T: Clone, T: Clone>", "struct BothTriggers<T: Clone + Clone>", "struct BothTriggers<T>"]
+  )
+}
+
+fn w_unbounded_declared_container_propagates_nothing() -> Bool {
+  compile_dag_rust_emit_check(
+    "module generic_item_witness.free_monoid_only\nimport std.algebra { FreeMonoid }\n\ntype FreeMonoidOnly<T> {\n  ancestors: FreeMonoid<T>\n}\n",
+    "src/generic_item_witness_free_monoid_only.rs",
+    ["struct FreeMonoidOnly<T>"],
+    ["struct FreeMonoidOnly<T: Clone>"]
+  )
+}
+
 test fn containment_path_clone_bound_positive() -> Bool {
   w_containment_path_emits_clone_bound()
 }
 
 test fn unused_generic_param_negative_control() -> Bool {
   w_unused_param_no_spurious_clone_bound()
+}
+
+test fn declared_generic_type_propagation_positive() -> Bool {
+  w_bound_propagates_through_declared_generic_type()
+}
+
+test fn coproduct_well_formedness_propagation_positive() -> Bool {
+  w_bound_propagates_into_coproduct_item()
+}
+
+test fn coproduct_bare_payload_negative_control() -> Bool {
+  w_coproduct_bare_payload_param_stays_bare()
+}
+
+test fn unbounded_declared_generic_negative_control() -> Bool {
+  w_unbounded_declared_generic_type_propagates_nothing()
+}
+
+test fn recursive_declared_type_saturation_positive() -> Bool {
+  w_recursive_declared_type_saturates()
+}
+
+test fn both_triggers_render_single_bound() -> Bool {
+  w_both_triggers_render_one_bound()
+}
+
+test fn unbounded_declared_container_negative_control() -> Bool {
+  w_unbounded_declared_container_propagates_nothing()
+}
+
+data fn_clone_bound_wf_witness_note: String = "THIRD site, same fixpoint: naming a Clone-bounded declared type in a FN value-param or return type is exactly as ill-formed as naming it in a field (v1_fn_param_wf_needs_clone, extending the same well-formedness trigger onto v1_generic_params_needing_clone_bound rather than a second fixpoint). w_fn_wf_bound_propagates_to_bare_generic is the occurrence_binding_from_candidates<N> specimen shape (deep-heron's honest regen of dag/std/occurrence_binding.dag) reduced to a discriminating fixture: N is named only inside BindingOccurrence<N> (value-param position) and OccurrenceBindingResult<N> (return position), never as a bare N itself, so the structural trigger (v1_type_param_needs_clone_bound) alone would leave it unbounded and only the WF trigger renders `<N: Clone>` -- this is the RED-on-pre-fix / GREEN-on-fix witness. w_fn_no_wf_trigger_stays_bare is the negative control: a fn naming only unbounded declared types keeps its generic param bare, proving the WF trigger does not widen to every fn touching a declared type. w_impl_accessor_inherits_item_bound_once locks in the already-correct IMPL-side behavior (accessor impl blocks read the struct's own item-level clone_bounded_type_params via emit_item_type_params_with_clone_bounds, not a fn-grain re-derivation) by asserting the accessor impl header carries the bound exactly once, with doubled-spelling refusals mirroring both_triggers_render_single_bound above."
+
+fn w_fn_wf_bound_propagates_to_bare_generic() -> Bool {
+  compile_dag_rust_emit_check(
+    "module fn_clone_bound_witness.wf_propagate\nimport std.algebra { FreeMonoid }\n\ntype ContainmentPath<N> {\n  ancestors: FreeMonoid<N>\n  terminal: N\n}\n\ntype BindingOccurrence<N> {\n  containment: ContainmentPath<N>\n}\n\ntype OccurrenceBindingResult<N> {\n  containment: ContainmentPath<N>\n}\n\nfn occurrence_binding_from_candidate<N>(occurrence: BindingOccurrence<N>) -> OccurrenceBindingResult<N> {\n  OccurrenceBindingResult { containment: occurrence.containment }\n}\n",
+    "src/fn_clone_bound_witness_wf_propagate.rs",
+    ["fn occurrence_binding_from_candidate<N: Clone>"],
+    ["fn occurrence_binding_from_candidate<N>"]
+  )
+}
+
+fn w_fn_no_wf_trigger_stays_bare() -> Bool {
+  compile_dag_rust_emit_check(
+    "module fn_clone_bound_witness.wf_negative\n\ntype Holder<N> {\n  tag: Int\n}\n\nfn describe_holder<N>(holder: Holder<N>) -> String {\n  \"holder\"\n}\n",
+    "src/fn_clone_bound_witness_wf_negative.rs",
+    ["fn describe_holder<N>"],
+    ["fn describe_holder<N: Clone>"]
+  )
+}
+
+fn w_impl_accessor_inherits_item_bound_once() -> Bool {
+  compile_dag_rust_emit_check(
+    "module fn_clone_bound_witness.impl_inherit\nimport std.algebra { FreeMonoid }\n\ntype ContainmentPath<N> {\n  ancestors: FreeMonoid<N>\n  terminal: N\n}\n\ntype BindingOccurrence<N> {\n  containment: ContainmentPath<N>\n}\n\ntype FoldState<N>\n  = FoldZero\n  | FoldOne { first: BindingOccurrence<N> }\n  | FoldMany { first: BindingOccurrence<N>, second: BindingOccurrence<N> }\n",
+    "src/fn_clone_bound_witness_impl_inherit.rs",
+    ["impl<N: Clone> FoldState<N>"],
+    ["impl<N: Clone> FoldState<N: Clone>", "impl<N: Clone, N: Clone> FoldState<N>", "impl<N: Clone + Clone> FoldState<N>", "impl<N> FoldState<N>"]
+  )
+}
+
+test fn fn_wf_bound_propagation_positive() -> Bool {
+  w_fn_wf_bound_propagates_to_bare_generic()
+}
+
+test fn fn_wf_no_trigger_negative_control() -> Bool {
+  w_fn_no_wf_trigger_stays_bare()
+}
+
+test fn impl_accessor_inherits_item_bound_once() -> Bool {
+  w_impl_accessor_inherits_item_bound_once()
 }

@@ -2,12 +2,12 @@ module test.claim.v1_interpreter_primitive_surface_witness_test
 
 import gunbc.v1_interpreter_primitive_surface {
   DerivedFromDispatch,
-  DeclaredHere,
   FreeCall,
   InterpreterPrimitiveArmId,
   InterpreterPrimitiveDispatchArm,
   MethodCall,
   NativeSpecial,
+  arm_declares_dissolution_trigger,
   decode_dispatch_form,
   duplicate_row_keys,
   form_has_no_shadowed_spelling,
@@ -35,6 +35,22 @@ fn planted_row(identity: String, spelling: String, symbol: String) -> Interprete
 
 test fn derived_surface_includes_its_own_reading_arm() -> Bool {
   v1_interpreter_free_call_arms() |> any(r => r.authored_spelling == "interpreter_dispatch_arm_rows")
+}
+
+test fn stage0_source_identity_supply_scaffold_is_enumerated() -> Bool {
+  v1_interpreter_free_call_arms()
+    |> any(r => r.authored_spelling == "stage0_emission_source_identities_host")
+}
+
+test fn observed_monotonic_nanos_arm_is_one_derived_free_call() -> Bool {
+  let rows = v1_interpreter_derived_arms()
+    |> filter(r => r.authored_spelling == "observed_monotonic_nanos")
+  count(rows) == 1 && (rows |> all(r =>
+    r.arm.identity == "free_call.observed_monotonic_nanos"
+      && r.form == FreeCall
+      && r.dispatch_symbol == "eval_builtin_inner"
+      && r.enumeration == DerivedFromDispatch
+  ))
 }
 
 test fn every_derived_site_contributes_rows() -> Bool {
@@ -137,12 +153,7 @@ test fn an_unrecognised_form_label_refuses_rather_than_defaulting() -> Bool {
 }
 
 test fn every_declared_row_names_its_own_dissolution_trigger() -> Bool {
-  v1_interpreter_declared_arms() |> all(r =>
-    match r.enumeration {
-      DeclaredHere { dissolve_on } =>
-        string_contains(s: dissolve_on, pattern: "dissolves when")
-      DerivedFromDispatch => false
-    })
+  v1_interpreter_declared_arms() |> all(r => arm_declares_dissolution_trigger(arm: r))
 }
 
 test fn the_declared_residue_is_exactly_the_two_non_match_arm_sites() -> Bool {

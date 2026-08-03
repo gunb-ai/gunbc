@@ -7868,20 +7868,57 @@ fn rest_auth_identity_value(
         Some((scheme, secret)) => {
             // Only the hash crosses into the authored fixture carrier. The secret is
             // never persisted in, or made displayable through, a replay identity.
-            let digest = format!(
-                "{:016x}",
-                value_hash_public(&Value::Str(format!("{}\0{}", scheme, secret)))
-            );
+            //
+            // The digest is minted through `v1_rt::atom_identity_hash` — the SAME fnv1a64
+            // primitive `std.content_hash.content_hash_atom` is realized by — for two
+            // load-bearing reasons: (1) the model types `RestAuthenticated.digest` as
+            // `Fnv1a64Structural`, and a `DefaultHasher` (SipHash) hex here would be a value
+            // from outside that family wearing the family's carrier (the labeling the
+            // constructor-wall note forbids); (2) an authored fixture can reproduce this
+            // digest through the modeled surface — `content_hash_atom(value:
+            // "<scheme>\0<secret>")` — so authenticated replay identities are expressible
+            // in .dag without pinning opaque literals. Pinned by
+            // `rest_authenticated_identity_matches_dag_constructed_value` in
+            // src/v1/tests/src/cross_representation_equality_test.rs.
+            let digest = v1_rt::atom_identity_hash(format!("{}\0{}", scheme, secret));
             Value::Variant {
                 type_name: ctx.sym("RestAuthSensitiveIdentity"),
                 variant_name: ctx.sym("RestAuthenticated"),
                 fields: Rc::new(sorted_fields(vec![
                     (ctx.sym("scheme"), Value::Str(scheme)),
-                    (ctx.sym("digest"), Value::Str(digest)),
+                    (ctx.sym("digest"), fnv1a64_structural_value(digest, ctx)),
                 ])),
             }
         }
     }
+}
+
+/// The runtime `Value` shape of `std.content_hash.Fnv1a64Structural` — the single mint
+/// for every seed-side crossing into a `Fnv1a64Structural`-typed carrier of the REST
+/// replay model (`RestBoundOperationInvocation.input_digest`, `RestAuthenticated.digest`).
+/// A bare `Value::Str` at either position is the model↔realization fork: fixture matching
+/// compares a record against a string and silently never matches (DESIGN §5).
+fn fnv1a64_structural_value(digest: String, ctx: &InterpContext) -> Value {
+    Value::Record {
+        type_name: ctx.sym("Fnv1a64Structural"),
+        fields: Rc::new(sorted_fields(vec![(ctx.sym("digest"), Value::Str(digest))])),
+    }
+}
+
+/// Witness export: lets the tests crate pin `rest_auth_identity_value`'s authenticated arm
+/// `==`-equal to a dag-authored `RestAuthenticated { scheme, digest: content_hash_atom(…) }`,
+/// so a drift on either side of the seam (mint shape, hash family, or preimage layout) goes
+/// red instead of silently failing every authenticated fixture match.
+#[cfg(any(test, feature = "interp_test_witness"))]
+pub fn rest_authenticated_identity_for_witness(token: &str, ctx: &InterpContext) -> Value {
+    rest_auth_identity_value(
+        &AuthResolution::Resolved {
+            header: "Authorization".to_string(),
+            token: token.to_string(),
+        },
+        None,
+        ctx,
+    )
 }
 
 fn rest_uri_value(url: &str, ctx: &InterpContext) -> InterpResult<Value> {
@@ -7924,7 +7961,15 @@ fn rest_bound_invocation_value(
             (ctx.sym("at"), at),
             (ctx.sym("method"), rest_variant(ctx, "HttpMethod", method)),
             (ctx.sym("target"), rest_uri_value(url, ctx)?),
-            (ctx.sym("input_digest"), Value::Str(input_digest)),
+            (
+                ctx.sym("input_digest"),
+                // Grounding, gunbc#7480 Phase A: RestBoundOperationInvocation.input_digest is
+                // modelled as std.content_hash Fnv1a64Structural (the structural family member
+                // content_hash_service_inputs actually produces), not as bare text. The realization
+                // must construct the SAME shape the model declares, or fixture matching compares a
+                // record against a string and silently never matches -- the model/realization fork.
+                fnv1a64_structural_value(input_digest, ctx),
+            ),
             (
                 ctx.sym("auth_identity"),
                 rest_auth_identity_value(auth, basic_header, ctx),
@@ -9382,6 +9427,54 @@ fn eval_emit_host_run_transport_cached_builtin(
         });
     }
 
+    run_cached_process_spec(
+        ctx,
+        workspace_dir,
+        &workspace_files,
+        &build_argvs,
+        &run_argv,
+        false,
+    )
+}
+
+/// Native-bundle execution seam used by the production selector. The `.dag` selector owns
+/// the exact files and argv values; this seed helper only realizes that typed process spec
+/// through the same cache/toolchain identity path as `emit_host_run_transport_cached`.
+pub fn run_native_bundle_process_cached(
+    ctx: &InterpContext,
+    workspace_dir: String,
+    workspace_files: &[(String, String)],
+    build_argvs: &[Vec<String>],
+    run_argv: &[String],
+) -> InterpResult<Value> {
+    if !ctx.execution_mode.is_wet_dispatch() {
+        return Err(InterpError::TypeError {
+            msg: "native bundle process refuses outside Wet/Record execution mode".to_string(),
+        });
+    }
+    if build_argvs.iter().any(|argv| argv.is_empty()) || run_argv.is_empty() {
+        return Err(InterpError::TypeError {
+            msg: "native bundle process refuses an empty build/run argv".to_string(),
+        });
+    }
+    run_cached_process_spec(
+        ctx,
+        workspace_dir,
+        workspace_files,
+        build_argvs,
+        run_argv,
+        true,
+    )
+}
+
+fn run_cached_process_spec(
+    ctx: &InterpContext,
+    workspace_dir: String,
+    workspace_files: &[(String, String)],
+    build_argvs: &[Vec<String>],
+    run_argv: &[String],
+    require_transition_timing: bool,
+) -> InterpResult<Value> {
     let workspace_dir = native_cache_rebase_workspace_dir(workspace_dir);
     let realization_workspace = std::path::PathBuf::from(&workspace_dir);
     std::fs::create_dir_all(&realization_workspace).map_err(|e| InterpError::TypeError {
@@ -9406,6 +9499,7 @@ fn eval_emit_host_run_transport_cached_builtin(
         &run_argv,
         &build_environment,
         ctx,
+        require_transition_timing,
     )
 }
 
@@ -9802,15 +9896,27 @@ fn emit_host_run_transport_cached_in_workspace(
     run_argv: &[String],
     build_environment: &EmitHostBuildEnvironment,
     ctx: &InterpContext,
+    require_transition_timing: bool,
 ) -> InterpResult<Value> {
     let ready_marker = workspace.join(".native_ready");
+    let cold_compile_receipt = workspace.join(".native_cold_compile_nanos");
+    let artifact_lookup_started = std::time::Instant::now();
     // Cold control (falsifier cadence): widen-only — ignoring the ready marker can
     // only force a FULL cold rebuild, never skip work (the compile-clean cold-control
     // pattern). Not an escape hatch: no value of the env makes the run do less.
     let cold_control = std::env::var("GUNBC_CI_NATIVE_CACHE_COLD_CONTROL")
         .map(|v| v == "1")
         .unwrap_or(false);
-    let compile_skipped = !cold_control && ready_marker.exists();
+    let recorded_cold_compile_nanos = std::fs::read_to_string(&cold_compile_receipt)
+        .ok()
+        .and_then(|s| s.trim().parse::<u128>().ok())
+        .filter(|n| *n > 0);
+    // The timing receipt is part of readiness for the production transition: an old marker
+    // without its measured cold wall is a warm miss and widens to a rebuild, never a zero.
+    let compile_skipped = !cold_control
+        && ready_marker.exists()
+        && (!require_transition_timing || recorded_cold_compile_nanos.is_some());
+    let artifact_lookup_nanos = artifact_lookup_started.elapsed().as_nanos();
     eprintln!(
         "[native-cache] key={} compile_skipped={} cold_control={}",
         workspace
@@ -9827,7 +9933,9 @@ fn emit_host_run_transport_cached_in_workspace(
                             stdout: &[u8],
                             stderr: &[u8],
                             build_log: Vec<Value>,
-                            compile_skipped: bool|
+                            compile_skipped: bool,
+                            cold_compile_nanos: u128,
+                            native_execution_nanos: u128|
      -> Value {
         Value::Record {
             type_name: ctx.sym("EmitHostTransportResult"),
@@ -9839,6 +9947,18 @@ fn emit_host_run_transport_cached_in_workspace(
                 (ctx.sym("success"), Value::Bool(success)),
                 (ctx.sym("exit_code"), Value::Int(exit_code)),
                 (ctx.sym("compile_skipped"), Value::Bool(compile_skipped)),
+                (
+                    ctx.sym("artifact_lookup_nanos"),
+                    Value::Int(artifact_lookup_nanos.min(i64::MAX as u128) as i64),
+                ),
+                (
+                    ctx.sym("cold_compile_nanos"),
+                    Value::Int(cold_compile_nanos.min(i64::MAX as u128) as i64),
+                ),
+                (
+                    ctx.sym("native_execution_nanos"),
+                    Value::Int(native_execution_nanos.min(i64::MAX as u128) as i64),
+                ),
                 (
                     ctx.sym("stdout_octets"),
                     list_value(
@@ -9880,6 +10000,7 @@ fn emit_host_run_transport_cached_in_workspace(
         emit_host_materialize_workspace_files(workspace, files)?;
 
         let mut build_log: Vec<Value> = Vec::new();
+        let compile_started = std::time::Instant::now();
         for argv in build_argvs {
             let out = run_command(argv)?;
             let code = out.status.code().map(i64::from).unwrap_or(-1);
@@ -9894,16 +10015,28 @@ fn emit_host_run_transport_cached_in_workspace(
                     &out.stderr,
                     build_log,
                     false,
+                    compile_started.elapsed().as_nanos(),
+                    0,
                 ));
             }
         }
 
+        let cold_compile_nanos = compile_started.elapsed().as_nanos();
+        let native_started = std::time::Instant::now();
         let out = run_command(run_argv)?;
+        let native_execution_nanos = native_started.elapsed().as_nanos();
         let code = out.status.code().map(i64::from).unwrap_or(-1);
         build_log.push(Value::Str(format!("{} -> exit {code}", run_argv.join(" "))));
         if out.status.success() {
             std::fs::write(&ready_marker, b"1").map_err(|e| InterpError::TypeError {
                 msg: format!("emit_host_run_transport_cached: ready marker write failed: {e}"),
+            })?;
+            std::fs::write(&cold_compile_receipt, cold_compile_nanos.to_string()).map_err(|e| {
+                InterpError::TypeError {
+                    msg: format!(
+                        "emit_host_run_transport_cached: cold compile receipt write failed: {e}"
+                    ),
+                }
             })?;
         }
         return Ok(transport_result(
@@ -9914,10 +10047,14 @@ fn emit_host_run_transport_cached_in_workspace(
             &out.stderr,
             build_log,
             false,
+            cold_compile_nanos,
+            native_execution_nanos,
         ));
     }
 
+    let native_started = std::time::Instant::now();
     let out = run_command(run_argv)?;
+    let native_execution_nanos = native_started.elapsed().as_nanos();
     let code = out.status.code().map(i64::from).unwrap_or(-1);
     let mut build_log: Vec<Value> = Vec::new();
     build_log.push(Value::Str(format!("{} -> exit {code}", run_argv.join(" "))));
@@ -9929,6 +10066,8 @@ fn emit_host_run_transport_cached_in_workspace(
         &out.stderr,
         build_log,
         true,
+        recorded_cold_compile_nanos.unwrap_or(0),
+        native_execution_nanos,
     ))
 }
 
@@ -10205,6 +10344,52 @@ macro_rules! v1_builtin_arms {
                     }
                 };
                 Ok(Some(variant))
+            },
+
+            // DECLARED SCAFFOLD supplying gunbc.stage0_emit_plan with SOURCE identities only.
+            // It parses cli_run::regen_input_sources through the module-binding authority path;
+            // it never observes EmitResult. Dissolve-on: generated_artifact_gate accepts a
+            // v2.compiler.source_authority.ModuleStorageIndex.
+            arm "free_call.stage0_emission_source_identities_host" { "stage0_emission_source_identities_host" } => {
+                if !$positional.is_empty() {
+                    return Err(InterpError::TypeError {
+                        msg: "stage0_emission_source_identities_host takes no arguments".to_string(),
+                    });
+                }
+                let workspace = crate::cli_run::workspace_root();
+                let identities = crate::cli_run::stage0_emission_source_identities(&workspace)
+                    .map_err(|msg| InterpError::TypeError { msg })?;
+                let items = identities
+                    .into_iter()
+                    .map(|identity| Value::Record {
+                        type_name: $ctx.sym("Stage0SourceModuleIdentity"),
+                        fields: Rc::new(sorted_fields(vec![
+                            ($ctx.sym("module_path"), Value::Str(identity.module_path)),
+                            (
+                                $ctx.sym("provenance"),
+                                Value::Variant {
+                                    type_name: $ctx.sym("Stage0SourceIdentityProvenance"),
+                                    variant_name: $ctx.sym("ParsedFromRegenSourceClosure"),
+                                    fields: Rc::new(Vec::new()),
+                                },
+                            ),
+                            (
+                                $ctx.sym("source_tree"),
+                                Value::Variant {
+                                    type_name: $ctx.sym("Stage0SourceTree"),
+                                    variant_name: $ctx.sym(identity.source_tree),
+                                    fields: Rc::new(Vec::new()),
+                                },
+                            ),
+                            ($ctx.sym("storage_path"), Value::Str(identity.storage_path)),
+                        ])),
+                    })
+                    .collect::<Vec<_>>();
+                Ok(Some(Value::Variant {
+                    type_name: $ctx.sym("Stage0SourceIdentitySupply"),
+                    variant_name: $ctx.sym("Stage0SourceIdentitySupplyAvailable"),
+                    fields: Rc::new(vec![($ctx.sym("identities"), list_value(items))]),
+                }))
             },
 
             arm "free_call.to_string" { "to_string" } => {
@@ -10659,6 +10844,23 @@ macro_rules! v1_builtin_arms {
                 }
                 _ => Err(InterpError::TypeError {
                     msg: "observed_peak_resident_bytes takes no arguments".to_string(),
+                }),
+            },
+
+            // ObserveElapsedAtSubject realization seam: a process-relative monotonic
+            // reading. Only differences between two observations are meaningful.
+            arm "free_call.observed_monotonic_nanos" { "observed_monotonic_nanos" } => match $positional.as_slice() {
+                [Value::Str(_boundary)] => {
+                    static EPOCH: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+                    let nanos = EPOCH
+                        .get_or_init(std::time::Instant::now)
+                        .elapsed()
+                        .as_nanos()
+                        .min(i64::MAX as u128) as i64;
+                    Ok(Some(Value::Int(nanos)))
+                }
+                _ => Err(InterpError::TypeError {
+                    msg: "observed_monotonic_nanos takes exactly one boundary label".to_string(),
                 }),
             },
 
@@ -11226,6 +11428,19 @@ macro_rules! v1_builtin_arms {
             arm "free_call.test_migration_debt_known_covered_module_is_not_debt" { "test_migration_debt_known_covered_module_is_not_debt" } => Ok(Some(Value::Bool(
                 crate::cli_run::test_migration_debt_known_covered_module_is_not_debt(),
             ))),
+            arm "free_call.test_migration_legacy_behavior_ids" { "test_migration_legacy_behavior_ids" } => {
+                let ids = crate::cli_run::test_migration_legacy_behavior_ids();
+                let items: Vec<Value> = ids.into_iter().map(Value::Str).collect();
+                Ok(Some(list_value(items)))
+            },
+            arm "free_call.test_migration_witness_behavior_ids" { "test_migration_witness_behavior_ids" } => {
+                let ids = crate::cli_run::test_migration_witness_behavior_ids();
+                let items: Vec<Value> = ids.into_iter().map(Value::Str).collect();
+                Ok(Some(list_value(items)))
+            },
+            arm "free_call.test_migration_behavior_discovery_holds" { "test_migration_behavior_discovery_holds" } => Ok(Some(Value::Bool(
+                crate::cli_run::test_migration_behavior_discovery_holds(),
+            ))),
             arm "free_call.test_migration_delete_guard_holds" { "test_migration_delete_guard_holds" } => Ok(Some(Value::Bool(
                 crate::cli_run::test_migration_delete_guard_holds(),
             ))),
@@ -11362,6 +11577,10 @@ macro_rules! v1_builtin_arms {
             },
             arm "free_call.census_corpus_roots_follow_layer_authority" { "census_corpus_roots_follow_layer_authority" } => Ok(Some(Value::Bool(
                 crate::cli_run::census_corpus_roots_follow_layer_authority(),
+            ))),
+
+            arm "free_call.resolution_divergence_silent_pick_gate_in_process" { "resolution_divergence_silent_pick_gate_in_process" } => Ok(Some(Value::Bool(
+                crate::cli_run::resolution_divergence_silent_pick_gate_in_process($ctx),
             ))),
 
         }

@@ -107,6 +107,8 @@ import gunbc.roadmap_dashboard_instance {
   srv1_live_dashboard_instance,
   dashboard_instance_provider_state_root,
   dashboard_instance_provider_executable,
+  dashboard_instance_dispatch_worktree_root,
+  dashboard_instance_dispatch_attempt_state_root,
 }
 import gunbc.roadmap_execution_contract {
   ExecutionCapability,
@@ -356,7 +358,7 @@ fn dispatch_worktree_path_for_instance(
   attempt_key: String,
 ) -> String {
   join([
-    instance.dispatch_worktree_root as String,
+    dashboard_instance_dispatch_worktree_root(instance: instance) as String,
     "/",
     node_id as String,
     "-a",
@@ -370,7 +372,7 @@ fn dispatch_attempt_state_path_for_instance(
   attempt_key: String,
 ) -> String {
   join([
-    instance.dispatch_attempt_state_root as String,
+    dashboard_instance_dispatch_attempt_state_root(instance: instance) as String,
     "/",
     node_id as String,
     "-a",
@@ -582,6 +584,41 @@ fn dispatch_attempt_publication_receipt_path_for_instance(
 
 data publication_receipt_has_no_current_alias_note: String = "EVERY OTHER RECEIPT ON THIS ROW HAS A `current` SPELLING AND THIS ONE DELIBERATELY DOES NOT. The alias exists so a reader that knows only a node can find the live attempt's evidence without first reading the attempt key. Publication cannot be reached that way: its address contains the head, and a reader that does not know the head has no path to build regardless of which attempt directory it starts from.\\n\\nSo the alias would buy nothing and cost the thing this lane is for. A reader holding a head already had to establish it, and establishing a head means reading the attempt - at which point the attempt-keyed path is available and the alias is a second spelling of it. Keeping it would have made the symlink an alternative route to a file whose identity is a head, which is how a receipt for one attempt gets read as evidence for another."
 
+data verification_receipt_is_head_addressed_note: String = "VERIFICATION AND PUBLICATION SHARE THE HEAD GRAIN. One implementation attempt may be verified at head A, receive findings, and be verified again at head B. An attempt-level file would either overwrite A or let A's verdict stand for B. The verification directory therefore mirrors publication: attempt/<attempt>/verification/<head_sha>.json, with no current alias because a reader that has not observed the head cannot name the verification subject. DISSOLVE-ON: the two legacy attempt-level paths below lose their last belt consumers and delete."
+
+fn dispatch_attempt_verification_dir_for_instance(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+) -> String {
+  join([
+    dispatch_attempt_state_path_for_instance(
+      instance: instance,
+      node_id: node_id,
+      attempt_key: attempt_key,
+    ),
+    "/verification",
+  ], "")
+}
+
+fn dispatch_attempt_verification_receipt_path_for_instance(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+  head_sha: String,
+) -> String {
+  join([
+    dispatch_attempt_verification_dir_for_instance(
+      instance: instance,
+      node_id: node_id,
+      attempt_key: attempt_key,
+    ),
+    "/",
+    head_sha,
+    ".json",
+  ], "")
+}
+
 fn dispatch_attempt_validation_receipt_path_for_instance(
   instance: HostDashboardInstance,
   node_id: RoadmapNodeId,
@@ -615,7 +652,7 @@ fn dispatch_current_attempt_state_path_for_instance(
   node_id: RoadmapNodeId,
 ) -> String {
   join([
-    instance.dispatch_attempt_state_root as String,
+    dashboard_instance_dispatch_attempt_state_root(instance: instance) as String,
     "/",
     node_id as String,
     "-current",

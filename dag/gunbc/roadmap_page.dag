@@ -16,7 +16,7 @@ import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.roadmap_altitude { section_counts, section_counts_wire, statuses_all_routine, SectionCounts }
 import gunbc.roadmap_authority {
   roadmap_authority, authored_merged_prs,
-  accepted_roadmap_node_ids,
+  accepted_roadmap_node_ids, declared_roadmap_nodes,
   ClosingContractTaskPair, closing_contract_task_pairs, closing_contract_family_claim,
 }
 import gunbc.roadmap_spawner { spawn_frontier, SpawnFrontier, doc_all_nodes, doc_all_edges }
@@ -36,10 +36,11 @@ import gunbc.roadmap_presentation {
   work_lifecycle, work_lifecycle_key,
   WorkScheduling, SchedulingReady, SchedulingUpcoming, SchedulingDone, SchedulingSuperseded, SchedulingUnplanned,
   scheduling_dependency_line,
-  ActivityView, NoActiveWork, ActiveWork, ActiveWorkRefused, CompletedWork, ActivityUnobservable,
+  ActivityView, NoActiveWork, ActiveWork, ActiveWorkRefused, LegacySupersedableAttempt, CompletedWork, ActivityUnobservable,
   ActivityAttention, activity_attention_key, activity_arm_key, activity_summary_line,
   ActivityEvidenceRow,
   ActionView, WorkAction, WorkActionKind, DispatchAction, ClearSessionAction,
+  action_priority_key, action_availability_key,
   SupportingFact,
   DisclosureView, NoDisclosure, TicketDisclosure, LegacyBodyDisclosure,
   DisclosureField, DisclosureNote,
@@ -124,12 +125,16 @@ fn theme_toggle_control() -> Fragment {
 
 data roadmap_wordmark_note: String = "A1 header decision (presentation recon, operator-signed 2026-08-01): the header carries a TEXT wordmark, not the site mark. The mark that stood here was gunbc.site.mark candidate A ('Confluence') — an explicitly unselected brand experiment (DESIGN's site thread still owes candidates B–D) whose aria-label said 'gunb.ai mark' on a gunbc operational tool: a public-site brand artifact leaking into a tool surface. The minimal correct move is the wordmark; a drawn mark returns if and when an actual brand-selection task runs (the sandbox auditioner is the venue, the swatch-graduation precedent). The h1 carries the PAGE name alone — the product name lives in the wordmark, so the two never restate each other."
 
+data header_composition_frame_note: String = "HEADER AND CONTENT SHARE ONE COMPOSITION FRAME (A2 hierarchy closeout, operator gap ruling 2026-08-02: the wide-screen fold showed two alignment systems — the header hugging the left viewport edge while the content column centered at the page measure, leaving a dead gutter that read as accident). The header element keeps its full-width surface and border — it is a chassis edge — but its CONTENT now lives in .header-inner, the same measure_page/auto-margin frame the .roadmap and .daily-workspace columns use, so the wordmark, page name, and controls sit flush over the content column at every width. One frame, stated once: the inner wrapper consumes the identical tokens, so a measure change moves header and content together."
+
 fn roadmap_header(page: String) -> Fragment {
   el("header", [
-    el_class("span", "wordmark", [ txt("gunbc") ]),
-    el("h1", [ txt(page) ]),
-    sound_toggle_control(),
-    theme_toggle_control(),
+    el_class("div", "header-inner", [
+      el_class("span", "wordmark", [ txt("gunbc") ]),
+      el("h1", [ txt(page) ]),
+      sound_toggle_control(),
+      theme_toggle_control(),
+    ]),
   ])
 }
 
@@ -190,8 +195,10 @@ fn ticket_brief_violations(nodes: List<RoadmapNode>) -> List<BriefBudgetViolatio
   })
 }
 
+data ticket_brief_budget_subject_note: String = "THE BUDGET GOVERNS AUTHORED TICKET PROSE, SO IT WALKS THE AUTHORED NODES RATHER THAN THE PROJECTION. It previously walked doc_all_nodes(roadmap_authority()), which includes the DERIVED closing-contract task nodes whose boundary is generated as a fixed prefix plus the target node's red_control. That made the budget a second, indirect and undeclared constraint on red_control length: accepting any node could push a DIFFERENT node over budget, because acceptance makes the next node startable-and-unbound and therefore derives a closing-contract row for it.\n\nThat is exactly what happened when v1-interpreter-primitive-roster was accepted: v1-interpreter-primitive-dispatch-authority became the frontier, its derived row's brief came to the prefix plus a six-clause red_control, and the budget refused -- with the only available remedies being to trim a carefully authored acceptance bar to satisfy a PAGE constraint, or to leave every PR touching roadmap_authority.dag red. Neither is the budget's purpose.\n\nA derived brief is a projection of a field that is already governed where it is authored. Budgeting the projection prices the source field twice, through a channel nobody declared. So the subject is declared_roadmap_nodes(): every authored ticket, accepted or active, and nothing generated. The planted-fixture RED control is unaffected -- it passes an authored node directly to ticket_brief_violations, which still refuses at the same threshold."
+
 fn roadmap_ticket_brief_violations() -> List<BriefBudgetViolation> {
-  ticket_brief_violations(nodes: doc_all_nodes(doc: roadmap_authority()))
+  ticket_brief_violations(nodes: declared_roadmap_nodes())
 }
 
 fn inline_md_nodes(text: String) -> List<Fragment> {
@@ -263,7 +270,7 @@ fn view_detail_block(view: WorkRowView) -> List<Fragment> {
       NoDisclosure => false
       LegacyBodyDisclosure { content: _ } => false
     }
-    let label = if is_ticket { "ticket" } else { if count(body) == 0 { "facts" } else { "brief" } }
+    let label = if is_ticket { "details" } else { if count(body) == 0 { "facts" } else { "brief" } }
     [ el_attrs("details", [
         attr(name: "class", value: if is_ticket { "item-detail ticket-row" } else { "item-detail" } ),
       ], [
@@ -310,12 +317,15 @@ fn view_dispatch_actions(view: WorkRowView) -> List<WorkAction> {
   })
 }
 
+data dispatch_button_axes_note: String = "THE BUTTON CARRIES ITS DECIDED AXES (A2 hierarchy closeout, operator gap ruling 2026-08-02: 'action prominence derives from selection and priority, not mere availability'). The seam already decided priority and availability per action (action_axes_note); this renderer used to flatten both into one identical class, which is exactly how fourteen equally loud pills reached the desktop fold while LANDED rows kept the ready-row treatment. The class now carries the decided priority (action-primary / action-secondary) and data-availability carries the admission fact, so the stylesheet can rest every in-row control quiet and the client program can raise ONLY the selected row's primary action to the invite band (the action-focal class — selection is client state, prominence is its projection; named for the grant, not for liveness). Status classes keep winning in the cascade: emphasis never overrides truth. No-JS visitors see every control quiet but present, labeled, and operable — honest-before-JS forbids blankness, not calm."
+
 fn dispatch_button_nodes(view: WorkRowView) -> List<Fragment> {
   map(view_dispatch_actions(view: view), a =>
     el_attrs("button", [
-      attr(name: "class", value: "dispatch-btn" ),
+      attr(name: "class", value: concat("dispatch-btn action-", action_priority_key(p: a.priority)) ),
       attr(name: "type", value: "button" ),
       attr(name: "data-node", value: view.node_id ),
+      attr(name: "data-availability", value: action_availability_key(a: a.availability) ),
     ], [ txt("dispatch") ]))
 }
 
@@ -448,6 +458,18 @@ fn activity_region_nodes(a: ActivityView) -> List<Fragment> {
       [ activity_container(a: a, attention: "", children: [
           activity_detail_nodes(obligations: [], evidence: evidence, located_reason: located_reason, open: true),
         ]) ]
+    LegacySupersedableAttempt { summary: _, located_reason, attempt_key, evidence } =>
+      [ activity_container(a: a, attention: "", children: [
+          activity_detail_nodes(
+            obligations: [],
+            evidence: concat(
+              evidence,
+              [ ActivityEvidenceRow { label: "attempt key", value: attempt_key } ],
+            ),
+            located_reason: located_reason,
+            open: true,
+          ),
+        ]) ]
     CompletedWork { outcome: _, evidence } =>
       [ activity_container(a: a, attention: "", children: [
           activity_detail_nodes(obligations: [], evidence: evidence, located_reason: "", open: false),
@@ -487,6 +509,7 @@ fn node_li_attributes(view: WorkRowView) -> List<Attribute> {
   [
     attr(name: "class", value: concat("node node-", work_lifecycle_key(l: view.lifecycle))),
     attr(name: "data-node", value: view.node_id),
+    attr(name: "tabindex", value: "0"),
   ]
 }
 

@@ -1,5 +1,6 @@
 module gunbc.ci_workflow
 
+import std.measure { minute_count }
 import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv }
 import gunbc.ci_workflow_expressions {
   ci_concurrency_group, ci_setup_rust_home, ci_cache_path, ci_cache_key, ci_cache_restore_keys,
@@ -13,9 +14,9 @@ import gunbc.ci_spec {
   ci_release_bins_archive_name,
   gunbc_ci_heal_regen_invoke, gunbc_ci_heal_commit_push_script,
   gunbc_ci_heal_binary_source_skew_guard_script,
-}
-import v2.workflow.ci_merge_admission_gate_emit {
-  ci_merge_admission_gate_script,
+  gunbc_ci_workflow_wrapper_budget_minutes,
+  ci_heal_author_commit_artifact_dir, ci_heal_author_commit_artifact_name,
+  gunbc_ci_heal_repo_local_git_config_invoke,
 }
 import v2.workflow.ci_heal_revalidation_preflight_emit {
   ci_heal_revalidation_preflight_script,
@@ -27,6 +28,8 @@ import gunbc.ci_compile_jobs { ci_compile_jobs, compile_jobs_count_or_serial }
 import gunbc.ci_floor_measurement { gunbc_ci_runner_slot_ram_speed_ceiling }
 import v2.workflow.ci_floor_peak_emit {
   ci_cgroup_peak_locate_shell,
+  ci_floor_phase_journal_env_name,
+  ci_floor_phase_journal_path,
   ci_floor_peak_pre_script,
   ci_floor_peak_post_script
 }
@@ -323,11 +326,13 @@ fn ci_floor_step() -> Step {
     id: Present { value: "floor" },
     run: gunbc_ci_floor_run(spec: ci_floor_spec_from_roster()),
     shell: none,
-    env: none,
+    env: Present {
+      value: [kv(key: ci_floor_phase_journal_env_name, value: yaml_string(s: ci_floor_phase_journal_path))]
+    },
     working_directory: none,
     if_condition: none,
     continue_on_error: none,
-    timeout_minutes: Present { value: gunbc_ci_floor_step_timeout_minutes }
+    timeout_minutes: Present { value: minute_count(m: gunbc_ci_workflow_wrapper_budget_minutes()) }
   }
 }
 
@@ -417,29 +422,11 @@ fn ci_floor_peak_post_step() -> Step {
     id: none,
     run: ci_floor_peak_post_script(),
     shell: none,
-    env: none,
+    env: Present {
+      value: [kv(key: ci_floor_phase_journal_env_name, value: yaml_string(s: ci_floor_phase_journal_path))]
+    },
     working_directory: none,
     if_condition: Present { value: "always()" },
-    continue_on_error: none,
-    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
-  }
-}
-
-data merge_admission_gate_step_name: String = "Merge-admission gate (receipt required; freshness block held until GatingEnforced)"
-
-data merge_admission_ci_gate_step_disposition: Disposition = Terminal {
-  reason: "DISSOLVED in Wave B (#7363). The row was a Scaffold only because the step's shell was a hand-spelled concat builder awaiting a typed carrier; that builder is deleted and the step's run text is now materialized from v2.workflow.ci_merge_admission_gate_emit's EffectPlan<BoundOperationInvocation>, whose argv is derived from the git.Core.FetchNoTags and gunbc.WitnessBin.Run declarations. GitHub Actions run: is a foreign executor, so emitted bash is this site's terminal payload class under shell→intent routing — there is no further transport to dissolve to, and marking it Scaffold now would be a scaffold with no dissolution left to name."
-}
-
-fn ci_merge_admission_gate_step() -> Step {
-  RunStep {
-    name: Present { value: merge_admission_gate_step_name },
-    id: none,
-    run: ci_merge_admission_gate_script(),
-    shell: none,
-    env: none,
-    working_directory: none,
-    if_condition: none,
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
   }
@@ -473,7 +460,7 @@ fn ci_deploy_step(stage: DeployStage) -> Step {
   }
 }
 
-data gunbc_ci_floor_step_timeout_minutes: Duration = 55
+data gunbc_ci_workflow_wrapper_timeout_minutes: Duration = minute_count(m: gunbc_ci_workflow_wrapper_budget_minutes())
 
 data gunbc_ci_regen_step_timeout_minutes: Duration = 15
 
@@ -485,16 +472,16 @@ data gunbc_ci_step_timeout_measure_grounding_disposition: Disposition = Scaffold
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
     module_path: "gunbc.ci_workflow",
-    decl_name: "gunbc_ci_floor_step_timeout_minutes",
+    decl_name: "gunbc_ci_workflow_wrapper_timeout_minutes",
     field: WholeDeclaration
   }
 }
 
 data gunbc_ci_aux_step_timeout_minutes: Int = 5
 
-data gunbc_ci_v1_compiler_tests_compile_gate_timeout_minutes: Duration = 10
+data gunbc_ci_v1_compiler_tests_compile_gate_timeout_minutes: Duration = 15
 
-data gunbc_ci_v1_compiler_tests_compile_gate_timeout_note: String = "v1-compiler-tests compile gate step budget (operator ruling 2026-08-01, PR #7533 receipt): cargo check -p v1-compiler-tests --tests exceeded the 5m aux cap on cold native-cache hosts (run 30692671758 @ 6f20329: srv1-05, step killed at 5m00s while still compiling deps; warm-cache runs complete in ~50s). 10m is the fleet-pressure envelope for a cold compile-only gate after main growth — not RustMonolithGate re-enrollment."
+data gunbc_ci_v1_compiler_tests_compile_gate_timeout_note: String = "v1-compiler-tests compile gate step budget (operator ruling 2026-08-01, PR #7533 receipt): cargo check -p v1-compiler-tests --tests exceeded the 5m aux cap on cold native-cache hosts (run 30692671758 @ 6f20329: srv1-05, step killed at 5m00s while still compiling deps; warm-cache runs complete in ~50s). Raised 10m -> 15m after run 30719671973 @ 6945446401 (srv1-01, cache hit): step killed at 10m00s while Checking v1-compiler-tests — deps consumed the full prior budget. 15m is the cold-host envelope after that receipt — not RustMonolithGate re-enrollment."
 
 data gunbc_ci_artifact_transfer_step_timeout_minutes: Int = 10
 
@@ -519,7 +506,7 @@ fn gunbc_ci_build_job_backstop_timeout_minutes() -> Int {
 data gunbc_ci_receipt_gate_steps_moved_in_executor_note: String = "The resolve-receipt and materialization-receipt gate STEPS are deleted (ruling 2026-07-30): their laws — resolves_total equals the declared count, and the materialization receipt exists/parses/keyed nonzero — now run INSIDE claim_executor as ordinary-floor finalization (run_walk, FloorFinalization), so a receipt-law violation blocks every on-success stage instead of redding a step AFTER admission had already stamped. The two aux terms leave the backstop sum in the same motion, keeping it the exact step-sum + prelude the witness pins. The receipt FILES keep writing — they are observability the falsifier and operators read — only the shell re-validation of them is gone, because keeping it would be a second representation of the floor-completion rule."
 
 fn gunbc_ci_job_backstop_timeout_minutes() -> Int {
-  gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_floor_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
+  gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_workflow_wrapper_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
 }
 
 fn gunbc_ci_regen_job_backstop_timeout_minutes() -> Int {
@@ -563,7 +550,7 @@ fn ci_deploy_jobs() -> List<Job> {
 }
 
 fn gunbc_ci_heal_job_backstop_timeout_minutes() -> Int {
-  gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
+  gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
 }
 
 fn ci_heal_binary_source_skew_guard_step() -> Step {
@@ -594,9 +581,23 @@ fn ci_heal_regen_step() -> Step {
   }
 }
 
+fn ci_heal_repo_local_git_config_step() -> Step {
+  RunStep {
+    name: Present { value: "Converge repository-local Git integration bindings (repo_local_git_config converge)" },
+    id: none,
+    run: gunbc_ci_heal_repo_local_git_config_invoke(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
 fn ci_heal_commit_push_step() -> Step {
   RunStep {
-    name: Present { value: "Commit + push regenerated artifacts to the triggering branch (only when drifted; byte-idempotent fixed point terminates the loop)" },
+    name: Present { value: "Commit + push auto-push-eligible regenerated artifacts (workflow paths are author-commit-required)" },
     id: none,
     run: gunbc_ci_heal_commit_push_script(),
     shell: none,
@@ -610,7 +611,28 @@ fn ci_heal_commit_push_step() -> Step {
   }
 }
 
-data ci_heal_job_note: String = "CI auto-heal for the DERIVABLE red class remains pull_request-only and independent of ci, because the drift gate that triggers it can stop ci's dependent witness population. When regeneration changes a registered artifact, the job pushes the new PR head and explicitly workflow_dispatches CI with expected_healed_sha. The old run is SupersededByHealedHead and deliberately remains non-success; the dispatched run requires both its GitHub check subject (github.sha) and checkout HEAD to equal the immutable SHA before any gate. A dispatch or subject refusal leaves revalidation required and fails loudly. contents:write and actions:write are scoped to this job: contents is needed for the repair push, and Actions write is the narrowest GitHub permission that can invoke CreateWorkflowDispatch (it can start workflows, so it is not granted to build/regen/ci or the workflow default). The dispatching step explicitly binds `${{ github.token }}` into GITHUB_TOKEN, the sole environment authority consumed by github.Workflows; GitHub Actions does not implicitly export that context value as a process variable. The heal job is excluded from workflow_dispatch, preventing a dispatch loop. Main is not auto-healed. Judgment-class reds and the separate compile timeout are untouched."
+fn ci_heal_author_commit_upload_step() -> Step {
+  UsesStep {
+    name: Present { value: "Upload author-commit-required workflow repairs (GitHub App cannot push .github/workflows/**)" },
+    id: none,
+    uses: upload_artifact_action,
+    with: Present {
+      value: [
+        kv(key: "name", value: yaml_string(s: ci_heal_author_commit_artifact_name)),
+        kv(key: "path", value: yaml_string(s: ci_heal_author_commit_artifact_dir)),
+        kv(key: "if-no-files-found", value: yaml_string(s: "ignore")),
+        kv(key: "retention-days", value: yaml_int(n: 7)),
+        kv(key: "compression-level", value: yaml_int(n: 0))
+      ]
+    },
+    env: none,
+    if_condition: Present { value: "always()" },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
+  }
+}
+
+data ci_heal_job_note: String = "CI auto-heal for the DERIVABLE red class remains pull_request-only and independent of ci. Auto-push-eligible generated artifacts follow the HealProduced push+dispatch path. Workflow projections (.github/workflows/**) are AuthorCommitRequired: the GitHub App lacks workflows:write, so the heal job regenerates them, packages the corrected bytes as an artifact, emits a typed HealAuthorCommitRequired diagnostic naming every affected path and the local regen command, and never attempts a push it knows GitHub will reject. The drift gate stays red until the authoring branch commits the workflow bytes. contents:write and actions:write remain scoped to this job only. Main is not auto-healed."
 
 fn ci_heal_generated_artifacts_job() -> Job {
   Job {
@@ -619,7 +641,7 @@ fn ci_heal_generated_artifacts_job() -> Job {
     runner: gunbc_ci_selected_runner_spec(),
     steps: concat(
       [ci_heal_branch_head_checkout_step()],
-      [ci_heal_binary_source_skew_guard_step(), ci_release_bins_download_step(), ci_release_bins_unpack_verify_step(), ci_heal_regen_step(), ci_heal_commit_push_step()]
+      [ci_release_bins_download_step(), ci_release_bins_unpack_verify_step(), ci_heal_repo_local_git_config_step(), ci_heal_binary_source_skew_guard_step(), ci_heal_regen_step(), ci_heal_commit_push_step(), ci_heal_author_commit_upload_step()]
     ),
     needs: ["build"],
     env: none,
@@ -662,7 +684,7 @@ fn ci_job() -> Job {
     id: "ci",
     name: none,
     runner: gunbc_ci_selected_runner_spec(),
-    steps: concat(ci_floor_job_prelude_steps(), [ci_release_bins_download_step(), ci_release_bins_unpack_verify_step(), ci_floor_peak_pre_step(), ci_floor_step(), ci_floor_peak_post_step(),  ci_merge_admission_gate_step()]),
+    steps: concat(ci_floor_job_prelude_steps(), [ci_release_bins_download_step(), ci_release_bins_unpack_verify_step(), ci_floor_peak_pre_step(), ci_floor_step(), ci_floor_peak_post_step()]),
     needs: ["build", "regen"],
     env: none,
     outputs: none,

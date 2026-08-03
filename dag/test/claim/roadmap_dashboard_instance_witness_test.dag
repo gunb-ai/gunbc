@@ -1,11 +1,14 @@
 module test.claim.roadmap_dashboard_instance_witness
 
 import std.types { Bool, String, NonEmptyStr, FilePath }
-import extdeps.tmux { shape_tmux_ls_argv_for }
+import extdeps.tmux { shape_tmux_ls_argv_for, DefaultTmuxServer }
 import gunbc.provider_account {
   CodexDefaultAccount,
   CodexLabelledAccount,
   codex_account_state_root,
+  admitted_single_session_binding,
+  codex_roadmap_account_selection,
+  codex_roadmap_account_evidence,
 }
 import gunbc.host_layout {
   srv1_host_layout,
@@ -14,6 +17,8 @@ import gunbc.host_layout {
   srv1_gunbc_serve_binary,
   srv1_roadmap_codex_home,
   srv1_dashboard_controller_repo,
+  srv1_dispatch_worktree_root,
+  srv1_dispatch_attempt_state_root,
 }
 import gunbc.roadmap_dashboard_instance {
   HostDashboardInstance,
@@ -48,10 +53,21 @@ import gunbc.roadmap_dashboard_instance {
   DashboardInstanceRetractPlan,
   DashboardInstanceRetractRefused,
   srv1_live_dashboard_instance,
+  srv1_green_dashboard_instance,
   srv1_lab_dashboard_instance,
   srv2_preview_dashboard_instance,
   srv2_lab_dashboard_instance,
   isolated_dashboard_instance,
+  DispatchStateScope,
+  DispatchStateHostShared,
+  DispatchStateInstanceOwned,
+  DashboardExistingProviderState,
+  DashboardSshProvision,
+  dashboard_execution_environment,
+  dashboard_instance_child,
+  dashboard_instance_dispatch_state_paths,
+  dashboard_instance_footprint_paths,
+  dashboard_instances_dispatch_state_is_consistent,
   DashboardGitBundle,
   DashboardExistingRepo,
   DashboardLocalProvision,
@@ -63,6 +79,9 @@ import gunbc.roadmap_dashboard_instance {
   dashboard_instance_provision_plan,
   dashboard_instance_reconcile,
   dashboard_instance_retract_plan,
+  dashboard_instance_dispatch_worktree_root,
+  dashboard_instance_dispatch_attempt_state_root,
+  dashboard_path_is_under,
 }
 
 test fn dashboard_instance_paths_move_as_one_owned_root() -> Bool {
@@ -70,7 +89,7 @@ test fn dashboard_instance_paths_move_as_one_owned_root() -> Bool {
   dashboard_instance_paths_are_owned(instance: lab)
     && lab.provision_parent_root == "/home/briansrls/.local/share"
     && lab.repo_root == "/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-v0/source"
-    && lab.dispatch_worktree_root == "/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-v0/attempts"
+    && dashboard_instance_dispatch_worktree_root(instance: lab) == "/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-v0/attempts"
     && lab.local_origin_root == "/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-v0/origin.git"
 }
 
@@ -125,11 +144,11 @@ fn plan_binds_instance_paths(
     _ => false
   })
   let attempts_bound = any(plan, op => match op {
-    DashboardEnsureDirectory { path } => path == instance.dispatch_worktree_root
+    DashboardEnsureDirectory { path } => path == dashboard_instance_dispatch_worktree_root(instance: instance)
     _ => false
   })
   let attempt_state_bound = any(plan, op => match op {
-    DashboardEnsureDirectory { path } => path == instance.dispatch_attempt_state_root
+    DashboardEnsureDirectory { path } => path == dashboard_instance_dispatch_attempt_state_root(instance: instance)
     _ => false
   })
   let marker_bound = any(plan, op => match op {
@@ -449,7 +468,7 @@ fn retract_plan_is_safe(
     })
     && any(plan, op => match op {
       DashboardRefuseUnlessAttemptsEmpty { path } =>
-        path == instance.dispatch_worktree_root
+        path == dashboard_instance_dispatch_worktree_root(instance: instance)
       _ => false
     })
     && any(plan, op => match op {
@@ -718,4 +737,143 @@ test fn a_refused_observation_never_derives_a_plan() -> Bool {
     DashboardInstanceApply { plan: _ } => false
     DashboardInstanceConverged => false
   }
+}
+
+data dispatch_state_scope_witness_note: String = "THE DISCRIMINATORS FOR HOST-SHARED DISPATCH STATE, built around a counterfactual rather than around the declared slots alone. Asserting only that srv1-live and srv1-green agree would pass for a reason that has nothing to do with the law: both are authored correctly, so the assertion cannot tell a working law from an absent one. witness_production_slot takes the two dispatch roots as parameters, so the SAME constructor produces the agreeing slot and the slot that keeps its own attempt-state root, and the pair goes green and red respectively off one definition.\\n\\nThe red control is the shape the outage actually had: a production slot deriving dispatch roots under its own instance root. That is what put a teardown of live dispatch evidence on the per-push cutover path, and it is what must never typecheck-and-pass again. The lab control is its mirror — a host-shared root handed to an instance-owned lab breaks the isolation labs exist for, so consistency must refuse that direction too."
+
+fn witness_production_slot(
+  instance_id: NonEmptyStr,
+  root: FilePath,
+  scope: DispatchStateScope,
+  host_identity: NonEmptyStr,
+) -> HostDashboardInstance {
+  let binary = dashboard_instance_child(root: root, child: "bin/gunbc")
+  HostDashboardInstance {
+    instance_id: instance_id,
+    host_identity: host_identity,
+    provision_parent_root: "/opt" as FilePath,
+    instance_root: root,
+    local_origin_root: dashboard_instance_child(root: root, child: "gunbc"),
+    local_origin_publish_ref: "refs/heads/main" as NonEmptyStr,
+    repo_root: dashboard_instance_child(root: root, child: "gunbc"),
+    dispatch_base_ref: "origin/main" as NonEmptyStr,
+    dispatch_state_scope: scope,
+    execution_environment: dashboard_execution_environment(serve_binary: binary),
+    provider_state: DashboardExistingProviderState {
+      root: srv1_roadmap_codex_home,
+      executable: "/usr/bin/codex" as FilePath,
+      binding: admitted_single_session_binding(
+        selection: codex_roadmap_account_selection(),
+        evidence: codex_roadmap_account_evidence,
+      ),
+    },
+    serve_binary: binary,
+    serve_function: "witness_handler" as NonEmptyStr,
+    listen_host: "0.0.0.0" as NonEmptyStr,
+    listen_port: 18081,
+    tmux_server: DefaultTmuxServer,
+    actuation: DashboardActuating,
+    provision_transport: DashboardSshProvision { host: "srv1" as NonEmptyStr },
+    source_seed: DashboardExistingRepo { anchor_ref: "origin/main" as NonEmptyStr },
+  }
+}
+
+fn witness_agreeing_slot() -> HostDashboardInstance {
+  witness_production_slot(
+    instance_id: "srv1-witness-agreeing" as NonEmptyStr,
+    root: "/opt/gunbc-witness" as FilePath,
+    scope: DispatchStateHostShared {
+      worktree_root: srv1_dispatch_worktree_root,
+      attempt_state_root: srv1_dispatch_attempt_state_root,
+    },
+    host_identity: "srv1" as NonEmptyStr,
+  )
+}
+
+fn witness_slot_keeping_its_own_dispatch_state() -> HostDashboardInstance {
+  let root = "/opt/gunbc-witness" as FilePath
+  witness_production_slot(
+    instance_id: "srv1-witness-own-state" as NonEmptyStr,
+    root: root,
+    scope: DispatchStateHostShared {
+      worktree_root: dashboard_instance_child(root: root, child: "dispatch-worktrees"),
+      attempt_state_root: dashboard_instance_child(root: root, child: "attempt-state"),
+    },
+    host_identity: "srv1" as NonEmptyStr,
+  )
+}
+
+test fn production_slots_resolve_dispatch_state_to_the_same_roots() -> Bool {
+  let live = srv1_live_dashboard_instance()
+  let green = srv1_green_dashboard_instance()
+  dashboard_instance_dispatch_worktree_root(instance: live) == dashboard_instance_dispatch_worktree_root(instance: green)
+    && dashboard_instance_dispatch_attempt_state_root(instance: live) == dashboard_instance_dispatch_attempt_state_root(instance: green)
+    && dashboard_instance_dispatch_worktree_root(instance: green) == srv1_dispatch_worktree_root
+    && dashboard_instance_dispatch_attempt_state_root(instance: green) == srv1_dispatch_attempt_state_root
+    && dashboard_instances_dispatch_state_is_consistent(a: live, b: green)
+}
+
+test fn a_production_slot_keeping_its_own_dispatch_state_is_refused() -> Bool {
+  let live = srv1_live_dashboard_instance()
+  let agreeing = witness_agreeing_slot()
+  let own_state = witness_slot_keeping_its_own_dispatch_state()
+  dashboard_instances_dispatch_state_is_consistent(a: live, b: agreeing)
+    && !dashboard_instances_dispatch_state_is_consistent(a: live, b: own_state)
+}
+
+data lab_shared_root_became_unrepresentable_note: String = "THIS PAIR USED TO CONSTRUCT THE INVALID STATE AND ASSERT THE LAW CAUGHT IT. It no longer can, and that is the climb rather than a gap: an instance-owned scope carries only CHILD NAMES, so its roots are derived beneath its own instance_root and there is no way to author a lab pointing at the host-shared roots. The DESIGN §4b rule is that a climb deletes the lower-rung production machinery but keeps the evidence enrolled, so these assert the DERIVATION that makes the old red unwritable instead of pretending to still construct it — a witness whose invalid input became unrepresentable must change what it asserts, not keep a name that no longer describes it.\\n\\nWHAT REMAINS LAW-CAUGHT, stated so the residue is not mistaken for a wall: a host-shared scope still carries two free FilePath values, so a production slot CAN be authored with roots that are not the layout rows. That state is representable and dashboard_instances_dispatch_state_is_consistent is what refuses it — rung two, not rung four — and a_production_slot_keeping_its_own_dispatch_state_is_refused is its live discriminating red. Closing it needs host-shared roots DERIVED from a total host-identity-to-layout lookup rather than carried, which is a host_layout change; dissolve-on: feature:host-dispatch-roots-derived."
+
+test fn an_instance_owned_scope_cannot_reach_the_shared_roots() -> Bool {
+  let lab = srv1_lab_dashboard_instance()
+  let live = srv1_live_dashboard_instance()
+  dashboard_path_is_under(
+    path: dashboard_instance_dispatch_attempt_state_root(instance: lab),
+    root: lab.instance_root,
+  )
+    && dashboard_path_is_under(
+      path: dashboard_instance_dispatch_worktree_root(instance: lab),
+      root: lab.instance_root,
+    )
+    && dashboard_instance_dispatch_attempt_state_root(instance: lab) != srv1_dispatch_attempt_state_root
+    && dashboard_instances_dispatch_state_is_consistent(a: live, b: lab)
+}
+
+test fn host_shared_slots_are_exempt_from_containment_but_labs_are_not() -> Bool {
+  let green = srv1_green_dashboard_instance()
+  let lab = srv1_lab_dashboard_instance()
+  dashboard_instance_paths_are_owned(instance: green)
+    && dashboard_instance_paths_are_owned(instance: lab)
+    && !dashboard_path_is_under(
+      path: dashboard_instance_dispatch_attempt_state_root(instance: green),
+      root: green.instance_root,
+    )
+}
+
+data different_host_shared_slots_are_valid_note: String = "The finding-3 red: two host-shared instances on DIFFERENT hosts carry byte-identical layout paths, and the first cut routed them into path-disjointness where identical strings refuse. Same-host disagreement must still refuse, so this asserts both directions off one pair — collapsing the different-host arm back into disjointness reds the first conjunct, and dropping the same-host equality check reds the second."
+
+test fn host_shared_slots_on_different_hosts_are_consistent() -> Bool {
+  let live = srv1_live_dashboard_instance()
+  let other_host = witness_production_slot(
+    instance_id: "srv2-witness-live" as NonEmptyStr,
+    root: "/opt/gunbc" as FilePath,
+    scope: DispatchStateHostShared {
+      worktree_root: srv1_dispatch_worktree_root,
+      attempt_state_root: srv1_dispatch_attempt_state_root,
+    },
+    host_identity: "srv2" as NonEmptyStr,
+  )
+  dashboard_instances_dispatch_state_is_consistent(a: live, b: other_host)
+    && !dashboard_instances_dispatch_state_is_consistent(
+      a: live,
+      b: witness_slot_keeping_its_own_dispatch_state(),
+    )
+}
+
+test fn the_binary_hazard_stays_closed_across_production_slots() -> Bool {
+  let live = srv1_live_dashboard_instance()
+  let green = srv1_green_dashboard_instance()
+  live.serve_binary != green.serve_binary
+    && live.repo_root != green.repo_root
+    && live.local_origin_root != green.local_origin_root
+    && dashboard_instances_have_disjoint_owned_paths(a: live, b: green)
 }
