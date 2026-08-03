@@ -385,6 +385,13 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     additional_works: [],
     dissolution: HasTrigger { text: "Nat lives only in std.nat (coproduct + Peano ops), v2.std.nat imports rather than redefines it, the 138-entry co-occurrence class is gone, and integer's GroupCompletion<Nat> cites the unified type — then this per-concept census doc deletes with this row (full criteria in the doc §9)" },
   },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "p1-retention-vs-drain-cohort-receipt",
+    primary_work: DeclarationRef { module_path: "gunbc.p1_retention_cohort_receipt", decl_name: "p1_retention_cohort_receipt_reproduction_steps", field: WholeDeclaration },
+    additional_works: [DeclarationRef { module_path: "gunbc.p1_retention_cohort_receipt", decl_name: "p1_retention_cohort_receipt_verdict", field: WholeDeclaration }],
+    dissolution: HasTrigger { text: "the redirected assembly/materialization lane this receipt's REJECT verdict points to is picked up and either supersedes this pinned measurement with a canonical carrier or the parent floor-prep-tax-program plan closes P1 outright — then this receipt and its anchor module delete together, per the same scaffold trigger named beside p1_cohort_receipt_enabled in cli_run.rs." },
+  },
 ]
 
 fn hand_authored_doc_graph_roots() -> List<String> {
