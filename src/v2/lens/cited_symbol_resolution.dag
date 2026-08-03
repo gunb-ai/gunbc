@@ -1,10 +1,10 @@
 module v2.lens.cited_symbol_resolution
 
-import gunbc.ci_layer_roots { witness_layer_roots }
 import gunbc.doc_graph_roots {
   hand_authored_cited_symbol_control_declaration_refs,
   hand_authored_doc_declaration_refs,
   hand_authored_production_doc_declaration_refs,
+  hand_authored_works_resolution_pool_roots,
 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { SubstrateMandatoryTag }
@@ -49,25 +49,28 @@ data cited_symbol_planted_ambiguous_control_facts: List<DeclFact> = [
 ]
 
 fn cited_symbol_resolution_violation_count() -> Int {
+  let pool = hand_authored_works_resolution_pool_roots()
   cited_declaration_ref_refusal_count(
     refs: hand_authored_production_doc_declaration_refs(),
-    facts: decl_facts(pool_roots: witness_layer_roots),
-    modules: module_declaration_facts_live(pool_roots: witness_layer_roots)
+    facts: decl_facts(pool_roots: pool),
+    modules: module_declaration_facts_live(pool_roots: pool)
   )
 }
 
 fn cited_symbol_enrolled_refusal_count() -> Int {
+  let pool = hand_authored_works_resolution_pool_roots()
   cited_declaration_ref_refusal_count(
     refs: hand_authored_doc_declaration_refs(),
-    facts: decl_facts(pool_roots: witness_layer_roots),
-    modules: module_declaration_facts_live(pool_roots: witness_layer_roots)
+    facts: decl_facts(pool_roots: pool),
+    modules: module_declaration_facts_live(pool_roots: pool)
   )
 }
 
 fn cited_symbol_planted_control_refusal_count() -> Int {
+  let pool = hand_authored_works_resolution_pool_roots()
   cited_declaration_ref_refusal_count(
     refs: hand_authored_cited_symbol_control_declaration_refs(),
-    facts: decl_facts(pool_roots: witness_layer_roots),
-    modules: module_declaration_facts_live(pool_roots: witness_layer_roots)
+    facts: decl_facts(pool_roots: pool),
+    modules: module_declaration_facts_live(pool_roots: pool)
   )
 }

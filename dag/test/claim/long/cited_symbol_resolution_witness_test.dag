@@ -6,6 +6,7 @@ import gunbc.doc_graph_roots {
   hand_authored_doc_declaration_refs,
   hand_authored_production_doc_declaration_refs,
   hand_authored_works_refs_all_resolve,
+  hand_authored_works_resolution_pool_roots,
 }
 import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField, decl_ref }
 import v2.lens.cited_symbol_resolution {
@@ -37,8 +38,9 @@ data cited_symbol_long_witness_layer_facts: List<DeclFact> = decl_facts(pool_roo
 data cited_symbol_long_witness_layer_modules: List<ModuleDeclarationFact> = module_declaration_facts_live(pool_roots: witness_layer_roots)
 
 fn cited_symbol_hand_authored_census_live() -> DeclarationRefResolutionCensus {
-  let facts = decl_facts(pool_roots: witness_layer_roots)
-  let modules = module_declaration_facts_live(pool_roots: witness_layer_roots)
+  let pool = hand_authored_works_resolution_pool_roots()
+  let facts = decl_facts(pool_roots: pool)
+  let modules = module_declaration_facts_live(pool_roots: pool)
   declaration_ref_resolution_census(
     refs: hand_authored_production_doc_declaration_refs(),
     facts: facts,
@@ -51,8 +53,9 @@ test fn cited_symbol_hand_authored_binds_all_resolve() -> Bool {
 }
 
 test fn cited_symbol_hand_authored_census_is_zero_refusals() -> Bool {
-  let facts = decl_facts(pool_roots: witness_layer_roots)
-  let modules = module_declaration_facts_live(pool_roots: witness_layer_roots)
+  let pool = hand_authored_works_resolution_pool_roots()
+  let facts = decl_facts(pool_roots: pool)
+  let modules = module_declaration_facts_live(pool_roots: pool)
   let census = declaration_ref_resolution_census(
     refs: hand_authored_production_doc_declaration_refs(),
     facts: facts,
