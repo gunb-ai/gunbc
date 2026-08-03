@@ -1,0 +1,127 @@
+module v2.test.claim.enforcement_inventory_witness
+
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data enforcement_inventory_witness_offline_note: String = "Operator-ruled OFFLINE (review 47569): seven *_live tests call lens_enforcement_inventory_live which reads decl_facts over the whole corpus. Excluded from per-PR discovery via witness_exclusion_frontier row enforcement_inventory_witness_test.dag (OfflineLocalRecipe, same dissolve_on as enforcement_live_witness_test.dag). Local recipe: claim_batch --source-root dag --source-root src/v2 --entry src/v2/test/claim/enforcement_inventory_witness_test.dag --functions <csv>. Two frontier-reconciliation tests (enforcement_live specimen + row-count) are cheap but share this file grain."
+
+data enforcement_inventory_self_audit_note: String = "Phase 0B self-audit (operator acceptance 2026-08-02): unbound detection routes through lens_contract_is_unbound -> consumer_enrolled_for (0A, no parallel ConsumerWitnessBinding Bool predicate). Lens inventory rows are a pure fold over lens_contract_registry with no stored ledger. Witness admission inventory rows derive from gunbc.ci_layer_roots witness_exclusion_frontier (no hand-authored scheduling). Support status is on LensEnforcementApplication rows, not lens_id. evaluated_scope and subject_counts evaluated/unavailable are typed absent until Phase 1. Scope leg and whole_corpus_scope constant were not modified. 0A red-control evidence is construction in the production fold; discriminating witnesses execute at offline cadence only (enforcement_live_witness_test.dag frontier row)."
+
+data enforcement_live_witness_pattern: String = "enforcement_live_witness_test.dag"
+
+test fn enforcement_live_witness_exclusion_inventory_matches_frontier() -> Bool {
+  match find_witness_admission_row_for_pattern(
+    inventory: witness_admission_inventory_live(),
+    pattern: enforcement_live_witness_pattern
+  ) {
+    WitnessAdmissionRowAbsent => false
+    WitnessAdmissionRowFound { value: row } =>
+      match row.exclusion {
+        ExclusionRowFound { value: excl } =>
+          witness_exclusion_lookup_is_offline(lookup: row.exclusion)
+            && !(excl.reason == "")
+            && !(excl.dissolve_on == "")
+            && scheduling_disposition_is_enrolled(disposition: cadence_disposition_for_offline_recipe(rows: row.cadence_rows))
+            && scheduling_disposition_is_excluded(disposition: cadence_disposition_for_pr_floor(rows: row.cadence_rows))
+            && scheduling_disposition_is_excluded(disposition: cadence_disposition_for_main_push(rows: row.cadence_rows))
+        ExclusionRowAbsent => false
+      }
+  }
+}
+
+test fn witness_admission_inventory_reconciles_exclusion_frontier() -> Bool {
+  length(xs: witness_admission_inventory_live()) == length(xs: witness_exclusion_frontier)
+}
+
+data enforcement_inventory_witness_pattern: String = "enforcement_inventory_witness_test.dag"
+
+test fn enforcement_inventory_witness_excluded_via_frontier() -> Bool {
+  match find_witness_admission_row_for_pattern(
+    inventory: witness_admission_inventory_live(),
+    pattern: enforcement_inventory_witness_pattern
+  ) {
+    WitnessAdmissionRowAbsent => false
+    WitnessAdmissionRowFound { value: row } =>
+      match row.exclusion {
+        ExclusionRowFound { value: excl } =>
+          witness_exclusion_lookup_is_offline(lookup: row.exclusion) && !(excl.dissolve_on == "")
+        ExclusionRowAbsent => false
+      }
+  }
+}
+
+test fn inventory_reconciles_registry_both_ways_live() -> Bool {
+  let inventory = lens_enforcement_inventory_live()
+  inventory_reconciles_registry_both_ways(
+    inventory: inventory,
+    contracts: lens_contract_registry
+  )
+}
+
+test fn inventory_unbound_rows_match_contract_unbound_live() -> Bool {
+  inventory_unbound_rows_match_contract_unbound(
+    inventory: lens_enforcement_inventory_live(),
+    contracts: lens_contract_registry
+  )
+}
+
+test fn unbound_lenses_remain_in_inventory_live() -> Bool {
+  unbound_contract_count() > 0
+    && inventory_contains_lens_id(
+      inventory: lens_enforcement_inventory_live(),
+      id: Complexity
+    )
+    && inventory_contains_lens_id(
+      inventory: lens_enforcement_inventory_live(),
+      id: EffectReach
+    )
+}
+
+test fn cost_has_contract_and_standing_intent_applications_live() -> Bool {
+  inventory_application_count_for_lens(
+    inventory: lens_enforcement_inventory_live(),
+    id: Cost
+  ) >= 2
+}
+
+test fn cost_repo_wide_application_reports_support_gap_live() -> Bool {
+  match find_inventory_row(inventory: lens_enforcement_inventory_live(), id: Cost) {
+    InventoryRowAbsent => false
+    InventoryRowFound { value: row } =>
+      fold_list(
+        xs: row.applications,
+        empty: false,
+        cons: fn(found, app) {
+          found || ((app.standing_intent_id == "complexity.repo-wide")
+            && match app.support {
+              SupportGap { gap: _ } => true
+              SupportHeld => false
+            })
+        }
+      )
+  }
+}
+
+test fn cost_contract_consumer_application_support_held_live() -> Bool {
+  match find_inventory_row(inventory: lens_enforcement_inventory_live(), id: Cost) {
+    InventoryRowAbsent => false
+    InventoryRowFound { value: row } =>
+      fold_list(
+        xs: row.applications,
+        empty: false,
+        cons: fn(found, app) {
+          found || ((app.application_id == "contract.consumer.src/v2/test/claim/complexity_gate/budget_roster_completeness_test.dag::complexity_budget_roster_family_gate_holds")
+            && match app.support {
+              SupportHeld => true
+              SupportGap { gap: _ } => false
+            })
+        }
+      )
+  }
+}
+
+test fn inventory_rows_report_evaluated_scope_absent_live() -> Bool {
+  for_all(xs: lens_enforcement_inventory_live(), predicate: fn(row) {
+    inventory_row_evaluated_scope_absent(row: row)
+  })
+}
