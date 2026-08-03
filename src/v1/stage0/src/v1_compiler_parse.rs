@@ -2384,30 +2384,42 @@ pub fn parsed_occurrence_role_for_node(
     requested: Rc<ParsedOccurrenceRole>,
 ) -> Rc<ParsedOccurrenceRole> {
     match (*requested.clone()).clone() {
-        ParsedOccurrenceRole::ParsedOccurrenceUnclassified => {
-            match (*node.expr_data.clone()).clone() {
-                ExprData::ExprLet => Rc::new(ParsedOccurrenceRole::ParsedOccurrenceDeclaration {
-                    category: OccurrenceCategory::LexicalValueOccurrence,
-                }),
-                ExprData::ExprVar {
-                    binding_kind: _, ..
-                } => Rc::new(ParsedOccurrenceRole::ParsedOccurrenceReference {
-                    category: OccurrenceCategory::LexicalValueOccurrence,
-                }),
-                ExprData::ExprFieldAccess { summary: _, .. } => {
-                    Rc::new(ParsedOccurrenceRole::ParsedOccurrenceReference {
-                        category: OccurrenceCategory::FieldOccurrence,
-                    })
-                }
-                ExprData::ExprMethodCall {
-                    method_semantics: _,
-                    ..
-                } => Rc::new(ParsedOccurrenceRole::ParsedOccurrenceReference {
-                    category: OccurrenceCategory::MethodOccurrence,
-                }),
-                _ => Rc::new(ParsedOccurrenceRole::ParsedOccurrenceUnclassified),
+        ParsedOccurrenceRole::ParsedOccurrenceUnclassified => match (*node.expr_data.clone())
+            .clone()
+        {
+            ExprData::ExprLet => Rc::new(ParsedOccurrenceRole::ParsedOccurrenceDeclaration {
+                category: OccurrenceCategory::LexicalValueOccurrence,
+            }),
+            ExprData::ExprVar {
+                binding_kind: _, ..
+            } => Rc::new(ParsedOccurrenceRole::ParsedOccurrenceReference {
+                category: OccurrenceCategory::LexicalValueOccurrence,
+            }),
+            ExprData::ExprFieldAccess { summary: _, .. } => {
+                Rc::new(ParsedOccurrenceRole::ParsedOccurrenceReference {
+                    category: OccurrenceCategory::FieldOccurrence,
+                })
             }
-        }
+            ExprData::ExprMethodCall {
+                method_semantics: _,
+                ..
+            } => Rc::new(ParsedOccurrenceRole::ParsedOccurrenceReference {
+                category: OccurrenceCategory::MethodOccurrence,
+            }),
+            ExprData::ExprCall { .. } => Rc::new(ParsedOccurrenceRole::ParsedOccurrenceReference {
+                category: OccurrenceCategory::CallableOccurrence,
+            }),
+            ExprData::NoExprData => match node.body.clone() {
+                Some(_) => match node.type_annotation.clone() {
+                    None => Rc::new(ParsedOccurrenceRole::ParsedOccurrenceDeclaration {
+                        category: OccurrenceCategory::CallableOccurrence,
+                    }),
+                    Some(_) => Rc::new(ParsedOccurrenceRole::ParsedOccurrenceUnclassified),
+                },
+                None => Rc::new(ParsedOccurrenceRole::ParsedOccurrenceUnclassified),
+            },
+            _ => Rc::new(ParsedOccurrenceRole::ParsedOccurrenceUnclassified),
+        },
         _ => requested.clone(),
     }
 }
@@ -2763,6 +2775,25 @@ pub fn parse_with_table(
         intern_table.clone(),
         intern_table.authored_token_ordinals.clone(),
     )
+}
+
+pub fn parse_with_table_ready_module_path_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Projects the parsed module name without naming the module field through a cross-module keyword collision. Bridge consumers (occurrence_binding_parser_walk) read this Present only when parse succeeded.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn parse_with_table_ready_module_path(parsed: Rc<ParseWithTableResult>) -> Option<String> {
+    match parsed.result.clone().error.clone() {
+        Some(_) => None,
+        None => match parsed.result.clone().module.clone() {
+            Some(module_node) => Some(module_node.name.clone()),
+            None => None,
+        },
+    }
 }
 
 pub fn parse(

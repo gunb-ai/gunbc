@@ -6,7 +6,7 @@ import std.content_hash {
   content_hash_of_value,
   content_hash_atom,
 }
-import gunbc.roadmap_model { RoadmapNodeIdentity }
+import gunbc.roadmap_model { RoadmapNodeIdentity, RoadmapNodeId }
 import gunbc.roadmap_execution_contract {
   GunbcClaimValidation,
   ModeledValidationCommand,
@@ -28,6 +28,10 @@ import gunbc.roadmap_verification_receipt {
   verification_subject_match,
   verification_evidence_for,
   verification_evidence_moves_lamp,
+  verification_receipt_json,
+  verification_receipt_decode,
+  VerificationReceiptDecoded,
+  VerificationReceiptUndecodable,
 }
 import gunbc.roadmap_dashboard_instance { srv2_lab_dashboard_instance }
 import gunbc.roadmap_dispatch_actuator {
@@ -130,13 +134,13 @@ test fn one_attempt_addresses_multiple_heads_without_overwrite() -> Bool {
   let instance = srv2_lab_dashboard_instance()
   let path_a = dispatch_attempt_verification_receipt_path_for_instance(
     instance: instance,
-    node_id: "exact-head-node" as NonEmptyStr as gunbc.roadmap_model.RoadmapNodeId,
+    node_id: "exact-head-node" as NonEmptyStr as RoadmapNodeId,
     attempt_key: "feedfacefeedface",
     head_sha: head_a as String,
   )
   let path_b = dispatch_attempt_verification_receipt_path_for_instance(
     instance: instance,
-    node_id: "exact-head-node" as NonEmptyStr as gunbc.roadmap_model.RoadmapNodeId,
+    node_id: "exact-head-node" as NonEmptyStr as RoadmapNodeId,
     attempt_key: "feedfacefeedface",
     head_sha: head_b as String,
   )
@@ -145,9 +149,27 @@ test fn one_attempt_addresses_multiple_heads_without_overwrite() -> Bool {
     && string_contains(s: path_b, pattern: "/verification/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.json")
 }
 
+test fn exact_head_receipt_round_trips_through_json_codec() -> Bool {
+  let receipt = exact_head_receipt(head: head_a)
+  let wire = verification_receipt_json(receipt: receipt)
+  match verification_receipt_decode(receipt: wire) {
+    VerificationReceiptDecoded { receipt: decoded } =>
+      match verification_subject_match(expected: receipt.subject, found: decoded.subject) {
+        VerificationSubjectMatches =>
+          count(decoded.executions) == count(receipt.executions)
+            && verification_evidence_moves_lamp(
+              evidence: VerificationEvidenceForSubject { receipt: decoded },
+            )
+        VerificationSubjectDiffers { field: _, expected: _, found: _ } => false
+      }
+    VerificationReceiptUndecodable { reason: _ } => false
+  }
+}
+
 test fn roadmap_verification_receipt_keystone_holds() -> Bool {
   complete_exact_head_receipt_constructs_and_matches()
     && passed_receipt_for_old_head_refuses_to_move_new_head_lamp()
     && attempt_level_pass_is_typed_legacy_and_never_evidence()
     && one_attempt_addresses_multiple_heads_without_overwrite()
+    && exact_head_receipt_round_trips_through_json_codec()
 }

@@ -1268,3 +1268,12 @@ fn reentrant_provider_ctx_construction_refuses() {
         "refusal must be located and name the class, got: {err}"
     );
 }
+
+// `cross_process_hit_skips_semantic_recompute` was written and executed against
+// `same_subject_resolves_share_one_graph_store_hits_v2_disk`'s shape, then removed
+// rather than landed, because at the time it reliably OOM-killed the runner instead
+// of failing loud and located. That finding is now ROOT-CAUSED AND FIXED — the seam's
+// store direction ignored the provider-bootstrap suppression flag that its probe
+// direction honoured, so the provider's own bootstrap resolve rebuilt the provider
+// closure recursively. The two tests above are the controls that replaced it, and the
+// skipped-recompute witness can now be re-attempted without taking the runner down.

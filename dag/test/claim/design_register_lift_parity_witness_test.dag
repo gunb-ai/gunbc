@@ -18,8 +18,10 @@ The proof, run 2026-07-24: old and new moodboard CSS were both emitted and compa
 Two digests deliberately did NOT move, which is itself evidence the change is scoped as described: accent_study_html declares no response rules, so it has no transition carriers and its bytes are untouched; moodboard_digest covers the thesis/theme rows rather than the stylesheet. A change that had leaked past the transition machinery would have moved those too."
 
 data moodboard_css_lift_parity_digest: String = "deaf2b36826760c2"
-data moodboard_html_lift_parity_digest: String = "5e765800656fee4d"
-data accent_study_html_lift_parity_digest: String = "90e876af9e5173db"
+data moodboard_repin_s1_selective_spectacle_note: String = "Re-pinned 2026-08-02 for the S1 selective-spectacle amendment (operator recalibration): the moodboard HTML, thesis/themes, and accent-study HTML digests move intentionally because the thesis string is revised (calm field; luminous focus; physical response; every response true) — both pages render register_thesis — and the principles table gains the three salience rows (selective-spectacle, emission-over-material, bounded-attraction, each carried by a gunbc.design.salience declaration). moodboard_css deliberately did NOT move (re-derived deaf2b36826760c2, equal to its pin) — the amendment is model-layer only, no stylesheet change, which is itself the scope evidence. Behavioral receipts: test.claim.salience_witness (budget table, focal budget refusal, emission refusals incl. sole-discriminator, attraction envelope). All three digests derived by execution (moodboard_html_derived_digest / moodboard_digest / accent_study_html_derived_digest run 2026-08-02), never chosen."
+
+data moodboard_html_lift_parity_digest: String = "e43de6d61dc662ce"
+data accent_study_html_lift_parity_digest: String = "013dfb213ad0128f"
 data roadmap_css_digest_repin_note: String = "Re-pinned across the UI-model migration and the #7104 (SupersededLine) merge. P2 (token migration, px/font -> gunbc.design.scale var tokens) was proven visually-neutral by execution: resolving every var(--scale-token) reproduced the pre-P2 CSS byte-for-byte. P3 (presentation mapping) then INTENTIONALLY adds styling: the dispatch button's reserved min-width (derived from the longest wire label, in ch) and the ok/refusal/requested chip material rules (each painting the P0 state's role). D5 (typed CSS grain) is a pure re-grounding — property names and selector subjects become typed, bytes unchanged. The #7104 merge folds in the .status-superseded / .node-superseded / .superseded-by rules, RE-GROUNDED here onto the same typed+tokenized grain (their raw 11px/6px/font-family literals routed through the scale tokens so the untokened-length census stays green), which shifts the bytes off main's hardcoded emission — hence this digest re-pin. The behavioral receipts (roadmap_register_keystone, dispatch_presentation_keystone) and the untokened-length census remain the substance; this digest only pins bytes. Re-pinned again for #7169 (roadmap workspace UX): roadmap_style gained centered .roadmap/.daily-workspace auto side margins and related layout rules — bytes shift, behavioral receipts (roadmap_register_keystone, dispatch_presentation_keystone) unchanged."
 
 data roadmap_css_repin_tactile_note: String = "The roadmap's own bytes move for a second, intentional reason beyond the carrier restructure: the dashboard gained physical motion. Hover lift, press depression, the latched requested position, the settle spring, the sound toggle's rules and the reduced-motion collapse over all of them are new emission. The behavioural receipts are roadmap_tactile_keystone_holds (which walls the mechanics with planted REDs) and roadmap_register_keystone_holds; this digest only pins bytes."
@@ -58,8 +60,10 @@ data roadmap_css_repin_a3_family_collapse_note: String = "Re-pinned 2026-08-01 f
 
 data roadmap_css_repin_a2_hierarchy_note: String = "Re-pinned 2026-08-02 for the A2 hierarchy closeout (operator gap ruling), and again the same day for the S0 amendments (operator recalibration): the action-prominence pair (.dispatch-btn.action-primary/.action-secondary resting quiet on surface/border/text-dim, .dispatch-btn.action-focal — renamed from action-live, which nicknamed liveness — restoring the family's rest band via its derived vars), emitted BEFORE the state-family paints so a status class always outvotes prominence at equal specificity; the li.node:focus-visible outline (keyboard selection parity — rows are focusable and keyboard focus is visible on the register's focus token); and .header-inner, the header's content frame on the same measure_page/auto-margin tokens as the content columns (header_composition_frame_note). Behavioral receipts: the axis pins in test.claim.roadmap_page_witness (ready renders action-primary/available, review and out-of-order render action-secondary/override). This digest only pins bytes; derived by execution (roadmap_css_derived_digest run 2026-08-02), never chosen."
 
+data lift_parity_merge_resolution_note: String = "MERGE RESOLUTION, RE-DERIVED NOT RECONCILED (S1 x A2-hierarchy, 2026-08-03). Both branches edited this row block and each moved a DIFFERENT digest: #7701 (A2 hierarchy closeout) moved roadmap_css because it changed the stylesheet, and S1 moved moodboard_thesis_themes because it revised register_thesis. Neither touched the other's surface, so the semantic union is the resolution and no value is a compromise between two claims. The union was nonetheless not TRUSTED: both digests were re-run by execution on the merged tree, because a digest pins emitted bytes and a merge is the one moment when the bytes belong to a tree neither side ever built — picking a side by reasoning about scope is exactly the copied-measurement-as-oracle failure this file's own repin notes disclaim ('derived by execution, never chosen'). The re-run is the oracle; the reasoning above only explains why the re-run was expected to agree."
+
 data roadmap_css_lift_parity_digest: String = "25d65c956b7578ca"
-data moodboard_thesis_themes_lift_parity_digest: String = "69e68066c49667f9"
+data moodboard_thesis_themes_lift_parity_digest: String = "98f0513aebb0dcb3"
 
 fn emission_content_digest(s: String) -> String {
   content_hash_atom(value: s as NonEmptyStr).digest as String
@@ -69,16 +73,28 @@ fn roadmap_css_derived_digest() -> String {
   emission_content_digest(s: roadmap_css())
 }
 
+fn moodboard_css_derived_digest() -> String {
+  emission_content_digest(s: moodboard_css())
+}
+
+fn moodboard_html_derived_digest() -> String {
+  emission_content_digest(s: moodboard_html())
+}
+
+fn accent_study_html_derived_digest() -> String {
+  emission_content_digest(s: accent_study_html())
+}
+
 test fn witness_moodboard_css_digest_pinned() -> Bool {
-  emission_content_digest(s: moodboard_css()) == moodboard_css_lift_parity_digest
+  moodboard_css_derived_digest() == moodboard_css_lift_parity_digest
 }
 
 test fn witness_moodboard_html_digest_pinned() -> Bool {
-  emission_content_digest(s: moodboard_html()) == moodboard_html_lift_parity_digest
+  moodboard_html_derived_digest() == moodboard_html_lift_parity_digest
 }
 
 test fn witness_accent_study_html_digest_pinned() -> Bool {
-  emission_content_digest(s: accent_study_html()) == accent_study_html_lift_parity_digest
+  accent_study_html_derived_digest() == accent_study_html_lift_parity_digest
 }
 
 test fn witness_roadmap_css_digest_pinned() -> Bool {
