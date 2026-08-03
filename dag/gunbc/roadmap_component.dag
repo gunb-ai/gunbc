@@ -1762,6 +1762,127 @@ fn sessions_reset_presence_stmt() -> TsStmt {
     ]))]))
 }
 
+data observe_impact_region_note: String = "ONE FAILURE NARRATED ONCE, ACROSS CHANNELS (A2 hierarchy closeout, operator gap ruling 2026-08-02). Three observation channels — sessions, attempts, workflow — used to each prepend their own full-width refusal banner through this painter, so one dead observation root stacked three near-identical amber voices above the fold (the local-serve screenshots are the specimen). The painter now upserts each channel's located row INSIDE one shared impact region: the server-rendered section.workspace-observation when the page shipped one (the serve-time impact statement keeps its own summary — the client never overwrites a server-decided claim), else a client-minted twin. The region's disclosure holds the per-channel raw rows, the summary states the user-relevant impact with the refused-channel count, and gunbcObserveImpactSync retracts rows as channels recover — a client-minted region with zero refused rows removes itself, so recovery leaves no husk. Frequency stays observable: every channel row remains in the DOM, typed by its source class, one interaction deep — deduplicated narration, never deduplicated evidence."
+
+fn observe_impact_preamble_statements() -> List<TsStmt> {
+  [
+    ts_const(name: "gunbcObserveImpactBox", value: ts_arrow(params: [], body: ts_block(stmts: [
+      ts_let(name: "box", value: ts_call(
+        callee: ts_member(object: ts_ident(name: "document"), property: "querySelector"),
+        args: [ts_lit_str(value: ".workspace-observation")])),
+      ts_if(
+        cond: ts_prefix(op: "!", expr: ts_ident(name: "box")),
+        then: ts_block(stmts: [
+          ts_expr_stmt(expr: ts_binop(
+            left: ts_ident(name: "box"),
+            op: "=",
+            right: ts_call(
+              callee: ts_member(object: ts_ident(name: "document"), property: "createElement"),
+              args: [ts_lit_str(value: "section")]))),
+          ts_expr_stmt(expr: ts_binop(
+            left: ts_member(object: ts_ident(name: "box"), property: "className"),
+            op: "=",
+            right: ts_lit_str(value: "workspace-observation client-minted"))),
+          ts_const(name: "s", value: ts_call(
+            callee: ts_member(object: ts_ident(name: "document"), property: "createElement"),
+            args: [ts_lit_str(value: "span")])),
+          ts_expr_stmt(expr: ts_binop(
+            left: ts_member(object: ts_ident(name: "s"), property: "className"),
+            op: "=",
+            right: ts_lit_str(value: "workspace-observation-summary"))),
+          ts_expr_stmt(expr: ts_call(
+            callee: ts_member(object: ts_ident(name: "box"), property: "append"),
+            args: [ts_ident(name: "s")])),
+          ts_const(name: "mn", value: ts_call(
+            callee: ts_member(object: ts_ident(name: "document"), property: "querySelector"),
+            args: [ts_lit_str(value: "main")])),
+          ts_expr_stmt(expr: ts_binop(
+            left: ts_ident(name: "mn"),
+            op: "&&",
+            right: ts_call(
+              callee: ts_member(object: ts_ident(name: "mn"), property: "prepend"),
+              args: [ts_ident(name: "box")]))),
+        ]),
+        else_stmt: none),
+      ts_let(name: "d", value: ts_call(
+        callee: ts_member(object: ts_ident(name: "box"), property: "querySelector"),
+        args: [ts_lit_str(value: ".observe-impact-detail")])),
+      ts_if(
+        cond: ts_prefix(op: "!", expr: ts_ident(name: "d")),
+        then: ts_block(stmts: [
+          ts_expr_stmt(expr: ts_binop(
+            left: ts_ident(name: "d"),
+            op: "=",
+            right: ts_call(
+              callee: ts_member(object: ts_ident(name: "document"), property: "createElement"),
+              args: [ts_lit_str(value: "details")]))),
+          ts_expr_stmt(expr: ts_binop(
+            left: ts_member(object: ts_ident(name: "d"), property: "className"),
+            op: "=",
+            right: ts_lit_str(value: "observe-impact-detail"))),
+          ts_const(name: "sm", value: ts_call(
+            callee: ts_member(object: ts_ident(name: "document"), property: "createElement"),
+            args: [ts_lit_str(value: "summary")])),
+          ts_expr_stmt(expr: ts_binop(
+            left: ts_member(object: ts_ident(name: "sm"), property: "textContent"),
+            op: "=",
+            right: ts_lit_str(value: "refused observation channels"))),
+          ts_expr_stmt(expr: ts_call(
+            callee: ts_member(object: ts_ident(name: "d"), property: "append"),
+            args: [ts_ident(name: "sm")])),
+          ts_expr_stmt(expr: ts_call(
+            callee: ts_member(object: ts_ident(name: "box"), property: "append"),
+            args: [ts_ident(name: "d")])),
+        ]),
+        else_stmt: none),
+      ts_return(expr: Present { value: ts_ident(name: "box") }),
+    ]))),
+    ts_const(name: "gunbcObserveImpactSync", value: ts_arrow(params: [], body: ts_block(stmts: [
+      ts_const(name: "box", value: ts_call(
+        callee: ts_member(object: ts_ident(name: "document"), property: "querySelector"),
+        args: [ts_lit_str(value: ".workspace-observation")])),
+      ts_if(cond: ts_prefix(op: "!", expr: ts_ident(name: "box")), then: ts_return(expr: none), else_stmt: none),
+      ts_const(name: "n", value: ts_member(
+        object: ts_call(
+          callee: ts_member(object: ts_ident(name: "box"), property: "querySelectorAll"),
+          args: [ts_lit_str(value: ".observe-refused")]),
+        property: "length")),
+      ts_if(
+        cond: ts_prefix(op: "!", expr: ts_call(
+          callee: ts_member(object: ts_member(object: ts_ident(name: "box"), property: "classList"), property: "contains"),
+          args: [ts_lit_str(value: "client-minted")])),
+        then: ts_return(expr: none),
+        else_stmt: none),
+      ts_if(
+        cond: ts_binop(left: ts_ident(name: "n"), op: "===", right: ts_lit_num(text: "0")),
+        then: ts_block(stmts: [
+          ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "box"), property: "remove"), args: [])),
+          ts_return(expr: none),
+        ]),
+        else_stmt: none),
+      ts_const(name: "s", value: ts_call(
+        callee: ts_member(object: ts_ident(name: "box"), property: "querySelector"),
+        args: [ts_lit_str(value: ".workspace-observation-summary")])),
+      ts_expr_stmt(expr: ts_binop(
+        left: ts_ident(name: "s"),
+        op: "&&",
+        right: ts_binop(
+          left: ts_member(object: ts_ident(name: "s"), property: "textContent"),
+          op: "=",
+          right: ts_binop(
+            left: ts_binop(
+              left: ts_lit_str(value: "observation unavailable — "),
+              op: "+",
+              right: ts_ident(name: "n")),
+            op: "+",
+            right: ts_cond(
+              test: ts_binop(left: ts_ident(name: "n"), op: "===", right: ts_lit_num(text: "1")),
+              consequent: ts_lit_str(value: " channel refused"),
+              alternate: ts_lit_str(value: " channels refused")))))),
+    ]))),
+  ]
+}
+
 fn observation_refused_banner_stmts(source_class: String) -> List<TsStmt> {
   [
     ts_let(name: "bn", value: ts_call(
@@ -1780,14 +1901,16 @@ fn observation_refused_banner_stmts(source_class: String) -> List<TsStmt> {
           left: ts_member(object: ts_ident(name: "bn"), property: "className"),
           op: "=",
           right: ts_lit_str(value: join(["observe-refused", source_class], " ")))),
-        ts_const(name: "mn", value: ts_call(
-          callee: ts_member(object: ts_ident(name: "document"), property: "querySelector"),
-          args: [ts_lit_str(value: "main")])),
+        ts_const(name: "impactDetail", value: ts_call(
+          callee: ts_member(
+            object: ts_call(callee: ts_ident(name: "gunbcObserveImpactBox"), args: []),
+            property: "querySelector"),
+          args: [ts_lit_str(value: ".observe-impact-detail")])),
         ts_expr_stmt(expr: ts_binop(
-          left: ts_ident(name: "mn"),
+          left: ts_ident(name: "impactDetail"),
           op: "&&",
           right: ts_call(
-            callee: ts_member(object: ts_ident(name: "mn"), property: "prepend"),
+            callee: ts_member(object: ts_ident(name: "impactDetail"), property: "append"),
             args: [ts_ident(name: "bn")]))),
       ]),
       else_stmt: none),
@@ -1795,6 +1918,7 @@ fn observation_refused_banner_stmts(source_class: String) -> List<TsStmt> {
       left: ts_member(object: ts_ident(name: "bn"), property: "textContent"),
       op: "=",
       right: ts_ident(name: "why"))),
+    ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "gunbcObserveImpactSync"), args: [])),
   ]
 }
 
@@ -1831,6 +1955,7 @@ fn sessions_fetch_effect_statements() -> List<TsStmt> {
                   observation_refused_banner_stmts(source_class: "sessions-observe-refused")))),
               else_stmt: Present { value: ts_block(stmts: [
                 remove_all_selector_stmt(selector: ".sessions-observe-refused", item_name: "oldBanner"),
+                ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "gunbcObserveImpactSync"), args: [])),
                 sessions_reset_presence_stmt(),
                 ts_expr_stmt(expr: ts_call(
                   callee: ts_member(object: ts_member(object: ts_ident(name: "sj"), property: "sessions"), property: "forEach"),
@@ -1929,6 +2054,7 @@ fn attempts_fetch_effect_statements() -> List<TsStmt> {
                   observation_refused_banner_stmts(source_class: "attempts-observe-refused")))),
               else_stmt: Present { value: ts_block(stmts: [
                 remove_all_selector_stmt(selector: ".attempts-observe-refused", item_name: "oldBanner"),
+                ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "gunbcObserveImpactSync"), args: [])),
                 remove_all_selector_stmt(selector: ".dispatch-attempts", item_name: "oldAttempts"),
                 ts_expr_stmt(expr: ts_call(
                   callee: ts_member(object: ts_member(object: ts_ident(name: "aj"), property: "attempts"), property: "forEach"),
@@ -2497,6 +2623,7 @@ fn workflow_fetch_request_statements() -> List<TsStmt> {
                 remove_all_selector_stmt(
                   selector: ".workflow-observe-refused",
                   item_name: "oldWorkflowBanner"),
+                ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "gunbcObserveImpactSync"), args: [])),
                 workflow_clear_rendered_stmt(),
                 ts_expr_stmt(expr: ts_call(
                   callee: ts_member(
@@ -2589,6 +2716,167 @@ fn workflow_fetch_statements() -> List<TsStmt> {
   ]
 }
 
+data row_selection_note: String = "SELECTION IS CLIENT STATE; PROMINENCE IS ITS PROJECTION (A2 hierarchy closeout, operator gap ruling 2026-08-02: only the selected subject normally exposes the primary operation prominently). Selecting a row — by clicking its non-interactive surface, by keyboard focus reaching it (focus-visible only, so pointer clicks on inner controls never move selection through the focus channel), or by Enter/Space on the focused row — selects exactly one row at a time; re-selecting the selected row, or pressing Escape, clears; activating any control, link, or disclosure TOGGLE acts WITHOUT changing selection, keeping selection and activation distinct operations (the exclusion names summary — the disclosure's interactive part — NOT details: every row lives inside the section fold's details element, so excluding details ancestors made pointer selection unreachable corpus-wide, a defect this note's first revision shipped and the S0 interaction capture exposed by execution). Every input path funnels through ONE gunbcSelectRow, so keyboard and pointer cannot drift apart. Selection grants action-focal to the row's own primary action only (the class named for what it means — selection-granted focal prominence, never liveness; see action_prominence_rules_note) — the first .node-head under the row li is its own head in document order, so a nested child row's control can never inherit the parent's grant — and the clear pass strips every node-selected and action-focal in one sweep, so two focal controls cannot coexist. No selection state is persisted: prominence is a session-local reading aid, not a fact about the work. DECLARED FOLLOW-UP (S0 handback, operator recalibration 2026-08-02): in the instrument composition, secondary override controls LEAVE the resting row entirely — they move into the contextual inspector/disclosure and the resting row keeps at most a small affordance; this production page keeps them in-row until that composition lands."
+
+data row_selected_class: String = "node-selected"
+data action_focal_class: String = "action-focal"
+
+fn row_selection_bind_statements() -> List<TsStmt> {
+  [
+    ts_const(name: "gunbcClearSelection", value: ts_arrow(params: [], body: ts_expr_stmt(expr: ts_call(
+      callee: ts_member(
+        object: ts_call(
+          callee: ts_member(object: ts_ident(name: "document"), property: "querySelectorAll"),
+          args: [ts_lit_str(value: join([".", row_selected_class, ", .", action_focal_class], ""))],
+        ),
+        property: "forEach",
+      ),
+      args: [ts_arrow(params: ["n"], body: ts_expr_stmt(expr: ts_call(
+        callee: ts_member(object: ts_member(object: ts_ident(name: "n"), property: "classList"), property: "remove"),
+        args: [ts_lit_str(value: row_selected_class), ts_lit_str(value: action_focal_class)],
+      )))],
+    )))),
+    ts_const(name: "gunbcSelectRow", value: ts_arrow(params: ["li"], body: ts_block(stmts: [
+      ts_if(
+        cond: ts_call(
+          callee: ts_member(object: ts_member(object: ts_ident(name: "li"), property: "classList"), property: "contains"),
+          args: [ts_lit_str(value: row_selected_class)]),
+        then: ts_return(expr: none),
+        else_stmt: none,
+      ),
+      ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "gunbcClearSelection"), args: [])),
+      ts_expr_stmt(expr: ts_call(
+        callee: ts_member(object: ts_member(object: ts_ident(name: "li"), property: "classList"), property: "add"),
+        args: [ts_lit_str(value: row_selected_class)])),
+      ts_const(name: "b", value: ts_call(
+        callee: ts_member(object: ts_ident(name: "li"), property: "querySelector"),
+        args: [ts_lit_str(value: ".node-head .dispatch-btn.action-primary")])),
+      ts_if(
+        cond: ts_ident(name: "b"),
+        then: ts_expr_stmt(expr: ts_call(
+          callee: ts_member(object: ts_member(object: ts_ident(name: "b"), property: "classList"), property: "add"),
+          args: [ts_lit_str(value: action_focal_class)])),
+        else_stmt: none,
+      ),
+    ]))),
+    ts_expr_stmt(expr: ts_call(
+      callee: ts_member(object: ts_ident(name: "document"), property: "addEventListener"),
+      args: [ts_lit_str(value: "click"), ts_arrow(params: ["e"], body: ts_block(stmts: [
+        ts_const(name: "t", value: ts_member(object: ts_ident(name: "e"), property: "target")),
+        ts_if(
+          cond: ts_binop(
+            left: ts_prefix(op: "!", expr: ts_ident(name: "t")),
+            op: "||",
+            right: ts_prefix(op: "!", expr: ts_member(object: ts_ident(name: "t"), property: "closest"))),
+          then: ts_return(expr: none),
+          else_stmt: none,
+        ),
+        ts_if(
+          cond: ts_call(
+            callee: ts_member(object: ts_ident(name: "t"), property: "closest"),
+            args: [ts_lit_str(value: "summary, button, a, input, select, textarea")]),
+          then: ts_return(expr: none),
+          else_stmt: none,
+        ),
+        ts_const(name: "li", value: ts_call(
+          callee: ts_member(object: ts_ident(name: "t"), property: "closest"),
+          args: [ts_lit_str(value: "li.node")])),
+        ts_if(cond: ts_prefix(op: "!", expr: ts_ident(name: "li")), then: ts_return(expr: none), else_stmt: none),
+        ts_const(name: "was", value: ts_call(
+          callee: ts_member(object: ts_member(object: ts_ident(name: "li"), property: "classList"), property: "contains"),
+          args: [ts_lit_str(value: row_selected_class)])),
+        ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "gunbcClearSelection"), args: [])),
+        ts_if(cond: ts_ident(name: "was"), then: ts_return(expr: none), else_stmt: none),
+        ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "gunbcSelectRow"), args: [ts_ident(name: "li")])),
+      ]))],
+    )),
+    ts_expr_stmt(expr: ts_call(
+      callee: ts_member(object: ts_ident(name: "document"), property: "addEventListener"),
+      args: [ts_lit_str(value: "focusin"), ts_arrow(params: ["e"], body: ts_block(stmts: [
+        ts_const(name: "t", value: ts_member(object: ts_ident(name: "e"), property: "target")),
+        ts_if(
+          cond: ts_binop(
+            left: ts_binop(
+              left: ts_prefix(op: "!", expr: ts_ident(name: "t")),
+              op: "||",
+              right: ts_prefix(op: "!", expr: ts_member(object: ts_ident(name: "t"), property: "matches"))),
+            op: "||",
+            right: ts_prefix(op: "!", expr: ts_member(object: ts_ident(name: "t"), property: "closest"))),
+          then: ts_return(expr: none),
+          else_stmt: none,
+        ),
+        ts_if(
+          cond: ts_prefix(op: "!", expr: ts_call(
+            callee: ts_member(object: ts_ident(name: "t"), property: "matches"),
+            args: [ts_lit_str(value: ":focus-visible")])),
+          then: ts_return(expr: none),
+          else_stmt: none,
+        ),
+        ts_const(name: "li", value: ts_call(
+          callee: ts_member(object: ts_ident(name: "t"), property: "closest"),
+          args: [ts_lit_str(value: "li.node")])),
+        ts_if(
+          cond: ts_ident(name: "li"),
+          then: ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "gunbcSelectRow"), args: [ts_ident(name: "li")])),
+          else_stmt: none,
+        ),
+      ]))],
+    )),
+    ts_expr_stmt(expr: ts_call(
+      callee: ts_member(object: ts_ident(name: "document"), property: "addEventListener"),
+      args: [ts_lit_str(value: "keydown"), ts_arrow(params: ["e"], body: ts_block(stmts: [
+        ts_if(
+          cond: ts_binop(
+            left: ts_member(object: ts_ident(name: "e"), property: "key"),
+            op: "===",
+            right: ts_lit_str(value: "Escape")),
+          then: ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "gunbcClearSelection"), args: [])),
+          else_stmt: none,
+        ),
+        ts_if(
+          cond: ts_binop(
+            left: ts_binop(
+              left: ts_member(object: ts_ident(name: "e"), property: "key"),
+              op: "!==",
+              right: ts_lit_str(value: "Enter")),
+            op: "&&",
+            right: ts_binop(
+              left: ts_member(object: ts_ident(name: "e"), property: "key"),
+              op: "!==",
+              right: ts_lit_str(value: " "))),
+          then: ts_return(expr: none),
+          else_stmt: none,
+        ),
+        ts_const(name: "t", value: ts_member(object: ts_ident(name: "e"), property: "target")),
+        ts_if(
+          cond: ts_binop(
+            left: ts_prefix(op: "!", expr: ts_ident(name: "t")),
+            op: "||",
+            right: ts_prefix(op: "!", expr: ts_member(object: ts_ident(name: "t"), property: "matches"))),
+          then: ts_return(expr: none),
+          else_stmt: none,
+        ),
+        ts_if(
+          cond: ts_prefix(op: "!", expr: ts_call(
+            callee: ts_member(object: ts_ident(name: "t"), property: "matches"),
+            args: [ts_lit_str(value: "li.node")])),
+          then: ts_return(expr: none),
+          else_stmt: none,
+        ),
+        ts_expr_stmt(expr: ts_call(
+          callee: ts_member(object: ts_ident(name: "e"), property: "preventDefault"),
+          args: [])),
+        ts_const(name: "was", value: ts_call(
+          callee: ts_member(object: ts_member(object: ts_ident(name: "t"), property: "classList"), property: "contains"),
+          args: [ts_lit_str(value: row_selected_class)])),
+        ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "gunbcClearSelection"), args: [])),
+        ts_if(cond: ts_ident(name: "was"), then: ts_return(expr: none), else_stmt: none),
+        ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "gunbcSelectRow"), args: [ts_ident(name: "t")])),
+      ]))],
+    )),
+  ]
+}
+
 fn dispatch_client_program_for(
   selector: String,
   url_expr: TsExpr,
@@ -2603,6 +2891,8 @@ fn dispatch_client_program_for(
       concat(
         dispatch_preamble_statements(),
         concat(
+          observe_impact_preamble_statements(),
+          concat(
           dispatch_bind_statements(selector: selector, url_expr: url_expr),
           concat(
             sound_toggle_bind_statements(),
@@ -2616,7 +2906,9 @@ fn dispatch_client_program_for(
                     observation_fetch_statements(),
                     concat(
                       workflow_fetch_statements(),
-                      instance_statements))))))))),
+                      concat(
+                        row_selection_bind_statements(),
+                        instance_statements))))))))))),
   }
 }
 
