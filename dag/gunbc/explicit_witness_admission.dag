@@ -121,13 +121,6 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
     dissolve_on: "the production candidate producer and dependency projection establish all six ReferenceDerivedClosureCapability rows by execution — this row deletes in the completing change, promoting the unchanged acceptance witness to ordinary DiscoverySelection as the permanent namespace-derived-closure regression wall"
   ),
   known_red_probe(
-    entry: "src/v2/test/claim/execution/seed_honesty_discharge_unavailable_test.dag",
-    f: "v1_seed_honesty_decision_closing_contract_holds",
-    kind: CorpusWitnessKind,
-    reason: "the discriminating closing validation for roadmap node v1-seed-honesty-decision. Its three self-verify falsification poles hold, but the aggregate is RED BY DESIGN while seed_honesty_decision is SeedHonestyUndecided, because the node's handback requires both a check that can fail and the operator decision recorded either way. Binding only the green three-pole check would report completion over the missing decision. When this lane opened, this was the one row whose old file-grain pairing was the live bad state: the file's eight other functions had no probe row, so the classification named the whole file QuarantineProbeExpectRed while eight ninths of it was actually offline under the test/claim/execution/ path policy. At exact grain the file's classification is no longer a claim about them. That is provenance only — no witness is anchored to this row, so it deletes cleanly when the operator's verdict lands (gunbc#7688) without taking any evidence with it.",
-    dissolve_on: "the operator records IndependentRebuildRequiredFirst or FixedPointTrustSufficient with a nonempty rationale; this row deletes in that same change, promoting the unchanged closing witness to ordinary discovery"
-  ),
-  known_red_probe(
     entry: "dag/test/claim/qualified_leaf_registry_collision_emit_witness_test.dag",
     f: "cross_module_same_leaf_emits_qualifier_module_not_registry_winner",
     kind: CorpusWitnessKind,

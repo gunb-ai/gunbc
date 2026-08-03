@@ -65,6 +65,7 @@ import v2.workflow.ci_floor_plan {
   falsifier_gate_batch_enrolled,
   falsifier_substrate_long_lane_batch_enrolled,
   gunbc_ci_floor_schedule_lens_holds,
+  witness_merge_admission_capture_is_typed_pre_walk_subprocess,
   witness_floor_batch_clamp_params_cover_schedule,
   witness_floor_batch_clamp_overhead_all_positive,
   witness_floor_batch_clamp_rate_all_nonneg,
@@ -75,7 +76,7 @@ import v2.compiler.self_host.wet_receipt_enrollment {
   falsifier_self_host_wet_known_red_entries,
   falsifier_self_host_wet_known_red_batch_enrolled
 }
-import gunbc.ci_spec { gunbc_ci_spec, gunbc_ci_floor_batch_clamp_params, ci_spec_with_witness_entries, ci_spec_with_discovery_scan_dirs, CiSpec, EmitHostGate, CheapClaimPoolGate, ExtdepsExternalAuthorityGate, GeneratedArtifactDriftGate, ExtdepsScopePlacementGate, DagCompileCleanGate, RegenVerifyGate, SourceRootIngestGate }
+import gunbc.ci_spec { gunbc_ci_spec, gunbc_ci_floor_batch_clamp_params, ci_spec_with_witness_entries, ci_spec_with_discovery_scan_dirs, CiSpec, EmitHostGate, CheapClaimPoolGate, ExtdepsExternalAuthorityGate, GeneratedArtifactDriftGate, ExtdepsScopePlacementGate, DagCompileCleanGate, RegenVerifyGate, SourceRootIngestGate, gunbc_ci_ordinary_floor_budget_minutes, gunbc_ci_admission_postcondition_budget_minutes }
 import std.realization_schedule {
   Runnable, RunnableSingleClaim, RunnableDiscoveryBatch, RunnableScopedWitnessBatch,
   RunnableOwnsBatchClamp, runnable_batch_clamp_source,
@@ -91,12 +92,13 @@ import std.realization_schedule {
   ScheduleWitnessEntry, schedule_witness_entry_eq,
   CorpusWitnessKind, ExecutionWitnessKind
 }
-import std.realization_schedule { WalkPlan, NoWalkFinalization, NoFinalizationDeclared }
+import std.realization_schedule { WalkPlan, NoWalkFinalization, NoFinalizationDeclared, NoPreWalkExecution }
 import gunbc.ci_materialization { FloorFinalization, ci_floor_declared_resolve_count }
 import std.execution_mode { Hermetic, Wet, execution_mode_eq }
-import std.measure { second_count, millisecond_count }
+import std.measure { second_count, millisecond_count, minute_count }
 import v2.std.algebra { length, list_snoc_item, skip }
 import v2.std.collection { List }
+import v2.std.optional { Absent, Present }
 import std.types { Int }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
@@ -768,6 +770,7 @@ test fn ci_floor_plan_witnesses() -> Bool {
     witness_floor_stop_policy_unknown_defaults_full_ledger() &&
     witness_floor_batch_stop_policy_plan_roster_enrolled() &&
     gunbc_ci_floor_schedule_lens_holds() &&
+    witness_merge_admission_capture_is_typed_pre_walk_subprocess() &&
     witness_corpus_not_before_compile() &&
     witness_independent_jobs_parallelize() &&
     witness_plan_serializes_heavy_resolves()
@@ -812,17 +815,35 @@ fn plan_declares_authority_count(p: WalkPlan<FloorFinalization>) -> Bool {
 
 fn forked_count_floor_plan() -> WalkPlan<FloorFinalization> {
   WalkPlan {
+    pre_walk_execution: NoPreWalkExecution {},
     batches: gunbc_ci_floor_ordinary_batches(),
     finalization: FloorFinalization {
       declared_resolve_count: ci_floor_declared_resolve_count + 1,
     },
     on_success_stages: [],
+    ordinary_budget: none,
+    on_success_budget: none,
   }
 }
 
 test fn floor_plan_projects_the_declared_resolve_count_authority() -> Bool {
   plan_declares_authority_count(p: gunbc_ci_floor_plan())
     && floor_plan_declared_resolve_count() == ci_floor_declared_resolve_count
+}
+
+test fn floor_plan_carries_disjoint_ordinary_and_postcondition_budgets() -> Bool {
+  let plan = gunbc_ci_floor_plan()
+  match plan.ordinary_budget {
+    Absent => false
+    Present { value: ordinary } =>
+      match plan.on_success_budget {
+        Absent => false
+        Present { value: postcondition } =>
+          (millisecond_count(m: ordinary) == minute_count(m: gunbc_ci_ordinary_floor_budget_minutes) * 60000)
+            && (millisecond_count(m: postcondition) == minute_count(m: gunbc_ci_admission_postcondition_budget_minutes) * 60000)
+            && (millisecond_count(m: ordinary) + millisecond_count(m: postcondition) == 60 * 60000)
+      }
+  }
 }
 
 test fn forked_declared_count_is_refused_by_the_same_predicate() -> Bool {

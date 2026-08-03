@@ -1,0 +1,166 @@
+module gunbc.type_reference_binding_context
+
+import std.types { String, List, NonEmptyStr }
+import std.algebra { FreeMonoid, Empty, Cons }
+import std.occurrence_identity {
+  OccurrenceId,
+  OccurrenceIndexEntry,
+  OccurrenceTransport,
+  OccurrenceContainmentPath,
+  AuthoredTokenOrdinal,
+}
+import std.occurrence_binding_candidates {
+  OccurrenceModulePathRow,
+  DeclarationExposureRow,
+  DeclarationExposure,
+  LexicalExposure,
+  ModuleExposure,
+  RootExposure,
+  AuthoredOrderRow,
+  OccurrenceBindingCandidateInputs,
+}
+
+data type_reference_binding_context_path_scope_note: String = "PATH SCOPE (quiet-hawk-219 / calm-badger-682, DESIGN 4b): the coincidence-binding defect class exists on TWO structurally distinct paths. THIS slice closes the RESOLVE path only — v1 typecheck pool-membership coincidence where flat symbol_index_lookup / lookup_type_for hits masquerade as binding (Class B, section 14.1). EMIT-SIDE LIVE INSTANCE (explicitly OUT OF SLICE; fix owned by warm-wolf-814 — cite, do not fix): emit_var_ref / emit_value_ref_ident key the flat item_registry on LEAF NAME ONLY, so module_a.homonym_value can bind module_b's ItemInfo when both declare the same leaf. #7685 did not repair the cross-module same-leaf case; the collision is LIVE on main. #7705's detector cross_module_same_leaf_emits_qualifier_module_not_registry_winner is RED on main (run 30769280389 at 2383069da) — bottom rung: invalid state occurs, detector exists, detection is not prevention. Emit maintains its own registry key and never consults this containment authority. Second grounded specimen of binding-by-insufficient-key on an independent stage; unlike resolve, not instrument-relative (one reproducible witness, positive and negative arms). Any claim that 'binding is now decided by containment' without 'on the resolve path' is rung inflation. Whether emit later consumes containment authority is a follow-on question, not N2."
+
+data type_reference_binding_context_pr_b_motivation_note: String = "PR-B motivation (resolve path): Class B pool-membership coincidence on masked type leaves — parallel independent specimen to the emit-side live instance above (#7705 RED control). Closing resolve via containment kernel + resolve_node_bounded changeover is the slice-2 obligation; emit-side repair is warm-wolf-814's subtree."
+
+data type_reference_binding_context_pr_b_hardening_note: String = "PR-B hardening conditions (quiet-hawk-219, bind under codex outage): (1) EQUIVALENCE RECEIPT — discriminating production corpus where legacy masked-leaf path and containment-switched path both run and agree; every disagreement arm enumerated and explained as a fixed defect of the old path (not only new-path witnesses). Cross-module coverage required — same-module-only is insufficient; bar includes authored imports no longer deciding binding and removing one now-redundant import changing nothing. (2) FAIL-CLOSED — refusal or typed diagnostic on the new path; never silent fallback to lookup_type_for when containment cannot answer (absorbing arm forbidden). (3) RUNG WORDING — binding decided by containment ONLY on the resolve path switched; emit keys flat item_registry on leaf name alone, untouched by dag/std containment binding, LIVE red detector on main (#7705); unscoped closure claims are rung inflation (DESIGN 4b minimum-across-paths). Authority: dag/test/claim/type_reference_resolve_changeover_equivalence_witness_test.dag."
+
+data type_reference_binding_context_authority_note: String = "N2 slice 2 PR-A (quiet-hawk-219): TypeReferenceBindingContext + graph-wide P2 input projection from closure-merged parser OccurrenceTransport for the RESOLVE path only (see type_reference_binding_context_path_scope_note — emit-side leaf collision is a separate surviving instance). Exposure rows derive from the containment tree only — module-root declarations (empty ancestor chain) carry RootExposure; direct module children carry ModuleExposure; nested declarations carry LexicalExposure. SymbolIndex flat lookup and hand-authored module rosters are forbidden exposure authorities on this resolve-path builder. PR-B (post-7515) threads this context into v1.compiler.infer_resolve resolve_node_bounded's masked leaf arm. DISSOLVE-ON: gunbc.type_reference_containment_binding type_reference_containment_binding_dissolve_on."
+
+type TypeReferenceBindingContext {
+  transport: OccurrenceTransport,
+  inputs: OccurrenceBindingCandidateInputs,
+}
+
+data type_reference_binding_context_absent_note: String = "Absent TypeReferenceBindingContext on resolve_node_bounded preserves the legacy lookup path unchanged (quiet-hawk-219 ruling 2). PR-B wires the masked leaf arm only when context is Present."
+
+fn occurrence_containment_parent_scope(
+  ancestors: FreeMonoid<OccurrenceId>
+) -> OccurrenceContainmentPath? {
+  match reverse(ancestors) {
+    Empty => none
+    Cons { head: parent_terminal, tail: parent_ancestors_reversed } =>
+      Present {
+        value: OccurrenceContainmentPath {
+          ancestors: reverse(parent_ancestors_reversed),
+          terminal: parent_terminal,
+        },
+      }
+  }
+}
+
+data declaration_exposure_from_containment_tree_note: String = "Exposure derivation site (PR-A): reads containment prefix shape and module path only — never OccurrenceCategory, never symbol_index flat lookup, never hand-authored module rosters. Empty ancestor chain => RootExposure (structural namespace root in the containment tree). Single-ancestor chain => ModuleExposure for the declaring module. Deeper nesting => LexicalExposure whose exposing_scope is the nearest ancestor containment prefix."
+
+fn declaration_exposure_from_containment_tree(
+  module_path: NonEmptyStr,
+  containment: OccurrenceContainmentPath
+) -> DeclarationExposure {
+  match containment.ancestors {
+    Empty => RootExposure
+    Cons { head: _, tail: Empty } =>
+      ModuleExposure { module: module_path }
+    Cons { head: _, tail: Cons { head: _, tail: _ } } =>
+      match occurrence_containment_parent_scope(ancestors: containment.ancestors) {
+        Present { value: exposing_scope } =>
+          LexicalExposure { exposing_scope: exposing_scope }
+        Absent =>
+          ModuleExposure { module: module_path }
+      }
+  }
+}
+
+fn authored_order_row_from_entry(entry: OccurrenceIndexEntry) -> AuthoredOrderRow {
+  AuthoredOrderRow {
+    occurrence: entry.projection.occurrence,
+    ordinal: AuthoredTokenOrdinal {
+      value: entry.projection.diagnostic_span.start,
+    },
+  }
+}
+
+fn occurrence_binding_inputs_from_module_transport(
+  module_path: NonEmptyStr,
+  transport: OccurrenceTransport
+) -> OccurrenceBindingCandidateInputs {
+  OccurrenceBindingCandidateInputs {
+    module_paths: reverse(fold(
+      transport.index.entries,
+      init: [],
+      f: (acc, entry) =>
+        concat([
+          OccurrenceModulePathRow {
+            occurrence: entry.projection.occurrence,
+            module_path: module_path,
+          },
+        ], acc),
+    )),
+    exposure_rows: reverse(fold(
+      transport.declarations,
+      init: [],
+      f: (acc, declaration) =>
+        concat([
+          DeclarationExposureRow {
+            occurrence: declaration.occurrence,
+            exposure: declaration_exposure_from_containment_tree(
+              module_path: module_path,
+              containment: declaration.containment,
+            ),
+          },
+        ], acc),
+    )),
+    authored_order_rows: reverse(fold(
+      transport.index.entries,
+      init: [],
+      f: (acc, entry) =>
+        concat([authored_order_row_from_entry(entry: entry)], acc),
+    )),
+  }
+}
+
+fn merge_occurrence_binding_input_rows(
+  left: OccurrenceBindingCandidateInputs,
+  right: OccurrenceBindingCandidateInputs
+) -> OccurrenceBindingCandidateInputs {
+  OccurrenceBindingCandidateInputs {
+    module_paths: concat(left.module_paths, right.module_paths),
+    exposure_rows: concat(left.exposure_rows, right.exposure_rows),
+    authored_order_rows: concat(left.authored_order_rows, right.authored_order_rows),
+  }
+}
+
+type ModuleOccurrenceBindingSource {
+  module_path: NonEmptyStr,
+  transport: OccurrenceTransport,
+}
+
+fn build_graph_type_reference_binding_inputs(
+  sources: List<ModuleOccurrenceBindingSource>
+) -> OccurrenceBindingCandidateInputs {
+  fold(
+    sources,
+    init: OccurrenceBindingCandidateInputs {
+      module_paths: [],
+      exposure_rows: [],
+      authored_order_rows: [],
+    },
+    f: (acc, source) =>
+      merge_occurrence_binding_input_rows(
+        left: acc,
+        right: occurrence_binding_inputs_from_module_transport(
+          module_path: source.module_path,
+          transport: source.transport,
+        ),
+      ),
+  )
+}
+
+fn build_type_reference_binding_context(
+  transport: OccurrenceTransport,
+  sources: List<ModuleOccurrenceBindingSource>
+) -> TypeReferenceBindingContext {
+  TypeReferenceBindingContext {
+    transport: transport,
+    inputs: build_graph_type_reference_binding_inputs(sources: sources),
+  }
+}
