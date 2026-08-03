@@ -8600,12 +8600,8 @@ impl SelectionDegradationSnapshot {
 fn selection_degradation_interp_ctx(
     source_roots: &[String],
 ) -> Result<(v1_interpreter::InterpContext, String), String> {
-    let entry = source_roots
-        .iter()
-        .map(|r| std::path::Path::new(r).join(SELECTION_DEGRADATION_RECEIPT_ENTRY))
-        .find(|p| p.exists())
-        .map(|p| p.to_string_lossy().into_owned())
-        .ok_or_else(|| {
+    let entry = resolve_entry_file_under_roots(source_roots, SELECTION_DEGRADATION_RECEIPT_ENTRY)
+        .map_err(|_| {
             format!(
                 "selection-degradation receipt REFUSED — {SELECTION_DEGRADATION_RECEIPT_ENTRY} \
                  not found under source roots"
