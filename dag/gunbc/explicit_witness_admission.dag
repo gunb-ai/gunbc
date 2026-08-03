@@ -121,13 +121,6 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
     dissolve_on: "the production candidate producer and dependency projection establish all six ReferenceDerivedClosureCapability rows by execution — this row deletes in the completing change, promoting the unchanged acceptance witness to ordinary DiscoverySelection as the permanent namespace-derived-closure regression wall"
   ),
   known_red_probe(
-    entry: "dag/test/claim/qualified_leaf_registry_collision_emit_witness_test.dag",
-    f: "cross_module_same_leaf_emits_qualifier_module_not_registry_winner",
-    kind: CorpusWitnessKind,
-    reason: "the discriminating RED for the post-#7685 leaf-keyed qualified lookup collision class: emit_var_ref and emit_value_ref_ident key item_registry on the leaf name only, so this witness is RED BY DESIGN on main until the emitter repair lands. The redness is the discriminating input for cross-module same-leaf qualified-path disambiguation at emit time.",
-    dissolve_on: "the #7709 emitter repair greens this witness — this row deletes in that same change, promoting the unchanged witness to ordinary DiscoverySelection as the permanent regression control"
-  ),
-  known_red_probe(
     entry: "src/v2/test/claim/self_host/v2_emitter_direct_rust_door_acceptance_test.dag",
     f: "witness_v2_emitter_direct_rust_door_closing_contract_holds",
     kind: CorpusWitnessKind,
