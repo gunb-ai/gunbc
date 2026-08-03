@@ -49,9 +49,22 @@ data trait_derive_emit_item_clone_bound_contract_fork_note: String = "MODEL-REAL
 
 data trait_derive_emit_item_clone_bound_contract_fork_dissolve_on: String = "DISSOLVE-ON: v2 Rust emitter consumes target_derive_supplemental_generic_bound_contract for item-level generic bounds; then delete this structural implementation — do not accumulate beside the contract."
 
-data trait_derive_emit_fn_clone_bound_keyed_carrier_module_scaffold_note: String = "COUNTED SCAFFOLD (emit_fn_def module_path arm): std.keyed_row and std.keyed_roster generic fns emit Clone on every item generic because List<KeyedRow<..>> value-param type exprs reach emit as opaque containers — the element applied-type children are not readable in param_node_type_expr, so v1_fn_param_type_needs_clone_bound cannot derive K/V from rows: List<KeyedRow<K, V>> even though item-level KeyedRow<K: Clone, V: Clone> and the emitted bodies clone both fields. The override is module-scoped, not a seed widen: it does not change v1_generic_params_needing_clone_bound's per-param filter. Witness: regen --verify on std_keyed_row/std_keyed_roster without this arm drops V: Clone on keyed_row_find and drops all fn-level bounds on keyed_roster_build (compile errors on .value.clone())."
+data trait_derive_emit_fn_clone_bound_keyed_carrier_module_scaffold_note: String = "COUNTED SCAFFOLD (emit_fn_def module_path arm): std.keyed_row and std.keyed_roster generic fns emit Clone on every item generic because List<KeyedRow<..>> value-param type exprs reach emit as opaque containers — the element applied-type children are not readable in param_node_type_expr, so v1_fn_param_type_needs_clone_bound cannot derive K/V from rows: List<KeyedRow<K, V>> even though item-level KeyedRow<K: Clone, V: Clone> and the emitted bodies clone both fields. The override is module-scoped, not a seed widen: it does not change v1_generic_params_needing_clone_bound's per-param filter. Membership is the typed allowlist trait_derive_emit_fn_clone_bound_keyed_carrier_module_allowlist, enrolled DeclaredFrontier in gunbc.roster_registry — not gunbc.non_fold_residue (no wildcard-match site). Witness: regen --verify on std_keyed_row/std_keyed_roster without this arm drops V: Clone on keyed_row_find and drops all fn-level bounds on keyed_roster_build (compile errors on .value.clone())."
 
-data trait_derive_emit_fn_clone_bound_keyed_carrier_module_scaffold_dissolve_on: String = "DISSOLVE-ON: v1 param_node_type_expr preserves container element applied-type children (or an equivalent typed surface) so v1_fn_generic_clone_bound_via_bounded_container_element / v1_fn_generic_clone_bound_via_referenced_decl derive keyed-row carrier bounds without the module_path arm; then delete the emit_fn_def override."
+data trait_derive_emit_fn_clone_bound_keyed_carrier_module_scaffold_dissolve_on: String = "DISSOLVE-ON: v1 param_node_type_expr preserves container element applied-type children (or an equivalent typed surface) so v1_fn_generic_clone_bound_via_bounded_container_element / v1_fn_generic_clone_bound_via_referenced_decl derive keyed-row carrier bounds without the module_path arm; then delete trait_derive_emit_fn_clone_bound_keyed_carrier_module_allowlist, its emit_fn_def consumer, and the gunbc.roster_registry registration."
+
+data trait_derive_emit_fn_clone_bound_keyed_carrier_module_allowlist: List<String> = [
+  "std.keyed_row",
+  "std.keyed_roster",
+]
+
+fn trait_derive_emit_fn_clone_bound_keyed_carrier_module(module_path: String) -> Bool {
+  fold(
+    trait_derive_emit_fn_clone_bound_keyed_carrier_module_allowlist,
+    init: false,
+    f: fn(acc, m) { acc || m == module_path }
+  )
+}
 
 type StructCapabilityEmit {
   derive_attr: String

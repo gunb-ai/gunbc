@@ -62,6 +62,7 @@ import v1.compiler.trait_derive_emit {
   v1_emit_type_params_with_clone_bounds,
   v1_clone_bounded_type_params, v1_item_clone_bounded_param_names, v1_item_clone_undecided_head,
   v1_trait_derive_refuse,
+  trait_derive_emit_fn_clone_bound_keyed_carrier_module,
   rust_nominal_identity_carrier_shape_eligible, rust_symbol_wrapped_ord_carrier_shape_eligible
 }
 
@@ -5406,7 +5407,7 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
   )
   let module_path = scope.type_env.module_path
   let clone_param_names = if (generic_param_names |> count) > 0 && (
-    module_path == "std.keyed_row" || module_path == "std.keyed_roster"
+    trait_derive_emit_fn_clone_bound_keyed_carrier_module(module_path: module_path)
   ) {
     generic_param_names
   } else {
