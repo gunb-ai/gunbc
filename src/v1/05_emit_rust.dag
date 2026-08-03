@@ -1959,7 +1959,7 @@ fn rust_async_test_decorator() -> String {
 }
 
 fn emit_rust_block_stmts(remaining: List<Node>, text: List<String>,
-    scope: InferScope, registry: Map<String, ItemInfo>, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> BlockEmitState {
+    scope: InferScope, registry: Map<String, ItemInfo>, qualified_item_registry: QualifiedItemRegistryBuild, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> BlockEmitState {
   match remaining |> first {
     Absent => BlockEmitState { text: text, scope: scope }
     Present { value: stmt } =>
@@ -1967,12 +1967,12 @@ fn emit_rust_block_stmts(remaining: List<Node>, text: List<String>,
       let next_scope = scope_after_expr(texpr: stmt, scope: scope)
       emit_rust_block_stmts(remaining: remaining |> skip(1),
         text: list_push(text, line), scope: next_scope,
-        registry: registry, depth: depth, shared_types: shared_types, emit_info: emit_info)
+        registry: registry, qualified_item_registry: qualified_item_registry, depth: depth, shared_types: shared_types, emit_info: emit_info)
   }
 }
 
 fn emit_rust_init_block_stmts(remaining: List<Node>, text: List<String>,
-    scope: InferScope, registry: Map<String, ItemInfo>, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> BlockEmitState {
+    scope: InferScope, registry: Map<String, ItemInfo>, qualified_item_registry: QualifiedItemRegistryBuild, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> BlockEmitState {
   match remaining |> first {
     Absent => BlockEmitState { text: text, scope: scope }
     Present { value: stmt } =>
@@ -1989,7 +1989,7 @@ fn emit_rust_init_block_stmts(remaining: List<Node>, text: List<String>,
           let next_scope = scope_after_expr(texpr: stmt, scope: scope)
           emit_rust_init_block_stmts(remaining: rest,
             text: list_push(text, line), scope: next_scope,
-            registry: registry, depth: depth, shared_types: shared_types, emit_info: emit_info)
+            registry: registry, qualified_item_registry: qualified_item_registry, depth: depth, shared_types: shared_types, emit_info: emit_info)
       }
   }
 }
@@ -5558,7 +5558,7 @@ fn emit_func_def(
   let body_scope = fold(uses, init: body_scope, f: (s, u) =>
     extend_scope(scope: s, name: resource_use_name_at(n: u, source_indices: si), resolved: resource_use_resource(n: u), provenance: SubValueUnknown)
   )
-  let body_str = emit_func_body(body: body, registry: registry, scope: body_scope, depth: depth + 1, shared_types: shared_types, emit_info: emit_info)
+  let body_str = emit_func_body(body: body, registry: registry, qualified_item_registry: qualified_item_registry, scope: body_scope, depth: depth + 1, shared_types: shared_types, emit_info: emit_info)
   let items = rust_items()
   concat(rust_visibility_prefix(), items.async_prefix, items.func_keyword, " ", emit_ident(name: name, target: Rust),
     "(", params_str, ")", ret_str, " {\n",
@@ -5577,7 +5577,7 @@ fn emit_func_body(body: Node, registry: Map<String, ItemInfo>, qualified_item_re
       let next_scope = extend_scope(scope: scope, name: n, resolved: resolved_type(n: v), provenance: SubValueUnknown)
       match inner {
         Present { value: bd } =>
-          concat(let_line, "\n", emit_func_body(body: bd, registry: registry, scope: next_scope, depth: depth, shared_types: shared_types, emit_info: emit_info))
+          concat(let_line, "\n", emit_func_body(body: bd, registry: registry, qualified_item_registry: qualified_item_registry, scope: next_scope, depth: depth, shared_types: shared_types, emit_info: emit_info))
         Absent => let_line
       }
     }
@@ -5592,8 +5592,8 @@ fn emit_func_body(body: Node, registry: Map<String, ItemInfo>, qualified_item_re
         let last_str = match last_stmt {
           Present { value: s } =>
             match s.expr_data {
-              ExprReturn => concat("return Ok(", emit_typed_expr(texpr: return_value(texpr: s), registry: registry, scope: init_state.scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024), ")")
-              _ => concat("Ok(", emit_typed_expr(texpr: s, registry: registry, scope: init_state.scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024), ")")
+              ExprReturn => concat("return Ok(", emit_typed_expr(texpr: return_value(texpr: s), registry: registry, qualified_item_registry: qualified_item_registry, scope: init_state.scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024), ")")
+              _ => concat("Ok(", emit_typed_expr(texpr: s, registry: registry, qualified_item_registry: qualified_item_registry, scope: init_state.scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024), ")")
             }
           Absent => "Ok(())"
         }
@@ -7324,7 +7324,7 @@ fn emit_typed_for_each(variable: String, collection: Node, body: Node, registry:
   let coll_str = emit_typed_expr(texpr: collection, registry: registry, qualified_item_registry: qualified_item_registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
   let elem_type = for_each_element_type_node(n: resolved_type(n: collection), source_indices: scope.type_env.source_indices)
   let body_scope = extend_scope(scope: scope, name: variable, resolved: elem_type, provenance: SubValueUnknown)
-  let body_str = emit_typed_expr(texpr: body, registry: registry, scope: body_scope, depth: depth + 2, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+  let body_str = emit_typed_expr(texpr: body, registry: registry, qualified_item_registry: qualified_item_registry, scope: body_scope, depth: depth + 2, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
   let ind1 = make_indent(level: depth + 1)
   let ind2 = make_indent(level: depth + 2)
   let ind0 = make_indent(level: depth)
@@ -7453,7 +7453,7 @@ fn emit_typed_collection_lambda(lambda_expr: Node, elem_type_str: String, regist
       let param_strs = lambda_param_type_strs(params: ps, param_nodes: pn, fallback_types: [elem_type_str], shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: scope.type_env.source_indices, emit_info: emit_info, fold_acc_uses_fallback: false, type_env: scope.type_env)
       let params_str = param_strs |> join(separator: ", ")
       let lambda_scope = lambda_scope_from_children(scope: scope, params: ps, param_nodes: pn)
-      let body_str = emit_typed_expr(texpr: bd, registry: registry, scope: lambda_scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+      let body_str = emit_typed_expr(texpr: bd, registry: registry, qualified_item_registry: qualified_item_registry, scope: lambda_scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
       concat("|", params_str, "| ", body_str)
     _ => emit_typed_expr(texpr: lambda_expr, registry: registry, qualified_item_registry: qualified_item_registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
   }
@@ -7473,7 +7473,7 @@ fn emit_typed_fold_lambda(lambda_expr: Node, acc_type_str: String, elem_type_str
       let param_strs = lambda_param_type_strs(params: ps, param_nodes: pn, fallback_types: fallback_types, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: scope.type_env.source_indices, emit_info: emit_info, fold_acc_uses_fallback: true, type_env: scope.type_env)
       let params_str = param_strs |> join(separator: ", ")
       let lambda_scope = lambda_scope_from_children(scope: scope, params: ps, param_nodes: pn)
-      let body_str = emit_typed_expr(texpr: bd, registry: registry, scope: lambda_scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+      let body_str = emit_typed_expr(texpr: bd, registry: registry, qualified_item_registry: qualified_item_registry, scope: lambda_scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
 
       let acc_name = match ps |> first { Present { value: n } => n  Absent => "" }
       let needs_unwrap = acc_name != "" && set_contains(emit_info.owned_bindings, acc_name)
@@ -7703,7 +7703,7 @@ fn emit_rust_map_method_call(receiver: Node, args: List<Node>, registry: Map<Str
             let dag_name = match ps |> first { Present { value: n } => n  Absent => "__x" }
             let p = emit_ident(name: dag_name, target: Rust)
             let lambda_scope = lambda_scope_from_children(scope: scope, params: ps, param_nodes: arg_value(n: a).children |> skip(1))
-            let body_str = emit_typed_expr(texpr: bd, registry: registry, scope: lambda_scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+            let body_str = emit_typed_expr(texpr: bd, registry: registry, qualified_item_registry: qualified_item_registry, scope: lambda_scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
             concat(recv_str, ".map(|", p, "| ", body_str, ")")
           _ => concat(recv_str, ".map(", first_arg_str, ")")
         }
@@ -7721,7 +7721,7 @@ fn emit_rust_map_method_call(receiver: Node, args: List<Node>, registry: Map<Str
             let dag_name = match ps |> first { Present { value: n } => n  Absent => "__x" }
             let p = emit_ident(name: dag_name, target: Rust)
             let lambda_scope = lambda_scope_from_children(scope: scope, params: ps, param_nodes: arg_value(n: a).children |> skip(1))
-            let body_str = emit_typed_expr(texpr: bd, registry: registry, scope: lambda_scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+            let body_str = emit_typed_expr(texpr: bd, registry: registry, qualified_item_registry: qualified_item_registry, scope: lambda_scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
             concat("Rc::new({ let mut __result = Vec::new(); for ", p, " in ", iter_str, " { __result.push(", body_str, "); } __result })")
           _ => concat("Rc::new(", iter_str, ".map(", first_arg_str, ").collect::<Vec<_>>())")
         }
@@ -7744,7 +7744,7 @@ fn emit_rust_higher_order_method(ho_spec: HigherOrderMethodSpec, receiver: Node,
           let dag_name = match ps |> first { Present { value: n } => n  Absent => "__x" }
           let p = emit_ident(name: dag_name, target: Rust)
           let lambda_scope = lambda_scope_from_children(scope: scope, params: ps, param_nodes: arg_value(n: a).children |> skip(1))
-          let body_str = emit_typed_expr(texpr: bd, registry: registry, scope: lambda_scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+          let body_str = emit_typed_expr(texpr: bd, registry: registry, qualified_item_registry: qualified_item_registry, scope: lambda_scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
           let inner_iter = apply_type_template1(template: sharing.iter_owned, arg0: concat("(*", body_str, ")"))
           let bindings = seed_bindings(key: "param", value: p) |> map_insert("body", body_str) |> map_insert("iter", iter_str) |> map_insert("inner_iter", inner_iter)
           let raw = apply_named_template(template: ho_spec.inline_template, bindings: bindings)
@@ -8178,7 +8178,7 @@ fn emit_typed_if(condition: Node, then_branch: Node, else_branch: Node?, registr
 fn emit_typed_let(name: String, value: Node, body: Node?, registry: Map<String, ItemInfo>, qualified_item_registry: QualifiedItemRegistryBuild, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let val_str = emit_typed_expr(texpr: value, registry: registry, qualified_item_registry: qualified_item_registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
   emit_typed_let_shared(name: name, value_str: val_str, body: body, target: Rust,
-    recurse: (bd, sc) => emit_typed_expr(texpr: bd, registry: registry, scope: sc, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024),
+    recurse: (bd, sc) => emit_typed_expr(texpr: bd, registry: registry, qualified_item_registry: qualified_item_registry, scope: sc, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024),
     scope: scope, value_node: value)
 }
 
@@ -8877,7 +8877,7 @@ fn emit_rust_tco_if(frame: TcoFrame, fn_name: String, params: List<Node>, regist
       let c = if_condition(texpr: frame.expr)
       let t = if_then_branch(texpr: frame.expr)
       let e = if_else_branch(texpr: frame.expr)
-      let cond_str = emit_typed_expr(texpr: c, registry: registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+      let cond_str = emit_typed_expr(texpr: c, registry: registry, qualified_item_registry: qualified_item_registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
       let then_str = emit_typed_tco_expr(texpr: t, fn_name: fn_name, params: params, registry: registry, scope: frame.scope, depth: frame.depth + 1, shared_types: shared_types, emit_info: emit_info)
       match e {
         Present { value: eb } =>
@@ -8941,7 +8941,7 @@ fn emit_rust_tco_match(frame: TcoFrame, fn_name: String, params: List<Node>, reg
     ExprMatch =>
       let s = match_scrutinee(texpr: frame.expr)
       let arm_list = match_arm_nodes(texpr: frame.expr)
-      let scrut_str = emit_typed_expr(texpr: s, registry: registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+      let scrut_str = emit_typed_expr(texpr: s, registry: registry, qualified_item_registry: qualified_item_registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
       let tco_scrut_type = match s.inferred {
         Present { value: Resolved { node: rt } } =>
           let is_optional = rt.return_cardinality == CardOptional
@@ -8982,7 +8982,7 @@ fn emit_rust_tco_let(frame: TcoFrame, fn_name: String, params: List<Node>, regis
       let n = let_binding_name_at(texpr: frame.expr, source_indices: frame.scope.type_env.source_indices)
       let v = let_value(texpr: frame.expr)
       let bd = let_body(texpr: frame.expr)
-      let val_str = emit_typed_expr(texpr: v, registry: registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+      let val_str = emit_typed_expr(texpr: v, registry: registry, qualified_item_registry: qualified_item_registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
       let is_param = params |> any(p => param_node_name_at(n: p, source_indices: frame.scope.type_env.source_indices) == n)
       let let_line = if is_param { concat(emit_ident(name: n, target: Rust), " = ", val_str, ";") } else { concat("let ", emit_ident(name: n, target: Rust), " = ", val_str, ";") }
       let next_scope = extend_scope(scope: frame.scope, name: n, resolved: resolved_type(n: v), provenance: SubValueUnknown)
@@ -9016,7 +9016,7 @@ fn emit_rust_tco_block(frame: TcoFrame, fn_name: String, params: List<Node>, reg
 }
 
 fn emit_rust_tco_default_return(frame: TcoFrame, registry: Map<String, ItemInfo>, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
-  let val_str = emit_typed_expr(texpr: frame.expr, registry: registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+  let val_str = emit_typed_expr(texpr: frame.expr, registry: registry, qualified_item_registry: qualified_item_registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
   concat("break ", val_str, ";")
 }
 
