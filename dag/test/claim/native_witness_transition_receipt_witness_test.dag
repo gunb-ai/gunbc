@@ -1,0 +1,91 @@
+module test.claim.native_witness_transition_receipt_witness
+
+import std.decl_ref { decl_ref }
+import std.types { Bool, Int, String }
+import gunbc.roadmap_authority { declared_roadmap_nodes }
+import gunbc.roadmap_model { RoadmapNodeIdentity }
+import gunbc.native_witness_transition_receipt {
+  NativeSelectedWitnessTransitionReceipt,
+  TransitionEvidenceStanding,
+  EvidenceExecutedAtLandedCommit,
+  EvidenceExecutedBeforeLanding,
+  transition_evidence_standing,
+  native_at_small_scale_transition_receipt,
+}
+
+data native_witness_transition_witness_note: String = "THE TWO STANDING ARMS ARE ASSERTED TOGETHER ON PURPOSE. Either arm alone would pass against a fold that ignored its inputs and returned a constant; asserting both means no constant implementation survives, which is what makes the pair discriminating rather than decorative. The subject join is the second independent question -- a receipt naming a node identity nothing declares is evidence about nobody -- and its RED plants a fabricated identity so the join is proven capable of returning zero. That control is not hypothetical: drafting this receipt first transcribed the node identity as rn_2I5K7M9O1Q3S5T8V0W2X4Y7Z9A1C, one character off the declared rn_2I5K7M9O1Q3R6T8V0W2X4Y7Z9A1C, and the join is what catches that class."
+
+fn planted_receipt(
+  identity: String,
+  merge_commit: String,
+  evaluated_head: String,
+) -> NativeSelectedWitnessTransitionReceipt {
+  NativeSelectedWitnessTransitionReceipt {
+    node: identity as RoadmapNodeIdentity,
+    landed_pull_request: 1,
+    landed_merge_commit: merge_commit,
+    evaluated_head: evaluated_head,
+    executed_evidence: decl_ref(
+      module_path: "test.claim.native_witness_transition_receipt_witness",
+      decl_name: "planted_receipt",
+    ),
+  }
+}
+
+fn standing_is_before_landing(standing: TransitionEvidenceStanding) -> Bool {
+  match standing {
+    EvidenceExecutedBeforeLanding { evaluated_head: _, landed_merge_commit: _ } => true
+    EvidenceExecutedAtLandedCommit => false
+  }
+}
+
+fn standing_names_both_commits(
+  standing: TransitionEvidenceStanding,
+  expected_head: String,
+  expected_merge: String,
+) -> Bool {
+  match standing {
+    EvidenceExecutedBeforeLanding { evaluated_head, landed_merge_commit } =>
+      evaluated_head == expected_head && landed_merge_commit == expected_merge
+    EvidenceExecutedAtLandedCommit => false
+  }
+}
+
+fn declared_nodes_carrying_identity(identity: String) -> Int {
+  declared_roadmap_nodes()
+    |> filter(n => (n.identity as String) == identity)
+    |> count
+}
+
+test fn native_at_small_scale_evidence_stands_as_executed_before_landing() -> Bool {
+  let receipt = native_at_small_scale_transition_receipt()
+  let standing = transition_evidence_standing(receipt: receipt)
+  return standing_is_before_landing(standing: standing)
+    && standing_names_both_commits(
+      standing: standing,
+      expected_head: "2f9e780e6d2130680c4d9fb49739bf0c6cc7c746",
+      expected_merge: "1ebff27f1e538a06edbaf6a1871bff4c10887b39",
+    )
+}
+
+test fn evidence_executed_at_the_landed_commit_is_the_other_standing() -> Bool {
+  let receipt = planted_receipt(
+    identity: "rn_2I5K7M9O1Q3R6T8V0W2X4Y7Z9A1C",
+    merge_commit: "1ebff27f1e538a06edbaf6a1871bff4c10887b39",
+    evaluated_head: "1ebff27f1e538a06edbaf6a1871bff4c10887b39",
+  )
+  return !standing_is_before_landing(
+    standing: transition_evidence_standing(receipt: receipt),
+  )
+}
+
+test fn receipt_subject_joins_exactly_one_declared_roadmap_node() -> Bool {
+  let receipt = native_at_small_scale_transition_receipt()
+  return declared_nodes_carrying_identity(identity: receipt.node as String) == 1
+}
+
+test fn a_fabricated_subject_identity_joins_no_declared_node() -> Bool {
+  return declared_nodes_carrying_identity(
+    identity: "rn_2I5K7M9O1Q3S5T8V0W2X4Y7Z9A1C",
+  ) == 0
+}

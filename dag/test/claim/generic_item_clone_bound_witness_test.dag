@@ -131,3 +131,44 @@ test fn both_triggers_render_single_bound() -> Bool {
 test fn unbounded_declared_container_negative_control() -> Bool {
   w_unbounded_declared_container_propagates_nothing()
 }
+
+data fn_clone_bound_wf_witness_note: String = "THIRD site, same fixpoint: naming a Clone-bounded declared type in a FN value-param or return type is exactly as ill-formed as naming it in a field (v1_fn_param_wf_needs_clone, extending the same well-formedness trigger onto v1_generic_params_needing_clone_bound rather than a second fixpoint). w_fn_wf_bound_propagates_to_bare_generic is the occurrence_binding_from_candidates<N> specimen shape (deep-heron's honest regen of dag/std/occurrence_binding.dag) reduced to a discriminating fixture: N is named only inside BindingOccurrence<N> (value-param position) and OccurrenceBindingResult<N> (return position), never as a bare N itself, so the structural trigger (v1_type_param_needs_clone_bound) alone would leave it unbounded and only the WF trigger renders `<N: Clone>` -- this is the RED-on-pre-fix / GREEN-on-fix witness. w_fn_no_wf_trigger_stays_bare is the negative control: a fn naming only unbounded declared types keeps its generic param bare, proving the WF trigger does not widen to every fn touching a declared type. w_impl_accessor_inherits_item_bound_once locks in the already-correct IMPL-side behavior (accessor impl blocks read the struct's own item-level clone_bounded_type_params via emit_item_type_params_with_clone_bounds, not a fn-grain re-derivation) by asserting the accessor impl header carries the bound exactly once, with doubled-spelling refusals mirroring both_triggers_render_single_bound above."
+
+fn w_fn_wf_bound_propagates_to_bare_generic() -> Bool {
+  compile_dag_rust_emit_check(
+    "module fn_clone_bound_witness.wf_propagate\nimport std.algebra { FreeMonoid }\n\ntype ContainmentPath<N> {\n  ancestors: FreeMonoid<N>\n  terminal: N\n}\n\ntype BindingOccurrence<N> {\n  containment: ContainmentPath<N>\n}\n\ntype OccurrenceBindingResult<N> {\n  containment: ContainmentPath<N>\n}\n\nfn occurrence_binding_from_candidate<N>(occurrence: BindingOccurrence<N>) -> OccurrenceBindingResult<N> {\n  OccurrenceBindingResult { containment: occurrence.containment }\n}\n",
+    "src/fn_clone_bound_witness_wf_propagate.rs",
+    ["fn occurrence_binding_from_candidate<N: Clone>"],
+    ["fn occurrence_binding_from_candidate<N>"]
+  )
+}
+
+fn w_fn_no_wf_trigger_stays_bare() -> Bool {
+  compile_dag_rust_emit_check(
+    "module fn_clone_bound_witness.wf_negative\n\ntype Holder<N> {\n  tag: Int\n}\n\nfn describe_holder<N>(holder: Holder<N>) -> String {\n  \"holder\"\n}\n",
+    "src/fn_clone_bound_witness_wf_negative.rs",
+    ["fn describe_holder<N>"],
+    ["fn describe_holder<N: Clone>"]
+  )
+}
+
+fn w_impl_accessor_inherits_item_bound_once() -> Bool {
+  compile_dag_rust_emit_check(
+    "module fn_clone_bound_witness.impl_inherit\nimport std.algebra { FreeMonoid }\n\ntype ContainmentPath<N> {\n  ancestors: FreeMonoid<N>\n  terminal: N\n}\n\ntype BindingOccurrence<N> {\n  containment: ContainmentPath<N>\n}\n\ntype FoldState<N>\n  = FoldZero\n  | FoldOne { first: BindingOccurrence<N> }\n  | FoldMany { first: BindingOccurrence<N>, second: BindingOccurrence<N> }\n",
+    "src/fn_clone_bound_witness_impl_inherit.rs",
+    ["impl<N: Clone> FoldState<N>"],
+    ["impl<N: Clone> FoldState<N: Clone>", "impl<N: Clone, N: Clone> FoldState<N>", "impl<N: Clone + Clone> FoldState<N>", "impl<N> FoldState<N>"]
+  )
+}
+
+test fn fn_wf_bound_propagation_positive() -> Bool {
+  w_fn_wf_bound_propagates_to_bare_generic()
+}
+
+test fn fn_wf_no_trigger_negative_control() -> Bool {
+  w_fn_no_wf_trigger_stays_bare()
+}
+
+test fn impl_accessor_inherits_item_bound_once() -> Bool {
+  w_impl_accessor_inherits_item_bound_once()
+}

@@ -1262,9 +1262,109 @@ fn scoped_batch_clamp(batch: &[Runnable]) -> Result<Option<(u128, u128)>, String
 /// completed AND its receipts wrote, each stage a barrier, always fail-fast between
 /// stages regardless of the ordinary stop policy.
 struct ParsedWalkPlan {
+    pre_walk_execution: PreWalkExecution,
     batches: Vec<Vec<Runnable>>,
     finalization: Option<FloorFinalization>,
     on_success_stages: Vec<Vec<Runnable>>,
+    ordinary_budget_ms: Option<u64>,
+    on_success_budget_ms: Option<u64>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum PreWalkExecution {
+    None,
+    TypedClaimSubprocess {
+        transport_entry: String,
+        transport_function: String,
+        source_roots: Vec<String>,
+        claim_entry: String,
+        claim_function: String,
+    },
+}
+
+fn pre_walk_execution_from_value(
+    value: &Value,
+    ctx: &InterpContext,
+) -> Result<PreWalkExecution, String> {
+    let Value::Variant {
+        variant_name,
+        fields,
+        ..
+    } = value
+    else {
+        return Err(format!(
+            "WalkPlan.pre_walk_execution must be NoPreWalkExecution or TypedClaimSubprocess, got {}",
+            ctx.format_value(value)
+        ));
+    };
+    if ctx.sym_eq(*variant_name, "NoPreWalkExecution") {
+        return Ok(PreWalkExecution::None);
+    }
+    if !ctx.sym_eq(*variant_name, "TypedClaimSubprocess") {
+        return Err(format!(
+            "WalkPlan.pre_walk_execution has unknown variant {}",
+            ctx.format_value(value)
+        ));
+    }
+    let string_field = |name: &str| -> Result<String, String> {
+        match ctx.field(fields, name) {
+            Some(Value::Str(s)) if !s.trim().is_empty() => Ok(s.clone()),
+            other => Err(format!(
+                "TypedClaimSubprocess.{name} must be a non-empty String, got {other:?}"
+            )),
+        }
+    };
+    let roots = ctx
+        .field(fields, "source_roots")
+        .ok_or_else(|| "TypedClaimSubprocess.source_roots is missing".to_string())?;
+    let source_roots = str_list_from_value(roots, ctx)?;
+    if source_roots.is_empty() || source_roots.iter().any(|root| root.trim().is_empty()) {
+        return Err("TypedClaimSubprocess.source_roots must contain non-empty paths".to_string());
+    }
+    Ok(PreWalkExecution::TypedClaimSubprocess {
+        transport_entry: string_field("transport_entry")?,
+        transport_function: string_field("transport_function")?,
+        source_roots,
+        claim_entry: string_field("claim_entry")?,
+        claim_function: string_field("claim_function")?,
+    })
+}
+
+fn optional_walk_budget_ms(
+    value: &Value,
+    ctx: &InterpContext,
+    field: &str,
+) -> Result<Option<u64>, String> {
+    match value {
+        Value::Null => Ok(None),
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } if ctx.sym_eq(*variant_name, "Present") => match ctx.field(fields, "value") {
+            // The budget is a std.measure Millisecond — a Measure record whose `count`
+            // carries the magnitude; the unit lives in the type, never in a field name.
+            Some(measure @ (Value::Record { .. } | Value::Variant { .. })) => {
+                let count =
+                    nonnegative_measure_count(Some(measure), &format!("WalkPlan.{field}"), ctx)?;
+                if count == 0 {
+                    return Err(format!(
+                        "WalkPlan.{field} must be a positive Millisecond, got count 0"
+                    ));
+                }
+                u64::try_from(count)
+                    .map(Some)
+                    .map_err(|_| format!("WalkPlan.{field} exceeds the executor's u64 range"))
+            }
+            other => Err(format!(
+                "WalkPlan.{field} Present.value must be a std.measure Millisecond, got {other:?}"
+            )),
+        },
+        other => Err(format!(
+            "WalkPlan.{field} must be Present {{ value: Millisecond }} or Absent, got {}",
+            ctx.format_value(other)
+        )),
+    }
 }
 
 /// Parse the plan-carried finalization VALUE (walk_finalization_note). The executor
@@ -1355,6 +1455,9 @@ fn walk_plan_from_plan(plan: &Value, ctx: &InterpContext) -> Result<ParsedWalkPl
     let batches_val = ctx
         .field(fields, "batches")
         .ok_or_else(|| "WalkPlan missing field `batches`".to_string())?;
+    let pre_walk_execution_val = ctx.field(fields, "pre_walk_execution").ok_or_else(|| {
+        "WalkPlan missing field `pre_walk_execution` — a plan with no pre-walk effect declares NoPreWalkExecution; the parser never invents absence".to_string()
+    })?;
     let stages_val = ctx.field(fields, "on_success_stages").ok_or_else(|| {
         "WalkPlan missing field `on_success_stages` — a plan with no postconditions \
          declares an empty list, never omits the field"
@@ -1365,13 +1468,26 @@ fn walk_plan_from_plan(plan: &Value, ctx: &InterpContext) -> Result<ParsedWalkPl
          NoFinalizationDeclared, never omits the field"
             .to_string()
     })?;
+    let ordinary_budget_val = ctx.field(fields, "ordinary_budget").ok_or_else(|| {
+        "WalkPlan missing field `ordinary_budget` — unbounded plans declare Absent; the parser never invents a budget".to_string()
+    })?;
+    let on_success_budget_val = ctx.field(fields, "on_success_budget").ok_or_else(|| {
+        "WalkPlan missing field `on_success_budget` — plans without bounded postconditions declare Absent; the parser never invents a budget".to_string()
+    })?;
     Ok(ParsedWalkPlan {
+        pre_walk_execution: pre_walk_execution_from_value(pre_walk_execution_val, ctx)?,
         batches: batches_from_plan(batches_val, ctx)
             .map_err(|msg| format!("WalkPlan.batches: {msg}"))?,
         finalization: finalization_from_value(finalization_val, ctx)
             .map_err(|msg| format!("WalkPlan.finalization: {msg}"))?,
         on_success_stages: batches_from_plan(stages_val, ctx)
             .map_err(|msg| format!("WalkPlan.on_success_stages: {msg}"))?,
+        ordinary_budget_ms: optional_walk_budget_ms(ordinary_budget_val, ctx, "ordinary_budget")?,
+        on_success_budget_ms: optional_walk_budget_ms(
+            on_success_budget_val,
+            ctx,
+            "on_success_budget",
+        )?,
     })
 }
 
@@ -1379,6 +1495,37 @@ fn walk_plan_from_plan(plan: &Value, ctx: &InterpContext) -> Result<ParsedWalkPl
 /// explicitly keeps a reader from parsing a blank `entry` as "unknown" when the truth is
 /// "not one entry" — the state-space conflation this field exists to avoid.
 const DISCOVERY_AGGREGATE_ENTRY: &str = "<discovery corpus — many entries>";
+
+/// PAIRED LITERALS (review 47596): the .dag single authorities are
+/// `tools.merge_admission_capture` `merge_admission_capture_refusal_wire_relpath` and
+/// `tools.merge_admission_walk` `merge_admission_refresh_refusal_wire_relpath`; the seed
+/// cannot import a .dag datum, so the pairing is these consts plus the sentence on each
+/// datum naming this file — the floor-population-budget-refusal.txt precedent, under the
+/// same walk_plan_run_stage_claim_executor_seed_deferral. A rename lands on both sides
+/// or the wire read degrades to the loud wire-absent arm, never a silent success.
+const MERGE_ADMISSION_CAPTURE_REFUSAL_WIRE: &str = "target/merge-admission-capture-refusal.txt";
+const MERGE_ADMISSION_REFRESH_REFUSAL_WIRE: &str = "target/merge-admission-refresh-refusal.txt";
+
+/// The .dag writers anchor both wires at `git.Inspect.Toplevel()` while these reads run
+/// from the executor's cwd; anchoring the read on the same toplevel keeps a non-root cwd
+/// from turning a written typed cause into a false "wire absent" (review 47663). A failed
+/// toplevel resolution falls back to the bare relpath — the pre-anchor behavior — because
+/// the wire read is itself a diagnostic path: degrading its precision is acceptable,
+/// swallowing the stage failure it decorates is not.
+fn merge_admission_wire_read(relpath: &str) -> std::io::Result<String> {
+    let toplevel = std::process::Command::new("git")
+        .args(["rev-parse", "--show-toplevel"])
+        .output()
+        .ok()
+        .filter(|out| out.status.success())
+        .and_then(|out| String::from_utf8(out.stdout).ok())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    match toplevel {
+        Some(root) => fs::read_to_string(Path::new(&root).join(relpath)),
+        None => fs::read_to_string(relpath),
+    }
+}
 
 struct ClaimResult {
     function: String,
@@ -3325,6 +3472,90 @@ fn eval_plan(
     eval_plan_in_ctx(&plan_ctx, plan_entry, plan_function)
 }
 
+fn run_pre_walk_execution(
+    executor_source_roots: &[String],
+    plan_site: &str,
+    execution: &PreWalkExecution,
+) -> Result<(), String> {
+    let PreWalkExecution::TypedClaimSubprocess {
+        transport_entry,
+        transport_function,
+        source_roots,
+        claim_entry,
+        claim_function,
+    } = execution
+    else {
+        return Ok(());
+    };
+    let started = Instant::now();
+    let memory_before = stage_memory_snapshot();
+    eprintln!(
+        "claim_executor: pre-walk typed claim subprocess — transport={transport_entry}::{transport_function} claim={claim_entry}::{claim_function}"
+    );
+    let (graph, indices) = resolve_entry_graph(executor_source_roots, transport_entry).map_err(
+        |msg| {
+            format!(
+                "PRE-WALK-REFUSED plan_site={plan_site} transport={transport_entry}::{transport_function} claim={claim_entry}::{claim_function}: transport resolve failed: {msg}"
+            )
+        },
+    )?;
+    let ctx = make_eval_context(&graph, indices, ExecutionMode::Wet);
+    let result = run_in_context_with_args(
+        &ctx,
+        transport_function,
+        &[
+            (
+                Some("source_roots".to_string()),
+                str_list_value(source_roots),
+            ),
+            (
+                Some("claim_entry".to_string()),
+                Value::Str(claim_entry.clone()),
+            ),
+            (
+                Some("claim_function".to_string()),
+                Value::Str(claim_function.clone()),
+            ),
+        ],
+        false,
+    );
+    drop(ctx);
+    drop(graph);
+    let wall_ms = started.elapsed().as_millis();
+    let memory_after = stage_memory_snapshot();
+    eprintln!(
+        "claim_executor: pre-walk typed claim subprocess receipt — wall_ms={wall_ms} memory_current_before={} memory_current_after={} memory_peak_after={} swap_after={} high_events_after={}",
+        receipt_optional_u64(memory_before.current_bytes),
+        receipt_optional_u64(memory_after.current_bytes),
+        receipt_optional_u64(memory_after.peak_bytes),
+        receipt_optional_u64(memory_after.swap_bytes),
+        receipt_optional_u64(memory_after.high_events),
+    );
+    match result {
+        Ok(Value::Bool(true)) => Ok(()),
+        Ok(Value::Bool(false)) => {
+            // The claim channel is a Bool, so the typed cause crosses as the durable
+            // refusal wire the capture writes before returning false (the
+            // floor-population-budget-refusal.txt pattern; merge_admission_capture
+            // merge_admission_capture_refusal_wire_note). Wire-absent is its own
+            // reported state, never folded into a generic failure.
+            let cause = match merge_admission_wire_read(MERGE_ADMISSION_CAPTURE_REFUSAL_WIRE) {
+                Ok(wire) => format!("capture refusal wire: {}", wire.trim()),
+                Err(_) => "typed child returned false with no capture-refusal wire (child died before writing its cause, or the wire write itself refused — indistinguishable from here: the Bool claim is the only surviving channel)".to_string(),
+            };
+            Err(format!(
+                "PRE-WALK-REFUSED plan_site={plan_site} transport={transport_entry}::{transport_function} claim={claim_entry}::{claim_function}: {cause}"
+            ))
+        }
+        Ok(other) => Err(format!(
+            "PRE-WALK-REFUSED plan_site={plan_site} transport={transport_entry}::{transport_function} claim={claim_entry}::{claim_function}: transport returned {other:?}, expected Bool"
+        )),
+        Err(msg) => Err(format!(
+            "PRE-WALK-REFUSED plan_site={plan_site} transport={transport_entry}::{transport_function} claim={claim_entry}::{claim_function}: transport evaluation failed: {msg}"
+        )),
+    }
+}
+
 /// An infrastructure fault the walk observed directly, kept as data.
 ///
 /// The walk KNOWS a claim thread panicked — `handle.join()` returned `Err`. That fact used
@@ -4623,6 +4854,38 @@ fn write_on_success_stage_receipt(
     body.push_str(&format!("unit_count={}\n", run.unit_count));
     body.push_str(&format!("resolves={resolves}\n"));
     body.push_str(&format!("wall_ms={}\n", run.wall_nanos / 1_000_000));
+    body.push_str(&format!(
+        "memory_current_before_bytes={}\n",
+        receipt_optional_u64(run.memory_before.current_bytes)
+    ));
+    body.push_str(&format!(
+        "memory_current_after_bytes={}\n",
+        receipt_optional_u64(run.memory_after.current_bytes)
+    ));
+    body.push_str(&format!(
+        "memory_peak_before_bytes={}\n",
+        receipt_optional_u64(run.memory_before.peak_bytes)
+    ));
+    body.push_str(&format!(
+        "memory_peak_after_bytes={}\n",
+        receipt_optional_u64(run.memory_after.peak_bytes)
+    ));
+    body.push_str(&format!(
+        "memory_swap_before_bytes={}\n",
+        receipt_optional_u64(run.memory_before.swap_bytes)
+    ));
+    body.push_str(&format!(
+        "memory_swap_after_bytes={}\n",
+        receipt_optional_u64(run.memory_after.swap_bytes)
+    ));
+    body.push_str(&format!(
+        "memory_high_events_before={}\n",
+        receipt_optional_u64(run.memory_before.high_events)
+    ));
+    body.push_str(&format!(
+        "memory_high_events_after={}\n",
+        receipt_optional_u64(run.memory_after.high_events)
+    ));
     // Recorded rather than omitted so a future DECLARED stage clamp shows up as a value
     // change here instead of a new field a reader has to notice.
     body.push_str(&format!(
@@ -5012,6 +5275,22 @@ fn batch_unit_lane(
     }
 }
 
+/// Population-semantic refinement of the shared lane decision. Green-only claims that
+/// would spawn instead stay on the executor's main thread, where the process-shared
+/// module index is already warm. The claim still runs through `run_batch_unit`, so this
+/// changes placement only — not governor admission, grouping, or verdict semantics.
+fn population_unit_lane(
+    population: StagePopulation,
+    unit: &BatchUnit,
+    memo: &std::collections::HashMap<(String, ExecutionMode), InterpContext>,
+    memo_path_entries: &std::collections::HashSet<(String, ExecutionMode)>,
+) -> UnitLane {
+    match (population, batch_unit_lane(unit, memo, memo_path_entries)) {
+        (StagePopulation::OnSuccessStage, UnitLane::Spawned) => UnitLane::MainThread,
+        (_, lane) => lane,
+    }
+}
+
 /// Arm-time admissibility of the success-stage population. Called immediately after
 /// the plan parses, BEFORE the governor arms and before any ordinary batch runs: a
 /// plan-shape error is knowable at parse time, and discovering it after a 20-30 minute
@@ -5286,10 +5565,11 @@ fn join_units(handles: Vec<thread::JoinHandle<Vec<ClaimResult>>>) -> (Vec<ClaimR
     (results, panicked)
 }
 
-/// Which of the walk's two populations a stage belongs to. It selects LABELS only —
-/// the execution path below is byte-identical for both, which is the entire point of
-/// the extraction (`std.realization_schedule.walk_plan_note`). Ordering and failure
-/// policy live in the callers, where the two populations genuinely differ.
+/// Which of the walk's two populations a stage belongs to. Besides labels, this selects
+/// the one population-semantic placement difference: on-success units that would be
+/// spawned execute through `run_batch_unit` on the main thread so they consume its warm
+/// thread-local index. Ordinary spawned units stay unchanged. Ordering and failure
+/// policy continue to live in the callers.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum StagePopulation {
     OrdinaryBatch,
@@ -5333,6 +5613,44 @@ struct StageRun {
     thread_panicked: bool,
     /// The stage exceeded its derived clamp. Already printed as a typed refusal.
     over_budget: bool,
+    memory_before: StageMemorySnapshot,
+    memory_after: StageMemorySnapshot,
+}
+
+#[derive(Clone, Copy, Default)]
+struct StageMemorySnapshot {
+    current_bytes: Option<u64>,
+    peak_bytes: Option<u64>,
+    swap_bytes: Option<u64>,
+    high_events: Option<u64>,
+}
+
+fn stage_memory_snapshot() -> StageMemorySnapshot {
+    let Some(dir) = binding_high_cgroup_dir()
+        .or_else(binding_cap_cgroup_dir)
+        .or_else(leaf_cgroup_dir)
+    else {
+        return StageMemorySnapshot::default();
+    };
+    let high_events = read_cgroup_raw(&dir, "memory.events").and_then(|events| {
+        events.lines().find_map(|line| {
+            let mut fields = line.split_whitespace();
+            match (fields.next(), fields.next()) {
+                (Some("high"), Some(value)) => value.parse::<u64>().ok(),
+                _ => None,
+            }
+        })
+    });
+    StageMemorySnapshot {
+        current_bytes: read_cgroup_u64(&dir, "memory.current"),
+        peak_bytes: read_cgroup_u64(&dir, "memory.peak"),
+        swap_bytes: read_cgroup_u64(&dir, "memory.swap.current"),
+        high_events,
+    }
+}
+
+fn receipt_optional_u64(value: Option<u64>) -> String {
+    value.map_or_else(|| "unreadable".to_string(), |n| n.to_string())
 }
 
 /// ONE stage of a walk, and the SINGLE execution path both populations share.
@@ -5388,14 +5706,20 @@ fn run_stage(
         units.len(),
         governor.current_target_width()
     );
+    let memory_before = stage_memory_snapshot();
     let stage_start = Instant::now();
-    // Partition units into lanes (decision table: `batch_unit_lane`): memo and Discovery
-    // units stay on the main thread; others spawn.
+    // Partition units into lanes (decision table: `batch_unit_lane`). Ordinary spawned
+    // units remain worker-thread units. On-success units that would otherwise spawn run
+    // through the SAME run_batch_unit path on the main thread: they still acquire an
+    // AdmittedSlot, but now consume this thread's already-warm process_shared_index
+    // instead of rebuilding a cold index in a fresh thread-local. The WalkPlan contract
+    // deliberately permits withdrawing sibling overlap, and the live roster's stages are
+    // singletons. Memo and Discovery placement is unchanged.
     let mut memo_units: Vec<BatchUnit> = Vec::new();
     let mut main_thread_units: Vec<BatchUnit> = Vec::new();
     let mut thread_units: Vec<BatchUnit> = Vec::new();
     for unit in units {
-        match batch_unit_lane(&unit, memo, memo_path_entries) {
+        match population_unit_lane(population, &unit, memo, memo_path_entries) {
             UnitLane::Memo => memo_units.push(unit),
             UnitLane::MainThread => main_thread_units.push(unit),
             UnitLane::Spawned => thread_units.push(unit),
@@ -5454,9 +5778,10 @@ fn run_stage(
             memo_results.extend(results);
         }
     }
-    // Discovery pumps on the main thread (see the partition above): the pump's
-    // `process_shared_index` is this thread's — the one the eager compile-clean receipt
-    // install warmed — so the corpus reads the gate's typed store.
+    // Main-thread units include Discovery pumps and on-success spawned-eligible claims.
+    // Both intentionally consume this thread's process_shared_index — the one the eager
+    // compile-clean receipt install warmed. run_batch_unit itself preserves governor-slot
+    // acquisition for the claim case; Discovery keeps its existing admission behavior.
     for unit in main_thread_units {
         memo_results.extend(run_batch_unit(
             source_roots.to_vec(),
@@ -5487,6 +5812,7 @@ fn run_stage(
         }
     }
     let wall_nanos = stage_start.elapsed().as_nanos();
+    let memory_after = stage_memory_snapshot();
     // THE COST WALL (Piece 3 derived clamp): the per-stage clamp is overhead + runtime
     // unit count * rate, computed HERE where the affected-set-selected count is known
     // (the schedule holds one opaque discovery runnable; the count is runtime).
@@ -5533,7 +5859,143 @@ fn run_stage(
         clamp_ms,
         thread_panicked,
         over_budget,
+        memory_before,
+        memory_after,
     }
+}
+
+fn arm_population_budget_watchdog(
+    population: &'static str,
+    plan_site: &str,
+    budget_ms: Option<u64>,
+    progress: PopulationBudgetProgress,
+) -> Arc<std::sync::atomic::AtomicBool> {
+    let armed = Arc::new(std::sync::atomic::AtomicBool::new(budget_ms.is_some()));
+    let Some(budget_ms) = budget_ms else {
+        return armed;
+    };
+    let watchdog_armed = armed.clone();
+    let site = plan_site.to_string();
+    let started = Instant::now();
+    let _ = std::thread::Builder::new()
+        .name(format!("{population}-budget-watchdog"))
+        .spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(budget_ms));
+            if watchdog_armed.load(std::sync::atomic::Ordering::Acquire) {
+                let elapsed_ms = started.elapsed().as_millis().min(u128::from(u64::MAX)) as u64;
+                let locus = progress.snapshot();
+                let receipt = PopulationBudgetRefusal {
+                    population,
+                    plan_site: &site,
+                    population_index: locus.population_index,
+                    active_unit: &locus.active_unit,
+                    elapsed_ms,
+                    budget_ms,
+                };
+                let receipt_path = write_population_budget_refusal_at(Path::new("target"), &receipt)
+                    .map(|path| path.display().to_string())
+                    .unwrap_or_else(|error| format!("UNWRITABLE ({error})"));
+                use std::io::Write as _;
+                let mut stderr = std::io::stderr().lock();
+                let _ = writeln!(
+                    stderr,
+                    "claim_executor: {}-OVER-BUDGET — plan_site={} population_index={} active_unit={} elapsed_ms={} budget_ms={} receipt={}; executor refusing inside the population boundary",
+                    population.to_ascii_uppercase().replace('_', "-"),
+                    site,
+                    locus.population_index,
+                    locus.active_unit,
+                    elapsed_ms,
+                    budget_ms,
+                    receipt_path,
+                );
+                let _ = stderr.flush();
+                std::process::exit(1);
+            }
+        });
+    armed
+}
+
+#[derive(Clone, Debug)]
+struct PopulationBudgetLocus {
+    population_index: usize,
+    active_unit: String,
+}
+
+#[derive(Clone)]
+struct PopulationBudgetProgress(Arc<std::sync::Mutex<PopulationBudgetLocus>>);
+
+impl PopulationBudgetProgress {
+    fn before_first_unit() -> Self {
+        Self(Arc::new(std::sync::Mutex::new(PopulationBudgetLocus {
+            population_index: 0,
+            active_unit: "<before first unit>".to_string(),
+        })))
+    }
+
+    fn enter(&self, population_index: usize, active_unit: String) {
+        let mut locus = self
+            .0
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        *locus = PopulationBudgetLocus {
+            population_index,
+            active_unit,
+        };
+    }
+
+    fn snapshot(&self) -> PopulationBudgetLocus {
+        self.0
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone()
+    }
+}
+
+struct PopulationBudgetRefusal<'a> {
+    population: &'a str,
+    plan_site: &'a str,
+    population_index: usize,
+    active_unit: &'a str,
+    elapsed_ms: u64,
+    budget_ms: u64,
+}
+
+fn population_budget_refusal_body(receipt: &PopulationBudgetRefusal<'_>) -> String {
+    format!(
+        "population={}\nplan_site={}\npopulation_index={}\nactive_unit={}\nelapsed_ms={}\nbudget_ms={}\noutcome=refused\n",
+        receipt.population,
+        receipt.plan_site,
+        receipt.population_index,
+        receipt.active_unit,
+        receipt.elapsed_ms,
+        receipt.budget_ms,
+    )
+}
+
+fn write_population_budget_refusal_at(
+    base: &Path,
+    receipt: &PopulationBudgetRefusal<'_>,
+) -> std::io::Result<PathBuf> {
+    fs::create_dir_all(base)?;
+    let path = base.join("floor-population-budget-refusal.txt");
+    fs::write(&path, population_budget_refusal_body(receipt))?;
+    Ok(path)
+}
+
+fn budget_unit_label(stage: &[Runnable]) -> String {
+    stage
+        .iter()
+        .map(|runnable| match runnable {
+            Runnable::SingleClaim {
+                entry, function, ..
+            } => format!("{entry}::{function}"),
+            Runnable::DiscoveryBatch { .. } => "<discovery batch>".to_string(),
+            Runnable::ScopedWitnessBatch { batch_id, .. } => {
+                format!("<scoped witness batch {batch_id}>")
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(",")
 }
 
 fn run_walk(
@@ -5542,6 +6004,8 @@ fn run_walk(
     batches: &[Vec<Runnable>],
     on_success_stages: &[Vec<Runnable>],
     floor_finalization: Option<&FloorFinalization>,
+    ordinary_budget_ms: Option<u64>,
+    on_success_budget_ms: Option<u64>,
     governor: &Arc<MemoryGovernor>,
     fast_lane_eval_budget_ms: Option<u64>,
     falsifier_self_host_wet_budgets: FalsifierSelfHostWetBudgets,
@@ -5564,6 +6028,14 @@ fn run_walk(
     let mut failure_details: Vec<String> = Vec::new();
     let mut infra_faults: Vec<InfraFault> = Vec::new();
     let walk_start = Instant::now();
+    let ordinary_start = Instant::now();
+    let ordinary_budget_progress = PopulationBudgetProgress::before_first_unit();
+    let ordinary_budget_armed = arm_population_budget_watchdog(
+        "ordinary_floor",
+        plan_site,
+        ordinary_budget_ms,
+        ordinary_budget_progress.clone(),
+    );
     let mut batch_records: Vec<BatchRecord> = Vec::new();
     // Cross-batch resolve memo: SharedClaims whose runnable does a heavy whole-tree resolve
     // run on the main thread and share a single resolved InterpContext per entry across all batches.
@@ -5577,7 +6049,23 @@ fn run_walk(
         std::collections::HashMap::new();
     let memo_path_entries = memo_path_entry_keys(batches);
     for (bi, batch) in batches.iter().enumerate() {
+        if ordinary_budget_ms
+            .is_some_and(|budget| ordinary_start.elapsed().as_millis() >= u128::from(budget))
+        {
+            let budget = ordinary_budget_ms.expect("checked Some above");
+            any_failed = true;
+            failure_details.push(format!(
+                "ordinary floor exceeded its population budget before batch {}: budget_ms={budget}",
+                bi + 1
+            ));
+            eprintln!(
+                "claim_executor: ORDINARY-FLOOR-OVER-BUDGET before batch {} — budget_ms={budget}; admission postcondition allowance remains reserved",
+                bi + 1
+            );
+            break;
+        }
         batches_run = bi + 1;
+        ordinary_budget_progress.enter(bi + 1, budget_unit_label(batch));
         let StageRun {
             results: batch_results,
             label,
@@ -5586,6 +6074,8 @@ fn run_walk(
             clamp_ms: batch_clamp_ms,
             thread_panicked,
             over_budget,
+            memory_before: _,
+            memory_after: _,
         } = run_stage(
             source_roots,
             batch,
@@ -5791,20 +6281,24 @@ fn run_walk(
             }
         }
     }
+    ordinary_budget_armed.store(false, std::sync::atomic::Ordering::Release);
     // On-success stages: run only on a fully-green ordinary floor; each stage is a
     // barrier and stage-to-stage execution is ALWAYS fail-fast — FloorBatchStopPolicy
     // is an ordinary-floor policy and never applies between stages. Members run through
     // `run_stage`, the SAME executor the ordinary batches use — same unit grouping, same
-    // lane partition, same CLAMP MECHANISM, same per-lane admission rule. Three of those
+    // lane decision, same CLAMP MECHANISM, same per-lane admission rule. On-success
+    // spawned-eligible units have one population-semantic placement refinement: they run
+    // on this main thread to consume its warm thread-local index. Three of those
     // are deliberately weaker than an earlier draft's wording (review 2026-07-31). NOT
-    // "same governor admission": admission is PER-LANE, and only the spawned lane acquires
-    // a slot. NOT "same derived clamp": ordinary batches SUPPLY clamp parameters, stages
+    // "same governor admission": admission is PER-LANE. Ordinary spawned units and
+    // on-success main-thread claim units both reach run_batch_unit and acquire a slot;
+    // memo and Discovery lanes do not. NOT "same derived clamp": ordinary batches SUPPLY clamp parameters, stages
     // deliberately pass None and stay inside a narrow admissible profile instead — the
     // mechanism is shared, the parameters are not. And NOT "concurrent exactly as the
-    // contract says": the contract promises only that distinct spawned groups MAY overlap.
-    // The two
-    // populations differ here only in ordering and failure policy, which is the whole
-    // claim of the extraction. Their memo contexts drop AFTER
+    // contract says": the contract never guarantees sibling overlap, and on-success
+    // placement deliberately withdraws it to preserve index warmth. The two populations
+    // differ where their semantics require it: ordering/failure policy and warm-index
+    // placement for postconditions. Their memo contexts drop AFTER
     // write_materialization_receipt above, so stage materialization is structurally NOT
     // folded into the floor receipt. A second attempt-scoped receipt harvests the stage
     // population after stage_memo drops.
@@ -5836,6 +6330,14 @@ fn run_walk(
                 ),
             }
         } else {
+            let on_success_start = Instant::now();
+            let on_success_budget_progress = PopulationBudgetProgress::before_first_unit();
+            let on_success_budget_armed = arm_population_budget_watchdog(
+                "on_success",
+                plan_site,
+                on_success_budget_ms,
+                on_success_budget_progress.clone(),
+            );
             let mut stage_rows: Vec<(usize, bool)> = Vec::new();
             let mut stage_resolves: u64 = 0;
             let mut stage_memo: std::collections::HashMap<(String, ExecutionMode), InterpContext> =
@@ -5843,10 +6345,28 @@ fn run_walk(
             // The stage population's own memo-path set. The stage memo is SEPARATE from
             // `walk_memo` by lifecycle, not by accident: stage contexts must drop after
             // `write_materialization_receipt` above so stage materialization is
-            // structurally not folded into the floor receipt. One entry shared by several
-            // stages still resolves once, within that separate map.
+            // structurally not folded into the floor receipt. Only heavy claims enroll in
+            // the memo lane, and those refuse stage admission today; non-heavy claims in
+            // separate stages therefore resolve independently. The map remains because it
+            // is the common run_stage interface, not as a cross-stage reuse promise.
             let stage_memo_path_entries = memo_path_entry_keys(on_success_stages);
             for (si, stage) in on_success_stages.iter().enumerate() {
+                if on_success_budget_ms.is_some_and(|budget| {
+                    on_success_start.elapsed().as_millis() >= u128::from(budget)
+                }) {
+                    let budget = on_success_budget_ms.expect("checked Some above");
+                    on_success_failed = true;
+                    failure_details.push(format!(
+                        "on-success population exceeded its budget before stage {}: budget_ms={budget}",
+                        si + 1
+                    ));
+                    eprintln!(
+                        "claim_executor: ON-SUCCESS-OVER-BUDGET before stage {} — budget_ms={budget}",
+                        si + 1
+                    );
+                    break;
+                }
+                on_success_budget_progress.enter(si + 1, budget_unit_label(stage));
                 let run = run_stage(
                     source_roots,
                     stage,
@@ -5907,23 +6427,35 @@ fn run_walk(
                         );
                     } else {
                         stage_failed = true;
+                        // A stage claim's channel is a Bool, so its typed cause crosses
+                        // as a durable refusal wire (merge_admission_walk
+                        // merge_admission_refresh_refusal_wire_note — the same pattern
+                        // as the pre-walk capture). Read fresh per failure; absent wire
+                        // is its own reported state.
+                        let stage_cause =
+                            match merge_admission_wire_read(MERGE_ADMISSION_REFRESH_REFUSAL_WIRE) {
+                                Ok(wire) => format!("; refusal wire: {}", wire.trim()),
+                                Err(_) => String::new(),
+                            };
                         println!(
                             "{}",
                             paint(
                                 &format!(
-                                    "✗ FAIL [on-success stage {}] {} ({})",
+                                    "✗ FAIL [on-success stage {}] {} ({}{})",
                                     si + 1,
                                     r.function,
-                                    r.detail
+                                    r.detail,
+                                    stage_cause
                                 ),
                                 sgr::ERROR
                             )
                         );
                         failure_details.push(format!(
-                            "on-success stage {} fn={} detail={}",
+                            "on-success stage {} fn={} detail={}{}",
                             si + 1,
                             r.function,
-                            r.detail
+                            r.detail,
+                            stage_cause
                         ));
                     }
                 }
@@ -6006,6 +6538,7 @@ fn run_walk(
             if !aggregate_written {
                 on_success_failed = true;
             }
+            on_success_budget_armed.store(false, std::sync::atomic::Ordering::Release);
         }
     }
     WalkOutcome {
@@ -6246,6 +6779,8 @@ fn run_perturb_check(
         &format!("{plan_entry}::{plan_function} (perturb re-walk)"),
         &remapped,
         &[],
+        None,
+        None,
         None,
         &Arc::new(MemoryGovernor::from_environment(1)),
         None,
@@ -7023,6 +7558,9 @@ fn run() -> Result<ExitCode, ExitCode> {
             return Err(ExitCode::from(1));
         }
     };
+    let pre_walk_execution = walk_plan.pre_walk_execution;
+    let ordinary_budget_ms = walk_plan.ordinary_budget_ms;
+    let on_success_budget_ms = walk_plan.on_success_budget_ms;
     let mut batches = walk_plan.batches;
     let mut on_success_stages = walk_plan.on_success_stages;
     let mut floor_finalization: Option<FloorFinalization> = walk_plan.finalization;
@@ -7401,6 +7939,20 @@ fn run() -> Result<ExitCode, ExitCode> {
         return Err(ExitCode::from(1));
     }
 
+    // Pre-walk execution belongs to the whole-floor walk, not to a scoped child: a
+    // Scoped worker executes exactly its selected batch, and re-running the capture
+    // effect per child would duplicate an effect the ordinary worker already owns.
+    if !matches!(floor_worker_role, Some(FloorWorkerRole::Scoped { .. })) {
+        if let Err(msg) = run_pre_walk_execution(
+            &source_roots,
+            &format!("{plan_entry}::{plan_function}"),
+            &pre_walk_execution,
+        ) {
+            eprintln!("claim_executor: {msg}");
+            return Err(ExitCode::from(1));
+        }
+        phase_mark("pre-walk execution");
+    }
     // Adaptive width: no plan-evaluated spawn width and no pinned per-shard constants —
     // the governor admits workers against the slot's own declared budget (AIMD), so the
     // width story for the run is its announce line here plus its end-of-run receipt.
@@ -7446,6 +7998,8 @@ fn run() -> Result<ExitCode, ExitCode> {
         &batches,
         &on_success_stages,
         floor_finalization.as_ref(),
+        ordinary_budget_ms,
+        on_success_budget_ms,
         &governor,
         fast_lane_eval_budget_ms,
         falsifier_self_host_wet_budgets,
@@ -7671,6 +8225,62 @@ fn main() -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn population_budget_watchdog_refuses_and_writes_located_receipt() {
+        const CHILD_MARKER: &str = "GUNBC_POPULATION_BUDGET_WATCHDOG_CHILD";
+        if std::env::var(CHILD_MARKER).as_deref() == Ok("1") {
+            let progress = PopulationBudgetProgress::before_first_unit();
+            progress.enter(3, "dag/tools/fixture.dag::bounded_stage_claim".to_string());
+            let _armed = arm_population_budget_watchdog(
+                "ordinary_floor",
+                "fixture::bounded_plan",
+                Some(50),
+                progress,
+            );
+            std::thread::sleep(std::time::Duration::from_secs(2));
+            panic!("watchdog did not terminate the child");
+        }
+
+        let dir = std::env::temp_dir().join(format!(
+            "gunbc-population-budget-watchdog-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).expect("create watchdog fixture directory");
+        let output = std::process::Command::new(std::env::current_exe().expect("current test exe"))
+            .arg("--exact")
+            .arg("tests::population_budget_watchdog_refuses_and_writes_located_receipt")
+            .arg("--nocapture")
+            .env(CHILD_MARKER, "1")
+            .current_dir(&dir)
+            .output()
+            .expect("run watchdog child");
+        assert!(!output.status.success(), "budget child must refuse");
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stderr.contains("ORDINARY-FLOOR-OVER-BUDGET")
+                && stderr.contains("fixture::bounded_plan")
+                && stderr.contains("population_index=3")
+                && stderr.contains("dag/tools/fixture.dag::bounded_stage_claim")
+                && stderr.contains("elapsed_ms=")
+                && stderr.contains("budget_ms=50"),
+            "refusal must be typed and located, got: {stderr}"
+        );
+        let receipt = fs::read_to_string(dir.join("target/floor-population-budget-refusal.txt"))
+            .expect("watchdog refusal receipt");
+        assert!(
+            receipt.contains("population=ordinary_floor")
+                && receipt.contains("plan_site=fixture::bounded_plan")
+                && receipt.contains("population_index=3")
+                && receipt.contains("active_unit=dag/tools/fixture.dag::bounded_stage_claim")
+                && receipt.contains("elapsed_ms=")
+                && receipt.contains("budget_ms=50")
+                && receipt.contains("outcome=refused"),
+            "receipt must carry the refused population and its subject: {receipt}"
+        );
+        fs::remove_dir_all(&dir).expect("remove watchdog fixture directory");
+    }
 
     // Process-wide eval-recompute totals are shared across every test in this
     // binary. Tests that drain or assert on the accumulator must serialize so
@@ -8274,6 +8884,49 @@ mod tests {
         assert_eq!(
             batch_unit_lane(&cheap_units[0], &empty_memo, &no_heavy),
             UnitLane::Spawned
+        );
+    }
+
+    #[test]
+    fn on_success_spawned_claims_move_to_warm_main_thread_only() {
+        let runnable = Runnable::SingleClaim {
+            entry: "dag/tools/merge_admission_walk.dag".to_string(),
+            function: "stamp_tested_floor".to_string(),
+            profile: ParsedRunnableProfile {
+                provenance: ParsedProfileProvenance::Declared,
+                heavy_whole_tree_resolve: false,
+                spawns_host_compiler: false,
+                memory: ParsedMemoryClass::Negligible,
+                execution_mode: ExecutionMode::Wet,
+            },
+        };
+        let units = group_batch_units(&[runnable]);
+        let memo = std::collections::HashMap::new();
+        let memo_entries = std::collections::HashSet::new();
+        assert_eq!(
+            batch_unit_lane(&units[0], &memo, &memo_entries),
+            UnitLane::Spawned,
+            "the shared lane authority remains unchanged"
+        );
+        assert_eq!(
+            population_unit_lane(
+                StagePopulation::OrdinaryBatch,
+                &units[0],
+                &memo,
+                &memo_entries,
+            ),
+            UnitLane::Spawned,
+            "ordinary claim placement must remain unchanged"
+        );
+        assert_eq!(
+            population_unit_lane(
+                StagePopulation::OnSuccessStage,
+                &units[0],
+                &memo,
+                &memo_entries,
+            ),
+            UnitLane::MainThread,
+            "green-only claim must consume the warm main-thread index"
         );
     }
 
@@ -9057,6 +9710,8 @@ mod tests {
             "test::on_success_materialization_fixture",
             &ordinary_batch,
             on_success_stages,
+            None,
+            None,
             None,
             &Arc::new(MemoryGovernor::from_environment(1)),
             None,

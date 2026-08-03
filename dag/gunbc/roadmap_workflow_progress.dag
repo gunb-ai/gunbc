@@ -106,6 +106,10 @@ import gunbc.worker_lifecycle {
   WorkerProcessRunning,
   WorkerProcessExited,
 }
+import gunbc.roadmap_workflow_command {
+  legacy_attempt_supersedable_label,
+  legacy_attempt_supersedable_detail,
+}
 
 type WorkflowAttemptEvidence {
   node_id: String
@@ -258,8 +262,8 @@ fn workflow_provider_from_evidence(
 ) -> ProviderExecutionState {
   if !evidence.modeled_state_present {
     ProviderEventsRefused {
-      activity: "legacy attempt",
-      detail: "attempt predates modeled admission/event capture; progress cannot be reconstructed",
+      activity: legacy_attempt_supersedable_label,
+      detail: legacy_attempt_supersedable_detail,
     }
   } else if !evidence.admission_receipt_readable {
     ProviderEventsRefused {
