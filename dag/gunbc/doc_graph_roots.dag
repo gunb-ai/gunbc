@@ -74,7 +74,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     home: PlanDoc,
     slug: "generated-file-conflict-policy",
     primary_work: DeclarationRef { module_path: "gunbc.generated_artifact", decl_name: "committed_generated_artifacts", field: WholeDeclaration },
-    additional_works: [DeclarationRef { module_path: "tools.generated_artifact_gate", decl_name: "run_generated_artifact_drift_gate", field: WholeDeclaration }, DeclarationRef { module_path: "gunbc.commit_workflow", decl_name: "commit_gate_roster", field: WholeDeclaration }, DeclarationRef { module_path: "gunbc.stage0_emit_plan_generated", decl_name: "generated_stage0_files", field: WholeDeclaration }],
+    additional_works: [DeclarationRef { module_path: "tools.generated_artifact_gate", decl_name: "run_generated_artifact_drift_gate", field: WholeDeclaration }, DeclarationRef { module_path: "gunbc.commit_workflow", decl_name: "commit_gate_roster", field: WholeDeclaration }, DeclarationRef { module_path: "gunbc.stage0_emit_plan_generated", decl_name: "generated_stage0_files", field: WholeDeclaration }, DeclarationRef { module_path: "std.keyed_roster", decl_name: "keyed_roster_build", field: WholeDeclaration }],
     dissolution: HasTrigger { text: "all four charter lanes are landed AND bound: commit-writer admission consumed at every writer transport (the heal arm and the dashboard autocommit daemon), the .gitattributes + repo-local git-config projections live with read-back, stage0 membership derived with its host-supply scaffold dissolved or re-triggered, and the keyed-roster construction wall enrolled per-PR. Then the surviving policy rows migrate to DESIGN or a registered gunbc.plan.Plan row and this bind deletes with the doc." },
   },
   HandAuthoredDocBind {
@@ -100,6 +100,16 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
       DeclarationRef { module_path: "gunbc.native_witness_transition_receipt", decl_name: "native_at_small_scale_transition_receipt", field: WholeDeclaration },
     ],
     dissolution: HasTrigger { text: "every sub-lane row is accepted or honestly retired and the program parent five-minute-ci-gate is accepted on fleet receipts showing a representative leaf .dag PR at ≤5 minutes wall with byte-identical verdicts vs a cold recompute control — or the operator recuts the program and this note is superseded by a registered plan row." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "floor-prep-tax-program",
+    primary_work: DeclarationRef { module_path: "gunbc.executor_schedule_retention", decl_name: "schedule_retention_policy_note", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "gunbc.roadmap_authority", decl_name: "five_minute_ci_gate_program_note", field: WholeDeclaration },
+      DeclarationRef { module_path: "gunbc.roadmap_authority", decl_name: "roadmap_authority_for", field: WholeDeclaration }
+    ],
+    dissolution: HasTrigger { text: "floor receipts show amortized prep (entries 2..N ≪ ~2s setup), selection receipts expose state/ratio/fallback on every affected run, and width>1 / broad native decisions cite those receipts (and the index-share conjunction) — or the operator folds this bridge into the five-minute / materialization authorities and this bind deletes with the doc." },
   },
   HandAuthoredDocBind {
     home: PlanDoc,

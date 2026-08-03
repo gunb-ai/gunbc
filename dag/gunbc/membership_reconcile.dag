@@ -1,8 +1,9 @@
 module gunbc.membership_reconcile
 
 import std.types { String, List, Bool, Int }
+import std.keyed_row { KeyedRow }
 import std.change {
-  KeyedRow, KeyedPatch, KeyedDiffHunk,
+  KeyedPatch, KeyedDiffHunk,
   KeyedDiffAddedHunk, KeyedDiffRemovedHunk, KeyedDiffModifiedHunk,
   keyed_two_way_diff
 }

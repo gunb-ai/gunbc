@@ -14,6 +14,8 @@ import tools.dag_compile_clean_scope {
   witness_mixed_rs_and_dag_requires_whole_tree,
   witness_departed_dag_path_requires_whole_tree,
   witness_docs_only_departure_still_skips,
+  witness_shard_roster_duplicate_refuses_at_scope_admission,
+  witness_empty_touched_duplicate_roster_refuses_at_admission,
   compile_clean_docs_universe_path_grain_dissolve_trigger
 }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
@@ -55,6 +57,14 @@ test fn dag_compile_clean_scope_departed_dag_path_requires_whole_tree() -> Bool 
 
 test fn dag_compile_clean_scope_docs_only_departure_still_skips() -> Bool {
   witness_docs_only_departure_still_skips()
+}
+
+test fn dag_compile_clean_scope_shard_roster_duplicate_refuses_at_admission() -> Bool {
+  witness_shard_roster_duplicate_refuses_at_scope_admission()
+}
+
+test fn dag_compile_clean_scope_empty_touched_duplicate_roster_refuses_at_admission() -> Bool {
+  witness_empty_touched_duplicate_roster_refuses_at_admission()
 }
 
 test fn dag_compile_clean_scope_docs_universe_path_grain_dissolve_on_named() -> Bool {

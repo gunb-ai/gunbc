@@ -1,6 +1,13 @@
 module std.roster_frontier
 
+import std.keyed_row { KeyedRow }
 import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, decl_ref, decl_field_ref }
+import std.keyed_roster {
+  KeyedRosterBuild,
+  KeyedRosterBuilt,
+  KeyedRosterBuildDuplicateKey,
+  keyed_roster_build,
+}
 import std.types { NonEmptyStr }
 
 data roster_frontier_note: String = "The typed declared-frontier row (DESIGN section 7 self-host-frontier pattern generalized to any group of units, operator ruling 2026-07-22): a row is admissible only as a counted carrier beside its subject, carrying reason and a typed migration trigger — never a bare string in a nickname list. subject anchors the annotated declaration (DeclSubject) or a path-keyed roster member (PathSubject); reason says why the row exists; trigger names the checkable condition under which the row deletes. The group-grain taxonomy and enrolled roster registry live in gunbc.roster_registry; this module owns only the row shape so std-, lens-, and workflow-layer rosters share one carrier instead of re-minting it per file."
@@ -92,11 +99,38 @@ fn frontier_rows_well_formed(rows: List<FrontierRow>) -> Bool {
   fold(rows, init: true, f: fn(acc, row) { acc && frontier_row_well_formed(row: row) })
 }
 
+fn declaration_ref_display_key(ref: DeclarationRef) -> String {
+  match ref.field {
+    WholeDeclaration =>
+      concat(ref.module_path as String, concat("::", ref.decl_name as String))
+    NamedField { field_name: f } =>
+      concat(
+        ref.module_path as String,
+        concat("::", concat(ref.decl_name as String, concat("::", f as String))),
+      )
+  }
+}
+
+fn frontier_subject_eq(a: FrontierSubject, b: FrontierSubject) -> Bool {
+  a == b
+}
+
 fn frontier_subject_key(subject: FrontierSubject) -> String {
   match subject {
     PathSubject { path: p } => p
-    DeclSubject { ref: r } => concat(r.module_path as String, concat("::", r.decl_name as String))
+    DeclSubject { ref: r } => declaration_ref_display_key(ref: r)
   }
+}
+
+fn frontier_rows_to_keyed_rows(rows: List<FrontierRow>) -> List<KeyedRow<FrontierSubject, FrontierRow>> {
+  map(rows, row => KeyedRow { row_key: row.subject, value: row })
+}
+
+fn frontier_rows_keyed_roster_build(rows: List<FrontierRow>) -> KeyedRosterBuild<FrontierSubject, FrontierRow> {
+  keyed_roster_build(
+    incomings: frontier_rows_to_keyed_rows(rows: rows),
+    key_eq: frontier_subject_eq,
+  )
 }
 
 fn frontier_path_subjects(rows: List<FrontierRow>) -> List<String> {

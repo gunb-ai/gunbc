@@ -1,9 +1,11 @@
 module tools.dag_compile_clean_shard_totality
 
+import std.keyed_roster { path_occurrence_count }
 import tools.dag_compile_clean_shard_roster {
   compile_clean_shard_entry_paths,
-  list_contains_path,
-  path_occurrence_count
+  CompileCleanShardEntryPathsBuilt,
+  CompileCleanShardEntryPathsDuplicatePath,
+  list_contains_path
 }
 import tools.dag_compile_clean_shard_totality_transport {
   run_live_dag_entry_glob
@@ -23,7 +25,7 @@ fn nonempty_lines(text: String) -> List<String> {
 
 fn duplicated_entry_paths(paths: List<String>) -> List<String> {
   fold(paths, init: [], f: fn(acc, p) {
-    if (path_occurrence_count(xs: paths, target: p) > 1) && !list_contains_path(xs: acc, target: p) {
+    if (path_occurrence_count(paths: paths, target: p) > 1) && !list_contains_path(xs: acc, target: p) {
       concat(acc, [p])
     } else {
       acc
@@ -58,12 +60,17 @@ fn compile_clean_partition_totality_verdict_from(
 
 fn compile_clean_partition_totality_verdict_live() -> PartitionTotalityVerdict {
   let glob = run_live_dag_entry_glob()
-  compile_clean_partition_totality_verdict_from(
-    glob_success: glob.success,
-    glob_stdout: glob.stdout,
-    glob_stderr: glob.stderr,
-    roster_paths: compile_clean_shard_entry_paths()
-  )
+  match compile_clean_shard_entry_paths() {
+    CompileCleanShardEntryPathsBuilt { paths: roster_paths } =>
+      compile_clean_partition_totality_verdict_from(
+        glob_success: glob.success,
+        glob_stdout: glob.stdout,
+        glob_stderr: glob.stderr,
+        roster_paths: roster_paths,
+      )
+    CompileCleanShardEntryPathsDuplicatePath { path: p, first: _, duplicate: _ } =>
+      PartitionDuplicateClaim { duplicated_paths: [p] }
+  }
 }
 
 fn compile_clean_partition_totality_is_total(v: PartitionTotalityVerdict) -> Bool {
