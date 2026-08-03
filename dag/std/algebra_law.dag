@@ -1,0 +1,72 @@
+module std.algebra_law
+
+import std.types { NonEmptyStr }
+import std.nat { Nat }
+import extdeps.external_authority { ExternalAuthority }
+
+data algebra_law_evidence_note: String = "Algebra laws are universally quantified; execution cannot prove a forall over an infinite carrier. LawEvidence is a three-arm typed fact with no Bool arm: LawExhaustivelyVerified for finite carriers where every case was executed; LawRefutedBy with a located counterexample triple (one triple refutes associativity); LawDeclaredByAuthority with a citation for infinite carriers, honestly marked as a boundary obligation. Laws attach at carrier grain referencing this vocabulary; the profile is the interface and the law-set is the realization fact (operator ruling, QM lane 2026-08-03). std carries only agnostic shapes; cited concretes live in extdeps."
+
+type AlgebraLawKey
+  = Associativity
+  | LeftIdentity
+  | RightIdentity
+  | Commutativity
+  | Distributivity
+
+type AlgebraOperationRef {
+  carrier: NonEmptyStr
+  operation_name: NonEmptyStr
+}
+
+type LawCounterexampleWitness<T> {
+  left_operand: T
+  middle_operand: T
+  right_operand: T
+  left_fold_result: T
+  right_fold_result: T
+}
+
+type LawEvidence<T>
+  = LawExhaustivelyVerified {
+      law: AlgebraLawKey
+      operation: AlgebraOperationRef
+      carrier_cardinality: Nat
+      cases_executed: Nat
+    }
+  | LawRefutedBy {
+      law: AlgebraLawKey
+      operation: AlgebraOperationRef
+      witness: LawCounterexampleWitness<T>
+    }
+  | LawDeclaredByAuthority {
+      law: AlgebraLawKey
+      operation: AlgebraOperationRef
+      authority: ExternalAuthority
+    }
+
+type CarrierAlgebraLawFact<T> {
+  carrier: NonEmptyStr
+  evidence: LawEvidence<T>
+}
+
+type LawEvidenceFold<T, R> {
+  exhaustively_verified: fn(AlgebraLawKey, AlgebraOperationRef, Nat, Nat) -> R
+  refuted_by: fn(AlgebraLawKey, AlgebraOperationRef, LawCounterexampleWitness<T>) -> R
+  declared_by_authority: fn(AlgebraLawKey, AlgebraOperationRef, ExternalAuthority) -> R
+}
+
+fn law_evidence_fold<T, R>(evidence: LawEvidence<T>, fold: LawEvidenceFold<T, R>) -> R {
+  match evidence {
+    LawExhaustivelyVerified {
+      law: law,
+      operation: operation,
+      carrier_cardinality: carrier_cardinality,
+      cases_executed: cases_executed,
+    } =>
+      fold.exhaustively_verified(law, operation, carrier_cardinality, cases_executed)
+    LawRefutedBy { law: law, operation: operation, witness: witness } =>
+      fold.refuted_by(law, operation, witness)
+    LawDeclaredByAuthority { law: law, operation: operation, authority: authority } =>
+      fold.declared_by_authority(law, operation, authority)
+  }
+}

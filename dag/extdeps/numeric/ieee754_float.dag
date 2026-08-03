@@ -1,0 +1,51 @@
+module extdeps.numeric.ieee754_float
+
+import std.types { Float, NonEmptyStr }
+import std.algebra_law {
+  Associativity,
+  AlgebraOperationRef,
+  CarrierAlgebraLawFact,
+  LawCounterexampleWitness,
+  LawRefutedBy,
+}
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "standards.ieee.org/ieee/754"
+  }
+}
+
+data ieee754_float_note: String = "Cited upstream: IEEE Std 754-2019 IEEE Standard for Floating-Point Arithmetic (anchor above). Float carrier law facts for binary64 addition: associativity is REFUTED by an exhibited triple — (1e16, 1.0, 1.0) yields left fold 1e16 and right fold 1e16+2, turning ApproximateField from a hedge word into a located counterexample. Numeric magnitudes are read from execution on this host, not recalled."
+
+data float_carrier_name: NonEmptyStr = "Float" as NonEmptyStr
+
+data float_add_operation_name: NonEmptyStr = "add" as NonEmptyStr
+
+data float_add_operation_ref: AlgebraOperationRef = AlgebraOperationRef {
+  carrier: float_carrier_name,
+  operation_name: float_add_operation_name,
+}
+
+data float_add_associativity_counterexample: LawCounterexampleWitness<Float> = LawCounterexampleWitness {
+  left_operand: 10000000000000000.0,
+  middle_operand: 1.0,
+  right_operand: 1.0,
+  left_fold_result: 10000000000000000.0,
+  right_fold_result: 10000000000000002.0,
+}
+
+data float_add_associativity_refuted: CarrierAlgebraLawFact<Float> = CarrierAlgebraLawFact {
+  carrier: float_carrier_name,
+  evidence: LawRefutedBy {
+    law: Associativity,
+    operation: float_add_operation_ref,
+    witness: float_add_associativity_counterexample,
+  },
+}
+
+fn float_add_associativity_refutation_witness() -> LawCounterexampleWitness<Float> {
+  float_add_associativity_counterexample
+}
