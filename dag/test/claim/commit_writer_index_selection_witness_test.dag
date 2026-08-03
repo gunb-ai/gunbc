@@ -1,6 +1,7 @@
 module test.claim.commit_writer_index_selection_witness
 
 import std.types { String, Bool, Int, List, NonEmptyStr }
+import std.integer { UInt8 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.content_hash { Sha1Digest, Sha1DigestHex }
 import extdeps.git.object_store {
@@ -49,7 +50,7 @@ fn fallback_path() -> GitPath {
   }
 }
 
-fn path_of(octets: List<Int>) -> GitPath {
+fn path_of(octets: List<UInt8>) -> GitPath {
   match git_decode_path_octets(octets: octets) {
     GitPathDecoded { path } => path
     GitPathDecodeRefused { cause: _ } => fallback_path()
