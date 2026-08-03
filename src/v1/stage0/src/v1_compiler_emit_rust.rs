@@ -17411,6 +17411,15 @@ pub fn value_ref_ident_dotted_fallback_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
+pub fn value_ref_cross_module_qualifier_routing_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Construction wall for cross-module qualified VALUE references when the flat item_registry leaf key collides (post-#7685 class, witness qualified_leaf_registry_collision_emit_witness_test): map_get(registry, leaf) returns whichever module won the last-write-wins insert, so emit_value_ref_ident must render crate paths from the authored qualifier prefix (value_ref_qualifier_prefix) rather than info.module_name from the collision winner. Same-module normalization (value_ref_normalize_self_module) remains the sibling wall for the qualifier == current-module case.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn emit_value_ref_ident(
     name: String,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
