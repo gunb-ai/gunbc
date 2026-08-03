@@ -1,0 +1,107 @@
+module extdeps.github.push_event
+
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.git.hooks { zero_sha }
+import extdeps.git.object_store { git_sha1_object_id, git_object_id_wire_hex }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.languages.json.emit { JsonValue, JsonString }
+import extdeps.languages.json.parse {
+  parse_json,
+  json_object_unique_member,
+  JsonMemberFound,
+  JsonMemberAbsent,
+  JsonMemberDuplicated,
+  JsonMemberNotAnObject
+}
+import std.types { CommitSha, NonEmptyStr, String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/webhooks/webhook-events-and-payloads#push"
+  }
+}
+
+data push_event_note: String = "The push webhook payload's `before` member: the full commit SHA of the branch tip immediately before this push. GitHub documents that this is the zero SHA when a branch or tag is created. extdeps owns the wire shape; gunbc.diff_baseline owns the policy that maps it to an affected-set baseline."
+
+data github_event_path_env: NonEmptyStr = "GITHUB_EVENT_PATH"
+
+data push_event_before_member: String = "before"
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.github.push_event",
+      decl_name: "push_event_before_member",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps.github.push_event.extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+type PushBeforeObservation
+  = PushBeforeObserved { sha: CommitSha }
+  | PushBeforeAbsent { detail: String }
+  | PushBeforeZeroSha
+  | PushBeforeMalformed { detail: String }
+  | PushEventPayloadReadRefused { path: String, cause: String }
+
+fn push_before_commit_sha_from_hex(hex: String) -> PushBeforeObservation {
+  match git_sha1_object_id(hex: hex) {
+    Present { value: oid } =>
+      PushBeforeObserved { sha: git_object_id_wire_hex(oid: oid) as CommitSha }
+    Absent =>
+      PushBeforeMalformed { detail: "push event before member is not a valid git object id" }
+  }
+}
+
+fn push_before_from_event_json(text: String) -> PushBeforeObservation {
+  match parse_json(s: text) {
+    Absent =>
+      PushBeforeMalformed { detail: "GITHUB_EVENT_PATH payload is not valid JSON" }
+    Present { value: doc } =>
+      match json_object_unique_member(v: doc, key: push_event_before_member) {
+        JsonMemberAbsent =>
+          PushBeforeAbsent { detail: "push event payload has no before member" }
+        JsonMemberDuplicated { count: _ } =>
+          PushBeforeMalformed { detail: "push event payload before member is duplicated" }
+        JsonMemberNotAnObject =>
+          PushBeforeMalformed { detail: "push event payload root is not a JSON object" }
+        JsonMemberFound { value: v } =>
+          match v {
+            JsonString { value: sha } =>
+              if sha == "" {
+                PushBeforeAbsent { detail: "push event before member is empty" }
+              } else if sha == zero_sha {
+                PushBeforeZeroSha
+              } else {
+                push_before_commit_sha_from_hex(hex: sha)
+              }
+            JsonNull => PushBeforeAbsent { detail: "push event before member is null" }
+            JsonBool { value: _ } => PushBeforeMalformed { detail: "push event before member is not a string" }
+            JsonNumber { lexeme: _ } => PushBeforeMalformed { detail: "push event before member is not a string" }
+            JsonArray { elements: _ } => PushBeforeMalformed { detail: "push event before member is not a string" }
+            JsonObject { members: _ } => PushBeforeMalformed { detail: "push event before member is not a string" }
+          }
+      }
+  }
+}
+
+fn push_before_from_event_path(path: String) -> PushBeforeObservation {
+  let read = Filesystem.Read(path: path)
+  if read.success {
+    push_before_from_event_json(text: read.content)
+  } else {
+    PushEventPayloadReadRefused {
+      path: path,
+      cause: read.error
+    }
+  }
+}
+
+fn push_before_sha_is_zero(sha: String) -> Bool {
+  sha == zero_sha
+}

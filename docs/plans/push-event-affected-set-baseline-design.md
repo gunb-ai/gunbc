@@ -193,26 +193,62 @@ payload. Strictly better than self-compare.
 >
 > - previous rung: coverage total (by accident of the defect)
 > - temporary rung: coverage incremental, chaining unverified
-> - reason: before-baseline is a strict improvement over self-compare and the last-green
->   observation is a larger change that should not be smuggled into it
+> - reason: before-baseline is a strict improvement over self-compare; the exact-candidate
+>   guarantee belongs at the merge boundary, not in a wider post-hoc baseline
 > - bounded population: predecessor floor not green in 9 of 39; walk-back never past 6
-> - restoration trigger: receipt count goes to zero when stage 2 lands
+> - restoration trigger: the merge-queue candidate gate enforces (`GatingEnforced`), at
+>   which point the exact landing candidate is verified before it becomes `main` and the
+>   chaining assumption is no longer load-bearing
 >
 > The receipt does not need to *know* the predecessor floor was green. It needs to record
 > that it **cannot** know — which at that layer is unconditionally true today, so the honest
 > form is one counted row stating that this baseline assumes predecessor coverage and cannot
-> verify it. Cheap to write, impossible to mistake for a proof, and it dissolves when stage 2
-> lands.
+> verify it. Cheap to write, impossible to mistake for a proof, and it dissolves on the
+> restoration trigger above — when the merge-queue candidate gate enforces.
 
-**Stage 2 — last-green baseline.** Baseline becomes the last main commit whose floor ran and
-whose selection covered it (§4.3, not floor job conclusion). Requires a fail-closed
-run-conclusion observation that **refuses** when it cannot determine the answer — an
-observation that quietly fell back to `before` would reintroduce the gap it exists to close.
-Gated on the operator's cost call; §4.2 says the cost is bounded.
+**Stage 2 — last-green baseline: CONSIDERED AND REJECTED (operator ruling, 2026-08-03).**
+This note originally proposed it as the sequel. The ruling rejects it for ordinary selection:
+
+```
+main push baseline = payload before SHA, two-dot before..head
+last-green baseline = REJECTED for ordinary selection
+falsifier            = the broad periodic backstop
+```
+
+**Why the §4.2 measurement does not carry the conclusion it was used for.** The last-green
+argument assumes main-push CI must form an unbroken verification chain, so a gap in it has to
+be re-covered by widening the *next* push. That is one architecture. It is not this one. This
+one is: the exact landing candidate is tested **before** merge (merge queue), the exact pushed
+delta is tested after, and the four-hour `SelectionPredictOnly` falsifier runs the ordinary
+corpus cold. Under that design a cancelled or flaky prior main run does not oblige the next
+push to rerun the prior delta — and last-green would deliberately re-run older changes,
+violating the minimum-possible requirement.
+
+The §4.1 and §4.2 measurements stand and are why the rejection is informed rather than
+arbitrary: run conclusion is not floor coverage in either direction, and last-green would not
+have degenerated. They simply do not establish that last-green is *needed*.
+
+**The accepted residual, stated plainly.** An affected-set modeling miss can go undiscovered
+until the next falsifier run — up to roughly four hours. That is the price of minimum
+per-change CI, and it is bought by the falsifier, not by over-selecting. Recording it this way
+is deliberate: presenting last-green as intrinsically safer without naming its extra cost and
+the existing backstop would be the same overstatement §4.1 corrects one level down.
+
+**Where the real safety boundary is.** It was never last-green. It is ensuring the exact tree
+becoming `main` passed current checks **before** it becomes `main` — merge-queue candidate
+gating, `require_up_to_date`, and flipping `gunbc.ci_failure_class` `merge_freshness_gating_status` from `GatingComputedDeferred` to
+`GatingEnforced`. Today that staleness verdict is computed and then discarded (§1's shadow-mode
+problem), which is how a PR approved against a superseded tree can land onto a newer `main`
+incorrectly. That is the correction to prioritize, not a wider baseline.
 
 ## 6. Dissolution
 
-This note retires when stage 2 lands and its receipt count reaches zero. Until then the
+This note retires when the `before..head` baseline lands **and** the merge-queue candidate
+gate is enforcing (`gunbc.ci_failure_class` `merge_freshness_gating_status` = `GatingEnforced`) — at which point the architecture it
+argues for is real and the note is describing the past. *(Corrected 2026-08-03: the trigger
+previously read "when stage 2 lands". Stage 2 is now rejected, so that condition could never be
+met and this row would have been permanently undissolvable — an unfireable trigger is
+indistinguishable from an unfired one, so nothing would ever have flagged it.)* Until then the
 authority for each fact is the carrier that holds it. Two exist on main today —
 `gunbc.diff_baseline` and `v2.workflow.floor_diff_observe`; the third,
 `extdeps.github.push_event`, is *proposed* by gunbc#7729 and is named here as the intended home
