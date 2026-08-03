@@ -13,6 +13,9 @@ type PrincipleId
   | ThemeCoherence
   | UniversalReframe
   | StillUntilTouched
+  | SelectiveSpectacle
+  | EmissionOverMaterial
+  | BoundedAttraction
 
 type RegisterPrinciple {
   id: PrincipleId
@@ -20,7 +23,9 @@ type RegisterPrinciple {
   enforced_by: DeclarationRef
 }
 
-data register_thesis: String = "Quiet at arm's length; responsive up close; every response true."
+data register_thesis_amendment_note: String = "THESIS REVISED (operator recalibration, 2026-08-02 — the S1 selective-spectacle amendment). The former thesis, quiet at arm's length / responsive up close / every response true, correctly rejected cheap uniform spectacle but was read as uniform austerity: it prevented good FOCAL spectacle along with bad ambient spectacle, and the shipped surfaces came out coherent but emotionally flat (the operator's gap ruling: no protagonist). The revision keeps every existing law — the calm field IS quiet-at-arm's-length — and adds the missing half as three new principles carried by gunbc.design.salience: energy is scarce, focal, and caused. The prior thesis string remains in history; this note is the amendment record."
+
+data register_thesis: String = "Calm field; luminous focus; physical response; every response true."
 
 fn principle_ref(module_path: String, decl_name: String) -> DeclarationRef {
   DeclarationRef {
@@ -71,6 +76,21 @@ data register_principles: List<RegisterPrinciple> = [
     law: "Still until touched; always answers when touched. No ambient motion, ever.",
     enforced_by: principle_ref(module_path: "gunbc.design.material", decl_name: "BuildRule"),
   },
+  RegisterPrinciple {
+    id: SelectiveSpectacle,
+    law: "Showiness is scarce, focal, and caused: chroma, emission, motion, and sound are granted per salience role from one budget table, and at most one ordinary focal subject holds the energy per interaction region — Critical may interrupt, because truth outranks visual quiet.",
+    enforced_by: principle_ref(module_path: "gunbc.design.salience", decl_name: "region_focal_admission"),
+  },
+  RegisterPrinciple {
+    id: EmissionOverMaterial,
+    law: "Emission is light the active instrument produces, layered over restrained material — crisp core, one low-alpha corona, granted only to Focal or Critical and only beside a non-emission discriminator; no pulse field exists, and a steady glow cannot imply progress.",
+    enforced_by: principle_ref(module_path: "gunbc.design.salience", decl_name: "emission_for"),
+  },
+  RegisterPrinciple {
+    id: BoundedAttraction,
+    law: "Physical response moves the visual plate, never the hit region: attraction is bounded travel inside a fixed local field, settles on the register's one spring, gives keyboard focus the same focal identity without displacement, and renderer-local motion never advances domain state.",
+    enforced_by: principle_ref(module_path: "gunbc.design.salience", decl_name: "AttractionField"),
+  },
 ]
 
 fn principle_id_key(id: PrincipleId) -> String {
@@ -83,6 +103,9 @@ fn principle_id_key(id: PrincipleId) -> String {
     ThemeCoherence => "theme-coherence"
     UniversalReframe => "universal-reframe"
     StillUntilTouched => "still-until-touched"
+    SelectiveSpectacle => "selective-spectacle"
+    EmissionOverMaterial => "emission-over-material"
+    BoundedAttraction => "bounded-attraction"
   }
 }
 
