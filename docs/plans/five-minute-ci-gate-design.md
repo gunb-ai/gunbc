@@ -86,7 +86,7 @@ Roadmap edges encoding sequence: `native-selected-witness-bundle` →
 | subject | disposition |
 |---|---|
 | `entry-graph-union-construction` | **CLOSED** — #7533: `decision_ratio = 0` repeated typecheck misses. Redirect to `per-entry-assembly-decomposition`. Slice 1 banked as #7483. |
-| retention (M2) | **PARKED** unless M2-aware floor shows pressure (#7581: 842 entries, peak 6.27 GiB, PASS width 1). |
+| retention / floor prep-tax (D1) | **P1 REJECT banked** (#7725, merged 2026-08-03): schedule-retention eviction is **not** the ~2s/entry setup tax; redirect = **assembly / materialization reuse** per [floor-prep-tax-program](floor-prep-tax-program.md). M2 width-1 memory thesis stands (#7581: 842 entries, peak 6.27 GiB, PASS width 1). P3 width-2 and P4 broad native remain **HOLD** until index sharing and D1 amortization respectively. |
 | exact-tree materialization (#7534) | Substrate under `module-grain-materialization`; opt-in; no default CI activation credited. |
 
 ---
