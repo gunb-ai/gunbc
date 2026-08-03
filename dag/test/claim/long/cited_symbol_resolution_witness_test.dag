@@ -10,6 +10,8 @@ import gunbc.doc_graph_roots {
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.lens.cited_symbol_resolution {
   cited_symbol_enrolled_refusal_count,
+  cited_symbol_planted_ambiguous_control_facts,
+  cited_symbol_planted_ambiguous_control_ref,
   cited_symbol_planted_control_refusal_count,
   cited_symbol_resolution_violation_count,
 }
@@ -18,7 +20,13 @@ import v2.std.decl_index { decl_facts }
 import v2.std.decl_ref_resolution {
   cited_declaration_ref_refusal_count,
   declaration_ref_resolution_census,
+  resolve_declaration_ref,
+  DeclarationRefAmbiguous,
   DeclarationRefResolutionCensus,
+  DeclarationRefResolved,
+  DeclarationRefModuleAbsent,
+  DeclarationRefDeclarationAbsent,
+  DeclarationRefFieldAbsent,
 }
 
 data cited_symbol_resolution_long_witness_note: String = "G1 corpus-scale cited-symbol resolution witnesses — production HandAuthoredDocBind census and planted-control mutation proofs over live decl_facts + module_declaration_facts. Long lane only: each witness pays full witness-layer decl_facts scan(s) (operator 5s fast-lane rule 2026-07-12)."
@@ -93,4 +101,22 @@ test fn cited_symbol_planted_doc_graph_controls_all_refuse() -> Bool {
 
 test fn cited_symbol_enrolled_population_refusal_proves_gate_not_vacuous() -> Bool {
   cited_symbol_enrolled_refusal_count() >= 3 && cited_symbol_resolution_violation_count() == cited_symbol_enrolled_refusal_count() - cited_symbol_planted_control_refusal_count()
+}
+
+test fn cited_symbol_planted_ambiguous_control_refuses_via_resolver() -> Bool {
+  match resolve_declaration_ref(
+    ref: cited_symbol_planted_ambiguous_control_ref,
+    facts: cited_symbol_planted_ambiguous_control_facts,
+    modules: cited_symbol_long_witness_layer_modules
+  ) {
+    DeclarationRefAmbiguous { reference: _, candidates: c } => length(xs: c) == 2
+    DeclarationRefResolved { declaration_identity: _ } => false
+    DeclarationRefModuleAbsent { reference: _ } => false
+    DeclarationRefDeclarationAbsent { reference: _ } => false
+    DeclarationRefFieldAbsent { reference: _ } => false
+  }
+}
+
+test fn cited_symbol_production_census_ambiguous_count_is_zero() -> Bool {
+  cited_symbol_hand_authored_census_live().ambiguous_count == 0
 }
