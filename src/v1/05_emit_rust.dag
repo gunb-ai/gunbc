@@ -2331,14 +2331,7 @@ fn emit_lib_rs_mod_decl(mod_name: String) -> String {
 }
 
 fn order_lib_rs_mod_names(mod_names: List<String>) -> List<String> {
-  let without_dispatch = mod_names |> filter(n => n != "v1_interpreter_dispatch_generated")
-  without_dispatch |> fold(init: [], f: fn(acc, name) {
-    if name == "v1_interpreter" {
-      concat(concat(acc, ["v1_interpreter_dispatch_generated"]), [name])
-    } else {
-      concat(acc, [name])
-    }
-  })
+  mod_names |> filter(n => n != "v1_interpreter_dispatch_generated")
 }
 
 fn emit_lib_rs_from_files(all_module_files: List<TextFile>, has_compiler_tests: Bool) -> TextFile {
@@ -2348,7 +2341,7 @@ fn emit_lib_rs_from_files(all_module_files: List<TextFile>, has_compiler_tests: 
   let hand_maintained_mods = if has_compiler_tests {
     generated_pub_mod_block
   } else {
-    ""
+    "\n#[macro_use]\npub mod v1_interpreter_dispatch_generated;"
   }
   let test_mod = if has_compiler_tests {
     "\n\n#[cfg(test)]\nmod compiler_tests;"
