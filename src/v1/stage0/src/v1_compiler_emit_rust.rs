@@ -5330,33 +5330,15 @@ pub fn emit_lib_rs_mod_decl(mod_name: String) -> String {
 }
 
 pub fn order_lib_rs_mod_names(mod_names: Rc<Vec<String>>) -> Rc<Vec<String>> {
-    {
-        let without_dispatch = Rc::new({
-            let mut __result = Vec::new();
-            for n in mod_names.clone().iter().cloned() {
-                if (n.clone() != "v1_interpreter_dispatch_generated".to_string()) {
-                    __result.push(n);
-                }
+    Rc::new({
+        let mut __result = Vec::new();
+        for n in mod_names.clone().iter().cloned() {
+            if (n.clone() != "v1_interpreter_dispatch_generated".to_string()) {
+                __result.push(n);
             }
-            __result
-        });
-        without_dispatch.clone().iter().cloned().fold(
-            Rc::new(vec![]),
-            |acc: Rc<Vec<String>>, name: String| {
-                if (name.clone() == "v1_interpreter".to_string()) {
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            acc.clone(),
-                            Rc::new(vec!["v1_interpreter_dispatch_generated".to_string()]),
-                        ),
-                        Rc::new(vec![name.clone()]),
-                    )
-                } else {
-                    v1_rt::concat(acc.clone(), Rc::new(vec![name.clone()]))
-                }
-            },
-        )
-    }
+        }
+        __result
+    })
 }
 
 pub fn emit_lib_rs_from_files(
@@ -5383,7 +5365,7 @@ pub fn emit_lib_rs_from_files(
         let hand_maintained_mods = if has_compiler_tests.clone() {
             generated_pub_mod_block()
         } else {
-            "".to_string()
+            "\n#[macro_use]\npub mod v1_interpreter_dispatch_generated;".to_string()
         };
         let test_mod = if has_compiler_tests.clone() {
             "\n\n#[cfg(test)]\nmod compiler_tests;".to_string()

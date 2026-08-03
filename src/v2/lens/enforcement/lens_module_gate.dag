@@ -14,7 +14,7 @@ import v2.lens.registry {
   MachineShape, MockTotality, MutationAdequacy, NonFoldResidue,
   RealizationVocabularyContainment, RosterRegistry, ScheduleLens, SimulatedRelationship, StructuralSimilarity,
   Subsumption, Synthesis, TestMigrationDebt, UnitModeling, Vacuity, Visibility, WiringLiveness,
-  WitnessCostLocality, Determinism, UnusedParameters, StructuralResolution, TableDecisionTree,
+  WitnessCostLocality, Determinism, UnusedParameters, StructuralResolution, CitedSymbolResolution, TableDecisionTree,
   Parallelism, EffectEnumeration, Idempotency, Provenance
 }
 import v2.lens.registry.completeness {
@@ -441,6 +441,13 @@ fn lens_module_gate_surface_for_lens_id(id: LensIdV0, module: String) -> LensInv
       admission: GenuinelyNewInvariant
     }
     StructuralResolution => LensInvariantSurface {
+      module: module,
+      projection: ProjectionNodeDag,
+      verdict_authority: VerdictLensVerdict,
+      remedy: RemedyReport,
+      admission: GenuinelyNewInvariant
+    }
+    CitedSymbolResolution => LensInvariantSurface {
       module: module,
       projection: ProjectionNodeDag,
       verdict_authority: VerdictLensVerdict,

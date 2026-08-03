@@ -24857,8 +24857,6 @@ mod construction_justification_hygiene_tests {
         );
     }
 
-    // Parse unit: extraction pulls (module_path, decl_name) from a WallNow authority,
-    // whitespace/newline tolerant, and ignores non-WallNow DeclarationRef binds.
     #[test]
     fn wall_now_authority_refs_extraction() {
         let src = "  class: WallNow {\n    mechanism: SubstrateMandatoryTag,\n    authority: DeclarationRef { module_path: \"v2.std.node\", decl_name: \"NodeKind\", field: WholeDeclaration }\n  }\n";
