@@ -1,0 +1,140 @@
+module test.claim.exact_witness_admission_witness
+
+import gunbc.explicit_witness_admission {
+  ExplicitWitnessAdmission,
+  explicit_witness_admissions,
+  explicit_witness_admission_covers,
+  explicit_witness_admission_covers_in,
+  explicit_witness_admission_duplicate_count,
+  explicit_witness_admission_duplicate_count_in,
+  explicit_witness_admissions_well_formed_in,
+  known_red_probe,
+  known_red_probe_corpus_roster,
+  known_red_probe_execution_roster
+}
+import gunbc.ci_layer_roots { known_red_probe_roster }
+import v2.workflow.witness_admission {
+  witness_row_excluded_from_discovery,
+  explicit_witness_admission_uniqueness_holds,
+  explicit_witness_admission_rows_well_formed_holds,
+  explicit_witness_admissions_are_scheduled_holds,
+  explicit_witness_admissions_are_excluded_holds,
+  witness_exclusion_frontier_carries_no_admission_holds
+}
+import std.realization_schedule {
+  ScheduleWitnessEntry,
+  CorpusWitnessKind,
+  ExecutionWitnessKind
+}
+import std.witness_admission { OfflineLocalRecipe }
+import v2.std.algebra { length }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data exact_witness_admission_witness_note: String = "Executes the walls over gunbc.explicit_witness_admission, the one function-grain authority for exact witness admission. THE DISCRIMINATING RED is admission_reaches_the_admitted_function_and_not_its_sibling: it asserts both that an admitted witness is covered AND that a named sibling in the SAME file is not. Under the representation this lane replaced — a file-grain WitnessExclusionRow beside a probe_red row — the second half was FALSE by construction: the file-level exclusion hid every function in the file while the schedule named one, so the sibling executed nowhere and the reconciliation still passed, because it only ever asked whether some scheduled row's entry CONTAINED the exclusion pattern. That bad state had exactly one live instance when this landed, measured on the pre-change tree: seed_honesty_discharge_unavailable_test.dag, whose eight other functions had no probe row while the file's classification named the whole file QuarantineProbeExpectRed. Those eight are the sibling this witness names, so the assertion is anchored to the real defect rather than a synthetic one. The remaining claims are the walls: exactly one admission per witness, every admission naming a cadence that executes, every admission reached by its cadence's derived roster, every admission excluded from discovery by derivation rather than by an authored pattern, and no admission restated as a path-policy row. Synthetic RED controls cover the duplicate row, the non-executing cadence, and the sibling."
+
+test fn exact_witness_admission_walls_hold() -> Bool {
+  explicit_witness_admission_uniqueness_holds()
+    && explicit_witness_admission_rows_well_formed_holds()
+    && explicit_witness_admissions_are_scheduled_holds()
+    && explicit_witness_admissions_are_excluded_holds()
+    && witness_exclusion_frontier_carries_no_admission_holds()
+}
+
+data admitted_entry: String = "src/v2/test/claim/execution/seed_honesty_discharge_unavailable_test.dag"
+data admitted_function: String = "v1_seed_honesty_decision_closing_contract_holds"
+data admitted_sibling_function: String = "seed_honesty_check_four_poles_hold_before_decision"
+
+test fn admission_reaches_the_admitted_function_and_not_its_sibling() -> Bool {
+  explicit_witness_admission_covers(entry: admitted_entry, function: admitted_function)
+    && !explicit_witness_admission_covers(
+      entry: admitted_entry,
+      function: admitted_sibling_function
+    )
+}
+
+test fn admission_does_not_reach_the_same_function_name_in_another_file() -> Bool {
+  !explicit_witness_admission_covers(
+    entry: "dag/test/claim/some_other_witness_test.dag",
+    function: admitted_function
+  )
+}
+
+test fn admitted_witness_is_excluded_from_discovery_by_derivation() -> Bool {
+  witness_row_excluded_from_discovery(entry: admitted_entry, function: admitted_function)
+}
+
+test fn every_admission_is_projected_into_exactly_one_cadence_roster() -> Bool {
+  let corpus_rows = length(xs: known_red_probe_corpus_roster())
+  let execution_rows = length(xs: known_red_probe_execution_roster())
+  let projected = corpus_rows + execution_rows
+  projected == length(xs: explicit_witness_admissions)
+}
+
+test fn ci_layer_roots_probe_roster_is_the_corpus_projection() -> Bool {
+  length(xs: known_red_probe_roster()) == length(xs: known_red_probe_corpus_roster())
+}
+
+fn synthetic_admission(f: String) -> ExplicitWitnessAdmission {
+  known_red_probe(
+    entry: "dag/test/claim/synthetic_admission_witness_test.dag",
+    f: f,
+    kind: CorpusWitnessKind,
+    reason: "synthetic",
+    dissolve_on: "synthetic"
+  )
+}
+
+test fn red_control_duplicate_admission_rows_red() -> Bool {
+  (explicit_witness_admission_duplicate_count_in(
+    rows: [synthetic_admission(f: "a_holds"), synthetic_admission(f: "a_holds")]
+  ) > 0)
+    && (explicit_witness_admission_duplicate_count_in(
+      rows: [synthetic_admission(f: "a_holds"), synthetic_admission(f: "b_holds")]
+    ) == 0)
+    && (explicit_witness_admission_duplicate_count() == 0)
+}
+
+test fn red_control_admission_with_non_executing_cadence_reds() -> Bool {
+  explicit_witness_admissions_well_formed_in(
+    rows: [
+      ExplicitWitnessAdmission {
+        witness: ScheduleWitnessEntry {
+          entry: "dag/test/claim/synthetic_admission_witness_test.dag",
+          function: "a_holds",
+          kind: CorpusWitnessKind
+        },
+        cadence: OfflineLocalRecipe,
+        reason: "synthetic",
+        dissolve_on: "synthetic"
+      }
+    ]
+  ) == false
+}
+
+test fn red_control_file_grain_admission_would_reach_the_sibling() -> Bool {
+  let file_grain = [
+    known_red_probe(
+      entry: admitted_entry,
+      f: "",
+      kind: CorpusWitnessKind,
+      reason: "synthetic",
+      dissolve_on: "synthetic"
+    )
+  ]
+  explicit_witness_admission_covers_in(
+    rows: file_grain,
+    entry: admitted_entry,
+    function: admitted_sibling_function
+  )
+    && !explicit_witness_admission_covers(
+      entry: admitted_entry,
+      function: admitted_sibling_function
+    )
+}
+
+data red_control_file_grain_note: String = "red_control_file_grain_admission_would_reach_the_sibling is the control that keeps the discriminating claim honest: it builds a file-grain row over the SAME entry, shows that shape does reach the sibling, and shows the live rows do not. Without it, the sibling assertion could pass for the trivial reason that the predicate never matches anything."

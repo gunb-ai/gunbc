@@ -1,5 +1,6 @@
 module v2.compiler.self_host.seed_emitter_behavioral_wet_known_red_entries
 
+import gunbc.explicit_witness_admission { known_red_probe_execution_roster }
 import std.realization_schedule {
   ScheduleWitnessEntry,
   ExecutionWitnessKind,
@@ -10,38 +11,9 @@ import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 
-data seed_emitter_behavioral_wet_known_red_entries_note: String = "Single authority for the six V1SeedEmitter behavioral wet expect_red quarantine receipts (review #7199, re-homed under emitter_producer_provenance 2026-07-29). Consumed by v2.compiler.self_host.wet_receipt_enrollment (falsifier batch enrollment) and v2.compiler.self_host.emitter_producer_provenance (producer receipt citation gate). Cycle-free leaf: neither consumer is imported here."
+data seed_emitter_behavioral_wet_known_red_entries_note: String = "The six V1SeedEmitter behavioral wet expect_red quarantine receipts (review #7199, re-homed under emitter_producer_provenance 2026-07-29), DERIVED as of 2026-08-03 from the one function-grain admission authority gunbc.explicit_witness_admission: they are its ExecutionWitnessKind known-red rows, the same rows the hermetic probe roster projects at CorpusWitnessKind, so a quarantine is authored once whatever cadence executes it. Hand rows previously lived here beside a paired QuarantineProbeExpectRed path pattern in gunbc.ci_layer_roots; both are gone. Consumed by v2.compiler.self_host.wet_receipt_enrollment (falsifier batch enrollment) and v2.compiler.self_host.emitter_producer_provenance (producer receipt citation gate); this decl keeps its name so neither consumer changed. Cycle-free leaf: neither consumer is imported here."
 
-fn seed_emitter_behavioral_wet_known_red_entry(entry: String, f: String) -> ScheduleWitnessEntry {
-  ScheduleWitnessEntry { entry: entry, function: f, kind: ExecutionWitnessKind }
-}
-
-data seed_emitter_behavioral_wet_known_red_entries: List<ScheduleWitnessEntry> = [
-  seed_emitter_behavioral_wet_known_red_entry(
-    entry: "dag/test/claim/self_host_parse_engine_hooks_behavioral_witness_test.dag",
-    f: "self_host_parse_engine_hooks_behavioral_receipt_holds"
-  ),
-  seed_emitter_behavioral_wet_known_red_entry(
-    entry: "dag/test/claim/self_host_use_site_verdict_behavioral_witness_test.dag",
-    f: "self_host_use_site_verdict_behavioral_receipt_holds"
-  ),
-  seed_emitter_behavioral_wet_known_red_entry(
-    entry: "dag/test/claim/self_host_discovery_enumeration_behavioral_witness_test.dag",
-    f: "self_host_discovery_enumeration_behavioral_receipt_holds"
-  ),
-  seed_emitter_behavioral_wet_known_red_entry(
-    entry: "dag/test/claim/self_host_target_carriers_behavioral_witness_test.dag",
-    f: "self_host_target_carriers_behavioral_receipt_holds"
-  ),
-  seed_emitter_behavioral_wet_known_red_entry(
-    entry: "dag/test/claim/self_host_body_producer_behavioral_witness_test.dag",
-    f: "self_host_body_producer_behavioral_receipt_holds"
-  ),
-  seed_emitter_behavioral_wet_known_red_entry(
-    entry: "dag/test/claim/self_host_03_normalize_behavioral_witness_test.dag",
-    f: "self_host_03_normalize_behavioral_receipt_holds"
-  )
-]
+data seed_emitter_behavioral_wet_known_red_entries: List<ScheduleWitnessEntry> = known_red_probe_execution_roster()
 
 fn schedule_witness_entry_cited(
   probe_entry: String,

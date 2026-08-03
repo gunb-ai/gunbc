@@ -105,7 +105,7 @@ data roster_registry: List<RosterRegistration> = [
     }
   },
   RosterRegistration {
-    roster: roster_decl(module_path: "gunbc.ci_layer_roots", decl_name: "known_red_probe_entries"),
+    roster: roster_decl(module_path: "gunbc.explicit_witness_admission", decl_name: "explicit_witness_admissions"),
     unit_kind: "schedule witness entry (entry file x function)",
     membership: DeclaredFrontier {
       reason: "known-red frontier: witnesses red on main for feature gaps owned by named lanes, run on the falsifier probe cadence expecting red; per-entry diagnosis, owner, and trigger in known_red_frontier_note",
