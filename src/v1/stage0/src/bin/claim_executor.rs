@@ -3323,7 +3323,7 @@ fn run_discovery_batch_node(
                     label,
                     false,
                     format!(
-                        "expect_red probe unexpectedly green: {} witness(es) passed — un-quarantine (delete known_red_probe_entries / falsifier_self_host_wet_known_red_entries rows) or restore the discriminating red",
+                        "expect_red probe unexpectedly green: {} witness(es) passed — un-quarantine (delete the row from gunbc.explicit_witness_admission explicit_witness_admissions, which is the single authority both known-red cadences project from) or restore the discriminating red",
                         summary.total
                     ),
                     &summary,

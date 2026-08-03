@@ -1,6 +1,15 @@
 module gunbc.non_fold_residue
 
-import std.roster_frontier { FrontierRow, PathSubject, TriggerProse, frontier_units, frontier_rows_well_formed }
+import std.keyed_roster { KeyedRosterBuild }
+import std.roster_frontier {
+  FrontierRow,
+  FrontierSubject,
+  PathSubject,
+  TriggerProse,
+  frontier_units,
+  frontier_rows_keyed_roster_build,
+  frontier_rows_well_formed,
+}
 
 data non_fold_residue_authority_note: String = "Single authority for the non-fold-residue roster (DESIGN §6 census; group-of-units re-home per gunbc.roster_registry, operator ruling 2026-07-22 — formerly the NON_FOLD_RESIDUE_ROSTER const in src/v1/stage0/src/cli_run.rs). Each row asserts a corpus site (a path::fn key) whose match over a closed-coproduct param carries a top-level wildcard arm, with its reason and dissolution trigger as typed fields — shared class strings below, per-row receipts where a dated landing receipt existed in the Rust const's comments. The census SCAN stays host-side (nfr_residue_sites in cli_run.rs) and reads these rows through non_fold_residue_units_from_module_source, so rows must stay DIRECT record literals (a helper-fn call would blind the host reader); the scan and reader fold together into a pure .dag Node-tree lens when compile-graph access lands (gunbc#5364). Detection-only: never auto-delete rows — greening a site deletes its row by hand with the receipt on the PR."
 
@@ -64,7 +73,31 @@ data nfr_reason_verification_producer_absent: String = "NOT terminal-state absor
 
 data nfr_dissolve_verification_producer_absent: String = "the Verify receipt producer lands: the WorkItemExecutionContract's ModeledValidationCommand runs in the attempt worktree against one immutable candidate revision and persists a receipt, at which point this function folds over that receipt instead of over provider state, its arms carry distinct WorkflowSegmentStates, and the row deletes. It does NOT dissolve on the derived-terminality projection that clears its four siblings — a terminality partition over ProviderExecutionState leaves every arm answering Pending."
 
+data nfr_reason_dispatch_selection_routing: String = "provider-selection routing residue (match on ProviderSelectionRequest, ProviderOffer, or ResolvedProviderSelection with off-shape wildcard refusal or false arms) landed with Slice A dispatch_selection.dag; declared at landing so the ratchet re-arms"
+
+data nfr_dissolve_dispatch_selection_routing: String = "total matches over the closed selection request and offer coproducts land and the wildcard arms migrate to named variants — rows delete with that fold"
+
 data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow {
+    subject: PathSubject { path: "dag/gunbc/dispatch_selection.dag::offer_matches_request" },
+    reason: nfr_reason_dispatch_selection_routing,
+    trigger: TriggerProse { text: nfr_dissolve_dispatch_selection_routing },
+  },
+  FrontierRow {
+    subject: PathSubject { path: "dag/gunbc/dispatch_selection.dag::resolve_codex_offer" },
+    reason: nfr_reason_dispatch_selection_routing,
+    trigger: TriggerProse { text: nfr_dissolve_dispatch_selection_routing },
+  },
+  FrontierRow {
+    subject: PathSubject { path: "dag/gunbc/dispatch_selection.dag::resolve_provider_offer" },
+    reason: nfr_reason_dispatch_selection_routing,
+    trigger: TriggerProse { text: nfr_dissolve_dispatch_selection_routing },
+  },
+  FrontierRow {
+    subject: PathSubject { path: "dag/gunbc/dispatch_selection.dag::selection_requests_match" },
+    reason: nfr_reason_dispatch_selection_routing,
+    trigger: TriggerProse { text: nfr_dissolve_dispatch_selection_routing },
+  },
   FrontierRow {
     subject: PathSubject { path: "dag/gunbc/roadmap_dispatch_actuator.dag::live_session_row_with_process" },
     reason: nfr_reason_provider_terminal_absorb,
@@ -729,6 +762,10 @@ data non_fold_residue_frontier: List<FrontierRow> = [
 
 fn non_fold_residue_frontier_units() -> List<String> {
   frontier_units(rows: non_fold_residue_frontier)
+}
+
+fn non_fold_residue_frontier_construct() -> KeyedRosterBuild<FrontierSubject, FrontierRow> {
+  frontier_rows_keyed_roster_build(rows: non_fold_residue_frontier)
 }
 
 fn non_fold_residue_frontier_well_formed() -> Bool {

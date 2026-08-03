@@ -67,6 +67,8 @@ use crate::resolved_graph_cache::{
 };
 use crate::std_content_hash::fnv1a64_structural_hex_digest;
 use crate::std_interface_summary::{module_key, typed_module_key};
+use crate::std_keyed_roster::{keyed_roster_build, KeyedRosterBuild};
+use crate::std_keyed_row::KeyedRow;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ResolveTypecheckGate {
@@ -821,6 +823,34 @@ mod process_workspace_root_tests {
     }
 
     #[test]
+    fn compile_clean_shard_entry_paths_fast_scaffold_marker_is_declared() {
+        assert_eq!(
+            super::CLI_RUN_COMPILE_CLEAN_SHARD_ENTRY_PATHS_FAST_SCAFFOLD_MARKER,
+            "cli_run_compile_clean_shard_entry_paths_fast"
+        );
+    }
+
+    #[test]
+    fn compile_clean_shard_entry_paths_fast_scaffold_marker_declaration_is_singular() {
+        let source = std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/cli_run.rs"),
+        )
+        .expect("read cli_run.rs");
+        let count = source
+            .lines()
+            .filter(|line| {
+                line.starts_with(
+                    "pub(crate) const CLI_RUN_COMPILE_CLEAN_SHARD_ENTRY_PATHS_FAST_SCAFFOLD_MARKER",
+                )
+            })
+            .count();
+        assert_eq!(
+            count, 1,
+            "hand-Rust receipt census: declaration grain must appear exactly once"
+        );
+    }
+
+    #[test]
     fn effect_reach_inference_bridge_scaffold_marker_is_declared() {
         assert_eq!(
             super::CLI_RUN_EFFECT_REACH_INFERENCE_BRIDGE_SCAFFOLD_MARKER,
@@ -1505,6 +1535,11 @@ pub fn compile_dag_rust_emit_check(
 }
 
 const CI_LAYER_ROOTS_AUTHORITY_REL: &str = "dag/gunbc/ci_layer_roots.dag";
+/// The function-grain exact witness admission authority (`gunbc.explicit_witness_admission`).
+/// Separate from the path-policy carrier above on purpose: an admission names one witness and
+/// its executing cadence, a path policy names a place, and fusing them into one substring
+/// representation is what made the old reconciliation weaker than its name.
+const EXPLICIT_WITNESS_ADMISSION_AUTHORITY_REL: &str = "dag/gunbc/explicit_witness_admission.dag";
 const WITNESS_LAYER_ROOTS_DATA_NAME: &str = "witness_layer_roots";
 const WITNESS_DISCOVERY_SCAN_DIRS_DATA_NAME: &str = "witness_discovery_scan_dirs";
 const WITNESS_EXCLUSION_FRONTIER_DATA_NAME: &str = "witness_exclusion_frontier";
@@ -1530,8 +1565,6 @@ const WITNESS_EXCLUSION_CLASSIFICATIONS: [&str; 8] = [
 ];
 const WET_RECEIPT_ENROLLMENT_AUTHORITY_REL: &str =
     "src/v2/compiler/self_host/wet_receipt_enrollment.dag";
-const SEED_EMITTER_BEHAVIORAL_WET_KNOWN_RED_AUTHORITY_REL: &str =
-    "src/v2/compiler/self_host/seed_emitter_behavioral_wet_known_red_entries.dag";
 const WHOLE_TREE_STRICT_RESOLVE_EXCLUSION_SUBSTRINGS_DATA_NAME: &str =
     "whole_tree_strict_resolve_exclusion_substrings";
 const RESOLUTION_DIVERGENCE_CENSUS_ROSTER_EXCLUDED_MODULE_PREFIXES_DATA_NAME: &str =
@@ -1902,7 +1935,10 @@ pub fn compile_clean_live_pipeline_module_paths() -> Vec<String> {
     let pool_roots = default_source_roots();
     let facts = build_module_graph_facts_live(&pool_roots);
     let mut paths = BTreeSet::new();
-    for entry in compile_clean_shard_entry_paths_fast() {
+    let roster = compile_clean_shard_entry_paths_fast().unwrap_or_else(|reason| {
+        panic!("compile_clean_live_pipeline_module_paths: {reason}");
+    });
+    for entry in roster {
         for path in import_closure_live_paths_with_facts(&entry, &facts) {
             paths.insert(path);
         }
@@ -2673,8 +2709,24 @@ fn compile_clean_scope_plan_from_touched_paths(
             eprintln!("compile-clean scope: {reason}");
             Ok(CompileCleanScopePlan::WholeTree)
         }
+        v1_interpreter::Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } if ctx.sym_eq(*variant_name, "RefuseShardRosterDuplicate") => {
+            let reason = match ctx.field(fields, "reason") {
+                Some(v1_interpreter::Value::Str(r)) => r.clone(),
+                _ => {
+                    return Err(
+                        "RefuseShardRosterDuplicate missing `reason` string field".to_string(),
+                    )
+                }
+            };
+            eprintln!("compile-clean scope: refused ({reason})");
+            Ok(CompileCleanScopePlan::Refused { reason })
+        }
         other => Err(format!(
-            "compile_clean_scope_disposition_from_diff returned `{}`, expected ScopedRun | SkipNoAffectedEntries | RequireWholeTree",
+            "compile_clean_scope_disposition_from_diff returned `{}`, expected ScopedRun | SkipNoAffectedEntries | RequireWholeTree | RefuseShardRosterDuplicate",
             ctx.format_value(other)
         )),
     }
@@ -2690,25 +2742,66 @@ fn compile_clean_source_roots() -> Vec<String> {
     roots
 }
 
+// DELETE WHEN dissolved: `compile_clean_shard_entry_paths_from_decl_facts`,
+// `compile_clean_shard_entry_paths_fast` keyed-roster host mirror, and
+// `compile_clean_shard_entry_paths_fast_refuses_duplicate_path_keys` test (~50 LOC).
+// Receipt (declaration grain; bare marker token is multi-hit by design — scaffold
+// header / doc comment / unit test). Executable pin that does NOT self-match this
+// comment (IDENT and TYPE_ANN are on separate lines here; contiguous only on the
+// declaration):
+//   IDENT=CLI_RUN_COMPILE_CLEAN_SHARD_ENTRY_PATHS_FAST_SCAFFOLD_MARKER
+//   TYPE_ANN=: &str =
+//   rg -F "${IDENT}${TYPE_ANN}" src/v1/stage0/src/cli_run.rs   # == 1 until deletion
+// Witness: dag/test/claim/compile_clean_shard_entry_paths_fast_hand_rust_witness_test.dag;
+// dissolve-on: tools.dag_compile_clean_shard_roster compile_clean_shard_entry_paths_fast_hand_rust_dissolve_trigger.
+pub(crate) const CLI_RUN_COMPILE_CLEAN_SHARD_ENTRY_PATHS_FAST_SCAFFOLD_MARKER: &str =
+    "cli_run_compile_clean_shard_entry_paths_fast";
+
 /// Host realization of `tools.dag_compile_clean_shard_roster.compile_clean_shard_entry_paths`
 /// without resolving `dag_compile_clean_scope.dag` (the interpreter path cold-scans ~minutes).
+///
+/// INTERIM hand-Rust scaffold (`CLI_RUN_COMPILE_CLEAN_SHARD_ENTRY_PATHS_FAST_SCAFFOLD_MARKER` / §7):
+/// routes shard roster construction through `std.keyed_roster.keyed_roster_build` on the floor
+/// CI hot path — same authority as the modeled `compile_clean_shard_entry_paths_from`, not a
+/// parallel duplicate-key policy. Duplicate path keys refuse (terminal `Refused` disposition),
+/// never sort/dedup absorption.
 /// Entry roots are ALL of `witness_layer_roots` — the same tree the whole-tree gate
 /// compiles — mirroring `tools.dag_compile_clean_partition.compile_clean_partition_boundary`
 /// (see its note: a roster that is a strict subset of the compiled tree both widened
 /// src/v2-only diffs to whole-tree and left affected src/v2 importers unselected on
 /// scoped runs).
-fn compile_clean_shard_entry_paths_fast() -> Vec<String> {
+fn compile_clean_shard_entry_paths_from_decl_facts(
+    decl_facts: &[ModuleDeclarationFactRaw],
+) -> Result<Vec<String>, String> {
+    let incomings: Rc<im::Vector<Rc<KeyedRow<String, ModuleDeclarationFactRaw>>>> = Rc::new(
+        decl_facts
+            .iter()
+            .map(|decl| {
+                let path = workspace_relative_repo_path(&decl.path);
+                Rc::new(KeyedRow {
+                    row_key: path,
+                    value: decl.clone(),
+                    _phantom: std::marker::PhantomData,
+                })
+            })
+            .collect(),
+    );
+    match keyed_roster_build(incomings, |a: String, b: String| a == b).as_ref() {
+        KeyedRosterBuild::KeyedRosterBuilt { rows } => {
+            Ok(rows.iter().map(|row| row.row_key.clone()).collect())
+        }
+        KeyedRosterBuild::KeyedRosterBuildDuplicateKey { key, .. } => Err(format!(
+            "shard roster construction refused duplicate path key at admission: {key}"
+        )),
+    }
+}
+
+fn compile_clean_shard_entry_paths_fast() -> Result<Vec<String>, String> {
     let entry_roots: Vec<String> = witness_layer_roots()
         .iter()
         .map(|root| anchor_source_root(root))
         .collect();
-    let mut paths: Vec<String> = module_declaration_facts(&entry_roots)
-        .into_iter()
-        .map(|decl| workspace_relative_repo_path(&decl.path))
-        .collect();
-    paths.sort();
-    paths.dedup();
-    paths
+    compile_clean_shard_entry_paths_from_decl_facts(&module_declaration_facts(&entry_roots))
 }
 
 /// Floor CI hot path: mirrors `compile_clean_scope_disposition_from_diff`
@@ -2717,10 +2810,34 @@ fn compile_clean_shard_entry_paths_fast() -> Vec<String> {
 /// `compile_clean_shard_entry_paths()`. Selection reuses the SAME certified realization
 /// as the discovery-corpus channel (`entry_file_touched_via_import_closure`); every arm
 /// that cannot answer falls back to the gate's whole-tree baseline, loudly.
+///
+/// Roster construction matches `compile_clean_scope_disposition_from_diff`: build and
+/// validate the keyed shard roster before any disposition arm, so duplicate path keys
+/// refuse even when the diff would otherwise skip or widen to whole-tree.
 fn compile_clean_scope_plan_from_touched_paths_floor_fast(
     touched_paths: &[String],
     departed_paths: &HashSet<String>,
 ) -> CompileCleanScopePlan {
+    compile_clean_scope_plan_from_touched_paths_floor_fast_impl(
+        touched_paths,
+        departed_paths,
+        compile_clean_shard_entry_paths_fast(),
+    )
+}
+
+fn compile_clean_scope_plan_from_touched_paths_floor_fast_impl(
+    touched_paths: &[String],
+    departed_paths: &HashSet<String>,
+    roster: Result<Vec<String>, String>,
+) -> CompileCleanScopePlan {
+    let roster = match roster {
+        Ok(paths) => paths,
+        Err(reason) => {
+            eprintln!("compile-clean scope: refused ({reason})");
+            return CompileCleanScopePlan::Refused { reason };
+        }
+    };
+
     if touched_paths.is_empty() {
         // Mirrors `compile_clean_scope_disposition_probe`'s empty arm (#7412): an
         // observation that saw nothing is indistinguishable from one that could not
@@ -2776,7 +2893,7 @@ fn compile_clean_scope_plan_from_touched_paths_floor_fast(
     let facts = build_module_graph_facts_live(&pool_roots);
     let declared_paths = facts.declared_repo_paths();
     let mut affected = Vec::new();
-    for entry_path in compile_clean_shard_entry_paths_fast() {
+    for entry_path in roster {
         match entry_file_touched_via_import_closure(
             &entry_path,
             &facts,
@@ -7380,6 +7497,20 @@ fn note_interface_hash(
 /// Kept in lockstep by `schedule_retention_policy_matches_modeled_authority`.
 const SCHEDULE_RETENTION_TUNABLE_COUNT: i64 = 0;
 
+/// Mirror of `gunbc.executor_schedule_retention`
+/// `schedule_retention_entry_line_asserts_execution` (false): the per-entry drain line
+/// witnesses the SCHEDULE PASSING an entry, never that the entry was selected or run —
+/// `index_arm_schedule_retention` walks every discovered row before any predict-skip.
+/// Kept in lockstep by `schedule_retention_policy_matches_modeled_authority`.
+const SCHEDULE_RETENTION_ENTRY_LINE_ASSERTS_EXECUTION: bool = false;
+
+/// Mirror of `gunbc.executor_schedule_retention`
+/// `schedule_retention_release_and_eviction_counted_apart` (true): `schedule_releases`
+/// counts refcount-zero releases, `schedule_evictions` counts only the releases that
+/// actually dropped cached state. Discriminating RED:
+/// `unreconciled_module_releases_without_evicting`.
+const RELEASE_AND_EVICTION_COUNTED_APART: bool = true;
+
 /// Measurement control (RED #1): with `GUNBC_SCHEDULE_RETENTION_EVICT=0` the schedule
 /// still ARMS and COUNTS (refcounts, RetentionUnknown, decrement-underflow refusals)
 /// but drops nothing — reproducing today's pegged peak so the mechanism's effect on
@@ -7413,12 +7544,27 @@ struct ModuleCacheKeys {
 /// One entry-completion's eviction decision — applied to the index caches by the
 /// caller (this struct owns no cache handles, so it stays a pure, unit-testable
 /// bookkeeper; the RED controls exercise it in isolation).
+///
+/// RELEASE and EVICTION are separate facts and are counted separately. A module is
+/// RELEASED when its refcount reaches zero (no remaining scheduled entry reaches it);
+/// it is EVICTED only when that release actually dropped recorded cache state. The two
+/// diverge on every run where an armed module was never reconciled — the ordinary case,
+/// since arming spans the whole discovered roster while the affected set resolves a
+/// subset. Counting the release as an eviction overstated the mechanism by the whole
+/// unresolved population (a live receipt read `schedule_evictions=2200` against
+/// `modules_refcounted=2200` and `typed_cache_peak=883`: it claimed to have evicted
+/// every module it had ever heard of, ~2.5x the modules that were ever cached).
 #[derive(Default, Debug, PartialEq, Eq)]
 pub struct ScheduleEvictionBatch {
     pub typed_keys: Vec<String>,
     pub raw_files: Vec<String>,
-    /// The module names dropped this step (for the located receipt line).
-    pub module_names: Vec<String>,
+    /// Module names whose refcount reached zero this step — released, whether or not
+    /// any cache state existed to drop (for the located receipt line).
+    pub released_modules: Vec<String>,
+    /// The subset of `released_modules` that actually dropped recorded cache keys —
+    /// the only names for which state left a cache. Always a subset, never equal by
+    /// construction.
+    pub evicted_modules: Vec<String>,
 }
 
 /// Schedule-derived per-module retention bookkeeping (pure). Refcount is keyed by
@@ -7441,6 +7587,11 @@ pub struct ScheduleRetention {
     /// names already counted as RetentionUnknown (cached but reachability-uncomputable)
     /// — counted once, retained forever (never evicted).
     unknown_counted: HashSet<String>,
+    /// Modules whose refcount reached zero (released). NOT an eviction count: a module
+    /// the run never reconciled has no cache state to drop, so its release frees nothing.
+    schedule_releases: u64,
+    /// Modules whose release actually dropped recorded cache keys — the honest measure
+    /// of state this mechanism removed.
     schedule_evictions: u64,
     retention_unknown: u64,
     /// Assembled `ResolvedGraph`s dropped from `resolved_graph_memo` on entry completion
@@ -7481,6 +7632,7 @@ impl ScheduleRetention {
             entry_closures,
             cache_keys: std::collections::HashMap::new(),
             unknown_counted: HashSet::new(),
+            schedule_releases: 0,
             schedule_evictions: 0,
             retention_unknown: 0,
             resolved_graph_evictions: 0,
@@ -7563,18 +7715,35 @@ impl ScheduleRetention {
                 // above and REFUSES, instead of silently reading as "never armed". The
                 // map is bounded by module count, so retaining zeros is free.
                 if self.evict_enabled {
+                    // Release and eviction are counted apart. A module the run never
+                    // reconciled carries no recorded keys, so its release drops nothing
+                    // — counting it as an eviction is a claim about freed state that no
+                    // cache can corroborate.
+                    let mut dropped_state = false;
                     if let Some(keys) = self.cache_keys.remove(&name) {
+                        dropped_state = !keys.typed_keys.is_empty() || !keys.raw_files.is_empty();
                         batch.typed_keys.extend(keys.typed_keys);
                         batch.raw_files.extend(keys.raw_files);
                     }
-                    batch.module_names.push(name);
-                    self.schedule_evictions += 1;
+                    self.schedule_releases += 1;
+                    if dropped_state {
+                        self.schedule_evictions += 1;
+                        batch.evicted_modules.push(name.clone());
+                    }
+                    batch.released_modules.push(name);
                 }
             }
         }
         Ok(batch)
     }
 
+    /// Modules released (refcount reached zero). Bounded above by the armed module
+    /// count and, at run end, equal to it — which is exactly why it is not an
+    /// eviction measure and never labelled as one.
+    pub fn schedule_releases(&self) -> u64 {
+        self.schedule_releases
+    }
+    /// Modules whose release actually dropped recorded cache state.
     pub fn schedule_evictions(&self) -> u64 {
         self.schedule_evictions
     }
@@ -7670,9 +7839,16 @@ fn index_arm_schedule_retention(index: &MultiEntryIndex, rows: &[DiscoveryRow]) 
     // Unconditional ARMED receipt: proves schedule-derived retention is LIVE on this run,
     // so a later `schedule_evictions=0` reads as "shared closure held resident" rather
     // than "never armed" (the private-index serial regime is the only one that arms).
+    // The legend is part of the receipt because the per-entry lines below are otherwise
+    // read as an execution log: they are not one, and `discovered_entries` says why —
+    // arming walks the DISCOVERED roster, before selection decides anything.
     eprintln!(
-        "[floor-drain] schedule-retention ARMED: entries={entries} \
-         modules_refcounted={} evict_enabled={evict_enabled}",
+        "[floor-drain] schedule-retention ARMED: discovered_entries={entries} \
+         modules_refcounted={} evict_enabled={evict_enabled} \
+         (legend: a `schedule_passed_entry=` line below marks the schedule moving past an \
+         entry — discovery + arming only; it does NOT mean the entry was selected or run. \
+         `released_modules` = refcount reached zero; `evicted_modules` = the subset that \
+         actually dropped cached state.)",
         sr.refcount_len()
     );
     *index.schedule_retention.borrow_mut() = Some(sr);
@@ -7919,7 +8095,7 @@ fn index_schedule_entry_completed(
             .is_some(),
         _ => false,
     };
-    let (sched_evictions, retention_unknown, graph_evictions) = {
+    let (sched_releases, sched_evictions, retention_unknown, graph_evictions) = {
         let mut slot = index.schedule_retention.borrow_mut();
         match slot.as_mut() {
             Some(sr) => {
@@ -7927,20 +8103,32 @@ fn index_schedule_entry_completed(
                     sr.note_graph_eviction();
                 }
                 (
+                    sr.schedule_releases(),
                     sr.schedule_evictions(),
                     sr.retention_unknown(),
                     sr.resolved_graph_evictions(),
                 )
             }
-            None => (0, 0, 0),
+            None => (0, 0, 0, 0),
         }
     };
     // Unconditional (not floor_verbose-gated) so the receipt survives a step-cap timeout.
+    //
+    // `schedule_passed_entry=` names what this line actually witnesses: the schedule
+    // moved PAST that entry, so its per-module state can no longer be read. It asserts
+    // nothing about selection or execution — arming spans the whole discovered roster
+    // (`index_arm_schedule_retention` walks every row, before any predict-skip), so this
+    // line appears for entries the affected set skipped without ever resolving them. The
+    // former `entry='…'` spelling was read as "this entry was scheduled and ran" by two
+    // independent readers hours apart, which is a property of the label, not the readers.
     eprintln!(
-        "[floor-drain] schedule-retention: entry='{entry}' evicted_modules={} evicted_graph={} \
-         schedule_evictions={sched_evictions} graph_evictions={graph_evictions} \
-         retention_unknown={retention_unknown} typed_cache={} resolved_graphs={}",
-        batch.module_names.len(),
+        "[floor-drain] schedule-retention: schedule_passed_entry='{entry}' \
+         released_modules={} evicted_modules={} evicted_graph={} \
+         schedule_releases={sched_releases} schedule_evictions={sched_evictions} \
+         graph_evictions={graph_evictions} retention_unknown={retention_unknown} \
+         typed_cache={} resolved_graphs={}",
+        batch.released_modules.len(),
+        batch.evicted_modules.len(),
         graph_evicted as u8,
         index.typed_module_cache.borrow().len(),
         index.resolved_graph_memo.borrow().len(),
@@ -7988,7 +8176,10 @@ mod heartbeat_feed_red_controls {
 
 #[cfg(test)]
 mod schedule_retention_red_controls {
-    use super::{ScheduleRetention, SCHEDULE_RETENTION_TUNABLE_COUNT};
+    use super::{
+        ScheduleRetention, RELEASE_AND_EVICTION_COUNTED_APART,
+        SCHEDULE_RETENTION_ENTRY_LINE_ASSERTS_EXECUTION, SCHEDULE_RETENTION_TUNABLE_COUNT,
+    };
 
     /// Locate the modeled retention-policy carrier by walking up from the crate
     /// manifest dir until `dag/gunbc/executor_schedule_retention.dag` appears — the
@@ -8051,9 +8242,23 @@ mod schedule_retention_red_controls {
             "schedule_retention_heads_stay_resident",
             "schedule_retention_retain_on_unknown",
             "schedule_retention_underflow_refuses",
+            "schedule_retention_release_and_eviction_counted_apart",
         ] {
             assert!(modeled_bool(&dag, flag), "modeled {flag} must be true");
         }
+        assert_eq!(
+            modeled_bool(&dag, "schedule_retention_entry_line_asserts_execution"),
+            SCHEDULE_RETENTION_ENTRY_LINE_ASSERTS_EXECUTION,
+            "the per-entry drain line witnesses the schedule passing an entry, never its \
+             execution — arming walks the discovered roster before selection decides \
+             anything, so a line that claims execution asserts a fact the mechanism \
+             cannot support"
+        );
+        assert!(
+            RELEASE_AND_EVICTION_COUNTED_APART,
+            "release (refcount reached zero) and eviction (cached state actually dropped) \
+             are counted apart in the realization"
+        );
     }
 
     /// GREEN: eviction fires exactly at refcount zero. A shared module survives until
@@ -8075,17 +8280,61 @@ mod schedule_retention_red_controls {
 
         // Finishing a drops a_only (rc 1→0); shared stays (rc 2→1).
         let batch_a = sr.entry_completed("a").expect("no underflow");
-        assert_eq!(batch_a.module_names, vec!["a_only".to_string()]);
+        assert_eq!(batch_a.released_modules, vec!["a_only".to_string()]);
+        assert_eq!(batch_a.evicted_modules, vec!["a_only".to_string()]);
         assert_eq!(batch_a.typed_keys, vec!["tk_a".to_string()]);
+        assert_eq!(sr.schedule_releases(), 1);
         assert_eq!(sr.schedule_evictions(), 1);
 
         // Finishing b drops shared (rc 1→0) and b_only.
         let batch_b = sr.entry_completed("b").expect("no underflow");
-        let mut got: Vec<String> = batch_b.module_names.clone();
+        let mut got: Vec<String> = batch_b.released_modules.clone();
         got.sort();
         assert_eq!(got, vec!["b_only".to_string(), "shared".to_string()]);
+        assert_eq!(sr.schedule_releases(), 3);
         assert_eq!(sr.schedule_evictions(), 3);
         assert_eq!(sr.retention_unknown(), 0);
+    }
+
+    /// RED for the counter defect this PR fixes: a module the run ARMED but never
+    /// reconciled has no recorded cache keys, so its refcount reaching zero frees
+    /// nothing. It must count as a RELEASE and NOT as an eviction. Before the fix both
+    /// counters were the same increment, so a live receipt read schedule_evictions=2200
+    /// against a typed_cache_peak of 883 — a claim of freed state that no cache could
+    /// corroborate. This asserts the two counters DIVERGE on that population; if a
+    /// future edit re-fuses them, `schedule_evictions` here goes 1 -> 2 and reds.
+    #[test]
+    fn unreconciled_module_releases_without_evicting() {
+        let mut sr = ScheduleRetention::armed(
+            vec![(
+                "a".to_string(),
+                vec!["reconciled".into(), "never_reconciled".into()],
+            )],
+            true,
+        );
+        // Only one of the two armed modules ever reaches reconcile (the ordinary case:
+        // arming spans the discovered roster, the affected set resolves a subset).
+        sr.record_module("reconciled", "tk", "f");
+
+        let batch = sr.entry_completed("a").expect("no underflow");
+        let mut released = batch.released_modules.clone();
+        released.sort();
+        assert_eq!(
+            released,
+            vec!["never_reconciled".to_string(), "reconciled".to_string()],
+            "both armed modules are released — refcount reached zero for each"
+        );
+        assert_eq!(
+            batch.evicted_modules,
+            vec!["reconciled".to_string()],
+            "only the module that had recorded cache state is evicted"
+        );
+        assert_eq!(sr.schedule_releases(), 2);
+        assert_eq!(
+            sr.schedule_evictions(),
+            1,
+            "an unreconciled module's release must not be counted as an eviction"
+        );
     }
 
     /// RED #1 (eviction-disabled control): with `evict_enabled=false` the schedule
@@ -8101,7 +8350,11 @@ mod schedule_retention_red_controls {
         sr.record_module("m", "tk", "f");
         sr.record_module("orphan", "tk_o", "f_o"); // not in any closure → RetentionUnknown
         let batch = sr.entry_completed("a").expect("no underflow");
-        assert!(batch.module_names.is_empty(), "disabled pole drops nothing");
+        assert!(
+            batch.released_modules.is_empty() && batch.evicted_modules.is_empty(),
+            "disabled pole drops nothing"
+        );
+        assert_eq!(sr.schedule_releases(), 0);
         assert_eq!(sr.schedule_evictions(), 0);
         assert_eq!(
             sr.retention_unknown(),
@@ -8148,7 +8401,8 @@ mod schedule_retention_red_controls {
         assert_eq!(sr.retention_unknown(), 1);
         // The gap is never decremented/evicted: finishing `a` leaves it retained.
         let batch = sr.entry_completed("a").expect("no underflow");
-        assert!(!batch.module_names.contains(&"gap".to_string()));
+        assert!(!batch.released_modules.contains(&"gap".to_string()));
+        assert!(!batch.evicted_modules.contains(&"gap".to_string()));
     }
 
     /// END-TO-END WIRING (real index, real closure computation, real cache eviction):
@@ -8358,8 +8612,13 @@ pub struct IndexRetentionSnapshot {
     pub ownership_diag_cache_entries: usize,
     pub intern_table_entries: usize,
     pub typed_cache_evictions: u64,
-    /// Schedule-derived per-module evictions (v1-run-stability M2): modules dropped
-    /// because no remaining scheduled entry's closure reached them.
+    /// Schedule-derived per-module RELEASES (v1-run-stability M2): modules whose
+    /// refcount reached zero because no remaining scheduled entry's closure reaches
+    /// them. At run end this equals the armed module count by construction, so it is
+    /// a progress measure, not an eviction measure — see `schedule_evictions`.
+    pub schedule_releases: u64,
+    /// The releases that actually dropped cached state — the honest count of modules
+    /// this mechanism removed from a cache.
     pub schedule_evictions: u64,
     /// Counted `RetentionUnknown` rows: modules cached but reachability-uncomputable,
     /// retained (correctness-fail-closed) — visible and prioritizable, never absorbed.
@@ -8456,6 +8715,12 @@ pub fn index_retention_snapshot(index: &MultiEntryIndex) -> IndexRetentionSnapsh
         ownership_diag_cache_entries: index.ownership_diag_cache.borrow().len(),
         intern_table_entries: index.intern_table.borrow().index.len(),
         typed_cache_evictions: index.typed_cache_evictions.get(),
+        schedule_releases: index
+            .schedule_retention
+            .borrow()
+            .as_ref()
+            .map(|s| s.schedule_releases())
+            .unwrap_or(0),
         schedule_evictions: index
             .schedule_retention
             .borrow()
@@ -8506,6 +8771,7 @@ fn retention_snapshot_peak(
             .max(b.ownership_diag_cache_entries),
         intern_table_entries: a.intern_table_entries.max(b.intern_table_entries),
         typed_cache_evictions: a.typed_cache_evictions.max(b.typed_cache_evictions),
+        schedule_releases: a.schedule_releases.max(b.schedule_releases),
         schedule_evictions: a.schedule_evictions.max(b.schedule_evictions),
         retention_unknown: a.retention_unknown.max(b.retention_unknown),
         resolved_graph_evictions: a.resolved_graph_evictions.max(b.resolved_graph_evictions),
@@ -8630,13 +8896,14 @@ fn emit_floor_drain_receipt(
     eprintln!(
         "[floor-drain] receipt: groups={total_groups} \
          typed_cache_peak={} parse_cache_peak={} resolved_memo_peak={} \
-         intern_table_peak={} evictions={} schedule_evictions={} retention_unknown={} \
-         peak_rss={} cap_entries={}",
+         intern_table_peak={} evictions={} schedule_releases={} schedule_evictions={} \
+         retention_unknown={} peak_rss={} cap_entries={}",
         peaks.typed_module_cache_entries,
         peaks.parse_cache_entries,
         peaks.resolved_graph_memo_entries,
         peaks.intern_table_entries,
         peaks.typed_cache_evictions,
+        peaks.schedule_releases,
         peaks.schedule_evictions,
         peaks.retention_unknown,
         peaks
@@ -15433,9 +15700,6 @@ pub fn collect_deferred_discovery_rows(
     source_roots: &[String],
     exclude_substrings: &[String],
 ) -> Result<Vec<DeferredDiscoveryRow>, String> {
-    if exclude_substrings.is_empty() {
-        return Ok(Vec::new());
-    }
     let facts = build_module_graph_facts_live(source_roots);
     let mut out: Vec<DeferredDiscoveryRow> = Vec::new();
     let mut seen: std::collections::BTreeSet<(String, String)> = std::collections::BTreeSet::new();
@@ -15470,6 +15734,29 @@ pub fn collect_deferred_discovery_rows(
                 }
             }
         }
+    }
+    // Exact admissions are the SECOND reason a row leaves discovery, and the receipt must
+    // count them too. Before this lane they arrived here as a side effect of the file-level
+    // pattern that used to sit beside each one; with the pattern deleted, an admitted witness
+    // would otherwise vanish from the deferred receipt entirely — the uncounted degradation
+    // §5 forbids, in the mechanism whose whole job is to make deferral visible.
+    for (entry, function) in explicit_witness_admission_pairs() {
+        if seen.contains(&(entry.clone(), function.clone())) {
+            continue;
+        }
+        let path = workspace_root().join(&entry);
+        let content = std::fs::read_to_string(&path).map_err(|e| {
+            format!("read exact-admitted witness entry {entry}: {e} — an admission naming a file that cannot be read is a refusal, never a skipped row")
+        })?;
+        let reads_live_tree = reads_live_tree_effective(&entry, &content, &facts)?;
+        seen.insert((entry.clone(), function.clone()));
+        out.push(DeferredDiscoveryRow {
+            entry,
+            function,
+            exclude_reason: "exact witness admission (gunbc.explicit_witness_admission)"
+                .to_string(),
+            reads_live_tree,
+        });
     }
     out.sort_by(|a, b| {
         a.entry
@@ -15577,14 +15864,13 @@ fn witness_admission_entry_function_keys_from_source(
             keys.push(key);
         }
     }
-    let heads: [(&str, &str); 7] = [
+    // `known_red_probe(` replaced `probe_red(` and the seed-emitter wet row constructor when the
+    // quarantine moved to one function-grain authority (2026-08-03): both cadences now author the
+    // same row shape in `gunbc.explicit_witness_admission`, so one head reads both.
+    let heads: [(&str, &str); 6] = [
         ("bin_wet(", "entry: String"),
-        ("probe_red(", "entry: String"),
+        ("known_red_probe(", "entry: NonEmptyStr"),
         ("self_host_wet_entry(", "entry: String"),
-        (
-            "seed_emitter_behavioral_wet_known_red_entry(",
-            "entry: String",
-        ),
         ("SelfHostWetReceiptBinding {", ""),
         ("RehomedBinWetRow {", ""),
         ("SubstrateLongLaneRow {", ""),
@@ -15677,19 +15963,7 @@ fn witness_admission_explicit_consumer_keys() -> Vec<String> {
                 keys.push(key);
             }
         }
-        let known_red = std::fs::read_to_string(
-            workspace_root().join(SEED_EMITTER_BEHAVIORAL_WET_KNOWN_RED_AUTHORITY_REL),
-        )
-        .unwrap_or_else(|e| {
-            panic!(
-                "witness admission: failed to read {}: {e}",
-                SEED_EMITTER_BEHAVIORAL_WET_KNOWN_RED_AUTHORITY_REL
-            )
-        });
-        for key in witness_admission_entry_function_keys_from_source(
-            SEED_EMITTER_BEHAVIORAL_WET_KNOWN_RED_AUTHORITY_REL,
-            &known_red,
-        ) {
+        for key in explicit_witness_admission_keys().iter().cloned() {
             if !keys.iter().any(|k| k == &key) {
                 keys.push(key);
             }
@@ -15698,6 +15972,39 @@ fn witness_admission_explicit_consumer_keys() -> Vec<String> {
         keys
     })
     .clone()
+}
+
+/// The exact witness admission keys (`entry::function`) read from the one function-grain
+/// authority. Same interim source scan as the sibling rosters
+/// (`CLI_RUN_WITNESS_ADMISSION_SOURCE_SCAN_SCAFFOLD_MARKER`), one file instead of two.
+fn explicit_witness_admission_keys() -> &'static [String] {
+    static KEYS: OnceLock<Vec<String>> = OnceLock::new();
+    KEYS.get_or_init(|| {
+        let content = std::fs::read_to_string(
+            workspace_root().join(EXPLICIT_WITNESS_ADMISSION_AUTHORITY_REL),
+        )
+        .unwrap_or_else(|e| {
+            panic!(
+                "witness admission: failed to read {}: {e}",
+                EXPLICIT_WITNESS_ADMISSION_AUTHORITY_REL
+            )
+        });
+        witness_admission_entry_function_keys_from_source(
+            EXPLICIT_WITNESS_ADMISSION_AUTHORITY_REL,
+            &content,
+        )
+    })
+}
+
+/// The same keys split back into `(entry, function)` pairs — the grain the exclusion is decided
+/// at. An empty function is the declared file-grain form and is expanded upstream, so it never
+/// reaches here as a pair.
+pub(crate) fn explicit_witness_admission_pairs() -> Vec<(String, String)> {
+    explicit_witness_admission_keys()
+        .iter()
+        .filter_map(|key| key.split_once("::"))
+        .map(|(entry, function)| (entry.to_string(), function.to_string()))
+        .collect()
 }
 
 /// Phase 0(b): every deferred witness row must name an executing consumer (explicit roster,
@@ -17061,6 +17368,56 @@ fn floor_git_diff_range() -> Result<String, String> {
         },
         other => Err(format!(
             "floor_observe_git_diff_unified_for_ci returned `{}`, expected FloorUnifiedDiffResult",
+            ctx.format_value(other)
+        )),
+    }
+}
+
+/// Read back the baseline the affected-set diff was taken against — a PROJECTION of
+/// `resolve_diff_baseline` (`v2.workflow.floor_diff_observe`
+/// `floor_observe_diff_baseline_readout_for_ci`), never a second derivation. Used only
+/// to LOCATE the no-observed-change diagnostic: a receipt that says "zero changed paths"
+/// without naming the base it compared against cannot be acted on, because the
+/// interesting case is precisely a base that names the head commit itself. Failure to
+/// read it is not fatal here — the diagnostic degrades to an unnamed baseline and says
+/// so, rather than suppressing the state.
+fn floor_diff_baseline_readout() -> Result<(String, String), String> {
+    use v1_interpreter::Value;
+    let roots = default_source_roots();
+    let entry = "src/v2/workflow/floor_diff_observe.dag";
+    let (graph, indices) = resolve_entry_graph_shared(&roots, entry)
+        .map_err(|e| format!("floor_diff_observe resolve: {e}"))?;
+    let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
+    let result =
+        v1_interpreter::run_in_context(&ctx, "floor_observe_diff_baseline_readout_for_ci", false)
+            .map_err(|e| format!("floor_observe_diff_baseline_readout_for_ci: {e}"))?;
+    match &result {
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } if ctx.sym_eq(*variant_name, "BaselineReadout") => {
+            let base = match ctx.field(fields, "ref") {
+                Some(Value::Str(s)) => s.clone(),
+                _ => return Err("BaselineReadout missing `ref`".to_string()),
+            };
+            let event = match ctx.field(fields, "event_name") {
+                Some(Value::Str(s)) => s.clone(),
+                _ => return Err("BaselineReadout missing `event_name`".to_string()),
+            };
+            Ok((base, event))
+        }
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } if ctx.sym_eq(*variant_name, "BaselineReadoutRefused") => match ctx.field(fields, "reason")
+        {
+            Some(Value::Str(r)) => Err(r.clone()),
+            _ => Err("baseline readout refused (no reason)".to_string()),
+        },
+        other => Err(format!(
+            "floor_observe_diff_baseline_readout_for_ci returned `{}`, expected FloorDiffBaselineReadout",
             ctx.format_value(other)
         )),
     }
@@ -19289,6 +19646,7 @@ fn run_discovery_corpus_with_options_inner(
         &rows,
         &index,
         &diff_edits,
+        &changed_paths,
     );
     // Derive every leg for the WHOLE roster here, above the width dispatch, while this
     // thread's shared index is warm. At width > 1 the pool hands each worker its own chunk
@@ -19827,6 +20185,7 @@ fn eprintln_affected_set_categorization(
     rows: &[DiscoveryRow],
     index: &MultiEntryIndex,
     diff_edits: &FloorDiffEdits,
+    changed_paths: &[String],
 ) {
     let total = rows.len();
     let entries = rows
@@ -19849,27 +20208,91 @@ fn eprintln_affected_set_categorization(
         NodeFrontierSelectionMode::Applied => {
             let declared_paths = index.module_graph_facts.declared_repo_paths();
             let touched: Vec<String> = diff_edits.touched_entry_files.iter().cloned().collect();
-            match discovery_entry_fast_skip_without_resolve(
+            let skipped = discovery_entry_fast_skip_without_resolve(
                 rows,
                 &index.module_graph_facts,
                 &declared_paths,
                 &touched,
                 diff_edits,
-            ) {
-                Ok(fast) => {
-                    let skipped = rows.iter().filter(|r| fast.contains(&r.entry)).count();
-                    let candidates = total - skipped;
-                    eprintln!(
-                        "{ts} [affected-set] {total} witness(es) across {entries} entr(y/ies) · {skipped} unaffected (import-closure, skipped without resolve) · {candidates} in the affected closure (resolving to decide node-frontier)"
-                    );
-                }
-                Err(e) => {
-                    eprintln!(
-                        "{ts} [affected-set] {total} witness(es) across {entries} entr(y/ies) · upfront import-closure categorization unavailable ({e}); per-shard selection is authoritative"
-                    );
-                }
-            }
+            )
+            .map(|fast| rows.iter().filter(|r| fast.contains(&r.entry)).count());
+            // The baseline is read back ONLY in the state that needs locating, so the
+            // ordinary path pays nothing for it.
+            let located = changed_paths
+                .is_empty()
+                .then(|| match floor_diff_baseline_readout() {
+                    Ok((base, event)) => format!("baseline='{base}' event='{event}'"),
+                    Err(e) => format!("baseline=UNREADABLE ({e})"),
+                });
+            eprintln!(
+                "{ts} {}",
+                affected_set_applied_report_line(total, entries, skipped, located.as_deref())
+            );
         }
+    }
+}
+
+/// The Applied-mode report, rendered purely so both of its states are assertable.
+///
+/// Its other state — `located` is `Some` — names the case in which the observation
+/// carried NO changed path at all.
+///
+/// A zero-changed-path observation and "the diff proves these rows unaffected" are
+/// different states, and the ordinary categorization line renders the first as the
+/// second — every row lands in the `unaffected (import-closure, skipped without
+/// resolve)` bucket, which reads as a computed verdict. That is the exact mirror of
+/// DESIGN §5's absorbing fallback: there, a mechanism that cannot compute the affected
+/// set substitutes the SUPERSET and conflates ⊤-as-answer with ⊤-as-ignorance; here it
+/// substitutes the EMPTY set and conflates ⊥-as-answer with ⊥-as-ignorance. The narrow
+/// is the worse of the two, because a widen is merely expensive while a narrow is
+/// silently uncovered.
+///
+/// It is not hypothetical: a push whose baseline ref IS the pushed ref compares the
+/// commit to itself, so a merge to the default branch observes nothing and every entry
+/// the merge itself modified skips, with no line naming it (skips are counted, not
+/// narrated). Receipt: main-push runs 30774223741 and 30773369033 report an identical
+/// `4118 unaffected` on two different commits — a skip count that cannot be a function
+/// of a diff it does not depend on.
+///
+/// This is REPORTING ONLY. The run disposition is untouched, deliberately: the empty
+/// diff has no special run arm (operator ruling 2026-07-05, PR-A — it was dissolved
+/// into the general disposition and must not be resurrected as one). What was missing
+/// was not an arm but the state's visibility; the baseline itself is fixed separately.
+fn affected_set_applied_report_line(
+    total: usize,
+    entries: usize,
+    skipped: Result<usize, String>,
+    located: Option<&str>,
+) -> String {
+    let head = format!("[affected-set] {total} witness(es) across {entries} entr(y/ies)");
+    match (located, skipped) {
+        (Some(located), skipped) => {
+            let under = match skipped {
+                Ok(n) => format!("{n} of {total}"),
+                Err(_) => "an uncounted number of".to_string(),
+            };
+            format!(
+                "{head} · NO OBSERVED CHANGE ({located}): the diff observation returned ZERO changed paths, \
+                 so no row can be proven affected and {under} witness(es) skip under it. This is NOT the \
+                 verdict 'nothing is affected' — a baseline that names the head commit itself (a push whose \
+                 base ref is the pushed ref) produces exactly this observation, and that is ignorance about \
+                 what changed, not a finding that nothing did. Read every `skipped` count in this run's \
+                 receipts as skipped-under-no-observation, never as skipped-because-unaffected. Run \
+                 disposition is unchanged by this line (the empty diff has no special run arm — operator \
+                 ruling 2026-07-05); it makes the state countable, it neither widens nor narrows the run."
+            )
+        }
+        (None, Ok(skipped)) => {
+            let candidates = total.saturating_sub(skipped);
+            format!(
+                "{head} · {skipped} unaffected (import-closure, skipped without resolve) · \
+                 {candidates} in the affected closure (resolving to decide node-frontier)"
+            )
+        }
+        (None, Err(e)) => format!(
+            "{head} · upfront import-closure categorization unavailable ({e}); per-shard \
+             selection is authoritative"
+        ),
     }
 }
 
@@ -31920,6 +32343,91 @@ mod witness_layer_roots_compile_clean_tests {
         }
     }
 
+    /// The affected-set report must not render a zero-changed-path OBSERVATION as the
+    /// verdict "these rows are unaffected". Both directions are asserted against the
+    /// SAME counts, so the discriminator is the observation state and nothing else: a
+    /// renderer that dropped the distinction fails one arm or the other.
+    #[test]
+    fn no_observed_change_is_reported_as_its_own_state_not_as_unaffected() {
+        let observed = super::affected_set_applied_report_line(6374, 886, Ok(4104), None);
+        assert!(
+            observed.contains("4104 unaffected (import-closure, skipped without resolve)")
+                && observed.contains("2270 in the affected closure"),
+            "a real observation still reports the computed categorization: {observed}"
+        );
+        assert!(
+            !observed.contains("NO OBSERVED CHANGE"),
+            "a real observation must NOT claim the no-observation state: {observed}"
+        );
+
+        let unobserved = super::affected_set_applied_report_line(
+            6374,
+            886,
+            Ok(4104),
+            Some("baseline='origin/main' event='push'"),
+        );
+        assert!(
+            unobserved.contains("NO OBSERVED CHANGE")
+                && unobserved.contains("baseline='origin/main'")
+                && unobserved.contains("event='push'"),
+            "the no-observation state must be named AND located — an unlocated 'zero \
+             changed paths' cannot be acted on: {unobserved}"
+        );
+        assert!(
+            !unobserved.contains("unaffected (import-closure, skipped without resolve)"),
+            "the no-observation state must not borrow the computed-verdict phrasing — \
+             that conflation is the defect: {unobserved}"
+        );
+        assert!(
+            unobserved.contains("4104 of 6374"),
+            "the state must carry its own frequency (rows skipped under it): {unobserved}"
+        );
+
+        // A receipt whose whole job is to stop a misreading has to be readable. Source
+        // indentation leaks into a multi-line `format!` unless every continuation is a
+        // real `\`-newline — it did, and review caught runs of ~18 spaces mid-sentence.
+        // Asserted rather than fixed-once, so the next edit cannot silently reintroduce it.
+        for line in [
+            &observed,
+            &unobserved,
+            &super::affected_set_applied_report_line(1, 1, Err("boom".into()), None),
+        ] {
+            assert!(
+                !line.contains("  "),
+                "report line carries a run of literal spaces from source indentation: {line}"
+            );
+        }
+    }
+
+    /// The baseline read-back is a live consumer of the modeled projection
+    /// (`v2.workflow.floor_diff_observe.floor_observe_diff_baseline_readout_for_ci`),
+    /// executed here rather than asserted: it must ANSWER for a push-shaped event and
+    /// must REFUSE — carrying the model's reason — when the event names a merge target
+    /// it cannot derive. The refusal arm is the discriminating one: a readout that
+    /// fabricated a base would answer both times.
+    #[test]
+    fn diff_baseline_readout_answers_or_refuses_but_never_fabricates() {
+        with_env_test_lock(|| {
+            with_workspace_cwd(|| {
+                let _ovr = EnvGuard::remove("GUNBC_CI_DIFF_BASE");
+                let _event = EnvGuard::set("GITHUB_EVENT_NAME", "push");
+                let (base, event) = super::floor_diff_baseline_readout()
+                    .expect("a push event resolves to a baseline");
+                assert!(!base.is_empty(), "the answering arm must name a base ref");
+                assert_eq!(event, "push");
+
+                let _pr = EnvGuard::set("GITHUB_EVENT_NAME", "pull_request");
+                let _no_base = EnvGuard::remove("GITHUB_BASE_REF");
+                let refusal = super::floor_diff_baseline_readout()
+                    .expect_err("a pull_request with no base ref must refuse, not fabricate");
+                assert!(
+                    refusal.contains("GITHUB_BASE_REF"),
+                    "the refusal must carry the modeled reason, got: {refusal}"
+                );
+            });
+        });
+    }
+
     /// Hand-Rust receipt: the emit leg is a strict superset of resolve for the same sources.
     #[test]
     fn emit_success_implies_resolve_success_on_live_witness_roots() {
@@ -32405,7 +32913,9 @@ mod witness_layer_roots_compile_clean_tests {
                         entry_paths.iter().any(|p| p == "dag/std/logic.dag"),
                         "expected dag/std/logic.dag in {entry_paths:?}"
                     );
-                    let roster_len = compile_clean_shard_entry_paths_fast().len();
+                    let roster_len = compile_clean_shard_entry_paths_fast()
+                        .expect("live shard roster must be duplicate-free")
+                        .len();
                     assert!(
                         entry_paths.len() < roster_len,
                         "scoped selection must be a strict subset of the roster ({} vs {roster_len})",
@@ -32415,6 +32925,70 @@ mod witness_layer_roots_compile_clean_tests {
                 other => panic!("expected ScopedRun, got {other:?}"),
             }
         });
+    }
+
+    #[test]
+    fn compile_clean_shard_entry_paths_fast_refuses_duplicate_path_keys() {
+        let facts = vec![
+            ModuleDeclarationFactRaw {
+                module: "fixture.alpha".to_string(),
+                path: "dag/fixture/alpha.dag".to_string(),
+            },
+            ModuleDeclarationFactRaw {
+                module: "fixture.alpha_reexport".to_string(),
+                path: "dag/fixture/alpha.dag".to_string(),
+            },
+        ];
+        let err = compile_clean_shard_entry_paths_from_decl_facts(&facts)
+            .expect_err("duplicate path keys must refuse");
+        assert!(
+            err.contains(
+                "shard roster construction refused duplicate path key at admission: dag/fixture/alpha.dag"
+            ),
+            "unexpected refusal: {err}"
+        );
+    }
+
+    /// Regression for review 47302: modeled `compile_clean_scope_disposition_from_diff`
+    /// builds the roster before any disposition arm; compiler/infra touches must not
+    /// bypass duplicate-key refusal by returning WholeTree early.
+    #[test]
+    fn floor_fast_refuses_duplicate_roster_before_whole_tree_arm() {
+        let plan = compile_clean_scope_plan_from_touched_paths_floor_fast_impl(
+            &["src/v1/stage0/src/cli_run.rs".to_string()],
+            &HashSet::new(),
+            Err(
+                "shard roster construction refused duplicate path key at admission: dag/fixture/alpha.dag"
+                    .to_string(),
+            ),
+        );
+        assert_eq!(
+            plan,
+            CompileCleanScopePlan::Refused {
+                reason: "shard roster construction refused duplicate path key at admission: dag/fixture/alpha.dag"
+                    .to_string(),
+            }
+        );
+    }
+
+    /// Regression for review 47305: empty touched paths must not bypass roster refusal.
+    #[test]
+    fn floor_fast_refuses_duplicate_roster_before_empty_touched_whole_tree_arm() {
+        let plan = compile_clean_scope_plan_from_touched_paths_floor_fast_impl(
+            &[],
+            &HashSet::new(),
+            Err(
+                "shard roster construction refused duplicate path key at admission: dag/fixture/alpha.dag"
+                    .to_string(),
+            ),
+        );
+        assert_eq!(
+            plan,
+            CompileCleanScopePlan::Refused {
+                reason: "shard roster construction refused duplicate path key at admission: dag/fixture/alpha.dag"
+                    .to_string(),
+            }
+        );
     }
 
     /// Discriminating receipt for the strict-tier reference-edge wiring
@@ -33358,13 +33932,19 @@ mod module_path_index_tests {
     }
 
     #[test]
-    fn seed_emitter_behavioral_wet_known_red_entries_parse_as_explicit_consumer_keys() {
-        let synthetic =
-            "module v2.compiler.self_host.seed_emitter_behavioral_wet_known_red_entries\n\n\
-             data seed_emitter_behavioral_wet_known_red_entries: List<ScheduleWitnessEntry> = [\n\
-               seed_emitter_behavioral_wet_known_red_entry(\n\
+    fn explicit_witness_admission_rows_parse_as_executing_consumer_keys() {
+        // Both known-red cadences author the same row shape on the one admission authority,
+        // so one head reads the hermetic (CorpusWitnessKind) and wet (ExecutionWitnessKind)
+        // rows alike — the former `probe_red(` / `seed_emitter_behavioral_wet_known_red_entry(`
+        // pair of heads is gone with the pair of rosters.
+        let synthetic = "module gunbc.explicit_witness_admission\n\n\
+             data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [\n\
+               known_red_probe(\n\
                  entry: \"dag/test/claim/self_host_body_producer_behavioral_witness_test.dag\",\n\
-                 f: \"self_host_body_producer_behavioral_receipt_holds\"\n\
+                 f: \"self_host_body_producer_behavioral_receipt_holds\",\n\
+                 kind: ExecutionWitnessKind,\n\
+                 reason: \"r\",\n\
+                 dissolve_on: \"d\"\n\
                ),\n\
              ]\n";
         let keys =
@@ -33374,8 +33954,63 @@ mod module_path_index_tests {
                 &"dag/test/claim/self_host_body_producer_behavioral_witness_test.dag::self_host_body_producer_behavioral_receipt_holds"
                     .to_string()
             ),
-            "re-homed known-red authority rows must register as executing consumer keys; got {keys:?}"
+            "exact admission rows must register as executing consumer keys; got {keys:?}"
         );
+    }
+
+    #[test]
+    fn explicit_witness_admission_is_exact_not_file_grain() {
+        // THE DISCRIMINATING RED on the host side, run against SYNTHETIC source rather than
+        // the live authority. Under the representation this lane replaced, the admission's
+        // FILE carried the exclusion, so a green sibling was hidden with it and executed
+        // nowhere while the reconciliation still passed. Exact grain must produce a key for
+        // the admitted function and none for its sibling.
+        //
+        // Anchoring this to a live admission was tried and rejected in review: it binds the
+        // evidence to the defect's continued existence, which is the one thing the wall
+        // exists to end, so the assertion loses its subject the moment a quarantine climbs
+        // out (gunbc#7688 dissolves one tonight). The `.dag` witness carries the same
+        // reasoning at its own grain.
+        let synthetic = "module gunbc.explicit_witness_admission\n\n\
+             data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [\n\
+               known_red_probe(\n\
+                 entry: \"dag/test/claim/synthetic_admission_witness_test.dag\",\n\
+                 f: \"fixture_expected_red_holds\",\n\
+                 kind: CorpusWitnessKind,\n\
+                 reason: \"r\",\n\
+                 dissolve_on: \"d\"\n\
+               ),\n\
+             ]\n";
+        let keys =
+            super::witness_admission_entry_function_keys_from_source("synthetic.dag", synthetic);
+        assert!(
+            keys.contains(
+                &"dag/test/claim/synthetic_admission_witness_test.dag::fixture_expected_red_holds"
+                    .to_string()
+            ),
+            "the admitted function must produce a consumer key; got {keys:?}"
+        );
+        assert!(
+            !keys
+                .iter()
+                .any(|k| k.ends_with("::fixture_ordinary_green_holds")),
+            "a sibling of an admitted witness must NOT be admitted by it — that is the \
+             file-grain absorption this authority removed; got {keys:?}"
+        );
+    }
+
+    #[test]
+    fn explicit_witness_admission_live_rows_are_all_function_grain() {
+        // Population-independent: holds at any roster size including zero, and states the
+        // property the exclusion derivation relies on — no live known-red admission uses the
+        // file-grain form, so none of them can reach a sibling.
+        for (entry, function) in super::explicit_witness_admission_pairs() {
+            assert!(
+                !function.is_empty(),
+                "live admission for {entry} has an empty function — the file-grain form \
+                 reaches every sibling and no known-red row may use it"
+            );
+        }
     }
 
     #[test]
