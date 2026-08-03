@@ -73,12 +73,13 @@ test fn doc_graph_works_refs_all_resolve() -> Bool {
   hand_authored_works_refs_all_resolve()
 }
 
-test fn cited_symbol_pre7688_census_is_two_declaration_absent_only() -> Bool {
+test fn cited_symbol_post7688_production_census_is_zero_violations() -> Bool {
   let census = cited_symbol_hand_authored_census_live()
-  census.declaration_absent_count == 2
+  census.declaration_absent_count == 0
     && census.module_absent_count == 0
     && census.field_absent_count == 0
     && census.ambiguous_count == 0
+    && census.resolved_count == length(xs: hand_authored_production_doc_declaration_refs())
 }
 
 test fn cited_symbol_refusal_count_red_on_dangling_fixture() -> Bool {
