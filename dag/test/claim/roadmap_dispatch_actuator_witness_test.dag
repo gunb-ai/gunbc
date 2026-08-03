@@ -6,7 +6,7 @@ import std.disposition { Scaffold, Terminal }
 import gunbc.roadmap_model {
   RoadmapNodeId,
   RoadmapNode, RoadmapEdge,
-  IntricacyHigh, IntricacyLow, VolumeMedium,
+  Intricacy, IntricacyHigh, IntricacyLow, VolumeMedium,
   PrsMerged,
   NodeSizing, Sized, Unsized,
   SectionElement, Group, SectionGroup,
@@ -48,6 +48,7 @@ import extdeps.llm.cli {
 import gunbc.roadmap_dispatch_actuator {
   dispatch_actuator_selection,
   dispatch_actuator_selection_for_provider,
+  DispatchActuatorSelectionOk,
   DispatchActuatorSelectionRefused,
   ClaudeCodeProvider,
   dispatch_tmux_session_name,
@@ -58,8 +59,6 @@ import gunbc.roadmap_dispatch_actuator {
   filled_dispatch_brief_for_node,
   dispatch_cli_provider,
   CodexDispatchProvider,
-  dispatch_reasoning_effort_for_intricacy,
-  claude_effort_for_intricacy,
   claude_spawn_argv,
   codex_spawn_argv,
   dispatch_codex_home,
@@ -109,6 +108,19 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn nid(s: String) -> RoadmapNodeId { s }
 
+fn sized_with_intricacy(id: String, intricacy: Intricacy, title: String) -> RoadmapNode {
+  RoadmapNode {
+    identity: "rnfx_R2PE6DBK7RVVR2NHNQN0" as RoadmapNodeIdentity,
+    node: nid(s: id),
+    line: DerivableLine { prs: [1], title: title, description: "" },
+    carriers: [],
+    sizing: Sized { intricacy: intricacy, volume: VolumeMedium, repo: "gunbc", acceptance: PrsMerged },
+    execution: ExecutionContractUnspecified,
+    owner: "",
+    signoff: Unsigned,
+  }
+}
+
 fn sized_derivable(id: String, prs: List<Int>, title: String) -> RoadmapNode {
   RoadmapNode {
     identity: "rnfx_R2PE6DBK7RVVR2NHNQN0" as RoadmapNodeIdentity,
@@ -152,18 +164,18 @@ test fn witness_brief_fill_includes_node_metadata() -> Bool {
 }
 
 test fn witness_dispatch_effort_ignores_intricacy() -> Bool {
-  match claude_effort_for_intricacy(i: IntricacyHigh) {
-    Present { value: high_effort } =>
-      match dispatch_reasoning_effort_for_intricacy(i: IntricacyHigh) {
-        Present { value: high_same } =>
-          match dispatch_reasoning_effort_for_intricacy(i: IntricacyLow) {
-            Present { value: low_effort } =>
-              reasoning_effort_label(effort: high_effort) == "medium"
-                && reasoning_effort_label(effort: high_same) == "medium"
-                && reasoning_effort_label(effort: low_effort) == "medium"
-            none => false
-          }
-    none => false
+  let high = sized_with_intricacy(id: "high-node", intricacy: IntricacyHigh, title: "High")
+  let low = sized_with_intricacy(id: "low-node", intricacy: IntricacyLow, title: "Low")
+  match dispatch_actuator_selection(node_sizing: high.sizing) {
+    DispatchActuatorSelectionOk { provider: _, effort: high_effort, process_fingerprint: _ } =>
+      match dispatch_actuator_selection(node_sizing: low.sizing) {
+        DispatchActuatorSelectionOk { provider: _, effort: low_effort, process_fingerprint: _ } =>
+          reasoning_effort_label(effort: high_effort) == "medium"
+            && reasoning_effort_label(effort: low_effort) == "medium"
+            && high_effort == low_effort
+        DispatchActuatorSelectionRefused { reason: _ } => false
+      }
+    DispatchActuatorSelectionRefused { reason: _ } => false
   }
 }
 

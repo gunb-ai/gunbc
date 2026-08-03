@@ -424,16 +424,12 @@ fn dispatch_worker_observation() -> WorkerObservation? {
   }
 }
 
-fn dispatch_reasoning_effort_for_intricacy(i: Intricacy) -> ReasoningEffort? {
+fn dispatch_applied_effort() -> ReasoningEffort? {
   match dispatch_actuator_selection(node_sizing: Unsized) {
     DispatchActuatorSelectionOk { provider: _, effort, process_fingerprint: _ } =>
       Present { value: effort }
     DispatchActuatorSelectionRefused { reason: _ } => none
   }
-}
-
-fn claude_effort_for_intricacy(i: Intricacy) -> ReasoningEffort? {
-  dispatch_reasoning_effort_for_intricacy(i: i)
 }
 
 fn dispatch_provider_process_fingerprint(provider: DispatchCliProvider) -> NonEmptyStr? {
@@ -1052,6 +1048,12 @@ fn codex_spawn_argv_for_instance(
   )
 }
 
+type DispatchProviderInnerArgv
+  = DispatchProviderInnerArgvReady { argv: List<String> }
+  | CursorProviderSpawnUnwired { reason: NonEmptyStr }
+
+data cursor_provider_spawn_unwired_reason: NonEmptyStr = "cursor dispatch inner argv is not wired on this actuator path" as NonEmptyStr
+
 fn dispatch_provider_inner_argv(
   provider: DispatchCliProvider,
   effort: ReasoningEffort,
@@ -1059,25 +1061,30 @@ fn dispatch_provider_inner_argv(
   node_id: RoadmapNodeId,
   worktree_path: String,
   brief: String,
-) -> List<String> {
+) -> DispatchProviderInnerArgv {
   match provider {
     ClaudeCodeProvider =>
-      concat(
-        ["env", "CLAUDE_CODE_NO_FLICKER=1"],
-        claude_spawn_argv(
+      DispatchProviderInnerArgvReady {
+        argv: concat(
+          ["env", "CLAUDE_CODE_NO_FLICKER=1"],
+          claude_spawn_argv(
+            effort: effort,
+            session_uuid: session_uuid,
+            node_id: node_id,
+            brief: brief,
+          ),
+        ),
+      }
+    CodexDispatchProvider =>
+      DispatchProviderInnerArgvReady {
+        argv: codex_spawn_argv(
           effort: effort,
-          session_uuid: session_uuid,
-          node_id: node_id,
+          worktree_path: worktree_path,
           brief: brief,
         ),
-      )
-    CodexDispatchProvider =>
-      codex_spawn_argv(
-        effort: effort,
-        worktree_path: worktree_path,
-        brief: brief,
-      )
-    CursorDispatchProvider => []
+      }
+    CursorDispatchProvider =>
+      CursorProviderSpawnUnwired { reason: cursor_provider_spawn_unwired_reason }
   }
 }
 
@@ -1089,32 +1096,37 @@ fn dispatch_provider_inner_argv_for_instance(
   node_id: RoadmapNodeId,
   worktree_path: String,
   brief: String,
-) -> List<String> {
+) -> DispatchProviderInnerArgv {
   match provider {
     ClaudeCodeProvider =>
-      concat(
-        [
-          dispatch_capability_program(
-            environment: instance.execution_environment,
-            cap: EnvironmentBindingCapability,
+      DispatchProviderInnerArgvReady {
+        argv: concat(
+          [
+            dispatch_capability_program(
+              environment: instance.execution_environment,
+              cap: EnvironmentBindingCapability,
+            ),
+            "CLAUDE_CODE_NO_FLICKER=1",
+          ],
+          claude_spawn_argv(
+            effort: effort,
+            session_uuid: session_uuid,
+            node_id: node_id,
+            brief: brief,
           ),
-          "CLAUDE_CODE_NO_FLICKER=1",
-        ],
-        claude_spawn_argv(
+        ),
+      }
+    CodexDispatchProvider =>
+      DispatchProviderInnerArgvReady {
+        argv: codex_spawn_argv_for_instance(
+          instance: instance,
           effort: effort,
-          session_uuid: session_uuid,
-          node_id: node_id,
+          worktree_path: worktree_path,
           brief: brief,
         ),
-      )
-    CodexDispatchProvider =>
-      codex_spawn_argv_for_instance(
-        instance: instance,
-        effort: effort,
-        worktree_path: worktree_path,
-        brief: brief,
-      )
-    CursorDispatchProvider => []
+      }
+    CursorDispatchProvider =>
+      CursorProviderSpawnUnwired { reason: cursor_provider_spawn_unwired_reason }
   }
 }
 
@@ -1444,13 +1456,7 @@ fn dispatch_spawn_commands_for_resolved_instance(
     attempt_key: attempt_key,
   )
   let branch_name = dispatch_branch_name(node_id: node.node, attempt_key: attempt_key)
-  let worktree = git_worktree_add_argv_for_instance(
-    instance: instance,
-    worktree_path: worktree_path,
-    branch_name: branch_name,
-    remote_ref: instance.dispatch_base_ref as String,
-  )
-  let provider_inner = dispatch_provider_inner_argv_for_instance(
+  match dispatch_provider_inner_argv_for_instance(
     instance: instance,
     provider: provider,
     effort: effort,
@@ -1458,6 +1464,18 @@ fn dispatch_spawn_commands_for_resolved_instance(
     node_id: node.node,
     worktree_path: worktree_path,
     brief: brief,
+  ) {
+    CursorProviderSpawnUnwired { reason } =>
+      DispatchSpawnRefused {
+        step: "cursor-provider-spawn" as NonEmptyStr,
+        detail: reason as String,
+      }
+    DispatchProviderInnerArgvReady { argv: provider_inner } => {
+  let worktree = git_worktree_add_argv_for_instance(
+    instance: instance,
+    worktree_path: worktree_path,
+    branch_name: branch_name,
+    remote_ref: instance.dispatch_base_ref as String,
   )
   let state_prepare = attempt_state_prepare_argv_for_instance(
     instance: instance,
@@ -1514,6 +1532,8 @@ fn dispatch_spawn_commands_for_resolved_instance(
           ),
         },
       }
+    }
+    }
   }
 }
 
