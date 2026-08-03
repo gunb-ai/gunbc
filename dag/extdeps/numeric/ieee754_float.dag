@@ -2,10 +2,10 @@ module extdeps.numeric.ieee754_float
 
 import std.types { Float, NonEmptyStr }
 import std.algebra_law {
-  Associativity,
+  AssociativityRefuted,
   AlgebraOperationRef,
+  AssociativityCounterexampleWitness,
   CarrierAlgebraLawFact,
-  LawCounterexampleWitness,
   LawRefutedBy,
 }
 import extdeps.external_authority { ExternalAuthority }
@@ -29,7 +29,7 @@ data float_add_operation_ref: AlgebraOperationRef = AlgebraOperationRef {
   operation_name: float_add_operation_name,
 }
 
-data float_add_associativity_counterexample: LawCounterexampleWitness<Float> = LawCounterexampleWitness {
+data float_add_associativity_counterexample: AssociativityCounterexampleWitness<Float> = AssociativityCounterexampleWitness {
   left_operand: 10000000000000000.0,
   middle_operand: 1.0,
   right_operand: 1.0,
@@ -40,12 +40,13 @@ data float_add_associativity_counterexample: LawCounterexampleWitness<Float> = L
 data float_add_associativity_refuted: CarrierAlgebraLawFact<Float> = CarrierAlgebraLawFact {
   carrier: float_carrier_name,
   evidence: LawRefutedBy {
-    law: Associativity,
-    operation: float_add_operation_ref,
-    witness: float_add_associativity_counterexample,
+    refutation: AssociativityRefuted {
+      op_ref: float_add_operation_ref,
+      witness: float_add_associativity_counterexample,
+    },
   },
 }
 
-fn float_add_associativity_refutation_witness() -> LawCounterexampleWitness<Float> {
+fn float_add_associativity_refutation_witness() -> AssociativityCounterexampleWitness<Float> {
   float_add_associativity_counterexample
 }

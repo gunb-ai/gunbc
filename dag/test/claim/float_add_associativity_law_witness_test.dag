@@ -1,9 +1,8 @@
 module test.claim.float_add_associativity_law_witness_test
 
+import std.types { Bool, Float }
 import std.algebra_law {
-  Associativity,
-  LawCounterexampleWitness,
-  LawRefutedBy,
+  AssociativityCounterexampleWitness,
   law_evidence_fold,
   LawEvidenceFold,
 }
@@ -13,6 +12,7 @@ import extdeps.numeric.ieee754_float {
   float_add_operation_ref,
   float_carrier_name,
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -24,7 +24,7 @@ fn float_add_associativity_right_fold(a: Float, b: Float, c: Float) -> Float {
   a + (b + c)
 }
 
-fn counterexample_matches_execution(witness: LawCounterexampleWitness<Float>) -> Bool {
+fn associativity_counterexample_matches_execution(witness: AssociativityCounterexampleWitness<Float>) -> Bool {
   let left = float_add_associativity_left_fold(
     a: witness.left_operand,
     b: witness.middle_operand,
@@ -44,14 +44,17 @@ fn authored_fact_is_refuted_arm() -> Bool {
   law_evidence_fold(
     evidence: float_add_associativity_refuted.evidence,
     fold: LawEvidenceFold {
-      exhaustively_verified: fn(law, operation, cardinality, cases) { false },
-      refuted_by: fn(law, operation, witness) {
-        law == Associativity
-          && operation.carrier == float_carrier_name
-          && operation.operation_name == float_add_operation_ref.operation_name
-          && counterexample_matches_execution(witness: witness)
+      exhaustively_verified: fn(law_key, op_ref, cardinality, cases) { false },
+      associativity_refuted: fn(op_ref, witness) {
+        op_ref.carrier == float_carrier_name
+          && op_ref.operation_name == float_add_operation_ref.operation_name
+          && associativity_counterexample_matches_execution(witness: witness)
       },
-      declared_by_authority: fn(law, operation, authority) { false },
+      commutativity_refuted: fn(op_ref, witness) { false },
+      left_identity_refuted: fn(op_ref, witness) { false },
+      right_identity_refuted: fn(op_ref, witness) { false },
+      distributivity_refuted: fn(witness) { false },
+      declared_by_authority: fn(law_key, op_ref, authority) { false },
     },
   )
 }
@@ -64,21 +67,19 @@ test fn w_float_add_associativity_associative_triple_control() -> Bool {
   let a = 1.0
   let b = 2.0
   let c = 3.0
-  float_add_associativity_left_fold(a: a, b: b, c: c)
-    == float_add_associativity_right_fold(a: a, b: b, c: c)
+  let left = float_add_associativity_left_fold(a: a, b: b, c: c)
+  let right = float_add_associativity_right_fold(a: a, b: b, c: c)
+  left == right
 }
 
-test fn w_float_add_associativity_red_on_fabricated_fold_results() -> Bool {
+test fn w_float_add_associativity_rejects_fabricated_left_fold_result() -> Bool {
   let witness = float_add_associativity_counterexample
-  let left = float_add_associativity_left_fold(
-    a: witness.left_operand,
-    b: witness.middle_operand,
-    c: witness.right_operand,
-  )
-  let right = float_add_associativity_right_fold(
-    a: witness.left_operand,
-    b: witness.middle_operand,
-    c: witness.right_operand,
-  )
-  !(left == witness.right_fold_result && right == witness.left_fold_result)
+  let fabricated = AssociativityCounterexampleWitness {
+    left_operand: witness.left_operand,
+    middle_operand: witness.middle_operand,
+    right_operand: witness.right_operand,
+    left_fold_result: witness.right_fold_result,
+    right_fold_result: witness.right_fold_result,
+  }
+  !associativity_counterexample_matches_execution(witness: fabricated)
 }
