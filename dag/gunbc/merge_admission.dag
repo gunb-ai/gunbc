@@ -1,6 +1,6 @@
 module gunbc.merge_admission
 
-import std.types { NonEmptyStr, PathSegment, path_segment_is_safe, CommitSha, String, List, Bool, Int }
+import std.types { NonEmptyStr, CommitSha, String, List, Bool, Int }
 import std.content_hash {
   ContentHash,
   Fnv1a64Structural,
@@ -44,6 +44,11 @@ import gunbc.ci_gate {
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.repo_identity { gunbc_default_branch_name }
+import gunbc.merge_admission_subject {
+  WalkAttemptId,
+  TestedSubject,
+  walk_attempt_id_eq,
+}
 
 type MergeStrategy
   = SquashMerge
@@ -560,30 +565,7 @@ fn classify_merge_admission_verdict(
 
 data merge_admission_attempt_scope_note: String = "ATTEMPT SCOPE (ruling 2026-07-30): the receipt carries the walk-attempt identity in the PAYLOAD, not just the path, and the gate requires receipt.attempt_id == current — path identity alone is not enough, because a misrouted read must fail on the content too. A receipt from another attempt is neither stale nor fresh: it is NOT THE SUBJECT, so MergeDeniedWrongAttempt is checked FIRST, before conclusion, base, and roster — asking whether a foreign receipt's base is current would be answering a question about the wrong run. The identity derives from GITHUB_RUN_ID + GITHUB_RUN_ATTEMPT + GITHUB_JOB on GitHub; non-GitHub execution must supply GUNBC_WALK_ATTEMPT_ID explicitly or the walk-side composition refuses — never a silent constant like a bare local, which would make every local run one attempt and the wrong-attempt refusal unreachable off CI. Deleting or recreating the attempt directory at walk start remains hygiene; correctness never depends on cleaning a shared path."
 
-data walk_attempt_id_note: String = "The attempt identity is a PATH SEGMENT, because it is concatenated into one: merge_admission_attempt_dir builds <root>/.gunbc/merge-admission/<attempt_id>/. As a bare NonEmptyStr it was neither path-safe nor wire-safe (review 2026-07-30) — `../other-attempt` escapes the attempt directory, `a/b` invents a level, `.`/`..` alias the parent, and an embedded CR or LF splits the line-oriented receipt written under that name, so two logically distinct attempts could resolve to one filesystem subject or one receipt could be read as two. Both producers — the GitHub-derived composition and the explicit GUNBC_WALK_ATTEMPT_ID pass-through — now go through walk_attempt_id, which is the ONLY constructor and tests std.types.path_segment_is_safe, the single authority for what makes a string safe to concatenate as one path segment. It refuses rather than sanitizing: an encoded segment would denote a different attempt than the one the caller named."
-
-type WalkAttemptId = PathSegment where brand("WalkAttemptId")
-
-fn walk_attempt_id(raw: String) -> WalkAttemptId? {
-  if path_segment_is_safe(raw: raw) {
-    Present { value: raw as WalkAttemptId }
-  } else {
-    none
-  }
-}
-
-fn walk_attempt_id_eq(left: WalkAttemptId, right: WalkAttemptId) -> Bool {
-  (left as String) == (right as String)
-}
-
-type TestedSubject {
-  attempt_id: WalkAttemptId
-  head_sha: CommitSha
-  base_ref: String
-  base_tree_hash: GitObjectId
-}
-
-data tested_subject_note: String = "THE SUBJECT THE FLOOR TESTED, captured as the first ordinary batch — before any substantive floor work — and bound into the receipt by the stamp. The stamp must NOT re-read HEAD or re-observe the merge target at stamp time: main can advance during a floor that runs for tens of minutes, and a receipt binding post-floor observations would claim the floor tested a tree it never saw. The gate then fetches the CURRENT target and classifies tested_base_tree_hash against it — two base facts with different jobs, never one observation doing both (the deleted single pre-floor fetch was exactly that fusion, and the freshness hole it left is what the old separate gate step's own fresh fetch existed to catch)."
+data git_object_id_grounding_note: String = "The tested base tree is a GitObjectId, not a ContentHash. DESIGN's own §3 residue records that ContentHash is one brand over two unrelated hash families (structural fnv1a64 fingerprints and cited cryptographic digests) with no modeled discriminant; a Git tree object id is a THIRD domain, and admitting it into the same brand would let a gate-roster structural fingerprint inhabit the tested-tree field and typecheck. extdeps.git.object_store.GitObjectId is the existing single authority and already models the SHA-1/SHA-256 repository-format transition, so this grounds on it rather than minting a GitTreeOid nickname beside it (§3). Equality and the validating textual constructors live THERE, not here: both are generic Git behaviour, and holding them in this consumer was a fork this module briefly carried (review 2026-07-30)."
 
 type MergeAdmissionReceiptV2 {
   attempt_id: WalkAttemptId

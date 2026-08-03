@@ -768,6 +768,10 @@ pub fn minute_count(m: Minute) -> Nat {
     measure_count(m.clone())
 }
 
+pub fn minute_to_millisecond(m: Minute) -> Millisecond {
+    millisecond(((minute_count(m.clone()) * seconds_per_minute()) * milliseconds_per_second()))
+}
+
 pub type Percent = Rc<Measure<(), (), i64>>;
 
 pub fn percent(count: Nat) -> Percent {
