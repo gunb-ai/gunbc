@@ -239,7 +239,10 @@ fn cadence_scheduling_rows_for_witness(
   let primary = witness_consumer_cadence_for_row(
     entry: entry,
     function: function,
-    excluded_from_discovery: witness_row_excluded_from_discovery(entry: entry)
+    excluded_from_discovery: witness_row_excluded_from_discovery(
+      entry: entry,
+      function: function
+    )
   )
   cadence_scheduling_rows_for_primary(
     primary: primary,

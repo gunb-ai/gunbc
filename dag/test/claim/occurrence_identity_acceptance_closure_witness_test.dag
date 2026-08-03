@@ -1,0 +1,287 @@
+module test.claim.occurrence_identity_acceptance_closure_witness_test
+
+import std.types { Bool, String, List }
+import std.occurrence_identity {
+  OccurrenceIdentityAcceptanceLaw,
+  occurrence_identity_acceptance_laws,
+}
+import gunbc.occurrence_identity_acceptance_closure {
+  OccurrenceIdentityReceiptEnrollmentDebt,
+  occurrence_identity_consumer_red_debts,
+  occurrence_identity_receipt_enrollment_debts,
+  OccurrenceIdentityExecutingReceipt,
+  OccurrenceIdentityReceiptPassed,
+  OccurrenceIdentityReceiptFailed,
+  OccurrenceIdentityAdmittedDeferral,
+  OccurrenceIdentityClosingCovered,
+  OccurrenceIdentityClosingOpen,
+  OccurrenceIdentityClosingRefused,
+  UnknownReceiptLaw,
+  DuplicateReceiptLaw,
+  StaleReceiptLaw,
+  ReceiptDidNotPass,
+  ReceiptDeferralOverlap,
+  occurrence_identity_closing_verdict,
+  occurrence_identity_closing_complete,
+}
+
+data occurrence_identity_consumer_red_debt_witness_note: String = "The expected owner and required receipt are PARAMETERS, not shared constants. Four receipts are green by local execution but retain consumer debt until parser_transport_witness_entries exists on main and executes them per PR. The census pins all six debts to their distinct acceptance nodes and exact required_receipt text, preventing a row from staying counted while silently weakening what execution must make RED."
+
+fn occurrence_identity_consumer_red_debt_has(
+  id: String,
+  owner: String,
+  required_receipt: String
+) -> Bool {
+  occurrence_identity_consumer_red_debts
+    |> any(row =>
+      row.id == id &&
+      row.owner == owner &&
+      row.required_receipt == required_receipt &&
+      string_contains(row.dissolve_on, "DISSOLVE-ON:")
+    )
+}
+
+test fn occurrence_identity_consumer_red_debt_is_counted_holds() -> Bool {
+  (occurrence_identity_consumer_red_debts |> count) == 6 &&
+  occurrence_identity_consumer_red_debt_has(
+    id: "rebuilt-reference-identity-preservation",
+    owner: "namespace-reference-derived-closure",
+    required_receipt: "A production reference rebuild preserves the exact sidecar occurrence identity and containment path; dropping or reminting the occurrence must make the consumer RED.",
+  ) &&
+  occurrence_identity_consumer_red_debt_has(
+    id: "one-occurrence-collector-dedupe",
+    owner: "namespace-reference-derived-closure",
+    required_receipt: "Two observations of one authored occurrence enter the collector once by exact occurrence identity, never by spelling, SourceSpan, or Node structure.",
+  ) &&
+  occurrence_identity_consumer_red_debt_has(
+    id: "structurally-equal-distinct-occurrences",
+    owner: "namespace-reference-derived-closure",
+    required_receipt: "Structurally equal and equally spelled authored occurrences with distinct IDs remain two collector entries.",
+  ) &&
+  occurrence_identity_consumer_red_debt_has(
+    id: "pattern-declaration-reachability",
+    owner: "namespace-reference-derived-closure",
+    required_receipt: "Authoritative collection reaches every parser-minted pattern declaration occurrence, including nested pattern binders.",
+  ) &&
+  occurrence_identity_consumer_red_debt_has(
+    id: "inferred-target-anchor-identity",
+    owner: "namespace-canonical-binding",
+    required_receipt: "An inferred target projection remains anchored to the exact authored occurrence instead of a rebuilt shell Node, spelling, or SourceSpan.",
+  ) &&
+  occurrence_identity_consumer_red_debt_has(
+    id: "same-spelling-parser-declaration-isolation",
+    owner: "namespace-reference-derived-closure",
+    required_receipt: "Same-spelling declarations and references in sibling match arms, nested lets, lambdas, and parameters retain distinct authored identities and containment paths without overwrite.",
+  )
+}
+
+test fn occurrence_identity_receipt_enrollment_debt_is_counted_holds() -> Bool {
+  occurrence_identity_receipt_enrollment_debts == [
+    OccurrenceIdentityReceiptEnrollmentDebt {
+      id: "namespace-parser-occurrence-receipts-per-pr-enrollment",
+      receipt_functions: [
+        "w_rebuilt_reference_identity_preservation_executes_holds",
+        "w_structurally_equal_distinct_occurrences_execute_holds",
+        "w_pattern_declaration_reachability_executes_holds",
+        "w_same_spelling_parser_declaration_isolation_executes_holds",
+        "pipeline_occurrence_sidecar_serde_round_trip",
+      ],
+      owner: "witness-scheduling-source-root-surface",
+      cause: "The four DAG receipts and the generated Rust rebuild assertion are green by execution and discriminating under planted defects, but none is executed per PR on main. The DAG receipts require the scoped dag and src/v1 parser-transport batch whose parser_transport_witness_entries roster is not yet on main. The Rust test crate containing pipeline_occurrence_sidecar_serde_round_trip is cargo-checked but its tests are not executed.",
+      dissolve_on: "DISSOLVE-ON: gunbc.ci_layer_roots.parser_transport_witness_entries exists on main and executes the four DAG functions per PR, and pipeline_occurrence_sidecar_serde_round_trip executes per PR or its rebuild assertion migrates into an enrolled witness; prove both enrollment surfaces and narrow or delete this row in the same PR.",
+    },
+  ]
+}
+
+data occurrence_identity_closing_check_witness_note: String = "Synthetic controls for the validation/workflow closing fold, not production behavior receipts and not grounds for deleting debt. The positive control constructs Passed rows only to test the fold; it does not assert that any production consumer executed. The deferral control proves covered-with-deferral is not completion; the open control removes one law's coverage; and the refusal controls independently plant unknown, duplicate, stale, non-green, and receipt-plus-deferral rows. Production integration must replace these fixtures with observations decoded from the live scoped execution receipt."
+
+fn occurrence_identity_closing_receipt(
+  law: OccurrenceIdentityAcceptanceLaw
+) -> OccurrenceIdentityExecutingReceipt {
+  OccurrenceIdentityExecutingReceipt {
+    law_id: law.id,
+    required_receipt: law.required_receipt,
+    consumer: "synthetic-closing-check-control",
+    execution: OccurrenceIdentityReceiptPassed,
+  }
+}
+
+fn occurrence_identity_closing_exact_receipts() -> List<OccurrenceIdentityExecutingReceipt> {
+  occurrence_identity_acceptance_laws
+    |> map(law => occurrence_identity_closing_receipt(law: law))
+}
+
+fn occurrence_identity_closing_deferral(
+  law: OccurrenceIdentityAcceptanceLaw
+) -> OccurrenceIdentityAdmittedDeferral {
+  OccurrenceIdentityAdmittedDeferral {
+    law_id: law.id,
+    required_receipt: law.required_receipt,
+    reason: "synthetic closing-check deferral control",
+    next_trigger: "synthetic trigger",
+  }
+}
+
+test fn occurrence_identity_closing_exact_receipts_cover_every_law_holds() -> Bool {
+  occurrence_identity_acceptance_laws |> count == 5 &&
+  occurrence_identity_closing_complete(
+    verdict: occurrence_identity_closing_verdict(
+      receipts: occurrence_identity_closing_exact_receipts(),
+      deferrals: [],
+    )
+  )
+}
+
+test fn occurrence_identity_closing_deferral_is_covered_but_not_complete_holds() -> Bool {
+  let deferred_law = occurrence_identity_acceptance_laws |> first
+  match deferred_law {
+    Absent => false
+    Present { value: law } =>
+      let receipts = occurrence_identity_closing_exact_receipts()
+        |> filter(receipt => receipt.law_id != law.id)
+      let verdict = occurrence_identity_closing_verdict(
+        receipts: receipts,
+        deferrals: [occurrence_identity_closing_deferral(law: law)],
+      )
+      match verdict {
+        OccurrenceIdentityClosingCovered { deferred_law_ids: deferred_law_ids } =>
+          deferred_law_ids == [law.id] &&
+          !occurrence_identity_closing_complete(verdict: verdict)
+        _ => false
+      }
+  }
+}
+
+test fn occurrence_identity_closing_missing_law_stays_open_holds() -> Bool {
+  let omitted_law = occurrence_identity_acceptance_laws |> first
+  match omitted_law {
+    Absent => false
+    Present { value: law } =>
+      match occurrence_identity_closing_verdict(
+        receipts: occurrence_identity_closing_exact_receipts()
+          |> filter(receipt => receipt.law_id != law.id),
+        deferrals: [],
+      ) {
+        OccurrenceIdentityClosingOpen { missing_law_ids: missing_law_ids } =>
+          missing_law_ids == [law.id]
+        _ => false
+      }
+  }
+}
+
+test fn occurrence_identity_closing_unknown_receipt_refuses_holds() -> Bool {
+  let unknown = OccurrenceIdentityExecutingReceipt {
+    law_id: "unknown-occurrence-law",
+    required_receipt: "unknown",
+    consumer: "synthetic-closing-check-control",
+    execution: OccurrenceIdentityReceiptPassed,
+  }
+  match occurrence_identity_closing_verdict(
+    receipts: append(occurrence_identity_closing_exact_receipts(), items: [unknown]),
+    deferrals: [],
+  ) {
+    OccurrenceIdentityClosingRefused { refusals: refusals } =>
+      refusals |> any(refusal => match refusal {
+        UnknownReceiptLaw { law_id: law_id } => law_id == "unknown-occurrence-law"
+        _ => false
+      })
+    _ => false
+  }
+}
+
+test fn occurrence_identity_closing_duplicate_receipt_refuses_holds() -> Bool {
+  let receipts = occurrence_identity_closing_exact_receipts()
+  let duplicate = receipts |> first
+  match duplicate {
+    Absent => false
+    Present { value: receipt } =>
+      match occurrence_identity_closing_verdict(
+        receipts: append(receipts, items: [receipt]),
+        deferrals: [],
+      ) {
+        OccurrenceIdentityClosingRefused { refusals: refusals } =>
+          refusals |> any(refusal => match refusal {
+            DuplicateReceiptLaw { law_id: law_id } => law_id == receipt.law_id
+            _ => false
+          })
+        _ => false
+      }
+  }
+}
+
+test fn occurrence_identity_closing_stale_receipt_refuses_holds() -> Bool {
+  let exact = occurrence_identity_closing_exact_receipts()
+  let first_exact = exact |> first
+  match first_exact {
+    Absent => false
+    Present { value: receipt } =>
+      let stale = OccurrenceIdentityExecutingReceipt {
+        law_id: receipt.law_id,
+        required_receipt: "stale receipt text",
+        consumer: receipt.consumer,
+        execution: OccurrenceIdentityReceiptPassed,
+      }
+      match occurrence_identity_closing_verdict(
+        receipts: append(
+          exact |> filter(other => other.law_id != receipt.law_id),
+          items: [stale],
+        ),
+        deferrals: [],
+      ) {
+        OccurrenceIdentityClosingRefused { refusals: refusals } =>
+          refusals |> any(refusal => match refusal {
+            StaleReceiptLaw { law_id: law_id } => law_id == receipt.law_id
+            _ => false
+          })
+        _ => false
+      }
+  }
+}
+
+test fn occurrence_identity_closing_non_green_receipt_refuses_holds() -> Bool {
+  let exact = occurrence_identity_closing_exact_receipts()
+  let first_exact = exact |> first
+  match first_exact {
+    Absent => false
+    Present { value: receipt } =>
+      let failed = OccurrenceIdentityExecutingReceipt {
+        law_id: receipt.law_id,
+        required_receipt: receipt.required_receipt,
+        consumer: receipt.consumer,
+        execution: OccurrenceIdentityReceiptFailed,
+      }
+      match occurrence_identity_closing_verdict(
+        receipts: append(
+          exact |> filter(other => other.law_id != receipt.law_id),
+          items: [failed],
+        ),
+        deferrals: [],
+      ) {
+        OccurrenceIdentityClosingRefused { refusals: refusals } =>
+          refusals |> any(refusal => match refusal {
+            ReceiptDidNotPass { law_id: law_id } => law_id == receipt.law_id
+            _ => false
+          })
+        _ => false
+      }
+  }
+}
+
+test fn occurrence_identity_closing_receipt_deferral_overlap_refuses_holds() -> Bool {
+  let law = occurrence_identity_acceptance_laws |> first
+  match law {
+    Absent => false
+    Present { value: first_law } =>
+      match occurrence_identity_closing_verdict(
+        receipts: occurrence_identity_closing_exact_receipts(),
+        deferrals: [occurrence_identity_closing_deferral(law: first_law)],
+      ) {
+        OccurrenceIdentityClosingRefused { refusals: refusals } =>
+          refusals |> any(refusal => match refusal {
+            ReceiptDeferralOverlap { law_id: law_id } => law_id == first_law.id
+            _ => false
+          })
+        _ => false
+      }
+  }
+}
