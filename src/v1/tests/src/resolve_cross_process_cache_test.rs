@@ -39,8 +39,10 @@ use im::Vector;
 use std::rc::Rc;
 use v1_compiler::cli_run::{
     build_multi_entry_index, load_sources_for_entry, make_eval_context,
-    resolve_closure_request_key_from_digests, resolve_entry_graph, resolve_entry_with_index,
-    resolved_graph_parts_semantic_digest, run_claim, ClaimOutcome,
+    materialization_provider_ctx_build_count_for_test, provider_bootstrap_store_skip_count,
+    provider_ctx_reentrancy_refusal_for_test, resolve_closure_request_key_from_digests,
+    resolve_entry_graph, resolve_entry_with_index, resolved_graph_parts_semantic_digest, run_claim,
+    ClaimOutcome,
 };
 use v1_compiler::resolved_graph_cache::{
     build_incomplete_v3_artifact_bytes, build_valid_artifact_bytes, closure_content_digest,
@@ -1205,4 +1207,64 @@ fn same_subject_resolves_share_one_graph_store_hits_v2_disk() {
             "memo repeat must not decode again"
         );
     });
+}
+
+// Repeat-resolve through the disk seam must not re-enter the materialization provider.
+//
+// Root cause (2026-08-03): the seam suppressed provider routing on the PROBE direction
+// only. The STORE direction ignored the same flag, so writing an artifact during the
+// provider's own bootstrap called back into `materialization_provider_ctx` while its
+// memo slot was still empty — rebuilding the provider closure, whose nested resolve
+// re-entered the store, unbounded, at roughly 1GiB of resolved graph per level. The
+// observed shape was an OOM kill, not a diagnostic.
+//
+// Discriminating on the counted bootstrap window: a resolve that stores while the
+// provider is booting MUST record a skip and MUST leave the provider ctx built exactly
+// once. Before the fix this test does not merely fail — it exhausts memory — which is
+// precisely why the wall below exists as a separately loud control.
+#[test]
+fn repeat_resolve_through_disk_seam_does_not_reenter_provider() {
+    let dir = temp_dir("no-reenter");
+    let (roots, a, _b, _c) = write_fixture(&dir);
+    let cache_dir = dir.join("cache");
+    fs::create_dir_all(&cache_dir).expect("cache dir");
+
+    with_cache_env(&cache_dir, || {
+        let skips_before = provider_bootstrap_store_skip_count();
+
+        let index = build_multi_entry_index(&roots);
+        let (_g1, _) = resolve_entry_with_index(&index, &a).expect("cold resolve");
+        let builds_after_cold = materialization_provider_ctx_build_count_for_test();
+        assert!(
+            builds_after_cold >= 1,
+            "the store path must have booted the provider ctx at least once"
+        );
+        assert!(
+            provider_bootstrap_store_skip_count() > skips_before,
+            "the provider's own bootstrap resolve must record a counted store skip,              never silently recurse into the provider"
+        );
+
+        // A fresh index for the same subject: the disk-hit direction.
+        let index2 = build_multi_entry_index(&roots);
+        let (_g3, _) = resolve_entry_with_index(&index2, &a).expect("disk hit");
+        assert_eq!(
+            materialization_provider_ctx_build_count_for_test(),
+            builds_after_cold,
+            "a repeat resolve through the disk seam must reuse the provider ctx,              never rebuild it (a rebuild is the unbounded-recursion shape)"
+        );
+    });
+}
+
+// The construction wall itself, exercised directly and loudly: a demand for the
+// provider raised while the provider's own authority closure is still resolving is a
+// typed, located refusal. Remove the wall and this rebuilds instead of refusing.
+#[test]
+fn reentrant_provider_ctx_construction_refuses() {
+    let err = provider_ctx_reentrancy_refusal_for_test()
+        .err()
+        .expect("re-entrant provider-ctx construction must refuse, not rebuild");
+    assert!(
+        err.contains("re-entrant provider-ctx construction refused"),
+        "refusal must be located and name the class, got: {err}"
+    );
 }
