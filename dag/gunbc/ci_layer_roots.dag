@@ -110,6 +110,12 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     dissolve_on: "the wet lane un-darkens and admits live-filesystem integration rows under its own budget — falsifier_self_host_wet_cadence_active flips true, or a build-verification workflow enrolls the wet rosters — at which point this file's fns enroll there as declared execution rows and this exclusion deletes. Same trigger as the four wet_integration_offline_note rows; this row joins that class rather than minting a second one. Local recipe until then: claim_batch --wet --source-root dag --source-root src/v2 --entry dag/test/claim/artifact_store_fs_witness_test.dag --functions <csv> (store roots under /tmp must pre-exist; Filesystem.Write does not create parents)."
   },
   WitnessExclusionRow {
+    pattern: "direct_rust_door_write_compile_witness_test.dag",
+    classification: OfflineLocalRecipe,
+    reason: "wet-integration class (wet_integration_offline_note posture), substantiated per-row: direct_rust_door_emit_write_compile_holds runs tools.direct_rust_door_transport.run_direct_rust_door_emit_write_compile_smoke, which performs live shell.Mktemp.Dir, Filesystem.Write, and cargo.Build.BuildManifest effects with no hermetic mock_response coverage. Hermetic discovery REFUSES rather than fabricating Unit, so per-PR discovery cannot exercise the write-to-disk + compile receipt. Ingest-path provenance and closing-contract witnesses live in src/v2/test/claim/long/ (5s budget rule); fast closure witnesses stay per-PR in src/v2/test/claim/self_host/.",
+    dissolve_on: "the wet lane un-darkens and admits live cargo compile smokes under its own budget; this witness enrolls there as a declared execution row and this exclusion deletes. Local recipe until then: claim_batch --wet --source-root dag --source-root src/v2 --entry dag/test/claim/direct_rust_door_write_compile_witness_test.dag --function direct_rust_door_emit_write_compile_holds"
+  },
+  WitnessExclusionRow {
     pattern: "external_model_scope_live_cover_witness_test.dag",
     classification: OfflineLocalRecipe,
     reason: "wet-integration class (wet_integration_offline_note posture), substantiated per-row at enrollment (the d4bef96 floor red is the receipt): every test fn in this file performs genuinely live host effects — a Filesystem.List directory walk of dag/extdeps and a git.Core.DiffNameStatus diff from the pinned legacy_manifest_freeze_sha to HEAD — and hermetic discovery REFUSES them (no published mock operation for either), so there is no hermetic dual to discover. The discriminating pure logic is NOT excluded: scope_cover_holds / manifest_freeze_holds / carrier_content_declares_scope RED controls and all roster/manifest accounting stay discovery-enrolled in external_model_scope_witness_test.dag per-PR; only the live observations run here.",
@@ -1089,6 +1095,30 @@ data falsifier_substrate_long_lane_rows: List<SubstrateLongLaneRow> = [
     function: "witness_committed_fixed_point_red_control",
     reason: "RED control paired with witness_committed_is_fixed_point (same file, same Filesystem.Read + artifact_generate cost shape)",
     dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured cold run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt"
+  },
+  SubstrateLongLaneRow {
+    entry: "src/v2/test/claim/long/direct_rust_door_emission_witness_test.dag",
+    function: "witness_direct_rust_door_provenanced_artifact_holds",
+    reason: "Lane B ingest-assemble-infer-emit provenance witness exceeded 5000ms fast-lane budget on PR CI (c80605a): generate_provenanced_rust_candidate_from_ingest runs full parse/normalize/resolve/infer/emit closure — eval-budget routing only",
+    dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery"
+  },
+  SubstrateLongLaneRow {
+    entry: "src/v2/test/claim/long/v2_emitter_direct_rust_door_acceptance_test.dag",
+    function: "witness_v2_emitter_direct_rust_door_closing_contract_holds",
+    reason: "same ingest-path closure cost as direct_rust_door emission long witness (exceeds 5s fast-lane budget). Witness REDs by execution: ingest-path assess_written_source_independent_of_seed_emitter does not establish WrittenSourceIndependentOfSeedEmitter — functional gap tracked on explicit_witness_admission known_red row; long-lane enrollment is eval-budget routing only",
+    dissolve_on: "witness_v2_emitter_direct_rust_door_closing_contract_holds greens with frontier zero (known_red row deletes per v2_emitter_direct_rust_door_contract_dissolution_note) AND eval lands under gunbc_ci_fast_lane_witness_eval_budget — then re-enrolls per-PR discovery"
+  },
+  SubstrateLongLaneRow {
+    entry: "src/v2/test/claim/long/v2_emitter_direct_rust_door_contract_test.dag",
+    function: "witness_written_source_assessment_establishes_on_fixture",
+    reason: "production assess_written_source_independent_of_seed_emitter runs ingest-path emit and exceeds 5s fast-lane budget. Ingest-path does not yet establish WrittenSourceIndependentOfSeedEmitter (functional gap on closing-contract path, not slowness alone)",
+    dissolve_on: "assess_written_source_independent_of_seed_emitter establishes WrittenSourceIndependentOfSeedEmitter on fixture AND eval lands under gunbc_ci_fast_lane_witness_eval_budget — then re-enrolls per-PR discovery"
+  },
+  SubstrateLongLaneRow {
+    entry: "src/v2/test/claim/long/v2_emitter_direct_rust_door_contract_test.dag",
+    function: "witness_production_admissions_close_contract_holds",
+    reason: "v2_emitter_direct_rust_door_acceptance_admissions runs both production folds including ingest-path written-source assessment; exceeds 5s fast-lane budget. Closing frontier nonzero until ingest-path establishes WrittenSourceIndependentOfSeedEmitter (functional gap, not slowness alone)",
+    dissolve_on: "production admissions close with frontier zero AND eval lands under gunbc_ci_fast_lane_witness_eval_budget — then re-enrolls per-PR discovery"
   }
 ]
 
