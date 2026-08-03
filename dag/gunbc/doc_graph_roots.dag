@@ -351,6 +351,13 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
   },
   HandAuthoredDocBind {
     home: PlanDoc,
+    slug: "dissolution-census-a-ci-layer-roots",
+    primary_work: DeclarationRef { module_path: "gunbc.ci_layer_roots", decl_name: "witness_exclusion_frontier", field: WholeDeclaration },
+    additional_works: [DeclarationRef { module_path: "v2.lens.enforcement.standing_intent", decl_name: "StandingIntent", field: WholeDeclaration }],
+    dissolution: HasTrigger { text: "the typed annotation carriers land (StandingIntent, event log, citation edges) and an annotation-budget lens counts rows — at which point a lexical census over ci_layer_roots prose is superseded by a fold over typed rows, and this doc plus its instrument delete together (same trigger as dag-note-prose-census)" },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
     slug: "extdeps-positioning-restructure",
     primary_work: DeclarationRef { module_path: "v2.lens.extdeps_shape_transport_policy", decl_name: "extdeps_shape_transport_policy_clean_holds", field: WholeDeclaration },
     additional_works: [],
