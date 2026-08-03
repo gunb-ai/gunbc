@@ -410,6 +410,31 @@ first order divergence    definition index 527: ClientInfo vs InitializeCapabili
 byte-stable files         36 of 37; only codex_app_server_protocol.v2.schemas.json varies
 ```
 
+**The durable receipt is machine-readable**, not this prose:
+
+```
+docs/probes/provider_interface_acquisition_2026-08-03.json
+```
+
+It preserves what a three-line prose list discards — Node and npm versions,
+lockfile version and digest, the full 124-entry transitive closure with resolved
+URLs and SRI integrity per package, platform-gated and optional selections, the
+install-script census, the acquisition command, and the Codex schema-generation
+digests. The table below is a rendering of that receipt, never its only
+representation.
+
+Two facts from it worth stating here. The closure is **125 lock entries** (124
+packages plus the root) for two direct requirements, with **13 platform-gated
+optional entries** — so "we acquired three packages" was never the truth. And
+**zero entries declare `hasInstallScript`**, which is what makes
+`PackageInstallScriptsForbidden` an achievable default rather than an aspiration.
+
+Typed residue, named rather than glossed: the doc-graph universe scans `.md`
+only (`cli_run.rs` `collect_md_files`), so this `.json` receipt is **not**
+censused by the orphan witness. It is referenced from this bound note, but the
+doc graph cannot presently see it or prove it stayed referenced. Widening the
+universe to non-markdown receipts is the dissolution trigger for that gap.
+
 Acquired packages (npm registry, integrity as recorded in the probe lockfile):
 
 ```
@@ -668,9 +693,26 @@ UI Start → subjectful command receipt
 → visible success / refusal / recovery state
 ```
 
-Production transport is one supported local control endpoint per admitted
-account binding — a supervised Unix socket. Stdio is for conformance tests. The
-experimental WebSocket transport is not used.
+Transport is a **separate axis from the interface**, and this note deliberately
+does not decide it by prose. These vary independently:
+
+```
+control interface     = Codex app-server
+transport realization = stdio | Unix socket
+lifecycle realization = per-turn process | per-account supervised process
+```
+
+```dag
+type CodexAppServerTransport
+  = CodexAppServerStdio
+  | CodexAppServerUnixSocket { path: FilePath }
+```
+
+Exactly one is selected explicitly; neither is a fallback for the other. Given
+the project's minimal-dependency direction, a directly supervised stdio process
+may well be the simpler first realization than adding a daemon/socket lifecycle
+— the vertical experiment decides, not this document. The experimental WebSocket
+transport is not used.
 
 Acceptance: no tmux session-name authority; no `codex exec --json` substitution
 when app-server is absent; exact thread and turn IDs in receipts; raw provider
@@ -713,12 +755,41 @@ No automatic legacy fallback
 No runtime offer from a typed research absence
 Provider identity ≠ control interface
 Control interface ≠ entitlement realm
+Control interface ≠ transport ≠ process lifecycle
 One nested interface binding, not four copied fields
+Runtime identity is a closure, not one artifact digest
+Package delivered ≠ executable or module consumed
 Independent installation / auth / limit / turn facts
 Full-bundle canonical protocol identity
+Exact lock at execution; no runtime resolution; explicit reviewed lock refresh
+Install scripts forbidden unless explicitly admitted
+Release-bundled delivery; no acquisition on the deployed host
 One provider completed vertically before the next adapter
 Legacy support only by explicit installation choice with a real owner
 ```
+
+## The next PR
+
+> **Bundle exact provider dependencies and run Codex app-server through the
+> roadmap press**
+
+Three ordered slices in one vertical PR: (1) the generic package dependency
+authority — requirement versus exact selection, npm package-lock v3 graph,
+archive integrity, executable/module exports, materialization receipt,
+runtime-bundle identity, release-bundled posture, explicit update request —
+landing only what the same PR consumes, on the existing `Pin<Subject>` dimension
+with no `NpmPin` or `SdkPin` minted; (2) one exact Codex runtime bundle built
+from a committed manifest and lockfile, acquired only inside an isolated build
+materialization, provisioned atomically and read back, replacing the
+`DashboardExistingProviderState` path for this realization rather than
+re-pointing it; (3) one complete Codex app-server press trip.
+
+Explicitly **not** in that PR: the Claude press trip, Cursor local or cloud,
+cross-provider recovery, general Cargo lock ingestion, and migration of the
+existing `curl | tar` / `npx` sites. Those consume the spine afterwards. A
+migration frontier may be declared for the ad hoc sites; it may not claim they
+migrated. Mixing them in would make it impossible to tell whether package
+management or provider semantics caused a failure.
 
 ## Open, and deliberately not decided here
 
