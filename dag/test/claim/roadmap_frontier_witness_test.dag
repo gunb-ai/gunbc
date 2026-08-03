@@ -234,7 +234,7 @@ test fn witness_page_places_superseded_node_in_superseded_bucket() -> Bool {
   string_contains(s: h, pattern: "Old Row")
     && string_contains(s: h, pattern: "class=\"status status-superseded\"")
     && string_contains(s: h, pattern: "→ successor-lane")
-    && !string_contains(s: h, pattern: "<button class=\"dispatch-btn\"")
+    && !string_contains(s: h, pattern: "<button class=\"dispatch-btn")
 }
 
 test fn witness_page_places_ready_node_in_ready_bucket() -> Bool {
