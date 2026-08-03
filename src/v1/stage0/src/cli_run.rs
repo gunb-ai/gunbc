@@ -19794,8 +19794,8 @@ fn run_discovery_corpus_with_options_inner(
                         .first()
                         .map(|r| r.entry.clone())
                         .unwrap_or_default();
-                    let group_wall_start = std::time::Instant::now();
-                    let typecheck_misses_before = typecheck_compute_count();
+                    let group_wall_start = p1_cohort_detail.then(std::time::Instant::now);
+                    let typecheck_misses_before = p1_cohort_detail.then(typecheck_compute_count);
                     let summary = run_discovery_rows(
                         &group_rows,
                         &index,
@@ -19809,24 +19809,37 @@ fn run_discovery_corpus_with_options_inner(
                         options.witness_budget_policy(),
                         style,
                     )?;
-                    let group_wall_ms = group_wall_start.elapsed().as_millis();
-                    let typecheck_misses_after = typecheck_compute_count();
+                    // The rest of this block is P1 scaffold bookkeeping (per-group wall
+                    // timing, typecheck-memo before/after, and the resolved-graph-hit
+                    // subject-set scan) — computed only under the same opt-in gate as
+                    // its emission (review 47844), not on the default production path.
+                    let (group_wall_ms, typecheck_misses_after, resolved_graph_hit) =
+                        if p1_cohort_detail {
+                            let group_wall_ms = group_wall_start
+                                .expect("set above under the same p1_cohort_detail gate")
+                                .elapsed()
+                                .as_millis();
+                            let typecheck_misses_after = typecheck_compute_count();
+                            // Cohort-scoped "have we already resolved a closure sharing this
+                            // subject earlier in THIS run" fact — a resolved-graph-memo hit
+                            // proxy at the granularity the P1 receipt needs (whether entry N
+                            // is reusing prior entries' module universe), not a raw
+                            // `resolved_graph_memo` cache-slot read (that memo is entry-scoped
+                            // and evicted on completion by design, so a raw post-hoc read
+                            // cannot distinguish "reused" from "inserted then evicted").
+                            let resolved_graph_hit =
+                                summary.entry_resolve_receipts.iter().any(|r| {
+                                    !p1_cohort_seen_subjects.insert(r.closure_subject.clone())
+                                });
+                            for r in &summary.entry_resolve_receipts {
+                                p1_cohort_seen_subjects.insert(r.closure_subject.clone());
+                            }
+                            (group_wall_ms, typecheck_misses_after, resolved_graph_hit)
+                        } else {
+                            (0, 0, false)
+                        };
                     let resolve_ms = summary.total_resolve_nanos / 1_000_000;
                     let eval_ms = summary.total_measured_nanos / 1_000_000;
-                    // Cohort-scoped "have we already resolved a closure sharing this
-                    // subject earlier in THIS run" fact — a resolved-graph-memo hit
-                    // proxy at the granularity the P1 receipt needs (whether entry N
-                    // is reusing prior entries' module universe), not a raw
-                    // `resolved_graph_memo` cache-slot read (that memo is entry-scoped
-                    // and evicted on completion by design, so a raw post-hoc read
-                    // cannot distinguish "reused" from "inserted then evicted").
-                    let resolved_graph_hit = summary
-                        .entry_resolve_receipts
-                        .iter()
-                        .any(|r| !p1_cohort_seen_subjects.insert(r.closure_subject.clone()));
-                    for r in &summary.entry_resolve_receipts {
-                        p1_cohort_seen_subjects.insert(r.closure_subject.clone());
-                    }
                     summaries.push(summary);
                     let snap = index_retention_snapshot(&index);
                     if drain_detail {
@@ -19852,7 +19865,7 @@ fn run_discovery_corpus_with_options_inner(
                             group_wall_ms,
                             resolve_ms,
                             eval_ms,
-                            typecheck_misses_after == typecheck_misses_before,
+                            Some(typecheck_misses_after) == typecheck_misses_before,
                             resolved_graph_hit,
                             modules_evicted,
                             graphs_evicted,
