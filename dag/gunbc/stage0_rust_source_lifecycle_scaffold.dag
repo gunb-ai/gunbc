@@ -14,6 +14,7 @@ import gunbc.stage0_rust_host_observation {
 import gunbc.stage0_emit_model { is_generated_stage0_file }
 import gunbc.stage0_emit_plan_generated { generated_stage0_files }
 import std.content_hash { Fnv1a64Structural }
+import std.keyed_roster { path_occurrence_count }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import gunbc.roadmap_model { RoadmapNodeId }
@@ -170,26 +171,12 @@ fn count_hand_maintained_in_prior_tracked(prior_tracked_paths: List<String>) -> 
   )
 }
 
-fn path_occurrence_count(paths: List<String>, needle: String) -> Int {
-  fold_list(
-    xs: paths,
-    empty: 0,
-    cons: fn(count, path) {
-      if path == needle {
-        count + 1
-      } else {
-        count
-      }
-    }
-  )
-}
-
 fn count_duplicate_path_excess(paths: List<String>) -> Int {
   fold_list(
     xs: paths,
     empty: 0,
     cons: fn(excess, path) {
-      let occurrences = path_occurrence_count(paths: paths, needle: path)
+      let occurrences = path_occurrence_count(paths: paths, target: path)
       if occurrences > 1 {
         excess + (occurrences - 1)
       } else {
@@ -610,7 +597,7 @@ fn list_paths_all_unique(paths: List<String>) -> Bool {
   fold_list(
     xs: paths,
     empty: true,
-    cons: fn(ok, path) { ok && path_occurrence_count(paths: paths, needle: path) == 1 }
+    cons: fn(ok, path) { ok && path_occurrence_count(paths: paths, target: path) == 1 }
   )
 }
 

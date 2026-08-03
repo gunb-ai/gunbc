@@ -1,0 +1,296 @@
+module test.claim.keyed_roster_witness
+
+import std.keyed_row { KeyedRow }
+import std.change { keyed_merge_row_lists }
+import std.keyed_roster {
+  KeyedRosterBuildDuplicateKey,
+  KeyedRosterBuilt,
+  KeyedRosterDuplicateKey,
+  KeyedRosterInserted,
+  KeyedRosterInvalidRoster,
+  keyed_roster_build,
+  keyed_roster_insert,
+  keyed_roster_union,
+}
+import std.roster_frontier {
+  FrontierRow,
+  PathSubject,
+  TriggerProse,
+  decl_field_ref,
+  decl_ref,
+  frontier_row_decl,
+  frontier_rows_keyed_roster_build,
+  frontier_rows_well_formed,
+}
+import std.types { Bool, String, List }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data keyed_roster_witness_note: String = "Lane 4 witnesses (generated-file conflict policy charter, docs/plans/generated-file-conflict-policy.md on session/crisp-bat-830): construction refuses a repeated path key with a typed KeyedRosterDuplicateKey / KeyedRosterBuildDuplicateKey carrying key + both colliding rows (located, not a bare Bool). keyed_roster_union models the git clean-merge failure mode: two branches each append disjoint rows admit; overlapping path keys refuse. keyed_merge_row_lists is the deliberate contrast (silent first-wins, reconcile grain). Per-PR admission: enrolled on commit_gate_roster (GithubActionsCiJob) plus affected-set discovery when dag/std/ or enrolled roster carriers change."
+
+type FixtureGrant {
+  path: String
+  audience: String
+}
+
+fn fixture_grant(path: String, audience: String) -> FixtureGrant {
+  FixtureGrant { path: path, audience: audience }
+}
+
+fn fixture_key_eq(a: String, b: String) -> Bool {
+  a == b
+}
+
+fn fixture_row(path: String, audience: String) -> KeyedRow<String, FixtureGrant> {
+  KeyedRow {
+    row_key: path,
+    value: fixture_grant(path: path, audience: audience),
+  }
+}
+
+fn fixture_rows_unique() -> List<KeyedRow<String, FixtureGrant>> {
+  [
+    fixture_row(path: "dag/gunbc/a.dag", audience: "repo"),
+    fixture_row(path: "dag/gunbc/b.dag", audience: "repo"),
+  ]
+}
+
+fn fixture_rows_duplicate_path() -> List<KeyedRow<String, FixtureGrant>> {
+  [
+    fixture_row(path: "dag/gunbc/publication_grant.dag", audience: "world"),
+    fixture_row(path: "dag/gunbc/publication_grant.dag", audience: "repo"),
+  ]
+}
+
+fn fixture_frontier_rows_unique() -> List<FrontierRow> {
+  [
+    FrontierRow {
+      subject: PathSubject { path: "synthetic/a.dag::f" },
+      reason: "r1",
+      trigger: TriggerProse { text: "d1" },
+    },
+    FrontierRow {
+      subject: PathSubject { path: "synthetic/b.dag::g" },
+      reason: "r2",
+      trigger: TriggerProse { text: "d2" },
+    },
+  ]
+}
+
+fn fixture_frontier_rows_duplicate_path() -> List<FrontierRow> {
+  [
+    FrontierRow {
+      subject: PathSubject { path: "synthetic/a.dag::f" },
+      reason: "r1",
+      trigger: TriggerProse { text: "d1" },
+    },
+    FrontierRow {
+      subject: PathSubject { path: "synthetic/a.dag::f" },
+      reason: "r2",
+      trigger: TriggerProse { text: "d2" },
+    },
+  ]
+}
+
+fn fixture_branch_a_rows() -> List<KeyedRow<String, FixtureGrant>> {
+  [
+    fixture_row(path: "dag/gunbc/alpha.dag", audience: "world"),
+    fixture_row(path: "dag/gunbc/beta.dag", audience: "world"),
+  ]
+}
+
+fn fixture_branch_b_disjoint_rows() -> List<KeyedRow<String, FixtureGrant>> {
+  [
+    fixture_row(path: "dag/gunbc/gamma.dag", audience: "repo"),
+    fixture_row(path: "dag/gunbc/delta.dag", audience: "repo"),
+  ]
+}
+
+fn fixture_branch_b_overlap_rows() -> List<KeyedRow<String, FixtureGrant>> {
+  [
+    fixture_row(path: "dag/gunbc/alpha.dag", audience: "repo"),
+    fixture_row(path: "dag/gunbc/epsilon.dag", audience: "repo"),
+  ]
+}
+
+test fn keyed_roster_two_branch_union_disjoint_keys_admits() -> Bool {
+  match keyed_roster_union(
+    left: fixture_branch_a_rows(),
+    right: fixture_branch_b_disjoint_rows(),
+    key_eq: fixture_key_eq,
+  ) {
+    KeyedRosterBuilt { rows: _ } => true
+    KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => false
+  }
+}
+
+test fn keyed_roster_two_branch_union_overlap_refuses_red_control() -> Bool {
+  match keyed_roster_union(
+    left: fixture_branch_a_rows(),
+    right: fixture_branch_b_overlap_rows(),
+    key_eq: fixture_key_eq,
+  ) {
+    KeyedRosterBuilt { rows: _ } => false
+    KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => true
+  }
+}
+
+test fn keyed_roster_two_branch_union_locates_overlap() -> Bool {
+  match keyed_roster_union(
+    left: fixture_branch_a_rows(),
+    right: fixture_branch_b_overlap_rows(),
+    key_eq: fixture_key_eq,
+  ) {
+    KeyedRosterBuildDuplicateKey { key: k, first: f, duplicate: d } =>
+      k == "dag/gunbc/alpha.dag"
+        && f.value.audience == "world"
+        && d.value.audience == "repo"
+    KeyedRosterBuilt { rows: _ } => false
+  }
+}
+
+test fn keyed_roster_build_admits_unique_paths() -> Bool {
+  match keyed_roster_build(incomings: fixture_rows_unique(), key_eq: fixture_key_eq) {
+    KeyedRosterBuilt { rows: _ } => true
+    KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => false
+  }
+}
+
+test fn keyed_roster_build_refuses_duplicate_path_red_control() -> Bool {
+  match keyed_roster_build(incomings: fixture_rows_duplicate_path(), key_eq: fixture_key_eq) {
+    KeyedRosterBuilt { rows: _ } => false
+    KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => true
+  }
+}
+
+test fn keyed_roster_insert_refuses_second_same_path() -> Bool {
+  let first = fixture_row(path: "dag/gunbc/x.dag", audience: "repo")
+  let second = fixture_row(path: "dag/gunbc/x.dag", audience: "world")
+  match keyed_roster_insert(rows: [first], incoming: second, key_eq: fixture_key_eq) {
+    KeyedRosterInserted { rows: _ } => false
+    KeyedRosterDuplicateKey { key: _, existing: _, incoming: _ } => true
+    KeyedRosterInvalidRoster { key: _, first: _, duplicate: _ } => false
+  }
+}
+
+test fn keyed_roster_insert_admits_distinct_paths() -> Bool {
+  let first = fixture_row(path: "dag/gunbc/x.dag", audience: "repo")
+  let second = fixture_row(path: "dag/gunbc/y.dag", audience: "world")
+  match keyed_roster_insert(rows: [first], incoming: second, key_eq: fixture_key_eq) {
+    KeyedRosterInserted { rows: _ } => true
+    KeyedRosterDuplicateKey { key: _, existing: _, incoming: _ } => false
+    KeyedRosterInvalidRoster { key: _, first: _, duplicate: _ } => false
+  }
+}
+
+test fn frontier_rows_keyed_build_admits_distinct_decl_fields() -> Bool {
+  match frontier_rows_keyed_roster_build(
+    rows: [
+      frontier_row_decl(
+        ref: decl_ref(module_path: "synthetic.mod", decl_name: "HostConfig"),
+        reason: "whole-decl row",
+        trigger: TriggerProse { text: "d1" },
+      ),
+      frontier_row_decl(
+        ref: decl_field_ref(
+          module_path: "synthetic.mod",
+          decl_name: "HostConfig",
+          field_name: "memory_swap",
+        ),
+        reason: "field-level row",
+        trigger: TriggerProse { text: "d2" },
+      ),
+    ],
+  ) {
+    KeyedRosterBuilt { rows: _ } => true
+    KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => false
+  }
+}
+
+test fn frontier_rows_keyed_build_admits_distinct_paths() -> Bool {
+  match frontier_rows_keyed_roster_build(rows: fixture_frontier_rows_unique()) {
+    KeyedRosterBuilt { rows: _ } => true
+    KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => false
+  }
+}
+
+test fn frontier_rows_keyed_build_refuses_duplicate_path_red_control() -> Bool {
+  match frontier_rows_keyed_roster_build(rows: fixture_frontier_rows_duplicate_path()) {
+    KeyedRosterBuilt { rows: _ } => false
+    KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => true
+  }
+}
+
+test fn frontier_rows_keyed_build_requires_well_formed_and_unique() -> Bool {
+  frontier_rows_well_formed(rows: fixture_frontier_rows_unique())
+    && match frontier_rows_keyed_roster_build(rows: fixture_frontier_rows_unique()) {
+      KeyedRosterBuilt { rows: _ } => true
+      KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => false
+    }
+    && match frontier_rows_keyed_roster_build(rows: fixture_frontier_rows_duplicate_path()) {
+      KeyedRosterBuilt { rows: _ } => false
+      KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => true
+    }
+}
+
+test fn merge_row_lists_silently_skips_duplicate_contrast_control() -> Bool {
+  let left = fixture_rows_unique()
+  let right = [fixture_row(path: "dag/gunbc/a.dag", audience: "other")]
+  let merged = keyed_merge_row_lists(left: left, right: right, key_eq: fixture_key_eq)
+  length(xs: merged) == 2
+    && match keyed_roster_build(incomings: concat(left, right), key_eq: fixture_key_eq) {
+      KeyedRosterBuilt { rows: _ } => false
+      KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => true
+    }
+}
+
+test fn keyed_roster_build_locates_first_duplicate() -> Bool {
+  match keyed_roster_build(incomings: fixture_rows_duplicate_path(), key_eq: fixture_key_eq) {
+    KeyedRosterBuildDuplicateKey { key: k, first: f, duplicate: d } =>
+      k == "dag/gunbc/publication_grant.dag"
+        && f.value.audience == "world"
+        && d.value.audience == "repo"
+    KeyedRosterBuilt { rows: _ } => false
+  }
+}
+
+test fn keyed_roster_insert_locates_duplicate() -> Bool {
+  let existing = fixture_row(path: "dag/gunbc/x.dag", audience: "repo")
+  let incoming = fixture_row(path: "dag/gunbc/x.dag", audience: "world")
+  match keyed_roster_insert(rows: [existing], incoming: incoming, key_eq: fixture_key_eq) {
+    KeyedRosterDuplicateKey { key: k, existing: e, incoming: i } =>
+      k == "dag/gunbc/x.dag" && e.value.audience == "repo" && i.value.audience == "world"
+    KeyedRosterInserted { rows: _ } => false
+    KeyedRosterInvalidRoster { key: _, first: _, duplicate: _ } => false
+  }
+}
+
+test fn keyed_roster_insert_refuses_preexisting_duplicate_roster_red_control() -> Bool {
+  let incoming = fixture_row(path: "dag/gunbc/new.dag", audience: "repo")
+  match keyed_roster_insert(
+    rows: fixture_rows_duplicate_path(),
+    incoming: incoming,
+    key_eq: fixture_key_eq,
+  ) {
+    KeyedRosterInserted { rows: _ } => false
+    KeyedRosterDuplicateKey { key: _, existing: _, incoming: _ } => false
+    KeyedRosterInvalidRoster { key: _, first: _, duplicate: _ } => true
+  }
+}
+
+test fn keyed_roster_insert_locates_preexisting_duplicate_roster() -> Bool {
+  let incoming = fixture_row(path: "dag/gunbc/new.dag", audience: "repo")
+  match keyed_roster_insert(
+    rows: fixture_rows_duplicate_path(),
+    incoming: incoming,
+    key_eq: fixture_key_eq,
+  ) {
+    KeyedRosterInvalidRoster { key: k, first: f, duplicate: d } =>
+      k == "dag/gunbc/publication_grant.dag"
+        && f.value.audience == "world"
+        && d.value.audience == "repo"
+    KeyedRosterInserted { rows: _ } => false
+    KeyedRosterDuplicateKey { key: _, existing: _, incoming: _ } => false
+  }
+}
