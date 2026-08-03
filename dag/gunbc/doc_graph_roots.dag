@@ -472,6 +472,13 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
   },
   HandAuthoredDocBind {
     home: PlanDoc,
+    slug: "provider-control-interface-audit",
+    primary_work: DeclarationRef { module_path: "gunbc.dispatch_selection", decl_name: "DispatchResolvedExecution", field: WholeDeclaration },
+    additional_works: [DeclarationRef { module_path: "extdeps.llm.cli_lifecycle", decl_name: "ProviderReadiness", field: WholeDeclaration }, DeclarationRef { module_path: "gunbc.roadmap_provider_events", decl_name: "provider_execution_state", field: WholeDeclaration }],
+    dissolution: HasTrigger { text: "the audit's locked decisions are facts on their carriers, not prose. PROVIDER INTERFACE HALF: DispatchResolvedExecution carries ONE nested ProviderInterfaceBinding whose runtime is a CLOSURE identity (package closure + runtime toolchain + adapter artifact + protocol identity — not a single artifact digest), provider identity is split from control interface and both from transport, ProviderReadiness is decomposed into independent installation/auth/entitlement/limit/turn standings with an open native limit token, and provider_execution_state reads typed app-server terminals instead of the exec --json category-discarding arm. PACKAGE DELIVERY HALF (added 2026-08-03 per operator ruling — the audit's §2 gap is a package-management gap, not a provider problem, so closing only the provider carriers would leave the note's load-bearing half undelivered): the generic package-delivery authority exists and is CONSUMED IN PRODUCTION — requirement vs exact selection, lock graph with artifact integrity admitted before unpack, materialization receipt with install scripts forbidden unless explicitly admitted, executable-vs-module consumer binding, runtime-bundle identity, ReleaseBundled posture with no acquisition on the deployed host, and an explicit reviewed lock-refresh path — with the Codex realization delivered through it and srv1's exec/tmux offer removed. The §4 paired Claude entitlement probe must also have RUN, deciding whether ClaudeDirectStreamJson survives as an interface or dissolves; an undecided probe leaves this row live because the audit's retraction of the entitlement claim is what makes the row honest. Then the note becomes the design record and this bind deletes with it." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
     slug: "sole-modeled-publisher-design",
     primary_work: DeclarationRef { module_path: "tools.publication_publisher", decl_name: "PublicationAuthority", field: WholeDeclaration },
     additional_works: [DeclarationRef { module_path: "tools.publication_push_shadow", decl_name: "shadow_replay_public_pushes", field: WholeDeclaration }],
