@@ -88,6 +88,8 @@ type EmitGraphInfo {
   read_only_params_index: Map<String, Set<String>>
   read_only_params: Set<String>
 
+  clone_bounded_type_params: Map<String, Set<String>>
+
   corpus_repr: RustCorpusRepr
 
   fn_generic_param_names: List<String>
@@ -116,6 +118,7 @@ fn empty_emit_graph_info() -> EmitGraphInfo {
     owned_bindings: empty_set(),
     read_only_params_index: empty_map(),
     read_only_params: empty_set(),
+    clone_bounded_type_params: empty_map(),
 
     corpus_repr: FaithfulFreeMonoid,
     fn_generic_param_names: [],
@@ -138,6 +141,7 @@ fn emit_info_with_fn_type_context(emit_info: EmitGraphInfo, generic_param_names:
     owned_bindings: emit_info.owned_bindings,
     read_only_params_index: emit_info.read_only_params_index,
     read_only_params: emit_info.read_only_params,
+    clone_bounded_type_params: emit_info.clone_bounded_type_params,
     corpus_repr: emit_info.corpus_repr,
     fn_generic_param_names: generic_param_names,
     fn_type_env: env,
@@ -159,6 +163,7 @@ fn emit_info_with_fn_return(emit_info: EmitGraphInfo, fn_return_type: Node?) -> 
     owned_bindings: emit_info.owned_bindings,
     read_only_params_index: emit_info.read_only_params_index,
     read_only_params: emit_info.read_only_params,
+    clone_bounded_type_params: emit_info.clone_bounded_type_params,
     corpus_repr: emit_info.corpus_repr,
     fn_generic_param_names: emit_info.fn_generic_param_names,
     fn_type_env: emit_info.fn_type_env,

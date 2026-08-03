@@ -264,11 +264,13 @@ data roster_registry: List<RosterRegistration> = [
     }
   },
   RosterRegistration {
-    roster: roster_decl(module_path: "gunbc.stage0_emit_model", decl_name: "generated_stage0_files"),
+    roster: roster_decl(module_path: "gunbc.stage0_emit_plan_generated", decl_name: "generated_stage0_files"),
     unit_kind: "generated stage0 seed file basename",
-    membership: DeclaredFrontier {
-      reason: "the set of .rs files regen_stage0 emits into the seed, hand-listed in this .dag as the single authority. Enrolled 2026-07-25 off a measured live fork (this list vs a Rust GENERATED_STAGE0_FILES const that had silently drifted 98 vs 101); construction close landed as the #7258 follow-up — regen_stage0 reads this list through lens_string_list_data and the Rust const is deleted, so a second hand copy is unwritable (witness: generated_stage0_files_read_from_dag_authority_not_rust_const). What remains hand-kept is MEMBERSHIP of the emit set itself",
-      dissolve_on: "membership derives from the stage0 self-compile output set (fresh emit basenames), so an emitted file is enrolled by construction and a missing authority row is a typed refusal at assert_output_set_matches_registry rather than a hand edit; then this literal list and this row delete"
+    membership: ByDerivation {
+      predicate: roster_decl(
+        module_path: "gunbc.stage0_emit_plan",
+        decl_name: "generated_stage0_files_from_emission_plan"
+      )
     }
   },
   RosterRegistration {
