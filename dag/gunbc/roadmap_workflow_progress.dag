@@ -88,6 +88,7 @@ import gunbc.roadmap_verification_receipt {
   VerificationFileDecoded,
   verification_file_evidence_for,
   verification_evidence_moves_lamp,
+  legacy_validation_receipt_detail,
 }
 import gunbc.roadmap_publish {
   PublicationSubject,
@@ -548,9 +549,10 @@ fn verification_evidence_segment(
             kind: VerificationWorkflowSegment,
             state: WorkflowSegmentPending,
             detail: join([
-              "this attempt carries only a legacy attempt-level validation receipt (",
+              legacy_validation_receipt_detail,
+              " (verdict key: ",
               verdict_key,
-              "); exact-head verification evidence is required before the Verify lamp can move",
+              ")",
             ], ""),
           }
       }
