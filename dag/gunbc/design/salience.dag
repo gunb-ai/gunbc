@@ -191,18 +191,16 @@ fn role_is_critical(role: SalienceRole) -> Bool {
   }
 }
 
-fn count_roles(assignments: List<SalienceAssignment>, focal: Bool) -> Int {
+data count_roles_where_note: String = "COUNT BY PREDICATE, NOT BY A BOOLEAN MODE FLAG (review finding, 2026-08-02). This fold was count_roles(assignments, focal: Bool), where the flag selected between two independent counts — so the call site read count_roles(assignments, focal: false) to mean 'count the critical ones', a domain concept encoded as a bare Bool and legible only by knowing which branch false picks. The parameter now carries the admission predicate itself, which both names the intent at the call site and leaves ONE fold instead of a two-mode one. Shape follows std.materialization_ladder first_provider_where, which takes wanted: fn(CacheProvider) -> Bool and is called with a lambda over a named coproduct predicate."
+
+fn count_roles_where(assignments: List<SalienceAssignment>, admits: fn(SalienceRole) -> Bool) -> Int {
   fold(assignments, init: 0, f: (acc, a) =>
-    if focal {
-      if role_is_focal(role: a.role) { acc + 1 } else { acc }
-    } else {
-      if role_is_critical(role: a.role) { acc + 1 } else { acc }
-    })
+    if admits(a.role) { acc + 1 } else { acc })
 }
 
 fn region_focal_admission(region: String, assignments: List<SalienceAssignment>) -> FocalAdmission {
-  let focal_count = count_roles(assignments: assignments, focal: true)
-  let critical_count = count_roles(assignments: assignments, focal: false)
+  let focal_count = count_roles_where(assignments: assignments, admits: r => role_is_focal(role: r))
+  let critical_count = count_roles_where(assignments: assignments, admits: r => role_is_critical(role: r))
   if focal_count > 1 {
     FocalBudgetExceeded { region: region, focal_count: focal_count }
   } else {
