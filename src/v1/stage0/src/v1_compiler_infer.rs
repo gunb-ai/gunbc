@@ -79,9 +79,13 @@ pub use crate::v1_compiler_infer_env::{
 use crate::v1_compiler_infer_items::ItemKind::{
     DataItem, FnItem, FuncItem, OtherItem, ServiceItem, TypeItem,
 };
-pub use crate::v1_compiler_infer_items::{inferred_to_outputs, item_kind};
+use crate::v1_compiler_infer_items::QualifiedItemRegistryBuild::*;
 pub use crate::v1_compiler_infer_items::{
-    ItemInfo, ItemKind, ModuleInterface, ResolvedGraph, TypedGraph, TypedModule,
+    empty_qualified_item_registry, inferred_to_outputs, item_kind,
+};
+pub use crate::v1_compiler_infer_items::{
+    ItemInfo, ItemKind, ModuleInterface, QualifiedItemRegistryBuild, ResolvedGraph, TypedGraph,
+    TypedModule,
 };
 pub use crate::v1_compiler_infer_lookup::KnownMethodResolution;
 pub use crate::v1_compiler_infer_lookup::{
@@ -255,6 +259,7 @@ pub struct InferScope {
     pub module_name: String,
     pub service_registry: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>,
     pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    pub qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     pub lambda_param_provenance: Rc<HashMap<String, Rc<SubValueRelation>>>,
 }
 
@@ -3811,6 +3816,7 @@ pub fn build_params_scope(scope: Rc<InferScope>, params: Rc<Vec<Rc<Node>>>) -> R
             module_name: scope.module_name.clone(),
             service_registry: scope.service_registry.clone(),
             item_registry: scope.item_registry.clone(),
+            qualified_item_registry: scope.qualified_item_registry.clone(),
             lambda_param_provenance: v1_rt::rc_empty_map::<String, Rc<SubValueRelation>>(),
         })
     }
@@ -3839,6 +3845,7 @@ pub fn extend_scope(
         module_name: scope.module_name.clone(),
         service_registry: scope.service_registry.clone(),
         item_registry: scope.item_registry.clone(),
+        qualified_item_registry: scope.qualified_item_registry.clone(),
         lambda_param_provenance: scope.lambda_param_provenance.clone(),
     })
 }
@@ -3870,6 +3877,7 @@ pub fn extend_scope_match_bound(
         module_name: scope.module_name.clone(),
         service_registry: scope.service_registry.clone(),
         item_registry: scope.item_registry.clone(),
+        qualified_item_registry: scope.qualified_item_registry.clone(),
         lambda_param_provenance: scope.lambda_param_provenance.clone(),
     })
 }
@@ -3903,6 +3911,7 @@ pub fn extend_scope_with_params(scope: Rc<InferScope>, params: Rc<Vec<String>>) 
             module_name: scope.module_name.clone(),
             service_registry: scope.service_registry.clone(),
             item_registry: scope.item_registry.clone(),
+            qualified_item_registry: scope.qualified_item_registry.clone(),
             lambda_param_provenance: scope.lambda_param_provenance.clone(),
         })
     }
@@ -4335,6 +4344,7 @@ pub fn infer_method_args_with_fold(
                                     module_name: scope.module_name.clone(),
                                     service_registry: scope.service_registry.clone(),
                                     item_registry: scope.item_registry.clone(),
+                                    qualified_item_registry: scope.qualified_item_registry.clone(),
                                     lambda_param_provenance: prov_map.clone(),
                                 });
                                 let ar = infer_expr(
@@ -4378,6 +4388,9 @@ pub fn infer_method_args_with_fold(
                                         module_name: scope.module_name.clone(),
                                         service_registry: scope.service_registry.clone(),
                                         item_registry: scope.item_registry.clone(),
+                                        qualified_item_registry: scope
+                                            .qualified_item_registry
+                                            .clone(),
                                         lambda_param_provenance: nf_prov_map.clone(),
                                     })
                                 } else {
@@ -6886,6 +6899,7 @@ match bare_s.clone() {
                 module_name: lam_scope.module_name.clone(),
                 service_registry: lam_scope.service_registry.clone(),
                 item_registry: lam_scope.item_registry.clone(),
+                qualified_item_registry: lam_scope.qualified_item_registry.clone(),
                 lambda_param_provenance: v1_rt::rc_empty_map::<String, Rc<SubValueRelation>>(),
             });
             let body_result =
@@ -18234,6 +18248,7 @@ pub fn typecheck_module(
             module_name: resolved_module_name.clone(),
             service_registry: ctx.svc_registry.clone(),
             item_registry: ctx.item_registry.clone(),
+            qualified_item_registry: empty_qualified_item_registry(),
             lambda_param_provenance: v1_rt::rc_empty_map::<String, Rc<SubValueRelation>>(),
         });
         let typed_item_results = infer_items(ctx.resolved_items.clone(), infer_scope.clone());

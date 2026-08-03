@@ -39,7 +39,11 @@ pub use crate::v1_compiler_infer_emit_info::{EmitGraphInfo, TypeSummary};
 use crate::v1_compiler_infer_env::GlobalBareLookupState::*;
 pub use crate::v1_compiler_infer_env::{authored_name, empty_symbol_index};
 pub use crate::v1_compiler_infer_env::{GlobalBareLookupState, TypeBinding, TypeEnv};
-pub use crate::v1_compiler_infer_items::{ItemInfo, ResolvedGraph, TypedModule};
+pub use crate::v1_compiler_infer_items::empty_qualified_item_registry;
+use crate::v1_compiler_infer_items::QualifiedItemRegistryBuild::*;
+pub use crate::v1_compiler_infer_items::{
+    ItemInfo, QualifiedItemRegistryBuild, ResolvedGraph, TypedModule,
+};
 pub use crate::v1_compiler_infer_lookup::{func_sig_if_resolved, lookup_func_sig};
 pub use crate::v1_compiler_infer_service::{
     extract_typed_service_name, is_typed_service_call_receiver,
@@ -578,11 +582,15 @@ pub fn empty_emit_scope() -> Rc<InferScope> {
         module_name: "".to_string(),
         service_registry: v1_rt::rc_empty_map::<String, Rc<Vec<Rc<OpEntry>>>>(),
         item_registry: v1_rt::rc_empty_map::<String, Rc<ItemInfo>>(),
+        qualified_item_registry: empty_qualified_item_registry(),
         lambda_param_provenance: v1_rt::rc_empty_map::<String, Rc<SubValueRelation>>(),
     })
 }
 
-pub fn module_emit_scope(typed_module: Rc<TypedModule>) -> Rc<InferScope> {
+pub fn module_emit_scope(
+    typed_module: Rc<TypedModule>,
+    qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
+) -> Rc<InferScope> {
     Rc::new(InferScope {
         type_env: typed_module.type_env.clone(),
         func_env: typed_module.func_env.clone(),
@@ -595,6 +603,7 @@ pub fn module_emit_scope(typed_module: Rc<TypedModule>) -> Rc<InferScope> {
         ),
         service_registry: v1_rt::rc_empty_map::<String, Rc<Vec<Rc<OpEntry>>>>(),
         item_registry: typed_module.item_registry.clone(),
+        qualified_item_registry: qualified_item_registry.clone(),
         lambda_param_provenance: v1_rt::rc_empty_map::<String, Rc<SubValueRelation>>(),
     })
 }
