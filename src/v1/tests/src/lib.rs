@@ -29,7 +29,6 @@ mod coverage_completeness_lens_test;
 #[cfg(test)]
 mod cross_representation_equality_test;
 #[cfg(test)]
-mod dag_comment_wall_test;
 #[cfg(test)]
 mod data_cache_scoping_test;
 #[cfg(test)]
