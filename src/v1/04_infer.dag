@@ -153,7 +153,6 @@ import v1.compiler.infer_emit_info {
 import v1.compiler.infer_items {
   ItemKind, FnItem, FuncItem, TypeItem, DataItem, ServiceItem, OtherItem,
   ItemInfo, TypedModule, TypedGraph, ResolvedGraph, ModuleInterface,
-  QualifiedItemRegistryBuild, empty_qualified_item_registry,
   inferred_to_outputs, item_kind
 }
 import v1.compiler.infer_service {
@@ -234,7 +233,6 @@ type InferScope {
   module_name: String
   service_registry: Map<String, List<OpEntry>>
   item_registry: Map<String, ItemInfo>
-  qualified_item_registry: QualifiedItemRegistryBuild
   lambda_param_provenance: Map<String, SubValueRelation>
 }
 
@@ -2115,7 +2113,6 @@ fn build_params_scope(scope: InferScope, params: List<Node>) -> InferScope {
     module_name: scope.module_name,
     service_registry: scope.service_registry,
     item_registry: scope.item_registry,
-    qualified_item_registry: scope.qualified_item_registry,
     lambda_param_provenance: empty_map()
   }
 }
@@ -2130,7 +2127,6 @@ fn extend_scope(scope: InferScope, name: String, resolved: Node, provenance: Sub
     module_name: scope.module_name,
     service_registry: scope.service_registry,
     item_registry: scope.item_registry,
-    qualified_item_registry: scope.qualified_item_registry,
     lambda_param_provenance: scope.lambda_param_provenance
   }
 }
@@ -2145,7 +2141,6 @@ fn extend_scope_match_bound(scope: InferScope, name: String, resolved: Node, pro
     module_name: scope.module_name,
     service_registry: scope.service_registry,
     item_registry: scope.item_registry,
-    qualified_item_registry: scope.qualified_item_registry,
     lambda_param_provenance: scope.lambda_param_provenance
   }
 }
@@ -2166,7 +2161,6 @@ fn extend_scope_with_params(scope: InferScope, params: List<String>) -> InferSco
     module_name: scope.module_name,
     service_registry: scope.service_registry,
     item_registry: scope.item_registry,
-    qualified_item_registry: scope.qualified_item_registry,
     lambda_param_provenance: scope.lambda_param_provenance
   }
 }
@@ -2319,7 +2313,6 @@ fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fo
         module_name: scope.module_name,
         service_registry: scope.service_registry,
         item_registry: scope.item_registry,
-        qualified_item_registry: scope.qualified_item_registry,
         lambda_param_provenance: prov_map
       }
       let ar = infer_expr(texpr: lam_value, scope: fold_scope, expected: Present { value: fold_callable })
@@ -2340,7 +2333,6 @@ fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fo
           module_name: scope.module_name,
           service_registry: scope.service_registry,
           item_registry: scope.item_registry,
-          qualified_item_registry: scope.qualified_item_registry,
           lambda_param_provenance: nf_prov_map
         }
       } else { scope }
@@ -3544,9 +3536,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         locals: lam_scope.locals, body_locals: lam_scope.body_locals,
         match_bound_names: lam_scope.match_bound_names,
         module_name: lam_scope.module_name, service_registry: lam_scope.service_registry,
-        item_registry: lam_scope.item_registry,
-        qualified_item_registry: lam_scope.qualified_item_registry,
-        lambda_param_provenance: empty_map()
+        item_registry: lam_scope.item_registry, lambda_param_provenance: empty_map()
       }
       let body_result = infer_expr(texpr: lam_body, scope: body_scope, expected: body_expected)
       let body_typed = body_result.typed
@@ -8496,7 +8486,6 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
     module_name: resolved_module_name,
     service_registry: ctx.svc_registry,
     item_registry: ctx.item_registry,
-    qualified_item_registry: empty_qualified_item_registry(),
     lambda_param_provenance: empty_map()
   }
   let typed_item_results = infer_items(items: ctx.resolved_items, scope: infer_scope)

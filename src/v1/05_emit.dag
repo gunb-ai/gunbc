@@ -39,8 +39,7 @@ import v1.compiler.coercion { coerce_primitive_type, coerce_container_template, 
 import v1.compiler.infer_sigs { ResolvedFuncSig, ResolvedFuncEnv }
 
 import v1.compiler.infer_items {
-  TypedModule, ResolvedGraph, ItemInfo,
-  QualifiedItemRegistryBuild, empty_qualified_item_registry
+  TypedModule, ResolvedGraph, ItemInfo
 }
 
 import v1.compiler.infer_service { UniqueAccum, OpEntry, is_typed_service_call_receiver, extract_typed_service_name }
@@ -260,12 +259,11 @@ fn empty_emit_scope() -> InferScope {
     module_name: "",
     service_registry: empty_map(),
     item_registry: empty_map(),
-    qualified_item_registry: empty_qualified_item_registry(),
     lambda_param_provenance: empty_map()
   }
 }
 
-fn module_emit_scope(typed_module: TypedModule, qualified_item_registry: QualifiedItemRegistryBuild) -> InferScope {
+fn module_emit_scope(typed_module: TypedModule) -> InferScope {
   InferScope {
     type_env: typed_module.type_env,
     func_env: typed_module.func_env,
@@ -275,7 +273,6 @@ fn module_emit_scope(typed_module: TypedModule, qualified_item_registry: Qualifi
     module_name: authored_name_at(source_indices: typed_module.type_env.source_indices, node: typed_module.module),
     service_registry: empty_map(),
     item_registry: typed_module.item_registry,
-    qualified_item_registry: qualified_item_registry,
     lambda_param_provenance: empty_map()
   }
 }
