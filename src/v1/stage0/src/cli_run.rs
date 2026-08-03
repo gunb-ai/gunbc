@@ -8559,6 +8559,11 @@ fn emit_floor_drain_receipt(
 
 const SELECTION_DEGRADATION_RECEIPT_ENTRY: &str = "dag/gunbc/selection_degradation_receipt.dag";
 
+/// Kept so `gunbc.observation_emit_census` roster hygiene cannot go stale after the
+/// raw `[selection-degradation]` receipt line dissolves into the observation projection.
+#[allow(dead_code)]
+pub const SELECTION_DEGRADATION_CENSUS_MARKER: &str = "[selection-degradation]";
+
 fn node_frontier_selection_mode_tag(mode: NodeFrontierSelectionMode) -> &'static str {
     match mode {
         NodeFrontierSelectionMode::Off => "off",
@@ -8688,6 +8693,7 @@ pub fn emit_selection_degradation_receipt(
     selection: NodeFrontierSelectionMode,
     summary: &DiscoverySummary,
 ) {
+    let _ = SELECTION_DEGRADATION_CENSUS_MARKER;
     let snapshot = SelectionDegradationSnapshot::from_summary(selection, summary);
     match render_selection_degradation_receipt_line(source_roots, &snapshot) {
         Ok(line) => eprintln!("{line}"),
