@@ -24,7 +24,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data push_before_selection_witness_note: String = "Discriminating witness for push-before main-push selection (checklist step 6): a planted push delta observes PushBefore (not self-compare), carries a non-empty changed-path population, and the selection-degradation receipt reads SelectionApplied with selected/total derived from that population — not the empty-observation narrow class (selected=0 under a zero-path diff)."
+data push_before_selection_witness_note: String = "Discriminating witness for push-before main-push selection (checklist step 6): a planted push delta observes PushBefore (not self-compare), carries a non-empty changed-path population, and the selection-degradation receipt reads SelectionApplied with selected/total derived from that population (selected>0, selected<total). RED control witness_empty_delta_zero_selected_still_reads_applied_red documents why selected>0 matters: a zero-path diff still classifies as SelectionApplied with selected=0 — the empty-observation narrow trap the push-before baseline closes."
 
 data planted_before_sha: String = "1111111111111111111111111111111111111111"
 data planted_head_sha: String = "2222222222222222222222222222222222222222"
@@ -117,7 +117,7 @@ test fn witness_main_push_selection_degradation_applied_from_planted_delta() -> 
     && string_contains(s: line, pattern: "total_entry_groups=3")
 }
 
-test fn witness_empty_delta_would_not_read_as_applied_narrowed() -> Bool {
+test fn witness_empty_delta_zero_selected_still_reads_applied_red() -> Bool {
   let roster = planted_entry_group_roster()
   let total = list_length(items: roster)
   let selected = count_selected_entry_groups(roster: roster, changed_paths: [])
@@ -128,6 +128,7 @@ test fn witness_empty_delta_would_not_read_as_applied_narrowed() -> Bool {
     categorization_unavailable: false,
     categorization_reason: ""
   )
-  !selection_degradation_is_applied_narrowed(receipt: receipt)
-    && selected == 0
+  selected == 0
+    && selection_degradation_is_applied_narrowed(receipt: receipt)
+    && selection_degradation_state_tag(state: receipt.selection_state) == "SelectionApplied"
 }

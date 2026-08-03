@@ -28,3 +28,13 @@ test fn witness_push_before_from_fixture_file() -> Bool {
     PushEventPayloadReadRefused { path: _, cause: _ } => false
   }
 }
+
+test fn witness_push_before_payload_read_refused_on_missing_path() -> Bool {
+  match push_before_from_event_path(path: "__gunbc_missing_push_event_fixture__.json") {
+    PushEventPayloadReadRefused { path: _, cause: _ } => true
+    PushBeforeObserved { sha: _ } => false
+    PushBeforeAbsent { detail: _ } => false
+    PushBeforeZeroSha => false
+    PushBeforeMalformed { detail: _ } => false
+  }
+}
