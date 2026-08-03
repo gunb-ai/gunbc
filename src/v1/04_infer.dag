@@ -153,6 +153,7 @@ import v1.compiler.infer_emit_info {
 import v1.compiler.infer_items {
   ItemKind, FnItem, FuncItem, TypeItem, DataItem, ServiceItem, OtherItem,
   ItemInfo, TypedModule, TypedGraph, ResolvedGraph, ModuleInterface,
+  QualifiedItemRegistryBuild, empty_qualified_item_registry,
   inferred_to_outputs, item_kind
 }
 import v1.compiler.infer_service {
@@ -233,6 +234,7 @@ type InferScope {
   module_name: String
   service_registry: Map<String, List<OpEntry>>
   item_registry: Map<String, ItemInfo>
+  qualified_item_registry: QualifiedItemRegistryBuild
   lambda_param_provenance: Map<String, SubValueRelation>
 }
 

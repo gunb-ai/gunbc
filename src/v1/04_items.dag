@@ -57,6 +57,14 @@ type ItemInfo {
   has_non_tail_self_call: Bool
 }
 
+type QualifiedItemRegistryBuild =
+  QualifiedRegistryBuilt { registry: Map<String, ItemInfo> }
+  | QualifiedRegistryDuplicate { key: String, first: ItemInfo, second: ItemInfo }
+
+fn empty_qualified_item_registry() -> QualifiedItemRegistryBuild {
+  QualifiedRegistryBuilt { registry: empty_map() }
+}
+
 type ModuleInterface {
   summary: InterfaceSummary
   env: TypeEnv
