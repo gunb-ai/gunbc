@@ -1,6 +1,6 @@
 module extdeps.github.push_event
 
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.git.hooks { zero_sha }
 import extdeps.languages.json.emit { JsonValue, JsonString }
@@ -13,6 +13,7 @@ import extdeps.languages.json.parse {
   JsonMemberNotAnObject
 }
 import std.types { CommitSha, NonEmptyStr, String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -26,6 +27,18 @@ data push_event_note: String = "The push webhook payload's `before` member: the 
 data github_event_path_env: NonEmptyStr = "GITHUB_EVENT_PATH"
 
 data push_event_before_member: String = "before"
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.github.push_event",
+      decl_name: "push_event_before_member",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps.github.push_event.extdeps_external_authority_anchor,
+  further_citations: []
+}
 
 type PushBeforeObservation
   = PushBeforeObserved { sha: CommitSha }

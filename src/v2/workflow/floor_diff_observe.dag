@@ -48,7 +48,6 @@ import extdeps.github.push_event {
   PushBeforeMalformed
 }
 import extdeps.shell
-import std.primitives { filesystem_read }
 
 type FloorUnifiedDiffResult
   = UnifiedDiffOk { text: String }
