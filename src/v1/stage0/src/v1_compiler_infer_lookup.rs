@@ -206,7 +206,7 @@ pub fn func_sig_from_global_bare(
                                     }
                                     _ => match node.type_annotation.clone() {
                                         Some(ann) => ann.clone(),
-                                        None => error_type(),
+                                        None => error_type.clone(),
                                     },
                                 };
                                 if (bd.owner_module_path.clone() == type_env.module_path.clone()) {

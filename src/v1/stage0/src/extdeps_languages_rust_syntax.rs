@@ -284,10 +284,10 @@ pub fn rust_syntax_spec() -> Rc<SyntaxSpec> {
     thread_local! {
             static CACHED: Rc<SyntaxSpec> = {
                 Rc::new(SyntaxSpec {
-        item_forms: rust_item_forms(),
-        operators: rust_operators(),
-        keyword_literals: rust_keyword_literals(),
-        keyword_set: rust_keyword_set(),
+        item_forms: rust_item_forms.clone(),
+        operators: rust_operators.clone(),
+        keyword_literals: rust_keyword_literals.clone(),
+        keyword_set: rust_keyword_set.clone(),
     })
             };
         }

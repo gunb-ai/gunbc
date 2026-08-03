@@ -35,7 +35,7 @@ pub fn kernel_type_set() -> Rc<HashMap<String, bool>> {
 }
 
 pub fn is_kernel_type(name: String) -> bool {
-    match v1_rt::map_get(&kernel_type_set(), name.clone()) {
+    match v1_rt::map_get(&kernel_type_set, name.clone()) {
         Some(_) => true,
         None => false,
     }
@@ -63,14 +63,14 @@ pub fn is_container_type(name: String) -> bool {
 }
 
 pub fn container_expected_arity(name: String) -> Option<i64> {
-    v1_rt::map_get(&container_type_arity(), name.clone())
+    v1_rt::map_get(&container_type_arity, name.clone())
 }
 
 pub fn container_param_names_for(kind_name: String) -> Rc<Vec<String>> {
     if (kind_name.clone() == "Witness".to_string()) {
         Rc::new(vec!["T".to_string()])
     } else {
-        match v1_rt::map_get(&kernel_algebra_profile(), kind_name.clone()) {
+        match v1_rt::map_get(&kernel_algebra_profile, kind_name.clone()) {
             Some(p) => algebra_type_param_names(p.clone()),
             None => Rc::new(vec![]),
         }
@@ -130,7 +130,7 @@ pub fn ordered_element_collections() -> Rc<HashMap<String, bool>> {
 }
 
 pub fn is_ordered_element_collection(name: String) -> bool {
-    v1_rt::map_contains_key(&ordered_element_collections(), name.clone())
+    v1_rt::map_contains_key(&ordered_element_collections, name.clone())
 }
 
 pub fn container_template_algebra_rows() -> Rc<HashMap<String, String>> {
@@ -174,11 +174,11 @@ pub fn container_template_alias_rows() -> Rc<HashMap<String, String>> {
 }
 
 pub fn container_template_algebra(name: String) -> Option<String> {
-    v1_rt::map_get(&container_template_algebra_rows(), name.clone())
+    v1_rt::map_get(&container_template_algebra_rows, name.clone())
 }
 
 pub fn container_template_alias_algebra(name: String) -> Option<String> {
-    v1_rt::map_get(&container_template_alias_rows(), name.clone())
+    v1_rt::map_get(&container_template_alias_rows, name.clone())
 }
 
 pub fn canonical_container_names() -> Rc<Vec<String>> {

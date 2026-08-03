@@ -25,7 +25,7 @@ use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 pub fn is_keyword_text(text: String) -> bool {
-    match v1_rt::lookup(&dag_keyword_set(), text.clone()) {
+    match v1_rt::lookup(&dag_keyword_set, text.clone()) {
         Some(_) => true,
         None => false,
     }
@@ -489,7 +489,7 @@ pub fn scan_token(source: Rc<SourceRef>, pos: Rc<TokPos>, ch: i64) -> Rc<ScanRes
             }
         }
         let ch_text = source_char(source.clone(), pos.pos.clone());
-        match v1_rt::lookup(&single_punct(), ch_text.clone()) {
+        match v1_rt::lookup(&single_punct, ch_text.clone()) {
             Some(sh) => emit(
                 pos.clone(),
                 sh.clone(),
@@ -535,7 +535,7 @@ pub fn emit(
 
 pub fn scan_ident(source: Rc<SourceRef>, pos: Rc<TokPos>) -> Rc<ScanResult> {
     {
-        let end = source_scan_while(source.clone(), pos.pos.clone(), is_ident_char);
+        let end = source_scan_while(source.clone(), pos.pos.clone(), is_ident_char.clone());
         let text = source_substring(source.clone(), pos.pos.clone(), end.clone());
         let shape = if is_reserved_emit_sentinel(text.clone()) {
             TokenShape::ShUnknown
@@ -561,13 +561,14 @@ pub fn scan_ident(source: Rc<SourceRef>, pos: Rc<TokPos>) -> Rc<ScanResult> {
 
 pub fn scan_number(source: Rc<SourceRef>, pos: Rc<TokPos>) -> Rc<ScanResult> {
     {
-        let int_end = source_scan_while(source.clone(), pos.pos.clone(), is_digit);
+        let int_end = source_scan_while(source.clone(), pos.pos.clone(), is_digit.clone());
         if ((((int_end.clone() + 1) < source_len(source.clone()))
             && (source_code_point(source.clone(), int_end.clone()) == 46))
             && is_digit(source_code_point(source.clone(), (int_end.clone() + 1))))
         {
             {
-                let frac_end = source_scan_while(source.clone(), (int_end.clone() + 1), is_digit);
+                let frac_end =
+                    source_scan_while(source.clone(), (int_end.clone() + 1), is_digit.clone());
                 let text = source_substring(source.clone(), pos.pos.clone(), frac_end.clone());
                 let token = make_token(
                     text.clone(),

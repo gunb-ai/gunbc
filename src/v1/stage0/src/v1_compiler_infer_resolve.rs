@@ -1402,12 +1402,12 @@ pub fn resolve_node_bounded(
                             let type_name = authored_name(env.clone(), n.clone());
                             let key_child_node = match n.children.clone().first().cloned() {
                                 Some(k) => k.clone(),
-                                None => unit_type(),
+                                None => unit_type.clone(),
                             };
                             let val_child_node =
                                 match n.children.clone().iter().cloned().skip(1 as usize).next() {
                                     Some(v) => v.clone(),
-                                    None => unit_type(),
+                                    None => unit_type.clone(),
                                 };
                             let key_type = child_type_node(key_child_node.clone());
                             let val_type = child_type_node(val_child_node.clone());
@@ -1858,7 +1858,7 @@ pub fn resolve_optional_node(
 ) -> Rc<NodeResolveResult> {
     if (n.clone() == None) {
         Rc::new(NodeResolveResult {
-            resolved: unit_type(),
+            resolved: unit_type.clone(),
             diagnostics: Rc::new(vec![]),
         })
     } else {
@@ -2672,7 +2672,7 @@ pub fn resolve_expr_types(
                 };
                 let anno_resolved = if (texpr.type_annotation.clone() == None) {
                     Rc::new(NodeResolveResult {
-                        resolved: unit_type(),
+                        resolved: unit_type.clone(),
                         diagnostics: Rc::new(vec![]),
                     })
                 } else {
@@ -3010,7 +3010,7 @@ pub fn resolve_expr_types(
                 let tr = match ch.clone().iter().cloned().skip(1 as usize).next() {
                     Some(target) => resolve_node(target.clone(), env.clone(), module_name.clone()),
                     None => Rc::new(NodeResolveResult {
-                        resolved: unit_type(),
+                        resolved: unit_type.clone(),
                         diagnostics: Rc::new(vec![]),
                     }),
                 };
@@ -3346,7 +3346,7 @@ pub fn resolve_item_types(
         };
         let anno_resolved = if (item.type_annotation.clone() == None) {
             Rc::new(NodeResolveResult {
-                resolved: unit_type(),
+                resolved: unit_type.clone(),
                 diagnostics: Rc::new(vec![]),
             })
         } else {

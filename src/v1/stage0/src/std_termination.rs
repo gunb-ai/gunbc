@@ -64,8 +64,8 @@ pub fn descent_evidence_bounded_lattice() -> Rc<BoundedLattice<DescentEvidence>>
     thread_local! {
         static CACHED: Rc<BoundedLattice<DescentEvidence>> = {
             Rc::new(BoundedLattice {
-                meet: Rc::new(descent_evidence_lattice_meet),
-                join: Rc::new(descent_evidence_lattice_join),
+                meet: Rc::new(descent_evidence_lattice_meet.clone()),
+                join: Rc::new(descent_evidence_lattice_join.clone()),
                 top: DescentEvidence::Strict,
                 bottom: DescentEvidence::DescentUnknown,
                 _phantom: std::marker::PhantomData,
