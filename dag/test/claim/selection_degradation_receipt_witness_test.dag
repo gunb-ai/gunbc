@@ -135,8 +135,7 @@ test fn sdr_unknown_mode_tag_is_unavailable_fail_closed() -> Bool {
     categorization_reason: ""
   )
   selection_degradation_state_tag(state: r.selection_state) == "SelectionUnavailable"
-    && string_contains(
-      s: r.fallback_reason,
-      pattern: "SelectionUnavailable: upfront import-closure categorization failed"
-    )
+    && string_contains(s: r.fallback_reason, pattern: "unknown selection_mode_tag")
+    && string_contains(s: r.fallback_reason, pattern: "bogus")
+    && !string_contains(s: r.fallback_reason, pattern: "categorization failed")
 }
