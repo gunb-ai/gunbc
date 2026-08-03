@@ -4,7 +4,7 @@ module extdeps.linux.edac
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
-    locator: "www.kernel.org/doc/html/latest/admin-guide/ras.html"
+    locator: "docs.kernel.org/admin-guide/RAS/main.html"
   }
 }
 
