@@ -280,21 +280,19 @@ fn generate_written_rust_candidate_from_ingest(
   realized_closure: RealizedEmitterClosure,
   workspace_dir: String
 ) -> Outcome<WrittenProvenancedRustArtifact> {
+  let lm = dag_language_model()
   bind_outcome(
-    o: generate_provenanced_rust_candidate_from_ingest(
-      ingest: ingest,
-      admission: admission,
-      target: target,
-      module_path: module_path,
-      realized_closure: realized_closure
-    ),
-    f: fn(artifact) {
-      outcome_accepted(
-        value: WrittenProvenancedRustArtifact {
-          artifact: artifact,
-          write: write_rust_workspace(
-            workspace_dir: workspace_dir,
-            source: artifact.source
+    o: assemble_program_from_ingest(ingest: ingest, admission: admission, lm: lm),
+    f: fn(resolved) {
+      bind_outcome(
+        o: infer(tree: resolved),
+        f: fn(inferred) {
+          mint_written_provenanced_rust_artifact(
+            inferred: inferred,
+            target: target,
+            module_path: module_path,
+            realized_closure: realized_closure,
+            workspace_dir: workspace_dir
           )
         }
       )
