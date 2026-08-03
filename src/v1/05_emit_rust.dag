@@ -2880,7 +2880,7 @@ fn reference_derived_use_lines(items: List<Node>, unlisted_type_names: List<Stri
 
 fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, qualified_item_registry: QualifiedItemRegistryBuild, emit_info: EmitGraphInfo, shared_types: Set<String>, svc_module_map: Map<String, String>, data_items: Map<String, Node>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, module_index: ModuleIndex, unlisted_type_names: List<String>) -> TextFile {
   let m = typed_module.module
-  let scope = module_emit_scope(typed_module: typed_module, qualified_item_registry: qualified_item_registry)
+  let scope = module_emit_scope(typed_module: typed_module)
   let scoped_data_items = augment_scoped_data_item_index_with_imports(
     scoped: build_scoped_data_item_index(typed_module: typed_module, data_items: data_items),
     imports: contracts_imports_for_module(module_name: authored_name(env: scope.type_env, node: m), typed_modules: typed_modules, source_indices: scope.type_env.source_indices, module_index: module_index),
@@ -3158,7 +3158,7 @@ fn type_name_is_rust_importable_in_module(name: String, module_name: String, typ
             item_text: name,
             module_name: module_name,
             imports: module_imports(n: tm.module),
-            scope: module_emit_scope(typed_module: tm, qualified_item_registry: empty_qualified_item_registry()),
+            scope: module_emit_scope(typed_module: tm),
             registry: registry,
             export_sets: export_sets,
             typed_modules: typed_modules,
@@ -3627,7 +3627,7 @@ fn rhs_base_has_rust_type_authority_in_module(rhs_name: String, def_mod_filename
                 item_text: rhs_name,
                 module_name: def_module_name,
                 imports: module_imports(n: tm.module),
-                scope: module_emit_scope(typed_module: tm, qualified_item_registry: empty_qualified_item_registry()),
+                scope: module_emit_scope(typed_module: tm),
                 registry: registry,
                 export_sets: export_sets,
                 typed_modules: typed_modules,
@@ -6533,7 +6533,7 @@ fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: Infe
   }
 }
 
-fn emit_typed_expr_base(texpr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
+fn emit_typed_expr_base(texpr: Node, registry: Map<String, ItemInfo>, qualified_item_registry: QualifiedItemRegistryBuild, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let si = scope.type_env.source_indices
   match texpr.expr_data {
     ExprVar { binding_kind: binding_kind } =>
@@ -6558,24 +6558,24 @@ fn emit_typed_expr_base(texpr: Node, registry: Map<String, ItemInfo>, scope: Inf
             } else { qualified }
             }
           Absent =>
-            match scope.qualified_item_registry {
-              QualifiedRegistryDuplicate { key, first, second } => emit_qualified_item_registry_refusal(build: scope.qualified_item_registry)
+            match qualified_item_registry {
+              QualifiedRegistryDuplicate { key, first, second } => emit_qualified_item_registry_refusal(build: qualified_item_registry)
               QualifiedRegistryBuilt { registry: _ } =>
                 match lookup_item_for_value_ref(
                   resolved_name: value_ref_normalize_self_module(name: n, module_name: scope.module_name),
-                  build: scope.qualified_item_registry
+                  build: qualified_item_registry
                 ) {
                   Present { value: info } =>
                     let is_data = info.kind == DataItem
-                    if is_data { concat(emit_value_ref_ident(name: n, registry: registry, qualified_build: scope.qualified_item_registry, emit_info: emit_info), "()") }
-                    else { emit_value_ref_ident(name: n, registry: registry, qualified_build: scope.qualified_item_registry, emit_info: emit_info) }
+                    if is_data { concat(emit_value_ref_ident(name: n, registry: registry, qualified_build: qualified_item_registry, emit_info: emit_info), "()") }
+                    else { emit_value_ref_ident(name: n, registry: registry, qualified_build: qualified_item_registry, emit_info: emit_info) }
                   Absent =>
-                    emit_value_ref_ident(name: n, registry: registry, qualified_build: scope.qualified_item_registry, emit_info: emit_info)
+                    emit_value_ref_ident(name: n, registry: registry, qualified_build: qualified_item_registry, emit_info: emit_info)
                 }
             }
         }
       }
-    _ => emit_typed_expr(texpr: texpr, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+    _ => emit_typed_expr(texpr: texpr, registry: registry, qualified_item_registry: qualified_item_registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
   }
 }
 
