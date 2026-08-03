@@ -166,7 +166,7 @@ Operator pause — **last dispatch wave of this stretch**. No new PRs or childre
 |---|---|---|---|---|---|---|
 | Program note | `still-moth-459` | [#7721](https://github.com/gunb-ai/gunbc/pull/7721) | `10942eda742` | 2/2 claude+cursor | pending | Authority + `HandAuthoredDocBind` + five-minute cross-link |
 | P1 A/B | `valiant-deer-205` | [#7725](https://github.com/gunb-ai/gunbc/pull/7725) | `8c07f422979` | 2/2 | **CLEAN / merge-ready** | **REJECT banked** → assembly/materialization; operator merges |
-| P2 receipts | `warm-wolf-777` | [#7722](https://github.com/gunb-ai/gunbc/pull/7722) | `684dd67e044b` | 2/2 | pending | `selection_degradation_receipt.dag` + cli_run emit paths; E0425 fix landed |
+| P2 receipts | `warm-wolf-777` | [#7722](https://github.com/gunb-ai/gunbc/pull/7722) | `00feda30b162` | 2/2 | **CLEAN / merge-ready** | selection degradation receipts wired; `resolve_entry_file_under_roots` fix; operator merges |
 | P3 width-2 | `merry-ibex-227` | — | — | — | — | **HOLD** — needs P1 banked **and** Rc→Arc index share |
 | P4 broad native | `sharp-carp-537` | — | — | — | — | **HOLD** — after D1 amortized (P1 redirect) |
 | Closeout | `warm-lynx-428` | — | — | — | — | Track only (do not open PRs; #7726 and #7731 closed — stacked P1+P2 forks) |
