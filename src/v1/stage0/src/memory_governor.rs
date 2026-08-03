@@ -889,6 +889,31 @@ impl MemoryGovernor {
         self.core.lock().unwrap().target_width
     }
 
+    /// Measurement-only width trial (`GUNBC_FLOOR_WIDTH_TRIAL=2`): seeds `target_width`
+    /// before the discovery pool samples it, un-latching the width=1 inline drain for
+    /// fleet receipts. Width 2 only — broader trials need the Rc→Arc index-share dissolve-on.
+    pub fn arm_measurement_width_trial(&self, width: usize) -> Result<(), String> {
+        if width != 2 {
+            return Err(format!(
+                "measurement width trial accepts width=2 only, got {width}"
+            ));
+        }
+        let mut core = self.core.lock().unwrap();
+        core.target_width = width;
+        core.max_width_reached = core.max_width_reached.max(width);
+        eprintln!(
+            "{}",
+            render_governor_info_line(
+                &format!(
+                    "governor measurement width trial — target_width seeded to {width} \
+                     (GUNBC_FLOOR_WIDTH_TRIAL; dissolve-on: shared index retires this latch)"
+                ),
+                governor_emoji(),
+            )
+        );
+        Ok(())
+    }
+
     /// The end-of-run receipt: the counted degradations (§5 — observable, prioritizable).
     pub fn receipt_line(&self) -> String {
         let _ = GOVERNOR_CENSUS_MARKER;
@@ -1850,5 +1875,14 @@ mod tests {
             Some("1.23".to_string())
         );
         assert_eq!(memory_pressure_some_avg10("garbage\n"), None);
+    }
+
+    #[test]
+    fn measurement_width_trial_seeds_target_width_two_only() {
+        let gov = MemoryGovernor::from_environment(4);
+        assert_eq!(gov.current_target_width(), 1);
+        gov.arm_measurement_width_trial(2).unwrap();
+        assert_eq!(gov.current_target_width(), 2);
+        assert!(gov.arm_measurement_width_trial(3).is_err());
     }
 }

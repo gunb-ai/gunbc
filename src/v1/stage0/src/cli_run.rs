@@ -8476,6 +8476,23 @@ fn floor_drain_retention_detail_enabled() -> bool {
         .unwrap_or(false)
 }
 
+/// Measurement-only adaptive width trial (`GUNBC_FLOOR_WIDTH_TRIAL=2`). Run only after a
+/// bounded-retention receipt at the fleet 16 GiB envelope — the throughline exit metric
+/// requires width > 1 receipts, but the inline drain latch absorbs width=1 until this
+/// env explicitly arms a width-2 trial with cross_worker_store.
+fn floor_adaptive_width_trial_from_env() -> Option<usize> {
+    match std::env::var("GUNBC_FLOOR_WIDTH_TRIAL").ok().as_deref() {
+        Some("2") => Some(2),
+        Some(other) => {
+            eprintln!(
+                "run_discovery_corpus: GUNBC_FLOOR_WIDTH_TRIAL={other:?} ignored — only width=2 trial is supported"
+            );
+            None
+        }
+        None => None,
+    }
+}
+
 fn retention_snapshot_peak(
     a: &IndexRetentionSnapshot,
     b: &IndexRetentionSnapshot,
@@ -19274,6 +19291,9 @@ fn run_discovery_corpus_with_options_inner(
             // resident structure across every group it pulls — admission of a worker (not of a
             // group) is therefore the memory-relevant act the governor decides.
             let groups = entry_row_groups(&rows);
+            if let Some(trial_width) = floor_adaptive_width_trial_from_env() {
+                governor.arm_measurement_width_trial(trial_width)?;
+            }
             let spawn_target_width = governor.current_target_width();
             eprintln!(
                 "run_discovery_corpus: adaptive pool over {} entry-group(s), {} row(s) (governor target_width={})",
