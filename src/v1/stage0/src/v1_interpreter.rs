@@ -3366,7 +3366,7 @@ macro_rules! v1_bridge_dispatch {
             if is_v4_bridge_family($c, &$f, $cname, $module) {
                 return match $crate::v1_interpreter_dispatch_generated::lookup_eval_call_bridge(&$f) {
                     Some(arm) => match arm {
-                        $( $crate::eval_call_bridge_arm!($id) => $body , )*
+                        $( $crate::v1_interpreter_dispatch_generated::eval_call_bridge_arm!($id) => $body , )*
                         _ => unreachable!("bridge family guard/lookup mismatch for {}", $module),
                     },
                     None => unreachable!("bridge fn set mismatch: {}", $module),
@@ -3414,7 +3414,7 @@ macro_rules! v1_map_grounding_dispatch {
     ($f:ident; $(arm $id:tt { $($lit:literal)|+ } => $body:expr ,)*) => {
         match $crate::v1_interpreter_dispatch_generated::lookup_try_v2_std_collection_map_primitive_grounding($f) {
             Some(arm) => match arm {
-                $( $crate::try_v2_std_collection_map_primitive_grounding_arm!($id) => $body , )*
+                $( $crate::v1_interpreter_dispatch_generated::try_v2_std_collection_map_primitive_grounding_arm!($id) => $body , )*
             },
             None => return None,
         }
@@ -3503,7 +3503,7 @@ macro_rules! v1_native_intercept_dispatch {
     ($f:ident, $a:ident, $e:ident, $c:ident; $(arm $id:tt { $lit:literal } => $body:expr ,)*) => {
         match $crate::v1_interpreter_dispatch_generated::lookup_eval_call_native_intercept(&$f) {
             Some(arm) => match arm {
-                $( $crate::eval_call_native_intercept_arm!($id) => $body , )*
+                $( $crate::v1_interpreter_dispatch_generated::eval_call_native_intercept_arm!($id) => $body , )*
             },
             None => {}
         }
@@ -3847,7 +3847,7 @@ macro_rules! v1_parse_table_dispatch {
     ($f:ident, $c:ident, $n:ident, $a:ident, $e:ident; $(arm $id:tt { $lit:literal } => $body:expr ,)*) => {
         match $crate::v1_interpreter_dispatch_generated::lookup_try_parse_table_memo_dispatch(&$f) {
             Some(arm) => match arm {
-                $( $crate::try_parse_table_memo_dispatch_arm!($id) => $body , )*
+                $( $crate::v1_interpreter_dispatch_generated::try_parse_table_memo_dispatch_arm!($id) => $body , )*
             },
             None => Ok(None),
         }
@@ -5515,7 +5515,7 @@ macro_rules! v1_algebra_dispatch {
     ($m:ident, $r:ident, $a:ident, $e:ident, $c:ident; $(arm $id:tt { $($lit:literal)|+ } => $body:expr ,)*) => {
         match $crate::v1_interpreter_dispatch_generated::lookup_eval_algebra_method_inner($m) {
             Some(arm) => match arm {
-                $( $crate::eval_algebra_method_inner_arm!($id) => $body , )*
+                $( $crate::v1_interpreter_dispatch_generated::eval_algebra_method_inner_arm!($id) => $body , )*
             },
             None => Err(InterpError::Unimplemented {
                 what: format!("method '{}'", $m),
@@ -11457,7 +11457,7 @@ macro_rules! v1_builtin_dispatch {
     ($n:ident, $p:ident, $c:ident; $(arm $id:tt { $($lit:literal)|+ } => $body:expr ,)*) => {
         match $crate::v1_interpreter_dispatch_generated::lookup_eval_builtin_inner($n) {
             Some(arm) => match arm {
-                $( $crate::eval_builtin_inner_arm!($id) => $body , )*
+                $( $crate::v1_interpreter_dispatch_generated::eval_builtin_inner_arm!($id) => $body , )*
             },
             None => Ok(None),
         }

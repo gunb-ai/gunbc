@@ -257,7 +257,6 @@ pub fn lookup_eval_builtin_inner(spelling: &str) -> Option<EvalBuiltinArm> {
 }
 
 #[rustfmt::skip]
-#[macro_export]
 macro_rules! eval_builtin_inner_arm {
     ("free_call.parse_stage0_cargo_manifest_bins") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallParseStage0CargoManifestBins };
     ("free_call.stage0_emission_source_identities_host") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallStage0EmissionSourceIdentitiesHost };
@@ -478,7 +477,6 @@ pub fn lookup_eval_algebra_method_inner(spelling: &str) -> Option<EvalAlgebraMet
 }
 
 #[rustfmt::skip]
-#[macro_export]
 macro_rules! eval_algebra_method_inner_arm {
     ("method_call.lookup") => { $crate::v1_interpreter_dispatch_generated::EvalAlgebraMethodArm::MethodCallLookup };
     ("method_call.map") => { $crate::v1_interpreter_dispatch_generated::EvalAlgebraMethodArm::MethodCallMap };
@@ -557,7 +555,6 @@ pub fn lookup_eval_call_bridge(spelling: &str) -> Option<EvalCallBridgeArm> {
 }
 
 #[rustfmt::skip]
-#[macro_export]
 macro_rules! eval_call_bridge_arm {
     ("v4_bridge.resolve_type_node") => { $crate::v1_interpreter_dispatch_generated::EvalCallBridgeArm::V4BridgeResolveTypeNode };
     ("v4_bridge.symbol_intern_lexeme") => { $crate::v1_interpreter_dispatch_generated::EvalCallBridgeArm::V4BridgeSymbolInternLexeme };
@@ -590,7 +587,6 @@ pub fn lookup_try_v2_std_collection_map_primitive_grounding(spelling: &str) -> O
 }
 
 #[rustfmt::skip]
-#[macro_export]
 macro_rules! try_v2_std_collection_map_primitive_grounding_arm {
     ("map_grounding.empty_map") => { $crate::v1_interpreter_dispatch_generated::TryV2StdCollectionMapPrimitiveGroundingArm::MapGroundingEmptyMap };
     ("map_grounding.map_insert") => { $crate::v1_interpreter_dispatch_generated::TryV2StdCollectionMapPrimitiveGroundingArm::MapGroundingMapInsert };
@@ -612,7 +608,6 @@ pub fn lookup_eval_call_native_intercept(spelling: &str) -> Option<EvalCallNativ
 }
 
 #[rustfmt::skip]
-#[macro_export]
 macro_rules! eval_call_native_intercept_arm {
     ("native_intercept.fold_list") => { $crate::v1_interpreter_dispatch_generated::EvalCallNativeInterceptArm::NativeInterceptFoldList };
     ("native_intercept.fold_list_right") => { $crate::v1_interpreter_dispatch_generated::EvalCallNativeInterceptArm::NativeInterceptFoldListRight };
@@ -634,7 +629,6 @@ pub fn lookup_try_parse_table_memo_dispatch(spelling: &str) -> Option<TryParseTa
 }
 
 #[rustfmt::skip]
-#[macro_export]
 macro_rules! try_parse_table_memo_dispatch_arm {
     ("parse_table_memo.parse_table_lookup") => { $crate::v1_interpreter_dispatch_generated::TryParseTableMemoDispatchArm::ParseTableMemoParseTableLookup };
     ("parse_table_memo.parse_table_insert") => { $crate::v1_interpreter_dispatch_generated::TryParseTableMemoDispatchArm::ParseTableMemoParseTableInsert };

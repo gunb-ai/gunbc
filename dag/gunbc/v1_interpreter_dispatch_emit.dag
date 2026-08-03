@@ -219,7 +219,6 @@ fn render_site_block(site_key: String, rows: List<InterpreterPrimitiveDispatchAr
     "    }\n",
     "}\n\n",
     "#[rustfmt::skip]\n",
-    "#[macro_export]\n",
     "macro_rules! ",
     macro_name,
     " {\n",
