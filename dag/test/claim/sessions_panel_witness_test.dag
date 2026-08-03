@@ -6,10 +6,14 @@ import gunbc.roadmap_belt_actuate {
 }
 import gunbc.roadmap_dispatch_actuator {
   DispatchLiveSession,
-  dispatch_worker_observation,
-  dispatch_worker_observation_for_process,
+  CodexDispatchProvider,
+  dispatch_provider_instance_for,
 }
-import gunbc.worker_lifecycle { WorkerProcessExited }
+import gunbc.worker_lifecycle {
+  WorkerProcessExited,
+  worker_observation_without_provider_probe,
+  worker_observation_without_provider_probe_for_process,
+}
 import gunbc.roadmap_component {
   dispatch_client_js_source, sessions_route_path,
 }
@@ -27,7 +31,9 @@ fn fixture_live() -> DispatchLiveSession {
     node_id: "5-regen-cutover",
     windows: 1,
     lease_verdict: Converged,
-    worker: dispatch_worker_observation(),
+    worker: worker_observation_without_provider_probe(
+      instance: dispatch_provider_instance_for(provider: CodexDispatchProvider),
+    ),
   }
 }
 
@@ -59,7 +65,8 @@ test fn retained_dead_process_projects_clear_without_erasing_session() -> Bool {
     node_id: "5-regen-cutover",
     windows: 1,
     lease_verdict: Converged,
-    worker: dispatch_worker_observation_for_process(
+    worker: worker_observation_without_provider_probe_for_process(
+      instance: dispatch_provider_instance_for(provider: CodexDispatchProvider),
       process: WorkerProcessExited { exit_code: 0, last_command: "env" },
     ),
   }
