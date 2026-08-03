@@ -1,7 +1,7 @@
 module test.claim.roadmap_tactile_witness
 
 import std.types { Int, String, Bool }
-import std.markup { Fragment, Element, FragmentText, RawNode, Attribute }
+import std.markup { Fragment, Element, FragmentText, RawNode, Attribute, attr }
 import gunbc.design.material {
   TimingToken, timing_scale, respond_fast, reveal_deliberate, restore_gentle, settle_spring,
   BuildRule, StaticRule, ResponseRule, SelfResponse,
@@ -277,19 +277,23 @@ fn fragment_is_sound_toggle(c: Fragment) -> Bool {
   }
 }
 
+data sound_toggle_frame_scan_note: String = "Amended for the A2 hierarchy closeout: the header's controls moved inside the div.header-inner composition frame (gunbc.roadmap_page.header_composition_frame_note), so the toggle is no longer a direct child. Same shape as the wordmark scan in roadmap_register_witness_test (header_frame_scan_note): a RECURSIVE descent over the header's Fragment subtree, because the claim is 'every page header ships the toggle', not 'the toggle sits at depth one'. A fixed depth would re-pin the nesting it was just unpinned from."
+
+fn header_subtree_has_sound_toggle(f: Fragment) -> Bool {
+  fragment_is_sound_toggle(c: f)
+    || (match f {
+      Element { tag: _, attributes: _, children } =>
+        fold(children, init: false, f: (acc, c) => acc || header_subtree_has_sound_toggle(f: c))
+      FragmentText { content: _ } => false
+      RawNode { content: _ } => false
+    })
+}
+
 fn header_has_sound_toggle(h: Fragment) -> Bool {
   match h {
     Element { tag, attributes: _, children } =>
       tag == "header"
-        && fold(children, init: false, f: (acc, c) =>
-          acc
-            || fragment_is_sound_toggle(c: c)
-            || (match c {
-              Element { tag: _, attributes: _, children: inner } =>
-                fold(inner, init: false, f: (a2, c2) => a2 || fragment_is_sound_toggle(c: c2))
-              FragmentText { content: _ } => false
-              RawNode { content: _ } => false
-            }))
+        && fold(children, init: false, f: (acc, c) => acc || header_subtree_has_sound_toggle(f: c))
     FragmentText { content: _ } => false
     RawNode { content: _ } => false
   }
@@ -298,6 +302,37 @@ fn header_has_sound_toggle(h: Fragment) -> Bool {
 test fn witness_sound_toggle_ships_on_every_page_header() -> Bool {
   header_has_sound_toggle(h: roadmap_header(page: "roadmap"))
     && header_has_sound_toggle(h: roadmap_header(page: "daily workspace"))
+}
+
+test fn witness_sound_toggle_scan_discriminates() -> Bool {
+  !header_has_sound_toggle(h: Element {
+    tag: "header",
+    attributes: [],
+    children: [
+      Element {
+        tag: "div",
+        attributes: [],
+        children: [
+          Element {
+            tag: "button",
+            attributes: [ attr(name: "class", value: "theme-toggle") ],
+            children: [],
+          },
+        ],
+      },
+    ],
+  })
+    && !header_has_sound_toggle(h: Element {
+      tag: "div",
+      attributes: [],
+      children: [
+        Element {
+          tag: "button",
+          attributes: [ attr(name: "class", value: sound_toggle_class) ],
+          children: [],
+        },
+      ],
+    })
 }
 
 data sound_toggle_name_vs_state_note: String = "Amended at A1 (presentation recon, 2026-08-01): the markup ships the control's NAME ('sound') so the button has visible content and an accessible name before the client program runs — the former empty-button pin enshrined blankness as the wire contract, which was the defect, not the honesty. The claim that MATTERS is unchanged and still asserted: the markup never ships a STATE label (sound_toggle_label_on), because the state lives in this browser's storage and only the client program may paint it."
