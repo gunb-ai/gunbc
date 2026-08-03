@@ -1657,7 +1657,7 @@ pub fn render_node_type(
                                     )
                                 }
                             } else {
-                                if (tn.clone() == tuple_type_name()) {
+                                if (tn.clone() == tuple_type_name.clone()) {
                                     render_tuple_parts(Rc::new(vec![]), target.clone())
                                 } else {
                                     coerce_primitive_type(target.clone(), tn.clone())
@@ -1751,7 +1751,7 @@ pub fn render_node_type(
             }
             __result
         });
-        if (tn.clone() == tuple_type_name()) {
+        if (tn.clone() == tuple_type_name.clone()) {
             {
                 let multi_tuple_str = render_tuple_parts(child_strs.clone(), target.clone());
                 return multi_tuple_str;

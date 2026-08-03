@@ -80,7 +80,7 @@ pub fn grounded_primitive_coproduct_identities() -> Rc<Vec<Rc<CastRule>>> {
 pub fn dag_can_cast(source_type: String, target_type: String) -> bool {
     ({
         let mut __found = false;
-        for r in dag_cast_rules().iter().cloned() {
+        for r in dag_cast_rules.clone().iter().cloned() {
             if ((r.from_type.clone() == source_type.clone())
                 && (r.to_type.clone() == target_type.clone()))
             {
@@ -91,7 +91,11 @@ pub fn dag_can_cast(source_type: String, target_type: String) -> bool {
         __found
     } || {
         let mut __found = false;
-        for r in grounded_primitive_coproduct_identities().iter().cloned() {
+        for r in grounded_primitive_coproduct_identities
+            .clone()
+            .iter()
+            .cloned()
+        {
             if ((r.from_type.clone() == source_type.clone())
                 && (r.to_type.clone() == target_type.clone()))
             {
@@ -106,7 +110,7 @@ pub fn dag_can_cast(source_type: String, target_type: String) -> bool {
 pub fn is_dag_cast_domain_type(name: String) -> bool {
     {
         let mut __found = false;
-        for r in dag_cast_rules().iter().cloned() {
+        for r in dag_cast_rules.clone().iter().cloned() {
             if ((r.from_type.clone() == name.clone()) || (r.to_type.clone() == name.clone())) {
                 __found = true;
                 break;

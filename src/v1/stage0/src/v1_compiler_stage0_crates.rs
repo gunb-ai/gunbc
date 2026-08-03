@@ -303,7 +303,7 @@ pub fn stage0_lookup_module_owner_package_name(
     {
         let matches = Rc::new({
             let mut __result = Vec::new();
-            for row in generated_partition_crate_rows().iter().cloned() {
+            for row in generated_partition_crate_rows.clone().iter().cloned() {
                 if (stage0_partition_row_is_module_bearing(row.clone()) && {
                     let mut __found = false;
                     for m in row.modules.clone().iter().cloned() {
@@ -353,7 +353,7 @@ pub fn stage0_lookup_package_crate_dir(package_name: String) -> Rc<Stage0Package
     {
         let matches = Rc::new({
             let mut __result = Vec::new();
-            for row in generated_partition_crate_rows().iter().cloned() {
+            for row in generated_partition_crate_rows.clone().iter().cloned() {
                 if (row.package_name.clone() == package_name.clone()) {
                     __result.push(row);
                 }
@@ -562,7 +562,7 @@ pub fn stage0_emit_shell_path_dependencies() -> Rc<Vec<Rc<CargoDependency>>> {
         let mut __result = Vec::new();
         for row in Rc::new({
             let mut __result = Vec::new();
-            for row in generated_partition_crate_rows().iter().cloned() {
+            for row in generated_partition_crate_rows.clone().iter().cloned() {
                 if stage0_partition_row_is_module_bearing(row.clone()) {
                     __result.push(row);
                 }
@@ -739,7 +739,7 @@ pub fn render_stage0_crate_features_section(features: Rc<Vec<Rc<CargoFeature>>>)
                     .clone()
                     .iter()
                     .cloned()
-                    .map(render_stage0_crate_feature)
+                    .map(render_stage0_crate_feature.clone())
                     .collect::<Vec<_>>(),
             )
             .join(&"".to_string()),
@@ -754,7 +754,7 @@ pub fn emit_stage0_crate_manifest(spec: Rc<Stage0CrateSpec>) -> Rc<TextFile> {
                 .clone()
                 .iter()
                 .cloned()
-                .map(render_stage0_crate_dep)
+                .map(render_stage0_crate_dep.clone())
                 .collect::<Vec<_>>(),
         )
         .join(&"".to_string());
@@ -1001,7 +1001,7 @@ pub fn emit_stage0_crate_lib_outcome(spec: Rc<Stage0CrateSpec>) -> Rc<Stage0Crat
 }
 
 pub fn stage0_crate_plan_outcome() -> Rc<Stage0CratePlanOutcome> {
-    generated_partition_crate_rows().iter().cloned().fold(
+    generated_partition_crate_rows.clone().iter().cloned().fold(
         Rc::new(Stage0CratePlanOutcome::Stage0CratePlanOk {
             plan: Rc::new(Stage0CratePlan {
                 crates: Rc::new(vec![]),

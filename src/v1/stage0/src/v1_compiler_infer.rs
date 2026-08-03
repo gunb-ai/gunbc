@@ -2997,7 +2997,7 @@ pub fn infer_tier2b_builtin_with_kernel_diags(
                         };
                         let result_bt = if (func_name.clone() == "set_contains".to_string()) {
                             if (recv_is_set.clone() && !elem_mismatch.clone()) {
-                                bool_type()
+                                bool_type.clone()
                             } else {
                                 resolve_builtin_call_type(func_name.clone())
                             }
@@ -3101,7 +3101,7 @@ pub fn method_existence_decision(
         )) != None);
         if recv_surface_established.clone() {
             Rc::new(MethodPipeFallback {
-                result_ty: error_type(),
+                result_ty: error_type.clone(),
                 kernel_diags: Rc::new(vec![make_error_node(
                     Rc::new(CompilerDiagnostic::MethodNotFound {
                         method: method_name.clone(),
@@ -3135,7 +3135,7 @@ pub fn method_existence_decision(
                         )) != None);
                         if peeled_surface_established.clone() {
                             Rc::new(MethodPipeFallback {
-                                result_ty: error_type(),
+                                result_ty: error_type.clone(),
                                 kernel_diags: Rc::new(vec![make_error_node(
                                     Rc::new(CompilerDiagnostic::MethodNotFound {
                                         method: method_name.clone(),
@@ -3158,7 +3158,7 @@ pub fn method_existence_decision(
                                     ) == "".to_string())
                                     {
                                         Rc::new(MethodPipeFallback {
-                                            result_ty: error_type(),
+                                            result_ty: error_type.clone(),
                                             kernel_diags: Rc::new(vec![make_error_node(
                                                 Rc::new(
                                                     CompilerDiagnostic::ReceiverTypeUnestablished {
@@ -3171,7 +3171,7 @@ pub fn method_existence_decision(
                                         })
                                     } else {
                                         Rc::new(MethodPipeFallback {
-    result_ty: error_type(),
+    result_ty: error_type.clone(),
     kernel_diags: Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::MethodExistenceFrontierAdmitted {
     method: method_name.clone(),
     receiver_type: recv_shape.clone(),
@@ -3182,7 +3182,7 @@ pub fn method_existence_decision(
                                     }
                                 }
                                 None => Rc::new(MethodPipeFallback {
-                                    result_ty: error_type(),
+                                    result_ty: error_type.clone(),
                                     kernel_diags: Rc::new(vec![make_error_node(
                                         Rc::new(CompilerDiagnostic::MethodExistenceUndecided {
                                             method: method_name.clone(),
@@ -4422,7 +4422,7 @@ pub fn seed_override_map() -> Rc<HashMap<String, Rc<Node>>> {
     Rc::new(vec!["".to_string()]).iter().cloned().fold(
         v1_rt::rc_empty_map::<String, Rc<Node>>(),
         |acc: Rc<HashMap<String, Rc<Node>>>, k: String| {
-            v1_rt::rc_map_insert(acc, k.clone(), unit_type())
+            v1_rt::rc_map_insert(acc, k.clone(), unit_type.clone())
         },
     )
 }
@@ -4745,7 +4745,7 @@ pub fn infer_expr_body(
                                                     }),
                                                     Rc::new(vec![]),
                                                     Some(Rc::new(InferredNode::Resolved {
-                                                        node: error_type(),
+                                                        node: error_type.clone(),
                                                     })),
                                                     span.clone(),
                                                     span.clone(),
@@ -5027,7 +5027,7 @@ pub fn infer_expr_body(
                     );
                     let call_fold_acc_type = match call_fold_info.clone() {
                         Some(fi) => resolved_type(arg_value(fi.typed_arg.clone())),
-                        None => error_type(),
+                        None => error_type.clone(),
                     };
                     let arg_call = if ((has_lambda.clone()
                         && ((call_args.clone().len() as i64) >= 2))
@@ -5215,7 +5215,7 @@ pub fn infer_expr_body(
                                     call_subst.clone(),
                                     scope.type_env.clone().source_indices.clone(),
                                 ),
-                                None => error_type(),
+                                None => error_type.clone(),
                             };
                             let value_params_for_check = split_sig_params(
                                 sig_params.clone(),
@@ -5269,7 +5269,7 @@ pub fn infer_expr_body(
                         {
                             let first_arg_type = match typed_args.clone().first().cloned() {
                                 Some(ta) => resolved_type(arg_value(ta.clone())),
-                                None => unit_type(),
+                                None => unit_type.clone(),
                             };
                             let method_receiver = match typed_args.clone().first().cloned() {
                                 Some(ta) => arg_value(ta.clone()),
@@ -5336,7 +5336,7 @@ pub fn infer_expr_body(
                                     let base_result_type =
                                         match method_resolution.result_type.clone() {
                                             Some(mt) => mt.clone(),
-                                            None => error_type(),
+                                            None => error_type.clone(),
                                         };
                                     let method_tv = if (method_resolution.semantics.clone() == None)
                                     {
@@ -5719,7 +5719,7 @@ match bare_s.clone() {
                                                         let callable_type =
                                                             match callable_local.clone() {
                                                                 Some(ct) => ct.clone(),
-                                                                None => error_type(),
+                                                                None => error_type.clone(),
                                                             };
                                                         let resolved_type = match callable_type
                                                             .inferred
@@ -5731,7 +5731,7 @@ match bare_s.clone() {
                                                                 node: ret,
                                                                 ..
                                                             }) => ret.clone(),
-                                                            _ => error_type(),
+                                                            _ => error_type.clone(),
                                                         };
                                                         Rc::new(InferResult {
     typed: make_named_expr_node(func_name.clone(), Rc::new(ExprData::ExprCall {
@@ -5789,7 +5789,7 @@ match bare_s.clone() {
                                                                             )
                                                                         }
                                                                     }
-                                                                    None => error_type(),
+                                                                    None => error_type.clone(),
                                                                 },
                                                             };
                                                             let call_diags = match type_match
@@ -5909,7 +5909,7 @@ match bare_s.clone() {
                     );
                     let fold_acc_type = match fold_info.clone() {
                         Some(fi) => resolved_type(arg_value(fi.typed_arg.clone())),
-                        None => error_type(),
+                        None => error_type.clone(),
                     };
                     let mc_elem_provenance = derive_element_provenance(
                         recv_typed.clone(),
@@ -6485,7 +6485,9 @@ match bare_s.clone() {
                     let if_texpr2 = make_expr_node(
                         Rc::new(ExprData::ExprIf),
                         Rc::new(vec![cond_typed.clone(), then_typed.clone()]),
-                        Some(Rc::new(InferredNode::Resolved { node: unit_type() })),
+                        Some(Rc::new(InferredNode::Resolved {
+                            node: unit_type.clone(),
+                        })),
                         span.clone(),
                     );
                     Rc::new(InferResult {
@@ -6635,7 +6637,7 @@ match bare_s.clone() {
             let elem_type_node = if ((elem_results.clone().len() as i64) > 0) {
                 match elem_results.clone().first().cloned() {
                     Some(r) => resolved_type(r.typed.clone()),
-                    None => unit_type(),
+                    None => unit_type.clone(),
                 }
             } else {
                 match expected.clone() {
@@ -6646,13 +6648,13 @@ match bare_s.clone() {
                         ) {
                             match exp.children.clone().first().cloned() {
                                 Some(elem) => child_type_node(elem.clone()),
-                                None => unit_type(),
+                                None => unit_type.clone(),
                             }
                         } else {
-                            unit_type()
+                            unit_type.clone()
                         }
                     }
-                    None => unit_type(),
+                    None => unit_type.clone(),
                 }
             };
             let empty_list_diags = if ((elem_results.clone().len() as i64) == 0) {
@@ -6739,7 +6741,7 @@ match bare_s.clone() {
             let operand_typed = operand_result.typed.clone();
             let operand_diags = operand_result.diagnostics.clone();
             let result_type = match op.clone() {
-                UnaryOpKind::Not => bool_type(),
+                UnaryOpKind::Not => bool_type.clone(),
                 UnaryOpKind::Neg => resolved_type(operand_typed.clone()),
             };
             let uo_texpr = make_expr_node(
@@ -7016,7 +7018,7 @@ match bare_s.clone() {
                 Rc::new(ExprData::ExprStringInterp),
                 typed_part_nodes.clone(),
                 Some(Rc::new(InferredNode::Resolved {
-                    node: string_type(),
+                    node: string_type.clone(),
                 })),
                 span.clone(),
             );
@@ -7036,7 +7038,7 @@ match bare_s.clone() {
                         scope.clone(),
                         Rc::new(vec![]),
                         Rc::new(vec![]),
-                        unit_type(),
+                        unit_type.clone(),
                         expected.clone(),
                     );
                     let blk_texpr = make_expr_node(
@@ -7062,7 +7064,9 @@ match bare_s.clone() {
                 ok_infer(make_expr_node(
                     Rc::new(ExprData::ExprBlock),
                     Rc::new(vec![]),
-                    Some(Rc::new(InferredNode::Resolved { node: unit_type() })),
+                    Some(Rc::new(InferredNode::Resolved {
+                        node: unit_type.clone(),
+                    })),
                     span.clone(),
                 ))
             }
@@ -8562,7 +8566,7 @@ pub fn infer_record_lit(
                 };
                 let variant_lookup_resolved = match effective_lookup.clone() {
                     Some(tn) => tn.clone(),
-                    None => error_type(),
+                    None => error_type.clone(),
                 };
                 let type_name_declares_own_type = match lookup_binding_by_name(
                     scope.type_env.clone(),
@@ -13607,7 +13611,9 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                         __result
                     }),
                     params: item.params.clone(),
-                    inferred: Some(Rc::new(InferredNode::Resolved { node: unit_type() })),
+                    inferred: Some(Rc::new(InferredNode::Resolved {
+                        node: unit_type.clone(),
+                    })),
                     return_cardinality: item.return_cardinality.clone(),
                     uses: item.uses.clone(),
                     body: None,
@@ -13877,7 +13883,9 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                                     inferred: if (item.inferred.clone() != None) {
                                         item.inferred.clone()
                                     } else {
-                                        Some(Rc::new(InferredNode::Resolved { node: unit_type() }))
+                                        Some(Rc::new(InferredNode::Resolved {
+                                            node: unit_type.clone(),
+                                        }))
                                     },
                                     return_cardinality: item.return_cardinality.clone(),
                                     uses: item.uses.clone(),
@@ -13916,7 +13924,9 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                                     inferred: if (item.inferred.clone() != None) {
                                         item.inferred.clone()
                                     } else {
-                                        Some(Rc::new(InferredNode::Resolved { node: unit_type() }))
+                                        Some(Rc::new(InferredNode::Resolved {
+                                            node: unit_type.clone(),
+                                        }))
                                     },
                                     return_cardinality: item.return_cardinality.clone(),
                                     uses: item.uses.clone(),
@@ -14446,7 +14456,7 @@ pub fn deps_excluding_leaf_self(
 }
 
 pub fn compiler_recursive_name_set() -> Rc<HashMap<String, bool>> {
-    Rc::new(v1_rt::map_keys(&compiler_recursive_types()))
+    Rc::new(v1_rt::map_keys(&compiler_recursive_types))
         .iter()
         .cloned()
         .fold(
@@ -16188,7 +16198,7 @@ pub fn build_type_env(
     symbol_index: Rc<SymbolIndex>,
 ) -> Rc<BuildTypeEnvResult> {
     {
-        let source_indices = Rc::new(v1_rt::map_keys(&kernel_type_set()))
+        let source_indices = Rc::new(v1_rt::map_keys(&kernel_type_set))
             .iter()
             .cloned()
             .fold(
@@ -16239,7 +16249,7 @@ pub fn build_type_env(
             },
         );
         let intern_table = seed_kernel_intern_table(intern_table.clone());
-        let kernel_bindings_base = Rc::new(v1_rt::map_keys(&kernel_type_set()))
+        let kernel_bindings_base = Rc::new(v1_rt::map_keys(&kernel_type_set))
             .iter()
             .cloned()
             .fold(
@@ -16397,10 +16407,10 @@ pub fn build_type_env(
                 provenance: Rc::new(SubValueRelation::SubValueUnknown),
             }),
         );
-        let node_fields = inductive_fields_list_to_map(compiler_inductive_fields());
+        let node_fields = inductive_fields_list_to_map(compiler_inductive_fields.clone());
         let kernel_recursive_types = Rc::new({
             let mut __result = Vec::new();
-            for name in Rc::new(v1_rt::map_keys(&compiler_recursive_types()))
+            for name in Rc::new(v1_rt::map_keys(&compiler_recursive_types))
                 .iter()
                 .cloned()
             {
@@ -16408,7 +16418,7 @@ pub fn build_type_env(
             }
             __result
         });
-        let kernel_recursive_type_set = Rc::new(v1_rt::map_keys(&compiler_recursive_types()))
+        let kernel_recursive_type_set = Rc::new(v1_rt::map_keys(&compiler_recursive_types))
             .iter()
             .cloned()
             .fold(
@@ -16736,7 +16746,7 @@ pub fn build_type_env(
                     v1_rt::rc_map_insert(acc, n.clone(), true)
                 },
             );
-        let svn_kernel = Rc::new(v1_rt::map_keys(&kernel_type_set()))
+        let svn_kernel = Rc::new(v1_rt::map_keys(&kernel_type_set))
             .iter()
             .cloned()
             .fold(
@@ -16863,7 +16873,7 @@ pub fn build_type_env_unresolved(
     intern_table: Rc<InternTable>,
 ) -> Rc<BuildTypeEnvResult> {
     {
-        let intern_table = Rc::new(v1_rt::map_keys(&kernel_type_set()))
+        let intern_table = Rc::new(v1_rt::map_keys(&kernel_type_set))
             .iter()
             .cloned()
             .fold(intern_table.clone(), |t: Rc<InternTable>, name: String| {
@@ -16876,7 +16886,7 @@ pub fn build_type_env_unresolved(
                 intern(t, name.clone()).table.clone()
             });
         let zero_span = make_span(0, 0);
-        let kernel_bindings = Rc::new(v1_rt::map_keys(&kernel_type_set()))
+        let kernel_bindings = Rc::new(v1_rt::map_keys(&kernel_type_set))
             .iter()
             .cloned()
             .fold(
@@ -18947,7 +18957,7 @@ pub fn build_emit_graph_info(
 
 pub fn seed_kernel_intern_table(intern_table: Rc<InternTable>) -> Rc<InternTable> {
     {
-        let intern_table = Rc::new(v1_rt::map_keys(&kernel_type_set()))
+        let intern_table = Rc::new(v1_rt::map_keys(&kernel_type_set))
             .iter()
             .cloned()
             .fold(intern_table.clone(), |t: Rc<InternTable>, name: String| {
@@ -18965,7 +18975,7 @@ pub fn seed_kernel_intern_table(intern_table: Rc<InternTable>) -> Rc<InternTable
         .fold(intern_table.clone(), |t: Rc<InternTable>, name: String| {
             intern(t, name.clone()).table.clone()
         });
-        Rc::new(v1_rt::map_keys(&compiler_recursive_types()))
+        Rc::new(v1_rt::map_keys(&compiler_recursive_types))
             .iter()
             .cloned()
             .fold(intern_table.clone(), |t: Rc<InternTable>, name: String| {
@@ -19474,7 +19484,7 @@ pub fn compiler_kernel_type_env(
     intern_table: Rc<InternTable>,
 ) -> Rc<TypeEnv> {
     {
-        let kernel_bindings_base = Rc::new(v1_rt::map_keys(&kernel_type_set()))
+        let kernel_bindings_base = Rc::new(v1_rt::map_keys(&kernel_type_set))
             .iter()
             .cloned()
             .fold(
@@ -19632,10 +19642,10 @@ pub fn compiler_kernel_type_env(
                 provenance: Rc::new(SubValueRelation::SubValueUnknown),
             }),
         );
-        let node_fields = inductive_fields_list_to_map(compiler_inductive_fields());
+        let node_fields = inductive_fields_list_to_map(compiler_inductive_fields.clone());
         let kernel_recursive_types = Rc::new({
             let mut __result = Vec::new();
-            for name in Rc::new(v1_rt::map_keys(&compiler_recursive_types()))
+            for name in Rc::new(v1_rt::map_keys(&compiler_recursive_types))
                 .iter()
                 .cloned()
             {
@@ -19643,7 +19653,7 @@ pub fn compiler_kernel_type_env(
             }
             __result
         });
-        let kernel_recursive_type_set = Rc::new(v1_rt::map_keys(&compiler_recursive_types()))
+        let kernel_recursive_type_set = Rc::new(v1_rt::map_keys(&compiler_recursive_types))
             .iter()
             .cloned()
             .fold(

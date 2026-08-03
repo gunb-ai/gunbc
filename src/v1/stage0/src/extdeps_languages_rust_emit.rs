@@ -92,7 +92,7 @@ pub fn rust_simple_method_specs() -> Rc<Vec<Rc<SimpleMethodSpec>>> {
 }
 
 pub fn rust_method_templates() -> Rc<HashMap<String, String>> {
-    rust_simple_method_specs().iter().cloned().fold(
+    rust_simple_method_specs.clone().iter().cloned().fold(
         v1_rt::rc_empty_map::<String, String>(),
         |acc: Rc<HashMap<String, String>>, spec: _| {
             v1_rt::rc_map_insert(acc, spec.method_name.clone(), spec.template.clone())
@@ -103,7 +103,7 @@ pub fn rust_method_templates() -> Rc<HashMap<String, String>> {
 pub fn rust_method_wraps_result() -> Rc<HashMap<String, bool>> {
     Rc::new({
         let mut __result = Vec::new();
-        for s in rust_simple_method_specs().iter().cloned() {
+        for s in rust_simple_method_specs.clone().iter().cloned() {
             if s.wraps_result.clone() {
                 __result.push(s);
             }
@@ -518,7 +518,7 @@ pub fn rt_function_registry() -> Rc<Vec<Rc<RuntimeFunction>>> {
 }
 
 pub fn rt_functions() -> Rc<HashMap<String, bool>> {
-    rt_function_registry().iter().cloned().fold(
+    rt_function_registry.clone().iter().cloned().fold(
         v1_rt::rc_empty_map::<String, bool>(),
         |acc: Rc<HashMap<String, bool>>, entry: Rc<RuntimeFunction>| {
             v1_rt::rc_map_insert(acc, entry.name.clone(), true)
@@ -529,7 +529,7 @@ pub fn rt_functions() -> Rc<HashMap<String, bool>> {
 pub fn rt_ref_map_functions() -> Rc<HashMap<String, bool>> {
     Rc::new({
         let mut __result = Vec::new();
-        for f in rt_function_registry().iter().cloned() {
+        for f in rt_function_registry.clone().iter().cloned() {
             if f.passes_by_ref.clone() {
                 __result.push(f);
             }
@@ -549,7 +549,7 @@ pub fn rt_ref_map_functions() -> Rc<HashMap<String, bool>> {
 pub fn rt_wraps_result() -> Rc<HashMap<String, bool>> {
     Rc::new({
         let mut __result = Vec::new();
-        for f in rt_function_registry().iter().cloned() {
+        for f in rt_function_registry.clone().iter().cloned() {
             if f.wraps_result.clone() {
                 __result.push(f);
             }
@@ -569,7 +569,7 @@ pub fn rt_wraps_result() -> Rc<HashMap<String, bool>> {
 pub fn rt_bridge_function_names() -> Rc<HashMap<String, String>> {
     Rc::new({
         let mut __result = Vec::new();
-        for f in rt_function_registry().iter().cloned() {
+        for f in rt_function_registry.clone().iter().cloned() {
             if (f.name.clone() != f.bridge_name.clone()) {
                 __result.push(f);
             }
@@ -724,7 +724,7 @@ pub fn rust_pair_completion_spelling_for(
 ) -> Option<Rc<RustPairCompletionSpelling>> {
     Rc::new({
         let mut __result = Vec::new();
-        for s in rust_pair_completion_spellings().iter().cloned() {
+        for s in rust_pair_completion_spellings.clone().iter().cloned() {
             if (s.method.clone() == rust_pair_completion_op_key(op.clone())) {
                 __result.push(s);
             }
@@ -858,7 +858,7 @@ pub fn rust_pair_completion_body_render(body: Rc<PairCompletionBody>) -> String 
                                             v1_rt::concat(
                                                 v1_rt::concat(
                                                     "{\n        ".to_string(),
-                                                    rust_pair_completion_carrier(),
+                                                    rust_pair_completion_carrier.clone(),
                                                 ),
                                                 " {\n".to_string(),
                                             ),
@@ -898,7 +898,7 @@ pub fn rust_pair_completion_body_render(body: Rc<PairCompletionBody>) -> String 
                         ),
                         "        ".to_string(),
                     ),
-                    rust_pair_completion_carrier(),
+                    rust_pair_completion_carrier.clone(),
                 ),
                 " { pos: q, neg: M::default(), _phantom: std::marker::PhantomData }\n".to_string(),
             ),
@@ -909,7 +909,7 @@ pub fn rust_pair_completion_body_render(body: Rc<PairCompletionBody>) -> String 
 
 pub fn rust_pair_completion_impl_render(row: Rc<PairCompletionOpRow>) -> String {
     match rust_pair_completion_spelling_for(row.op.clone()) {
-    Some(spelling) => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("impl<M> ".to_string(), spelling.trait_path.clone()), " for ".to_string()), rust_pair_completion_carrier()), "<M>".to_string()), if (spelling.where_bounds.clone() == "".to_string()) {
+    Some(spelling) => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("impl<M> ".to_string(), spelling.trait_path.clone()), " for ".to_string()), rust_pair_completion_carrier.clone()), "<M>".to_string()), if (spelling.where_bounds.clone() == "".to_string()) {
         " {\n".to_string()
     } else {
         v1_rt::concat(v1_rt::concat("\n".to_string(), spelling.where_bounds.clone()), "\n{\n".to_string())

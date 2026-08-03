@@ -44,7 +44,7 @@ pub fn extdeps_model_scope() -> Rc<ExternalModelScope> {
         field: Rc::new(DeclField::WholeDeclaration),
     }),
     }),
-        first_citation: extdeps_external_authority_anchor(),
+        first_citation: extdeps_external_authority_anchor.clone(),
         further_citations: Rc::new(vec![]),
     })
             };

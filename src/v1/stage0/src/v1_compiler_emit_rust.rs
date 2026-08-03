@@ -1860,7 +1860,7 @@ if peel.clone() {
                                                     __result
                                                 });
                                                 let applied_ty = if (name.clone()
-                                                    == tuple_type_name())
+                                                    == tuple_type_name.clone())
                                                 {
                                                     render_tuple_parts(
                                                         arg_list.clone(),
@@ -3110,12 +3110,12 @@ pub fn rust_string_as_authored_policy() -> Rc<RustEnumWireSerde> {
 }
 
 pub fn rust_snake_string_policy() -> Rc<RustEnumWireSerde> {
-    rust_serde_policy(rust_serde_rename_all_snake_case(), None, None, None)
+    rust_serde_policy(rust_serde_rename_all_snake_case.clone(), None, None, None)
 }
 
 pub fn rust_screaming_snake_string_policy() -> Rc<RustEnumWireSerde> {
     rust_serde_policy(
-        rust_serde_rename_all_screaming_snake_case(),
+        rust_serde_rename_all_screaming_snake_case.clone(),
         None,
         None,
         None,
@@ -4757,7 +4757,7 @@ pub fn build_shared_types(
             );
         let collection_keys = Rc::new({
             let mut __result = Vec::new();
-            for k in Rc::new(v1_rt::sorted_map_keys(&rust_container_templates()))
+            for k in Rc::new(v1_rt::sorted_map_keys(&rust_container_templates))
                 .iter()
                 .cloned()
             {
@@ -5320,7 +5320,7 @@ pub fn emit_lib_rs_from_files(
             __result
         });
         let hand_maintained_mods = if has_compiler_tests.clone() {
-            generated_pub_mod_block()
+            generated_pub_mod_block.clone()
         } else {
             "".to_string()
         };
@@ -22008,7 +22008,7 @@ pub fn emit_typed_method_call(
                         } else {
                             match Rc::new({
                                 let mut __result = Vec::new();
-                                for s in rust_higher_order_methods().iter().cloned() {
+                                for s in rust_higher_order_methods.clone().iter().cloned() {
                                     if (s.method_name.clone() == method_name.clone()) {
                                         __result.push(s);
                                     }

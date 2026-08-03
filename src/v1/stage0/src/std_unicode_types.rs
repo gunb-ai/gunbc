@@ -33,9 +33,9 @@ pub fn unicode_scalar_authority_note() -> String {
 }
 
 pub fn unicode_scalar(code_point: i64) -> bool {
-    (((code_point.clone() >= 0) && (code_point.clone() <= unicode_scalar_max_code_point()))
-        && !((code_point.clone() >= unicode_surrogate_first_code_point())
-            && (code_point.clone() <= unicode_surrogate_last_code_point())))
+    (((code_point.clone() >= 0) && (code_point.clone() <= unicode_scalar_max_code_point.clone()))
+        && !((code_point.clone() >= unicode_surrogate_first_code_point.clone())
+            && (code_point.clone() <= unicode_surrogate_last_code_point.clone())))
 }
 
 #[derive(
