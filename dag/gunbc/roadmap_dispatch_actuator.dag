@@ -43,7 +43,7 @@ import gunbc.session_lease {
   Start,
   classify_process_port_upsert,
 }
-import extdeps.git { shape_git_worktree_add_argv }
+import extdeps.git { shape_git_worktree_add_argv, shape_git_worktree_add_detached_argv }
 import extdeps.tmux {
   shape_tmux_new_session_argv,
   shape_tmux_new_session_argv_for,
@@ -366,6 +366,25 @@ fn dispatch_worktree_path_for_instance(
   ], "")
 }
 
+data dispatch_verification_checkout_path_note: String = "Verification validates the committed head in a DETACHED checkout, never the mutable implementation worktree the agent may still be editing. The path is head-addressed beside the attempt worktree so multiple heads per attempt each retain their own immutable tree without colliding on the branch checkout."
+
+fn dispatch_verification_checkout_path_for_instance(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+  head_sha: String,
+) -> String {
+  join([
+    dashboard_instance_dispatch_worktree_root(instance: instance) as String,
+    "/",
+    node_id as String,
+    "-a",
+    attempt_key,
+    "-verify-",
+    head_sha,
+  ], "")
+}
+
 fn dispatch_attempt_state_path_for_instance(
   instance: HostDashboardInstance,
   node_id: RoadmapNodeId,
@@ -585,6 +604,8 @@ fn dispatch_attempt_publication_receipt_path_for_instance(
 data publication_receipt_has_no_current_alias_note: String = "EVERY OTHER RECEIPT ON THIS ROW HAS A `current` SPELLING AND THIS ONE DELIBERATELY DOES NOT. The alias exists so a reader that knows only a node can find the live attempt's evidence without first reading the attempt key. Publication cannot be reached that way: its address contains the head, and a reader that does not know the head has no path to build regardless of which attempt directory it starts from.\\n\\nSo the alias would buy nothing and cost the thing this lane is for. A reader holding a head already had to establish it, and establishing a head means reading the attempt - at which point the attempt-keyed path is available and the alias is a second spelling of it. Keeping it would have made the symlink an alternative route to a file whose identity is a head, which is how a receipt for one attempt gets read as evidence for another."
 
 data verification_receipt_is_head_addressed_note: String = "VERIFICATION AND PUBLICATION SHARE THE HEAD GRAIN. One implementation attempt may be verified at head A, receive findings, and be verified again at head B. An attempt-level file would either overwrite A or let A's verdict stand for B. The verification directory therefore mirrors publication: attempt/<attempt>/verification/<head_sha>.json, with no current alias because a reader that has not observed the head cannot name the verification subject. DISSOLVE-ON: the two legacy attempt-level paths below lose their last belt consumers and delete."
+
+data verification_receipt_directory_segment: String = "verification"
 
 fn dispatch_attempt_verification_dir_for_instance(
   instance: HostDashboardInstance,
@@ -882,6 +903,23 @@ fn git_worktree_add_argv_for_instance(
       path: worktree_path as FilePath,
       branch: branch_name as NonEmptyStr,
       remote_ref: remote_ref as GitRef,
+    ),
+  )
+}
+
+fn git_worktree_add_detached_argv_for_instance(
+  instance: HostDashboardInstance,
+  worktree_path: String,
+  commit_sha: String,
+) -> HostExecArgv {
+  host_exec_argv(
+    program: dispatch_capability_program(
+      environment: instance.execution_environment,
+      cap: GitWorkspaceCapability,
+    ),
+    args: shape_git_worktree_add_detached_argv(
+      path: worktree_path as FilePath,
+      commit: commit_sha as GitRef,
     ),
   )
 }

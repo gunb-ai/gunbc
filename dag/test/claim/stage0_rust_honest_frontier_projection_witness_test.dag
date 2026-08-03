@@ -1,19 +1,21 @@
 module test.claim.stage0_rust_honest_frontier_projection_witness
 
+import gunbc.stage0_rust_honest_frontier_integration {
+  TrackedRustProjectionGitRefused,
+  TrackedRustProjectionObservationRefused,
+  TrackedRustUnclassifiedPaths,
+  tracked_rust_unclassified_projection
+}
 import gunbc.stage0_rust_honest_frontier_projection {
   HandAuthoredLOC,
   HandCapability,
-  ProductReachability,
-  TrackedRustProjectionGitRefused,
-  TrackedRustProjectionReadRefused,
-  TrackedRustUnclassifiedPaths,
-  exact_unclassified_tracked_rust_paths,
+  RetirementTrigger,
   honest_frontier_projection_witness_observation,
   stage0_rust_honest_frontier_deferred_axes,
-  stage0_rust_honest_frontier_projection_note,
-  tracked_rust_unclassified_projection
+  stage0_rust_honest_frontier_projection_note
 }
 import gunbc.stage0_rust_host_observation { GitObservationRefused, RustManifestObserved }
+import gunbc.stage0_rust_lifecycle_totality { exact_unclassified_tracked_paths }
 import gunbc.stage0_rust_source_lifecycle_scaffold {
   derived_hand_maintained_stage0_repo_paths,
   path_in_list
@@ -22,10 +24,9 @@ import std.content_hash { Fnv1a64Structural }
 import v2.std.algebra { any, length }
 
 test fn honest_frontier_exact_unclassified_paths_preserve_identity_and_order() -> Bool {
-  exact_unclassified_tracked_rust_paths(
+  exact_unclassified_tracked_paths(
     tracked_paths: ["a.rs", "generated.rs", "disposition.rs", "b.rs"],
-    generated_paths: ["generated.rs"],
-    maintenance_disposition_paths: ["disposition.rs"]
+    classified_paths: ["generated.rs", "disposition.rs"]
   ) == ["a.rs", "b.rs"]
 }
 
@@ -82,18 +83,18 @@ test fn honest_frontier_projection_refuses_observed_paths_without_revision() -> 
       cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"]
     }
   ) {
-    TrackedRustProjectionReadRefused { detail: detail } => detail != ""
+    TrackedRustProjectionObservationRefused { detail: detail } =>
+      detail == "observed manifest missing repository_revision"
     _ => false
   }
 }
 
 test fn honest_frontier_projection_declares_deferred_axes() -> Bool {
   stage0_rust_honest_frontier_deferred_axes == [
-    ProductReachability,
     HandAuthoredLOC,
-    HandCapability
+    HandCapability,
+    RetirementTrigger
   ]
-    && string_contains(s: stage0_rust_honest_frontier_projection_note, pattern: "ProductReachability")
     && string_contains(s: stage0_rust_honest_frontier_projection_note, pattern: "HandAuthoredLOC")
-    && string_contains(s: stage0_rust_honest_frontier_projection_note, pattern: "HandCapability")
+    && string_contains(s: stage0_rust_honest_frontier_projection_note, pattern: "stage0_rust_honest_frontier_integration")
 }
