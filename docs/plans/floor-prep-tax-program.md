@@ -1,6 +1,6 @@
 # Floor prep-tax program — stop paying ~2s per entry to re-arrange work
 
-**Status:** executing program (session `still-moth-459`, 2026-08-03). Measurement-first. **P1 gates width expansion and broad native enrollment only** — it does **not** defer five-minute step 3’s already-landed bounded production native cutover (#7599 → #7671’s live 3-member cohort), which remains NEXT under `gunbc.roadmap_authority` / [five-minute-ci-gate-design](five-minute-ci-gate-design.md).
+**Status:** **parked for operator pause** (session `still-moth-459`, wind-down 2026-08-03 ~04:10Z). Measurement-first; no further dispatch until resume. **P1 gates width expansion and broad native enrollment only** — it does **not** defer five-minute step 3’s already-landed bounded production native cutover (#7599 → #7671’s live 3-member cohort), which remains NEXT under `gunbc.roadmap_authority` / [five-minute-ci-gate-design](five-minute-ci-gate-design.md).
 
 **Parent authorities (do not fork):** [five-minute-ci-gate-design](five-minute-ci-gate-design.md) · [v1-run-stability-throughline](v1-run-stability-throughline.md) · [m2-floor-retention-measurement-receipt](m2-floor-retention-measurement-receipt.md) · [per-entry-assembly-decomposition-measurement](per-entry-assembly-decomposition-measurement.md) · [cross-worker-typecheck-share-design](cross-worker-typecheck-share-design.md) · [witness-realization-plan](witness-realization-plan.md) · `dag/gunbc/executor_schedule_retention.dag` · `dag/gunbc/plans/ci_selection_vs_scheduling.dag`
 
@@ -106,6 +106,8 @@ cgroup_memory_peak
 
 **Acceptance:** second and subsequent entries sharing the same module universe do **not** each repay ≈2s. “Faster” alone is not enough — the receipt must show the setup tax moving.
 
+**P1 receipt (bank pending merge):** [p1-retention-vs-drain-cohort-receipt.md](p1-retention-vs-drain-cohort-receipt.md) on PR **#7725** (`valiant-deer-205`) — **REJECT**. Mode A vs Mode B on the armed floor path (`p1_cohort_probe` → production `run_discovery_corpus_with_options`); entries 2..34 tax indistinguishable; Mode B OOM at entry 34 (~5+ GiB). **Redirect = assembly / materialization reuse** (by measurement, not #7597 prior). No retention-policy change in that PR; probe is scaffold with dissolve-on.
+
 ### P2 — Selection degradation explicit
 
 Every floor receipt publishes:
@@ -154,4 +156,29 @@ Delete or fold this note when:
 
 or when the operator recuts the program into the five-minute / materialization authorities directly.
 
-Session closeout: `sleek-fox-808` (waits on parent Complete). Live leaves: P1 `valiant-deer-205`, P2 `warm-wolf-777` (PR #7722 OPEN — tracking: five fields must reach every floor receipt emission path before ready-for-review; carrier-only is not the bar), P3 `merry-ibex-227` (HOLD — conjunction), P4 `sharp-carp-537` (HOLD — broad enrollment only).
+---
+
+## 7. Wind-down / pickup snapshot (2026-08-03)
+
+Operator pause — **last dispatch wave of this stretch**. No new PRs or children until resume. Leaves stay idle; closeout tracks only.
+
+| Lane | Session | PR | Head (at park) | Reviews | CI at park | Banked finding |
+|---|---|---|---|---|---|---|
+| Program note | `still-moth-459` | [#7721](https://github.com/gunb-ai/gunbc/pull/7721) | `10942eda742` | 2/2 claude+cursor | pending | Authority + `HandAuthoredDocBind` + five-minute cross-link |
+| P1 A/B | `valiant-deer-205` | [#7725](https://github.com/gunb-ai/gunbc/pull/7725) | `f333e6a679bd` | 2/2 | pending | **REJECT** → assembly/materialization; receipt + probe artifacts |
+| P2 receipts | `warm-wolf-777` | [#7722](https://github.com/gunb-ai/gunbc/pull/7722) | `684dd67e044b` | 2/2 | pending | `selection_degradation_receipt.dag` + cli_run emit paths; E0425 fix landed |
+| P3 width-2 | `merry-ibex-227` | — | — | — | — | **HOLD** — needs P1 banked **and** Rc→Arc index share |
+| P4 broad native | `sharp-carp-537` | — | — | — | — | **HOLD** — after D1 amortized (P1 redirect) |
+| Closeout | `warm-lynx-428` | — | — | — | — | Track only (do not open PRs; #7726 was closed) |
+
+**Sibling (do not duplicate):** [#7720](https://github.com/gunb-ai/gunbc/pull/7720) (sleek-dove) — selection skip + release≠eviction log accounting; still OPEN at park; absorb after merge.
+
+**On resume (ordered):**
+
+1. Confirm #7721 / #7722 / #7725 CI green (or fix reds); operator merges (do not `gh pr merge` from session).
+2. After #7725 banks: treat P1 as closed for *retention-vs-drain*; open the **assembly/materialization** follow-on against [per-entry-assembly-decomposition-measurement](per-entry-assembly-decomposition-measurement.md) / materialization spine — **not** softer eviction, **not** naive width-2.
+3. After #7722 banks: re-anchor this note’s `HandAuthoredDocBind` `additional_works` with the live selection-receipt `DeclarationRef` (review 47762 expected gap).
+4. Keep P3/P4 HOLD until conjunctions hold; five-minute step 3 stays NEXT under its own authority.
+5. Update five-minute “retention PARKED” disposition with the P1 time-axis REJECT + redirect.
+
+Session closeout: `warm-lynx-428` (replaces archived `sleek-fox-808`). Live leaves as in the table above.
