@@ -13,6 +13,7 @@ import extdeps.llm.cli { ReasoningMedium }
 import extdeps.llm.cli_lifecycle {
   CodexCliProvider,
   CursorCliProvider,
+  ClaudeCliProvider,
 }
 import extdeps.llm.cursor_cli { cursor_model_auto }
 import gunbc.roadmap_dashboard_instance {
@@ -47,6 +48,7 @@ import gunbc.dispatch_selection {
   dispatch_deep_selection_heuristic_note,
   dispatch_execution_preference_alias_note,
   dispatch_execution_receipt_bar_note,
+  provider_selection_request_for_kind,
 }
 
 test fn witness_automatic_codex_preserves_medium_effort() -> Bool {
@@ -205,6 +207,17 @@ test fn witness_wrong_selection_shape_refuses() -> Bool {
   }
 }
 
+test fn witness_claude_request_refuses_on_codex_only_inventory() -> Bool {
+  match dispatch_selection_for_instance(
+    instance: srv1_live_dashboard_instance(),
+    request: provider_selection_request_for_kind(kind: ClaudeCliProvider),
+    node_sizing: Unsized,
+  ) {
+    DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason: _ } => true
+    DispatchSelectionResolved { receipt: _ } => false
+  }
+}
+
 test fn witness_exact_override_requires_explicit_provider_arm() -> Bool {
   match dispatch_selection_for_instance(
     instance: srv1_live_dashboard_instance(),
@@ -226,5 +239,6 @@ test fn dispatch_selection_keystone_holds() -> Bool {
     && witness_receipt_records_requested_and_resolved()
     && witness_carrier_notes_record_directive_addendum()
     && witness_wrong_selection_shape_refuses()
+    && witness_claude_request_refuses_on_codex_only_inventory()
     && witness_exact_override_requires_explicit_provider_arm()
 }

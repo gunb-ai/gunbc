@@ -222,6 +222,9 @@ data dispatch_claude_process_fingerprint: NonEmptyStr = "claude" as NonEmptyStr
 data dispatch_cursor_process_fingerprint: NonEmptyStr = "cursor-agent" as NonEmptyStr
 
 data dispatch_codex_default_model: NonEmptyStr = "account-default" as NonEmptyStr
+data dispatch_claude_default_model: NonEmptyStr = "account-default" as NonEmptyStr
+data dispatch_claude_default_workflow_mode: NonEmptyStr = "default" as NonEmptyStr
+data dispatch_claude_default_credential_root: FilePath = "~/.claude" as FilePath
 
 data dispatch_selection_temporal_unobserved_reason: NonEmptyStr = "selection time; temporal bounds assigned at spawn observation" as NonEmptyStr
 data dispatch_selection_usage_unobserved_reason: NonEmptyStr = "selection time; usage observations assigned during provider runtime" as NonEmptyStr
@@ -665,7 +668,13 @@ fn provider_selection_request_for_kind(kind: ProviderKind) -> ProviderSelectionR
         effort: ReasoningMedium,
       }
     ClaudeCliProvider =>
-      SelectAutomatically { profile: ProfileAutomatic }
+      SelectClaude {
+        profile: ProfileAutomatic,
+        credential: ClaudeStateRootRef { root: dispatch_claude_default_credential_root },
+        model: dispatch_claude_default_model,
+        effort: ReasoningMedium,
+        workflow_mode: dispatch_claude_default_workflow_mode,
+      }
     CursorCliProvider =>
       SelectCursor {
         profile: ProfileAutomatic,
