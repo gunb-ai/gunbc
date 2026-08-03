@@ -19973,17 +19973,26 @@ fn affected_set_applied_report_line(
                 Err(_) => "an uncounted number of".to_string(),
             };
             format!(
-                "{head} · NO OBSERVED CHANGE ({located}): the diff observation returned ZERO                  changed paths, so no row can be proven affected and {under} witness(es) skip                  under it. This is NOT the verdict 'nothing is affected' — a baseline that                  names the head commit itself (a push whose base ref is the pushed ref)                  produces exactly this observation, and that is ignorance about what changed,                  not a finding that nothing did. Read every `skipped` count in this run's                  receipts as skipped-under-no-observation, never as skipped-because-unaffected.                  Run disposition is unchanged by this line (the empty diff has no special run                  arm — operator ruling 2026-07-05); it makes the state countable, it neither                  widens nor narrows the run."
+                "{head} · NO OBSERVED CHANGE ({located}): the diff observation returned ZERO changed paths, \
+                 so no row can be proven affected and {under} witness(es) skip under it. This is NOT the \
+                 verdict 'nothing is affected' — a baseline that names the head commit itself (a push whose \
+                 base ref is the pushed ref) produces exactly this observation, and that is ignorance about \
+                 what changed, not a finding that nothing did. Read every `skipped` count in this run's \
+                 receipts as skipped-under-no-observation, never as skipped-because-unaffected. Run \
+                 disposition is unchanged by this line (the empty diff has no special run arm — operator \
+                 ruling 2026-07-05); it makes the state countable, it neither widens nor narrows the run."
             )
         }
         (None, Ok(skipped)) => {
             let candidates = total.saturating_sub(skipped);
             format!(
-                "{head} · {skipped} unaffected (import-closure, skipped without resolve) ·                  {candidates} in the affected closure (resolving to decide node-frontier)"
+                "{head} · {skipped} unaffected (import-closure, skipped without resolve) · \
+                 {candidates} in the affected closure (resolving to decide node-frontier)"
             )
         }
         (None, Err(e)) => format!(
-            "{head} · upfront import-closure categorization unavailable ({e}); per-shard              selection is authoritative"
+            "{head} · upfront import-closure categorization unavailable ({e}); per-shard \
+             selection is authoritative"
         ),
     }
 }
@@ -32074,6 +32083,21 @@ mod witness_layer_roots_compile_clean_tests {
             unobserved.contains("4104 of 6374"),
             "the state must carry its own frequency (rows skipped under it): {unobserved}"
         );
+
+        // A receipt whose whole job is to stop a misreading has to be readable. Source
+        // indentation leaks into a multi-line `format!` unless every continuation is a
+        // real `\`-newline — it did, and review caught runs of ~18 spaces mid-sentence.
+        // Asserted rather than fixed-once, so the next edit cannot silently reintroduce it.
+        for line in [
+            &observed,
+            &unobserved,
+            &super::affected_set_applied_report_line(1, 1, Err("boom".into()), None),
+        ] {
+            assert!(
+                !line.contains("  "),
+                "report line carries a run of literal spaces from source indentation: {line}"
+            );
+        }
     }
 
     /// The baseline read-back is a live consumer of the modeled projection
