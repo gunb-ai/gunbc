@@ -11,10 +11,8 @@ import gunbc.stage0_rust_host_observation {
   RustSourceHostObservation,
   current_stage0_rust_source_observation
 }
-import gunbc.stage0_emit_model {
-  generated_stage0_files,
-  is_generated_stage0_file
-}
+import gunbc.stage0_emit_model { is_generated_stage0_file }
+import gunbc.stage0_emit_plan_generated { generated_stage0_files }
 import std.content_hash { Fnv1a64Structural }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
@@ -291,7 +289,7 @@ data rust_source_discovery_prefix_hints: List<String> = [
 data stage0_src_repo_prefix: String = "src/v1/stage0/src/"
 
 data generated_stage0_files_authority_ref: DeclarationRef = DeclarationRef {
-  module_path: "gunbc.stage0_emit_model",
+  module_path: "gunbc.stage0_emit_plan_generated",
   decl_name: "generated_stage0_files",
   field: WholeDeclaration
 }
