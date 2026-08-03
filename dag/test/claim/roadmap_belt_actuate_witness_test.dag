@@ -4,6 +4,7 @@ import std.types { String, Int, List, Bool }
 import gunbc.roadmap_model {
   RoadmapNodeId,
   RoadmapNode,
+  RoadmapNodeIdentity,
   IntricacyHigh, VolumeMedium,
   PrsMerged,
   Sized,
@@ -24,6 +25,7 @@ import gunbc.roadmap_publish {
 import extdeps.github.pulls { PullRequest, PullRequestRef, Open }
 import extdeps.github.github { GitHubUser, User, Repository }
 import std.types { CommitSha }
+import std.content_hash { content_hash_atom }
 import gunbc.roadmap_execution_contract {
   ExecutionContractUnspecified,
   gunbc_claim_execution_contract,
@@ -128,6 +130,12 @@ import gunbc.roadmap_belt_actuate {
 }
 import extdeps.languages.json.emit { serialize_json }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.roadmap_verification_receipt {
+  VerificationSubject,
+  VerificationSubjectObserved,
+  VerificationSubjectUnobserved,
+  VerificationReceiptAbsent,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -787,13 +795,25 @@ test fn oracle_refs_projection_runs_and_selects_pinnable_scopes() -> Bool {
     }
 }
 
-data unreadable_receipt_refuses_note: String = "review 45271, the arm itself rather than its model. The finding was that an unreadable receipt was collapsed into an absent one and the belt then RAN the validation and overwrote the evidence. This drives the real fn against an instance whose attempt-state paths do not exist, so the receipt read genuinely fails, and asserts the belt answers EvidenceUnreadable — refusing without actuating — rather than treating the failed read as 'no verdict yet'. The provider is a completed turn, which is precisely the state that previously reached the run-and-overwrite path; a version that still collapses read failure into absence reaches the validation instead and this goes red."
+data unreadable_receipt_refuses_note: String = "review 45271, updated for exact-head wiring. The belt now observes the worktree head before reading a receipt, so an instance with no attempt filesystem cannot reach the unreadable-receipt arm through a failed legacy read alone. This witness instead drives the real fn against srv2 preview where neither the node nor the worktree exist, and asserts verification defers with an exact-head or missing-node reason rather than actuating against an unobserved subject."
+
+data fixture_verification_head: CommitSha = "cafecafecafecafecafecafecafecafecafecafe" as CommitSha
+
+fn fixture_verification_subject(node_id: String) -> VerificationSubject {
+  VerificationSubject {
+    node_identity: node_id as NonEmptyStr as RoadmapNodeIdentity,
+    criteria_digest: content_hash_atom(value: "belt-actuate-fixture"),
+    attempt_key: "feedfacefeedface",
+    branch: join(["dispatch/", node_id, "-afeedfacefeedface"], "") as NonEmptyStr,
+    head_sha: fixture_verification_head,
+  }
+}
 
 fn completed_attempt_progress(node_id: String) -> WorkflowAttemptProgress {
   workflow_attempt_progress(evidence: WorkflowAttemptEvidence {
     node_id: node_id,
     attempt_key: "feedfacefeedface",
-    branch: "dispatch/{node_id}-afeedfacefeedface",
+    branch: join(["dispatch/", node_id, "-afeedfacefeedface"], ""),
     modeled_state_present: true,
     admission_receipt_readable: true,
     admission_receipt: "{\"schema\": \"roadmap-dispatch-environment/v1\", \"status\": \"admitted\"}",
@@ -804,8 +824,10 @@ fn completed_attempt_progress(node_id: String) -> WorkflowAttemptProgress {
     provider_events_error: "",
     process: WorkerProcessExited { exit_code: 0, last_command: "codex" },
     validation_summary: "gunbc run --claim-run",
-    validation_receipt_readable: false,
-    validation_receipt: "",
+    verification_subject: VerificationSubjectObserved {
+      subject: fixture_verification_subject(node_id: node_id),
+    },
+    verification_source: VerificationReceiptAbsent,
     publication_subject: PublicationSubjectObserved {
       subject: PublicationSubject {
         node_id: "pub-fixture-node",
@@ -844,17 +866,18 @@ test fn attempt_wire_carries_decided_activity() -> Bool {
     && string_contains(s: j, pattern: "\"segments\": [")
 }
 
-test fn unreadable_validation_receipt_refuses_instead_of_rerunning() -> Bool {
+
+test fn verify_without_observable_subject_defers_instead_of_rerunning() -> Bool {
   match belt_verify_attempt_for_instance(
     instance: srv2_preview_dashboard_instance(),
     progress: completed_attempt_progress(node_id: "belt-verify-probe-node"),
   ) {
-    VerifyEvidenceUnreadable { node_id, detail } =>
+    VerifyDeferred { node_id, reason } =>
       node_id == "belt-verify-probe-node"
-        && string_contains(s: detail, pattern: "could not be read")
-        && string_contains(s: detail, pattern: "overwrite")
+        && (string_contains(s: reason, pattern: "exact head")
+            || string_contains(s: reason, pattern: "no node"))
+    VerifyEvidenceUnreadable { node_id: _, detail: _ } => false
     VerifyRecorded { node_id: _, verdict_key: _, detail: _ } => false
-    VerifyDeferred { node_id: _, reason: _ } => false
     VerifyWriteFailed { node_id: _, detail: _ } => false
   }
 }
@@ -876,8 +899,10 @@ test fn agent_incomplete_attempt_defers_verification() -> Bool {
       provider_events_error: "",
       process: WorkerProcessRunning { command: "codex" },
       validation_summary: "gunbc run --claim-run",
-      validation_receipt_readable: false,
-      validation_receipt: "",
+      verification_subject: VerificationSubjectUnobserved {
+        reason: "fixture verification subject not established",
+      },
+      verification_source: VerificationReceiptAbsent,
       publication_subject: PublicationSubjectObserved {
         subject: PublicationSubject {
           node_id: "pub-fixture-node",
@@ -918,7 +943,7 @@ test fn dashboard_instance_dispatch_contract_keystone_holds() -> Bool {
     && witness_exemplar_roster_missing_variant_reds()
     && codex_provider_v0_preflight_keystone_holds()
     && oracle_refs_projection_runs_and_selects_pinnable_scopes()
-    && unreadable_validation_receipt_refuses_instead_of_rerunning()
+    && verify_without_observable_subject_defers_instead_of_rerunning()
     && agent_incomplete_attempt_defers_verification()
     && observe_refused_spawn_does_not_zero_verify_pass()
     && observe_refused_with_empty_verify_is_deferred_not_recorded()

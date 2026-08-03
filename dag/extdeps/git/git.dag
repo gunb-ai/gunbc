@@ -831,6 +831,10 @@ fn shape_git_worktree_add_argv(path: FilePath, branch: NonEmptyStr, remote_ref: 
   ["worktree", "add", path as String, "-b", branch as String, remote_ref as String]
 }
 
+fn shape_git_worktree_add_detached_argv(path: FilePath, commit: GitRef) -> List<String> {
+  ["worktree", "add", "--detach", path as String, commit as String]
+}
+
 fn shape_git_bundle_create_argv(
   repo: FilePath,
   bundle: FilePath,
