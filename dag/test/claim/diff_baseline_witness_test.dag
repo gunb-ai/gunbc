@@ -62,6 +62,21 @@ fn selected_ref(res: DiffBaselineResolution) -> String {
   }
 }
 
+data planted_merge_base_sha: String = "abc123def4567890abc123def4567890abc12345"
+
+test fn witness_pull_request_bare_base_sha_selects_directly() -> Bool {
+  let res = resolve_case(
+    override_ref: none,
+    event_name: "pull_request",
+    base_ref: Present { value: planted_merge_base_sha },
+    push_before: none,
+    head_sha: none
+  )
+  arm_tag(res: res) == "merge_target"
+    && selected_ref(res: res) == planted_merge_base_sha
+    && selected_ref(res: res) != concat("origin/", planted_merge_base_sha)
+}
+
 test fn witness_stacked_pr_selects_actual_base() -> Bool {
   let res = resolve_case(
     override_ref: none,

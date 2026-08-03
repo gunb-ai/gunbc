@@ -4,6 +4,7 @@ import std.types { String, GitRef }
 import std.logic { Bool }
 import extdeps.git { GitRemoteRefParts, git_remote_ref }
 import extdeps.git.hooks { zero_sha }
+import extdeps.git.object_store { git_object_id_from_untagged_hex }
 import extdeps.github.actions {
   github_event_name_pull_request,
   github_event_name_push,
@@ -19,6 +20,16 @@ data diff_baseline_fail_closed_law: String = "A CI event this resolver cannot ma
 data diff_baseline_bootstrap_arm_note: String = "The empty-event-name arm ('' — no GITHUB_EVENT_NAME) is an EXPLICIT recognized state, not the catch-all: it is the local / pre-CI-bootstrap window where there is no GitHub event at all, and its correct baseline is the repo's default merge target (PushParent), which is exactly today's behavior for a bare local floor_diff_observe invocation (DiffPolicy.base = origin/main). It is grouped with workflow_dispatch / merge_group / schedule because all mean 'observe against the default branch'. Push is NOT grouped here: a push event always requires a before SHA. The catch-all (a future GitHub trigger not yet modeled — ⊤-as-ignorance, genuinely not-knowing the base) is the final else → BaselineRefused, which HALTS the floor (never a silent origin/main). Conflating the two would be the absorbing fallback DESIGN §5 forbids; keeping them distinct keeps 'no CI event' (a known state, PushParent) apart from 'CI event we cannot map' (real ignorance, halt)."
 
 data diff_baseline_push_before_law: String = "Push events resolve PushBefore from the webhook payload's before member (extdeps.github.push_event), NOT PushParent. Absent, empty, zero (0000000000000000000000000000000000000000 — new-branch creation per cited payload semantics, not observed in-repo), equal-to-head, or head-unknown before SHAs REFUSE: a push with no prior commit has no honest affected-set window; a before SHA equal to head is a self-compare; and head unknown cannot rule out self-compare. Observation-layer refusals (unreadable event payload, malformed JSON) arrive as PushBeforeInputRefused and propagate with their computed cause — they never collapse to a generic absent. These refusals halt the floor; they never widen to origin/main. The baseline SOURCE (payload before SHA) stays separable from these policy arms so a future last-green source swap does not rewrite refusal logic."
+
+data diff_baseline_merge_target_law: String = "pull_request MergeTarget reads GITHUB_BASE_REF through merge_target_git_ref: a branch name (main, feature/B) becomes origin/<name> via git_remote_ref; a bare lowercase git object id (40- or 64-hex, validated by extdeps.git.object_store git_object_id_from_untagged_hex) is used directly as the diff base because git resolves commit SHAs without a remote-tracking ref and prefixing origin/ would fabricate a ref that does not exist (the affected-PR dashboard supplies merge-base SHAs this way). Branch names that are not untagged object ids keep the remote-qualified path; no fifth default."
+
+fn merge_target_git_ref(base_ref: String, default_remote_name: String) -> GitRef {
+  match git_object_id_from_untagged_hex(hex: base_ref) {
+    Present { value: _ } => base_ref as GitRef
+    Absent =>
+      git_remote_ref(parts: GitRemoteRefParts { remote: default_remote_name, ref_name: base_ref })
+  }
+}
 
 type DiffBaseline
   = MergeTarget { ref: GitRef }
@@ -60,7 +71,7 @@ fn resolve_merge_target(base_ref: String?, default_remote_name: String) -> DiffB
       } else {
         BaselineSelected {
           baseline: MergeTarget {
-            ref: git_remote_ref(parts: GitRemoteRefParts { remote: default_remote_name, ref_name: b })
+            ref: merge_target_git_ref(base_ref: b, default_remote_name: default_remote_name)
           }
         }
       }
