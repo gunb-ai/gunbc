@@ -1,0 +1,155 @@
+module gunbc.publication_admission_delta
+
+import std.types { List, NonEmptyStr }
+import std.content_hash { ContentHash }
+import gunbc.public_projection {
+  PublicationSubject,
+  PublicProjectionPlan,
+  public_projection_includes_subject,
+  public_projection_omits_subject,
+  projection_digest_from_subjects,
+}
+
+data publication_admission_delta_note: String = "Change-local publication admission compares current published projection vs candidate derived projection. Slice-1 classifies NewlyPublic, NewlyWithheld, and PolicyChanged only. Audience widenings and private-to-public references defer until audience/reference carriers land; digest mismatch refuses at admission via CandidateDigestInconsistent, not a delta class. Whole-projection audit is a separate centrally-owned main-health job, never inherited by unrelated PRs."
+
+type ProjectionDeltaClass
+  = NewlyPublic { subject: PublicationSubject }
+  | NewlyWithheld { subject: PublicationSubject }
+  | PolicyChanged {
+      from_version: NonEmptyStr,
+      to_version: NonEmptyStr,
+    }
+
+type ChangeLocalAdmissionRequest {
+  current: PublicProjectionPlan?
+  candidate: PublicProjectionPlan
+}
+
+type ChangeLocalRefusal
+  = CandidateDigestInconsistent {
+      expected: ContentHash,
+      observed: ContentHash,
+    }
+  | WholeProjectionAuditRequired {
+      detail: String,
+    }
+
+type ChangeLocalAdmissionOutcome
+  = ChangeLocalAdmitted {
+      delta: List<ProjectionDeltaClass>,
+      candidate: PublicProjectionPlan,
+    }
+  | ChangeLocalRefused {
+      cause: ChangeLocalRefusal,
+    }
+
+fn classify_subject_delta(
+  current: PublicProjectionPlan?,
+  candidate: PublicProjectionPlan,
+  subject: PublicationSubject,
+) -> ProjectionDeltaClass? {
+  let included_now = match current {
+    Absent => false
+    Present { value: plan } => public_projection_includes_subject(
+      plan: plan,
+      subject_identity: subject.subject_identity,
+    )
+  }
+  let included_candidate = public_projection_includes_subject(
+    plan: candidate,
+    subject_identity: subject.subject_identity,
+  )
+  match included_now {
+    true =>
+      match included_candidate {
+        true => Absent
+        false => Present { value: NewlyWithheld { subject: subject } }
+      }
+    false =>
+      match included_candidate {
+        true => Present { value: NewlyPublic { subject: subject } }
+        false => Absent
+      }
+  }
+}
+
+fn subject_identity_in_list(
+  subjects: List<PublicationSubject>,
+  subject_identity: ContentHash,
+) -> Bool {
+  fold(subjects, init: false, f: fn(found, subject) {
+    found || subject.subject_identity == subject_identity
+  })
+}
+
+fn candidate_delta_subjects(
+  current: PublicProjectionPlan?,
+  candidate: PublicProjectionPlan,
+) -> List<PublicationSubject> {
+  let candidate_subjects = concat(candidate.included_subjects, candidate.omitted_subjects)
+  match current {
+    Absent => candidate_subjects
+    Present { value: plan } =>
+      fold(plan.included_subjects, init: candidate_subjects, f: fn(acc, subject) {
+        if subject_identity_in_list(subjects: acc, subject_identity: subject.subject_identity) {
+          acc
+        } else {
+          append(acc, items: [subject])
+        }
+      })
+  }
+}
+
+fn admit_change_local_projection(
+  request: ChangeLocalAdmissionRequest,
+) -> ChangeLocalAdmissionOutcome {
+  let recomputed = projection_digest_from_subjects(subjects: request.candidate.included_subjects)
+  if recomputed != request.candidate.projection_digest {
+    ChangeLocalRefused {
+      cause: CandidateDigestInconsistent {
+        expected: recomputed,
+        observed: request.candidate.projection_digest,
+      },
+    }
+  } else {
+    let delta = fold(
+      candidate_delta_subjects(current: request.current, candidate: request.candidate),
+      init: [],
+      f: fn(acc, subject) {
+        match classify_subject_delta(
+          current: request.current,
+          candidate: request.candidate,
+          subject: subject,
+        ) {
+          Absent => acc
+          Present { value: item } => append(acc, items: [item])
+        }
+      },
+    )
+    let policy_delta = match request.current {
+      Absent => []
+      Present { value: current } =>
+        if current.policy_version == request.candidate.policy_version {
+          []
+        } else {
+          [PolicyChanged {
+            from_version: current.policy_version,
+            to_version: request.candidate.policy_version,
+          }]
+        }
+    }
+    ChangeLocalAdmitted {
+      delta: concat(policy_delta, delta),
+      candidate: request.candidate,
+    }
+  }
+}
+
+fn change_local_admission_has_delta(
+  outcome: ChangeLocalAdmissionOutcome,
+) -> Bool {
+  match outcome {
+    ChangeLocalAdmitted { delta: delta, candidate: _ } => count(delta) > 0
+    ChangeLocalRefused { cause: _ } => false
+  }
+}

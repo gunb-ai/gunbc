@@ -1,0 +1,589 @@
+module test.claim.publication_publisher_witness
+
+import std.types { Bool, CommitSha, FilePath, GitRef, NonEmptyStr, String }
+import std.content_hash { content_hash_of_value, serialize_content_hash }
+import extdeps.git.hooks { PrePushStdinRow, zero_sha }
+import extdeps.git.publication_transport {
+  GitRefUpdateSpec,
+  GitPushRequest,
+}
+import gunbc.publication_policy {
+  PublicationPolicy,
+  SubtreePublishRule,
+  PublishPublic,
+  WithholdPrivate,
+  PublicationPolicyAccepted,
+  PublicationPolicyRefused,
+  UnknownTopLevelRoot,
+  ConflictingSubtreeRule,
+  admit_publication_policy,
+  publication_policy_default_disposition,
+  resolve_disposition_for_path,
+}
+import gunbc.public_projection {
+  PublicationSubject,
+  PublicProjectionPlan,
+  derive_public_projection_plan,
+  public_projection_includes_subject,
+}
+import gunbc.publication_decision {
+  PublicationDecisionReceipt,
+  PublicationAuthorityId,
+  PublicationAudience,
+  UniversalPublicationAudience,
+  EnumeratedPublicationAudience,
+  publication_decision_requires_refresh,
+  publication_decision_authorizes_newly_public,
+}
+import gunbc.publication_admission_delta {
+  ChangeLocalAdmissionRequest,
+  ChangeLocalAdmitted,
+  ChangeLocalRefused,
+  CandidateDigestInconsistent,
+  NewlyPublic,
+  NewlyWithheld,
+  admit_change_local_projection,
+}
+import tools.publication_publisher {
+  ModeledSessionId,
+  SoleModeledPublisher,
+  OrdinarySession,
+  NotTheSolePublisher,
+  ProjectionNotAdmitted,
+  DecisionReceiptMissing,
+  DecisionReceiptNotAuthorizing,
+  UnauthorizedPublicPush,
+  NoPushedRefsPresented,
+  PublicWriteAdmitted,
+  PublicWriteRefused,
+  sole_modeled_publisher_session,
+  sole_publication_authority_id,
+  session_publication_posture,
+  admit_public_write,
+  ordinary_session_lacks_public_write_authority,
+}
+import tools.publication_push_shadow {
+  ObservedPublicPush,
+  ShadowPushWouldRefuse,
+  shadow_replay_public_pushes,
+  shadow_refusal_count,
+  shadow_would_refuse_ordinary_session,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data synthetic_head: CommitSha = "synthetic-head-sha"
+data synthetic_ordinary_session: ModeledSessionId = "synthetic-ordinary-session" as ModeledSessionId
+data synthetic_policy_version: NonEmptyStr = "policy-v1" as NonEmptyStr
+
+fn synthetic_subject(path: FilePath, identity: String) -> PublicationSubject {
+  PublicationSubject {
+    subject_identity: content_hash_of_value(value: identity as NonEmptyStr),
+    content_identity: content_hash_of_value(value: identity as NonEmptyStr),
+    path: path,
+  }
+}
+
+fn public_docs_policy() -> PublicationPolicy {
+  PublicationPolicy {
+    version: synthetic_policy_version,
+    default_disposition: publication_policy_default_disposition,
+    rules: [SubtreePublishRule {
+      prefix: "docs/plans" as FilePath,
+      disposition: PublishPublic,
+    }],
+  }
+}
+
+fn admitted_public_docs_policy() -> AdmittedPublicationPolicy {
+  match admit_publication_policy(policy: public_docs_policy()) {
+    PublicationPolicyAccepted { admitted: admitted } => admitted
+    PublicationPolicyRefused { cause: _ } =>
+      AdmittedPublicationPolicy { policy: public_docs_policy() }
+  }
+}
+
+fn synthetic_decision_receipt(subject: PublicationSubject) -> PublicationDecisionReceipt {
+  PublicationDecisionReceipt {
+    subject_identity: subject.subject_identity,
+    content_identity: subject.content_identity,
+    audience: UniversalPublicationAudience,
+    policy_version: synthetic_policy_version,
+    authority: sole_publication_authority_id,
+  }
+}
+
+fn synthetic_push() -> PrePushStdinRow {
+  PrePushStdinRow {
+    local_ref: "refs/heads/session/synthetic-ordinary-session",
+    local_sha: synthetic_head,
+    remote_ref: "refs/heads/session/synthetic-ordinary-session",
+    remote_sha: zero_sha,
+  }
+}
+
+test fn ordinary_session_lacks_public_write_authority_holds() -> Bool {
+  ordinary_session_lacks_public_write_authority(session: synthetic_ordinary_session)
+    && match session_publication_posture(session: synthetic_ordinary_session) {
+      OrdinarySession { session: session } => session == synthetic_ordinary_session
+      SoleModeledPublisher { session: _ } => false
+    }
+}
+
+test fn sole_publisher_posture_is_unique() -> Bool {
+  match session_publication_posture(session: sole_modeled_publisher_session) {
+    SoleModeledPublisher { session: session } => session == sole_modeled_publisher_session
+    OrdinarySession { session: _ } => false
+  }
+}
+
+test fn git_push_shape_is_modeled_not_raw_argv() -> Bool {
+  let update = GitRefUpdateSpec {
+    local_ref: "refs/heads/session/example" as GitRef,
+    remote_ref: "refs/heads/session/example" as GitRef,
+  }
+  let request = GitPushRequest {
+    remote: "origin" as NonEmptyStr,
+    ref_updates: [update],
+  }
+  request.remote == ("origin" as NonEmptyStr) && request.ref_updates == [update]
+}
+
+test fn publication_policy_refuses_unknown_top_level_root() -> Bool {
+  match admit_publication_policy(policy: PublicationPolicy {
+    version: synthetic_policy_version,
+    default_disposition: publication_policy_default_disposition,
+    rules: [SubtreePublishRule {
+      prefix: "private-overlay/secret" as FilePath,
+      disposition: PublishPublic,
+    }],
+  }) {
+    PublicationPolicyAccepted { admitted: _ } => false
+    PublicationPolicyRefused { cause: cause } =>
+      match cause {
+        UnknownTopLevelRoot { prefix: _ } => true
+        ConflictingSubtreeRule { prefix: _ } => false
+      }
+  }
+}
+
+test fn publication_policy_refuses_conflicting_prefix_rules() -> Bool {
+  match admit_publication_policy(policy: PublicationPolicy {
+    version: synthetic_policy_version,
+    default_disposition: WithholdPrivate,
+    rules: [
+      SubtreePublishRule { prefix: "docs/plans" as FilePath, disposition: PublishPublic },
+      SubtreePublishRule { prefix: "docs/plans" as FilePath, disposition: WithholdPrivate },
+    ],
+  }) {
+    PublicationPolicyAccepted { admitted: _ } => false
+    PublicationPolicyRefused { cause: cause } =>
+      match cause {
+        ConflictingSubtreeRule { prefix: _ } => true
+        UnknownTopLevelRoot { prefix: _ } => false
+      }
+  }
+}
+
+test fn publication_policy_most_specific_rule_wins() -> Bool {
+  let policy = PublicationPolicy {
+    version: synthetic_policy_version,
+    default_disposition: WithholdPrivate,
+    rules: [
+      SubtreePublishRule { prefix: "docs" as FilePath, disposition: WithholdPrivate },
+      SubtreePublishRule { prefix: "docs/plans" as FilePath, disposition: PublishPublic },
+    ],
+  }
+  match admit_publication_policy(policy: policy) {
+    PublicationPolicyAccepted { admitted: accepted } =>
+      resolve_disposition_for_path(policy: accepted.policy, path: "docs/plans/sole-modeled-publisher-design.md" as FilePath) == PublishPublic
+        && resolve_disposition_for_path(policy: accepted.policy, path: "docs/other.md" as FilePath) == WithholdPrivate
+    PublicationPolicyRefused { cause: _ } => false
+  }
+}
+
+test fn public_projection_plan_derives_from_policy_not_pathname_census() -> Bool {
+  let admitted = admitted_public_docs_policy()
+  let subject = synthetic_subject(
+    path: "docs/plans/sole-modeled-publisher-design.md" as FilePath,
+    identity: "subject-docs-plan",
+  )
+  let plan = derive_public_projection_plan(
+    admitted: admitted,
+    source_revision: synthetic_head,
+    authored_subjects: [subject],
+  )
+  public_projection_includes_subject(plan: plan, subject_identity: subject.subject_identity)
+    && count(plan.omitted_subjects) == 0
+}
+
+test fn change_local_admission_classifies_newly_public_delta() -> Bool {
+  let admitted = admitted_public_docs_policy()
+  let subject = synthetic_subject(
+    path: "docs/plans/new.md" as FilePath,
+    identity: "subject-new-doc",
+  )
+  let candidate = derive_public_projection_plan(
+    admitted: admitted,
+    source_revision: synthetic_head,
+    authored_subjects: [subject],
+  )
+  match admit_change_local_projection(request: ChangeLocalAdmissionRequest {
+    current: Absent,
+    candidate: candidate,
+  }) {
+    ChangeLocalAdmitted { delta: delta, candidate: _ } =>
+      count(filter(delta, item => match item {
+        NewlyPublic { subject: admitted } => admitted.subject_identity == subject.subject_identity
+        _ => false
+      })) > 0
+    ChangeLocalRefused { cause: _ } => false
+  }
+}
+
+test fn change_local_admission_refuses_tampered_projection_digest() -> Bool {
+  let candidate = derive_public_projection_plan(
+    admitted: admitted_public_docs_policy(),
+    source_revision: synthetic_head,
+    authored_subjects: [synthetic_subject(
+      path: "docs/plans/tampered.md" as FilePath,
+      identity: "subject-tampered",
+    )],
+  )
+  let tampered = PublicProjectionPlan {
+    source_revision: candidate.source_revision,
+    policy_version: candidate.policy_version,
+    included_subjects: candidate.included_subjects,
+    omitted_subjects: candidate.omitted_subjects,
+    projection_digest: content_hash_of_value(value: "tampered-digest" as NonEmptyStr),
+  }
+  match admit_change_local_projection(request: ChangeLocalAdmissionRequest {
+    current: Absent,
+    candidate: tampered,
+  }) {
+    ChangeLocalRefused { cause: cause } =>
+      match cause {
+        CandidateDigestInconsistent { expected: _, observed: _ } => true
+        WholeProjectionAuditRequired { detail: _ } => false
+      }
+    ChangeLocalAdmitted { delta: _, candidate: _ } => false
+  }
+}
+
+test fn change_local_admission_classifies_deletion_as_newly_withheld() -> Bool {
+  let admitted = admitted_public_docs_policy()
+  let subject = synthetic_subject(
+    path: "docs/plans/deleted.md" as FilePath,
+    identity: "subject-deleted",
+  )
+  let current = derive_public_projection_plan(
+    admitted: admitted,
+    source_revision: synthetic_head,
+    authored_subjects: [subject],
+  )
+  let candidate = derive_public_projection_plan(
+    admitted: admitted,
+    source_revision: synthetic_head,
+    authored_subjects: [],
+  )
+  match admit_change_local_projection(request: ChangeLocalAdmissionRequest {
+    current: Present { value: current },
+    candidate: candidate,
+  }) {
+    ChangeLocalAdmitted { delta: delta, candidate: _ } =>
+      count(filter(delta, item => match item {
+        NewlyWithheld { subject: withheld } => withheld.subject_identity == subject.subject_identity
+        _ => false
+      })) > 0
+    ChangeLocalRefused { cause: _ } => false
+  }
+}
+
+test fn publication_decision_authorizes_matching_policy_authority_and_audience() -> Bool {
+  let subject = synthetic_subject(
+    path: "docs/plans/receipt-auth.md" as FilePath,
+    identity: "subject-receipt-auth",
+  )
+  publication_decision_authorizes_newly_public(
+    receipt: synthetic_decision_receipt(subject: subject),
+    subject: subject,
+    policy_version: synthetic_policy_version,
+    authority: sole_publication_authority_id,
+  )
+}
+
+test fn sole_publisher_refuses_stale_policy_version_receipt() -> Bool {
+  let admitted = admitted_public_docs_policy()
+  let subject = synthetic_subject(
+    path: "docs/plans/stale-receipt.md" as FilePath,
+    identity: "subject-stale-receipt",
+  )
+  let candidate = derive_public_projection_plan(
+    admitted: admitted,
+    source_revision: synthetic_head,
+    authored_subjects: [subject],
+  )
+  let stale_receipt = PublicationDecisionReceipt {
+    subject_identity: subject.subject_identity,
+    content_identity: subject.content_identity,
+    audience: UniversalPublicationAudience,
+    policy_version: "stale-policy" as NonEmptyStr,
+    authority: sole_publication_authority_id,
+  }
+  match admit_public_write(
+    session: sole_modeled_publisher_session,
+    current: Absent,
+    candidate: candidate,
+    decisions: [stale_receipt],
+    pushed_refs: [synthetic_push()],
+  ) {
+    PublicWriteRefused { session: _, cause: cause } =>
+      match cause {
+        DecisionReceiptNotAuthorizing { session: _, subject_identity: id, detail: _ } =>
+          id == (serialize_content_hash(hash: subject.subject_identity) as String)
+        _ => false
+      }
+    PublicWriteAdmitted { authority: _ } => false
+  }
+}
+
+test fn sole_publisher_refuses_wrong_authority_receipt() -> Bool {
+  let subject = synthetic_subject(
+    path: "docs/plans/wrong-authority.md" as FilePath,
+    identity: "subject-wrong-authority",
+  )
+  let candidate = derive_public_projection_plan(
+    admitted: admitted_public_docs_policy(),
+    source_revision: synthetic_head,
+    authored_subjects: [subject],
+  )
+  let wrong_authority_receipt = PublicationDecisionReceipt {
+    subject_identity: subject.subject_identity,
+    content_identity: subject.content_identity,
+    audience: UniversalPublicationAudience,
+    policy_version: synthetic_policy_version,
+    authority: "not-the-publisher" as PublicationAuthorityId,
+  }
+  match admit_public_write(
+    session: sole_modeled_publisher_session,
+    current: Absent,
+    candidate: candidate,
+    decisions: [wrong_authority_receipt],
+    pushed_refs: [synthetic_push()],
+  ) {
+    PublicWriteRefused { session: _, cause: cause } =>
+      match cause {
+        DecisionReceiptNotAuthorizing { session: _, subject_identity: _, detail: _ } => true
+        _ => false
+      }
+    PublicWriteAdmitted { authority: _ } => false
+  }
+}
+
+test fn sole_publisher_refuses_enumerated_audience_receipt() -> Bool {
+  let subject = synthetic_subject(
+    path: "docs/plans/narrow-audience.md" as FilePath,
+    identity: "subject-narrow-audience",
+  )
+  let candidate = derive_public_projection_plan(
+    admitted: admitted_public_docs_policy(),
+    source_revision: synthetic_head,
+    authored_subjects: [subject],
+  )
+  let narrow_receipt = PublicationDecisionReceipt {
+    subject_identity: subject.subject_identity,
+    content_identity: subject.content_identity,
+    audience: EnumeratedPublicationAudience { label: "private-team" },
+    policy_version: synthetic_policy_version,
+    authority: sole_publication_authority_id,
+  }
+  match admit_public_write(
+    session: sole_modeled_publisher_session,
+    current: Absent,
+    candidate: candidate,
+    decisions: [narrow_receipt],
+    pushed_refs: [synthetic_push()],
+  ) {
+    PublicWriteRefused { session: _, cause: cause } =>
+      match cause {
+        DecisionReceiptNotAuthorizing { session: _, subject_identity: _, detail: _ } => true
+        _ => false
+      }
+    PublicWriteAdmitted { authority: _ } => false
+  }
+}
+
+test fn publication_decision_binds_content_identity_not_pathname() -> Bool {
+  let receipt = PublicationDecisionReceipt {
+    subject_identity: content_hash_of_value(value: "subject-a" as NonEmptyStr),
+    content_identity: content_hash_of_value(value: "content-v1" as NonEmptyStr),
+    audience: UniversalPublicationAudience,
+    policy_version: synthetic_policy_version,
+    authority: sole_publication_authority_id,
+  }
+  publication_decision_requires_refresh(
+    receipt: receipt,
+    subject_identity: content_hash_of_value(value: "subject-a" as NonEmptyStr),
+    content_identity: content_hash_of_value(value: "content-v2" as NonEmptyStr),
+  )
+}
+
+test fn ordinary_session_reds_before_projection_check() -> Bool {
+  let candidate = derive_public_projection_plan(
+    admitted: admitted_public_docs_policy(),
+    source_revision: synthetic_head,
+    authored_subjects: [synthetic_subject(
+      path: "docs/plans/x.md" as FilePath,
+      identity: "subject-x",
+    )],
+  )
+  match admit_public_write(
+    session: synthetic_ordinary_session,
+    current: Absent,
+    candidate: candidate,
+    decisions: [],
+    pushed_refs: [synthetic_push()],
+  ) {
+    PublicWriteRefused { session: _, cause: cause } =>
+      match cause {
+        NotTheSolePublisher { session: _, sole_publisher: sole } => sole == sole_modeled_publisher_session
+        _ => false
+      }
+    PublicWriteAdmitted { authority: _ } => false
+  }
+}
+
+test fn sole_publisher_admits_change_local_projection() -> Bool {
+  let admitted = admitted_public_docs_policy()
+  let subject = synthetic_subject(
+    path: "docs/plans/y.md" as FilePath,
+    identity: "subject-y",
+  )
+  let candidate = derive_public_projection_plan(
+    admitted: admitted,
+    source_revision: synthetic_head,
+    authored_subjects: [subject],
+  )
+  match admit_public_write(
+    session: sole_modeled_publisher_session,
+    current: Absent,
+    candidate: candidate,
+    decisions: [synthetic_decision_receipt(subject: subject)],
+    pushed_refs: [synthetic_push()],
+  ) {
+    PublicWriteAdmitted { authority: authority } =>
+      authority.authority_id == sole_publication_authority_id
+        && authority.projection.plan.source_revision == synthetic_head
+    PublicWriteRefused { session: _, cause: _ } => false
+  }
+}
+
+test fn sole_publisher_refuses_newly_public_without_receipt() -> Bool {
+  let admitted = admitted_public_docs_policy()
+  let subject = synthetic_subject(
+    path: "docs/plans/no-receipt.md" as FilePath,
+    identity: "subject-no-receipt",
+  )
+  let candidate = derive_public_projection_plan(
+    admitted: admitted,
+    source_revision: synthetic_head,
+    authored_subjects: [subject],
+  )
+  match admit_public_write(
+    session: sole_modeled_publisher_session,
+    current: Absent,
+    candidate: candidate,
+    decisions: [],
+    pushed_refs: [synthetic_push()],
+  ) {
+    PublicWriteRefused { session: _, cause: cause } =>
+      match cause {
+        DecisionReceiptMissing { session: _, subject_identity: id } =>
+          id == (serialize_content_hash(hash: subject.subject_identity) as String)
+        _ => false
+      }
+    PublicWriteAdmitted { authority: _ } => false
+  }
+}
+
+test fn sole_publisher_refuses_push_head_mismatch() -> Bool {
+  let admitted = admitted_public_docs_policy()
+  let subject = synthetic_subject(
+    path: "docs/plans/mismatch.md" as FilePath,
+    identity: "subject-mismatch",
+  )
+  let candidate = derive_public_projection_plan(
+    admitted: admitted,
+    source_revision: synthetic_head,
+    authored_subjects: [subject],
+  )
+  let bad_push = PrePushStdinRow {
+    local_ref: "refs/heads/session/synthetic-ordinary-session",
+    local_sha: "wrong-head" as CommitSha,
+    remote_ref: "refs/heads/session/synthetic-ordinary-session",
+    remote_sha: zero_sha,
+  }
+  match admit_public_write(
+    session: sole_modeled_publisher_session,
+    current: Absent,
+    candidate: candidate,
+    decisions: [synthetic_decision_receipt(subject: subject)],
+    pushed_refs: [bad_push],
+  ) {
+    PublicWriteRefused { session: _, cause: cause } =>
+      match cause {
+        UnauthorizedPublicPush { session: _, local_ref: _, local_sha: _, detail: _ } => true
+        _ => false
+      }
+    PublicWriteAdmitted { authority: _ } => false
+  }
+}
+
+test fn sole_publisher_refuses_empty_pushed_refs() -> Bool {
+  let admitted = admitted_public_docs_policy()
+  let subject = synthetic_subject(
+    path: "docs/plans/empty-push.md" as FilePath,
+    identity: "subject-empty-push",
+  )
+  let candidate = derive_public_projection_plan(
+    admitted: admitted,
+    source_revision: synthetic_head,
+    authored_subjects: [subject],
+  )
+  match admit_public_write(
+    session: sole_modeled_publisher_session,
+    current: Absent,
+    candidate: candidate,
+    decisions: [synthetic_decision_receipt(subject: subject)],
+    pushed_refs: [],
+  ) {
+    PublicWriteRefused { session: _, cause: cause } =>
+      match cause {
+        NoPushedRefsPresented { session: session } =>
+          session == sole_modeled_publisher_session
+        _ => false
+      }
+    PublicWriteAdmitted { authority: _ } => false
+  }
+}
+
+test fn shadow_replay_counts_ordinary_session_refusals() -> Bool {
+  let candidate = derive_public_projection_plan(
+    admitted: admitted_public_docs_policy(),
+    source_revision: synthetic_head,
+    authored_subjects: [synthetic_subject(
+      path: "docs/plans/z.md" as FilePath,
+      identity: "subject-z",
+    )],
+  )
+  let observed = ObservedPublicPush {
+    session: synthetic_ordinary_session,
+    head: synthetic_head,
+    push: synthetic_push(),
+    candidate: candidate,
+    decisions: [],
+  }
+  shadow_refusal_count(entries: shadow_replay_public_pushes(current: Absent, events: [observed])) == 1
+    && shadow_would_refuse_ordinary_session(current: Absent, observed: observed)
+}
