@@ -79,8 +79,11 @@ import gunbc.roadmap_dispatch_actuator {
   git_for_each_ref_dispatch_argv,
   git_for_each_ref_dispatch_argv_for_instance,
   dispatch_tmux_session_scope,
-  DispatchCliProvider, ClaudeCodeProvider, CodexCliProvider,
+  DispatchCliProvider, ClaudeCodeProvider, CodexDispatchProvider, CursorDispatchProvider,
   dispatch_cli_provider, dispatch_provider_label, dispatch_codex_home,
+  dispatch_actuator_selection,
+  DispatchActuatorSelectionOk,
+  DispatchActuatorSelectionRefused,
   dispatch_tmux_session_name,
   dispatch_worktree_root,
   tmux_ls_argv,
@@ -128,6 +131,7 @@ import gunbc.worker_lifecycle {
   transcript_evidence_label,
   terminal_outcome_evidence_label,
 }
+import gunbc.dispatch_selection { default_provider_selection_request }
 import gunbc.host_layout { srv1_gunbc_repo_root, belt_spawn_workdir_env_var }
 import gunbc.roadmap_dashboard_instance {
   HostDashboardInstance,
@@ -1052,11 +1056,16 @@ fn belt_provider_preflight_for_instance(
         ClaudePreflightRefused { step: st, detail: d } =>
           ProviderPreflightRefused { step: st, detail: d }
       }
-    CodexCliProvider =>
+    CodexDispatchProvider =>
       match belt_codex_preflight_for_instance(instance: instance) {
         CodexPreflightOk { auth_method: _ } => ProviderPreflightOk
         CodexPreflightRefused { step: st, detail: d } =>
           ProviderPreflightRefused { step: st, detail: d }
+      }
+    CursorDispatchProvider =>
+      ProviderPreflightRefused {
+        step: "cursor-provider-preflight",
+        detail: "cursor dispatch is not yet wired on this actuator path",
       }
   }
 }
@@ -1198,24 +1207,33 @@ fn belt_actuate_spawn_for_instance(
         ),
       }
     EnvironmentAdmitted { receipts, validation_summary } =>
-      match belt_provider_preflight_for_instance(
-        instance: instance,
-        provider: dispatch_cli_provider,
-      ) {
-        ProviderPreflightRefused { step: st, detail: d } =>
-          SpawnFailed { node_id: node.node as String, step: st, detail: d }
-        ProviderPreflightOk =>
-          belt_actuate_spawn_exec_for_instance(
+      match dispatch_actuator_selection(node_sizing: node.sizing) {
+        DispatchActuatorSelectionRefused { reason } =>
+          SpawnFailed {
+            node_id: node.node as String,
+            step: "dispatch-selection",
+            detail: reason as String,
+          }
+        DispatchActuatorSelectionOk { provider, effort: _, process_fingerprint: _ } =>
+          match belt_provider_preflight_for_instance(
             instance: instance,
-            node: node,
-            probed_at: probed_at,
-            admission_receipt: dispatch_environment_admission_json(
-              admission: EnvironmentAdmitted {
-                receipts: receipts,
-                validation_summary: validation_summary,
-              },
-            ),
-          )
+            provider: provider,
+          ) {
+            ProviderPreflightRefused { step: st, detail: d } =>
+              SpawnFailed { node_id: node.node as String, step: st, detail: d }
+            ProviderPreflightOk =>
+              belt_actuate_spawn_exec_for_instance(
+                instance: instance,
+                node: node,
+                probed_at: probed_at,
+                admission_receipt: dispatch_environment_admission_json(
+                  admission: EnvironmentAdmitted {
+                    receipts: receipts,
+                    validation_summary: validation_summary,
+                  },
+                ),
+              )
+          }
       }
   }
   }
@@ -1255,7 +1273,7 @@ fn belt_actuate_spawn_exec_modeled(
     node: node,
     session_uuid: belt_spawn_session_uuid(node_id: node.node as String, probed_at: probed_at),
     attempt_key: attempt_key,
-    provider: dispatch_cli_provider,
+    request: default_provider_selection_request(),
   ) {
     DispatchSpawnRefused { step, detail } =>
       SpawnFailed {
@@ -1407,21 +1425,30 @@ fn belt_actuate_spawn(node: RoadmapNode, probed_at: String, workdir: String) -> 
         ),
       }
     EnvironmentAdmitted { receipts, validation_summary } =>
-      match belt_provider_preflight(provider: dispatch_cli_provider) {
-        ProviderPreflightRefused { step: st, detail: d } =>
-          SpawnFailed { node_id: node.node as String, step: st, detail: d }
-        ProviderPreflightOk =>
-          belt_actuate_spawn_exec(
-            node: node,
-            probed_at: probed_at,
-            workdir: workdir,
-            admission_receipt: dispatch_environment_admission_json(
-              admission: EnvironmentAdmitted {
-                receipts: receipts,
-                validation_summary: validation_summary,
-              },
-            ),
-          )
+      match dispatch_actuator_selection(node_sizing: node.sizing) {
+        DispatchActuatorSelectionRefused { reason } =>
+          SpawnFailed {
+            node_id: node.node as String,
+            step: "dispatch-selection",
+            detail: reason as String,
+          }
+        DispatchActuatorSelectionOk { provider, effort: _, process_fingerprint: _ } =>
+          match belt_provider_preflight(provider: provider) {
+            ProviderPreflightRefused { step: st, detail: d } =>
+              SpawnFailed { node_id: node.node as String, step: st, detail: d }
+            ProviderPreflightOk =>
+              belt_actuate_spawn_exec(
+                node: node,
+                probed_at: probed_at,
+                workdir: workdir,
+                admission_receipt: dispatch_environment_admission_json(
+                  admission: EnvironmentAdmitted {
+                    receipts: receipts,
+                    validation_summary: validation_summary,
+                  },
+                ),
+              )
+          }
       }
   }
 }
@@ -3545,7 +3572,13 @@ fn belt_stop_node_for_instance(
   match belt_sessions_observe_for_instance(instance: instance) {
     ObserveRefused { reason: r } => StopObserveRefused { node_id: node_id, reason: r }
     Observed { live } => {
-      let scope = dispatch_tmux_session_scope(node_id: node_id)
+      match dispatch_tmux_session_scope(node_id: node_id) {
+        Absent =>
+          StopRefusedResult {
+            node_id: node_id,
+            reason: "dispatch selection refused before stop scope",
+          }
+        Present { value: scope } => {
       let matched = live
         |> filter(sess =>
           sess.session_name == (scope.session_name as String))
@@ -3595,6 +3628,8 @@ fn belt_stop_node_for_instance(
                   }
               }
           }
+      }
+        }
       }
     }
   }
@@ -3704,42 +3739,54 @@ fn belt_sessions_json_value(o: BeltObserve) -> JsonValue {
         json_kv(key: "schema", value: json_string(s: "roadmap-sessions/v1")),
         json_kv(key: "observe_refused", value: json_bool(b: false)),
         json_kv(key: "sessions", value: json_array(elements: live |> map(sess => {
-          let cleanup = dispatch_session_cleanup(
-            scope: dispatch_tmux_session_scope(node_id: sess.node_id),
-            session: sess,
-          )
-          json_object(members: [
-            json_kv(key: "node_id", value: json_string(s: sess.node_id)),
-            json_kv(key: "session_name", value: json_string(s: sess.session_name)),
-            json_kv(key: "session_presence", value: json_string(s: "present")),
-            json_kv(key: "process_state", value: json_string(
-              s: worker_process_evidence_label(evidence: sess.worker.process))),
-            json_kv(key: "process_detail", value: json_string(
-              s: worker_process_evidence_detail(evidence: sess.worker.process))),
-            json_kv(key: "configured_provider", value: json_string(s: provider_kind_label(kind: sess.worker.configured_provider.kind))),
-            json_kv(key: "provider", value: json_string(s: provider_evidence_label(evidence: sess.worker.provider_instance))),
-            json_kv(key: "provider_readiness", value: json_string(s: provider_readiness_label(readiness: sess.worker.provider_readiness))),
-            json_kv(key: "tool_execution_readiness", value: json_string(s: tool_execution_readiness_label(readiness: sess.worker.tool_readiness))),
-            json_kv(key: "worker_phase", value: json_string(s: worker_phase_label(phase: sess.worker.phase))),
-            json_kv(key: "cleanup_action", value: json_string(
-              s: dispatch_session_cleanup_action(cleanup: cleanup))),
-            json_kv(key: "cleanup_allowed", value: json_bool(
-              b: dispatch_session_cleanup_allowed(cleanup: cleanup))),
-            json_kv(key: "cleanup_detail", value: json_string(
-              s: dispatch_session_cleanup_detail(cleanup: cleanup))),
-            json_kv(key: "facts", value: session_facts_json_value(
-              v: session_facts_view(
-                process: sess.worker.process,
-                process_detail: worker_process_evidence_detail(evidence: sess.worker.process),
-                provider: provider_evidence_label(evidence: sess.worker.provider_instance),
-                configured_provider: provider_kind_label(kind: sess.worker.configured_provider.kind),
-                provider_readiness: provider_readiness_label(readiness: sess.worker.provider_readiness),
-                session_name: sess.session_name,
-                cleanup_action: dispatch_session_cleanup_action(cleanup: cleanup),
-                cleanup_allowed: dispatch_session_cleanup_allowed(cleanup: cleanup),
-                cleanup_detail: dispatch_session_cleanup_detail(cleanup: cleanup),
-              ))),
-          ])
+          match dispatch_tmux_session_scope(node_id: sess.node_id) {
+            Present { value: scope } => {
+              let cleanup = dispatch_session_cleanup(
+                scope: scope,
+                session: sess,
+              )
+              json_object(members: [
+                json_kv(key: "node_id", value: json_string(s: sess.node_id)),
+                json_kv(key: "session_name", value: json_string(s: sess.session_name)),
+                json_kv(key: "session_presence", value: json_string(s: "present")),
+                json_kv(key: "process_state", value: json_string(
+                  s: worker_process_evidence_label(evidence: sess.worker.process))),
+                json_kv(key: "process_detail", value: json_string(
+                  s: worker_process_evidence_detail(evidence: sess.worker.process))),
+                json_kv(key: "configured_provider", value: json_string(s: provider_kind_label(kind: sess.worker.configured_provider.kind))),
+                json_kv(key: "provider", value: json_string(s: provider_evidence_label(evidence: sess.worker.provider_instance))),
+                json_kv(key: "provider_readiness", value: json_string(s: provider_readiness_label(readiness: sess.worker.provider_readiness))),
+                json_kv(key: "tool_execution_readiness", value: json_string(s: tool_execution_readiness_label(readiness: sess.worker.tool_readiness))),
+                json_kv(key: "worker_phase", value: json_string(s: worker_phase_label(phase: sess.worker.phase))),
+                json_kv(key: "cleanup_action", value: json_string(
+                  s: dispatch_session_cleanup_action(cleanup: cleanup))),
+                json_kv(key: "cleanup_allowed", value: json_bool(
+                  b: dispatch_session_cleanup_allowed(cleanup: cleanup))),
+                json_kv(key: "cleanup_detail", value: json_string(
+                  s: dispatch_session_cleanup_detail(cleanup: cleanup))),
+                json_kv(key: "facts", value: session_facts_json_value(
+                  v: session_facts_view(
+                    process: sess.worker.process,
+                    process_detail: worker_process_evidence_detail(evidence: sess.worker.process),
+                    provider: provider_evidence_label(evidence: sess.worker.provider_instance),
+                    configured_provider: provider_kind_label(kind: sess.worker.configured_provider.kind),
+                    provider_readiness: provider_readiness_label(readiness: sess.worker.provider_readiness),
+                    session_name: sess.session_name,
+                    cleanup_action: dispatch_session_cleanup_action(cleanup: cleanup),
+                    cleanup_allowed: dispatch_session_cleanup_allowed(cleanup: cleanup),
+                    cleanup_detail: dispatch_session_cleanup_detail(cleanup: cleanup),
+                  ))),
+              ])
+            }
+            Absent =>
+              json_object(members: [
+                json_kv(key: "node_id", value: json_string(s: sess.node_id)),
+                json_kv(key: "session_name", value: json_string(s: sess.session_name)),
+                json_kv(key: "cleanup_action", value: json_string(s: "selection_refused")),
+                json_kv(key: "cleanup_allowed", value: json_bool(b: false)),
+                json_kv(key: "cleanup_detail", value: json_string(s: "dispatch selection refused before cleanup scope")),
+              ])
+          }
         }))),
       ])
   }
@@ -4035,7 +4082,12 @@ data belt_dispatch_path_prefix_note: String = "The dispatch route prefix, part o
 data belt_dispatch_path_prefix: String = "/dispatch/"
 
 fn belt_dispatch_provider_label() -> String {
-  dispatch_provider_label(provider: dispatch_cli_provider)
+  match dispatch_actuator_selection(node_sizing: Unsized) {
+    DispatchActuatorSelectionOk { provider, effort: _, process_fingerprint: _ } =>
+      dispatch_provider_label(provider: provider)
+    DispatchActuatorSelectionRefused { reason } =>
+      concat("selection-refused: ", reason as String)
+  }
 }
 
 fn belt_dispatch_result_json_value(r: BeltDispatchResult) -> JsonValue {
