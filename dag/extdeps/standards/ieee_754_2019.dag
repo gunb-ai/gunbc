@@ -12,9 +12,9 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 }
 
 type Ieee754Standard
-  = Ieee7542019
+  = Ieee7542019 {}
 
-data ieee_754_2019: Ieee754Standard = Ieee7542019
+data ieee_754_2019: Ieee754Standard = Ieee7542019 {}
 
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
