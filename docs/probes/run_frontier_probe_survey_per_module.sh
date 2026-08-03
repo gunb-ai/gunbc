@@ -44,18 +44,35 @@ MODULES=(
 )
 
 echo "module	self_emit_ready	blocker_class	located_stage	located_reason	probe_error" > "$TSV"
+failures=0
 for mod in "${MODULES[@]}"; do
   echo "=== probing $mod ===" >&2
-  CTRL_BUILD_BYPASS_SHIMS=1 "$BIN" \
+  rm -f "$SURVEY_DIR/tmp_row.tsv"
+  if ! CTRL_BUILD_BYPASS_SHIMS=1 "$BIN" \
     --source-root src/v2 \
     --module "$mod" \
     --survey-dir "$SURVEY_DIR" \
     --emit-survey-manifest "$SURVEY_DIR/tmp_manifest.dag" \
-    --emit-tsv "$SURVEY_DIR/tmp_row.tsv" 2>&1 | tail -3 >&2 || true
-  if [[ -f "$SURVEY_DIR/tmp_row.tsv" ]]; then
-    tail -n +2 "$SURVEY_DIR/tmp_row.tsv" >> "$TSV"
+    --emit-tsv "$SURVEY_DIR/tmp_row.tsv" >"$SURVEY_DIR/tmp_probe.log" 2>&1
+  then
+    echo "frontier_probe_survey refused for $mod (exit $?)" >&2
+    tail -20 "$SURVEY_DIR/tmp_probe.log" >&2
+    rm -f "$SURVEY_DIR/tmp_row.tsv"
+    failures=$((failures + 1))
+    continue
   fi
+  if [[ ! -f "$SURVEY_DIR/tmp_row.tsv" ]]; then
+    echo "frontier_probe_survey produced no row file for $mod" >&2
+    failures=$((failures + 1))
+    continue
+  fi
+  tail -n +2 "$SURVEY_DIR/tmp_row.tsv" >> "$TSV"
 done
+
+if failures -ne 0; then
+  echo "survey refused: $failures module probe(s) failed — TSV not promoted to manifest" >&2
+  exit 1
+fi
 
 python3 - "$TSV" "$MANIFEST" <<'PY'
 import sys
