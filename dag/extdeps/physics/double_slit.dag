@@ -74,8 +74,6 @@ type WhichPathOutcome
 
 fn observed_under_which_path_detection() -> WhichPathOutcome {
   WhichPathOutcomeUncited {
-    missing_authority:
-      "a cited which-path or quantum-eraser experiment; extdeps.physics.double_slit models Bach et al. 2013, which controlled slit transmission and not path knowledge"
-      as NonEmptyStr,
+    missing_authority: "a cited which-path or quantum-eraser experiment; extdeps.physics.double_slit models Bach et al. 2013, which controlled slit transmission and not path knowledge" as NonEmptyStr,
   }
 }
