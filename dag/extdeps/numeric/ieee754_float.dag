@@ -1,14 +1,16 @@
 module extdeps.numeric.ieee754_float
 
 import std.types { Float, NonEmptyStr }
+import std.syntax { Add }
 import std.algebra_law {
-  AssociativityRefuted,
-  AlgebraOperationRef,
   AssociativityCounterexampleWitness,
-  CarrierAlgebraLawFact,
-  LawRefutedBy,
+  AssociativityOperationSubject,
+  AssociativityRefutationReceipt,
+  KernelFloat,
+  associativity_refutation_holds_for_float_add,
 }
-import extdeps.external_authority { ExternalAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -18,35 +20,48 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data ieee754_float_note: String = "Cited upstream: IEEE Std 754-2019 IEEE Standard for Floating-Point Arithmetic (anchor above). Float carrier law facts for binary64 addition: associativity is REFUTED by an exhibited triple — (1e16, 1.0, 1.0) yields left fold 1e16 and right fold 1e16+2, turning ApproximateField from a hedge word into a located counterexample. Numeric magnitudes are read from execution on this host, not recalled."
-
-data float_carrier_name: NonEmptyStr = "Float" as NonEmptyStr
-
-data float_add_operation_name: NonEmptyStr = "add" as NonEmptyStr
-
-data float_add_operation_ref: AlgebraOperationRef = AlgebraOperationRef {
-  carrier: float_carrier_name,
-  operation_name: float_add_operation_name,
-}
-
-data float_add_associativity_counterexample: AssociativityCounterexampleWitness<Float> = AssociativityCounterexampleWitness {
-  left_operand: 10000000000000000.0,
-  middle_operand: 1.0,
-  right_operand: 1.0,
-  left_fold_result: 10000000000000000.0,
-  right_fold_result: 10000000000000002.0,
-}
-
-data float_add_associativity_refuted: CarrierAlgebraLawFact<Float> = CarrierAlgebraLawFact {
-  carrier: float_carrier_name,
-  evidence: LawRefutedBy {
-    refutation: AssociativityRefuted {
-      op_ref: float_add_operation_ref,
-      witness: float_add_associativity_counterexample,
-    },
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.numeric.ieee754_float",
+      decl_name: "float_add_associativity_refuted",
+      field: WholeDeclaration
+    }
   },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
-fn float_add_associativity_refutation_witness() -> AssociativityCounterexampleWitness<Float> {
-  float_add_associativity_counterexample
+data ieee754_float_note: String = "Cited upstream: IEEE Std 754-2019 (anchor above). Float binary addition has no DeclarationRef-producing operation identity — it is compiler BinOp.Add on kernel Float. The receipt binds KernelFloat plus BinOp.Add enum variants and derives witness magnitudes from execution via observe_float_add_associativity_triple, not hand-authored fold results. Triple (1e16, 1.0, 1.0): left fold 1e16, right fold 1e16+2 (ULP / round-half-to-even)."
+
+data float_add_operation_identity_grounding_gap_note: String = "GROUNDING GAP (honest prerequisite, not a string nickname): Float addition is not structurally referenceable as a DeclarationRef today. This slice binds associativity evidence to KernelTypeName.KernelFloat and std.syntax.BinOp.Add — the closed kernel and syntax authorities — until primitive_identity supplies a joinable operation DeclarationRef."
+
+data float_add_associativity_subject: AssociativityOperationSubject = AssociativityOperationSubject {
+  carrier: KernelFloat,
+  binop: Add,
+}
+
+fn observe_float_add_associativity_triple(a: Float, b: Float, c: Float) -> AssociativityCounterexampleWitness<Float> {
+  let left = (a + b) + c
+  let right = a + (b + c)
+  AssociativityCounterexampleWitness {
+    left_operand: a,
+    middle_operand: b,
+    right_operand: c,
+    left_fold_result: left,
+    right_fold_result: right,
+  }
+}
+
+data float_add_associativity_refuted: AssociativityRefutationReceipt<Float> = AssociativityRefutationReceipt {
+  subject: float_add_associativity_subject,
+  witness: observe_float_add_associativity_triple(
+    a: 10000000000000000.0,
+    b: 1.0,
+    c: 1.0,
+  ),
+}
+
+fn float_add_associativity_refutation_holds() -> Bool {
+  associativity_refutation_holds_for_float_add(receipt: float_add_associativity_refuted)
 }

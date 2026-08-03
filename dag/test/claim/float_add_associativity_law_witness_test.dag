@@ -1,79 +1,39 @@
 module test.claim.float_add_associativity_law_witness_test
 
 import std.types { Bool, Float }
+import std.syntax { Add, Mul }
 import std.algebra_law {
   AssociativityCounterexampleWitness,
-  law_evidence_fold,
-  LawEvidenceFold,
+  AssociativityOperationSubject,
+  AssociativityRefutationReceipt,
+  KernelFloat,
+  KernelInt,
+  associativity_refutation_holds_for_float_add,
 }
 import extdeps.numeric.ieee754_float {
-  float_add_associativity_counterexample,
+  float_add_associativity_refutation_holds,
   float_add_associativity_refuted,
-  float_add_operation_ref,
-  float_carrier_name,
+  float_add_associativity_subject,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn float_add_associativity_left_fold(a: Float, b: Float, c: Float) -> Float {
-  (a + b) + c
-}
-
-fn float_add_associativity_right_fold(a: Float, b: Float, c: Float) -> Float {
-  a + (b + c)
-}
-
-fn associativity_counterexample_matches_execution(witness: AssociativityCounterexampleWitness<Float>) -> Bool {
-  let left = float_add_associativity_left_fold(
-    a: witness.left_operand,
-    b: witness.middle_operand,
-    c: witness.right_operand,
-  )
-  let right = float_add_associativity_right_fold(
-    a: witness.left_operand,
-    b: witness.middle_operand,
-    c: witness.right_operand,
-  )
-  (left != right)
-    && (left == witness.left_fold_result)
-    && (right == witness.right_fold_result)
-}
-
-fn authored_fact_is_refuted_arm() -> Bool {
-  law_evidence_fold(
-    evidence: float_add_associativity_refuted.evidence,
-    fold: LawEvidenceFold {
-      exhaustively_verified: fn(law_key, op_ref, cardinality, cases) { false },
-      associativity_refuted: fn(op_ref, witness) {
-        op_ref.carrier == float_carrier_name
-          && op_ref.operation_name == float_add_operation_ref.operation_name
-          && associativity_counterexample_matches_execution(witness: witness)
-      },
-      commutativity_refuted: fn(op_ref, witness) { false },
-      left_identity_refuted: fn(op_ref, witness) { false },
-      right_identity_refuted: fn(op_ref, witness) { false },
-      distributivity_refuted: fn(witness) { false },
-      declared_by_authority: fn(law_key, op_ref, authority) { false },
-    },
-  )
-}
-
-test fn w_float_add_associativity_refuted_by_counterexample() -> Bool {
-  authored_fact_is_refuted_arm()
+test fn w_float_add_associativity_refuted_by_execution() -> Bool {
+  float_add_associativity_refutation_holds()
 }
 
 test fn w_float_add_associativity_associative_triple_control() -> Bool {
   let a = 1.0
   let b = 2.0
   let c = 3.0
-  let left = float_add_associativity_left_fold(a: a, b: b, c: c)
-  let right = float_add_associativity_right_fold(a: a, b: b, c: c)
+  let left = (a + b) + c
+  let right = a + (b + c)
   left == right
 }
 
 test fn w_float_add_associativity_rejects_fabricated_left_fold_result() -> Bool {
-  let witness = float_add_associativity_counterexample
+  let witness = float_add_associativity_refuted.witness
   let fabricated = AssociativityCounterexampleWitness {
     left_operand: witness.left_operand,
     middle_operand: witness.middle_operand,
@@ -81,5 +41,31 @@ test fn w_float_add_associativity_rejects_fabricated_left_fold_result() -> Bool 
     left_fold_result: witness.right_fold_result,
     right_fold_result: witness.right_fold_result,
   }
-  !associativity_counterexample_matches_execution(witness: fabricated)
+  let bad_receipt = AssociativityRefutationReceipt {
+    subject: float_add_associativity_subject,
+    witness: fabricated,
+  }
+  !associativity_refutation_holds_for_float_add(receipt: bad_receipt)
+}
+
+test fn w_float_add_associativity_carrier_int_subject_refuses() -> Bool {
+  let bad_receipt = AssociativityRefutationReceipt {
+    subject: AssociativityOperationSubject {
+      carrier: KernelInt,
+      binop: Add,
+    },
+    witness: float_add_associativity_refuted.witness,
+  }
+  !associativity_refutation_holds_for_float_add(receipt: bad_receipt)
+}
+
+test fn w_float_add_associativity_binop_mul_subject_refuses() -> Bool {
+  let bad_receipt = AssociativityRefutationReceipt {
+    subject: AssociativityOperationSubject {
+      carrier: KernelFloat,
+      binop: Mul,
+    },
+    witness: float_add_associativity_refuted.witness,
+  }
+  !associativity_refutation_holds_for_float_add(receipt: bad_receipt)
 }

@@ -1,22 +1,15 @@
 module std.algebra_law
 
+import std.syntax { BinOp, Add }
 import std.types { NonEmptyStr }
-import std.nat { Nat }
-import extdeps.external_authority { ExternalAuthority }
 
-data algebra_law_evidence_note: String = "Algebra laws are universally quantified; execution cannot prove a forall over an infinite carrier. LawEvidence is a three-arm typed fact with no Bool arm: LawExhaustivelyVerified for finite carriers where every case was executed; LawRefutedBy with a law-keyed refutation witness (arity and operation count derived from the law, so a Commutativity row cannot carry an associativity-shaped triple); LawDeclaredByAuthority with a citation for infinite carriers, honestly marked as a boundary obligation. Laws attach at carrier grain referencing this vocabulary; the profile is the interface and the law-set is the realization fact (operator ruling, QM lane 2026-08-03). std carries only agnostic shapes; cited concretes live in extdeps."
+data algebra_law_slice_note: String = "Slice-1 associativity evidence only: AssociativityCounterexampleWitness plus AssociativityRefutationReceipt bound to std.syntax.BinOp and KernelTypeName enum variants — not string carrier or operation nicknames. LawExhaustivelyVerified and LawDeclaredByAuthority are omitted until an exhaustive checker or cited proposition producer exists. Float binary + has no DeclarationRef-producing surface (compiler builtin); extdeps.numeric.ieee754_float records that grounding gap beside the receipt."
 
-type AlgebraLawKey
-  = Associativity
-  | LeftIdentity
-  | RightIdentity
-  | Commutativity
-  | Distributivity
-
-type AlgebraOperationRef {
-  carrier: NonEmptyStr
-  operation_name: NonEmptyStr
-}
+type KernelTypeName
+  = KernelFloat
+  | KernelInt
+  | KernelBool
+  | KernelString
 
 type AssociativityCounterexampleWitness<T> {
   left_operand: T
@@ -26,147 +19,33 @@ type AssociativityCounterexampleWitness<T> {
   right_fold_result: T
 }
 
-type CommutativityCounterexampleWitness<T> {
-  left_operand: T
-  right_operand: T
-  forward_result: T
-  reverse_result: T
+type AssociativityOperationSubject {
+  carrier: KernelTypeName
+  binop: BinOp
 }
 
-type LeftIdentityCounterexampleWitness<T> {
-  identity: T
-  operand: T
-  left_fold_result: T
-  operand_result: T
+type AssociativityRefutationReceipt<T> {
+  subject: AssociativityOperationSubject
+  witness: AssociativityCounterexampleWitness<T>
 }
 
-type RightIdentityCounterexampleWitness<T> {
-  identity: T
-  operand: T
-  right_fold_result: T
-  operand_result: T
+fn associativity_subject_is_float_add(subject: AssociativityOperationSubject) -> Bool {
+  subject.carrier == KernelFloat && subject.binop == Add
 }
 
-type DistributivityCounterexampleWitness<T> {
-  combine_op_ref: AlgebraOperationRef
-  distribute_op_ref: AlgebraOperationRef
-  left_operand: T
-  middle_operand: T
-  right_operand: T
-  distribute_then_combine_result: T
-  combine_then_distribute_left_result: T
-  combine_then_distribute_right_result: T
+fn float_add_associativity_witness_matches_execution(
+  witness: AssociativityCounterexampleWitness<Float>,
+) -> Bool {
+  let left = (witness.left_operand + witness.middle_operand) + witness.right_operand
+  let right = witness.left_operand + (witness.middle_operand + witness.right_operand)
+  (left != right)
+    && (left == witness.left_fold_result)
+    && (right == witness.right_fold_result)
 }
 
-type LawRefutationWitness<T>
-  = AssociativityRefuted {
-      op_ref: AlgebraOperationRef
-      witness: AssociativityCounterexampleWitness<T>
-    }
-  | CommutativityRefuted {
-      op_ref: AlgebraOperationRef
-      witness: CommutativityCounterexampleWitness<T>
-    }
-  | LeftIdentityRefuted {
-      op_ref: AlgebraOperationRef
-      witness: LeftIdentityCounterexampleWitness<T>
-    }
-  | RightIdentityRefuted {
-      op_ref: AlgebraOperationRef
-      witness: RightIdentityCounterexampleWitness<T>
-    }
-  | DistributivityRefuted {
-      witness: DistributivityCounterexampleWitness<T>
-    }
-
-type LawEvidence<T>
-  = LawExhaustivelyVerified {
-      law_key: AlgebraLawKey
-      op_ref: AlgebraOperationRef
-      carrier_cardinality: Nat
-      cases_executed: Nat
-    }
-  | LawRefutedBy {
-      refutation: LawRefutationWitness<T>
-    }
-  | LawDeclaredByAuthority {
-      law_key: AlgebraLawKey
-      op_ref: AlgebraOperationRef
-      authority: ExternalAuthority
-    }
-
-type CarrierAlgebraLawFact<T> {
-  carrier: NonEmptyStr
-  evidence: LawEvidence<T>
-}
-
-type LawEvidenceFold<T, R> {
-  exhaustively_verified: fn(AlgebraLawKey, AlgebraOperationRef, Nat, Nat) -> R
-  associativity_refuted: fn(AlgebraOperationRef, AssociativityCounterexampleWitness<T>) -> R
-  commutativity_refuted: fn(AlgebraOperationRef, CommutativityCounterexampleWitness<T>) -> R
-  left_identity_refuted: fn(AlgebraOperationRef, LeftIdentityCounterexampleWitness<T>) -> R
-  right_identity_refuted: fn(AlgebraOperationRef, RightIdentityCounterexampleWitness<T>) -> R
-  distributivity_refuted: fn(DistributivityCounterexampleWitness<T>) -> R
-  declared_by_authority: fn(AlgebraLawKey, AlgebraOperationRef, ExternalAuthority) -> R
-}
-
-type LawRefutationWitnessFold<T, R> {
-  associativity_refuted: fn(AlgebraOperationRef, AssociativityCounterexampleWitness<T>) -> R
-  commutativity_refuted: fn(AlgebraOperationRef, CommutativityCounterexampleWitness<T>) -> R
-  left_identity_refuted: fn(AlgebraOperationRef, LeftIdentityCounterexampleWitness<T>) -> R
-  right_identity_refuted: fn(AlgebraOperationRef, RightIdentityCounterexampleWitness<T>) -> R
-  distributivity_refuted: fn(DistributivityCounterexampleWitness<T>) -> R
-}
-
-fn law_refutation_witness_fold<T, R>(
-  refutation: LawRefutationWitness<T>,
-  fold: LawRefutationWitnessFold<T, R>,
-) -> R {
-  match refutation {
-    AssociativityRefuted { op_ref: op_ref, witness: witness } =>
-      fold.associativity_refuted(op_ref, witness)
-    CommutativityRefuted { op_ref: op_ref, witness: witness } =>
-      fold.commutativity_refuted(op_ref, witness)
-    LeftIdentityRefuted { op_ref: op_ref, witness: witness } =>
-      fold.left_identity_refuted(op_ref, witness)
-    RightIdentityRefuted { op_ref: op_ref, witness: witness } =>
-      fold.right_identity_refuted(op_ref, witness)
-    DistributivityRefuted { witness: witness } =>
-      fold.distributivity_refuted(witness)
-  }
-}
-
-fn law_evidence_fold<T, R>(evidence: LawEvidence<T>, fold: LawEvidenceFold<T, R>) -> R {
-  match evidence {
-    LawExhaustivelyVerified {
-      law_key: law_key,
-      op_ref: op_ref,
-      carrier_cardinality: carrier_cardinality,
-      cases_executed: cases_executed,
-    } =>
-      fold.exhaustively_verified(law_key, op_ref, carrier_cardinality, cases_executed)
-    LawRefutedBy { refutation: refutation } =>
-      law_refutation_witness_fold(
-        refutation: refutation,
-        fold: LawRefutationWitnessFold {
-          associativity_refuted: fn(op_ref, witness) {
-            fold.associativity_refuted(op_ref, witness)
-          },
-          commutativity_refuted: fn(op_ref, witness) {
-            fold.commutativity_refuted(op_ref, witness)
-          },
-          left_identity_refuted: fn(op_ref, witness) {
-            fold.left_identity_refuted(op_ref, witness)
-          },
-          right_identity_refuted: fn(op_ref, witness) {
-            fold.right_identity_refuted(op_ref, witness)
-          },
-          distributivity_refuted: fn(witness) {
-            fold.distributivity_refuted(witness)
-          },
-        },
-      )
-    LawDeclaredByAuthority { law_key: law_key, op_ref: op_ref, authority: authority } =>
-      fold.declared_by_authority(law_key, op_ref, authority)
-  }
+fn associativity_refutation_holds_for_float_add(
+  receipt: AssociativityRefutationReceipt<Float>,
+) -> Bool {
+  associativity_subject_is_float_add(subject: receipt.subject)
+    && float_add_associativity_witness_matches_execution(witness: receipt.witness)
 }
