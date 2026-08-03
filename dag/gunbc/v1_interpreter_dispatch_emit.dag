@@ -224,7 +224,7 @@ fn render_site_block(site_key: String, rows: List<InterpreterPrimitiveDispatchAr
     macro_name,
     " {\n",
     render_identity_arm_rows(rows: site_rows, enum_name: enum_name),
-    "\n}\n\n"
+    "\n}\n"
   )
 }
 
