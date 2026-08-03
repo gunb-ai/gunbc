@@ -1,0 +1,268 @@
+module extdeps.llm.codex_stream
+
+import std.types { String, NonEmptyStr, Bool, Int, List }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.languages.json.grammar {
+  JsonTextParseResult, JsonTextParseOk, JsonTextParseFail,
+  json_text_parse_string,
+  json_text_skip_ws,
+  json_text_starts_with_at,
+}
+import extdeps.languages.json.parse { json_text_parseable }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "learn.chatgpt.com/docs/non-interactive-mode"
+  }
+}
+
+data codex_stream_authority_note: String = "WIRE AUTHORITY ONLY. This module answers what a Codex --json stream emitted at terminal positions (top-level error and turn.failed message text). It does not decide retry, account switch, provider switch, or escalation — those are gunbc.provider_failure / recovery-policy facts. Decoder selection follows the selected DispatchResolvedExecution binding; streams are never sniffed."
+
+type CodexStreamTerminalKind
+  = CodexStreamTopLevelError
+  | CodexStreamTurnFailed
+
+type CodexStreamTerminalMessage {
+  kind: CodexStreamTerminalKind
+  line_number: Int
+  message: String
+  raw: String
+}
+
+type CodexStreamUsageLimitWire
+  = CodexStreamUsageLimitObserved {
+      message: String,
+      reset_hint: String,
+    }
+  | CodexStreamUsageLimitAbsent
+
+type CodexStreamTerminalReconcile
+  = CodexStreamTerminalsReconciled {
+      messages: List<CodexStreamTerminalMessage>,
+      usage_limit: CodexStreamUsageLimitWire,
+    }
+  | CodexStreamTerminalsUnclassified {
+      reason: NonEmptyStr,
+      messages: List<CodexStreamTerminalMessage>,
+    }
+
+fn codex_stream_object_first_member(raw: String, at: Int) -> Int? {
+  let start = json_text_skip_ws(s: raw, i: at)
+  if json_text_starts_with_at(s: raw, i: start, lit: "\{") {
+    Present { value: start + 1 }
+  } else {
+    none
+  }
+}
+
+fn codex_stream_member_value_start(raw: String, at: Int, key: String) -> Int? {
+  let quoted = join(["\"", key, "\""], "")
+  let key_start = json_text_skip_ws(s: raw, i: at)
+  if !json_text_starts_with_at(s: raw, i: key_start, lit: quoted) {
+    none
+  } else {
+    let colon = json_text_skip_ws(
+      s: raw,
+      i: key_start + string_length(s: quoted),
+    )
+    if json_text_starts_with_at(s: raw, i: colon, lit: ":") {
+      Present { value: json_text_skip_ws(s: raw, i: colon + 1) }
+    } else {
+      none
+    }
+  }
+}
+
+fn codex_stream_string_member_is(raw: String, at: Int, expected: String) -> Bool {
+  let token = join(["\"", expected, "\""], "")
+  let after = json_text_skip_ws(s: raw, i: at + string_length(s: token))
+  json_text_starts_with_at(s: raw, i: at, lit: token)
+    && (
+      json_text_starts_with_at(s: raw, i: after, lit: ",")
+        || json_text_starts_with_at(s: raw, i: after, lit: "\}")
+    )
+}
+
+fn codex_stream_has_top_level_type(raw: String, event_type: String) -> Bool {
+  match codex_stream_object_first_member(raw: raw, at: 0) {
+    Absent => false
+    Present { value: member } =>
+      match codex_stream_member_value_start(raw: raw, at: member, key: "type") {
+        Absent => false
+        Present { value: value_start } =>
+          codex_stream_string_member_is(
+            raw: raw,
+            at: value_start,
+            expected: event_type,
+          )
+      }
+  }
+}
+
+fn codex_stream_find_member(raw: String, key: String) -> Int? {
+  let quoted = join(["\"", key, "\""], "")
+  let parts = split(s: raw, delimiter: quoted)
+  if count(parts) < 2 {
+    none
+  } else {
+    let before = parts.first()
+    let at = string_length(s: before)
+    let after_key = at + string_length(s: quoted)
+    let colon = json_text_skip_ws(s: raw, i: after_key)
+    if json_text_starts_with_at(s: raw, i: colon, lit: ":") {
+      Present { value: json_text_skip_ws(s: raw, i: colon + 1) }
+    } else {
+      none
+    }
+  }
+}
+
+fn codex_stream_parse_json_string_at(raw: String, at: Int) -> String? {
+  match json_text_parse_string(s: raw, i: at) {
+    JsonTextParseFail { end: _ } => none
+    JsonTextParseOk { end: end } =>
+      Present {
+        value: substring(s: raw, start: at + 1, end: end - 1),
+      }
+  }
+}
+
+fn codex_stream_top_level_string_member(raw: String, key: String) -> String? {
+  match codex_stream_find_member(raw: raw, key: key) {
+    Absent => none
+    Present { value: value_start } =>
+      codex_stream_parse_json_string_at(raw: raw, at: value_start)
+  }
+}
+
+fn codex_stream_nested_error_message(raw: String) -> String? {
+  match codex_stream_find_member(raw: raw, key: "error") {
+    Absent => none
+    Present { value: error_object } =>
+      if !json_text_starts_with_at(s: raw, i: error_object, lit: "\{") {
+        none
+      } else {
+        codex_stream_top_level_string_member(raw: raw, key: "message")
+      }
+  }
+}
+
+fn codex_stream_terminal_from_line(
+  raw: String,
+  line_number: Int,
+) -> CodexStreamTerminalMessage? {
+  let trimmed = trim(raw)
+  if !json_text_parseable(s: trimmed) {
+    none
+  } else if codex_stream_has_top_level_type(raw: trimmed, event_type: "error") {
+    match codex_stream_top_level_string_member(raw: trimmed, key: "message") {
+      Absent => none
+      Present { value: message } =>
+        Present {
+          value: CodexStreamTerminalMessage {
+            kind: CodexStreamTopLevelError,
+            line_number: line_number,
+            message: message,
+            raw: trimmed,
+          },
+        }
+    }
+  } else if codex_stream_has_top_level_type(raw: trimmed, event_type: "turn.failed") {
+    match codex_stream_nested_error_message(raw: trimmed) {
+      Absent => none
+      Present { value: message } =>
+        Present {
+          value: CodexStreamTerminalMessage {
+            kind: CodexStreamTurnFailed,
+            line_number: line_number,
+            message: message,
+            raw: trimmed,
+          },
+        }
+    }
+  } else {
+    none
+  }
+}
+
+data codex_usage_limit_message_prefix: String = "You've hit your usage limit"
+
+fn codex_stream_reset_hint_from_usage_message(message: String) -> String {
+  let marker = "try again at "
+  let parts = split(s: message, delimiter: marker)
+  if count(parts) < 2 {
+    "" as String
+  } else {
+    let rest = parts.skip(n: 1).first()
+    let clipped = split(s: rest, delimiter: ".")
+    clipped.first() as String
+  }
+}
+
+fn codex_stream_classify_usage_limit(
+  messages: List<CodexStreamTerminalMessage>,
+) -> CodexStreamUsageLimitWire {
+  let matches = messages |> filter(m =>
+    starts_with(s: m.message, prefix: codex_usage_limit_message_prefix)
+  )
+  if count(matches) == 0 {
+    CodexStreamUsageLimitAbsent
+  } else {
+    let first = matches.first()
+    CodexStreamUsageLimitObserved {
+      message: first.message,
+      reset_hint: codex_stream_reset_hint_from_usage_message(message: first.message),
+    }
+  }
+}
+
+data codex_stream_reconcile_note: String = "error AND turn.failed are BOTH retained. A fold that stops at the first ProviderFailed and ignores the second would hide the turn.failed twin of the live quota specimen. Reconciliation here collects every terminal wire message, then classifies usage-limit only from those terminal message fields — never from agent_message / report text (RED: the phrase 'usage limit' inside an agent-authored report must not classify the turn)."
+
+type CodexStreamCollectAcc {
+  next: Int
+  messages: List<CodexStreamTerminalMessage>
+}
+
+fn codex_stream_reconcile_terminals(text: String) -> CodexStreamTerminalReconcile {
+  if text == "" {
+    CodexStreamTerminalsUnclassified {
+      reason: "empty Codex stream" as NonEmptyStr,
+      messages: [],
+    }
+  } else {
+    let lines = split(s: text, delimiter: "\n")
+    let collected = fold(
+      lines,
+      init: CodexStreamCollectAcc { next: 1, messages: [] },
+      f: fn(acc, line) {
+        let trimmed = trim(line)
+        let next = acc.next + 1
+        if trimmed == "" {
+          CodexStreamCollectAcc { next: next, messages: acc.messages }
+        } else {
+          match codex_stream_terminal_from_line(raw: trimmed, line_number: acc.next) {
+            Absent => CodexStreamCollectAcc { next: next, messages: acc.messages }
+            Present { value: message } =>
+              CodexStreamCollectAcc {
+                next: next,
+                messages: append(acc.messages, [message]),
+              }
+          }
+        }
+      },
+    )
+    if count(collected.messages) == 0 {
+      CodexStreamTerminalsUnclassified {
+        reason: "no Codex terminal error or turn.failed messages" as NonEmptyStr,
+        messages: [],
+      }
+    } else {
+      CodexStreamTerminalsReconciled {
+        messages: collected.messages,
+        usage_limit: codex_stream_classify_usage_limit(messages: collected.messages),
+      }
+    }
+  }
+}

@@ -1561,6 +1561,112 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
 
+    active_large(
+      identity: "rn_EET6314NX7G4NHNXY54F20Z3A5",
+      id: "provider-turn-terminal-receipt",
+      owner: "roadmap-press",
+      path: "docs/plans/roadmap-press-provider-recovery.md",
+      t: fields(
+        headline: "Bind every provider result to the provider, credential, attempt, and turn that produced it",
+        boundary: "Every provider execution ends in a typed terminal receipt naming attempt key, turn key, and the DispatchResolvedExecution that produced the stream. Process exit alone cannot identify the provider cause.",
+        displaced_cost: "Ends generic Agent failed / session present surfaces that cannot drive recovery or attribution.",
+        first_slice: "Persist DispatchResolvedExecution for one Codex turn under a new turn key with events and terminal disposition.",
+        red_control: "A receipt from attempt A cannot satisfy attempt B; a failure on binding X cannot exclude binding Y; a terminal receipt without binding and turn key is unwritable.",
+        out_of_scope: "Recovery policy, belt actuation, and UI copy are later nodes.",
+        handback: "The live Codex quota specimen as an exact turn receipt — Unclassified until the decoder node lands."
+      )
+    ),
+    active_large(
+      identity: "rn_RCC4NJCH2VZ6BZA5A4Q25H583E",
+      id: "provider-failure-decoders-r1",
+      owner: "roadmap-press",
+      path: "docs/plans/roadmap-press-provider-recovery.md",
+      t: fields(
+        headline: "Turn the Codex and Claude usage-limit protocols into one typed quota-exhaustion fact",
+        boundary: "Provider-specific stream decoders map the two witnessed quota envelopes into ProviderQuotaExhausted while preserving distinct reset and overage evidence. Vendor rate_limit_event plus HTTP 429 is not automatically a transient throttle.",
+        displaced_cost: "Stops collapsing every refusal into opaque ProviderFailed raw text.",
+        first_slice: "Sanitized fixtures, Codex and Claude decoders, and the common ProviderQuotaExhausted mapping.",
+        red_control: "An agent report containing 'usage limit' does not classify; an unrelated Codex error does not; Claude seven-day rejection is not transient rate limit; contradictory envelopes stay unclassified.",
+        out_of_scope: "Standing derivation, recovery actuation, and press rendering.",
+        handback: "Two decoded receipts — Codex ResetHint and Claude ResetAtUnixSeconds with overage detail retained."
+      )
+    ),
+    active_large(
+      identity: "rn_J75JAA690B5PAVZW3NTVD42CKJ",
+      id: "provider-binding-standing-and-recovery-policy",
+      owner: "roadmap-press",
+      path: "docs/plans/roadmap-press-provider-recovery.md",
+      t: fields(
+        headline: "Let runtime evidence remove only the affected provider binding from automatic selection",
+        boundary: "Offer standing is derived from declared offers, preflight evidence, binding-scoped terminal receipts, time, leases, and profile — never a hand-mutated readiness field. Selection ranks eligible offers through one authored policy; equal-best refuses rather than using list order.",
+        displaced_cost: "Stops retrying an exhausted account and stops poisoning sibling accounts without scope evidence.",
+        first_slice: "Exclude one exhausted Codex account while leaving another binding or provider eligible.",
+        red_control: "Exhausted binding not reselected before typed reset; sibling not excluded without scope; ProfileExactOverride never silent-switches; equal-best not resolved by list order.",
+        out_of_scope: "Host actuation of the recovery turn.",
+        handback: "A pure ProviderRecoveryDecision naming the action or the exact reason none exists."
+      )
+    ),
+    active_large(
+      identity: "rn_JRQPAP7BJVB5R5SK2A1GVF1MHN",
+      id: "roadmap-worker-turn-command-driver",
+      owner: "roadmap-press",
+      path: "docs/plans/roadmap-press-provider-recovery.md",
+      t: fields(
+        headline: "A dead provider pane becomes a recoverable terminal turn, never already live",
+        boundary: "Session disposition consumes both container and process evidence. ResumeAttempt creates a new turn on the same attempt and worktree; mechanical cleanup is inside the command.",
+        displaced_cost: "Retires the live trap where a quota-killed tmux pane blocks recovery and looks like success.",
+        first_slice: "Replace belt_node_session_live with a disposition over session plus process evidence.",
+        red_control: "Retained exited pane cannot return DispatchAlreadyLive; owned running turn cannot duplicate; ResumeAttempt preserves prior turn receipts.",
+        out_of_scope: "Automatic binding selection — that is the standing/policy node.",
+        handback: "One command receipt naming attempt, prior turn, new turn, selected binding, and observed result."
+      )
+    ),
+    active_large(
+      identity: "rn_GQXPYS6T7C1XSVZBR7SYWZSFZ2",
+      id: "provider-recovery-actuation",
+      owner: "roadmap-press",
+      path: "docs/plans/roadmap-press-provider-recovery.md",
+      t: fields(
+        headline: "Switch provider or authenticator automatically without discarding the attempt",
+        boundary: "Recovery resumes the same attempt as a new turn under a different eligible binding. Finite recovery budgets prevent A→B→A ping-pong; no available recovery escalates rather than waits forever.",
+        displaced_cost: "Keeps uncommitted worktree progress across provider failures.",
+        first_slice: "A synthetic Codex quota turn resumes on a second admitted binding.",
+        red_control: "Same exhausted binding cannot recover itself; recovery cannot mint a new attempt; mechanism failures do not consume review rounds.",
+        out_of_scope: "Press presentation of the causal transition.",
+        handback: "Full lineage attempt A turn 1 exhausted → turn 2 started because of turn 1 receipt."
+      )
+    ),
+    active(
+      identity: "rn_239HWFSQRNK46DMTSKP2WG0J6M",
+      id: "roadmap-press-recovery-view",
+      owner: "roadmap-press",
+      path: "docs/plans/roadmap-press-provider-recovery.md",
+      t: fields(
+        headline: "Every button press and provider terminal event gets one visible causal answer",
+        boundary: "The ordinary row shows cause, recovery decision, and turn identity instead of dispatch accepted / session present — process exited. Clear remains diagnostic, not the normal recovery action.",
+        displaced_cost: "The operator stops translating raw exit codes and opaque strings by hand.",
+        first_slice: "Replace the quota specimen's generic surface with cause plus switching copy.",
+        red_control: "No eligible binding surfaces authenticate / wait / inspect actions rather than a silent green.",
+        out_of_scope: "Expanding the failure coverage matrix.",
+        handback: "Subjectful command receipt plus revisioned events keyed to command/attempt/turn."
+      )
+    ),
+    active_large(
+      identity: "rn_JZMTEYDASMS24QF9VTRTH2HFWP",
+      id: "provider-failure-coverage-expansion",
+      owner: "roadmap-press",
+      path: "docs/plans/roadmap-press-provider-recovery.md",
+      t: fields(
+        headline: "Grow the provider-failure matrix from counted unclassified receipts, not hand Booleans",
+        boundary: "Each case is complete only with captured evidence, provider decode, neutral classification, recovery policy, belt actuation, presentation, and a discriminating end-to-end receipt. Observed shapes without decoders appear in a counted Unclassified census.",
+        displaced_cost: "Prevents silent fallthrough into generic ProviderFailed as new vendors and envelopes appear.",
+        first_slice: "Enroll the initial backlog rows that already have fixtures (Codex usage, Claude seven-day, Claude auth expiry, Cursor invalid key).",
+        red_control: "An unclassified terminal shape increments the census rather than greening as Agent failed.",
+        out_of_scope: "Inventing variants without fixtures or consumers.",
+        handback: "Standing coverage program with at least the first four specimens closed end to end."
+      )
+    ),
+
     active_small(
       identity: "rn_WWVQ07RC0HF55DPM2CXNKWY8RR",
       id: "fleet-state-frontier",
@@ -1813,6 +1919,14 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "roadmap-runtime-ready-override", parent: "roadmap-runtime-identity-join"),
     edge(child: "roadmap-runtime-dispatch-consumer", parent: "roadmap-runtime-ready-override"),
     edge(child: "roadmap-runtime-readback", parent: "roadmap-runtime-dispatch-consumer"),
+
+    edge(child: "provider-failure-decoders-r1", parent: "provider-turn-terminal-receipt"),
+    edge(child: "provider-binding-standing-and-recovery-policy", parent: "provider-failure-decoders-r1"),
+    edge(child: "roadmap-worker-turn-command-driver", parent: "provider-failure-decoders-r1"),
+    edge(child: "provider-recovery-actuation", parent: "provider-binding-standing-and-recovery-policy"),
+    edge(child: "provider-recovery-actuation", parent: "roadmap-worker-turn-command-driver"),
+    edge(child: "roadmap-press-recovery-view", parent: "provider-recovery-actuation"),
+    edge(child: "provider-failure-coverage-expansion", parent: "roadmap-press-recovery-view"),
 
     edge(child: "fleet-bmc-policy-convergence", parent: "fleet-state-frontier"),
     edge(child: "fleet-closed-loop-converge", parent: "fleet-state-frontier"),
@@ -2318,7 +2432,7 @@ fn active_section_for(focus: RoadmapFocus) -> RoadmapSection {
     title: "Active deliverables — dependency order",
     elements: concat(
       [
-        section_prose(content: "The graph has eleven lanes: SCM compatibility · namespace · P-derive · observation · placement · v1 exit (four finish lines: compiler fixed point, interpreter deleted, products v1-free, zero hand-maintained Rust) · shell · roadmap runtime · fleet/hygiene · hermetic toolchain · compiler-guarantee (the DESIGN §4b ladder climbs; rung STATE lives in the guarantee claims carrier and is emitted, never restated in tickets — [gap analysis](docs/plans/compiler-guarantee-recovery-gap-analysis.md)). The three independent SCM R0 models, the separate P−1 evidence carrier, R1 compatibility-shape extraction, and P0 user-contract/landing spine are accepted; the operator-authored P1 proof-kernel node is active and fail-closed pending its first discriminating closing validation, while P2 and later product lanes remain parked. The toolchain pin model is an independent root. The P-derive receipt feeds the emitter fixed point, so the v1 chain nests under it. Node fields define boundary, first slice, RED control, exclusions, owner, and handback."),
+        section_prose(content: "The graph has twelve lanes: SCM compatibility · namespace · P-derive · observation · placement · v1 exit (four finish lines: compiler fixed point, interpreter deleted, products v1-free, zero hand-maintained Rust) · shell · roadmap runtime · roadmap press (attributable turns and provider recovery) · fleet/hygiene · hermetic toolchain · compiler-guarantee (the DESIGN §4b ladder climbs; rung STATE lives in the guarantee claims carrier and is emitted, never restated in tickets — [gap analysis](docs/plans/compiler-guarantee-recovery-gap-analysis.md)). The three independent SCM R0 models, the separate P−1 evidence carrier, R1 compatibility-shape extraction, and P0 user-contract/landing spine are accepted; the operator-authored P1 proof-kernel node is active and fail-closed pending its first discriminating closing validation, while P2 and later product lanes remain parked. The toolchain pin model is an independent root. The P-derive receipt feeds the emitter fixed point, so the v1 chain nests under it. Node fields define boundary, first slice, RED control, exclusions, owner, and handback."),
       ],
       concat(
         if focus_is_active(focus: focus) {

@@ -1,0 +1,427 @@
+module extdeps.llm.claude_stream
+
+import std.types { String, NonEmptyStr, Bool, Int, List }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.languages.json.grammar {
+  JsonTextParseResult, JsonTextParseOk, JsonTextParseFail,
+  json_text_parse_string,
+  json_text_skip_ws,
+  json_text_starts_with_at,
+}
+import extdeps.languages.json.parse { json_text_parseable }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.claude.com/en/docs/claude-code/cli-reference"
+  }
+}
+
+data claude_stream_authority_note: String = "WIRE AUTHORITY ONLY. Decodes Claude Code stream-json rate_limit_event and terminal result envelopes. Does not decide recovery. A vendor envelope named rate_limit_event with HTTP 429 is still wire evidence — whether that is entitlement quota vs transient throttle is a gunbc.provider_failure mapping over rateLimitType, not a rename of the wire type."
+
+type ClaudeRateLimitStatus
+  = ClaudeRateLimitRejected
+  | ClaudeRateLimitAllowedWarning
+  | ClaudeRateLimitStatusOther { raw: NonEmptyStr }
+
+type ClaudeRateLimitType
+  = ClaudeSevenDay
+  | ClaudeSevenDayOverageIncluded
+  | ClaudeRateLimitTypeOther { raw: NonEmptyStr }
+
+type ClaudeOverageStatus
+  = ClaudeOverageRejected
+  | ClaudeOverageAllowed
+  | ClaudeOverageStatusOther { raw: NonEmptyStr }
+  | ClaudeOverageUnstated
+
+type ClaudeRateLimitInfo {
+  status: ClaudeRateLimitStatus
+  rate_limit_type: ClaudeRateLimitType
+  resets_at_unix_seconds: Int?
+  overage_status: ClaudeOverageStatus
+  overage_disabled_reason: String?
+  is_using_overage: Bool?
+  utilization: String?
+  surpassed_threshold: String?
+}
+
+type ClaudeStreamEventKind
+  = ClaudeRateLimitEvent { info: ClaudeRateLimitInfo }
+  | ClaudeStreamResult {
+      is_error: Bool,
+      api_error_status: Int?,
+      result_text: String,
+      error_code: String?,
+    }
+  | ClaudeStreamOther { type_name: String }
+
+type ClaudeStreamEvent {
+  line_number: Int
+  raw: String
+  kind: ClaudeStreamEventKind
+}
+
+type ClaudeStreamParse
+  = ClaudeStreamParsed { events: List<ClaudeStreamEvent> }
+  | ClaudeStreamRefused {
+      events_before_refusal: List<ClaudeStreamEvent>,
+      line_number: Int,
+      raw: String,
+      reason: NonEmptyStr,
+    }
+
+type ClaudeStreamParseAcc {
+  next: Int
+  events: List<ClaudeStreamEvent>
+  refused: Bool
+  refused_line: Int
+  refused_raw: String
+  refused_reason: String
+}
+
+fn claude_stream_object_first_member(raw: String, at: Int) -> Int? {
+  let start = json_text_skip_ws(s: raw, i: at)
+  if json_text_starts_with_at(s: raw, i: start, lit: "\{") {
+    Present { value: start + 1 }
+  } else {
+    none
+  }
+}
+
+fn claude_stream_member_value_start(raw: String, at: Int, key: String) -> Int? {
+  let quoted = join(["\"", key, "\""], "")
+  let key_start = json_text_skip_ws(s: raw, i: at)
+  if !json_text_starts_with_at(s: raw, i: key_start, lit: quoted) {
+    none
+  } else {
+    let colon = json_text_skip_ws(
+      s: raw,
+      i: key_start + string_length(s: quoted),
+    )
+    if json_text_starts_with_at(s: raw, i: colon, lit: ":") {
+      Present { value: json_text_skip_ws(s: raw, i: colon + 1) }
+    } else {
+      none
+    }
+  }
+}
+
+fn claude_stream_find_member(raw: String, key: String) -> Int? {
+  let quoted = join(["\"", key, "\""], "")
+  let parts = split(s: raw, delimiter: quoted)
+  if count(parts) < 2 {
+    none
+  } else {
+    let before = parts.first()
+    let at = string_length(s: before)
+    let after_key = at + string_length(s: quoted)
+    let colon = json_text_skip_ws(s: raw, i: after_key)
+    if json_text_starts_with_at(s: raw, i: colon, lit: ":") {
+      Present { value: json_text_skip_ws(s: raw, i: colon + 1) }
+    } else {
+      none
+    }
+  }
+}
+
+fn claude_stream_has_top_level_type(raw: String, event_type: String) -> Bool {
+  match claude_stream_object_first_member(raw: raw, at: 0) {
+    Absent => false
+    Present { value: member } =>
+      match claude_stream_member_value_start(raw: raw, at: member, key: "type") {
+        Absent => false
+        Present { value: value_start } => {
+          let token = join(["\"", event_type, "\""], "")
+          let after = json_text_skip_ws(
+            s: raw,
+            i: value_start + string_length(s: token),
+          )
+          json_text_starts_with_at(s: raw, i: value_start, lit: token)
+            && (
+              json_text_starts_with_at(s: raw, i: after, lit: ",")
+                || json_text_starts_with_at(s: raw, i: after, lit: "\}")
+            )
+        }
+      }
+  }
+}
+
+fn claude_stream_parse_string_at(raw: String, at: Int) -> String? {
+  match json_text_parse_string(s: raw, i: at) {
+    JsonTextParseFail { end: _ } => none
+    JsonTextParseOk { end: end } =>
+      Present { value: substring(s: raw, start: at + 1, end: end - 1) }
+  }
+}
+
+fn claude_stream_digit_end(raw: String, i: Int) -> Int {
+  if i >= string_length(s: raw) {
+    i
+  } else {
+    let c = char_at(s: raw, i: i)
+    if c >= "0" && c <= "9" {
+      claude_stream_digit_end(raw: raw, i: i + 1)
+    } else {
+      i
+    }
+  }
+}
+
+fn claude_stream_parse_int_at(raw: String, at: Int) -> Int? {
+  let end = claude_stream_digit_end(raw: raw, i: at)
+  if end == at {
+    none
+  } else {
+    match parse_int(s: substring(s: raw, start: at, end: end)) {
+      Present { value: n } => Present { value: n }
+      Absent => none
+    }
+  }
+}
+
+fn claude_stream_member_string(raw: String, key: String) -> String? {
+  match claude_stream_find_member(raw: raw, key: key) {
+    Absent => none
+    Present { value: at } => claude_stream_parse_string_at(raw: raw, at: at)
+  }
+}
+
+fn claude_stream_member_int(raw: String, key: String) -> Int? {
+  match claude_stream_find_member(raw: raw, key: key) {
+    Absent => none
+    Present { value: at } => claude_stream_parse_int_at(raw: raw, at: at)
+  }
+}
+
+fn claude_stream_member_bool(raw: String, key: String) -> Bool? {
+  match claude_stream_find_member(raw: raw, key: key) {
+    Absent => none
+    Present { value: at } =>
+      if json_text_starts_with_at(s: raw, i: at, lit: "true") {
+        Present { value: true }
+      } else if json_text_starts_with_at(s: raw, i: at, lit: "false") {
+        Present { value: false }
+      } else {
+        none
+      }
+  }
+}
+
+fn claude_stream_parse_rate_limit_status(raw: String) -> ClaudeRateLimitStatus {
+  match claude_stream_member_string(raw: raw, key: "status") {
+    Absent => ClaudeRateLimitStatusOther { raw: "missing" as NonEmptyStr }
+    Present { value: s } =>
+      if s == "rejected" {
+        ClaudeRateLimitRejected
+      } else if s == "allowed_warning" {
+        ClaudeRateLimitAllowedWarning
+      } else {
+        ClaudeRateLimitStatusOther { raw: s as NonEmptyStr }
+      }
+  }
+}
+
+fn claude_stream_parse_rate_limit_type(raw: String) -> ClaudeRateLimitType {
+  match claude_stream_member_string(raw: raw, key: "rateLimitType") {
+    Absent => ClaudeRateLimitTypeOther { raw: "missing" as NonEmptyStr }
+    Present { value: s } =>
+      if s == "seven_day" {
+        ClaudeSevenDay
+      } else if s == "seven_day_overage_included" {
+        ClaudeSevenDayOverageIncluded
+      } else {
+        ClaudeRateLimitTypeOther { raw: s as NonEmptyStr }
+      }
+  }
+}
+
+fn claude_stream_parse_overage_status(raw: String) -> ClaudeOverageStatus {
+  match claude_stream_member_string(raw: raw, key: "overageStatus") {
+    Absent => ClaudeOverageUnstated
+    Present { value: s } =>
+      if s == "rejected" {
+        ClaudeOverageRejected
+      } else if s == "allowed" {
+        ClaudeOverageAllowed
+      } else {
+        ClaudeOverageStatusOther { raw: s as NonEmptyStr }
+      }
+  }
+}
+
+fn claude_stream_parse_rate_limit_info(raw: String) -> ClaudeRateLimitInfo {
+  ClaudeRateLimitInfo {
+    status: claude_stream_parse_rate_limit_status(raw: raw),
+    rate_limit_type: claude_stream_parse_rate_limit_type(raw: raw),
+    resets_at_unix_seconds: claude_stream_member_int(raw: raw, key: "resetsAt"),
+    overage_status: claude_stream_parse_overage_status(raw: raw),
+    overage_disabled_reason: claude_stream_member_string(
+      raw: raw,
+      key: "overageDisabledReason",
+    ),
+    is_using_overage: claude_stream_member_bool(raw: raw, key: "isUsingOverage"),
+    utilization: claude_stream_member_string(raw: raw, key: "utilization"),
+    surpassed_threshold: claude_stream_member_string(
+      raw: raw,
+      key: "surpassedThreshold",
+    ),
+  }
+}
+
+fn claude_stream_event_from_line(
+  raw: String,
+  line_number: Int,
+) -> ClaudeStreamEvent? {
+  let trimmed = trim(raw)
+  if !json_text_parseable(s: trimmed) {
+    none
+  } else if claude_stream_has_top_level_type(
+    raw: trimmed,
+    event_type: "rate_limit_event",
+  ) {
+    Present {
+      value: ClaudeStreamEvent {
+        line_number: line_number,
+        raw: trimmed,
+        kind: ClaudeRateLimitEvent {
+          info: claude_stream_parse_rate_limit_info(raw: trimmed),
+        },
+      },
+    }
+  } else if claude_stream_has_top_level_type(raw: trimmed, event_type: "result") {
+    Present {
+      value: ClaudeStreamEvent {
+        line_number: line_number,
+        raw: trimmed,
+        kind: ClaudeStreamResult {
+          is_error: match claude_stream_member_bool(raw: trimmed, key: "is_error") {
+            Present { value: b } => b
+            Absent => false
+          },
+          api_error_status: claude_stream_member_int(
+            raw: trimmed,
+            key: "api_error_status",
+          ),
+          result_text: match claude_stream_member_string(raw: trimmed, key: "result") {
+            Present { value: t } => t
+            Absent => ""
+          },
+          error_code: claude_stream_member_string(raw: trimmed, key: "error"),
+        },
+      },
+    }
+  } else {
+    match claude_stream_member_string(raw: trimmed, key: "type") {
+      Absent => none
+      Present { value: type_name } =>
+        Present {
+          value: ClaudeStreamEvent {
+            line_number: line_number,
+            raw: trimmed,
+            kind: ClaudeStreamOther { type_name: type_name },
+          },
+        }
+    }
+  }
+}
+
+fn parse_claude_stream_jsonl(text: String) -> ClaudeStreamParse {
+  if text == "" {
+    ClaudeStreamParsed { events: [] }
+  } else {
+    let lines = split(s: text, delimiter: "\n")
+    let state = fold(
+      lines,
+      init: ClaudeStreamParseAcc {
+        next: 1,
+        events: [],
+        refused: false,
+        refused_line: 0,
+        refused_raw: "",
+        refused_reason: "",
+      },
+      f: fn(acc, line) {
+        if acc.refused {
+          acc
+        } else {
+          let trimmed = trim(line)
+          let next = acc.next + 1
+          if trimmed == "" {
+            ClaudeStreamParseAcc {
+              next: next,
+              events: acc.events,
+              refused: false,
+              refused_line: 0,
+              refused_raw: "",
+              refused_reason: "",
+            }
+          } else if !json_text_parseable(s: trimmed) {
+            ClaudeStreamParseAcc {
+              next: next,
+              events: acc.events,
+              refused: true,
+              refused_line: acc.next,
+              refused_raw: line,
+              refused_reason: "malformed or truncated Claude stream-json object",
+            }
+          } else {
+            match claude_stream_event_from_line(
+              raw: trimmed,
+              line_number: acc.next,
+            ) {
+              Absent =>
+                ClaudeStreamParseAcc {
+                  next: next,
+                  events: acc.events,
+                  refused: true,
+                  refused_line: acc.next,
+                  refused_raw: line,
+                  refused_reason: "unreadable Claude stream-json line",
+                }
+              Present { value: event } =>
+                ClaudeStreamParseAcc {
+                  next: next,
+                  events: append(acc.events, [event]),
+                  refused: false,
+                  refused_line: 0,
+                  refused_raw: "",
+                  refused_reason: "",
+                }
+            }
+          }
+        }
+      },
+    )
+    if state.refused {
+      ClaudeStreamRefused {
+        events_before_refusal: state.events,
+        line_number: state.refused_line,
+        raw: state.refused_raw,
+        reason: state.refused_reason as NonEmptyStr,
+      }
+    } else {
+      ClaudeStreamParsed { events: state.events }
+    }
+  }
+}
+
+fn claude_stream_first_rate_limit(
+  events: List<ClaudeStreamEvent>,
+) -> ClaudeRateLimitInfo? {
+  let hits = events |> filter(e =>
+    match e.kind {
+      ClaudeRateLimitEvent { info: _ } => true
+      _ => false
+    }
+  )
+  if count(hits) == 0 {
+    none
+  } else {
+    match hits.first().kind {
+      ClaudeRateLimitEvent { info } => Present { value: info }
+      _ => none
+    }
+  }
+}

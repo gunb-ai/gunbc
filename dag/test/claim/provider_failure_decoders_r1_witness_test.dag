@@ -1,0 +1,269 @@
+module test.claim.provider_failure_decoders_r1_witness_test
+
+import std.types { Bool, String, NonEmptyStr }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.provider_failure {
+  ProviderTerminalDisposition,
+  ProviderTerminalFailed,
+  ProviderTerminalUnclassified,
+  ProviderEntitlementFailed,
+  ProviderQuotaExhausted,
+  ProviderLimitSevenDay,
+  ProviderLimitWindowUnstated,
+  ResetHint,
+  ResetAtUnixSeconds,
+  OverageRejected,
+  OverageUnobserved,
+  FailureScopeUnobserved,
+  classify_codex_stream_failure,
+  classify_claude_stream_failure,
+  provider_failure_cause_label,
+}
+import gunbc.provider_turn_receipt {
+  AttemptKey,
+  TurnKey,
+  ProviderTurnSubject,
+  provider_turn_receipt,
+  provider_turn_receipt_requires_subject,
+  provider_turn_terminal_label,
+}
+import gunbc.dispatch_selection {
+  DispatchResolvedExecution,
+  DispatchAttemptAssigned,
+  DispatchTemporalUnobserved,
+  DispatchUsageUnobserved,
+  DispatchModelNamed,
+  CodexProviderControl,
+  CodexCredentialBinding,
+}
+import extdeps.llm.cli_lifecycle {
+  ProviderInstance,
+  ProviderInstanceFieldUnobserved,
+  CodexCliProvider,
+  ProviderInstanceField,
+}
+import extdeps.llm.cli { ReasoningMedium }
+import gunbc.provider_account {
+  AdmittedAccountBinding,
+  CodexDefaultAccount,
+  SingleSession,
+  ExclusiveBinding,
+}
+import extdeps.cloud.gcp.gcp { GcpProjectId }
+
+data gcp_pool_membership_note: String = "Class B residue: secret_ref names GcpProjectId without importing extdeps.cloud.gcp.gcp. This witness imports GcpProjectId so the narrow claim closure resolves SecretRef when constructing DispatchResolvedExecution; dissolve-on Class B closure-independent binding."
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data fixture_codex_usage_limit_reset_hint: String = join([
+  "{\"type\":\"thread.started\",\"thread_id\":\"00000000-0000-0000-0000-000000000000\"}",
+  "{\"type\":\"turn.started\"}",
+  "{\"type\":\"error\",\"message\":\"You've hit your usage limit. Visit https://chatgpt.com/codex/settings/usage to purchase more credits or try again at Aug 8th, 2026 3:32 AM.\"}",
+  "{\"type\":\"turn.failed\",\"error\":{\"message\":\"You've hit your usage limit. Visit https://chatgpt.com/codex/settings/usage to purchase more credits or try again at Aug 8th, 2026 3:32 AM.\"}}",
+], "\n")
+
+data fixture_claude_seven_day_limit_overage_disabled: String = join([
+  "{\"type\":\"system\",\"subtype\":\"init\",\"cwd\":\"/workspace\",\"session_id\":\"00000000-0000-0000-0000-000000000000\",\"model\":\"claude-opus-5\",\"permissionMode\":\"bypassPermissions\",\"apiKeySource\":\"none\"}",
+  "{\"type\":\"rate_limit_event\",\"rate_limit_info\":{\"status\":\"rejected\",\"resetsAt\":1785963600,\"rateLimitType\":\"seven_day\",\"overageStatus\":\"rejected\",\"overageDisabledReason\":\"org_level_disabled\",\"isUsingOverage\":false},\"session_id\":\"00000000-0000-0000-0000-000000000000\"}",
+  "{\"type\":\"assistant\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"You've hit your weekly limit · resets Aug 5, 9pm (UTC)\"}]},\"session_id\":\"00000000-0000-0000-0000-000000000000\",\"error\":\"rate_limit\",\"is_api_error_message\":true}",
+  "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":true,\"duration_ms\":120,\"duration_api_ms\":0,\"num_turns\":1,\"session_id\":\"00000000-0000-0000-0000-000000000000\",\"api_error_status\":429,\"result\":\"You've hit your weekly limit · resets Aug 5, 9pm (UTC)\",\"uuid\":\"00000000-0000-0000-0000-000000000000\"}",
+], "\n")
+
+data red_agent_report_mentions_usage_limit: String = join([
+  "{\"type\":\"thread.started\",\"thread_id\":\"00000000-0000-0000-0000-000000000000\"}",
+  "{\"type\":\"turn.started\"}",
+  "{\"type\":\"item.completed\",\"item\":{\"id\":\"item_0\",\"type\":\"agent_message\",\"text\":\"You've hit your usage limit inside a report\"}}",
+  "{\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}",
+], "\n")
+
+data red_codex_unrelated_top_level_error: String = join([
+  "{\"type\":\"thread.started\",\"thread_id\":\"00000000-0000-0000-0000-000000000000\"}",
+  "{\"type\":\"turn.started\"}",
+  "{\"type\":\"error\",\"message\":\"upstream unavailable\"}",
+  "{\"type\":\"turn.failed\",\"error\":{\"message\":\"upstream unavailable\"}}",
+], "\n")
+
+fn assert_codex_quota(disposition: ProviderTerminalDisposition) -> Bool {
+  match disposition {
+    ProviderTerminalFailed { cause } =>
+      match cause {
+        ProviderEntitlementFailed { cause: inner } =>
+          match inner {
+            ProviderQuotaExhausted {
+              window: ProviderLimitWindowUnstated,
+              reset: ResetHint { text },
+              overage: OverageUnobserved,
+              scope: FailureScopeUnobserved,
+            } => string_contains(s: text as String, pattern: "Aug 8th")
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+fn assert_claude_seven_day_quota(disposition: ProviderTerminalDisposition) -> Bool {
+  match disposition {
+    ProviderTerminalFailed { cause } =>
+      match cause {
+        ProviderEntitlementFailed { cause: inner } =>
+          match inner {
+            ProviderQuotaExhausted {
+              window: ProviderLimitSevenDay,
+              reset: ResetAtUnixSeconds { seconds },
+              overage: OverageRejected { disabled_reason: Present { value: r } },
+              scope: FailureScopeUnobserved,
+            } =>
+              seconds == 1785963600
+                && (r as String) == "org_level_disabled"
+                && provider_failure_cause_label(cause: cause) == "provider quota exhausted"
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn codex_usage_limit_fixture_classifies_quota_exhausted() -> Bool {
+  assert_codex_quota(
+    disposition: classify_codex_stream_failure(text: fixture_codex_usage_limit_reset_hint),
+  )
+}
+
+test fn claude_seven_day_fixture_classifies_quota_not_transient_rate_limit() -> Bool {
+  assert_claude_seven_day_quota(
+    disposition: classify_claude_stream_failure(
+      text: fixture_claude_seven_day_limit_overage_disabled,
+    ),
+  )
+}
+
+test fn agent_report_usage_limit_phrase_does_not_classify_quota() -> Bool {
+  match classify_codex_stream_failure(text: red_agent_report_mentions_usage_limit) {
+    ProviderTerminalUnclassified { cause: _ } => true
+    ProviderTerminalFailed { cause: _ } => false
+    _ => false
+  }
+}
+
+test fn unrelated_codex_error_does_not_classify_as_quota() -> Bool {
+  match classify_codex_stream_failure(text: red_codex_unrelated_top_level_error) {
+    ProviderTerminalFailed { cause } =>
+      match cause {
+        ProviderEntitlementFailed { cause: _ } => false
+        _ => false
+      }
+    ProviderTerminalUnclassified { cause: _ } => true
+    _ => false
+  }
+}
+
+test fn error_and_turn_failed_are_both_required_for_codex_quota_reconcile() -> Bool {
+  let error_only = join([
+    "{\"type\":\"thread.started\",\"thread_id\":\"00000000-0000-0000-0000-000000000000\"}",
+    "{\"type\":\"turn.started\"}",
+    "{\"type\":\"error\",\"message\":\"You've hit your usage limit. try again at Aug 8th, 2026 3:32 AM.\"}",
+  ], "\n")
+  match classify_codex_stream_failure(text: error_only) {
+    ProviderTerminalFailed { cause } =>
+      match cause {
+        ProviderEntitlementFailed { cause: inner } =>
+          match inner {
+            ProviderQuotaExhausted {
+              window: _,
+              reset: _,
+              overage: _,
+              scope: _,
+            } => true
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+fn fixture_execution() -> DispatchResolvedExecution {
+  DispatchResolvedExecution {
+    provider_instance: ProviderInstance {
+      kind: CodexCliProvider,
+      host: ProviderInstanceFieldUnobserved {
+        reason: "fixture" as NonEmptyStr,
+      },
+      executable: "codex" as NonEmptyStr,
+      observed_version: ProviderInstanceFieldUnobserved {
+        reason: "fixture" as NonEmptyStr,
+      },
+      state_directory: ProviderInstanceFieldUnobserved {
+        reason: "fixture" as NonEmptyStr,
+      },
+      credential_storage_method: ProviderInstanceFieldUnobserved {
+        reason: "fixture" as NonEmptyStr,
+      },
+      service_identity: ProviderInstanceFieldUnobserved {
+        reason: "fixture" as NonEmptyStr,
+      },
+    },
+    credential_binding: CodexCredentialBinding {
+      binding: AdmittedAccountBinding {
+        selection: CodexDefaultAccount,
+        concurrency: SingleSession,
+        discipline: ExclusiveBinding,
+      },
+    },
+    model_identity: DispatchModelNamed { model: "default" as NonEmptyStr },
+    provider_control: CodexProviderControl { effort: ReasoningMedium },
+    provider_version: ProviderInstanceFieldUnobserved {
+      reason: "fixture" as NonEmptyStr,
+    },
+    temporal_bounds: DispatchTemporalUnobserved {
+      reason: "fixture" as NonEmptyStr,
+    },
+    usage_observations: DispatchUsageUnobserved {
+      reason: "fixture" as NonEmptyStr,
+    },
+    attempt_identity: DispatchAttemptAssigned {
+      attempt_key: "attempt-a" as NonEmptyStr,
+    },
+  }
+}
+
+test fn turn_receipt_binds_attempt_and_turn_keys() -> Bool {
+  provider_turn_receipt_requires_subject(
+    attempt_key: "attempt-a",
+    turn_key: "turn-1",
+  )
+    && !provider_turn_receipt_requires_subject(attempt_key: "", turn_key: "turn-1")
+    && !provider_turn_receipt_requires_subject(attempt_key: "attempt-a", turn_key: "")
+}
+
+test fn codex_quota_specimen_reaches_typed_turn_receipt() -> Bool {
+  let disposition = classify_codex_stream_failure(
+    text: fixture_codex_usage_limit_reset_hint,
+  )
+  let subject = ProviderTurnSubject {
+    attempt_key: "attempt-a" as AttemptKey,
+    turn_key: "turn-1" as TurnKey,
+    execution: fixture_execution(),
+  }
+  let receipt = provider_turn_receipt(
+    subject: subject,
+    disposition: disposition,
+    events_digest_note: "codex/usage_limit_reset_hint" as NonEmptyStr,
+  )
+  (receipt.subject.attempt_key as String) == "attempt-a"
+    && (receipt.subject.turn_key as String) == "turn-1"
+    && provider_turn_terminal_label(receipt: receipt) == "provider quota exhausted"
+}
+
+test fn provider_failure_decoders_r1_keystone_holds() -> Bool {
+  codex_usage_limit_fixture_classifies_quota_exhausted()
+    && claude_seven_day_fixture_classifies_quota_not_transient_rate_limit()
+    && agent_report_usage_limit_phrase_does_not_classify_quota()
+    && unrelated_codex_error_does_not_classify_as_quota()
+    && error_and_turn_failed_are_both_required_for_codex_quota_reconcile()
+    && turn_receipt_binds_attempt_and_turn_keys()
+    && codex_quota_specimen_reaches_typed_turn_receipt()
+}

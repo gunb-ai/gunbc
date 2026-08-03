@@ -1,0 +1,325 @@
+module gunbc.provider_failure
+
+import std.types { String, NonEmptyStr, Bool, Int, List }
+import extdeps.llm.cli_lifecycle { ProviderKind, ClaudeCliProvider, CodexCliProvider }
+import extdeps.llm.codex_stream {
+  CodexStreamTerminalReconcile,
+  CodexStreamTerminalsReconciled,
+  CodexStreamTerminalsUnclassified,
+  CodexStreamUsageLimitObserved,
+  CodexStreamUsageLimitAbsent,
+  CodexStreamTerminalMessage,
+  codex_stream_reconcile_terminals,
+}
+import extdeps.llm.claude_stream {
+  ClaudeStreamParse,
+  ClaudeStreamParsed,
+  ClaudeStreamRefused,
+  ClaudeRateLimitInfo,
+  ClaudeRateLimitRejected,
+  ClaudeRateLimitAllowedWarning,
+  ClaudeSevenDay,
+  ClaudeSevenDayOverageIncluded,
+  ClaudeOverageRejected,
+  ClaudeOverageUnstated,
+  parse_claude_stream_jsonl,
+  claude_stream_first_rate_limit,
+}
+
+data provider_failure_authority_note: String = "PROVIDER-NEUTRAL BUSINESS CAUSE. Wire decoders live in extdeps.llm.*_stream; this module maps witnessed wire facts into causes that drive recovery policy. Retryability is NOT stored — it is derived later from cause + time + profile + bindings + recovery history. Unknown shapes stay ProviderFailureUnclassified and counted, never collapsed into a generic Agent failed string."
+
+data provider_unix_seconds_brand_debt_note: String = "ProviderUnixSeconds is a plain Int today because Claude resetsAt arrives as a parsed non-literal Int; brand+range casts at non-literal sites refuse (where-refinement wall). dissolve-on: feature:refinement-evidence-at-non-literal-positions admits observed epoch seconds into a branded carrier."
+
+type ProviderUnixSeconds = Int
+
+type ProviderLimitWindow
+  = ProviderLimitSevenDay
+  | ProviderLimitSevenDayOverageIncluded
+  | ProviderLimitWindowUnstated
+  | ProviderLimitWindowOther { raw: NonEmptyStr }
+
+type ProviderResetObservation
+  = ResetAtUnixSeconds { seconds: ProviderUnixSeconds }
+  | ResetHint { text: NonEmptyStr }
+  | ResetUnobserved
+
+type ProviderOverageObservation
+  = OverageRejected { disabled_reason: NonEmptyStr? }
+  | OverageAllowed
+  | OverageUnobserved
+
+type ProviderFailureScopeObservation
+  = FailureScopeBindingOnly
+  | FailureScopeAccount
+  | FailureScopeOrganization
+  | FailureScopeUnobserved
+
+type ProviderEntitlementFailure
+  = ProviderQuotaExhausted {
+      window: ProviderLimitWindow,
+      reset: ProviderResetObservation,
+      overage: ProviderOverageObservation,
+      scope: ProviderFailureScopeObservation,
+    }
+  | ProviderCreditsExhausted {
+      reset: ProviderResetObservation,
+      scope: ProviderFailureScopeObservation,
+    }
+  | ProviderModelNotEntitled { model: NonEmptyStr }
+
+type ProviderAccessFailure
+  = ProviderCredentialAbsent
+  | ProviderCredentialRejected
+  | ProviderAccessTokenExpiredCause
+  | ProviderRefreshFailedCause { reason: NonEmptyStr }
+
+type ProviderCapacityFailure
+  = ProviderTransientRateLimited {
+      reset: ProviderResetObservation,
+    }
+  | ProviderOverloaded { detail: NonEmptyStr }
+
+type ProviderRequestFailure
+  = ProviderInvalidRequest { detail: NonEmptyStr }
+  | ProviderSafetyOrPolicyRefused { detail: NonEmptyStr }
+
+type ProviderExecutionEnvironmentFailure
+  = ProviderSandboxOrToolUnavailable { detail: NonEmptyStr }
+  | ProviderWorkspaceTrustRequired
+
+type ProviderTransportFailure
+  = ProviderConnectOrTimeout { detail: NonEmptyStr }
+  | ProviderSpawnFailed { detail: NonEmptyStr }
+
+type ProviderProtocolFailure
+  = ProviderMalformedOrTruncatedStream { detail: NonEmptyStr }
+  | ProviderUnknownEventEnvelope { detail: NonEmptyStr }
+
+type ProviderFailureEvidenceRef {
+  provider: ProviderKind
+  digest_note: NonEmptyStr
+}
+
+type ProviderFailureCause
+  = ProviderAccessFailed { cause: ProviderAccessFailure }
+  | ProviderEntitlementFailed { cause: ProviderEntitlementFailure }
+  | ProviderCapacityFailed { cause: ProviderCapacityFailure }
+  | ProviderRequestFailed { cause: ProviderRequestFailure }
+  | ProviderExecutionEnvironmentFailed { cause: ProviderExecutionEnvironmentFailure }
+  | ProviderTransportFailed { cause: ProviderTransportFailure }
+  | ProviderProtocolFailed { cause: ProviderProtocolFailure }
+  | ProviderInternalFailed { provider_code: String, detail: String }
+  | ProviderFailureUnclassified {
+      provider: ProviderKind,
+      evidence: ProviderFailureEvidenceRef,
+    }
+
+type ProviderTerminalDisposition
+  = ProviderTerminalSucceeded
+  | ProviderTerminalFailed { cause: ProviderFailureCause }
+  | ProviderTerminalUnclassified { cause: ProviderFailureCause }
+
+fn provider_failure_cause_label(cause: ProviderFailureCause) -> String {
+  match cause {
+    ProviderAccessFailed { cause: _ } => "provider access failed"
+    ProviderEntitlementFailed { cause: inner } =>
+      match inner {
+        ProviderQuotaExhausted {
+          window: _,
+          reset: _,
+          overage: _,
+          scope: _,
+        } => "provider quota exhausted"
+        ProviderCreditsExhausted { reset: _, scope: _ } => "provider credits exhausted"
+        ProviderModelNotEntitled { model: _ } => "provider model not entitled"
+      }
+    ProviderCapacityFailed { cause: _ } => "provider capacity failed"
+    ProviderRequestFailed { cause: _ } => "provider request failed"
+    ProviderExecutionEnvironmentFailed { cause: _ } =>
+      "provider execution environment failed"
+    ProviderTransportFailed { cause: _ } => "provider transport failed"
+    ProviderProtocolFailed { cause: _ } => "provider protocol failed"
+    ProviderInternalFailed { provider_code: _, detail: _ } => "provider internal failed"
+    ProviderFailureUnclassified { provider: _, evidence: _ } =>
+      "provider failure unclassified"
+  }
+}
+
+fn classify_codex_stream_failure(text: String) -> ProviderTerminalDisposition {
+  match codex_stream_reconcile_terminals(text: text) {
+    CodexStreamTerminalsUnclassified { reason, messages: _ } =>
+      ProviderTerminalUnclassified {
+        cause: ProviderFailureUnclassified {
+          provider: CodexCliProvider,
+          evidence: ProviderFailureEvidenceRef {
+            provider: CodexCliProvider,
+            digest_note: reason,
+          },
+        },
+      }
+    CodexStreamTerminalsReconciled { messages, usage_limit } =>
+      match usage_limit {
+        CodexStreamUsageLimitObserved { message: _, reset_hint } =>
+          ProviderTerminalFailed {
+            cause: ProviderEntitlementFailed {
+              cause: ProviderQuotaExhausted {
+                window: ProviderLimitWindowUnstated,
+                reset: if reset_hint == "" {
+                  ResetUnobserved
+                } else {
+                  ResetHint { text: reset_hint as NonEmptyStr }
+                },
+                overage: OverageUnobserved,
+                scope: FailureScopeUnobserved,
+              },
+            },
+          }
+        CodexStreamUsageLimitAbsent =>
+          if count(messages) == 0 {
+            ProviderTerminalUnclassified {
+              cause: ProviderFailureUnclassified {
+                provider: CodexCliProvider,
+                evidence: ProviderFailureEvidenceRef {
+                  provider: CodexCliProvider,
+                  digest_note: "codex terminals present without usage-limit class" as NonEmptyStr,
+                },
+              },
+            }
+          } else {
+            let first = messages.first()
+            ProviderTerminalUnclassified {
+              cause: ProviderFailureUnclassified {
+                provider: CodexCliProvider,
+                evidence: ProviderFailureEvidenceRef {
+                  provider: CodexCliProvider,
+                  digest_note: first.message as NonEmptyStr,
+                },
+              },
+            }
+          }
+      }
+  }
+}
+
+data claude_seven_day_is_quota_note: String = "HARD REJECT: do not map every rate_limit_event / HTTP 429 to ProviderRateLimited / ProviderTransientRateLimited. A seven_day (or seven_day_overage_included) rejection with a reset date is entitlement/quota exhaustion. Transient throttle remains a separate capacity class for short request windows once witnessed. overageDisabledReason org_level_disabled is an independent fact from failure scope — preserve both; scope stays Unobserved unless another authority establishes it."
+
+fn classify_claude_stream_failure(text: String) -> ProviderTerminalDisposition {
+  match parse_claude_stream_jsonl(text: text) {
+    ClaudeStreamRefused {
+      events_before_refusal: _,
+      line_number: _,
+      raw: _,
+      reason,
+    } =>
+      ProviderTerminalUnclassified {
+        cause: ProviderProtocolFailed {
+          cause: ProviderMalformedOrTruncatedStream { detail: reason },
+        },
+      }
+    ClaudeStreamParsed { events } =>
+      match claude_stream_first_rate_limit(events: events) {
+        Absent =>
+          ProviderTerminalUnclassified {
+            cause: ProviderFailureUnclassified {
+              provider: ClaudeCliProvider,
+              evidence: ProviderFailureEvidenceRef {
+                provider: ClaudeCliProvider,
+                digest_note: "no Claude rate_limit_event in stream" as NonEmptyStr,
+              },
+            },
+          }
+        Present { value: info } =>
+          match info.status {
+            ClaudeRateLimitAllowedWarning =>
+              ProviderTerminalUnclassified {
+                cause: ProviderFailureUnclassified {
+                  provider: ClaudeCliProvider,
+                  evidence: ProviderFailureEvidenceRef {
+                    provider: ClaudeCliProvider,
+                    digest_note: "Claude rate_limit allowed_warning is not a terminal refusal" as NonEmptyStr,
+                  },
+                },
+              }
+            ClaudeRateLimitRejected =>
+              match info.rate_limit_type {
+                ClaudeSevenDay =>
+                  ProviderTerminalFailed {
+                    cause: ProviderEntitlementFailed {
+                      cause: ProviderQuotaExhausted {
+                        window: ProviderLimitSevenDay,
+                        reset: match info.resets_at_unix_seconds {
+                          Present { value: s } =>
+                            ResetAtUnixSeconds {
+                              seconds: s,
+                            }
+                          Absent => ResetUnobserved
+                        },
+                        overage: match info.overage_status {
+                          ClaudeOverageRejected =>
+                            OverageRejected {
+                              disabled_reason: match info.overage_disabled_reason {
+                                Present { value: r } =>
+                                  Present { value: r as NonEmptyStr }
+                                Absent => none
+                              },
+                            }
+                          ClaudeOverageUnstated => OverageUnobserved
+                          _ => OverageUnobserved
+                        },
+                        scope: FailureScopeUnobserved,
+                      },
+                    },
+                  }
+                ClaudeSevenDayOverageIncluded =>
+                  ProviderTerminalFailed {
+                    cause: ProviderEntitlementFailed {
+                      cause: ProviderQuotaExhausted {
+                        window: ProviderLimitSevenDayOverageIncluded,
+                        reset: match info.resets_at_unix_seconds {
+                          Present { value: s } =>
+                            ResetAtUnixSeconds {
+                              seconds: s,
+                            }
+                          Absent => ResetUnobserved
+                        },
+                        overage: match info.overage_status {
+                          ClaudeOverageRejected =>
+                            OverageRejected {
+                              disabled_reason: match info.overage_disabled_reason {
+                                Present { value: r } =>
+                                  Present { value: r as NonEmptyStr }
+                                Absent => none
+                              },
+                            }
+                          ClaudeOverageUnstated => OverageUnobserved
+                          _ => OverageUnobserved
+                        },
+                        scope: FailureScopeUnobserved,
+                      },
+                    },
+                  }
+                _ =>
+                  ProviderTerminalUnclassified {
+                    cause: ProviderFailureUnclassified {
+                      provider: ClaudeCliProvider,
+                      evidence: ProviderFailureEvidenceRef {
+                        provider: ClaudeCliProvider,
+                        digest_note: "Claude rate_limit rejection with unmodeled rateLimitType" as NonEmptyStr,
+                      },
+                    },
+                  }
+              }
+            _ =>
+              ProviderTerminalUnclassified {
+                cause: ProviderFailureUnclassified {
+                  provider: ClaudeCliProvider,
+                  evidence: ProviderFailureEvidenceRef {
+                    provider: ClaudeCliProvider,
+                    digest_note: "Claude rate_limit status unmodeled" as NonEmptyStr,
+                  },
+                },
+              }
+          }
+      }
+  }
+}

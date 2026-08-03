@@ -1,0 +1,56 @@
+module gunbc.provider_turn_receipt
+
+import std.types { String, NonEmptyStr, Bool }
+import gunbc.dispatch_selection { DispatchResolvedExecution }
+import gunbc.provider_failure {
+  ProviderFailureCause,
+  ProviderTerminalDisposition,
+  ProviderTerminalSucceeded,
+  ProviderTerminalFailed,
+  ProviderTerminalUnclassified,
+  provider_failure_cause_label,
+}
+
+data provider_turn_receipt_note: String = "P1 SUBJECT-BOUND TERMINAL RECEIPT. Every provider result is about one exact execution binding: attempt key, turn key, and the persisted DispatchResolvedExecution that produced the bytes. Process exit alone cannot identify the provider cause. A receipt from attempt A cannot satisfy attempt B; a failure on binding X cannot exclude binding Y. Storage layout attempts/<attempt>/turns/<turn>/execution.json plus provider-events.jsonl plus provider-terminal.json is the host realization of this carrier — typed here first."
+
+type AttemptKey = NonEmptyStr where brand("AttemptKey")
+type TurnKey = NonEmptyStr where brand("TurnKey")
+
+type ProviderTurnSubject {
+  attempt_key: AttemptKey
+  turn_key: TurnKey
+  execution: DispatchResolvedExecution
+}
+
+type ProviderTurnTerminalReceipt {
+  subject: ProviderTurnSubject
+  disposition: ProviderTerminalDisposition
+  events_digest_note: NonEmptyStr
+}
+
+fn provider_turn_receipt_requires_subject(
+  attempt_key: String,
+  turn_key: String,
+) -> Bool {
+  attempt_key != "" && turn_key != ""
+}
+
+fn provider_turn_terminal_label(receipt: ProviderTurnTerminalReceipt) -> String {
+  match receipt.disposition {
+    ProviderTerminalSucceeded => "provider turn succeeded"
+    ProviderTerminalFailed { cause } => provider_failure_cause_label(cause: cause)
+    ProviderTerminalUnclassified { cause } => provider_failure_cause_label(cause: cause)
+  }
+}
+
+fn provider_turn_receipt(
+  subject: ProviderTurnSubject,
+  disposition: ProviderTerminalDisposition,
+  events_digest_note: NonEmptyStr,
+) -> ProviderTurnTerminalReceipt {
+  ProviderTurnTerminalReceipt {
+    subject: subject,
+    disposition: disposition,
+    events_digest_note: events_digest_note,
+  }
+}
