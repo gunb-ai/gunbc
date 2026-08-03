@@ -3295,14 +3295,10 @@ fn match_pattern(
     }
 }
 
-/// SINGLE AUTHORITY for the v1 interpreter's v4 std-bridge dispatch.
-///
-/// Before this, every bridge name was written TWICE -- once in a
-/// `*_BRIDGE_FNS` const that the guard predicate tested, once in the match
-/// arm that dispatched it -- so a name could sit in one and not the other and
-/// nothing would say so. The const list, the dispatch, and the enumerable
-/// roster now all expand from these tokens, so they cannot disagree
-/// (DESIGN.md §3 single authority, §5 construction over validation).
+/// Handler bodies for v4 std-bridge dispatch. Roster authority is
+/// `v1_interpreter_authored_roster_arms()` in `.dag`; generated
+/// `lookup_eval_call_bridge` routes spellings before this macro matches on
+/// the generated enum variant for each arm identity.
 macro_rules! v1_bridge_family_arms {
     ($cb:ident, $fname:ident, $args:ident, $node:ident, $ctx:ident) => {
         $cb! {
@@ -3391,9 +3387,9 @@ fn is_v4_bridge_family(ctx: &InterpContext, func_name: &str, names: &[&str], mod
         .is_some_and(|info| info.module_name == module)
 }
 
-/// SINGLE AUTHORITY for the v2.std.collection map grounding. This site
-/// carried the same name fork the bridges did: each spelling appeared in the
-/// const the guard tested AND in the match that mapped it to a builtin.
+/// Handler bodies for v2.std.collection map grounding. Roster authority is
+/// `v1_interpreter_authored_roster_arms()`; generated lookup routes spellings
+/// before this macro matches on the generated enum variant.
 macro_rules! v1_map_grounding_arms {
     ($cb:ident, $fname:ident) => {
         $cb! {
@@ -3487,9 +3483,10 @@ fn try_v2_std_collection_map_primitive_grounding(
     }
 }
 
-/// SINGLE AUTHORITY for the two native fold intercepts. These run BEFORE the
-/// free-call dispatch, which is why `fold_list` never reaches the builtin
-/// registry and was invisible to every roster that read the registry alone.
+/// Handler bodies for native fold intercepts (run before free-call dispatch).
+/// Roster authority is `v1_interpreter_authored_roster_arms()`; generated
+/// `lookup_eval_call_native_intercept` routes spellings before this macro
+/// matches on the generated enum variant.
 macro_rules! v1_native_intercept_arms {
     ($cb:ident, $fname:ident, $args:ident, $env:ident, $ctx:ident) => {
         $cb! {
@@ -3790,7 +3787,9 @@ fn parse_table_memo_scope_and_key(
     Some((grammar_digest, token_stream_digest, position, production))
 }
 
-/// SINGLE AUTHORITY for the parse-table memo dispatch.
+/// Handler bodies for parse-table memo dispatch. Roster authority is
+/// `v1_interpreter_authored_roster_arms()`; generated lookup routes spellings
+/// before this macro matches on the generated enum variant.
 macro_rules! v1_parse_table_arms {
     ($cb:ident, $func_name:ident, $ctx:ident, $fn_node:ident, $args:ident, $env:ident) => {
         $cb! {
@@ -4997,9 +4996,9 @@ fn eval_algebra_method(
     result
 }
 
-/// SINGLE AUTHORITY for the v1 interpreter's method dispatch surface, same
-/// shape as `v1_builtin_arms`: the dispatch and the roster are two expansions
-/// of these tokens, so neither can drift from the other.
+/// Handler bodies for algebra method dispatch. Roster authority is
+/// `v1_interpreter_authored_roster_arms()`; generated `lookup_eval_algebra_method_inner`
+/// routes spellings before this macro matches on the generated enum variant.
 macro_rules! v1_algebra_method_arms {
     ($cb:ident, $method:ident, $receiver:ident, $args:ident, $env:ident, $ctx:ident) => {
         $cb! {
@@ -10156,14 +10155,10 @@ fn eval_builtin(
     result
 }
 
-/// SINGLE AUTHORITY for the v1 interpreter's free-call primitive surface.
-///
-/// The arm list below is the only place a free-call builtin is named. Both the
-/// dispatch (`v1_builtin_dispatch`) and the machine-readable roster
-/// (`v1_builtin_roster`, surfaced as `v1_builtin_arm_spellings`) are expansions
-/// of THESE tokens, so an arm cannot exist without a roster entry and a roster
-/// entry cannot exist without an arm: the drift DESIGN.md 3 calls a fork is
-/// unwritable here rather than checked afterwards.
+/// Handler bodies for free-call builtin dispatch. Roster authority is
+/// `v1_interpreter_authored_roster_arms()` in `.dag`; generated
+/// `lookup_eval_builtin_inner` routes spellings before this macro matches on
+/// the generated enum variant for each arm identity.
 ///
 /// Call-site locals are passed in as identifiers (`$name`, `$positional`,
 /// `$ctx`) because macro_rules hygiene would otherwise not resolve them: arm
