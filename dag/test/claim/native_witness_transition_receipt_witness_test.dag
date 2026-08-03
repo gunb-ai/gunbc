@@ -1,0 +1,143 @@
+module test.claim.native_witness_transition_receipt_witness
+
+import std.decl_ref { decl_ref }
+import std.types { Bool, Int, String }
+import gunbc.roadmap_authority { declared_roadmap_nodes }
+import gunbc.roadmap_model { RoadmapNodeIdentity }
+import gunbc.native_witness_transition_receipt {
+  NativeSelectedWitnessTransitionReceipt,
+  TransitionEvidenceStanding,
+  EvidenceExecutedAtLandedCommit,
+  EvidenceExecutedBeforeLanding,
+  transition_evidence_standing,
+  native_at_small_scale_transition_receipt,
+}
+import v2.test.execution.native_selected_witness_bundle {
+  native_selected_witness_bundle_cutover_evidence_holds,
+}
+
+data native_witness_transition_witness_note: String = "THE TWO STANDING ARMS ARE ASSERTED TOGETHER ON PURPOSE. Either arm alone would pass against a fold that ignored its inputs and returned a constant; asserting both means no constant implementation survives, which is what makes the pair discriminating rather than decorative. The subject join is the second independent question -- a receipt naming a node identity nothing declares is evidence about nobody -- and its RED plants a fabricated identity so the join is proven capable of returning zero. That control is not hypothetical: drafting this receipt first transcribed the node identity as rn_2I5K7M9O1Q3S5T8V0W2X4Y7Z9A1C, one character off the declared rn_2I5K7M9O1Q3R6T8V0W2X4Y7Z9A1C, and the join is what catches that class."
+
+data cited_evidence_resolution_note: String = "THE RECEIPT'S OWN CITATION HAD TO BE PROVEN, OR THE FIX FOR DUAL REPRESENTATION REINTRODUCES THE STALE-CITATION CLASS AT THE POINT EVERYTHING NOW CITES (operator gap finding on gunbc#7718, 2026-08-03). executed_evidence is an AUTHORED DeclarationRef. #7718 witnessed the node identity and both standing arms but never established that the cited declaration resolves at all -- and this repository had just repaired seven typed DeclarationRef rows pointing at nothing. A receipt whose whole purpose is to be the single citable home for execution evidence must not itself carry an unverified citation.\n\nTHE MECHANISM IS THE LANGUAGE'S OWN RESOLVER, NOT A SECOND CENSUS. This module IMPORTS native_selected_witness_bundle_cutover_evidence_holds. An import is resolved by the namespace authority, which refuses an unbound name and refuses a double-bound one, so 'resolves to EXACTLY ONE declaration' is discharged by compilation rather than by a fold this file would have to author -- construction over validation (DESIGN 5), and no fork of the G1 resolver. If the cited declaration is renamed or deleted, this module stops compiling; the citation cannot rot silently. The string equality below is what binds that compile-time fact to the AUTHORED field: if the receipt's module_path or decl_name drifts away from the symbol actually imported, the equality reds even though the import still resolves.\n\nEXECUTING, NOT MERELY PRESENT. Resolution alone would prove the name exists, not that it names an executing witness -- the proxy-assertion failure where a present-in-source symbol is mistaken for a CI-exercised one. Calling it closes that: the cited declaration is invoked and must hold. It is cheap and hermetic to call (family_has_discriminating_red over selected_logic_sample_cutover_evidence, a constructed fixture -- the expensive emit_family path lives in a different declaration), so this does not smuggle real compute into a per-PR row.\n\nCONFIRMED OUT OF SCOPE FOR G1 rather than assumed: crisp-owl-732 answered at #7707 head that the G1 denominator is only the static HandAuthoredDocBind primary_work/additional_works rows in doc_graph_roots, so a decl_ref constructed inside a fn body is NOT censused and G1 landing green would NOT have closed this. DISSOLVE-ON: G1 widening to every structural DeclarationRef carrier via a Node-tree reader; at that point this pair is superseded as the general wall, and per the DESIGN 4b dissolution rule the evidence stays enrolled as the regression control while the bespoke machinery goes."
+
+fn planted_receipt(
+  identity: String,
+  merge_commit: String,
+  evaluated_head: String,
+) -> NativeSelectedWitnessTransitionReceipt {
+  NativeSelectedWitnessTransitionReceipt {
+    node: identity as RoadmapNodeIdentity,
+    landed_pull_request: 1,
+    landed_merge_commit: merge_commit,
+    evaluated_head: evaluated_head,
+    executed_evidence: decl_ref(
+      module_path: "test.claim.native_witness_transition_receipt_witness",
+      decl_name: "planted_receipt",
+    ),
+  }
+}
+
+fn standing_is_before_landing(standing: TransitionEvidenceStanding) -> Bool {
+  match standing {
+    EvidenceExecutedBeforeLanding { evaluated_head: _, landed_merge_commit: _ } => true
+    EvidenceExecutedAtLandedCommit => false
+  }
+}
+
+fn standing_names_both_commits(
+  standing: TransitionEvidenceStanding,
+  expected_head: String,
+  expected_merge: String,
+) -> Bool {
+  match standing {
+    EvidenceExecutedBeforeLanding { evaluated_head, landed_merge_commit } =>
+      evaluated_head == expected_head && landed_merge_commit == expected_merge
+    EvidenceExecutedAtLandedCommit => false
+  }
+}
+
+fn declared_nodes_carrying_identity(identity: String) -> Int {
+  declared_roadmap_nodes()
+    |> filter(n => (n.identity as String) == identity)
+    |> count
+}
+
+test fn native_at_small_scale_evidence_stands_as_executed_before_landing() -> Bool {
+  let receipt = native_at_small_scale_transition_receipt()
+  let standing = transition_evidence_standing(receipt: receipt)
+  return standing_is_before_landing(standing: standing)
+    && standing_names_both_commits(
+      standing: standing,
+      expected_head: "2f9e780e6d2130680c4d9fb49739bf0c6cc7c746",
+      expected_merge: "1ebff27f1e538a06edbaf6a1871bff4c10887b39",
+    )
+}
+
+test fn evidence_executed_at_the_landed_commit_is_the_other_standing() -> Bool {
+  let receipt = planted_receipt(
+    identity: "rn_2I5K7M9O1Q3R6T8V0W2X4Y7Z9A1C",
+    merge_commit: "1ebff27f1e538a06edbaf6a1871bff4c10887b39",
+    evaluated_head: "1ebff27f1e538a06edbaf6a1871bff4c10887b39",
+  )
+  return !standing_is_before_landing(
+    standing: transition_evidence_standing(receipt: receipt),
+  )
+}
+
+test fn receipt_subject_joins_exactly_one_declared_roadmap_node() -> Bool {
+  let receipt = native_at_small_scale_transition_receipt()
+  return declared_nodes_carrying_identity(identity: receipt.node as String) == 1
+}
+
+test fn a_fabricated_subject_identity_joins_no_declared_node() -> Bool {
+  return declared_nodes_carrying_identity(
+    identity: "rn_2I5K7M9O1Q3S5T8V0W2X4Y7Z9A1C",
+  ) == 0
+}
+
+fn citation_names_the_imported_evidence_symbol(
+  receipt: NativeSelectedWitnessTransitionReceipt,
+) -> Bool {
+  let cited_module = receipt.executed_evidence.module_path as String
+  let cited_decl = receipt.executed_evidence.decl_name as String
+  cited_module == "v2.test.execution.native_selected_witness_bundle"
+    && cited_decl == "native_selected_witness_bundle_cutover_evidence_holds"
+}
+
+fn receipt_citing(
+  module_path: String,
+  decl_name: String,
+) -> NativeSelectedWitnessTransitionReceipt {
+  NativeSelectedWitnessTransitionReceipt {
+    node: "rn_2I5K7M9O1Q3R6T8V0W2X4Y7Z9A1C" as RoadmapNodeIdentity,
+    landed_pull_request: 1,
+    landed_merge_commit: "1ebff27f1e538a06edbaf6a1871bff4c10887b39",
+    evaluated_head: "2f9e780e6d2130680c4d9fb49739bf0c6cc7c746",
+    executed_evidence: decl_ref(module_path: module_path, decl_name: decl_name),
+  }
+}
+
+test fn cited_evidence_declaration_names_the_imported_symbol() -> Bool {
+  return citation_names_the_imported_evidence_symbol(
+    receipt: native_at_small_scale_transition_receipt(),
+  )
+}
+
+test fn a_citation_drifted_from_the_imported_symbol_is_rejected() -> Bool {
+  return !citation_names_the_imported_evidence_symbol(
+    receipt: receipt_citing(
+      module_path: "v2.test.execution.native_selected_witness_bundle",
+      decl_name: "native_selected_witness_bundle_cutover_evidence_hold",
+    ),
+  )
+    && !citation_names_the_imported_evidence_symbol(
+      receipt: receipt_citing(
+        module_path: "v2.test.execution.native_selected_witness_bundle_typo",
+        decl_name: "native_selected_witness_bundle_cutover_evidence_holds",
+      ),
+    )
+}
+
+test fn cited_evidence_declaration_is_an_executing_witness() -> Bool {
+  return native_selected_witness_bundle_cutover_evidence_holds()
+}

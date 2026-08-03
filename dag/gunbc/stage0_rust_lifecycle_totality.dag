@@ -1,0 +1,267 @@
+module gunbc.stage0_rust_lifecycle_totality
+
+import gunbc.stage0_rust_host_observation {
+  GitObservationRefused,
+  RustManifestObserved,
+  RustManifestParseRefused,
+  RustManifestReadRefused,
+  RustSourceHostObservation
+}
+import gunbc.stage0_rust_source_lifecycle_scaffold {
+  derived_generated_stage0_repo_paths,
+  lifecycle_row_well_formed,
+  list_concat_unique,
+  path_in_list,
+  path_occurrence_count,
+  rust_maintenance_disposition_well_formed,
+  rust_source_lifecycle_residue_rows,
+  RustSourceLifecycleRow
+}
+import std.content_hash { Fnv1a64Structural }
+import v2.std.algebra { any, filter, fold_list, length, list_map, list_snoc_item }
+import v2.std.collection { List }
+import v2.std.text { String }
+
+data stage0_rust_lifecycle_totality_note: String = "C1 carrier (Lane C / v1-honest-frontier): derives exact path sets from gunbc.stage0_rust_host_observation RustManifestObserved — tracked, generated, well-formed maintenance-disposition, unclassified, stale, duplicate-within-authority (generated, disposition, role rows BEFORE deduplication), cross-axis overlap (generated ∩ disposition), role-without-disposition, ill-formed maintenance-disposition shape. stage0_rust_lifecycle_totality_underived_axes names C1 axes the brief requires but this carrier cannot derive yet (counted, not silent). Completeness is an identity join over exact paths, never a count oracle (DESIGN section 5). Discovery and decision each require every reported defect dimension to be explicitly zero — not incidental implication."
+
+type LifecycleTotalityUnderivedAxis = RetirementTrigger
+
+data lifecycle_totality_retirement_trigger_underived_reason: String = "RetirementTrigger carrier not modeled — cannot derive disposition-without-retirement-trigger path set until gunbc.stage0_rust_source_lifecycle_scaffold lands the authority (see zero_hand_maintained_rust_finish_line_attachment_note)"
+
+data lifecycle_totality_retirement_trigger_dissolve_on: String = "dissolve-on: RetirementTrigger carrier lands in gunbc.stage0_rust_source_lifecycle_scaffold and C1 derives exact disposition_without_retirement_trigger_paths via that single authority"
+
+data stage0_rust_lifecycle_totality_underived_axes: List<LifecycleTotalityUnderivedAxis> = [
+  RetirementTrigger
+]
+
+data empty_string_list: List<String> = []
+
+type LifecycleTotalityReceipt
+  = LifecycleTotalityDerived {
+      tracked_paths: List<String>,
+      generated_paths: List<String>,
+      maintenance_disposition_paths: List<String>,
+      unclassified_paths: List<String>,
+      stale_disposition_paths: List<String>,
+      duplicate_generated_paths: List<String>,
+      duplicate_disposition_paths: List<String>,
+      duplicate_role_paths: List<String>,
+      cross_axis_overlap_paths: List<String>,
+      role_without_disposition_paths: List<String>,
+      ill_formed_maintenance_disposition_paths: List<String>
+    }
+  | LifecycleTotalityObservationRefused
+
+fn raw_disposition_authority_paths() -> List<String> {
+  list_map(xs: rust_source_lifecycle_residue_rows, f: fn(row) { row.path })
+}
+
+fn exact_duplicate_paths_within_authority(paths: List<String>) -> List<String> {
+  fold_list(
+    xs: paths,
+    empty: empty_string_list,
+    cons: fn(acc, path) {
+      if path_occurrence_count(paths: paths, needle: path) > 1
+        && !path_in_list(path: path, paths: acc) {
+        list_snoc_item(xs: acc, item: path)
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn exact_cross_axis_overlap_paths(
+  generated_paths: List<String>,
+  disposition_paths: List<String>
+) -> List<String> {
+  filter(
+    xs: generated_paths,
+    predicate: fn(path) { path_in_list(path: path, paths: disposition_paths) }
+  )
+}
+
+fn well_formed_maintenance_disposition_paths() -> List<String> {
+  list_map(
+    xs: filter(
+      xs: rust_source_lifecycle_residue_rows,
+      predicate: fn(row) { lifecycle_row_well_formed(row: row) }
+    ),
+    f: fn(row) { row.path }
+  )
+}
+
+fn derived_file_grain_classified_repo_paths() -> List<String> {
+  list_concat_unique(
+    acc: derived_generated_stage0_repo_paths(),
+    items: well_formed_maintenance_disposition_paths()
+  )
+}
+
+fn exact_unclassified_tracked_paths(
+  tracked_paths: List<String>,
+  classified_paths: List<String>
+) -> List<String> {
+  filter(
+    xs: tracked_paths,
+    predicate: fn(path) { !path_in_list(path: path, paths: classified_paths) }
+  )
+}
+
+fn exact_stale_disposition_paths(
+  tracked_paths: List<String>,
+  lifecycle_paths: List<String>
+) -> List<String> {
+  filter(
+    xs: lifecycle_paths,
+    predicate: fn(path) { !path_in_list(path: path, paths: tracked_paths) }
+  )
+}
+
+fn exact_role_without_disposition_paths(
+  cargo_bin_repo_paths: List<String>,
+  disposition_paths: List<String>
+) -> List<String> {
+  filter(
+    xs: cargo_bin_repo_paths,
+    predicate: fn(path) { !path_in_list(path: path, paths: disposition_paths) }
+  )
+}
+
+fn row_has_ill_formed_maintenance_disposition(row: RustSourceLifecycleRow) -> Bool {
+  any(
+    xs: row.maintenance_dispositions,
+    predicate: fn(disposition) {
+      !rust_maintenance_disposition_well_formed(disposition: disposition)
+    }
+  )
+}
+
+fn exact_ill_formed_maintenance_disposition_paths() -> List<String> {
+  list_map(
+    xs: filter(
+      xs: rust_source_lifecycle_residue_rows,
+      predicate: fn(row) { row_has_ill_formed_maintenance_disposition(row: row) }
+    ),
+    f: fn(row) { row.path }
+  )
+}
+
+fn lifecycle_totality_receipt(
+  observation: RustSourceHostObservation
+) -> LifecycleTotalityReceipt {
+  match observation {
+    RustManifestObserved {
+      repository_revision: revision,
+      tracked_rust_repo_paths: tracked_paths,
+      cargo_bin_repo_paths: cargo_bin_repo_paths,
+      manifest_content_identity: _,
+      prior_tracked_rust_repo_paths: _
+    } =>
+      if revision == "" {
+        LifecycleTotalityObservationRefused
+      } else {
+        let generated_paths = derived_generated_stage0_repo_paths()
+        let raw_disposition_paths = raw_disposition_authority_paths()
+        let maintenance_disposition_paths = well_formed_maintenance_disposition_paths()
+        let classified_paths = derived_file_grain_classified_repo_paths()
+        LifecycleTotalityDerived {
+          tracked_paths: tracked_paths,
+          generated_paths: generated_paths,
+          maintenance_disposition_paths: maintenance_disposition_paths,
+          unclassified_paths: exact_unclassified_tracked_paths(
+            tracked_paths: tracked_paths,
+            classified_paths: classified_paths
+          ),
+          stale_disposition_paths: exact_stale_disposition_paths(
+            tracked_paths: tracked_paths,
+            lifecycle_paths: classified_paths
+          ),
+          duplicate_generated_paths: exact_duplicate_paths_within_authority(
+            paths: generated_paths
+          ),
+          duplicate_disposition_paths: exact_duplicate_paths_within_authority(
+            paths: raw_disposition_paths
+          ),
+          duplicate_role_paths: exact_duplicate_paths_within_authority(
+            paths: cargo_bin_repo_paths
+          ),
+          cross_axis_overlap_paths: exact_cross_axis_overlap_paths(
+            generated_paths: generated_paths,
+            disposition_paths: raw_disposition_paths
+          ),
+          role_without_disposition_paths: exact_role_without_disposition_paths(
+            cargo_bin_repo_paths: cargo_bin_repo_paths,
+            disposition_paths: maintenance_disposition_paths
+          ),
+          ill_formed_maintenance_disposition_paths: exact_ill_formed_maintenance_disposition_paths()
+        }
+      }
+    RustManifestReadRefused { detail: detail } => LifecycleTotalityObservationRefused
+    RustManifestParseRefused { detail: detail } => LifecycleTotalityObservationRefused
+    GitObservationRefused { detail: detail } => LifecycleTotalityObservationRefused
+  }
+}
+
+fn lifecycle_discovery_complete(receipt: LifecycleTotalityReceipt) -> Bool {
+  match receipt {
+    LifecycleTotalityDerived {
+      tracked_paths: tracked,
+      stale_disposition_paths: stale,
+      duplicate_generated_paths: duplicate_generated,
+      duplicate_disposition_paths: duplicate_disposition,
+      duplicate_role_paths: duplicate_role,
+      cross_axis_overlap_paths: cross_axis_overlap,
+      generated_paths: generated_paths,
+      maintenance_disposition_paths: maintenance_disposition_paths,
+      unclassified_paths: unclassified_paths,
+      role_without_disposition_paths: role_without_disposition_paths,
+      ill_formed_maintenance_disposition_paths: ill_formed_maintenance_disposition_paths
+    } =>
+      length(xs: tracked) > 0
+        && length(xs: stale) == 0
+        && length(xs: duplicate_generated) == 0
+        && length(xs: duplicate_disposition) == 0
+        && length(xs: duplicate_role) == 0
+        && length(xs: cross_axis_overlap) == 0
+    LifecycleTotalityObservationRefused => false
+  }
+}
+
+fn lifecycle_decision_complete(receipt: LifecycleTotalityReceipt) -> Bool {
+  match receipt {
+    LifecycleTotalityDerived {
+      tracked_paths: tracked_paths,
+      generated_paths: generated_paths,
+      maintenance_disposition_paths: maintenance_disposition_paths,
+      unclassified_paths: unclassified,
+      stale_disposition_paths: stale_disposition_paths,
+      duplicate_generated_paths: duplicate_generated_paths,
+      duplicate_disposition_paths: duplicate_disposition_paths,
+      duplicate_role_paths: duplicate_role_paths,
+      cross_axis_overlap_paths: cross_axis_overlap_paths,
+      role_without_disposition_paths: role_without_disposition_paths,
+      ill_formed_maintenance_disposition_paths: ill_formed_maintenance_disposition_paths
+    } =>
+      length(xs: unclassified) == 0
+        && length(xs: stale_disposition_paths) == 0
+        && length(xs: duplicate_generated_paths) == 0
+        && length(xs: duplicate_disposition_paths) == 0
+        && length(xs: duplicate_role_paths) == 0
+        && length(xs: cross_axis_overlap_paths) == 0
+        && length(xs: role_without_disposition_paths) == 0
+        && length(xs: ill_formed_maintenance_disposition_paths) == 0
+    LifecycleTotalityObservationRefused => false
+  }
+}
+
+fn lifecycle_totality_witness_observation(extra_paths: List<String>) -> RustManifestObserved {
+  let classified = derived_file_grain_classified_repo_paths()
+  RustManifestObserved {
+    repository_revision: "witness-deadbeef",
+    manifest_content_identity: Fnv1a64Structural { digest: "abc1230000000000" },
+    tracked_rust_repo_paths: list_concat_unique(acc: classified, items: extra_paths),
+    prior_tracked_rust_repo_paths: classified,
+    cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"]
+  }
+}

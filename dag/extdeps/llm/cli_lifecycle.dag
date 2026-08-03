@@ -24,11 +24,13 @@ data claude_cli_lifecycle_external_authority: ExternalAuthority = claude_cli_ext
 type ProviderKind
   = ClaudeCliProvider
   | CodexCliProvider
+  | CursorCliProvider
 
 fn provider_kind_label(kind: ProviderKind) -> String {
   match kind {
     ClaudeCliProvider => "Claude"
     CodexCliProvider => "Codex"
+    CursorCliProvider => "Cursor"
   }
 }
 

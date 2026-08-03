@@ -62,7 +62,30 @@ import gunbc.roadmap_publish {
 }
 import extdeps.github.pulls { PullRequest, PullRequestRef, Open }
 import extdeps.github.github { GitHubUser, User, Repository }
-import std.types { String, Int, CommitSha }
+import gunbc.roadmap_verification_receipt {
+  VerificationSubject,
+  VerificationSubjectObservation,
+  VerificationSubjectObserved,
+  VerificationSubjectUnobserved,
+  VerificationReceiptFileSource,
+  VerificationReceiptAbsent,
+  VerificationReceiptPresent,
+}
+import std.types { CommitSha }
+import std.content_hash { content_hash_atom }
+import gunbc.roadmap_model { RoadmapNodeIdentity }
+
+data fixture_verification_head: CommitSha = "cafecafecafecafecafecafecafecafecafecafe" as CommitSha
+
+fn fixture_verification_subject() -> VerificationSubject {
+  VerificationSubject {
+    node_identity: "node-1" as NonEmptyStr as RoadmapNodeIdentity,
+    criteria_digest: content_hash_atom(value: "workflow-progress-fixture"),
+    attempt_key: "feedfacefeedface",
+    branch: "dispatch/node-1-afeedfacefeedface" as NonEmptyStr,
+    head_sha: fixture_verification_head,
+  }
+}
 
 fn fixture_evidence(
   events: String,
@@ -82,8 +105,10 @@ fn fixture_evidence(
     provider_events_error: "",
     process: process,
     validation_summary: "gunbc run --claim-run",
-    validation_receipt_readable: false,
-    validation_receipt: "",
+    verification_subject: VerificationSubjectObserved {
+      subject: fixture_verification_subject(),
+    },
+    verification_source: VerificationReceiptAbsent,
     publication_subject: PublicationSubjectObserved {
       subject: PublicationSubject {
         node_id: "node-1",
@@ -251,8 +276,6 @@ test fn truncated_receipt_with_admitted_prefix_is_not_admitted() -> Bool {
   let genuine = admission_receipt_for(admission: EnvironmentAdmitted {
     receipts: [],
     validation_summary: "gunbc run --claim-run",
-    validation_receipt_readable: false,
-    validation_receipt: "",
   })
   starts_with(
     s: truncated,
@@ -269,8 +292,6 @@ test fn refused_receipt_quoting_admitted_fragments_is_not_admitted() -> Bool {
   let genuine = admission_receipt_for(admission: EnvironmentAdmitted {
     receipts: [],
     validation_summary: "gunbc run --claim-run",
-    validation_receipt_readable: false,
-    validation_receipt: "",
   })
   string_contains(s: forged, pattern: "\"schema\": \"roadmap-dispatch-environment/v1\"")
     && string_contains(s: forged, pattern: "\"status\": \"admitted\"")
@@ -284,16 +305,12 @@ test fn receipt_decode_separates_refusal_from_undecodable() -> Bool {
   let refused = admission_receipt_for(admission: EnvironmentRefused {
     receipts: [],
     validation_summary: "",
-    validation_receipt_readable: false,
-    validation_receipt: "",
     reason: "probe failed",
   })
   let foreign = "{\"schema\": \"some-other-emitter/v1\", \"status\": \"admitted\"}"
   let admitted = admission_receipt_for(admission: EnvironmentAdmitted {
     receipts: [],
     validation_summary: "gunbc run --claim-run",
-    validation_receipt_readable: false,
-    validation_receipt: "",
   })
   match dispatch_environment_receipt_decode(receipt: refused) {
     ReceiptDecoded { status } =>
@@ -337,8 +354,8 @@ test fn forged_admission_receipt_cannot_complete_environment() -> Bool {
     provider_events_error: base.provider_events_error,
     process: base.process,
     validation_summary: base.validation_summary,
-    validation_receipt_readable: base.validation_receipt_readable,
-    validation_receipt: base.validation_receipt,
+    verification_subject: base.verification_subject,
+    verification_source: base.verification_source,
     publication_subject: base.publication_subject,
     publication_source: base.publication_source,
   }
@@ -366,8 +383,8 @@ test fn persisted_staging_failure_precedes_empty_event_stream() -> Bool {
     provider_events_error: base.provider_events_error,
     process: base.process,
     validation_summary: base.validation_summary,
-    validation_receipt_readable: base.validation_receipt_readable,
-    validation_receipt: base.validation_receipt,
+    verification_subject: base.verification_subject,
+    verification_source: base.verification_source,
     publication_subject: base.publication_subject,
     publication_source: base.publication_source,
   })
@@ -393,8 +410,10 @@ test fn legacy_attempt_refuses_unobserved_early_stages() -> Bool {
     provider_events_error: "not found",
     process: WorkerProcessAbsent,
     validation_summary: "",
-    validation_receipt_readable: false,
-    validation_receipt: "",
+    verification_subject: VerificationSubjectUnobserved {
+      reason: "legacy attempt has no modeled verification subject",
+    },
+    verification_source: VerificationReceiptAbsent,
     publication_subject: PublicationSubjectObserved {
       subject: PublicationSubject {
         node_id: "node-1",
@@ -418,7 +437,7 @@ test fn legacy_attempt_refuses_unobserved_early_stages() -> Bool {
       activity == legacy_attempt_supersedable_label
         && segment_state(progress.segments, "environment") == "refused"
         && segment_state(progress.segments, "workspace") == "refused"
-        && progress.reconciliation.observed_refusal_count == 3
+        && progress.reconciliation.observed_refusal_count == 4
     _ => false
   }
 }
@@ -442,8 +461,8 @@ test fn readable_but_invalid_admission_receipt_refuses_progress() -> Bool {
     provider_events_error: base.provider_events_error,
     process: base.process,
     validation_summary: base.validation_summary,
-    validation_receipt_readable: base.validation_receipt_readable,
-    validation_receipt: base.validation_receipt,
+    verification_subject: base.verification_subject,
+    verification_source: base.verification_source,
     publication_subject: base.publication_subject,
     publication_source: base.publication_source,
   })
@@ -587,8 +606,8 @@ fn publication_segment_of(
     provider_events_error: base.provider_events_error,
     process: base.process,
     validation_summary: base.validation_summary,
-    validation_receipt_readable: base.validation_receipt_readable,
-    validation_receipt: base.validation_receipt,
+    verification_subject: base.verification_subject,
+    verification_source: base.verification_source,
     publication_subject: subject,
     publication_source: source,
   })
