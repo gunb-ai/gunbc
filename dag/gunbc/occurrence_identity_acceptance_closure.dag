@@ -298,6 +298,7 @@ fn occurrence_identity_closing_complete(
   match verdict {
     OccurrenceIdentityClosingCovered { deferred_law_ids: deferred_law_ids } =>
       (deferred_law_ids |> count) == 0
-    _ => false
+    OccurrenceIdentityClosingOpen { missing_law_ids: _ } => false
+    OccurrenceIdentityClosingRefused { refusals: _ } => false
   }
 }

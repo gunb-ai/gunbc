@@ -68,16 +68,7 @@ data nfr_reason_dispatch_selection_routing: String = "provider-selection routing
 
 data nfr_dissolve_dispatch_selection_routing: String = "total matches over the closed selection request and offer coproducts land and the wildcard arms migrate to named variants — rows delete with that fold"
 
-data nfr_reason_occurrence_identity_closing_complete: String = "closing-complete projection fold (OccurrenceIdentityClosingCovered with empty deferred_law_ids only) with off-variant wildcard false arm landed with PR #7559 occurrence_identity_acceptance_closure.dag; declared at landing so the ratchet re-arms"
-
-data nfr_dissolve_occurrence_identity_closing_complete: String = "occurrence_identity_closing_complete derives from OccurrenceIdentityClosingVerdict inhabitance or totals the match and the wildcard arm migrates — row deletes with that fold"
-
 data non_fold_residue_frontier: List<FrontierRow> = [
-  FrontierRow {
-    subject: PathSubject { path: "dag/gunbc/occurrence_identity_acceptance_closure.dag::occurrence_identity_closing_complete" },
-    reason: nfr_reason_occurrence_identity_closing_complete,
-    trigger: TriggerProse { text: nfr_dissolve_occurrence_identity_closing_complete },
-  },
   FrontierRow {
     subject: PathSubject { path: "dag/gunbc/dispatch_selection.dag::offer_matches_request" },
     reason: nfr_reason_dispatch_selection_routing,
