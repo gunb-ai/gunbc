@@ -1534,8 +1534,25 @@ fn basename_to_pub_mod_decl(basename: String) -> String {
   concat("pub mod ", basename, ";")
 }
 
+fn dispatch_generated_macro_use_pub_mod_decl() -> String {
+  "#[macro_use]\npub mod v1_interpreter_dispatch_generated;"
+}
+
+fn pub_mod_decl_lines_for_basename(basename: String) -> List<String> {
+  if basename == "v1_interpreter" {
+  [
+    dispatch_generated_macro_use_pub_mod_decl(),
+    basename_to_pub_mod_decl(basename: basename),
+  ]
+  } else if basename == "v1_interpreter_dispatch_generated" {
+    []
+  } else {
+    [basename_to_pub_mod_decl(basename: basename)]
+  }
+}
+
 fn format_pub_mod_declarations(basenames: List<String>) -> String {
-  let lines = basenames |> map(basename_to_pub_mod_decl)
+  let lines = basenames |> flat_map(basename => pub_mod_decl_lines_for_basename(basename: basename))
   concat("\n", lines |> join(separator: "\n"))
 }
 
