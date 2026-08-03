@@ -7,7 +7,6 @@ import std.occurrence_identity {
   OccurrenceIndexEntry,
   OccurrenceTransport,
   OccurrenceContainmentPath,
-  DeclarationOccurrence,
   AuthoredTokenOrdinal,
 }
 import std.occurrence_binding_candidates {

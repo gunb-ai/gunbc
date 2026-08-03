@@ -16,6 +16,7 @@ import std.occurrence_identity {
 }
 import std.occurrence_binding_candidates {
   DeclarationExposureRow,
+  LexicalExposure,
   ModuleExposure,
   RootExposure,
   OccurrenceBindingCandidateInputs,
@@ -30,7 +31,6 @@ import gunbc.type_reference_binding_context {
   occurrence_binding_inputs_from_module_transport,
   build_graph_type_reference_binding_inputs,
   build_type_reference_binding_context,
-  type_reference_binding_context_authority_note,
 }
 
 data type_reference_binding_context_witness_note: String = "N2 slice 2 PR-A builder witnesses (quiet-hawk-219): RESOLVE-path only — see gunbc.type_reference_binding_context type_reference_binding_context_path_scope_note (emit-side #7705 RED control is LIVE, separate instance, warm-wolf-814). TypeReferenceBindingContext input projection + containment-tree exposure derivation for the v1 typecheck masked-leaf changeover. Cross-module kernel bind uses builder-produced inputs with RootExposure from module-root containment. Pool-coincidence refusal uses explicit ModuleExposure override on slice-1 control-3. PR-B wires resolve_node_bounded after 7515."
@@ -114,6 +114,21 @@ test fn single_ancestor_containment_derives_module_exposure_holds() -> Bool {
     containment: fn_path,
   ) {
     ModuleExposure { module: module } => module == trbc_module_path(dotted: "extdeps.consumer")
+    _ => false
+  }
+}
+
+test fn nested_containment_derives_lexical_exposure_holds() -> Bool {
+  let outer = OccurrenceId { value: 1 }
+  let inner = OccurrenceId { value: 2 }
+  let binder = OccurrenceId { value: 30 }
+  let nested_path = trbc_fixture_path(ancestors: [outer, inner], terminal: binder)
+  match declaration_exposure_from_containment_tree(
+    module_path: trbc_module_path(dotted: "extdeps.consumer"),
+    containment: nested_path,
+  ) {
+    LexicalExposure { exposing_scope: scope } =>
+      scope.terminal.value == inner && (scope.ancestors |> count) == 1
     _ => false
   }
 }
