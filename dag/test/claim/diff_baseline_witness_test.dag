@@ -7,21 +7,38 @@ import gunbc.diff_baseline {
   DiffBaseline,
   DiffBaselineResolution,
   MergeTarget,
+  PushBefore,
   PushParent,
   OperatorOverride,
+  PushBeforeInput,
+  PushBeforeSha,
+  PushBeforeInputRefused,
   BaselineSelected,
   BaselineRefused,
   resolve_diff_baseline,
   diff_baseline_ref
 }
 import gunbc.repo_identity { gunbc_merge_target_ref, gunbc_default_remote_name }
+import extdeps.git.hooks { zero_sha }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn resolve_case(override_ref: String?, event_name: String, base_ref: String?) -> DiffBaselineResolution {
+fn resolve_case(
+  override_ref: String?,
+  event_name: String,
+  base_ref: String?,
+  push_before: PushBeforeInput?,
+  head_sha: String?
+) -> DiffBaselineResolution {
   resolve_diff_baseline(
-    event: CiDiffEvent { override_ref: override_ref, event_name: event_name, base_ref: base_ref },
+    event: CiDiffEvent {
+      override_ref: override_ref,
+      event_name: event_name,
+      base_ref: base_ref,
+      push_before: push_before,
+      head_sha: head_sha
+    },
     push_parent_ref: gunbc_merge_target_ref,
     default_remote_name: gunbc_default_remote_name
   )
@@ -30,6 +47,7 @@ fn resolve_case(override_ref: String?, event_name: String, base_ref: String?) ->
 fn arm_tag(res: DiffBaselineResolution) -> String {
   match res {
     BaselineSelected { baseline: MergeTarget { ref: _ } } => "merge_target"
+    BaselineSelected { baseline: PushBefore { ref: _ } } => "push_before"
     BaselineSelected { baseline: PushParent { ref: _ } } => "push_parent"
     BaselineSelected { baseline: OperatorOverride { ref: _ } } => "operator_override"
     BaselineRefused { reason: _ } => "refused"
@@ -44,64 +62,201 @@ fn selected_ref(res: DiffBaselineResolution) -> String {
 }
 
 test fn witness_stacked_pr_selects_actual_base() -> Bool {
-  let res = resolve_case(override_ref: none, event_name: "pull_request", base_ref: Present { value: "feature/B" })
+  let res = resolve_case(
+    override_ref: none,
+    event_name: "pull_request",
+    base_ref: Present { value: "feature/B" },
+    push_before: none,
+    head_sha: none
+  )
   arm_tag(res: res) == "merge_target"
     && selected_ref(res: res) == "origin/feature/B"
     && selected_ref(res: res) != "origin/main"
 }
 
 test fn witness_main_pr_equivalent_to_push_parent() -> Bool {
-  let res = resolve_case(override_ref: none, event_name: "pull_request", base_ref: Present { value: "main" })
+  let res = resolve_case(
+    override_ref: none,
+    event_name: "pull_request",
+    base_ref: Present { value: "main" },
+    push_before: none,
+    head_sha: none
+  )
   arm_tag(res: res) == "merge_target"
     && selected_ref(res: res) == "origin/main"
     && selected_ref(res: res) == (gunbc_merge_target_ref as String)
 }
 
-test fn witness_push_keeps_todays_policy() -> Bool {
-  let res = resolve_case(override_ref: none, event_name: "push", base_ref: none)
-  arm_tag(res: res) == "push_parent"
-    && selected_ref(res: res) == "origin/main"
+test fn witness_push_selects_before_sha() -> Bool {
+  let res = resolve_case(
+    override_ref: none,
+    event_name: "push",
+    base_ref: none,
+    push_before: Present { value: PushBeforeSha { sha: "abc123def4567890abc123def4567890abc12345" } },
+    head_sha: Present { value: "fedcba0987654321fedcba0987654321fedcba09" }
+  )
+  arm_tag(res: res) == "push_before"
+    && selected_ref(res: res) == "abc123def4567890abc123def4567890abc12345"
+    && selected_ref(res: res) != (gunbc_merge_target_ref as String)
+}
+
+test fn witness_push_absent_before_refuses() -> Bool {
+  arm_tag(
+    res: resolve_case(
+      override_ref: none,
+      event_name: "push",
+      base_ref: none,
+      push_before: none,
+      head_sha: Present { value: "fedcba0987654321fedcba0987654321fedcba09" }
+    )
+  ) == "refused"
+}
+
+test fn witness_push_observation_refusal_propagates() -> Bool {
+  arm_tag(
+    res: resolve_case(
+      override_ref: none,
+      event_name: "push",
+      base_ref: none,
+      push_before: Present {
+        value: PushBeforeInputRefused {
+          reason: "push event before SHA malformed — GITHUB_EVENT_PATH payload is not valid JSON; halting the floor (AFFECTED-SET REFUSAL)"
+        }
+      },
+      head_sha: Present { value: "fedcba0987654321fedcba0987654321fedcba09" }
+    )
+  ) == "refused"
+}
+
+test fn witness_push_zero_before_refuses() -> Bool {
+  arm_tag(
+    res: resolve_case(
+      override_ref: none,
+      event_name: "push",
+      base_ref: none,
+      push_before: Present { value: PushBeforeSha { sha: zero_sha } },
+      head_sha: Present { value: "fedcba0987654321fedcba0987654321fedcba09" }
+    )
+  ) == "refused"
+}
+
+test fn witness_push_self_compare_refuses() -> Bool {
+  let sha = "abc123def4567890abc123def4567890abc12345"
+  arm_tag(
+    res: resolve_case(
+      override_ref: none,
+      event_name: "push",
+      base_ref: none,
+      push_before: Present { value: PushBeforeSha { sha: sha } },
+      head_sha: Present { value: sha }
+    )
+  ) == "refused"
+}
+
+test fn witness_push_head_absent_refuses() -> Bool {
+  arm_tag(
+    res: resolve_case(
+      override_ref: none,
+      event_name: "push",
+      base_ref: none,
+      push_before: Present { value: PushBeforeSha { sha: "abc123def4567890abc123def4567890abc12345" } },
+      head_sha: none
+    )
+  ) == "refused"
 }
 
 test fn witness_workflow_dispatch_keeps_todays_policy() -> Bool {
-  let res = resolve_case(override_ref: none, event_name: "workflow_dispatch", base_ref: none)
+  let res = resolve_case(
+    override_ref: none,
+    event_name: "workflow_dispatch",
+    base_ref: none,
+    push_before: none,
+    head_sha: none
+  )
   arm_tag(res: res) == "push_parent"
     && selected_ref(res: res) == "origin/main"
 }
 
 test fn witness_bootstrap_no_event_is_push_parent() -> Bool {
-  let res = resolve_case(override_ref: none, event_name: "", base_ref: none)
+  let res = resolve_case(
+    override_ref: none,
+    event_name: "",
+    base_ref: none,
+    push_before: none,
+    head_sha: none
+  )
   arm_tag(res: res) == "push_parent"
     && selected_ref(res: res) == "origin/main"
 }
 
 test fn witness_operator_override_is_typed_arm() -> Bool {
-  let res = resolve_case(override_ref: Present { value: "HEAD~20" }, event_name: "schedule", base_ref: none)
+  let res = resolve_case(
+    override_ref: Present { value: "HEAD~20" },
+    event_name: "schedule",
+    base_ref: none,
+    push_before: none,
+    head_sha: none
+  )
   arm_tag(res: res) == "operator_override"
     && selected_ref(res: res) == "HEAD~20"
 }
 
 test fn witness_merge_group_uses_push_parent() -> Bool {
-  let res = resolve_case(override_ref: none, event_name: "merge_group", base_ref: none)
+  let res = resolve_case(
+    override_ref: none,
+    event_name: "merge_group",
+    base_ref: none,
+    push_before: none,
+    head_sha: none
+  )
   arm_tag(res: res) == "push_parent"
     && selected_ref(res: res) == "origin/main"
 }
 
 test fn witness_schedule_no_override_is_push_parent() -> Bool {
-  let res = resolve_case(override_ref: none, event_name: "schedule", base_ref: none)
+  let res = resolve_case(
+    override_ref: none,
+    event_name: "schedule",
+    base_ref: none,
+    push_before: none,
+    head_sha: none
+  )
   arm_tag(res: res) == "push_parent"
     && selected_ref(res: res) == "origin/main"
 }
 
 test fn witness_unknown_event_refuses() -> Bool {
-  arm_tag(res: resolve_case(override_ref: none, event_name: "deployment_status", base_ref: none)) == "refused"
+  arm_tag(
+    res: resolve_case(
+      override_ref: none,
+      event_name: "deployment_status",
+      base_ref: none,
+      push_before: none,
+      head_sha: none
+    )
+  ) == "refused"
 }
 
 test fn witness_pull_request_empty_base_refuses() -> Bool {
-  arm_tag(res: resolve_case(override_ref: none, event_name: "pull_request", base_ref: Present { value: "" })) == "refused"
+  arm_tag(
+    res: resolve_case(
+      override_ref: none,
+      event_name: "pull_request",
+      base_ref: Present { value: "" },
+      push_before: none,
+      head_sha: none
+    )
+  ) == "refused"
 }
 
 test fn witness_pull_request_absent_base_refuses() -> Bool {
-  arm_tag(res: resolve_case(override_ref: none, event_name: "pull_request", base_ref: none)) == "refused"
+  arm_tag(
+    res: resolve_case(
+      override_ref: none,
+      event_name: "pull_request",
+      base_ref: none,
+      push_before: none,
+      head_sha: none
+    )
+  ) == "refused"
 }
-

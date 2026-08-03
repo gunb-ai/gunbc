@@ -1,0 +1,55 @@
+module test.claim.push_event_witness
+
+import std.logic { Bool }
+import extdeps.github.push_event {
+  push_before_from_event_json,
+  PushBeforeObserved,
+  PushBeforeAbsent,
+  PushBeforeZeroSha,
+  PushBeforeMalformed
+}
+import extdeps.git.hooks { zero_sha }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn witness_push_before_observed_from_json() -> Bool {
+  match push_before_from_event_json(
+    text: "{\"before\":\"abc123def4567890abc123def4567890abc12345\",\"after\":\"fedcba09\"}"
+  ) {
+    PushBeforeObserved { sha: sha } =>
+      (sha as String) == "abc123def4567890abc123def4567890abc12345"
+    PushBeforeAbsent { detail: _ } => false
+    PushBeforeZeroSha => false
+    PushBeforeMalformed { detail: _ } => false
+  }
+}
+
+test fn witness_push_before_zero_sha_from_json() -> Bool {
+  match push_before_from_event_json(
+    text: concat("{\"before\":\"", concat(zero_sha, "\",\"after\":\"abc\"}"))
+  ) {
+    PushBeforeZeroSha => true
+    PushBeforeObserved { sha: _ } => false
+    PushBeforeAbsent { detail: _ } => false
+    PushBeforeMalformed { detail: _ } => false
+  }
+}
+
+test fn witness_push_before_absent_member_refuses() -> Bool {
+  match push_before_from_event_json(text: "{\"after\":\"abc\"}") {
+    PushBeforeAbsent { detail: _ } => true
+    PushBeforeObserved { sha: _ } => false
+    PushBeforeZeroSha => false
+    PushBeforeMalformed { detail: _ } => false
+  }
+}
+
+test fn witness_push_before_malformed_json_refuses() -> Bool {
+  match push_before_from_event_json(text: "not json") {
+    PushBeforeMalformed { detail: _ } => true
+    PushBeforeObserved { sha: _ } => false
+    PushBeforeAbsent { detail: _ } => false
+    PushBeforeZeroSha => false
+  }
+}

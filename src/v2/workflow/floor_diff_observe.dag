@@ -14,6 +14,9 @@ import gunbc.diff_baseline {
   BaselineSelected,
   BaselineRefused,
   PushBefore,
+  PushBeforeInput,
+  PushBeforeSha,
+  PushBeforeInputRefused,
   resolve_diff_baseline,
   diff_baseline_ref
 }
@@ -35,6 +38,7 @@ import extdeps.git {
 }
 import extdeps.github.actions { github_event_name_env, github_base_ref_env, github_event_name_push }
 import extdeps.github.actions_environment { github_sha_variable_name }
+import extdeps.git.hooks { zero_sha }
 import extdeps.github.push_event {
   github_event_path_env,
   push_before_from_event_json,
@@ -68,21 +72,50 @@ fn floor_env_optional(env_name: NonEmptyStr) -> String? {
 
 data floor_diff_baseline_law: String = "The affected-set base is RESOLVED from the CI event, not a constant (gunbc.diff_baseline; the de-fork of the origin/main policy-as-literal, DESIGN §3(c)). floor_observe_ci_diff_event reads the env facts — GUNBC_CI_DIFF_BASE (the gunbc OperatorOverride channel, e.g. the falsifier's HEAD~20 cold control), GITHUB_EVENT_NAME, GITHUB_BASE_REF (the GitHub surface extdeps.github.actions owns), GITHUB_SHA (head, for self-compare refusal), and for push events the before member from GITHUB_EVENT_PATH (extdeps.github.push_event) — and resolve_diff_baseline (pure) maps them: pull_request → MergeTarget against the PR's ACTUAL base (was silently origin/main — the stacked-PR over-selection defect #7129 hit); push → PushBefore from the event payload's before SHA (absent/zero/self-compare refuses); workflow_dispatch / merge_group / schedule / local-bootstrap → PushParent (today's DiffPolicy.base, origin/main). GUNBC_CI_DIFF_BASE → OperatorOverride. A genuinely-unrecognized event yields BaselineRefused → UnifiedDiffFail / NameStatusDiffFail → the executor HALTS the floor with a typed AFFECTED-SET REFUSAL (refuses every enrolled row, never widens to a full-corpus run; operator ruling 2026-07-05). PushBefore diffs use TwoDot (before..head); all other arms use the policy's merge-base mode."
 
-fn floor_observe_push_before_sha(event_name: String) -> String? {
+fn floor_push_before_refusal(prefix: String, detail: String) -> PushBeforeInput {
+  PushBeforeInputRefused { reason: concat(concat(prefix, detail), "; halting the floor (AFFECTED-SET REFUSAL)") }
+}
+
+fn floor_observe_push_before_input(event_name: String) -> PushBeforeInput? {
   if event_name != github_event_name_push {
     none
   } else {
     match floor_env_optional(env_name: github_event_path_env) {
-      Absent => none
+      Absent =>
+        Present {
+          value: floor_push_before_refusal(
+            prefix: "push event but GITHUB_EVENT_PATH is unset — ",
+            detail: "cannot read before SHA from event payload"
+          )
+        }
       Present { value: path } =>
         if path == "" {
-          none
+          Present {
+            value: floor_push_before_refusal(
+              prefix: "push event but GITHUB_EVENT_PATH is empty — ",
+              detail: "cannot read before SHA from event payload"
+            )
+          }
         } else {
           match push_before_from_event_json(text: filesystem_read(path: path).content) {
-            PushBeforeObserved { sha: sha } => Present { value: sha as String }
-            PushBeforeAbsent { detail: detail } => none
-            PushBeforeZeroSha => Present { value: "0000000000000000000000000000000000000000" }
-            PushBeforeMalformed { detail: detail } => none
+            PushBeforeObserved { sha: sha } =>
+              Present { value: PushBeforeSha { sha: sha as String } }
+            PushBeforeAbsent { detail: detail } =>
+              Present {
+                value: floor_push_before_refusal(
+                  prefix: "push event before SHA absent — ",
+                  detail: detail
+                )
+              }
+            PushBeforeZeroSha =>
+              Present { value: PushBeforeSha { sha: zero_sha } }
+            PushBeforeMalformed { detail: detail } =>
+              Present {
+                value: floor_push_before_refusal(
+                  prefix: "push event before SHA malformed — ",
+                  detail: detail
+                )
+              }
           }
         }
     }
@@ -95,7 +128,7 @@ fn floor_observe_ci_diff_event() -> CiDiffEvent {
     override_ref: floor_env_optional(env_name: "GUNBC_CI_DIFF_BASE" as NonEmptyStr),
     event_name: event_name,
     base_ref: floor_env_optional(env_name: github_base_ref_env),
-    push_before_sha: floor_observe_push_before_sha(event_name: event_name),
+    push_before: floor_observe_push_before_input(event_name: event_name),
     head_sha: floor_env_optional(env_name: github_sha_variable_name as NonEmptyStr)
   }
 }
