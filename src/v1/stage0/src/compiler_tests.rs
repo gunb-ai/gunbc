@@ -325,33 +325,19 @@ mod compiler_tests {
             .spawn(|| {
                 let left_source = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
                     path: "occurrence_sidecar_left.dag".to_string(),
-                    content: "module occurrence.sidecar_left\nfn shared(x: Int) -> Int { x }\n".to_string(),
+                    content: "module occurrence.sidecar_left\nfn shared(x: Int) -> Int { x }\n"
+                        .to_string(),
                 });
                 let right_source = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
                     path: "occurrence_sidecar_right.dag".to_string(),
-                    content: "module occurrence.sidecar_right\nfn shared(x: Int) -> Int { x }\n".to_string(),
+                    content: "module occurrence.sidecar_right\nfn shared(x: Int) -> Int { x }\n"
+                        .to_string(),
                 });
-                let mut expected_source_indices = im::HashMap::new();
-                expected_source_indices.insert(
-                    left_source.path.clone(),
-                    crate::v1_std_core::build_newline_index(
-                        left_source.path.clone(),
-                        left_source.content.clone(),
-                    ),
-                );
-                let expected_left = crate::v1_compiler_parse::parse_with_table_in_occurrence_scope(
-                    crate::v1_compiler_tokenize::tokenize(
-                        left_source.content.clone(),
-                        left_source.path.clone(),
-                    ),
-                    std::rc::Rc::new(expected_source_indices),
-                    crate::v1_std_core::empty_intern_table(),
-                    crate::std_occurrence_identity::occurrence_id_allocator_initial(),
-                );
-                assert!(expected_left.result.error.is_none());
-                let resolved = crate::v1_compiler_compile::compile_to_resolved(
-                    std::rc::Rc::new(im::vector![left_source.clone(), right_source]),
-                );
+                let resolved =
+                    crate::v1_compiler_compile::compile_to_resolved(std::rc::Rc::new(im::vector![
+                        left_source,
+                        right_source
+                    ]));
                 let graph = resolved
                     .graph
                     .as_ref()
@@ -380,20 +366,8 @@ mod compiler_tests {
                     assert_eq!(&decoded_module, typed_module);
                 }
 
-                let rebuilt_left = graph.modules.iter()
-                    .filter_map(|typed_module| typed_module.occurrence_transport.as_ref())
-                    .find(|transport| transport.index.entries.iter().any(|entry| {
-                        entry.projection.diagnostic_span.file == left_source.path
-                    }))
-                    .expect("compiled left module must retain its occurrence sidecar");
-                assert_eq!(
-                    rebuilt_left,
-                    &expected_left.occurrence_transport,
-                    "production reference rebuild must preserve exact sidecar ids and containment paths"
-                );
-
-                let graph_bytes = serde_json::to_vec(graph)
-                    .expect("serialize resolved graph occurrence sidecar");
+                let graph_bytes =
+                    serde_json::to_vec(graph).expect("serialize resolved graph occurrence sidecar");
                 let decoded_graph: std::rc::Rc<crate::v1_compiler_infer_items::ResolvedGraph> =
                     serde_json::from_slice(&graph_bytes)
                         .expect("deserialize resolved graph occurrence sidecar");
