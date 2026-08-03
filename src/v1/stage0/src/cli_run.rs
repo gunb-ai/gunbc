@@ -7413,12 +7413,27 @@ struct ModuleCacheKeys {
 /// One entry-completion's eviction decision — applied to the index caches by the
 /// caller (this struct owns no cache handles, so it stays a pure, unit-testable
 /// bookkeeper; the RED controls exercise it in isolation).
+///
+/// RELEASE and EVICTION are separate facts and are counted separately. A module is
+/// RELEASED when its refcount reaches zero (no remaining scheduled entry reaches it);
+/// it is EVICTED only when that release actually dropped recorded cache state. The two
+/// diverge on every run where an armed module was never reconciled — the ordinary case,
+/// since arming spans the whole discovered roster while the affected set resolves a
+/// subset. Counting the release as an eviction overstated the mechanism by the whole
+/// unresolved population (a live receipt read `schedule_evictions=2200` against
+/// `modules_refcounted=2200` and `typed_cache_peak=883`: it claimed to have evicted
+/// every module it had ever heard of, ~2.5x the modules that were ever cached).
 #[derive(Default, Debug, PartialEq, Eq)]
 pub struct ScheduleEvictionBatch {
     pub typed_keys: Vec<String>,
     pub raw_files: Vec<String>,
-    /// The module names dropped this step (for the located receipt line).
-    pub module_names: Vec<String>,
+    /// Module names whose refcount reached zero this step — released, whether or not
+    /// any cache state existed to drop (for the located receipt line).
+    pub released_modules: Vec<String>,
+    /// The subset of `released_modules` that actually dropped recorded cache keys —
+    /// the only names for which state left a cache. Always a subset, never equal by
+    /// construction.
+    pub evicted_modules: Vec<String>,
 }
 
 /// Schedule-derived per-module retention bookkeeping (pure). Refcount is keyed by
