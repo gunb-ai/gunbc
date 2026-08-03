@@ -4431,8 +4431,8 @@ fn floor_component_row_value(
     }
 }
 
-fn write_resolve_receipt(batch_records: &[BatchRecord]) -> bool {
-    write_resolve_receipt_at(std::path::Path::new("target"), batch_records)
+fn write_resolve_receipt(source_roots: &[String], batch_records: &[BatchRecord]) -> bool {
+    write_resolve_receipt_at(std::path::Path::new("target"), source_roots, batch_records)
 }
 
 /// Per-batch wall receipt (THE COST WALL, Piece 3 derived clamp): typed rows — one
@@ -5121,7 +5121,11 @@ fn write_selection_degradation_receipt_at(
     true
 }
 
-fn write_resolve_receipt_at(base: &std::path::Path, batch_records: &[BatchRecord]) -> bool {
+fn write_resolve_receipt_at(
+    base: &std::path::Path,
+    source_roots: &[String],
+    batch_records: &[BatchRecord],
+) -> bool {
     let mut resolves_total: u64 = 0;
     let mut resolve_ms_total: u128 = 0;
     let mut discovery_corpus_resolve_ms: u128 = 0;
@@ -5141,8 +5145,7 @@ fn write_resolve_receipt_at(base: &std::path::Path, batch_records: &[BatchRecord
         "resolves_total={resolves_total}\nresolve_ms_total={resolve_ms_total}\ndiscovery_corpus_resolve_ms={discovery_corpus_resolve_ms}\ndiscovery_corpus_eval_ms={discovery_corpus_eval_ms}\n{discovery_phases}"
     );
     if let Some(snapshot) = selection_degradation_from_batch_records(batch_records) {
-        let roots = default_source_roots();
-        match render_selection_degradation_receipt_body(&roots, &snapshot) {
+        match render_selection_degradation_receipt_body(source_roots, &snapshot) {
             Ok(selection_body) => {
                 body.push_str("\n[selection_degradation]\n");
                 body.push_str(&selection_body);
@@ -6338,7 +6341,8 @@ fn run_walk(
     let total_wall_nanos = walk_start.elapsed().as_nanos();
     emit_gantt(&batch_records, total_wall_nanos);
     trace_floor_phase("resolve-receipt", "started", "");
-    let resolve_receipt_ok = !emit_ordinary_floor_receipts || write_resolve_receipt(&batch_records);
+    let resolve_receipt_ok =
+        !emit_ordinary_floor_receipts || write_resolve_receipt(source_roots, &batch_records);
     trace_floor_phase("resolve-receipt", "completed", "");
     trace_floor_phase("selection-degradation-receipt", "started", "");
     let selection_degradation_receipt_ok = !emit_ordinary_floor_receipts
@@ -8919,7 +8923,7 @@ mod tests {
             std::env::temp_dir().join(format!("claim-executor-receipt-red-{}", std::process::id()));
         let _ = fs::remove_file(&base);
         fs::write(&base, b"a file where the receipt dir should be").unwrap();
-        assert!(!write_resolve_receipt_at(&base, &[]));
+        assert!(!write_resolve_receipt_at(&base, &[], &[]));
         assert!(!write_batch_wall_receipt_at(&base, &[]));
         let _ = fs::remove_file(&base);
     }
