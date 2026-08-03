@@ -91,7 +91,7 @@ pub enum OccurrenceBindingFoldState<N: Clone> {
         rest_reversed: Rc<Vec<Rc<BindingCandidate<N>>>>,
     },
 }
-impl<N: Clone> OccurrenceBindingFoldState<N: Clone> {
+impl<N: Clone> OccurrenceBindingFoldState<N> {
     pub fn first(&self) -> Rc<BindingCandidate<N>> {
         match self {
             OccurrenceBindingFoldState::OccurrenceBindingFoldZero => {
