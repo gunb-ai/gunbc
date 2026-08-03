@@ -1,21 +1,29 @@
 {
+  "observation": {
+    "head": "44126ca1de0",
+    "file": "dag/gunbc/ci_layer_roots.dag",
+    "pinned_date": "2026-08-03",
+    "classifier": "dag-note-prose-census-lexical-v1",
+    "classifier_note": "Lexical sentence classifier (same honesty bound as dag-note-prose-census \u00a76); shares are \u00b110pp.",
+    "scope_note": "Dated observation pinned at the named HEAD. Evidence for selecting dissolution work \u2014 not a claim about current main. Re-read live gunbc.ci_layer_roots before acting on any row."
+  },
   "head": "44126ca1de0",
   "file": "dag/gunbc/ci_layer_roots.dag",
   "total_sites": 263,
   "inline_prose": 158,
   "template_refs": 105,
   "structural_groups": {
-    "shared_template": 21,
     "module_note": 24,
-    "witnessexclusionrow": 154,
     "rehomedbinwetrow": 18,
-    "substratelonglanerow": 46
+    "shared_template": 21,
+    "substratelonglanerow": 46,
+    "witnessexclusionrow": 154
   },
   "semantic_classes_inline": {
-    "SPEC_NORM": 119,
     "EVENT": 1,
-    "RULING": 2,
     "RECEIPT": 34,
+    "RULING": 2,
+    "SPEC_NORM": 119,
     "XREF": 2
   },
   "bytes_inline": 66329,
