@@ -11898,6 +11898,27 @@ pub fn emit_type_params(
     }
 }
 
+pub fn emit_bare_type_params(generic_param_names: Rc<Vec<String>>) -> String {
+    if ((generic_param_names.clone().len() as i64) == 0) {
+        "".to_string()
+    } else {
+        v1_rt::concat(
+            v1_rt::concat(
+                "<".to_string(),
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for n in generic_param_names.clone().iter().cloned() {
+                        __result.push(to_pascal(n.clone()));
+                    }
+                    __result
+                })
+                .join(&", ".to_string()),
+            ),
+            ">".to_string(),
+        )
+    }
+}
+
 pub fn emit_type_params_with_clone_bound(
     params: Rc<Vec<Rc<Node>>>,
     clone_param: String,
@@ -13391,6 +13412,7 @@ pub fn emit_enum_shared_accessors(
             __result
         });
         let fns_str = accessor_fns.clone().join(&"\n".to_string());
+        let type_application_params = emit_bare_type_params(generic_param_names.clone());
         v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(
@@ -13402,7 +13424,7 @@ pub fn emit_enum_shared_accessors(
                             ),
                             name.clone(),
                         ),
-                        type_params.clone(),
+                        type_application_params.clone(),
                     ),
                     " {\n".to_string(),
                 ),
@@ -14091,6 +14113,9 @@ pub fn emit_fn_def(
                     return_is_bare_generic.clone(),
                     ret_name.clone(),
                     body_is_param_ref.clone(),
+                    inferred.clone(),
+                    emit_info.clone_bounded_type_params.clone(),
+                    emit_info.type_decl_items.clone(),
                     si.clone(),
                 );
                 let needs_clone_bound = ((clone_param_names.clone().len() as i64) > 0);
