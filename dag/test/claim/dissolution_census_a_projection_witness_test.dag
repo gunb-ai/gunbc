@@ -18,7 +18,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 data census_tsv_path: String = "docs/probes/dissolution_census_a_ci_layer_roots_2026-08-03.tsv"
 data census_summary_path: String = "docs/probes/dissolution_census_a_ci_layer_roots_2026-08-03.summary.json"
 
-data witness_note: String = "Dissolution census A authority recut (operator 2026-08-03): the revision-pinned TSV is the canonical observation; summary JSON and markdown are generated projections via docs/probes/dissolution_census_a_ci_layer_roots_project.py. This witness enforces PER-GROUP agreement between TSV row prefixes and summary JSON declarations — not totals alone (Census B on PR #7749 had matching totals with five of six per-layer counts wrong). Summary counts are read through parse_json into typed Int — not string_contains — so numeric-prefix drift (e.g. 24 matching 240) cannot pass. Full metric reconciliation (is_ref split, semantic classes, byte partition) is in the Python verify path; verify-red perturbs committed projections offline. This witness is the discriminating structural-group gate enrolled per-PR."
+data witness_note: String = "Dissolution census A authority recut (operator 2026-08-03): the revision-pinned TSV is the canonical observation; summary JSON and markdown are generated projections via docs/probes/dissolution_census_a_ci_layer_roots_project.py. This witness enforces PER-GROUP agreement between TSV row prefixes and summary JSON declarations — not totals alone (Census B on PR #7749 had matching totals with five of six per-layer counts wrong). Summary counts are read through parse_json + json_object_unique_member into typed Int (not string_contains); the numeric-prefix fail-open class is closed BY CONSTRUCTION at that rung — no separate enrolled prefix regression witness (a wrong-count-against-correct-artifact probe cannot fail under either implementation). Offline perturbation evidence: docs/probes/dissolution_census_a_ci_layer_roots_project.py verify-red. witness_predicate_refuses_incorrect_group_counts is a predicate-discrimination control only, not a routing control on a drifted fixture. Full metric reconciliation (is_ref split, semantic classes, byte partition) is in the Python verify path. This witness is the discriminating structural-group gate enrolled per-PR."
 
 fn census_tsv_text() -> String {
   filesystem_read(path: census_tsv_path).content
@@ -144,13 +144,6 @@ test fn witness_structural_groups_match_between_tsv_and_summary() -> Bool {
     && summary_root_int_equals(key: "template_refs", count: 105)
     && summary_root_int_equals(key: "bytes_inline", count: 66329)
     && summary_classifier_equals(want: "dag-note-prose-census-lexical-v1")
-}
-
-test fn witness_numeric_prefix_drift_refused_by_typed_parse() -> Bool {
-  !summary_group_declares(group: "module_note", count: 240)
-    && !summary_group_declares(group: "witnessexclusionrow", count: 1540)
-    && !summary_root_int_equals(key: "total_sites", count: 2630)
-    && !summary_root_int_equals(key: "bytes_inline", count: 663290)
 }
 
 test fn witness_predicate_refuses_incorrect_group_counts() -> Bool {
