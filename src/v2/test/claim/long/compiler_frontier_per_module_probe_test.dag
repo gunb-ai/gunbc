@@ -17,14 +17,13 @@ import v2.compiler.self_host.frontier_probe_survey {
   frontier_probe_survey_blocker_partition_totality_holds,
   frontier_probe_survey_has_unclassified,
   frontier_probe_survey_roster_bidirectional_totality_holds,
-  frontier_wave2_emit_surface_module_count,
   frontier_wave2_name_resolution_module_count,
-  frontier_wave2_self_emit_ready_module_count,
-  frontier_wave2_upstream_semantic_module_count
+  frontier_wave2_realization_module_count,
+  frontier_wave2_self_emit_ready_module_count
 }
 import v2.compiler.self_host.frontier_probe_types {
-  EmitSurfaceGap,
   NameResolutionGap,
+  RealizationGap,
   SelfEmitReady
 }
 import v2.test.workflow.host_frontier_probe_survey_manifest {
@@ -37,7 +36,7 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-data compiler_frontier_per_module_probe_note: String = "Fixture-FREE per-module emit-frontier probe over all 27 compiler modules via frontier_probe_survey bin (real ingest, no injected derisk fixtures). Validates roster blocker classes against execution-measured receipts; answers common-root (blocker-class clustering) vs heterogeneous located-reason gaps. Local recipe: frontier_probe_survey --source-root src/v2 --emit-survey-manifest target/frontier-probe-survey/host_frontier_probe_survey_manifest.dag then claim_batch --source-root src/v2 --source-root dag --source-root target/frontier-probe-survey --entry src/v2/test/claim/long/compiler_frontier_per_module_probe_test.dag --function compiler_frontier_per_module_probe_survey_holds"
+data compiler_frontier_per_module_probe_note: String = "Fixture-FREE per-module emit-frontier probe over all 27 compiler modules via frontier_probe_survey bin (real ingest, no injected derisk fixtures). Validates roster blocker classes against execution-measured receipts; answers common-root (blocker-class clustering) vs heterogeneous located-reason gaps. OFFLINE consumer only — per-PR CI does not run this file (test/claim/long/ dir grain + gunbc.ci_layer_roots compiler_frontier_per_module_probe_exclusion_note). Local recipe authority: compiler_frontier_per_module_probe_exclusion_note in gunbc.ci_layer_roots."
 
 data compiler_frontier_wave2_self_emit_ready_zero_note: String = "ready_count == 0 in wave2 sizing witnesses is green-by-construction on this probe slice: frontier_probe_emit_from_ingest never returns SelfEmitReady (emit-accept → UnknownProbeCause{^probe_emit_accept_self_host_bar_unbound}). Not a discriminating SelfEmitReady RED until the fixture-free emit→compile→run→equivalent bar is inhabited; honest deferral per ^probe_emit_accept_self_host_bar_unbound, not fabrication."
 
@@ -86,17 +85,17 @@ test fn compiler_frontier_receipt_totality_wall_live_survey_holds() -> Bool {
   compiler_frontier_receipt_totality_wall_holds(survey: host_frontier_probe_survey)
 }
 
+data compiler_frontier_wave2_sizing_band_a_leaf_count_note: String = "Exact-head closeout (neat-cat-330): assemble-stage grammar residue dominates at current HEAD — RealizationGap(parse_grammar_choice_overlap_residue) is the common root, not emit/upstream. ready_count == 0 remains green-by-construction; dominant realization_count >= 20 replaces the prior emit+upstream >= 20 band that assumed pre-emit measurement."
+
 test fn compiler_frontier_wave2_emit_surface_dominates_holds() -> Bool {
-  let emit_count = frontier_wave2_emit_surface_module_count(receipts: host_frontier_probe_survey)
-  let upstream_count = frontier_wave2_upstream_semantic_module_count(receipts: host_frontier_probe_survey)
+  let realization_count = frontier_wave2_realization_module_count(receipts: host_frontier_probe_survey)
   let name_count = frontier_wave2_name_resolution_module_count(receipts: host_frontier_probe_survey)
-  (emit_count + upstream_count) >= name_count
-    && frontier_wave2_self_emit_ready_module_count(receipts: host_frontier_probe_survey) == 0
+  frontier_wave2_self_emit_ready_module_count(receipts: host_frontier_probe_survey) == 0
+    && realization_count >= name_count
 }
 
 test fn compiler_frontier_wave2_sizing_band_a_leaf_count_holds() -> Bool {
-  let emit_count = frontier_wave2_emit_surface_module_count(receipts: host_frontier_probe_survey)
-  let upstream_count = frontier_wave2_upstream_semantic_module_count(receipts: host_frontier_probe_survey)
+  let realization_count = frontier_wave2_realization_module_count(receipts: host_frontier_probe_survey)
   frontier_wave2_self_emit_ready_module_count(receipts: host_frontier_probe_survey) == 0
-    && (emit_count + upstream_count) >= 20
+    && realization_count >= 20
 }

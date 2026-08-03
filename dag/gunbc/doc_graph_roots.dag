@@ -239,6 +239,13 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
   },
   HandAuthoredDocBind {
     home: ProbeDoc,
+    slug: "frontier_probe_exact_head_survey_2026-08-03",
+    primary_work: DeclarationRef { module_path: "v2.compiler.self_host.frontier_probe_survey", decl_name: "frontier_probe_exact_head_interim_audit_note", field: WholeDeclaration },
+    additional_works: [DeclarationRef { module_path: "v2.compiler.self_host.frontier", decl_name: "compiler_frontier_receipt_totality_wall_holds", field: WholeDeclaration }],
+    dissolution: HasTrigger { text: "all 27 roster modules surveyed at HEAD, frontier.dag rows hand-authored from receipts, compiler_frontier_per_module_probe_survey_holds greens on the full manifest, and totality wall witnesses pass — then this interim audit receipt deletes with this row" },
+  },
+  HandAuthoredDocBind {
+    home: ProbeDoc,
     slug: "srv2-05-native-agreement-divergence-diagnosis",
     primary_work: DeclarationRef { module_path: "v2.compiler.self_host.witness_entry_eligibility_census", decl_name: "witness_entry_eligibility_census_note", field: WholeDeclaration },
     additional_works: [],
