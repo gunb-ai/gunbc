@@ -85,7 +85,7 @@ test fn compiler_frontier_receipt_totality_wall_live_survey_holds() -> Bool {
   compiler_frontier_receipt_totality_wall_holds(survey: host_frontier_probe_survey)
 }
 
-data compiler_frontier_wave2_sizing_band_a_leaf_count_note: String = "Exact-head closeout (neat-cat-330): assemble-stage grammar residue dominates at current HEAD — RealizationGap(parse_grammar_choice_overlap_residue) is the common root, not emit/upstream. ready_count == 0 remains green-by-construction; dominant realization_count >= 20 replaces the prior emit+upstream >= 20 band that assumed pre-emit measurement."
+data compiler_frontier_wave2_sizing_band_a_leaf_count_note: String = "Interim audit slice (neat-cat-330, 17/27 at 9f978aa8df — NOT closeout): assemble-stage grammar residue dominates in the surveyed modules — RealizationGap(parse_grammar_choice_overlap_residue) is the common root, not emit/upstream. ready_count == 0 remains green-by-construction; dominant realization_count >= 20 replaces the prior emit+upstream >= 20 band that assumed pre-emit measurement."
 
 test fn compiler_frontier_wave2_emit_surface_dominates_holds() -> Bool {
   let realization_count = frontier_wave2_realization_module_count(receipts: host_frontier_probe_survey)
