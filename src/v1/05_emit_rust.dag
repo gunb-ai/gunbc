@@ -1861,6 +1861,18 @@ fn lookup_item_for_value_ref(resolved_name: String, registry: Map<String, ItemIn
   lookup_item(registry: registry, name: value_ref_registry_lookup_key(resolved_name: resolved_name))
 }
 
+fn emit_qualified_value_ref_crate_ident(leaf: String, info: ItemInfo, registry: Map<String, ItemInfo>) -> String {
+  if is_duplicate_qualified_item_registry_marker(info: info) {
+    emit_error_expr(message: "duplicate qualified item_registry key — refuse ambiguous module.leaf overlay", target: Rust)
+  } else {
+    concat("crate::", module_to_filename(name: info.module_name), "::", emit_import_name(n: leaf, registry: registry))
+  }
+}
+
+fn value_ref_item_info_refusal(info: ItemInfo) -> String {
+  emit_error_expr(message: "duplicate qualified item_registry key — refuse ambiguous module.leaf overlay", target: Rust)
+}
+
 fn insert_scoped_data_item(scoped: Map<String, List<Node>>, name: String, item: Node) -> Map<String, List<Node>> {
   let existing = match map_get(scoped, name) {
     Present { value: entries } => entries
@@ -6428,11 +6440,16 @@ fn emit_value_ref_ident(name: String, registry: Map<String, ItemInfo>, emit_info
     let leaf = value_ref_qualified_leaf(name: name)
     let qualifier = value_ref_qualifier_prefix(name: name)
     if qualifier != "" {
-      concat("crate::", module_to_filename(name: qualifier), "::", emit_import_name(n: leaf, registry: registry))
+      match lookup_item_for_value_ref(resolved_name: name, registry: registry) {
+        Present { value: info } =>
+          emit_qualified_value_ref_crate_ident(leaf: leaf, info: info, registry: registry)
+        Absent =>
+          emit_error_expr(message: "qualified value reference missing exact registry row — refuse authored qualifier", target: Rust)
+      }
     } else {
       match map_get(registry, leaf) {
         Present { value: info } =>
-          concat("crate::", module_to_filename(name: info.module_name), "::", emit_import_name(n: leaf, registry: registry))
+          emit_qualified_value_ref_crate_ident(leaf: leaf, info: info, registry: registry)
         Absent =>
           if freemonoid_empty_from_emit_info(leaf_name: leaf, emit_info: emit_info) { emit_freemonoid_empty_rc_value() }
           else { emit_ident(name: leaf, target: Rust) }
@@ -6481,9 +6498,12 @@ fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: Infe
       Absent =>
         match lookup_item_for_value_ref(resolved_name: resolved_name, registry: registry) {
           Present { value: info } =>
-            let is_data = info.kind == DataItem
-            if is_data { concat(emit_value_ref_ident(name: name, registry: registry, emit_info: emit_info), "()") }
-            else {
+            if is_duplicate_qualified_item_registry_marker(info: info) {
+              value_ref_item_info_refusal(info: info)
+            } else {
+              let is_data = info.kind == DataItem
+              if is_data { concat(emit_value_ref_ident(name: name, registry: registry, emit_info: emit_info), "()") }
+              else {
               let is_function_value = match binding_kind {
                 Present { value: FunctionValueBinding } => true
                 _ => false
@@ -6498,6 +6518,7 @@ fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: Infe
                 _ => ident
               } }
               ident_str
+              }
             }
           Absent =>
             let ident = emit_value_ref_ident(name: resolved_name, registry: registry, emit_info: emit_info)
@@ -6544,9 +6565,13 @@ fn emit_typed_expr_base(texpr: Node, registry: Map<String, ItemInfo>, scope: Inf
               registry: registry
             ) {
               Present { value: info } =>
-                let is_data = info.kind == DataItem
-                if is_data { concat(emit_value_ref_ident(name: n, registry: registry, emit_info: emit_info), "()") }
-                else { emit_value_ref_ident(name: n, registry: registry, emit_info: emit_info) }
+                if is_duplicate_qualified_item_registry_marker(info: info) {
+                  value_ref_item_info_refusal(info: info)
+                } else {
+                  let is_data = info.kind == DataItem
+                  if is_data { concat(emit_value_ref_ident(name: n, registry: registry, emit_info: emit_info), "()") }
+                  else { emit_value_ref_ident(name: n, registry: registry, emit_info: emit_info) }
+                }
               Absent =>
                 emit_value_ref_ident(name: n, registry: registry, emit_info: emit_info)
             }

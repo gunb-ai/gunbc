@@ -4012,14 +4012,26 @@ pub fn build_qualified_item_registry(
                     acc,
                     |acc2: Rc<HashMap<String, Rc<ItemInfo>>>, item_name: String| {
                         match v1_rt::map_get(&tm.item_registry.clone(), item_name.clone()) {
-                            Some(info) => v1_rt::rc_map_insert(
-                                acc2.clone(),
-                                v1_rt::concat(
+                            Some(info) => {
+                                let qualified_name = v1_rt::concat(
                                     v1_rt::concat(module_name.clone(), ".".to_string()),
                                     item_name.clone(),
-                                ),
-                                info.clone(),
-                            ),
+                                );
+                                match v1_rt::map_get(&acc2, qualified_name.clone()) {
+                                    Some(_) => v1_rt::rc_map_insert(
+                                        acc2.clone(),
+                                        qualified_name.clone(),
+                                        duplicate_qualified_item_registry_marker(
+                                            qualified_name.clone(),
+                                        ),
+                                    ),
+                                    None => v1_rt::rc_map_insert(
+                                        acc2.clone(),
+                                        qualified_name.clone(),
+                                        info.clone(),
+                                    ),
+                                }
+                            }
                             None => acc2.clone(),
                         }
                     },
@@ -4047,10 +4059,36 @@ pub fn merge_item_registries(
 pub fn value_ref_leaf_key_collision_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Construction wall for the cross-module half of the qualified-value-reference dotted-render class (sibling of value_ref_self_module_normalization_note for the same-module half). #7685 keyed registry lookup on the leaf name so the is_data call-suffix decision fired for dotted references, but the flat item_registry is keyed by bare name with last-write-wins across the closure — so module_a.homonym_value could consult module_b's ItemInfo when both modules declare the same leaf. Fix: merge a qualified-name overlay (module.leaf -> ItemInfo, one authority per declaring module) at emit time and key cross-module lookups on the full normalized spelling; same-module references still normalize to bare before lookup. The qualifier prefix remains the module-path authority for emit_value_ref_ident.".to_string()
+            "Construction wall for the cross-module half of the qualified-value-reference dotted-render class (sibling of value_ref_self_module_normalization_note for the same-module half). #7685 keyed registry lookup on the leaf name so the is_data call-suffix decision fired for dotted references, but the flat item_registry is keyed by bare name with last-write-wins across the closure — so module_a.homonym_value could consult module_b's ItemInfo when both modules declare the same leaf. Fix: merge a qualified-name overlay (module.leaf -> ItemInfo, one authority per declaring module) at emit time and key cross-module lookups on the full normalized spelling; same-module references still normalize to bare before lookup. Rendering uses the exact qualified registry row for BOTH declaration kind and declaring module — never the authored qualifier string alone (§5 fabricated-plausible-output refusal). Duplicate exact module.leaf overlay keys refuse via duplicate_qualified_item_registry_marker rather than last-write-wins.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
+}
+
+pub fn duplicate_qualified_item_registry_marker_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Fail-closed marker row for duplicate exact module.leaf keys in the qualified item_registry overlay. build_qualified_item_registry refuses a second distinct ItemInfo at the same qualified key instead of last-write-wins. lookup_item_for_value_ref and emit_value_ref_ident surface compile_error! when this marker is reached.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn duplicate_qualified_item_registry_marker(name: String) -> Rc<ItemInfo> {
+    Rc::new(ItemInfo {
+        name: name.clone(),
+        module_name: "__DUPLICATE_QUALIFIED_ITEM_REGISTRY_KEY__".to_string(),
+        kind: ItemKind::OtherItem,
+        service_names: Rc::new(vec![]),
+        resource_names: Rc::new(vec![]),
+        params: Rc::new(vec![]),
+        is_self_recursive: false,
+        has_non_tail_self_call: false,
+    })
+}
+
+pub fn is_duplicate_qualified_item_registry_marker(info: Rc<ItemInfo>) -> bool {
+    (info.module_name.clone() == "__DUPLICATE_QUALIFIED_ITEM_REGISTRY_KEY__".to_string())
 }
 
 pub fn value_ref_registry_lookup_key(resolved_name: String) -> String {
@@ -4071,6 +4109,38 @@ pub fn lookup_item_for_value_ref(
     lookup_item(
         registry.clone(),
         value_ref_registry_lookup_key(resolved_name.clone()),
+    )
+}
+
+pub fn emit_qualified_value_ref_crate_ident(
+    leaf: String,
+    info: Rc<ItemInfo>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+) -> String {
+    if is_duplicate_qualified_item_registry_marker(info.clone()) {
+        emit_error_expr(
+            "duplicate qualified item_registry key — refuse ambiguous module.leaf overlay"
+                .to_string(),
+            RenderTarget::Rust,
+        )
+    } else {
+        v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    "crate::".to_string(),
+                    module_to_filename(info.module_name.clone()),
+                ),
+                "::".to_string(),
+            ),
+            emit_import_name(leaf.clone(), registry.clone()),
+        )
+    }
+}
+
+pub fn value_ref_item_info_refusal(info: Rc<ItemInfo>) -> String {
+    emit_error_expr(
+        "duplicate qualified item_registry key — refuse ambiguous module.leaf overlay".to_string(),
+        RenderTarget::Rust,
     )
 }
 
@@ -17268,24 +17338,16 @@ pub fn emit_value_ref_ident(
             let leaf = value_ref_qualified_leaf(name.clone());
             let qualifier = value_ref_qualifier_prefix(name.clone());
             if (qualifier.clone() != "".to_string()) {
-                v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat("crate::".to_string(), module_to_filename(qualifier.clone())),
-                        "::".to_string(),
-                    ),
-                    emit_import_name(leaf.clone(), registry.clone()),
-                )
+                match lookup_item_for_value_ref(name.clone(), registry.clone()) {
+    Some(info) => emit_qualified_value_ref_crate_ident(leaf.clone(), info.clone(), registry.clone()),
+    None => emit_error_expr("qualified value reference missing exact registry row — refuse authored qualifier".to_string(), RenderTarget::Rust),
+}
             } else {
                 match v1_rt::map_get(&registry, leaf.clone()) {
-                    Some(info) => v1_rt::concat(
-                        v1_rt::concat(
-                            v1_rt::concat(
-                                "crate::".to_string(),
-                                module_to_filename(info.module_name.clone()),
-                            ),
-                            "::".to_string(),
-                        ),
-                        emit_import_name(leaf.clone(), registry.clone()),
+                    Some(info) => emit_qualified_value_ref_crate_ident(
+                        leaf.clone(),
+                        info.clone(),
+                        registry.clone(),
                     ),
                     None => {
                         if freemonoid_empty_from_emit_info(leaf.clone(), emit_info.clone()) {
@@ -17404,46 +17466,55 @@ pub fn emit_var_ref(
                             match lookup_item_for_value_ref(resolved_name.clone(), registry.clone())
                             {
                                 Some(info) => {
-                                    let is_data = (info.kind.clone() == ItemKind::DataItem);
-                                    if is_data.clone() {
-                                        v1_rt::concat(
-                                            emit_value_ref_ident(
-                                                name.clone(),
-                                                registry.clone(),
-                                                emit_info.clone(),
-                                            ),
-                                            "()".to_string(),
-                                        )
+                                    if is_duplicate_qualified_item_registry_marker(info.clone()) {
+                                        value_ref_item_info_refusal(info.clone())
                                     } else {
                                         {
-                                            let is_function_value =
-                                                match binding_kind.clone().as_deref().cloned() {
-                                                    Some(VarBindingKind::FunctionValueBinding) => {
-                                                        true
-                                                    }
-                                                    _ => false,
-                                                };
-                                            let ident = emit_value_ref_ident(
-                                                resolved_name.clone(),
-                                                registry.clone(),
-                                                emit_info.clone(),
-                                            );
-                                            let ident_str = if is_function_value.clone() {
-                                                ident.clone()
+                                            let is_data = (info.kind.clone() == ItemKind::DataItem);
+                                            if is_data.clone() {
+                                                v1_rt::concat(
+                                                    emit_value_ref_ident(
+                                                        name.clone(),
+                                                        registry.clone(),
+                                                        emit_info.clone(),
+                                                    ),
+                                                    "()".to_string(),
+                                                )
                                             } else {
-                                                if moves_by_value.clone() {
-                                                    ident.clone()
-                                                } else {
-                                                    match resolved_type.clone() {
-                                                        Some(_) => apply_type_template1(
-                                                            sharing.clone_value.clone(),
-                                                            ident.clone(),
-                                                        ),
-                                                        _ => ident.clone(),
-                                                    }
+                                                {
+                                                    let is_function_value = match binding_kind
+                                                        .clone()
+                                                        .as_deref()
+                                                        .cloned()
+                                                    {
+                                                        Some(
+                                                            VarBindingKind::FunctionValueBinding,
+                                                        ) => true,
+                                                        _ => false,
+                                                    };
+                                                    let ident = emit_value_ref_ident(
+                                                        resolved_name.clone(),
+                                                        registry.clone(),
+                                                        emit_info.clone(),
+                                                    );
+                                                    let ident_str = if is_function_value.clone() {
+                                                        ident.clone()
+                                                    } else {
+                                                        if moves_by_value.clone() {
+                                                            ident.clone()
+                                                        } else {
+                                                            match resolved_type.clone() {
+                                                                Some(_) => apply_type_template1(
+                                                                    sharing.clone_value.clone(),
+                                                                    ident.clone(),
+                                                                ),
+                                                                _ => ident.clone(),
+                                                            }
+                                                        }
+                                                    };
+                                                    ident_str.clone()
                                                 }
-                                            };
-                                            ident_str.clone()
+                                            }
                                         }
                                     }
                                 }
@@ -17560,22 +17631,28 @@ pub fn emit_typed_expr_base(
                                 registry.clone(),
                             ) {
                                 Some(info) => {
-                                    let is_data = (info.kind.clone() == ItemKind::DataItem);
-                                    if is_data.clone() {
-                                        v1_rt::concat(
-                                            emit_value_ref_ident(
-                                                n.clone(),
-                                                registry.clone(),
-                                                emit_info.clone(),
-                                            ),
-                                            "()".to_string(),
-                                        )
+                                    if is_duplicate_qualified_item_registry_marker(info.clone()) {
+                                        value_ref_item_info_refusal(info.clone())
                                     } else {
-                                        emit_value_ref_ident(
-                                            n.clone(),
-                                            registry.clone(),
-                                            emit_info.clone(),
-                                        )
+                                        {
+                                            let is_data = (info.kind.clone() == ItemKind::DataItem);
+                                            if is_data.clone() {
+                                                v1_rt::concat(
+                                                    emit_value_ref_ident(
+                                                        n.clone(),
+                                                        registry.clone(),
+                                                        emit_info.clone(),
+                                                    ),
+                                                    "()".to_string(),
+                                                )
+                                            } else {
+                                                emit_value_ref_ident(
+                                                    n.clone(),
+                                                    registry.clone(),
+                                                    emit_info.clone(),
+                                                )
+                                            }
+                                        }
                                     }
                                 }
                                 None => emit_value_ref_ident(

@@ -1,6 +1,6 @@
 module test.claim.qualified_leaf_registry_collision_emit_witness_test
 
-data qualified_leaf_registry_collision_emit_witness_note: String = "Discriminating regression control for the post-#7685 leaf-keyed qualified lookup collision: emit_var_ref and emit_value_ref_ident key the flat item_registry on the leaf name only, so a cross-module qualified reference (module_a.homonym_value) can bind to module_b's ItemInfo when both modules declare the same leaf. Unlike qualified_declaration_reference_emit_witness_test.dag's cross-module case (interpreter_surviving_roles_ceiling — a unique leaf), this witness plants TWO modules with the SAME leaf name and different values, then asserts the consumer's qualified reference emits against module_a's crate path, never module_b's. dissolve-on: never — permanent regression alarm for qualified-path disambiguation at emit time."
+data qualified_leaf_registry_collision_emit_witness_note: String = "Discriminating regression control for the post-#7685 leaf-keyed qualified lookup collision class. Same-kind homonyms (homonym_value data/data) prove crate-path disambiguation; cross-kind homonyms (result data vs fn) prove the exact qualified registry row decides BOTH declaration kind (foo vs foo()) AND declaring module — the defect that broke was a kind decision keyed on the wrong module's ItemInfo. Each cross-kind scenario runs with both import orders so qualification wins over last-write registry order. dissolve-on: never — permanent regression alarm for qualified-path disambiguation at emit time."
 
 fn w_cross_module_same_leaf_binds_qualifier_module() -> Bool {
   compile_dag_rust_emit_check(
@@ -11,6 +11,58 @@ fn w_cross_module_same_leaf_binds_qualifier_module() -> Bool {
   )
 }
 
+fn w_cross_kind_data_fn_a_first() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.leaf_key_collision_cross_kind_data_fn_a_first\n\nimport test.fixture.leaf_key_collision.cross_kind_data_fn.module_a\nimport test.fixture.leaf_key_collision.cross_kind_data_fn.module_b\nimport std.types { Int }\n\ndata derived: Int = test.fixture.leaf_key_collision.cross_kind_data_fn.module_a.result\n",
+    "src/test_claim_leaf_key_collision_cross_kind_data_fn_a_first.rs",
+    ["test_fixture_leaf_key_collision_cross_kind_data_fn_module_a::result()"],
+    ["test_fixture_leaf_key_collision_cross_kind_data_fn_module_b::result"]
+  )
+}
+
+fn w_cross_kind_data_fn_b_first() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.leaf_key_collision_cross_kind_data_fn_b_first\n\nimport test.fixture.leaf_key_collision.cross_kind_data_fn.module_b\nimport test.fixture.leaf_key_collision.cross_kind_data_fn.module_a\nimport std.types { Int }\n\ndata derived: Int = test.fixture.leaf_key_collision.cross_kind_data_fn.module_a.result\n",
+    "src/test_claim_leaf_key_collision_cross_kind_data_fn_b_first.rs",
+    ["test_fixture_leaf_key_collision_cross_kind_data_fn_module_a::result()"],
+    ["test_fixture_leaf_key_collision_cross_kind_data_fn_module_b::result"]
+  )
+}
+
+fn w_cross_kind_fn_data_a_first() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.leaf_key_collision_cross_kind_fn_data_a_first\n\nimport test.fixture.leaf_key_collision.cross_kind_fn_data.module_a\nimport test.fixture.leaf_key_collision.cross_kind_fn_data.module_b\nimport std.types { Int }\n\ndata derived: fn() -> Int = test.fixture.leaf_key_collision.cross_kind_fn_data.module_a.result\n",
+    "src/test_claim_leaf_key_collision_cross_kind_fn_data_a_first.rs",
+    ["test_fixture_leaf_key_collision_cross_kind_fn_data_module_a::result"],
+    ["test_fixture_leaf_key_collision_cross_kind_fn_data_module_b::result()"]
+  )
+}
+
+fn w_cross_kind_fn_data_b_first() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.leaf_key_collision_cross_kind_fn_data_b_first\n\nimport test.fixture.leaf_key_collision.cross_kind_fn_data.module_b\nimport test.fixture.leaf_key_collision.cross_kind_fn_data.module_a\nimport std.types { Int }\n\ndata derived: fn() -> Int = test.fixture.leaf_key_collision.cross_kind_fn_data.module_a.result\n",
+    "src/test_claim_leaf_key_collision_cross_kind_fn_data_b_first.rs",
+    ["test_fixture_leaf_key_collision_cross_kind_fn_data_module_a::result"],
+    ["test_fixture_leaf_key_collision_cross_kind_fn_data_module_b::result()"]
+  )
+}
+
 test fn cross_module_same_leaf_emits_qualifier_module_not_registry_winner() -> Bool {
   w_cross_module_same_leaf_binds_qualifier_module()
+}
+
+test fn cross_kind_data_fn_emits_data_call_suffix_a_first() -> Bool {
+  w_cross_kind_data_fn_a_first()
+}
+
+test fn cross_kind_data_fn_emits_data_call_suffix_b_first() -> Bool {
+  w_cross_kind_data_fn_b_first()
+}
+
+test fn cross_kind_fn_data_emits_fn_item_a_first() -> Bool {
+  w_cross_kind_fn_data_a_first()
+}
+
+test fn cross_kind_fn_data_emits_fn_item_b_first() -> Bool {
+  w_cross_kind_fn_data_b_first()
 }
