@@ -1,7 +1,18 @@
 module test.claim.cited_symbol_resolution_witness_test
 
 import gunbc.ci_layer_roots { witness_layer_roots }
+import gunbc.doc_graph_roots {
+  hand_authored_cited_symbol_control_declaration_refs,
+  hand_authored_doc_declaration_refs,
+  hand_authored_production_doc_declaration_refs,
+}
 import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField, decl_ref }
+import v2.lens.cited_symbol_resolution {
+  cited_symbol_enrolled_refusal_count,
+  cited_symbol_planted_ambiguous_control_refuses,
+  cited_symbol_planted_control_refusal_count,
+  cited_symbol_resolution_violation_count,
+}
 import v2.lens.enforcement.receipts { enforcement_red_probe_body_leaf }
 import v2.lens.module_graph { ModuleDeclarationFact, module_declaration_facts_live }
 import v2.std.decl_index { DeclFact, FnItem, decl_facts }
@@ -15,7 +26,7 @@ import v2.std.decl_ref_resolution {
   DeclarationRefAmbiguous,
 }
 
-data cited_symbol_resolution_witness_note: String = "G1 feature:cited-symbol-resolution — fast per-PR controls over cached witness-layer decl_facts + module_declaration_facts rows, or synthetic fixtures. Corpus-scale hand-authored census witnesses live in test.claim.long.cited_symbol_resolution_witness_test (operator 5s fast-lane rule)."
+data cited_symbol_resolution_witness_note: String = "G1 feature:cited-symbol-resolution — fast per-PR controls over cached witness-layer decl_facts + module_declaration_facts rows, synthetic fixtures, and permanent planted HandAuthoredDocBind controls (operator ruling 2026-08-03). Corpus-scale production census witnesses live in test.claim.long.cited_symbol_resolution_witness_test (operator 5s fast-lane rule)."
 
 data cited_symbol_witness_layer_facts: List<DeclFact> = decl_facts(pool_roots: witness_layer_roots)
 
@@ -154,4 +165,26 @@ test fn cited_symbol_refusal_count_red_on_dangling_fixture() -> Bool {
     facts: cited_symbol_witness_layer_facts,
     modules: cited_symbol_witness_layer_modules
   ) == 1
+}
+
+test fn cited_symbol_planted_doc_graph_controls_are_enrolled() -> Bool {
+  length(xs: hand_authored_cited_symbol_control_declaration_refs()) == 3
+}
+
+test fn cited_symbol_planted_doc_graph_controls_all_refuse() -> Bool {
+  cited_symbol_planted_control_refusal_count() == 3
+}
+
+test fn cited_symbol_planted_ambiguous_control_refuses() -> Bool {
+  cited_symbol_planted_ambiguous_control_refuses()
+}
+
+test fn cited_symbol_enrolled_population_refusal_proves_gate_not_vacuous() -> Bool {
+  cited_symbol_enrolled_refusal_count() >= 3
+    && cited_symbol_resolution_violation_count() == cited_symbol_enrolled_refusal_count() - cited_symbol_planted_control_refusal_count()
+}
+
+test fn cited_symbol_production_population_excludes_planted_controls() -> Bool {
+  length(xs: hand_authored_doc_declaration_refs())
+    == length(xs: hand_authored_production_doc_declaration_refs()) + length(xs: hand_authored_cited_symbol_control_declaration_refs())
 }
