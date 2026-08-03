@@ -1832,7 +1832,7 @@ fn merge_item_registries(bare: Map<String, ItemInfo>, qualified: Map<String, Ite
 
 data value_ref_leaf_key_collision_note: String = "Construction wall for the cross-module half of the qualified-value-reference dotted-render class (sibling of value_ref_self_module_normalization_note for the same-module half). #7685 keyed registry lookup on the leaf name so the is_data call-suffix decision fired for dotted references, but the flat item_registry is keyed by bare name with last-write-wins across the closure — so module_a.homonym_value could consult module_b's ItemInfo when both modules declare the same leaf. Fix: merge a qualified-name overlay (module.leaf -> ItemInfo, one authority per declaring module) at emit time and key cross-module lookups on the full normalized spelling; same-module references still normalize to bare before lookup. Rendering uses the exact qualified registry row for BOTH declaration kind and declaring module — never the authored qualifier string alone (§5 fabricated-plausible-output refusal). Duplicate exact module.leaf overlay keys refuse via duplicate_qualified_item_registry_marker rather than last-write-wins."
 
-data duplicate_qualified_item_registry_marker_note: String = "Fail-closed marker row for duplicate exact module.leaf keys in the qualified item_registry overlay. build_qualified_item_registry inserts this sentinel instead of last-write-wins. emit_value_ref_ident / emit_var_ref / emit_typed_expr_base refuse via compile_error! when the sentinel is reached — is_duplicate_qualified_item_registry_marker is the single predicate those sites share (DEFINE-AND-CONSUME, not define-only)."
+data duplicate_qualified_item_registry_marker_note: String = "Fail-closed marker row for duplicate exact module.leaf keys in the qualified item_registry overlay. build_qualified_item_registry refuses a second distinct ItemInfo at the same qualified key instead of last-write-wins. lookup_item_for_value_ref and emit_value_ref_ident surface compile_error! when this marker is reached."
 
 fn duplicate_qualified_item_registry_marker(name: String) -> ItemInfo {
   ItemInfo {
@@ -1851,10 +1851,6 @@ fn is_duplicate_qualified_item_registry_marker(info: ItemInfo) -> Bool {
   info.module_name == "__DUPLICATE_QUALIFIED_ITEM_REGISTRY_KEY__"
 }
 
-fn emit_duplicate_qualified_item_registry_refuse(qualified_name: String) -> String {
-  concat("compile_error!(\"duplicate qualified item_registry key: ", qualified_name, "\")")
-}
-
 fn value_ref_registry_lookup_key(resolved_name: String) -> String {
   let qualifier = value_ref_qualifier_prefix(name: resolved_name)
   if qualifier == "" { value_ref_qualified_leaf(name: resolved_name) }
@@ -1863,6 +1859,18 @@ fn value_ref_registry_lookup_key(resolved_name: String) -> String {
 
 fn lookup_item_for_value_ref(resolved_name: String, registry: Map<String, ItemInfo>) -> ItemInfo? {
   lookup_item(registry: registry, name: value_ref_registry_lookup_key(resolved_name: resolved_name))
+}
+
+fn emit_qualified_value_ref_crate_ident(leaf: String, info: ItemInfo, registry: Map<String, ItemInfo>) -> String {
+  if is_duplicate_qualified_item_registry_marker(info: info) {
+    emit_error_expr(message: "duplicate qualified item_registry key — refuse ambiguous module.leaf overlay", target: Rust)
+  } else {
+    concat("crate::", module_to_filename(name: info.module_name), "::", emit_import_name(n: leaf, registry: registry))
+  }
+}
+
+fn value_ref_item_info_refusal(info: ItemInfo) -> String {
+  emit_error_expr(message: "duplicate qualified item_registry key — refuse ambiguous module.leaf overlay", target: Rust)
 }
 
 fn insert_scoped_data_item(scoped: Map<String, List<Node>>, name: String, item: Node) -> Map<String, List<Node>> {
@@ -6428,32 +6436,27 @@ fn variant_ref_self_wraps(name: String, enum_name: String, shared_types: Set<Str
 data value_ref_ident_dotted_fallback_note: String = "Construction wall for the dotted-render class in VALUE-EXPRESSION position (sibling of variant_pattern_dotted_qualification_note/PATTERN, bare_qualified_name in emit_typed_record_lit/CONSTRUCTION, coerce_primitive_type_dotted_fallback_note/TYPE, and rust_fn_sig_leaf_name_dotted_note/FN-SIG TYPE). A namespace-qualified dotted name (e.g. v2.std.node.Edge) whose leaf misses the registry previously fell through to emit_ident(name: name, ...) with the FULL dotted string still attached — emit_ident has no dot-awareness (pure case-conversion/sanitization), so the dots rode straight into the emitted Rust as a bare field-access chain starting at the first segment (rustc: 'cannot find value v2 in this scope', E0425). Fixed by passing the already-computed leaf, the same qualified_last_segment (v1.std.core) reduction the Present arm already keys its registry lookup on — not a new fallback, the existing one corrected to use the value already in scope. The CALL-callee sibling (emit_typed_call's func_ident, e.g. a bare dotted function reference like v2.std.staging.resolve_probe(..) rendered verbatim) reuses this same fn directly rather than re-deriving the leaf a third time (DESIGN section 2/3: one shared helper, not a forked per-seam patch); its registry lookup (the `callee` binding) is likewise re-keyed on qualified_last_segment(func) so a dotted cross-module call resolves the same ItemInfo a bare call would. Every already-bare name renders exactly as before (qualified_last_segment is the identity on an unqualified name)."
 
 fn emit_value_ref_ident(name: String, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo) -> String {
-  match lookup_item_for_value_ref(resolved_name: name, registry: registry) {
-    Present { value: info } =>
-      if is_duplicate_qualified_item_registry_marker(info: info) {
-        emit_duplicate_qualified_item_registry_refuse(
-          qualified_name: value_ref_registry_lookup_key(resolved_name: name)
-        )
-      } else if string_contains(s: name, pattern: ".") {
-        let leaf = value_ref_qualified_leaf(name: name)
-        concat("crate::", module_to_filename(name: info.module_name), "::", emit_import_name(n: leaf, registry: registry))
-      } else {
-        emit_ident(name: name, target: Rust)
+  if string_contains(s: name, pattern: ".") {
+    let leaf = value_ref_qualified_leaf(name: name)
+    let qualifier = value_ref_qualifier_prefix(name: name)
+    if qualifier != "" {
+      match lookup_item_for_value_ref(resolved_name: name, registry: registry) {
+        Present { value: info } =>
+          emit_qualified_value_ref_crate_ident(leaf: leaf, info: info, registry: registry)
+        Absent =>
+          emit_error_expr(message: "qualified value reference missing exact registry row — refuse authored qualifier", target: Rust)
       }
-    Absent =>
-      if string_contains(s: name, pattern: ".") {
-        let leaf = value_ref_qualified_leaf(name: name)
-        let qualifier = value_ref_qualifier_prefix(name: name)
-        if qualifier != "" {
-          concat("crate::", module_to_filename(name: qualifier), "::", emit_import_name(n: leaf, registry: registry))
-        } else if freemonoid_empty_from_emit_info(leaf_name: leaf, emit_info: emit_info) {
-          emit_freemonoid_empty_rc_value()
-        } else {
-          emit_ident(name: leaf, target: Rust)
-        }
-      } else {
-        emit_ident(name: name, target: Rust)
+    } else {
+      match map_get(registry, leaf) {
+        Present { value: info } =>
+          emit_qualified_value_ref_crate_ident(leaf: leaf, info: info, registry: registry)
+        Absent =>
+          if freemonoid_empty_from_emit_info(leaf_name: leaf, emit_info: emit_info) { emit_freemonoid_empty_rc_value() }
+          else { emit_ident(name: leaf, target: Rust) }
       }
+    }
+  } else {
+    emit_ident(name: name, target: Rust)
   }
 }
 
@@ -6496,27 +6499,25 @@ fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: Infe
         match lookup_item_for_value_ref(resolved_name: resolved_name, registry: registry) {
           Present { value: info } =>
             if is_duplicate_qualified_item_registry_marker(info: info) {
-              emit_duplicate_qualified_item_registry_refuse(
-                qualified_name: value_ref_registry_lookup_key(resolved_name: resolved_name)
-              )
+              value_ref_item_info_refusal(info: info)
             } else {
               let is_data = info.kind == DataItem
               if is_data { concat(emit_value_ref_ident(name: name, registry: registry, emit_info: emit_info), "()") }
               else {
-                let is_function_value = match binding_kind {
-                  Present { value: FunctionValueBinding } => true
-                  _ => false
-                }
-                let ident = emit_value_ref_ident(name: resolved_name, registry: registry, emit_info: emit_info)
-                let ident_str = if is_function_value {
-                  ident
-                } else if moves_by_value {
-                  ident
-                } else { match resolved_type {
-                  Present { value: _ } => apply_type_template1(template: sharing.clone_value, arg0: ident)
-                  _ => ident
-                } }
-                ident_str
+              let is_function_value = match binding_kind {
+                Present { value: FunctionValueBinding } => true
+                _ => false
+              }
+              let ident = emit_value_ref_ident(name: resolved_name, registry: registry, emit_info: emit_info)
+              let ident_str = if is_function_value {
+                ident
+              } else if moves_by_value {
+                ident
+              } else { match resolved_type {
+                Present { value: _ } => apply_type_template1(template: sharing.clone_value, arg0: ident)
+                _ => ident
+              } }
+              ident_str
               }
             }
           Absent =>
@@ -6559,16 +6560,13 @@ fn emit_typed_expr_base(texpr: Node, registry: Map<String, ItemInfo>, scope: Inf
             } else { qualified }
             }
           Absent =>
-            let resolved_name = value_ref_normalize_self_module(name: n, module_name: scope.module_name)
             match lookup_item_for_value_ref(
-              resolved_name: resolved_name,
+              resolved_name: value_ref_normalize_self_module(name: n, module_name: scope.module_name),
               registry: registry
             ) {
               Present { value: info } =>
                 if is_duplicate_qualified_item_registry_marker(info: info) {
-                  emit_duplicate_qualified_item_registry_refuse(
-                    qualified_name: value_ref_registry_lookup_key(resolved_name: resolved_name)
-                  )
+                  value_ref_item_info_refusal(info: info)
                 } else {
                   let is_data = info.kind == DataItem
                   if is_data { concat(emit_value_ref_ident(name: n, registry: registry, emit_info: emit_info), "()") }
