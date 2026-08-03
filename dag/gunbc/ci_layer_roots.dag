@@ -732,31 +732,7 @@ Dissolve-on: the crate-layout artifact moves to host-driven generation with the 
 
 data witness_admission_fixture_note: String = "Phase 0(b): floor_skip control fixtures excluded at dir grain — consumers are explicit rosters in floor_skip_discovery_witness, not the discovery corpus. Dissolves when fixture-home policy changes."
 
-<<<<<<< HEAD
 data known_red_probe_note: String = "Phase 0(b) quarantine probe cadence (module-identity-storage-binding): known-red frontier witnesses that EXPECT RED on main — the falsifier probe batch runs them SelectionApplied; greening is a counted un-quarantine event (per-row dissolve_on on the authority). Distinct from falsifier_self_host_wet (green-only SelfEmitted receipts). SINGLE AUTHORITY (2026-08-03): the rows live at function grain in gunbc.explicit_witness_admission explicit_witness_admissions and BOTH consumers derive from them — this roster is the falsifier batch's projection, and v2.workflow.floor_discovery_producer drops exactly the same (entry, function) pairs from per-PR discovery. The former shape was a dual representation: a QuarantineProbeExpectRed WitnessExclusionRow removing the whole FILE plus a probe_red(entry, f) row enrolling one FUNCTION, reconciled by a check instead of by construction. Those pattern rows are deleted; a pattern row that re-states a quarantine is now refused by witness_exclusion_row_well_formed."
-=======
-fn probe_red(entry: String, f: String) -> ScheduleWitnessEntry {
-  ScheduleWitnessEntry { entry: entry, function: f, kind: CorpusWitnessKind }
-}
-
-data known_red_probe_note: String = "Phase 0(b) quarantine probe cadence (module-identity-storage-binding): known-red frontier witnesses excluded from per-PR discovery that EXPECT RED on main — the falsifier probe batch runs them SelectionApplied; greening is a counted un-quarantine event (dissolve-on in known_red_frontier_note per row). Distinct from falsifier_self_host_wet (green-only SelfEmitted receipts)."
-
-data known_red_probe_entries: List<ScheduleWitnessEntry> = [
-  probe_red(entry: "src/v2/test/claim/emit/logic_ground_truth_test.dag", f: "logic_complement_truth_table"),
-  probe_red(entry: "src/v2/test/claim/emit/logic_ground_truth_test.dag", f: "logic_meet_truth_table"),
-  probe_red(entry: "src/v2/test/claim/emit/logic_ground_truth_test.dag", f: "logic_join_truth_table"),
-  probe_red(entry: "src/v2/test/claim/manual/english_emit_add_test.dag", f: "english_emit_add_ingest_round_trip_holds"),
-  probe_red(entry: "src/v2/test/claim/manual/english_emit_add_test.dag", f: "english_emit_add_prose_holds"),
-  probe_red(entry: "src/v2/test/claim/self_host/compiler_closure_emit_from_ingest_test.dag", f: "compiler_closure_scoped_ingest_module_count_ok_holds"),
-  probe_red(entry: "dag/test/claim/legacy_test_behavior_disposition_acceptance_test.dag", f: "legacy_test_behavior_unclassified_frontier_is_zero"),
-  probe_red(entry: "dag/test/claim/observation_raw_print_retirement_acceptance_test.dag", f: "observation_emit_frontier_is_zero"),
-  probe_red(entry: "dag/test/claim/source_integration_proof_kernel_acceptance_test.dag", f: "witness_p1_proof_kernel_acceptance_contract_holds"),
-  probe_red(entry: "dag/test/claim/namespace_reference_derived_closure_acceptance_test.dag", f: "witness_namespace_reference_derived_closure_closing_contract_holds"),
-  probe_red(entry: "src/v2/test/claim/execution/seed_honesty_discharge_unavailable_test.dag", f: "v1_seed_honesty_decision_closing_contract_holds"),
-  probe_red(entry: "dag/test/claim/qualified_leaf_registry_collision_emit_witness_test.dag", f: "cross_module_same_leaf_emits_qualifier_module_not_registry_winner"),
-  probe_red(entry: "src/v2/test/claim/long/v2_emitter_direct_rust_door_acceptance_test.dag", f: "witness_v2_emitter_direct_rust_door_closing_contract_holds")
-]
->>>>>>> 6dc659c0c67 (Meet review-ready conditions: merge main, closure post-emit, quarantine.)
 
 fn known_red_probe_roster() -> List<ScheduleWitnessEntry> {
   known_red_probe_corpus_roster()
