@@ -203,8 +203,8 @@ payload. Strictly better than self-compare.
 > The receipt does not need to *know* the predecessor floor was green. It needs to record
 > that it **cannot** know — which at that layer is unconditionally true today, so the honest
 > form is one counted row stating that this baseline assumes predecessor coverage and cannot
-> verify it. Cheap to write, impossible to mistake for a proof, and it dissolves when stage 2
-> lands.
+> verify it. Cheap to write, impossible to mistake for a proof, and it dissolves on the
+> restoration trigger above — when the merge-queue candidate gate enforces.
 
 **Stage 2 — last-green baseline: CONSIDERED AND REJECTED (operator ruling, 2026-08-03).**
 This note originally proposed it as the sequel. The ruling rejects it for ordinary selection:
