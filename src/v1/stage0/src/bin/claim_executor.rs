@@ -8695,6 +8695,7 @@ mod tests {
                 budget_ms: 900_000,
                 kind: BudgetKind::Wall,
             }),
+            selection_degradation: None,
         };
         // Sanity: the string classifier alone really would misclassify this detail.
         assert_eq!(
