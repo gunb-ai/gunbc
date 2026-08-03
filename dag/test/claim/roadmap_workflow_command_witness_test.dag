@@ -19,6 +19,10 @@ import gunbc.roadmap_workflow_progress {
   WorkflowAttemptEvidence,
   workflow_attempt_progress,
 }
+import gunbc.roadmap_verification_receipt {
+  VerificationSubjectUnobserved,
+  VerificationReceiptAbsent,
+}
 import gunbc.roadmap_presentation {
   activity_view_from_progress,
   LegacySupersedableAttempt,
@@ -94,8 +98,10 @@ test fn legacy_attempt_projects_as_supersedable_not_fault() -> Bool {
     provider_events_error: "not found",
     process: WorkerProcessAbsent,
     validation_summary: "",
-    validation_receipt_readable: false,
-    validation_receipt: "",
+    verification_subject: VerificationSubjectUnobserved {
+      reason: "legacy attempt has no modeled verification subject",
+    },
+    verification_source: VerificationReceiptAbsent,
     publication_subject: PublicationSubjectUnobserved {
       reason: "legacy attempt has no observed head",
     },
