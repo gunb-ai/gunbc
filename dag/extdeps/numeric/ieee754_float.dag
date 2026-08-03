@@ -16,7 +16,7 @@ import extdeps.uri { Uri, Https }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
-    locator: "standards.ieee.org/ieee/754"
+    locator: "standards.ieee.org/ieee/754/6210/"
   }
 }
 
@@ -32,7 +32,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: []
 }
 
-data ieee754_float_note: String = "Cited upstream: IEEE Std 754-2019 (anchor above). Float binary addition has no DeclarationRef-producing operation identity — it is compiler BinOp.Add on kernel Float. The receipt binds KernelFloat plus BinOp.Add enum variants and derives witness magnitudes from execution via observe_float_add_associativity_triple, not hand-authored fold results. Triple (1e16, 1.0, 1.0): left fold 1e16, right fold 1e16+2 (ULP / round-half-to-even)."
+data ieee754_float_note: String = "Cited upstream: edition-specific anchor above. For binary64 roundTiesToEven, triple (1e16, 1.0, 1.0) yields the same left fold 1e16 and right fold 1e16+2 under both the 2008 and 2019 revisions pinned at that locator family — interchange binary addition semantics did not change between them. Float binary addition has no DeclarationRef-producing operation identity — it is compiler BinOp.Add on kernel Float. The receipt binds KernelFloat plus BinOp.Add enum variants and derives witness magnitudes from execution via observe_float_add_associativity_triple, not hand-authored fold results."
 
 data float_add_operation_identity_grounding_gap_note: String = "GROUNDING GAP (honest prerequisite, not a string nickname): Float addition is not structurally referenceable as a DeclarationRef today. This slice binds associativity evidence to KernelTypeName.KernelFloat and std.syntax.BinOp.Add — the closed kernel and syntax authorities — until primitive_identity supplies a joinable operation DeclarationRef."
 
