@@ -8546,8 +8546,13 @@ fn emit_floor_drain_group_line(
 /// P1 retention-vs-drain cohort receipt (docs/plans/floor-prep-tax-program.md §P1):
 /// per-entry-group instrumentation distinct from `emit_floor_drain_group_line`'s
 /// cumulative cache-size line — this line prices the per-group wall/resolve/eval
-/// tax the program's diagnosing, plus the cache-hit/eviction facts needed to tell
-/// "shared prep reused" from "shared prep re-paid". Gated on its own env var
+/// tax the program's diagnosing, plus the typecheck-cache-hit / resolved-graph-hit
+/// / eviction facts needed to tell "shared prep reused" from "shared prep re-paid":
+/// `typecheck_cache_hit` is whether `typecheck_compute_count()` moved during this
+/// group (a typecheck-memo hit/miss signal, NOT schedule-retention cache
+/// occupancy — schedule-retention has no per-group hit/miss concept to read,
+/// only cumulative eviction counters, which is why `modules_evicted`/
+/// `graphs_evicted` carry that side of the story instead). Gated on its own env var
 /// (never folded into `GUNBC_FLOOR_DRAIN_RETENTION`) so enabling one measurement
 /// mode does not silently change the other's log shape (§3 — two distinct facts,
 /// two distinct switches).
@@ -8576,7 +8581,7 @@ fn emit_p1_cohort_entry_line(
     wall_ms: u128,
     resolve_ms: u128,
     eval_ms: u128,
-    schedule_cache_hit: bool,
+    typecheck_cache_hit: bool,
     resolved_graph_hit: bool,
     modules_evicted: u64,
     graphs_evicted: u64,
@@ -8586,10 +8591,10 @@ fn emit_p1_cohort_entry_line(
 ) {
     eprintln!(
         "[p1-cohort] entry={group_idx}/{total_groups} name='{entry}' wall_ms={wall_ms} \
-         resolve_ms={resolve_ms} eval_ms={eval_ms} schedule_cache_hit={} \
+         resolve_ms={resolve_ms} eval_ms={eval_ms} typecheck_cache_hit={} \
          resolved_graph_hit={} modules_evicted={modules_evicted} graphs_evicted={graphs_evicted} \
          process_rss={} cgroup_memory_current={} cgroup_memory_peak={}",
-        schedule_cache_hit as u8,
+        typecheck_cache_hit as u8,
         resolved_graph_hit as u8,
         process_rss
             .map(|b| b.to_string())

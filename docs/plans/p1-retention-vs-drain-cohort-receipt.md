@@ -4,7 +4,7 @@
 
 **Lane:** floor prep-tax program, P1 · **Subject:** does schedule-derived retention (#7129 eviction) cause the ~1s per-entry "tax" observed across the floor discovery path, or does the tax persist independent of eviction? · **Deliverable:** measurement only, ACCEPT/REJECT verdict against the parent-stated criterion. No retention-mechanism change lands in this PR.
 
-**Main SHA measured:** `b53aec1dff6be7ccb28cb6683e88faa86d7a108c`.
+**Main SHA measured:** `dddc79596a9dbb9bcbe4ac1c77121a302adb6e77` — the commit where `p1_cohort_probe.rs`/`p1_cohort_roster.txt` first land in git history (the probe/instrumentation source was authored and built against this same tree state before that commit was made; the earlier `b53aec1d` — this PR's initial WIP commit, predating the probe — cannot reproduce the runs below, since `p1_cohort_probe.rs` does not exist in its tree; correction per review 47754). Reproduce from `dddc79596a9` or any later commit on this branch.
 
 **Vehicle:** new `p1_cohort_probe` binary (`src/v1/stage0/src/bin/p1_cohort_probe.rs`) — a thin CLI front end that calls the **same production entrypoint** `run_discovery_corpus_with_options` that `claim_executor` drives for the real floor path, with `DiscoveryWidthPolicy::Adaptive` (the governor-admitted width the fleet actually runs under — schedule-retention only arms inside this branch's width-1 special case), over an explicit fixed 50-entry cohort instead of a full-corpus scan. This is not a reimplemented/toy mechanism; it is the identical discovery-corpus/schedule-retention code `claim_executor` uses, scoped for direct entry-by-entry A/B comparability. `claim_batch` was investigated and ruled out as a vehicle: it does not call `run_discovery_corpus_with_options` at all (a different assembly-cost-decomposition harness — see `docs/plans/per-entry-assembly-decomposition-measurement.md`).
 
@@ -17,7 +17,7 @@
 ## 0 — Reproduction (verbatim invocations)
 
 ```bash
-git rev-parse HEAD   # b53aec1dff6be7ccb28cb6683e88faa86d7a108c
+git rev-parse HEAD   # dddc79596a9dbb9bcbe4ac1c77121a302adb6e77 (or later on this branch)
 CTRL_BUILD_MODE=local RUSTC_WRAPPER= CARGO_BUILD_JOBS=4 \
   ctrl-build --local -- cargo build -p v1-compiler --bin p1_cohort_probe --release
 cp -f target/release/p1_cohort_probe target/release/p1_cohort_probe-snapshot
@@ -61,6 +61,8 @@ Mode B:
 ```
 
 Both modes armed over the identical 50-entry/711-module schedule. Mode B's loud diagnostic fired as required and `modules_evicted=0 graphs_evicted=0` held on every one of its 34 completed `[p1-cohort]` lines — confirms Mode B genuinely never evicted (not a partial/soft eviction).
+
+**Field-naming note (post-run correction):** the raw logs checked in under `docs/probes/p1_retention_cohort_20260803T022255Z/` were captured with the original field name `schedule_cache_hit`, which review 47754 correctly flagged as mislabeled — the value logged is `typecheck_compute_count()` movement (a typecheck-memo hit/miss), not schedule-retention cache occupancy. The field is renamed to `typecheck_cache_hit` in `cli_run.rs` going forward; the raw logs are left unedited (they are the actual captured evidence) and every value/analysis in this receipt reads from that same underlying signal under its corrected name — no data changed, only the label.
 
 ---
 
@@ -117,6 +119,6 @@ Per the parent's own routing instruction, this receipt reports the result the A/
 
 ## 5 — Artifacts
 
-- `src/v1/stage0/src/bin/p1_cohort_probe.rs`, `p1_cohort_roster.txt` — the probe vehicle (kept in tree; reusable for future retention receipts).
-- `src/v1/stage0/src/cli_run.rs` — `[p1-cohort]` per-entry instrumentation, gated independently by `GUNBC_P1_COHORT_RECEIPT=1` (kept separate from the existing `GUNBC_FLOOR_DRAIN_RETENTION` switch — two distinct facts, two distinct toggles, DESIGN §3).
+- `src/v1/stage0/src/bin/p1_cohort_probe.rs`, `p1_cohort_roster.txt` — the probe vehicle. **Scaffold, not a permanent second floor driver:** P1's REJECT verdict is now recorded, so per the dissolution trigger named alongside `p1_cohort_receipt_enabled` in `cli_run.rs`, this probe and its instrumentation delete once no other open lane needs cohort-scoped A/B retention receipts — not kept in tree indefinitely.
+- `src/v1/stage0/src/cli_run.rs` — `[p1-cohort]` per-entry instrumentation, gated independently by `GUNBC_P1_COHORT_RECEIPT=1` (kept separate from the existing `GUNBC_FLOOR_DRAIN_RETENTION` switch — two distinct facts, two distinct toggles, DESIGN §3). The emitted field is `typecheck_cache_hit` (whether `typecheck_compute_count()` moved during the group — a typecheck-memo hit/miss signal), not a schedule-retention cache-occupancy read (schedule-retention has no per-group hit/miss concept, only the cumulative `modules_evicted`/`graphs_evicted` counters already carried on the same line); named honestly after review 47754 caught the earlier `schedule_cache_hit` label as mismatched to what it measured.
 - `docs/probes/p1_retention_cohort_20260803T022255Z/` — raw Mode A/B logs and extracted `[p1-cohort]` line sets.
