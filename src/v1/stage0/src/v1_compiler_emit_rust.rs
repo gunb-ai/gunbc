@@ -17406,7 +17406,14 @@ pub fn emit_var_ref(
                                 Some(info) => {
                                     let is_data = (info.kind.clone() == ItemKind::DataItem);
                                     if is_data.clone() {
-                                        v1_rt::concat(to_snake(leaf_name.clone()), "()".to_string())
+                                        v1_rt::concat(
+                                            emit_value_ref_ident(
+                                                name.clone(),
+                                                registry.clone(),
+                                                emit_info.clone(),
+                                            ),
+                                            "()".to_string(),
+                                        )
                                     } else {
                                         {
                                             let is_function_value =
@@ -17554,9 +17561,15 @@ pub fn emit_typed_expr_base(
                             ) {
                                 Some(info) => {
                                     let is_data = (info.kind.clone() == ItemKind::DataItem);
-                                    let leaf_name = value_ref_qualified_leaf(n.clone());
                                     if is_data.clone() {
-                                        v1_rt::concat(to_snake(leaf_name.clone()), "()".to_string())
+                                        v1_rt::concat(
+                                            emit_value_ref_ident(
+                                                n.clone(),
+                                                registry.clone(),
+                                                emit_info.clone(),
+                                            ),
+                                            "()".to_string(),
+                                        )
                                     } else {
                                         emit_value_ref_ident(
                                             n.clone(),
