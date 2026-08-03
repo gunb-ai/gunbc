@@ -3295,14 +3295,10 @@ fn match_pattern(
     }
 }
 
-/// SINGLE AUTHORITY for the v1 interpreter's v4 std-bridge dispatch.
-///
-/// Before this, every bridge name was written TWICE -- once in a
-/// `*_BRIDGE_FNS` const that the guard predicate tested, once in the match
-/// arm that dispatched it -- so a name could sit in one and not the other and
-/// nothing would say so. The const list, the dispatch, and the enumerable
-/// roster now all expand from these tokens, so they cannot disagree
-/// (DESIGN.md §3 single authority, §5 construction over validation).
+/// Handler bodies for v4 std-bridge dispatch. Roster authority is
+/// `v1_interpreter_authored_roster_arms()` in `.dag`; generated
+/// `lookup_eval_call_bridge` routes spellings before this macro matches on
+/// the generated enum variant for each arm identity.
 macro_rules! v1_bridge_family_arms {
     ($cb:ident, $fname:ident, $args:ident, $node:ident, $ctx:ident) => {
         $cb! {
@@ -3356,43 +3352,31 @@ macro_rules! v1_bridge_family_arms {
 /// Expansion 1: the name lists the guard predicate tests.
 macro_rules! v1_bridge_consts {
     ($f:ident, $a:ident, $n:ident, $c:ident;
-     $(family $cname:ident $module:literal { $(arm $id:literal { $lit:literal } => $body:expr ,)* })*) => {
+     $(family $cname:ident $module:literal { $(arm $id:tt { $lit:literal } => $body:expr ,)* })*) => {
         $( pub(crate) const $cname: &[&str] = &[$($lit),*]; )*
     };
 }
 
 v1_bridge_family_arms!(v1_bridge_consts, func_name, args, node, ctx);
 
-/// Expansion 2: the dispatch itself.
 macro_rules! v1_bridge_dispatch {
     ($f:ident, $a:ident, $n:ident, $c:ident;
-     $(family $cname:ident $module:literal { $(arm $id:literal { $lit:literal } => $body:expr ,)* })*) => {
+     $(family $cname:ident $module:literal { $(arm $id:tt { $lit:literal } => $body:expr ,)* })*) => {
         $(
             if is_v4_bridge_family($c, &$f, $cname, $module) {
-                return match $f.as_str() {
-                    $($lit => $body,)*
-                    _ => unreachable!("bridge fn set mismatch: {}", $module),
+                return match $crate::v1_interpreter_dispatch_generated::lookup_eval_call_bridge(&$f) {
+                    Some(arm) => match arm {
+                        $( eval_call_bridge_arm!($id) => $body , )*
+                        _ => unreachable!("bridge family guard/lookup mismatch for {}", $module),
+                    },
+                    None => unreachable!("bridge fn set mismatch: {}", $module),
                 };
             }
         )*
     };
 }
 
-/// Expansion 3: the roster, from the same tokens.
-macro_rules! v1_bridge_roster {
-    ($f:ident, $a:ident, $n:ident, $c:ident;
-     $(family $cname:ident $module:literal { $(arm $id:literal { $lit:literal } => $body:expr ,)* })*) => {
-        &[$($(($id, $lit, $module)),*),*]
-    };
-}
-
-/// The v4 std-bridge dispatch surface, enumerated: (arm identity, authored
-/// spelling, declaring .dag module).
-pub fn v1_bridge_arm_spellings() -> &'static [(&'static str, &'static str, &'static str)] {
-    v1_bridge_family_arms!(v1_bridge_roster, func_name, args, node, ctx)
-}
-
-/// One guard for every bridge family. This replaced nine byte-identical
+/// One guard for every bridge family.
 /// predicates that differed only in their name list and module string.
 fn is_v4_bridge_family(ctx: &InterpContext, func_name: &str, names: &[&str], module: &str) -> bool {
     if !names.contains(&func_name) {
@@ -3403,9 +3387,9 @@ fn is_v4_bridge_family(ctx: &InterpContext, func_name: &str, names: &[&str], mod
         .is_some_and(|info| info.module_name == module)
 }
 
-/// SINGLE AUTHORITY for the v2.std.collection map grounding. This site
-/// carried the same name fork the bridges did: each spelling appeared in the
-/// const the guard tested AND in the match that mapped it to a builtin.
+/// Handler bodies for v2.std.collection map grounding. Roster authority is
+/// `v1_interpreter_authored_roster_arms()`; generated lookup routes spellings
+/// before this macro matches on the generated enum variant.
 macro_rules! v1_map_grounding_arms {
     ($cb:ident, $fname:ident) => {
         $cb! {
@@ -3418,33 +3402,23 @@ macro_rules! v1_map_grounding_arms {
 
 /// Expansion 1: the name list the guard predicate tests.
 macro_rules! v1_map_grounding_names {
-    ($f:ident; $(arm $id:literal { $($lit:literal)|+ } => $body:expr ,)*) => {
+    ($f:ident; $(arm $id:tt { $($lit:literal)|+ } => $body:expr ,)*) => {
         const STD_COLLECTION_MAP_GROUNDED_FNS: &[&str] = &[$($($lit),+),*];
     };
 }
 
 v1_map_grounding_arms!(v1_map_grounding_names, name);
 
-/// Expansion 2: the spelling -> builtin mapping.
+/// Expansion 2: the spelling -> builtin mapping (R1: roster-generated lookup).
 macro_rules! v1_map_grounding_dispatch {
-    ($f:ident; $(arm $id:literal { $($lit:literal)|+ } => $body:expr ,)*) => {
-        match $f {
-            $($($lit)|+ => $body,)*
-            _ => return None,
+    ($f:ident; $(arm $id:tt { $($lit:literal)|+ } => $body:expr ,)*) => {
+        match $crate::v1_interpreter_dispatch_generated::lookup_try_v2_std_collection_map_primitive_grounding($f) {
+            Some(arm) => match arm {
+                $( try_v2_std_collection_map_primitive_grounding_arm!($id) => $body , )*
+            },
+            None => return None,
         }
     };
-}
-
-/// Expansion 3: the roster, from the same tokens.
-macro_rules! v1_map_grounding_roster {
-    ($f:ident; $(arm $id:literal { $($lit:literal)|+ } => $body:expr ,)*) => {
-        &[$(($id, &[$($lit),+])),*]
-    };
-}
-
-/// The map-grounding surface, enumerated.
-pub fn v1_map_grounding_arm_spellings() -> &'static [(&'static str, &'static [&'static str])] {
-    v1_map_grounding_arms!(v1_map_grounding_roster, name)
 }
 
 const V2_STD_COLLECTION_MODULE: &str = "v2.std.collection";
@@ -3509,9 +3483,10 @@ fn try_v2_std_collection_map_primitive_grounding(
     }
 }
 
-/// SINGLE AUTHORITY for the two native fold intercepts. These run BEFORE the
-/// free-call dispatch, which is why `fold_list` never reaches the builtin
-/// registry and was invisible to every roster that read the registry alone.
+/// Handler bodies for native fold intercepts (run before free-call dispatch).
+/// Roster authority is `v1_interpreter_authored_roster_arms()`; generated
+/// `lookup_eval_call_native_intercept` routes spellings before this macro
+/// matches on the generated enum variant.
 macro_rules! v1_native_intercept_arms {
     ($cb:ident, $fname:ident, $args:ident, $env:ident, $ctx:ident) => {
         $cb! {
@@ -3524,26 +3499,15 @@ macro_rules! v1_native_intercept_arms {
     };
 }
 
-/// Expansion 1: the dispatch.
 macro_rules! v1_native_intercept_dispatch {
-    ($f:ident, $a:ident, $e:ident, $c:ident; $(arm $id:literal { $lit:literal } => $body:expr ,)*) => {
-        match $f.as_str() {
-            $($lit => $body,)*
-            _ => {}
+    ($f:ident, $a:ident, $e:ident, $c:ident; $(arm $id:tt { $lit:literal } => $body:expr ,)*) => {
+        match $crate::v1_interpreter_dispatch_generated::lookup_eval_call_native_intercept(&$f) {
+            Some(arm) => match arm {
+                $( eval_call_native_intercept_arm!($id) => $body , )*
+            },
+            None => {}
         }
     };
-}
-
-/// Expansion 2: the roster, from the same tokens.
-macro_rules! v1_native_intercept_roster {
-    ($f:ident, $a:ident, $e:ident, $c:ident; $(arm $id:literal { $lit:literal } => $body:expr ,)*) => {
-        &[$(($id, $lit)),*]
-    };
-}
-
-/// The native intercept surface, enumerated.
-pub fn v1_native_intercept_arm_spellings() -> &'static [(&'static str, &'static str)] {
-    v1_native_intercept_arms!(v1_native_intercept_roster, func_name, args, env, ctx)
 }
 
 fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
@@ -3823,7 +3787,9 @@ fn parse_table_memo_scope_and_key(
     Some((grammar_digest, token_stream_digest, position, production))
 }
 
-/// SINGLE AUTHORITY for the parse-table memo dispatch.
+/// Handler bodies for parse-table memo dispatch. Roster authority is
+/// `v1_interpreter_authored_roster_arms()`; generated lookup routes spellings
+/// before this macro matches on the generated enum variant.
 macro_rules! v1_parse_table_arms {
     ($cb:ident, $func_name:ident, $ctx:ident, $fn_node:ident, $args:ident, $env:ident) => {
         $cb! {
@@ -3878,24 +3844,14 @@ macro_rules! v1_parse_table_arms {
 
 /// Expansion 1: the dispatch.
 macro_rules! v1_parse_table_dispatch {
-    ($f:ident, $c:ident, $fnn:ident, $a:ident, $e:ident; $(arm $id:literal { $lit:literal } => $body:expr ,)*) => {
-        match $f {
-            $($lit => $body,)*
-            _ => Ok(None),
+    ($f:ident, $c:ident, $n:ident, $a:ident, $e:ident; $(arm $id:tt { $lit:literal } => $body:expr ,)*) => {
+        match $crate::v1_interpreter_dispatch_generated::lookup_try_parse_table_memo_dispatch(&$f) {
+            Some(arm) => match arm {
+                $( try_parse_table_memo_dispatch_arm!($id) => $body , )*
+            },
+            None => Ok(None),
         }
     };
-}
-
-/// Expansion 2: the roster, from the same tokens.
-macro_rules! v1_parse_table_roster {
-    ($f:ident, $c:ident, $fnn:ident, $a:ident, $e:ident; $(arm $id:literal { $lit:literal } => $body:expr ,)*) => {
-        &[$(($id, $lit)),*]
-    };
-}
-
-/// The parse-table memo surface, enumerated.
-pub fn v1_parse_table_arm_spellings() -> &'static [(&'static str, &'static str)] {
-    v1_parse_table_arms!(v1_parse_table_roster, func_name, ctx, fn_node, args, env)
 }
 
 fn try_parse_table_memo_dispatch(
@@ -5040,9 +4996,9 @@ fn eval_algebra_method(
     result
 }
 
-/// SINGLE AUTHORITY for the v1 interpreter's method dispatch surface, same
-/// shape as `v1_builtin_arms`: the dispatch and the roster are two expansions
-/// of these tokens, so neither can drift from the other.
+/// Handler bodies for algebra method dispatch. Roster authority is
+/// `v1_interpreter_authored_roster_arms()`; generated `lookup_eval_algebra_method_inner`
+/// routes spellings before this macro matches on the generated enum variant.
 macro_rules! v1_algebra_method_arms {
     ($cb:ident, $method:ident, $receiver:ident, $args:ident, $env:ident, $ctx:ident) => {
         $cb! {
@@ -5554,28 +5510,18 @@ macro_rules! v1_algebra_method_arms {
     };
 }
 
-/// Expansion 1: the dispatch.
+/// Dispatch via roster-generated lookup + exhaustive enum match (R1).
 macro_rules! v1_algebra_dispatch {
-    ($m:ident, $r:ident, $a:ident, $e:ident, $c:ident; $(arm $id:literal { $($lit:literal)|+ } => $body:expr ,)*) => {
-        match $m {
-            $($($lit)|+ => $body,)*
-            _ => Err(InterpError::Unimplemented {
+    ($m:ident, $r:ident, $a:ident, $e:ident, $c:ident; $(arm $id:tt { $($lit:literal)|+ } => $body:expr ,)*) => {
+        match $crate::v1_interpreter_dispatch_generated::lookup_eval_algebra_method_inner($m) {
+            Some(arm) => match arm {
+                $( eval_algebra_method_inner_arm!($id) => $body , )*
+            },
+            None => Err(InterpError::Unimplemented {
                 what: format!("method '{}'", $m),
             }),
         }
     };
-}
-
-/// Expansion 2: the roster, from the same tokens.
-macro_rules! v1_algebra_roster {
-    ($m:ident, $r:ident, $a:ident, $e:ident, $c:ident; $(arm $id:literal { $($lit:literal)|+ } => $body:expr ,)*) => {
-        &[$(($id, &[$($lit),+])),*]
-    };
-}
-
-/// The method dispatch surface, enumerated.
-pub fn v1_algebra_arm_spellings() -> &'static [(&'static str, &'static [&'static str])] {
-    v1_algebra_method_arms!(v1_algebra_roster, method, receiver, args, env, ctx)
 }
 
 fn eval_algebra_method_inner(
@@ -10209,14 +10155,10 @@ fn eval_builtin(
     result
 }
 
-/// SINGLE AUTHORITY for the v1 interpreter's free-call primitive surface.
-///
-/// The arm list below is the only place a free-call builtin is named. Both the
-/// dispatch (`v1_builtin_dispatch`) and the machine-readable roster
-/// (`v1_builtin_roster`, surfaced as `v1_builtin_arm_spellings`) are expansions
-/// of THESE tokens, so an arm cannot exist without a roster entry and a roster
-/// entry cannot exist without an arm: the drift DESIGN.md 3 calls a fork is
-/// unwritable here rather than checked afterwards.
+/// Handler bodies for free-call builtin dispatch. Roster authority is
+/// `v1_interpreter_authored_roster_arms()` in `.dag`; generated
+/// `lookup_eval_builtin_inner` routes spellings before this macro matches on
+/// the generated enum variant for each arm identity.
 ///
 /// Call-site locals are passed in as identifiers (`$name`, `$positional`,
 /// `$ctx`) because macro_rules hygiene would otherwise not resolve them: arm
@@ -10232,83 +10174,6 @@ macro_rules! v1_builtin_arms {
         let name = $name;
         $cb! {
             $name, $positional, $ctx;
-
-            // The surface reading itself. This arm is inside the arm list, so it
-            // appears in its own answer -- the roster is self-inclusive rather than
-            // describing a surface it stands outside of.
-            //
-            // One row per (form, authored spelling). Alias spellings do not collapse
-            // into a nested list; they share an `arm_identity`, so `contains` as a
-            // free call and `contains` as a method stay two rows while `length`,
-            // `count` and `size` stay one arm under three rows.
-            arm "free_call.interpreter_dispatch_arm_rows" { "interpreter_dispatch_arm_rows" } => {
-                // EVERY primitive dispatch site the interpreter owns, one row per
-                // (site, arm identity, spelling). The identity comes from each
-                // site's macro authority rather than from spelling order, so
-                // reordering an alias group or renaming a user-facing spelling
-                // leaves it untouched.
-                //
-                // Not enumerated here, and deliberately: the `lookup`
-                // short-circuit in `eval_method_call` is an `if`, not a match
-                // arm, and the `Filesystem.Read` hermetic carve-out dispatches
-                // on a service name. Both stay declared in the .dag carrier,
-                // counted, with their own dissolution triggers.
-                let mut rows: Vec<(&str, &str, &str, &str)> = Vec::new();
-                for (form, symbol, roster) in [
-                    ("FreeCall", "eval_builtin_inner", v1_builtin_arm_spellings()),
-                    (
-                        "MethodCall",
-                        "eval_algebra_method_inner",
-                        v1_algebra_arm_spellings(),
-                    ),
-                    (
-                        "NativeSpecial",
-                        "try_v2_std_collection_map_primitive_grounding",
-                        v1_map_grounding_arm_spellings(),
-                    ),
-                ] {
-                    for (arm_identity, spellings) in roster {
-                        for spelling in spellings.iter() {
-                            rows.push((form, symbol, arm_identity, spelling));
-                        }
-                    }
-                }
-                for (arm_identity, spelling, _module) in v1_bridge_arm_spellings() {
-                    rows.push(("FreeCall", "eval_call", arm_identity, spelling));
-                }
-                for (form, symbol, roster) in [
-                    (
-                        "NativeSpecial",
-                        "eval_call",
-                        v1_native_intercept_arm_spellings(),
-                    ),
-                    (
-                        "NativeSpecial",
-                        "try_parse_table_memo_dispatch",
-                        v1_parse_table_arm_spellings(),
-                    ),
-                ] {
-                    for (arm_identity, spelling) in roster {
-                        rows.push((form, symbol, arm_identity, spelling));
-                    }
-                }
-                let items: Vec<Value> = rows
-                    .into_iter()
-                    .map(|(form, symbol, arm_identity, spelling)| Value::Record {
-                        type_name: $ctx.sym("InterpreterDispatchArmRow"),
-                        fields: Rc::new(sorted_fields(vec![
-                            ($ctx.sym("arm_identity"), Value::Str(arm_identity.to_string())),
-                            (
-                                $ctx.sym("authored_spelling"),
-                                Value::Str(spelling.to_string()),
-                            ),
-                            ($ctx.sym("dispatch_form"), Value::Str(form.to_string())),
-                            ($ctx.sym("dispatch_symbol"), Value::Str(symbol.to_string())),
-                        ])),
-                    })
-                    .collect();
-                Ok(Some(list_value(items)))
-            },
 
             arm "free_call.parse_stage0_cargo_manifest_bins" { "parse_stage0_cargo_manifest_bins" } => {
                 let manifest = expect_str(
@@ -11587,33 +11452,16 @@ macro_rules! v1_builtin_arms {
     }};
 }
 
-/// Expansion 1 of `v1_builtin_arms`: the dispatch itself.
+/// Dispatch via roster-generated lookup + exhaustive enum match (R1).
 macro_rules! v1_builtin_dispatch {
-    ($n:ident, $p:ident, $c:ident; $(arm $id:literal { $($lit:literal)|+ } => $body:expr ,)*) => {
-        match $n {
-            $($($lit)|+ => $body,)*
-            _ => Ok(None),
+    ($n:ident, $p:ident, $c:ident; $(arm $id:tt { $($lit:literal)|+ } => $body:expr ,)*) => {
+        match $crate::v1_interpreter_dispatch_generated::lookup_eval_builtin_inner($n) {
+            Some(arm) => match arm {
+                $( eval_builtin_inner_arm!($id) => $body , )*
+            },
+            None => Ok(None),
         }
     };
-}
-
-/// Expansion 2 of `v1_builtin_arms`: the roster, derived from the same tokens.
-/// Arm bodies are matched but not emitted, so they are never name-resolved here.
-macro_rules! v1_builtin_roster {
-    ($n:ident, $p:ident, $c:ident; $(arm $id:literal { $($lit:literal)|+ } => $body:expr ,)*) => {
-        &[$(($id, &[$($lit),+])),*]
-    };
-}
-
-/// The free-call primitive surface, enumerated. One entry per dispatch arm; the
-/// inner slice holds that arm's spellings, so alias groups stay visible rather
-/// than being flattened into a name set.
-pub fn v1_builtin_arm_spellings() -> &'static [(&'static str, &'static [&'static str])] {
-    // `name` exists only to satisfy the shared `let name = $name;` above; the
-    // roster expansion matches the arm bodies but never emits them, so nothing
-    // else in this scope is read.
-    let name = "";
-    v1_builtin_arms!(v1_builtin_roster, name, positional, ctx)
 }
 
 fn eval_builtin_inner(

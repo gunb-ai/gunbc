@@ -14,13 +14,14 @@ use v1_compiler::cli_run::{
     compute_histogram_data, enable_floor_compile_clean_lazy_install, heartbeat_feed_enter_batch,
     heartbeat_feed_entry_completed, heartbeat_feed_snapshot, install_floor_compile_clean_receipt,
     make_eval_context, project_witness_cost_receipt, record_resolution_divergence_phase,
-    reset_resolution_divergence_phase_receipt, resolution_divergence_parent_plan_capture_begin,
+    render_selection_degradation_receipt_body, reset_resolution_divergence_phase_receipt,
+    resolution_divergence_parent_plan_capture_begin,
     resolution_divergence_parent_plan_capture_finish, resolve_entry_graph,
     resolve_entry_graph_shared, run_claim, run_discovery_corpus_with_options, run_value, set_phase,
     top_n_slowest_witnesses, BudgetKind, ClaimOutcome, DiscoveryCorpusOptions, DiscoverySummary,
     DiscoveryWidthPolicy, FloorPhase, HistogramData, NodeFrontierSelectionMode, PhaseProfile,
-    ResolutionDivergencePhase, ResolutionDivergencePhaseState, TimingPercentiles,
-    DEFAULT_SLOWEST_WITNESS_ATTRIBUTION_N,
+    ResolutionDivergencePhase, ResolutionDivergencePhaseState, SelectionDegradationSnapshot,
+    TimingPercentiles, DEFAULT_SLOWEST_WITNESS_ATTRIBUTION_N,
 };
 use v1_compiler::memory_governor::{
     binding_cap_cgroup_dir, binding_high_cgroup_dir, floor_budget_below_minimum_footprint,
@@ -1563,6 +1564,8 @@ struct ClaimResult {
     /// as data on the path that needs it. It is a projection of `ClaimOutcome::TimedOut`,
     /// not a second authority: nothing sets it except the `TimedOut` arm below.
     budget_refusal: Option<BudgetRefusal>,
+    /// Discovery batch only: finalized selection-degradation facts for floor receipts.
+    selection_degradation: Option<SelectionDegradationSnapshot>,
 }
 
 /// The pair explaining a budget kill, kept alongside the flattened `ok`/`detail`.
@@ -1774,6 +1777,7 @@ fn claim_result_for_outcome(
             corpus_witnesses: 0,
             witness_row_costs: Vec::new(),
             budget_refusal: None,
+            selection_degradation: None,
         },
         ClaimOutcome::Fail => ClaimResult {
             detail: {
@@ -1798,6 +1802,7 @@ fn claim_result_for_outcome(
             corpus_witnesses: 0,
             witness_row_costs: Vec::new(),
             budget_refusal: None,
+            selection_degradation: None,
         },
         ClaimOutcome::NotBool { got } => ClaimResult {
             function,
@@ -1811,6 +1816,7 @@ fn claim_result_for_outcome(
             corpus_witnesses: 0,
             witness_row_costs: Vec::new(),
             budget_refusal: None,
+            selection_degradation: None,
         },
         ClaimOutcome::RuntimeError { message } => ClaimResult {
             function,
@@ -1824,6 +1830,7 @@ fn claim_result_for_outcome(
             corpus_witnesses: 0,
             witness_row_costs: Vec::new(),
             budget_refusal: None,
+            selection_degradation: None,
         },
         ClaimOutcome::TimedOut {
             elapsed_ms,
@@ -1855,6 +1862,7 @@ fn claim_result_for_outcome(
                 budget_ms,
                 kind,
             }),
+            selection_degradation: None,
         },
     }
 }
@@ -2139,6 +2147,7 @@ fn run_native_bundle_unit(
         corpus_witnesses: 3,
         witness_row_costs: Vec::new(),
         budget_refusal: None,
+        selection_degradation: None,
     };
     if execution_mode != ExecutionMode::Wet {
         return fail(
@@ -2298,6 +2307,7 @@ fn run_native_bundle_unit(
         corpus_witnesses: selected as usize,
         witness_row_costs: Vec::new(),
         budget_refusal: None,
+        selection_degradation: None,
     }
 }
 
@@ -2333,6 +2343,7 @@ fn run_batch_unit(
             corpus_witnesses: 0,
             witness_row_costs: Vec::new(),
             budget_refusal: None,
+            selection_degradation: None,
         }],
         BatchUnit::NativeBundle {
             entry,
@@ -2467,6 +2478,7 @@ fn run_shared_entry_claims(
                     corpus_witnesses: 0,
                     witness_row_costs: Vec::new(),
                     budget_refusal: None,
+                    selection_degradation: None,
                 })
                 .collect();
         }
@@ -2535,6 +2547,7 @@ fn run_memo_shared_claims(
                         corpus_witnesses: 0,
                         witness_row_costs: Vec::new(),
                         budget_refusal: None,
+                        selection_degradation: None,
                     })
                     .collect();
             }
@@ -3081,6 +3094,7 @@ fn discovery_claim_result(
     function: String,
     ok: bool,
     detail: String,
+    selection: NodeFrontierSelectionMode,
     summary: &DiscoverySummary,
     projected: Result<Vec<(String, String, u128, u128, u128, String, String)>, String>,
 ) -> ClaimResult {
@@ -3088,19 +3102,35 @@ fn discovery_claim_result(
     // incomplete row set must refuse the discovery claim (typed/located), never silently
     // emit a partial receipt as complete (§5 / review 43261 + review 43274).
     match projected {
-        Ok(witness_row_costs) => ClaimResult {
-            function,
-            entry: DISCOVERY_AGGREGATE_ENTRY.to_string(),
-            ok,
-            detail,
-            wall_nanos: 0,
-            resolve_nanos: 0,
-            corpus_resolve_nanos: summary.total_resolve_nanos,
-            corpus_eval_nanos: summary.total_measured_nanos,
-            corpus_witnesses: summary.total,
-            witness_row_costs,
-            budget_refusal: discovery_budget_refusal(summary),
-        },
+        Ok(mut witness_row_costs) => {
+            for row in &summary.selection_skipped_rows {
+                witness_row_costs.push((
+                    row.entry.clone(),
+                    row.function.clone(),
+                    0,
+                    0,
+                    0,
+                    "selection-skipped".to_string(),
+                    row.provenance.clone(),
+                ));
+            }
+            ClaimResult {
+                function,
+                entry: DISCOVERY_AGGREGATE_ENTRY.to_string(),
+                ok,
+                detail,
+                wall_nanos: 0,
+                resolve_nanos: 0,
+                corpus_resolve_nanos: summary.total_resolve_nanos,
+                corpus_eval_nanos: summary.total_measured_nanos,
+                corpus_witnesses: summary.total,
+                witness_row_costs,
+                budget_refusal: discovery_budget_refusal(summary),
+                selection_degradation: Some(SelectionDegradationSnapshot::from_summary(
+                    selection, summary,
+                )),
+            }
+        }
         Err(msg) => {
             eprintln!("[witness-row-cost] refused: {msg}");
             // Preserve the caller's failure context (e.g. "N of M discovery witness(es)
@@ -3128,6 +3158,9 @@ fn discovery_claim_result(
                 // failed to project its receipt is still a budget kill, and dropping that
                 // here would hand it back to the substring classifier.
                 budget_refusal: discovery_budget_refusal(summary),
+                selection_degradation: Some(SelectionDegradationSnapshot::from_summary(
+                    selection, summary,
+                )),
             }
         }
     }
@@ -3202,6 +3235,10 @@ fn run_discovery_batch_node(
                         corpus_witnesses: summary.total,
                         witness_row_costs: Vec::new(),
                         budget_refusal: discovery_budget_refusal(&summary),
+                        selection_degradation: Some(SelectionDegradationSnapshot::from_summary(
+                            node_frontier_selection,
+                            &summary,
+                        )),
                     };
                 }
             }
@@ -3323,9 +3360,10 @@ fn run_discovery_batch_node(
                     label,
                     false,
                     format!(
-                        "expect_red probe unexpectedly green: {} witness(es) passed — un-quarantine (delete known_red_probe_entries / falsifier_self_host_wet_known_red_entries rows) or restore the discriminating red",
+                        "expect_red probe unexpectedly green: {} witness(es) passed — un-quarantine (delete the row from gunbc.explicit_witness_admission explicit_witness_admissions, which is the single authority both known-red cadences project from) or restore the discriminating red",
                         summary.total
                     ),
+                    node_frontier_selection,
                     &summary,
                     projected,
                 )
@@ -3334,6 +3372,7 @@ fn run_discovery_batch_node(
                     format!("{label} ({} witnesses)", summary.total),
                     true,
                     String::new(),
+                    node_frontier_selection,
                     &summary,
                     projected,
                 )
@@ -3360,6 +3399,10 @@ fn run_discovery_batch_node(
                         corpus_witnesses: summary.total,
                         witness_row_costs: Vec::new(),
                         budget_refusal: discovery_budget_refusal(&summary),
+                        selection_degradation: Some(SelectionDegradationSnapshot::from_summary(
+                            node_frontier_selection,
+                            &summary,
+                        )),
                     };
                 }
             }
@@ -3375,6 +3418,7 @@ fn run_discovery_batch_node(
                     format!("{label} (expect_red still-red OK)"),
                     true,
                     String::new(),
+                    node_frontier_selection,
                     &summary,
                     projected,
                 )
@@ -3388,6 +3432,7 @@ fn run_discovery_batch_node(
                         summary.total,
                         summary.failures.join("; ")
                     ),
+                    node_frontier_selection,
                     &summary,
                     projected,
                 )
@@ -3422,6 +3467,7 @@ fn run_discovery_batch_node(
                     corpus_witnesses: 0,
                     witness_row_costs: Vec::new(),
                     budget_refusal: None,
+                    selection_degradation: None,
                 }
             } else {
                 ClaimResult {
@@ -3439,6 +3485,7 @@ fn run_discovery_batch_node(
                     corpus_witnesses: 0,
                     witness_row_costs: Vec::new(),
                     budget_refusal: None,
+                    selection_degradation: None,
                 }
             }
         }
@@ -4034,6 +4081,8 @@ struct BatchRecord {
     /// cold control is the `predict_only` component, never "batch 1" — indices shift
     /// when a `gunbc_falsifier_batches` enrollment flag flips.
     selection_tag: &'static str,
+    /// Wet-profiled batches (bin_witness wet corpus, falsifier wet follow-on, …).
+    is_wet: bool,
 }
 
 /// Materialization-ladder receipt: how many entry resolves this floor run actually
@@ -4201,29 +4250,77 @@ fn write_floor_component_receipt_at(
         }
     }
 
-    let doc = match run_in_context_with_args(
-        &ctx,
-        "floor_component_receipt_document",
-        &[
-            (Some("run_id".to_string()), Value::Str(run_id.clone())),
-            (Some("rows".to_string()), Value::List(Rc::new(rows.into()))),
-        ],
-        false,
-    ) {
-        Ok(Value::Str(s)) => s,
-        Ok(other) => {
-            eprintln!(
-                "claim_executor: floor component receipt REFUSED — \
-                 floor_component_receipt_document returned {other:?}, not Str"
-            );
-            return false;
+    let doc = if let Some(snapshot) = selection_degradation_from_batch_records(batch_records) {
+        match run_in_context_with_args(
+            &ctx,
+            "floor_component_receipt_document_with_selection",
+            &[
+                (Some("run_id".to_string()), Value::Str(run_id.clone())),
+                (Some("rows".to_string()), Value::List(Rc::new(rows.into()))),
+                (
+                    Some("selection_mode_tag".to_string()),
+                    Value::Str(snapshot.selection_mode_tag.clone()),
+                ),
+                (
+                    Some("selected".to_string()),
+                    Value::Int(snapshot.selected_entry_groups as i64),
+                ),
+                (
+                    Some("total".to_string()),
+                    Value::Int(snapshot.total_entry_groups as i64),
+                ),
+                (
+                    Some("categorization_unavailable".to_string()),
+                    Value::Bool(snapshot.categorization_unavailable),
+                ),
+                (
+                    Some("categorization_reason".to_string()),
+                    Value::Str(snapshot.categorization_reason.clone()),
+                ),
+            ],
+            false,
+        ) {
+            Ok(Value::Str(s)) => s,
+            Ok(other) => {
+                eprintln!(
+                    "claim_executor: floor component receipt REFUSED — \
+                     floor_component_receipt_document_with_selection returned {other:?}, not Str"
+                );
+                return false;
+            }
+            Err(e) => {
+                eprintln!(
+                    "claim_executor: floor component receipt REFUSED — \
+                     floor_component_receipt_document_with_selection eval: {e}"
+                );
+                return false;
+            }
         }
-        Err(e) => {
-            eprintln!(
-                "claim_executor: floor component receipt REFUSED — \
-                 floor_component_receipt_document eval: {e}"
-            );
-            return false;
+    } else {
+        match run_in_context_with_args(
+            &ctx,
+            "floor_component_receipt_document",
+            &[
+                (Some("run_id".to_string()), Value::Str(run_id.clone())),
+                (Some("rows".to_string()), Value::List(Rc::new(rows.into()))),
+            ],
+            false,
+        ) {
+            Ok(Value::Str(s)) => s,
+            Ok(other) => {
+                eprintln!(
+                    "claim_executor: floor component receipt REFUSED — \
+                     floor_component_receipt_document returned {other:?}, not Str"
+                );
+                return false;
+            }
+            Err(e) => {
+                eprintln!(
+                    "claim_executor: floor component receipt REFUSED — \
+                     floor_component_receipt_document eval: {e}"
+                );
+                return false;
+            }
         }
     };
 
@@ -4343,8 +4440,8 @@ fn floor_component_row_value(
     }
 }
 
-fn write_resolve_receipt(batch_records: &[BatchRecord]) -> bool {
-    write_resolve_receipt_at(std::path::Path::new("target"), batch_records)
+fn write_resolve_receipt(source_roots: &[String], batch_records: &[BatchRecord]) -> bool {
+    write_resolve_receipt_at(std::path::Path::new("target"), source_roots, batch_records)
 }
 
 /// Per-batch wall receipt (THE COST WALL, Piece 3 derived clamp): typed rows — one
@@ -4526,6 +4623,73 @@ fn write_witness_row_cost_receipt_at(
     }
     eprintln!(
         "[receipt] floor witness row-cost: {row_count} row(s) (TSV receipt: {})",
+        path.display()
+    );
+    true
+}
+
+fn batch_is_wet(batch: &[Runnable]) -> bool {
+    batch.iter().any(|runnable| match runnable {
+        Runnable::DiscoveryBatch { execution_mode, .. } => *execution_mode == ExecutionMode::Wet,
+        Runnable::SingleClaim { profile, .. } => profile.execution_mode == ExecutionMode::Wet,
+        Runnable::ScopedWitnessBatch { profile, .. } => {
+            profile.execution_mode == ExecutionMode::Wet
+        }
+    })
+}
+
+fn wet_witness_row_outcome_label(outcome_variant: &str) -> &'static str {
+    match outcome_variant {
+        "Done" => "passed",
+        "selection-skipped" => "selection-skipped",
+        _ => "failed",
+    }
+}
+
+fn write_floor_wet_witness_row_outcome_receipt(batch_records: &[BatchRecord]) -> bool {
+    write_floor_wet_witness_row_outcome_receipt_at(Path::new("target"), batch_records)
+}
+
+fn write_floor_wet_witness_row_outcome_receipt_at(
+    base: &Path,
+    batch_records: &[BatchRecord],
+) -> bool {
+    let mut body = String::from("batch\tentry\tfunction\toutcome\tdetail\n");
+    let mut row_count = 0usize;
+    for rec in batch_records {
+        if !rec.is_wet {
+            continue;
+        }
+        let batch = rec.batch_index + 1;
+        for result in &rec.results {
+            for row in &result.witness_row_costs {
+                let outcome = wet_witness_row_outcome_label(&row.5);
+                let detail = scoped_wire_text(&row.6);
+                body.push_str(&format!(
+                    "{}\n",
+                    [
+                        batch.to_string(),
+                        row.0.clone(),
+                        row.1.clone(),
+                        outcome.to_string(),
+                        detail,
+                    ]
+                    .join("\t")
+                ));
+                row_count += 1;
+            }
+        }
+    }
+    let path = base.join("floor-wet-witness-row-outcome-receipt.tsv");
+    if let Err(e) = std::fs::create_dir_all(base).and_then(|_| std::fs::write(&path, &body)) {
+        eprintln!(
+            "claim_executor: failed to write wet witness row-outcome receipt {}: {e} — walk fails closed here",
+            path.display()
+        );
+        return false;
+    }
+    eprintln!(
+        "[receipt] floor wet witness row-outcome: {row_count} row(s) (TSV receipt: {})",
         path.display()
     );
     true
@@ -4992,7 +5156,52 @@ fn write_on_success_receipt(
     true
 }
 
-fn write_resolve_receipt_at(base: &std::path::Path, batch_records: &[BatchRecord]) -> bool {
+fn selection_degradation_from_batch_records(
+    batch_records: &[BatchRecord],
+) -> Option<SelectionDegradationSnapshot> {
+    batch_records
+        .iter()
+        .flat_map(|rec| &rec.results)
+        .find_map(|result| result.selection_degradation.clone())
+}
+
+fn write_selection_degradation_receipt_at(
+    base: &std::path::Path,
+    source_roots: &[String],
+    batch_records: &[BatchRecord],
+) -> bool {
+    let Some(snapshot) = selection_degradation_from_batch_records(batch_records) else {
+        return true;
+    };
+    let body = match render_selection_degradation_receipt_body(source_roots, &snapshot) {
+        Ok(body) => body,
+        Err(msg) => {
+            eprintln!("claim_executor: {msg}");
+            return false;
+        }
+    };
+    let path = base.join("floor-selection-degradation-receipt.txt");
+    if let Err(e) = std::fs::create_dir_all(base).and_then(|_| std::fs::write(&path, &body)) {
+        eprintln!(
+            "claim_executor: failed to write selection degradation receipt {}: {e} — walk fails closed",
+            path.display()
+        );
+        return false;
+    }
+    eprintln!(
+        "[receipt] floor selection degradation: {} entry group(s) selected of {} (receipt: {})",
+        snapshot.selected_entry_groups,
+        snapshot.total_entry_groups,
+        path.display()
+    );
+    true
+}
+
+fn write_resolve_receipt_at(
+    base: &std::path::Path,
+    source_roots: &[String],
+    batch_records: &[BatchRecord],
+) -> bool {
     let mut resolves_total: u64 = 0;
     let mut resolve_ms_total: u128 = 0;
     let mut discovery_corpus_resolve_ms: u128 = 0;
@@ -5008,9 +5217,22 @@ fn write_resolve_receipt_at(base: &std::path::Path, batch_records: &[BatchRecord
         }
     }
     let discovery_phases = v1_compiler::cli_run::take_discovery_phase_totals_receipt_rows();
-    let body = format!(
+    let mut body = format!(
         "resolves_total={resolves_total}\nresolve_ms_total={resolve_ms_total}\ndiscovery_corpus_resolve_ms={discovery_corpus_resolve_ms}\ndiscovery_corpus_eval_ms={discovery_corpus_eval_ms}\n{discovery_phases}"
     );
+    if let Some(snapshot) = selection_degradation_from_batch_records(batch_records) {
+        match render_selection_degradation_receipt_body(source_roots, &snapshot) {
+            Ok(selection_body) => {
+                body.push_str("\n[selection_degradation]\n");
+                body.push_str(&selection_body);
+                body.push('\n');
+            }
+            Err(msg) => {
+                eprintln!("claim_executor: resolve receipt selection degradation refused: {msg}");
+                return false;
+            }
+        }
+    }
     let path = base.join("floor-resolve-receipt.txt");
     if let Err(e) = std::fs::create_dir_all(base).and_then(|_| std::fs::write(&path, &body)) {
         eprintln!(
@@ -6151,6 +6373,7 @@ fn run_walk(
             results: batch_results,
             label: label.clone(),
             selection_tag: batch_selection_tag(batch),
+            is_wet: batch_is_wet(batch),
         });
         // LOCAL, not aggregate. This used to test the cumulative `any_failed`, so under
         // FullLedger every batch after the first failure was announced as "batch N had
@@ -6195,8 +6418,17 @@ fn run_walk(
     let total_wall_nanos = walk_start.elapsed().as_nanos();
     emit_gantt(&batch_records, total_wall_nanos);
     trace_floor_phase("resolve-receipt", "started", "");
-    let resolve_receipt_ok = !emit_ordinary_floor_receipts || write_resolve_receipt(&batch_records);
+    let resolve_receipt_ok =
+        !emit_ordinary_floor_receipts || write_resolve_receipt(source_roots, &batch_records);
     trace_floor_phase("resolve-receipt", "completed", "");
+    trace_floor_phase("selection-degradation-receipt", "started", "");
+    let selection_degradation_receipt_ok = !emit_ordinary_floor_receipts
+        || write_selection_degradation_receipt_at(
+            std::path::Path::new("target"),
+            source_roots,
+            &batch_records,
+        );
+    trace_floor_phase("selection-degradation-receipt", "completed", "");
     trace_floor_phase("batch-wall-receipt", "started", "");
     let batch_wall_receipt_ok =
         !emit_ordinary_floor_receipts || write_batch_wall_receipt(&batch_records);
@@ -6209,6 +6441,10 @@ fn run_walk(
     let witness_row_cost_receipt_ok = !emit_ordinary_floor_receipts
         || write_witness_row_cost_receipt(&batch_records, falsifier_cadence);
     trace_floor_phase("witness-row-cost-receipt", "completed", "");
+    trace_floor_phase("wet-witness-row-outcome-receipt", "started", "");
+    let wet_witness_row_outcome_receipt_ok = !emit_ordinary_floor_receipts
+        || write_floor_wet_witness_row_outcome_receipt(&batch_records);
+    trace_floor_phase("wet-witness-row-outcome-receipt", "completed", "");
     trace_floor_phase("witness-row-cost-drift-receipt", "started", "");
     let witness_row_cost_drift_receipt_ok = if !emit_ordinary_floor_receipts {
         true
@@ -6257,7 +6493,9 @@ fn run_walk(
         || !batch_wall_receipt_ok
         || !gate_warm_cost_receipt_ok
         || !witness_row_cost_receipt_ok
+        || !wet_witness_row_outcome_receipt_ok
         || !witness_row_cost_drift_receipt_ok
+        || !selection_degradation_receipt_ok
         || !floor_component_receipt_ok
         || !materialization_receipt_ok;
     // Floor finalization laws (the in-executor form of the deleted resolve/
@@ -6820,6 +7058,79 @@ const FLOOR_WORKER_TERMINAL_ENV: &str = "GUNBC_FLOOR_WORKER_TERMINAL_RECEIPT";
 const FLOOR_PHASE_JOURNAL_ENV: &str = "GUNBC_FLOOR_PHASE_JOURNAL";
 const SCOPED_WITNESS_BATCH_MANIFEST_PATH: &str = "target/scoped-witness-batch-manifest.tsv";
 const FLOOR_WORKER_OBSERVATION_RECEIPT_PATH: &str = "target/floor-worker-observation-receipt.tsv";
+const FLOOR_WET_WITNESS_ROW_OUTCOME_RECEIPT_PATH: &str =
+    "target/floor-wet-witness-row-outcome-receipt.tsv";
+
+fn wet_witness_row_outcome_replay_line(
+    batch: &str,
+    entry: &str,
+    function: &str,
+    outcome: &str,
+    detail: &str,
+) -> String {
+    format!(
+        "[wet-witness-row-outcome] batch={batch} entry={entry} function={function} outcome={outcome} detail={detail}"
+    )
+}
+
+fn collect_wet_witness_row_outcome_replay_lines(path: &Path) -> Result<Vec<String>, String> {
+    let body = fs::read_to_string(path).map_err(|e| {
+        format!(
+            "read wet witness row-outcome receipt {}: {e}",
+            path.display()
+        )
+    })?;
+    let mut lines = Vec::new();
+    for line in body.lines().skip(1) {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let parts: Vec<&str> = line.split('\t').collect();
+        let (batch, entry, function, outcome, detail) = match parts.len() {
+            4 => (parts[0], parts[1], parts[2], parts[3], ""),
+            5 => (parts[0], parts[1], parts[2], parts[3], parts[4]),
+            _ => {
+                return Err(format!(
+                    "malformed wet witness row-outcome line (need 4-5 cols): {line}"
+                ));
+            }
+        };
+        lines.push(wet_witness_row_outcome_replay_line(
+            batch, entry, function, outcome, detail,
+        ));
+    }
+    Ok(lines)
+}
+
+fn replay_floor_wet_witness_row_outcomes_from_receipt(path: &Path) -> Result<usize, String> {
+    let lines = collect_wet_witness_row_outcome_replay_lines(path)?;
+    for line in &lines {
+        eprintln!("{line}");
+    }
+    Ok(lines.len())
+}
+
+fn replay_ordinary_floor_wet_witness_row_outcomes() {
+    let path = Path::new(FLOOR_WET_WITNESS_ROW_OUTCOME_RECEIPT_PATH);
+    match replay_floor_wet_witness_row_outcomes_from_receipt(path) {
+        Ok(count) => {
+            eprintln!(
+                "[wet-witness-row-outcome] coordinator replayed {count} row(s) from {}",
+                path.display()
+            );
+        }
+        Err(msg) if path.exists() => {
+            eprintln!("claim_executor: wet witness row-outcome coordinator replay refused: {msg}");
+        }
+        Err(_) => {
+            eprintln!(
+                "claim_executor: wet witness row-outcome receipt absent at {} — per-row wet batch outcomes unobservable",
+                path.display()
+            );
+        }
+    }
+}
 
 fn append_floor_phase_journal(phase: &str, state: &str, detail: &str) {
     let Some(path) = std::env::var_os(FLOOR_PHASE_JOURNAL_ENV) else {
@@ -7230,6 +7541,11 @@ fn spawn_floor_worker(
         }
     };
     let observed = observe_floor_worker(&worker, status, &terminal_path);
+    // Replay before observation persistence: worker stderr may be dropped on Actions after
+    // discovery, and a failed worker is the case where the log otherwise says nothing.
+    if worker == "ordinary" {
+        replay_ordinary_floor_wet_witness_row_outcomes();
+    }
     append_floor_worker_observation(&observed)?;
     let outcome = floor_worker_observation_outcome(&observed);
     // The Actions log transport can drop the worker's inherited stderr after a
@@ -7278,6 +7594,7 @@ fn maybe_run_floor_coordinator(args: &[String]) -> Option<ExitCode> {
     let ordinary = match spawn_floor_worker(args, "ordinary", None, 0) {
         Ok(observed) => observed,
         Err(msg) => {
+            replay_ordinary_floor_wet_witness_row_outcomes();
             eprintln!("claim_executor: floor coordinator ordinary-worker refusal: {msg}");
             return Some(ExitCode::from(1));
         }
@@ -8327,6 +8644,7 @@ mod tests {
             unit_count: 0,
             label: "finalization-fixture".to_string(),
             selection_tag: "fixture",
+            is_wet: false,
             results: resolve_counts
                 .iter()
                 .map(|n| ClaimResult {
@@ -8341,6 +8659,7 @@ mod tests {
                     corpus_witnesses: 0,
                     witness_row_costs: Vec::new(),
                     budget_refusal: None,
+                    selection_degradation: None,
                 })
                 .collect(),
         }
@@ -8510,6 +8829,7 @@ mod tests {
             results,
             label: "batch-under-test".to_string(),
             selection_tag: "off",
+            is_wet: false,
         }
     }
 
@@ -8563,6 +8883,7 @@ mod tests {
             corpus_witnesses: 0,
             witness_row_costs: Vec::new(),
             budget_refusal: None,
+            selection_degradation: None,
         };
         let (mode, _) = batch_failure_mode_and_detail(&batch_record_for_test(vec![plain]));
         assert_eq!(mode, "WitnessRed");
@@ -8765,7 +9086,7 @@ mod tests {
             std::env::temp_dir().join(format!("claim-executor-receipt-red-{}", std::process::id()));
         let _ = fs::remove_file(&base);
         fs::write(&base, b"a file where the receipt dir should be").unwrap();
-        assert!(!write_resolve_receipt_at(&base, &[]));
+        assert!(!write_resolve_receipt_at(&base, &[], &[]));
         assert!(!write_batch_wall_receipt_at(&base, &[]));
         let _ = fs::remove_file(&base);
     }
@@ -8788,6 +9109,7 @@ mod tests {
                 results: Vec::new(),
                 label: "batch-0".to_string(),
                 selection_tag: "off",
+                is_wet: false,
             },
             BatchRecord {
                 batch_index: 1,
@@ -8797,6 +9119,7 @@ mod tests {
                 results: Vec::new(),
                 label: "batch-1".to_string(),
                 selection_tag: "off",
+                is_wet: false,
             },
         ];
         assert!(write_batch_wall_receipt_at(&base, &clamped_records));
@@ -8816,6 +9139,7 @@ mod tests {
             results: Vec::new(),
             label: "batch-0".to_string(),
             selection_tag: "off",
+            is_wet: false,
         }];
         assert!(write_batch_wall_receipt_at(&base, &unbudgeted_records));
         let body = fs::read_to_string(base.join("floor-batch-wall-receipt.txt")).unwrap();
@@ -10376,6 +10700,110 @@ mod tests {
         assert!(zero.contains("zero eval_ms_basis"), "got: {zero}");
     }
 
+    #[test]
+    /// Discriminating replay control: planted passed, failed, and selection-skipped rows
+    /// must surface as three distinct coordinator replay outcomes (not collapsed).
+    /// Evidence: `claim_executor` unit tests — the binary that gates CI floor merge.
+    fn wet_witness_row_outcome_replay_discriminates_passed_failed_and_selection_skipped() {
+        let base =
+            std::env::temp_dir().join(format!("claim-executor-wet-outcome-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&base);
+        let records = vec![BatchRecord {
+            batch_index: 3,
+            wall_nanos: 0,
+            clamp_ms: None,
+            unit_count: 3,
+            label: "bin-witness-corpus".to_string(),
+            selection_tag: "applied",
+            is_wet: true,
+            results: vec![ClaimResult {
+                function: "bin-witness-corpus (3 witnesses)".to_string(),
+                entry: DISCOVERY_AGGREGATE_ENTRY.to_string(),
+                ok: false,
+                detail: "1 of 3 discovery witness(es) failed".to_string(),
+                wall_nanos: 0,
+                resolve_nanos: 0,
+                corpus_resolve_nanos: 0,
+                corpus_eval_nanos: 0,
+                corpus_witnesses: 3,
+                witness_row_costs: vec![
+                    (
+                        "dag/test/claim/stage0_rust_host_observation_live_witness_test.dag"
+                            .to_string(),
+                        "planted_pass_wet_row".to_string(),
+                        1_000_000,
+                        0,
+                        0,
+                        "Done".to_string(),
+                        String::new(),
+                    ),
+                    (
+                        "dag/test/claim/planted_fail_wet_row_test.dag".to_string(),
+                        "planted_fail_wet_row".to_string(),
+                        500_000,
+                        0,
+                        0,
+                        "Failed".to_string(),
+                        "returned Bool(false)".to_string(),
+                    ),
+                    (
+                        "dag/other.dag".to_string(),
+                        "planted_selection_skip_wet_row".to_string(),
+                        0,
+                        0,
+                        0,
+                        "selection-skipped".to_string(),
+                        "affected-set".to_string(),
+                    ),
+                ],
+                budget_refusal: None,
+            }],
+        }];
+        assert!(write_floor_wet_witness_row_outcome_receipt_at(
+            &base, &records
+        ));
+        let path = base.join("floor-wet-witness-row-outcome-receipt.tsv");
+        let body = fs::read_to_string(&path).unwrap();
+        assert!(body.contains("planted_pass_wet_row"));
+        assert!(body.contains("planted_pass_wet_row\tpassed"));
+        assert!(body.contains("planted_fail_wet_row"));
+        assert!(body.contains("planted_fail_wet_row\tfailed\t"));
+        assert!(body.contains("planted_selection_skip_wet_row"));
+        assert!(body.contains("selection-skipped"));
+        let lines = collect_wet_witness_row_outcome_replay_lines(&path).expect("replay lines");
+        assert_eq!(lines.len(), 3);
+        let passed_line = lines
+            .iter()
+            .find(|line| line.contains("planted_pass_wet_row"))
+            .expect("passed replay line");
+        let failed_line = lines
+            .iter()
+            .find(|line| line.contains("planted_fail_wet_row"))
+            .expect("failed replay line");
+        let skipped_line = lines
+            .iter()
+            .find(|line| line.contains("planted_selection_skip_wet_row"))
+            .expect("selection-skipped replay line");
+        assert!(passed_line.contains("outcome=passed"));
+        assert!(failed_line.contains("outcome=failed"));
+        assert!(skipped_line.contains("outcome=selection-skipped"));
+        assert_ne!(passed_line, failed_line);
+        assert_ne!(passed_line, skipped_line);
+        assert_ne!(failed_line, skipped_line);
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn wet_witness_row_outcome_label_maps_three_distinct_values() {
+        assert_eq!(wet_witness_row_outcome_label("Done"), "passed");
+        assert_eq!(
+            wet_witness_row_outcome_label("selection-skipped"),
+            "selection-skipped"
+        );
+        assert_eq!(wet_witness_row_outcome_label("Failed"), "failed");
+        assert_eq!(wet_witness_row_outcome_label("Refused"), "failed");
+    }
+
     /// Discovery is THE falsifier path — `resolution_divergence_silent_pick_gate_keystone_holds`
     /// is a discovery row — so a budget kill there must classify structurally like any other.
     ///
@@ -10423,6 +10851,9 @@ mod tests {
             performance_receipts: Vec::new(),
             total_measured_nanos: 0,
             roster_closure_nodes: 0,
+            total_entry_groups: 0,
+            selected_entry_groups: 0,
+            selection_categorization_reason: None,
         };
         let killed = ClaimOutcome::TimedOut {
             elapsed_ms: 900_001,
@@ -10440,6 +10871,7 @@ mod tests {
                 "discovery-corpus".into(),
                 false,
                 killed_detail.to_string(),
+                NodeFrontierSelectionMode::Applied,
                 &summary_with(killed.clone()),
                 projected,
             );
@@ -10456,6 +10888,7 @@ mod tests {
             "discovery-corpus".into(),
             false,
             "red".into(),
+            NodeFrontierSelectionMode::Applied,
             &summary_with(ClaimOutcome::Fail),
             Ok(Vec::new()),
         );
@@ -10493,12 +10926,16 @@ mod tests {
             performance_receipts: Vec::new(),
             total_measured_nanos: 0,
             roster_closure_nodes: 0,
+            total_entry_groups: 0,
+            selected_entry_groups: 0,
+            selection_categorization_reason: None,
         };
         let prior = "1 of 1 discovery witness(es) failed: e.dag::f failed";
         let result = discovery_claim_result(
             "probe".into(),
             false,
             prior.to_string(),
+            NodeFrontierSelectionMode::Applied,
             &summary,
             Err("[witness-row-cost] REFUSED: missing measured resolve parent for e.dag".into()),
         );
@@ -10540,6 +10977,9 @@ mod tests {
             performance_receipts: Vec::new(),
             total_measured_nanos: 0,
             roster_closure_nodes: 0,
+            total_entry_groups: 0,
+            selected_entry_groups: 0,
+            selection_categorization_reason: None,
         };
         let (label, provenance) = scoped_witness_summary_outcome(
             &summary,
@@ -10568,6 +11008,7 @@ mod tests {
             corpus_witnesses: 0,
             witness_row_costs: Vec::new(),
             budget_refusal: None,
+            selection_degradation: None,
         }
     }
 

@@ -191,6 +191,10 @@ path = "src/bin/bootstrap_witness.rs"
 name = "floor_skip_discovery_witness"
 path = "src/bin/floor_skip_discovery_witness.rs"
 
+[[bin]]
+name = "p1_cohort_probe"
+path = "src/bin/p1_cohort_probe.rs"
+
 # Host-physics CI witness: regen self-host fixed-point affected-set skip. Prints
 # regen_not_affected_skip | run_regen for the generated ci regen step by intersecting
 # the merge-base diff with the [src/v1, dag] regen input closure (shared authority

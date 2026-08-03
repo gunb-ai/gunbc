@@ -1,0 +1,128 @@
+module gunbc.public_projection
+
+import std.types { CommitSha, FilePath, List, NonEmptyStr }
+import std.content_hash {
+  ContentHash,
+  content_hash_atom,
+  content_hash_combine_structural,
+  content_hash_tagged,
+  serialize_content_hash,
+  as_content_hash_structural,
+}
+import gunbc.publication_policy {
+  AdmittedPublicationPolicy,
+  PublicationDisposition,
+  PublishPublic,
+  WithholdPrivate,
+  resolve_disposition_for_path,
+}
+
+data public_projection_note: String = "Derived public projection plan over authored subjects. Requires AdmittedPublicationPolicy from admit_publication_policy — illegal policies are unrepresentable on this path. Never the unrestricted authored tree and never a pathname census: policy resolves each subject's disposition, included_subjects carries only PublishPublic rows, omitted_subjects carries WithholdPrivate rows, and projection_digest fingerprints the admitted set."
+
+type PublicationSubject {
+  subject_identity: ContentHash
+  content_identity: ContentHash
+  path: FilePath
+}
+
+type PublicProjectionPlan {
+  source_revision: CommitSha
+  policy_version: NonEmptyStr
+  included_subjects: List<PublicationSubject>
+  omitted_subjects: List<PublicationSubject>
+  projection_digest: ContentHash
+}
+
+fn publication_subject_digest(subject: PublicationSubject) -> ContentHash {
+  content_hash_tagged(
+    tag: "publication-subject",
+    payload: content_hash_combine_structural(
+      left: content_hash_atom(value: serialize_content_hash(hash: subject.subject_identity)),
+      right: content_hash_atom(value: serialize_content_hash(hash: subject.content_identity)),
+    ),
+  )
+}
+
+fn projection_digest_from_subjects(subjects: List<PublicationSubject>) -> ContentHash {
+  let digests = map(subjects, subject => publication_subject_digest(subject: subject))
+  as_content_hash_structural(
+    structural: fold(
+      sort_by(digests, digest => serialize_content_hash(hash: digest) as String),
+      init: content_hash_atom(value: "public-projection" as NonEmptyStr),
+      f: fn(acc, digest) {
+        content_hash_combine_structural(
+          left: acc,
+          right: content_hash_atom(value: serialize_content_hash(hash: digest)),
+        )
+      },
+    )
+  )
+}
+
+type AuthoredSubjectPartition {
+  included: List<PublicationSubject>
+  omitted: List<PublicationSubject>
+}
+
+fn partition_authored_subjects(
+  admitted: AdmittedPublicationPolicy,
+  authored_subjects: List<PublicationSubject>,
+) -> AuthoredSubjectPartition {
+  fold(
+    authored_subjects,
+    init: AuthoredSubjectPartition { included: [], omitted: [] },
+    f: fn(parts, subject) {
+      match resolve_disposition_for_path(
+        policy: admitted.policy,
+        path: subject.path,
+      ) {
+        PublishPublic =>
+          AuthoredSubjectPartition {
+            included: append(parts.included, items: [subject]),
+            omitted: parts.omitted,
+          }
+        WithholdPrivate =>
+          AuthoredSubjectPartition {
+            included: parts.included,
+            omitted: append(parts.omitted, items: [subject]),
+          }
+      }
+    },
+  )
+}
+
+fn derive_public_projection_plan(
+  admitted: AdmittedPublicationPolicy,
+  source_revision: CommitSha,
+  authored_subjects: List<PublicationSubject>,
+) -> PublicProjectionPlan {
+  let parts = partition_authored_subjects(
+    admitted: admitted,
+    authored_subjects: authored_subjects,
+  )
+  PublicProjectionPlan {
+    source_revision: source_revision,
+    policy_version: admitted.policy.version,
+    included_subjects: parts.included,
+    omitted_subjects: parts.omitted,
+    projection_digest: projection_digest_from_subjects(subjects: parts.included),
+  }
+}
+
+fn public_projection_includes_subject(
+  plan: PublicProjectionPlan,
+  subject_identity: ContentHash,
+) -> Bool {
+  fold(plan.included_subjects, init: false, f: fn(found, subject) {
+    found || subject.subject_identity == subject_identity
+  })
+}
+
+fn public_projection_omits_subject(
+  plan: PublicProjectionPlan,
+  subject_identity: ContentHash,
+) -> Bool {
+  fold(plan.omitted_subjects, init: false, f: fn(found, subject) {
+    found || subject.subject_identity == subject_identity
+  })
+}

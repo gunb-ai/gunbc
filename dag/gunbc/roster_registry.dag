@@ -105,7 +105,7 @@ data roster_registry: List<RosterRegistration> = [
     }
   },
   RosterRegistration {
-    roster: roster_decl(module_path: "gunbc.ci_layer_roots", decl_name: "known_red_probe_entries"),
+    roster: roster_decl(module_path: "gunbc.explicit_witness_admission", decl_name: "explicit_witness_admissions"),
     unit_kind: "schedule witness entry (entry file x function)",
     membership: DeclaredFrontier {
       reason: "known-red frontier: witnesses red on main for feature gaps owned by named lanes, run on the falsifier probe cadence expecting red; per-entry diagnosis, owner, and trigger in known_red_frontier_note",
@@ -219,7 +219,7 @@ data roster_registry: List<RosterRegistration> = [
     roster: roster_decl(module_path: "gunbc.ci_spec", decl_name: "gunbc_ci_floor_batch_wall_budget_seconds"),
     unit_kind: "per-batch floor wall budget (seconds, positional by batch index)",
     membership: DeclaredFrontier {
-      reason: "per-batch wall ceilings enforced by claim_executor as FLOOR-BATCH-OVER-BUDGET refusals under the operator-signed raise discipline. Membership is POSITIONAL against gunbc_ci_floor_batches but the coupling is by index rather than identity, so a schedule reorder misassigns every ceiling; the carrier's own follow-up row (b) IDENTITY-KEYED BUDGETS names this, and its raise history (1320 -> 1440 -> 1680 -> 2100 on batch 3 alone) is the record of the list being re-fitted to cost rather than derived from it",
+      reason: "per-batch wall ceilings enforced by claim_executor as FLOOR-BATCH-OVER-BUDGET refusals under the operator-signed raise discipline. Membership is POSITIONAL against the batch list gunbc_ci_floor_ordinary_batches but the coupling is by index rather than identity, so a schedule reorder misassigns every ceiling; the carrier's own follow-up row (b) IDENTITY-KEYED BUDGETS names this, and its raise history (1320 -> 1440 -> 1680 -> 2100 on batch 3 alone) is the record of the list being re-fitted to cost rather than derived from it",
       dissolve_on: "#7216's derived clamps absorb the width axis so a ceiling becomes a re-signed rate (units x rate) rather than a literal, and budgets key by batch content-identity rather than index (the carrier's follow-up (b), riding the ComputationIdentity lane); then the literal list and this row delete"
     }
   },
@@ -295,6 +295,14 @@ data roster_registry: List<RosterRegistration> = [
     membership: DeclaredFrontier {
       reason: "file-grain paths tracked on disk that no authority join classifies yet — bootstrap copies, hand-retained harness kernels, module_path_index files, frontier layout lag, and authority contradictions (stage0_core lib.rs vs partition rows); each row carries reason and dissolve_on. Cargo [[bin]] paths are host-derived (gunbc.stage0_cargo_manifest), not residue rows",
       dissolve_on: "per row: the path derives from generated_stage0_files, hand_maintained_stage0_filenames, stage0_cargo_bin_paths_observed (PR B host boundary), or stage0_partition_crate_rows and the row deletes; roster-wide, rust_source_host_observation_note host boundary supplies path evidence and promotes the scaffold to ZeroHandMaintainedRust acceptance (V1FinishLine, dag/gunbc/v1_deletion_plan.dag)"
+    }
+  },
+  RosterRegistration {
+    roster: roster_decl(module_path: "v1.compiler.trait_derive_emit", decl_name: "trait_derive_emit_fn_clone_bound_keyed_carrier_module_allowlist"),
+    unit_kind: "module path admitted by emit_fn_def Clone-bound override (param_node_type_expr opacity)",
+    membership: DeclaredFrontier {
+      reason: "emit_fn_def module_path allowlist: List<KeyedRow<..>> value-param type exprs reach emit as opaque containers, so v1_fn_param_type_needs_clone_bound cannot derive K/V; the override emits Clone on every item generic for listed modules only — extending the list is a counted roster edit, not a silent OR branch (trait_derive_emit_fn_clone_bound_keyed_carrier_module_scaffold_note)",
+      dissolve_on: "v1 param_node_type_expr preserves container element applied-type children (or an equivalent typed surface) so v1_fn_generic_clone_bound_via_bounded_container_element / v1_fn_generic_clone_bound_via_referenced_decl derive keyed-row carrier bounds without the module_path arm; then delete the allowlist, its emit_fn_def consumer, and this registration"
     }
   },
   RosterRegistration {

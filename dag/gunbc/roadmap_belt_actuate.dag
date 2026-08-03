@@ -1,8 +1,8 @@
 module gunbc.roadmap_belt_actuate
 
 import gunbc.output_policy { OutcomeIsData }
-import std.types { String, Int, Bool, List, NonEmptyStr, FilePath }
-import gunbc.roadmap_model { RoadmapNode }
+import std.types { String, Int, Bool, List, NonEmptyStr, FilePath, CommitSha }
+import gunbc.roadmap_model { RoadmapNode, RoadmapNodeId, node_criteria_digest }
 import gunbc.roadmap_spawner { SpawnFrontier, spawn_frontier, doc_all_nodes }
 import gunbc.roadmap_status { signoff_accepts }
 import gunbc.roadmap_authority { roadmap_authority, authored_merged_prs }
@@ -56,6 +56,9 @@ import gunbc.roadmap_dispatch_actuator {
   dispatch_attempt_oracle_revision_path_for_instance,
   dispatch_attempt_oracle_pin_refusal_path_for_instance,
   dispatch_attempt_validation_receipt_path_for_instance,
+  dispatch_attempt_verification_receipt_path_for_instance,
+  dispatch_attempt_verification_dir_for_instance,
+  verification_receipt_directory_segment,
   dispatch_attempt_publication_receipt_path_for_instance,
   dispatch_attempt_publication_dir_for_instance,
   dispatch_attempt_state_path_for_instance,
@@ -65,6 +68,8 @@ import gunbc.roadmap_dispatch_actuator {
   dispatch_current_attempt_oracle_pin_refusal_path_for_instance,
   dispatch_current_attempt_validation_receipt_path_for_instance,
   dispatch_worktree_path_for_instance,
+  dispatch_verification_checkout_path_for_instance,
+  git_worktree_add_detached_argv_for_instance,
   dispatch_current_attempt_key_path_for_instance,
   dispatch_current_attempt_admission_path_for_instance,
   dispatch_current_attempt_events_projection_argv_for_instance,
@@ -74,8 +79,11 @@ import gunbc.roadmap_dispatch_actuator {
   git_for_each_ref_dispatch_argv,
   git_for_each_ref_dispatch_argv_for_instance,
   dispatch_tmux_session_scope,
-  DispatchCliProvider, ClaudeCodeProvider, CodexCliProvider,
+  DispatchCliProvider, ClaudeCodeProvider, CodexDispatchProvider, CursorDispatchProvider,
   dispatch_cli_provider, dispatch_provider_label, dispatch_codex_home,
+  dispatch_actuator_selection,
+  DispatchActuatorSelectionOk,
+  DispatchActuatorSelectionRefused,
   dispatch_tmux_session_name,
   dispatch_worktree_root,
   tmux_ls_argv,
@@ -123,6 +131,7 @@ import gunbc.worker_lifecycle {
   transcript_evidence_label,
   terminal_outcome_evidence_label,
 }
+import gunbc.dispatch_selection { default_provider_selection_request }
 import gunbc.host_layout { srv1_gunbc_repo_root, belt_spawn_workdir_env_var }
 import gunbc.roadmap_dashboard_instance {
   HostDashboardInstance,
@@ -178,6 +187,26 @@ import gunbc.roadmap_publish_observe {
   WorktreeBoundToRepository, WorktreeBoundElsewhere, WorktreeRemoteUnreadable,
   observe_worktree_repository_binding,
 }
+import gunbc.roadmap_verification_receipt {
+  VerificationSubject,
+  VerificationSubjectObservation,
+  VerificationSubjectObserved,
+  VerificationSubjectUnobserved,
+  ValidationExecution,
+  VerificationReceipt,
+  VerificationReceiptFileSource,
+  VerificationReceiptAbsent,
+  VerificationReceiptPresent,
+  VerificationReceiptUnreadable,
+  verification_receipt_json,
+  verification_receipt_decode,
+  VerificationReceiptDecoded,
+  VerificationReceiptUndecodable,
+  verification_receipt_text_decode,
+  VerificationReceiptTextExactHead,
+  VerificationReceiptTextLegacy,
+  VerificationReceiptTextUndecodable,
+}
 import extdeps.github.github { Repository }
 import gunbc.roadmap_validation_oracle {
   ValidationOracleRef,
@@ -196,12 +225,9 @@ import gunbc.roadmap_validation_oracle {
   ValidationFailed,
   ValidationRefused,
   ValidationNotRun,
-  ValidationReceiptDecode,
-  ValidationReceiptDecoded,
-  ValidationReceiptUndecodable,
-  validation_receipt_decode,
   ValidationCommandUnrealized,
   ValidationCommandRefused,
+  ValidationContractUnspecified,
   validation_oracle_scopes,
   validation_oracle_observe_from_source,
   validation_oracle_set_observe,
@@ -566,6 +592,93 @@ fn belt_worktree_head_revision(
   match belt_worktree_head_observe(instance: instance, worktree: worktree) {
     WorktreeHeadObserved { revision } => revision as String
     WorktreeHeadUnobserved { reason: _ } => ""
+  }
+}
+
+fn belt_verify_detached_worktree(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+  head_sha: String,
+) -> String {
+  let checkout_path = dispatch_verification_checkout_path_for_instance(
+    instance: instance,
+    node_id: node_id,
+    attempt_key: attempt_key,
+    head_sha: head_sha,
+  )
+  match belt_worktree_head_observe(instance: instance, worktree: checkout_path) {
+    WorktreeHeadObserved { revision } =>
+      if (revision as String) == head_sha {
+        checkout_path
+      } else {
+        ""
+      }
+    WorktreeHeadUnobserved { reason: _ } =>
+      match belt_exec(
+        cmd: git_worktree_add_detached_argv_for_instance(
+          instance: instance,
+          worktree_path: checkout_path,
+          commit_sha: head_sha,
+        ),
+        workdir: instance.repo_root as String,
+      ) {
+        ExecOk { stdout: _ } => checkout_path
+        ExecFailed { program: _, exit_code: _, stderr: _ } => ""
+        ExecRefused { program: _, reason: _ } => ""
+      }
+  }
+}
+
+fn belt_verify_detached_worktree_refusal(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+  head_sha: String,
+) -> String {
+  let checkout_path = dispatch_verification_checkout_path_for_instance(
+    instance: instance,
+    node_id: node_id,
+    attempt_key: attempt_key,
+    head_sha: head_sha,
+  )
+  match belt_worktree_head_observe(instance: instance, worktree: checkout_path) {
+    WorktreeHeadObserved { revision } =>
+      join([
+        "a verification checkout already exists at ",
+        checkout_path,
+        " but its head is ",
+        revision as String,
+        " instead of the observed ",
+        head_sha,
+      ], "")
+    WorktreeHeadUnobserved { reason: _ } =>
+      match belt_exec(
+        cmd: git_worktree_add_detached_argv_for_instance(
+          instance: instance,
+          worktree_path: checkout_path,
+          commit_sha: head_sha,
+        ),
+        workdir: instance.repo_root as String,
+      ) {
+        ExecOk { stdout: _ } => ""
+        ExecFailed { program, exit_code, stderr } =>
+          join([
+            program,
+            " could not create a detached verification checkout at ",
+            head_sha,
+            " (exit ",
+            to_string(exit_code),
+            "): ",
+            stderr,
+          ], "")
+        ExecRefused { program, reason } =>
+          join([
+            program,
+            " was not available to create a detached verification checkout: ",
+            reason,
+          ], "")
+      }
   }
 }
 
@@ -943,11 +1056,16 @@ fn belt_provider_preflight_for_instance(
         ClaudePreflightRefused { step: st, detail: d } =>
           ProviderPreflightRefused { step: st, detail: d }
       }
-    CodexCliProvider =>
+    CodexDispatchProvider =>
       match belt_codex_preflight_for_instance(instance: instance) {
         CodexPreflightOk { auth_method: _ } => ProviderPreflightOk
         CodexPreflightRefused { step: st, detail: d } =>
           ProviderPreflightRefused { step: st, detail: d }
+      }
+    CursorDispatchProvider =>
+      ProviderPreflightRefused {
+        step: "cursor-provider-preflight",
+        detail: "cursor dispatch is not yet wired on this actuator path",
       }
   }
 }
@@ -1089,24 +1207,33 @@ fn belt_actuate_spawn_for_instance(
         ),
       }
     EnvironmentAdmitted { receipts, validation_summary } =>
-      match belt_provider_preflight_for_instance(
-        instance: instance,
-        provider: dispatch_cli_provider,
-      ) {
-        ProviderPreflightRefused { step: st, detail: d } =>
-          SpawnFailed { node_id: node.node as String, step: st, detail: d }
-        ProviderPreflightOk =>
-          belt_actuate_spawn_exec_for_instance(
+      match dispatch_actuator_selection(node_sizing: node.sizing) {
+        DispatchActuatorSelectionRefused { reason } =>
+          SpawnFailed {
+            node_id: node.node as String,
+            step: "dispatch-selection",
+            detail: reason as String,
+          }
+        DispatchActuatorSelectionOk { provider, effort: _, process_fingerprint: _ } =>
+          match belt_provider_preflight_for_instance(
             instance: instance,
-            node: node,
-            probed_at: probed_at,
-            admission_receipt: dispatch_environment_admission_json(
-              admission: EnvironmentAdmitted {
-                receipts: receipts,
-                validation_summary: validation_summary,
-              },
-            ),
-          )
+            provider: provider,
+          ) {
+            ProviderPreflightRefused { step: st, detail: d } =>
+              SpawnFailed { node_id: node.node as String, step: st, detail: d }
+            ProviderPreflightOk =>
+              belt_actuate_spawn_exec_for_instance(
+                instance: instance,
+                node: node,
+                probed_at: probed_at,
+                admission_receipt: dispatch_environment_admission_json(
+                  admission: EnvironmentAdmitted {
+                    receipts: receipts,
+                    validation_summary: validation_summary,
+                  },
+                ),
+              )
+          }
       }
   }
   }
@@ -1146,7 +1273,7 @@ fn belt_actuate_spawn_exec_modeled(
     node: node,
     session_uuid: belt_spawn_session_uuid(node_id: node.node as String, probed_at: probed_at),
     attempt_key: attempt_key,
-    provider: dispatch_cli_provider,
+    request: default_provider_selection_request(),
   ) {
     DispatchSpawnRefused { step, detail } =>
       SpawnFailed {
@@ -1298,21 +1425,30 @@ fn belt_actuate_spawn(node: RoadmapNode, probed_at: String, workdir: String) -> 
         ),
       }
     EnvironmentAdmitted { receipts, validation_summary } =>
-      match belt_provider_preflight(provider: dispatch_cli_provider) {
-        ProviderPreflightRefused { step: st, detail: d } =>
-          SpawnFailed { node_id: node.node as String, step: st, detail: d }
-        ProviderPreflightOk =>
-          belt_actuate_spawn_exec(
-            node: node,
-            probed_at: probed_at,
-            workdir: workdir,
-            admission_receipt: dispatch_environment_admission_json(
-              admission: EnvironmentAdmitted {
-                receipts: receipts,
-                validation_summary: validation_summary,
-              },
-            ),
-          )
+      match dispatch_actuator_selection(node_sizing: node.sizing) {
+        DispatchActuatorSelectionRefused { reason } =>
+          SpawnFailed {
+            node_id: node.node as String,
+            step: "dispatch-selection",
+            detail: reason as String,
+          }
+        DispatchActuatorSelectionOk { provider, effort: _, process_fingerprint: _ } =>
+          match belt_provider_preflight(provider: provider) {
+            ProviderPreflightRefused { step: st, detail: d } =>
+              SpawnFailed { node_id: node.node as String, step: st, detail: d }
+            ProviderPreflightOk =>
+              belt_actuate_spawn_exec(
+                node: node,
+                probed_at: probed_at,
+                workdir: workdir,
+                admission_receipt: dispatch_environment_admission_json(
+                  admission: EnvironmentAdmitted {
+                    receipts: receipts,
+                    validation_summary: validation_summary,
+                  },
+                ),
+              )
+          }
       }
   }
 }
@@ -2490,6 +2626,180 @@ fn belt_publication_receipt_source(
   }
 }
 
+fn belt_verification_subject_for(
+  node: RoadmapNode,
+  attempt_key: String,
+  branch: String,
+  head: WorktreeHeadObservation,
+) -> VerificationSubjectObservation {
+  match head {
+    WorktreeHeadUnobserved { reason } =>
+      VerificationSubjectUnobserved {
+        reason: join([
+          "verification is adjudicated against an exact head and this attempt has none: ",
+          reason,
+        ], ""),
+      }
+    WorktreeHeadObserved { revision } =>
+      if trim(branch) == "" {
+        VerificationSubjectUnobserved {
+          reason: "the attempt has no branch name, so there is no verification subject to construct",
+        }
+      } else {
+        match node_criteria_digest(rn: node) {
+          Absent =>
+            VerificationSubjectUnobserved {
+              reason: "this roadmap node has no criteria digest, so the verification subject cannot be constructed",
+            }
+          Present { value: criteria_digest } =>
+            VerificationSubjectObserved {
+              subject: VerificationSubject {
+                node_identity: node.identity,
+                criteria_digest: criteria_digest,
+                attempt_key: attempt_key,
+                branch: branch as NonEmptyStr,
+                head_sha: revision as CommitSha,
+              },
+            }
+        }
+      }
+  }
+}
+
+fn belt_verification_receipt_source(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+  subject: VerificationSubjectObservation,
+) -> VerificationReceiptFileSource {
+  match subject {
+    VerificationSubjectUnobserved { reason: _ } => VerificationReceiptAbsent
+    VerificationSubjectObserved { subject: observed } => {
+      let attempt_dir = dispatch_attempt_state_path_for_instance(
+        instance: instance,
+        node_id: node_id,
+        attempt_key: attempt_key,
+      )
+      let attempt_listing = Filesystem.List(path: attempt_dir)
+      if !attempt_listing.success {
+        VerificationReceiptUnreadable {
+          detail: join([
+            "the attempt state directory could not be listed, so whether a verification receipt exists was not established: ",
+            attempt_dir,
+            " (",
+            attempt_listing.error,
+            ")",
+          ], ""),
+        }
+      } else if !belt_listing_names_entry(
+        listing: attempt_listing.entries,
+        name: verification_receipt_directory_segment,
+      ) {
+        if belt_listing_names_entry(
+          listing: attempt_listing.entries,
+          name: "validation-receipt.json",
+        ) {
+          let legacy_path = dispatch_attempt_validation_receipt_path_for_instance(
+            instance: instance,
+            node_id: node_id,
+            attempt_key: attempt_key,
+          )
+          let legacy_read = Filesystem.Read(path: legacy_path)
+          if legacy_read.success {
+            VerificationReceiptPresent { text: legacy_read.content }
+          } else {
+            VerificationReceiptUnreadable {
+              detail: join([
+                "the legacy validation receipt was listed and then could not be read: ",
+                legacy_path,
+                " (",
+                legacy_read.error,
+                ")",
+              ], ""),
+            }
+          }
+        } else {
+          VerificationReceiptAbsent
+        }
+      } else {
+        let verification_dir = dispatch_attempt_verification_dir_for_instance(
+          instance: instance,
+          node_id: node_id,
+          attempt_key: attempt_key,
+        )
+        let verification_listing = Filesystem.List(path: verification_dir)
+        if !verification_listing.success {
+          VerificationReceiptUnreadable {
+            detail: join([
+              "the verification receipt directory was named by the attempt listing but could not itself be listed: ",
+              verification_dir,
+              " (",
+              verification_listing.error,
+              ")",
+            ], ""),
+          }
+        } else if !belt_listing_names_entry(
+          listing: verification_listing.entries,
+          name: join([observed.head_sha as String, ".json"], ""),
+        ) {
+          VerificationReceiptAbsent
+        } else {
+          let path = dispatch_attempt_verification_receipt_path_for_instance(
+            instance: instance,
+            node_id: node_id,
+            attempt_key: attempt_key,
+            head_sha: observed.head_sha as String,
+          )
+          let read = Filesystem.Read(path: path)
+          if read.success {
+            VerificationReceiptPresent { text: read.content }
+          } else {
+            VerificationReceiptUnreadable {
+              detail: join([
+                "a verification receipt for this head was listed and then could not be read, so it exists and its content is unavailable: ",
+                path,
+                " (",
+                read.error,
+                ")",
+              ], ""),
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn belt_verification_subject_observation_for_attempt(
+  instance: HostDashboardInstance,
+  node_id: String,
+  attempt_key: String,
+) -> VerificationSubjectObservation {
+  match belt_lookup_node(node_id: node_id) {
+    NodeMissing =>
+      VerificationSubjectUnobserved {
+        reason: "the roadmap authority declares no node with this id, so there is no verification subject",
+      }
+    NodeFound { node } =>
+      belt_verification_subject_for(
+        node: node,
+        attempt_key: attempt_key,
+        branch: dispatch_branch_name(
+          node_id: node_id as RoadmapNodeId,
+          attempt_key: attempt_key,
+        ),
+        head: belt_worktree_head_observe(
+          instance: instance,
+          worktree: dispatch_worktree_path_for_instance(
+            instance: instance,
+            node_id: node_id as RoadmapNodeId,
+            attempt_key: attempt_key,
+          ),
+        ),
+      )
+  }
+}
+
 fn belt_workflow_progress_for_attempt_ref(
   instance: HostDashboardInstance,
   panes: BeltAttemptPanes,
@@ -2522,8 +2832,10 @@ fn belt_workflow_progress_for_attempt_ref(
         instance: instance,
         node_id: attempt.node_id,
       ),
-      validation_receipt_readable: false,
-      validation_receipt: "",
+      verification_subject: VerificationSubjectUnobserved {
+        reason: "this attempt has no modeled state pointer, so neither its attempt key nor its head is established",
+      },
+      verification_source: VerificationReceiptAbsent,
       publication_subject: PublicationSubjectUnobserved {
         reason: "this attempt has no modeled state pointer, so neither its attempt key nor its head is established",
       },
@@ -2548,27 +2860,29 @@ fn belt_workflow_progress_for_attempt_ref(
         node_id: node_id,
       ),
     )
-    let validation_receipt = Filesystem.Read(
-      path: dispatch_current_attempt_validation_receipt_path_for_instance(
-        instance: instance,
-        node_id: node_id,
-      ),
+    let branch = dispatch_branch_name(
+      node_id: node_id,
+      attempt_key: current_key,
+    )
+    let worktree = dispatch_worktree_path_for_instance(
+      instance: instance,
+      node_id: node_id,
+      attempt_key: current_key,
+    )
+    let head = belt_worktree_head_observe(
+      instance: instance,
+      worktree: worktree,
     )
     let publication_subject = belt_publication_subject_for(
       node_id: attempt.node_id,
       attempt_key: current_key,
-      branch: dispatch_branch_name(
-        node_id: node_id,
-        attempt_key: current_key,
-      ),
-      head: belt_worktree_head_observe(
-        instance: instance,
-        worktree: dispatch_worktree_path_for_instance(
-          instance: instance,
-          node_id: node_id,
-          attempt_key: current_key,
-        ),
-      ),
+      branch: branch,
+      head: head,
+    )
+    let verification_subject = belt_verification_subject_observation_for_attempt(
+      instance: instance,
+      node_id: attempt.node_id,
+      attempt_key: current_key,
     )
     let publication_receipt = belt_publication_receipt_source(
       instance: instance,
@@ -2605,8 +2919,13 @@ fn belt_workflow_progress_for_attempt_ref(
         instance: instance,
         node_id: attempt.node_id,
       ),
-      validation_receipt_readable: validation_receipt.success,
-      validation_receipt: validation_receipt.content,
+      verification_subject: verification_subject,
+      verification_source: belt_verification_receipt_source(
+        instance: instance,
+        node_id: node_id,
+        attempt_key: current_key,
+        subject: verification_subject,
+      ),
       publication_subject: publication_subject,
       publication_source: publication_receipt,
     })
@@ -2614,6 +2933,8 @@ fn belt_workflow_progress_for_attempt_ref(
 }
 
 data belt_verify_pass_note: String = "The workflow's own verification actuation, and the reason it lives on the belt rather than in the /workflow.json handler: running a declared validation is an EFFECT that takes as long as the validation takes, while the progress route is a synchronous read that the browser polls every two seconds. Producing the verdict on the read path would make the lamp's own observation the thing that runs cargo. So the belt produces the receipt and the projection reads it — the same split the environment-admission receipt already uses, and the reason Verify can move without the observer changing shape. Idempotence comes from the receipt's presence, exactly as spawn idempotence comes from the observed session: a recorded verdict is not recomputed, so re-ticking neither re-runs the validation nor overwrites a verdict with a later one taken against a tree the agent has since touched. Agent completion is read from the reconciled provider state, so a turn that completed while its pane still runs, or completed with a nonzero exit, does not reach verification at all — the obligation order is preserved rather than restated."
+
+data belt_verification_detached_checkout_note: String = "Validations run in a detached checkout of the observed head, never in the mutable implementation worktree. The checkout path is head-addressed and idempotent: an existing tree at the same revision is reused; a tree at a different revision refuses rather than validating the wrong commit."
 
 type BeltVerifyOutcome
   = VerifyDeferred { node_id: String, reason: String }
@@ -2632,40 +2953,41 @@ fn belt_read_or_empty(path: String) -> String {
   if read.success { trim(read.content) } else { "" }
 }
 
-fn belt_validation_commands_for_contract(
-  instance: HostDashboardInstance,
-  contract: WorkItemExecutionContract,
-) -> List<ModeledValidationCommand?> {
-  match contract {
-    ExecutionContractUnspecified => []
-    ExecutionContract { validations, extra_capabilities: _ } =>
-      map(validations, v => validation_operation_command(
-        validation: v,
-        environment: instance.execution_environment,
-      ))
-  }
+type BeltValidationRun {
+  executions: List<ValidationExecution>
+  verdict: ValidationVerdict
 }
 
-fn belt_run_validation_commands(
-  commands: List<ModeledValidationCommand?>,
+fn belt_run_validation_operations(
+  instance: HostDashboardInstance,
+  validations: List<ValidationOperation>,
   worktree: String,
   oracle_identity: ContentHash,
-) -> ValidationVerdict {
+) -> BeltValidationRun {
   fold(
-    commands,
-    init: ValidationPassed {
-      command: "",
-      oracle_identity: oracle_identity,
+    validations,
+    init: BeltValidationRun {
+      executions: [],
+      verdict: ValidationPassed {
+        command: "",
+        oracle_identity: oracle_identity,
+      },
     },
-    f: fn(acc, maybe_command) {
-      match acc {
+    f: fn(acc, validation) {
+      match acc.verdict {
         ValidationNotRun => acc
         ValidationFailed { command: _, exit_code: _, detail: _ } => acc
         ValidationRefused { cause: _ } => acc
         ValidationPassed { command: prior, oracle_identity: _ } =>
-          match maybe_command {
+          match validation_operation_command(
+            validation: validation,
+            environment: instance.execution_environment,
+          ) {
             Absent =>
-              ValidationRefused { cause: ValidationCommandUnrealized }
+              BeltValidationRun {
+                executions: acc.executions,
+                verdict: ValidationRefused { cause: ValidationCommandUnrealized },
+              }
             Present { value: command } => {
               let wire = modeled_validation_command_wire(command: command)
               match belt_exec(
@@ -2675,26 +2997,47 @@ fn belt_run_validation_commands(
                 ),
                 workdir: worktree,
               ) {
-                ExecOk { stdout: _ } =>
-                  ValidationPassed {
-                    command: if prior == "" {
-                      wire
-                    } else {
-                      join([prior, "; ", wire], "")
+                ExecOk { stdout } =>
+                  BeltValidationRun {
+                    executions: acc.executions |> append(ValidationExecution {
+                      validation: validation,
+                      command: command,
+                      exit_code: 0,
+                      stdout: stdout,
+                      stderr: "",
+                    }),
+                    verdict: ValidationPassed {
+                      command: if prior == "" {
+                        wire
+                      } else {
+                        join([prior, "; ", wire], "")
+                      },
+                      oracle_identity: oracle_identity,
                     },
-                    oracle_identity: oracle_identity,
                   }
                 ExecFailed { program: _, exit_code, stderr } =>
-                  ValidationFailed {
-                    command: wire,
-                    exit_code: exit_code,
-                    detail: stderr,
+                  BeltValidationRun {
+                    executions: acc.executions |> append(ValidationExecution {
+                      validation: validation,
+                      command: command,
+                      exit_code: exit_code,
+                      stdout: "",
+                      stderr: stderr,
+                    }),
+                    verdict: ValidationFailed {
+                      command: wire,
+                      exit_code: exit_code,
+                      detail: stderr,
+                    },
                   }
                 ExecRefused { program, reason } =>
-                  ValidationRefused {
-                    cause: ValidationCommandRefused {
-                      program: program,
-                      reason: reason,
+                  BeltValidationRun {
+                    executions: acc.executions,
+                    verdict: ValidationRefused {
+                      cause: ValidationCommandRefused {
+                        program: program,
+                        reason: reason,
+                      },
                     },
                   }
               }
@@ -2711,152 +3054,266 @@ fn belt_verify_attempt_for_instance(
 ) -> BeltVerifyOutcome {
   let node_id = progress.node_id as gunbc.roadmap_model.RoadmapNodeId
   match progress.provider {
-    ProviderCompleted { activity: _ } => {
-      let receipt_read = Filesystem.Read(
-        path: dispatch_current_attempt_validation_receipt_path_for_instance(
-          instance: instance,
-          node_id: node_id,
-        ),
-      )
-      if !receipt_read.success {
-        VerifyEvidenceUnreadable {
-          node_id: progress.node_id,
-          detail: join([
-            "the validation receipt beside this attempt could not be read, so whether a verdict already exists is unknown; the belt refuses to run the validation rather than overwrite evidence it cannot see (",
-            receipt_read.error,
-            "). An attempt dispatched before verification receipts existed reports this until it is re-dispatched",
-          ], ""),
-        }
-      } else {
-        match validation_receipt_decode(receipt: receipt_read.content) {
-          ValidationReceiptUndecodable { reason } =>
-            VerifyEvidenceUnreadable {
-              node_id: progress.node_id,
-              detail: join([
-                "the validation receipt beside this attempt does not decode, so the belt refuses to replace it: ",
-                reason,
-              ], ""),
-            }
-          ValidationReceiptDecoded { verdict_key } =>
-            if verdict_key != "not_run" {
-              VerifyDeferred {
-                node_id: progress.node_id,
-                reason: join([
-                  "a validation verdict is already recorded for this attempt: ",
-                  verdict_key,
-                ], ""),
-              }
-            } else {
-        match belt_lookup_node(node_id: progress.node_id) {
-          NodeMissing =>
-            VerifyDeferred {
-              node_id: progress.node_id,
-              reason: "the roadmap authority declares no node with this id, so there is no contract to verify against",
-            }
-          NodeFound { node } => {
-            let worktree = dispatch_worktree_path_for_instance(
-              instance: instance,
-              node_id: node_id,
-              attempt_key: progress.attempt_key,
-            )
-            let observations = belt_oracle_observations_in_worktree(
-              contract: node.execution,
-              worktree: worktree,
-            )
-            let pinned_identity_wire = belt_read_or_empty(
-              path: dispatch_current_attempt_oracle_identity_path_for_instance(
+    ProviderCompleted { activity: _ } =>
+      match belt_lookup_node(node_id: progress.node_id) {
+        NodeMissing =>
+          VerifyDeferred {
+            node_id: progress.node_id,
+            reason: "the roadmap authority declares no node with this id, so there is no contract to verify against",
+          }
+        NodeFound { node } => {
+          let verification_subject = belt_verification_subject_observation_for_attempt(
+            instance: instance,
+            node_id: progress.node_id,
+            attempt_key: progress.attempt_key,
+          )
+          match verification_subject {
+            VerificationSubjectUnobserved { reason } =>
+              VerifyDeferred { node_id: progress.node_id, reason: reason }
+            VerificationSubjectObserved { subject } => {
+              let verification_source = belt_verification_receipt_source(
                 instance: instance,
                 node_id: node_id,
-              ),
-            )
-            let pinned_revision_wire = belt_read_or_empty(
-              path: dispatch_current_attempt_oracle_revision_path_for_instance(
-                instance: instance,
-                node_id: node_id,
-              ),
-            )
-            let pinned_identity = validation_oracle_parse_pinned_identity_wire(
-              text: pinned_identity_wire,
-            )
-            let pinned_revision = validation_oracle_parse_pinned_revision_wire(
-              text: pinned_revision_wire,
-            )
-            let pin_refusal = belt_read_or_empty(
-              path: dispatch_current_attempt_oracle_pin_refusal_path_for_instance(
-                instance: instance,
-                node_id: node_id,
-              ),
-            )
-            let pin_recorded = validation_oracle_pin_recorded(
-              identity: pinned_identity,
-              revision: pinned_revision,
-            )
-            let verdict = match validation_oracle_gate(
-              contract: node.execution,
-              observations: observations,
-              pin_recorded: pin_recorded,
-              expected_identity: match pinned_identity {
-                Present { value: identity } => identity
-                Absent =>
-                  as_content_hash_structural(
-                    structural: content_hash_atom(value: "oracle-pin-unreadable")
-                  )
-              },
-              revision: match pinned_revision {
-                Present { value: revision } => revision
-                Absent => "oracle-pin-unreadable" as NonEmptyStr as VersionIdentity
-              },
-              pin_read_detail: if pin_refusal == "" {
-                "no oracle identity was recorded for this attempt at dispatch"
-              } else {
-                pin_refusal
-              },
-            ) {
-              ValidationOracleGateRefused { cause } =>
-                ValidationRefused { cause: cause }
-              ValidationOracleAdmitted { identity } =>
-                belt_run_validation_commands(
-                  commands: belt_validation_commands_for_contract(
+                attempt_key: progress.attempt_key,
+                subject: verification_subject,
+              )
+              match verification_source {
+                VerificationReceiptUnreadable { detail } =>
+                  VerifyEvidenceUnreadable {
+                    node_id: progress.node_id,
+                    detail: join([
+                      "a verification receipt for this head could not be read or does not decode, so the belt refuses to replace evidence it cannot read: ",
+                      detail,
+                    ], ""),
+                  }
+                VerificationReceiptPresent { text } =>
+                  match verification_receipt_text_decode(receipt: text) {
+                    VerificationReceiptTextExactHead { receipt } =>
+                      if validation_verdict_key(verdict: receipt.verdict) != "not_run" {
+                        VerifyDeferred {
+                          node_id: progress.node_id,
+                          reason: join([
+                            "an exact-head verification verdict is already recorded for this attempt at ",
+                            subject.head_sha as String,
+                            ": ",
+                            validation_verdict_key(verdict: receipt.verdict),
+                          ], ""),
+                        }
+                      } else {
+                        belt_verify_run_and_persist(
+                          instance: instance,
+                          node: node,
+                          progress: progress,
+                          subject: subject,
+                        )
+                      }
+                    VerificationReceiptTextLegacy { verdict_key: _ } =>
+                      belt_verify_run_and_persist(
+                        instance: instance,
+                        node: node,
+                        progress: progress,
+                        subject: subject,
+                      )
+                    VerificationReceiptTextUndecodable { reason } =>
+                      VerifyEvidenceUnreadable {
+                        node_id: progress.node_id,
+                        detail: join([
+                          "a verification receipt for this head could not be decoded, so the belt refuses to replace it: ",
+                          reason,
+                        ], ""),
+                      }
+                  }
+                VerificationReceiptAbsent =>
+                  belt_verify_run_and_persist(
                     instance: instance,
-                    contract: node.execution,
-                  ),
-                  worktree: worktree,
-                  oracle_identity: identity,
-                )
-            }
-            let write = Filesystem.Write(
-              path: dispatch_current_attempt_validation_receipt_path_for_instance(
-                instance: instance,
-                node_id: node_id,
-              ),
-              content: validation_receipt_json(
-                verdict: verdict,
-                observations: observations,
-              ),
-            )
-            if write.success {
-              VerifyRecorded {
-                node_id: progress.node_id,
-                verdict_key: validation_verdict_key(verdict: verdict),
-                detail: validation_verdict_detail(verdict: verdict),
-              }
-            } else {
-              VerifyWriteFailed {
-                node_id: progress.node_id,
-                detail: write.error,
+                    node: node,
+                    progress: progress,
+                    subject: subject,
+                  )
               }
             }
           }
         }
       }
-        }
-      }
-    }
     _ =>
       VerifyDeferred {
         node_id: progress.node_id,
         reason: "the agent obligation is not satisfied, so there is nothing to verify yet",
       }
+  }
+}
+
+fn belt_verify_run_and_persist(
+  instance: HostDashboardInstance,
+  node: RoadmapNode,
+  progress: WorkflowAttemptProgress,
+  subject: VerificationSubject,
+) -> BeltVerifyOutcome {
+  let node_id = progress.node_id as gunbc.roadmap_model.RoadmapNodeId
+  let worktree = belt_verify_detached_worktree(
+    instance: instance,
+    node_id: node_id,
+    attempt_key: progress.attempt_key,
+    head_sha: subject.head_sha as String,
+  )
+  let pinned_identity_wire = belt_read_or_empty(
+    path: dispatch_current_attempt_oracle_identity_path_for_instance(
+      instance: instance,
+      node_id: node_id,
+    ),
+  )
+  let pinned_revision_wire = belt_read_or_empty(
+    path: dispatch_current_attempt_oracle_revision_path_for_instance(
+      instance: instance,
+      node_id: node_id,
+    ),
+  )
+  let pinned_identity = validation_oracle_parse_pinned_identity_wire(
+    text: pinned_identity_wire,
+  )
+  let pinned_revision = validation_oracle_parse_pinned_revision_wire(
+    text: pinned_revision_wire,
+  )
+  let pin_refusal = belt_read_or_empty(
+    path: dispatch_current_attempt_oracle_pin_refusal_path_for_instance(
+      instance: instance,
+      node_id: node_id,
+    ),
+  )
+  let pin_recorded = validation_oracle_pin_recorded(
+    identity: pinned_identity,
+    revision: pinned_revision,
+  )
+  if worktree == "" {
+    let run = BeltValidationRun {
+      executions: [],
+      verdict: ValidationRefused {
+        cause: ValidationCommandRefused {
+          program: "git",
+          reason: belt_verify_detached_worktree_refusal(
+            instance: instance,
+            node_id: node_id,
+            attempt_key: progress.attempt_key,
+            head_sha: subject.head_sha as String,
+          ),
+        },
+      },
+    }
+    let receipt = VerificationReceipt {
+      subject: subject,
+      oracle_identity: match pinned_identity {
+        Present { value: identity } => identity
+        Absent =>
+          as_content_hash_structural(
+            structural: content_hash_atom(value: "oracle-pin-unreadable")
+          )
+      },
+      executions: run.executions,
+      verdict: run.verdict,
+    }
+    let write = Filesystem.Write(
+      path: dispatch_attempt_verification_receipt_path_for_instance(
+        instance: instance,
+        node_id: node_id,
+        attempt_key: progress.attempt_key,
+        head_sha: subject.head_sha as String,
+      ),
+      content: verification_receipt_json(receipt: receipt),
+    )
+    if write.success {
+      VerifyRecorded {
+        node_id: progress.node_id,
+        verdict_key: validation_verdict_key(verdict: run.verdict),
+        detail: validation_verdict_detail(verdict: run.verdict),
+      }
+    } else {
+      VerifyWriteFailed {
+        node_id: progress.node_id,
+        detail: write.error,
+      }
+    }
+  } else {
+    let observations = belt_oracle_observations_in_worktree(
+      contract: node.execution,
+      worktree: worktree,
+    )
+    let run = match validation_oracle_gate(
+      contract: node.execution,
+      observations: observations,
+      pin_recorded: pin_recorded,
+      expected_identity: match pinned_identity {
+        Present { value: identity } => identity
+        Absent =>
+          as_content_hash_structural(
+            structural: content_hash_atom(value: "oracle-pin-unreadable")
+          )
+      },
+      revision: match pinned_revision {
+        Present { value: revision } => revision
+        Absent => "oracle-pin-unreadable" as NonEmptyStr as VersionIdentity
+      },
+      pin_read_detail: if pin_refusal == "" {
+        "no oracle identity was recorded for this attempt at dispatch"
+      } else {
+        pin_refusal
+      },
+    ) {
+      ValidationOracleGateRefused { cause } =>
+        BeltValidationRun {
+          executions: [],
+          verdict: ValidationRefused { cause: cause },
+        }
+      ValidationOracleAdmitted { identity } =>
+        match node.execution {
+          ExecutionContractUnspecified =>
+            BeltValidationRun {
+              executions: [],
+              verdict: ValidationRefused {
+                cause: ValidationContractUnspecified,
+              },
+            }
+          ExecutionContract { validations, extra_capabilities: _ } =>
+            belt_run_validation_operations(
+              instance: instance,
+              validations: validations,
+              worktree: worktree,
+              oracle_identity: identity,
+            )
+        }
+    }
+    let receipt = VerificationReceipt {
+      subject: subject,
+      oracle_identity: match pinned_identity {
+        Present { value: identity } => identity
+        Absent =>
+          as_content_hash_structural(
+            structural: content_hash_atom(value: "oracle-pin-unreadable")
+          )
+      },
+      executions: run.executions,
+      verdict: run.verdict,
+    }
+    let write = Filesystem.Write(
+      path: dispatch_attempt_verification_receipt_path_for_instance(
+        instance: instance,
+        node_id: node_id,
+        attempt_key: progress.attempt_key,
+        head_sha: subject.head_sha as String,
+      ),
+      content: verification_receipt_json(receipt: receipt),
+    )
+    if write.success {
+      VerifyRecorded {
+        node_id: progress.node_id,
+        verdict_key: validation_verdict_key(verdict: run.verdict),
+        detail: validation_verdict_detail(verdict: run.verdict),
+      }
+    } else {
+      VerifyWriteFailed {
+        node_id: progress.node_id,
+        detail: write.error,
+      }
+    }
   }
 }
 
@@ -3115,7 +3572,13 @@ fn belt_stop_node_for_instance(
   match belt_sessions_observe_for_instance(instance: instance) {
     ObserveRefused { reason: r } => StopObserveRefused { node_id: node_id, reason: r }
     Observed { live } => {
-      let scope = dispatch_tmux_session_scope(node_id: node_id)
+      match dispatch_tmux_session_scope(node_id: node_id) {
+        Absent =>
+          StopRefusedResult {
+            node_id: node_id,
+            reason: "dispatch selection refused before stop scope",
+          }
+        Present { value: scope } => {
       let matched = live
         |> filter(sess =>
           sess.session_name == (scope.session_name as String))
@@ -3165,6 +3628,8 @@ fn belt_stop_node_for_instance(
                   }
               }
           }
+      }
+        }
       }
     }
   }
@@ -3274,42 +3739,54 @@ fn belt_sessions_json_value(o: BeltObserve) -> JsonValue {
         json_kv(key: "schema", value: json_string(s: "roadmap-sessions/v1")),
         json_kv(key: "observe_refused", value: json_bool(b: false)),
         json_kv(key: "sessions", value: json_array(elements: live |> map(sess => {
-          let cleanup = dispatch_session_cleanup(
-            scope: dispatch_tmux_session_scope(node_id: sess.node_id),
-            session: sess,
-          )
-          json_object(members: [
-            json_kv(key: "node_id", value: json_string(s: sess.node_id)),
-            json_kv(key: "session_name", value: json_string(s: sess.session_name)),
-            json_kv(key: "session_presence", value: json_string(s: "present")),
-            json_kv(key: "process_state", value: json_string(
-              s: worker_process_evidence_label(evidence: sess.worker.process))),
-            json_kv(key: "process_detail", value: json_string(
-              s: worker_process_evidence_detail(evidence: sess.worker.process))),
-            json_kv(key: "configured_provider", value: json_string(s: provider_kind_label(kind: sess.worker.configured_provider.kind))),
-            json_kv(key: "provider", value: json_string(s: provider_evidence_label(evidence: sess.worker.provider_instance))),
-            json_kv(key: "provider_readiness", value: json_string(s: provider_readiness_label(readiness: sess.worker.provider_readiness))),
-            json_kv(key: "tool_execution_readiness", value: json_string(s: tool_execution_readiness_label(readiness: sess.worker.tool_readiness))),
-            json_kv(key: "worker_phase", value: json_string(s: worker_phase_label(phase: sess.worker.phase))),
-            json_kv(key: "cleanup_action", value: json_string(
-              s: dispatch_session_cleanup_action(cleanup: cleanup))),
-            json_kv(key: "cleanup_allowed", value: json_bool(
-              b: dispatch_session_cleanup_allowed(cleanup: cleanup))),
-            json_kv(key: "cleanup_detail", value: json_string(
-              s: dispatch_session_cleanup_detail(cleanup: cleanup))),
-            json_kv(key: "facts", value: session_facts_json_value(
-              v: session_facts_view(
-                process: sess.worker.process,
-                process_detail: worker_process_evidence_detail(evidence: sess.worker.process),
-                provider: provider_evidence_label(evidence: sess.worker.provider_instance),
-                configured_provider: provider_kind_label(kind: sess.worker.configured_provider.kind),
-                provider_readiness: provider_readiness_label(readiness: sess.worker.provider_readiness),
-                session_name: sess.session_name,
-                cleanup_action: dispatch_session_cleanup_action(cleanup: cleanup),
-                cleanup_allowed: dispatch_session_cleanup_allowed(cleanup: cleanup),
-                cleanup_detail: dispatch_session_cleanup_detail(cleanup: cleanup),
-              ))),
-          ])
+          match dispatch_tmux_session_scope(node_id: sess.node_id) {
+            Present { value: scope } => {
+              let cleanup = dispatch_session_cleanup(
+                scope: scope,
+                session: sess,
+              )
+              json_object(members: [
+                json_kv(key: "node_id", value: json_string(s: sess.node_id)),
+                json_kv(key: "session_name", value: json_string(s: sess.session_name)),
+                json_kv(key: "session_presence", value: json_string(s: "present")),
+                json_kv(key: "process_state", value: json_string(
+                  s: worker_process_evidence_label(evidence: sess.worker.process))),
+                json_kv(key: "process_detail", value: json_string(
+                  s: worker_process_evidence_detail(evidence: sess.worker.process))),
+                json_kv(key: "configured_provider", value: json_string(s: provider_kind_label(kind: sess.worker.configured_provider.kind))),
+                json_kv(key: "provider", value: json_string(s: provider_evidence_label(evidence: sess.worker.provider_instance))),
+                json_kv(key: "provider_readiness", value: json_string(s: provider_readiness_label(readiness: sess.worker.provider_readiness))),
+                json_kv(key: "tool_execution_readiness", value: json_string(s: tool_execution_readiness_label(readiness: sess.worker.tool_readiness))),
+                json_kv(key: "worker_phase", value: json_string(s: worker_phase_label(phase: sess.worker.phase))),
+                json_kv(key: "cleanup_action", value: json_string(
+                  s: dispatch_session_cleanup_action(cleanup: cleanup))),
+                json_kv(key: "cleanup_allowed", value: json_bool(
+                  b: dispatch_session_cleanup_allowed(cleanup: cleanup))),
+                json_kv(key: "cleanup_detail", value: json_string(
+                  s: dispatch_session_cleanup_detail(cleanup: cleanup))),
+                json_kv(key: "facts", value: session_facts_json_value(
+                  v: session_facts_view(
+                    process: sess.worker.process,
+                    process_detail: worker_process_evidence_detail(evidence: sess.worker.process),
+                    provider: provider_evidence_label(evidence: sess.worker.provider_instance),
+                    configured_provider: provider_kind_label(kind: sess.worker.configured_provider.kind),
+                    provider_readiness: provider_readiness_label(readiness: sess.worker.provider_readiness),
+                    session_name: sess.session_name,
+                    cleanup_action: dispatch_session_cleanup_action(cleanup: cleanup),
+                    cleanup_allowed: dispatch_session_cleanup_allowed(cleanup: cleanup),
+                    cleanup_detail: dispatch_session_cleanup_detail(cleanup: cleanup),
+                  ))),
+              ])
+            }
+            Absent =>
+              json_object(members: [
+                json_kv(key: "node_id", value: json_string(s: sess.node_id)),
+                json_kv(key: "session_name", value: json_string(s: sess.session_name)),
+                json_kv(key: "cleanup_action", value: json_string(s: "selection_refused")),
+                json_kv(key: "cleanup_allowed", value: json_bool(b: false)),
+                json_kv(key: "cleanup_detail", value: json_string(s: "dispatch selection refused before cleanup scope")),
+              ])
+          }
         }))),
       ])
   }
@@ -3605,7 +4082,12 @@ data belt_dispatch_path_prefix_note: String = "The dispatch route prefix, part o
 data belt_dispatch_path_prefix: String = "/dispatch/"
 
 fn belt_dispatch_provider_label() -> String {
-  dispatch_provider_label(provider: dispatch_cli_provider)
+  match dispatch_actuator_selection(node_sizing: Unsized) {
+    DispatchActuatorSelectionOk { provider, effort: _, process_fingerprint: _ } =>
+      dispatch_provider_label(provider: provider)
+    DispatchActuatorSelectionRefused { reason } =>
+      concat("selection-refused: ", reason as String)
+  }
 }
 
 fn belt_dispatch_result_json_value(r: BeltDispatchResult) -> JsonValue {

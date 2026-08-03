@@ -1,11 +1,8 @@
 module std.change
 
-import std.types { List, Bool }
+import std.types { List, Bool, list_length }
 import std.algebra { Monoid }
-type KeyedRow<K, V> {
-  row_key: K
-  value: V
-}
+import std.keyed_row { KeyedRow, keyed_row_find }
 
 type KeyedDiffHunk<K, V>
   = KeyedDiffAddedHunk { hunk_key: K, to: V }
@@ -233,20 +230,6 @@ fn keyed_leaf_verdict_join<V>(
       KeyedVerdictAdded { value: _ } => KeyedConflict
     }
   }
-}
-
-fn keyed_row_find<K, V>(
-  rows: List<KeyedRow<K, V>>,
-  wanted_key: K,
-  key_eq: fn(K, K) -> Bool,
-) -> KeyedRow<K, V>? {
-  fold(rows, init: none, f: fn(acc, row) {
-    if key_eq(a: row.row_key, b: wanted_key) {
-      Present { value: row }
-    } else {
-      acc
-    }
-  })
 }
 
 fn keyed_merge_row_lists<K, V>(

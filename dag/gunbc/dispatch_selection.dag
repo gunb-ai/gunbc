@@ -1,0 +1,834 @@
+module gunbc.dispatch_selection
+
+import std.types { String, NonEmptyStr, Int, Bool, List, FilePath, list_length }
+import extdeps.llm.cli { ReasoningEffort, ReasoningMedium, ReasoningHigh }
+import extdeps.llm.cli_lifecycle {
+  ProviderInstance,
+  ProviderInstanceField,
+  ProviderInstanceFieldUnobserved,
+  ProviderKind,
+  ProviderReadiness,
+  ProviderAuthenticated,
+  ClaudeCliProvider,
+  CodexCliProvider,
+  CursorCliProvider,
+}
+import extdeps.llm.cursor_cli { CursorModelId, cursor_model_auto }
+import extdeps.cloud.gcp.secret_ref { SecretRef }
+import gunbc.roadmap_model {
+  NodeSizing,
+  Sized,
+  Unsized,
+  Volume,
+  VolumeMedium,
+  Intricacy,
+  IntricacyHigh,
+  PrsMerged,
+}
+import gunbc.roadmap_dashboard_instance {
+  HostDashboardInstance,
+  DashboardExistingProviderState,
+  DashboardActuating,
+  DashboardSshProvision,
+  DashboardExistingRepo,
+  dashboard_instance_provider_state_root,
+  dashboard_instance_provider_executable,
+  srv1_live_dashboard_instance,
+  srv1_dashboard_live_id,
+  srv1_dashboard_lab_id,
+  srv2_lab_dashboard_instance,
+  srv2_dashboard_lab_id,
+  srv2_dashboard_preview_id,
+}
+import gunbc.provider_account {
+  AdmittedAccountBinding,
+  CodexAccountSelection,
+  codex_roadmap_account_selection,
+  codex_roadmap_account_evidence,
+  admitted_single_session_binding,
+}
+
+data dispatch_selection_note: String = "Slice A selection kernel (operator execution-profile directive 2026-08-01, addendum 2026-08-01). This carrier names the three-valued coproduct ExecutionProfile; the operator also names the same semantics ExecutionPreference — see dispatch_execution_preference_alias_note. Provider offers are a per-provider coproduct; volume and intricacy from NodeSizing never flow into model or effort selection. Every dispatch records requested_selection beside resolved_execution bound fields in DispatchExecutionReceipt so what was REQUESTED is never displayed as proof of what RAN."
+
+data dispatch_execution_preference_alias_note: String = "Naming authority: ExecutionProfile. Operator synonym: ExecutionPreference. Both denote the same closed coproduct Automatic | Deep | ExactOverride with identical semantics."
+
+data dispatch_deep_selection_heuristic_note: String = "Deep selection heuristic (declared for a later policy slice — NOT wired in Slice A; live selection stays ProfileAutomatic). Deep is for work crossing an explicit RISK/JUDGMENT boundary: changing compiler semantics or an authority; authentication/privacy/publication/security work; modifying irreversible actuation; resolving an open architectural decision; work without a strong existing validator. Explicitly NOT task size: a large mechanical migration needs parallelism, not intelligence; a one-line authority decision may deserve the deepest review."
+
+data dispatch_execution_receipt_bar_note: String = "Receipt bar: the system must never display what was REQUESTED as though it proved what RAN. DispatchExecutionReceipt binds provider_instance, credential_binding, model_identity, provider_control, provider_version, temporal_bounds, usage_observations, and attempt_identity under resolved_execution, separate from requested_selection."
+
+data dispatch_lane_priority_note: String = "Operator priority (2026-08-01): this lane ranks Very High alongside the landing cockpit; Claude/Cursor integration (slices B/C) is explicitly more valuable than placement science. No randomized experiments, no universal scores."
+
+type ExecutionProfile
+  = ProfileAutomatic
+  | ProfileDeep
+  | ProfileExactOverride
+
+type ClaudeCredentialRef
+  = ClaudeStateRootRef { root: FilePath }
+  | ClaudeOAuthTokenSecretRef { secret_ref: SecretRef }
+  | ClaudeApiKeySecretRef { secret_ref: SecretRef }
+
+type CursorCredentialRef
+  = CursorLocalLoginRef
+  | CursorApiKeySecretRef { secret_ref: SecretRef }
+
+type DeepRealization
+  = DeepConfigured { effort: ReasoningEffort }
+  | DeepUnavailable
+
+type CodexOffer {
+  instance: ProviderInstance
+  account_state_root: FilePath
+  account_binding: AdmittedAccountBinding
+  readiness: ProviderReadiness
+  default_effort: ReasoningEffort
+  deep: DeepRealization
+  process_fingerprint: NonEmptyStr
+}
+
+type ClaudeOffer {
+  instance: ProviderInstance
+  credential: ClaudeCredentialRef
+  readiness: ProviderReadiness
+  default_effort: ReasoningEffort
+  deep: DeepRealization
+  process_fingerprint: NonEmptyStr
+}
+
+type CursorOffer {
+  instance: ProviderInstance
+  credential: CursorCredentialRef
+  readiness: ProviderReadiness
+  default_model: CursorModelId
+  process_fingerprint: NonEmptyStr
+}
+
+type ProviderOffer
+  = OfferCodex { offer: CodexOffer }
+  | OfferClaude { offer: ClaudeOffer }
+  | OfferCursor { offer: CursorOffer }
+
+type ProviderInventory {
+  offers: List<ProviderOffer>
+}
+
+type ProviderSelectionRequest
+  = SelectAutomatically { profile: ExecutionProfile }
+  | SelectCodex {
+      profile: ExecutionProfile,
+      account: CodexAccountSelection,
+      model: NonEmptyStr,
+      effort: ReasoningEffort,
+    }
+  | SelectClaude {
+      profile: ExecutionProfile,
+      credential: ClaudeCredentialRef,
+      model: NonEmptyStr,
+      effort: ReasoningEffort,
+      workflow_mode: NonEmptyStr,
+    }
+  | SelectCursor {
+      profile: ExecutionProfile,
+      credential: CursorCredentialRef,
+      model: CursorModelId,
+      agent_mode: NonEmptyStr,
+    }
+
+type ResolvedCodexSelection {
+  account: CodexAccountSelection
+  model: NonEmptyStr
+  effort: ReasoningEffort
+  process_fingerprint: NonEmptyStr
+}
+
+type ResolvedClaudeSelection {
+  credential: ClaudeCredentialRef
+  model: NonEmptyStr
+  effort: ReasoningEffort
+  workflow_mode: NonEmptyStr
+  process_fingerprint: NonEmptyStr
+}
+
+type ResolvedCursorSelection {
+  credential: CursorCredentialRef
+  model: CursorModelId
+  agent_mode: NonEmptyStr
+  process_fingerprint: NonEmptyStr
+}
+
+type ResolvedProviderSelection
+  = ResolvedCodex { selection: ResolvedCodexSelection, instance: ProviderInstance, account_binding: AdmittedAccountBinding }
+  | ResolvedClaude { selection: ResolvedClaudeSelection, instance: ProviderInstance }
+  | ResolvedCursor { selection: ResolvedCursorSelection, instance: ProviderInstance }
+
+type DispatchCredentialBindingIdentity
+  = CodexCredentialBinding { binding: AdmittedAccountBinding }
+  | ClaudeCredentialBinding { credential: ClaudeCredentialRef }
+  | CursorCredentialBinding { credential: CursorCredentialRef }
+
+type DispatchModelIdentity
+  = DispatchModelNamed { model: NonEmptyStr }
+  | DispatchCursorModelIdentity { model: CursorModelId }
+
+type DispatchProviderControl
+  = CodexProviderControl { effort: ReasoningEffort }
+  | ClaudeProviderControl { effort: ReasoningEffort, workflow_mode: NonEmptyStr }
+  | CursorProviderControl { agent_mode: NonEmptyStr }
+
+type DispatchTemporalBounds
+  = DispatchTemporalUnobserved { reason: NonEmptyStr }
+  | DispatchTemporalObserved { started_at: NonEmptyStr, ended_at: NonEmptyStr }
+
+type DispatchUsageObservations
+  = DispatchUsageUnobserved { reason: NonEmptyStr }
+  | DispatchUsageObserved { observations: List<NonEmptyStr> }
+
+type DispatchAttemptIdentity
+  = DispatchAttemptUnassigned { reason: NonEmptyStr }
+  | DispatchAttemptAssigned { attempt_key: NonEmptyStr }
+
+type DispatchResolvedExecution {
+  provider_instance: ProviderInstance
+  credential_binding: DispatchCredentialBindingIdentity
+  model_identity: DispatchModelIdentity
+  provider_control: DispatchProviderControl
+  provider_version: ProviderInstanceField
+  temporal_bounds: DispatchTemporalBounds
+  usage_observations: DispatchUsageObservations
+  attempt_identity: DispatchAttemptIdentity
+}
+
+type DispatchExecutionReceipt {
+  node_sizing: NodeSizing
+  requested_selection: ProviderSelectionRequest
+  resolved_selection: ResolvedProviderSelection
+  resolved_execution: DispatchResolvedExecution
+  provider_kind: ProviderKind
+  applied_effort: ReasoningEffort
+}
+
+type DispatchSelectionResult
+  = DispatchSelectionResolved { receipt: DispatchExecutionReceipt }
+  | DispatchSelectionRefused {
+      node_sizing: NodeSizing
+      requested_selection: ProviderSelectionRequest
+      reason: NonEmptyStr
+    }
+
+data dispatch_codex_process_fingerprint_note: String = "LIVE RECEIPT (srv1, 2026-07-27): the authenticated npm-installed Codex CLI (`/usr/bin/codex` launcher, codex-cli 0.133.0) reports pane_current_command `node` while a real read-only `codex exec --json` turn is active. The pane emitted thread.started, turn.started, and item.completed before exit. Therefore the current host realization's expected fingerprint is node, not the argv token codex. This is deliberately fail-closed across packaging changes: if provisioning moves srv1 to a standalone native binary and tmux begins reporting codex, ownership/Stop refuses until that new realization is observed and this row changes with its receipt."
+
+data dispatch_codex_process_fingerprint: NonEmptyStr = "node" as NonEmptyStr
+data dispatch_claude_process_fingerprint: NonEmptyStr = "claude" as NonEmptyStr
+data dispatch_cursor_process_fingerprint: NonEmptyStr = "cursor-agent" as NonEmptyStr
+
+data dispatch_codex_default_model: NonEmptyStr = "account-default" as NonEmptyStr
+data dispatch_claude_default_model: NonEmptyStr = "account-default" as NonEmptyStr
+data dispatch_claude_default_workflow_mode: NonEmptyStr = "default" as NonEmptyStr
+data dispatch_claude_default_credential_root: FilePath = "~/.claude" as FilePath
+
+data dispatch_selection_temporal_unobserved_reason: NonEmptyStr = "selection time; temporal bounds assigned at spawn observation" as NonEmptyStr
+data dispatch_selection_usage_unobserved_reason: NonEmptyStr = "selection time; usage observations assigned during provider runtime" as NonEmptyStr
+data dispatch_selection_attempt_unassigned_reason: NonEmptyStr = "selection time; attempt identity assigned at spawn" as NonEmptyStr
+
+fn dispatch_temporal_unobserved() -> DispatchTemporalBounds {
+  DispatchTemporalUnobserved { reason: dispatch_selection_temporal_unobserved_reason }
+}
+
+fn dispatch_usage_unobserved() -> DispatchUsageObservations {
+  DispatchUsageUnobserved { reason: dispatch_selection_usage_unobserved_reason }
+}
+
+fn dispatch_attempt_unassigned() -> DispatchAttemptIdentity {
+  DispatchAttemptUnassigned { reason: dispatch_selection_attempt_unassigned_reason }
+}
+
+fn dispatch_resolved_execution_from_selection(
+  resolved: ResolvedProviderSelection,
+) -> DispatchResolvedExecution {
+  match resolved {
+    ResolvedCodex { selection: s, instance: inst, account_binding: binding } =>
+      DispatchResolvedExecution {
+        provider_instance: inst,
+        credential_binding: CodexCredentialBinding { binding: binding },
+        model_identity: DispatchModelNamed { model: s.model },
+        provider_control: CodexProviderControl { effort: s.effort },
+        provider_version: inst.observed_version,
+        temporal_bounds: dispatch_temporal_unobserved(),
+        usage_observations: dispatch_usage_unobserved(),
+        attempt_identity: dispatch_attempt_unassigned(),
+      }
+    ResolvedClaude { selection: s, instance: inst } =>
+      DispatchResolvedExecution {
+        provider_instance: inst,
+        credential_binding: ClaudeCredentialBinding { credential: s.credential },
+        model_identity: DispatchModelNamed { model: s.model },
+        provider_control: ClaudeProviderControl {
+          effort: s.effort,
+          workflow_mode: s.workflow_mode,
+        },
+        provider_version: inst.observed_version,
+        temporal_bounds: dispatch_temporal_unobserved(),
+        usage_observations: dispatch_usage_unobserved(),
+        attempt_identity: dispatch_attempt_unassigned(),
+      }
+    ResolvedCursor { selection: s, instance: inst } =>
+      DispatchResolvedExecution {
+        provider_instance: inst,
+        credential_binding: CursorCredentialBinding { credential: s.credential },
+        model_identity: DispatchCursorModelIdentity { model: s.model },
+        provider_control: CursorProviderControl { agent_mode: s.agent_mode },
+        provider_version: inst.observed_version,
+        temporal_bounds: dispatch_temporal_unobserved(),
+        usage_observations: dispatch_usage_unobserved(),
+        attempt_identity: dispatch_attempt_unassigned(),
+      }
+  }
+}
+
+fn dispatch_execution_receipt(
+  node_sizing: NodeSizing,
+  requested_selection: ProviderSelectionRequest,
+  resolved_selection: ResolvedProviderSelection,
+  provider_kind: ProviderKind,
+  applied_effort: ReasoningEffort,
+) -> DispatchExecutionReceipt {
+  DispatchExecutionReceipt {
+    node_sizing: node_sizing,
+    requested_selection: requested_selection,
+    resolved_selection: resolved_selection,
+    resolved_execution: dispatch_resolved_execution_from_selection(resolved: resolved_selection),
+    provider_kind: provider_kind,
+    applied_effort: applied_effort,
+  }
+}
+
+fn codex_offer_for_instance(instance: HostDashboardInstance) -> CodexOffer {
+  CodexOffer {
+    instance: ProviderInstance {
+      kind: CodexCliProvider,
+      host: ProviderInstanceFieldUnobserved {
+        reason: "inventory row is declared, not observed at selection time" as NonEmptyStr,
+      },
+      executable: dashboard_instance_provider_executable(instance: instance) as NonEmptyStr,
+      observed_version: ProviderInstanceFieldUnobserved {
+        reason: "inventory row is declared, not observed at selection time" as NonEmptyStr,
+      },
+      state_directory: ProviderInstanceFieldUnobserved {
+        reason: "account_state_root is the credential reference" as NonEmptyStr,
+      },
+      credential_storage_method: ProviderInstanceFieldUnobserved {
+        reason: "codex stores credentials under account_state_root" as NonEmptyStr,
+      },
+      service_identity: ProviderInstanceFieldUnobserved {
+        reason: "inventory row is declared, not observed at selection time" as NonEmptyStr,
+      },
+    },
+    account_state_root: dashboard_instance_provider_state_root(instance: instance),
+    account_binding: admitted_single_session_binding(
+      selection: codex_roadmap_account_selection(),
+      evidence: codex_roadmap_account_evidence,
+    ),
+    readiness: ProviderAuthenticated,
+    default_effort: ReasoningMedium,
+    deep: DeepUnavailable,
+    process_fingerprint: dispatch_codex_process_fingerprint,
+  }
+}
+
+fn provider_inventory_for_instance(instance: HostDashboardInstance) -> ProviderInventory {
+  if instance.instance_id == srv2_dashboard_lab_id
+    || instance.instance_id == srv2_dashboard_preview_id {
+    ProviderInventory {
+      offers: [
+        OfferCodex { offer: codex_offer_for_instance(instance: instance) },
+        OfferCursor {
+          offer: CursorOffer {
+            instance: ProviderInstance {
+              kind: CursorCliProvider,
+              host: ProviderInstanceFieldUnobserved {
+                reason: "inventory row is declared, not observed at selection time" as NonEmptyStr,
+              },
+              executable: "cursor-agent" as NonEmptyStr,
+              observed_version: ProviderInstanceFieldUnobserved {
+                reason: "inventory row is declared, not observed at selection time" as NonEmptyStr,
+              },
+              state_directory: ProviderInstanceFieldUnobserved {
+                reason: "cursor has no per-account state root" as NonEmptyStr,
+              },
+              credential_storage_method: ProviderInstanceFieldUnobserved {
+                reason: "cursor credentials are secret references only" as NonEmptyStr,
+              },
+              service_identity: ProviderInstanceFieldUnobserved {
+                reason: "inventory row is declared, not observed at selection time" as NonEmptyStr,
+              },
+            },
+            credential: CursorLocalLoginRef,
+            readiness: ProviderAuthenticated,
+            default_model: cursor_model_auto,
+            process_fingerprint: dispatch_cursor_process_fingerprint,
+          },
+        },
+      ],
+    }
+  } else {
+    ProviderInventory {
+      offers: [OfferCodex { offer: codex_offer_for_instance(instance: instance) }],
+    }
+  }
+}
+
+fn default_provider_selection_request() -> ProviderSelectionRequest {
+  SelectAutomatically { profile: ProfileAutomatic }
+}
+
+fn codex_effort_for_profile(
+  offer: CodexOffer,
+  profile: ExecutionProfile,
+) -> DispatchSelectionResult {
+  match profile {
+    ProfileAutomatic => {
+      let resolved = ResolvedCodex {
+        selection: ResolvedCodexSelection {
+          account: codex_roadmap_account_selection(),
+          model: dispatch_codex_default_model,
+          effort: offer.default_effort,
+          process_fingerprint: offer.process_fingerprint,
+        },
+        instance: offer.instance,
+        account_binding: offer.account_binding,
+      }
+      DispatchSelectionResolved {
+        receipt: dispatch_execution_receipt(
+          node_sizing: Unsized,
+          requested_selection: SelectAutomatically { profile: ProfileAutomatic },
+          resolved_selection: resolved,
+          provider_kind: CodexCliProvider,
+          applied_effort: offer.default_effort,
+        ),
+      }
+    }
+    ProfileDeep =>
+      match offer.deep {
+        DeepConfigured { effort } => {
+          let resolved = ResolvedCodex {
+            selection: ResolvedCodexSelection {
+              account: codex_roadmap_account_selection(),
+              model: dispatch_codex_default_model,
+              effort: effort,
+              process_fingerprint: offer.process_fingerprint,
+            },
+            instance: offer.instance,
+            account_binding: offer.account_binding,
+          }
+          DispatchSelectionResolved {
+            receipt: dispatch_execution_receipt(
+              node_sizing: Unsized,
+              requested_selection: SelectAutomatically { profile: ProfileDeep },
+              resolved_selection: resolved,
+              provider_kind: CodexCliProvider,
+              applied_effort: effort,
+            ),
+          }
+        }
+        DeepUnavailable =>
+          DispatchSelectionRefused {
+            node_sizing: Unsized,
+            requested_selection: SelectAutomatically { profile: ProfileDeep },
+            reason: "provider offer has no configured Deep realization" as NonEmptyStr,
+          }
+      }
+    ProfileExactOverride =>
+      DispatchSelectionRefused {
+        node_sizing: Unsized,
+        requested_selection: SelectAutomatically { profile: ProfileExactOverride },
+        reason: "ExactOverride requires an explicit provider selection arm" as NonEmptyStr,
+      }
+  }
+}
+
+fn resolve_codex_offer(
+  offer: CodexOffer,
+  request: ProviderSelectionRequest,
+  node_sizing: NodeSizing,
+) -> DispatchSelectionResult {
+  match request {
+    SelectAutomatically { profile } =>
+      match codex_effort_for_profile(
+        offer: offer,
+        profile: profile,
+      ) {
+        DispatchSelectionResolved { receipt } =>
+          DispatchSelectionResolved {
+            receipt: dispatch_execution_receipt(
+              node_sizing: node_sizing,
+              requested_selection: request,
+              resolved_selection: receipt.resolved_selection,
+              provider_kind: receipt.provider_kind,
+              applied_effort: receipt.applied_effort,
+            ),
+          }
+        DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason } =>
+          DispatchSelectionRefused {
+            node_sizing: node_sizing,
+            requested_selection: request,
+            reason: reason,
+          }
+      }
+    SelectCodex { profile, account, model, effort } => {
+      let effort_result = match profile {
+        ProfileAutomatic => {
+          let resolved = ResolvedCodex {
+            selection: ResolvedCodexSelection {
+              account: account,
+              model: model,
+              effort: offer.default_effort,
+              process_fingerprint: offer.process_fingerprint,
+            },
+            instance: offer.instance,
+            account_binding: offer.account_binding,
+          }
+          DispatchSelectionResolved {
+            receipt: dispatch_execution_receipt(
+              node_sizing: node_sizing,
+              requested_selection: request,
+              resolved_selection: resolved,
+              provider_kind: CodexCliProvider,
+              applied_effort: offer.default_effort,
+            ),
+          }
+        }
+        ProfileDeep =>
+          match offer.deep {
+            DeepConfigured { effort: deep_effort } => {
+              let resolved = ResolvedCodex {
+                selection: ResolvedCodexSelection {
+                  account: account,
+                  model: model,
+                  effort: deep_effort,
+                  process_fingerprint: offer.process_fingerprint,
+                },
+                instance: offer.instance,
+                account_binding: offer.account_binding,
+              }
+              DispatchSelectionResolved {
+                receipt: dispatch_execution_receipt(
+                  node_sizing: node_sizing,
+                  requested_selection: request,
+                  resolved_selection: resolved,
+                  provider_kind: CodexCliProvider,
+                  applied_effort: deep_effort,
+                ),
+              }
+            }
+            DeepUnavailable =>
+              DispatchSelectionRefused {
+                node_sizing: node_sizing,
+                requested_selection: request,
+                reason: "provider offer has no configured Deep realization" as NonEmptyStr,
+              }
+          }
+        ProfileExactOverride => {
+          let resolved = ResolvedCodex {
+            selection: ResolvedCodexSelection {
+              account: account,
+              model: model,
+              effort: effort,
+              process_fingerprint: offer.process_fingerprint,
+            },
+            instance: offer.instance,
+            account_binding: offer.account_binding,
+          }
+          DispatchSelectionResolved {
+            receipt: dispatch_execution_receipt(
+              node_sizing: node_sizing,
+              requested_selection: request,
+              resolved_selection: resolved,
+              provider_kind: CodexCliProvider,
+              applied_effort: effort,
+            ),
+          }
+        }
+      }
+      effort_result
+    }
+    _ =>
+      DispatchSelectionRefused {
+        node_sizing: node_sizing,
+        requested_selection: request,
+        reason: "selection request shape does not match Codex offer" as NonEmptyStr,
+      }
+  }
+}
+
+fn resolve_provider_offer(
+  offer: ProviderOffer,
+  request: ProviderSelectionRequest,
+  node_sizing: NodeSizing,
+) -> DispatchSelectionResult {
+  match offer {
+    OfferCodex { offer: codex } => resolve_codex_offer(
+      offer: codex,
+      request: request,
+      node_sizing: node_sizing,
+    )
+    OfferClaude { offer: _ } =>
+      DispatchSelectionRefused {
+        node_sizing: node_sizing,
+        requested_selection: request,
+        reason: "Claude offer is not wired on this host inventory" as NonEmptyStr,
+      }
+    OfferCursor { offer: cursor } =>
+      match request {
+        SelectAutomatically { profile: ProfileAutomatic } => {
+          let resolved = ResolvedCursor {
+            selection: ResolvedCursorSelection {
+              credential: cursor.credential,
+              model: cursor.default_model,
+              agent_mode: "default-edit" as NonEmptyStr,
+              process_fingerprint: cursor.process_fingerprint,
+            },
+            instance: cursor.instance,
+          }
+          DispatchSelectionResolved {
+            receipt: dispatch_execution_receipt(
+              node_sizing: node_sizing,
+              requested_selection: request,
+              resolved_selection: resolved,
+              provider_kind: CursorCliProvider,
+              applied_effort: ReasoningMedium,
+            ),
+          }
+        }
+        SelectCursor { profile, credential, model, agent_mode } =>
+          match profile {
+            ProfileAutomatic => {
+              let resolved = ResolvedCursor {
+                selection: ResolvedCursorSelection {
+                  credential: cursor.credential,
+                  model: cursor.default_model,
+                  agent_mode: agent_mode,
+                  process_fingerprint: cursor.process_fingerprint,
+                },
+                instance: cursor.instance,
+              }
+              DispatchSelectionResolved {
+                receipt: dispatch_execution_receipt(
+                  node_sizing: node_sizing,
+                  requested_selection: request,
+                  resolved_selection: resolved,
+                  provider_kind: CursorCliProvider,
+                  applied_effort: ReasoningMedium,
+                ),
+              }
+            }
+            ProfileDeep =>
+              DispatchSelectionRefused {
+                node_sizing: node_sizing,
+                requested_selection: request,
+                reason: "Cursor offer has no configured Deep realization" as NonEmptyStr,
+              }
+            ProfileExactOverride => {
+              let resolved = ResolvedCursor {
+                selection: ResolvedCursorSelection {
+                  credential: credential,
+                  model: model,
+                  agent_mode: agent_mode,
+                  process_fingerprint: cursor.process_fingerprint,
+                },
+                instance: cursor.instance,
+              }
+              DispatchSelectionResolved {
+                receipt: dispatch_execution_receipt(
+                  node_sizing: node_sizing,
+                  requested_selection: request,
+                  resolved_selection: resolved,
+                  provider_kind: CursorCliProvider,
+                  applied_effort: ReasoningMedium,
+                ),
+              }
+            }
+          }
+        _ =>
+          DispatchSelectionRefused {
+            node_sizing: node_sizing,
+            requested_selection: request,
+            reason: "selection request shape does not match Cursor offer" as NonEmptyStr,
+          }
+      }
+  }
+}
+
+fn provider_selection_request_for_kind(kind: ProviderKind) -> ProviderSelectionRequest {
+  match kind {
+    CodexCliProvider =>
+      SelectCodex {
+        profile: ProfileAutomatic,
+        account: codex_roadmap_account_selection(),
+        model: dispatch_codex_default_model,
+        effort: ReasoningMedium,
+      }
+    ClaudeCliProvider =>
+      SelectClaude {
+        profile: ProfileAutomatic,
+        credential: ClaudeStateRootRef { root: dispatch_claude_default_credential_root },
+        model: dispatch_claude_default_model,
+        effort: ReasoningMedium,
+        workflow_mode: dispatch_claude_default_workflow_mode,
+      }
+    CursorCliProvider =>
+      SelectCursor {
+        profile: ProfileAutomatic,
+        credential: CursorLocalLoginRef,
+        model: cursor_model_auto,
+        agent_mode: "default-edit" as NonEmptyStr,
+      }
+  }
+}
+
+fn offer_matches_request(offer: ProviderOffer, request: ProviderSelectionRequest) -> Bool {
+  match request {
+    SelectAutomatically { profile: _ } => true
+    SelectCodex { profile: _, account: _, model: _, effort: _ } =>
+      match offer {
+        OfferCodex { offer: _ } => true
+        _ => false
+      }
+    SelectClaude { profile: _, credential: _, model: _, effort: _, workflow_mode: _ } =>
+      match offer {
+        OfferClaude { offer: _ } => true
+        _ => false
+      }
+    SelectCursor { profile: _, credential: _, model: _, agent_mode: _ } =>
+      match offer {
+        OfferCursor { offer: _ } => true
+        _ => false
+      }
+  }
+}
+
+fn find_offer_for_request(
+  inventory: ProviderInventory,
+  request: ProviderSelectionRequest,
+) -> ProviderOffer? {
+  let matches = inventory.offers |> filter(offer => offer_matches_request(
+    offer: offer,
+    request: request,
+  ))
+  matches.first()
+}
+
+fn resolve_dispatch_selection(
+  inventory: ProviderInventory,
+  request: ProviderSelectionRequest,
+  node_sizing: NodeSizing,
+) -> DispatchSelectionResult {
+  if list_length(items: inventory.offers) == 0 {
+    DispatchSelectionRefused {
+      node_sizing: node_sizing,
+      requested_selection: request,
+      reason: "provider inventory is empty" as NonEmptyStr,
+    }
+  } else {
+    match find_offer_for_request(inventory: inventory, request: request) {
+      Present { value: offer } =>
+        resolve_provider_offer(
+          offer: offer,
+          request: request,
+          node_sizing: node_sizing,
+        )
+      Absent =>
+        DispatchSelectionRefused {
+          node_sizing: node_sizing,
+          requested_selection: request,
+          reason: "no provider offer matches the selection request shape" as NonEmptyStr,
+        }
+    }
+  }
+}
+
+fn dispatch_selection_for_instance(
+  instance: HostDashboardInstance,
+  request: ProviderSelectionRequest,
+  node_sizing: NodeSizing,
+) -> DispatchSelectionResult {
+  resolve_dispatch_selection(
+    inventory: provider_inventory_for_instance(instance: instance),
+    request: request,
+    node_sizing: node_sizing,
+  )
+}
+
+fn resolved_provider_kind(resolved: ResolvedProviderSelection) -> ProviderKind {
+  match resolved {
+    ResolvedCodex { instance: _, selection: _, account_binding: _ } => CodexCliProvider
+    ResolvedClaude { instance: _, selection: _ } => ClaudeCliProvider
+    ResolvedCursor { instance: _, selection: _ } => CursorCliProvider
+  }
+}
+
+fn resolved_process_fingerprint(resolved: ResolvedProviderSelection) -> NonEmptyStr {
+  match resolved {
+    ResolvedCodex { selection: s, instance: _, account_binding: _ } => s.process_fingerprint
+    ResolvedClaude { selection: s, instance: _ } => s.process_fingerprint
+    ResolvedCursor { selection: s, instance: _ } => s.process_fingerprint
+  }
+}
+
+fn selection_requests_match(
+  requested: ProviderSelectionRequest,
+  resolved: ResolvedProviderSelection,
+  codex_default_effort: ReasoningEffort,
+) -> Bool {
+  match requested {
+    SelectAutomatically { profile: ProfileAutomatic } =>
+      match resolved {
+        ResolvedCodex { selection: s, instance: _, account_binding: _ } =>
+          s.effort == codex_default_effort
+        _ => false
+      }
+    SelectCodex { profile: _, account, model, effort } =>
+      match resolved {
+        ResolvedCodex { selection: s, instance: _, account_binding: _ } =>
+          s.account == account && s.model == model && s.effort == effort
+        _ => false
+      }
+    _ => false
+  }
+}
+
+fn inventory_includes_provider_kind(
+  inventory: ProviderInventory,
+  kind: ProviderKind,
+) -> Bool {
+  any(inventory.offers, offer =>
+    match offer {
+      OfferCodex { offer: o } => o.instance.kind == kind
+      OfferClaude { offer: o } => o.instance.kind == kind
+      OfferCursor { offer: o } => o.instance.kind == kind
+    }
+  )
+}
+
+fn automatic_codex_behavior_preservation_holds(instance: HostDashboardInstance) -> Bool {
+  let codex_offer = codex_offer_for_instance(instance: instance)
+  match dispatch_selection_for_instance(
+    instance: instance,
+    request: default_provider_selection_request(),
+    node_sizing: Sized {
+      intricacy: IntricacyHigh,
+      volume: VolumeMedium,
+      repo: "gunbc",
+      acceptance: PrsMerged,
+    },
+  ) {
+    DispatchSelectionResolved { receipt } =>
+      receipt.provider_kind == CodexCliProvider
+        && receipt.applied_effort == codex_offer.default_effort
+        && selection_requests_match(
+          requested: receipt.requested_selection,
+          resolved: receipt.resolved_selection,
+          codex_default_effort: codex_offer.default_effort,
+        )
+    DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason: _ } => false
+  }
+}

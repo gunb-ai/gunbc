@@ -1,0 +1,56 @@
+module gunbc.publication_decision
+
+import std.types { NonEmptyStr, String }
+import std.content_hash { ContentHash }
+import gunbc.public_projection { PublicationSubject }
+
+data publication_decision_note: String = "Exceptional publication decisions bind to content identity, not pathnames. publication_decision_authorizes_newly_public is the single authority for whether a receipt authorizes a newly public subject: matching subject/content identity, candidate policy_version, sole publisher authority, and UniversalPublicationAudience."
+
+type PublicationAuthorityId = NonEmptyStr where brand("PublicationAuthorityId")
+
+type PublicationAudience
+  = UniversalPublicationAudience
+  | EnumeratedPublicationAudience { label: String }
+
+type PublicationDecisionReceipt {
+  subject_identity: ContentHash
+  content_identity: ContentHash
+  audience: PublicationAudience
+  policy_version: NonEmptyStr
+  authority: PublicationAuthorityId
+}
+
+fn publication_decision_binds_content(
+  receipt: PublicationDecisionReceipt,
+  subject_identity: ContentHash,
+  content_identity: ContentHash,
+) -> Bool {
+  receipt.subject_identity == subject_identity && receipt.content_identity == content_identity
+}
+
+fn publication_decision_authorizes_newly_public(
+  receipt: PublicationDecisionReceipt,
+  subject: PublicationSubject,
+  policy_version: NonEmptyStr,
+  authority: PublicationAuthorityId,
+) -> Bool {
+  publication_decision_binds_content(
+    receipt: receipt,
+    subject_identity: subject.subject_identity,
+    content_identity: subject.content_identity,
+  )
+    && receipt.policy_version == policy_version
+    && receipt.authority == authority
+    && match receipt.audience {
+      UniversalPublicationAudience => true
+      EnumeratedPublicationAudience { label: _ } => false
+    }
+}
+
+fn publication_decision_requires_refresh(
+  receipt: PublicationDecisionReceipt,
+  subject_identity: ContentHash,
+  content_identity: ContentHash,
+) -> Bool {
+  receipt.subject_identity == subject_identity && receipt.content_identity != content_identity
+}

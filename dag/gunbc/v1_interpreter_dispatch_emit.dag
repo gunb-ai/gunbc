@@ -1,0 +1,284 @@
+module gunbc.v1_interpreter_dispatch_emit
+
+import gunbc.v1_interpreter_primitive_surface {
+  InterpreterPrimitiveDispatchArm,
+  v1_interpreter_authored_roster_arms,
+}
+import v2.std.algebra { fold_list }
+import v2.std.collection { List }
+import v2.std.text { String }
+
+fn escape_rust_string_literal_body(s: String) -> String {
+  replace(replace(replace(s, "\\", "\\\\"), "\"", "\\\""), "\n", "\\n")
+}
+
+fn to_upper_char(ch: Int) -> String {
+  let cp = ch
+  if cp >= 97 && cp <= 122 {
+    from_code_point(cp: cp - 32)
+  } else {
+    from_code_point(cp: ch)
+  }
+}
+
+fn capitalize_first(s: String) -> String {
+  let chars_list = s |> chars
+  if count(chars_list) == 0 {
+    ""
+  } else {
+    chars_list
+      |> enumerate
+      |> map(pair =>
+        if pair.first == 0 {
+          to_upper_char(ch: pair.second)
+        } else {
+          from_code_point(cp: pair.second)
+        })
+      |> join(separator: "")
+  }
+}
+
+fn to_pascal_segment(segment: String) -> String {
+  segment
+    |> split(delimiter: "_")
+    |> map(part => capitalize_first(s: part))
+    |> join(separator: "")
+}
+
+fn arm_identity_to_rust_variant(identity: String) -> String {
+  identity
+    |> split(delimiter: ".")
+    |> map(segment => to_pascal_segment(segment: segment))
+    |> join(separator: "")
+}
+
+fn roster_site_key(row: InterpreterPrimitiveDispatchArm) -> String {
+  let symbol = concat(row.dispatch_symbol, "")
+  let identity = concat(row.arm.identity, "")
+  if symbol == "eval_call" && starts_with(s: identity, prefix: "v4_bridge.") {
+    "eval_call_bridge"
+  } else if symbol == "eval_call" && starts_with(s: identity, prefix: "native_intercept.") {
+    "eval_call_native_intercept"
+  } else {
+    symbol
+  }
+}
+
+fn known_dispatch_emit_site_keys() -> List<String> {
+  [
+    "eval_builtin_inner",
+    "eval_algebra_method_inner",
+    "eval_call_bridge",
+    "try_v2_std_collection_map_primitive_grounding",
+    "eval_call_native_intercept",
+    "try_parse_table_memo_dispatch",
+  ]
+}
+
+fn roster_row_emit_site_is_known(row: InterpreterPrimitiveDispatchArm) -> Bool {
+  let site = roster_site_key(row: row)
+  known_dispatch_emit_site_keys() |> any(k => k == site)
+}
+
+fn roster_rows_with_unknown_emit_site() -> List<InterpreterPrimitiveDispatchArm> {
+  v1_interpreter_authored_roster_arms()
+    |> filter(r => !roster_row_emit_site_is_known(row: r))
+}
+
+data dispatch_emit_site_routing_scaffold_note: String = "INTERIM ROUTING AUTHORITY: roster_site_key derives the dispatch emit site from dispatch_symbol plus string prefix conventions (v4_bridge., native_intercept.) and known_dispatch_emit_site_keys validates the result. This is a hand-rolled undeclared sum, not a modeled InterpreterDispatchSite field on each row. Dissolve-on: each InterpreterPrimitiveDispatchArm carries a closed dispatch_emit_site field; roster_site_key reads that field; prefix conventions and the parallel validator delete together."
+
+fn site_has_rust_variant_collision(site_rows: List<InterpreterPrimitiveDispatchArm>) -> Bool {
+  count(distinct_identities(rows: site_rows)) != count(distinct_rust_variants(rows: site_rows))
+}
+
+fn roster_site_has_rust_variant_collision(site_key: String, rows: List<InterpreterPrimitiveDispatchArm>) -> Bool {
+  site_has_rust_variant_collision(site_rows: filter_roster_site(rows: rows, site_key: site_key))
+}
+
+fn any_roster_site_has_rust_variant_collision(rows: List<InterpreterPrimitiveDispatchArm>) -> Bool {
+  known_dispatch_emit_site_keys()
+    |> any(site_key => roster_site_has_rust_variant_collision(site_key: site_key, rows: rows))
+}
+
+fn rust_variant_collision_synthetic_red_control() -> Bool {
+  arm_identity_to_rust_variant(identity: "synthetic.one_two") == arm_identity_to_rust_variant(identity: "synthetic.one.two")
+    && !("synthetic.one_two" == "synthetic.one.two")
+}
+
+fn dispatch_emit_site_key_is_emittable(site_key: String) -> Bool {
+  known_dispatch_emit_site_keys() |> any(k => k == site_key)
+}
+
+fn site_enum_name(site_key: String) -> String {
+  match site_key {
+    "eval_builtin_inner" => "EvalBuiltinArm"
+    "eval_algebra_method_inner" => "EvalAlgebraMethodArm"
+    "eval_call_bridge" => "EvalCallBridgeArm"
+    "try_v2_std_collection_map_primitive_grounding" => "TryV2StdCollectionMapPrimitiveGroundingArm"
+    "eval_call_native_intercept" => "EvalCallNativeInterceptArm"
+    "try_parse_table_memo_dispatch" => "TryParseTableMemoDispatchArm"
+    _ => concat("UnknownSite", site_key)
+  }
+}
+
+fn site_lookup_name(site_key: String) -> String {
+  match site_key {
+    "eval_builtin_inner" => "lookup_eval_builtin_inner"
+    "eval_algebra_method_inner" => "lookup_eval_algebra_method_inner"
+    "eval_call_bridge" => "lookup_eval_call_bridge"
+    "try_v2_std_collection_map_primitive_grounding" => "lookup_try_v2_std_collection_map_primitive_grounding"
+    "eval_call_native_intercept" => "lookup_eval_call_native_intercept"
+    "try_parse_table_memo_dispatch" => "lookup_try_parse_table_memo_dispatch"
+    _ => concat("lookup_unknown_", site_key)
+  }
+}
+
+fn filter_roster_site(rows: List<InterpreterPrimitiveDispatchArm>, site_key: String) -> List<InterpreterPrimitiveDispatchArm> {
+  rows |> filter(r => roster_site_key(row: r) == site_key)
+}
+
+fn distinct_strings(xs: List<String>) -> List<String> {
+  xs |> fold(init: [], f: (acc, x) => if acc |> any(y => y == x) { acc } else { acc |> concat([x]) })
+}
+
+fn distinct_identities(rows: List<InterpreterPrimitiveDispatchArm>) -> List<String> {
+  distinct_strings(xs: rows |> map(r => concat(r.arm.identity, "")))
+}
+
+fn rust_variant_for_row(row: InterpreterPrimitiveDispatchArm) -> String {
+  arm_identity_to_rust_variant(identity: concat(row.arm.identity, ""))
+}
+
+fn distinct_rust_variants(rows: List<InterpreterPrimitiveDispatchArm>) -> List<String> {
+  distinct_strings(xs: rows |> map(r => rust_variant_for_row(row: r)))
+}
+
+fn render_lookup_match_rows(rows: List<InterpreterPrimitiveDispatchArm>, enum_name: String) -> String {
+  fold_list(rows, empty: "", cons: fn(acc, row) {
+    let escaped = escape_rust_string_literal_body(s: concat(row.authored_spelling, ""))
+    let variant = rust_variant_for_row(row: row)
+    let line = concat(
+      "        \"",
+      escaped,
+      "\" => Some(",
+      enum_name,
+      "::",
+      variant,
+      "),"
+    )
+    if acc == "" {
+      line
+    } else {
+      concat(acc, concat("\n", line))
+    }
+  })
+}
+
+fn qualified_enum_variant(enum_name: String, variant: String) -> String {
+  concat(
+    "$crate::v1_interpreter_dispatch_generated::",
+    enum_name,
+    "::",
+    variant
+  )
+}
+
+fn render_identity_arm_rows(rows: List<InterpreterPrimitiveDispatchArm>, enum_name: String) -> String {
+  let identities = distinct_identities(rows: rows)
+  fold_list(identities, empty: "", cons: fn(acc, identity) {
+    let variant = arm_identity_to_rust_variant(identity: identity)
+    let line = concat(
+      "    (\"",
+      escape_rust_string_literal_body(s: identity),
+      "\") => { ",
+      qualified_enum_variant(enum_name: enum_name, variant: variant),
+      " };"
+    )
+    if acc == "" {
+      line
+    } else {
+      concat(acc, concat("\n", line))
+    }
+  })
+}
+
+fn render_enum_variants(variants: List<String>) -> String {
+  fold_list(variants, empty: "", cons: fn(acc, variant) {
+    let line = concat("    ", variant, ",")
+    if acc == "" {
+      line
+    } else {
+      concat(acc, concat("\n", line))
+    }
+  })
+}
+
+fn render_site_block(site_key: String, rows: List<InterpreterPrimitiveDispatchArm>) -> String {
+  let enum_name = site_enum_name(site_key: site_key)
+  let lookup_name = site_lookup_name(site_key: site_key)
+  let site_rows = filter_roster_site(rows: rows, site_key: site_key)
+  let variants = distinct_rust_variants(rows: site_rows)
+  let macro_name = concat(site_key, "_arm") |> replace(old: ".", new: "_")
+  concat(
+    "#[rustfmt::skip]\n",
+    "#[derive(Copy, Clone, Debug, PartialEq, Eq)]\n",
+    "pub enum ",
+    enum_name,
+    " {\n",
+    render_enum_variants(variants: variants),
+    "\n}\n\n",
+    "#[rustfmt::skip]\n",
+    "pub fn ",
+    lookup_name,
+    "(spelling: &str) -> Option<",
+    enum_name,
+    "> {\n",
+    "    match spelling {\n",
+    render_lookup_match_rows(rows: site_rows, enum_name: enum_name),
+    "\n        _ => None,\n",
+    "    }\n",
+    "}\n\n",
+    "#[rustfmt::skip]\n",
+    "macro_rules! ",
+    macro_name,
+    " {\n",
+    render_identity_arm_rows(rows: site_rows, enum_name: enum_name),
+    "\n}\n"
+  )
+}
+
+type V1InterpreterDispatchEmitOutcome
+  = V1InterpreterDispatchGenerated { content: String }
+  | V1InterpreterDispatchGenerationRefused { reason: String }
+
+fn render_dispatch_generated_rs(rows: List<InterpreterPrimitiveDispatchArm>) -> String {
+  let site_keys = known_dispatch_emit_site_keys()
+  concat(
+    "// Generated by gunbc v1_interpreter_dispatch_emit — do not hand-edit.\n",
+    "// Authority: gunbc.v1_interpreter_primitive_surface v1_interpreter_authored_roster_arms(); rust_variant derived from arm identity.\n\n",
+    fold_list(site_keys, empty: "", cons: fn(acc, site_key) {
+      let block = render_site_block(site_key: site_key, rows: rows)
+      if acc == "" {
+        block
+      } else {
+        concat(acc, block)
+      }
+    })
+  )
+}
+
+fn expected_v1_interpreter_dispatch_generated_rs() -> V1InterpreterDispatchEmitOutcome {
+  let rows = v1_interpreter_authored_roster_arms()
+  let unknown = roster_rows_with_unknown_emit_site()
+  if count(unknown) > 0 {
+    V1InterpreterDispatchGenerationRefused {
+      reason: "authored roster row maps to unknown dispatch emit site — every row must map to known_dispatch_emit_site_keys via roster_site_key"
+    }
+  } else if any_roster_site_has_rust_variant_collision(rows: rows) {
+    V1InterpreterDispatchGenerationRefused {
+      reason: "two distinct arm identities collapse to the same PascalCase enum variant within one dispatch emit site — arm_identity_to_rust_variant must be injective per site"
+    }
+  } else {
+    V1InterpreterDispatchGenerated { content: render_dispatch_generated_rs(rows: rows) }
+  }
+}

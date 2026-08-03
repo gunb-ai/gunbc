@@ -12,11 +12,11 @@ import gunbc.stage0_rust_source_lifecycle_scaffold {
   lifecycle_row_well_formed,
   list_concat_unique,
   path_in_list,
-  path_occurrence_count,
   rust_maintenance_disposition_well_formed,
   rust_source_lifecycle_residue_rows,
   RustSourceLifecycleRow
 }
+import std.keyed_roster { path_occurrence_count }
 import std.content_hash { Fnv1a64Structural }
 import v2.std.algebra { any, filter, fold_list, length, list_map, list_snoc_item }
 import v2.std.collection { List }
@@ -61,7 +61,7 @@ fn exact_duplicate_paths_within_authority(paths: List<String>) -> List<String> {
     xs: paths,
     empty: empty_string_list,
     cons: fn(acc, path) {
-      if path_occurrence_count(paths: paths, needle: path) > 1
+      if path_occurrence_count(paths: paths, target: path) > 1
         && !path_in_list(path: path, paths: acc) {
         list_snoc_item(xs: acc, item: path)
       } else {

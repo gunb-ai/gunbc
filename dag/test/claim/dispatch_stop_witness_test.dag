@@ -1,14 +1,18 @@
 module test.claim.dispatch_stop_witness
 
+import gunbc.roadmap_model { Unsized }
 import extdeps.tmux { TmuxLsEntry }
 import gunbc.roadmap_dispatch_actuator {
   TmuxSessionScope, TmuxPaneEntry,
   parse_tmux_pane_line, parse_tmux_panes_output, tmux_list_panes_argv,
   tmux_session_observation_with_panes, dispatch_tmux_session_scope,
+  dispatch_actuator_selection,
+  DispatchActuatorSelectionOk,
+  DispatchActuatorSelectionRefused,
   DispatchStopGate, StopPermitted, StopRefused, dispatch_stop_gate,
   DispatchLiveSession,
-  dispatch_worker_observation_for_process,
-  DispatchSessionCleanup,
+  CodexDispatchProvider,
+  dispatch_provider_instance_for,
   DispatchStopRunningProcess,
   DispatchClearRetainedSession,
   DispatchCleanupRefused,
@@ -24,6 +28,7 @@ import gunbc.worker_lifecycle {
   WorkerProcessEvidence,
   WorkerProcessRunning,
   WorkerProcessExited,
+  worker_observation_without_provider_probe_for_process,
 }
 import gunbc.roadmap_component { dispatch_client_js_source }
 import gunbc.roadmap_style { roadmap_css }
@@ -38,7 +43,20 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data dispatch_stop_witness_note: String = "Cleanup receipts separate a present tmux container from its provider process. The legacy running-process fingerprint gate remains pinned as a compatibility negative control. The shared lifecycle path proves three independent conclusions: an owned running node process may be stopped, a retained dead pane may be cleared regardless of its historical env command, and a foreign running process refuses. The wire distinguishes process_stopped from session_cleared and carries ok explicitly; the client renders process evidence beside a stop/clear/unavailable cleanup control."
 
 fn scope() -> TmuxSessionScope {
-  dispatch_tmux_session_scope(node_id: "ts-authority-converge")
+  match dispatch_actuator_selection(node_sizing: Unsized) {
+    DispatchActuatorSelectionOk { provider: _, effort: _, process_fingerprint } =>
+      TmuxSessionScope {
+        session_name: "gunbc-dispatch-ts-authority-converge" as NonEmptyStr,
+        expected_owner_label: "gunbc-dispatch-ts-authority-converge" as NonEmptyStr,
+        expected_process_fingerprint: process_fingerprint,
+      }
+    DispatchActuatorSelectionRefused { reason: _ } =>
+      TmuxSessionScope {
+        session_name: "selection-refused" as NonEmptyStr,
+        expected_owner_label: "selection-refused" as NonEmptyStr,
+        expected_process_fingerprint: "selection-refused" as NonEmptyStr,
+      }
+  }
 }
 
 fn entry() -> TmuxLsEntry {
@@ -87,7 +105,10 @@ fn live_with_process(process: WorkerProcessEvidence) -> DispatchLiveSession {
     node_id: "ts-authority-converge",
     windows: 1,
     lease_verdict: Converged,
-    worker: dispatch_worker_observation_for_process(process: process),
+    worker: worker_observation_without_provider_probe_for_process(
+      instance: dispatch_provider_instance_for(provider: CodexDispatchProvider),
+      process: process,
+    ),
   }
 }
 

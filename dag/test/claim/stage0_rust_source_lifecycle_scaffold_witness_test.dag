@@ -1,5 +1,6 @@
 module test.claim.stage0_rust_source_lifecycle_scaffold_witness
 
+import std.keyed_roster { path_occurrence_count }
 import gunbc.stage0_rust_source_lifecycle_scaffold {
   DerivedDuplicateExactPaths,
   DerivedHandMaintainedGrew,
@@ -26,7 +27,6 @@ import gunbc.stage0_rust_source_lifecycle_scaffold {
   list_paths_all_unique,
   manifest_state_verdict_scaffold_holds,
   partition_crate_paths_complete_holds,
-  path_occurrence_count,
   residue_row,
   rust_source_manifest_state_verdict,
   rust_source_manifest_state_verdict_query_scaffold,
@@ -302,6 +302,6 @@ test fn scaffold_residue_red_control_duplicate_path_reds() -> Bool {
   !list_paths_all_unique(paths: paths)
     && path_occurrence_count(
       paths: paths,
-      needle: "src/v1/stage0/src/bootstrap_stage0_crate_layout_generated.rs"
+      target: "src/v1/stage0/src/bootstrap_stage0_crate_layout_generated.rs"
     ) == 2
 }

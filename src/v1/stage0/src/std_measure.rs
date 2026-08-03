@@ -174,11 +174,11 @@ pub struct Measure<Q, S, M: Clone> {
     pub _phantom: std::marker::PhantomData<(Q, S, M)>,
 }
 
-pub fn measure_count<Q, S, M: Clone>(m: Rc<Measure<Q, S, M>>) -> M {
+pub fn measure_count<Q: Clone, S: Clone, M: Clone>(m: Rc<Measure<Q, S, M>>) -> M {
     m.count.clone()
 }
 
-pub fn measure_scale_fraction_floor<Q, S>(
+pub fn measure_scale_fraction_floor<Q: Clone, S: Clone>(
     m: Rc<Measure<Q, S, i64>>,
     num: Nat,
     den: Nat,
@@ -193,7 +193,7 @@ pub fn measure_scale_fraction_floor<Q, S>(
     })
 }
 
-pub fn measure_fit_count_floor<Q, S>(
+pub fn measure_fit_count_floor<Q: Clone, S: Clone>(
     capacity: Rc<Measure<Q, S, i64>>,
     each: Rc<Measure<Q, S, i64>>,
 ) -> Nat {
@@ -207,7 +207,7 @@ pub fn measure_fit_count_floor<Q, S>(
     }
 }
 
-pub fn measure_scale_fraction_ceil<Q, S>(
+pub fn measure_scale_fraction_ceil<Q: Clone, S: Clone>(
     m: Rc<Measure<Q, S, i64>>,
     num: Nat,
     den: Nat,
@@ -222,7 +222,7 @@ pub fn measure_scale_fraction_ceil<Q, S>(
     })
 }
 
-pub fn measure_add<Q, S>(
+pub fn measure_add<Q: Clone, S: Clone>(
     a: Rc<Measure<Q, S, i64>>,
     b: Rc<Measure<Q, S, i64>>,
 ) -> Rc<Measure<Q, S, i64>> {
@@ -232,7 +232,10 @@ pub fn measure_add<Q, S>(
     })
 }
 
-pub fn measure_le<Q, S>(a: Rc<Measure<Q, S, i64>>, b: Rc<Measure<Q, S, i64>>) -> bool {
+pub fn measure_le<Q: Clone, S: Clone>(
+    a: Rc<Measure<Q, S, i64>>,
+    b: Rc<Measure<Q, S, i64>>,
+) -> bool {
     (a.count.clone() <= b.count.clone())
 }
 
@@ -503,7 +506,7 @@ pub fn money_rate_carrier_representation_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn money_rate_micros<P>(q: Rc<MoneyRate<P>>) -> Nat {
+pub fn money_rate_micros<P: Clone>(q: Rc<MoneyRate<P>>) -> Nat {
     money_amount_micro_count(q.amount.clone())
 }
 

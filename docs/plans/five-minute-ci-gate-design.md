@@ -145,6 +145,9 @@ net admission — operator expectation only until measured.
 
 ## Related work outside this program
 
+- **Floor prep-tax program** — [floor-prep-tax-program.md](floor-prep-tax-program.md):
+  time-axis reopen of retention; discriminating A/B before width / broad native
+  enlargement. Does **not** defer this program's step-3 bounded native cutover.
 - **Placement / build-flake lane** — srv1 cache miss + placement crawl; **do not
   raise step cap first** (cap lives in `gunbc.ci_spec`; measure after Arm A).
 - **Placement chain** — host/job placement; owner `ci-placement`.
