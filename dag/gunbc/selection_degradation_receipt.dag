@@ -115,13 +115,7 @@ fn selection_degradation_state_of(
   } else if selection_mode_tag == ("predict_only" as NonEmptyStr) {
     SelectionDegradationPredictOnly
   } else if selection_mode_tag == ("applied" as NonEmptyStr) {
-    if categorization_unavailable {
-      if selected == total {
-        SelectionDegradationSuperset
-      } else {
-        SelectionDegradationApplied
-      }
-    } else if selected == total {
+    if selected == total {
       SelectionDegradationSuperset
     } else {
       SelectionDegradationApplied
