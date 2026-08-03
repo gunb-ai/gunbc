@@ -3,6 +3,7 @@ module gunbc.diff_baseline
 import std.types { String, GitRef }
 import std.logic { Bool }
 import extdeps.git { GitRemoteRefParts, git_remote_ref }
+import extdeps.git.hooks { zero_sha }
 import extdeps.github.actions {
   github_event_name_pull_request,
   github_event_name_push,
@@ -11,14 +12,17 @@ import extdeps.github.actions {
   github_event_name_schedule
 }
 
-data diff_baseline_law: String = "DiffBaseline is the typed answer to 'what does the affected-set diff observe HEAD against?' — the de-fork of the origin/main policy-as-literal (DESIGN §3(c)). Three arms, no fourth default: MergeTarget (the PR's actual base, derived from the CI event's GITHUB_BASE_REF), PushParent (today's policy — the repo's default merge target, for push / workflow_dispatch / merge_group / schedule / the local-or-bootstrap window with no CI event; a merge_group queue run has no base ref and its tree diffs against the default branch, and the falsifier's scheduled cold-control steps that do not set GUNBC_CI_DIFF_BASE land here too — exactly the pre-de-fork behavior), OperatorOverride (the typed GUNBC_CI_DIFF_BASE arm, used by the falsifier's HEAD~20 cold control and manual runs). resolve_diff_baseline is PURE over the observed event facts (CiDiffEvent) so its arms are RED-testable without live git; the effectful env read lives in the caller (v2.workflow.floor_diff_observe.floor_observe_ci_diff_event)."
+data diff_baseline_law: String = "DiffBaseline is the typed answer to 'what does the affected-set diff observe HEAD against?' — the de-fork of the origin/main policy-as-literal (DESIGN §3(c)). Four arms, no fifth default: MergeTarget (the PR's actual base, derived from the CI event's GITHUB_BASE_REF), PushBefore (a push event's before SHA from the GitHub event payload — the commit immediately preceding the push; main-push CI diffs exactly the pushed delta, never the whole branch against origin/main), PushParent (the repo's default merge target, for workflow_dispatch / merge_group / schedule / the local-or-bootstrap window with no CI event; a merge_group queue run has no base ref and its tree diffs against the default branch, and the falsifier's scheduled cold-control steps that do not set GUNBC_CI_DIFF_BASE land here too), OperatorOverride (the typed GUNBC_CI_DIFF_BASE arm, used by the falsifier's HEAD~20 cold control and manual runs). resolve_diff_baseline is PURE over the observed event facts (CiDiffEvent) so its arms are RED-testable without live git; the effectful env read lives in the caller (v2.workflow.floor_diff_observe.floor_observe_ci_diff_event)."
 
 data diff_baseline_fail_closed_law: String = "A CI event this resolver cannot map to a base REFUSES (BaselineRefused) — it never substitutes a constant. The refusal propagates through floor_diff_observe's UnifiedDiffFail / NameStatusDiffFail into the executor's diff observation (cli_run.rs floor_git_diff_range), which HALTS the floor with a typed AFFECTED-SET REFUSAL (cause=DiffObservationRefusal): 'refuses every enrolled row rather than widening to a full-corpus run' (operator ruling 2026-07-05). The ignorance state is a loud, located, HARD STOP — NOT a run-everything widen (an earlier draft of this note misdescribed it as widen-to-whole-tree; the executor refuses, it does not widen — DESIGN §5, the exact absorbing-fallback shape being avoided). Only a genuinely-unrecognized event name lands here: the five live workflow triggers (push / pull_request / workflow_dispatch / merge_group from ci_workflow, schedule from falsifier_workflow) all map to a base arm, so a future-added trigger halts loudly until it is modeled, rather than silently defaulting to origin/main — the exact defect being deleted, now typed."
 
-data diff_baseline_bootstrap_arm_note: String = "The empty-event-name arm ('' — no GITHUB_EVENT_NAME) is an EXPLICIT recognized state, not the catch-all: it is the local / pre-CI-bootstrap window where there is no GitHub event at all, and its correct baseline is the repo's default merge target (PushParent), which is exactly today's behavior for a bare local floor_diff_observe invocation (DiffPolicy.base = origin/main). It is grouped with push / workflow_dispatch / merge_group / schedule because all mean 'observe against the default branch'. The catch-all (a future GitHub trigger not yet modeled — ⊤-as-ignorance, genuinely not-knowing the base) is the final else → BaselineRefused, which HALTS the floor (never a silent origin/main). Conflating the two would be the absorbing fallback DESIGN §5 forbids; keeping them distinct keeps 'no CI event' (a known state, PushParent) apart from 'CI event we cannot map' (real ignorance, halt)."
+data diff_baseline_bootstrap_arm_note: String = "The empty-event-name arm ('' — no GITHUB_EVENT_NAME) is an EXPLICIT recognized state, not the catch-all: it is the local / pre-CI-bootstrap window where there is no GitHub event at all, and its correct baseline is the repo's default merge target (PushParent), which is exactly today's behavior for a bare local floor_diff_observe invocation (DiffPolicy.base = origin/main). It is grouped with workflow_dispatch / merge_group / schedule because all mean 'observe against the default branch'. Push is NOT grouped here: a push event always requires a before SHA. The catch-all (a future GitHub trigger not yet modeled — ⊤-as-ignorance, genuinely not-knowing the base) is the final else → BaselineRefused, which HALTS the floor (never a silent origin/main). Conflating the two would be the absorbing fallback DESIGN §5 forbids; keeping them distinct keeps 'no CI event' (a known state, PushParent) apart from 'CI event we cannot map' (real ignorance, halt)."
+
+data diff_baseline_push_before_law: String = "Push events resolve PushBefore from the webhook payload's before member (extdeps.github.push_event), NOT PushParent. Absent, empty, zero (0000000000000000000000000000000000000000 — new-branch creation), or equal-to-head before SHAs REFUSE: a push with no prior commit has no honest affected-set window, and a before SHA equal to head is a self-compare that would yield an empty diff while pretending a baseline was resolved. These refusals halt the floor; they never widen to origin/main."
 
 type DiffBaseline
   = MergeTarget { ref: GitRef }
+  | PushBefore { ref: GitRef }
   | PushParent { ref: GitRef }
   | OperatorOverride { ref: GitRef }
 
@@ -26,6 +30,8 @@ type CiDiffEvent {
   override_ref: String?
   event_name: String
   base_ref: String?
+  push_before_sha: String?
+  head_sha: String?
 }
 
 type DiffBaselineResolution
@@ -35,6 +41,7 @@ type DiffBaselineResolution
 fn diff_baseline_ref(b: DiffBaseline) -> GitRef {
   match b {
     MergeTarget { ref: r } => r
+    PushBefore { ref: r } => r
     PushParent { ref: r } => r
     OperatorOverride { ref: r } => r
   }
@@ -57,23 +64,55 @@ fn resolve_merge_target(base_ref: String?, default_remote_name: String) -> DiffB
   }
 }
 
+fn resolve_push_before(push_before_sha: String?, head_sha: String?) -> DiffBaselineResolution {
+  match push_before_sha {
+    Absent =>
+      BaselineRefused {
+        reason: "push event but before SHA is absent — cannot derive affected-set baseline; halting the floor (AFFECTED-SET REFUSAL)"
+      }
+    Present { value: before } =>
+      if before == "" {
+        BaselineRefused {
+          reason: "push event but before SHA is empty — cannot derive affected-set baseline; halting the floor (AFFECTED-SET REFUSAL)"
+        }
+      } else if before == zero_sha {
+        BaselineRefused {
+          reason: "push event before SHA is the zero SHA (new branch creation) — no prior commit to diff against; halting the floor (AFFECTED-SET REFUSAL)"
+        }
+      } else {
+        match head_sha {
+          Present { value: head } =>
+            if head != "" && before == head {
+              BaselineRefused {
+                reason: "push event before SHA equals head — self-compare refused; halting the floor (AFFECTED-SET REFUSAL)"
+              }
+            } else {
+              BaselineSelected { baseline: PushBefore { ref: before as GitRef } }
+            }
+          Absent =>
+            BaselineSelected { baseline: PushBefore { ref: before as GitRef } }
+        }
+      }
+  }
+}
+
 fn resolve_diff_baseline_by_event(
-  event_name: String,
-  base_ref: String?,
+  event: CiDiffEvent,
   push_parent_ref: GitRef,
   default_remote_name: String
 ) -> DiffBaselineResolution {
-  if event_name == github_event_name_pull_request {
-    resolve_merge_target(base_ref: base_ref, default_remote_name: default_remote_name)
-  } else if event_name == github_event_name_push
-    || event_name == github_event_name_workflow_dispatch
-    || event_name == github_event_name_merge_group
-    || event_name == github_event_name_schedule
-    || event_name == "" {
+  if event.event_name == github_event_name_pull_request {
+    resolve_merge_target(base_ref: event.base_ref, default_remote_name: default_remote_name)
+  } else if event.event_name == github_event_name_push {
+    resolve_push_before(push_before_sha: event.push_before_sha, head_sha: event.head_sha)
+  } else if event.event_name == github_event_name_workflow_dispatch
+    || event.event_name == github_event_name_merge_group
+    || event.event_name == github_event_name_schedule
+    || event.event_name == "" {
     BaselineSelected { baseline: PushParent { ref: push_parent_ref } }
   } else {
     BaselineRefused {
-      reason: concat(concat("unrecognized CI event '", event_name), "' for diff-baseline selection — halting the floor (AFFECTED-SET REFUSAL)")
+      reason: concat(concat("unrecognized CI event '", event.event_name), "' for diff-baseline selection — halting the floor (AFFECTED-SET REFUSAL)")
     }
   }
 }
@@ -87,8 +126,7 @@ fn resolve_diff_baseline(
     Present { value: r } =>
       if r == "" {
         resolve_diff_baseline_by_event(
-          event_name: event.event_name,
-          base_ref: event.base_ref,
+          event: event,
           push_parent_ref: push_parent_ref,
           default_remote_name: default_remote_name
         )
@@ -97,8 +135,7 @@ fn resolve_diff_baseline(
       }
     Absent =>
       resolve_diff_baseline_by_event(
-        event_name: event.event_name,
-        base_ref: event.base_ref,
+        event: event,
         push_parent_ref: push_parent_ref,
         default_remote_name: default_remote_name
       )
