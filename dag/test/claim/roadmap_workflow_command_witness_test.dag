@@ -10,7 +10,7 @@ import gunbc.roadmap_workflow_command {
   admit_resume_attempt,
   admit_retry_mechanism,
   legacy_attempt_cannot_satisfy_obligations,
-  legacy_attempt_supersedable_summary,
+  legacy_attempt_supersedable_label,
   attempt_lineage_row_label,
   worker_turn_row_label,
   attempt_key_short_form,
@@ -103,9 +103,9 @@ test fn legacy_attempt_projects_as_supersedable_not_fault() -> Bool {
   })
   match activity_view_from_progress(progress: progress) {
     LegacySupersedableAttempt { summary, located_reason: _, attempt_key: _, evidence: _ } =>
-      summary == legacy_attempt_supersedable_summary
+      summary == legacy_attempt_supersedable_label
         && match progress.provider {
-          ProviderEventsRefused { activity, detail: _ } => activity == legacy_attempt_supersedable_summary
+          ProviderEventsRefused { activity, detail: _ } => activity == legacy_attempt_supersedable_label
           _ => false
         }
     ActiveWorkRefused { summary: _, located_reason: _, evidence: _ } => false

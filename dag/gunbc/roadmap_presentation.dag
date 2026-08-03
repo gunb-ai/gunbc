@@ -30,7 +30,7 @@ import gunbc.roadmap_workflow_stage {
 }
 import gunbc.roadmap_workflow_progress { WorkflowAttemptProgress }
 import gunbc.roadmap_workflow_command {
-  legacy_attempt_supersedable_summary,
+  legacy_attempt_supersedable_label,
   attempt_key_short_form,
 }
 import gunbc.workflow_reconcile { WorkflowReconcileReport }
@@ -589,9 +589,9 @@ fn activity_view_from_parts(
 fn activity_view_from_progress(progress: WorkflowAttemptProgress) -> ActivityView {
   match progress.provider {
     ProviderEventsRefused { activity, detail } =>
-      if activity == legacy_attempt_supersedable_summary {
+      if activity == legacy_attempt_supersedable_label {
         LegacySupersedableAttempt {
-          summary: legacy_attempt_supersedable_summary,
+          summary: legacy_attempt_supersedable_label,
           located_reason: detail,
           attempt_key: attempt_key_short_form(key: progress.attempt_key),
           evidence: activity_evidence_rows(process: progress.process),

@@ -41,8 +41,6 @@ type LegacyAttemptDisposition {
 
 data legacy_attempt_supersedable_label: String = "legacy attempt — supersedable"
 
-data legacy_attempt_supersedable_summary: String = "legacy attempt — supersedable"
-
 data legacy_attempt_supersedable_detail: String = "attempt predates modeled admission and event capture; progress cannot be reconstructed from receipts, but StartNewAttempt\{supersedes\} is the machine-owned clear path"
 
 type WorkflowCommandAdmission
