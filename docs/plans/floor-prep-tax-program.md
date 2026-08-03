@@ -1,6 +1,6 @@
 # Floor prep-tax program — stop paying ~2s per entry to re-arrange work
 
-**Status:** executing program (session `still-moth-459`, 2026-08-03). Measurement-first. **P1 gates width expansion and broad native enrollment only** — it does **not** defer five-minute step 3’s already-landed bounded production native cutover (#7599 → #7671’s live 3-member cohort), which remains NEXT under `gunbc.roadmap_authority` / [five-minute-ci-gate-design](five-minute-ci-gate-design.md).
+**Status:** P1 **BANKED (REJECT)** · P2 **LANDED** (integration `warm-lynx-428`, 2026-08-03). Measurement-first. **P1 gates width expansion and broad native enrollment only** — it does **not** defer five-minute step 3’s already-landed bounded production native cutover (#7599 → #7671’s live 3-member cohort), which remains NEXT under `gunbc.roadmap_authority` / [five-minute-ci-gate-design](five-minute-ci-gate-design.md).
 
 **Parent authorities (do not fork):** [five-minute-ci-gate-design](five-minute-ci-gate-design.md) · [v1-run-stability-throughline](v1-run-stability-throughline.md) · [m2-floor-retention-measurement-receipt](m2-floor-retention-measurement-receipt.md) · [per-entry-assembly-decomposition-measurement](per-entry-assembly-decomposition-measurement.md) · [cross-worker-typecheck-share-design](cross-worker-typecheck-share-design.md) · [witness-realization-plan](witness-realization-plan.md) · `dag/gunbc/executor_schedule_retention.dag` · `dag/gunbc/plans/ci_selection_vs_scheduling.dag`
 
@@ -48,6 +48,8 @@ Related in-flight (do not duplicate): PR **#7720** (sleek-dove) — affected-set
 | Per-entry assembly decomposition (#7597) | Measured | Prices the surface (~1.5–1.7s/entry class on the 50-entry harness); does not select a mechanism |
 | Native selected-batch (#7599) + production kind cutover (#7671) | Live; **3-member** cohort | Optimizes the ~150 ms evaluation slice; leaves the ~77s resolve intact. **Five-minute step 3 stays NEXT** — this program does not park it |
 | Five-minute program “retention PARKED” row | Stated for **memory pressure** absence at width 1 | **Reopened here on the time axis** — lack of memory distress is not license to destroy reusable prep every entry |
+| **P1 retention vs drain A/B** (#7725) | **BANKED — REJECT** | Schedule-retention eviction is **not** the ~1–2s tax; redirect to assembly/materialization reuse ([receipt](p1-retention-vs-drain-cohort-receipt.md)) |
+| **P2 selection degradation receipts** (#7722) | **LANDED** | Five fields on every floor receipt emission path (measurement tail, resolve receipt, floor-component JSON, dedicated file) |
 
 `resolved_graph_memo` is keyed by **entry subject**. Retaining graph A does not serve entry B. So “stop dropping graphs” alone is insufficient unless paired with **shared module/index universe + cheap per-entry assembly from retained facts** (materialization / native bundle / assembly memo — mechanism chosen by P1 receipt, not by taste).
 
@@ -81,14 +83,14 @@ Productive parallelism shape (ordered):
 
 ## 4. Priority order (binding)
 
-### P1 — Discriminating retention vs drain (this program’s first receipt)
+### P1 — Discriminating retention vs drain — **BANKED (REJECT)**
 
 Fixed cohort, two modes:
 
 * **A — current:** schedule-retention eviction on (production default)
 * **B — retain-all pole:** `GUNBC_SCHEDULE_RETENTION_EVICT=0` (existing measurement control; drops nothing)
 
-Then, only if A→B shows the ~2s tax collapsing for entries 2..N sharing a module universe, implement **bounded retention**: drain when a memory threshold is crossed, not on every entry completion. If A→B does **not** collapse the tax, the prize is **assembly reuse / materialization / shared index view** (route to `module-grain-materialization` / assembly mechanism), not softer eviction. **Do not enter P1 with a prior on which arm wins** — the A/B receipt is the discriminator (see “Do not misuse #7597” above).
+**Verdict (2026-08-03):** entries 2..34 do **not** stop repaying the tax under Mode B — mean/median `wall_ms` and `resolve_ms` are statistically indistinguishable between A and B. **Redirect to assembly/materialization reuse**, not softer eviction. Authoritative receipt: [p1-retention-vs-drain-cohort-receipt.md](p1-retention-vs-drain-cohort-receipt.md) · PR #7725.
 
 Per entry (required receipt fields):
 
@@ -106,7 +108,7 @@ cgroup_memory_peak
 
 **Acceptance:** second and subsequent entries sharing the same module universe do **not** each repay ≈2s. “Faster” alone is not enough — the receipt must show the setup tax moving.
 
-### P2 — Selection degradation explicit
+### P2 — Selection degradation explicit — **LANDED**
 
 Every floor receipt publishes:
 
@@ -118,15 +120,15 @@ selection_ratio=…
 fallback_reason=…
 ```
 
-An “affected” run that selects all 842 must **say so**. Large supersets remain sound selection but are a **counted performance degradation**, not a green affordance story. May proceed in parallel with P1 (receipt surface only). Do not duplicate #7720.
+An “affected” run that selects all 842 must **say so**. Large supersets remain sound selection but are a **counted performance degradation**, not a green affordance story. PR #7722.
 
-### P3 — Width-2 trial (conjunction gate)
+### P3 — Width-2 trial (conjunction gate) — **HOLD**
 
 **Gate = P1 banked AND index sharing landed** (the Rc→Arc / shared-index dissolve-on that retires the width≤1 latch). P1 alone is **not** sufficient — a perfect retention result does not make width-2 profitable while each worker still builds its own whole-tree index (measured refutation: CI 29707161743 / 29714863168 / 29710324768 above).
 
 When both hold, on a real 16 GiB runner: hard-cap aggregate worker memory; prevent simultaneous native compile peaks; start with two **interpreted** shards; refuse the second worker when the envelope cannot admit it. Compare **CPU time and wall** so duplicated cold work cannot masquerade as a win. Expect a retention/width crossover, not a free win ([cross-worker-typecheck-share-design](cross-worker-typecheck-share-design.md) §7).
 
-### P4 — Expand native enrollment (broad), after prep amortized
+### P4 — Expand native enrollment (broad), after prep amortized — **HOLD**
 
 **Not** five-minute step 3 (bounded 3-member cohort — already live / stays NEXT under that authority). This leaf is **class-by-class enlargement** of the native cohort after D1 setup is amortized. Until then, broad native migration optimizes the wrong term for floor wall.
 
@@ -142,6 +144,8 @@ Does **not** replace the operator sequence in `five-minute-ci-gate-design.md` an
 
 Update the five-minute “retention PARKED” disposition when P1’s receipt is banked (time-axis reopen + mechanism or honest redirect).
 
+**P1 redirect (banked):** the next floor-wall prize is **assembly reuse / materialization / shared index view** — route to `module-grain-materialization` / duplicate-work graph lens, not softer eviction.
+
 ---
 
 ## 6. Dissolution
@@ -154,4 +158,4 @@ Delete or fold this note when:
 
 or when the operator recuts the program into the five-minute / materialization authorities directly.
 
-Session closeout: `sleek-fox-808` (waits on parent Complete). Live leaves: P1 `valiant-deer-205`, P2 `warm-wolf-777` (PR #7722 OPEN — tracking: five fields must reach every floor receipt emission path before ready-for-review; carrier-only is not the bar), P3 `merry-ibex-227` (HOLD — conjunction), P4 `sharp-carp-537` (HOLD — broad enrollment only).
+**E2E closeout (`warm-lynx-428`, 2026-08-03):** integrated P1+P2+program doc on `session/warm-lynx-428`; P1 REJECT banked; P2 receipt surface wired on all floor emission paths; P3/P4 remain HOLD pending assembly/materialization mechanism.

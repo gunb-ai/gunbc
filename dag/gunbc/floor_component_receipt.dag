@@ -55,6 +55,7 @@ import extdeps.languages.json.emit {
   json_object,
   json_kv,
 }
+import gunbc.selection_degradation_receipt { selection_degradation_receipt_json }
 
 data floor_component_receipt_note: String = "The floor's per-COMPONENT receipt, machine-readable, written on every exit path including a red one. WHY IT EXISTS, priced: .github/workflows/falsifier-alert.yml read only the overall workflow conclusion and hardcoded one causal story for every failure — 'affected-set cold control is dark, per-PR selection UNVERIFIED, Gate-1 receipts do not execute'. On run 30509024051 all three clauses were FALSE: the predict-only affected-set control concluded Done over 5217 witnesses and the expect_red batches produced their receipts; the single failing component was the silent-pick gate, killed at its whole-receipt wall budget. An overall-red composite that erases the green state of its completed children is a state-space conflation (DESIGN section 5), and it misdirects triage every time it fires. This module is the projection that makes the alert read state instead of inferring it. THE RECORD IS NOT NEW: each component is one batch-grain Concluded std.observation.ObservationEvent — the same authority gunbc.witness_row_cost names as THE record ('not a TSV schema') — so Refused stays distinct from Failed and a budget kill is TimedOut with its budget and elapsed, not a flattened red. A bespoke status schema here would have been a second representation of that record (DESIGN section 3)."
 
@@ -389,8 +390,17 @@ fn floor_unsuccessful_component_rows(rows: List<FloorComponentRow>) -> List<Floo
   rows |> filter(r => !floor_component_row_is_done(row: r))
 }
 
-fn floor_component_receipt_json_value(run_id: NonEmptyStr, rows: List<FloorComponentRow>) -> JsonValue {
-  json_object(members: [
+fn floor_component_receipt_json_value(
+  run_id: NonEmptyStr,
+  rows: List<FloorComponentRow>,
+  selection_present: Bool,
+  selection_mode_tag: NonEmptyStr,
+  selected: Nat,
+  total: Nat,
+  categorization_unavailable: Bool,
+  categorization_reason: String
+) -> JsonValue {
+  let base = [
     json_kv(key: "schema", value: json_string(s: floor_component_receipt_schema)),
     json_kv(key: "run_id", value: json_string(s: run_id as String)),
     json_kv(key: "component_count", value: json_int(n: count(rows))),
@@ -401,9 +411,55 @@ fn floor_component_receipt_json_value(run_id: NonEmptyStr, rows: List<FloorCompo
     json_kv(key: "components", value: json_array(
       elements: rows |> map(r => floor_component_row_json(row: r))
     ))
-  ])
+  ]
+  if selection_present {
+    json_object(members: concat(base, [
+      json_kv(
+        key: "selection_degradation",
+        value: selection_degradation_receipt_json(
+          selection_mode_tag: selection_mode_tag,
+          selected: selected,
+          total: total,
+          categorization_unavailable: categorization_unavailable,
+          categorization_reason: categorization_reason
+        )
+      )
+    ]))
+  } else {
+    json_object(members: base)
+  }
 }
 
 fn floor_component_receipt_document(run_id: NonEmptyStr, rows: List<FloorComponentRow>) -> String {
-  serialize_json(v: floor_component_receipt_json_value(run_id: run_id, rows: rows))
+  serialize_json(v: floor_component_receipt_json_value(
+    run_id: run_id,
+    rows: rows,
+    selection_present: false,
+    selection_mode_tag: "off" as NonEmptyStr,
+    selected: 0,
+    total: 0,
+    categorization_unavailable: false,
+    categorization_reason: ""
+  ))
+}
+
+fn floor_component_receipt_document_with_selection(
+  run_id: NonEmptyStr,
+  rows: List<FloorComponentRow>,
+  selection_mode_tag: NonEmptyStr,
+  selected: Nat,
+  total: Nat,
+  categorization_unavailable: Bool,
+  categorization_reason: String
+) -> String {
+  serialize_json(v: floor_component_receipt_json_value(
+    run_id: run_id,
+    rows: rows,
+    selection_present: true,
+    selection_mode_tag: selection_mode_tag,
+    selected: selected,
+    total: total,
+    categorization_unavailable: categorization_unavailable,
+    categorization_reason: categorization_reason
+  ))
 }
