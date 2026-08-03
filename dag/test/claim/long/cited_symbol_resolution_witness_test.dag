@@ -7,20 +7,25 @@ import gunbc.doc_graph_roots {
   hand_authored_production_doc_declaration_refs,
   hand_authored_works_refs_all_resolve,
 }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.lens.cited_symbol_resolution {
   cited_symbol_enrolled_refusal_count,
-  cited_symbol_planted_ambiguous_control_refuses,
   cited_symbol_planted_control_refusal_count,
   cited_symbol_resolution_violation_count,
 }
-import v2.lens.module_graph { module_declaration_facts_live }
+import v2.lens.module_graph { ModuleDeclarationFact, module_declaration_facts_live }
 import v2.std.decl_index { decl_facts }
 import v2.std.decl_ref_resolution {
+  cited_declaration_ref_refusal_count,
   declaration_ref_resolution_census,
   DeclarationRefResolutionCensus,
 }
 
-data cited_symbol_resolution_long_witness_note: String = "G1 corpus-scale cited-symbol resolution witnesses — production HandAuthoredDocBind census over live decl_facts + module_declaration_facts (excludes permanent g1-cited-symbol-control-* planted rows). Long lane only: each witness pays one full witness-layer decl_facts scan (operator 5s fast-lane rule 2026-07-12). Planted-control mutation witnesses live in test.claim.cited_symbol_resolution_witness_test."
+data cited_symbol_resolution_long_witness_note: String = "G1 corpus-scale cited-symbol resolution witnesses — production HandAuthoredDocBind census and planted-control mutation proofs over live decl_facts + module_declaration_facts. Long lane only: each witness pays full witness-layer decl_facts scan(s) (operator 5s fast-lane rule 2026-07-12)."
+
+data cited_symbol_long_witness_layer_facts: List<DeclFact> = decl_facts(pool_roots: witness_layer_roots)
+
+data cited_symbol_long_witness_layer_modules: List<ModuleDeclarationFact> = module_declaration_facts_live(pool_roots: witness_layer_roots)
 
 fn cited_symbol_hand_authored_census_live() -> DeclarationRefResolutionCensus {
   let facts = decl_facts(pool_roots: witness_layer_roots)
@@ -65,4 +70,27 @@ test fn cited_symbol_pre7688_census_is_two_declaration_absent_only() -> Bool {
     && census.module_absent_count == 0
     && census.field_absent_count == 0
     && census.ambiguous_count == 0
+}
+
+test fn cited_symbol_refusal_count_red_on_dangling_fixture() -> Bool {
+  let dangling = [
+    DeclarationRef {
+      module_path: "v2.std.node",
+      decl_name: "NoSuchDecl_G1_RED",
+      field: WholeDeclaration,
+    },
+  ]
+  cited_declaration_ref_refusal_count(
+    refs: dangling,
+    facts: cited_symbol_long_witness_layer_facts,
+    modules: cited_symbol_long_witness_layer_modules
+  ) == 1
+}
+
+test fn cited_symbol_planted_doc_graph_controls_all_refuse() -> Bool {
+  cited_symbol_planted_control_refusal_count() == 3
+}
+
+test fn cited_symbol_enrolled_population_refusal_proves_gate_not_vacuous() -> Bool {
+  cited_symbol_enrolled_refusal_count() >= 3 && cited_symbol_resolution_violation_count() == cited_symbol_enrolled_refusal_count() - cited_symbol_planted_control_refusal_count()
 }
