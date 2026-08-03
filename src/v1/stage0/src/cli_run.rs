@@ -8567,72 +8567,131 @@ fn node_frontier_selection_mode_tag(mode: NodeFrontierSelectionMode) -> &'static
     }
 }
 
-/// P2 floor prep-tax receipt: selection_state, selected/total entry groups, ratio, fallback_reason.
-/// Authority is `gunbc.selection_degradation_receipt`; this transport passes measured counts only.
+/// Measured selection-degradation facts finalized at discovery completion.
+#[derive(Debug, Clone)]
+pub struct SelectionDegradationSnapshot {
+    pub selection_mode_tag: String,
+    pub selected_entry_groups: usize,
+    pub total_entry_groups: usize,
+    pub categorization_unavailable: bool,
+    pub categorization_reason: String,
+}
+
+impl SelectionDegradationSnapshot {
+    pub fn from_summary(selection: NodeFrontierSelectionMode, summary: &DiscoverySummary) -> Self {
+        Self {
+            selection_mode_tag: node_frontier_selection_mode_tag(selection).to_string(),
+            selected_entry_groups: summary.selected_entry_groups,
+            total_entry_groups: summary.total_entry_groups,
+            categorization_unavailable: summary.selection_categorization_reason.is_some(),
+            categorization_reason: summary
+                .selection_categorization_reason
+                .clone()
+                .unwrap_or_default(),
+        }
+    }
+}
+
+fn selection_degradation_interp_ctx(
+    source_roots: &[String],
+) -> Result<(v1_interpreter::InterpContext, String), String> {
+    let entry = source_roots
+        .iter()
+        .map(|r| std::path::Path::new(r).join(SELECTION_DEGRADATION_RECEIPT_ENTRY))
+        .find(|p| p.exists())
+        .map(|p| p.to_string_lossy().into_owned())
+        .ok_or_else(|| {
+            format!(
+                "selection-degradation receipt REFUSED — {SELECTION_DEGRADATION_RECEIPT_ENTRY} \
+                 not found under source roots"
+            )
+        })?;
+    let (graph, indices) = resolve_entry_graph_shared(source_roots, &entry)
+        .map_err(|e| format!("selection-degradation receipt REFUSED — resolve {entry}: {e}"))?;
+    Ok((
+        make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic),
+        entry,
+    ))
+}
+
+fn selection_degradation_dag_args(
+    snapshot: &SelectionDegradationSnapshot,
+) -> Vec<(Option<String>, v1_interpreter::Value)> {
+    vec![
+        (
+            Some("selection_mode_tag".to_string()),
+            v1_interpreter::Value::Str(snapshot.selection_mode_tag.clone()),
+        ),
+        (
+            Some("selected".to_string()),
+            v1_interpreter::Value::Int(snapshot.selected_entry_groups as i64),
+        ),
+        (
+            Some("total".to_string()),
+            v1_interpreter::Value::Int(snapshot.total_entry_groups as i64),
+        ),
+        (
+            Some("categorization_unavailable".to_string()),
+            v1_interpreter::Value::Bool(snapshot.categorization_unavailable),
+        ),
+        (
+            Some("categorization_reason".to_string()),
+            v1_interpreter::Value::Str(snapshot.categorization_reason.clone()),
+        ),
+    ]
+}
+
+fn eval_selection_degradation_fn(
+    source_roots: &[String],
+    fn_name: &str,
+    snapshot: &SelectionDegradationSnapshot,
+) -> Result<String, String> {
+    let (ctx, entry) = selection_degradation_interp_ctx(source_roots)?;
+    match v1_interpreter::run_in_context_with_args(
+        &ctx,
+        fn_name,
+        &selection_degradation_dag_args(snapshot),
+        false,
+    ) {
+        Ok(v1_interpreter::Value::Str(line)) => Ok(line),
+        Ok(other) => Err(format!(
+            "selection-degradation receipt REFUSED — {fn_name} returned `{}`, expected Str \
+             (entry {entry})",
+            ctx.format_value(&other)
+        )),
+        Err(e) => Err(format!(
+            "selection-degradation receipt REFUSED — {fn_name} eval: {e}"
+        )),
+    }
+}
+
+/// Bracket-tagged stderr line for discovery completion (also embedded in `[measurement]`).
+pub fn render_selection_degradation_receipt_line(
+    source_roots: &[String],
+    snapshot: &SelectionDegradationSnapshot,
+) -> Result<String, String> {
+    eval_selection_degradation_fn(source_roots, "selection_degradation_receipt_line", snapshot)
+}
+
+/// Key=value body written to `target/floor-selection-degradation-receipt.txt` and appended to
+/// `floor-resolve-receipt.txt`.
+pub fn render_selection_degradation_receipt_body(
+    source_roots: &[String],
+    snapshot: &SelectionDegradationSnapshot,
+) -> Result<String, String> {
+    eval_selection_degradation_fn(source_roots, "selection_degradation_receipt_body", snapshot)
+}
+
+/// P2 floor prep-tax receipt on stderr after every discovery completion.
 pub fn emit_selection_degradation_receipt(
     source_roots: &[String],
     selection: NodeFrontierSelectionMode,
     summary: &DiscoverySummary,
 ) {
-    let Some(entry) = source_roots
-        .iter()
-        .map(|r| std::path::Path::new(r).join(SELECTION_DEGRADATION_RECEIPT_ENTRY))
-        .find(|p| p.exists())
-        .map(|p| p.to_string_lossy().into_owned())
-    else {
-        eprintln!(
-            "selection-degradation receipt REFUSED — {SELECTION_DEGRADATION_RECEIPT_ENTRY} \
-             not found under source roots"
-        );
-        return;
-    };
-    let (graph, indices) = match resolve_entry_graph_shared(source_roots, &entry) {
-        Ok(v) => v,
-        Err(e) => {
-            eprintln!("selection-degradation receipt REFUSED — resolve {entry}: {e}");
-            return;
-        }
-    };
-    let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic);
-    let categorization_unavailable = summary.selection_categorization_reason.is_some();
-    let categorization_reason = summary
-        .selection_categorization_reason
-        .clone()
-        .unwrap_or_default();
-    match v1_interpreter::run_in_context_with_args(
-        &ctx,
-        "selection_degradation_receipt_line",
-        &[
-            (
-                Some("selection_mode_tag".to_string()),
-                v1_interpreter::Value::Str(node_frontier_selection_mode_tag(selection).to_string()),
-            ),
-            (
-                Some("selected".to_string()),
-                v1_interpreter::Value::Int(summary.selected_entry_groups as i64),
-            ),
-            (
-                Some("total".to_string()),
-                v1_interpreter::Value::Int(summary.total_entry_groups as i64),
-            ),
-            (
-                Some("categorization_unavailable".to_string()),
-                v1_interpreter::Value::Bool(categorization_unavailable),
-            ),
-            (
-                Some("categorization_reason".to_string()),
-                v1_interpreter::Value::Str(categorization_reason),
-            ),
-        ],
-        false,
-    ) {
-        Ok(v1_interpreter::Value::Str(line)) => eprintln!("{line}"),
-        Ok(other) => eprintln!(
-            "selection-degradation receipt REFUSED — selection_degradation_receipt_line returned \
-             `{}`, expected Str",
-            ctx.format_value(&other)
-        ),
-        Err(e) => eprintln!("selection-degradation receipt REFUSED — eval: {e}"),
+    let snapshot = SelectionDegradationSnapshot::from_summary(selection, summary);
+    match render_selection_degradation_receipt_line(source_roots, &snapshot) {
+        Ok(line) => eprintln!("{line}"),
+        Err(msg) => eprintln!("{msg}"),
     }
 }
 

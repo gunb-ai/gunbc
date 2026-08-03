@@ -4,6 +4,17 @@ import std.types { String, Bool, NonEmptyStr }
 import std.nat { Nat }
 import std.measure { BasisPoint, basis_point, basis_point_count }
 import std.decimal { zero_pad_left }
+import extdeps.languages.json.emit {
+  JsonValue,
+  JsonKeyValue,
+  json_string,
+  json_int,
+  json_bool,
+  json_object,
+  json_kv,
+}
+
+data selection_degradation_receipt_path: String = "target/floor-selection-degradation-receipt.txt"
 
 data selection_degradation_receipt_note: String = "P2 of the floor prep-tax program (still-moth-459, 2026-08-03): every floor discovery run publishes selection honesty — state, selected/total entry groups, ratio, and fallback_reason — so an affected run that executes the whole corpus is a COUNTED performance degradation (SelectionSuperset), never quiet success (DESIGN section 5). Authority for classification and receipt shape; the seed transport in cli_run.rs resolves this module and calls selection_degradation_receipt_line with measured counts only."
 
@@ -212,6 +223,65 @@ fn selection_degradation_receipt_line(
       concat(" fallback_reason=", r.fallback_reason)
     )
   )
+}
+
+fn selection_degradation_receipt_body(
+  selection_mode_tag: NonEmptyStr,
+  selected: Nat,
+  total: Nat,
+  categorization_unavailable: Bool,
+  categorization_reason: String
+) -> String {
+  let r = selection_degradation_receipt_of(
+    selection_mode_tag: selection_mode_tag,
+    selected: selected,
+    total: total,
+    categorization_unavailable: categorization_unavailable,
+    categorization_reason: categorization_reason
+  )
+  concat(
+    concat(
+      concat(
+        concat("selection_state=", selection_degradation_state_tag(state: r.selection_state)),
+        concat("\nselected_entry_groups=", to_string(r.selected_entry_groups))
+      ),
+      concat("\ntotal_entry_groups=", to_string(r.total_entry_groups))
+    ),
+    concat(
+      concat("\nselection_ratio=", selection_ratio_wire(selected: selected, total: total)),
+      concat("\nfallback_reason=", r.fallback_reason)
+    )
+  )
+}
+
+fn selection_degradation_receipt_json(
+  selection_mode_tag: NonEmptyStr,
+  selected: Nat,
+  total: Nat,
+  categorization_unavailable: Bool,
+  categorization_reason: String
+) -> JsonValue {
+  let r = selection_degradation_receipt_of(
+    selection_mode_tag: selection_mode_tag,
+    selected: selected,
+    total: total,
+    categorization_unavailable: categorization_unavailable,
+    categorization_reason: categorization_reason
+  )
+  json_object(members: [
+    json_kv(
+      key: "selection_state",
+      value: json_string(s: selection_degradation_state_tag(state: r.selection_state))
+    ),
+    json_kv(key: "selected_entry_groups", value: json_int(n: r.selected_entry_groups)),
+    json_kv(key: "total_entry_groups", value: json_int(n: r.total_entry_groups)),
+    json_kv(
+      key: "selection_ratio",
+      value: json_string(s: selection_ratio_wire(selected: selected, total: total))
+    ),
+    json_kv(key: "fallback_reason", value: json_string(s: r.fallback_reason)),
+    json_kv(key: "categorization_unavailable", value: json_bool(b: categorization_unavailable))
+  ])
 }
 
 fn selection_degradation_is_superset(receipt: SelectionDegradationReceipt) -> Bool {
