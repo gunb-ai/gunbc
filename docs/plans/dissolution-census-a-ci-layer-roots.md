@@ -8,26 +8,34 @@ single-authority witness-layer, discovery-exclusion, and falsifier-roster carrie
 prose mass per [dag-note-prose-census.md](dag-note-prose-census.md) §1).
 
 **Instrument:** row-level register at
-`docs/probes/dissolution_census_a_ci_layer_roots_2026-08-03.tsv` (269 sites) plus
+`docs/probes/dissolution_census_a_ci_layer_roots_2026-08-03.tsv` (263 sites) plus
 `docs/probes/dissolution_census_a_ci_layer_roots_2026-08-03.summary.json`. Classifier is
-lexical (same honesty bound as dag-note-prose-census §6); shares are ±10pp.
+lexical (same honesty bound as dag-note-prose-census §6); shares are ±10pp. **Grain key:**
+a *site* is one `reason`, `dissolve_on`, or `data String` field; a site is *inline prose* when
+`is_ref=False` (literal string body); template-ref sites (`reason: excl_*`) carry
+`is_ref=True` and are not prose.
 
 ---
 
 ## 0. Count reconciliation (brief claimed 135)
 
-| grain | count | bytes |
-|---|---|---|
-| **Inline prose markers** (the brief's subject) | **137** | 66.3 KiB |
-| — module-level `*_note` / `excl_*` templates | 45 | 29.0 KiB |
-| — per-row `reason` / `dissolve_on` on typed rows | 92 | 37.3 KiB |
-| Template-ref sites (`reason: excl_*`, not prose) | 111 | — |
-| **Total marker sites** (prose + refs) | **269** | — |
+Three grains — do not conflate:
 
-The brief's **135** is within the §6 error bar: 137 at this head, delta 2 — plausibly two
-notes added since the brief was authored (`bin_witness_wet_per_row_actions_log_observation_gap_note`,
-`known_red_probe_note` 2026-08-03 single-authority rewrite) or the brief excluded the two
-synthetic RED-control rows (`NoConsumer`, `FixtureExplicitRoster`).
+| grain | count | bytes | definition |
+|---|---|---|---|
+| **All inline prose** (every `is_ref=False` site) | **158** | 64.8 KiB (66,329 B) | Full census population |
+| — module `*_note` | 24 | 33.0 KiB | Authority essays |
+| — `excl_*` shared templates | 21 | 5.6 KiB | Classification-scoped reason/dissolve templates |
+| — per-row `reason` / `dissolve_on` on typed rows | **113** | 26.1 KiB | `WitnessExclusionRow` + `RehomedBinWetRow` + `SubstrateLongLaneRow` |
+| **Brief grain** (excl. templates — already field-shaped) | **137** | 59.2 KiB | 24 notes + 113 per-row |
+| **Brief claimed** (excl. templates + NoConsumer RED-control pair) | **135** | — | 137 − 2 inline fields on `synthetic_orphan_admission_witness_test.dag` |
+| Template-ref sites (`reason: excl_*`, not prose) | 105 | — | `is_ref=True` |
+| **Total marker sites** (prose + refs) | **263** | — | TSV row count |
+
+Arithmetic check: 24 + 21 + 113 = 158 inline sites; 33.0 + 5.6 + 26.1 = 64.7 KiB ≈ 64.8 KiB.
+Brief **135** matches exactly: the brief counted migration-facing prose and excluded the
+two inline `NoConsumer` RED-control fields (not the `FixtureExplicitRoster` rows, which are
+live fixture-home policy).
 
 ---
 
@@ -39,8 +47,8 @@ fields; two are module-level notes/templates.
 | structural group | sites | inline prose | role |
 |---|---|---|---|
 | `WitnessExclusionRow` | 154 | 49 | PATH POLICY roster — pattern + `WitnessConsumerCadence` + reason/dissolve |
-| `SubstrateLongLaneRow` | 48 | 46 | Falsifier batch 6 — Class C long-lane hermetic witnesses |
-| `RehomedBinWetRow` | 20 | 18 | Falsifier batch 5 — over-budget bin-execution witnesses |
+| `SubstrateLongLaneRow` | 46 | 46 | Falsifier batch 6 — Class C long-lane hermetic witnesses |
+| `RehomedBinWetRow` | 18 | 18 | Falsifier batch 5 — over-budget bin-execution witnesses |
 | module `*_note` | 24 | 24 | Authority essays — lane policies, reconciliation receipts |
 | `excl_*` shared templates | 21 | 21 | Classification-scoped reason/dissolve templates (§3 nicknaming half-fixed) |
 
@@ -102,8 +110,8 @@ paragraph-level mixing. The payoff is typing the fields, not sentence-splitting.
 
 | bucket | population | first move |
 |---|---|---|
-| **A — row fields** | 92 inline reason/dissolve_on on typed rows | Promote `reason` to typed `Cause` coproduct; `dissolve_on` to `DissolutionTrigger` ref (pattern exists in `gunbc.non_fold_residue`) |
-| **B — templates** | 21 `excl_*` + 111 refs | Single `WitnessConsumerCadence → (reason_template, dissolve_template)` table; delete refs |
+| **A — row fields** | 113 inline reason/dissolve_on on typed rows | Promote `reason` to typed `Cause` coproduct; `dissolve_on` to `DissolutionTrigger` ref (pattern exists in `gunbc.non_fold_residue`) |
+| **B — templates** | 21 `excl_*` + 105 refs | Single `WitnessConsumerCadence → (reason_template, dissolve_template)` table; delete refs |
 | **C — module notes** | 24 `*_note` | Split per §3: SPEC→StandingIntent, RECEIPT/EVENT→event log, shrink meta-notes as rows absorb |
 | **D — external echo** | 58 cross-file `data String` refs | Consumer update pass when A–C land (79 `.dag` files import `gunbc.ci_layer_roots`) |
 

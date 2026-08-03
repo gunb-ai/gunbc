@@ -1,15 +1,15 @@
 {
   "head": "44126ca1de0",
   "file": "dag/gunbc/ci_layer_roots.dag",
-  "total_sites": 269,
+  "total_sites": 263,
   "inline_prose": 158,
-  "template_refs": 111,
+  "template_refs": 105,
   "structural_groups": {
     "shared_template": 21,
     "module_note": 24,
-    "witnessexclusionrow": 156,
-    "rehomedbinwetrow": 20,
-    "substratelonglanerow": 48
+    "witnessexclusionrow": 154,
+    "rehomedbinwetrow": 18,
+    "substratelonglanerow": 46
   },
   "semantic_classes_inline": {
     "SPEC_NORM": 119,
@@ -19,57 +19,29 @@
     "XREF": 2
   },
   "bytes_inline": 66329,
-  "exclusion_by_classification": {
-    "WitnessConsumerCadence": 1,
-    "OfflineLocalRecipe": 44,
-    "BinWitnessWet": 23,
-    "FalsifierRehomedBinWet": 3,
-    "FalsifierSubstrateLongLane": 4,
-    "NoConsumer": 1,
-    "FixtureExplicitRoster": 2
-  },
-  "module_note_groups": {
+  "byte_partition_inline": {
+    "module_note": {
+      "count": 24,
+      "bytes": 33832
+    },
     "shared_template": {
       "count": 21,
       "bytes": 5747
     },
-    "authority_reconciliation": {
-      "count": 3,
-      "bytes": 6582
-    },
-    "admission_lane_notes": {
-      "count": 3,
-      "bytes": 2162
-    },
-    "witness_class_policies": {
-      "count": 7,
-      "bytes": 8215
-    },
-    "scoped_batch": {
-      "count": 2,
-      "bytes": 3819
-    },
-    "falsifier_lane": {
-      "count": 2,
-      "bytes": 4103
-    },
-    "other": {
-      "count": 7,
-      "bytes": 8951
+    "per_row_typed": {
+      "count": 113,
+      "bytes": 26750
     }
   },
-  "dissolution_buckets": {
-    "A_already_typed_row_fields": "WitnessExclusionRow/RehomedBinWetRow/SubstrateLongLaneRow reason+dissolve_on \u2014 partially typed; migrate prose to structured FrontierRow + shrink module notes",
-    "B_template_consolidation": "21 excl_* shared strings \u2014 already the right shape; dissolve into enum-class templates keyed by WitnessConsumerCadence",
-    "C_module_authority_notes": "24 module-level *_note \u2014 decompose into SPEC_NORM\u2192StandingIntent/type material + RECEIPT\u2192event log + XREF\u2192citation edges",
-    "D_external_echo": "58 cross-file prose refs citing ci_layer_roots \u2014 consumers to update when carrier dissolves (out of scope for this file census)"
-  },
-  "brief_count_reconciliation": {
-    "module_notes_non_template": 24,
-    "per_row_inline_prose": 113,
-    "combined_excl_templates": 137,
+  "grain_reconciliation": {
+    "all_inline_prose": 158,
+    "brief_grain_excl_templates": 137,
+    "brief_claimed_excl_templates_and_synthetic_red_control": 135,
     "brief_claimed": 135,
-    "delta": 2,
-    "note": "137 inline prose markers at HEAD 44126ca1de0; brief 135 likely counted before 2 recent note additions or excluded 2 synthetic/empty rows"
-  }
+    "synthetic_red_control_fields_excluded_for_135": [
+      "witness_exclusion_frontier/synthetic_orphan_admission_witness_test.dag reason+dissolve_on (NoConsumer RED control)"
+    ],
+    "note": "Brief grain excludes shared excl_* templates (already field-shaped). Brief 135 further excludes the 2 inline NoConsumer RED-control fields."
+  },
+  "per_row_inline_prose": 113
 }
