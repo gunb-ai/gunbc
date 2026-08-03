@@ -34,6 +34,23 @@ type MotionGrant
   | PhysicalMotionGrant
   | SharpBoundedMotionGrant
 
+fn chroma_key(g: ChromaGrant) -> String {
+  match g {
+    MinimalChroma => "minimal"
+    RestrainedChroma => "restrained"
+    StrongChroma => "strong"
+  }
+}
+
+fn motion_key(g: MotionGrant) -> String {
+  match g {
+    NoMotionGrant => "none"
+    InteractionMotionGrant => "interaction"
+    PhysicalMotionGrant => "physical"
+    SharpBoundedMotionGrant => "sharp-bounded"
+  }
+}
+
 type SalienceBudget {
   chroma: ChromaGrant
   emission_admissible: Bool
