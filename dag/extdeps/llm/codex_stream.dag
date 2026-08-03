@@ -1,7 +1,8 @@
 module extdeps.llm.codex_stream
 
 import std.types { String, NonEmptyStr, Bool, Int, List }
-import extdeps.external_authority { ExternalAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.languages.json.grammar {
   JsonTextParseResult, JsonTextParseOk, JsonTextParseFail,
@@ -16,6 +17,18 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
     scheme: Https
     locator: "learn.chatgpt.com/docs/non-interactive-mode"
   }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.llm.codex_stream",
+      decl_name: "CodexStreamTerminalReconcile",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps.llm.codex_stream.extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 data codex_stream_authority_note: String = "WIRE AUTHORITY ONLY. This module answers what a Codex --json stream emitted at terminal positions (top-level error and turn.failed message text). It does not decide retry, account switch, provider switch, or escalation — those are gunbc.provider_failure / recovery-policy facts. Decoder selection follows the selected DispatchResolvedExecution binding; streams are never sniffed."

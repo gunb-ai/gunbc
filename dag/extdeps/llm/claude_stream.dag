@@ -1,7 +1,8 @@
 module extdeps.llm.claude_stream
 
 import std.types { String, NonEmptyStr, Bool, Int, List }
-import extdeps.external_authority { ExternalAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.languages.json.grammar {
   JsonTextParseResult, JsonTextParseOk, JsonTextParseFail,
@@ -16,6 +17,18 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
     scheme: Https
     locator: "docs.claude.com/en/docs/claude-code/cli-reference"
   }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.llm.claude_stream",
+      decl_name: "ClaudeStreamParse",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps.llm.claude_stream.extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 data claude_stream_authority_note: String = "WIRE AUTHORITY ONLY. Decodes Claude Code stream-json rate_limit_event and terminal result envelopes. Does not decide recovery. A vendor envelope named rate_limit_event with HTTP 429 is still wire evidence — whether that is entitlement quota vs transient throttle is a gunbc.provider_failure mapping over rateLimitType, not a rename of the wire type."
