@@ -1,0 +1,218 @@
+module extdeps.package
+
+import std.types { NonEmptyStr, String, Bool, List }
+import std.content_hash {
+  ContentHash,
+  compare_content_hash,
+  ContentHashEqual,
+  ContentHashDifferent,
+  ContentHashCrossFamilyIncomparable,
+}
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.version { VersionIdentity, VersionConstraint }
+import extdeps.pin { Pin }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "reproducible-builds.org/docs/definition/"
+  }
+}
+
+data package_hub_agnostic_note: String = "THE AGNOSTIC SHAPE OF A DEPENDENCY GRAPH, and deliberately NOT a place where ecosystems are enumerated. DESIGN section 3's external-upstream rule is explicit that a generic hub may define agnostic shapes but may not enumerate concrete products or dispatch among their authorities — adding Opera must not widen a browser enum, and by the same reasoning adding pnpm must not widen a PackageEcosystem enum here. So the ecosystem is a TYPE ARGUMENT, following the Vendor<Domain> precedent in dag/extdeps/vendor.dag: PackageCoordinate<NpmRegistry> and PackageCoordinate<CargoRegistry> are instantiations of one concept at every breadth, not siblings, and each ecosystem's marker plus its lock-format facts live in that ecosystem's own module beside its cited authority.\\n\\nWHAT THIS HUB OWNS is the relation every package manager realizes: a REQUIREMENT is what source declares, a SELECTION is what a resolver chose, and the two are different types rather than one record with an optional exact field. That distinction is the construction wall behind acceptance items 1 and 2 of the provider program — a production materialization consumes a PackageLockGraph, which is built from selections, so 'materialize from a range' is not a state that can be written and then rejected.\\n\\nWHAT THIS HUB DOES NOT DO is resolve. Cargo and npm own resolution; modeling them as ecosystem realizations of this lifecycle is the DESIGN section 2 Realization move, and reimplementing either resolver here would be the fork this module exists to prevent."
+
+data package_requirement_versus_selection_note: String = "TWO TYPES, NOT ONE RECORD WITH A NULLABLE EXACT FIELD. A PackageRequirement carries a VersionConstraint — what the author wrote, which may be a range. A PackageSelection carries Pin<PackageRelease> — an exact VersionIdentity AND an expected ContentHash, both required by the Pin carrier's own construction wall (extdeps.pin pin_authority_note: a digest-less or version-less Pin is unwritable rather than validated).\\n\\nCollapsing them into one record with an optional resolved version is the shape that lets a range reach materialization. Keeping them distinct means the type of the thing you materialize FROM already proves resolution happened, so acceptance item 1 ('a root package range without an exact lock refuses production materialization') is discharged by construction rather than by a check that a future edit can bypass.\\n\\nNO NEW PIN CONCEPT IS MINTED. Pin<PackageRelease> is an instantiation of the existing dimension, exactly as Pin<CliTool> and Pin<ActionRef> are — the operator's instruction for this lane was to use the existing Pin<Subject> dimension and not coin NpmPin or SdkPin."
+
+type PackageCoordinate<Ecosystem> {
+  ecosystem: Ecosystem
+  name: NonEmptyStr
+}
+
+type PackageRequirement<Ecosystem> {
+  package: PackageCoordinate<Ecosystem>
+  version_constraint: VersionConstraint
+}
+
+type PackageRelease<Ecosystem> {
+  package: PackageCoordinate<Ecosystem>
+  version: VersionIdentity
+}
+
+type PackageDependencyKind
+  = RuntimeDependency
+  | DevelopmentDependency
+  | OptionalDependency
+  | PeerDependency
+
+data package_artifact_source_note: String = "WHERE THE BYTES CAME FROM IS EVIDENCE, NOT A FALLBACK LADDER. A selection records the registry or archive locator it was resolved from so a materialization can be re-run against the same source; it does NOT carry an ordered list of places to try. An ordered source list is the absorbing fallback DESIGN section 5 forbids, one layer down: the first reachable mirror silently becomes the answer and the failure of the intended source is never counted."
+
+type PackageArtifactSource {
+  locator: NonEmptyStr
+}
+
+type PackageSelection<Ecosystem> {
+  pin: Pin<PackageRelease<Ecosystem>>
+  source: PackageArtifactSource
+}
+
+type PackageDependencyEdge<Ecosystem> {
+  consumer: PackageSelection<Ecosystem>
+  dependency: PackageSelection<Ecosystem>
+  kind: PackageDependencyKind
+}
+
+data package_manager_identity_note: String = "THE RESOLVER AND ITS LOCK FORMAT ARE PART OF THE LOCK'S IDENTITY. Two lock graphs with identical selections but produced by different package-manager versions, or written in different lock-format versions, are not interchangeable evidence: the format decides what the file could express, and the manager decides how it resolved. Acceptance item 6 asks for exactly this to be receipted rather than assumed, which is why it is a required field on the graph and not a note beside it."
+
+type PackageManagerArtifactIdentity {
+  manager_name: NonEmptyStr
+  manager_version: VersionIdentity
+  lock_format_version: NonEmptyStr
+}
+
+type PackageLockGraph<Ecosystem> {
+  manager: PackageManagerArtifactIdentity
+  roots: List<PackageSelection<Ecosystem>>
+  selections: List<PackageSelection<Ecosystem>>
+  edges: List<PackageDependencyEdge<Ecosystem>>
+  lock_identity: ContentHash
+}
+
+data package_install_script_policy_note: String = "LIFECYCLE SCRIPTS ARE AN ADMITTED EFFECT, NEVER AN INVISIBLE PART OF INSTALL. npm's install runs arbitrary package-authored code by default; treating that as part of 'materialize the tree' hides an effect whose reach is the whole host inside an operation described as copying files. The default here is therefore FORBIDDEN, and a package that genuinely needs a native build must be named in an admitted list with its own receipt.\\n\\nMEASURED, and it is why the default is achievable rather than aspirational: the provider-interface acquisition receipt (docs/probes/provider_interface_acquisition_2026-08-03.json) records a 125-entry lock closure for the two SDK requirements in which ZERO entries declare hasInstallScript. The strict default costs nothing on the closure this program actually needs.\\n\\nThe refusal arm is typed and names the package, so an unadmitted script is a counted, located stop rather than a silent widen (DESIGN section 5)."
+
+type AdmittedPackageInstallScript<Ecosystem> {
+  package: PackageSelection<Ecosystem>
+  reason: NonEmptyStr
+}
+
+type PackageInstallScriptPolicy<Ecosystem>
+  = PackageInstallScriptsForbidden
+  | PackageInstallScriptsAdmitted {
+      scripts: List<AdmittedPackageInstallScript<Ecosystem>>
+    }
+
+data package_consumer_binding_note: String = "A PACKAGE IS A DELIVERY UNIT; WHAT A PROGRAM CONSUMES IS AN EXECUTABLE OR A MODULE. The distinction is load-bearing for this lane because the three provider interfaces split across it: @openai/codex delivers the `codex` EXECUTABLE, while @cursor/sdk and @anthropic-ai/claude-agent-sdk deliver MODULE exports. Fusing them would force an SDK to be modeled as a CliTool — which is how a package manager ends up with a tool-shaped hole that module consumers fall through.\\n\\nBoth arms name the selection they resolve inside, which is what makes acceptance items 10 and 11 decidable: a binding resolves within the selected closure, so a source import cannot silently bind to a globally installed sibling."
+
+type ModuleFormat
+  = EsModule
+  | CommonJsModule
+
+type PackageConsumerBinding<Ecosystem>
+  = PackageExecutableBinding {
+      package: PackageSelection<Ecosystem>
+      executable_name: NonEmptyStr
+      realized_path: NonEmptyStr
+    }
+  | PackageModuleBinding {
+      package: PackageSelection<Ecosystem>
+      import_specifier: NonEmptyStr
+      export_path: NonEmptyStr
+      module_format: ModuleFormat
+    }
+
+data package_materialized_tree_identity_note: String = "THE MATERIALIZED TREE HAS ITS OWN IDENTITY, DISTINCT FROM THE ARCHIVE DIGESTS IT WAS BUILT FROM (acceptance item 9). They answer different questions: the archive digests say which bytes were fetched, the tree identity says what the layout on disk actually became — and those can diverge through hoisting, platform selection, or an admitted install script. Storing only the archive digests would make a tree that was assembled differently look identical to one that was not."
+
+type PackageArtifactReceipt<Ecosystem> {
+  package: PackageSelection<Ecosystem>
+  observed_identity: ContentHash
+}
+
+type PackageMaterializationReceipt<Ecosystem> {
+  lock: PackageLockGraph<Ecosystem>
+  acquired_artifacts: List<PackageArtifactReceipt<Ecosystem>>
+  script_policy: PackageInstallScriptPolicy<Ecosystem>
+  materialized_tree_identity: ContentHash
+  exports: List<PackageConsumerBinding<Ecosystem>>
+}
+
+data package_artifact_admission_note: String = "INTEGRITY IS ADMITTED BEFORE UNPACK, AND A CROSS-FAMILY COMPARISON IS A THIRD ANSWER (acceptance item 3). The fold routes through std.content_hash compare_content_hash rather than ==, so a sha512 observation against a sha256 expectation returns ArtifactIdentityIncomparable instead of collapsing to Bool false — the ContentHash family grounding already closed that straddle at its authority and this consumer must not reopen it. A Bool here would report 'mismatch' for two hashes that were never comparable, which is a different remedy: a mismatch means the bytes are wrong, an incomparable means the expectation is unusable."
+
+type PackageArtifactAdmission<Ecosystem>
+  = PackageArtifactAdmitted {
+      package: PackageSelection<Ecosystem>
+    }
+  | PackageArtifactIdentityMismatch {
+      package: PackageSelection<Ecosystem>
+    }
+  | PackageArtifactIdentityIncomparable {
+      package: PackageSelection<Ecosystem>
+    }
+
+fn admit_package_artifact<Ecosystem>(
+  receipt: PackageArtifactReceipt<Ecosystem>
+) -> PackageArtifactAdmission<Ecosystem> {
+  match compare_content_hash(
+    left: receipt.package.pin.expected_identity,
+    right: receipt.observed_identity
+  ) {
+    ContentHashEqual => PackageArtifactAdmitted { package: receipt.package }
+    ContentHashDifferent => PackageArtifactIdentityMismatch { package: receipt.package }
+    ContentHashCrossFamilyIncomparable =>
+      PackageArtifactIdentityIncomparable { package: receipt.package }
+  }
+}
+
+fn package_artifact_is_admitted<Ecosystem>(admission: PackageArtifactAdmission<Ecosystem>) -> Bool {
+  match admission {
+    PackageArtifactAdmitted { package: _ } => true
+    PackageArtifactIdentityMismatch { package: _ } => false
+    PackageArtifactIdentityIncomparable { package: _ } => false
+  }
+}
+
+fn package_selection_key<Ecosystem>(selection: PackageSelection<Ecosystem>) -> String {
+  concat(selection.pin.subject.package.name, concat("@", selection.pin.version))
+}
+
+data package_closure_membership_note: String = "AN UNLISTED PACKAGE CANNOT APPEAR IN THE MATERIALIZED TREE (acceptance item 5), and a consumer binding must resolve INSIDE the selected closure (items 10 and 11). Both are membership questions over the lock's own selections, answered at identity grain rather than by count — a count equality would pass a tree that swapped one package for another, which is exactly the completeness-is-an-identity-join rule DESIGN section 5 states for merge-blocking oracles."
+
+fn package_lock_contains_selection<Ecosystem>(
+  lock: PackageLockGraph<Ecosystem>,
+  selection: PackageSelection<Ecosystem>
+) -> Bool {
+  any(lock.selections, s => package_selection_key(selection: s) == package_selection_key(selection: selection))
+}
+
+fn package_consumer_binding_selection<Ecosystem>(
+  binding: PackageConsumerBinding<Ecosystem>
+) -> PackageSelection<Ecosystem> {
+  match binding {
+    PackageExecutableBinding { package: p, executable_name: _, realized_path: _ } => p
+    PackageModuleBinding { package: p, import_specifier: _, export_path: _, module_format: _ } => p
+  }
+}
+
+fn package_binding_resolves_in_closure<Ecosystem>(
+  lock: PackageLockGraph<Ecosystem>,
+  binding: PackageConsumerBinding<Ecosystem>
+) -> Bool {
+  package_lock_contains_selection(
+    lock: lock,
+    selection: package_consumer_binding_selection(binding: binding)
+  )
+}
+
+fn package_receipt_bindings_all_resolve_in_closure<Ecosystem>(
+  receipt: PackageMaterializationReceipt<Ecosystem>
+) -> Bool {
+  all(receipt.exports, b => package_binding_resolves_in_closure(lock: receipt.lock, binding: b))
+}
+
+fn package_receipt_artifacts_all_listed<Ecosystem>(
+  receipt: PackageMaterializationReceipt<Ecosystem>
+) -> Bool {
+  all(receipt.acquired_artifacts, a => package_lock_contains_selection(lock: receipt.lock, selection: a.package))
+}
+
+data package_script_admission_note: String = "A PACKAGE REQUIRING AN UNADMITTED SCRIPT REFUSES RATHER THAN QUIETLY WIDENING (acceptance item 8). The admission is keyed on the selection identity, not the package name, so admitting a script for one version does not silently admit it for the next resolved version — which is the drift a name-keyed allowlist invites."
+
+fn package_install_script_admitted<Ecosystem>(
+  policy: PackageInstallScriptPolicy<Ecosystem>,
+  selection: PackageSelection<Ecosystem>
+) -> Bool {
+  match policy {
+    PackageInstallScriptsForbidden => false
+    PackageInstallScriptsAdmitted { scripts: rows } =>
+      any(rows, r => package_selection_key(selection: r.package) == package_selection_key(selection: selection))
+  }
+}
