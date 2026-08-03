@@ -114,6 +114,27 @@ fn floor_observe_git_diff_unified_for_ci() -> FloorUnifiedDiffResult {
   floor_observe_git_diff_unified(policy: gunbc_ci_spec.diff_policy)
 }
 
+data floor_diff_baseline_readout_note: String = "A PROJECTION of the already-resolved baseline for diagnostics only — it observes no git, decides nothing, and adds no second baseline authority (resolve_diff_baseline stays the single one, DESIGN section 3). Its consumer is the affected-set no-observed-change diagnostic in the seed executor: when the observation returns zero changed paths, the receipt must be able to NAME the baseline the comparison was made against, because 'nothing changed' and 'the baseline could not express what changed' are different states with different remedies and the second is what a self-referential baseline produces (a push whose base ref is the pushed ref itself). Locating the state requires naming its base and event, so the diagnostic reads them from here rather than re-deriving them."
+
+type FloorDiffBaselineReadout
+  = BaselineReadout { ref: String, event_name: String }
+  | BaselineReadoutRefused { reason: String }
+
+fn floor_observe_diff_baseline_readout(policy: DiffPolicy) -> FloorDiffBaselineReadout {
+  match floor_resolve_baseline(policy: policy) {
+    BaselineRefused { reason: reason } => BaselineReadoutRefused { reason: reason }
+    BaselineSelected { baseline: baseline } =>
+      BaselineReadout {
+        ref: diff_baseline_ref(b: baseline) as String,
+        event_name: floor_observe_ci_diff_event().event_name
+      }
+  }
+}
+
+fn floor_observe_diff_baseline_readout_for_ci() -> FloorDiffBaselineReadout {
+  floor_observe_diff_baseline_readout(policy: gunbc_ci_spec.diff_policy)
+}
+
 fn floor_name_status_from_raw(raw: String) -> FloorNameStatusDiffResult {
   match git_diff_name_status_parse(raw: raw) {
     GitDiffNameStatusTruncated { pending: _, entries: _ } =>
