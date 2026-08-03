@@ -400,6 +400,13 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
   },
   HandAuthoredDocBind {
     home: PlanDoc,
+    slug: "p1-retention-vs-drain-cohort-receipt",
+    primary_work: DeclarationRef { module_path: "gunbc.p1_retention_cohort_receipt", decl_name: "p1_retention_cohort_receipt_reproduction_steps", field: WholeDeclaration },
+    additional_works: [DeclarationRef { module_path: "gunbc.p1_retention_cohort_receipt", decl_name: "p1_retention_cohort_receipt_verdict", field: WholeDeclaration }],
+    dissolution: HasTrigger { text: "the redirected assembly/materialization lane this receipt's REJECT verdict points to is picked up and either supersedes this pinned measurement with a canonical carrier or the parent floor-prep-tax-program plan closes P1 outright — then this receipt and its anchor module delete together, per the same scaffold trigger named beside p1_cohort_receipt_enabled in cli_run.rs." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
     slug: "push-event-affected-set-baseline-design",
     primary_work: DeclarationRef { module_path: "gunbc.diff_baseline", decl_name: "resolve_diff_baseline", field: WholeDeclaration },
     additional_works: [DeclarationRef { module_path: "v2.workflow.floor_diff_observe", decl_name: "floor_observe_ci_diff_event", field: WholeDeclaration }, DeclarationRef { module_path: "gunbc.diff_baseline", decl_name: "diff_baseline_fail_closed_law", field: WholeDeclaration }],

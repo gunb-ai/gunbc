@@ -8640,6 +8640,10 @@ pub struct IndexRetentionSnapshot {
     /// Counted `RetentionUnknown` rows: modules cached but reachability-uncomputable,
     /// retained (correctness-fail-closed) — visible and prioritizable, never absorbed.
     pub retention_unknown: u64,
+    /// Cumulative `resolved_graph_memo` pin drops (v1-run-stability M2 Fact #4):
+    /// distinct from `schedule_evictions` (per-module typed-state drops) — this
+    /// counts assembled-graph pin drops, the P1 receipt's `graphs_evicted` field.
+    pub resolved_graph_evictions: u64,
     pub peak_rss_bytes: Option<u64>,
 }
 
@@ -8746,6 +8750,12 @@ pub fn index_retention_snapshot(index: &MultiEntryIndex) -> IndexRetentionSnapsh
             .as_ref()
             .map(|s| s.retention_unknown())
             .unwrap_or(0),
+        resolved_graph_evictions: index
+            .schedule_retention
+            .borrow()
+            .as_ref()
+            .map(|s| s.resolved_graph_evictions())
+            .unwrap_or(0),
         peak_rss_bytes: peak_rss_vhwm_bytes(),
     }
 }
@@ -8781,6 +8791,7 @@ fn retention_snapshot_peak(
         schedule_releases: a.schedule_releases.max(b.schedule_releases),
         schedule_evictions: a.schedule_evictions.max(b.schedule_evictions),
         retention_unknown: a.retention_unknown.max(b.retention_unknown),
+        resolved_graph_evictions: a.resolved_graph_evictions.max(b.resolved_graph_evictions),
         peak_rss_bytes: match (a.peak_rss_bytes, b.peak_rss_bytes) {
             (Some(x), Some(y)) => Some(x.max(y)),
             (Some(x), None) => Some(x),
@@ -8813,6 +8824,85 @@ fn emit_floor_drain_group_line(
             .map(|b| b.to_string())
             .unwrap_or_else(|| "unreadable".into()),
     );
+}
+
+/// P1 retention-vs-drain cohort receipt (docs/plans/floor-prep-tax-program.md §P1):
+/// per-entry-group instrumentation distinct from `emit_floor_drain_group_line`'s
+/// cumulative cache-size line — this line prices the per-group wall/resolve/eval
+/// tax the program's diagnosing, plus the typecheck-cache-hit / resolved-graph-hit
+/// / eviction facts needed to tell "shared prep reused" from "shared prep re-paid":
+/// `typecheck_cache_hit` is whether `typecheck_compute_count()` moved during this
+/// group (a typecheck-memo hit/miss signal, NOT schedule-retention cache
+/// occupancy — schedule-retention has no per-group hit/miss concept to read,
+/// only cumulative eviction counters, which is why `modules_evicted`/
+/// `graphs_evicted` carry that side of the story instead). Gated on its own env var
+/// (never folded into `GUNBC_FLOOR_DRAIN_RETENTION`) so enabling one measurement
+/// mode does not silently change the other's log shape (§3 — two distinct facts,
+/// two distinct switches).
+///
+/// Scaffold, not a second production floor driver: this instrumentation and its
+/// sole consumer, `p1_cohort_probe`, are diagnostic-only (opt-in, zero effect on
+/// default eviction behavior — see `docs/plans/p1-retention-vs-drain-cohort-receipt.md`).
+/// Dissolve-on: once P1 is banked and no other open lane needs cohort-scoped A/B
+/// retention receipts, delete `emit_p1_cohort_entry_line`/`p1_cohort_receipt_enabled`/
+/// `p1_cohort_cgroup_memory`, `resolved_graph_evictions` on `IndexRetentionSnapshot`,
+/// and `src/v1/stage0/src/bin/p1_cohort_probe.rs` together (§6 — no parallel-ledger
+/// mechanism kept around past the measurement it was built for).
+fn p1_cohort_receipt_enabled() -> bool {
+    std::env::var("GUNBC_P1_COHORT_RECEIPT")
+        .ok()
+        .as_deref()
+        .map(|v| matches!(v, "1" | "true" | "TRUE"))
+        .unwrap_or(false)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn emit_p1_cohort_entry_line(
+    group_idx: usize,
+    total_groups: usize,
+    entry: &str,
+    wall_ms: u128,
+    resolve_ms: u128,
+    eval_ms: u128,
+    typecheck_cache_hit: bool,
+    resolved_graph_hit: bool,
+    modules_evicted: u64,
+    graphs_evicted: u64,
+    process_rss: Option<u64>,
+    cgroup_memory_current: Option<u64>,
+    cgroup_memory_peak: Option<u64>,
+) {
+    eprintln!(
+        "[p1-cohort] entry={group_idx}/{total_groups} name='{entry}' wall_ms={wall_ms} \
+         resolve_ms={resolve_ms} eval_ms={eval_ms} typecheck_cache_hit={} \
+         resolved_graph_hit={} modules_evicted={modules_evicted} graphs_evicted={graphs_evicted} \
+         process_rss={} cgroup_memory_current={} cgroup_memory_peak={}",
+        typecheck_cache_hit as u8,
+        resolved_graph_hit as u8,
+        process_rss
+            .map(|b| b.to_string())
+            .unwrap_or_else(|| "unreadable".into()),
+        cgroup_memory_current
+            .map(|b| b.to_string())
+            .unwrap_or_else(|| "unreadable".into()),
+        cgroup_memory_peak
+            .map(|b| b.to_string())
+            .unwrap_or_else(|| "unreadable".into()),
+    );
+}
+
+/// Best-effort cgroup `memory.current` / `memory.peak` readback for the P1 cohort
+/// receipt (§3 reuse of `memory_governor`'s cgroup-walk authority — no second
+/// cgroup-path derivation here). `memory.peak` is absent on some kernels; that
+/// arm reads `None` rather than fabricating a value (§5).
+fn p1_cohort_cgroup_memory() -> (Option<u64>, Option<u64>) {
+    match crate::memory_governor::leaf_cgroup_dir() {
+        Some(dir) => (
+            crate::memory_governor::read_cgroup_u64(&dir, "memory.current"),
+            crate::memory_governor::read_cgroup_u64(&dir, "memory.peak"),
+        ),
+        None => (None, None),
+    }
 }
 
 fn emit_floor_drain_receipt(
@@ -19896,10 +19986,19 @@ fn run_discovery_corpus_with_options_inner(
                 // Per-group arming instead gave each entry a one-entry schedule (refcount 1 on the
                 // whole closure), evicting and cold-recomputing the shared core once per entry.
                 index_arm_schedule_retention(&index, &rows);
+                let p1_cohort_detail = p1_cohort_receipt_enabled();
+                let mut p1_cohort_seen_subjects: std::collections::HashSet<String> =
+                    std::collections::HashSet::new();
                 for (group_idx, group_indices) in groups.into_iter().enumerate() {
                     let group_rows: Vec<DiscoveryRow> =
                         group_indices.iter().map(|&i| rows[i].clone()).collect();
-                    summaries.push(run_discovery_rows(
+                    let group_entry_label = group_rows
+                        .first()
+                        .map(|r| r.entry.clone())
+                        .unwrap_or_default();
+                    let group_wall_start = p1_cohort_detail.then(std::time::Instant::now);
+                    let typecheck_misses_before = p1_cohort_detail.then(typecheck_compute_count);
+                    let summary = run_discovery_rows(
                         &group_rows,
                         &index,
                         execution_mode,
@@ -19911,7 +20010,39 @@ fn run_discovery_corpus_with_options_inner(
                         whole_tree_published_keys.clone(),
                         options.witness_budget_policy(),
                         style,
-                    )?);
+                    )?;
+                    // The rest of this block is P1 scaffold bookkeeping (per-group wall
+                    // timing, typecheck-memo before/after, and the resolved-graph-hit
+                    // subject-set scan) — computed only under the same opt-in gate as
+                    // its emission (review 47844), not on the default production path.
+                    let (group_wall_ms, typecheck_misses_after, resolved_graph_hit) =
+                        if p1_cohort_detail {
+                            let group_wall_ms = group_wall_start
+                                .expect("set above under the same p1_cohort_detail gate")
+                                .elapsed()
+                                .as_millis();
+                            let typecheck_misses_after = typecheck_compute_count();
+                            // Cohort-scoped "have we already resolved a closure sharing this
+                            // subject earlier in THIS run" fact — a resolved-graph-memo hit
+                            // proxy at the granularity the P1 receipt needs (whether entry N
+                            // is reusing prior entries' module universe), not a raw
+                            // `resolved_graph_memo` cache-slot read (that memo is entry-scoped
+                            // and evicted on completion by design, so a raw post-hoc read
+                            // cannot distinguish "reused" from "inserted then evicted").
+                            let resolved_graph_hit =
+                                summary.entry_resolve_receipts.iter().any(|r| {
+                                    !p1_cohort_seen_subjects.insert(r.closure_subject.clone())
+                                });
+                            for r in &summary.entry_resolve_receipts {
+                                p1_cohort_seen_subjects.insert(r.closure_subject.clone());
+                            }
+                            (group_wall_ms, typecheck_misses_after, resolved_graph_hit)
+                        } else {
+                            (0, 0, false)
+                        };
+                    let resolve_ms = summary.total_resolve_nanos / 1_000_000;
+                    let eval_ms = summary.total_measured_nanos / 1_000_000;
+                    summaries.push(summary);
                     let snap = index_retention_snapshot(&index);
                     if drain_detail {
                         emit_floor_drain_group_line(
@@ -19919,6 +20050,30 @@ fn run_discovery_corpus_with_options_inner(
                             total_groups,
                             &drain_prev,
                             &snap,
+                        );
+                    }
+                    if p1_cohort_detail {
+                        let modules_evicted = snap
+                            .schedule_evictions
+                            .saturating_sub(drain_prev.schedule_evictions);
+                        let graphs_evicted = snap
+                            .resolved_graph_evictions
+                            .saturating_sub(drain_prev.resolved_graph_evictions);
+                        let (cgroup_current, cgroup_peak) = p1_cohort_cgroup_memory();
+                        emit_p1_cohort_entry_line(
+                            group_idx + 1,
+                            total_groups,
+                            &group_entry_label,
+                            group_wall_ms,
+                            resolve_ms,
+                            eval_ms,
+                            Some(typecheck_misses_after) == typecheck_misses_before,
+                            resolved_graph_hit,
+                            modules_evicted,
+                            graphs_evicted,
+                            snap.peak_rss_bytes,
+                            cgroup_current,
+                            cgroup_peak,
                         );
                     }
                     drain_peaks = retention_snapshot_peak(&drain_peaks, &snap);
