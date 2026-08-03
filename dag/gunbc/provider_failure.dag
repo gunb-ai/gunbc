@@ -28,7 +28,7 @@ import extdeps.llm.claude_stream {
 
 data provider_failure_authority_note: String = "PROVIDER-NEUTRAL BUSINESS CAUSE. Wire decoders live in extdeps.llm.*_stream; this module maps witnessed wire facts into causes that drive recovery policy. Retryability is NOT stored — it is derived later from cause + time + profile + bindings + recovery history. Unknown shapes stay ProviderFailureUnclassified and counted, never collapsed into a generic Agent failed string."
 
-data provider_unix_seconds_brand_debt_note: String = "ProviderUnixSeconds is a plain Int today because Claude resetsAt arrives as a parsed non-literal Int; brand+range casts at non-literal sites refuse (where-refinement wall). dissolve-on: feature:refinement-evidence-at-non-literal-positions admits observed epoch seconds into a branded carrier."
+data provider_unix_seconds_brand_debt_note: String = "ProviderUnixSeconds is a plain Int today because Claude resetsAt arrives as a parsed non-literal Int; brand+range casts at non-literal sites refuse (where-refinement wall). dissolve-on: feature:refinement-evidence-at-non-literal-positions admits observed epoch seconds into a branded carrier. Codex/Claude stream modules are ExternalModelScope carriers (scope_carrier_paths), not legacy-manifest rows."
 
 type ProviderUnixSeconds = Int
 
