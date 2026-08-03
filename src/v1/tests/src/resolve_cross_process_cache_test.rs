@@ -1206,3 +1206,9 @@ fn same_subject_resolves_share_one_graph_store_hits_v2_disk() {
         );
     });
 }
+
+// `cross_process_hit_skips_semantic_recompute` was written and executed
+// here against `same_subject_resolves_share_one_graph_store_hits_v2_disk`'s
+// shape, then removed rather than landed — see DESIGN.md Open Threads,
+// "disk-tier repeat-resolve memory growth", for the finding and its
+// single-home diagnosis.
