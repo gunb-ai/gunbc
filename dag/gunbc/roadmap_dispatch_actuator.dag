@@ -1,6 +1,7 @@
 module gunbc.roadmap_dispatch_actuator
 
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath, GitRef }
+import v2.std.optional { Present }
 import std.content_hash { content_hash_atom }
 import std.upsert_decision {
   ObservationVerdict,
@@ -81,7 +82,30 @@ import extdeps.llm.cli {
 import extdeps.llm.cli_lifecycle {
   ProviderInstance,
   ProviderInstanceFieldUnobserved,
+  ProviderKind,
   ClaudeCliProvider,
+}
+import gunbc.dispatch_selection {
+  ExecutionProfile,
+  ProfileAutomatic,
+  ProviderSelectionRequest,
+  DispatchExecutionReceipt,
+  DispatchSelectionResolved,
+  DispatchSelectionRefused,
+  default_provider_selection_request,
+  provider_selection_request_for_kind,
+  dispatch_selection_for_instance,
+  provider_inventory_for_instance,
+  resolved_process_fingerprint,
+  srv1_live_dashboard_instance,
+}
+import extdeps.llm.cursor_cli {
+  cursor_cli_program,
+  cursor_automation_invocation,
+  CursorDefaultEditMode,
+  CursorSandboxFromConfig,
+  CursorStreamJson,
+  shape_cursor_invocation,
 }
 import gunbc.worker_lifecycle {
   WorkerObservation,
@@ -145,15 +169,83 @@ data dispatch_claude_fingerprint_finding_note: String = "NAMED FINDING (U4 live 
 
 type DispatchCliProvider
   = ClaudeCodeProvider
-  | CodexCliProvider
+  | CodexDispatchProvider
+  | CursorDispatchProvider
 
-data dispatch_cli_provider_note: String = "The dispatch provider is an explicit closed choice, not whichever executable happens to be authenticated on the host. v0 selects CodexCliProvider because the operator's Claude subscription is unavailable and the dedicated srv1 Codex state root is authenticated. Provider choice owns argv, preflight, and expected pane fingerprint together; adding a provider without all three projections is impossible at this call site. This is still a single host-wide provider selection. Per-node/provider placement belongs to the compute-fabric offer lane, not this unblock slice."
+data dispatch_cli_provider_note: String = "Provider choice is resolved by gunbc.dispatch_selection from a per-instance inventory, not a host-wide constant. dispatch_cli_provider() projects the srv1-live Automatic selection for legacy call sites; instance-aware dispatch uses dispatch_selection_for_instance. Each DispatchCliProvider variant owns argv, preflight, and expected pane fingerprint together at this call site."
 
-data dispatch_cli_provider: DispatchCliProvider = CodexCliProvider
+fn provider_kind_to_dispatch_cli(kind: ProviderKind) -> DispatchCliProvider {
+  match kind {
+    ClaudeCliProvider => ClaudeCodeProvider
+    extdeps.llm.cli_lifecycle.CodexCliProvider => CodexDispatchProvider
+    extdeps.llm.cli_lifecycle.CursorCliProvider => CursorDispatchProvider
+  }
+}
 
-data dispatch_claude_process_fingerprint: NonEmptyStr = "claude" as NonEmptyStr
-data dispatch_codex_process_fingerprint_note: String = "LIVE RECEIPT (srv1, 2026-07-27): the authenticated npm-installed Codex CLI (`/usr/bin/codex` launcher, codex-cli 0.133.0) reports pane_current_command `node` while a real read-only `codex exec --json` turn is active. The pane emitted thread.started, turn.started, and item.completed before exit. Therefore the current host realization's expected fingerprint is node, not the argv token codex. This is deliberately fail-closed across packaging changes: if provisioning moves srv1 to a standalone native binary and tmux begins reporting codex, ownership/Stop refuses until that new realization is observed and this row changes with its receipt."
-data dispatch_codex_process_fingerprint: NonEmptyStr = "node" as NonEmptyStr
+fn dispatch_cli_to_provider_kind(provider: DispatchCliProvider) -> ProviderKind {
+  match provider {
+    ClaudeCodeProvider => ClaudeCliProvider
+    CodexDispatchProvider => extdeps.llm.cli_lifecycle.CodexCliProvider
+    CursorDispatchProvider => extdeps.llm.cli_lifecycle.CursorCliProvider
+  }
+}
+
+type DispatchActuatorSelection
+  = DispatchActuatorSelectionOk {
+      provider: DispatchCliProvider
+      effort: ReasoningEffort
+      process_fingerprint: NonEmptyStr
+    }
+  | DispatchActuatorSelectionRefused { reason: NonEmptyStr }
+
+data dispatch_actuator_selection_note: String = "The actuator's sole projection of gunbc.dispatch_selection for legacy call sites. Refusal propagates typed — no Codex substitute, no ReasoningMedium default, no actuator-local process fingerprint (DESIGN §5; review 47676). Process fingerprints are consumed from the selection kernel via resolved_process_fingerprint, never re-declared here (DESIGN §3)."
+
+fn dispatch_actuator_selection(node_sizing: NodeSizing) -> DispatchActuatorSelection {
+  match dispatch_selection_for_instance(
+    instance: srv1_live_dashboard_instance(),
+    request: default_provider_selection_request(),
+    node_sizing: node_sizing,
+  ) {
+    DispatchSelectionResolved { receipt } =>
+      DispatchActuatorSelectionOk {
+        provider: provider_kind_to_dispatch_cli(kind: receipt.provider_kind),
+        effort: receipt.applied_effort,
+        process_fingerprint: resolved_process_fingerprint(resolved: receipt.resolved_selection),
+      }
+    DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason } =>
+      DispatchActuatorSelectionRefused { reason: reason }
+  }
+}
+
+fn dispatch_actuator_selection_for_provider(
+  provider: DispatchCliProvider,
+  node_sizing: NodeSizing,
+) -> DispatchActuatorSelection {
+  match dispatch_selection_for_instance(
+    instance: srv1_live_dashboard_instance(),
+    request: provider_selection_request_for_kind(
+      kind: dispatch_cli_to_provider_kind(provider: provider),
+    ),
+    node_sizing: node_sizing,
+  ) {
+    DispatchSelectionResolved { receipt } =>
+      DispatchActuatorSelectionOk {
+        provider: provider_kind_to_dispatch_cli(kind: receipt.provider_kind),
+        effort: receipt.applied_effort,
+        process_fingerprint: resolved_process_fingerprint(resolved: receipt.resolved_selection),
+      }
+    DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason } =>
+      DispatchActuatorSelectionRefused { reason: reason }
+  }
+}
+
+fn dispatch_cli_provider() -> DispatchCliProvider? {
+  match dispatch_actuator_selection(node_sizing: Unsized) {
+    DispatchActuatorSelectionOk { provider, effort: _, process_fingerprint: _ } =>
+      Present { value: provider }
+    DispatchActuatorSelectionRefused { reason: _ } => none
+  }
+}
 data claude_skip_permission_settings_json: String = "{\"skipDangerousModePermissionPrompt\":true}"
 data dispatch_claude_start_prompt: String = "Begin working on the assigned node."
 data dispatch_claude_permission_args: List<String> = ["--dangerously-skip-permissions"]
@@ -170,7 +262,8 @@ data dispatch_codex_exec_spec_note: String = "Codex dispatch is unattended but n
 fn dispatch_provider_label(provider: DispatchCliProvider) -> String {
   match provider {
     ClaudeCodeProvider => "claude"
-    CodexCliProvider => "codex"
+    CodexDispatchProvider => "codex"
+    CursorDispatchProvider => "cursor"
   }
 }
 
@@ -271,7 +364,8 @@ data dispatch_provider_instance_note: String = "The configured provider instance
 fn dispatch_provider_executable(provider: DispatchCliProvider) -> NonEmptyStr {
   match provider {
     ClaudeCodeProvider => claude_cli_program as NonEmptyStr
-    CodexCliProvider => codex_cli_program as NonEmptyStr
+    CodexDispatchProvider => codex_cli_program as NonEmptyStr
+    CursorDispatchProvider => cursor_cli_program as NonEmptyStr
   }
 }
 
@@ -279,10 +373,7 @@ fn dispatch_provider_instance_for(
   provider: DispatchCliProvider,
 ) -> ProviderInstance {
   ProviderInstance {
-    kind: match provider {
-      ClaudeCodeProvider => ClaudeCliProvider
-      CodexCliProvider => extdeps.llm.cli_lifecycle.CodexCliProvider
-    },
+    kind: dispatch_cli_to_provider_kind(provider: provider),
     host: ProviderInstanceFieldUnobserved {
       reason: "session observation does not read host identity" as NonEmptyStr,
     },
@@ -302,39 +393,53 @@ fn dispatch_provider_instance_for(
   }
 }
 
-fn dispatch_provider_instance() -> ProviderInstance {
-  dispatch_provider_instance_for(provider: dispatch_cli_provider)
+fn dispatch_provider_instance() -> ProviderInstance? {
+  match dispatch_actuator_selection(node_sizing: Unsized) {
+    DispatchActuatorSelectionOk { provider, effort: _, process_fingerprint: _ } =>
+      Present { value: dispatch_provider_instance_for(provider: provider) }
+    DispatchActuatorSelectionRefused { reason: _ } => none
+  }
 }
 
 fn dispatch_worker_observation_for_process(
   process: WorkerProcessEvidence,
-) -> WorkerObservation {
-  worker_observation_without_provider_probe_for_process(
-    instance: dispatch_provider_instance(),
-    process: process,
-  )
-}
-
-fn dispatch_worker_observation() -> WorkerObservation {
-  worker_observation_without_provider_probe(instance: dispatch_provider_instance())
-}
-
-fn dispatch_reasoning_effort_for_intricacy(i: Intricacy) -> ReasoningEffort {
-  match i {
-    IntricacyHigh => ReasoningHigh
-    IntricacyMedium => ReasoningMedium
-    IntricacyLow => ReasoningMedium
+) -> WorkerObservation? {
+  match dispatch_provider_instance() {
+    Present { value: instance } =>
+      Present {
+        value: worker_observation_without_provider_probe_for_process(
+          instance: instance,
+          process: process,
+        ),
+      }
+    none => none
   }
 }
 
-fn claude_effort_for_intricacy(i: Intricacy) -> ReasoningEffort {
-  dispatch_reasoning_effort_for_intricacy(i: i)
+fn dispatch_worker_observation() -> WorkerObservation? {
+  match dispatch_provider_instance() {
+    Present { value: instance } =>
+      Present { value: worker_observation_without_provider_probe(instance: instance) }
+    none => none
+  }
 }
 
-fn dispatch_provider_process_fingerprint(provider: DispatchCliProvider) -> NonEmptyStr {
-  match provider {
-    ClaudeCodeProvider => dispatch_claude_process_fingerprint
-    CodexCliProvider => dispatch_codex_process_fingerprint
+fn dispatch_applied_effort() -> ReasoningEffort? {
+  match dispatch_actuator_selection(node_sizing: Unsized) {
+    DispatchActuatorSelectionOk { provider: _, effort, process_fingerprint: _ } =>
+      Present { value: effort }
+    DispatchActuatorSelectionRefused { reason: _ } => none
+  }
+}
+
+fn dispatch_provider_process_fingerprint(provider: DispatchCliProvider) -> NonEmptyStr? {
+  match dispatch_actuator_selection_for_provider(
+    provider: provider,
+    node_sizing: Unsized,
+  ) {
+    DispatchActuatorSelectionOk { provider: _, effort: _, process_fingerprint } =>
+      Present { value: process_fingerprint }
+    DispatchActuatorSelectionRefused { reason: _ } => none
   }
 }
 
@@ -754,11 +859,17 @@ fn dispatch_branch_name(node_id: RoadmapNodeId, attempt_key: String) -> String {
   join(["dispatch/", node_id as String, "-a", attempt_key], "")
 }
 
-fn dispatch_tmux_session_scope(node_id: RoadmapNodeId) -> TmuxSessionScope {
-  TmuxSessionScope {
-    session_name: dispatch_tmux_session_name(node_id: node_id) as NonEmptyStr,
-    expected_owner_label: dispatch_tmux_session_name(node_id: node_id) as NonEmptyStr,
-    expected_process_fingerprint: dispatch_provider_process_fingerprint(provider: dispatch_cli_provider),
+fn dispatch_tmux_session_scope(node_id: RoadmapNodeId) -> TmuxSessionScope? {
+  match dispatch_actuator_selection(node_sizing: Unsized) {
+    DispatchActuatorSelectionOk { provider: _, effort: _, process_fingerprint } =>
+      Present {
+        value: TmuxSessionScope {
+          session_name: dispatch_tmux_session_name(node_id: node_id) as NonEmptyStr,
+          expected_owner_label: dispatch_tmux_session_name(node_id: node_id) as NonEmptyStr,
+          expected_process_fingerprint: process_fingerprint,
+        },
+      }
+    DispatchActuatorSelectionRefused { reason: _ } => none
   }
 }
 
@@ -975,6 +1086,12 @@ fn codex_spawn_argv_for_instance(
   )
 }
 
+type DispatchProviderInnerArgv
+  = DispatchProviderInnerArgvReady { argv: List<String> }
+  | CursorProviderSpawnUnwired { reason: NonEmptyStr }
+
+data cursor_provider_spawn_unwired_reason: NonEmptyStr = "cursor dispatch inner argv is not wired on this actuator path" as NonEmptyStr
+
 fn dispatch_provider_inner_argv(
   provider: DispatchCliProvider,
   effort: ReasoningEffort,
@@ -982,24 +1099,30 @@ fn dispatch_provider_inner_argv(
   node_id: RoadmapNodeId,
   worktree_path: String,
   brief: String,
-) -> List<String> {
+) -> DispatchProviderInnerArgv {
   match provider {
     ClaudeCodeProvider =>
-      concat(
-        ["env", "CLAUDE_CODE_NO_FLICKER=1"],
-        claude_spawn_argv(
+      DispatchProviderInnerArgvReady {
+        argv: concat(
+          ["env", "CLAUDE_CODE_NO_FLICKER=1"],
+          claude_spawn_argv(
+            effort: effort,
+            session_uuid: session_uuid,
+            node_id: node_id,
+            brief: brief,
+          ),
+        ),
+      }
+    CodexDispatchProvider =>
+      DispatchProviderInnerArgvReady {
+        argv: codex_spawn_argv(
           effort: effort,
-          session_uuid: session_uuid,
-          node_id: node_id,
+          worktree_path: worktree_path,
           brief: brief,
         ),
-      )
-    CodexCliProvider =>
-      codex_spawn_argv(
-        effort: effort,
-        worktree_path: worktree_path,
-        brief: brief,
-      )
+      }
+    CursorDispatchProvider =>
+      CursorProviderSpawnUnwired { reason: cursor_provider_spawn_unwired_reason }
   }
 }
 
@@ -1011,31 +1134,37 @@ fn dispatch_provider_inner_argv_for_instance(
   node_id: RoadmapNodeId,
   worktree_path: String,
   brief: String,
-) -> List<String> {
+) -> DispatchProviderInnerArgv {
   match provider {
     ClaudeCodeProvider =>
-      concat(
-        [
-          dispatch_capability_program(
-            environment: instance.execution_environment,
-            cap: EnvironmentBindingCapability,
+      DispatchProviderInnerArgvReady {
+        argv: concat(
+          [
+            dispatch_capability_program(
+              environment: instance.execution_environment,
+              cap: EnvironmentBindingCapability,
+            ),
+            "CLAUDE_CODE_NO_FLICKER=1",
+          ],
+          claude_spawn_argv(
+            effort: effort,
+            session_uuid: session_uuid,
+            node_id: node_id,
+            brief: brief,
           ),
-          "CLAUDE_CODE_NO_FLICKER=1",
-        ],
-        claude_spawn_argv(
+        ),
+      }
+    CodexDispatchProvider =>
+      DispatchProviderInnerArgvReady {
+        argv: codex_spawn_argv_for_instance(
+          instance: instance,
           effort: effort,
-          session_uuid: session_uuid,
-          node_id: node_id,
+          worktree_path: worktree_path,
           brief: brief,
         ),
-      )
-    CodexCliProvider =>
-      codex_spawn_argv_for_instance(
-        instance: instance,
-        effort: effort,
-        worktree_path: worktree_path,
-        brief: brief,
-      )
+      }
+    CursorDispatchProvider =>
+      CursorProviderSpawnUnwired { reason: cursor_provider_spawn_unwired_reason }
   }
 }
 
@@ -1299,7 +1428,9 @@ fn dispatch_spawn_commands_for_provider(
     node: node,
     session_uuid: session_uuid,
     attempt_key: attempt_key,
-    provider: provider,
+    request: provider_selection_request_for_kind(
+      kind: dispatch_cli_to_provider_kind(provider: provider),
+    ),
   )
 }
 
@@ -1308,18 +1439,54 @@ fn dispatch_spawn_commands_for_instance(
   node: RoadmapNode,
   session_uuid: String,
   attempt_key: String,
+  request: ProviderSelectionRequest,
+) -> DispatchSpawnPlan {
+  match dispatch_selection_for_instance(
+    instance: instance,
+    request: request,
+    node_sizing: node.sizing,
+  ) {
+    DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason } =>
+      DispatchSpawnRefused {
+        step: "dispatch-selection" as NonEmptyStr,
+        detail: reason as String,
+      }
+    DispatchSelectionResolved { receipt } => {
+      let provider = provider_kind_to_dispatch_cli(kind: receipt.provider_kind)
+      let effort = receipt.applied_effort
+      match provider {
+        CursorDispatchProvider =>
+          DispatchSpawnRefused {
+            step: "cursor-provider-spawn" as NonEmptyStr,
+            detail: "cursor dispatch spawn is not yet wired on this actuator path",
+          }
+        _ =>
+          dispatch_spawn_commands_for_resolved_instance(
+            instance: instance,
+            node: node,
+            session_uuid: session_uuid,
+            attempt_key: attempt_key,
+            provider: provider,
+            effort: effort,
+          )
+      }
+    }
+  }
+}
+
+fn dispatch_spawn_commands_for_resolved_instance(
+  instance: HostDashboardInstance,
+  node: RoadmapNode,
+  session_uuid: String,
+  attempt_key: String,
   provider: DispatchCliProvider,
+  effort: ReasoningEffort,
 ) -> DispatchSpawnPlan {
   let fields = dispatch_brief_fields_for_environment(
     node: node,
     environment: instance.execution_environment,
   )
   let brief = fill_dispatch_brief(template: dispatch_brief_template, fields: fields)
-  let effort = match node.sizing {
-    Sized { intricacy, volume: _, repo: _, acceptance: _ } =>
-      dispatch_reasoning_effort_for_intricacy(i: intricacy)
-    Unsized => "medium"
-  }
   let session_name = dispatch_tmux_session_name(node_id: node.node)
   let worktree_path = dispatch_worktree_path_for_instance(
     instance: instance,
@@ -1327,13 +1494,7 @@ fn dispatch_spawn_commands_for_instance(
     attempt_key: attempt_key,
   )
   let branch_name = dispatch_branch_name(node_id: node.node, attempt_key: attempt_key)
-  let worktree = git_worktree_add_argv_for_instance(
-    instance: instance,
-    worktree_path: worktree_path,
-    branch_name: branch_name,
-    remote_ref: instance.dispatch_base_ref as String,
-  )
-  let provider_inner = dispatch_provider_inner_argv_for_instance(
+  match dispatch_provider_inner_argv_for_instance(
     instance: instance,
     provider: provider,
     effort: effort,
@@ -1341,6 +1502,18 @@ fn dispatch_spawn_commands_for_instance(
     node_id: node.node,
     worktree_path: worktree_path,
     brief: brief,
+  ) {
+    CursorProviderSpawnUnwired { reason } =>
+      DispatchSpawnRefused {
+        step: "cursor-provider-spawn" as NonEmptyStr,
+        detail: reason as String,
+      }
+    DispatchProviderInnerArgvReady { argv: provider_inner } => {
+  let worktree = git_worktree_add_argv_for_instance(
+    instance: instance,
+    worktree_path: worktree_path,
+    branch_name: branch_name,
+    remote_ref: instance.dispatch_base_ref as String,
   )
   let state_prepare = attempt_state_prepare_argv_for_instance(
     instance: instance,
@@ -1397,6 +1570,8 @@ fn dispatch_spawn_commands_for_instance(
           ),
         },
       }
+    }
+    }
   }
 }
 
@@ -1406,7 +1581,7 @@ fn dispatch_spawn_commands(node: RoadmapNode, session_uuid: String, attempt_key:
     node: node,
     session_uuid: session_uuid,
     attempt_key: attempt_key,
-    provider: dispatch_cli_provider,
+    request: default_provider_selection_request(),
   )
 }
 
@@ -1515,19 +1690,30 @@ fn node_repo_supported(node: RoadmapNode) -> Bool {
   }
 }
 
-fn dispatch_permitted_for_node(node: RoadmapNode, attempt_key: String) -> DispatchRequestGate {
-  let brief = filled_dispatch_brief_for_node(node: node)
-  let effort = match node.sizing {
-    Sized { intricacy, volume: _, repo: _, acceptance: _ } =>
-      dispatch_reasoning_effort_for_intricacy(i: intricacy)
-    Unsized => "medium"
-  }
+fn dispatch_permitted_from_selection(
+  node: RoadmapNode,
+  attempt_key: String,
+  effort: ReasoningEffort,
+) -> DispatchRequestGate {
   DispatchPermitted {
     session_name: dispatch_tmux_session_name(node_id: node.node),
     worktree_path: dispatch_worktree_path(node_id: node.node, attempt_key: attempt_key),
     branch_name: dispatch_branch_name(node_id: node.node, attempt_key: attempt_key),
-    brief: brief,
+    brief: filled_dispatch_brief_for_node(node: node),
     reasoning_effort: effort,
+  }
+}
+
+fn dispatch_permitted_for_node(node: RoadmapNode, attempt_key: String) -> DispatchRequestGate {
+  match dispatch_actuator_selection(node_sizing: node.sizing) {
+    DispatchActuatorSelectionRefused { reason } =>
+      DispatchRefused { reason: reason }
+    DispatchActuatorSelectionOk { provider: _, effort, process_fingerprint: _ } =>
+      dispatch_permitted_from_selection(
+        node: node,
+        attempt_key: attempt_key,
+        effort: effort,
+      )
   }
 }
 
@@ -1543,15 +1729,25 @@ fn classify_dispatch_request(
     if !node_repo_supported(node: node) {
       DispatchRefused { reason: "repo not supported on srv1 mvp" as NonEmptyStr }
     } else {
-      let scope = dispatch_tmux_session_scope(node_id: node.node)
-      let obs = tmux_session_observation_for_scope(scope: scope, entries: tmux_entries)
-      match classify_dispatch_lease_upsert(scope: scope, obs: obs) {
-        UpsertClassification { verdict: _, decision: Refuse { reason } } =>
+      match dispatch_actuator_selection(node_sizing: node.sizing) {
+        DispatchActuatorSelectionRefused { reason } =>
           DispatchRefused { reason: reason }
-        UpsertClassification { verdict: _, decision: Noop } =>
-          DispatchRefused { reason: "dispatch session already running for node" as NonEmptyStr }
-        UpsertClassification { verdict: _, decision: Apply { plan: _ } } =>
-          dispatch_permitted_for_node(node: node, attempt_key: attempt_key)
+        DispatchActuatorSelectionOk { provider: _, effort: _, process_fingerprint } => {
+          let scope = TmuxSessionScope {
+            session_name: dispatch_tmux_session_name(node_id: node.node) as NonEmptyStr,
+            expected_owner_label: dispatch_tmux_session_name(node_id: node.node) as NonEmptyStr,
+            expected_process_fingerprint: process_fingerprint,
+          }
+          let obs = tmux_session_observation_for_scope(scope: scope, entries: tmux_entries)
+          match classify_dispatch_lease_upsert(scope: scope, obs: obs) {
+            UpsertClassification { verdict: _, decision: Refuse { reason } } =>
+              DispatchRefused { reason: reason }
+            UpsertClassification { verdict: _, decision: Noop } =>
+              DispatchRefused { reason: "dispatch session already running for node" as NonEmptyStr }
+            UpsertClassification { verdict: _, decision: Apply { plan: _ } } =>
+              dispatch_permitted_for_node(node: node, attempt_key: attempt_key)
+          }
+        }
       }
     }
   }
@@ -1569,31 +1765,53 @@ fn dispatch_node_id_from_session_name(session_name: String) -> String {
   }
 }
 
-fn live_session_row(entry: TmuxLsEntry, scope: TmuxSessionScope) -> DispatchLiveSession {
-  let obs = SessionNameObserved {
-    session_name: entry.session_name as NonEmptyStr,
-    windows: entry.windows,
-  }
-  DispatchLiveSession {
-    session_name: entry.session_name,
-    node_id: dispatch_node_id_from_session_name(session_name: entry.session_name),
-    windows: entry.windows,
-    lease_verdict: classify_tmux_session(scope: scope, obs: obs),
-    worker: dispatch_worker_observation(),
+fn live_session_row(entry: TmuxLsEntry, scope: TmuxSessionScope) -> DispatchLiveSession? {
+  match dispatch_worker_observation() {
+    Present { value: worker } => {
+      let obs = SessionNameObserved {
+        session_name: entry.session_name as NonEmptyStr,
+        windows: entry.windows,
+      }
+      Present {
+        value: DispatchLiveSession {
+          session_name: entry.session_name,
+          node_id: dispatch_node_id_from_session_name(session_name: entry.session_name),
+          windows: entry.windows,
+          lease_verdict: classify_tmux_session(scope: scope, obs: obs),
+          worker: worker,
+        }
+      }
+    }
+    none => none
   }
 }
 
-fn dispatch_live_session_for_entry(entry: TmuxLsEntry) -> DispatchLiveSession {
+fn dispatch_live_session_for_entry(entry: TmuxLsEntry) -> DispatchLiveSession? {
   let node_id = dispatch_node_id_from_session_name(session_name: entry.session_name)
-  let scope = dispatch_tmux_session_scope(node_id: node_id)
-  live_session_row(entry: entry, scope: scope)
+  match dispatch_tmux_session_scope(node_id: node_id) {
+    Present { value: scope } => live_session_row(entry: entry, scope: scope)
+    none => none
+  }
+}
+
+fn append_present_live_session(
+  acc: List<DispatchLiveSession>,
+  entry: TmuxLsEntry,
+) -> List<DispatchLiveSession> {
+  match dispatch_live_session_for_entry(entry: entry) {
+    Present { value: row } => concat(acc, [row])
+    Absent => acc
+  }
 }
 
 fn dispatch_live_sessions_from_entries(
   entries: List<TmuxLsEntry>,
 ) -> List<DispatchLiveSession> {
-  filter_dispatch_tmux_sessions(entries: entries)
-  |> map(e => dispatch_live_session_for_entry(entry: e))
+  fold(
+    filter_dispatch_tmux_sessions(entries: entries),
+    init: [],
+    f: fn(acc, e) { append_present_live_session(acc: acc, entry: e) },
+  )
 }
 
 data dispatch_attempt_refs_note: String = "U3 (result surfacing): the attempt branches ARE the results ledger — every spawn mints dispatch/<node>-a<key> (U1), so listing refs/heads/dispatch/ observes every attempt ever made, including pre-attempt-grain LEGACY branches (attempt_key empty — the operator's accidental ts-authority-converge spawn is one), which are real attempts and render as such, never filtered as noise. Parse discriminates by the LAST -a segment being exactly 16 chars (the content-hash key width); a node id that itself ends in -a<16 chars> would misparse — accepted and named, not papered over: node ids are roadmap-authored and none has that shape. Empty-node branches are rejected before constructing DispatchAttemptRef, whose node and branch are non-empty by construction; malformed debris cannot invalidate the whole attempts projection. v0 renders branch NAMES (copyable, true), never tree links that would be dead until a push — a dead link is a fabricated result; the PR half lands when push/PR state is observed, not guessed."
@@ -1830,27 +2048,59 @@ fn live_session_row_with_process(
   entry: TmuxLsEntry,
   scope: TmuxSessionScope,
   process: WorkerProcessEvidence,
-) -> DispatchLiveSession {
-  let obs = match process {
-    WorkerProcessRunning { command } =>
-      SessionObserved {
-        session_name: entry.session_name as NonEmptyStr,
-        windows: entry.windows,
-        process_fingerprint: command,
+) -> DispatchLiveSession? {
+  match dispatch_worker_observation_for_process(process: process) {
+    Present { value: worker } => {
+      let obs = match process {
+        WorkerProcessRunning { command } =>
+          SessionObserved {
+            session_name: entry.session_name as NonEmptyStr,
+            windows: entry.windows,
+            process_fingerprint: command,
+          }
+        _ =>
+          SessionNameObserved {
+            session_name: entry.session_name as NonEmptyStr,
+            windows: entry.windows,
+          }
       }
-    _ =>
-      SessionNameObserved {
-        session_name: entry.session_name as NonEmptyStr,
-        windows: entry.windows,
+      Present {
+        value: DispatchLiveSession {
+          session_name: entry.session_name,
+          node_id: dispatch_node_id_from_session_name(
+            session_name: entry.session_name),
+          windows: entry.windows,
+          lease_verdict: classify_tmux_session(scope: scope, obs: obs),
+          worker: worker,
+        }
       }
+    }
+    none => none
   }
-  DispatchLiveSession {
-    session_name: entry.session_name,
-    node_id: dispatch_node_id_from_session_name(
-      session_name: entry.session_name),
-    windows: entry.windows,
-    lease_verdict: classify_tmux_session(scope: scope, obs: obs),
-    worker: dispatch_worker_observation_for_process(process: process),
+}
+
+fn append_present_live_session_with_process(
+  acc: List<DispatchLiveSession>,
+  entry: TmuxLsEntry,
+  panes: List<TmuxAttemptPaneEntry>,
+  pane_observation_refusal: String,
+) -> List<DispatchLiveSession> {
+  let node_id = dispatch_node_id_from_session_name(session_name: entry.session_name)
+  match dispatch_tmux_session_scope(node_id: node_id) {
+    Present { value: scope } =>
+      match live_session_row_with_process(
+        entry: entry,
+        scope: scope,
+        process: worker_process_for_session(
+          panes: panes,
+          session_name: entry.session_name,
+          pane_observation_refusal: pane_observation_refusal,
+        ),
+      ) {
+        Present { value: row } => concat(acc, [row])
+        Absent => acc
+      }
+    Absent => acc
   }
 }
 
@@ -1859,20 +2109,18 @@ fn dispatch_live_sessions_with_process(
   panes: List<TmuxAttemptPaneEntry>,
   pane_observation_refusal: String,
 ) -> List<DispatchLiveSession> {
-  filter_dispatch_tmux_sessions(entries: entries)
-    |> map(entry => {
-      let node_id = dispatch_node_id_from_session_name(
-        session_name: entry.session_name)
-      live_session_row_with_process(
+  fold(
+    filter_dispatch_tmux_sessions(entries: entries),
+    init: [],
+    f: fn(acc, entry) {
+      append_present_live_session_with_process(
+        acc: acc,
         entry: entry,
-        scope: dispatch_tmux_session_scope(node_id: node_id),
-        process: worker_process_for_session(
-          panes: panes,
-          session_name: entry.session_name,
-          pane_observation_refusal: pane_observation_refusal,
-        ),
+        panes: panes,
+        pane_observation_refusal: pane_observation_refusal,
       )
-    })
+    },
+  )
 }
 
 fn dispatch_session_cleanup(
