@@ -106,7 +106,7 @@ cgroup_memory_peak
 
 **Acceptance:** second and subsequent entries sharing the same module universe do **not** each repay ≈2s. “Faster” alone is not enough — the receipt must show the setup tax moving.
 
-**P1 receipt (bank pending merge):** `docs/plans/p1-retention-vs-drain-cohort-receipt.md` on PR **#7725** (`valiant-deer-205`) — **REJECT**. Mode A vs Mode B on the armed floor path (`p1_cohort_probe` → production `run_discovery_corpus_with_options`); entries 2..34 tax indistinguishable; Mode B OOM at entry 34 (~5+ GiB). **Redirect = assembly / materialization reuse** (by measurement, not #7597 prior). No retention-policy change in that PR; probe is scaffold with dissolve-on. *(Relative md link deferred until #7725 merges — dangling-link wall.)*
+**P1 receipt (banked, awaiting operator merge):** `docs/plans/p1-retention-vs-drain-cohort-receipt.md` on PR **#7725** (`valiant-deer-205`, head `8c07f422979`, CI CLEAN, 2/2 approvals) — **REJECT**. Mode A vs Mode B on the armed floor path (`p1_cohort_probe` → production `run_discovery_corpus_with_options`); entries 2..34 tax indistinguishable; Mode B OOM at entry 34 (~5+ GiB). **Redirect = assembly / materialization reuse** (by measurement, not #7597 prior). No retention-policy change in that PR; probe is scaffold with dissolve-on. *(Relative md link lands when #7725 merges — dangling-link wall.)*
 
 ### P2 — Selection degradation explicit
 
@@ -165,7 +165,7 @@ Operator pause — **last dispatch wave of this stretch**. No new PRs or childre
 | Lane | Session | PR | Head (at park) | Reviews | CI at park | Banked finding |
 |---|---|---|---|---|---|---|
 | Program note | `still-moth-459` | [#7721](https://github.com/gunb-ai/gunbc/pull/7721) | `10942eda742` | 2/2 claude+cursor | pending | Authority + `HandAuthoredDocBind` + five-minute cross-link |
-| P1 A/B | `valiant-deer-205` | [#7725](https://github.com/gunb-ai/gunbc/pull/7725) | `286332ae7a8` | 2/2 | blocked on **main** E0061 (#7733/#7734), not branch | **REJECT** → assembly/materialization; do **not** merge main into leaf until tip fixed |
+| P1 A/B | `valiant-deer-205` | [#7725](https://github.com/gunb-ai/gunbc/pull/7725) | `8c07f422979` | 2/2 | **CLEAN / merge-ready** | **REJECT banked** → assembly/materialization; operator merges |
 | P2 receipts | `warm-wolf-777` | [#7722](https://github.com/gunb-ai/gunbc/pull/7722) | `684dd67e044b` | 2/2 | pending | `selection_degradation_receipt.dag` + cli_run emit paths; E0425 fix landed |
 | P3 width-2 | `merry-ibex-227` | — | — | — | — | **HOLD** — needs P1 banked **and** Rc→Arc index share |
 | P4 broad native | `sharp-carp-537` | — | — | — | — | **HOLD** — after D1 amortized (P1 redirect) |
@@ -175,9 +175,9 @@ Operator pause — **last dispatch wave of this stretch**. No new PRs or childre
 
 **On resume (ordered):**
 
-1. Confirm #7721 / #7722 / #7725 CI green (or fix reds); operator merges (do not `gh pr merge` from session).
-2. After #7725 banks: treat P1 as closed for *retention-vs-drain*; open the **assembly/materialization** follow-on against [per-entry-assembly-decomposition-measurement](per-entry-assembly-decomposition-measurement.md) / materialization spine — **not** softer eviction, **not** naive width-2.
-3. After #7722 banks: re-anchor this note’s `HandAuthoredDocBind` `additional_works` with the live selection-receipt `DeclarationRef` (review 47762 expected gap).
+1. Operator merges #7725 (P1 REJECT banked) and #7721 / #7722 when green — do not `gh pr merge` from session.
+2. After #7725 banks on main: treat P1 as closed for *retention-vs-drain*; open the **assembly/materialization** follow-on against [per-entry-assembly-decomposition-measurement](per-entry-assembly-decomposition-measurement.md) / materialization spine — **not** softer eviction, **not** naive width-2. (Deferred until operator ends pause.)
+3. After #7722 banks: re-anchor this note’s `HandAuthoredDocBind` `additional_works` with the live selection-receipt `DeclarationRef` (review 47762 expected gap); restore relative link to the P1 receipt doc.
 4. Keep P3/P4 HOLD until conjunctions hold; five-minute step 3 stays NEXT under its own authority.
 5. Update five-minute “retention PARKED” disposition with the P1 time-axis REJECT + redirect.
 
