@@ -406,6 +406,20 @@ pub fn v1_item_type_param_needs_clone_bound_struct(
     }
 }
 
+pub fn v1_wf_child_type_node(
+    ch: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Node> {
+    {
+        let resolved = child_type_node(ch.clone());
+        if (authored_name_at(source_indices.clone(), resolved.clone()) != "".to_string()) {
+            resolved.clone()
+        } else {
+            ch.clone()
+        }
+    }
+}
+
 pub fn v1_type_expr_is_bare_param(
     param_name: String,
     type_expr: Rc<Node>,
@@ -479,7 +493,7 @@ pub fn v1_type_expr_clone_impl_needs_param(
                         for c in type_expr.children.clone().iter().cloned() {
                             if v1_type_expr_clone_impl_needs_param(
                                 param_name.clone(),
-                                child_type_node(c.clone()),
+                                v1_wf_child_type_node(c.clone(), source_indices.clone()),
                                 type_decl_items.clone(),
                                 source_indices.clone(),
                             ) {
@@ -516,7 +530,7 @@ pub fn v1_declared_arg_positions_need_clone_param(
                         generic_param_name_at(decl_param.clone(), source_indices.clone()),
                     ) && v1_type_expr_clone_impl_needs_param(
                         param_name.clone(),
-                        child_type_node(type_arg.clone()),
+                        v1_wf_child_type_node(type_arg.clone(), source_indices.clone()),
                         type_decl_items.clone(),
                         source_indices.clone(),
                     ));
@@ -567,7 +581,7 @@ pub fn v1_type_expr_wf_needs_clone_param(
                     for c in type_expr.children.clone().iter().cloned() {
                         if v1_type_expr_wf_needs_clone_param(
                             param_name.clone(),
-                            child_type_node(c.clone()),
+                            v1_wf_child_type_node(c.clone(), source_indices.clone()),
                             bounds.clone(),
                             type_decl_items.clone(),
                             source_indices.clone(),

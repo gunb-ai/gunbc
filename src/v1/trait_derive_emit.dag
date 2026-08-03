@@ -231,6 +231,15 @@ fn v1_item_type_param_needs_clone_bound_struct(
   )
 }
 
+fn v1_wf_child_type_node(ch: Node, source_indices: Map<String, NewlineIndex>) -> Node {
+  let resolved = child_type_node(ch: ch)
+  if authored_name_at(source_indices: source_indices, node: resolved) != "" {
+    resolved
+  } else {
+    ch
+  }
+}
+
 fn v1_type_expr_is_bare_param(param_name: String, type_expr: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   authored_name_at(source_indices: source_indices, node: type_expr) == param_name
     && type_expr.connective == NoConnective
@@ -284,7 +293,7 @@ fn v1_type_expr_clone_impl_needs_param(
     type_expr.children |> any(c =>
       v1_type_expr_clone_impl_needs_param(
         param_name: param_name,
-        type_expr: child_type_node(ch: c),
+        type_expr: v1_wf_child_type_node(ch: c, source_indices: source_indices),
         type_decl_items: type_decl_items,
         source_indices: source_indices
       )
@@ -311,7 +320,7 @@ fn v1_declared_arg_positions_need_clone_param(
           let here = set_contains(bound_params, generic_param_name_at(n: decl_param, source_indices: source_indices))
             && v1_type_expr_clone_impl_needs_param(
               param_name: param_name,
-              type_expr: child_type_node(ch: type_arg),
+              type_expr: v1_wf_child_type_node(ch: type_arg, source_indices: source_indices),
               type_decl_items: type_decl_items,
               source_indices: source_indices
             )
@@ -341,7 +350,7 @@ fn v1_type_expr_wf_needs_clone_param(
     let nested = type_expr.children |> any(c =>
       v1_type_expr_wf_needs_clone_param(
         param_name: param_name,
-        type_expr: child_type_node(ch: c),
+        type_expr: v1_wf_child_type_node(ch: c, source_indices: source_indices),
         bounds: bounds,
         type_decl_items: type_decl_items,
         source_indices: source_indices

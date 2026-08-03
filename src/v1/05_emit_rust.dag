@@ -58,7 +58,7 @@ import v1.compiler.coercion { coerce_primitive_type, is_copy, lookup_checkpoint 
 import v1.compiler.trait_derive_emit {
   v1_emit_enum_derives,
   v1_emit_struct_from_capability_table, v1_emit_enum_supplemental_impls,
-  v1_generic_params_needing_clone_bound, v1_fn_param_wf_needs_clone, v1_type_expr_wf_needs_clone_param,
+  v1_generic_params_needing_clone_bound,
   v1_emit_type_params_with_clone_bounds,
   v1_clone_bounded_type_params, v1_item_clone_bounded_param_names, v1_item_clone_undecided_head,
   v1_trait_derive_refuse,
@@ -4655,6 +4655,13 @@ fn emit_type_params(params: List<Node>, source_indices: Map<String, NewlineIndex
   }
 }
 
+fn emit_bare_type_params(generic_param_names: List<String>) -> String {
+  if generic_param_names |> count == 0 { "" }
+  else {
+    concat("<", generic_param_names |> map(n => to_pascal(name: n)) |> join(separator: ", "), ">")
+  }
+}
+
 fn emit_type_params_with_clone_bound(params: List<Node>, clone_param: String, source_indices: Map<String, NewlineIndex>) -> String {
   if params |> count == 0 { "" }
   else {
@@ -5044,7 +5051,8 @@ fn emit_enum_shared_accessors(name: String, type_params: String, generic_param_n
     concat("    pub fn ", emit_ident(name: fname, target: Rust), "(&self) -> ", ty, " {\n        match self {\n", arms_str, "\n        }\n    }")
   )
   let fns_str = accessor_fns |> join(separator: "\n")
-  concat("impl", type_params, " ", name, type_params, " {\n", fns_str, "\n}")
+  let type_application_params = emit_bare_type_params(generic_param_names: generic_param_names)
+  concat("impl", type_params, " ", name, type_application_params, " {\n", fns_str, "\n}")
 }
 
 fn string_without_prefix(value: String, prefix: String) -> String? {
@@ -5324,28 +5332,6 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
     source_indices: si
   )
   let needs_clone_bound = (clone_param_names |> count) > 0
-  if name == "occurrence_binding_from_candidates" {
-    let gpn_str = generic_param_names |> fold(init: "", f: (acc, g) => concat(acc, "[", g, "]"))
-    let wf_direct = value_params |> any(vp =>
-      v1_type_expr_wf_needs_clone_param(
-        param_name: "N",
-        type_expr: param_node_type_expr(n: vp),
-        bounds: emit_info.clone_bounded_type_params,
-        type_decl_items: emit_info.type_decl_items,
-        source_indices: si
-      )
-    )
-    let fn_wf = v1_fn_param_wf_needs_clone(
-      param_name: "N",
-      value_params: value_params,
-      ret: inferred,
-      bounds: emit_info.clone_bounded_type_params,
-      type_decl_items: emit_info.type_decl_items,
-      source_indices: si
-    )
-    let cpn_str = clone_param_names |> fold(init: "", f: (acc, g) => concat(acc, "[", g, "]"))
-    return concat("compile_error!(\"DBG gpn=", gpn_str, " wf_direct=", if wf_direct { "T" } else { "F" }, " fn_wf=", if fn_wf { "T" } else { "F" }, " cpn=", cpn_str, "\");\n")
-  }
   let type_params_str = if needs_clone_bound {
     v1_emit_type_params_with_clone_bounds(params: type_params, clone_param_names: clone_param_names, source_indices: si)
   } else {
