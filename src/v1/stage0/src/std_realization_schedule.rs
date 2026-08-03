@@ -10,6 +10,7 @@ use self::FloorWorkerTermination::*;
 use self::NoWalkFinalization::*;
 use self::NodeFrontierSelection::*;
 use self::OnSuccessRunnableDisposition::*;
+use self::PreWalkExecution::*;
 use self::Runnable::*;
 use self::RunnableBatchClampSource::*;
 use self::RunnableMemoryClass::*;
@@ -98,6 +99,7 @@ pub struct RealizationObjective {
 pub enum WitnessKind {
     CorpusWitnessKind,
     ExecutionWitnessKind,
+    NativeBundleWitnessKind,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -126,10 +128,17 @@ pub fn witness_kind_eq(a: WitnessKind, b: WitnessKind) -> bool {
         WitnessKind::CorpusWitnessKind => match b.clone() {
             WitnessKind::CorpusWitnessKind => true,
             WitnessKind::ExecutionWitnessKind => false,
+            WitnessKind::NativeBundleWitnessKind => false,
         },
         WitnessKind::ExecutionWitnessKind => match b.clone() {
             WitnessKind::ExecutionWitnessKind => true,
             WitnessKind::CorpusWitnessKind => false,
+            WitnessKind::NativeBundleWitnessKind => false,
+        },
+        WitnessKind::NativeBundleWitnessKind => match b.clone() {
+            WitnessKind::NativeBundleWitnessKind => true,
+            WitnessKind::CorpusWitnessKind => false,
+            WitnessKind::ExecutionWitnessKind => false,
         },
     }
 }
@@ -603,6 +612,7 @@ pub fn scoped_witness_kind_label(kind: WitnessKind) -> String {
     match kind.clone() {
         WitnessKind::CorpusWitnessKind => "corpus".to_string(),
         WitnessKind::ExecutionWitnessKind => "execution".to_string(),
+        WitnessKind::NativeBundleWitnessKind => "native-bundle".to_string(),
     }
 }
 
@@ -613,7 +623,11 @@ pub fn scoped_witness_kind_from_label(label: String) -> Option<WitnessKind> {
         if (label.clone() == "execution".to_string()) {
             Some(WitnessKind::ExecutionWitnessKind)
         } else {
-            None
+            if (label.clone() == "native-bundle".to_string()) {
+                Some(WitnessKind::NativeBundleWitnessKind)
+            } else {
+                None
+            }
         }
     }
 }
@@ -1182,7 +1196,7 @@ pub fn on_success_runnable_disposition(runnable: Rc<Runnable>) -> OnSuccessRunna
 pub fn walk_plan_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "A walk is TWO populations with DIFFERENT ordering laws, and the type says so where a bare List<List<Runnable>> could not. `batches` are the ordinary floor: batch boundaries order them, and a failure's consequence is the walk's FloorBatchStopPolicy (StopBeforeDependents on pull_request, FullLedger on push/schedule — where a failed batch deliberately does NOT stop the walk, because the per-batch ledger on main is bisection evidence, operator ruling 2026-07-23). `on_success_stages` run ONLY when the ordinary floor completed AND its receipts finalized and validated; each stage is a barrier — stage N fully completes with zero failures before stage N+1 starts — and stage-to-stage execution is ALWAYS fail-fast, regardless of the ordinary stop policy: FullLedger is an ordinary-floor policy and never applies between stages. WHY THE SECOND POPULATION EXISTS: work whose correctness is conditional on the whole floor being green (the merge-admission stamp is the first occupant — stamping Success is only true if reaching it proves green) cannot be an ordinary trailing batch, because under FullLedger a trailing batch is still reached after a red batch. The prior attempt encoded exactly that and shipped a fail-open; a second attempt then declared stamp-then-gate as one stage and rediscovered the SIBLING defect — ELIGIBLE INDEPENDENT RESOLVE GROUPS within a stage MAY overlap, subject to resource admission — no sibling ordering is guaranteed, so anything sequential must be ONE claim whose body sequences its steps, or two singleton stages. The contract is deliberately weaker than \"members run concurrently\" (review 2026-07-31), because the executor can legitimately withdraw overlap without breaking anything: same-entry same-mode claims are COMBINED into one resolve group and run serially within it; memo-lane and discovery units run on the main thread; and at governor width 1 two spawned threads exist while only one claim body is admitted at a time. Promising wall-time concurrency would make grouping, memo placement, and the governor into contract violations when they are the design. What the admission occupants actually need is the absence of a guaranteed order, and that is what is stated. Both defects are why this is a named type with a note rather than a convention (operator design ruling 2026-07-30).\n\nWHAT THE EXECUTOR PROVIDES, stated because a carrier that promises more than its executor delivers is the same defect this type exists to end (review 2026-07-30). THE THREE GAPS THIS NOTE USED TO NAME ARE CLOSED. Both populations now run through ONE executor, `run_stage`: same unit grouping, same lane partition (`batch_unit_lane`), same derived cost clamp. ADMISSION IS PER-LANE, NOT UNIVERSAL, and this note states it precisely because an earlier draft's {same governor admission} shorthand was read as a property of every unit and used to justify deleting a real refusal (review 2026-07-31): `run_batch_unit` takes an `AdmittedSlot` for the unit's lifetime, and `run_batch_unit` is reached on the SPAWNED lane only. Memo-lane and main-thread units run UNADMITTED. That is why a heavy-whole-tree-resolve claim is refused admission to an on-success stage rather than merely admitted narrowly — it would route to the memo lane, where no slot governs it, and its context stays resident in `stage_memo` across later stages, so wrapping the call in an ordinary slot would not bound it either. Members within a stage may therefore OVERLAP subject to that per-lane admission, which is the weaker contract stated above and NOT the {members run concurrently} claim earlier drafts made; each stage writes ITS OWN receipt before the next begins, so a process death mid-sequence no longer erases the record of stages that had in fact completed; and the callers differ only in ordering and failure policy, which is the one real difference between the two populations.\n\nWHAT MAKES THAT CHECKABLE RATHER THAN ASSERTED. The concurrency contract was unreachable by a test while spawn-and-join sat inlined in the batch loop, which is exactly how the first attempt promised concurrency while executing serially. `spawn_units`/`join_units` are split out so a LATCH can reach them: each member increments a shared counter and waits until it observes the other, which a serial executor cannot satisfy because the first member waits for a peer that was never started. The bound on that wait is a deadlock detector, never the assertion. Proven discriminating by mutation — making `spawn_units` run each unit inline turns the overlap control RED with the exact serial signature [false, true] and leaves the join and panic controls green. The stage BARRIER is the join half plus a structural fact: `run_walk`'s stage loop takes `&mut stage_memo` per iteration, so two iterations cannot overlap, and the claim that stage N+1 waits for every stage-N member reduces to the claim that the join returns only after every member completed, which the second control pins.\n\nWHAT STILL REFUSES — the TOTAL account, replacing a paragraph that had gone self-contradictory (review 2026-07-31). The prior text asserted that the arm-time validator no longer refuses a heavy-whole-tree-resolve claim, which was true of one revision and false of the one before AND after it; the restored refusal was described elsewhere in this same note, so the canonical carrier stated both. A partial list is how that happened, so this is written as a closed enumeration rather than as commentary on what changed.\n\nAn on-success stage refuses, at arm time:\n  - an UNDECLARED resource profile — the values would be the parse's fail-closed fillers rather than the plan's statements, and a wall read off invented facts is worse than no wall;\n  - `heavy_whole_tree_resolve` — such a unit takes the memo lane, which is UNADMITTED, and its resolved context stays resident in the stage memo across every later stage;\n  - `spawns_host_compiler`;\n  - SUBSTANTIAL residency — the last two because stages supply no clamp parameters (`gunbc_ci_floor_batch_clamp_params` indexes the ORDINARY batches), so such a claim would run unclamped;\n  - a DISCOVERY runnable — it has no defined green-only meaning.\n\nAll four profile restrictions are conditional on mechanisms stages do not yet have, and each names a DIFFERENT trigger; they do not dissolve together. `spawns_host_compiler` and substantial residency dissolve on stages carrying declared clamp parameters. `heavy_whole_tree_resolve` dissolves on a context-lifetime resident reservation — and that reservation is NOT expressible today, which is the part an earlier draft of this sentence got wrong by naming the lease alone as its trigger. An `AdmittedSlot` is a CONCURRENCY slot: holding one for a memoized context's lifetime pins the active count, so the zero-active progress floor never fires, every later admission holds on a full window, and the width that would relieve it grows only on a completion that can no longer happen. The real trigger is therefore TWO steps in order: split execution-slot accounting from resident-reservation accounting, THEN take a context-lifetime reservation against the second. The undeclared-profile refusal has no dissolution — it is the fail-closed floor.\n\nEvery plan function returns WalkPlan<F> — a plan with no postconditions returns on_success_stages: [] — and the executor has ONE strict parser: a malformed or missing field is a hard error, never a fallback to a bare-list reading.".to_string()
+            "A walk is TWO populations with DIFFERENT ordering laws, and the type says so where a bare List<List<Runnable>> could not. `batches` are the ordinary floor: batch boundaries order them, and a failure's consequence is the walk's FloorBatchStopPolicy (StopBeforeDependents on pull_request, FullLedger on push/schedule — where a failed batch deliberately does NOT stop the walk, because the per-batch ledger on main is bisection evidence, operator ruling 2026-07-23). `on_success_stages` run ONLY when the ordinary floor completed AND its receipts finalized and validated; each stage is a barrier — stage N fully completes with zero failures before stage N+1 starts — and stage-to-stage execution is ALWAYS fail-fast, regardless of the ordinary stop policy: FullLedger is an ordinary-floor policy and never applies between stages. WHY THE SECOND POPULATION EXISTS: work whose correctness is conditional on the whole floor being green (the merge-admission stamp is the first occupant — stamping Success is only true if reaching it proves green) cannot be an ordinary trailing batch, because under FullLedger a trailing batch is still reached after a red batch. The prior attempt encoded exactly that and shipped a fail-open; a second attempt then declared stamp-then-gate as one stage and rediscovered the SIBLING defect — ELIGIBLE INDEPENDENT RESOLVE GROUPS within a stage MAY overlap, subject to resource admission — no sibling ordering is guaranteed, so anything sequential must be ONE claim whose body sequences its steps, or two singleton stages. The contract is deliberately weaker than \"members run concurrently\" (review 2026-07-31), because the executor can legitimately withdraw overlap without breaking anything: same-entry same-mode claims are COMBINED into one resolve group and run serially within it; memo-lane and discovery units run on the main thread; and at governor width 1 two spawned threads exist while only one claim body is admitted at a time. Promising wall-time concurrency would make grouping, memo placement, and the governor into contract violations when they are the design. What the admission occupants actually need is the absence of a guaranteed order, and that is what is stated. Both defects are why this is a named type with a note rather than a convention (operator design ruling 2026-07-30).\n\nWHAT THE EXECUTOR PROVIDES, stated because a carrier that promises more than its executor delivers is the same defect this type exists to end (review 2026-07-30). THE THREE GAPS THIS NOTE USED TO NAME ARE CLOSED. Both populations now run through ONE executor, `run_stage`: same unit grouping, same lane partition (`batch_unit_lane`), same derived cost clamp. ADMISSION IS PER-LANE, NOT UNIVERSAL, and this note states it precisely because an earlier draft's {same governor admission} shorthand was read as a property of every unit and used to justify deleting a real refusal (review 2026-07-31): `run_batch_unit` takes an `AdmittedSlot` for the unit's lifetime. Ordinary spawned-lane units reach it on worker threads. On-success units that would otherwise take that lane reach the SAME function serially on the executor's main thread, still acquire the SAME slot, and thereby consume that thread's already-warm process_shared_index instead of rebuilding a second cold index. This is a typed consequence of the population, never a claim-name exception. It deliberately withdraws sibling overlap for on-success stages; the contract above permits that withdrawal and still guarantees NO sibling order, while the first live roster uses singleton stages and therefore loses no available overlap. Memo-lane and discovery main-thread units remain UNADMITTED. That is why a heavy-whole-tree-resolve claim is refused admission to an on-success stage rather than merely admitted narrowly — it would route to the memo lane, where no slot governs it, and its context stays resident in `stage_memo` across later stages, so wrapping the call in an ordinary slot would not bound it either. Ordinary members within a stage may therefore OVERLAP subject to per-lane admission; on-success members do not promise overlap. Each on-success stage writes ITS OWN receipt before the next begins, so a process death mid-sequence no longer erases the record of stages that had in fact completed; and the callers differ only where their population semantics require it: ordering/failure policy plus warm-index placement for green-only postconditions.\n\nWHAT MAKES THAT CHECKABLE RATHER THAN ASSERTED. Ordinary spawned-lane overlap was unreachable by a test while spawn-and-join sat inlined in the batch loop. `spawn_units`/`join_units` are split out so a LATCH can reach them: each member increments a shared counter and waits until it observes the other, which a serial ordinary executor cannot satisfy because the first member waits for a peer that was never started. The bound on that wait is a deadlock detector, never the assertion. Proven discriminating by mutation — making `spawn_units` run each ordinary unit inline turns the overlap control RED with the exact serial signature [false, true] and leaves the join and panic controls green. On-success stages deliberately do not use that overlap path. Their BARRIER is stronger and simpler: each `run_stage` returns before `run_walk` advances its loop, and the loop takes `&mut stage_memo` per iteration, so two stages cannot overlap. The schedule lens continues to treat sibling membership as an unordered multiset because implementation order is not a semantic guarantee.\n\nWHAT STILL REFUSES — the TOTAL account, replacing a paragraph that had gone self-contradictory (review 2026-07-31). The prior text asserted that the arm-time validator no longer refuses a heavy-whole-tree-resolve claim, which was true of one revision and false of the one before AND after it; the restored refusal was described elsewhere in this same note, so the canonical carrier stated both. A partial list is how that happened, so this is written as a closed enumeration rather than as commentary on what changed.\n\nAn on-success stage refuses, at arm time:\n  - an UNDECLARED resource profile — the values would be the parse's fail-closed fillers rather than the plan's statements, and a wall read off invented facts is worse than no wall;\n  - `heavy_whole_tree_resolve` — such a unit takes the memo lane, which is UNADMITTED, and its resolved context stays resident in the stage memo across every later stage;\n  - `spawns_host_compiler`;\n  - SUBSTANTIAL residency — the last two because stages supply no clamp parameters (`gunbc_ci_floor_batch_clamp_params` indexes the ORDINARY batches), so such a claim would run unclamped;\n  - a DISCOVERY runnable — it has no defined green-only meaning.\n\nAll four profile restrictions are conditional on mechanisms stages do not yet have, and each names a DIFFERENT trigger; they do not dissolve together. `spawns_host_compiler` and substantial residency dissolve on stages carrying declared clamp parameters. `heavy_whole_tree_resolve` dissolves on a context-lifetime resident reservation — and that reservation is NOT expressible today, which is the part an earlier draft of this sentence got wrong by naming the lease alone as its trigger. An `AdmittedSlot` is a CONCURRENCY slot: holding one for a memoized context's lifetime pins the active count, so the zero-active progress floor never fires, every later admission holds on a full window, and the width that would relieve it grows only on a completion that can no longer happen. The real trigger is therefore TWO steps in order: split execution-slot accounting from resident-reservation accounting, THEN take a context-lifetime reservation against the second. The undeclared-profile refusal has no dissolution — it is the fail-closed floor.\n\nEvery plan function returns WalkPlan<F> — a plan with no postconditions returns on_success_stages: [] — and the executor has ONE strict parser: a malformed or missing field is a hard error, never a fallback to a bare-list reading.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -1191,7 +1205,7 @@ pub fn walk_plan_note() -> String {
 pub fn walk_plan_run_stage_claim_executor_seed_deferral() -> String {
     thread_local! {
         static CACHED: String = {
-            "§7 SEED-RETAINED, declared here because this is where the obligation is INCURRED (review 2026-07-31; scoped-worker extension 2026-08-01). `run_stage`, `spawn_units`, `join_units`, `batch_unit_lane`, the stage receipt writers, the walk-attempt observation, `maybe_run_floor_coordinator`, `spawn_floor_worker`, `observe_floor_worker`, `append_floor_phase_journal`, `journal_floor_worker_observation`, `scoped_execution_authority_source_roots`, and the manifest/execution/terminal/observation receipt projections are HAND-RUST in `claim_executor.rs`; retaining typed selection-skipped discovery rows and resolving executor-owned decisions against inherited walk roots are HAND-RUST in `cli_run.rs`. The executor is the seed that runs before any `.dag` walk exists, so the code that decides how a walk executes cannot itself be a walk. The scoped extension does not mint a second deferral: it is another realization of this one executor seed. That is a real deferral, not an exemption — the seed grew here, and a growth in the seed is a §7 debt whether or not anyone writes it down.\n\nWHY THIS ROW LIVES WITH THE CARRIER RATHER THAN WITH A CONSUMER. A first draft of this row was authored in the FIXTURE branch that later exercised this code, on the reasoning that the fixture is where the seed expansion became visible. That reverses ownership: the debt belongs to the change that added the Rust, and a downstream consumer documenting its parent's deferral means the parent could land without one. A consumer may cite this row; it may not be the row's home.\n\nWHAT MAKES THE SCOPED EXTENSION CHECKABLE. `witness_v1_claim_scoped_batch_is_file_grain_and_batch_owned` and `witness_scoped_batch_is_singleton_and_outside_positional_clamps` pin the modeled batch, owned clamp, inherited execution authority, and SequentialChildProcess isolation. `scoped_witness_execution_receipt_decoder_accepts_writer_projection`, `scoped_witness_execution_receipt_decoder_preserves_selection_skip_provenance`, and `scoped_witness_execution_receipt_decoder_refuses_empty_ledger` pin the public modeled decoder across execution, honest nonexecution, and refusal. The Rust controls `scoped_selection_skip_is_a_provenanced_nonfailure_receipt_outcome` and `scoped_execution_authority_inherits_walk_roots_without_widening_subject_roots` pin the seed projections so an unaffected row remains present without failing the worker and executor-owned decisions consume the enclosing walk roots without entering the witness subject envelope. `floor_worker_observation_outcome_is_derived_from_evidence` proves in the model that the same completed terminal report derives Completed beside exit 0 and Failed beside signal death; there is no outcome field to transcribe. The Rust controls `floor_worker_missing_terminal_receipt_is_an_observed_death`, `floor_worker_terminal_crosses_receipt_with_exit_status`, `floor_worker_refusal_remains_distinct_from_failure`, `floor_worker_signal_death_is_not_flattened_to_an_exit_code`, `floor_worker_signal_overrules_a_completed_terminal_report`, and `floor_worker_verdict_reaches_the_durable_journal` pin the coordinator's typed observation boundary, the derived-verdict law, and the surviving out-of-band projection used when the Actions stream drops worker stderr. Deleting or flattening the modeled arms, widening the subject roots with executor dependencies, dropping a selection-skipped roster row, accepting receipt absence, normalizing a signal into success, storing an authored outcome, losing the durable verdict, or restoring the old isolation spelling makes one of those controls red.\n\nMIGRATION TRIGGER: the executor's own scheduling decisions become a `.dag` walk over `WalkPlan` — lane selection, admission, worker sequencing, and receipt emission expressed as modeled effects rather than as `std::thread`, `std::process`, plus `std::fs` — at which point this Rust becomes an emitted realization and the row deletes. Gated behind the witness-realization lane, concretely ROADMAP `v1-materialization-kernel` (`docs/plans/witness-realization-plan.md`), since a `.dag`-expressed executor needs native witness execution to run at all. The two codec dissolve markers are subordinate parts of this same row: they delete when typed tabular projection is available, before the whole executor can delete. Until then the honest statement is that these are seed-retained by necessity with a named trigger and executable receipts, which is exactly what a self-host frontier row is for.".to_string()
+            "§7 SEED-RETAINED, declared here because this is where the obligation is INCURRED (review 2026-07-31; scoped-worker extension 2026-08-01). `run_stage`, `spawn_units`, `join_units`, `batch_unit_lane`, the stage receipt writers, the walk-attempt observation, `maybe_run_floor_coordinator`, `spawn_floor_worker`, `observe_floor_worker`, `append_floor_phase_journal`, `journal_floor_worker_observation`, `scoped_execution_authority_source_roots`, and the manifest/execution/terminal/observation receipt projections are HAND-RUST in `claim_executor.rs`; retaining typed selection-skipped discovery rows and resolving executor-owned decisions against inherited walk roots are HAND-RUST in `cli_run.rs`. The executor is the seed that runs before any `.dag` walk exists, so the code that decides how a walk executes cannot itself be a walk. The scoped extension does not mint a second deferral: it is another realization of this one executor seed. The merge-admission pre-walk extension (2026-08-02, review 47517) is likewise this SAME deferral grown, not a new one: the PreWalkExecution value parser, `run_pre_walk_execution` (including its capture-refusal-wire read), the two WalkPopulationBudget watchdogs and the WalkPopulationBudgetRefusal durable writer, and the per-stage memory snapshots are HAND-RUST in `claim_executor.rs`, all dissolving on the same trigger as the rest of this row — the executor walk and its receipt projections becoming emitted `.dag` realizations. That is a real deferral, not an exemption — the seed grew here, and a growth in the seed is a §7 debt whether or not anyone writes it down.\n\nWHY THIS ROW LIVES WITH THE CARRIER RATHER THAN WITH A CONSUMER. A first draft of this row was authored in the FIXTURE branch that later exercised this code, on the reasoning that the fixture is where the seed expansion became visible. That reverses ownership: the debt belongs to the change that added the Rust, and a downstream consumer documenting its parent's deferral means the parent could land without one. A consumer may cite this row; it may not be the row's home.\n\nWHAT MAKES THE SCOPED EXTENSION CHECKABLE. `witness_v1_claim_scoped_batch_is_file_grain_and_batch_owned` and `witness_scoped_batch_is_singleton_and_outside_positional_clamps` pin the modeled batch, owned clamp, inherited execution authority, and SequentialChildProcess isolation. `scoped_witness_execution_receipt_decoder_accepts_writer_projection`, `scoped_witness_execution_receipt_decoder_preserves_selection_skip_provenance`, and `scoped_witness_execution_receipt_decoder_refuses_empty_ledger` pin the public modeled decoder across execution, honest nonexecution, and refusal. The Rust controls `scoped_selection_skip_is_a_provenanced_nonfailure_receipt_outcome` and `scoped_execution_authority_inherits_walk_roots_without_widening_subject_roots` pin the seed projections so an unaffected row remains present without failing the worker and executor-owned decisions consume the enclosing walk roots without entering the witness subject envelope. `floor_worker_observation_outcome_is_derived_from_evidence` proves in the model that the same completed terminal report derives Completed beside exit 0 and Failed beside signal death; there is no outcome field to transcribe. The Rust controls `floor_worker_missing_terminal_receipt_is_an_observed_death`, `floor_worker_terminal_crosses_receipt_with_exit_status`, `floor_worker_refusal_remains_distinct_from_failure`, `floor_worker_signal_death_is_not_flattened_to_an_exit_code`, `floor_worker_signal_overrules_a_completed_terminal_report`, and `floor_worker_verdict_reaches_the_durable_journal` pin the coordinator's typed observation boundary, the derived-verdict law, and the surviving out-of-band projection used when the Actions stream drops worker stderr. Deleting or flattening the modeled arms, widening the subject roots with executor dependencies, dropping a selection-skipped roster row, accepting receipt absence, normalizing a signal into success, storing an authored outcome, losing the durable verdict, or restoring the old isolation spelling makes one of those controls red.\n\nMIGRATION TRIGGER: the executor's own scheduling decisions become a `.dag` walk over `WalkPlan` — lane selection, admission, worker sequencing, and receipt emission expressed as modeled effects rather than as `std::thread`, `std::process`, plus `std::fs` — at which point this Rust becomes an emitted realization and the row deletes. Gated behind the witness-realization lane, concretely ROADMAP `v1-materialization-kernel` (`docs/plans/witness-realization-plan.md`), since a `.dag`-expressed executor needs native witness execution to run at all. The two codec dissolve markers are subordinate parts of this same row: they delete when typed tabular projection is available, before the whole executor can delete. Until then the honest statement is that these are seed-retained by necessity with a named trigger and executable receipts, which is exactly what a self-host frontier row is for.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -1215,11 +1229,101 @@ pub enum NoWalkFinalization {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum PreWalkExecution {
+    NoPreWalkExecution,
+    TypedClaimSubprocess {
+        transport_entry: String,
+        transport_function: String,
+        source_roots: Rc<Vec<String>>,
+        claim_entry: String,
+        claim_function: String,
+    },
+}
+impl PreWalkExecution {
+    pub fn transport_entry(&self) -> String {
+        match self {
+            PreWalkExecution::NoPreWalkExecution => panic!("no transport_entry on unit variant"),
+            PreWalkExecution::TypedClaimSubprocess {
+                transport_entry: __val,
+                ..
+            } => __val.clone(),
+        }
+    }
+    pub fn transport_function(&self) -> String {
+        match self {
+            PreWalkExecution::NoPreWalkExecution => panic!("no transport_function on unit variant"),
+            PreWalkExecution::TypedClaimSubprocess {
+                transport_function: __val,
+                ..
+            } => __val.clone(),
+        }
+    }
+    pub fn source_roots(&self) -> Rc<Vec<String>> {
+        match self {
+            PreWalkExecution::NoPreWalkExecution => panic!("no source_roots on unit variant"),
+            PreWalkExecution::TypedClaimSubprocess {
+                source_roots: __val,
+                ..
+            } => __val.clone(),
+        }
+    }
+    pub fn claim_entry(&self) -> String {
+        match self {
+            PreWalkExecution::NoPreWalkExecution => panic!("no claim_entry on unit variant"),
+            PreWalkExecution::TypedClaimSubprocess {
+                claim_entry: __val, ..
+            } => __val.clone(),
+        }
+    }
+    pub fn claim_function(&self) -> String {
+        match self {
+            PreWalkExecution::NoPreWalkExecution => panic!("no claim_function on unit variant"),
+            PreWalkExecution::TypedClaimSubprocess {
+                claim_function: __val,
+                ..
+            } => __val.clone(),
+        }
+    }
+}
+
+pub fn pre_walk_execution_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "A WalkPlan may carry one typed execution before its ordinary population. NoPreWalkExecution is explicit absence. TypedClaimSubprocess is a modeled argv-host-effect transport: the executor resolves transport_entry, calls transport_function with the authored source_roots/claim identity, and requires a true result before arming the ordinary floor. The transport function must realize the child through gunbc.WitnessBin.Run (the existing typed bin-invocation service), never through a shell program or an executor-minted command. This placement exists for small identity captures whose result must precede the floor but whose evaluator arena must die with a child address space; a refusal is located to both transport and claim and blocks batch 1.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct WalkPlan<F: Clone> {
+    pub pre_walk_execution: Rc<PreWalkExecution>,
     pub batches: Rc<Vec<Rc<Vec<Rc<Runnable>>>>>,
     pub finalization: F,
     pub on_success_stages: Rc<Vec<Rc<Vec<Rc<Runnable>>>>>,
+    pub ordinary_budget: Option<Millisecond>,
+    pub on_success_budget: Option<Millisecond>,
     pub _phantom: std::marker::PhantomData<F>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct WalkPopulationBudgetRefusal {
+    pub population: String,
+    pub plan_site: String,
+    pub population_index: Nat,
+    pub active_unit: String,
+    pub elapsed: Millisecond,
+    pub budget: Millisecond,
+}
+
+pub fn walk_population_budget_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "WalkPlan carries an explicit Optional<Millisecond> budget for each population — the unit lives in the std.measure carrier, never in a field name (the RunnableBatchClamp precedent). Absent is authored unboundedness, never a parser fallback; Present must be positive. The ordinary watchdog owns the entire ordinary interval through receipt finalization and is disarmed only before green-only stages arm, so ordinary work cannot consume a reserved postcondition allowance. The postcondition watchdog separately bounds stages plus their receipts. A breach constructs WalkPopulationBudgetRefusal and durably writes floor-population-budget-refusal.txt with the population, plan site, one-based active stage/batch index, active unit, measured elapsed wall, and the budget that fired BEFORE claim_executor flushes stderr and exits nonzero. Index zero means the population had not entered its first unit. The outer workflow timeout remains only a larger wrapper backstop.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn node_frontier_selection_applied(sel: NodeFrontierSelection) -> bool {
@@ -1493,6 +1597,8 @@ pub struct Measured;
 pub struct CorpusWitnessKind;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ExecutionWitnessKind;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct NativeBundleWitnessKind;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RunnableMemoryNegligible;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
