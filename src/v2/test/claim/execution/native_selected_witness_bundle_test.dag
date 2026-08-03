@@ -460,18 +460,22 @@ fn selected_logic_stdout(receipt: EmitHostRunReceipt) -> Optional<ByteString> {
 }
 
 fn selected_logic_expected_stdout(primary: Bool) -> ByteString {
+  emit_host_octets_byte_string(octets: selected_logic_expected_stdout_octets(primary: primary))
+}
+
+fn selected_logic_expected_stdout_octets(primary: Bool) -> List<Int> {
   if primary {
-    emit_host_octets_byte_string(octets: [
+    [
       0, 1, 0, 0, 0,
       0, 1, 0, 0, 0,
       0, 0, 0, 0, 0
-    ])
+    ]
   } else {
-    emit_host_octets_byte_string(octets: [
+    [
       0, 0, 0, 0, 0,
       0, 0, 0, 0, 0,
       0, 1, 0, 0, 0
-    ])
+    ]
   }
 }
 

@@ -1,0 +1,226 @@
+module gunbc.stage0_rust_honest_frontier_integration
+
+import gunbc.stage0_rust_host_observation {
+  GitObservationRefused,
+  RustManifestObserved,
+  RustManifestParseRefused,
+  RustManifestReadRefused,
+  RustSourceHostObservation
+}
+import gunbc.stage0_rust_lifecycle_totality {
+  LifecycleTotalityDerived,
+  LifecycleTotalityObservationRefused,
+  LifecycleTotalityReceipt,
+  lifecycle_decision_complete,
+  lifecycle_discovery_complete,
+  lifecycle_totality_receipt
+}
+import gunbc.stage0_rust_product_reachability {
+  ProductReachabilityDerived,
+  ProductReachabilityObservationRefused,
+  ProductReachabilityReceipt,
+  RustProductReachabilityVerdict,
+  exact_product_reachable_paths_from_verdicts,
+  exact_reachability_refused_paths_from_verdicts,
+  product_reachability_receipt
+}
+import gunbc.stage0_rust_source_lifecycle_scaffold {
+  derived_hand_maintained_stage0_repo_paths,
+  path_in_list
+}
+import v2.std.algebra { filter }
+import v2.std.collection { List }
+import v2.std.text { String }
+
+data stage0_rust_honest_frontier_integration_note: String = "Lane C integration join: composes C1 lifecycle_totality_receipt and C2 product_reachability_receipt over the same RustManifestObserved subject. Answers v1-hand-queue-drain: which remaining hand-written paths shipping products actually reach — exact path identity join of derived_hand_maintained_stage0_repo_paths with product-reachable verdicts, never a count oracle. Discovery completeness and disposition decision stay separate reports."
+
+type HonestFrontierIntegrationReceipt
+  = HonestFrontierIntegrationDerived {
+      lifecycle: LifecycleTotalityReceipt,
+      reachability: ProductReachabilityReceipt,
+      hand_maintained_product_reachable_paths: List<String>,
+      hand_maintained_reachability_refused_paths: List<String>
+    }
+  | HonestFrontierIntegrationRefused { detail: String }
+
+fn exact_hand_maintained_product_reachable_paths(
+  verdicts: List<RustProductReachabilityVerdict>
+) -> List<String> {
+  let hand_paths = derived_hand_maintained_stage0_repo_paths()
+  let product_reachable = exact_product_reachable_paths_from_verdicts(verdicts: verdicts)
+  filter(
+    xs: hand_paths,
+    predicate: fn(path) { path_in_list(path: path, paths: product_reachable) }
+  )
+}
+
+fn exact_hand_maintained_reachability_refused_paths(
+  verdicts: List<RustProductReachabilityVerdict>
+) -> List<String> {
+  let hand_paths = derived_hand_maintained_stage0_repo_paths()
+  let refused = exact_reachability_refused_paths_from_verdicts(verdicts: verdicts)
+  filter(
+    xs: hand_paths,
+    predicate: fn(path) { path_in_list(path: path, paths: refused) }
+  )
+}
+
+fn honest_frontier_integration_receipt(
+  observation: RustSourceHostObservation
+) -> HonestFrontierIntegrationReceipt {
+  match observation {
+    RustManifestReadRefused { detail: detail } =>
+      HonestFrontierIntegrationRefused { detail: detail }
+    RustManifestParseRefused { detail: detail } =>
+      HonestFrontierIntegrationRefused { detail: detail }
+    GitObservationRefused { detail: detail } =>
+      HonestFrontierIntegrationRefused { detail: detail }
+    RustManifestObserved {
+      repository_revision: revision,
+      manifest_content_identity: manifest_content_identity,
+      tracked_rust_repo_paths: tracked_rust_repo_paths,
+      prior_tracked_rust_repo_paths: prior_tracked_rust_repo_paths,
+      cargo_bin_repo_paths: cargo_bin_repo_paths
+    } =>
+      if revision == "" {
+        HonestFrontierIntegrationRefused {
+          detail: "observed manifest missing repository_revision"
+        }
+      } else {
+        let lifecycle = lifecycle_totality_receipt(observation: observation)
+        let reachability = product_reachability_receipt(observation: observation)
+        match lifecycle {
+          LifecycleTotalityObservationRefused =>
+            HonestFrontierIntegrationRefused { detail: "lifecycle totality refused" }
+          LifecycleTotalityDerived {
+            tracked_paths: tracked_paths,
+            generated_paths: generated_paths,
+            maintenance_disposition_paths: maintenance_disposition_paths,
+            unclassified_paths: unclassified_paths,
+            stale_disposition_paths: stale_disposition_paths,
+            duplicate_generated_paths: duplicate_generated_paths,
+            duplicate_disposition_paths: duplicate_disposition_paths,
+            duplicate_role_paths: duplicate_role_paths,
+            cross_axis_overlap_paths: cross_axis_overlap_paths,
+            role_without_disposition_paths: role_without_disposition_paths,
+            ill_formed_maintenance_disposition_paths: ill_formed_maintenance_disposition_paths
+          } =>
+            match reachability {
+              ProductReachabilityObservationRefused =>
+                HonestFrontierIntegrationRefused { detail: "product reachability refused" }
+              ProductReachabilityDerived {
+                cargo_root_paths: cargo_root_paths,
+                verdicts: verdicts
+              } => {
+                let hand_product = exact_hand_maintained_product_reachable_paths(
+                  verdicts: verdicts
+                )
+                let hand_refused = exact_hand_maintained_reachability_refused_paths(
+                  verdicts: verdicts
+                )
+                HonestFrontierIntegrationDerived {
+                  lifecycle: lifecycle,
+                  reachability: reachability,
+                  hand_maintained_product_reachable_paths: hand_product,
+                  hand_maintained_reachability_refused_paths: hand_refused
+                }
+              }
+            }
+        }
+      }
+  }
+}
+
+type TrackedRustUnclassifiedProjection
+  = TrackedRustUnclassifiedPaths { paths: List<String> }
+  | TrackedRustProjectionReadRefused { detail: String }
+  | TrackedRustProjectionParseRefused { detail: String }
+  | TrackedRustProjectionGitRefused { detail: String }
+  | TrackedRustProjectionObservationRefused { detail: String }
+
+fn tracked_rust_unclassified_projection(
+  observation: RustSourceHostObservation
+) -> TrackedRustUnclassifiedProjection {
+  match honest_frontier_integration_receipt(observation: observation) {
+    HonestFrontierIntegrationRefused { detail: detail } =>
+      match observation {
+        GitObservationRefused { detail: git_detail } =>
+          TrackedRustProjectionGitRefused { detail: git_detail }
+        RustManifestParseRefused { detail: parse_detail } =>
+          TrackedRustProjectionParseRefused { detail: parse_detail }
+        RustManifestReadRefused { detail: read_detail } =>
+          TrackedRustProjectionReadRefused { detail: read_detail }
+        RustManifestObserved {
+          repository_revision: repository_revision,
+          manifest_content_identity: manifest_content_identity,
+          tracked_rust_repo_paths: tracked_rust_repo_paths,
+          prior_tracked_rust_repo_paths: prior_tracked_rust_repo_paths,
+          cargo_bin_repo_paths: cargo_bin_repo_paths
+        } => TrackedRustProjectionObservationRefused { detail: detail }
+      }
+    HonestFrontierIntegrationDerived {
+      lifecycle: lifecycle,
+      reachability: reachability,
+      hand_maintained_product_reachable_paths: hand_maintained_product_reachable_paths,
+      hand_maintained_reachability_refused_paths: hand_maintained_reachability_refused_paths
+    } =>
+      match lifecycle {
+        LifecycleTotalityDerived {
+          tracked_paths: tracked_paths,
+          generated_paths: generated_paths,
+          maintenance_disposition_paths: maintenance_disposition_paths,
+          unclassified_paths: paths,
+          stale_disposition_paths: stale_disposition_paths,
+          duplicate_generated_paths: duplicate_generated_paths,
+          duplicate_disposition_paths: duplicate_disposition_paths,
+          duplicate_role_paths: duplicate_role_paths,
+          cross_axis_overlap_paths: cross_axis_overlap_paths,
+          role_without_disposition_paths: role_without_disposition_paths,
+          ill_formed_maintenance_disposition_paths: ill_formed_maintenance_disposition_paths
+        } =>
+          TrackedRustUnclassifiedPaths { paths: paths }
+        LifecycleTotalityObservationRefused =>
+          TrackedRustProjectionObservationRefused { detail: "lifecycle totality refused" }
+      }
+  }
+}
+
+fn honest_frontier_discovery_complete(observation: RustSourceHostObservation) -> Bool {
+  let receipt = lifecycle_totality_receipt(observation: observation)
+  match receipt {
+    LifecycleTotalityDerived {
+      tracked_paths: tracked_paths,
+      generated_paths: generated_paths,
+      maintenance_disposition_paths: maintenance_disposition_paths,
+      unclassified_paths: unclassified_paths,
+      stale_disposition_paths: stale_disposition_paths,
+      duplicate_generated_paths: duplicate_generated_paths,
+      duplicate_disposition_paths: duplicate_disposition_paths,
+      duplicate_role_paths: duplicate_role_paths,
+      cross_axis_overlap_paths: cross_axis_overlap_paths,
+      role_without_disposition_paths: role_without_disposition_paths,
+      ill_formed_maintenance_disposition_paths: ill_formed_maintenance_disposition_paths
+    } => lifecycle_discovery_complete(receipt: receipt)
+    LifecycleTotalityObservationRefused => false
+  }
+}
+
+fn honest_frontier_decision_complete(observation: RustSourceHostObservation) -> Bool {
+  let receipt = lifecycle_totality_receipt(observation: observation)
+  match receipt {
+    LifecycleTotalityDerived {
+      tracked_paths: tracked_paths,
+      generated_paths: generated_paths,
+      maintenance_disposition_paths: maintenance_disposition_paths,
+      unclassified_paths: unclassified_paths,
+      stale_disposition_paths: stale_disposition_paths,
+      duplicate_generated_paths: duplicate_generated_paths,
+      duplicate_disposition_paths: duplicate_disposition_paths,
+      duplicate_role_paths: duplicate_role_paths,
+      cross_axis_overlap_paths: cross_axis_overlap_paths,
+      role_without_disposition_paths: role_without_disposition_paths,
+      ill_formed_maintenance_disposition_paths: ill_formed_maintenance_disposition_paths
+    } => lifecycle_decision_complete(receipt: receipt)
+    LifecycleTotalityObservationRefused => false
+  }
+}

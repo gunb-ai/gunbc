@@ -136,15 +136,10 @@ data bucket_d_emit_edge_import_facts: List<LayerImportFact> = [
     layer: LayerPrefixWorkflow,
     path: "src/v2/workflow/ci_materialization_emit.dag",
     import_module: bash_orchestration_emit_module
-  },
-  LayerImportFact {
-    layer: LayerPrefixWorkflow,
-    path: "src/v2/workflow/ci_merge_admission_emit.dag",
-    import_module: bash_orchestration_emit_module
   }
 ]
 
-data bucket_d_emit_edge_discriminator_note: String = "Synthetic executing receipt for #7265 bucket-D emit modules: live-corpus containment is dark (pre-existing unrostered TS-AST consumers), so canonical live-tree scan cannot validate the two new realization_edge_path_prefixes rows. These facts mirror the actual imports; GREEN requires leak_count_canonical == 0."
+data bucket_d_emit_edge_discriminator_note: String = "Synthetic executing receipt for the surviving #7265 bucket-D materialization emitter. The sibling merge-admission emitter and its edge-prefix row deleted when the live work moved inside WalkPlan; retaining its synthetic fact would validate an implementation that no longer exists."
 
 test fn bucket_d_emit_modules_on_edge_roster_are_not_leak_holds() -> Bool {
   realization_vocab_leak_count_canonical(facts: bucket_d_emit_edge_import_facts) == 0
