@@ -379,6 +379,18 @@ fn explicit_witness_admissions_are_excluded_holds() -> Bool {
   explicit_witness_admissions_are_excluded(rows: explicit_witness_admissions)
 }
 
+fn explicit_witness_admissions_each_cover_themselves() -> Bool {
+  !any(
+    xs: explicit_witness_admissions,
+    predicate: fn(row) {
+      !explicit_witness_admission_covers(
+        entry: row.witness.entry,
+        function: row.witness.function
+      )
+    }
+  )
+}
+
 fn witness_exclusion_frontier_carries_no_admission_holds() -> Bool {
   !any(
     xs: witness_exclusion_frontier,

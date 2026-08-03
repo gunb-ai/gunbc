@@ -14,11 +14,11 @@ import gunbc.explicit_witness_admission {
 }
 import gunbc.ci_layer_roots { known_red_probe_roster }
 import v2.workflow.witness_admission {
-  witness_row_excluded_from_discovery,
   explicit_witness_admission_uniqueness_holds,
   explicit_witness_admission_rows_well_formed_holds,
   explicit_witness_admissions_are_scheduled_holds,
   explicit_witness_admissions_are_excluded_holds,
+  explicit_witness_admissions_each_cover_themselves,
   witness_exclusion_frontier_carries_no_admission_holds
 }
 import std.realization_schedule {
@@ -35,7 +35,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data exact_witness_admission_witness_note: String = "Executes the walls over gunbc.explicit_witness_admission, the one function-grain authority for exact witness admission. THE DISCRIMINATING RED is admission_reaches_the_admitted_function_and_not_its_sibling: it asserts both that an admitted witness is covered AND that a named sibling in the SAME file is not. Under the representation this lane replaced — a file-grain WitnessExclusionRow beside a probe_red row — the second half was FALSE by construction: the file-level exclusion hid every function in the file while the schedule named one, so the sibling executed nowhere and the reconciliation still passed, because it only ever asked whether some scheduled row's entry CONTAINED the exclusion pattern. That bad state had exactly one live instance when this landed, measured on the pre-change tree: seed_honesty_discharge_unavailable_test.dag, whose eight other functions had no probe row while the file's classification named the whole file QuarantineProbeExpectRed. Those eight are the sibling this witness names, so the assertion is anchored to the real defect rather than a synthetic one. The remaining claims are the walls: exactly one admission per witness, every admission naming a cadence that executes, every admission reached by its cadence's derived roster, every admission excluded from discovery by derivation rather than by an authored pattern, and no admission restated as a path-policy row. Synthetic RED controls cover the duplicate row, the non-executing cadence, and the sibling."
+data exact_witness_admission_witness_note: String = "Executes the walls over gunbc.explicit_witness_admission, the one function-grain authority for exact witness admission. THE DISCRIMINATING RED is admission_reaches_the_admitted_function_and_not_its_sibling, and it runs against a SYNTHETIC fixture that this witness authors itself: one admission over a fixture entry holding an expected-red function and an ordinary green one. It asserts the admission reaches the first and NOT the second. Under the representation this lane replaced - a file-grain WitnessExclusionRow beside a probe_red row - the second half was FALSE by construction: the file-level exclusion hid every function in the file while the schedule named one, so the green sibling executed nowhere and the reconciliation still passed, because it only ever asked whether some scheduled row's entry CONTAINED the exclusion pattern. THE FIXTURE IS DELIBERATE AND THE ALTERNATIVE WAS TRIED. The first draft anchored this assertion to the real live instance instead, on the reasoning that a wall is better evidenced by a defect that actually happened. That is normally the stronger move, and here it was the wrong one: it binds the evidence to the defect's CONTINUED EXISTENCE, which is the one thing a wall exists to end. Caught in review before merge - gunbc#7688 dissolves that very quarantine tonight (the operator recorded the seed-honesty verdict, the closing contract greened, and the row climbs out under DESIGN 4b(4)), which would have left this assertion with no subject: passing vacuously or redding for a reason that has nothing to do with the wall. Evidence that must survive a climb has to be constructed so the climb cannot delete it. DESIGN 4b(4) says the climb deletes the production machinery and keeps the evidence enrolled; a live-anchored assertion cannot satisfy that clause because the machinery and the subject are the same rows. THE HISTORICAL RECEIPT, past tense and no longer load-bearing: when this lane opened, the bad state had exactly one live instance, measured on the pre-change tree - seed_honesty_discharge_unavailable_test.dag, 8 of whose 9 functions had no probe row while the file's classification named the whole file QuarantineProbeExpectRed, absorbed as OfflineLocalRecipe by the test/claim/execution/ path policy so the Phase 0(b) orphan refusal never saw them. Everywhere else the file-grain roster form or that refusal already covered it. That instance is a provenance note for why the wall was built, not the thing the wall is tested against. THE REMAINING CLAIMS are the walls over the live rows, and they are population-independent by construction - each is a universal over the admission rows plus a projection identity, so they stay meaningful at any roster size including zero, and none of them is where the discrimination lives. Synthetic RED controls cover the duplicate row, the non-executing cadence, and the file-grain shape that does reach the sibling."
 
 test fn exact_witness_admission_walls_hold() -> Bool {
   explicit_witness_admission_uniqueness_holds()
@@ -45,27 +45,58 @@ test fn exact_witness_admission_walls_hold() -> Bool {
     && witness_exclusion_frontier_carries_no_admission_holds()
 }
 
-data admitted_entry: String = "src/v2/test/claim/execution/seed_honesty_discharge_unavailable_test.dag"
-data admitted_function: String = "v1_seed_honesty_decision_closing_contract_holds"
-data admitted_sibling_function: String = "seed_honesty_check_four_poles_hold_before_decision"
+data fixture_entry: String = "dag/test/claim/synthetic_admission_witness_test.dag"
+data fixture_expected_red_function: String = "fixture_expected_red_holds"
+data fixture_green_sibling_function: String = "fixture_ordinary_green_holds"
+
+fn fixture_exact_admission_rows() -> List<ExplicitWitnessAdmission> {
+  [
+    known_red_probe(
+      entry: fixture_entry,
+      f: fixture_expected_red_function,
+      kind: CorpusWitnessKind,
+      reason: "fixture: an expected-red witness sharing a file with an ordinary green one",
+      dissolve_on: "fixture: never - this row is authored by the witness, not by the roster"
+    )
+  ]
+}
+
+fn fixture_file_grain_admission_rows() -> List<ExplicitWitnessAdmission> {
+  [
+    known_red_probe(
+      entry: fixture_entry,
+      f: "",
+      kind: CorpusWitnessKind,
+      reason: "fixture: the file-grain shape this authority replaced",
+      dissolve_on: "fixture: never - control only"
+    )
+  ]
+}
 
 test fn admission_reaches_the_admitted_function_and_not_its_sibling() -> Bool {
-  explicit_witness_admission_covers(entry: admitted_entry, function: admitted_function)
-    && !explicit_witness_admission_covers(
-      entry: admitted_entry,
-      function: admitted_sibling_function
+  let rows = fixture_exact_admission_rows()
+  explicit_witness_admission_covers_in(
+    rows: rows,
+    entry: fixture_entry,
+    function: fixture_expected_red_function
+  )
+    && !explicit_witness_admission_covers_in(
+      rows: rows,
+      entry: fixture_entry,
+      function: fixture_green_sibling_function
     )
 }
 
 test fn admission_does_not_reach_the_same_function_name_in_another_file() -> Bool {
-  !explicit_witness_admission_covers(
-    entry: "dag/test/claim/some_other_witness_test.dag",
-    function: admitted_function
+  !explicit_witness_admission_covers_in(
+    rows: fixture_exact_admission_rows(),
+    entry: "dag/test/claim/synthetic_other_witness_test.dag",
+    function: fixture_expected_red_function
   )
 }
 
-test fn admitted_witness_is_excluded_from_discovery_by_derivation() -> Bool {
-  witness_row_excluded_from_discovery(entry: admitted_entry, function: admitted_function)
+test fn every_live_admission_is_reached_by_its_own_row() -> Bool {
+  explicit_witness_admissions_each_cover_themselves()
 }
 
 test fn every_admission_is_projected_into_exactly_one_cadence_roster() -> Bool {
@@ -117,24 +148,18 @@ test fn red_control_admission_with_non_executing_cadence_reds() -> Bool {
 }
 
 test fn red_control_file_grain_admission_would_reach_the_sibling() -> Bool {
-  let file_grain = [
-    known_red_probe(
-      entry: admitted_entry,
-      f: "",
-      kind: CorpusWitnessKind,
-      reason: "synthetic",
-      dissolve_on: "synthetic"
-    )
-  ]
   explicit_witness_admission_covers_in(
-    rows: file_grain,
-    entry: admitted_entry,
-    function: admitted_sibling_function
+    rows: fixture_file_grain_admission_rows(),
+    entry: fixture_entry,
+    function: fixture_green_sibling_function
   )
-    && !explicit_witness_admission_covers(
-      entry: admitted_entry,
-      function: admitted_sibling_function
+    && !explicit_witness_admission_covers_in(
+      rows: fixture_exact_admission_rows(),
+      entry: fixture_entry,
+      function: fixture_green_sibling_function
     )
 }
 
-data red_control_file_grain_note: String = "red_control_file_grain_admission_would_reach_the_sibling is the control that keeps the discriminating claim honest: it builds a file-grain row over the SAME entry, shows that shape does reach the sibling, and shows the live rows do not. Without it, the sibling assertion could pass for the trivial reason that the predicate never matches anything."
+data red_control_file_grain_note: String = "red_control_file_grain_admission_would_reach_the_sibling is what keeps the discriminating claim from passing vacuously: it runs the SAME predicate over the file-grain shape and shows it DOES reach the sibling, so the false in the primary assertion is a decision about grain rather than a predicate that never matches. Both arms are synthetic, so neither can lose its subject when a live quarantine climbs out."
+
+data live_row_claims_are_population_independent_note: String = "every_live_admission_is_reached_by_its_own_row, every_admission_is_projected_into_exactly_one_cadence_roster and ci_layer_roots_probe_roster_is_the_corpus_projection are universals and identities over the live rows. They hold at any roster size, including zero, and they are deliberately NOT where the discrimination lives - a check whose strength depends on the live population having members is a check that goes quietly vacuous the moment the lane it guards succeeds."

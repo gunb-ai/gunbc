@@ -33287,28 +33287,57 @@ mod module_path_index_tests {
 
     #[test]
     fn explicit_witness_admission_is_exact_not_file_grain() {
-        // THE DISCRIMINATING RED for this lane. Under the old representation the admission's
+        // THE DISCRIMINATING RED on the host side, run against SYNTHETIC source rather than
+        // the live authority. Under the representation this lane replaced, the admission's
         // FILE carried the exclusion, so a green sibling was hidden with it and executed
-        // nowhere while the reconciliation still passed. Exact grain must reach the admitted
-        // function and nothing else in its file.
-        let pairs = super::explicit_witness_admission_pairs();
-        let admitted = (
-            "src/v2/test/claim/execution/seed_honesty_discharge_unavailable_test.dag".to_string(),
-            "v1_seed_honesty_decision_closing_contract_holds".to_string(),
+        // nowhere while the reconciliation still passed. Exact grain must produce a key for
+        // the admitted function and none for its sibling.
+        //
+        // Anchoring this to a live admission was tried and rejected in review: it binds the
+        // evidence to the defect's continued existence, which is the one thing the wall
+        // exists to end, so the assertion loses its subject the moment a quarantine climbs
+        // out (gunbc#7688 dissolves one tonight). The `.dag` witness carries the same
+        // reasoning at its own grain.
+        let synthetic = "module gunbc.explicit_witness_admission\n\n\
+             data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [\n\
+               known_red_probe(\n\
+                 entry: \"dag/test/claim/synthetic_admission_witness_test.dag\",\n\
+                 f: \"fixture_expected_red_holds\",\n\
+                 kind: CorpusWitnessKind,\n\
+                 reason: \"r\",\n\
+                 dissolve_on: \"d\"\n\
+               ),\n\
+             ]\n";
+        let keys =
+            super::witness_admission_entry_function_keys_from_source("synthetic.dag", synthetic);
+        assert!(
+            keys.contains(
+                &"dag/test/claim/synthetic_admission_witness_test.dag::fixture_expected_red_holds"
+                    .to_string()
+            ),
+            "the admitted function must produce a consumer key; got {keys:?}"
         );
         assert!(
-            pairs.contains(&admitted),
-            "the seed-honesty closing contract must be exact-admitted; got {pairs:?}"
-        );
-        let sibling = (
-            admitted.0.clone(),
-            "seed_honesty_check_four_poles_hold_before_decision".to_string(),
-        );
-        assert!(
-            !pairs.contains(&sibling),
+            !keys
+                .iter()
+                .any(|k| k.ends_with("::fixture_ordinary_green_holds")),
             "a sibling of an admitted witness must NOT be admitted by it — that is the \
-             file-grain absorption this authority removed; got {pairs:?}"
+             file-grain absorption this authority removed; got {keys:?}"
         );
+    }
+
+    #[test]
+    fn explicit_witness_admission_live_rows_are_all_function_grain() {
+        // Population-independent: holds at any roster size including zero, and states the
+        // property the exclusion derivation relies on — no live known-red admission uses the
+        // file-grain form, so none of them can reach a sibling.
+        for (entry, function) in super::explicit_witness_admission_pairs() {
+            assert!(
+                !function.is_empty(),
+                "live admission for {entry} has an empty function — the file-grain form \
+                 reaches every sibling and no known-red row may use it"
+            );
+        }
     }
 
     #[test]
