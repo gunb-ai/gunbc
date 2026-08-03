@@ -1,15 +1,19 @@
 module std.algebra_law
 
-import std.syntax { BinOp, Add }
-import std.types { NonEmptyStr }
+import std.types { Float, NonEmptyStr, is_kernel_type }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
 
-data algebra_law_slice_note: String = "Slice-1 associativity evidence only: AssociativityCounterexampleWitness plus AssociativityRefutationReceipt bound to std.syntax.BinOp and KernelTypeName enum variants — not string carrier or operation nicknames. LawExhaustivelyVerified and LawDeclaredByAuthority are omitted until an exhaustive checker or cited proposition producer exists. Float binary + has no DeclarationRef-producing surface (compiler builtin); extdeps.numeric.ieee754_float records that grounding gap beside the receipt."
+data algebra_law_slice_note: String = "Slice-1 associativity evidence only: AssociativityCounterexampleWitness plus AssociativityRefutationReceipt bound to the closed AssociativityOperationSubject coproduct (sole variant AssociativityFloatAdd — kernel Float addition, rostered in std.types kernel_type_set). LawExhaustivelyVerified and LawDeclaredByAuthority are omitted until an exhaustive checker or cited proposition producer exists. Float binary + has no DeclarationRef-producing surface (compiler builtin); extdeps.numeric.ieee754_float records that grounding gap beside the receipt."
 
-type KernelTypeName
-  = KernelFloat
-  | KernelInt
-  | KernelBool
-  | KernelString
+data algebra_law_subject_coproduct_expansion_disposition: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "std.algebra_law",
+    decl_name: "AssociativityOperationSubject",
+    field: WholeDeclaration
+  }
+}
 
 type AssociativityCounterexampleWitness<T> {
   left_operand: T
@@ -19,18 +23,16 @@ type AssociativityCounterexampleWitness<T> {
   right_fold_result: T
 }
 
-type AssociativityOperationSubject {
-  carrier: KernelTypeName
-  binop: BinOp
-}
+type AssociativityOperationSubject
+  = AssociativityFloatAdd {}
 
 type AssociativityRefutationReceipt<T> {
   subject: AssociativityOperationSubject
   witness: AssociativityCounterexampleWitness<T>
 }
 
-fn associativity_subject_is_float_add(subject: AssociativityOperationSubject) -> Bool {
-  subject.carrier == KernelFloat && subject.binop == Add
+fn float_kernel_type_in_authority_roster() -> Bool {
+  is_kernel_type(name: "Float")
 }
 
 fn float_add_associativity_witness_matches_execution(
@@ -46,6 +48,8 @@ fn float_add_associativity_witness_matches_execution(
 fn associativity_refutation_holds_for_float_add(
   receipt: AssociativityRefutationReceipt<Float>,
 ) -> Bool {
-  associativity_subject_is_float_add(subject: receipt.subject)
-    && float_add_associativity_witness_matches_execution(witness: receipt.witness)
+  match receipt.subject {
+    AssociativityFloatAdd {} =>
+      float_add_associativity_witness_matches_execution(witness: receipt.witness)
+  }
 }

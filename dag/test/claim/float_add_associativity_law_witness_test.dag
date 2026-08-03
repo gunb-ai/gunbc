@@ -1,13 +1,11 @@
 module test.claim.float_add_associativity_law_witness_test
 
 import std.types { Bool, Float }
-import std.syntax { Add, Mul }
 import std.algebra_law {
   AssociativityCounterexampleWitness,
-  AssociativityOperationSubject,
   AssociativityRefutationReceipt,
-  KernelFloat,
-  KernelInt,
+  AssociativityFloatAdd,
+  float_kernel_type_in_authority_roster,
   associativity_refutation_holds_for_float_add,
 }
 import extdeps.numeric.ieee754_float {
@@ -48,24 +46,10 @@ test fn w_float_add_associativity_rejects_fabricated_left_fold_result() -> Bool 
   !associativity_refutation_holds_for_float_add(receipt: bad_receipt)
 }
 
-test fn w_float_add_associativity_carrier_int_subject_refuses() -> Bool {
-  let bad_receipt = AssociativityRefutationReceipt {
-    subject: AssociativityOperationSubject {
-      carrier: KernelInt,
-      binop: Add,
-    },
-    witness: float_add_associativity_refuted.witness,
-  }
-  !associativity_refutation_holds_for_float_add(receipt: bad_receipt)
+test fn w_float_kernel_type_in_std_types_roster() -> Bool {
+  float_kernel_type_in_authority_roster()
 }
 
-test fn w_float_add_associativity_binop_mul_subject_refuses() -> Bool {
-  let bad_receipt = AssociativityRefutationReceipt {
-    subject: AssociativityOperationSubject {
-      carrier: KernelFloat,
-      binop: Mul,
-    },
-    witness: float_add_associativity_refuted.witness,
-  }
-  !associativity_refutation_holds_for_float_add(receipt: bad_receipt)
+test fn w_float_add_associativity_subject_is_float_add_coproduct() -> Bool {
+  float_add_associativity_subject == AssociativityFloatAdd {}
 }
