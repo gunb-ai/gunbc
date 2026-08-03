@@ -15,8 +15,6 @@
 
 use im::{OrdSet as BTreeSet, Vector as Vec};
 
-pub mod cli_run;
-pub mod coproduct_reflection;
 pub mod extdeps_cargo;
 pub mod extdeps_cargo_version;
 pub mod extdeps_container_oci_digest;
@@ -43,11 +41,6 @@ pub mod extdeps_version_semver;
 pub mod gunbc_rust_decl_type_overlay;
 pub mod gunbc_stage0_crate_layout_generated;
 pub mod gunbc_stage0_crate_partition_generated;
-pub mod memory_governor;
-pub mod module_path_index;
-pub mod recorded_fixture;
-pub mod resolved_graph_cache;
-pub mod shared_typecheck_store;
 pub mod std_algebra;
 pub mod std_coercion;
 pub mod std_computation;
@@ -87,9 +80,6 @@ pub mod std_termination;
 pub mod std_trait_derive_shape;
 pub mod std_types;
 pub mod std_unicode_types;
-pub mod usv_pilot_v2_std_algebra;
-pub mod usv_pilot_v2_std_collection;
-pub mod usv_pilot_v2_std_node;
 pub mod v1_compiler_artifact;
 pub mod v1_compiler_closure_stub_v2_std_integer_rust;
 pub mod v1_compiler_closure_stub_v2_std_text_rust;
@@ -132,7 +122,6 @@ pub mod v1_compiler_trace;
 pub mod v1_compiler_trait_derive_emit;
 pub mod v1_compiler_workspace_members;
 pub mod v1_gunbc_occurrence_binding_parser_walk;
-pub mod v1_interpreter;
 pub mod v1_probe_emit_interp;
 pub mod v1_rt;
 pub mod v1_std_core;
@@ -142,13 +131,26 @@ pub mod v1_tests_claim_occurrence_binding_parser_walk_witness_test;
 pub mod v1_tests_claim_occurrence_identity_debt_receipt_test;
 pub mod v1_tests_claim_pattern_binder_declaration_node_test;
 pub mod v1_tests_claim_required_expr_newline_continuation_test;
+pub mod wt_a;
+pub mod wt_b;
+pub mod wt_common;
+#[macro_use]
+pub mod v1_interpreter_dispatch_generated;
+pub mod cli_run;
+pub mod coproduct_reflection;
+pub mod memory_governor;
+pub mod module_path_index;
+pub mod recorded_fixture;
+pub mod resolved_graph_cache;
+pub mod shared_typecheck_store;
+pub mod usv_pilot_v2_std_algebra;
+pub mod usv_pilot_v2_std_collection;
+pub mod usv_pilot_v2_std_node;
+pub mod v1_interpreter;
 pub mod v2_compiler_infer;
 pub mod v2_compiler_program_partition;
 pub mod v2_compiler_resolve;
 pub mod v2_compiler_tokenize;
-pub mod wt_a;
-pub mod wt_b;
-pub mod wt_common;
 
 pub struct NonEmptyVec<T>(Vec<T>);
 
