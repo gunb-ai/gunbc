@@ -1,0 +1,390 @@
+module test.claim.roadmap_program_view_witness
+
+import std.types { Int, String, Bool, List, NonEmptyStr }
+import gunbc.roadmap_model {
+  RoadmapNode, RoadmapEdge, RoadmapNodeId, RoadmapNodeIdentity, RoadmapAcceptanceReceipt,
+  roadmap_criteria_digest,
+  NodeSizing, Sized, Unsized, IntricacyLow, VolumeSmall, ManualAcceptance, PrsMerged,
+}
+import gunbc.roadmap_status {
+  RoadmapItem, TicketLine, DerivableLine, TicketFields, TicketUpdate,
+  RedControlExecuted, HandbackDelivered, Signoff, Unsigned,
+}
+import gunbc.roadmap_execution_contract {
+  WorkItemExecutionContract, ExecutionContractUnspecified, ExecutionContract,
+  CargoFmtValidation,
+}
+import gunbc.v1_deletion_plan { V1FinishLineSpec, CompilerFixedPoint }
+import gunbc.roadmap_program_view {
+  V1ConvergenceFront, NamespacePDeriveFront, V2GenerationFront,
+  ConvergenceFrontSpec, program_front_key,
+  ObligationState, ObligationAccepted, ObligationStartable,
+  ObligationDependencyHeld, ObligationContractHeld,
+  NodeStanding, RemainingShape, ConstraintView, ConstraintKind,
+  ImplementationConstraint, ContractConstraint,
+  ProposedPlane, ProposedCarrierAbsent,
+  FinishLineView, FrontView, V1DeletionProgramView,
+  V1ProgramViewResult, ProgramViewDerived, ProgramViewRefused,
+  ProgramViewRefusalCause, FinishLineNodeUnresolved, FrontGateUnresolved,
+  program_view, v1_program_view,
+}
+import gunbc.roadmap_authority {
+  declared_roadmap_nodes, declared_roadmap_edges, roadmap_acceptance_receipts,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data roadmap_program_view_witness_note: String = "The V0 red controls from the program-navigation requirements (operator, 2026-08-02), executed on PLANTED fixtures so every oracle is independently authored rather than copied from the live tree (the DESIGN section 5 oracle rule): (1) collapsing a chain link changes the derived sequential depth — accepting the fixture root drops the planted depth four to three, so a hand-collapsed tail cannot survive unnoticed; (2) a misspelled finish-line node or front gate REFUSES the whole projection with every located cause, never a silently smaller view; (3+6) a node whose line carries merged pull requests but no acceptance receipt is not accepted — and even an AUTHORED receipt row for a ticketless node cannot accept it, because the criteria digest has nothing to match; (4) a node with a bound closing contract and no receipt stays unaccepted — contract existence is not completion; (5) the proposed plane is a single-arm type carrying nothing, so a proposed node in any plane is unwritable by construction and the witness pins the arm. The live joins assert identity-grain facts only: the real finish lines and gates resolve, each line's contributing-front set is exactly the derived membership over the authored edges, and the accepted-iff-no-constraint implication holds in both directions — no live count is pinned, so ordinary progress never reds these rows."
+
+fn fx_ticket(headline: String) -> TicketFields {
+  TicketFields {
+    headline: headline,
+    brief: "fixture brief",
+    displaced_cost: "fixture",
+    current_state: "fixture",
+    first_slice: "fixture",
+    red_control: "fixture red control",
+    out_of_scope: "fixture",
+    handback: "fixture handback",
+    updates: [],
+    authored_on: "2026-08-02",
+    last_verified_on: "2026-08-02",
+  }
+}
+
+fn fx_node(id: String, bound: Bool, sized: Bool) -> RoadmapNode {
+  RoadmapNode {
+    identity: concat("fx_", id) as RoadmapNodeIdentity,
+    node: id as RoadmapNodeId,
+    line: TicketLine { done: false, ticket: fx_ticket(headline: concat("Fixture: ", id)) },
+    carriers: [],
+    sizing: if sized {
+      Sized { intricacy: IntricacyLow, volume: VolumeSmall, repo: "gunbc", acceptance: ManualAcceptance }
+    } else { Unsized },
+    execution: if bound {
+      ExecutionContract { validations: [CargoFmtValidation], extra_capabilities: [] }
+    } else { ExecutionContractUnspecified },
+    owner: "fixture",
+    signoff: Unsigned,
+  }
+}
+
+fn fx_pr_node(id: String) -> RoadmapNode {
+  RoadmapNode {
+    identity: concat("fx_", id) as RoadmapNodeIdentity,
+    node: id as RoadmapNodeId,
+    line: DerivableLine { prs: [9999], title: concat("Fixture merged-PR node: ", id), description: "merged but never accepted" },
+    carriers: [],
+    sizing: Sized { intricacy: IntricacyLow, volume: VolumeSmall, repo: "gunbc", acceptance: PrsMerged },
+    execution: ExecutionContract { validations: [CargoFmtValidation], extra_capabilities: [] },
+    owner: "fixture",
+    signoff: Unsigned,
+  }
+}
+
+fn fx_edge(child: String, parent: String) -> RoadmapEdge {
+  RoadmapEdge { child: child as RoadmapNodeId, parent: parent as RoadmapNodeId }
+}
+
+fn fx_nodes() -> List<RoadmapNode> {
+  [
+    fx_node(id: "fa", bound: true, sized: true),
+    fx_node(id: "fb", bound: true, sized: true),
+    fx_node(id: "fc", bound: true, sized: true),
+    fx_node(id: "fd", bound: false, sized: false),
+    fx_pr_node(id: "fe"),
+    fx_node(id: "fline", bound: true, sized: true),
+  ]
+}
+
+fn fx_edges() -> List<RoadmapEdge> {
+  [
+    fx_edge(child: "fb", parent: "fa"),
+    fx_edge(child: "fc", parent: "fb"),
+    fx_edge(child: "fline", parent: "fc"),
+    fx_edge(child: "fline", parent: "fd"),
+    fx_edge(child: "fline", parent: "fe"),
+  ]
+}
+
+fn fx_lines() -> List<V1FinishLineSpec> {
+  [ V1FinishLineSpec {
+      line: CompilerFixedPoint,
+      name: "Fixture finish line",
+      claim: "The fixture program completes.",
+      node: "fline" as RoadmapNodeId,
+  } ]
+}
+
+fn fx_fronts() -> List<ConvergenceFrontSpec> {
+  [
+    ConvergenceFrontSpec {
+      front: NamespacePDeriveFront,
+      name: "Fixture front one",
+      purpose: "fixture",
+      gates: [ "fc" as RoadmapNodeId ],
+    },
+    ConvergenceFrontSpec {
+      front: V2GenerationFront,
+      name: "Fixture front two",
+      purpose: "fixture",
+      gates: [ "fd" as RoadmapNodeId ],
+    },
+  ]
+}
+
+fn fx_receipt_for(n: RoadmapNode) -> RoadmapAcceptanceReceipt {
+  RoadmapAcceptanceReceipt {
+    node: n.node,
+    criteria_digest: roadmap_criteria_digest(t: fx_ticket(headline: concat("Fixture: ", n.node as String))),
+    red_control: RedControlExecuted {
+      witness_module: "test.claim.roadmap_program_view_witness" as NonEmptyStr,
+      witness_fn: "fixture" as NonEmptyStr,
+      executed_on: "2026-08-02" as NonEmptyStr,
+    },
+    handback: HandbackDelivered {
+      first_artifact: "fixture-artifact" as NonEmptyStr,
+      further_artifacts: [],
+    },
+    accepted_by: "fixture" as NonEmptyStr,
+    accepted_on: "2026-08-02" as NonEmptyStr,
+  }
+}
+
+fn fx_view(receipts: List<RoadmapAcceptanceReceipt>, in_flight: List<String>) -> V1ProgramViewResult {
+  program_view(
+    lines: fx_lines(), fronts: fx_fronts(),
+    nodes: fx_nodes(), edges: fx_edges(),
+    receipts: receipts, in_flight: in_flight,
+  )
+}
+
+fn fx_derived(receipts: List<RoadmapAcceptanceReceipt>, in_flight: List<String>) -> V1DeletionProgramView {
+  match fx_view(receipts: receipts, in_flight: in_flight) {
+    ProgramViewDerived { view } => view
+    ProgramViewRefused { causes: _ } => V1DeletionProgramView {
+      finish_lines: [], fronts: [],
+      remaining: RemainingShape {
+        sequential_depth: 0 - 1, open_fronts: 0 - 1, startable_now: 0 - 1,
+        in_flight: 0 - 1, dependency_held: 0 - 1, contract_held: 0 - 1, unsized: 0 - 1,
+      },
+      proposed: ProposedCarrierAbsent,
+    }
+  }
+}
+
+fn fx_line_view(receipts: List<RoadmapAcceptanceReceipt>, in_flight: List<String>) -> FinishLineView? {
+  fx_derived(receipts: receipts, in_flight: in_flight).finish_lines |> first
+}
+
+test fn witness_fixture_shape_exact_populations() -> Bool {
+  match fx_line_view(receipts: [], in_flight: []) {
+    Absent => false
+    Present { value: lv } =>
+      lv.remaining.sequential_depth == 4
+        && lv.remaining.open_fronts == 2
+        && lv.remaining.startable_now == 2
+        && lv.remaining.in_flight == 0
+        && lv.remaining.dependency_held == 3
+        && lv.remaining.contract_held == 1
+        && lv.remaining.unsized == 1
+        && !lv.accepted
+        && count(lv.contributing_fronts) == 2
+  }
+}
+
+test fn witness_red_collapsing_a_link_changes_the_depth() -> Bool {
+  let base = fx_line_view(receipts: [], in_flight: [])
+  let collapsed = fx_line_view(
+    receipts: [ fx_receipt_for(n: fx_node(id: "fa", bound: true, sized: true)) ],
+    in_flight: [])
+  match base {
+    Absent => false
+    Present { value: b } => match collapsed {
+      Absent => false
+      Present { value: c } =>
+        b.remaining.sequential_depth == 4
+          && c.remaining.sequential_depth == 3
+          && b.remaining.sequential_depth != c.remaining.sequential_depth
+    }
+  }
+}
+
+test fn witness_acceptance_moves_the_primary_constraint() -> Bool {
+  let base = fx_line_view(receipts: [], in_flight: [])
+  let advanced = fx_line_view(
+    receipts: [ fx_receipt_for(n: fx_node(id: "fa", bound: true, sized: true)) ],
+    in_flight: [])
+  match base {
+    Absent => false
+    Present { value: b } => match advanced {
+      Absent => false
+      Present { value: a } => match b.constraint {
+        Absent => false
+        Present { value: bc } => match a.constraint {
+          Absent => false
+          Present { value: ac } =>
+            (bc.subject as String) == "fa"
+              && (ac.subject as String) == "fb"
+              && match ac.kind {
+                ImplementationConstraint => true
+                ContractConstraint => false
+              }
+        }
+      }
+    }
+  }
+}
+
+test fn witness_red_misspelled_identities_refuse_with_located_causes() -> Bool {
+  let bad_line = program_view(
+    lines: [ V1FinishLineSpec {
+      line: CompilerFixedPoint, name: "typo", claim: "typo",
+      node: "fline-typo" as RoadmapNodeId,
+    } ],
+    fronts: fx_fronts(), nodes: fx_nodes(), edges: fx_edges(), receipts: [], in_flight: [])
+  let bad_gate = program_view(
+    lines: fx_lines(),
+    fronts: [ ConvergenceFrontSpec {
+      front: V2GenerationFront, name: "typo front", purpose: "typo",
+      gates: [ "fd-typo" as RoadmapNodeId ],
+    } ],
+    nodes: fx_nodes(), edges: fx_edges(), receipts: [], in_flight: [])
+  let line_refused = match bad_line {
+    ProgramViewRefused { causes } =>
+      count(causes) == 1 && all(causes, c => match c {
+        FinishLineNodeUnresolved { line_key, node } =>
+          line_key == "compiler-fixed-point" && (node as String) == "fline-typo"
+        FrontGateUnresolved { front_key: _, gate: _ } => false
+      })
+    ProgramViewDerived { view: _ } => false
+  }
+  let gate_refused = match bad_gate {
+    ProgramViewRefused { causes } =>
+      count(causes) == 1 && all(causes, c => match c {
+        FrontGateUnresolved { front_key, gate } =>
+          front_key == "v2-generation" && (gate as String) == "fd-typo"
+        FinishLineNodeUnresolved { line_key: _, node: _ } => false
+      })
+    ProgramViewDerived { view: _ } => false
+  }
+  line_refused && gate_refused
+}
+
+test fn witness_red_merged_prs_and_contracts_do_not_accept() -> Bool {
+  let bogus_receipt = RoadmapAcceptanceReceipt {
+    node: "fe" as RoadmapNodeId,
+    criteria_digest: roadmap_criteria_digest(t: fx_ticket(headline: "Fixture: fe")),
+    red_control: RedControlExecuted {
+      witness_module: "test.claim.roadmap_program_view_witness" as NonEmptyStr,
+      witness_fn: "fixture" as NonEmptyStr,
+      executed_on: "2026-08-02" as NonEmptyStr,
+    },
+    handback: HandbackDelivered {
+      first_artifact: "fixture-artifact" as NonEmptyStr,
+      further_artifacts: [],
+    },
+    accepted_by: "fixture" as NonEmptyStr,
+    accepted_on: "2026-08-02" as NonEmptyStr,
+  }
+  let with_bogus = fx_line_view(receipts: [ bogus_receipt ], in_flight: [])
+  match with_bogus {
+    Absent => false
+    Present { value: lv } =>
+      lv.remaining.sequential_depth == 4
+        && lv.remaining.startable_now == 2
+        && lv.remaining.dependency_held == 3
+  }
+}
+
+test fn witness_in_flight_is_an_overlay_not_a_state() -> Bool {
+  match fx_line_view(receipts: [], in_flight: [ "fa" ]) {
+    Absent => false
+    Present { value: lv } =>
+      lv.remaining.in_flight == 1
+        && lv.remaining.startable_now == 1
+        && lv.remaining.dependency_held == 3
+        && match lv.constraint {
+          Absent => false
+          Present { value: c } => (c.subject as String) == "fa" && c.in_flight
+        }
+  }
+}
+
+test fn witness_proposed_plane_carries_nothing_by_construction() -> Bool {
+  match fx_view(receipts: [], in_flight: []) {
+    ProgramViewRefused { causes: _ } => false
+    ProgramViewDerived { view } => match view.proposed {
+      ProposedCarrierAbsent => true
+    }
+  }
+}
+
+fn live_view() -> V1ProgramViewResult {
+  v1_program_view(
+    nodes: declared_roadmap_nodes(),
+    edges: declared_roadmap_edges(),
+    receipts: roadmap_acceptance_receipts(),
+    in_flight: [],
+  )
+}
+
+fn live_line_front_keys(view: V1DeletionProgramView, line_key: String) -> List<String> {
+  fold(view.finish_lines, init: [], f: (acc, lv) =>
+    if lv.key == line_key {
+      lv.contributing_fronts |> map(c => program_front_key(front: c))
+    } else { acc })
+}
+
+test fn witness_live_program_view_derives_and_gates_resolve() -> Bool {
+  match live_view() {
+    ProgramViewDerived { view } =>
+      count(view.finish_lines) == 4 && count(view.fronts) == 5
+    ProgramViewRefused { causes: _ } => false
+  }
+}
+
+fn live_front_keys_are(view: V1DeletionProgramView, line_key: String, expected: List<String>) -> Bool {
+  live_line_front_keys(view: view, line_key: line_key) == expected
+}
+
+test fn witness_live_contributing_fronts_are_the_derived_sets() -> Bool {
+  match live_view() {
+    ProgramViewRefused { causes: _ } => false
+    ProgramViewDerived { view } =>
+      live_front_keys_are(view: view, line_key: "compiler-fixed-point",
+        expected: [ "namespace-pderive", "v2-generation" ])
+        && live_front_keys_are(view: view, line_key: "interpreter-deleted",
+          expected: [ "namespace-pderive", "v2-generation", "materialization-cutover" ])
+        && live_front_keys_are(view: view, line_key: "products-v1-free",
+          expected: [ "namespace-pderive", "v2-generation", "honest-frontier", "materialization-cutover" ])
+        && live_front_keys_are(view: view, line_key: "zero-hand-maintained-rust",
+          expected: [ "namespace-pderive", "v2-generation", "honest-frontier", "materialization-cutover", "test-migration-tail" ])
+  }
+}
+
+test fn witness_live_every_front_contributes_to_some_line() -> Bool {
+  match live_view() {
+    ProgramViewRefused { causes: _ } => false
+    ProgramViewDerived { view } =>
+      all(view.fronts, fv =>
+        any(view.finish_lines, lv =>
+          lv.contributing_fronts |> any(c => program_front_key(front: c) == fv.key)))
+  }
+}
+
+fn probe_constraint_iff(lv: FinishLineView) -> Bool {
+  match lv.constraint {
+    Absent => lv.accepted
+    Present { value: _ } => !lv.accepted
+  }
+}
+
+test fn witness_live_constraint_present_iff_line_unaccepted() -> Bool {
+  match live_view() {
+    ProgramViewRefused { causes: _ } => false
+    ProgramViewDerived { view } =>
+      all(view.finish_lines, lv => probe_constraint_iff(lv: lv))
+  }
+}

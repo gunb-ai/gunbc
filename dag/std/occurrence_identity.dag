@@ -19,6 +19,28 @@ fn authored_token_ordinal_space_initial() -> AuthoredTokenOrdinalSpace {
   }
 }
 
+data authored_token_ordinal_value_bridge_note: String = "AuthoredTokenOrdinal is the comparable source-order carrier (strictly-before gating for ModuleExposure). It is a bare Int brand today — not yet Measure<Count, One, Nat> — because the same feature:occurrence-ordinal-value-measure wall that gates AuthoredTokenOrdinalSpace still blocks a faithful HostNative measure projection. Single authority lives here beside AuthoredTokenOrdinalSpace; consumers import the brand, never re-mint a parallel Int wrapper."
+
+data authored_token_ordinal_value_bridge_dissolve_on: String = "feature:occurrence-ordinal-value-measure — DISSOLVE-ON: same trigger as authored_token_ordinal_typed_bridge_dissolve_on; replace AuthoredTokenOrdinal.value with Measure<Count, One, Nat> (or the converged Nat inhabitant) and delete both value-bridge rows with the space-bridge rows."
+
+type AuthoredTokenOrdinal {
+  value: Int
+}
+
+fn authored_token_ordinal_before(
+  earlier: AuthoredTokenOrdinal,
+  later: AuthoredTokenOrdinal
+) -> Bool {
+  earlier.value < later.value
+}
+
+fn authored_token_ordinal_eq(
+  left: AuthoredTokenOrdinal,
+  right: AuthoredTokenOrdinal
+) -> Bool {
+  left.value == right.value
+}
+
 type OccurrenceId {
   value: Int
 }
@@ -40,6 +62,31 @@ type OccurrenceCategory
   | NamespaceSegmentOccurrence
   | FieldOccurrence
   | MethodOccurrence
+
+type OccurrenceCategoryModuleScopeExposureVerdict
+  = OccurrenceCategoryModuleScopeExposed
+  | OccurrenceCategoryModuleScopeNotExposed {
+      category: OccurrenceCategory,
+    }
+
+data occurrence_category_module_scope_exposure_verdict_note: String = "Canonical module-scope exposure surface for declaration categories (review 45716 predicate-dissolution): consumers match OccurrenceCategoryModuleScopeExposureVerdict directly — not a parallel Bool predicate over the OccurrenceCategory coproduct. CallableOccurrence, TypeOccurrence, ConstructorOccurrence, and NamespaceSegmentOccurrence are module-scope members; LexicalValueOccurrence, FieldOccurrence, and MethodOccurrence are not."
+
+fn occurrence_category_module_scope_exposure_verdict(
+  category: OccurrenceCategory
+) -> OccurrenceCategoryModuleScopeExposureVerdict {
+  match category {
+    CallableOccurrence => OccurrenceCategoryModuleScopeExposed
+    TypeOccurrence => OccurrenceCategoryModuleScopeExposed
+    ConstructorOccurrence => OccurrenceCategoryModuleScopeExposed
+    NamespaceSegmentOccurrence => OccurrenceCategoryModuleScopeExposed
+    LexicalValueOccurrence =>
+      OccurrenceCategoryModuleScopeNotExposed { category: category }
+    FieldOccurrence =>
+      OccurrenceCategoryModuleScopeNotExposed { category: category }
+    MethodOccurrence =>
+      OccurrenceCategoryModuleScopeNotExposed { category: category }
+  }
+}
 
 type OccurrenceRole
   = DeclarationRole
@@ -213,6 +260,98 @@ fn occurrence_containment_paths_equal(
 ) -> Bool {
   left.ancestors == right.ancestors &&
   left.terminal.value == right.terminal.value
+}
+
+data occurrence_containment_path_prefix_note: String = "Canonical containment-prefix predicates for structural exposure (review 45716 single-authority; review 47424 fold surface): declaration containment is exposed to a reference when prefix is a prefix of path. Ancestors are compared by projecting each FreeMonoid through fold (never a local Empty/Cons recursive match — DESIGN predicate/walker dissolution). Consumers import these from std.occurrence_identity — never reproduce locally."
+
+fn occurrence_containment_path_contains_ancestor(
+  ancestors: FreeMonoid<OccurrenceId>,
+  target: OccurrenceId
+) -> Bool {
+  fold(
+    ancestors,
+    init: false,
+    f: (found, id) => found || id.value == target.value,
+  )
+}
+
+fn occurrence_containment_ancestors_as_list(
+  ancestors: FreeMonoid<OccurrenceId>
+) -> List<OccurrenceId> {
+  reverse(fold(
+    ancestors,
+    init: [],
+    f: (acc, id) => concat([id], acc),
+  ))
+}
+
+type OccurrenceIdListPrefixAcc {
+  path_remaining: List<OccurrenceId>
+  ok: Bool
+}
+
+fn occurrence_id_list_is_prefix_of(
+  prefix: List<OccurrenceId>,
+  path: List<OccurrenceId>
+) -> Bool {
+  fold(
+    prefix,
+    init: OccurrenceIdListPrefixAcc {
+      path_remaining: path,
+      ok: true,
+    },
+    f: (acc, expected) =>
+      if !acc.ok {
+        acc
+      } else if (acc.path_remaining |> count) == 0 {
+        OccurrenceIdListPrefixAcc {
+          path_remaining: [],
+          ok: false,
+        }
+      } else if occurrence_id_eq(
+        left: acc.path_remaining.first(),
+        right: expected,
+      ) {
+        OccurrenceIdListPrefixAcc {
+          path_remaining: acc.path_remaining.skip(n: 1),
+          ok: true,
+        }
+      } else {
+        OccurrenceIdListPrefixAcc {
+          path_remaining: acc.path_remaining,
+          ok: false,
+        }
+      },
+  ).ok
+}
+
+fn occurrence_containment_ancestors_are_prefix_of(
+  prefix_ancestors: FreeMonoid<OccurrenceId>,
+  path_ancestors: FreeMonoid<OccurrenceId>
+) -> Bool {
+  occurrence_id_list_is_prefix_of(
+    prefix: occurrence_containment_ancestors_as_list(ancestors: prefix_ancestors),
+    path: occurrence_containment_ancestors_as_list(ancestors: path_ancestors),
+  )
+}
+
+fn occurrence_containment_path_is_prefix_of(
+  prefix: OccurrenceContainmentPath,
+  path: OccurrenceContainmentPath
+) -> Bool {
+  if occurrence_containment_paths_equal(left: prefix, right: path) {
+    true
+  } else if prefix.terminal.value == path.terminal.value {
+    occurrence_containment_ancestors_are_prefix_of(
+      prefix_ancestors: prefix.ancestors,
+      path_ancestors: path.ancestors,
+    )
+  } else {
+    occurrence_containment_path_contains_ancestor(
+      ancestors: path.ancestors,
+      target: prefix.terminal,
+    )
+  }
 }
 
 type OccurrenceTransportIndexBuild {

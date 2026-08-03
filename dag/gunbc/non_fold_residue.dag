@@ -171,7 +171,7 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     trigger: TriggerProse { text: nfr_dissolve_owning_fold },
   },
   FrontierRow {
-    subject: PathSubject { path: "src/v2/lens/enforcement/receipts.dag::consumer_receipt_ref_for" },
+    subject: PathSubject { path: "src/v2/lens/enforcement/receipts.dag::consumer_entry_identity_for" },
     reason: nfr_reason_land_red_era,
     trigger: TriggerProse { text: nfr_dissolve_owning_fold },
   },
@@ -704,6 +704,16 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     subject: PathSubject { path: "dag/std/occurrence_binding_resolve.dag::occurrence_category_binding_verdict" },
     reason: nfr_reason_trait_derive_shape_table,
     trigger: TriggerProse { text: "DISSOLVE-ON: OccurrenceCategory×OccurrenceCategory compatibility becomes a total derived table (or inhabitance-derived admissibility) and the nested wildcard arms delete with the row" },
+  },
+  FrontierRow {
+    subject: PathSubject { path: "dag/std/occurrence_binding_candidates.dag::declaration_exposure_eq" },
+    reason: nfr_reason_structural_eq_mint,
+    trigger: TriggerProse { text: nfr_dissolve_derived_equality },
+  },
+  FrontierRow {
+    subject: PathSubject { path: "dag/std/occurrence_binding_candidates.dag::section13_population_law_id_eq" },
+    reason: nfr_reason_structural_eq_mint,
+    trigger: TriggerProse { text: "DISSOLVE-ON: Section13PopulationLawId equality becomes derived from inhabitance (dag/std/algebra, DESIGN §3/§4) and the hand nested-match equality fold deletes with the row" },
   },
   FrontierRow {
     subject: PathSubject { path: "src/v2/lens/vacuity.dag::vacuity_operand_provenance_is_live_snapshot_duplicate_partner" },

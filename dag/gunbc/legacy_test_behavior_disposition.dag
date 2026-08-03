@@ -120,6 +120,94 @@ fn legacy_test_behavior_unresolved_witness_dispositions(
     ))
 }
 
+data legacy_test_behavior_family_note: String = "A FAMILY IS A SCOPE OVER THE ONE GRAPH, NOT A SECOND CLASSIFICATION SCHEME. Migration proceeds family by family while the closing contract stays red on the rest of the corpus, so a family needs its own completion reading — but membership is derived by matching discovered behavior identities against the family's declared source files, never by listing the behaviors, so a #[test] added to a member module lands in the family's unclassified set and reds its completion the same way it reds the global frontier. Two states are refused rather than passed: a family whose declared source files discover no behavior at all is Incomplete, not vacuously complete (a renamed or misspelled path cannot read as finished work), and the family's own dispositions are checked for staleness against the WHOLE discovered population, so moving a behavior out of a member module refuses instead of quietly narrowing. Completion of a family is not completion of the contract and does not authorize deletion; it is the unit in which the frontier shrinks."
+
+type LegacyTestBehaviorFamily {
+  name: NonEmptyStr
+  source_files: List<FilePath>
+}
+
+fn legacy_test_behavior_family_owns(
+  family: LegacyTestBehaviorFamily,
+  behavior_id: String,
+) -> Bool {
+  family.source_files
+    |> any(source_file => starts_with(
+      s: behavior_id,
+      prefix: concat(source_file as String, "::"),
+    ))
+}
+
+fn legacy_test_behavior_family_discovered(
+  family: LegacyTestBehaviorFamily,
+  discovered_legacy: List<String>,
+) -> List<String> {
+  discovered_legacy
+    |> filter(id => legacy_test_behavior_family_owns(family: family, behavior_id: id))
+}
+
+fn legacy_test_behavior_family_dispositions(
+  family: LegacyTestBehaviorFamily,
+  dispositions: List<LegacyTestBehaviorDisposition>,
+) -> List<LegacyTestBehaviorDisposition> {
+  dispositions
+    |> filter(d => legacy_test_behavior_family_owns(
+      family: family,
+      behavior_id: legacy_test_disposition_id(disposition: d),
+    ))
+}
+
+fn legacy_test_behavior_family_unclassified(
+  family: LegacyTestBehaviorFamily,
+  discovered_legacy: List<String>,
+  dispositions: List<LegacyTestBehaviorDisposition>,
+) -> List<String> {
+  legacy_test_behavior_unclassified(
+    discovered_legacy: legacy_test_behavior_family_discovered(
+      family: family,
+      discovered_legacy: discovered_legacy,
+    ),
+    dispositions: legacy_test_behavior_family_dispositions(
+      family: family,
+      dispositions: dispositions,
+    ),
+  )
+}
+
+fn legacy_test_behavior_family_complete(
+  discovery_holds: Bool,
+  family: LegacyTestBehaviorFamily,
+  discovered_legacy: List<String>,
+  discovered_witnesses: List<String>,
+  dispositions: List<LegacyTestBehaviorDisposition>,
+) -> Bool {
+  let family_dispositions = legacy_test_behavior_family_dispositions(
+    family: family,
+    dispositions: dispositions,
+  )
+  discovery_holds
+    && count(legacy_test_behavior_family_discovered(
+      family: family,
+      discovered_legacy: discovered_legacy,
+    )) > 0
+    && count(legacy_test_behavior_family_unclassified(
+      family: family,
+      discovered_legacy: discovered_legacy,
+      dispositions: dispositions,
+    )) == 0
+    && count(legacy_test_behavior_stale_dispositions(
+      discovered_legacy: discovered_legacy,
+      dispositions: family_dispositions,
+    )) == 0
+    && count(legacy_test_behavior_duplicate_dispositions(
+      dispositions: family_dispositions,
+    )) == 0
+    && count(legacy_test_behavior_unresolved_witness_dispositions(
+      discovered_witnesses: discovered_witnesses,
+      dispositions: family_dispositions,
+    )) == 0
+}
+
 fn legacy_test_behavior_disposition_graph_holds(
   discovery_holds: Bool,
   discovered_legacy: List<String>,
@@ -157,6 +245,8 @@ data c_compilation_unit_leaf_disposition: LegacyTestBehaviorDisposition = Covere
   witness: c_compilation_unit_leaf_witness,
   distinguishing_failure: "The legacy Rust test is only a wrapper that resolves this exact .dag entry and requires witness_r3_header_source_object_paths to pass. That witness checks the R3 header/source/object path split; collapsing a path arm or changing the unit spelling makes the .dag witness return false, so deleting the wrapper removes no independent oracle." as NonEmptyStr,
 }
+
+data dag_comment_wall_family_closed_loop_note: String = "THE FIRST FAMILY CARRIED THROUGH THE WHOLE LOOP — classified, then deleted — and the receipt for what this loop costs this graph. Subject: after the comment-ban wall, a solidus pair or a slash-star outside a string literal must refuse, a string literal containing a solidus pair must still be accepted, and comment-free source must still compile. Classification authored four CoveredByWitness rows over src/v1/tests/src/dag_comment_wall_test.rs (gunbc#7687); deletion removed that module and those rows together (gunbc#7690). THE ORDER IS NOT A DETAIL AND THE ROWS ARE NOT OPTIONAL BOOKKEEPING: a disposition whose behavior no longer discovers is stale, and this graph refuses stale rows, so classification rows are scoped to the live population by construction and cannot outlive the tests they classify. Whichever change a reader sees first, the invariant is the same — rows and behaviors depart together. The dag_comment_wall_family row and its live completion projection departed for the same reason: family membership is DERIVED from discovered identities, so a drained family discovers nothing and its completion fn refuses rather than reading as finished. The LegacyTestBehaviorFamily carrier and its fixture controls stay for the families still ahead.\n\nWHAT SURVIVES IS THE EVIDENCE, NOT THE ARGUMENT ABOUT IT (DESIGN 4b(4)): the four executing probes in v2.test.round_trip.dag_comment_wall_test — dag_comment_wall_clean_source_compiles, dag_comment_wall_line_comment_refused, dag_comment_wall_block_comment_refused, dag_comment_wall_slash_slash_inside_string_compiles — remain enrolled as the permanent regression wall, and that module note carries why each is discriminating. They are what made deletion safe and they outlive both the deleted module and the rows that argued for it.\n\nTHE NUMBER THIS RECORDS, because it is the one a reader will get wrong: deletion does NOT move the unclassified frontier. Discovered behaviors and their dispositions depart together, so the difference is unchanged and only the denominator shrinks — measured across this family, discovered 735 to 731 and dispositions 5 to 1 while the frontier stayed at 730. The frontier moves on CLASSIFICATION alone; deletion collects debt classification already discharged. A flat frontier across a deletion wave is the mechanism working, not a stalled lane."
 
 fn legacy_test_behavior_dispositions() -> List<LegacyTestBehaviorDisposition> {
   [c_compilation_unit_leaf_disposition]
