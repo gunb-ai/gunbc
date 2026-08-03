@@ -18,6 +18,7 @@ type GeneratedArtifact
   | Stage0CrateLayoutGeneratedDagArtifact
   | Stage0CrateLayoutGeneratedRsArtifact
   | Stage0CratePartitionGeneratedDagArtifact
+  | Stage0EmitPlanGeneratedDagArtifact
   | LiveDeployApplyScriptArtifact
   | LiveDeployRetractScriptArtifact
   | AutoinstallUserDataArtifact { spec: HostAutoinstall }
@@ -27,7 +28,7 @@ type GeneratedArtifact
 data generated_artifact_registry: List<GeneratedArtifact> = concat(
   concat(
     concat(
-      [CiYamlArtifact, FalsifierYamlArtifact, GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, LiveDeployApplyScriptArtifact, LiveDeployRetractScriptArtifact],
+      [CiYamlArtifact, FalsifierYamlArtifact, GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, Stage0EmitPlanGeneratedDagArtifact, LiveDeployApplyScriptArtifact, LiveDeployRetractScriptArtifact],
       map(fleet_autoinstall_specs, s => AutoinstallUserDataArtifact { spec: s })
     ),
     map(fleet_install_server_specs, s => ProxyDhcpDnsmasqArtifact { spec: s })
@@ -65,6 +66,7 @@ fn artifact_path(a: GeneratedArtifact) -> String {
     Stage0CrateLayoutGeneratedDagArtifact => "dag/gunbc/stage0_crate_layout_generated.dag"
     Stage0CrateLayoutGeneratedRsArtifact => "src/v1/stage0/src/bootstrap_stage0_crate_layout_generated.rs"
     Stage0CratePartitionGeneratedDagArtifact => "dag/gunbc/stage0_crate_partition_generated.dag"
+    Stage0EmitPlanGeneratedDagArtifact => "dag/gunbc/stage0_emit_plan_generated.dag"
     LiveDeployApplyScriptArtifact => ".github/live-deploy-srv1-apply.sh"
     LiveDeployRetractScriptArtifact => ".github/live-deploy-srv1-retract.sh"
     AutoinstallUserDataArtifact { spec } => concat(concat("provisioning/", spec.host), "/user-data")
@@ -88,6 +90,7 @@ fn artifact_commit_policy(a: GeneratedArtifact) -> CommitPolicy {
     Stage0CrateLayoutGeneratedDagArtifact => CommitRequired { consumer: GitProtocol }
     Stage0CrateLayoutGeneratedRsArtifact => CommitRequired { consumer: GitProtocol }
     Stage0CratePartitionGeneratedDagArtifact => CommitRequired { consumer: GitProtocol }
+    Stage0EmitPlanGeneratedDagArtifact => CommitRequired { consumer: GitProtocol }
     LiveDeployApplyScriptArtifact => CommitRequired { consumer: HostReconciler }
     LiveDeployRetractScriptArtifact => CommitRequired { consumer: HostReconciler }
     AutoinstallUserDataArtifact { spec: _ } => NotCommitted
@@ -109,6 +112,8 @@ fn committed_generated_artifacts() -> List<GeneratedArtifact> {
 fn committed_generated_artifact_paths() -> List<String> {
   map(committed_generated_artifacts(), a => artifact_path(a: a))
 }
+
+data artifact_eq_disposition_reference_note: String = "Disposition authority (reference only; do not fork the lifecycle here): gunbc.non_fold_residue.non_fold_residue_frontier enrolls dag/gunbc/generated_artifact.dag::artifact_eq with the typed nfr_reason_land_red_era reason and nfr_dissolve_owning_fold trigger. The live non_fold_residue_clean_holds witness refuses both an unrostered predicate and a stale roster row; its synthetic malformed-row RED witnesses that reason without a dissolution trigger is invalid. This equality residue therefore grows only under that one bounded census row and deletes when the owning fold derives equality from inhabitance."
 
 fn artifact_heal_policy(a: GeneratedArtifact) -> HealPolicy {
   match artifact_commit_policy(a: a) {
@@ -198,6 +203,7 @@ fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
     Stage0CrateLayoutGeneratedDagArtifact => match b { Stage0CrateLayoutGeneratedDagArtifact => true  _ => false }
     Stage0CrateLayoutGeneratedRsArtifact => match b { Stage0CrateLayoutGeneratedRsArtifact => true  _ => false }
     Stage0CratePartitionGeneratedDagArtifact => match b { Stage0CratePartitionGeneratedDagArtifact => true  _ => false }
+    Stage0EmitPlanGeneratedDagArtifact => match b { Stage0EmitPlanGeneratedDagArtifact => true  _ => false }
     LiveDeployApplyScriptArtifact => match b { LiveDeployApplyScriptArtifact => true  _ => false }
     LiveDeployRetractScriptArtifact => match b { LiveDeployRetractScriptArtifact => true  _ => false }
     AutoinstallUserDataArtifact { spec } => match b { AutoinstallUserDataArtifact { spec: spec2 } => spec.host == spec2.host  _ => false }

@@ -8,7 +8,6 @@ import gunbc.legacy_test_behavior_disposition {
   LegacyTestBehaviorFamily,
   RetainedNonMigratableBehavior,
   TestBehaviorWitness,
-  dag_comment_wall_family_complete_live,
   legacy_test_behavior_declared_slice_holds,
   legacy_test_behavior_disposition_graph_holds,
   legacy_test_behavior_family_complete,
@@ -172,6 +171,7 @@ test fn legacy_test_behavior_family_unresolved_witness_reds() -> Bool {
   )
 }
 
+<<<<<<< HEAD
 test fn optional_rendering_family_is_complete_live() -> Bool {
   optional_rendering_family_complete_live()
 }
@@ -180,6 +180,8 @@ test fn dag_comment_wall_family_is_complete_live() -> Bool {
   dag_comment_wall_family_complete_live()
 }
 
+=======
+>>>>>>> origin/main
 test fn legacy_test_behavior_discovery_refusal_cannot_fabricate_green() -> Bool {
   !legacy_test_behavior_disposition_graph_holds(
     discovery_holds: false,

@@ -116,6 +116,17 @@ test fn witness_discovery_row_consumer_holds() -> Bool {
   }
 }
 
+test fn witness_bin_wet_live_rust_observation_consumer_holds() -> Bool {
+  match witness_consumer_cadence_for_row(
+    entry: "dag/test/claim/stage0_rust_host_observation_live_witness_test.dag",
+    function: "live_rust_observation_matches_actions_subject",
+    excluded_from_discovery: true
+  ) {
+    BinWitnessWet => true
+    _ => false
+  }
+}
+
 test fn witness_rehomed_bin_wet_consumer_holds() -> Bool {
   match witness_consumer_cadence_for_row(
     entry: "dag/test/claim/floor_skip_discovery_witness_test.dag",
