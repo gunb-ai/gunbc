@@ -128,7 +128,7 @@ test fn nested_containment_derives_lexical_exposure_holds() -> Bool {
     containment: nested_path,
   ) {
     LexicalExposure { exposing_scope: scope } =>
-      scope.terminal.value == inner && (scope.ancestors |> count) == 1
+      scope.terminal == inner && (scope.ancestors |> count) == 1
     _ => false
   }
 }
