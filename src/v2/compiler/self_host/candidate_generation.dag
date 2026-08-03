@@ -1,28 +1,80 @@
 module v2.compiler.self_host.candidate_generation
 
-import v2.compiler.infer { infer }
+import extdeps.communication.medium { Medium }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import v2.compiler.emit { emit }
+import v2.compiler.infer { infer, InferredTree }
 import v2.compiler.name_resolve { Admission }
 import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.self_host.emitter_producer_provenance {
+  advance_producer_emission_receipt_cargo_green,
+  mint_producer_emission_receipt,
+  ProducerEmissionReceipt,
+  realized_closure_for_v2_direct_rust_door_emit_run,
+  seed_emit_rust_reachable,
+  source_produced_qualifications,
+  V2EmitterInterpreted,
+  BuildRefused
+}
 import v2.compiler.source_authority { SourceRootIngest }
 import v2.compiler.translate { translate }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.compilers.target_model { TargetModel }
 import v2.std.diagnostic {
+  Diagnostic,
+  ExternalContractUnknown,
   Outcome,
+  Unavailable,
   bind_outcome,
-  outcome_accepted
+  outcome_accepted,
+  outcome_rejected,
+  port_locus
 }
-import v2.std.node { Node }
+import v2.std.node { Node, Symbol }
+import v2.std.optional { Absent, Present, optional_absent, optional_present }
+import v2.std.text { String }
 
 type StageEmissionCandidate {
   emitted: Node
 }
 
-data candidate_generation_serializes_written_source_note: String = "DISSOLVE-ON: wire serialize_target composed with translate in generate_stage_candidate_from_ingest (CandidateGenerationSerializeTargetWiring). Until then StageEmissionCandidate carries translate output only — no serialized Rust source to receipt against producer provenance."
-
-fn candidate_generation_serializes_written_source() -> Bool {
-  false
+type RustEmissionCandidate {
+  source: Medium<String>
+  emitted: Node
 }
+
+type ProvenancedRustArtifact {
+  source: Medium<String>
+  emitted: Node
+  producer_receipt: ProducerEmissionReceipt
+}
+
+type RustWorkspaceWriteReceipt {
+  workspace_dir: String
+  manifest_path: String
+  main_rs_path: String
+  manifest_write_ok: Bool
+  main_write_ok: Bool
+}
+
+type WrittenProvenancedRustArtifact {
+  artifact: ProvenancedRustArtifact
+  write: RustWorkspaceWriteReceipt
+}
+
+data candidate_generation_serialize_target_note: String = "Lane B direct v2 Rust door: generate_rust_emission_candidate wires serialize_target composed with translate (v2.compiler.emit); mint_written_provenanced_rust_artifact writes Cargo.toml and src/main.rs through Filesystem.Write so ingest-assemble-infer-translate-serialize-write is one candidate_generation surface."
+
+data direct_rust_door_scaffold_build_cause: Symbol = ^direct_rust_door_scaffold_build
+
+data direct_rust_door_awaiting_cargo_cause: Symbol = ^direct_rust_door_awaiting_cargo
+
+data direct_rust_door_probe_entry: String = "src/v2/test/claim/long/direct_rust_door_emission_witness_test.dag"
+
+data direct_rust_door_probe_function: String = "witness_direct_rust_door_provenanced_artifact_holds"
+
+data direct_rust_door_cargo_toml_scaffold_note: String = "SCAFFOLD: feature:medium_structure_containment — direct_rust_door_cargo_toml is a hand-authored TOML medium piped into Filesystem.Write without grammar-emitted Cargo.toml serialization (transport-is-a-handler debt). dissolve-on: emit the fixture workspace manifest through the target-model / serialize_target path (or a cited Toml medium carrier) so write_rust_workspace stops writing a raw string literal; this note and direct_rust_door_cargo_toml delete together."
+
+data direct_rust_door_cargo_toml: String = "[package]\nname = \"direct_rust_door_fixture\"\nversion = \"0.0.0\"\nedition = \"2021\"\n\n[lib]\npath = \"src/lib.rs\""
 
 fn generate_stage_candidate_from_ingest(
   ingest: SourceRootIngest,
@@ -67,4 +119,190 @@ fn generate_translate_self_emit_candidate(
       )
     }
   )
+}
+
+fn generate_rust_emission_candidate(
+  inferred: InferredTree,
+  target: TargetModel
+) -> Outcome<RustEmissionCandidate> {
+  bind_outcome(
+    o: emit(tree: inferred, target: target),
+    f: fn(source) {
+      outcome_accepted(
+        value: RustEmissionCandidate {
+          source: source,
+          emitted: inferred.root
+        }
+      )
+    }
+  )
+}
+
+fn write_rust_workspace(
+  workspace_dir: String,
+  source: Medium<String>
+) -> RustWorkspaceWriteReceipt {
+  let manifest_path = concat(workspace_dir, "/Cargo.toml")
+  let main_rs_path = concat(workspace_dir, "/src/lib.rs")
+  let manifest = Filesystem.Write(path: manifest_path, content: direct_rust_door_cargo_toml)
+  let main_rs = Filesystem.Write(path: main_rs_path, content: source.carried)
+  RustWorkspaceWriteReceipt {
+    workspace_dir: workspace_dir,
+    manifest_path: manifest_path,
+    main_rs_path: main_rs_path,
+    manifest_write_ok: manifest.success,
+    main_write_ok: main_rs.success
+  }
+}
+
+fn mint_provenanced_rust_artifact(
+  inferred: InferredTree,
+  target: TargetModel,
+  module_path: String
+) -> Outcome<ProvenancedRustArtifact> {
+  bind_outcome(
+    o: generate_rust_emission_candidate(inferred: inferred, target: target),
+    f: fn(candidate) {
+      let realized_closure = realized_closure_for_v2_direct_rust_door_emit_run()
+      match mint_producer_emission_receipt(
+        module_path: module_path,
+        producer: V2EmitterInterpreted,
+        qualifications: source_produced_qualifications,
+        build_result: BuildRefused { cause: direct_rust_door_awaiting_cargo_cause },
+        behavioral_probe_entry: direct_rust_door_probe_entry,
+        behavioral_probe_function: direct_rust_door_probe_function,
+        realized_closure: realized_closure
+      ) {
+        Present { value: receipt } =>
+          outcome_accepted(
+            value: ProvenancedRustArtifact {
+              source: candidate.source,
+              emitted: candidate.emitted,
+              producer_receipt: receipt
+            }
+          )
+        Absent =>
+          outcome_rejected(
+            d: Diagnostic {
+              reason: ^direct_rust_door_producer_receipt_refused,
+              at: port_locus(port: ^candidate_generation),
+              correction: Unavailable { reason: ExternalContractUnknown }
+            }
+          )
+      }
+    }
+  )
+}
+
+fn mint_written_provenanced_rust_artifact(
+  inferred: InferredTree,
+  target: TargetModel,
+  module_path: String,
+  workspace_dir: String
+) -> Outcome<WrittenProvenancedRustArtifact> {
+  bind_outcome(
+    o: mint_provenanced_rust_artifact(
+      inferred: inferred,
+      target: target,
+      module_path: module_path
+    ),
+    f: fn(artifact) {
+      outcome_accepted(
+        value: WrittenProvenancedRustArtifact {
+          artifact: artifact,
+          write: write_rust_workspace(
+            workspace_dir: workspace_dir,
+            source: artifact.source
+          )
+        }
+      )
+    }
+  )
+}
+
+fn generate_provenanced_rust_candidate_from_ingest(
+  ingest: SourceRootIngest,
+  admission: Admission,
+  target: TargetModel,
+  module_path: String
+) -> Outcome<ProvenancedRustArtifact> {
+  let lm = dag_language_model()
+  bind_outcome(
+    o: assemble_program_from_ingest(ingest: ingest, admission: admission, lm: lm),
+    f: fn(resolved) {
+      bind_outcome(
+        o: infer(tree: resolved),
+        f: fn(inferred) {
+          mint_provenanced_rust_artifact(
+            inferred: inferred,
+            target: target,
+            module_path: module_path
+          )
+        }
+      )
+    }
+  )
+}
+
+fn advance_written_provenanced_rust_artifact_cargo_green(
+  written: WrittenProvenancedRustArtifact,
+  cargo_green: Bool
+) -> Optional<WrittenProvenancedRustArtifact> {
+  match advance_producer_emission_receipt_cargo_green(
+    prior: written.artifact.producer_receipt,
+    cargo_green: cargo_green
+  ) {
+    Present { value: receipt } =>
+      optional_present(
+        value: WrittenProvenancedRustArtifact {
+          artifact: ProvenancedRustArtifact {
+            source: written.artifact.source,
+            emitted: written.artifact.emitted,
+            producer_receipt: receipt
+          },
+          write: written.write
+        }
+      )
+    Absent => optional_absent()
+  }
+}
+
+fn generate_written_rust_candidate_from_ingest(
+  ingest: SourceRootIngest,
+  admission: Admission,
+  target: TargetModel,
+  module_path: String,
+  workspace_dir: String
+) -> Outcome<WrittenProvenancedRustArtifact> {
+  let lm = dag_language_model()
+  bind_outcome(
+    o: assemble_program_from_ingest(ingest: ingest, admission: admission, lm: lm),
+    f: fn(resolved) {
+      bind_outcome(
+        o: infer(tree: resolved),
+        f: fn(inferred) {
+          mint_written_provenanced_rust_artifact(
+            inferred: inferred,
+            target: target,
+            module_path: module_path,
+            workspace_dir: workspace_dir
+          )
+        }
+      )
+    }
+  )
+}
+
+fn provenanced_rust_artifact_seed_independent(
+  artifact: ProvenancedRustArtifact
+) -> Bool {
+  artifact.producer_receipt.producer == V2EmitterInterpreted
+    && !seed_emit_rust_reachable(closure: artifact.producer_receipt.realized_closure)
+}
+
+fn written_provenanced_rust_artifact_ok(
+  written: WrittenProvenancedRustArtifact
+) -> Bool {
+  written.write.manifest_write_ok && written.write.main_write_ok
+    && provenanced_rust_artifact_seed_independent(artifact: written.artifact)
 }

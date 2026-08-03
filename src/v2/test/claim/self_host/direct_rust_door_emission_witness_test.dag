@@ -1,0 +1,21 @@
+module v2.test.claim.self_host.direct_rust_door_emission_witness_test
+
+import v2.compiler.self_host.direct_rust_door_fixture { direct_rust_door_module_path }
+import v2.compiler.self_host.emitter_producer_provenance {
+  mint_v2_interpreted_receipt_with_seed_closure_refuses,
+  v2_interpreted_emitter_closure_seed_free_holds
+}
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+data direct_rust_door_emission_witness_note: String = "Lane B fast per-PR witnesses: seed-closure structural refusal and closure seed-free check. Ingest-assemble-infer-emit provenance witness lives in src/v2/test/claim/long/direct_rust_door_emission_witness_test.dag (5s budget rule)."
+
+test fn witness_seed_closure_poison_refuses_v2_producer_reds() -> Bool {
+  mint_v2_interpreted_receipt_with_seed_closure_refuses(
+    module_path: direct_rust_door_module_path
+  )
+}
+
+test fn witness_v2_closure_excludes_seed_emit_rust_holds() -> Bool {
+  v2_interpreted_emitter_closure_seed_free_holds()
+}
