@@ -79,7 +79,8 @@ import v1.compiler.infer_method {
 import v1.compiler.infer_sigs { ResolvedFuncEnv }
 import v1.compiler.infer_items {
   ResolvedGraph, TypedModule,
-  ItemInfo, DataItem, TypeItem, OtherItem
+  ItemInfo, DataItem, TypeItem, OtherItem,
+  QualifiedItemRegistryBuild, empty_qualified_item_registry
 }
 import v1.compiler.infer_service {
   is_typed_service_call_receiver, extract_typed_service_name
@@ -1803,52 +1804,50 @@ fn build_data_item_index(modules: List<TypedModule>) -> Map<String, Node> {
   )
 }
 
-fn build_qualified_item_registry(modules: List<TypedModule>) -> Map<String, ItemInfo> {
-  modules |> fold(init: empty_map(), f: (acc, tm) =>
+fn qualified_item_registry_insert(
+  build: QualifiedItemRegistryBuild,
+  qualified_name: String,
+  info: ItemInfo
+) -> QualifiedItemRegistryBuild {
+  match build {
+    QualifiedRegistryDuplicate { key, first, second } => build
+    QualifiedRegistryBuilt { registry } =>
+      match map_get(registry, qualified_name) {
+        Present { value: existing } =>
+          QualifiedRegistryDuplicate { key: qualified_name, first: existing, second: info }
+        Absent =>
+          QualifiedRegistryBuilt { registry: map_insert(registry, qualified_name, info) }
+      }
+  }
+}
+
+fn build_qualified_item_registry(modules: List<TypedModule>) -> QualifiedItemRegistryBuild {
+  modules |> fold(init: empty_qualified_item_registry(), f: (acc, tm) =>
     let module_name = authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module)
-    tm.item_registry |> map_keys |> fold(init: acc, f: (acc2, item_name) =>
+    tm.items |> fold(init: acc, f: (acc2, item) =>
+      let item_name = authored_name_at(source_indices: tm.type_env.source_indices, node: item)
       match map_get(tm.item_registry, item_name) {
         Present { value: info } =>
-          let qualified_name = concat(module_name, ".", item_name)
-          match map_get(acc2, qualified_name) {
-            Present { value: _ } =>
-              map_insert(acc2, qualified_name, duplicate_qualified_item_registry_marker(name: qualified_name))
-            Absent => map_insert(acc2, qualified_name, info)
-          }
+          qualified_item_registry_insert(
+            build: acc2,
+            qualified_name: concat(module_name, ".", item_name),
+            info: info
+          )
         Absent => acc2
       }
     )
   )
 }
 
-fn merge_item_registries(bare: Map<String, ItemInfo>, qualified: Map<String, ItemInfo>) -> Map<String, ItemInfo> {
-  qualified |> map_keys |> fold(init: bare, f: (acc, key) =>
-    match map_get(qualified, key) {
-      Present { value: info } => map_insert(acc, key, info)
-      Absent => acc
-    }
-  )
-}
+data value_ref_leaf_key_collision_note: String = "Construction wall for the cross-module half of the qualified-value-reference dotted-render class (sibling of value_ref_self_module_normalization_note for the same-module half). #7685 keyed registry lookup on the leaf name so the is_data call-suffix decision fired for dotted references, but the flat item_registry is keyed by bare name with last-write-wins across the closure — so module_a.homonym_value could consult module_b's ItemInfo when both modules declare the same leaf. Fix: a separate QualifiedItemRegistry (module.leaf -> ItemInfo, one authority per declaring module) built from stable declaration order; only value-reference emission consumes it — the bare item_registry is never merged with qualified keys. Cross-module lookups use the full normalized spelling; same-module references still normalize to bare before lookup. Rendering uses the exact qualified registry row for BOTH declaration kind and declaring module — never the authored qualifier string alone (§5 fabricated-plausible-output refusal). Duplicate exact module.leaf keys are a typed QualifiedRegistryDuplicate build result, not a writable map row."
 
-data value_ref_leaf_key_collision_note: String = "Construction wall for the cross-module half of the qualified-value-reference dotted-render class (sibling of value_ref_self_module_normalization_note for the same-module half). #7685 keyed registry lookup on the leaf name so the is_data call-suffix decision fired for dotted references, but the flat item_registry is keyed by bare name with last-write-wins across the closure — so module_a.homonym_value could consult module_b's ItemInfo when both modules declare the same leaf. Fix: merge a qualified-name overlay (module.leaf -> ItemInfo, one authority per declaring module) at emit time and key cross-module lookups on the full normalized spelling; same-module references still normalize to bare before lookup. Rendering uses the exact qualified registry row for BOTH declaration kind and declaring module — never the authored qualifier string alone (§5 fabricated-plausible-output refusal). Duplicate exact module.leaf overlay keys refuse via duplicate_qualified_item_registry_marker rather than last-write-wins."
-
-data duplicate_qualified_item_registry_marker_note: String = "Fail-closed marker row for duplicate exact module.leaf keys in the qualified item_registry overlay. build_qualified_item_registry refuses a second distinct ItemInfo at the same qualified key instead of last-write-wins. lookup_item_for_value_ref and emit_value_ref_ident surface compile_error! when this marker is reached."
-
-fn duplicate_qualified_item_registry_marker(name: String) -> ItemInfo {
-  ItemInfo {
-    name: name,
-    module_name: "__DUPLICATE_QUALIFIED_ITEM_REGISTRY_KEY__",
-    kind: OtherItem,
-    service_names: [],
-    resource_names: [],
-    params: [],
-    is_self_recursive: false,
-    has_non_tail_self_call: false
+fn emit_qualified_item_registry_refusal(build: QualifiedItemRegistryBuild) -> String {
+  match build {
+    QualifiedRegistryDuplicate { key, first, second } =>
+      emit_error_expr(message: concat("duplicate qualified item_registry key — refuse ambiguous module.leaf overlay: ", key), target: Rust)
+    QualifiedRegistryBuilt { registry } =>
+      emit_error_expr(message: "qualified item registry internal refusal on built registry", target: Rust)
   }
-}
-
-fn is_duplicate_qualified_item_registry_marker(info: ItemInfo) -> Bool {
-  info.module_name == "__DUPLICATE_QUALIFIED_ITEM_REGISTRY_KEY__"
 }
 
 fn value_ref_registry_lookup_key(resolved_name: String) -> String {
@@ -1857,20 +1856,16 @@ fn value_ref_registry_lookup_key(resolved_name: String) -> String {
   else { resolved_name }
 }
 
-fn lookup_item_for_value_ref(resolved_name: String, registry: Map<String, ItemInfo>) -> ItemInfo? {
-  lookup_item(registry: registry, name: value_ref_registry_lookup_key(resolved_name: resolved_name))
-}
-
-fn emit_qualified_value_ref_crate_ident(leaf: String, info: ItemInfo, registry: Map<String, ItemInfo>) -> String {
-  if is_duplicate_qualified_item_registry_marker(info: info) {
-    emit_error_expr(message: "duplicate qualified item_registry key — refuse ambiguous module.leaf overlay", target: Rust)
-  } else {
-    concat("crate::", module_to_filename(name: info.module_name), "::", emit_import_name(n: leaf, registry: registry))
+fn lookup_item_for_value_ref(resolved_name: String, build: QualifiedItemRegistryBuild) -> ItemInfo? {
+  match build {
+    QualifiedRegistryDuplicate { key, first, second } => Absent
+    QualifiedRegistryBuilt { registry } =>
+      lookup_item(registry: registry, name: value_ref_registry_lookup_key(resolved_name: resolved_name))
   }
 }
 
-fn value_ref_item_info_refusal(info: ItemInfo) -> String {
-  emit_error_expr(message: "duplicate qualified item_registry key — refuse ambiguous module.leaf overlay", target: Rust)
+fn emit_qualified_value_ref_crate_ident(leaf: String, info: ItemInfo, registry: Map<String, ItemInfo>) -> String {
+  concat("crate::", module_to_filename(name: info.module_name), "::", emit_import_name(n: leaf, registry: registry))
 }
 
 fn insert_scoped_data_item(scoped: Map<String, List<Node>>, name: String, item: Node) -> Map<String, List<Node>> {
@@ -2213,12 +2208,10 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
     fn_return_type: none
   }
   let shared_types = emit_info.shared_types
-  let registry = merge_item_registries(
-    bare: typed.item_registry,
-    qualified: build_qualified_item_registry(modules: typed.modules)
-  )
+  let bare_registry = typed.item_registry
+  let qualified_item_registry = build_qualified_item_registry(modules: typed.modules)
   let data_items = build_data_item_index(modules: typed.modules)
-  let workflow_funcs = collect_workflow_funcs(modules: typed.modules, registry: registry, read_only_params_index: emit_info.read_only_params_index)
+  let workflow_funcs = collect_workflow_funcs(modules: typed.modules, registry: bare_registry, read_only_params_index: emit_info.read_only_params_index)
   let workflow_default_diags = validate_workflow_param_defaults(workflow_funcs: workflow_funcs)
   if workflow_default_diags |> count > 0 {
     return EmitResult { files: [], diagnostics: workflow_default_diags }
@@ -2234,7 +2227,7 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
   let export_sets = build_module_export_sets(modules: typed.modules)
   let module_index = build_module_index(modules: typed.modules)
   let unlisted_type_names_by_module = group_unlisted_type_names(diags: typed.diagnostics)
-  let module_files = typed.modules |> map(tm => emit_module_full(typed_module: tm, registry: registry, emit_info: emit_info, shared_types: shared_types, svc_module_map: svc_module_map, data_items: data_items, export_sets: export_sets, typed_modules: typed.modules, module_index: module_index, unlisted_type_names: match map_get(unlisted_type_names_by_module, authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module)) { Present { value: v } => v  Absent => [] }))
+  let module_files = typed.modules |> map(tm => emit_module_full(typed_module: tm, registry: bare_registry, qualified_item_registry: qualified_item_registry, emit_info: emit_info, shared_types: shared_types, svc_module_map: svc_module_map, data_items: data_items, export_sets: export_sets, typed_modules: typed.modules, module_index: module_index, unlisted_type_names: match map_get(unlisted_type_names_by_module, authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module)) { Present { value: v } => v  Absent => [] }))
   let test_files = typed.modules
     |> map(tm => emit_test_file(
       module_name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module),
@@ -2374,9 +2367,10 @@ fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> Te
     fn_return_type: none
   }
   let shared_types = emit_info.shared_types
+  let qualified_item_registry = build_qualified_item_registry(modules: [typed_module])
   let export_sets = build_module_export_sets(modules: [typed_module])
   let module_index = build_module_index(modules: [typed_module])
-  emit_module_full(typed_module: typed_module, registry: registry, emit_info: emit_info, shared_types: shared_types, svc_module_map: empty_map(), data_items: build_data_item_index(modules: [typed_module]), export_sets: export_sets, typed_modules: [typed_module], module_index: module_index, unlisted_type_names: [])
+  emit_module_full(typed_module: typed_module, registry: registry, qualified_item_registry: qualified_item_registry, emit_info: emit_info, shared_types: shared_types, svc_module_map: empty_map(), data_items: build_data_item_index(modules: [typed_module]), export_sets: export_sets, typed_modules: [typed_module], module_index: module_index, unlisted_type_names: [])
 }
 
 fn build_module_export_sets(modules: List<TypedModule>) -> Map<String, Map<String, Bool>> {
@@ -2884,9 +2878,9 @@ fn reference_derived_use_lines(items: List<Node>, unlisted_type_names: List<Stri
   }
 }
 
-fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, shared_types: Set<String>, svc_module_map: Map<String, String>, data_items: Map<String, Node>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, module_index: ModuleIndex, unlisted_type_names: List<String>) -> TextFile {
+fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, qualified_item_registry: QualifiedItemRegistryBuild, emit_info: EmitGraphInfo, shared_types: Set<String>, svc_module_map: Map<String, String>, data_items: Map<String, Node>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, module_index: ModuleIndex, unlisted_type_names: List<String>) -> TextFile {
   let m = typed_module.module
-  let scope = module_emit_scope(typed_module: typed_module)
+  let scope = module_emit_scope(typed_module: typed_module, qualified_item_registry: qualified_item_registry)
   let scoped_data_items = augment_scoped_data_item_index_with_imports(
     scoped: build_scoped_data_item_index(typed_module: typed_module, data_items: data_items),
     imports: contracts_imports_for_module(module_name: authored_name(env: scope.type_env, node: m), typed_modules: typed_modules, source_indices: scope.type_env.source_indices, module_index: module_index),
@@ -3164,7 +3158,7 @@ fn type_name_is_rust_importable_in_module(name: String, module_name: String, typ
             item_text: name,
             module_name: module_name,
             imports: module_imports(n: tm.module),
-            scope: module_emit_scope(typed_module: tm),
+            scope: module_emit_scope(typed_module: tm, qualified_item_registry: empty_qualified_item_registry()),
             registry: registry,
             export_sets: export_sets,
             typed_modules: typed_modules,
@@ -3633,7 +3627,7 @@ fn rhs_base_has_rust_type_authority_in_module(rhs_name: String, def_mod_filename
                 item_text: rhs_name,
                 module_name: def_module_name,
                 imports: module_imports(n: tm.module),
-                scope: module_emit_scope(typed_module: tm),
+                scope: module_emit_scope(typed_module: tm, qualified_item_registry: empty_qualified_item_registry()),
                 registry: registry,
                 export_sets: export_sets,
                 typed_modules: typed_modules,
@@ -6435,28 +6429,32 @@ fn variant_ref_self_wraps(name: String, enum_name: String, shared_types: Set<Str
 
 data value_ref_ident_dotted_fallback_note: String = "Construction wall for the dotted-render class in VALUE-EXPRESSION position (sibling of variant_pattern_dotted_qualification_note/PATTERN, bare_qualified_name in emit_typed_record_lit/CONSTRUCTION, coerce_primitive_type_dotted_fallback_note/TYPE, and rust_fn_sig_leaf_name_dotted_note/FN-SIG TYPE). A namespace-qualified dotted name (e.g. v2.std.node.Edge) whose leaf misses the registry previously fell through to emit_ident(name: name, ...) with the FULL dotted string still attached — emit_ident has no dot-awareness (pure case-conversion/sanitization), so the dots rode straight into the emitted Rust as a bare field-access chain starting at the first segment (rustc: 'cannot find value v2 in this scope', E0425). Fixed by passing the already-computed leaf, the same qualified_last_segment (v1.std.core) reduction the Present arm already keys its registry lookup on — not a new fallback, the existing one corrected to use the value already in scope. The CALL-callee sibling (emit_typed_call's func_ident, e.g. a bare dotted function reference like v2.std.staging.resolve_probe(..) rendered verbatim) reuses this same fn directly rather than re-deriving the leaf a third time (DESIGN section 2/3: one shared helper, not a forked per-seam patch); its registry lookup (the `callee` binding) is likewise re-keyed on qualified_last_segment(func) so a dotted cross-module call resolves the same ItemInfo a bare call would. Every already-bare name renders exactly as before (qualified_last_segment is the identity on an unqualified name)."
 
-fn emit_value_ref_ident(name: String, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo) -> String {
-  if string_contains(s: name, pattern: ".") {
-    let leaf = value_ref_qualified_leaf(name: name)
-    let qualifier = value_ref_qualifier_prefix(name: name)
-    if qualifier != "" {
-      match lookup_item_for_value_ref(resolved_name: name, registry: registry) {
-        Present { value: info } =>
-          emit_qualified_value_ref_crate_ident(leaf: leaf, info: info, registry: registry)
-        Absent =>
-          emit_error_expr(message: "qualified value reference missing exact registry row — refuse authored qualifier", target: Rust)
+fn emit_value_ref_ident(name: String, registry: Map<String, ItemInfo>, qualified_build: QualifiedItemRegistryBuild, emit_info: EmitGraphInfo) -> String {
+  match qualified_build {
+    QualifiedRegistryDuplicate { key, first, second } => emit_qualified_item_registry_refusal(build: qualified_build)
+    QualifiedRegistryBuilt { registry: _ } =>
+      if string_contains(s: name, pattern: ".") {
+        let leaf = value_ref_qualified_leaf(name: name)
+        let qualifier = value_ref_qualifier_prefix(name: name)
+        if qualifier != "" {
+          match lookup_item_for_value_ref(resolved_name: name, build: qualified_build) {
+            Present { value: info } =>
+              emit_qualified_value_ref_crate_ident(leaf: leaf, info: info, registry: registry)
+            Absent =>
+              emit_error_expr(message: "qualified value reference missing exact registry row — refuse authored qualifier", target: Rust)
+          }
+        } else {
+          match map_get(registry, leaf) {
+            Present { value: info } =>
+              emit_qualified_value_ref_crate_ident(leaf: leaf, info: info, registry: registry)
+            Absent =>
+              if freemonoid_empty_from_emit_info(leaf_name: leaf, emit_info: emit_info) { emit_freemonoid_empty_rc_value() }
+              else { emit_ident(name: leaf, target: Rust) }
+          }
+        }
+      } else {
+        emit_ident(name: name, target: Rust)
       }
-    } else {
-      match map_get(registry, leaf) {
-        Present { value: info } =>
-          emit_qualified_value_ref_crate_ident(leaf: leaf, info: info, registry: registry)
-        Absent =>
-          if freemonoid_empty_from_emit_info(leaf_name: leaf, emit_info: emit_info) { emit_freemonoid_empty_rc_value() }
-          else { emit_ident(name: leaf, target: Rust) }
-      }
-    }
-  } else {
-    emit_ident(name: name, target: Rust)
   }
 }
 
@@ -6473,7 +6471,7 @@ fn emit_none_keyword_for_resolved_type(resolved_type: InferredNode?) -> String {
   }
 }
 
-fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: InferredNode?, shared_types: Set<String>, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>, module_name: String) -> String {
+fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: InferredNode?, shared_types: Set<String>, registry: Map<String, ItemInfo>, qualified_build: QualifiedItemRegistryBuild, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>, module_name: String) -> String {
   let resolved_name = value_ref_normalize_self_module(name: name, module_name: module_name)
   let leaf_name = value_ref_qualified_leaf(name: resolved_name)
   let variant_parent = effective_variant_parent(name: resolved_name, binding_kind: binding_kind, resolved_type: resolved_type, emit_info: emit_info, source_indices: source_indices)
@@ -6496,39 +6494,39 @@ fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: Infe
           concat("Rc::new(", body, ")")
         } else { body }
       Absent =>
-        match lookup_item_for_value_ref(resolved_name: resolved_name, registry: registry) {
-          Present { value: info } =>
-            if is_duplicate_qualified_item_registry_marker(info: info) {
-              value_ref_item_info_refusal(info: info)
-            } else {
-              let is_data = info.kind == DataItem
-              if is_data { concat(emit_value_ref_ident(name: name, registry: registry, emit_info: emit_info), "()") }
-              else {
-              let is_function_value = match binding_kind {
-                Present { value: FunctionValueBinding } => true
-                _ => false
-              }
-              let ident = emit_value_ref_ident(name: resolved_name, registry: registry, emit_info: emit_info)
-              let ident_str = if is_function_value {
-                ident
-              } else if moves_by_value {
-                ident
-              } else { match resolved_type {
-                Present { value: _ } => apply_type_template1(template: sharing.clone_value, arg0: ident)
-                _ => ident
-              } }
-              ident_str
-              }
+        match qualified_build {
+          QualifiedRegistryDuplicate { key, first, second } => emit_qualified_item_registry_refusal(build: qualified_build)
+          QualifiedRegistryBuilt { registry: _ } =>
+            match lookup_item_for_value_ref(resolved_name: resolved_name, build: qualified_build) {
+              Present { value: info } =>
+                let is_data = info.kind == DataItem
+                if is_data { concat(emit_value_ref_ident(name: name, registry: registry, qualified_build: qualified_build, emit_info: emit_info), "()") }
+                else {
+                let is_function_value = match binding_kind {
+                  Present { value: FunctionValueBinding } => true
+                  _ => false
+                }
+                let ident = emit_value_ref_ident(name: resolved_name, registry: registry, qualified_build: qualified_build, emit_info: emit_info)
+                let ident_str = if is_function_value {
+                  ident
+                } else if moves_by_value {
+                  ident
+                } else { match resolved_type {
+                  Present { value: _ } => apply_type_template1(template: sharing.clone_value, arg0: ident)
+                  _ => ident
+                } }
+                ident_str
+                }
+              Absent =>
+                let ident = emit_value_ref_ident(name: resolved_name, registry: registry, qualified_build: qualified_build, emit_info: emit_info)
+                let ident_str = if moves_by_value {
+                  ident
+                } else { match resolved_type {
+                  Present { value: _ } => apply_type_template1(template: sharing.clone_value, arg0: ident)
+                  _ => ident
+                } }
+                ident_str
             }
-          Absent =>
-            let ident = emit_value_ref_ident(name: resolved_name, registry: registry, emit_info: emit_info)
-            let ident_str = if moves_by_value {
-              ident
-            } else { match resolved_type {
-              Present { value: _ } => apply_type_template1(template: sharing.clone_value, arg0: ident)
-              _ => ident
-            } }
-            ident_str
         }
     }
     ref_str
@@ -6560,20 +6558,20 @@ fn emit_typed_expr_base(texpr: Node, registry: Map<String, ItemInfo>, scope: Inf
             } else { qualified }
             }
           Absent =>
-            match lookup_item_for_value_ref(
-              resolved_name: value_ref_normalize_self_module(name: n, module_name: scope.module_name),
-              registry: registry
-            ) {
-              Present { value: info } =>
-                if is_duplicate_qualified_item_registry_marker(info: info) {
-                  value_ref_item_info_refusal(info: info)
-                } else {
-                  let is_data = info.kind == DataItem
-                  if is_data { concat(emit_value_ref_ident(name: n, registry: registry, emit_info: emit_info), "()") }
-                  else { emit_value_ref_ident(name: n, registry: registry, emit_info: emit_info) }
+            match scope.qualified_item_registry {
+              QualifiedRegistryDuplicate { key, first, second } => emit_qualified_item_registry_refusal(build: scope.qualified_item_registry)
+              QualifiedRegistryBuilt { registry: _ } =>
+                match lookup_item_for_value_ref(
+                  resolved_name: value_ref_normalize_self_module(name: n, module_name: scope.module_name),
+                  build: scope.qualified_item_registry
+                ) {
+                  Present { value: info } =>
+                    let is_data = info.kind == DataItem
+                    if is_data { concat(emit_value_ref_ident(name: n, registry: registry, qualified_build: scope.qualified_item_registry, emit_info: emit_info), "()") }
+                    else { emit_value_ref_ident(name: n, registry: registry, qualified_build: scope.qualified_item_registry, emit_info: emit_info) }
+                  Absent =>
+                    emit_value_ref_ident(name: n, registry: registry, qualified_build: scope.qualified_item_registry, emit_info: emit_info)
                 }
-              Absent =>
-                emit_value_ref_ident(name: n, registry: registry, emit_info: emit_info)
             }
         }
       }
@@ -6787,11 +6785,11 @@ fn rust_wrap_runtime_collection_result(call_str: String, function_name: String, 
   }
 }
 
-fn emit_rust_expr_var(expr: Node, registry: Map<String, ItemInfo>, shared_types: Set<String>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>, module_name: String) -> String {
+fn emit_rust_expr_var(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   match expr.expr_data {
     ExprVar { binding_kind: binding_kind } =>
-      let n = expr_var_name_at(texpr: expr, source_indices: source_indices)
-      emit_var_ref(name: n, binding_kind: binding_kind, resolved_type: expr.inferred, shared_types: shared_types, registry: registry, emit_info: emit_info, source_indices: source_indices, module_name: module_name)
+      let n = expr_var_name_at(texpr: expr, source_indices: scope.type_env.source_indices)
+      emit_var_ref(name: n, binding_kind: binding_kind, resolved_type: expr.inferred, shared_types: shared_types, registry: registry, qualified_build: scope.qualified_item_registry, emit_info: emit_info, source_indices: scope.type_env.source_indices, module_name: scope.module_name)
     _ => emit_error_expr(message: "emit_rust_expr_var expected ExprVar", target: Rust)
   }
 }
@@ -6990,7 +6988,7 @@ fn emit_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: InferSco
     source_indices: scope.type_env.source_indices,
     wrap_result: result => result,
     recurse: child => emit_typed_expr(texpr: child, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: fuel - 1),
-    emit_var: expr => emit_rust_expr_var(expr: expr, registry: registry, shared_types: shared_types, emit_info: emit_info, source_indices: scope.type_env.source_indices, module_name: scope.module_name),
+    emit_var: expr => emit_rust_expr_var(expr: expr, registry: registry, scope: scope, shared_types: shared_types, emit_info: emit_info),
     emit_field_access: expr => emit_rust_expr_field_access(expr: expr, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info),
     emit_call: expr => emit_rust_expr_call(expr: expr, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info),
     emit_method_call: expr => emit_rust_expr_method_call(expr: expr, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info),
@@ -7257,7 +7255,7 @@ fn emit_typed_call(func: String, args: List<Node>, registry: Map<String, ItemInf
     filled_args |> any(a => expr_references_var(node: arg_value(n: a), var_name: func, source_indices: si))
   }
   let func_ident = if is_rt { concat("v1_rt::", emit_ident(name: runtime_name, target: Rust)) }
-    else { emit_value_ref_ident(name: func, registry: registry, emit_info: emit_info) }
+    else { emit_value_ref_ident(name: func, registry: registry, qualified_build: scope.qualified_item_registry, emit_info: emit_info) }
   let func_name = if callee_self_capture { concat(func_ident, ".clone()") } else { func_ident }
   let call_str = if is_rt && func == "concat" && all_args |> count > 2 {
     emit_nested_rt_concat(remaining: all_args, acc: "", shared_types: shared_types)
@@ -8156,7 +8154,7 @@ fn emit_typed_match_arm(arm: Node, registry: Map<String, ItemInfo>, scope: Infer
     ExprVar { binding_kind: body_binding_kind } =>
       let body_name = expr_var_name_at(texpr: arm_b, source_indices: si)
       if variant_parent_from_binding_kind(binding_kind: body_binding_kind) != none {
-        emit_var_ref(name: body_name, binding_kind: body_binding_kind, resolved_type: Present { value: Resolved { node: match_result_type } }, shared_types: shared_types, registry: registry, emit_info: emit_info, source_indices: si, module_name: scope.module_name)
+        emit_var_ref(name: body_name, binding_kind: body_binding_kind, resolved_type: Present { value: Resolved { node: match_result_type } }, shared_types: shared_types, registry: registry, qualified_build: scope.qualified_item_registry, emit_info: emit_info, source_indices: si, module_name: scope.module_name)
       } else {
         emit_typed_expr(texpr: arm_b, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
       }

@@ -44,7 +44,7 @@ import v1.compiler.infer_sigs { ResolvedFuncSig, ResolvedFuncEnv }
 
 import v1.compiler.infer_items {
   ResolvedGraph, TypedModule,
-  ItemInfo
+  ItemInfo, empty_qualified_item_registry
 }
 
 import v1.compiler.infer_service {
@@ -221,7 +221,7 @@ fn emit_go_mock_prop_setup(mock_prop: Node, depth: Int, source_indices: Map<Stri
 
 fn emit_go_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> TextFile {
   let m = typed_module.module
-  let scope = module_emit_scope(typed_module: typed_module)
+  let scope = module_emit_scope(typed_module: typed_module, qualified_item_registry: empty_qualified_item_registry())
   let si = typed_module.type_env.source_indices
   let mod_name_str = authored_name_at(source_indices: si, node: m)
   let pkg_name = go_package_name(module_name: mod_name_str)
