@@ -180,11 +180,9 @@ test fn cited_symbol_planted_ambiguous_control_refuses() -> Bool {
 }
 
 test fn cited_symbol_enrolled_population_refusal_proves_gate_not_vacuous() -> Bool {
-  cited_symbol_enrolled_refusal_count() >= 3
-    && cited_symbol_resolution_violation_count() == cited_symbol_enrolled_refusal_count() - cited_symbol_planted_control_refusal_count()
+  cited_symbol_enrolled_refusal_count() >= 3 && cited_symbol_resolution_violation_count() == cited_symbol_enrolled_refusal_count() - cited_symbol_planted_control_refusal_count()
 }
 
 test fn cited_symbol_production_population_excludes_planted_controls() -> Bool {
-  length(xs: hand_authored_doc_declaration_refs())
-    == length(xs: hand_authored_production_doc_declaration_refs()) + length(xs: hand_authored_cited_symbol_control_declaration_refs())
+  length(xs: hand_authored_doc_declaration_refs()) == length(xs: hand_authored_production_doc_declaration_refs()) + length(xs: hand_authored_cited_symbol_control_declaration_refs())
 }
