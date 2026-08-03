@@ -29,8 +29,10 @@ Receipts:
 that cannot compute the affected set substitutes the *superset* — ⊤-as-answer conflated
 with ⊤-as-ignorance. Here it substitutes the *empty set* — ⊥-as-answer conflated with
 ⊥-as-ignorance. It does not widen, it narrows to nothing, which is strictly worse: a widen
-is merely expensive, a narrow is silently uncovered. Filed in DESIGN's recurring-failure-modes
-list as **empty-observation narrow**.
+is merely expensive, a narrow is silently uncovered. The name **empty-observation narrow** is
+proposed for DESIGN's recurring-failure-modes list by gunbc#7720, which is open at the time of
+writing; until that merges the class has no entry in the canonical authority and this note is
+the only place it is named.
 
 **The tell that the observation is wrong rather than three local choices being reasonable:**
 one observation, three consumers, three different copings — compile-clean *widens* to
@@ -52,10 +54,17 @@ nickname standing where the upstream authority was already available, and the du
 would land in an emitted artifact where it is most expensive to unpick later. That (b) is
 also the smaller diff, touching no generated artifact, is a consequence and not the reason.
 
-Both halves already exist in the corpus: `dag/tools/merge_admission_stamp.dag` already reads
-`GITHUB_EVENT_PATH`, and `extdeps/languages/json` means the parse is a modeled ingest rather
-than a jq shell-out (a jq call here would be exactly the shell-emission class the routing
-rules push back on).
+The parse half already exists in the corpus: `extdeps/languages/json` means reading the payload
+is a modeled ingest rather than a jq shell-out (a jq call here would be exactly the
+shell-emission class the routing rules push back on). The read half does **not** exist — the one
+process that read `GITHUB_EVENT_PATH` was retired, and the only surviving mention on main is
+`tools.merge_admission_walk` `merge_admission_pr_number_deferred_note`, which records that
+the retired cold stamp parsed the payload through jq shell and that the warm path deliberately
+writes `Absent` rather than carry that transport into a runtime-present claim. That note is
+better evidence than a live reader would be: its stated dissolve-on is *"a typed GitHub event
+payload projection supplies the optional number"* — the repository has already declared the
+carrier this note proposes to be the thing it is waiting for, and one projection discharges
+both consumers.
 
 ## 3. The arms, and the evidence status of each
 
@@ -74,8 +83,9 @@ cannot be extended backwards.
 **Zero-SHA is unobserved, not absent.** No all-zero `before` appeared, because branch
 creation surfaces as a `CreateEvent` rather than a `PushEvent` — a `PushEvent` scan
 structurally cannot see the case. The arm is therefore grounded in GitHub's published
-payload semantics, cited in `extdeps.github.push_event` `push_event_note`, and **not** in
-this measurement. An arm that looks measured when it is only reasoned is worse than one
+payload semantics — which no carrier in this repository holds today; the note that grounds
+the arm is written by gunbc#7729 as `extdeps.github.push_event` `push_event_note` and does not
+exist until that lands — and **not** in this measurement. An arm that looks measured when it is only reasoned is worse than one
 that says it is spec-grounded, because only the first stops anyone from checking.
 
 **The non-ancestor arm is justified by locatability, not by under-selection and not by
@@ -203,6 +213,8 @@ Gated on the operator's cost call; §4.2 says the cost is bounded.
 ## 6. Dissolution
 
 This note retires when stage 2 lands and its receipt count reaches zero. Until then the
-authority for each fact is the carrier that holds it — `extdeps.github.push_event`,
-`gunbc.diff_baseline`, `v2.workflow.floor_diff_observe` — and this note is the sequencing
+authority for each fact is the carrier that holds it. Two exist on main today —
+`gunbc.diff_baseline` and `v2.workflow.floor_diff_observe`; the third,
+`extdeps.github.push_event`, is *proposed* by gunbc#7729 and is named here as the intended home
+for the payload facts, not as a symbol anyone can resolve yet. This note is the sequencing
 argument plus the evidence-status table, which no carrier owns.
