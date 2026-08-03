@@ -1,227 +1,437 @@
-# Provider control interface audit — typed census and source grounding
+# Audit structured provider interfaces and lock the no-degradation migration
 
-Status: **design note, no code lands from this note.** It is the durable research
-handback for the operator directive of 2026-08-03 ("the control interface should
-be selected deliberately"). Its job is to establish, per provider control
-interface, what is *observed on this host* versus what is *not observed*, with a
-typed authority on every row, so that the implementation slices that follow are
-grounded rather than recalled.
+Status: **audit and decision receipt. No provider-interface `.dag` vocabulary
+lands from this note** — the types sketched here land in the immediately
+following Codex app-server PR, where the press, selection, event reader, receipt
+writer, and UI consume them in the same change.
 
-Every claim below labelled OBSERVED was produced by executing the named command
-in this worktree on 2026-08-03. Every claim labelled NOT OBSERVED is a typed
-absence with a named acquisition trigger — never an invented shape (DESIGN §3,
-§5).
+Bound in `gunbc.doc_graph_roots` as `plan/provider-control-interface-audit`.
+
+Every claim labelled OBSERVED was produced by executing the named command on
+2026-08-03. Package versions and integrity digests are recorded in §7 so the
+inspected artifact is identifiable, not merely named.
 
 ---
 
-## 0. The thesis this note is grounding
+## 1. The governing law: exact interface, or refuse
 
-The provider control interface is a **selected realization**, not a fixed fact.
-CLI + tmux is one realization — the compatibility one — and the roadmap's
-provider recovery system must not be built on CLI text and process state.
+The first revision of this audit described CLI + tmux as "the compatibility
+realization" and Codex `exec --json` as a "fallback realization." Both are
+deleted. They were the absorbing fallback of DESIGN §5 wearing a migration
+label: an execution that quietly proceeds with less evidence than the offer
+promised, whose frequency of degradation is unobservable because degrading *is*
+the success path.
 
-"More stable" is a conjunction of decidable properties, not a preference:
+> **A provider execution uses the exact interface admitted for that offer. If
+> that interface is unavailable or lacks a required capability, dispatch
+> refuses. It never silently substitutes a legacy interface.**
 
-- versioned machine-readable schema
-- explicit run / turn / session / account identities
-- typed terminal and refusal outcomes
-- resumable event stream
-- cancellation and follow-up operations
-- structured usage and rate-limit observations
-- an interface intended for application automation
+```dag
+type ProviderInterfaceDirective
+  = RequireProviderInterface { interface: ProviderControlInterface }
 
-It does **not** mean "cloud is always better" and does not mean the SDK is
-bug-free. The provider interface is itself modeled, versioned, tested, and
-receipted.
-
-## 1. Authority is typed, never flattened
-
-```
-ProviderInterfaceAuthority
-  = OfficialGeneratedSchema        -- generated from the shipped binary
-  | OfficialSdkType                -- shipped .d.ts / type stub
-  | OfficialImplementationSource
-  | OfficialDocumentation
-  | ExactLiveObservation           -- a captured transcript
-  | ReverseEngineeredSource        -- decompiled / reconstructed archive
-  | SyntheticProbe                 -- a deliberately provoked error
+type ProviderInterfaceResolution
+  = ProviderInterfaceResolved { binding: ProviderInterfaceBinding }
+  | RequiredProviderInterfaceUnavailable {
+      interface: ProviderControlInterface,
+      reason: NonEmptyStr,
+    }
+  | RequiredProviderCapabilityMissing {
+      interface: ProviderControlInterface,
+      capability: ProviderInterfaceCapability,
+    }
 ```
 
-None of these replaces the others. A generated schema proves the *shape* the
-binary can emit; only an `ExactLiveObservation` proves a shape was *actually*
-emitted; only a `SyntheticProbe` proves a refusal path is reachable. A
-`ReverseEngineeredSource` is admissible evidence of history and never the
-current protocol authority.
+There is no arm named `Fallback` or `Degraded`, and no "use the old interface
+when the new one is missing." Selecting a *different* provider, account, or
+model is permitted only through an explicit, receipted recovery policy, and only
+when the new offer still satisfies the **complete** execution contract. That is
+a recovery transition, not a degradation.
 
-## 2. Census
+**Legacy by explicit configuration, never by fallback.** An installation may
+author `CodexExecJsonLegacy` as its configured interface. It then receives only
+the capabilities that interface genuinely provides — work requiring structured
+account limits, typed terminal causes, or resumable turns **refuses there**. A
+legacy adapter is kept only when a real deployment owns it; otherwise it is
+deleted at cutover and recovered from history if an actual compatibility
+requirement appears.
 
-### 2.1 Codex `app-server` — GROUNDED, OfficialGeneratedSchema
+Capability requirements are **conjunctive**. An interface is never ranked by a
+score, because a score lets strength on one axis buy back a missing hard
+requirement.
+
+## 2. Source inspection is not host provisioning
+
+The first revision treated "not installed on srv1" as "not groundable," and
+proposed landing runtime typed-absence rows in place of finishing the census.
+That conflated four distinct stages:
+
+```
+source inspected
+→ artifact acquired and hashed
+→ artifact provisioned on a runtime host
+→ interface admitted by conformance
+```
+
+Research needs only the first two, in a disposable probe directory, with nothing
+entering the srv1 dependency closure. Both SDKs were acquired and inspected that
+way for this revision (§4, §6); the probe directory is discarded.
+
+```dag
+type ProviderInterfaceSourceReceipt
+type ProviderInterfaceAcquisitionReceipt
+type ProviderInterfaceProvisionReceipt
+type ProviderInterfaceAdmissionReceipt
+```
+
+Only a `ProviderInterfaceAdmissionReceipt` may construct a live
+`ProviderInterfaceOffer`. A research receipt may truthfully say
+`ArtifactNotYetAcquired`; that absence must never enter `ProviderInventory` as
+though it were an offer.
+
+## 3. Codex app-server — OBSERVED, and the correct next interface
 
 | Axis | Finding |
 |---|---|
-| Installed version | `codex-cli 0.146.0` (OBSERVED, `codex --version`) |
-| Schema generation | `codex app-server generate-json-schema --out DIR`; also `generate-ts` (OBSERVED) |
-| Schema size | 537 definitions in `codex_app_server_protocol.v2.schemas.json`; 82 in the v1 file (OBSERVED) |
-| Transport | `--listen` accepts `stdio://` (default), `unix://`, `unix://PATH`, `ws://IP:PORT`, `off`; sibling subcommands `daemon`, `proxy` (OBSERVED, `--help`) |
-| Session identity | `thread/start` → `ThreadStartResponse { thread, cwd, model, modelProvider, sandbox, approvalPolicy, approvalsReviewer }` |
-| Turn identity | `turn/start` → `TurnStartResponse { turn }`; `Turn.id` documented as **UUIDv7** |
-| Event protocol | JSON-RPC over the chosen transport: 90 `ClientRequest` methods, 70 `ServerNotification` methods, 10 `ServerRequest` methods (server→client, incl. approvals) |
-| Terminal protocol | `TurnStatus = completed \| interrupted \| failed \| inProgress`; `Turn.error: TurnError?` populated only on `failed` |
-| Typed error | `TurnError { message, additionalDetails?, codexErrorInfo? }` — the whole point of the directive |
-| Retry signal | `ErrorNotification { threadId, turnId, error, willRetry }` — `willRetry` **required**, not optional |
+| Installed version | `codex-cli 0.146.0` |
+| Schema generation | `codex app-server generate-json-schema --out DIR`; also `generate-ts` |
+| Bundle | **37 JSON files**, not one; `codex_app_server_protocol.v2.schemas.json` holds 537 definitions, the v1 file 82 |
+| Transport | `--listen` accepts `stdio://` (default), `unix://`, `unix://PATH`, `ws://IP:PORT`, `off`; sibling subcommands `daemon`, `proxy` |
+| Thread identity | `thread/start` → `ThreadStartResponse { thread, cwd, model, modelProvider, sandbox, approvalPolicy, approvalsReviewer, instructionSources }` |
+| Turn identity | `turn/start` → `TurnStartResponse { turn }`; `Turn.id` documented as UUIDv7 |
+| Event protocol | JSON-RPC: 90 `ClientRequest` methods, 70 `ServerNotification` methods, 10 `ServerRequest` methods (server→client, incl. approvals) |
+| Terminal protocol | `TurnStatus = completed \| interrupted \| failed \| inProgress`; `Turn.error: TurnError?` populated only on `failed`; `Turn` also carries `completedAt`, `durationMs` |
+| Typed error | `TurnError { message, additionalDetails?, codexErrorInfo? }` |
+| Retry signal | `ErrorNotification { threadId, turnId, error, willRetry }` — `willRetry` required |
 | Cancellation | `turn/interrupt { threadId, turnId }` |
-| Resumption | `thread/resume { threadId, ... }` — three documented modes (by threadId, by in-memory history, by rollout path) with a stated precedence and a consistency check when rejoining a *running* thread |
-| Auth / account switch | `account/login/start`, `account/login/cancel`, `account/logout`, `account/read` |
-| Usage / rate limits | `account/rateLimits/read`, `account/usage/read`, `account/rateLimitResetCredit/consume`; push notification `account/rateLimits/updated` |
-| Workspace ownership | `ThreadStartParams.cwd` — belt-owned local worktree; no provider-managed workspace on this interface |
-| Publication / artifacts | none — the interface operates on the caller's filesystem |
+| Resumption | `thread/resume { threadId, ... }` — three modes (threadId, in-memory history, rollout path) with stated precedence, and a consistency check when rejoining a running thread |
+| Auth / accounts | `account/login/start`, `account/login/cancel`, `account/logout`, `account/read` |
+| Usage / limits | `account/rateLimits/read`, `account/usage/read`, `account/rateLimitResetCredit/consume`; push `account/rateLimits/updated` |
+| Workspace | `ThreadStartParams.cwd` — belt-owned local worktree only |
+| Artifacts | none; operates on the caller's filesystem |
 
-`CodexErrorInfo` is a real coproduct, not a string. Unit arms:
-`contextWindowExceeded`, `sessionBudgetExceeded`, `usageLimitExceeded`,
-`serverOverloaded`, `cyberPolicy`, `internalServerError`, `unauthorized`,
-`badRequest`, `threadRollbackFailed`, `sandboxError`, `other`. Struct arms
-(each carrying an optional `httpStatusCode`): `httpConnectionFailed`,
+`CodexErrorInfo` unit arms: `contextWindowExceeded`, `sessionBudgetExceeded`,
+`usageLimitExceeded`, `serverOverloaded`, `cyberPolicy`, `internalServerError`,
+`unauthorized`, `badRequest`, `threadRollbackFailed`, `sandboxError`, `other`.
+Struct arms, each with optional `httpStatusCode`: `httpConnectionFailed`,
 `responseStreamConnectionFailed`, `responseStreamDisconnected`,
 `responseTooManyFailedAttempts`, plus `activeTurnNotSteerable { turnKind }`.
 
-Rate limits are structurally richer than a percentage:
 `GetAccountRateLimitsResponse { rateLimits, rateLimitResetCredits?,
-rateLimitsByLimitId? }` — the last making the surface explicitly multi-bucket.
-`RateLimitSnapshot` carries `primary`/`secondary` `RateLimitWindow
-{ usedPercent, resetsAt?, windowDurationMins? }`, plus `planType`, `limitId`,
-`limitName`, `individualLimit`, `credits`, `spendControlReached`, and
-`rateLimitReachedType` — a five-value enum distinguishing workspace-owner from
-workspace-member credit depletion from usage-limit-reached.
+rateLimitsByLimitId? }` is explicitly multi-bucket. `RateLimitSnapshot` carries
+`primary`/`secondary` `RateLimitWindow { usedPercent, resetsAt?,
+windowDurationMins? }`, plus `planType`, `limitId`, `limitName`,
+`individualLimit`, `credits`, `spendControlReached`, and a five-value
+`RateLimitReachedType`.
 
-**Consequence, stated plainly: the Codex usage-limit prose parser is retired
-work.** Every fact a parser would guess at is a typed field here.
+`Account = apiKey | chatgpt { email, planType } | amazonBedrock
+{ usesCodexManagedCredentials }` is the **upstream evidence** that entitlement
+is a real axis — cited, not minted.
 
-**`Account` is the entitlement-realm evidence.** It is a coproduct
-`apiKey | chatgpt { email, planType } | amazonBedrock { usesCodexManagedCredentials }`.
-The same model name reached through these three arms consumes different limits
-and different money. This is the upstream fact that grounds
-`ProviderEntitlementRealm` — it is cited, not minted.
+### 3.1 Correction: app-server is stronger, but not lossless
 
-### 2.2 Codex `exec --json` — the fidelity-loss specimen
+The first revision claimed "every fact a prose parser would guess at is a typed
+field here." That is too strong and is retracted.
 
-Retained as fallback realization, compatibility probe, and conformance
-specimen. Its loss is exactly locatable in tree: `gunbc.roadmap_provider_events`
-`provider_execution_state` maps the `exec` terminal to
-`ProviderFailed { activity: "agent turn failed", detail: event.raw }` — the
-structured category is discarded at that arm because `exec --json` never
-carried one. That arm is the discriminating RED for slice 1: reconstructing a
-recovery decision from `detail` alone must fail where the app-server row
-succeeds.
-
-### 2.3 Claude Agent SDK — NOT OBSERVED
-
-`/usr/local/lib/node_modules/@anthropic-ai/` contains only `claude-code`
-(2.1.220). There is no `claude-agent-sdk` package on this host, and
-`claude-code` ships only `sdk-tools.d.ts`; a grep for
-`RateLimitEvent|rate_limit_type|seven_day_overage|overage_status` returns
-nothing.
-
-Therefore the Agent SDK rate-limit and result shapes **cannot be cited from
-this host** and must not be modeled from memory. The row lands as
-authority-not-observed with acquisition trigger: *install
-`@anthropic-ai/claude-agent-sdk` and regenerate this census from its shipped
-types* (`OfficialSdkType`).
-
-Standing modeling constraint from the directive, recorded here so it survives
-the acquisition: the native rate-limit type is **open** —
-`type ClaudeNativeRateLimitType = NonEmptyStr` with recognized projections
-layered over it. Closing it as a memory-maintained enum would make an
-unrecognized upstream value unrepresentable, which is the fail-open shape §5
-forbids.
-
-### 2.4 Claude subscription CLI — distinct realization, not a substitute
-
-`claude-code` 2.1.220 is installed (OBSERVED). Its stream-JSON realization is
-retained *because the entitlement realm differs*, not as a redundant path: the
-subscription buckets (weekly / Fable) are not reachable through the Agent SDK's
-realm. `ProviderEntitlementRealm` is what keeps these two from being treated as
-interchangeable.
-
-The circulating "Claude source-collection repository" at version 2.1.88 (March
-2026) is `ReverseEngineeredSource` and is **older than the interface observed on
-this host**. Its streamlined output mode intentionally drops `rate_limit_event`,
-auth status, system events, and stream events, which makes it structurally
-unsuitable as the evidence authority for exactly the facts this lane needs.
-
-### 2.5 Claude Managed Agents — OfficialDocumentation
-
-A hosted realization in a third entitlement realm: REST `/v1/agents`,
-`/v1/sessions`, `/v1/environments`; beta header `managed-agents-2026-04-01`; SSE
-event stream; session statuses idle/running/rescheduling/terminated;
-`stop_reason.type` ∈ requires_action / retries_exhausted / end_turn; vaults,
-deployments, self-hosted sandboxes. Modeled separately, later — it is
-`ProviderManagedRepositoryWorkspace`-shaped, not a drop-in for local work.
-
-### 2.6 Cursor — SDK and Cloud Agents NOT OBSERVED; CLI is a binary receipt only
-
-`cursor-agent` exists only as a versioned tarball binary:
-`/opt/cursor-agent-home/.local/share/cursor-agent/versions/2026.07.23-e383d2b/cursor-agent`
-(OBSERVED). No Cursor SDK package and no type declarations exist anywhere on
-this host.
-
-This independently confirms the directive's claim: **the Cursor installer
-provides no semantic contract.** It is useful for an artifact/version receipt
-and nothing more. `CursorSdkLocal` and `CursorCloudAgent` land as
-authority-not-observed rows with acquisition triggers.
-
-## 3. Three findings that change the sequencing
-
-**(a) Slice 1 is fully groundable today.** Codex app-server needs no
-acquisition step; the schema is generated from the installed binary and every
-field the recovery planner needs is present and typed.
-
-**(b) Slices 2 and 3 need a provisioning step the directive does not
-sequence.** Neither the Claude Agent SDK nor any Cursor SDK is installed. Those
-slices either wait on an install, or land their interface facts as typed
-not-yet-observed rows. Inventing the shapes is the failure mode both DESIGN §3
-and §5 name.
-
-**(c) A raw schema digest is a change detector, not a protocol identity.**
-Regenerating the schema twice from the *same* binary produced two different
-sha256 digests. Measured, not inferred: the two outputs are semantically equal,
-the definition set is identical (537 in both), but key **order** diverges —
-first divergence at index 527, `ClientInfo` versus `InitializeCapabilities`.
-That is host map-iteration order leaking into the artifact, the same class as
-this repository's own open determinism thread.
-
-So `ProviderInterfaceArtifactReceipt.schema_digest` must be taken over a
-**canonical key-sorted normalization** — a structural identity that changes when
-the protocol changes. The raw bytes keep a *separate* digest in the private
-evidence store, where variance is expected and harmless. A raw-bytes digest in
-the selection receipt would fire on every regeneration while the protocol was
-unchanged, which is precisely the §5 measurement-versus-measurement trap: an
-oracle that is a copy of the thing it measures.
-
-## 4. Selection is by required capability, never by one score
-
-An interface is not ranked. A turn **declares what it needs**; an offer is
-admissible only when it satisfies every required capability.
+Codex internally distinguishes `UsageLimitReached`, `QuotaExceeded`, and
+`UsageNotIncluded`, and projects all three onto the single app-server arm
+`usageLimitExceeded`. So the operation-level *business* cause is a join, not a
+field read:
 
 ```
-ProviderInterfaceCapabilities   -- typed event stream, resumption,
-                                -- cancellation, structured usage,
-                                -- account switching, artifact retrieval, ...
+TurnError.codexErrorInfo
+⋈ account/rateLimits/read
+⋈ account identity and plan
+⋈ native message / additionalDetails
+⋈ process and control evidence
 ```
 
-Ranking by a single score would let a missing hard requirement be bought back
-by strength elsewhere. Requirement satisfaction is a conjunction; a missing
-capability refuses.
+The prose parser retires as the **policy authority**. The raw message stays as
+evidence, because it may preserve detail the coarser app-server code dropped.
 
-Cloud agents are **not transparent substitutes** for local agents, so this is
-not a Boolean `cloud: true`:
+`ErrorNotification.willRetry` is likewise a **provider-native observation** —
+"Codex intends to retry internally" — not the belt's retry policy. Preserve it,
+display it, and wait for the final turn state. Do not derive "retry the same
+provider" or "do not switch provider" from that Boolean.
+
+### 3.2 Correction: unknown cause versus terminal disposition
+
+The first revision wrote that Unknown must never become `ProviderFailed`. That
+conflated two different facts. A turn can genuinely be terminally failed while
+its cause is unclassified. The corrected invariant:
+
+> An unknown cause may project to terminal failure, but it must remain
+> explicitly unclassified and **cannot authorize automatic recovery**.
+
+```dag
+ProviderTurnFailed { cause: ProviderNativeCauseUnknown { evidence: ... } }
+```
+
+What must never happen is an unknown response silently acquiring a *classified*
+cause — `Authenticated`, `Retryable`, `QuotaExhausted` — because those authorize
+action.
+
+## 4. Claude — the entitlement claim is retracted, and a probe replaces it
+
+The first revision asserted that the subscription weekly/Fable buckets are not
+reachable through the Agent SDK's realm, and that direct stream-JSON must
+therefore remain a distinct realization. **That was never established and is
+retracted.**
+
+Inspection of the acquired SDK (`@anthropic-ai/claude-agent-sdk` 0.3.220)
+contradicts the assumption's premise. `sdk.mjs` spawns the Claude executable
+with:
 
 ```
-ProviderWorkspaceRealization
+--output-format stream-json --verbose --input-format stream-json
+```
+
+inherits the process environment, and requires no separate mandatory API-key
+argument. So an SDK run plausibly consumes the same local subscription login and
+emits the same limit events. That is an inference from the implementation, so it
+needs a live paired probe before becoming a model fact:
+
+```
+same Claude account state root · same model · same prompt
+  direct claude stream-json   versus   Claude Agent SDK
+```
+
+Compare account/session identity, entitlement and rate-limit events, reset time,
+Fable rejection, Opus warning, final result, and raw event preservation. If the
+SDK preserves subscription behaviour, **direct CLI actuation dissolves** for that
+realm. If it demonstrably cannot, the direct stream becomes an explicit
+interface for that entitlement realm — not a fallback.
+
+This is exactly why the axes must stay orthogonal. The control interface does
+**not** determine the entitlement realm:
+
+```
+provider · control interface · credential binding
+· entitlement subject · workspace realization · model
+```
+
+### 4.1 What the SDK does expose (OBSERVED, 0.3.220)
+
+`SDKRateLimitEvent { type: 'rate_limit_event', rate_limit_info, uuid,
+session_id }` carrying:
+
+```
+SDKRateLimitInfo {
+  status: 'allowed' | 'allowed_warning' | 'rejected'
+  resetsAt?, utilization?, surpassedThreshold?
+  rateLimitType?: 'five_hour' | 'seven_day' | 'seven_day_opus'
+                | 'seven_day_sonnet' | 'seven_day_overage_included' | 'overage'
+  overageStatus?: 'allowed' | 'allowed_warning' | 'rejected'
+  overageResetsAt?, overageDisabledReason?, isUsingOverage?, overageInUse?
+  errorCode?: 'credits_required', canUserPurchaseCredits?, ...
+}
+```
+
+Terminal facts: `SDKResultMessage = SDKResultSuccess | SDKResultError`, the
+error subtype being `error_during_execution | error_max_turns |
+error_max_budget_usd | error_max_structured_output_retries`. Assistant-level
+errors are typed separately: `SDKAssistantMessageError =
+authentication_failed | oauth_org_not_allowed | billing_error | rate_limit |
+overloaded | invalid_request | model_not_found | server_error | unknown |
+max_output_tokens`. `rate_limits_available` is documented false (and
+`rate_limits` null) for API key, Bedrock, and Vertex — itself an entitlement
+signal.
+
+**Finding that cuts against an assumption in the review: version 0.3.220 has no
+`raw` field on `SDKRateLimitInfo`.** A grep for a `raw` member across
+`sdk.d.ts` returns nothing. The rate-limit surface is closed enums with no
+escape hatch for an unrecognised upstream token. That *strengthens* the standing
+rule rather than weakening it: gunbc must capture **beneath** the SDK parser
+(raw subprocess stream), and the native limit token must be modelled open —
+`ClaudeNativeRateLimitType = NonEmptyStr` with recognised projections layered
+over it. The same applies to unknown top-level message types, which the SDK
+parser drops.
+
+## 5. Claude Managed Agents — a third realm, modelled later
+
+REST `/v1/agents`, `/v1/sessions`, `/v1/environments`; beta header
+`managed-agents-2026-04-01`; SSE stream; session statuses
+idle/running/rescheduling/terminated; `stop_reason.type` ∈ requires_action /
+retries_exhausted / end_turn; vaults, deployments, self-hosted sandboxes.
+`ProviderManagedRepositoryWorkspace`-shaped; not a drop-in for local work.
+
+## 6. Cursor — the SDK exists and was inspected
+
+The first revision reported "no Cursor SDK anywhere," which was a statement
+about srv1's disk, not about the world. The package is **`@cursor/sdk`**,
+current version **1.0.26**, acquired and inspected in the probe directory.
+
+Both modes are first-class in one API: `LocalAgentOptions` (with `cwd`,
+`workspaceRef`, a local `store`, and local checkpoints) and `CloudAgentOptions`,
+constructed through `createAgentPlatform` / `Agent.create`.
+
+```
+Run {
+  id, requestId, agentId
+  supports(op) / unsupportedReason(op)   // "stream" | "wait" | "cancel" | "conversation"
+  stream(): AsyncGenerator<SDKMessage>
+  wait(): Promise<RunResult>
+  cancel(): Promise<void>
+  status, onDidChangeStatus, usage, git, error, durationMs, createdAt
+}
+RunStatus       = "running" | "finished" | "error" | "cancelled"
+RunResultStatus = Exclude<RunStatus, "running">
+RunError        = { message, code? }
+RunGitInfo      = { branches: [{ repoUrl, branch?, prUrl? }] }
+```
+
+`RunGitInfo.prUrl` is the publication/artifact axis for cloud runs, alongside
+`SDKArtifact`. Errors are a typed class hierarchy —
+`AuthenticationError`, `RateLimitError`, `ConfigurationError`, `AgentBusyError`,
+`IntegrationNotConnectedError`, `NetworkError`, `AgentNotFoundError`,
+`UnknownAgentError` — each carrying a stable backend `code`. Note that
+`supports(operation)` makes capability presence a **queryable** property of the
+run, which maps directly onto the conjunctive capability check of §1.
+
+The `cursor-agent` tarball binary on srv1 (`2026.07.23-e383d2b`) remains what
+the first revision said it was: an artifact/version receipt with no semantic
+contract. It is a legacy interface by explicit configuration only, deleted from
+the default inventory at cutover.
+
+## 7. Evidence manifest
+
+Codex protocol artifact, generated twice from the same binary:
+
+```
+binary                    codex-cli 0.146.0
+command                   codex app-server generate-json-schema --out <DIR>
+bundle                    37 .json files
+raw digest A (v2 bundle)  211568ba09dae024da002c524714aa05d965e89013676f17e72450a1db5991fc
+raw digest B (v2 bundle)  4d878774cdd94131971e5a18c539c58eb1a18f043e3dd31b68e08adb7cd30892
+canonical bundle digest   f3319a0ec8bc64b2cb7d11ac379fee7bce81392e9373e62e3c2f02dad6b26c16   (A and B identical)
+definitions               537 (v2) / 82 (v1), same set both runs
+first order divergence    definition index 527: ClientInfo vs InitializeCapabilities
+byte-stable files         36 of 37; only codex_app_server_protocol.v2.schemas.json varies
+```
+
+Acquired packages (npm registry, integrity as recorded in the probe lockfile):
+
+```
+@anthropic-ai/claude-agent-sdk  0.3.220
+  sha512-glc7SdwPkOkLw8oxwLo9PKTdLJGqW/PIR4urWXFoRtX9YllwozsEVc5Tc1+EvLSkfrsxPJqQWqOgpjUOQXf1oA==
+@anthropic-ai/sdk               0.115.0
+  sha512-BJrFIVyjNuU8lfDyIJTvlRYzgQg+zEl78BxE7fq8esULsGz9IRQvGtW5spq3tydmtjQb/GFdooKGdGsetpx+lQ==
+@cursor/sdk                     1.0.26
+  sha512-dU3WpJwrxv8yoMjs0DxBgZr5btAJEO+NrvFutl08b6l2+jcuemfFWUlSPBQ2xZAH7zIZun+sqfHvjT5NxW8woQ==
+```
+
+Already present on srv1: `@anthropic-ai/claude-code` 2.1.220; `@openai/codex`
+0.146.0; `cursor-agent` 2026.07.23-e383d2b.
+
+Raw provider transcripts stay in the **private evidence store**: they may carry
+account email, repository content, prompts, tool output, internal paths,
+provider identifiers, or secrets echoed by the provider. The public repository
+receives a sanitized fixture and its digest.
+
+## 8. Protocol identity is the canonical full bundle
+
+A definition-only digest would miss root request/notification unions, method
+maps, required top-level members, the schema entrypoint, and — measured here —
+**36 of the 37 files in the bundle**. The identity is:
+
+```
+all intended JSON schema files
+→ parse JSON
+→ refuse duplicate object keys
+→ recursively sort object members
+→ preserve array order
+→ include normalized relative file names
+→ canonical serialize
+→ hash
+```
+
+```dag
+type ProviderProtocolArtifactIdentity {
+  canonical_bundle_digest: ContentHash
+  raw_artifact_digests: List<ContentHash>
+}
+```
+
+Proven by execution in §7: the canonical digest is **identical across both
+generations** while the raw digest of the v2 file differs. The raw digests are
+retained separately as artifact observations, where variance is expected.
+
+This digest deliberately does **not** attempt to survive a future switch from
+JSON Schema to generated TypeScript — those are different representations. If
+cross-format semantic identity becomes necessary, a later
+`ProviderProtocolSurfaceIdentity` derives from a typed method/event/type
+relation.
+
+Implementation note: `main` now carries a real JSON parser that retains object
+members as a list and treats duplicate names as an explicit condition, and an
+emitter that preserves authored member order. That is sufficient substrate to
+implement this canonicalizer in `.dag` rather than shelling through `jq -S`.
+
+## 9. Model shape: one nested binding, not four copied fields
+
+The first revision proposed adding `entitlement_realm`, `control_interface`,
+`workspace_realization`, and `interface_version` directly to
+`DispatchResolvedExecution`. That would fork immediately against what `main`
+already carries — `ProviderKind` fuses provider identity to the CLI interface
+(`ClaudeCliProvider`, `CodexCliProvider`, `CursorCliProvider`), and
+`ProviderInstance` already holds `kind`, `executable`, `observed_version`
+beside `DispatchResolvedExecution.provider_version`. A receipt could then say
+`kind = CodexCliProvider` while `control_interface = CodexAppServer`, and
+`provider_version` while `interface_version` — four witnesses for facts that can
+disagree.
+
+Split provider identity from interface identity and bind them once:
+
+```dag
+type ProviderKind = ClaudeProvider | CodexProvider | CursorProvider
+
+type CodexControlInterface  = CodexAppServer | CodexExecJsonLegacy
+type ClaudeControlInterface = ClaudeAgentSdk | ClaudeDirectStreamJson
+type CursorControlInterface = CursorSdkLocal | CursorSdkCloud
+                            | CursorDirectStreamJsonLegacy
+
+type ProviderControlInterface
+  = CodexInterface  { interface: CodexControlInterface }
+  | ClaudeInterface { interface: ClaudeControlInterface }
+  | CursorInterface { interface: CursorControlInterface }
+
+type ProviderInterfaceArtifactIdentity {
+  interface: ProviderControlInterface
+  artifact_digest: ContentHash
+  artifact_version: NonEmptyStr
+  protocol_identity: ProviderProtocolIdentity
+}
+
+type ProviderInterfaceBinding {
+  provider: ProviderKind
+  artifact: ProviderInterfaceArtifactIdentity
+  credential: DispatchCredentialBindingIdentity
+  entitlement_subject: ProviderEntitlementSubject
+  workspace: ProviderWorkspaceBinding
+}
+
+type DispatchResolvedExecution {
+  interface_binding: ProviderInterfaceBinding
+  model_identity: DispatchModelIdentity
+  provider_control: DispatchProviderControl
+  temporal_bounds: DispatchTemporalBounds
+  usage_observations: DispatchUsageObservations
+  attempt_identity: DispatchAttemptIdentity
+}
+```
+
+One nested binding is the structural source. Its members are never copied into
+sibling fields.
+
+Workspace stays a realization, never a Boolean `cloud: true`:
+
+```dag
+type ProviderWorkspaceRealization
   = BeltOwnedLocalWorktree
   | ProviderManagedRepositoryWorkspace
   | ProviderManagedUploadedWorkspace
 
-ProviderWorkspaceContinuation
+type ProviderWorkspaceContinuation
   = ContinueInSameWorkspace
   | ContinueAfterCheckpointPush
   | ContinueAfterArtifactTransfer
@@ -229,73 +439,160 @@ ProviderWorkspaceContinuation
   | ContinuationUnsupported
 ```
 
-Prefer a cloud agent when the work starts from an immutable remote repo/ref and
-can return a branch, PR, or artifacts. Prefer local SDK when the agent must
-continue in a belt-owned worktree holding unpublished changes.
+## 10. `ProviderReadiness` must decompose before Fable is modellable
 
-## 5. Where this lands in the model
+`extdeps.llm.cli_lifecycle` `ProviderReadiness` is one coproduct spanning
+installation, authentication, quota, rate limit, and request refusal. It cannot
+represent the observed state:
 
-The control interface belongs in the **existing** selection receipt. There is
-no second selection system. `gunbc.dispatch_selection`
-`DispatchResolvedExecution` gains four fields:
+```
+Claude account authenticated
+weekly Opus bucket allowed-warning at 95%
+Fable-specific bucket rejected
+Opus remains runnable
+```
 
-- `entitlement_realm`
-- `control_interface`
-- `workspace_realization`
-- `interface_version`
+One arm necessarily erases the others. The successor separates:
 
-`ProviderEntitlementRealm` is load-bearing: the same model name reached through
-a different realm consumes different limits and different money. Codex's own
-`Account` coproduct (§2.1) is the upstream evidence that this axis is real.
+```dag
+type ProviderInstallationStanding
+type ProviderAuthenticationStanding
+type ProviderEntitlementObservation
+type ProviderLimitObservation
+type ProviderTurnOutcome
+type ProviderToolEnvironmentStanding
+```
 
-Three receipt layers, kept separate because they answer different questions:
+and gives limits an explicit subject:
 
-- `ProviderInterfaceArtifactReceipt` — which interface artifact, which version,
-  which canonical digest
-- `ProviderTerminalEvidenceReceipt` — what the provider actually said at the
-  terminal
-- `ProviderResponseCoverageRow` / `ProviderResponseCoverageStanding` — which
-  response shapes we have observed and which remain unobserved
+```dag
+type ProviderLimitSubject
+  = ProviderAccountLimit   { credential: DispatchCredentialBindingIdentity }
+  | ProviderWorkspaceLimit { workspace_account: NonEmptyStr }
+  | ProviderModelLimit     { credential: DispatchCredentialBindingIdentity,
+                             model: DispatchModelIdentity }
+  | ProviderNativeLimitBucket { credential: DispatchCredentialBindingIdentity,
+                                native_key: NonEmptyStr }
+```
 
-**The invariant across all three: Unknown must never silently become
-`ProviderFailed`, `Authenticated`, `Retryable`, or `QuotaExhausted`.** An
-unobserved shape is typed unobserved. This is the same rule
-`extdeps.llm.cli_lifecycle` `cli_lifecycle_fact_separation_note` already states
-for readiness, applied one layer up.
+The native token stays open. Recognised projections may classify `seven_day`,
+`five_hour`, `seven_day_opus`, or Fable-related observations, but the original
+token survives — which §4.1 shows is mandatory, since the SDK's own enums are
+closed and carry no `raw`.
 
-## 6. Evidence handling
+## 11. Authority versus observation method
 
-Raw provider evidence stays in a **private evidence store**. It may contain
-account email, repository content, prompts, tool output, internal paths,
-provider identifiers, or secrets accidentally echoed by the provider. The public
-repository receives a **sanitized fixture and its digest**, never the raw
-personal transcript.
+The first revision proposed one enum mixing `OfficialGeneratedSchema`,
+`OfficialSdkType`, `OfficialImplementationSource`, `OfficialDocumentation`,
+`ExactLiveObservation`, `ReverseEngineeredSource`, `SyntheticProbe`. The last
+two-and-a-bit are not authorities — `ExactLiveObservation` and `SyntheticProbe`
+are observation *methods*. Fusing them repeats a fact-separation problem across
+five axes: source authority, observation method, evidence provenance, evidence
+fidelity, claim standing.
 
-## 7. Sequence
+`main` already carries the general claim/evidence machinery — `RecordedFact`,
+`EvidenceProvenance`, `EvidenceFidelity`, direction, freshness, inference rules,
+insufficiency — and already uses it for provider-readiness observations. Reuse
+it rather than minting a provider-only evidence ontology (DESIGN §3).
 
-One active PR plus at most one stacked successor. No parallel per-provider
-error PRs.
+```dag
+type ProviderInterfaceObservationMethod
+  = InterfaceSourceInspection
+  | InterfaceSchemaGeneration
+  | PassiveLiveCapture
+  | DeliberateSyntheticProbe
 
-1. Provider interface port + Codex app-server vertical slice.
-   RED: replacing the typed `codexErrorInfo` with only the rendered message
-   makes the specimen fail.
-2. Claude Agent SDK realization + subscription compatibility *(gated on §3(b)
-   acquisition)*.
-3. Cursor SDK local + Cloud Agent realizations *(gated on §3(b) acquisition)*.
-4. Provider-native terminal → business disposition → recovery planner.
-5. Replace the tmux press surface.
+type ProviderInterfaceObservation {
+  interface: ProviderInterfaceArtifactIdentity
+  method: ProviderInterfaceObservationMethod
+  native_fact: ProviderNativeFact
+}
+```
 
-Slice 5 is last for a reason: the tmux surface is load-bearing until the typed
-interface actually carries the recovery decisions, and removing it earlier would
-be a rung regression with no replacement.
+The official schema or SDK source is the cited external authority; the live
+capture or probe is the recorded fact and its provenance.
+
+The circulating Claude "source-collection repository" at 2.1.88 (March 2026) is
+reverse-engineered, older than the interface installed on srv1, and its
+streamlined mode drops `rate_limit_event`, auth status, system events, and
+stream events. It is admissible as history, never as the protocol authority.
+
+## 12. Sequence: vertical, one provider at a time
+
+Adapter-first sequencing would land several more pieces of infrastructure while
+the product still says "dispatch accepted" and does nothing — the live incident
+where a dead session container satisfies the command. Producer vocabulary
+without live wiring is the recurring failure mode. So each slice is one complete
+trip.
+
+**A. This PR** — audit and decision receipt. No provider-interface vocabulary.
+
+**B. Codex app-server press trip.** The generic model lands only insofar as
+Codex consumes it.
+
+```
+UI Start → subjectful command receipt
+→ exact Codex app-server / account / interface binding
+→ thread/start or thread/resume → turn/start
+→ streamed typed events → exact terminal receipt
+→ visible success / refusal / recovery state
+```
+
+Production transport is one supported local control endpoint per admitted
+account binding — a supervised Unix socket. Stdio is for conformance tests. The
+experimental WebSocket transport is not used.
+
+Acceptance: no tmux session-name authority; no `codex exec --json` substitution
+when app-server is absent; exact thread and turn IDs in receipts; raw provider
+evidence retained before projection; a typed usage-limit specimen joined with
+rate-limit state; unknown notifications retained; click feedback names the
+command and turn immediately; a dead control process produces a located
+mechanism refusal; srv1's Codex `exec`/tmux offer removed at cutover. The legacy
+exec stream survives only as a checked-in fidelity-loss fixture — the loss is
+locatable today at `gunbc.roadmap_provider_events` `provider_execution_state`,
+whose terminal arm discards the category into `detail`.
+
+**C. Claude Agent SDK press trip.** Run the §4 paired entitlement probe first.
+Then: raw subprocess capture beneath the SDK parser, official typed parsing,
+unknown top-level event preservation, Fable hard limit, weekly hard limit,
+weekly warning, expired authentication, resume and cancellation, and the same
+press/turn receipt contract as Codex. If the SDK carries subscription semantics,
+delete direct Claude CLI actuation for that realm.
+
+**D. First cross-provider recovery.** Codex turn 1 → exact quota/capacity
+receipt → an explicitly admitted equivalent Claude offer → same attempt and
+local worktree → Claude turn 2 → visible recovery receipt. Not a fallback: the
+second offer must prove it preserves every required capability and workspace
+condition. If no equivalent offer exists, wait for reset or escalate to the
+operator. Never downgrade to a weaker legacy interface.
+
+**E. Cursor SDK local**, same belt-owned worktree contract; delete the direct
+Cursor CLI path from the default inventory at cutover.
+
+**F. Cursor cloud**, a separate workspace realization, admissible only when work
+starts from an exact remote ref or a modeled checkpoint makes the local work
+product transferable. It never masquerades as an ordinary provider switch from a
+dirty local worktree.
 
 ---
 
-## Open decisions for the operator
+## Locked decisions
 
-1. **Acquisition or typed absence** for slices 2 and 3 — install the Claude
-   Agent SDK and a Cursor SDK on this host and widen the census first, or land
-   those rows as not-yet-observed and unblock slice 1 immediately.
-2. **Canonicalization form** for the schema digest — key-sorted JSON is the
-   obvious normalization, but if the receipt is meant to survive a `generate-ts`
-   switch it should be over the *definition set*, not the file.
+```
+No automatic legacy fallback
+No runtime offer from a typed research absence
+Provider identity ≠ control interface
+Control interface ≠ entitlement realm
+One nested interface binding, not four copied fields
+Independent installation / auth / limit / turn facts
+Full-bundle canonical protocol identity
+One provider completed vertically before the next adapter
+Legacy support only by explicit installation choice with a real owner
+```
+
+## Open, and deliberately not decided here
+
+The paired Claude entitlement probe (§4) is a **live experiment**, not a
+modelling choice. Its outcome decides whether `ClaudeDirectStreamJson` survives
+as an interface or dissolves. It runs at the head of slice C, and neither answer
+is assumed by this note.
