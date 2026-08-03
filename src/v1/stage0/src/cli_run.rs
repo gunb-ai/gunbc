@@ -5413,6 +5413,8 @@ struct DiscoveryEntryResolve {
     entry_runtime_dependency_touched: bool,
     resolve_nanos: u128,
     stage_nanos: ResolveStageNanos,
+    resolved_graph_hit: bool,
+    reconcile_all_cache_hits: bool,
 }
 
 fn resolve_discovery_entry_for_corpus_row(
@@ -5429,11 +5431,13 @@ fn resolve_discovery_entry_for_corpus_row(
     let sources = load_sources_for_entry_with_pool(index, entry_path)
         .map_err(|msg| format!("load sources failed for {entry_path}: {msg}"))?;
     let closure_subject = subject_digest_for_closure(&sources);
+    prep_tax_flags_reset();
     let resolve_started = std::time::Instant::now();
     set_phase(FloorPhase::Resolve, entry_path);
     let (graph, source_indices) = resolve_entry_with_index_for_discovery_corpus(index, entry_path)
         .map_err(|msg| format!("resolve failed for {entry_path}: {msg}"))?;
     let resolve_nanos = resolve_started.elapsed().as_nanos();
+    let prep_tax_flags = prep_tax_flags_take();
     // Same thread, immediately after the resolve that filled it: this entry's split.
     let stage_nanos = resolve_stage_slot_snapshot();
     collect_typed_module_names(
@@ -5508,6 +5512,8 @@ fn resolve_discovery_entry_for_corpus_row(
         entry_runtime_dependency_touched,
         resolve_nanos,
         stage_nanos,
+        resolved_graph_hit: prep_tax_flags.resolved_graph_hit,
+        reconcile_all_cache_hits: prep_tax_flags.reconcile_all_cache_hits,
     })
 }
 
@@ -8476,6 +8482,99 @@ fn floor_drain_retention_detail_enabled() -> bool {
         .unwrap_or(false)
 }
 
+/// Per-resolve flags for the floor prep-tax cohort receipt (floor-prep-tax-program §4 P1).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct PrepTaxResolveFlags {
+    resolved_graph_hit: bool,
+    reconcile_all_cache_hits: bool,
+}
+
+thread_local! {
+    static PREP_TAX_RESOLVE_FLAGS: std::cell::Cell<PrepTaxResolveFlags> =
+        std::cell::Cell::new(PrepTaxResolveFlags::default());
+}
+
+fn prep_tax_flags_reset() {
+    PREP_TAX_RESOLVE_FLAGS.set(PrepTaxResolveFlags::default());
+}
+
+fn prep_tax_flags_take() -> PrepTaxResolveFlags {
+    PREP_TAX_RESOLVE_FLAGS.take()
+}
+
+fn prep_tax_note_resolved_graph_hit() {
+    PREP_TAX_RESOLVE_FLAGS.with(|f| {
+        let mut cur = f.get();
+        cur.resolved_graph_hit = true;
+        f.set(cur);
+    });
+}
+
+fn prep_tax_note_reconcile_all_cache_hits() {
+    PREP_TAX_RESOLVE_FLAGS.with(|f| {
+        let mut cur = f.get();
+        cur.reconcile_all_cache_hits = true;
+        f.set(cur);
+    });
+}
+
+/// Measurement-only cap on inline-drain entry groups (floor-prep-tax-program P1).
+fn floor_prep_tax_max_groups() -> Option<usize> {
+    std::env::var("GUNBC_FLOOR_PREP_TAX_MAX_GROUPS")
+        .ok()
+        .and_then(|v| v.trim().parse().ok())
+        .filter(|&n| n > 0)
+}
+
+fn cgroup_memory_current_bytes() -> Option<u64> {
+    let dir = crate::memory_governor::leaf_cgroup_dir()?;
+    crate::memory_governor::read_cgroup_u64(&dir, "memory.current")
+}
+
+fn schedule_retention_eviction_totals(index: &MultiEntryIndex) -> (u64, u64) {
+    index
+        .schedule_retention
+        .borrow()
+        .as_ref()
+        .map(|sr| (sr.schedule_evictions(), sr.resolved_graph_evictions()))
+        .unwrap_or((0, 0))
+}
+
+fn emit_floor_prep_tax_entry_line(
+    cohort: &str,
+    group_idx: usize,
+    total_groups: usize,
+    entry_label: &str,
+    wall_gap_ms: u64,
+    resolve_ms: u64,
+    eval_ms: u64,
+    resolved_graph_hit: bool,
+    schedule_cache_hit: bool,
+    modules_evicted: u64,
+    graphs_evicted: u64,
+    process_rss: Option<u64>,
+    cgroup_current: Option<u64>,
+    cgroup_peak: Option<u64>,
+) {
+    eprintln!(
+        "[floor-prep-tax] cohort={cohort} group={group_idx}/{total_groups} entry={entry_label} \
+         wall_gap_ms={wall_gap_ms} resolve_ms={resolve_ms} eval_ms={eval_ms} \
+         resolved_graph_hit={} schedule_cache_hit={} modules_evicted={modules_evicted} \
+         graphs_evicted={graphs_evicted} process_rss={} cgroup_current={} cgroup_peak={}",
+        u8::from(resolved_graph_hit),
+        u8::from(schedule_cache_hit),
+        process_rss
+            .map(|b| b.to_string())
+            .unwrap_or_else(|| "unreadable".into()),
+        cgroup_current
+            .map(|b| b.to_string())
+            .unwrap_or_else(|| "unreadable".into()),
+        cgroup_peak
+            .map(|b| b.to_string())
+            .unwrap_or_else(|| "unreadable".into()),
+    );
+}
+
 fn retention_snapshot_peak(
     a: &IndexRetentionSnapshot,
     b: &IndexRetentionSnapshot,
@@ -9894,6 +9993,7 @@ fn resolved_graph_from_sources_with_index(
     // residue on re-resolve (Track A denomination receipt, resolve-split #6535).
     if let Some((graph, si, compile_clean_diags)) = index.resolved_graph_memo.borrow().get(&subject)
     {
+        prep_tax_note_resolved_graph_hit();
         return Ok((graph.clone(), si.clone(), compile_clean_diags.clone()));
     }
     // Cross-process store tier: opt-in via `GUNBC_RESOLVED_GRAPH_CACHE_DIR` only.
@@ -10996,6 +11096,7 @@ fn reconcile_with_typed_cache(
         source_indices.clone(),
         index,
     )? {
+        prep_tax_note_reconcile_all_cache_hits();
         return Ok(assembled);
     }
     // Corpus-wide bare-name census lives on SymbolIndex.global_bare (namespace-resolution-design.md §8 PR-4):
@@ -14692,6 +14793,10 @@ pub struct EntryResolveReceipt {
     /// typecheck/parent-envs/assembly/ownership); the lump minus
     /// `stage_nanos.attributed_total()` is the unattributed residue.
     pub stage_nanos: ResolveStageNanos,
+    /// `resolved_graph_memo` served this entry's closure subject without re-assembly.
+    pub resolved_graph_hit: bool,
+    /// `try_reconcile_all_cache_hits` returned a fully cached closure (typed-store probe).
+    pub reconcile_all_cache_hits: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -19325,9 +19430,29 @@ fn run_discovery_corpus_with_options_inner(
                 };
                 let mut summaries = Vec::new();
                 let drain_detail = floor_drain_retention_detail_enabled();
+                let prep_tax_detail = drain_detail;
+                let cohort = if schedule_retention_evict_enabled() {
+                    "retention"
+                } else {
+                    "retain-all"
+                };
+                let prep_tax_max = floor_prep_tax_max_groups();
                 let total_groups = groups.len();
                 let mut drain_prev = index_retention_snapshot(&index);
                 let mut drain_peaks = drain_prev;
+                let mut group_wall_prev = std::time::Instant::now();
+                let (mut sched_evict_before, mut graph_evict_before) =
+                    schedule_retention_eviction_totals(&index);
+                if prep_tax_detail {
+                    eprintln!(
+                        "[floor-prep-tax] cohort={cohort} armed: entry_groups={total_groups} \
+                         evict_enabled={} max_groups={}",
+                        schedule_retention_evict_enabled(),
+                        prep_tax_max
+                            .map(|n| n.to_string())
+                            .unwrap_or_else(|| "none".into()),
+                    );
+                }
                 // Arm retention over the WHOLE batch schedule (every group's rows) ONCE, before
                 // the inline drain — NOT per group. The drain reuses the one process-shared index
                 // across all entry-groups, so a shared compiler-core module reached by many
@@ -19337,9 +19462,20 @@ fn run_discovery_corpus_with_options_inner(
                 // whole closure), evicting and cold-recomputing the shared core once per entry.
                 index_arm_schedule_retention(&index, &rows);
                 for (group_idx, group_indices) in groups.into_iter().enumerate() {
+                    if prep_tax_max.is_some_and(|cap| group_idx >= cap) {
+                        eprintln!(
+                            "[floor-prep-tax] cohort={cohort} truncated_at_group={} \
+                             max_groups={}",
+                            group_idx,
+                            prep_tax_max.unwrap()
+                        );
+                        break;
+                    }
+                    let wall_gap_ms = group_wall_prev.elapsed().as_millis() as u64;
+                    group_wall_prev = std::time::Instant::now();
                     let group_rows: Vec<DiscoveryRow> =
                         group_indices.iter().map(|&i| rows[i].clone()).collect();
-                    summaries.push(run_discovery_rows(
+                    let summary = run_discovery_rows(
                         &group_rows,
                         &index,
                         execution_mode,
@@ -19351,7 +19487,44 @@ fn run_discovery_corpus_with_options_inner(
                         whole_tree_published_keys.clone(),
                         options.witness_budget_policy(),
                         style,
-                    )?);
+                    )?;
+                    let (sched_evict_after, graph_evict_after) =
+                        schedule_retention_eviction_totals(&index);
+                    let modules_evicted = sched_evict_after.saturating_sub(sched_evict_before);
+                    let graphs_evicted = graph_evict_after.saturating_sub(graph_evict_before);
+                    sched_evict_before = sched_evict_after;
+                    graph_evict_before = graph_evict_after;
+                    if prep_tax_detail {
+                        let entry_label = group_rows
+                            .first()
+                            .map(|r| r.entry.as_str())
+                            .unwrap_or("?");
+                        let resolved_graph_hit = summary
+                            .entry_resolve_receipts
+                            .iter()
+                            .any(|r| r.resolved_graph_hit);
+                        let schedule_cache_hit = summary
+                            .entry_resolve_receipts
+                            .iter()
+                            .any(|r| r.reconcile_all_cache_hits);
+                        emit_floor_prep_tax_entry_line(
+                            cohort,
+                            group_idx + 1,
+                            total_groups,
+                            entry_label,
+                            wall_gap_ms,
+                            (summary.total_resolve_nanos / 1_000_000) as u64,
+                            (summary.total_measured_nanos / 1_000_000) as u64,
+                            resolved_graph_hit,
+                            schedule_cache_hit,
+                            modules_evicted,
+                            graphs_evicted,
+                            peak_rss_vhwm_bytes(),
+                            cgroup_memory_current_bytes(),
+                            peak_rss_vhwm_bytes(),
+                        );
+                    }
+                    summaries.push(summary);
                     let snap = index_retention_snapshot(&index);
                     if drain_detail {
                         emit_floor_drain_group_line(
@@ -20017,6 +20190,8 @@ fn run_discovery_rows(
                     closure_subject: resolved.closure_subject.clone(),
                     resolve_nanos: resolved.resolve_nanos,
                     stage_nanos: resolved.stage_nanos,
+                    resolved_graph_hit: resolved.resolved_graph_hit,
+                    reconcile_all_cache_hits: resolved.reconcile_all_cache_hits,
                 });
                 current_closure_subject = Some(resolved.closure_subject);
                 current_entry_frontier_nodes = resolved.frontier_nodes;
@@ -20124,6 +20299,8 @@ fn run_discovery_rows(
                 closure_subject: resolved.closure_subject.clone(),
                 resolve_nanos: resolved.resolve_nanos,
                 stage_nanos: resolved.stage_nanos,
+                resolved_graph_hit: resolved.resolved_graph_hit,
+                reconcile_all_cache_hits: resolved.reconcile_all_cache_hits,
             });
             current_closure_subject = Some(resolved.closure_subject);
             current_entry_frontier_nodes = resolved.frontier_nodes;
