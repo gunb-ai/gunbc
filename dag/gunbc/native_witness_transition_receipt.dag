@@ -1,0 +1,52 @@
+module gunbc.native_witness_transition_receipt
+
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.types { CommitSha, Int, String }
+import gunbc.roadmap_model { RoadmapNodeIdentity }
+
+data native_witness_transition_receipt_note: String = "ONE HOME FOR A MUTABLE PROGRAM STATUS, SO NO DOCUMENT HAS TO HOLD IT TWICE (operator ruling on gunbc#7710, 2026-08-02). That PR wrote the same changing observation -- native-at-small-scale evidence landed, with its pull request, merge commit, evaluated head and pass count -- independently into gunbc.roadmap_authority five_minute_ci_gate_program_note AND into gunbc.design_document, and therefore into generated DESIGN.md. Two hand-maintained copies of one advancing status is the DESIGN section 3 dual representation: someone updates one, the other silently goes stale, and both read as authoritative. The operator's split is the model here -- the DURABLE DESIGN FACT is two clauses (native-at-small-scale evidence has landed; operational migration rate remains open) and belongs in the design criteria; the pull request, merge commit, evaluated head and executed witness are EXECUTION EVIDENCE and belong in exactly one typed receipt that both documents cite.\n\nWHAT IS DELIBERATELY NOT STORED, and why the exclusion is the point. No pass count. gunbc#7710 recorded 25 of 25 witness receipts; that module declared 31 test functions less than a day later, so a transcribed count is stale before the ink dries and no oracle in this repository could have caught it. The per-member verdicts already have a single authority in std.selected_witness_bundle NativeWitnessBundleExecutionReceipt member_equivalence, produced by the run itself; a hand-typed integer beside it would be a second representation of that list. executed_evidence therefore cites the witness SYMBOL, per the DESIGN section 3 rule that a citation names the module and declaration rather than a position or a snapshot. No rendered status string either: standing is DERIVED below, never stored, so a transcribed standing is unrepresentable rather than lens-caught.\n\nTHIS IS NOT AN ACCEPTANCE AND MUST NOT BE READ AS ONE. gunbc.roadmap_model RoadmapAcceptanceReceipt remains the only fact node_accepted consults, and it requires the node's criteria digest plus executed red-control and delivered handback evidence. This receipt records that ONE piece of evidence landed under a node that is still OPEN -- for the native-selected-witness-bundle node, operational migration rate, fallback counting, artifact identity and fail-closed memory all remain open. A receipt here moves nothing on the roadmap graph.\n\nGENERALIZATION TRIGGER, named rather than pre-built (DESIGN section 6, model just-in-time): partial evidence landing under an open node is not native-witness-specific, but it has exactly one inhabitant today. On the SECOND subject needing this shape, the node identity plus landed change plus evaluated head plus cited evidence generalize into one carrier and this module becomes an instantiation; minting the general shape now would be uninhabited generality."
+
+type NativeSelectedWitnessTransitionReceipt {
+  node: RoadmapNodeIdentity
+  landed_pull_request: Int
+  landed_merge_commit: CommitSha
+  evaluated_head: CommitSha
+  executed_evidence: DeclarationRef
+}
+
+data transition_evidence_standing_note: String = "THE HEAD THE WITNESSES RAN AT IS NOT THE COMMIT THAT LANDED THEM, AND THE DIFFERENCE IS THE WHOLE HONESTY CONTENT. gunbc#7710 carried this distinction in prose -- receipts executed at the pre-merge head, not at the merge -- which is exactly the kind of true sentence that survives only as long as its author is watching. gunbc.roadmap_verification_receipt already states the underlying law for the verification case: head A and head B are different subjects, so evidence gathered at one cannot silently impersonate evidence about the other. Deriving the standing from the two commits the receipt already carries turns that sentence into structure: a reader cannot quote an evidence run as verified-at-the-merged-tree unless the two commits actually agree, because the arm naming both commits is what the fold returns when they do not.\n\nBOTH ARMS ARE ADMISSIBLE EVIDENCE. EvidenceExecutedBeforeLanding is not a refusal and not a defect -- pre-merge execution is the normal shape of a controls-clear-then-merge sequence. It is a NAMED standing, so that the weaker claim cannot be reported as the stronger one."
+
+type TransitionEvidenceStanding
+  = EvidenceExecutedAtLandedCommit
+  | EvidenceExecutedBeforeLanding {
+      evaluated_head: CommitSha,
+      landed_merge_commit: CommitSha,
+    }
+
+fn transition_evidence_standing(
+  receipt: NativeSelectedWitnessTransitionReceipt,
+) -> TransitionEvidenceStanding {
+  if receipt.evaluated_head == receipt.landed_merge_commit {
+    EvidenceExecutedAtLandedCommit
+  } else {
+    EvidenceExecutedBeforeLanding {
+      evaluated_head: receipt.evaluated_head,
+      landed_merge_commit: receipt.landed_merge_commit,
+    }
+  }
+}
+
+data native_at_small_scale_receipt_note: String = "THE ONE INHABITANT. Subject is the durable roadmap node identity rn_2I5K7M9O1Q3R6T8V0W2X4Y7Z9A1C, the native-selected-witness-bundle node, rather than its editable slug -- the same choice gunbc.roadmap_verification_receipt VerificationSubject makes, and it matters here because a slug rename must not orphan the evidence. The landed change is gunbc#7599, merge commit 1ebff27f1e538a06edbaf6a1871bff4c10887b39. The witnesses executed at 2f9e780e6d2130680c4d9fb49739bf0c6cc7c746, the pre-merge branch head, so this receipt's derived standing is EvidenceExecutedBeforeLanding and no consumer may report it as verified at the merged tree. The cited evidence is the cutover-evidence witness in v2.test.execution.native_selected_witness_bundle, which is where the equivalence between native and interpreted execution is actually established; the timing ratio against interpreted and warm-cargo paths remains claimed-not-verified per the design note, and nothing here asserts it."
+
+fn native_at_small_scale_transition_receipt() -> NativeSelectedWitnessTransitionReceipt {
+  NativeSelectedWitnessTransitionReceipt {
+    node: "rn_2I5K7M9O1Q3R6T8V0W2X4Y7Z9A1C" as RoadmapNodeIdentity,
+    landed_pull_request: 7599,
+    landed_merge_commit: "1ebff27f1e538a06edbaf6a1871bff4c10887b39",
+    evaluated_head: "2f9e780e6d2130680c4d9fb49739bf0c6cc7c746",
+    executed_evidence: decl_ref(
+      module_path: "v2.test.execution.native_selected_witness_bundle",
+      decl_name: "native_selected_witness_bundle_cutover_evidence_holds",
+    ),
+  }
+}
