@@ -112,6 +112,22 @@ test fn witness_push_absent_before_refuses() -> Bool {
   ) == "refused"
 }
 
+test fn witness_push_observation_read_refusal_propagates() -> Bool {
+  arm_tag(
+    res: resolve_case(
+      override_ref: none,
+      event_name: "push",
+      base_ref: none,
+      push_before: Present {
+        value: PushBeforeInputRefused {
+          reason: "push event payload unreadable at /tmp/missing.json — no such file; halting the floor (AFFECTED-SET REFUSAL)"
+        }
+      },
+      head_sha: Present { value: "fedcba0987654321fedcba0987654321fedcba09" }
+    )
+  ) == "refused"
+}
+
 test fn witness_push_observation_refusal_propagates() -> Bool {
   arm_tag(
     res: resolve_case(

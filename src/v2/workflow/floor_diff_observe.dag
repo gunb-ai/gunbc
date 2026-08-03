@@ -41,11 +41,12 @@ import extdeps.github.actions_environment { github_sha_variable_name }
 import extdeps.git.hooks { zero_sha }
 import extdeps.github.push_event {
   github_event_path_env,
-  push_before_from_event_json,
+  push_before_from_event_path,
   PushBeforeObserved,
   PushBeforeAbsent,
   PushBeforeZeroSha,
-  PushBeforeMalformed
+  PushBeforeMalformed,
+  PushEventPayloadReadRefused
 }
 import extdeps.shell
 
@@ -96,7 +97,7 @@ fn floor_observe_push_before_input(event_name: String) -> PushBeforeInput? {
             )
           }
         } else {
-          match push_before_from_event_json(text: filesystem_read(path: path).content) {
+          match push_before_from_event_path(path: path) {
             PushBeforeObserved { sha: sha } =>
               Present { value: PushBeforeSha { sha: sha as String } }
             PushBeforeAbsent { detail: detail } =>
@@ -113,6 +114,16 @@ fn floor_observe_push_before_input(event_name: String) -> PushBeforeInput? {
                 value: floor_push_before_refusal(
                   prefix: "push event before SHA malformed — ",
                   detail: detail
+                )
+              }
+            PushEventPayloadReadRefused { path: event_path, cause: cause } =>
+              Present {
+                value: floor_push_before_refusal(
+                  prefix: concat(
+                    "push event payload unreadable at ",
+                    concat(event_path, " — ")
+                  ),
+                  detail: cause
                 )
               }
           }
