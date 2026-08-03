@@ -2,7 +2,7 @@ module tools.merge_admission_current_context
 
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.types { NonEmptyStr, GitRef }
-import extdeps.git
+import extdeps.git { git_remote_ref_parts }
 import extdeps.git.inspect
 import extdeps.git.object_store {
   GitObjectIdTextDecoded,
@@ -12,8 +12,8 @@ import extdeps.git.object_store {
 }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.shell
+import tools.merge_admission_walk { merge_admission_fetch_stall_deadline_seconds }
 import gunbc.merge_admission {
-  WalkAttemptId,
   MergeAdmissionVerdict,
   MergeAdmitted,
   MergeDeniedStaleBase,
@@ -25,15 +25,17 @@ import gunbc.merge_admission {
   current_gate_roster_hash,
   merge_admission_verdict_label,
 }
-import gunbc.merge_admission_produce {
+import gunbc.merge_admission_subject {
+  WalkAttemptId,
   compose_walk_attempt_id,
   compose_explicit_walk_attempt_id,
   merge_admission_tested_subject_path,
   merge_admission_floor_receipt_path,
   parse_tested_subject_wire,
-  parse_receipt_wire_v2,
   merge_admission_merge_base_ref,
-  merge_admission_gate_fetch_parts,
+}
+import gunbc.merge_admission_produce {
+  parse_receipt_wire_v2,
   shell_stdout_line,
 }
 
@@ -103,8 +105,12 @@ func main() -> ProcessExit {
     Present { value: value } => value
     Absent => return exit_failure(reason: "merge_admission_current_context: floor-receipt wire invalid")
   }
-  let fetch_parts = merge_admission_gate_fetch_parts()
-  let fetched = git.Core.FetchNoTags(remote: fetch_parts.remote, ref: fetch_parts.ref_name)
+  let fetch_parts = git_remote_ref_parts(ref: merge_admission_merge_base_ref as GitRef)
+  let fetched = git.Core.FetchNoTags(
+    remote: fetch_parts.remote,
+    ref: fetch_parts.ref_name,
+    stall_deadline_seconds: merge_admission_fetch_stall_deadline_seconds
+  )
   if !fetched.success {
     return exit_failure(reason: "merge_admission_current_context: current merge target fetch refused")
   }

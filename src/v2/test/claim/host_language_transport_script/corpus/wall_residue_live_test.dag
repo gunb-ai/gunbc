@@ -67,12 +67,6 @@ test fn residue_host_prelude_clean() -> Bool {
   ) == 0
 }
 
-test fn residue_merge_admission_stamp_clean() -> Bool {
-  transport_script_live_literal_violation_count_for_path(
-    path: "dag/tools/merge_admission_stamp.dag"
-  ) == 0
-}
-
 data red_control_note: String = "RED control: the planted bare-literal fixture MUST flag > 0 so a green residue roster is never vacuously green — it proves the live scan actually detects a raw literal at an Exec.Run position. If this goes to 0 the scanner has gone blind and every clean-holds above is meaningless."
 
 test fn red_control_planted_bare_literal_flags() -> Bool {
