@@ -1535,6 +1535,11 @@ pub fn compile_dag_rust_emit_check(
 }
 
 const CI_LAYER_ROOTS_AUTHORITY_REL: &str = "dag/gunbc/ci_layer_roots.dag";
+/// The function-grain exact witness admission authority (`gunbc.explicit_witness_admission`).
+/// Separate from the path-policy carrier above on purpose: an admission names one witness and
+/// its executing cadence, a path policy names a place, and fusing them into one substring
+/// representation is what made the old reconciliation weaker than its name.
+const EXPLICIT_WITNESS_ADMISSION_AUTHORITY_REL: &str = "dag/gunbc/explicit_witness_admission.dag";
 const WITNESS_LAYER_ROOTS_DATA_NAME: &str = "witness_layer_roots";
 const WITNESS_DISCOVERY_SCAN_DIRS_DATA_NAME: &str = "witness_discovery_scan_dirs";
 const WITNESS_EXCLUSION_FRONTIER_DATA_NAME: &str = "witness_exclusion_frontier";
@@ -1560,8 +1565,6 @@ const WITNESS_EXCLUSION_CLASSIFICATIONS: [&str; 8] = [
 ];
 const WET_RECEIPT_ENROLLMENT_AUTHORITY_REL: &str =
     "src/v2/compiler/self_host/wet_receipt_enrollment.dag";
-const SEED_EMITTER_BEHAVIORAL_WET_KNOWN_RED_AUTHORITY_REL: &str =
-    "src/v2/compiler/self_host/seed_emitter_behavioral_wet_known_red_entries.dag";
 const WHOLE_TREE_STRICT_RESOLVE_EXCLUSION_SUBSTRINGS_DATA_NAME: &str =
     "whole_tree_strict_resolve_exclusion_substrings";
 const RESOLUTION_DIVERGENCE_CENSUS_ROSTER_EXCLUDED_MODULE_PREFIXES_DATA_NAME: &str =
@@ -15457,9 +15460,6 @@ pub fn collect_deferred_discovery_rows(
     source_roots: &[String],
     exclude_substrings: &[String],
 ) -> Result<Vec<DeferredDiscoveryRow>, String> {
-    if exclude_substrings.is_empty() {
-        return Ok(Vec::new());
-    }
     let facts = build_module_graph_facts_live(source_roots);
     let mut out: Vec<DeferredDiscoveryRow> = Vec::new();
     let mut seen: std::collections::BTreeSet<(String, String)> = std::collections::BTreeSet::new();
@@ -15494,6 +15494,29 @@ pub fn collect_deferred_discovery_rows(
                 }
             }
         }
+    }
+    // Exact admissions are the SECOND reason a row leaves discovery, and the receipt must
+    // count them too. Before this lane they arrived here as a side effect of the file-level
+    // pattern that used to sit beside each one; with the pattern deleted, an admitted witness
+    // would otherwise vanish from the deferred receipt entirely — the uncounted degradation
+    // §5 forbids, in the mechanism whose whole job is to make deferral visible.
+    for (entry, function) in explicit_witness_admission_pairs() {
+        if seen.contains(&(entry.clone(), function.clone())) {
+            continue;
+        }
+        let path = workspace_root().join(&entry);
+        let content = std::fs::read_to_string(&path).map_err(|e| {
+            format!("read exact-admitted witness entry {entry}: {e} — an admission naming a file that cannot be read is a refusal, never a skipped row")
+        })?;
+        let reads_live_tree = reads_live_tree_effective(&entry, &content, &facts)?;
+        seen.insert((entry.clone(), function.clone()));
+        out.push(DeferredDiscoveryRow {
+            entry,
+            function,
+            exclude_reason: "exact witness admission (gunbc.explicit_witness_admission)"
+                .to_string(),
+            reads_live_tree,
+        });
     }
     out.sort_by(|a, b| {
         a.entry
@@ -15601,14 +15624,13 @@ fn witness_admission_entry_function_keys_from_source(
             keys.push(key);
         }
     }
-    let heads: [(&str, &str); 7] = [
+    // `known_red_probe(` replaced `probe_red(` and the seed-emitter wet row constructor when the
+    // quarantine moved to one function-grain authority (2026-08-03): both cadences now author the
+    // same row shape in `gunbc.explicit_witness_admission`, so one head reads both.
+    let heads: [(&str, &str); 6] = [
         ("bin_wet(", "entry: String"),
-        ("probe_red(", "entry: String"),
+        ("known_red_probe(", "entry: NonEmptyStr"),
         ("self_host_wet_entry(", "entry: String"),
-        (
-            "seed_emitter_behavioral_wet_known_red_entry(",
-            "entry: String",
-        ),
         ("SelfHostWetReceiptBinding {", ""),
         ("RehomedBinWetRow {", ""),
         ("SubstrateLongLaneRow {", ""),
@@ -15701,19 +15723,7 @@ fn witness_admission_explicit_consumer_keys() -> Vec<String> {
                 keys.push(key);
             }
         }
-        let known_red = std::fs::read_to_string(
-            workspace_root().join(SEED_EMITTER_BEHAVIORAL_WET_KNOWN_RED_AUTHORITY_REL),
-        )
-        .unwrap_or_else(|e| {
-            panic!(
-                "witness admission: failed to read {}: {e}",
-                SEED_EMITTER_BEHAVIORAL_WET_KNOWN_RED_AUTHORITY_REL
-            )
-        });
-        for key in witness_admission_entry_function_keys_from_source(
-            SEED_EMITTER_BEHAVIORAL_WET_KNOWN_RED_AUTHORITY_REL,
-            &known_red,
-        ) {
+        for key in explicit_witness_admission_keys().iter().cloned() {
             if !keys.iter().any(|k| k == &key) {
                 keys.push(key);
             }
@@ -15722,6 +15732,39 @@ fn witness_admission_explicit_consumer_keys() -> Vec<String> {
         keys
     })
     .clone()
+}
+
+/// The exact witness admission keys (`entry::function`) read from the one function-grain
+/// authority. Same interim source scan as the sibling rosters
+/// (`CLI_RUN_WITNESS_ADMISSION_SOURCE_SCAN_SCAFFOLD_MARKER`), one file instead of two.
+fn explicit_witness_admission_keys() -> &'static [String] {
+    static KEYS: OnceLock<Vec<String>> = OnceLock::new();
+    KEYS.get_or_init(|| {
+        let content = std::fs::read_to_string(
+            workspace_root().join(EXPLICIT_WITNESS_ADMISSION_AUTHORITY_REL),
+        )
+        .unwrap_or_else(|e| {
+            panic!(
+                "witness admission: failed to read {}: {e}",
+                EXPLICIT_WITNESS_ADMISSION_AUTHORITY_REL
+            )
+        });
+        witness_admission_entry_function_keys_from_source(
+            EXPLICIT_WITNESS_ADMISSION_AUTHORITY_REL,
+            &content,
+        )
+    })
+}
+
+/// The same keys split back into `(entry, function)` pairs — the grain the exclusion is decided
+/// at. An empty function is the declared file-grain form and is expanded upstream, so it never
+/// reaches here as a pair.
+pub(crate) fn explicit_witness_admission_pairs() -> Vec<(String, String)> {
+    explicit_witness_admission_keys()
+        .iter()
+        .filter_map(|key| key.split_once("::"))
+        .map(|(entry, function)| (entry.to_string(), function.to_string()))
+        .collect()
 }
 
 /// Phase 0(b): every deferred witness row must name an executing consumer (explicit roster,
@@ -33396,13 +33439,19 @@ mod module_path_index_tests {
     }
 
     #[test]
-    fn seed_emitter_behavioral_wet_known_red_entries_parse_as_explicit_consumer_keys() {
-        let synthetic =
-            "module v2.compiler.self_host.seed_emitter_behavioral_wet_known_red_entries\n\n\
-             data seed_emitter_behavioral_wet_known_red_entries: List<ScheduleWitnessEntry> = [\n\
-               seed_emitter_behavioral_wet_known_red_entry(\n\
+    fn explicit_witness_admission_rows_parse_as_executing_consumer_keys() {
+        // Both known-red cadences author the same row shape on the one admission authority,
+        // so one head reads the hermetic (CorpusWitnessKind) and wet (ExecutionWitnessKind)
+        // rows alike — the former `probe_red(` / `seed_emitter_behavioral_wet_known_red_entry(`
+        // pair of heads is gone with the pair of rosters.
+        let synthetic = "module gunbc.explicit_witness_admission\n\n\
+             data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [\n\
+               known_red_probe(\n\
                  entry: \"dag/test/claim/self_host_body_producer_behavioral_witness_test.dag\",\n\
-                 f: \"self_host_body_producer_behavioral_receipt_holds\"\n\
+                 f: \"self_host_body_producer_behavioral_receipt_holds\",\n\
+                 kind: ExecutionWitnessKind,\n\
+                 reason: \"r\",\n\
+                 dissolve_on: \"d\"\n\
                ),\n\
              ]\n";
         let keys =
@@ -33412,8 +33461,63 @@ mod module_path_index_tests {
                 &"dag/test/claim/self_host_body_producer_behavioral_witness_test.dag::self_host_body_producer_behavioral_receipt_holds"
                     .to_string()
             ),
-            "re-homed known-red authority rows must register as executing consumer keys; got {keys:?}"
+            "exact admission rows must register as executing consumer keys; got {keys:?}"
         );
+    }
+
+    #[test]
+    fn explicit_witness_admission_is_exact_not_file_grain() {
+        // THE DISCRIMINATING RED on the host side, run against SYNTHETIC source rather than
+        // the live authority. Under the representation this lane replaced, the admission's
+        // FILE carried the exclusion, so a green sibling was hidden with it and executed
+        // nowhere while the reconciliation still passed. Exact grain must produce a key for
+        // the admitted function and none for its sibling.
+        //
+        // Anchoring this to a live admission was tried and rejected in review: it binds the
+        // evidence to the defect's continued existence, which is the one thing the wall
+        // exists to end, so the assertion loses its subject the moment a quarantine climbs
+        // out (gunbc#7688 dissolves one tonight). The `.dag` witness carries the same
+        // reasoning at its own grain.
+        let synthetic = "module gunbc.explicit_witness_admission\n\n\
+             data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [\n\
+               known_red_probe(\n\
+                 entry: \"dag/test/claim/synthetic_admission_witness_test.dag\",\n\
+                 f: \"fixture_expected_red_holds\",\n\
+                 kind: CorpusWitnessKind,\n\
+                 reason: \"r\",\n\
+                 dissolve_on: \"d\"\n\
+               ),\n\
+             ]\n";
+        let keys =
+            super::witness_admission_entry_function_keys_from_source("synthetic.dag", synthetic);
+        assert!(
+            keys.contains(
+                &"dag/test/claim/synthetic_admission_witness_test.dag::fixture_expected_red_holds"
+                    .to_string()
+            ),
+            "the admitted function must produce a consumer key; got {keys:?}"
+        );
+        assert!(
+            !keys
+                .iter()
+                .any(|k| k.ends_with("::fixture_ordinary_green_holds")),
+            "a sibling of an admitted witness must NOT be admitted by it — that is the \
+             file-grain absorption this authority removed; got {keys:?}"
+        );
+    }
+
+    #[test]
+    fn explicit_witness_admission_live_rows_are_all_function_grain() {
+        // Population-independent: holds at any roster size including zero, and states the
+        // property the exclusion derivation relies on — no live known-red admission uses the
+        // file-grain form, so none of them can reach a sibling.
+        for (entry, function) in super::explicit_witness_admission_pairs() {
+            assert!(
+                !function.is_empty(),
+                "live admission for {entry} has an empty function — the file-grain form \
+                 reaches every sibling and no known-red row may use it"
+            );
+        }
     }
 
     #[test]

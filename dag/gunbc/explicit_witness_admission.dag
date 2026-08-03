@@ -1,0 +1,323 @@
+module gunbc.explicit_witness_admission
+
+import std.realization_schedule {
+  ScheduleWitnessEntry,
+  WitnessKind,
+  CorpusWitnessKind,
+  ExecutionWitnessKind,
+  witness_kind_eq
+}
+import std.witness_admission {
+  WitnessConsumerCadence,
+  DiscoverySelection,
+  FalsifierSelfHostWet,
+  FalsifierRehomedBinWet,
+  FalsifierSubstrateLongLane,
+  BinWitnessWet,
+  QuarantineProbeExpectRed,
+  OfflineLocalRecipe,
+  FixtureExplicitRoster,
+  NoConsumer
+}
+import std.types { NonEmptyStr, String, List, Bool, Int }
+
+data explicit_witness_admission_authority_note: String = "THE function-grain authority for exact witness admission. One row per admitted witness, carrying the witness identity, the cadence that executes it, and its own reason and dissolve_on. Everything else about that witness is DERIVED: the cadence roster the scheduler runs, the discovery exclusion, and the consumer manifest all read these rows; none of them is authored beside them. It replaces a DUAL REPRESENTATION carried until 2026-08-03 — a path-substring WitnessExclusionRow classified QuarantineProbeExpectRed (removing a whole FILE from discovery) sitting beside a probe_red(entry, f) roster row (enrolling one FUNCTION on the probe cadence). Those are not the same fact, but they were two hand-kept representations of one admission relationship with nothing deriving either from the other, and the reconciliation that guarded them was weaker than its name: it proved only that some scheduled row's entry CONTAINED the exclusion pattern as a substring. It proved neither exact identity, nor one schedule row per exclusion, nor reverse coverage, nor that every function hidden by the file-level exclusion had a consumer, nor that the pair deleted atomically. The cost was paid in a real merge: #7688 had to delete one exclusion/probe pair while hand-preserving two newly added ones, and taking either side wholesale would have dropped required admission rows with no conflict marker. The exact grain also dissolves the trade that forced the workaround: a green sibling in a quarantined file used to be excluded with it, so an author had to split the file or downgrade its classification and say so in prose (the receipt is the self_host_03_normalize exclusion row, whose reason reads that QuarantineProbeExpectRed on the file would orphan its sibling). A row here reaches exactly one function; siblings are untouched."
+
+data explicit_witness_admission_separation_note: String = "SEPARATION FROM PATH POLICY (operator ruling, this lane). Exact witness admission and broad path policy are different kinds of fact and must not share a substring-based representation — that fusion is the root of the substring-overlap weakness above. Directory- and file-wide policies (`test/claim/long/` is the long-test home; `test/manual/` is offline) stay in gunbc.ci_layer_roots witness_exclusion_frontier, which is now a PATH POLICY carrier only: witness_exclusion_row_well_formed REFUSES a QuarantineProbeExpectRed row there, so the fused representation is unwritable for this cadence rather than merely reconciled. PRECEDENCE, and it is total: a function with an exact admission is decided by that admission; path policy applies only to functions with none. That is why a path-offline file may legitimately contain an exact-admitted function (self_host_03_normalize_behavioral_witness_test.dag: the receipt is quarantined here, its sibling is offline by the file's path row) without either fact restating the other. THE REMAINING FUSION IS COUNTED, NOT SILENT: BinWitnessWet, FalsifierRehomedBinWet, FalsifierSubstrateLongLane and FalsifierSelfHostWet still author a path row beside their function-grain rosters. Their populations are not the bad state today — every one is either a file-grain roster row (ScheduleWitnessEntry's empty-function form, which covers every function in the entry by construction) or fully enumerated, measured on this change's tree — so they are a migration frontier, not a live defect. Dissolve-on: each cadence's roster moves into explicit_witness_admissions and its path rows delete, at which point witness_exclusion_row_well_formed refuses that cadence too and the last enum arm that can appear in the path carrier is gone."
+
+type ExplicitWitnessAdmission {
+  witness: ScheduleWitnessEntry
+  cadence: WitnessConsumerCadence
+  reason: NonEmptyStr
+  dissolve_on: NonEmptyStr
+}
+
+fn known_red_probe(
+  entry: NonEmptyStr,
+  f: String,
+  kind: WitnessKind,
+  reason: NonEmptyStr,
+  dissolve_on: NonEmptyStr
+) -> ExplicitWitnessAdmission {
+  ExplicitWitnessAdmission {
+    witness: ScheduleWitnessEntry { entry: entry, function: f, kind: kind },
+    cadence: QuarantineProbeExpectRed,
+    reason: reason,
+    dissolve_on: dissolve_on
+  }
+}
+
+data known_red_class_note: String = "WHAT A KNOWN-RED ADMISSION IS: a witness red on main for a feature gap owned by a named lane. It is a RED CONTROL for that lane, not a broken test — deleting it would discard the discriminating input, while leaving it in per-PR discovery would red every wide PR on a debt that PR did not create. Greening is the counted un-quarantine event of std.witness_admission: the row deletes in the SAME change that lands the fix, which promotes the unchanged witness to ordinary DiscoverySelection as a permanent regression control (DESIGN 4b(4) — the climb deletes the quarantine machinery, never the evidence). The roster must not grow silently: a new admission carries a reason naming the diagnosis and owner plus a dissolve_on, both refused empty by NonEmptyStr, and a row whose witness runs green locally is stale and deletes. Local recipe per row: claim_batch --source-root dag --source-root src/v2 --entry <entry> --functions <function>. CorpusWitnessKind rows run on the hermetic falsifier probe batch; ExecutionWitnessKind rows run on the falsifier wet quarantine batch."
+
+data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
+  known_red_probe(
+    entry: "src/v2/test/claim/emit/logic_ground_truth_test.dag",
+    f: "logic_complement_truth_table",
+    kind: CorpusWitnessKind,
+    reason: "the v1 resolver does not bind imported bare variant constructors in EXPRESSION position (import v2.std.logic { True } then gt_complement(a: True) -> undefined variable: True; patterns-via-scrutinee work). Owner: the namespace-only-resolution lane, whose containment SymbolIndex covers exactly this class.",
+    dissolve_on: "that lane lands imported-variant value bindings, this witness runs green, and this row deletes"
+  ),
+  known_red_probe(
+    entry: "src/v2/test/claim/emit/logic_ground_truth_test.dag",
+    f: "logic_meet_truth_table",
+    kind: CorpusWitnessKind,
+    reason: "same imported-bare-variant-constructor resolver gap as its logic_complement sibling. Owner: the namespace-only-resolution lane.",
+    dissolve_on: "that lane lands imported-variant value bindings, this witness runs green, and this row deletes"
+  ),
+  known_red_probe(
+    entry: "src/v2/test/claim/emit/logic_ground_truth_test.dag",
+    f: "logic_join_truth_table",
+    kind: CorpusWitnessKind,
+    reason: "same imported-bare-variant-constructor resolver gap as its logic_complement sibling. Owner: the namespace-only-resolution lane.",
+    dissolve_on: "that lane lands imported-variant value bindings, this witness runs green, and this row deletes"
+  ),
+  known_red_probe(
+    entry: "src/v2/test/claim/manual/english_emit_add_test.dag",
+    f: "english_emit_add_ingest_round_trip_holds",
+    kind: CorpusWitnessKind,
+    reason: "the english-language emit-ingest round trip returns false undiagnosed. Owner: the S2 emit family / behavioral-closure lane.",
+    dissolve_on: "the S2 behavioral-closure lane greens it locally, then this row deletes"
+  ),
+  known_red_probe(
+    entry: "src/v2/test/claim/manual/english_emit_add_test.dag",
+    f: "english_emit_add_prose_holds",
+    kind: CorpusWitnessKind,
+    reason: "the english emit prose projection, same S2 emit-family root as its round-trip sibling. Owner: the S2 behavioral-closure lane.",
+    dissolve_on: "the S2 behavioral-closure lane greens it locally, then this row deletes"
+  ),
+  known_red_probe(
+    entry: "src/v2/test/claim/self_host/compiler_closure_emit_from_ingest_test.dag",
+    f: "compiler_closure_scoped_ingest_module_count_ok_holds",
+    kind: CorpusWitnessKind,
+    reason: "asserts COMPLETE ingest coverage for the src/v2/compiler/00_compile.dag closure, which is 91 source reads against MANIFEST_INLINE_LIST_MAX (64), so the emitted carrier is legitimately Empty. It was GREEN until 2026-07-19 only because the receipt fabricated its own numbers; making the elision the typed, counted SourceRootManifestElided turned a fabricated green into a true red. Admitted rather than deleted because it is the discriminating input for the carrier deficit — its gate did not go vacuous, compiler_closure_ingest_receipt_describes_carrier_holds replaced it as the live claim. Owner: wise-bee-768 / the module-identity storage-binding lane.",
+    dissolve_on: "manifest rows carry a source ref plus content hash instead of inlined text, the parse oracle reads through the ref with hash verification, the cap stops binding, this witness greens and this row deletes"
+  ),
+  known_red_probe(
+    entry: "dag/test/claim/legacy_test_behavior_disposition_acceptance_test.dag",
+    f: "legacy_test_behavior_unclassified_frontier_is_zero",
+    kind: CorpusWitnessKind,
+    reason: "the discriminating closing validation for roadmap node v1-test-migration, RED BY DESIGN while any independently discovered legacy #[test] function has no typed behavior disposition. Unlike the diff-scoped deletion guard it cannot pass on zero progress; stale, duplicate, unresolved and unclassified identities all refuse.",
+    dissolve_on: "the derived unclassified legacy-behavior set reaches zero with every disposition admitted — this row deletes in the completing change, promoting the unchanged acceptance witness to ordinary DiscoverySelection as the permanent migration regression wall"
+  ),
+  known_red_probe(
+    entry: "dag/test/claim/observation_raw_print_retirement_acceptance_test.dag",
+    f: "observation_emit_frontier_is_zero",
+    kind: CorpusWitnessKind,
+    reason: "the acceptance test for roadmap node observation-raw-print-retirement, red BY DESIGN: it asserts observation_emit_frontier_count() == 0 while the census still counts unmigrated emit sites. It is the discriminating validation on that node's WorkItemExecutionContract, so dispatch's Verify segment has a target that can actually FAIL — without a red validation somewhere, a green Verify proves only that the plumbing ran. Not relaxable: the only edit that may green it is migrating the sites it counts.",
+    dissolve_on: "the frontier reaches zero — this row MUST delete in the same change that lands the last migration, promoting the witness to ordinary DiscoverySelection as a standing regression ratchet"
+  ),
+  known_red_probe(
+    entry: "dag/test/claim/source_integration_proof_kernel_acceptance_test.dag",
+    f: "witness_p1_proof_kernel_acceptance_contract_holds",
+    kind: CorpusWitnessKind,
+    reason: "the discriminating closing validation for roadmap node 2-scm-p1-proof-kernel, RED BY DESIGN while the derived KernelAcceptanceCapability frontier is nonzero. The first slice supplies the bounded candidate-generation model check; the one public fold, occurrence dedup, context transport, commuting squares, batch invariance, n-way safety, all seven closure certificates and data-only invariant extension stay missing until executing scenarios establish them. Bound directly by scm_p1_proof_kernel_execution_contract, so it cannot pass on zero progress.",
+    dissolve_on: "every required KernelAcceptanceCapability has a passing executing scenario — this row deletes in the completing change, promoting the unchanged acceptance witness to ordinary DiscoverySelection as the permanent P1 regression wall"
+  ),
+  known_red_probe(
+    entry: "dag/test/claim/namespace_reference_derived_closure_acceptance_test.dag",
+    f: "witness_namespace_reference_derived_closure_closing_contract_holds",
+    kind: CorpusWitnessKind,
+    reason: "the discriminating closing validation for roadmap node namespace-reference-derived-closure, RED BY DESIGN while its six-clause production admission frontier carries typed unavailable rows naming #7515 and the Class-B pool-independence wall. The separately discovered fixture suite executes P1 and proves every clause rejects its planted wrong output; this witness imports no fixture admissions and is bound directly by namespace_reference_derived_closure_execution_contract, so zero implementation progress cannot verify as complete.",
+    dissolve_on: "the production candidate producer and dependency projection establish all six ReferenceDerivedClosureCapability rows by execution — this row deletes in the completing change, promoting the unchanged acceptance witness to ordinary DiscoverySelection as the permanent namespace-derived-closure regression wall"
+  ),
+  known_red_probe(
+    entry: "src/v2/test/claim/self_host/v2_emitter_direct_rust_door_acceptance_test.dag",
+    f: "witness_v2_emitter_direct_rust_door_closing_contract_holds",
+    kind: CorpusWitnessKind,
+    reason: "the discriminating closing validation for roadmap node v2-emitter-direct-rust-door, RED BY DESIGN while WrittenSourceIndependentOfSeedEmitter assesses through producer provenance and names CandidateGenerationSerializeTargetWiring. MissingTranslationRuleRefuses is established through the rust_add missing-rules serialize refusal; the paired fixture suite proves both arms discriminate. Bound directly by v2_emitter_direct_rust_door_execution_contract, so zero progress toward wiring serialize_target cannot verify as complete.",
+    dissolve_on: "candidate_generation wires serialize_target and the seed-independent written-source check executes green — this row deletes in the completing change, promoting the unchanged acceptance witness to ordinary DiscoverySelection as the permanent direct-rust-door regression wall"
+  ),
+  known_red_probe(
+    entry: "dag/test/claim/self_host_parse_engine_hooks_behavioral_witness_test.dag",
+    f: "self_host_parse_engine_hooks_behavioral_receipt_holds",
+    kind: ExecutionWitnessKind,
+    reason: "SelfEmitted wet behavioral receipt, red on assemble (cargo/shim closure refuse — unresolved std_algebra/std_types/std_nat/List; cadence run 30126573464). Phase-0 forbids SelfEmitted-with-zero-executing-consumer, so it runs Wet expect_red on the falsifier quarantine batch; still-red is agreement. Owner: #7199 falsifier lane / self-host assemble.",
+    dissolve_on: "the local wet receipt greens under gunbc_falsifier_self_host_wet_receipt_wall_budget; this row deletes and the green wet SelfHostWetReceiptBinding restores"
+  ),
+  known_red_probe(
+    entry: "dag/test/claim/self_host_use_site_verdict_behavioral_witness_test.dag",
+    f: "self_host_use_site_verdict_behavioral_receipt_holds",
+    kind: ExecutionWitnessKind,
+    reason: "SelfEmitted wet behavioral receipt, red on assemble (same cargo/shim closure refuse class as its parse_engine_hooks peer; cadence run 30126573464). Owner: #7199 falsifier lane / self-host assemble.",
+    dissolve_on: "the local wet receipt greens under gunbc_falsifier_self_host_wet_receipt_wall_budget; this row deletes and the green wet SelfHostWetReceiptBinding restores"
+  ),
+  known_red_probe(
+    entry: "dag/test/claim/self_host_discovery_enumeration_behavioral_witness_test.dag",
+    f: "self_host_discovery_enumeration_behavioral_receipt_holds",
+    kind: ExecutionWitnessKind,
+    reason: "SelfEmitted wet behavioral receipt, red on assemble (same cargo/shim closure refuse class as its parse_engine_hooks peer; cadence run 30126573464). Owner: #7199 falsifier lane / self-host assemble.",
+    dissolve_on: "the local wet receipt greens under gunbc_falsifier_self_host_wet_receipt_wall_budget; this row deletes and the green wet SelfHostWetReceiptBinding restores"
+  ),
+  known_red_probe(
+    entry: "dag/test/claim/self_host_target_carriers_behavioral_witness_test.dag",
+    f: "self_host_target_carriers_behavioral_receipt_holds",
+    kind: ExecutionWitnessKind,
+    reason: "SelfEmitted wet behavioral receipt, red on assemble (target_carriers type-shape refuse; cadence run 30126573464). Owner: #7199 falsifier lane / self-host assemble.",
+    dissolve_on: "the local wet receipt greens under gunbc_falsifier_self_host_wet_receipt_wall_budget; this row deletes and the green wet SelfHostWetReceiptBinding restores"
+  ),
+  known_red_probe(
+    entry: "dag/test/claim/self_host_body_producer_behavioral_witness_test.dag",
+    f: "self_host_body_producer_behavioral_receipt_holds",
+    kind: ExecutionWitnessKind,
+    reason: "SelfEmitted wet behavioral receipt, red on assemble (same cargo/shim closure refuse class as its parse_engine_hooks peer; cadence run 30126573464). Owner: #7199 falsifier lane / self-host assemble.",
+    dissolve_on: "the local wet receipt greens under gunbc_falsifier_self_host_wet_receipt_wall_budget; this row deletes and the green wet SelfHostWetReceiptBinding restores"
+  ),
+  known_red_probe(
+    entry: "dag/test/claim/self_host_03_normalize_behavioral_witness_test.dag",
+    f: "self_host_03_normalize_behavioral_receipt_holds",
+    kind: ExecutionWitnessKind,
+    reason: "SelfEmitted wet behavioral receipt, red on assemble (same cargo/shim closure refuse class as its parse_engine_hooks peer; cadence run 30126573464). Owner: #7199 falsifier lane / self-host assemble. This is the row whose file-grain pairing forced the documented workaround: the file's sibling declared_source_refs_complete_holds is offline, so classifying the FILE QuarantineProbeExpectRed would have orphaned it and the file was downgraded to OfflineLocalRecipe in prose instead. At exact grain the receipt is admitted here and the sibling keeps the file's path policy, with neither fact restating the other.",
+    dissolve_on: "the local wet receipt greens under gunbc_falsifier_self_host_wet_receipt_wall_budget; this row deletes and the green wet SelfHostWetReceiptBinding restores"
+  )
+]
+
+fn explicit_witness_admission_matches(
+  row: ExplicitWitnessAdmission,
+  entry: String,
+  function: String
+) -> Bool {
+  (row.witness.entry == entry)
+    && ((row.witness.function == function) || (row.witness.function == ""))
+}
+
+data explicit_witness_admission_file_grain_note: String = "The empty function is ScheduleWitnessEntry's declared file-grain form (the same authority v1_claim_scoped_witness_batch_note names and expand_explicit_entries realizes for execution): it admits every test declaration in the entry. It is still EXACT — the entry is a path identity, not a substring — which is what separates it from the path policy carrier. Today no known-red row uses it; the arm exists so the derivations stay one fold when a cadence that does use it migrates in."
+
+fn explicit_witness_admission_covers_in(
+  rows: List<ExplicitWitnessAdmission>,
+  entry: String,
+  function: String
+) -> Bool {
+  fold(
+    rows,
+    init: false,
+    f: fn(found, row) {
+      found || explicit_witness_admission_matches(row: row, entry: entry, function: function)
+    }
+  )
+}
+
+fn explicit_witness_admission_covers(entry: String, function: String) -> Bool {
+  explicit_witness_admission_covers_in(
+    rows: explicit_witness_admissions,
+    entry: entry,
+    function: function
+  )
+}
+
+fn explicit_witness_admission_covers_entry(entry: String) -> Bool {
+  fold(
+    explicit_witness_admissions,
+    init: false,
+    f: fn(found, row) { found || (row.witness.entry == entry) }
+  )
+}
+
+fn explicit_witness_admission_count_for_in(
+  rows: List<ExplicitWitnessAdmission>,
+  entry: String,
+  function: String
+) -> Int {
+  fold(
+    rows,
+    init: 0,
+    f: fn(n, row) {
+      if explicit_witness_admission_matches(row: row, entry: entry, function: function) {
+        n + 1
+      } else {
+        n
+      }
+    }
+  )
+}
+
+fn explicit_witness_admission_duplicate_count_in(rows: List<ExplicitWitnessAdmission>) -> Int {
+  fold(
+    rows,
+    init: 0,
+    f: fn(n, row) {
+      if explicit_witness_admission_count_for_in(
+        rows: rows,
+        entry: row.witness.entry,
+        function: row.witness.function
+      ) > 1 {
+        n + 1
+      } else {
+        n
+      }
+    }
+  )
+}
+
+fn explicit_witness_admission_duplicate_count() -> Int {
+  explicit_witness_admission_duplicate_count_in(rows: explicit_witness_admissions)
+}
+
+fn explicit_witness_admission_is_known_red(row: ExplicitWitnessAdmission) -> Bool {
+  match row.cadence {
+    QuarantineProbeExpectRed => true
+    DiscoverySelection => false
+    FalsifierSelfHostWet => false
+    FalsifierRehomedBinWet => false
+    FalsifierSubstrateLongLane => false
+    BinWitnessWet => false
+    OfflineLocalRecipe => false
+    FixtureExplicitRoster => false
+    NoConsumer => false
+  }
+}
+
+fn known_red_probe_roster_of_kind(kind: WitnessKind) -> List<ScheduleWitnessEntry> {
+  fold(
+    explicit_witness_admissions,
+    init: [],
+    f: fn(acc, row) {
+      if explicit_witness_admission_is_known_red(row: row)
+        && witness_kind_eq(a: row.witness.kind, b: kind) {
+        concat(acc, [row.witness])
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn known_red_probe_corpus_roster() -> List<ScheduleWitnessEntry> {
+  known_red_probe_roster_of_kind(kind: CorpusWitnessKind)
+}
+
+fn known_red_probe_execution_roster() -> List<ScheduleWitnessEntry> {
+  known_red_probe_roster_of_kind(kind: ExecutionWitnessKind)
+}
+
+data explicit_witness_admission_cadence_wall_note: String = "Only a cadence that EXECUTES may appear on an admission row: an admission is the statement that this witness runs somewhere, so DiscoverySelection (which is the absence of an admission), OfflineLocalRecipe and FixtureExplicitRoster (which are path policies, not executing consumers) and NoConsumer (which is the refusal itself) are all refused here by explicit_witness_admission_cadence_executes. Without that arm an author could write an admission whose cadence runs nothing and satisfy the every-witness-has-a-consumer wall with a row that executes nowhere — the coverage-by-illusion tier, one enum arm away."
+
+fn explicit_witness_admission_cadence_executes(cadence: WitnessConsumerCadence) -> Bool {
+  match cadence {
+    QuarantineProbeExpectRed => true
+    FalsifierSelfHostWet => true
+    FalsifierRehomedBinWet => true
+    FalsifierSubstrateLongLane => true
+    BinWitnessWet => true
+    DiscoverySelection => false
+    OfflineLocalRecipe => false
+    FixtureExplicitRoster => false
+    NoConsumer => false
+  }
+}
+
+fn explicit_witness_admission_well_formed(row: ExplicitWitnessAdmission) -> Bool {
+  !(row.witness.entry == "")
+    && explicit_witness_admission_cadence_executes(cadence: row.cadence)
+}
+
+fn explicit_witness_admissions_well_formed_in(rows: List<ExplicitWitnessAdmission>) -> Bool {
+  fold(
+    rows,
+    init: true,
+    f: fn(ok, row) { ok && explicit_witness_admission_well_formed(row: row) }
+  )
+}
+
+fn explicit_witness_admissions_well_formed() -> Bool {
+  explicit_witness_admissions_well_formed_in(rows: explicit_witness_admissions)
+}

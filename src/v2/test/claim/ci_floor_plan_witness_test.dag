@@ -70,7 +70,7 @@ import v2.workflow.ci_floor_plan {
   witness_floor_batch_clamp_overhead_all_positive,
   witness_floor_batch_clamp_rate_all_nonneg,
 }
-import gunbc.ci_layer_roots { witness_layer_roots, witness_discovery_scan_dirs, v1_claim_scoped_witness_entries, v1_claim_scoped_witness_batch, scoped_witness_batches, known_red_probe_entries, falsifier_silent_pick_gate_entries, falsifier_substrate_long_lane_entries }
+import gunbc.ci_layer_roots { witness_layer_roots, witness_discovery_scan_dirs, v1_claim_scoped_witness_entries, v1_claim_scoped_witness_batch, scoped_witness_batches, known_red_probe_roster, falsifier_silent_pick_gate_entries, falsifier_substrate_long_lane_entries }
 import v2.compiler.self_host.wet_receipt_enrollment {
   falsifier_self_host_wet_entries,
   falsifier_self_host_wet_known_red_entries,
@@ -571,7 +571,7 @@ fn falsifier_known_red_probe_batch_holds(r: Runnable) -> Bool {
         SelectionOff => false
       }
         && (length(xs: dirs) == 0)
-        && (length(xs: entries) == length(xs: known_red_probe_entries))
+        && (length(xs: entries) == length(xs: known_red_probe_roster()))
         && discovery_batch_declares_hermetic(r: r)
         && (p.spawns_host_compiler == false)
     RunnableScopedWitnessBatch { batch: _ } => false
