@@ -2,7 +2,7 @@
 
 **Status:** INTERIM AUDIT — 17 of 27 compiler roster modules probed at HEAD; not a roster acceptance or closeout.
 
-**Head:** `9f978aa8df` (main at survey start) on worktree `neat-cat-330`.
+**Head:** `9f978aa8df` (main at survey start, 2026-08-02) on worktree `neat-cat-330`. **Point-in-time only:** at time of writing current main is `19cc776d4e` (44 commits later); five of those commits touched the v1 emission path (#7685, #7691, #7708, #7709, #7733). Verdicts may have moved — this receipt is a dated reading, not a claim about current main. Spot-check at merged main (`d1fe52102b`, 2026-08-03): `04_infer`, `06_translate`, `materialization_carriers` still `RealizationGap`/`^parse_grammar_choice_overlap_residue` @ assemble; `03_ingest` still `NameResolutionGap`/`^resolve_module_not_found` @ assemble.
 
 **Harness:** `frontier_probe_survey` seed bin, per-module via `frontier_probe_emit_from_ingest` (fixture-free ingest overlay). Receipt TSV: `frontier_probe_exact_head_survey_2026-08-03.tsv`.
 
