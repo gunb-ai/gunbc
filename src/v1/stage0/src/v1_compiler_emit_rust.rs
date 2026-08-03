@@ -5296,40 +5296,90 @@ pub fn emit_v2_std_text_closure_stub_module() -> Rc<TextFile> {
     })
 }
 
+pub fn lib_rs_mod_name_from_file(f: Rc<TextFile>) -> String {
+    {
+        let src_prefix_len = v1_rt::string_length(&rust_source_root());
+        let ext_len = v1_rt::string_length(&rust_source_ext());
+        let path_len = v1_rt::string_length(&f.path.clone());
+        v1_rt::substring(
+            &f.path.clone(),
+            src_prefix_len.clone(),
+            (path_len.clone() - ext_len.clone()),
+        )
+    }
+}
+
+pub fn emit_lib_rs_mod_decl(mod_name: String) -> String {
+    if (mod_name.clone() == "v1_interpreter_dispatch_generated".to_string()) {
+        "#[macro_use]\npub mod v1_interpreter_dispatch_generated;".to_string()
+    } else {
+        v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        rust_visibility_prefix(),
+                        rust_items().module_keyword.clone(),
+                    ),
+                    " ".to_string(),
+                ),
+                mod_name.clone(),
+            ),
+            ";".to_string(),
+        )
+    }
+}
+
+pub fn order_lib_rs_mod_names(mod_names: Rc<Vec<String>>) -> Rc<Vec<String>> {
+    {
+        let without_dispatch = Rc::new({
+            let mut __result = Vec::new();
+            for n in mod_names.clone().iter().cloned() {
+                if (n.clone() != "v1_interpreter_dispatch_generated".to_string()) {
+                    __result.push(n);
+                }
+            }
+            __result
+        });
+        without_dispatch.clone().iter().cloned().fold(
+            Rc::new(vec![]),
+            |acc: Rc<Vec<String>>, name: String| {
+                if (name.clone() == "v1_interpreter".to_string()) {
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            acc.clone(),
+                            Rc::new(vec!["v1_interpreter_dispatch_generated".to_string()]),
+                        ),
+                        Rc::new(vec![name.clone()]),
+                    )
+                } else {
+                    v1_rt::concat(acc.clone(), Rc::new(vec![name.clone()]))
+                }
+            },
+        )
+    }
+}
+
 pub fn emit_lib_rs_from_files(
     all_module_files: Rc<Vec<Rc<TextFile>>>,
     has_compiler_tests: bool,
 ) -> Rc<TextFile> {
     {
-        let src_prefix_len = v1_rt::string_length(&rust_source_root());
-        let ext_len = v1_rt::string_length(&rust_source_ext());
-        let mod_decls = Rc::new({
-            let mut __result = Vec::new();
-            for f in all_module_files.clone().iter().cloned() {
-                __result.push({
-                    let path_len = v1_rt::string_length(&f.path.clone());
-                    let mod_name = v1_rt::substring(
-                        &f.path.clone(),
-                        src_prefix_len.clone(),
-                        (path_len.clone() - ext_len.clone()),
-                    );
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            v1_rt::concat(
-                                v1_rt::concat(
-                                    rust_visibility_prefix(),
-                                    rust_items().module_keyword.clone(),
-                                ),
-                                " ".to_string(),
-                            ),
-                            mod_name.clone(),
-                        ),
-                        ";".to_string(),
-                    )
-                });
-            }
-            __result
-        });
+        let mod_names = order_lib_rs_mod_names(Rc::new(
+            all_module_files
+                .clone()
+                .iter()
+                .cloned()
+                .map(lib_rs_mod_name_from_file)
+                .collect::<Vec<_>>(),
+        ));
+        let mod_decls = Rc::new(
+            mod_names
+                .clone()
+                .iter()
+                .cloned()
+                .map(emit_lib_rs_mod_decl)
+                .collect::<Vec<_>>(),
+        );
         let hand_maintained_mods = if has_compiler_tests.clone() {
             generated_pub_mod_block()
         } else {

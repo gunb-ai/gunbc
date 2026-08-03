@@ -21,7 +21,7 @@ pub fn stage0_crate_layout_generated_note() -> String {
 pub fn generated_pub_mod_block() -> String {
     thread_local! {
         static CACHED: String = {
-            "\npub mod v1_interpreter;\npub mod cli_run;\npub mod coproduct_reflection;\npub mod resolved_graph_cache;\npub mod shared_typecheck_store;\npub mod recorded_fixture;\npub mod memory_governor;\npub mod module_path_index;\npub mod usv_pilot_v2_std_algebra;\npub mod usv_pilot_v2_std_collection;\npub mod usv_pilot_v2_std_node;\npub mod v2_compiler_resolve;\npub mod v2_compiler_program_partition;\npub mod v2_compiler_tokenize;\npub mod v2_compiler_infer;\npub mod v1_interpreter_dispatch_generated;".to_string()
+            "\n#[macro_use]\npub mod v1_interpreter_dispatch_generated;\npub mod v1_interpreter;\npub mod cli_run;\npub mod coproduct_reflection;\npub mod resolved_graph_cache;\npub mod shared_typecheck_store;\npub mod recorded_fixture;\npub mod memory_governor;\npub mod module_path_index;\npub mod usv_pilot_v2_std_algebra;\npub mod usv_pilot_v2_std_collection;\npub mod usv_pilot_v2_std_node;\npub mod v2_compiler_resolve;\npub mod v2_compiler_program_partition;\npub mod v2_compiler_tokenize;\npub mod v2_compiler_infer;".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
