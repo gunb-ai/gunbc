@@ -79,8 +79,8 @@ fn artifact_generate(a: GeneratedArtifact) -> ArtifactGenerationOutcome {
     }
     V1InterpreterDispatchGeneratedRsArtifact => match expected_v1_interpreter_dispatch_generated_rs() {
       V1InterpreterDispatchGenerated { content } => artifact_generated(content: content)
-      V1InterpreterDispatchGenerationRefused { reason: _ } =>
-        ArtifactGenerationRefused { reason: "dispatch emit refused: roster row maps to unknown emit site" }
+      V1InterpreterDispatchGenerationRefused { reason } =>
+        ArtifactGenerationRefused { reason: reason }
     }
     LiveDeployApplyScriptArtifact => artifact_generated(content: expected_live_deploy_apply_script())
     LiveDeployRetractScriptArtifact => artifact_generated(content: expected_live_deploy_retract_script())
