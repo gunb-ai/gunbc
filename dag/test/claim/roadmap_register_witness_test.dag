@@ -134,11 +134,28 @@ test fn witness_archetype_verbs_match_declared_elements() -> Bool {
 
 data header_wordmark_witness_note: String = "Replaced witness_header_carries_shared_mark at A1 (presentation recon, operator-signed 2026-08-01): the header's brand element is the TEXT wordmark, not the site mark — the mark that stood here was gunbc.site.mark candidate A, an unselected brand experiment whose aria-label said gunb.ai on a gunbc tool surface (rationale on gunbc.roadmap_page.roadmap_wordmark_note). The structural claim is the same shape as before: the header Fragment contains the exact wordmark node, on both page instantiations."
 
+data header_frame_scan_note: String = "Amended for the A2 hierarchy closeout: the header's children now sit inside one div.header-inner composition frame (header_composition_frame_note — header and content share the page measure), so the wordmark claim holds one level down. The scan descends through element children rather than pinning direct adjacency: the CLAIM is 'the header carries the wordmark', not 'the wordmark is a direct child', and pinning the accidental nesting is exactly what the A1 header re-pin note warns against."
+
+fn fragment_is_wordmark(c: Fragment) -> Bool {
+  c == el_class("span", "wordmark", [ txt("gunbc") ])
+}
+
+fn children_contain_wordmark(children: List<Fragment>) -> Bool {
+  fold(children, init: false, f: (acc, c) =>
+    acc
+      || fragment_is_wordmark(c: c)
+      || (match c {
+        Element { tag: _, attributes: _, children: inner } =>
+          fold(inner, init: false, f: (a2, c2) => a2 || fragment_is_wordmark(c: c2))
+        FragmentText { content: _ } => false
+        RawNode { content: _ } => false
+      }))
+}
+
 fn header_children_contain_wordmark(h: Fragment) -> Bool {
   match h {
     Element { tag, attributes: _, children } =>
-      tag == "header"
-        && fold(children, init: false, f: (acc, c) => acc || c == el_class("span", "wordmark", [ txt("gunbc") ]))
+      tag == "header" && children_contain_wordmark(children: children)
     FragmentText { content: _ } => false
     RawNode { content: _ } => false
   }

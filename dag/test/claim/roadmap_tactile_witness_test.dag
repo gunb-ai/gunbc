@@ -266,18 +266,30 @@ test fn witness_button_reports_dispatch_acceptance() -> Bool {
     && !string_contains(s: source, pattern: "session · spawned")
 }
 
+fn fragment_is_sound_toggle(c: Fragment) -> Bool {
+  match c {
+    Element { tag: t, attributes: a, children: _ } =>
+      t == "button"
+        && fold(a, init: false, f: (found, at) =>
+          found || (at.name == "class" && at.value == sound_toggle_class))
+    FragmentText { content: _ } => false
+    RawNode { content: _ } => false
+  }
+}
+
 fn header_has_sound_toggle(h: Fragment) -> Bool {
   match h {
     Element { tag, attributes: _, children } =>
       tag == "header"
-        && fold(children, init: false, f: (acc, c) => match c {
-          Element { tag: t, attributes: a, children: _ } =>
-            acc || (t == "button"
-              && fold(a, init: false, f: (found, at) =>
-                found || (at.name == "class" && at.value == sound_toggle_class)))
-          FragmentText { content: _ } => acc
-          RawNode { content: _ } => acc
-        })
+        && fold(children, init: false, f: (acc, c) =>
+          acc
+            || fragment_is_sound_toggle(c: c)
+            || (match c {
+              Element { tag: _, attributes: _, children: inner } =>
+                fold(inner, init: false, f: (a2, c2) => a2 || fragment_is_sound_toggle(c: c2))
+              FragmentText { content: _ } => false
+              RawNode { content: _ } => false
+            }))
     FragmentText { content: _ } => false
     RawNode { content: _ } => false
   }
