@@ -1400,8 +1400,9 @@ pub enum CompileDiagnosticCensus {
 }
 
 /// Host realization backing the `compile_dag_diagnostic_census` builtin: compile an in-memory
-/// `.dag` program through the **same** path [`compile_dag_rust_emit_check`] takes, and report the
-/// full per-class diagnostic census the compile produced.
+/// `.dag` program through the v1 pipeline to the Rust render target (the same pipeline
+/// [`compile_dag_rust_emit_check`] uses), and report the full per-class diagnostic census the
+/// compile produced.
 ///
 /// MEASUREMENT ONLY. Nothing here judges acceptance and nothing is filtered: every diagnostic the
 /// compile emitted appears, advisories included, with `blocking` carried **as data** read through
@@ -1410,18 +1411,25 @@ pub enum CompileDiagnosticCensus {
 /// discards class identity, severity, and every advisory — the three facts a guarantee probe needs
 /// in order to state which judgment fired rather than merely that something refused.
 ///
-/// Scope, stated so a receipt cannot claim coverage it does not have: this is the v1 pipeline to
-/// the Rust render target over a synthetic single-module source — `SyntheticProgram` ×
-/// `CompileAccept` × `V1Pipeline` in `GuaranteePath` axes. It observes nothing about the
+/// Scope, stated so a receipt cannot claim coverage it does not have (DESIGN §4b): this is the v1
+/// pipeline to the Rust render target over a synthetic single-module source — `SyntheticProgram` ×
+/// `CompileAccept` × `V1Pipeline` in `GuaranteePath` axes — **with**
+/// [`crate::v1_rt::with_type_ref_hit_ne_bind_measure`] armed for the nested compile (N1a). That
+/// bracket is census-only: for masked, pool-present, non-authority type refs it can emit blocking
+/// `UnresolvedType` while [`compile_dag_rust_emit_check`] (measure off) stays on the production
+/// fail-open / `UnlistedImportUse` advisory path. Census receipts therefore must not be read as
+/// production compile-clean behavior for those type positions. It observes nothing about the
 /// interpreter's disposition of the same program and nothing about other emission targets.
 pub fn compile_dag_diagnostic_census(source: &str) -> CompileDiagnosticCensus {
     let compiled = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let module_index = build_module_path_index_from_witness_roots();
-        let sources = resolve_virtual_source_with_imports("test.dag", source, &module_index);
-        v1_compiler_compile::compile_sources(
-            Rc::new(sources.into()),
-            crate::v1_compiler_artifact::RenderTarget::Rust,
-        )
+        crate::v1_rt::with_type_ref_hit_ne_bind_measure(|| {
+            let module_index = build_module_path_index_from_witness_roots();
+            let sources = resolve_virtual_source_with_imports("test.dag", source, &module_index);
+            v1_compiler_compile::compile_sources(
+                Rc::new(sources.into()),
+                crate::v1_compiler_artifact::RenderTarget::Rust,
+            )
+        })
     }));
     let result = match compiled {
         Ok(r) => r,
@@ -2938,6 +2946,71 @@ pub fn regen_input_sources(workspace: &Path) -> Result<Vec<(String, String)>, St
     let mut result: Vec<(String, String)> = seen.into_values().collect();
     result.sort_by(|a, b| a.0.cmp(&b.0));
     Ok(result)
+}
+
+/// Source-side carrier for `gunbc.stage0_emit_plan`'s declared host-supply scaffold.
+///
+/// This deliberately stops before resolve/infer/emit: every identity comes from the same
+/// parse-derived module-binding path used by `v2.compiler.source_authority`, over exactly the
+/// `regen_input_sources` closure. It must never accept an `EmitResult` or inspect emitted paths.
+/// Dissolve-on: generated_artifact_gate accepts a source_authority ModuleStorageIndex.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Stage0EmissionSourceIdentity {
+    pub module_path: String,
+    pub storage_path: String,
+    pub source_tree: &'static str,
+}
+
+thread_local! {
+    static STAGE0_EMISSION_SOURCE_IDENTITY_CACHE: RefCell<
+        std::collections::HashMap<PathBuf, Vec<Stage0EmissionSourceIdentity>>
+    > = RefCell::new(std::collections::HashMap::new());
+}
+
+pub fn stage0_emission_source_identities(
+    workspace: &Path,
+) -> Result<Vec<Stage0EmissionSourceIdentity>, String> {
+    if let Some(cached) =
+        STAGE0_EMISSION_SOURCE_IDENTITY_CACHE.with(|cache| cache.borrow().get(workspace).cloned())
+    {
+        return Ok(cached);
+    }
+    let mut identities = Vec::new();
+    let mut seen = std::collections::BTreeSet::new();
+    for (storage_path, content) in regen_input_sources(workspace)? {
+        let parsed =
+            parse_module_binding(Path::new(&storage_path), &content)?.ok_or_else(|| {
+                format!(
+                    "stage0 emission source identity missing module declaration: {storage_path}"
+                )
+            })?;
+        if !seen.insert(parsed.module_path.clone()) {
+            return Err(format!(
+                "stage0 emission source identity duplicated module: {}",
+                parsed.module_path
+            ));
+        }
+        let source_tree = if storage_path.starts_with("src/v1/") {
+            "V1SourceTree"
+        } else if storage_path.starts_with("dag/") {
+            "DagSourceTree"
+        } else {
+            return Err(format!(
+                "stage0 emission source identity outside modeled regen roots: {storage_path}"
+            ));
+        };
+        identities.push(Stage0EmissionSourceIdentity {
+            module_path: parsed.module_path,
+            storage_path,
+            source_tree,
+        });
+    }
+    STAGE0_EMISSION_SOURCE_IDENTITY_CACHE.with(|cache| {
+        cache
+            .borrow_mut()
+            .insert(workspace.to_path_buf(), identities.clone());
+    });
+    Ok(identities)
 }
 
 /// Does a diff-changed path belong to the regen input surface (fail-closed superset)?

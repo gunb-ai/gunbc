@@ -12,7 +12,7 @@ type ScopeRoster {
 type EnforcementMode = Advisory | AuditOnly | Blocking
 
 type ConsumerKind
-  = FloorGate | MergeAdmission | PrePushHook | PeriodicActuator
+  = EnrolledInFloorRoster | MergeAdmission | PrePushHook | PeriodicActuator
   | RoadmapDriftGate | DeployReadback | WitnessOnly | NoConsumer
 
 type ConsumerRequirement
@@ -36,10 +36,10 @@ type ScopeSatisfaction
   | ScopeMissing
 
 type RedControlStatus
-  = RedControlPassed | RedControlMissing | RedControlNotRun | RedControlFailedToFlip
+  = RedControlPassed | RedControlAbsent | RedControlNotRun | RedControlFailedToFlip
 
 type SelfApplicationStatus
-  = SelfAppliesObserved | SelfExemptObserved { reason: String } | SelfApplicationAbsent
+  = LensModuleFunctionObserved | SelfExemptObserved { reason: String } | SelfApplicationAbsent
 
 type ReceiptRef = HasReceiptRef { ref: String } | NoReceiptRef
 
@@ -57,7 +57,7 @@ fn enforcement_mode_satisfies(actual: EnforcementMode, required: EnforcementMode
 
 fn consumer_rank(k: ConsumerKind) -> Int {
   match k {
-    FloorGate => 1
+    EnrolledInFloorRoster => 1
     MergeAdmission => 2
     PrePushHook => 3
     PeriodicActuator => 4
@@ -74,7 +74,7 @@ fn consumer_kind_eq(a: ConsumerKind, b: ConsumerKind) -> Bool {
 
 fn consumer_is_live(k: ConsumerKind) -> Bool {
   match k {
-    FloorGate => true
+    EnrolledInFloorRoster => true
     MergeAdmission => true
     PrePushHook => true
     PeriodicActuator => true
@@ -96,7 +96,7 @@ fn consumer_satisfies(actual: ConsumerKind, required: ConsumerRequirement) -> Bo
 fn red_control_passed(s: RedControlStatus) -> Bool {
   match s {
     RedControlPassed => true
-    RedControlMissing => false
+    RedControlAbsent => false
     RedControlNotRun => false
     RedControlFailedToFlip => false
   }
@@ -104,7 +104,7 @@ fn red_control_passed(s: RedControlStatus) -> Bool {
 
 fn self_application_ok(s: SelfApplicationStatus) -> Bool {
   match s {
-    SelfAppliesObserved => true
+    LensModuleFunctionObserved => true
     SelfExemptObserved { reason } => true
     SelfApplicationAbsent => false
   }

@@ -2,7 +2,7 @@
 module test.claim.generated_artifact_drift
 
 import gunbc.generated_artifact {
-  GeneratedArtifact, CiYamlArtifact, FalsifierYamlArtifact, GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, LiveDeployApplyScriptArtifact, LiveDeployRetractScriptArtifact, AutoinstallUserDataArtifact, ProxyDhcpDnsmasqArtifact, PlanArtifact,
+  GeneratedArtifact, CiYamlArtifact, FalsifierYamlArtifact, GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, Stage0EmitPlanGeneratedDagArtifact, LiveDeployApplyScriptArtifact, LiveDeployRetractScriptArtifact, AutoinstallUserDataArtifact, ProxyDhcpDnsmasqArtifact, PlanArtifact,
   RepoConsumer, GitProtocol, GithubActionsWorkflow, ProjectDocumentation, HostReconciler,
   CommitPolicy, CommitRequired, NotCommitted,
   HealPolicy, AutoPushEligible, AuthorCommitRequired,
@@ -16,7 +16,7 @@ import gunbc.generated_artifact {
   classify_heal_repair_paths, path_requires_author_commit,
   registry_contains
 }
-import gunbc.generated_artifact_emit { artifact_generate, artifact_extra_valid }
+import gunbc.generated_artifact_emit { ArtifactGenerated, ArtifactGenerationRefused, artifact_generate, artifact_extra_valid }
 import gunbc.os_install { srv3_autoinstall_spec, fleet_autoinstall_specs, srv3_install_server_spec, fleet_install_server_specs }
 import gunbc.gitignore_emit { path_is_ignored }
 import gunbc.plan_registry { all_plans }
@@ -29,21 +29,31 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 data perturb: String = "\n# gunbc-generated-artifact-drift-receipt-perturb"
 
 fn artifact_drifted(a: GeneratedArtifact, committed: String) -> Bool {
-  !(committed == artifact_generate(a: a))
+  match artifact_generate(a: a) {
+    ArtifactGenerationRefused { reason: _ } => true
+    ArtifactGenerated { content } => !(committed == content)
+  }
+}
+
+fn artifact_red_receipt(a: GeneratedArtifact) -> Bool {
+  match artifact_generate(a: a) {
+    ArtifactGenerationRefused { reason: _ } => false
+    ArtifactGenerated { content } =>
+      !artifact_drifted(a: a, committed: content)
+        && artifact_drifted(a: a, committed: concat(content, perturb))
+  }
 }
 
 test fn witness_per_artifact_red_receipts() -> Bool {
   count(committed_generated_artifacts()) > 0
-    && all(committed_generated_artifacts(), a =>
-         !artifact_drifted(a: a, committed: artifact_generate(a: a))
-           && artifact_drifted(a: a, committed: concat(artifact_generate(a: a), perturb)))
+    && all(committed_generated_artifacts(), a => artifact_red_receipt(a: a))
 }
 
 data fixed_point_witness_note: String = "Fixed-point / byte-idempotence leg (ci-chores P0, 2026-07-22): witness_committed_is_fixed_point reads the REAL committed bytes off disk (Filesystem.Read, ReadsLiveTree) and asserts a fresh artifact_generate reproduces them byte-for-byte for every committed artifact. This is the executable form of `regen yields zero diff` — the property the automated chore commit relies on. It differs from witness_per_artifact_red_receipts (which compares generate-to-generate and so is blind to a committed-vs-generated mismatch such as the missing-trailing-newline defect P0 chased). RED control: witness_committed_fixed_point_red_control perturbs the read bytes and requires the equality to fail, so a false-green fixed point is unwritable. Note (§2): the drift gate run_generated_artifact_drift_gate_body already reads the same bytes as one conjunct; this witness ISOLATES the fixed-point property as a separately-falsifiable claim with its own control, rather than re-deriving the gate's pass/fail. Determinism of artifact_generate ACROSS processes (map-key iteration order) is a distinct property and is enforced by construction by v2.lens.determinism.determinism_compile_gate — not re-checked here."
 
 fn artifact_committed_matches(a: GeneratedArtifact) -> Bool {
   let committed = Filesystem.Read(path: artifact_path(a: a))
-  committed.success && (committed.content == artifact_generate(a: a))
+  committed.success && !artifact_drifted(a: a, committed: committed.content)
 }
 
 test fn witness_committed_is_fixed_point() -> Bool {
@@ -55,7 +65,7 @@ test fn witness_committed_fixed_point_red_control() -> Bool {
   let a = CiYamlArtifact
   let committed = Filesystem.Read(path: artifact_path(a: a))
   committed.success
-    && !(concat(committed.content, perturb) == artifact_generate(a: a))
+    && artifact_drifted(a: a, committed: concat(committed.content, perturb))
 }
 
 test fn witness_all_known_committed() -> Bool {
@@ -81,6 +91,7 @@ test fn witness_all_known_committed() -> Bool {
     && !path_is_ignored(path: ".githooks/pre-commit")
     && !path_is_ignored(path: "dag/gunbc/stage0_crate_layout_generated.dag")
     && !path_is_ignored(path: "dag/gunbc/stage0_crate_partition_generated.dag")
+    && !path_is_ignored(path: "dag/gunbc/stage0_emit_plan_generated.dag")
     && !path_is_ignored(path: "src/v1/stage0/src/bootstrap_stage0_crate_layout_generated.rs")
     && !path_is_ignored(path: "docs/plans/idea-machine.md")
     && !path_is_ignored(path: ".github/live-deploy-srv1-apply.sh")
@@ -98,7 +109,7 @@ test fn witness_ignored_paths_excluded() -> Bool {
 }
 
 test fn witness_registry_complete() -> Bool {
-  count(generated_artifact_registry) == (14 + count(fleet_autoinstall_specs) + count(fleet_install_server_specs) + count(all_plans))
+  count(generated_artifact_registry) == (15 + count(fleet_autoinstall_specs) + count(fleet_install_server_specs) + count(all_plans))
     && registry_contains(a: CiYamlArtifact)
     && registry_contains(a: FalsifierYamlArtifact)
     && registry_contains(a: GitignoreArtifact)
@@ -111,6 +122,7 @@ test fn witness_registry_complete() -> Bool {
     && registry_contains(a: Stage0CrateLayoutGeneratedDagArtifact)
     && registry_contains(a: Stage0CrateLayoutGeneratedRsArtifact)
     && registry_contains(a: Stage0CratePartitionGeneratedDagArtifact)
+    && registry_contains(a: Stage0EmitPlanGeneratedDagArtifact)
     && registry_contains(a: LiveDeployApplyScriptArtifact)
     && registry_contains(a: LiveDeployRetractScriptArtifact)
     && registry_contains(a: AutoinstallUserDataArtifact { spec: srv3_autoinstall_spec })
@@ -128,6 +140,7 @@ test fn witness_registry_complete() -> Bool {
     && artifact_is_committed(a: Stage0CrateLayoutGeneratedDagArtifact)
     && artifact_is_committed(a: Stage0CrateLayoutGeneratedRsArtifact)
     && artifact_is_committed(a: Stage0CratePartitionGeneratedDagArtifact)
+    && artifact_is_committed(a: Stage0EmitPlanGeneratedDagArtifact)
     && artifact_is_committed(a: LiveDeployApplyScriptArtifact)
     && artifact_is_committed(a: LiveDeployRetractScriptArtifact)
     && !artifact_is_committed(a: RunnerDeployArtifact)
@@ -160,6 +173,7 @@ test fn witness_commit_policy_reasons() -> Bool {
     && consumer_is(a: Stage0CrateLayoutGeneratedDagArtifact, expected: GitProtocol)
     && consumer_is(a: Stage0CrateLayoutGeneratedRsArtifact, expected: GitProtocol)
     && consumer_is(a: Stage0CratePartitionGeneratedDagArtifact, expected: GitProtocol)
+    && consumer_is(a: Stage0EmitPlanGeneratedDagArtifact, expected: GitProtocol)
     && consumer_is(a: LiveDeployApplyScriptArtifact, expected: HostReconciler)
     && consumer_is(a: LiveDeployRetractScriptArtifact, expected: HostReconciler)
     && match artifact_commit_policy(a: RunnerDeployArtifact) { NotCommitted => true  _ => false }
@@ -206,5 +220,5 @@ test fn witness_extra_validation_wired() -> Bool {
     && artifact_extra_valid(a: FalsifierYamlArtifact)
     && artifact_extra_valid(a: Stage0CrateLayoutGeneratedDagArtifact)
     && artifact_extra_valid(a: Stage0CrateLayoutGeneratedRsArtifact)
+    && artifact_extra_valid(a: Stage0EmitPlanGeneratedDagArtifact)
 }
-

@@ -172,6 +172,32 @@ pub fn name_resolution_policy_is_namespace_only() -> bool {
     NAME_RESOLUTION_POLICY_NAMESPACE_ONLY.with(|e| e.get())
 }
 
+// N1a measurement arm (type-ref hit≠bind discriminator): default false = production
+// fail-open path. Host-side setter only — compile_dag_diagnostic_census arms for the
+// nested synthetic compile; no .dag surface can flip it (same shape as
+// name_resolution_policy — no escape hatch).
+thread_local! {
+    static TYPE_REF_HIT_NE_BIND_MEASURE: Cell<bool> = const { Cell::new(false) };
+}
+
+pub fn type_ref_hit_ne_bind_measure_set(enabled: bool) {
+    TYPE_REF_HIT_NE_BIND_MEASURE.with(|e| e.set(enabled));
+}
+
+pub fn type_ref_hit_ne_bind_measure_active() -> bool {
+    TYPE_REF_HIT_NE_BIND_MEASURE.with(|e| e.get())
+}
+
+pub fn with_type_ref_hit_ne_bind_measure<T>(f: impl FnOnce() -> T) -> T {
+    TYPE_REF_HIT_NE_BIND_MEASURE.with(|c| {
+        let prev = c.get();
+        c.set(true);
+        let out = f();
+        c.set(prev);
+        out
+    })
+}
+
 pub fn resolution_silent_pick_record_fn_parent_first_hit(
     env_module_path: String,
     name: String,

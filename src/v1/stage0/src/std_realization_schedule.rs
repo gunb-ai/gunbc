@@ -99,6 +99,7 @@ pub struct RealizationObjective {
 pub enum WitnessKind {
     CorpusWitnessKind,
     ExecutionWitnessKind,
+    NativeBundleWitnessKind,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -127,10 +128,17 @@ pub fn witness_kind_eq(a: WitnessKind, b: WitnessKind) -> bool {
         WitnessKind::CorpusWitnessKind => match b.clone() {
             WitnessKind::CorpusWitnessKind => true,
             WitnessKind::ExecutionWitnessKind => false,
+            WitnessKind::NativeBundleWitnessKind => false,
         },
         WitnessKind::ExecutionWitnessKind => match b.clone() {
             WitnessKind::ExecutionWitnessKind => true,
             WitnessKind::CorpusWitnessKind => false,
+            WitnessKind::NativeBundleWitnessKind => false,
+        },
+        WitnessKind::NativeBundleWitnessKind => match b.clone() {
+            WitnessKind::NativeBundleWitnessKind => true,
+            WitnessKind::CorpusWitnessKind => false,
+            WitnessKind::ExecutionWitnessKind => false,
         },
     }
 }
@@ -604,6 +612,7 @@ pub fn scoped_witness_kind_label(kind: WitnessKind) -> String {
     match kind.clone() {
         WitnessKind::CorpusWitnessKind => "corpus".to_string(),
         WitnessKind::ExecutionWitnessKind => "execution".to_string(),
+        WitnessKind::NativeBundleWitnessKind => "native-bundle".to_string(),
     }
 }
 
@@ -614,7 +623,11 @@ pub fn scoped_witness_kind_from_label(label: String) -> Option<WitnessKind> {
         if (label.clone() == "execution".to_string()) {
             Some(WitnessKind::ExecutionWitnessKind)
         } else {
-            None
+            if (label.clone() == "native-bundle".to_string()) {
+                Some(WitnessKind::NativeBundleWitnessKind)
+            } else {
+                None
+            }
         }
     }
 }
@@ -1584,6 +1597,8 @@ pub struct Measured;
 pub struct CorpusWitnessKind;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ExecutionWitnessKind;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct NativeBundleWitnessKind;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RunnableMemoryNegligible;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

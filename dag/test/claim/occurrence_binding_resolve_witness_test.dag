@@ -1,9 +1,8 @@
 module test.claim.occurrence_binding_resolve_witness_test
 
-import std.types { Bool, SourceSpan }
+import std.types { Bool }
 import std.algebra { Empty }
 import std.occurrence_identity {
-  OccurrenceId,
   OccurrenceContainmentPath,
   OccurrenceProjection,
   OccurrenceIndexEntry,
@@ -36,13 +35,13 @@ import std.occurrence_binding_resolve {
   OccurrenceReferenceBindingTransportRefused,
 }
 
-fn obr_fixture_span(file: String, start: Int, end: Int) -> SourceSpan {
-  SourceSpan { file: file, start: start, end: end }
+fn obr_fixture_span(file: String, start: Int, end: Int) -> std.types.SourceSpan {
+  std.types.SourceSpan { file: file, start: start, end: end }
 }
 
 fn obr_fixture_path(
-  ancestors: List<OccurrenceId>,
-  terminal: OccurrenceId
+  ancestors: List<std.occurrence_identity.OccurrenceId>,
+  terminal: std.occurrence_identity.OccurrenceId
 ) -> OccurrenceContainmentPath {
   OccurrenceContainmentPath {
     ancestors: ancestors,
@@ -51,9 +50,9 @@ fn obr_fixture_path(
 }
 
 fn obr_fixture_index_entry(
-  occurrence: OccurrenceId,
+  occurrence: std.occurrence_identity.OccurrenceId,
   authored_name: String,
-  span: SourceSpan,
+  span: std.types.SourceSpan,
   containment: OccurrenceContainmentPath
 ) -> OccurrenceIndexEntry {
   OccurrenceIndexEntry {
@@ -68,29 +67,29 @@ fn obr_fixture_index_entry(
 
 fn obr_supplied_population_transport() -> OccurrenceTransport {
   let span = obr_fixture_span(file: "supplied.dag", start: 1, end: 2)
-  let lexical_a = OccurrenceId { value: 10 }
-  let lexical_b = OccurrenceId { value: 11 }
-  let type_decl = OccurrenceId { value: 12 }
-  let lexical_ref = OccurrenceId { value: 20 }
-  let type_ref = OccurrenceId { value: 21 }
+  let lexical_a = std.occurrence_identity.OccurrenceId { value: 10 }
+  let lexical_b = std.occurrence_identity.OccurrenceId { value: 11 }
+  let type_decl = std.occurrence_identity.OccurrenceId { value: 12 }
+  let lexical_ref = std.occurrence_identity.OccurrenceId { value: 20 }
+  let type_ref = std.occurrence_identity.OccurrenceId { value: 21 }
   let lexical_a_path = obr_fixture_path(
-    ancestors: [OccurrenceId { value: 1 }],
+    ancestors: [std.occurrence_identity.OccurrenceId { value: 1 }],
     terminal: lexical_a,
   )
   let lexical_b_path = obr_fixture_path(
-    ancestors: [OccurrenceId { value: 2 }],
+    ancestors: [std.occurrence_identity.OccurrenceId { value: 2 }],
     terminal: lexical_b,
   )
   let type_decl_path = obr_fixture_path(
-    ancestors: [OccurrenceId { value: 3 }],
+    ancestors: [std.occurrence_identity.OccurrenceId { value: 3 }],
     terminal: type_decl,
   )
   let lexical_ref_path = obr_fixture_path(
-    ancestors: [OccurrenceId { value: 4 }],
+    ancestors: [std.occurrence_identity.OccurrenceId { value: 4 }],
     terminal: lexical_ref,
   )
   let type_ref_path = obr_fixture_path(
-    ancestors: [OccurrenceId { value: 5 }],
+    ancestors: [std.occurrence_identity.OccurrenceId { value: 5 }],
     terminal: type_ref,
   )
   OccurrenceTransport {
@@ -165,12 +164,12 @@ fn obr_supplied_population_transport() -> OccurrenceTransport {
   }
 }
 
-fn obr_lexical_reference_id() -> OccurrenceId {
-  OccurrenceId { value: 20 }
+fn obr_lexical_reference_id() -> std.occurrence_identity.OccurrenceId {
+  std.occurrence_identity.OccurrenceId { value: 20 }
 }
 
-fn obr_type_reference_id() -> OccurrenceId {
-  OccurrenceId { value: 21 }
+fn obr_type_reference_id() -> std.occurrence_identity.OccurrenceId {
+  std.occurrence_identity.OccurrenceId { value: 21 }
 }
 
 test fn occurrence_binding_resolve_supplied_zero_is_unbound_holds() -> Bool {
@@ -190,12 +189,12 @@ test fn occurrence_binding_resolve_supplied_one_is_bound_with_exact_identity_hol
   match resolve_reference_occurrence_binding(
     transport: obr_supplied_population_transport(),
     occurrence: obr_lexical_reference_id(),
-    supplied_candidates: [OccurrenceId { value: 10 }],
+    supplied_candidates: [std.occurrence_identity.OccurrenceId { value: 10 }],
   ) {
     OccurrenceReferenceBindingDecided {
       result: OccurrenceBound { binding: binding },
     } =>
-      binding.candidate.containment.ancestors == [OccurrenceId { value: 1 }]
+      binding.candidate.containment.ancestors == [std.occurrence_identity.OccurrenceId { value: 1 }]
         && binding.candidate.containment.terminal.value == 10
     _ => false
   }
@@ -206,8 +205,8 @@ test fn occurrence_binding_resolve_supplied_many_is_ambiguous_holds() -> Bool {
     transport: obr_supplied_population_transport(),
     occurrence: obr_lexical_reference_id(),
     supplied_candidates: [
-      OccurrenceId { value: 10 },
-      OccurrenceId { value: 11 },
+      std.occurrence_identity.OccurrenceId { value: 10 },
+      std.occurrence_identity.OccurrenceId { value: 11 },
     ],
   ) {
     OccurrenceReferenceBindingDecided {
@@ -231,8 +230,8 @@ test fn occurrence_binding_resolve_duplicate_supplied_identity_refuses_holds() -
     transport: obr_supplied_population_transport(),
     occurrence: obr_lexical_reference_id(),
     supplied_candidates: [
-      OccurrenceId { value: 10 },
-      OccurrenceId { value: 10 },
+      std.occurrence_identity.OccurrenceId { value: 10 },
+      std.occurrence_identity.OccurrenceId { value: 10 },
     ],
   ) {
     OccurrenceReferenceBindingTransportRefused {
@@ -249,7 +248,7 @@ test fn occurrence_binding_resolve_category_inadmissible_candidate_is_excluded_h
   match resolve_reference_occurrence_binding(
     transport: obr_supplied_population_transport(),
     occurrence: obr_type_reference_id(),
-    supplied_candidates: [OccurrenceId { value: 10 }],
+    supplied_candidates: [std.occurrence_identity.OccurrenceId { value: 10 }],
   ) {
     OccurrenceReferenceBindingDecided {
       result: OccurrenceUnbound { occurrence: _ },
@@ -322,7 +321,7 @@ test fn occurrence_binding_resolve_malformed_transport_refuses_holds() -> Bool {
 test fn occurrence_binding_resolve_unknown_reference_identity_refuses_holds() -> Bool {
   match resolve_reference_occurrence_binding(
     transport: obr_supplied_population_transport(),
-    occurrence: OccurrenceId { value: 999 },
+    occurrence: std.occurrence_identity.OccurrenceId { value: 999 },
     supplied_candidates: [],
   ) {
     OccurrenceReferenceBindingTransportRefused {
@@ -336,7 +335,7 @@ test fn occurrence_binding_resolve_unknown_supplied_candidate_identity_refuses_h
   match resolve_reference_occurrence_binding(
     transport: obr_supplied_population_transport(),
     occurrence: obr_lexical_reference_id(),
-    supplied_candidates: [OccurrenceId { value: 999 }],
+    supplied_candidates: [std.occurrence_identity.OccurrenceId { value: 999 }],
   ) {
     OccurrenceReferenceBindingTransportRefused {
       refusal: UnknownOccurrenceIdentity { occurrence: observed },
@@ -367,7 +366,7 @@ test fn occurrence_binding_resolve_wrong_roles_refuse_holds() -> Bool {
   occurrence_binding_resolve_reference_identity_as_candidate_refuses_wrong_role() &&
   match resolve_reference_occurrence_binding(
     transport: obr_supplied_population_transport(),
-    occurrence: OccurrenceId { value: 10 },
+    occurrence: std.occurrence_identity.OccurrenceId { value: 10 },
     supplied_candidates: [],
   ) {
     OccurrenceReferenceBindingTransportRefused {

@@ -161,6 +161,11 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
+            "type_ref_hit_ne_bind_measure_active".to_string(),
+            bool_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
             "resolution_silent_pick_record_global_bare_lcp_pick".to_string(),
             unit_type(),
         );
