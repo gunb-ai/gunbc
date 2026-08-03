@@ -8602,11 +8602,11 @@ fn selection_degradation_interp_ctx(
 ) -> Result<(v1_interpreter::InterpContext, String), String> {
     let entry = resolve_entry_file_under_roots(source_roots, SELECTION_DEGRADATION_RECEIPT_ENTRY)
         .map_err(|_| {
-            format!(
-                "selection-degradation receipt REFUSED — {SELECTION_DEGRADATION_RECEIPT_ENTRY} \
+        format!(
+            "selection-degradation receipt REFUSED — {SELECTION_DEGRADATION_RECEIPT_ENTRY} \
                  not found under source roots"
-            )
-        })?;
+        )
+    })?;
     let (graph, indices) = resolve_entry_graph_shared(source_roots, &entry)
         .map_err(|e| format!("selection-degradation receipt REFUSED — resolve {entry}: {e}"))?;
     Ok((
