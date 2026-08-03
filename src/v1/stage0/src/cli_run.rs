@@ -8508,9 +8508,7 @@ fn retention_snapshot_peak(
         typed_cache_evictions: a.typed_cache_evictions.max(b.typed_cache_evictions),
         schedule_evictions: a.schedule_evictions.max(b.schedule_evictions),
         retention_unknown: a.retention_unknown.max(b.retention_unknown),
-        resolved_graph_evictions: a
-            .resolved_graph_evictions
-            .max(b.resolved_graph_evictions),
+        resolved_graph_evictions: a.resolved_graph_evictions.max(b.resolved_graph_evictions),
         peak_rss_bytes: match (a.peak_rss_bytes, b.peak_rss_bytes) {
             (Some(x), Some(y)) => Some(x.max(y)),
             (Some(x), None) => Some(x),
@@ -19468,8 +19466,9 @@ fn run_discovery_corpus_with_options_inner(
                         );
                     }
                     if p1_cohort_detail {
-                        let modules_evicted =
-                            snap.schedule_evictions.saturating_sub(drain_prev.schedule_evictions);
+                        let modules_evicted = snap
+                            .schedule_evictions
+                            .saturating_sub(drain_prev.schedule_evictions);
                         let graphs_evicted = snap
                             .resolved_graph_evictions
                             .saturating_sub(drain_prev.resolved_graph_evictions);
