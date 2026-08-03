@@ -1,0 +1,320 @@
+module test.claim.type_reference_binding_context_witness_test
+
+import std.types { Bool, String, NonEmptyStr, SourceSpan }
+import std.occurrence_identity {
+  OccurrenceId,
+  OccurrenceContainmentPath,
+  OccurrenceProjection,
+  OccurrenceIndexEntry,
+  OccurrenceIndex,
+  OccurrenceTransport,
+  DeclarationOccurrence,
+  ReferenceOccurrence,
+  OccurrenceCategory,
+  TypeOccurrence,
+  CallableOccurrence,
+}
+import std.occurrence_binding_candidates {
+  DeclarationExposureRow,
+  LexicalExposure,
+  ModuleExposure,
+  RootExposure,
+  OccurrenceBindingCandidateInputs,
+  ReferenceBindingProjectionBound,
+  ReferenceBindingProjectionUnbound,
+  resolve_type_reference_containment_binding,
+}
+import gunbc.type_reference_binding_context {
+  ModuleOccurrenceBindingSource,
+  declaration_exposure_from_containment_tree,
+  merge_occurrence_binding_input_rows,
+  occurrence_binding_inputs_from_module_transport,
+  build_graph_type_reference_binding_inputs,
+  build_type_reference_binding_context,
+}
+
+data type_reference_binding_context_witness_note: String = "N2 slice 2 PR-A builder witnesses (quiet-hawk-219): RESOLVE-path only — see gunbc.type_reference_binding_context type_reference_binding_context_path_scope_note (emit-side #7705 RED control is LIVE, separate instance, warm-wolf-814). TypeReferenceBindingContext input projection + containment-tree exposure derivation for the v1 typecheck masked-leaf changeover. Cross-module kernel bind uses builder-produced inputs with RootExposure from module-root containment. Pool-coincidence refusal uses explicit ModuleExposure override on slice-1 control-3. PR-B wires resolve_node_bounded after 7515."
+
+fn trbc_module_path(dotted: String) -> NonEmptyStr {
+  dotted as NonEmptyStr
+}
+
+fn trbc_fixture_span(file: String, start: Int, end: Int) -> SourceSpan {
+  SourceSpan { file: file, start: start, end: end }
+}
+
+fn trbc_fixture_path(
+  ancestors: List<OccurrenceId>,
+  terminal: OccurrenceId
+) -> OccurrenceContainmentPath {
+  OccurrenceContainmentPath {
+    ancestors: ancestors,
+    terminal: terminal,
+  }
+}
+
+fn trbc_fixture_index_entry(
+  occurrence: OccurrenceId,
+  authored_name: String,
+  containment: OccurrenceContainmentPath
+) -> OccurrenceIndexEntry {
+  OccurrenceIndexEntry {
+    projection: OccurrenceProjection {
+      occurrence: occurrence,
+      authored_name: authored_name,
+      diagnostic_span: trbc_fixture_span(file: "fixture.dag", start: occurrence.value, end: occurrence.value + 1),
+    },
+    containment: containment,
+  }
+}
+
+fn trbc_fixture_declaration(
+  occurrence: OccurrenceId,
+  containment: OccurrenceContainmentPath,
+  category: OccurrenceCategory
+) -> DeclarationOccurrence {
+  DeclarationOccurrence {
+    occurrence: occurrence,
+    containment: containment,
+    category: category,
+    diagnostic_span: trbc_fixture_span(file: "fixture.dag", start: occurrence.value, end: occurrence.value + 1),
+  }
+}
+
+fn trbc_fixture_reference(
+  occurrence: OccurrenceId,
+  containment: OccurrenceContainmentPath,
+  category: OccurrenceCategory
+) -> ReferenceOccurrence {
+  ReferenceOccurrence {
+    occurrence: occurrence,
+    containment: containment,
+    category: category,
+    diagnostic_span: trbc_fixture_span(file: "fixture.dag", start: occurrence.value, end: occurrence.value + 1),
+  }
+}
+
+test fn module_root_containment_derives_root_exposure_holds() -> Bool {
+  let type_decl = OccurrenceId { value: 10 }
+  let type_path = trbc_fixture_path(ancestors: [], terminal: type_decl)
+  match declaration_exposure_from_containment_tree(
+    module_path: trbc_module_path(dotted: "std.content_hash"),
+    containment: type_path,
+  ) {
+    RootExposure => true
+    _ => false
+  }
+}
+
+test fn single_ancestor_containment_derives_module_exposure_holds() -> Bool {
+  let fn_body = OccurrenceId { value: 20 }
+  let fn_path = trbc_fixture_path(ancestors: [OccurrenceId { value: 1 }], terminal: fn_body)
+  match declaration_exposure_from_containment_tree(
+    module_path: trbc_module_path(dotted: "extdeps.consumer"),
+    containment: fn_path,
+  ) {
+    ModuleExposure { module: module } => module == trbc_module_path(dotted: "extdeps.consumer")
+    _ => false
+  }
+}
+
+test fn nested_containment_derives_lexical_exposure_holds() -> Bool {
+  let outer = OccurrenceId { value: 1 }
+  let inner = OccurrenceId { value: 2 }
+  let binder = OccurrenceId { value: 30 }
+  let nested_path = trbc_fixture_path(ancestors: [outer, inner], terminal: binder)
+  match declaration_exposure_from_containment_tree(
+    module_path: trbc_module_path(dotted: "extdeps.consumer"),
+    containment: nested_path,
+  ) {
+    LexicalExposure { exposing_scope: scope } =>
+      scope.terminal == inner && (scope.ancestors |> count) == 1
+    _ => false
+  }
+}
+
+test fn graph_builder_merges_two_module_input_rows_holds() -> Bool {
+  let provider_type = OccurrenceId { value: 10 }
+  let consumer_fn = OccurrenceId { value: 20 }
+  let provider_path = trbc_fixture_path(ancestors: [], terminal: provider_type)
+  let consumer_path = trbc_fixture_path(ancestors: [], terminal: consumer_fn)
+  let merged = build_graph_type_reference_binding_inputs(
+    sources: [
+      ModuleOccurrenceBindingSource {
+        module_path: trbc_module_path(dotted: "extdeps.provider"),
+        transport: OccurrenceTransport {
+          index: OccurrenceIndex {
+            entries: [
+              trbc_fixture_index_entry(occurrence: provider_type, authored_name: "Marker", containment: provider_path),
+            ],
+          },
+          declarations: [
+            trbc_fixture_declaration(occurrence: provider_type, containment: provider_path, category: TypeOccurrence),
+          ],
+          references: [],
+        },
+      },
+      ModuleOccurrenceBindingSource {
+        module_path: trbc_module_path(dotted: "extdeps.consumer"),
+        transport: OccurrenceTransport {
+          index: OccurrenceIndex {
+            entries: [
+              trbc_fixture_index_entry(occurrence: consumer_fn, authored_name: "f", containment: consumer_path),
+            ],
+          },
+          declarations: [
+            trbc_fixture_declaration(occurrence: consumer_fn, containment: consumer_path, category: CallableOccurrence),
+          ],
+          references: [],
+        },
+      },
+    ],
+  )
+  (merged.module_paths |> count) == 2
+    && (merged.exposure_rows |> count) == 2
+    && (merged.authored_order_rows |> count) == 2
+}
+
+test fn cross_module_builder_inputs_bind_via_kernel_holds() -> Bool {
+  let type_decl = OccurrenceId { value: 10 }
+  let fn_body = OccurrenceId { value: 20 }
+  let type_ref = OccurrenceId { value: 30 }
+  let type_path = trbc_fixture_path(ancestors: [], terminal: type_decl)
+  let fn_path = trbc_fixture_path(ancestors: [], terminal: fn_body)
+  let ref_path = trbc_fixture_path(ancestors: [fn_body], terminal: type_ref)
+  let provider_transport = OccurrenceTransport {
+    index: OccurrenceIndex {
+      entries: [
+        trbc_fixture_index_entry(occurrence: type_decl, authored_name: "ContentHash", containment: type_path),
+      ],
+    },
+    declarations: [
+      trbc_fixture_declaration(occurrence: type_decl, containment: type_path, category: TypeOccurrence),
+    ],
+    references: [],
+  }
+  let consumer_transport = OccurrenceTransport {
+    index: OccurrenceIndex {
+      entries: [
+        trbc_fixture_index_entry(occurrence: fn_body, authored_name: "f", containment: fn_path),
+        trbc_fixture_index_entry(occurrence: type_ref, authored_name: "ContentHash", containment: ref_path),
+      ],
+    },
+    declarations: [
+      trbc_fixture_declaration(occurrence: fn_body, containment: fn_path, category: CallableOccurrence),
+    ],
+    references: [
+      trbc_fixture_reference(occurrence: type_ref, containment: ref_path, category: TypeOccurrence),
+    ],
+  }
+  let graph_transport = OccurrenceTransport {
+    index: OccurrenceIndex {
+      entries: concat(provider_transport.index.entries, consumer_transport.index.entries),
+    },
+    declarations: concat(provider_transport.declarations, consumer_transport.declarations),
+    references: consumer_transport.references,
+  }
+  let ctx = build_type_reference_binding_context(
+    transport: graph_transport,
+    sources: [
+      ModuleOccurrenceBindingSource {
+        module_path: trbc_module_path(dotted: "std.content_hash"),
+        transport: provider_transport,
+      },
+      ModuleOccurrenceBindingSource {
+        module_path: trbc_module_path(dotted: "extdeps.consumer"),
+        transport: consumer_transport,
+      },
+    ],
+  )
+  match resolve_type_reference_containment_binding(
+    transport: ctx.transport,
+    inputs: ctx.inputs,
+    reference: trbc_fixture_reference(occurrence: type_ref, containment: ref_path, category: TypeOccurrence),
+  ) {
+    ReferenceBindingProjectionBound { provider: provider } =>
+      provider.declaration_occurrence.value == 10
+        && provider.provider_module == trbc_module_path(dotted: "std.content_hash")
+        && provider.consumer_module == trbc_module_path(dotted: "extdeps.consumer")
+    _ => false
+  }
+}
+
+test fn module_exposure_override_refuses_cross_module_pool_coincidence_holds() -> Bool {
+  let type_decl = OccurrenceId { value: 10 }
+  let fn_body = OccurrenceId { value: 20 }
+  let type_ref = OccurrenceId { value: 30 }
+  let type_path = trbc_fixture_path(ancestors: [], terminal: type_decl)
+  let fn_path = trbc_fixture_path(ancestors: [], terminal: fn_body)
+  let ref_path = trbc_fixture_path(ancestors: [fn_body], terminal: type_ref)
+  let provider_transport = OccurrenceTransport {
+    index: OccurrenceIndex {
+      entries: [
+        trbc_fixture_index_entry(occurrence: type_decl, authored_name: "ContentHash", containment: type_path),
+      ],
+    },
+    declarations: [
+      trbc_fixture_declaration(occurrence: type_decl, containment: type_path, category: TypeOccurrence),
+    ],
+    references: [],
+  }
+  let consumer_transport = OccurrenceTransport {
+    index: OccurrenceIndex {
+      entries: [
+        trbc_fixture_index_entry(occurrence: fn_body, authored_name: "f", containment: fn_path),
+        trbc_fixture_index_entry(occurrence: type_ref, authored_name: "ContentHash", containment: ref_path),
+      ],
+    },
+    declarations: [
+      trbc_fixture_declaration(occurrence: fn_body, containment: fn_path, category: CallableOccurrence),
+    ],
+    references: [
+      trbc_fixture_reference(occurrence: type_ref, containment: ref_path, category: TypeOccurrence),
+    ],
+  }
+  let inputs = merge_occurrence_binding_input_rows(
+    left: occurrence_binding_inputs_from_module_transport(
+      module_path: trbc_module_path(dotted: "std.content_hash"),
+      transport: provider_transport,
+    ),
+    right: occurrence_binding_inputs_from_module_transport(
+      module_path: trbc_module_path(dotted: "extdeps.consumer"),
+      transport: consumer_transport,
+    ),
+  )
+  let forced_module_exposure = fold(
+    inputs.exposure_rows,
+    init: [],
+    f: (acc, row) =>
+      if row.occurrence.value == 10 {
+        concat(acc, [DeclarationExposureRow {
+          occurrence: row.occurrence,
+          exposure: ModuleExposure { module: trbc_module_path(dotted: "std.content_hash") },
+        }])
+      } else {
+        concat(acc, [row])
+      },
+  )
+  let overridden_inputs = OccurrenceBindingCandidateInputs {
+    module_paths: inputs.module_paths,
+    exposure_rows: forced_module_exposure,
+    authored_order_rows: inputs.authored_order_rows,
+  }
+  match resolve_type_reference_containment_binding(
+    transport: OccurrenceTransport {
+      index: OccurrenceIndex {
+        entries: concat(
+          provider_transport.index.entries,
+          consumer_transport.index.entries,
+        ),
+      },
+      declarations: concat(provider_transport.declarations, consumer_transport.declarations),
+      references: consumer_transport.references,
+    },
+    inputs: overridden_inputs,
+    reference: trbc_fixture_reference(occurrence: type_ref, containment: ref_path, category: TypeOccurrence),
+  ) {
+    ReferenceBindingProjectionUnbound { occurrence: unbound } => unbound.value == 30
+    _ => false
+  }
+}
