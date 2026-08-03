@@ -109,7 +109,6 @@ import gunbc.worker_lifecycle {
 import gunbc.roadmap_workflow_command {
   legacy_attempt_supersedable_label,
   legacy_attempt_supersedable_detail,
-  is_legacy_attempt,
 }
 
 type WorkflowAttemptEvidence {

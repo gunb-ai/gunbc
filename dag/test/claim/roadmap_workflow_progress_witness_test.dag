@@ -413,7 +413,7 @@ test fn legacy_attempt_refuses_unobserved_early_stages() -> Bool {
     publication_source: ReceiptSourceAbsent,
   })
   match progress.provider {
-    ProviderEventsRefused { activity: "legacy attempt", detail: _ } =>
+    ProviderEventsRefused { activity: "legacy attempt — supersedable", detail: _ } =>
       segment_state(progress.segments, "environment") == "refused"
         && segment_state(progress.segments, "workspace") == "refused"
         && progress.reconciliation.observed_refusal_count == 3

@@ -1,0 +1,128 @@
+module test.claim.roadmap_workflow_command_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.roadmap_workflow_command {
+  Supersedes,
+  WorkerTurn,
+  WorkflowCommandAdmitted,
+  WorkflowCommandRefused,
+  admit_start_new_attempt,
+  admit_resume_attempt,
+  admit_retry_mechanism,
+  legacy_attempt_cannot_satisfy_obligations,
+  legacy_attempt_supersedable_summary,
+  attempt_lineage_row_label,
+  worker_turn_row_label,
+  attempt_key_short_form,
+}
+import gunbc.roadmap_workflow_progress {
+  WorkflowAttemptEvidence,
+  workflow_attempt_progress,
+}
+import gunbc.roadmap_presentation {
+  activity_view_from_progress,
+  LegacySupersedableAttempt,
+  ActiveWorkRefused,
+}
+import gunbc.roadmap_publish {
+  PublicationSubjectUnobserved,
+  ReceiptSourceAbsent,
+}
+import gunbc.worker_lifecycle { WorkerProcessAbsent }
+import gunbc.roadmap_provider_events {
+  ProviderEventsRefused,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data workflow_command_witness_note: String = "P3 retry-model carriers: the three command shapes admit or refuse by construction, legacy attempts project as supersedable rather than belt faults, and lineage/turn rows render human-readable history without parsing branch names."
+
+test fn start_new_attempt_superseding_missing_attempt_refuses() -> Bool {
+  match admit_start_new_attempt(
+    supersedes: Present { value: "missingkey000000" },
+    superseded_exists: false,
+  ) {
+    WorkflowCommandRefused { reason } =>
+      string_contains(s: reason, pattern: "does not exist")
+    WorkflowCommandAdmitted => false
+  }
+}
+
+test fn start_new_attempt_without_supersedes_admits() -> Bool {
+  match admit_start_new_attempt(supersedes: Absent, superseded_exists: false) {
+    WorkflowCommandAdmitted => true
+    WorkflowCommandRefused { reason: _ } => false
+  }
+}
+
+test fn resume_attempt_on_missing_worktree_refuses() -> Bool {
+  match admit_resume_attempt(
+    attempt_key: "feedfacefeedface",
+    worktree_exists: false,
+  ) {
+    WorkflowCommandRefused { reason } =>
+      string_contains(s: reason, pattern: "worktree")
+    WorkflowCommandAdmitted => false
+  }
+}
+
+test fn retry_mechanism_cannot_mint_attempt() -> Bool {
+  match admit_retry_mechanism(mints_attempt: true) {
+    WorkflowCommandRefused { reason } =>
+      string_contains(s: reason, pattern: "cannot mint")
+    WorkflowCommandAdmitted => false
+  }
+}
+
+test fn witness_legacy_attempt_cannot_satisfy_obligations() -> Bool {
+  legacy_attempt_cannot_satisfy_obligations(modeled_state_present: false)
+    && !legacy_attempt_cannot_satisfy_obligations(modeled_state_present: true)
+}
+
+test fn legacy_attempt_projects_as_supersedable_not_fault() -> Bool {
+  let progress = workflow_attempt_progress(evidence: WorkflowAttemptEvidence {
+    node_id: "legacy-node",
+    attempt_key: "",
+    branch: "dispatch/legacy-node",
+    modeled_state_present: false,
+    admission_receipt_readable: false,
+    admission_receipt: "",
+    spawn_failure_present: false,
+    spawn_failure: "",
+    provider_events_readable: false,
+    provider_events: "",
+    provider_events_error: "not found",
+    process: WorkerProcessAbsent,
+    validation_summary: "",
+    validation_receipt_readable: false,
+    validation_receipt: "",
+    publication_subject: PublicationSubjectUnobserved {
+      reason: "legacy attempt has no observed head",
+    },
+    publication_source: ReceiptSourceAbsent,
+  })
+  match activity_view_from_progress(progress: progress) {
+    LegacySupersedableAttempt { summary, located_reason: _, attempt_key: _, evidence: _ } =>
+      summary == legacy_attempt_supersedable_summary
+        && match progress.provider {
+          ProviderEventsRefused { activity, detail: _ } => activity == legacy_attempt_supersedable_summary
+          _ => false
+        }
+    ActiveWorkRefused { summary: _, located_reason: _, evidence: _ } => false
+    _ => false
+  }
+}
+
+test fn lineage_and_turn_labels_are_human_readable() -> Bool {
+  attempt_lineage_row_label(lineage: Supersedes {
+    attempt_key: "feedfacefeedface",
+    reason: "pre-receipt attempt",
+  }, ordinal: 2) == "Attempt 2 — started fresh; supersedes feedface… (pre-receipt attempt)"
+    && worker_turn_row_label(turn: WorkerTurn {
+      turn_key: "turn0001",
+      attempt_key: "feedfacefeedface",
+      consumed_feedback: "F-1",
+      resulting_head: Present { value: "deadbeefdeadbeef" },
+    }) == "turn turn0001 on feedface… → deadbeef…"
+    && attempt_key_short_form(key: "abcd") == "abcd"
+}

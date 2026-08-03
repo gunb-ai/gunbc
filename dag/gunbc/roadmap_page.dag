@@ -36,7 +36,7 @@ import gunbc.roadmap_presentation {
   work_lifecycle, work_lifecycle_key,
   WorkScheduling, SchedulingReady, SchedulingUpcoming, SchedulingDone, SchedulingSuperseded, SchedulingUnplanned,
   scheduling_dependency_line,
-  ActivityView, NoActiveWork, ActiveWork, ActiveWorkRefused, CompletedWork, ActivityUnobservable,
+  ActivityView, NoActiveWork, ActiveWork, ActiveWorkRefused, LegacySupersedableAttempt, CompletedWork, ActivityUnobservable,
   ActivityAttention, activity_attention_key, activity_arm_key, activity_summary_line,
   ActivityEvidenceRow,
   ActionView, WorkAction, WorkActionKind, DispatchAction, ClearSessionAction,
@@ -449,6 +449,18 @@ fn activity_region_nodes(a: ActivityView) -> List<Fragment> {
     ActiveWorkRefused { summary: _, located_reason, evidence } =>
       [ activity_container(a: a, attention: "", children: [
           activity_detail_nodes(obligations: [], evidence: evidence, located_reason: located_reason, open: true),
+        ]) ]
+    LegacySupersedableAttempt { summary: _, located_reason, attempt_key, evidence } =>
+      [ activity_container(a: a, attention: "", children: [
+          activity_detail_nodes(
+            obligations: [],
+            evidence: concat(
+              evidence,
+              [ ActivityEvidenceRow { label: "attempt key", value: attempt_key } ],
+            ),
+            located_reason: located_reason,
+            open: true,
+          ),
         ]) ]
     CompletedWork { outcome: _, evidence } =>
       [ activity_container(a: a, attention: "", children: [
