@@ -10,7 +10,6 @@ import v2.compiler.self_host.emitter_producer_provenance {
   advance_producer_emission_receipt_cargo_green,
   mint_producer_emission_receipt,
   ProducerEmissionReceipt,
-  RealizedEmitterClosure,
   realized_closure_for_v2_direct_rust_door_emit_run,
   seed_emit_rust_reachable,
   source_produced_qualifications,
@@ -159,12 +158,12 @@ fn write_rust_workspace(
 fn mint_provenanced_rust_artifact(
   inferred: InferredTree,
   target: TargetModel,
-  module_path: String,
-  realized_closure: RealizedEmitterClosure
+  module_path: String
 ) -> Outcome<ProvenancedRustArtifact> {
   bind_outcome(
     o: generate_rust_emission_candidate(inferred: inferred, target: target),
     f: fn(candidate) {
+      let realized_closure = realized_closure_for_v2_direct_rust_door_emit_run()
       match mint_producer_emission_receipt(
         module_path: module_path,
         producer: V2EmitterInterpreted,
@@ -199,15 +198,13 @@ fn mint_written_provenanced_rust_artifact(
   inferred: InferredTree,
   target: TargetModel,
   module_path: String,
-  realized_closure: RealizedEmitterClosure,
   workspace_dir: String
 ) -> Outcome<WrittenProvenancedRustArtifact> {
   bind_outcome(
     o: mint_provenanced_rust_artifact(
       inferred: inferred,
       target: target,
-      module_path: module_path,
-      realized_closure: realized_closure
+      module_path: module_path
     ),
     f: fn(artifact) {
       outcome_accepted(
@@ -227,8 +224,7 @@ fn generate_provenanced_rust_candidate_from_ingest(
   ingest: SourceRootIngest,
   admission: Admission,
   target: TargetModel,
-  module_path: String,
-  realized_closure: RealizedEmitterClosure
+  module_path: String
 ) -> Outcome<ProvenancedRustArtifact> {
   let lm = dag_language_model()
   bind_outcome(
@@ -240,8 +236,7 @@ fn generate_provenanced_rust_candidate_from_ingest(
           mint_provenanced_rust_artifact(
             inferred: inferred,
             target: target,
-            module_path: module_path,
-            realized_closure: realized_closure
+            module_path: module_path
           )
         }
       )
@@ -277,7 +272,6 @@ fn generate_written_rust_candidate_from_ingest(
   admission: Admission,
   target: TargetModel,
   module_path: String,
-  realized_closure: RealizedEmitterClosure,
   workspace_dir: String
 ) -> Outcome<WrittenProvenancedRustArtifact> {
   let lm = dag_language_model()
@@ -291,7 +285,6 @@ fn generate_written_rust_candidate_from_ingest(
             inferred: inferred,
             target: target,
             module_path: module_path,
-            realized_closure: realized_closure,
             workspace_dir: workspace_dir
           )
         }

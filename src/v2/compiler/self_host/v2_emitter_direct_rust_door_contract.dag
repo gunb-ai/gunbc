@@ -10,9 +10,6 @@ import v2.compiler.self_host.direct_rust_door_fixture {
   direct_rust_door_module_path,
   direct_rust_door_target_model
 }
-import v2.compiler.self_host.emitter_producer_provenance {
-  realized_closure_for_v2_direct_rust_door_emit_run
-}
 import v2.compiler.translate {
   target_serialize_source_from_model,
   translate_diagnostic_reason_from_symbol,
@@ -103,8 +100,7 @@ fn assess_written_source_independent_of_seed_emitter() -> DirectRustDoorAdmissio
     ingest: direct_rust_door_ingest(),
     admission: direct_rust_door_admission(),
     target: direct_rust_door_target_model(),
-    module_path: direct_rust_door_module_path,
-    realized_closure: realized_closure_for_v2_direct_rust_door_emit_run()
+    module_path: direct_rust_door_module_path
   ) {
     Accepted { value: artifact, diagnostics: _ } =>
       if provenanced_rust_artifact_seed_independent(artifact: artifact) {

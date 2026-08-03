@@ -121,11 +121,11 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
     dissolve_on: "the production candidate producer and dependency projection establish all six ReferenceDerivedClosureCapability rows by execution — this row deletes in the completing change, promoting the unchanged acceptance witness to ordinary DiscoverySelection as the permanent namespace-derived-closure regression wall"
   ),
   known_red_probe(
-    entry: "src/v2/test/claim/self_host/v2_emitter_direct_rust_door_acceptance_test.dag",
+    entry: "src/v2/test/claim/long/v2_emitter_direct_rust_door_acceptance_test.dag",
     f: "witness_v2_emitter_direct_rust_door_closing_contract_holds",
     kind: CorpusWitnessKind,
-    reason: "the discriminating closing validation for roadmap node v2-emitter-direct-rust-door, RED BY DESIGN while WrittenSourceIndependentOfSeedEmitter assesses through producer provenance and names CandidateGenerationSerializeTargetWiring. MissingTranslationRuleRefuses is established through the rust_add missing-rules serialize refusal; the paired fixture suite proves both arms discriminate. Bound directly by v2_emitter_direct_rust_door_execution_contract, so zero progress toward wiring serialize_target cannot verify as complete.",
-    dissolve_on: "candidate_generation wires serialize_target and the seed-independent written-source check executes green — this row deletes in the completing change, promoting the unchanged acceptance witness to ordinary DiscoverySelection as the permanent direct-rust-door regression wall"
+    reason: "the discriminating closing validation for roadmap node v2-emitter-direct-rust-door, RED BY DESIGN while this candidate slice lands SourceProduced→CargoGreen only; merging the slice does NOT accept the roadmap node. Quarantined until full closing contract greens with behavioral/promotion successors.",
+    dissolve_on: "roadmap node v2-emitter-direct-rust-door acceptance criteria execute green with full qualification ladder — this row deletes in the completing change, promoting the unchanged acceptance witness to ordinary DiscoverySelection as the permanent direct-rust-door regression wall"
   ),
   known_red_probe(
     entry: "dag/test/claim/self_host_parse_engine_hooks_behavioral_witness_test.dag",

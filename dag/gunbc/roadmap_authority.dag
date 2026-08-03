@@ -299,7 +299,7 @@ data v2_emitter_direct_rust_door_execution_contract_note: String = "THE TWO-CLAU
 
 fn v2_emitter_direct_rust_door_execution_contract() -> WorkItemExecutionContract {
   gunbc_claim_execution_contract(
-    entry: "src/v2/test/claim/self_host/v2_emitter_direct_rust_door_acceptance_test.dag" as FilePath,
+    entry: "src/v2/test/claim/long/v2_emitter_direct_rust_door_acceptance_test.dag" as FilePath,
     function: "witness_v2_emitter_direct_rust_door_closing_contract_holds" as NonEmptyStr,
   )
 }

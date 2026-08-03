@@ -12,9 +12,6 @@ import v2.compiler.self_host.direct_rust_door_fixture {
   direct_rust_door_module_path,
   direct_rust_door_target_model
 }
-import v2.compiler.self_host.emitter_producer_provenance {
-  realized_closure_for_v2_direct_rust_door_emit_run
-}
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
 import v2.std.optional { Absent, Present }
@@ -39,7 +36,6 @@ fn run_direct_rust_door_emit_write_compile_smoke() -> Bool {
     inferred: direct_rust_door_inferred_tree,
     target: direct_rust_door_target_model(),
     module_path: direct_rust_door_module_path,
-    realized_closure: realized_closure_for_v2_direct_rust_door_emit_run(),
     workspace_dir: dir.path
   ) {
     Accepted { value: written, diagnostics: _ } =>
