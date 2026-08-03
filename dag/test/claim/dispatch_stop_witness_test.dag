@@ -11,8 +11,8 @@ import gunbc.roadmap_dispatch_actuator {
   DispatchActuatorSelectionRefused,
   DispatchStopGate, StopPermitted, StopRefused, dispatch_stop_gate,
   DispatchLiveSession,
-  dispatch_worker_observation_for_process,
-  DispatchSessionCleanup,
+  CodexDispatchProvider,
+  dispatch_provider_instance_for,
   DispatchStopRunningProcess,
   DispatchClearRetainedSession,
   DispatchCleanupRefused,
@@ -28,6 +28,7 @@ import gunbc.worker_lifecycle {
   WorkerProcessEvidence,
   WorkerProcessRunning,
   WorkerProcessExited,
+  worker_observation_without_provider_probe_for_process,
 }
 import gunbc.roadmap_component { dispatch_client_js_source }
 import gunbc.roadmap_style { roadmap_css }
@@ -104,7 +105,10 @@ fn live_with_process(process: WorkerProcessEvidence) -> DispatchLiveSession {
     node_id: "ts-authority-converge",
     windows: 1,
     lease_verdict: Converged,
-    worker: dispatch_worker_observation_for_process(process: process),
+    worker: worker_observation_without_provider_probe_for_process(
+      instance: dispatch_provider_instance_for(provider: CodexDispatchProvider),
+      process: process,
+    ),
   }
 }
 
