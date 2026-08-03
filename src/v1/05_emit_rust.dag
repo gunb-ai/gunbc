@@ -1808,7 +1808,13 @@ fn build_qualified_item_registry(modules: List<TypedModule>) -> Map<String, Item
     let module_name = authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module)
     tm.item_registry |> map_keys |> fold(init: acc, f: (acc2, item_name) =>
       match map_get(tm.item_registry, item_name) {
-        Present { value: info } => map_insert(acc2, concat(module_name, ".", item_name), info)
+        Present { value: info } =>
+          let qualified_name = concat(module_name, ".", item_name)
+          match map_get(acc2, qualified_name) {
+            Present { value: _ } =>
+              map_insert(acc2, qualified_name, duplicate_qualified_item_registry_marker(name: qualified_name))
+            Absent => map_insert(acc2, qualified_name, info)
+          }
         Absent => acc2
       }
     )
@@ -1824,7 +1830,26 @@ fn merge_item_registries(bare: Map<String, ItemInfo>, qualified: Map<String, Ite
   )
 }
 
-data value_ref_leaf_key_collision_note: String = "Construction wall for the cross-module half of the qualified-value-reference dotted-render class (sibling of value_ref_self_module_normalization_note for the same-module half). #7685 keyed registry lookup on the leaf name so the is_data call-suffix decision fired for dotted references, but the flat item_registry is keyed by bare name with last-write-wins across the closure — so module_a.homonym_value could consult module_b's ItemInfo when both modules declare the same leaf. Fix: merge a qualified-name overlay (module.leaf -> ItemInfo, one authority per declaring module) at emit time and key cross-module lookups on the full normalized spelling; same-module references still normalize to bare before lookup. The qualifier prefix remains the module-path authority for emit_value_ref_ident."
+data value_ref_leaf_key_collision_note: String = "Construction wall for the cross-module half of the qualified-value-reference dotted-render class (sibling of value_ref_self_module_normalization_note for the same-module half). #7685 keyed registry lookup on the leaf name so the is_data call-suffix decision fired for dotted references, but the flat item_registry is keyed by bare name with last-write-wins across the closure — so module_a.homonym_value could consult module_b's ItemInfo when both modules declare the same leaf. Fix: merge a qualified-name overlay (module.leaf -> ItemInfo, one authority per declaring module) at emit time and key cross-module lookups on the full normalized spelling; same-module references still normalize to bare before lookup. Rendering uses the exact qualified registry row for BOTH declaration kind and declaring module — never the authored qualifier string alone (§5 fabricated-plausible-output refusal). Duplicate exact module.leaf overlay keys refuse via duplicate_qualified_item_registry_marker rather than last-write-wins."
+
+data duplicate_qualified_item_registry_marker_note: String = "Fail-closed marker row for duplicate exact module.leaf keys in the qualified item_registry overlay. build_qualified_item_registry refuses a second distinct ItemInfo at the same qualified key instead of last-write-wins. lookup_item_for_value_ref and emit_value_ref_ident surface compile_error! when this marker is reached."
+
+fn duplicate_qualified_item_registry_marker(name: String) -> ItemInfo {
+  ItemInfo {
+    name: name,
+    module_name: "__DUPLICATE_QUALIFIED_ITEM_REGISTRY_KEY__",
+    kind: OtherItem,
+    service_names: [],
+    resource_names: [],
+    params: [],
+    is_self_recursive: false,
+    has_non_tail_self_call: false
+  }
+}
+
+fn is_duplicate_qualified_item_registry_marker(info: ItemInfo) -> Bool {
+  info.module_name == "__DUPLICATE_QUALIFIED_ITEM_REGISTRY_KEY__"
+}
 
 fn value_ref_registry_lookup_key(resolved_name: String) -> String {
   let qualifier = value_ref_qualifier_prefix(name: resolved_name)
