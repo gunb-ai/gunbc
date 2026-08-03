@@ -51,9 +51,15 @@ Related in-flight (do not duplicate): PR **#7720** (sleek-dove) — affected-set
 
 `resolved_graph_memo` is keyed by **entry subject**. Retaining graph A does not serve entry B. So “stop dropping graphs” alone is insufficient unless paired with **shared module/index universe + cheap per-entry assembly from retained facts** (materialization / native bundle / assembly memo — mechanism chosen by P1 receipt, not by taste).
 
-### Preliminary lower bound (retain-all-equivalent path — not yet P1 floor A/B)
+### Do not misuse #7597 as a Mode-B prior (retraction)
 
-`claim_batch` never arms schedule-retention / `[floor-drain]`. On the banked #7597 representative-50 harness (`docs/plans/receipts/per-entry-assembly-decomposition/representative-50-r1.txt`): first resolve **28.3 s**; entries 2..50 median resolve **1194 ms**, mean of core (&lt;5 s) **1537 ms**, witness eval mean **2.4 ms**. Schedule-retention **not** armed. So even a path that already retains typed/index state across entries still pays ~1.2–1.5 s/entry of assembly-class work — a floor under Mode B. **P1’s floor A/B receipt is still required** (production eviction may add more); this only warns that Mode B collapsing to ≪1 s is unlikely without an assembly/materialization mechanism.
+An earlier draft of this note treated the #7597 representative-50 `claim_batch` resolve times as a “retain-all lower bound” that *tilted* P1 toward assembly/materialization. **Retracted.** Three independent reasons (closeout `sleek-fox-808`, 2026-08-03):
+
+1. **Denominator:** the floor’s ~1.944 s figure is an entry-to-entry **elapsed wall** gap; #7597’s assembly totals are **additive span totals** for a harness — the receipt itself forbids quoting them as fleet wall (`per-entry-assembly-decomposition-measurement.md`). Same two-denominator class that forced slice-1 share retractions.
+2. **Arming ≠ Mode B:** “schedule-retention not armed” is not `GUNBC_SCHEDULE_RETENTION_EVICT=0` on the floor path. An unarmed harness may never have offered cross-entry reuse; it does not forecast what Mode B does when retention is armed and counting.
+3. **Source forbids mechanism selection:** #7597’s decision boundary — price surface only; does not select a bundle/reuse mechanism or claim fleet recovery from additive shares. Its row names are prices, not endorsements.
+
+The independent argument that `resolved_graph_memo` is entry-subject-keyed (retention of graph A does not serve entry B) **stands without** that measurement. **P1’s value is discrimination** — Mode A vs Mode B on the armed floor path — not confirmation of a handed prior. The floor A/B receipt is the only evidence that can redirect (or not).
 
 ---
 
@@ -82,7 +88,7 @@ Fixed cohort, two modes:
 * **A — current:** schedule-retention eviction on (production default)
 * **B — retain-all pole:** `GUNBC_SCHEDULE_RETENTION_EVICT=0` (existing measurement control; drops nothing)
 
-Then, only if A→B shows the ~2s tax collapsing for entries 2..N sharing a module universe, implement **bounded retention**: drain when a memory threshold is crossed, not on every entry completion. If A→B does **not** collapse the tax, the prize is **assembly reuse / materialization / shared index view** (route to `module-grain-materialization` / assembly mechanism), not softer eviction. The preliminary `claim_batch` lower bound above already tilts toward that redirect — still confirm on the armed floor path.
+Then, only if A→B shows the ~2s tax collapsing for entries 2..N sharing a module universe, implement **bounded retention**: drain when a memory threshold is crossed, not on every entry completion. If A→B does **not** collapse the tax, the prize is **assembly reuse / materialization / shared index view** (route to `module-grain-materialization` / assembly mechanism), not softer eviction. **Do not enter P1 with a prior on which arm wins** — the A/B receipt is the discriminator (see “Do not misuse #7597” above).
 
 Per entry (required receipt fields):
 
@@ -148,4 +154,4 @@ Delete or fold this note when:
 
 or when the operator recuts the program into the five-minute / materialization authorities directly.
 
-Session closeout: `sleek-fox-808` (waits on parent Complete). Live leaves: P1 `valiant-deer-205`, P2 `warm-wolf-777`, P3 `merry-ibex-227` (HOLD — conjunction), P4 `sharp-carp-537` (HOLD — broad enrollment only).
+Session closeout: `sleek-fox-808` (waits on parent Complete). Live leaves: P1 `valiant-deer-205`, P2 `warm-wolf-777` (PR #7722 OPEN — tracking: five fields must reach every floor receipt emission path before ready-for-review; carrier-only is not the bar), P3 `merry-ibex-227` (HOLD — conjunction), P4 `sharp-carp-537` (HOLD — broad enrollment only).
