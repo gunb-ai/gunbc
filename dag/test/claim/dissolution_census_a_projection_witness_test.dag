@@ -1,0 +1,86 @@
+module test.claim.dissolution_census_a_projection_witness_test
+
+import extdeps.filesystem.filesystem_io
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data census_tsv_path: String = "docs/probes/dissolution_census_a_ci_layer_roots_2026-08-03.tsv"
+data census_summary_path: String = "docs/probes/dissolution_census_a_ci_layer_roots_2026-08-03.summary.json"
+
+data witness_note: String = "Dissolution census A authority recut (operator 2026-08-03): the revision-pinned TSV is the canonical observation; summary JSON and markdown are generated projections via docs/probes/dissolution_census_a_ci_layer_roots_project.py. This witness enforces PER-GROUP agreement between TSV row prefixes and summary JSON declarations — not totals alone (Census B on PR #7749 had matching totals with five of six per-layer counts wrong). Full metric reconciliation (is_ref split, semantic classes, byte partition) is in the Python verify path; this witness is the discriminating structural-group gate enrolled per-PR."
+
+fn census_tsv_text() -> String {
+  filesystem_read(path: census_tsv_path).content
+}
+
+fn census_summary_text() -> String {
+  filesystem_read(path: census_summary_path).content
+}
+
+fn tsv_line_is_data_row(line: String) -> Bool {
+  let trimmed = trim(line)
+  trimmed != "" && !starts_with(s: trimmed, prefix: "structural_group")
+}
+
+fn tsv_line_has_group_prefix(line: String, group: String) -> Bool {
+  starts_with(s: line, prefix: concat(group, "\t"))
+}
+
+fn tsv_count_group(group: String) -> Int {
+  fold(split(s: census_tsv_text(), delimiter: "\n"), init: 0, f: fn(n, line) {
+    if tsv_line_is_data_row(line: line) && tsv_line_has_group_prefix(line: line, group: group) {
+      n + 1
+    } else {
+      n
+    }
+  })
+}
+
+fn tsv_total_data_rows() -> Int {
+  fold(split(s: census_tsv_text(), delimiter: "\n"), init: 0, f: fn(n, line) {
+    if tsv_line_is_data_row(line: line) {
+      n + 1
+    } else {
+      n
+    }
+  })
+}
+
+fn summary_declares_group_count(group: String, count: Int) -> Bool {
+  string_contains(
+    s: census_summary_text(),
+    pattern: concat(concat("\"", group, "\": "), to_string(count))
+  )
+}
+
+fn witness_group_agrees(group: String, count: Int) -> Bool {
+  tsv_count_group(group: group) == count && summary_declares_group_count(group: group, count: count)
+}
+
+test fn witness_structural_groups_match_between_tsv_and_summary() -> Bool {
+  witness_group_agrees(group: "witnessexclusionrow", count: 154)
+    && witness_group_agrees(group: "substratelonglanerow", count: 46)
+    && witness_group_agrees(group: "rehomedbinwetrow", count: 18)
+    && witness_group_agrees(group: "module_note", count: 24)
+    && witness_group_agrees(group: "shared_template", count: 21)
+    && tsv_total_data_rows() == 263
+    && string_contains(s: census_summary_text(), pattern: "\"total_sites\": 263")
+    && string_contains(s: census_summary_text(), pattern: "\"inline_prose\": 158")
+    && string_contains(s: census_summary_text(), pattern: "\"template_refs\": 105")
+    && string_contains(s: census_summary_text(), pattern: "\"bytes_inline\": 66329")
+    && string_contains(
+      s: census_summary_text(),
+      pattern: "\"classifier\": \"dag-note-prose-census-lexical-v1\""
+    )
+}
+
+test fn witness_per_group_partition_red_control() -> Bool {
+  tsv_count_group(group: "witnessexclusionrow") == 154
+    && tsv_count_group(group: "module_note") == 24
+    && tsv_total_data_rows() == 263
+    && (tsv_count_group(group: "witnessexclusionrow") + tsv_count_group(group: "module_note")) == 178
+    && !summary_declares_group_count(group: "module_note", count: 25)
+    && !summary_declares_group_count(group: "witnessexclusionrow", count: 153)
+    && !(witness_group_agrees(group: "module_note", count: 25))
+}
