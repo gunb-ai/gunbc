@@ -8,7 +8,7 @@ import std.algebra_law {
   float_kernel_type_in_authority_roster,
   associativity_refutation_holds_for_float_add,
 }
-import extdeps.numeric.ieee754_float {
+import gunbc.float_add_associativity_observation {
   float_add_associativity_refutation_holds,
   float_add_associativity_refuted,
   float_add_associativity_subject,
