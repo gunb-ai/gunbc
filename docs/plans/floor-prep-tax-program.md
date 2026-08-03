@@ -165,7 +165,7 @@ Operator pause — **last dispatch wave of this stretch**. No new PRs or childre
 | Lane | Session | PR | Head (at park) | Reviews | CI at park | Banked finding |
 |---|---|---|---|---|---|---|
 | Program note | `still-moth-459` | [#7721](https://github.com/gunb-ai/gunbc/pull/7721) | `10942eda742` | 2/2 claude+cursor | pending | Authority + `HandAuthoredDocBind` + five-minute cross-link |
-| P1 A/B | `valiant-deer-205` | [#7725](https://github.com/gunb-ai/gunbc/pull/7725) | `f333e6a679bd` | 2/2 | pending | **REJECT** → assembly/materialization; receipt + probe artifacts |
+| P1 A/B | `valiant-deer-205` | [#7725](https://github.com/gunb-ai/gunbc/pull/7725) | `286332ae7a8` | 2/2 | blocked on **main** E0061 (#7733/#7734), not branch | **REJECT** → assembly/materialization; do **not** merge main into leaf until tip fixed |
 | P2 receipts | `warm-wolf-777` | [#7722](https://github.com/gunb-ai/gunbc/pull/7722) | `684dd67e044b` | 2/2 | pending | `selection_degradation_receipt.dag` + cli_run emit paths; E0425 fix landed |
 | P3 width-2 | `merry-ibex-227` | — | — | — | — | **HOLD** — needs P1 banked **and** Rc→Arc index share |
 | P4 broad native | `sharp-carp-537` | — | — | — | — | **HOLD** — after D1 amortized (P1 redirect) |
