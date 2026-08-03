@@ -8551,6 +8551,15 @@ fn emit_floor_drain_group_line(
 /// (never folded into `GUNBC_FLOOR_DRAIN_RETENTION`) so enabling one measurement
 /// mode does not silently change the other's log shape (§3 — two distinct facts,
 /// two distinct switches).
+///
+/// Scaffold, not a second production floor driver: this instrumentation and its
+/// sole consumer, `p1_cohort_probe`, are diagnostic-only (opt-in, zero effect on
+/// default eviction behavior — see `docs/plans/p1-retention-vs-drain-cohort-receipt.md`).
+/// Dissolve-on: once P1 is banked and no other open lane needs cohort-scoped A/B
+/// retention receipts, delete `emit_p1_cohort_entry_line`/`p1_cohort_receipt_enabled`/
+/// `p1_cohort_cgroup_memory`, `resolved_graph_evictions` on `IndexRetentionSnapshot`,
+/// and `src/v1/stage0/src/bin/p1_cohort_probe.rs` together (§6 — no parallel-ledger
+/// mechanism kept around past the measurement it was built for).
 fn p1_cohort_receipt_enabled() -> bool {
     std::env::var("GUNBC_P1_COHORT_RECEIPT")
         .ok()
