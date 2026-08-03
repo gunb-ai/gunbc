@@ -15,7 +15,10 @@ import gunbc.roadmap_status {
 import gunbc.roadmap_spawner {
   node_is_spawnable, node_is_upcoming, node_is_frontier_done, node_closes_dependency,
 }
-import gunbc.roadmap_provider_events { provider_execution_activity }
+import gunbc.roadmap_provider_events {
+  provider_execution_activity,
+  ProviderEventsRefused,
+}
 import gunbc.roadmap_workflow_stage {
   WorkflowSegmentKind, WorkflowSegment, WorkflowSegmentState,
   WorkflowSegmentPending, WorkflowSegmentActive, WorkflowSegmentComplete,
@@ -26,6 +29,10 @@ import gunbc.roadmap_workflow_stage {
   workflow_segment_kind_label,
 }
 import gunbc.roadmap_workflow_progress { WorkflowAttemptProgress }
+import gunbc.roadmap_workflow_command {
+  legacy_attempt_supersedable_label,
+  attempt_key_short_form,
+}
 import gunbc.workflow_reconcile { WorkflowReconcileReport }
 import extdeps.languages.json.emit {
   JsonValue, json_object, json_kv, json_string, json_int, json_array,
@@ -66,6 +73,12 @@ type ActivityView
   | ActiveWorkRefused {
       summary: String
       located_reason: String
+      evidence: List<ActivityEvidenceRow>
+    }
+  | LegacySupersedableAttempt {
+      summary: String
+      located_reason: String
+      attempt_key: String
       evidence: List<ActivityEvidenceRow>
     }
   | CompletedWork {
@@ -574,12 +587,31 @@ fn activity_view_from_parts(
 }
 
 fn activity_view_from_progress(progress: WorkflowAttemptProgress) -> ActivityView {
-  activity_view_from_parts(
-    segments: progress.segments,
-    remaining: progress.reconciliation.remaining_count,
-    process: progress.process,
-    current_activity: provider_execution_activity(state: progress.provider),
-  )
+  match progress.provider {
+    ProviderEventsRefused { activity, detail } =>
+      if activity == legacy_attempt_supersedable_label {
+        LegacySupersedableAttempt {
+          summary: legacy_attempt_supersedable_label,
+          located_reason: detail,
+          attempt_key: attempt_key_short_form(key: progress.attempt_key),
+          evidence: activity_evidence_rows(process: progress.process),
+        }
+      } else {
+        activity_view_from_parts(
+          segments: progress.segments,
+          remaining: progress.reconciliation.remaining_count,
+          process: progress.process,
+          current_activity: provider_execution_activity(state: progress.provider),
+        )
+      }
+    _ =>
+      activity_view_from_parts(
+        segments: progress.segments,
+        remaining: progress.reconciliation.remaining_count,
+        process: progress.process,
+        current_activity: provider_execution_activity(state: progress.provider),
+      )
+  }
 }
 
 fn activity_view_of(facts: WorkAttemptFacts) -> ActivityView {
@@ -625,6 +657,7 @@ fn activity_arm_key(a: ActivityView) -> String {
     NoActiveWork => "none"
     ActiveWork { summary: _, obligations: _, remaining_obligation_count: _, current_activity: _, attention: _, evidence: _ } => "active"
     ActiveWorkRefused { summary: _, located_reason: _, evidence: _ } => "refused"
+    LegacySupersedableAttempt { summary: _, located_reason: _, attempt_key: _, evidence: _ } => "legacy_supersedable"
     CompletedWork { outcome: _, evidence: _ } => "completed"
     ActivityUnobservable { reason: _ } => "unobservable"
   }
@@ -644,6 +677,7 @@ fn activity_summary_line(a: ActivityView) -> String {
     NoActiveWork => ""
     ActiveWork { summary, obligations: _, remaining_obligation_count: _, current_activity: _, attention: _, evidence: _ } => summary
     ActiveWorkRefused { summary, located_reason: _, evidence: _ } => summary
+    LegacySupersedableAttempt { summary, located_reason: _, attempt_key: _, evidence: _ } => summary
     CompletedWork { outcome, evidence: _ } => outcome
     ActivityUnobservable { reason } => join(["workflow evidence unobservable — ", reason], "")
   }
@@ -677,6 +711,14 @@ fn activity_view_json_value(view: ActivityView) -> JsonValue {
         json_kv(key: "arm", value: json_string(s: "refused")),
         json_kv(key: "summary", value: json_string(s: summary)),
         json_kv(key: "located_reason", value: json_string(s: located_reason)),
+        json_kv(key: "evidence", value: json_array(elements: map(evidence, row => activity_evidence_row_json_value(row: row)))),
+      ])
+    LegacySupersedableAttempt { summary, located_reason, attempt_key, evidence } =>
+      json_object(members: [
+        json_kv(key: "arm", value: json_string(s: "legacy_supersedable")),
+        json_kv(key: "summary", value: json_string(s: summary)),
+        json_kv(key: "located_reason", value: json_string(s: located_reason)),
+        json_kv(key: "attempt_key", value: json_string(s: attempt_key)),
         json_kv(key: "evidence", value: json_array(elements: map(evidence, row => activity_evidence_row_json_value(row: row)))),
       ])
     CompletedWork { outcome, evidence } =>
@@ -838,6 +880,7 @@ fn workspace_covers_row_activity(observation: ObservationImpactView, a: Activity
         NoActiveWork => false
         ActiveWork { summary: _, obligations: _, remaining_obligation_count: _, current_activity: _, attention: _, evidence: _ } => false
         ActiveWorkRefused { summary: _, located_reason: _, evidence: _ } => false
+        LegacySupersedableAttempt { summary: _, located_reason: _, attempt_key: _, evidence: _ } => false
         CompletedWork { outcome: _, evidence: _ } => false
       }
   }
@@ -880,6 +923,7 @@ fn row_is_active_work(row: WorkRowView) -> Bool {
   match row.activity {
     ActiveWork { summary: _, obligations: _, remaining_obligation_count: _, current_activity: _, attention: _, evidence: _ } => true
     ActiveWorkRefused { summary: _, located_reason: _, evidence: _ } => true
+    LegacySupersedableAttempt { summary: _, located_reason: _, attempt_key: _, evidence: _ } => true
     NoActiveWork => false
     CompletedWork { outcome: _, evidence: _ } => false
     ActivityUnobservable { reason: _ } => false

@@ -1,0 +1,641 @@
+module v2.lens.enforcement.inventory
+
+data lens_enforcement_inventory_authority_note: String = "Phase 0B derived inventory (operator acceptance 2026-08-02): every row is computed from lens_contract_registry, standing_intent_registry, enrollment discovery receipts, and witness-admission cadence facts — never stored, never a parallel ledger (#7664 bare-minimum-computation ruling). Bidirectional reconciliation: one inventory row per registry contract, no orphan rows. Unbound and inert lenses stay visible. Support status lives on LensEnforcementApplication, not on the lens id — Cost may be Supported on its bound consumer application and Unsupported on complexity.repo-wide in the same inventory. evaluated_scope is typed absent until Phase 1 execution receipts exist; required_scope and claimed_scope are reported separately."
+
+type LensExecutionCadence
+  = PrFloorDiscovery
+  | MainPushFloor
+  | ScheduledFalsifier
+  | SubstrateLongLane
+  | WetFalsifier
+  | PrePushHook
+  | OfflineLocalRecipe
+  | KnownRedQuarantine
+
+type SchedulingDisposition
+  = SchedulingEnrolled
+  | SchedulingDark
+  | SchedulingExcluded
+
+type CadenceSchedulingRow {
+  cadence: LensExecutionCadence
+  disposition: SchedulingDisposition
+}
+
+type EvaluatedScopeFact
+  = EvaluatedScopeAbsent { reason: String }
+  | EvaluatedScopePresent { roster: ScopeRoster }
+
+type SubjectPopulationCounts {
+  discovered: Int
+  evaluated: Int
+  unavailable: Int
+}
+
+type LensEnforcementSupport
+  = SupportHeld
+  | SupportGap { gap: String }
+
+type LensEnforcementApplication {
+  application_id: String
+  standing_intent_id: String
+  support: LensEnforcementSupport
+  cadence_rows: List<CadenceSchedulingRow>
+  required_scope: ScopeRoster
+  claimed_scope: ScopeRoster
+  evaluated_scope: EvaluatedScopeFact
+  subject_counts: SubjectPopulationCounts
+}
+
+type LensEnforcementInventoryRow {
+  lens_id: LensIdV0
+  consumer_unbound: Bool
+  has_enrollment_discovery_receipt: Bool
+  applications: List<LensEnforcementApplication>
+}
+
+data evaluated_scope_absent_reason: String = "evaluated_scope awaits Phase 1 execution receipts; discovery-only name counts are not evaluation"
+
+data subject_counts_evaluated_unavailable_absent_note: String = "evaluated and unavailable subject counts await Phase 1 execution receipts; only discovered (receipt-local name count) is reported in Phase 0B"
+
+fn subject_counts_from_receipt(receipt: EnrollmentDiscoveryReceipt) -> SubjectPopulationCounts {
+  SubjectPopulationCounts {
+    discovered: length(xs: receipt.discovered_subject_names.entries),
+    evaluated: 0,
+    unavailable: 0
+  }
+}
+
+fn subject_counts_absent() -> SubjectPopulationCounts {
+  SubjectPopulationCounts { discovered: 0, evaluated: 0, unavailable: 0 }
+}
+
+fn evaluated_scope_absent_fact() -> EvaluatedScopeFact {
+  EvaluatedScopeAbsent { reason: evaluated_scope_absent_reason }
+}
+
+fn disposition_when_bool(enrolled: Bool) -> SchedulingDisposition {
+  if enrolled { SchedulingEnrolled } else { SchedulingExcluded }
+}
+
+fn pr_floor_scheduling_disposition(
+  primary: WitnessConsumerCadence,
+  ci_enrolled: Bool
+) -> SchedulingDisposition {
+  match primary {
+    DiscoverySelection => SchedulingEnrolled
+    FalsifierSelfHostWet => disposition_when_bool(enrolled: ci_enrolled)
+    FalsifierRehomedBinWet => disposition_when_bool(enrolled: ci_enrolled)
+    FalsifierSubstrateLongLane => disposition_when_bool(enrolled: ci_enrolled)
+    BinWitnessWet => disposition_when_bool(enrolled: ci_enrolled)
+    QuarantineProbeExpectRed => disposition_when_bool(enrolled: ci_enrolled)
+    OfflineLocalRecipe => disposition_when_bool(enrolled: ci_enrolled)
+    FixtureExplicitRoster => disposition_when_bool(enrolled: ci_enrolled)
+    NoConsumer => disposition_when_bool(enrolled: ci_enrolled)
+  }
+}
+
+fn wet_falsifier_scheduling_disposition(primary: WitnessConsumerCadence) -> SchedulingDisposition {
+  match primary {
+    FalsifierSelfHostWet => SchedulingEnrolled
+    FalsifierRehomedBinWet => SchedulingEnrolled
+    BinWitnessWet => SchedulingEnrolled
+    OfflineLocalRecipe => SchedulingDark
+    DiscoverySelection => SchedulingExcluded
+    FalsifierSubstrateLongLane => SchedulingExcluded
+    QuarantineProbeExpectRed => SchedulingExcluded
+    FixtureExplicitRoster => SchedulingExcluded
+    NoConsumer => SchedulingExcluded
+  }
+}
+
+fn scheduled_falsifier_scheduling_disposition(primary: WitnessConsumerCadence) -> SchedulingDisposition {
+  match primary {
+    FalsifierSelfHostWet => SchedulingEnrolled
+    FalsifierRehomedBinWet => SchedulingEnrolled
+    FalsifierSubstrateLongLane => SchedulingEnrolled
+    QuarantineProbeExpectRed => SchedulingEnrolled
+    DiscoverySelection => SchedulingExcluded
+    BinWitnessWet => SchedulingExcluded
+    OfflineLocalRecipe => SchedulingExcluded
+    FixtureExplicitRoster => SchedulingExcluded
+    NoConsumer => SchedulingExcluded
+  }
+}
+
+fn scheduling_disposition_for_primary_cadence(
+  target: LensExecutionCadence,
+  primary: WitnessConsumerCadence,
+  ci_enrolled: Bool,
+  prepush_enrolled: Bool
+) -> SchedulingDisposition {
+  match target {
+    PrFloorDiscovery =>
+      pr_floor_scheduling_disposition(primary: primary, ci_enrolled: ci_enrolled)
+    MainPushFloor =>
+      disposition_when_bool(enrolled: ci_enrolled)
+    PrePushHook =>
+      disposition_when_bool(enrolled: prepush_enrolled)
+    WetFalsifier =>
+      wet_falsifier_scheduling_disposition(primary: primary)
+    KnownRedQuarantine =>
+      disposition_when_bool(enrolled: primary == QuarantineProbeExpectRed)
+    SubstrateLongLane =>
+      disposition_when_bool(enrolled: primary == FalsifierSubstrateLongLane)
+    OfflineLocalRecipe =>
+      disposition_when_bool(enrolled: primary == OfflineLocalRecipe)
+    ScheduledFalsifier =>
+      scheduled_falsifier_scheduling_disposition(primary: primary)
+  }
+}
+
+fn cadence_scheduling_rows_for_primary(
+  primary: WitnessConsumerCadence,
+  ci_enrolled: Bool,
+  prepush_enrolled: Bool
+) -> List<CadenceSchedulingRow> {
+  [
+    CadenceSchedulingRow {
+      cadence: PrFloorDiscovery,
+      disposition: scheduling_disposition_for_primary_cadence(
+        target: PrFloorDiscovery,
+        primary: primary,
+        ci_enrolled: ci_enrolled,
+        prepush_enrolled: prepush_enrolled
+      )
+    },
+    CadenceSchedulingRow {
+      cadence: MainPushFloor,
+      disposition: scheduling_disposition_for_primary_cadence(
+        target: MainPushFloor,
+        primary: primary,
+        ci_enrolled: ci_enrolled,
+        prepush_enrolled: prepush_enrolled
+      )
+    },
+    CadenceSchedulingRow {
+      cadence: ScheduledFalsifier,
+      disposition: scheduling_disposition_for_primary_cadence(
+        target: ScheduledFalsifier,
+        primary: primary,
+        ci_enrolled: ci_enrolled,
+        prepush_enrolled: prepush_enrolled
+      )
+    },
+    CadenceSchedulingRow {
+      cadence: SubstrateLongLane,
+      disposition: scheduling_disposition_for_primary_cadence(
+        target: SubstrateLongLane,
+        primary: primary,
+        ci_enrolled: ci_enrolled,
+        prepush_enrolled: prepush_enrolled
+      )
+    },
+    CadenceSchedulingRow {
+      cadence: WetFalsifier,
+      disposition: scheduling_disposition_for_primary_cadence(
+        target: WetFalsifier,
+        primary: primary,
+        ci_enrolled: ci_enrolled,
+        prepush_enrolled: prepush_enrolled
+      )
+    },
+    CadenceSchedulingRow {
+      cadence: PrePushHook,
+      disposition: scheduling_disposition_for_primary_cadence(
+        target: PrePushHook,
+        primary: primary,
+        ci_enrolled: ci_enrolled,
+        prepush_enrolled: prepush_enrolled
+      )
+    },
+    CadenceSchedulingRow {
+      cadence: OfflineLocalRecipe,
+      disposition: scheduling_disposition_for_primary_cadence(
+        target: OfflineLocalRecipe,
+        primary: primary,
+        ci_enrolled: ci_enrolled,
+        prepush_enrolled: prepush_enrolled
+      )
+    },
+    CadenceSchedulingRow {
+      cadence: KnownRedQuarantine,
+      disposition: scheduling_disposition_for_primary_cadence(
+        target: KnownRedQuarantine,
+        primary: primary,
+        ci_enrolled: ci_enrolled,
+        prepush_enrolled: prepush_enrolled
+      )
+    }
+  ]
+}
+
+fn cadence_scheduling_rows_for_witness(
+  entry: String,
+  function: String,
+  ci_enrolled: Bool,
+  prepush_enrolled: Bool
+) -> List<CadenceSchedulingRow> {
+  let primary = witness_consumer_cadence_for_row(
+    entry: entry,
+    function: function,
+    excluded_from_discovery: witness_row_excluded_from_discovery(entry: entry)
+  )
+  cadence_scheduling_rows_for_primary(
+    primary: primary,
+    ci_enrolled: ci_enrolled,
+    prepush_enrolled: prepush_enrolled
+  )
+}
+
+fn cadence_rows_unbound() -> List<CadenceSchedulingRow> {
+  [
+    CadenceSchedulingRow { cadence: PrFloorDiscovery, disposition: SchedulingExcluded },
+    CadenceSchedulingRow { cadence: MainPushFloor, disposition: SchedulingExcluded },
+    CadenceSchedulingRow { cadence: ScheduledFalsifier, disposition: SchedulingExcluded },
+    CadenceSchedulingRow { cadence: SubstrateLongLane, disposition: SchedulingExcluded },
+    CadenceSchedulingRow { cadence: WetFalsifier, disposition: SchedulingExcluded },
+    CadenceSchedulingRow { cadence: PrePushHook, disposition: SchedulingExcluded },
+    CadenceSchedulingRow { cadence: OfflineLocalRecipe, disposition: SchedulingExcluded },
+    CadenceSchedulingRow { cadence: KnownRedQuarantine, disposition: SchedulingExcluded }
+  ]
+}
+
+fn support_from_intent_verdict(v: IntentVerdict) -> LensEnforcementSupport {
+  if intent_verdict_holds(v: v) { SupportHeld } else { SupportGap { gap: "standing intent legs do not all hold against current receipts" } }
+}
+
+fn contract_consumer_application_unbound(c: LensContract) -> LensEnforcementApplication {
+  LensEnforcementApplication {
+    application_id: "contract.consumer.unbound",
+    standing_intent_id: "",
+    support: SupportGap { gap: "no bound consumer witness on contract" },
+    cadence_rows: cadence_rows_unbound(),
+    required_scope: whole_corpus_scope,
+    claimed_scope: c.claimed_scope,
+    evaluated_scope: evaluated_scope_absent_fact(),
+    subject_counts: subject_counts_absent()
+  }
+}
+
+fn contract_consumer_application_bound_without_receipt(
+  c: LensContract,
+  ci_enrolled: Bool,
+  prepush_enrolled: Bool
+) -> LensEnforcementApplication {
+  match c.consumer_witness {
+    NoConsumerWitness => contract_consumer_application_unbound(c: c)
+    BoundConsumerWitness { witness } =>
+      LensEnforcementApplication {
+        application_id: concat("contract.consumer.", witness.entry, "::", witness.function),
+        standing_intent_id: "",
+        support: SupportGap { gap: "no enrollment discovery receipt for bound contract" },
+        cadence_rows: cadence_scheduling_rows_for_witness(
+          entry: witness.entry,
+          function: witness.function,
+          ci_enrolled: ci_enrolled,
+          prepush_enrolled: prepush_enrolled
+        ),
+        required_scope: whole_corpus_scope,
+        claimed_scope: c.claimed_scope,
+        evaluated_scope: evaluated_scope_absent_fact(),
+        subject_counts: subject_counts_absent()
+      }
+  }
+}
+
+fn support_from_consumer_receipt(receipt: EnrollmentDiscoveryReceipt) -> LensEnforcementSupport {
+  if red_control_passed(s: receipt.red_control_status) && consumer_is_live(k: receipt.consumer_enrolled) { SupportHeld } else { SupportGap { gap: "consumer not live or red control did not pass on enrollment receipt" } }
+}
+
+fn contract_consumer_application(
+  c: LensContract,
+  receipt: EnrollmentDiscoveryReceipt,
+  facts: List<DeclFact>,
+  ci_enrolled: Bool,
+  prepush_enrolled: Bool
+) -> LensEnforcementApplication {
+  match c.consumer_witness {
+    NoConsumerWitness => contract_consumer_application_unbound(c: c)
+    BoundConsumerWitness { witness } =>
+      LensEnforcementApplication {
+        application_id: concat("contract.consumer.", witness.entry, "::", witness.function),
+        standing_intent_id: "",
+        support: support_from_consumer_receipt(receipt: receipt),
+        cadence_rows: cadence_scheduling_rows_for_witness(
+          entry: witness.entry,
+          function: witness.function,
+          ci_enrolled: ci_enrolled,
+          prepush_enrolled: prepush_enrolled
+        ),
+        required_scope: whole_corpus_scope,
+        claimed_scope: c.claimed_scope,
+        evaluated_scope: evaluated_scope_absent_fact(),
+        subject_counts: subject_counts_from_receipt(receipt: receipt)
+      }
+  }
+}
+
+fn standing_intent_application(
+  intent: StandingIntent,
+  c: LensContract,
+  receipts: List<EnrollmentDiscoveryReceipt>,
+  facts: List<DeclFact>
+) -> LensEnforcementApplication {
+  let verdict = intent_family_verdict(intent: intent, contracts: [c], receipts: receipts)
+  let counts = match find_receipt(cid: c.entry.lens_id, receipts: receipts) {
+    ReceiptFound { value: r } => subject_counts_from_receipt(receipt: r)
+    ReceiptAbsent => subject_counts_absent()
+  }
+  LensEnforcementApplication {
+    application_id: concat("standing-intent.", intent.id),
+    standing_intent_id: intent.id,
+    support: support_from_intent_verdict(v: verdict),
+    cadence_rows: cadence_rows_unbound(),
+    required_scope: intent.desired_scope,
+    claimed_scope: c.claimed_scope,
+    evaluated_scope: evaluated_scope_absent_fact(),
+    subject_counts: counts
+  }
+}
+
+fn standing_intent_applications_for_contract(
+  c: LensContract,
+  intents: List<StandingIntent>,
+  receipts: List<EnrollmentDiscoveryReceipt>,
+  facts: List<DeclFact>
+) -> List<LensEnforcementApplication> {
+  fold(intents, init: [], f: fn(acc, intent) {
+    if contract_answers(c: c, p: intent.property) { list_append(left: [standing_intent_application(intent: intent, c: c, receipts: receipts, facts: facts)], right: acc) } else { acc }
+  })
+}
+
+fn inventory_row_for_contract(
+  c: LensContract,
+  intents: List<StandingIntent>,
+  receipts: List<EnrollmentDiscoveryReceipt>,
+  facts: List<DeclFact>,
+  ci_entries: List<ScheduleWitnessEntry>,
+  prepush_entries: List<ScheduleWitnessEntry>
+) -> LensEnforcementInventoryRow {
+  let unbound = lens_contract_is_unbound(c: c)
+  let receipt_lookup = find_receipt(cid: c.entry.lens_id, receipts: receipts)
+  let has_receipt = match receipt_lookup {
+    ReceiptFound { value: _ } => true
+    ReceiptAbsent => false
+  }
+  let consumer_app = match receipt_lookup {
+    ReceiptFound { value: r } =>
+      contract_consumer_application(
+        c: c,
+        receipt: r,
+        facts: facts,
+        ci_enrolled: match c.consumer_witness {
+          BoundConsumerWitness { witness } =>
+            contains(xs: ci_entries, item: witness, eq: schedule_witness_entry_eq)
+          NoConsumerWitness => false
+        },
+        prepush_enrolled: match c.consumer_witness {
+          BoundConsumerWitness { witness } =>
+            contains(xs: prepush_entries, item: witness, eq: schedule_witness_entry_eq)
+          NoConsumerWitness => false
+        }
+      )
+    ReceiptAbsent =>
+      contract_consumer_application_bound_without_receipt(
+        c: c,
+        ci_enrolled: false,
+        prepush_enrolled: false
+      )
+  }
+  LensEnforcementInventoryRow {
+    lens_id: c.entry.lens_id,
+    consumer_unbound: unbound,
+    has_enrollment_discovery_receipt: has_receipt && !unbound,
+    applications: list_append(
+      left: [consumer_app],
+      right: standing_intent_applications_for_contract(
+        c: c,
+        intents: intents,
+        receipts: receipts,
+        facts: facts
+      )
+    )
+  }
+}
+
+fn derive_lens_enforcement_inventory(
+  contracts: List<LensContract>,
+  intents: List<StandingIntent>,
+  receipts: List<EnrollmentDiscoveryReceipt>,
+  facts: List<DeclFact>,
+  ci_entries: List<ScheduleWitnessEntry>,
+  prepush_entries: List<ScheduleWitnessEntry>
+) -> List<LensEnforcementInventoryRow> {
+  fold(contracts, init: [], f: fn(acc, c) {
+    list_append(
+      left: [inventory_row_for_contract(
+        c: c,
+        intents: intents,
+        receipts: receipts,
+        facts: facts,
+        ci_entries: ci_entries,
+        prepush_entries: prepush_entries
+      )],
+      right: acc
+    )
+  })
+}
+
+fn lens_id_eq_inventory_row(row: LensEnforcementInventoryRow, id: LensIdV0) -> Bool {
+  lens_id_v0_eq(left: row.lens_id, right: id)
+}
+
+fn inventory_contains_lens_id(inventory: List<LensEnforcementInventoryRow>, id: LensIdV0) -> Bool {
+  any(xs: inventory, predicate: fn(row) { lens_id_eq_inventory_row(row: row, id: id) })
+}
+
+fn inventory_row_count(inventory: List<LensEnforcementInventoryRow>) -> Int {
+  length(xs: inventory)
+}
+
+fn registry_contains_lens_id(contracts: List<LensContract>, id: LensIdV0) -> Bool {
+  any(xs: contracts, predicate: fn(c) { lens_id_v0_eq(left: c.entry.lens_id, right: id) })
+}
+
+fn inventory_row_registry_member(
+  contracts: List<LensContract>,
+  row: LensEnforcementInventoryRow
+) -> Bool {
+  registry_contains_lens_id(contracts: contracts, id: row.lens_id)
+}
+
+fn inventory_reconciles_registry_both_ways(
+  inventory: List<LensEnforcementInventoryRow>,
+  contracts: List<LensContract>
+) -> Bool {
+  (inventory_row_count(inventory: inventory) == length(xs: contracts))
+    && for_all(xs: contracts, predicate: fn(c) {
+      inventory_contains_lens_id(inventory: inventory, id: c.entry.lens_id)
+    })
+    && for_all(xs: inventory, predicate: fn(row) {
+      inventory_row_registry_member(contracts: contracts, row: row)
+    })
+}
+
+fn inventory_unbound_rows_match_contract_unbound(
+  inventory: List<LensEnforcementInventoryRow>,
+  contracts: List<LensContract>
+) -> Bool {
+  for_all(xs: contracts, predicate: fn(c) {
+    match find_inventory_row(inventory: inventory, id: c.entry.lens_id) {
+      InventoryRowAbsent => false
+      InventoryRowFound { value: row } =>
+        row.consumer_unbound == lens_contract_is_unbound(c: c)
+    }
+  })
+}
+
+type InventoryRowLookup = InventoryRowFound { value: LensEnforcementInventoryRow } | InventoryRowAbsent
+
+fn find_inventory_row(inventory: List<LensEnforcementInventoryRow>, id: LensIdV0) -> InventoryRowLookup {
+  match list_head(xs: filter(xs: inventory, predicate: fn(row) { lens_id_eq_inventory_row(row: row, id: id) })) {
+    HeadFound { value: row } => InventoryRowFound { value: row }
+    HeadAbsent => InventoryRowAbsent
+  }
+}
+
+fn inventory_application_count_for_lens(
+  inventory: List<LensEnforcementInventoryRow>,
+  id: LensIdV0
+) -> Int {
+  match find_inventory_row(inventory: inventory, id: id) {
+    InventoryRowAbsent => 0
+    InventoryRowFound { value: row } => length(xs: row.applications)
+  }
+}
+
+fn witness_exclusion_lookup_is_offline(lookup: WitnessExclusionLookup) -> Bool {
+  match lookup {
+    ExclusionRowFound { value: row } => witness_exclusion_row_is_offline(row: row)
+    ExclusionRowAbsent => false
+  }
+}
+
+fn inventory_row_evaluated_scope_absent(row: LensEnforcementInventoryRow) -> Bool {
+  for_all(xs: row.applications, predicate: fn(app) {
+    match app.evaluated_scope {
+      EvaluatedScopeAbsent { reason: _ } => true
+      EvaluatedScopePresent { roster: _ } => false
+    }
+  })
+}
+
+type WitnessExclusionLookup = ExclusionRowFound { value: WitnessExclusionRow } | ExclusionRowAbsent
+
+type WitnessAdmissionInventoryRow {
+  witness_entry: String
+  exclusion: WitnessExclusionLookup
+  primary_cadence: WitnessConsumerCadence
+  cadence_rows: List<CadenceSchedulingRow>
+}
+
+data witness_admission_inventory_authority_note: String = "Phase 0B witness admission inventory: every row is derived from gunbc.ci_layer_roots witness_exclusion_frontier (pattern, classification, reason, dissolve_on) plus witness-admission cadence projection — never hand-authored scheduling. First specimen: enforcement_live_witness_test.dag (0A red-control probes) is OfflineLocalRecipe at the offline-recipe cadence, SchedulingExcluded at PR-floor/main-push, with dissolve_on from the frontier row. 0A fabrication removal is construction in the production fold; discriminating evidence runs at offline cadence only (operator status correction 2026-08-02)."
+
+fn schedule_entries_cover_pattern(xs: List<ScheduleWitnessEntry>, pattern: String) -> Bool {
+  any(xs: xs, predicate: fn(w) { string_contains(s: w.entry, pattern: pattern) })
+}
+
+fn witness_admission_inventory_row_for_exclusion_row(
+  row: WitnessExclusionRow,
+  ci_entries: List<ScheduleWitnessEntry>,
+  prepush_entries: List<ScheduleWitnessEntry>
+) -> WitnessAdmissionInventoryRow {
+  WitnessAdmissionInventoryRow {
+    witness_entry: row.pattern,
+    exclusion: ExclusionRowFound { value: row },
+    primary_cadence: row.classification,
+    cadence_rows: cadence_scheduling_rows_for_primary(
+      primary: row.classification,
+      ci_enrolled: schedule_entries_cover_pattern(xs: ci_entries, pattern: row.pattern),
+      prepush_enrolled: schedule_entries_cover_pattern(xs: prepush_entries, pattern: row.pattern)
+    )
+  }
+}
+
+fn derive_witness_admission_inventory(
+  exclusion_rows: List<WitnessExclusionRow>,
+  ci_entries: List<ScheduleWitnessEntry>,
+  prepush_entries: List<ScheduleWitnessEntry>
+) -> List<WitnessAdmissionInventoryRow> {
+  fold(exclusion_rows, init: [], f: fn(acc, row) {
+    list_append(
+      left: [witness_admission_inventory_row_for_exclusion_row(
+        row: row,
+        ci_entries: ci_entries,
+        prepush_entries: prepush_entries
+      )],
+      right: acc
+    )
+  })
+}
+
+type WitnessAdmissionRowLookup = WitnessAdmissionRowFound { value: WitnessAdmissionInventoryRow } | WitnessAdmissionRowAbsent
+
+fn witness_admission_row_matches_pattern(row: WitnessAdmissionInventoryRow, pattern: String) -> Bool {
+  match row.exclusion {
+    ExclusionRowFound { value: excl } => excl.pattern == pattern
+    ExclusionRowAbsent => false
+  }
+}
+
+fn find_witness_admission_row_for_pattern(
+  inventory: List<WitnessAdmissionInventoryRow>,
+  pattern: String
+) -> WitnessAdmissionRowLookup {
+  match list_head(xs: filter(xs: inventory, predicate: fn(row) { witness_admission_row_matches_pattern(row: row, pattern: pattern) })) {
+    HeadFound { value: row } => WitnessAdmissionRowFound { value: row }
+    HeadAbsent => WitnessAdmissionRowAbsent
+  }
+}
+
+fn cadence_row_is_pr_floor_discovery(row: CadenceSchedulingRow) -> Bool {
+  match row.cadence { PrFloorDiscovery => true _ => false }
+}
+
+fn cadence_row_is_main_push_floor(row: CadenceSchedulingRow) -> Bool {
+  match row.cadence { MainPushFloor => true _ => false }
+}
+
+fn cadence_row_is_offline_local_recipe(row: CadenceSchedulingRow) -> Bool {
+  match row.cadence { OfflineLocalRecipe => true _ => false }
+}
+
+fn scheduling_disposition_is_enrolled(disposition: SchedulingDisposition) -> Bool {
+  match disposition { SchedulingEnrolled => true SchedulingDark => false SchedulingExcluded => false }
+}
+
+fn scheduling_disposition_is_excluded(disposition: SchedulingDisposition) -> Bool {
+  match disposition { SchedulingExcluded => true SchedulingEnrolled => false SchedulingDark => false }
+}
+
+fn cadence_disposition_for_pr_floor(rows: List<CadenceSchedulingRow>) -> SchedulingDisposition {
+  match list_head(xs: filter(xs: rows, predicate: fn(r) { cadence_row_is_pr_floor_discovery(row: r) })) {
+    HeadFound { value: row } => row.disposition
+    HeadAbsent => SchedulingExcluded
+  }
+}
+
+fn cadence_disposition_for_main_push(rows: List<CadenceSchedulingRow>) -> SchedulingDisposition {
+  match list_head(xs: filter(xs: rows, predicate: fn(r) { cadence_row_is_main_push_floor(row: r) })) {
+    HeadFound { value: row } => row.disposition
+    HeadAbsent => SchedulingExcluded
+  }
+}
+
+fn cadence_disposition_for_offline_recipe(rows: List<CadenceSchedulingRow>) -> SchedulingDisposition {
+  match list_head(xs: filter(xs: rows, predicate: fn(r) { cadence_row_is_offline_local_recipe(row: r) })) {
+    HeadFound { value: row } => row.disposition
+    HeadAbsent => SchedulingExcluded
+  }
+}
