@@ -10423,6 +10423,9 @@ mod tests {
             performance_receipts: Vec::new(),
             total_measured_nanos: 0,
             roster_closure_nodes: 0,
+            total_entry_groups: 0,
+            selected_entry_groups: 0,
+            selection_categorization_reason: None,
         };
         let killed = ClaimOutcome::TimedOut {
             elapsed_ms: 900_001,
@@ -10493,6 +10496,9 @@ mod tests {
             performance_receipts: Vec::new(),
             total_measured_nanos: 0,
             roster_closure_nodes: 0,
+            total_entry_groups: 0,
+            selected_entry_groups: 0,
+            selection_categorization_reason: None,
         };
         let prior = "1 of 1 discovery witness(es) failed: e.dag::f failed";
         let result = discovery_claim_result(
@@ -10540,6 +10546,9 @@ mod tests {
             performance_receipts: Vec::new(),
             total_measured_nanos: 0,
             roster_closure_nodes: 0,
+            total_entry_groups: 0,
+            selected_entry_groups: 0,
+            selection_categorization_reason: None,
         };
         let (label, provenance) = scoped_witness_summary_outcome(
             &summary,

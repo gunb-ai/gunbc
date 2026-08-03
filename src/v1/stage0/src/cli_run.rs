@@ -8557,6 +8557,85 @@ fn emit_floor_drain_receipt(
     );
 }
 
+const SELECTION_DEGRADATION_RECEIPT_ENTRY: &str = "dag/gunbc/selection_degradation_receipt.dag";
+
+fn node_frontier_selection_mode_tag(mode: NodeFrontierSelectionMode) -> &'static str {
+    match mode {
+        NodeFrontierSelectionMode::Off => "off",
+        NodeFrontierSelectionMode::Applied => "applied",
+        NodeFrontierSelectionMode::PredictOnly => "predict_only",
+    }
+}
+
+/// P2 floor prep-tax receipt: selection_state, selected/total entry groups, ratio, fallback_reason.
+/// Authority is `gunbc.selection_degradation_receipt`; this transport passes measured counts only.
+pub fn emit_selection_degradation_receipt(
+    source_roots: &[String],
+    selection: NodeFrontierSelectionMode,
+    summary: &DiscoverySummary,
+) {
+    let Some(entry) = source_roots
+        .iter()
+        .map(|r| std::path::Path::new(r).join(SELECTION_DEGRADATION_RECEIPT_ENTRY))
+        .find(|p| p.exists())
+        .map(|p| p.to_string_lossy().into_owned())
+    else {
+        eprintln!(
+            "selection-degradation receipt REFUSED — {SELECTION_DEGRADATION_RECEIPT_ENTRY} \
+             not found under source roots"
+        );
+        return;
+    };
+    let (graph, indices) = match resolve_entry_graph_shared(source_roots, &entry) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("selection-degradation receipt REFUSED — resolve {entry}: {e}");
+            return;
+        }
+    };
+    let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic);
+    let categorization_unavailable = summary.selection_categorization_reason.is_some();
+    let categorization_reason = summary
+        .selection_categorization_reason
+        .clone()
+        .unwrap_or_default();
+    match v1_interpreter::run_in_context_with_args(
+        &ctx,
+        "selection_degradation_receipt_line",
+        &[
+            (
+                Some("selection_mode_tag".to_string()),
+                v1_interpreter::Value::Str(node_frontier_selection_mode_tag(selection).to_string()),
+            ),
+            (
+                Some("selected".to_string()),
+                v1_interpreter::Value::Int(summary.selected_entry_groups as i64),
+            ),
+            (
+                Some("total".to_string()),
+                v1_interpreter::Value::Int(summary.total_entry_groups as i64),
+            ),
+            (
+                Some("categorization_unavailable".to_string()),
+                v1_interpreter::Value::Bool(categorization_unavailable),
+            ),
+            (
+                Some("categorization_reason".to_string()),
+                v1_interpreter::Value::Str(categorization_reason),
+            ),
+        ],
+        false,
+    ) {
+        Ok(v1_interpreter::Value::Str(line)) => eprintln!("{line}"),
+        Ok(other) => eprintln!(
+            "selection-degradation receipt REFUSED — selection_degradation_receipt_line returned \
+             `{}`, expected Str",
+            ctx.format_value(&other)
+        ),
+        Err(e) => eprintln!("selection-degradation receipt REFUSED — eval: {e}"),
+    }
+}
+
 /// Enforce the host-budget-derived entry cap on the private typed cache. Evictions
 /// are counted and logged — a typed, located diagnostic, never a silent widen.
 /// Victim selection is arbitrary (first `HashMap` key), not LRU or load-aware:
@@ -14770,6 +14849,13 @@ pub struct DiscoverySummary {
     /// module names is a property of the source closure: independent of cache warmth, resolve order,
     /// and — critically for a calibration datum — of the diff under test.
     pub roster_closure_nodes: usize,
+    /// Entry-group grain of the discovery roster (`entry_row_groups`); set at completion.
+    pub total_entry_groups: usize,
+    /// Distinct entries with at least one executed witness (not selection-skipped only).
+    pub selected_entry_groups: usize,
+    /// When Applied mode could not run upfront import-closure categorization; per-shard
+    /// selection remains authoritative and the completion receipt still publishes counts.
+    pub selection_categorization_reason: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -18905,6 +18991,7 @@ pub fn run_discovery_corpus_with_options(
     options: DiscoveryCorpusOptions,
 ) -> Result<DiscoverySummary, String> {
     let pump_started = std::time::Instant::now();
+    let selection = options.node_frontier_selection;
     let out = run_discovery_corpus_with_options_inner(
         source_roots,
         scan_dirs,
@@ -18917,6 +19004,9 @@ pub fn run_discovery_corpus_with_options(
         &discovery_phase_totals::PUMP_WALL_MS,
         pump_started.elapsed(),
     );
+    if let Ok(summary) = &out {
+        emit_selection_degradation_receipt(source_roots, selection, summary);
+    }
     out
 }
 
@@ -19200,6 +19290,23 @@ fn run_discovery_corpus_with_options_inner(
         &index,
         &diff_edits,
     );
+    let selection_categorization_reason =
+        if options.node_frontier_selection == NodeFrontierSelectionMode::Applied {
+            let declared_paths = index.module_graph_facts.declared_repo_paths();
+            let touched: Vec<String> = diff_edits.touched_entry_files.iter().cloned().collect();
+            match discovery_entry_fast_skip_without_resolve(
+                &rows,
+                &index.module_graph_facts,
+                &declared_paths,
+                &touched,
+                &diff_edits,
+            ) {
+                Ok(_) => None,
+                Err(e) => Some(e),
+            }
+        } else {
+            None
+        };
     // Derive every leg for the WHOLE roster here, above the width dispatch, while this
     // thread's shared index is warm. At width > 1 the pool hands each worker its own chunk
     // of rows, so priming inside `run_discovery_rows` would build one interpreter context
@@ -19266,7 +19373,13 @@ fn run_discovery_corpus_with_options_inner(
                 "[calibration] closure consistency: pre-resolve loader-closure union == post-resolve union == {} node(s)",
                 pre_resolve_closure_nodes
             );
-            Ok(attach_deferred_discovery_rows(summary, deferred_rows))
+            Ok(finalize_discovery_summary(
+                summary,
+                &rows,
+                options.node_frontier_selection,
+                selection_categorization_reason.clone(),
+                deferred_rows,
+            ))
         }
         DiscoveryWidthPolicy::Adaptive(governor) => {
             // Adaptive pool: entry-groups drain through governor-admitted workers. Each worker
@@ -19365,8 +19478,11 @@ fn run_discovery_corpus_with_options_inner(
                     drain_prev = snap;
                 }
                 emit_floor_drain_receipt(&index, total_groups, &drain_peaks);
-                return Ok(attach_deferred_discovery_rows(
+                return Ok(finalize_discovery_summary(
                     merge_discovery_summaries(summaries),
+                    &rows,
+                    options.node_frontier_selection,
+                    selection_categorization_reason.clone(),
                     deferred_rows,
                 ));
             }
@@ -19541,19 +19657,33 @@ fn run_discovery_corpus_with_options_inner(
              worker error — scheduler invariant violated; refusing a partial corpus"
         ));
             }
-            Ok(attach_deferred_discovery_rows(
+            Ok(finalize_discovery_summary(
                 merge_discovery_summaries(summaries),
+                &rows,
+                options.node_frontier_selection,
+                selection_categorization_reason,
                 deferred_rows,
             ))
         }
     };
 }
 
-fn attach_deferred_discovery_rows(
+fn finalize_discovery_summary(
     mut summary: DiscoverySummary,
+    rows: &[DiscoveryRow],
+    _selection: NodeFrontierSelectionMode,
+    selection_categorization_reason: Option<String>,
     deferred_rows: Vec<DeferredDiscoveryRow>,
 ) -> DiscoverySummary {
     summary.deferred_rows = deferred_rows;
+    summary.total_entry_groups = entry_row_groups(rows).len();
+    summary.selected_entry_groups = summary
+        .witness_outcomes
+        .iter()
+        .map(|o| o.entry.as_str())
+        .collect::<std::collections::HashSet<_>>()
+        .len();
+    summary.selection_categorization_reason = selection_categorization_reason;
     summary
 }
 
@@ -19597,6 +19727,9 @@ fn merge_discovery_summaries(summaries: Vec<DiscoverySummary>) -> DiscoverySumma
         performance_receipts: Vec::new(),
         total_measured_nanos: 0,
         roster_closure_nodes: 0,
+        total_entry_groups: 0,
+        selected_entry_groups: 0,
+        selection_categorization_reason: None,
     };
     for summary in summaries {
         merged.total += summary.total;
@@ -19861,6 +19994,9 @@ fn run_discovery_rows(
         performance_receipts: Vec::new(),
         total_measured_nanos: 0,
         roster_closure_nodes: 0,
+        total_entry_groups: 0,
+        selected_entry_groups: 0,
+        selection_categorization_reason: None,
     };
     let skip_enabled = selection != NodeFrontierSelectionMode::Off;
     // This shard's SUBJECT union closure, accumulated from the graphs it resolves. An ordinary
@@ -24351,6 +24487,9 @@ mod discovery_summary_merge_tests {
             ],
             total_measured_nanos: 56_000,
             roster_closure_nodes: 42,
+            total_entry_groups: 2,
+            selected_entry_groups: 2,
+            selection_categorization_reason: None,
         }
     }
 
