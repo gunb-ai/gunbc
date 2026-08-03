@@ -24453,11 +24453,13 @@ mod moduleless_entry_skip_tests {
 #[cfg(test)]
 mod discovery_summary_merge_tests {
     use super::{
-        compute_histogram_data, merge_discovery_summaries, project_witness_cost_receipt,
+        compute_histogram_data, finalize_discovery_summary, merge_discovery_summaries,
+        project_witness_cost_receipt, render_selection_degradation_receipt_line,
         repo_relative_dag_path, run_discovery_corpus_with_options, top_n_slowest_witnesses,
-        witness_execution_leg_cache_put, ClaimOutcome, DiscoveryCorpusOptions, DiscoverySummary,
-        DiscoveryWidthPolicy, DiscoveryWitnessOutcome, EntryResolveReceipt,
-        NodeFrontierSelectionMode, ResolveStageNanos,
+        witness_execution_leg_cache_put, ClaimOutcome, DiscoveryCorpusOptions, DiscoveryRow,
+        DiscoverySummary, DiscoveryWidthPolicy, DiscoveryWitnessOutcome, EntryResolveReceipt,
+        NodeFrontierSelectionMode, ResolveStageNanos, SelectionDegradationSnapshot,
+        SelectionSkippedDiscoveryRow,
     };
     use crate::v1_interpreter::{ExecutionMode, PerformanceReceipt};
 
@@ -24564,6 +24566,93 @@ mod discovery_summary_merge_tests {
         b.roster_closure_nodes = 71;
         let merged = merge_discovery_summaries(vec![a, b]);
         assert_eq!(merged.roster_closure_nodes, 71);
+    }
+
+    /// RED control: skip-before-resolve records `selection_skipped_rows` but does NOT add
+    /// `witness_outcomes` for those entries. `selected_entry_groups` must count executed
+    /// entry groups only — otherwise narrowed Applied runs mislabel as Superset.
+    #[test]
+    fn finalize_discovery_summary_selected_entry_groups_exclude_skip_before_resolve() {
+        let rows = vec![
+            DiscoveryRow {
+                label: "w1".into(),
+                entry: "entry_a.dag".into(),
+                function: "f1".into(),
+                reads_live_tree: false,
+            },
+            DiscoveryRow {
+                label: "w2".into(),
+                entry: "entry_b.dag".into(),
+                function: "f2".into(),
+                reads_live_tree: false,
+            },
+            DiscoveryRow {
+                label: "w3".into(),
+                entry: "entry_c.dag".into(),
+                function: "f3".into(),
+                reads_live_tree: false,
+            },
+        ];
+        let summary = DiscoverySummary {
+            total: 2,
+            passed: 2,
+            skipped: 1,
+            deferred_rows: Vec::new(),
+            predicted_unaffected: Vec::new(),
+            selection_skipped_rows: vec![SelectionSkippedDiscoveryRow {
+                entry: "entry_c.dag".into(),
+                function: "f3".into(),
+                provenance: "skip-before-resolve-fast-path".into(),
+            }],
+            divergences: Vec::new(),
+            failures: Vec::new(),
+            witness_outcomes: vec![
+                DiscoveryWitnessOutcome {
+                    entry: "entry_a.dag".into(),
+                    module_path: "test.a".into(),
+                    function: "f1".into(),
+                    outcome: ClaimOutcome::Pass,
+                    execution_leg: "InterpretedLeg".into(),
+                },
+                DiscoveryWitnessOutcome {
+                    entry: "entry_b.dag".into(),
+                    module_path: "test.b".into(),
+                    function: "f2".into(),
+                    outcome: ClaimOutcome::Pass,
+                    execution_leg: "InterpretedLeg".into(),
+                },
+            ],
+            entry_resolve_receipts: Vec::new(),
+            total_resolve_nanos: 0,
+            total_stage_nanos: ResolveStageNanos::default(),
+            performance_receipts: Vec::new(),
+            total_measured_nanos: 0,
+            roster_closure_nodes: 0,
+            total_entry_groups: 0,
+            selected_entry_groups: 0,
+            selection_categorization_reason: None,
+        };
+        let finalized = finalize_discovery_summary(
+            summary,
+            &rows,
+            NodeFrontierSelectionMode::Applied,
+            None,
+            Vec::new(),
+        );
+        assert_eq!(finalized.total_entry_groups, 3);
+        assert_eq!(finalized.selected_entry_groups, 2);
+        let snapshot = SelectionDegradationSnapshot::from_summary(
+            NodeFrontierSelectionMode::Applied,
+            &finalized,
+        );
+        let line =
+            render_selection_degradation_receipt_line(&source_roots(), &snapshot).expect("receipt");
+        assert!(
+            line.contains("selection_state=SelectionApplied"),
+            "skip-before-resolve must not inflate selected to total (would read Superset): {line}"
+        );
+        assert!(line.contains("selected_entry_groups=2"));
+        assert!(line.contains("total_entry_groups=3"));
     }
 
     #[test]
