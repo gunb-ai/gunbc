@@ -4,12 +4,11 @@ import extdeps.cargo_build
 import extdeps.shell
 import v2.compiler.self_host.candidate_generation {
   advance_written_provenanced_rust_artifact_cargo_green,
-  generate_written_rust_candidate_from_ingest,
+  mint_written_provenanced_rust_artifact,
   written_provenanced_rust_artifact_ok
 }
 import v2.compiler.self_host.direct_rust_door_fixture {
-  direct_rust_door_admission,
-  direct_rust_door_ingest,
+  direct_rust_door_inferred_tree,
   direct_rust_door_module_path,
   direct_rust_door_target_model
 }
@@ -21,7 +20,7 @@ import v2.std.logic { Bool }
 import v2.std.optional { Absent, Present }
 import v2.std.text { String }
 
-data direct_rust_door_transport_note: String = "Lane B wet transport realization: generate_written_rust_candidate_from_ingest routes ingest-assemble-infer through candidate_generation.mint_written_provenanced_rust_artifact (sole write_rust_workspace authority), then advance_written_provenanced_rust_artifact_cargo_green after cargo.Build.BuildManifest — the wet compile receipt for roadmap node v2-emitter-direct-rust-door."
+data direct_rust_door_transport_note: String = "Lane B wet transport realization: mint_written_provenanced_rust_artifact is the sole write_rust_workspace authority (Cargo.toml + src/lib.rs via Filesystem.Write inside candidate_generation); this smoke calls it on the direct_rust_door inferred-tree fixture, then advance_written_provenanced_rust_artifact_cargo_green only after cargo.Build.BuildManifest executes — SourceProduced at mint, CargoGreen only after compile evidence (qualification ladder; no later qualification before its evidence)."
 
 fn direct_rust_door_compile_workspace(workspace_dir: String) -> Bool {
   let build = cargo.Build.BuildManifest(
@@ -36,9 +35,8 @@ fn direct_rust_door_compile_workspace(workspace_dir: String) -> Bool {
 fn run_direct_rust_door_emit_write_compile_smoke() -> Bool {
   let dir = shell.Mktemp.Dir()
   let src_dir = shell.Mkdir.Parents(path: concat(dir.path, "/src"))
-  let pipeline_ok = match generate_written_rust_candidate_from_ingest(
-    ingest: direct_rust_door_ingest(),
-    admission: direct_rust_door_admission(),
+  let pipeline_ok = match mint_written_provenanced_rust_artifact(
+    inferred: direct_rust_door_inferred_tree,
     target: direct_rust_door_target_model(),
     module_path: direct_rust_door_module_path,
     realized_closure: realized_closure_for_v2_direct_rust_door_emit_run(),
