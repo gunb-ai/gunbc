@@ -341,10 +341,10 @@ pub fn dag_syntax_spec() -> Rc<SyntaxSpec> {
     thread_local! {
             static CACHED: Rc<SyntaxSpec> = {
                 Rc::new(SyntaxSpec {
-        item_forms: dag_item_forms.clone(),
-        operators: dag_operators.clone(),
-        keyword_literals: dag_keyword_literals.clone(),
-        keyword_set: dag_keyword_set.clone(),
+        item_forms: dag_item_forms(),
+        operators: dag_operators(),
+        keyword_literals: dag_keyword_literals(),
+        keyword_set: dag_keyword_set(),
     })
             };
         }

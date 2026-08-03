@@ -61,6 +61,6 @@ pub fn render_cargo_package_header_prefix(name: String) -> String {
             v1_rt::concat("[package]\nname = \"".to_string(), name.clone()),
             "\"\n".to_string(),
         ),
-        render_cargo_package_version_field(default_stage0_package_version.clone()),
+        render_cargo_package_version_field(default_stage0_package_version()),
     )
 }

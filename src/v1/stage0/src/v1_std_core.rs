@@ -1520,7 +1520,7 @@ pub fn wrapper_child_roles() -> Rc<HashMap<String, Rc<Vec<Rc<ChildRole>>>>> {
 pub fn is_child_accessor_in_model(name: String) -> bool {
     ({
         let mut __found = false;
-        for roles in Rc::new(v1_rt::map_values(&expr_child_roles))
+        for roles in Rc::new(v1_rt::map_values(&expr_child_roles()))
             .iter()
             .cloned()
         {
@@ -1541,7 +1541,7 @@ pub fn is_child_accessor_in_model(name: String) -> bool {
         __found
     } || {
         let mut __found = false;
-        for roles in Rc::new(v1_rt::map_values(&wrapper_child_roles))
+        for roles in Rc::new(v1_rt::map_values(&wrapper_child_roles()))
             .iter()
             .cloned()
         {
@@ -1564,7 +1564,7 @@ pub fn is_child_accessor_in_model(name: String) -> bool {
 }
 
 pub fn child_roles_for_variant(variant_name: String) -> Option<Rc<Vec<Rc<ChildRole>>>> {
-    v1_rt::map_get(&expr_child_roles, variant_name.clone())
+    v1_rt::map_get(&expr_child_roles(), variant_name.clone())
 }
 
 #[derive(
@@ -1593,14 +1593,14 @@ pub fn node_field_roles() -> Rc<HashMap<String, NodeFieldRole>> {
 }
 
 pub fn is_children_list_field(field_name: String) -> bool {
-    match v1_rt::lookup(&node_field_roles, field_name.clone()) {
+    match v1_rt::lookup(&node_field_roles(), field_name.clone()) {
         Some(NodeFieldRole::ChildrenListField) => true,
         _ => false,
     }
 }
 
 pub fn is_sub_value_field(field_name: String) -> bool {
-    match v1_rt::lookup(&node_field_roles, field_name.clone()) {
+    match v1_rt::lookup(&node_field_roles(), field_name.clone()) {
         Some(NodeFieldRole::SubValueField) => true,
         Some(NodeFieldRole::ChildrenListField) => true,
         _ => false,
@@ -1646,7 +1646,7 @@ pub fn function_size_effects() -> Rc<HashMap<String, Rc<FunctionSizeEffect>>> {
 }
 
 pub fn is_tree_size_preserving(func_name: String) -> bool {
-    match v1_rt::lookup(&function_size_effects, func_name.clone()) {
+    match v1_rt::lookup(&function_size_effects(), func_name.clone()) {
         Some(effect) => match (*effect.clone()).clone() {
             FunctionSizeEffect::TreeSizePreserving => true,
             FunctionSizeEffect::PropertyContraction { domain_size: _, .. } => true,
@@ -1657,7 +1657,7 @@ pub fn is_tree_size_preserving(func_name: String) -> bool {
 }
 
 pub fn is_tree_size_reducing(func_name: String) -> bool {
-    match v1_rt::lookup(&function_size_effects, func_name.clone()) {
+    match v1_rt::lookup(&function_size_effects(), func_name.clone()) {
         Some(effect) => match (*effect.clone()).clone() {
             FunctionSizeEffect::TreeSizeReducing => true,
             _ => false,
@@ -1667,7 +1667,7 @@ pub fn is_tree_size_reducing(func_name: String) -> bool {
 }
 
 pub fn is_property_contraction(func_name: String) -> bool {
-    match v1_rt::lookup(&function_size_effects, func_name.clone()) {
+    match v1_rt::lookup(&function_size_effects(), func_name.clone()) {
         Some(effect) => match (*effect.clone()).clone() {
             FunctionSizeEffect::PropertyContraction { domain_size: _, .. } => true,
             _ => false,
@@ -2208,14 +2208,14 @@ pub fn rest_transport_node(
     {
         let zero_span = make_span(0, 0);
         let url_field = make_field_init_node(
-            transport_url_key.clone(),
+            transport_url_key(),
             base_url.clone(),
             zero_span.clone(),
             zero_span.clone(),
         );
         let method_props = match method.clone() {
             Some(m) => Rc::new(vec![make_field_init_node(
-                transport_method_key.clone(),
+                transport_method_key(),
                 m.clone(),
                 zero_span.clone(),
                 zero_span.clone(),
@@ -2224,7 +2224,7 @@ pub fn rest_transport_node(
         };
         let path_props = match path.clone() {
             Some(p) => Rc::new(vec![make_field_init_node(
-                transport_path_template_key.clone(),
+                transport_path_template_key(),
                 p.clone(),
                 zero_span.clone(),
                 zero_span.clone(),
@@ -2233,7 +2233,7 @@ pub fn rest_transport_node(
         };
         let query_props = match query.clone() {
             Some(q) => Rc::new(vec![make_field_init_node(
-                transport_query_key.clone(),
+                transport_query_key(),
                 q.clone(),
                 zero_span.clone(),
                 zero_span.clone(),
@@ -2242,7 +2242,7 @@ pub fn rest_transport_node(
         };
         let body_props = match request_body.clone() {
             Some(b) => Rc::new(vec![make_field_init_node(
-                transport_body_key.clone(),
+                transport_body_key(),
                 b.clone(),
                 zero_span.clone(),
                 zero_span.clone(),
@@ -2251,7 +2251,7 @@ pub fn rest_transport_node(
         };
         let rf_props = match response_format.clone() {
             Some(rf) => Rc::new(vec![make_field_init_node(
-                transport_response_format_key.clone(),
+                transport_response_format_key(),
                 rf.clone(),
                 zero_span.clone(),
                 zero_span.clone(),
@@ -2314,7 +2314,7 @@ pub fn shell_transport_node(
         let zero_span = make_span(0, 0);
         let stdin_props = match stdin.clone() {
             Some(s) => Rc::new(vec![make_field_init_node(
-                transport_stdin_key.clone(),
+                transport_stdin_key(),
                 s.clone(),
                 zero_span.clone(),
                 zero_span.clone(),
@@ -2352,7 +2352,7 @@ pub fn file_transport_node(
 ) -> Rc<Node> {
     {
         let path_field = make_field_init_node(
-            transport_path_key.clone(),
+            transport_path_key(),
             base_path.clone(),
             make_span(0, 0),
             make_span(0, 0),
@@ -2473,7 +2473,7 @@ pub fn transport_base_path(
 ) -> Option<Rc<Node>> {
     find_property(
         t.properties.clone(),
-        transport_path_key.clone(),
+        transport_path_key(),
         source_indices.clone(),
     )
 }
@@ -2544,7 +2544,7 @@ pub fn transport_base_url(
 ) -> Option<Rc<Node>> {
     find_property(
         t.properties.clone(),
-        transport_url_key.clone(),
+        transport_url_key(),
         source_indices.clone(),
     )
 }
@@ -2555,7 +2555,7 @@ pub fn transport_auth_token(
 ) -> Option<Rc<Node>> {
     find_property(
         t.properties.clone(),
-        transport_auth_token_key.clone(),
+        transport_auth_token_key(),
         source_indices.clone(),
     )
 }
@@ -2566,7 +2566,7 @@ pub fn transport_auth_header_name(
 ) -> Option<String> {
     find_property_string(
         t.properties.clone(),
-        transport_auth_header_key.clone(),
+        transport_auth_header_key(),
         source_indices.clone(),
     )
 }
@@ -2577,7 +2577,7 @@ pub fn transport_has_auth(
 ) -> bool {
     match find_property(
         t.properties.clone(),
-        transport_auth_token_key.clone(),
+        transport_auth_token_key(),
         source_indices.clone(),
     ) {
         Some(_) => true,
@@ -2591,7 +2591,7 @@ pub fn transport_method(
 ) -> Option<Rc<Node>> {
     find_property(
         t.properties.clone(),
-        transport_method_key.clone(),
+        transport_method_key(),
         source_indices.clone(),
     )
 }
@@ -2602,7 +2602,7 @@ pub fn transport_path_template(
 ) -> Option<Rc<Node>> {
     find_property(
         t.properties.clone(),
-        transport_path_template_key.clone(),
+        transport_path_template_key(),
         source_indices.clone(),
     )
 }
@@ -2613,7 +2613,7 @@ pub fn transport_query(
 ) -> Option<Rc<Node>> {
     find_property(
         t.properties.clone(),
-        transport_query_key.clone(),
+        transport_query_key(),
         source_indices.clone(),
     )
 }
@@ -2624,7 +2624,7 @@ pub fn transport_request_body(
 ) -> Option<Rc<Node>> {
     find_property(
         t.properties.clone(),
-        transport_body_key.clone(),
+        transport_body_key(),
         source_indices.clone(),
     )
 }
@@ -2635,7 +2635,7 @@ pub fn transport_stdin(
 ) -> Option<Rc<Node>> {
     find_property(
         t.properties.clone(),
-        transport_stdin_key.clone(),
+        transport_stdin_key(),
         source_indices.clone(),
     )
 }
@@ -2646,26 +2646,26 @@ pub fn transport_response_format(
 ) -> Option<Rc<Node>> {
     find_property(
         t.properties.clone(),
-        transport_response_format_key.clone(),
+        transport_response_format_key(),
         source_indices.clone(),
     )
 }
 
 pub fn is_config_reserved_key(name: String) -> bool {
-    ((((((((((((((name.clone() == transport_url_key.clone())
-        || (name.clone() == transport_path_key.clone()))
-        || (name.clone() == transport_auth_scheme_key.clone()))
-        || (name.clone() == transport_auth_header_key.clone()))
-        || (name.clone() == transport_auth_token_key.clone()))
-        || (name.clone() == transport_method_key.clone()))
-        || (name.clone() == transport_path_template_key.clone()))
-        || (name.clone() == transport_query_key.clone()))
-        || (name.clone() == transport_body_key.clone()))
-        || (name.clone() == transport_stdin_key.clone()))
-        || (name.clone() == transport_response_format_key.clone()))
-        || (name.clone() == transport_headers_key.clone()))
-        || (name.clone() == transport_auth_basic_key.clone()))
-        || (name.clone() == transport_tls_key.clone()))
+    ((((((((((((((name.clone() == transport_url_key())
+        || (name.clone() == transport_path_key()))
+        || (name.clone() == transport_auth_scheme_key()))
+        || (name.clone() == transport_auth_header_key()))
+        || (name.clone() == transport_auth_token_key()))
+        || (name.clone() == transport_method_key()))
+        || (name.clone() == transport_path_template_key()))
+        || (name.clone() == transport_query_key()))
+        || (name.clone() == transport_body_key()))
+        || (name.clone() == transport_stdin_key()))
+        || (name.clone() == transport_response_format_key()))
+        || (name.clone() == transport_headers_key()))
+        || (name.clone() == transport_auth_basic_key()))
+        || (name.clone() == transport_tls_key()))
 }
 
 pub fn transport_auth_basic(
@@ -2674,7 +2674,7 @@ pub fn transport_auth_basic(
 ) -> Option<Rc<Node>> {
     find_property(
         t.properties.clone(),
-        transport_auth_basic_key.clone(),
+        transport_auth_basic_key(),
         source_indices.clone(),
     )
 }
@@ -2685,7 +2685,7 @@ pub fn transport_tls_posture(
 ) -> Option<String> {
     match find_property(
         t.properties.clone(),
-        transport_tls_key.clone(),
+        transport_tls_key(),
         source_indices.clone(),
     ) {
         Some(n) => Some(authored_name_at(source_indices.clone(), n.clone())),

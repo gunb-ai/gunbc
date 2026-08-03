@@ -223,7 +223,7 @@ pub fn semver_scheme() -> Rc<VersionScheme> {
     thread_local! {
             static CACHED: Rc<VersionScheme> = {
                 Rc::new(VersionScheme {
-        compare: Rc::new(semver_identity_compare.clone()),
+        compare: Rc::new(semver_identity_compare),
     })
             };
         }

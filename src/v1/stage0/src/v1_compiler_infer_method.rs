@@ -34,7 +34,7 @@ pub fn filesystem_read_result_type() -> Rc<Node> {
         "FilesystemReadResult".to_string(),
         Rc::new(vec![make_kernel_record_field(
             "content".to_string(),
-            string_type.clone(),
+            string_type(),
         )]),
     )
 }
@@ -127,78 +127,66 @@ pub fn compile_dag_diagnostic_census_row_note() -> String {
 
 pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
     {
-        let m = seed_node_map("count".to_string(), int_type.clone());
-        let m = v1_rt::rc_map_insert(m.clone(), "string_length".to_string(), int_type.clone());
-        let m = v1_rt::rc_map_insert(m.clone(), "code_point".to_string(), int_type.clone());
-        let m = v1_rt::rc_map_insert(m.clone(), "to_int".to_string(), int_type.clone());
-        let m = v1_rt::rc_map_insert(m.clone(), "scan_while".to_string(), int_type.clone());
-        let m = v1_rt::rc_map_insert(m.clone(), "scan_string_end".to_string(), int_type.clone());
-        let m = v1_rt::rc_map_insert(m.clone(), "scan_to_eol".to_string(), int_type.clone());
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "skip_horizontal_ws".to_string(),
-            int_type.clone(),
-        );
+        let m = seed_node_map("count".to_string(), int_type());
+        let m = v1_rt::rc_map_insert(m.clone(), "string_length".to_string(), int_type());
+        let m = v1_rt::rc_map_insert(m.clone(), "code_point".to_string(), int_type());
+        let m = v1_rt::rc_map_insert(m.clone(), "to_int".to_string(), int_type());
+        let m = v1_rt::rc_map_insert(m.clone(), "scan_while".to_string(), int_type());
+        let m = v1_rt::rc_map_insert(m.clone(), "scan_string_end".to_string(), int_type());
+        let m = v1_rt::rc_map_insert(m.clone(), "scan_to_eol".to_string(), int_type());
+        let m = v1_rt::rc_map_insert(m.clone(), "skip_horizontal_ws".to_string(), int_type());
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "parse_int".to_string(),
-            with_optional_cardinality(int_type.clone()),
+            with_optional_cardinality(int_type()),
         );
-        let m = v1_rt::rc_map_insert(m.clone(), "char_at".to_string(), string_type.clone());
-        let m = v1_rt::rc_map_insert(m.clone(), "substring".to_string(), string_type.clone());
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "from_code_point".to_string(),
-            string_type.clone(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "chars_to_string".to_string(),
-            string_type.clone(),
-        );
+        let m = v1_rt::rc_map_insert(m.clone(), "char_at".to_string(), string_type());
+        let m = v1_rt::rc_map_insert(m.clone(), "substring".to_string(), string_type());
+        let m = v1_rt::rc_map_insert(m.clone(), "from_code_point".to_string(), string_type());
+        let m = v1_rt::rc_map_insert(m.clone(), "chars_to_string".to_string(), string_type());
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "record_source_chars_index_lookup".to_string(),
-            unit_type.clone(),
+            unit_type(),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "resolution_silent_pick_is_enabled".to_string(),
-            bool_type.clone(),
+            bool_type(),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "name_resolution_policy_is_namespace_only".to_string(),
-            bool_type.clone(),
+            bool_type(),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "type_ref_hit_ne_bind_measure_active".to_string(),
-            bool_type.clone(),
+            bool_type(),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "resolution_silent_pick_record_global_bare_lcp_pick".to_string(),
-            unit_type.clone(),
+            unit_type(),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "resolution_silent_pick_record_global_bare_lcp_tie".to_string(),
-            unit_type.clone(),
+            unit_type(),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "resolution_silent_pick_record_fn_parent_first_hit".to_string(),
-            unit_type.clone(),
+            unit_type(),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "resolution_divergence_silent_pick_gate_in_process".to_string(),
-            bool_type.clone(),
+            bool_type(),
         );
-        let m = v1_rt::rc_map_insert(m.clone(), "to_string".to_string(), string_type.clone());
-        let m = v1_rt::rc_map_insert(m.clone(), "discriminant".to_string(), string_type.clone());
-        let m = v1_rt::rc_map_insert(m.clone(), "concat".to_string(), string_type.clone());
+        let m = v1_rt::rc_map_insert(m.clone(), "to_string".to_string(), string_type());
+        let m = v1_rt::rc_map_insert(m.clone(), "discriminant".to_string(), string_type());
+        let m = v1_rt::rc_map_insert(m.clone(), "concat".to_string(), string_type());
         let m = v1_rt::rc_map_insert(m.clone(), "map_insert".to_string(), map_of_type_variables());
         let m = v1_rt::rc_map_insert(m.clone(), "map_merge".to_string(), map_of_type_variables());
         let m = v1_rt::rc_map_insert(m.clone(), "with".to_string(), map_of_type_variables());
@@ -211,13 +199,13 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         let m = v1_rt::rc_map_insert(m.clone(), "empty_set".to_string(), set_ty.clone());
         let m = v1_rt::rc_map_insert(m.clone(), "set_insert".to_string(), set_ty.clone());
         let m = v1_rt::rc_map_insert(m.clone(), "set_union".to_string(), set_ty.clone());
-        let m = v1_rt::rc_map_insert(m.clone(), "map_contains_key".to_string(), bool_type.clone());
-        let m = v1_rt::rc_map_insert(m.clone(), "map_has".to_string(), bool_type.clone());
-        let m = v1_rt::rc_map_insert(m.clone(), "map_is_empty".to_string(), bool_type.clone());
-        let m = v1_rt::rc_map_insert(m.clone(), "rc_ptr_eq".to_string(), bool_type.clone());
-        let m = v1_rt::rc_map_insert(m.clone(), "rc_vec_ptr_eq".to_string(), bool_type.clone());
-        let m = v1_rt::rc_map_insert(m.clone(), "emit_map_has".to_string(), bool_type.clone());
-        let m = v1_rt::rc_map_insert(m.clone(), "set_contains".to_string(), bool_type.clone());
+        let m = v1_rt::rc_map_insert(m.clone(), "map_contains_key".to_string(), bool_type());
+        let m = v1_rt::rc_map_insert(m.clone(), "map_has".to_string(), bool_type());
+        let m = v1_rt::rc_map_insert(m.clone(), "map_is_empty".to_string(), bool_type());
+        let m = v1_rt::rc_map_insert(m.clone(), "rc_ptr_eq".to_string(), bool_type());
+        let m = v1_rt::rc_map_insert(m.clone(), "rc_vec_ptr_eq".to_string(), bool_type());
+        let m = v1_rt::rc_map_insert(m.clone(), "emit_map_has".to_string(), bool_type());
+        let m = v1_rt::rc_map_insert(m.clone(), "set_contains".to_string(), bool_type());
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "lookup".to_string(),
@@ -263,27 +251,23 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
             "list_push".to_string(),
             list_of_type_variable("collection_element".to_string()),
         );
-        let m = v1_rt::rc_map_insert(m.clone(), "hash_combine".to_string(), hash_type.clone());
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "atom_identity_hash".to_string(),
-            hash_type.clone(),
-        );
-        let m = v1_rt::rc_map_insert(m.clone(), "trace_mark".to_string(), unit_type.clone());
+        let m = v1_rt::rc_map_insert(m.clone(), "hash_combine".to_string(), hash_type());
+        let m = v1_rt::rc_map_insert(m.clone(), "atom_identity_hash".to_string(), hash_type());
+        let m = v1_rt::rc_map_insert(m.clone(), "trace_mark".to_string(), unit_type());
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "observed_peak_resident_bytes".to_string(),
-            int_type.clone(),
+            int_type(),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "observed_monotonic_nanos".to_string(),
-            int_type.clone(),
+            int_type(),
         );
-        let m = v1_rt::rc_map_insert(m.clone(), "string_contains".to_string(), bool_type.clone());
-        let m = v1_rt::rc_map_insert(m.clone(), "length".to_string(), int_type.clone());
-        let m = v1_rt::rc_map_insert(m.clone(), "starts_with".to_string(), bool_type.clone());
-        let m = v1_rt::rc_map_insert(m.clone(), "replace".to_string(), string_type.clone());
+        let m = v1_rt::rc_map_insert(m.clone(), "string_contains".to_string(), bool_type());
+        let m = v1_rt::rc_map_insert(m.clone(), "length".to_string(), int_type());
+        let m = v1_rt::rc_map_insert(m.clone(), "starts_with".to_string(), bool_type());
+        let m = v1_rt::rc_map_insert(m.clone(), "replace".to_string(), string_type());
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "filesystem_read".to_string(),
@@ -302,7 +286,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "emit_host_native_cache_evict".to_string(),
-            bool_type.clone(),
+            bool_type(),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
@@ -332,7 +316,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "extdeps_qualified_name_resolves_in_derived_module_set".to_string(),
-            bool_type.clone(),
+            bool_type(),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
@@ -342,37 +326,29 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "extdeps_external_authority_live_clean_tree_holds".to_string(),
-            bool_type.clone(),
+            bool_type(),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "extdeps_external_authority_live_roster_module_count".to_string(),
-            int_type.clone(),
+            int_type(),
         );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "doc_graph_orphan_count".to_string(),
-            int_type.clone(),
-        );
+        let m = v1_rt::rc_map_insert(m.clone(), "doc_graph_orphan_count".to_string(), int_type());
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "doc_graph_admitted_root_count".to_string(),
-            int_type.clone(),
+            int_type(),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "doc_graph_dangling_link_count".to_string(),
-            int_type.clone(),
+            int_type(),
         );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "doc_graph_doc_count".to_string(),
-            int_type.clone(),
-        );
+        let m = v1_rt::rc_map_insert(m.clone(), "doc_graph_doc_count".to_string(), int_type());
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "compile_dag_rust_emit_check".to_string(),
-            bool_type.clone(),
+            bool_type(),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
@@ -382,37 +358,37 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "witness_layer_roots_compile_clean_check".to_string(),
-            bool_type.clone(),
+            bool_type(),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "witness_layer_roots_compile_clean_emit_check".to_string(),
-            bool_type.clone(),
+            bool_type(),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "consume_floor_compile_clean_gate_verdict".to_string(),
-            bool_type.clone(),
+            bool_type(),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "witness_compile_clean_cli_floor_verdicts_agree".to_string(),
-            bool_type.clone(),
+            bool_type(),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "test_migration_debt_module_count".to_string(),
-            int_type.clone(),
+            int_type(),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "test_migration_debt_total_loc".to_string(),
-            int_type.clone(),
+            int_type(),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "test_migration_debt_total_test_fns".to_string(),
-            int_type.clone(),
+            int_type(),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
@@ -422,7 +398,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "test_migration_debt_known_covered_module_is_not_debt".to_string(),
-            bool_type.clone(),
+            bool_type(),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
@@ -437,12 +413,12 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "test_migration_behavior_discovery_holds".to_string(),
-            bool_type.clone(),
+            bool_type(),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "test_migration_delete_guard_holds".to_string(),
-            bool_type.clone(),
+            bool_type(),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
@@ -457,37 +433,33 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "inert_carrier_declared_count".to_string(),
-            int_type.clone(),
+            int_type(),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "inert_lens_unreached_module_count".to_string(),
-            int_type.clone(),
+            int_type(),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "inert_lens_top_level_module_count".to_string(),
-            int_type.clone(),
+            int_type(),
         );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "non_fold_residue_count".to_string(),
-            int_type.clone(),
-        );
+        let m = v1_rt::rc_map_insert(m.clone(), "non_fold_residue_count".to_string(), int_type());
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "non_fold_residue_unrostered_count".to_string(),
-            int_type.clone(),
+            int_type(),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "non_fold_residue_stale_roster_count".to_string(),
-            int_type.clone(),
+            int_type(),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "non_fold_residue_coproduct_universe_count".to_string(),
-            int_type.clone(),
+            int_type(),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
@@ -497,37 +469,37 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "commit_witness_claim_roster_unresolvable_count".to_string(),
-            int_type.clone(),
+            int_type(),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "commit_witness_claim_pair_resolvable".to_string(),
-            bool_type.clone(),
+            bool_type(),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "non_fold_residue_wildcard_red_fixture_holds".to_string(),
-            bool_type.clone(),
+            bool_type(),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "non_fold_residue_total_fold_green_fixture_holds".to_string(),
-            bool_type.clone(),
+            bool_type(),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "non_fold_residue_roster_red_fixture_holds".to_string(),
-            bool_type.clone(),
+            bool_type(),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "non_fold_residue_synthetic_unrostered_red_holds".to_string(),
-            bool_type.clone(),
+            bool_type(),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "complexity_linearity_syntactic_finding_count".to_string(),
-            int_type.clone(),
+            int_type(),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
@@ -537,7 +509,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "complexity_linearity_syntactic_site_fired".to_string(),
-            bool_type.clone(),
+            bool_type(),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
@@ -547,22 +519,22 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "fallback_arm_census_class_count".to_string(),
-            int_type.clone(),
+            int_type(),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "fallback_arm_census_total".to_string(),
-            int_type.clone(),
+            int_type(),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "fallback_arm_census_reconciliation_holds".to_string(),
-            bool_type.clone(),
+            bool_type(),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "census_corpus_roots_follow_layer_authority".to_string(),
-            bool_type.clone(),
+            bool_type(),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
@@ -617,36 +589,36 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "languages_consumer_census_data_decl_count".to_string(),
-            int_type.clone(),
+            int_type(),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "languages_consumer_census_per_language_row_count".to_string(),
-            int_type.clone(),
+            int_type(),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "languages_consumer_census_format_row_count".to_string(),
-            int_type.clone(),
+            int_type(),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "languages_consumer_census_external_consumer_count".to_string(),
-            int_type.clone(),
+            int_type(),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "languages_consumer_census_is_composition_only".to_string(),
-            bool_type.clone(),
+            bool_type(),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "languages_consumer_census_has_external_consumer".to_string(),
-            bool_type.clone(),
+            bool_type(),
         );
-        let m = v1_rt::rc_map_insert(m.clone(), "is_xid_start".to_string(), bool_type.clone());
-        let m = v1_rt::rc_map_insert(m.clone(), "is_xid_continue".to_string(), bool_type.clone());
-        let m = v1_rt::rc_map_insert(m.clone(), "is_emoji_ident".to_string(), bool_type.clone());
+        let m = v1_rt::rc_map_insert(m.clone(), "is_xid_start".to_string(), bool_type());
+        let m = v1_rt::rc_map_insert(m.clone(), "is_xid_continue".to_string(), bool_type());
+        let m = v1_rt::rc_map_insert(m.clone(), "is_emoji_ident".to_string(), bool_type());
         m.clone()
     }
 }
@@ -658,6 +630,6 @@ pub fn infer_builtin_call_type(name: String) -> Option<Rc<Node>> {
 pub fn resolve_builtin_call_type(name: String) -> Rc<Node> {
     match infer_builtin_call_type(name.clone()) {
         Some(v) => v.clone(),
-        None => unit_type,
+        None => unit_type(),
     }
 }

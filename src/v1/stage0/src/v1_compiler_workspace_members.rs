@@ -38,7 +38,7 @@ pub fn stage0_workspace_member_region() -> String {
                 .clone()
                 .iter()
                 .cloned()
-                .map(stage0_member_entry.clone())
+                .map(stage0_member_entry)
                 .collect::<Vec<_>>(),
         )
         .join(&"\n".to_string()),

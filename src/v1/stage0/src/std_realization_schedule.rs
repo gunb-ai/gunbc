@@ -890,7 +890,7 @@ pub fn scoped_witness_execution_receipt_decode(
         );
         if (((lines.clone().len() as i64) < 2)
             || (lines.clone().first().cloned().as_deref()
-                != Some(scoped_witness_execution_receipt_header.clone()).as_deref()))
+                != Some(scoped_witness_execution_receipt_header()).as_deref()))
         {
             Rc::new(
                 ScopedWitnessExecutionReceiptDecode::ScopedWitnessExecutionReceiptRefused {

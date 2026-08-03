@@ -465,7 +465,7 @@ pub fn get_exported_names(
                 v1_rt::concat(item_names.clone(), variant_names.clone()),
                 imported_names.clone(),
             ),
-            Rc::new(v1_rt::map_keys(&kernel_type_set)),
+            Rc::new(v1_rt::map_keys(&kernel_type_set())),
         )
     }
 }
