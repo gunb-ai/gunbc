@@ -60,22 +60,46 @@ Capability requirements are **conjunctive**. An interface is never ranked by a
 score, because a score lets strength on one axis buy back a missing hard
 requirement.
 
-## 2. Source inspection is not host provisioning
+## 2. Two different chains: research evidence and runtime delivery
 
 The first revision treated "not installed on srv1" as "not groundable," and
 proposed landing runtime typed-absence rows in place of finishing the census.
-That conflated four distinct stages:
+The correction is not one longer chain but **two chains that must not be
+confused**.
+
+**Research evidence** — what this audit performs:
 
 ```
-source inspected
-→ artifact acquired and hashed
-→ artifact provisioned on a runtime host
-→ interface admitted by conformance
+source authority
+→ disposable acquisition
+→ inspection
+→ evidence receipt
 ```
 
-Research needs only the first two, in a disposable probe directory, with nothing
-entering the srv1 dependency closure. Both SDKs were acquired and inspected that
-way for this revision (§4, §6); the probe directory is discarded.
+Research needs no host provisioning. Both SDKs were acquired and inspected in a
+disposable probe directory (§4, §6, §7) with nothing entering the srv1
+dependency closure, and the directory was discarded.
+
+**Runtime dependency delivery** — what an execution actually requires:
+
+```
+dependency requirement authored
+→ exact selection / lock graph
+→ package artifacts acquired
+→ artifact integrity admitted
+→ package graph materialized
+→ executable/module export bound
+→ runtime bundle assembled
+→ bundle provisioned
+→ installed bundle read back
+→ provider interface admitted
+```
+
+"Acquired package" and "provisioned interface" are separated by load-bearing
+facts that cannot stay implicit: transitive selection, platform/architecture
+package selection, package-manager and lock-format identity, package lifecycle
+scripts, module/export resolution, runtime/toolchain identity, materialized tree
+identity, and release-bundle identity.
 
 ```dag
 type ProviderInterfaceSourceReceipt
@@ -88,6 +112,83 @@ Only a `ProviderInterfaceAdmissionReceipt` may construct a live
 `ProviderInterfaceOffer`. A research receipt may truthfully say
 `ArtifactNotYetAcquired`; that absence must never enter `ProviderInventory` as
 though it were an offer.
+
+### 2.1 This is a package-management gap, not a provider problem
+
+The repository already holds pieces of the answer — exact pinning as a generic
+dimension (`extdeps.pin` `Pin<Subject>`), observed executable identity,
+readiness reconciliation (`gunbc.tool_readiness`), content-addressed artifacts,
+and a genuine acquire → verify → atomically-materialize flow in the Ubuntu
+install-media path. What does not exist is **one production dependency-delivery
+path** joining them. Today `extdeps.tools` resolves by `which` and returns a
+human hint on miss; `tool_readiness` appears only in its declaration and its
+witness; provider executables are ambient host state that deployment merely
+verifies; and the emit-host transport still does `curl | tar` for Node 22.22.3
+without an artifact digest and `npx -y -p typescript@5.9.2` at execution time.
+
+The SDK work must therefore **not** open another bespoke npm lane. The common
+lifecycle is generic; ecosystem semantics stay local. Cargo is not reimplemented
+— it is modelled as one ecosystem realization, and `Cargo.lock` later projects
+into the same semantic roles.
+
+```dag
+type PackageCoordinate      { ecosystem: PackageEcosystem, name: NonEmptyStr }
+type PackageRequirement     { package: PackageCoordinate, version_constraint: VersionConstraint }
+type PackageRelease         { package: PackageCoordinate, version: VersionIdentity }
+type PackageSelection       { pin: Pin<PackageRelease>, source: PackageArtifactSource }
+type PackageDependencyEdge  { consumer: PackageSelection, dependency: PackageSelection,
+                              kind: PackageDependencyKind }
+type PackageLockGraph {
+  manager: PackageManagerArtifactIdentity
+  roots: List<PackageSelection>
+  selections: List<PackageSelection>
+  edges: List<PackageDependencyEdge>
+  lock_identity: ContentHash
+}
+```
+
+Materialization is a separate effect, and lifecycle scripts are an admitted
+effect rather than an invisible part of "install":
+
+```dag
+type PackageInstallScriptPolicy
+  = PackageInstallScriptsForbidden
+  | PackageInstallScriptsAdmitted { scripts: List<AdmittedPackageInstallScript> }
+```
+
+Default is forbidden. **Measured, and it is satisfiable:** the acquisition in §7
+produced a 125-entry lock closure in which **zero packages declare an install
+script**, so neither SDK forces the policy open.
+
+### 2.2 Delivery posture, and the update law
+
+```dag
+type DependencyDeliveryPosture
+  = ReleaseBundled
+  | ProvisionFromPinnedArtifacts { acquisition: PackageAcquisitionPlan }
+```
+
+Provider interfaces initially require `ReleaseBundled` — one immutable release
+closure, provisioned atomically, not necessarily one ELF. At runtime there is no
+`npm install`, no registry access, no `npx -p`, no global `node_modules`, no
+ambient `/usr/bin/node`, and no "if missing, download it" branch. Credentials
+stay external user/provider state and are never bundled. A later installation
+may explicitly choose `ProvisionFromPinnedArtifacts`, carrying source, exact
+lock, artifact integrity, destination, and read-back — never as an automatic
+fallback when the bundle is absent.
+
+**The update law**, which pinning alone does not supply:
+
+```
+the runtime never resolves latest
+the runtime never runs npm update
+the build never silently rewrites the lock
+```
+
+Updating is an explicit operation: current requirement + current lock → proposed
+exact version change → isolated resolver → new lock graph → acquire and verify →
+rebuild runtime bundle → regenerate protocol/conformance receipts → reviewed
+diff.
 
 ## 3. Codex app-server — OBSERVED, and the correct next interface
 
@@ -395,16 +496,16 @@ type ProviderControlInterface
   | ClaudeInterface { interface: ClaudeControlInterface }
   | CursorInterface { interface: CursorControlInterface }
 
-type ProviderInterfaceArtifactIdentity {
-  interface: ProviderControlInterface
-  artifact_digest: ContentHash
-  artifact_version: NonEmptyStr
-  protocol_identity: ProviderProtocolIdentity
+type ProviderInterfaceRuntimeIdentity {
+  package_closure: PackageClosureIdentity
+  runtime_toolchain: RuntimeToolchainIdentity
+  adapter_artifact: ContentHash
+  protocol_identity: ProviderProtocolArtifactIdentity
 }
 
 type ProviderInterfaceBinding {
   provider: ProviderKind
-  artifact: ProviderInterfaceArtifactIdentity
+  runtime: ProviderInterfaceRuntimeIdentity
   credential: DispatchCredentialBindingIdentity
   entitlement_subject: ProviderEntitlementSubject
   workspace: ProviderWorkspaceBinding
@@ -422,6 +523,35 @@ type DispatchResolvedExecution {
 
 One nested binding is the structural source. Its members are never copied into
 sibling fields.
+
+**A single artifact digest cannot answer the runtime**, which is why the
+identity is a closure. A Cursor local realization depends on the gunbc adapter
+source, its compiled JavaScript, `@cursor/sdk`, the transitive JS closure, a
+platform-native package, an exact Node runtime, the materialization semantics,
+and the selected SDK export. Claude adds the exact Claude executable *beneath*
+the SDK; Codex adds the package/binary plus generated schema plus the gunbc
+control client.
+
+**A package is a delivery unit; what the program consumes is an executable or a
+module.** `@openai/codex` supplies the `codex` executable; `@cursor/sdk` and
+`@anthropic-ai/claude-agent-sdk` supply module exports. That distinction is
+explicit, so CLI-tool management and SDK management share one delivery spine
+without pretending an SDK is a `CliTool`:
+
+```dag
+type PackageConsumerBinding
+  = PackageExecutableBinding {
+      package: PackageSelection
+      executable_name: NonEmptyStr
+      realized_path: FilePath
+    }
+  | PackageModuleBinding {
+      package: PackageSelection
+      import_specifier: NonEmptyStr
+      export_path: NonEmptyStr
+      module_format: ModuleFormat
+    }
+```
 
 Workspace stays a realization, never a Boolean `cloud: true`:
 
