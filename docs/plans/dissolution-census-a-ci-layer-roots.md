@@ -46,8 +46,8 @@ Five carriers hold all prose. Three are **already row-typed** with `reason` + `d
 | `WitnessExclusionRow` | 154 | 49 | PATH POLICY roster — pattern + `WitnessConsumerCadence` + reason/dissolve |
 | `SubstrateLongLaneRow` | 46 | 46 | Falsifier batch 6 — Class C long-lane hermetic witnesses |
 | `RehomedBinWetRow` | 18 | 18 | Falsifier batch 5 — over-budget bin-execution witnesses |
-| `module `*_note`` | 24 | 24 | Authority essays — lane policies, reconciliation receipts |
-| ``excl_*` shared templates` | 21 | 21 | Classification-scoped reason/dissolve templates (§3 nicknaming half-fixed) |
+| module `*_note` | 24 | 24 | Authority essays — lane policies, reconciliation receipts |
+| `excl_*` shared templates | 21 | 21 | Classification-scoped reason/dissolve templates (§3 nicknaming half-fixed) |
 
 ---
 

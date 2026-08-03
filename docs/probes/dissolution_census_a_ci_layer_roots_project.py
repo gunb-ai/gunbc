@@ -158,6 +158,13 @@ def format_kib(bytes_val: int) -> str:
     return f"{bytes_val / 1024:.1f} KiB"
 
 
+def format_structural_group_cell(label: str) -> str:
+    """Table cell for a structural group name; labels may already carry inline code."""
+    if "`" in label:
+        return label
+    return f"`{label}`"
+
+
 def render_markdown(summary: dict, rows: list[dict[str, str | int | bool]]) -> str:
     obs = summary["observation"]
     inline_by_group = inline_prose_by_group(rows)
@@ -273,7 +280,7 @@ def render_markdown(summary: dict, rows: list[dict[str, str | int | bool]]) -> s
             role = "Authority essays — lane policies, reconciliation receipts"
         else:
             role = "Classification-scoped reason/dissolve templates (§3 nicknaming half-fixed)"
-        lines.append(f"| `{label}` | {sites} | {inline} | {role} |")
+        lines.append(f"| {format_structural_group_cell(label)} | {sites} | {inline} | {role} |")
 
     lines.extend(
         [
