@@ -66,6 +66,8 @@ pub mod std_induction;
 pub mod std_integer;
 pub mod std_interface_summary;
 pub mod std_iteration;
+pub mod std_keyed_roster;
+pub mod std_keyed_row;
 pub mod std_logic;
 pub mod std_machine_constraints;
 pub mod std_magnitude;

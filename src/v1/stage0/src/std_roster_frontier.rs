@@ -6,6 +6,10 @@ use self::FrontierSubject::*;
 use crate::std_decl_ref::DeclField::{NamedField, WholeDeclaration};
 pub use crate::std_decl_ref::{decl_field_ref, decl_ref};
 pub use crate::std_decl_ref::{DeclField, DeclarationRef};
+pub use crate::std_keyed_roster::keyed_roster_build;
+pub use crate::std_keyed_roster::KeyedRosterBuild;
+use crate::std_keyed_roster::KeyedRosterBuild::{KeyedRosterBuildDuplicateKey, KeyedRosterBuilt};
+pub use crate::std_keyed_row::KeyedRow;
 pub use crate::std_types::NonEmptyStr;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -171,14 +175,59 @@ pub fn frontier_rows_well_formed(rows: Rc<Vec<Rc<FrontierRow>>>) -> bool {
         })
 }
 
+pub fn declaration_ref_display_key(ref_: Rc<DeclarationRef>) -> String {
+    match (*ref_.field.clone()).clone() {
+        DeclField::WholeDeclaration => v1_rt::concat(
+            ref_.module_path.clone(),
+            v1_rt::concat("::".to_string(), ref_.decl_name.clone()),
+        ),
+        DeclField::NamedField { field_name: f, .. } => v1_rt::concat(
+            ref_.module_path.clone(),
+            v1_rt::concat(
+                "::".to_string(),
+                v1_rt::concat(
+                    ref_.decl_name.clone(),
+                    v1_rt::concat("::".to_string(), f.clone()),
+                ),
+            ),
+        ),
+    }
+}
+
+pub fn frontier_subject_eq(a: Rc<FrontierSubject>, b: Rc<FrontierSubject>) -> bool {
+    (a.clone() == b.clone())
+}
+
 pub fn frontier_subject_key(subject: Rc<FrontierSubject>) -> String {
     match (*subject.clone()).clone() {
         FrontierSubject::PathSubject { path: p, .. } => p.clone(),
-        FrontierSubject::DeclSubject { ref_: r, .. } => v1_rt::concat(
-            r.module_path.clone(),
-            v1_rt::concat("::".to_string(), r.decl_name.clone()),
-        ),
+        FrontierSubject::DeclSubject { ref_: r, .. } => declaration_ref_display_key(r.clone()),
     }
+}
+
+pub fn frontier_rows_to_keyed_rows(
+    rows: Rc<Vec<Rc<FrontierRow>>>,
+) -> Rc<Vec<Rc<KeyedRow<Rc<FrontierSubject>, Rc<FrontierRow>>>>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for row in rows.clone().iter().cloned() {
+            __result.push(Rc::new(KeyedRow {
+                row_key: row.subject.clone(),
+                value: row.clone(),
+                _phantom: std::marker::PhantomData,
+            }));
+        }
+        __result
+    })
+}
+
+pub fn frontier_rows_keyed_roster_build(
+    rows: Rc<Vec<Rc<FrontierRow>>>,
+) -> Rc<KeyedRosterBuild<Rc<FrontierSubject>, Rc<FrontierRow>>> {
+    keyed_roster_build(
+        frontier_rows_to_keyed_rows(rows.clone()),
+        frontier_subject_eq,
+    )
 }
 
 pub fn frontier_path_subjects(rows: Rc<Vec<Rc<FrontierRow>>>) -> Rc<Vec<String>> {

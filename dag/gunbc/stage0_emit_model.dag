@@ -14,4 +14,3 @@ fn generated_stage0_file_count() -> Int {
 fn is_generated_stage0_file(basename: String) -> Bool {
   list_contains_string(xs: generated_stage0_files, needle: basename)
 }
-

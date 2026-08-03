@@ -67,6 +67,8 @@ use crate::resolved_graph_cache::{
 };
 use crate::std_content_hash::fnv1a64_structural_hex_digest;
 use crate::std_interface_summary::{module_key, typed_module_key};
+use crate::std_keyed_roster::{keyed_roster_build, KeyedRosterBuild};
+use crate::std_keyed_row::KeyedRow;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ResolveTypecheckGate {
@@ -817,6 +819,34 @@ mod process_workspace_root_tests {
         assert_eq!(
             super::CLI_RUN_COMPILE_CLEAN_UNLISTED_IMPORT_CENSUS_SCAFFOLD_MARKER,
             "cli_run_compile_clean_unlisted_import_census"
+        );
+    }
+
+    #[test]
+    fn compile_clean_shard_entry_paths_fast_scaffold_marker_is_declared() {
+        assert_eq!(
+            super::CLI_RUN_COMPILE_CLEAN_SHARD_ENTRY_PATHS_FAST_SCAFFOLD_MARKER,
+            "cli_run_compile_clean_shard_entry_paths_fast"
+        );
+    }
+
+    #[test]
+    fn compile_clean_shard_entry_paths_fast_scaffold_marker_declaration_is_singular() {
+        let source = std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/cli_run.rs"),
+        )
+        .expect("read cli_run.rs");
+        let count = source
+            .lines()
+            .filter(|line| {
+                line.starts_with(
+                    "pub(crate) const CLI_RUN_COMPILE_CLEAN_SHARD_ENTRY_PATHS_FAST_SCAFFOLD_MARKER",
+                )
+            })
+            .count();
+        assert_eq!(
+            count, 1,
+            "hand-Rust receipt census: declaration grain must appear exactly once"
         );
     }
 
@@ -1902,7 +1932,10 @@ pub fn compile_clean_live_pipeline_module_paths() -> Vec<String> {
     let pool_roots = default_source_roots();
     let facts = build_module_graph_facts_live(&pool_roots);
     let mut paths = BTreeSet::new();
-    for entry in compile_clean_shard_entry_paths_fast() {
+    let roster = compile_clean_shard_entry_paths_fast().unwrap_or_else(|reason| {
+        panic!("compile_clean_live_pipeline_module_paths: {reason}");
+    });
+    for entry in roster {
         for path in import_closure_live_paths_with_facts(&entry, &facts) {
             paths.insert(path);
         }
@@ -2673,8 +2706,24 @@ fn compile_clean_scope_plan_from_touched_paths(
             eprintln!("compile-clean scope: {reason}");
             Ok(CompileCleanScopePlan::WholeTree)
         }
+        v1_interpreter::Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } if ctx.sym_eq(*variant_name, "RefuseShardRosterDuplicate") => {
+            let reason = match ctx.field(fields, "reason") {
+                Some(v1_interpreter::Value::Str(r)) => r.clone(),
+                _ => {
+                    return Err(
+                        "RefuseShardRosterDuplicate missing `reason` string field".to_string(),
+                    )
+                }
+            };
+            eprintln!("compile-clean scope: refused ({reason})");
+            Ok(CompileCleanScopePlan::Refused { reason })
+        }
         other => Err(format!(
-            "compile_clean_scope_disposition_from_diff returned `{}`, expected ScopedRun | SkipNoAffectedEntries | RequireWholeTree",
+            "compile_clean_scope_disposition_from_diff returned `{}`, expected ScopedRun | SkipNoAffectedEntries | RequireWholeTree | RefuseShardRosterDuplicate",
             ctx.format_value(other)
         )),
     }
@@ -2690,25 +2739,66 @@ fn compile_clean_source_roots() -> Vec<String> {
     roots
 }
 
+// DELETE WHEN dissolved: `compile_clean_shard_entry_paths_from_decl_facts`,
+// `compile_clean_shard_entry_paths_fast` keyed-roster host mirror, and
+// `compile_clean_shard_entry_paths_fast_refuses_duplicate_path_keys` test (~50 LOC).
+// Receipt (declaration grain; bare marker token is multi-hit by design — scaffold
+// header / doc comment / unit test). Executable pin that does NOT self-match this
+// comment (IDENT and TYPE_ANN are on separate lines here; contiguous only on the
+// declaration):
+//   IDENT=CLI_RUN_COMPILE_CLEAN_SHARD_ENTRY_PATHS_FAST_SCAFFOLD_MARKER
+//   TYPE_ANN=: &str =
+//   rg -F "${IDENT}${TYPE_ANN}" src/v1/stage0/src/cli_run.rs   # == 1 until deletion
+// Witness: dag/test/claim/compile_clean_shard_entry_paths_fast_hand_rust_witness_test.dag;
+// dissolve-on: tools.dag_compile_clean_shard_roster compile_clean_shard_entry_paths_fast_hand_rust_dissolve_trigger.
+pub(crate) const CLI_RUN_COMPILE_CLEAN_SHARD_ENTRY_PATHS_FAST_SCAFFOLD_MARKER: &str =
+    "cli_run_compile_clean_shard_entry_paths_fast";
+
 /// Host realization of `tools.dag_compile_clean_shard_roster.compile_clean_shard_entry_paths`
 /// without resolving `dag_compile_clean_scope.dag` (the interpreter path cold-scans ~minutes).
+///
+/// INTERIM hand-Rust scaffold (`CLI_RUN_COMPILE_CLEAN_SHARD_ENTRY_PATHS_FAST_SCAFFOLD_MARKER` / §7):
+/// routes shard roster construction through `std.keyed_roster.keyed_roster_build` on the floor
+/// CI hot path — same authority as the modeled `compile_clean_shard_entry_paths_from`, not a
+/// parallel duplicate-key policy. Duplicate path keys refuse (terminal `Refused` disposition),
+/// never sort/dedup absorption.
 /// Entry roots are ALL of `witness_layer_roots` — the same tree the whole-tree gate
 /// compiles — mirroring `tools.dag_compile_clean_partition.compile_clean_partition_boundary`
 /// (see its note: a roster that is a strict subset of the compiled tree both widened
 /// src/v2-only diffs to whole-tree and left affected src/v2 importers unselected on
 /// scoped runs).
-fn compile_clean_shard_entry_paths_fast() -> Vec<String> {
+fn compile_clean_shard_entry_paths_from_decl_facts(
+    decl_facts: &[ModuleDeclarationFactRaw],
+) -> Result<Vec<String>, String> {
+    let incomings: Rc<im::Vector<Rc<KeyedRow<String, ModuleDeclarationFactRaw>>>> = Rc::new(
+        decl_facts
+            .iter()
+            .map(|decl| {
+                let path = workspace_relative_repo_path(&decl.path);
+                Rc::new(KeyedRow {
+                    row_key: path,
+                    value: decl.clone(),
+                    _phantom: std::marker::PhantomData,
+                })
+            })
+            .collect(),
+    );
+    match keyed_roster_build(incomings, |a: String, b: String| a == b).as_ref() {
+        KeyedRosterBuild::KeyedRosterBuilt { rows } => {
+            Ok(rows.iter().map(|row| row.row_key.clone()).collect())
+        }
+        KeyedRosterBuild::KeyedRosterBuildDuplicateKey { key, .. } => Err(format!(
+            "shard roster construction refused duplicate path key at admission: {key}"
+        )),
+    }
+}
+
+fn compile_clean_shard_entry_paths_fast() -> Result<Vec<String>, String> {
     let entry_roots: Vec<String> = witness_layer_roots()
         .iter()
         .map(|root| anchor_source_root(root))
         .collect();
-    let mut paths: Vec<String> = module_declaration_facts(&entry_roots)
-        .into_iter()
-        .map(|decl| workspace_relative_repo_path(&decl.path))
-        .collect();
-    paths.sort();
-    paths.dedup();
-    paths
+    compile_clean_shard_entry_paths_from_decl_facts(&module_declaration_facts(&entry_roots))
 }
 
 /// Floor CI hot path: mirrors `compile_clean_scope_disposition_from_diff`
@@ -2717,10 +2807,34 @@ fn compile_clean_shard_entry_paths_fast() -> Vec<String> {
 /// `compile_clean_shard_entry_paths()`. Selection reuses the SAME certified realization
 /// as the discovery-corpus channel (`entry_file_touched_via_import_closure`); every arm
 /// that cannot answer falls back to the gate's whole-tree baseline, loudly.
+///
+/// Roster construction matches `compile_clean_scope_disposition_from_diff`: build and
+/// validate the keyed shard roster before any disposition arm, so duplicate path keys
+/// refuse even when the diff would otherwise skip or widen to whole-tree.
 fn compile_clean_scope_plan_from_touched_paths_floor_fast(
     touched_paths: &[String],
     departed_paths: &HashSet<String>,
 ) -> CompileCleanScopePlan {
+    compile_clean_scope_plan_from_touched_paths_floor_fast_impl(
+        touched_paths,
+        departed_paths,
+        compile_clean_shard_entry_paths_fast(),
+    )
+}
+
+fn compile_clean_scope_plan_from_touched_paths_floor_fast_impl(
+    touched_paths: &[String],
+    departed_paths: &HashSet<String>,
+    roster: Result<Vec<String>, String>,
+) -> CompileCleanScopePlan {
+    let roster = match roster {
+        Ok(paths) => paths,
+        Err(reason) => {
+            eprintln!("compile-clean scope: refused ({reason})");
+            return CompileCleanScopePlan::Refused { reason };
+        }
+    };
+
     if touched_paths.is_empty() {
         // Mirrors `compile_clean_scope_disposition_probe`'s empty arm (#7412): an
         // observation that saw nothing is indistinguishable from one that could not
@@ -2776,7 +2890,7 @@ fn compile_clean_scope_plan_from_touched_paths_floor_fast(
     let facts = build_module_graph_facts_live(&pool_roots);
     let declared_paths = facts.declared_repo_paths();
     let mut affected = Vec::new();
-    for entry_path in compile_clean_shard_entry_paths_fast() {
+    for entry_path in roster {
         match entry_file_touched_via_import_closure(
             &entry_path,
             &facts,
@@ -32263,7 +32377,9 @@ mod witness_layer_roots_compile_clean_tests {
                         entry_paths.iter().any(|p| p == "dag/std/logic.dag"),
                         "expected dag/std/logic.dag in {entry_paths:?}"
                     );
-                    let roster_len = compile_clean_shard_entry_paths_fast().len();
+                    let roster_len = compile_clean_shard_entry_paths_fast()
+                        .expect("live shard roster must be duplicate-free")
+                        .len();
                     assert!(
                         entry_paths.len() < roster_len,
                         "scoped selection must be a strict subset of the roster ({} vs {roster_len})",
@@ -32273,6 +32389,70 @@ mod witness_layer_roots_compile_clean_tests {
                 other => panic!("expected ScopedRun, got {other:?}"),
             }
         });
+    }
+
+    #[test]
+    fn compile_clean_shard_entry_paths_fast_refuses_duplicate_path_keys() {
+        let facts = vec![
+            ModuleDeclarationFactRaw {
+                module: "fixture.alpha".to_string(),
+                path: "dag/fixture/alpha.dag".to_string(),
+            },
+            ModuleDeclarationFactRaw {
+                module: "fixture.alpha_reexport".to_string(),
+                path: "dag/fixture/alpha.dag".to_string(),
+            },
+        ];
+        let err = compile_clean_shard_entry_paths_from_decl_facts(&facts)
+            .expect_err("duplicate path keys must refuse");
+        assert!(
+            err.contains(
+                "shard roster construction refused duplicate path key at admission: dag/fixture/alpha.dag"
+            ),
+            "unexpected refusal: {err}"
+        );
+    }
+
+    /// Regression for review 47302: modeled `compile_clean_scope_disposition_from_diff`
+    /// builds the roster before any disposition arm; compiler/infra touches must not
+    /// bypass duplicate-key refusal by returning WholeTree early.
+    #[test]
+    fn floor_fast_refuses_duplicate_roster_before_whole_tree_arm() {
+        let plan = compile_clean_scope_plan_from_touched_paths_floor_fast_impl(
+            &["src/v1/stage0/src/cli_run.rs".to_string()],
+            &HashSet::new(),
+            Err(
+                "shard roster construction refused duplicate path key at admission: dag/fixture/alpha.dag"
+                    .to_string(),
+            ),
+        );
+        assert_eq!(
+            plan,
+            CompileCleanScopePlan::Refused {
+                reason: "shard roster construction refused duplicate path key at admission: dag/fixture/alpha.dag"
+                    .to_string(),
+            }
+        );
+    }
+
+    /// Regression for review 47305: empty touched paths must not bypass roster refusal.
+    #[test]
+    fn floor_fast_refuses_duplicate_roster_before_empty_touched_whole_tree_arm() {
+        let plan = compile_clean_scope_plan_from_touched_paths_floor_fast_impl(
+            &[],
+            &HashSet::new(),
+            Err(
+                "shard roster construction refused duplicate path key at admission: dag/fixture/alpha.dag"
+                    .to_string(),
+            ),
+        );
+        assert_eq!(
+            plan,
+            CompileCleanScopePlan::Refused {
+                reason: "shard roster construction refused duplicate path key at admission: dag/fixture/alpha.dag"
+                    .to_string(),
+            }
+        );
     }
 
     /// Discriminating receipt for the strict-tier reference-edge wiring

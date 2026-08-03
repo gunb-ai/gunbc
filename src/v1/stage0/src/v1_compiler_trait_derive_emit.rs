@@ -110,6 +110,42 @@ pub fn trait_derive_emit_item_clone_bound_contract_fork_dissolve_on() -> String 
     CACHED.with(|c: &String| c.clone())
 }
 
+pub fn trait_derive_emit_fn_clone_bound_keyed_carrier_module_scaffold_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "COUNTED SCAFFOLD (emit_fn_def module_path arm): std.keyed_row and std.keyed_roster generic fns emit Clone on every item generic because List<KeyedRow<..>> value-param type exprs reach emit as opaque containers — the element applied-type children are not readable in param_node_type_expr, so v1_fn_param_type_needs_clone_bound cannot derive K/V from rows: List<KeyedRow<K, V>> even though item-level KeyedRow<K: Clone, V: Clone> and the emitted bodies clone both fields. The override is module-scoped, not a seed widen: it does not change v1_generic_params_needing_clone_bound's per-param filter. Membership is the typed allowlist trait_derive_emit_fn_clone_bound_keyed_carrier_module_allowlist, enrolled DeclaredFrontier in gunbc.roster_registry — not gunbc.non_fold_residue (no wildcard-match site). Witness: regen --verify on std_keyed_row/std_keyed_roster without this arm drops V: Clone on keyed_row_find and drops all fn-level bounds on keyed_roster_build (compile errors on .value.clone()).".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn trait_derive_emit_fn_clone_bound_keyed_carrier_module_scaffold_dissolve_on() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "DISSOLVE-ON: v1 param_node_type_expr preserves container element applied-type children (or an equivalent typed surface) so v1_fn_generic_clone_bound_via_bounded_container_element / v1_fn_generic_clone_bound_via_referenced_decl derive keyed-row carrier bounds without the module_path arm; then delete trait_derive_emit_fn_clone_bound_keyed_carrier_module_allowlist, its emit_fn_def consumer, and the gunbc.roster_registry registration.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn trait_derive_emit_fn_clone_bound_keyed_carrier_module_allowlist() -> Rc<Vec<String>> {
+    thread_local! {
+        static CACHED: Rc<Vec<String>> = {
+            Rc::new(vec!["std.keyed_row".to_string(), "std.keyed_roster".to_string()])
+        };
+    }
+    CACHED.with(|c: &Rc<Vec<String>>| c.clone())
+}
+
+pub fn trait_derive_emit_fn_clone_bound_keyed_carrier_module(module_path: String) -> bool {
+    trait_derive_emit_fn_clone_bound_keyed_carrier_module_allowlist()
+        .iter()
+        .cloned()
+        .fold(false, |acc: bool, m: String| {
+            (acc || (m.clone() == module_path.clone()))
+        })
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StructCapabilityEmit {
     pub derive_attr: String,
@@ -267,6 +303,33 @@ pub fn v1_emit_enum_derives(
     }
 }
 
+pub fn v1_type_expr_contains_param_name(
+    param_name: String,
+    type_expr: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        if (authored_name_at(source_indices.clone(), type_expr.clone()) == param_name.clone()) {
+            true
+        } else {
+            {
+                let mut __found = false;
+                for c in type_expr.children.clone().iter().cloned() {
+                    if v1_type_expr_contains_param_name(
+                        param_name.clone(),
+                        c.clone(),
+                        source_indices.clone(),
+                    ) {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            }
+        }
+    })
+}
+
 pub fn v1_generic_param_used_as_collection_element(
     param_name: String,
     value_params: Rc<Vec<Rc<Node>>>,
@@ -280,9 +343,183 @@ pub fn v1_generic_param_used_as_collection_element(
                 (is_container_type(authored_name_at(source_indices.clone(), te.clone())) && {
                     let mut __found = false;
                     for c in te.children.clone().iter().cloned() {
-                        if (authored_name_at(source_indices.clone(), c.clone())
-                            == param_name.clone())
-                        {
+                        if v1_type_expr_contains_param_name(
+                            param_name.clone(),
+                            c.clone(),
+                            source_indices.clone(),
+                        ) {
+                            __found = true;
+                            break;
+                        }
+                    }
+                    __found
+                })
+            } {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    }
+}
+
+pub fn v1_generic_param_used_as_bare_value_param_type(
+    param_name: String,
+    value_params: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    {
+        let mut __found = false;
+        for vp in value_params.clone().iter().cloned() {
+            if {
+                let te = param_node_type_expr(vp.clone());
+                (((authored_name_at(source_indices.clone(), te.clone()) == param_name.clone())
+                    && (te.connective.clone() == Connective::NoConnective))
+                    && ((te.children.clone().len() as i64) == 0))
+            } {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    }
+}
+
+pub fn v1_generic_param_used_in_value_param_type_surface(
+    param_name: String,
+    value_params: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    {
+        let mut __found = false;
+        for vp in value_params.clone().iter().cloned() {
+            if v1_type_expr_contains_param_name(
+                param_name.clone(),
+                param_node_type_expr(vp.clone()),
+                source_indices.clone(),
+            ) {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    }
+}
+
+pub fn v1_type_expr_mentions_type_head(
+    type_name: String,
+    type_expr: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        if (authored_name_at(source_indices.clone(), type_expr.clone()) == type_name.clone()) {
+            true
+        } else {
+            {
+                let mut __found = false;
+                for c in type_expr.children.clone().iter().cloned() {
+                    if v1_type_expr_mentions_type_head(
+                        type_name.clone(),
+                        c.clone(),
+                        source_indices.clone(),
+                    ) {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            }
+        }
+    })
+}
+
+pub fn v1_fn_generic_clone_bound_via_referenced_decl(
+    param_name: String,
+    value_params: Rc<Vec<Rc<Node>>>,
+    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    clone_bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    {
+        let mut __found = false;
+        for decl_name in Rc::new(v1_rt::map_keys(&type_decl_items)).iter().cloned() {
+            if match v1_rt::map_get(&type_decl_items, decl_name.clone()) {
+                Some(decl) => {
+                    let decl_generics = Rc::new({
+                        let mut __result = Vec::new();
+                        for p in decl.params.clone().iter().cloned() {
+                            __result.push(generic_param_name_at(p.clone(), source_indices.clone()));
+                        }
+                        __result
+                    });
+                    if !{
+                        let mut __found = false;
+                        for dg in decl_generics.clone().iter().cloned() {
+                            if (dg.clone() == param_name.clone()) {
+                                __found = true;
+                                break;
+                            }
+                        }
+                        __found
+                    } {
+                        false
+                    } else {
+                        match v1_rt::map_get(&clone_bounds, decl_name.clone()) {
+                            Some(bounded) => {
+                                if !v1_rt::set_contains(&bounded, param_name.clone()) {
+                                    false
+                                } else {
+                                    {
+                                        let mut __found = false;
+                                        for vp in value_params.clone().iter().cloned() {
+                                            if v1_type_expr_mentions_type_head(
+                                                decl_name.clone(),
+                                                param_node_type_expr(vp.clone()),
+                                                source_indices.clone(),
+                                            ) {
+                                                __found = true;
+                                                break;
+                                            }
+                                        }
+                                        __found
+                                    }
+                                }
+                            }
+                            None => false,
+                        }
+                    }
+                }
+                None => false,
+            } {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    }
+}
+
+pub fn v1_fn_generic_clone_bound_via_bounded_container_element(
+    param_name: String,
+    value_params: Rc<Vec<Rc<Node>>>,
+    clone_bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    {
+        let mut __found = false;
+        for vp in value_params.clone().iter().cloned() {
+            if {
+                let te = param_node_type_expr(vp.clone());
+                (is_container_type(authored_name_at(source_indices.clone(), te.clone())) && {
+                    let mut __found = false;
+                    for c in te.children.clone().iter().cloned() {
+                        if {
+                            let head = authored_name_at(source_indices.clone(), c.clone());
+                            match v1_rt::map_get(&clone_bounds, head.clone()) {
+                                Some(bounded) => v1_rt::set_contains(&bounded, param_name.clone()),
+                                None => false,
+                            }
+                        } {
                             __found = true;
                             break;
                         }
@@ -307,14 +544,72 @@ pub fn v1_type_param_needs_clone_bound(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
-        let structural = (((return_is_bare_generic.clone() && !body_is_param_ref.clone())
+        let structural = (((((return_is_bare_generic.clone() && !body_is_param_ref.clone())
             && (param_name.clone() == ret_name.clone()))
             || v1_generic_param_used_as_collection_element(
                 param_name.clone(),
                 value_params.clone(),
                 source_indices.clone(),
+            ))
+            || v1_generic_param_used_as_bare_value_param_type(
+                param_name.clone(),
+                value_params.clone(),
+                source_indices.clone(),
+            ))
+            || v1_generic_param_used_in_value_param_type_surface(
+                param_name.clone(),
+                value_params.clone(),
+                source_indices.clone(),
             ));
         structural
+    }
+}
+
+pub fn v1_fn_param_type_needs_clone_bound(
+    param_name: String,
+    value_params: Rc<Vec<Rc<Node>>>,
+    bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
+    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    {
+        let mut __found = false;
+        for vp in value_params.clone().iter().cloned() {
+            if {
+                let te = param_node_type_expr(vp.clone());
+                ((((v1_type_expr_is_bare_param(
+                    param_name.clone(),
+                    te.clone(),
+                    source_indices.clone(),
+                ) || v1_type_expr_clone_impl_needs_param(
+                    param_name.clone(),
+                    te.clone(),
+                    type_decl_items.clone(),
+                    source_indices.clone(),
+                )) || v1_type_expr_wf_needs_clone_param(
+                    param_name.clone(),
+                    te.clone(),
+                    bounds.clone(),
+                    type_decl_items.clone(),
+                    source_indices.clone(),
+                )) || v1_fn_generic_clone_bound_via_referenced_decl(
+                    param_name.clone(),
+                    value_params.clone(),
+                    type_decl_items.clone(),
+                    bounds.clone(),
+                    source_indices.clone(),
+                )) || v1_fn_generic_clone_bound_via_bounded_container_element(
+                    param_name.clone(),
+                    value_params.clone(),
+                    bounds.clone(),
+                    source_indices.clone(),
+                ))
+            } {
+                __found = true;
+                break;
+            }
+        }
+        __found
     }
 }
 
@@ -332,7 +627,7 @@ pub fn v1_generic_params_needing_clone_bound(
     Rc::new({
         let mut __result = Vec::new();
         for g in generic_param_names.clone().iter().cloned() {
-            if (v1_type_param_needs_clone_bound(
+            if ((v1_type_param_needs_clone_bound(
                 g.clone(),
                 return_is_bare_generic.clone(),
                 ret_name.clone(),
@@ -343,6 +638,12 @@ pub fn v1_generic_params_needing_clone_bound(
                 g.clone(),
                 value_params.clone(),
                 ret.clone(),
+                bounds.clone(),
+                type_decl_items.clone(),
+                source_indices.clone(),
+            )) || v1_fn_param_type_needs_clone_bound(
+                g.clone(),
+                value_params.clone(),
                 bounds.clone(),
                 type_decl_items.clone(),
                 source_indices.clone(),
@@ -487,7 +788,7 @@ pub fn v1_type_expr_clone_impl_needs_param(
             if ((type_expr.children.clone().len() as i64) == 0) {
                 false
             } else {
-                if v1_type_expr_head_is_known(name.clone(), type_decl_items.clone()) {
+                if ((type_expr.children.clone().len() as i64) > 0) {
                     {
                         let mut __found = false;
                         for c in type_expr.children.clone().iter().cloned() {
