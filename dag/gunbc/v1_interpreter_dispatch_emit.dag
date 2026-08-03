@@ -101,9 +101,8 @@ fn any_roster_site_has_rust_variant_collision(rows: List<InterpreterPrimitiveDis
 }
 
 fn rust_variant_collision_synthetic_red_control() -> Bool {
-  arm_identity_to_rust_variant(identity: "synthetic.one_two")
-    == arm_identity_to_rust_variant(identity: "synthetic.one.two")
-    && "synthetic.one_two" != "synthetic.one.two"
+  arm_identity_to_rust_variant(identity: "synthetic.one_two") == arm_identity_to_rust_variant(identity: "synthetic.one.two")
+    && !("synthetic.one_two" == "synthetic.one.two")
 }
 
 fn dispatch_emit_site_key_is_emittable(site_key: String) -> Bool {
