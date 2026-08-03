@@ -131,6 +131,7 @@ pub mod v1_compiler_trait_derive_emit;
 pub mod v1_compiler_workspace_members;
 pub mod v1_gunbc_occurrence_binding_parser_walk;
 pub mod v1_interpreter;
+pub mod v1_interpreter_dispatch_generated;
 pub mod v1_probe_emit_interp;
 pub mod v1_rt;
 pub mod v1_std_core;
