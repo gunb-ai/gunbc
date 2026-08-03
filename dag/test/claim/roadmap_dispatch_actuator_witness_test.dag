@@ -1,6 +1,6 @@
 module test.claim.roadmap_dispatch_actuator
 
-import v2.std.optional { Present, Absent }
+import v2.std.optional { Present }
 import std.types { NonEmptyStr, GitRef, FilePath }
 import std.disposition { Scaffold, Terminal }
 import gunbc.roadmap_model {
