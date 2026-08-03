@@ -2315,14 +2315,35 @@ fn emit_v2_std_text_closure_stub_module() -> TextFile {
   }
 }
 
-fn emit_lib_rs_from_files(all_module_files: List<TextFile>, has_compiler_tests: Bool) -> TextFile {
+fn lib_rs_mod_name_from_file(f: TextFile) -> String {
   let src_prefix_len = string_length(s: rust_source_root())
   let ext_len = string_length(s: rust_source_ext())
-  let mod_decls = all_module_files |> map(f =>
-    let path_len = string_length(s: f.path)
-    let mod_name = substring(s: f.path, start: src_prefix_len, end: path_len - ext_len)
+  let path_len = string_length(s: f.path)
+  substring(s: f.path, start: src_prefix_len, end: path_len - ext_len)
+}
+
+fn emit_lib_rs_mod_decl(mod_name: String) -> String {
+  if mod_name == "v1_interpreter_dispatch_generated" {
+    "#[macro_use]\npub mod v1_interpreter_dispatch_generated;"
+  } else {
     concat(rust_visibility_prefix(), rust_items().module_keyword, " ", mod_name, ";")
-  )
+  }
+}
+
+fn order_lib_rs_mod_names(mod_names: List<String>) -> List<String> {
+  let without_dispatch = mod_names |> filter(n => n != "v1_interpreter_dispatch_generated")
+  without_dispatch |> fold(init: [], f: fn(acc, name) {
+    if name == "v1_interpreter" {
+      concat(concat(acc, ["v1_interpreter_dispatch_generated"]), [name])
+    } else {
+      concat(acc, [name])
+    }
+  })
+}
+
+fn emit_lib_rs_from_files(all_module_files: List<TextFile>, has_compiler_tests: Bool) -> TextFile {
+  let mod_names = order_lib_rs_mod_names(mod_names: all_module_files |> map(lib_rs_mod_name_from_file))
+  let mod_decls = mod_names |> map(emit_lib_rs_mod_decl)
 
   let hand_maintained_mods = if has_compiler_tests {
     generated_pub_mod_block
