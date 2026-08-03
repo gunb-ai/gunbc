@@ -703,6 +703,16 @@ fn read_cached_header(path: &Path, expected_subject: &str) -> CacheProbeResult {
     }
 }
 
+fn probe_rss(label: &str) {
+    let rss = fs::read_to_string("/proc/self/statm")
+        .ok()
+        .and_then(|s| s.split_whitespace().nth(1).map(|v| v.to_string()))
+        .and_then(|v| v.parse::<u64>().ok())
+        .map(|pages| pages * 4096 / 1024 / 1024)
+        .unwrap_or(0);
+    eprintln!("[probe-rss] {label}: {rss} MiB");
+}
+
 fn decode_v3_payload_from_file(file: &mut File, header: V3Header) -> CacheLookupResult {
     let payload_len = match usize::try_from(header.payload_len) {
         Ok(n) => n,
@@ -755,10 +765,14 @@ fn decode_v3_payload_from_file(file: &mut File, header: V3Header) -> CacheLookup
     let source_indices: Rc<HashMap<String, Rc<NewlineIndex>>> =
         Rc::new(si_plain.into_iter().map(|(k, v)| (k, Rc::new(v))).collect());
     let decoded = Rc::new(decoded_graph);
+    probe_rss("decoded");
     let modules = rewire_type_env_parent_links(decoded.modules.clone(), source_indices.clone());
+    probe_rss("rewire_type_env_parent_links");
     let modules =
         rewire_type_env_import_str_binding_identity(modules.clone(), source_indices.clone());
+    probe_rss("rewire_type_env_import_str_binding_identity");
     let modules = rewire_func_env_parent_links(modules, source_indices.clone());
+    probe_rss("rewire_func_env_parent_links");
     let graph = Rc::new(ResolvedGraph {
         modules,
         item_registry: decoded.item_registry.clone(),
