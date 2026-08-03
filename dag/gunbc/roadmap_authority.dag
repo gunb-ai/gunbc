@@ -286,6 +286,15 @@ fn v2_emitter_producer_provenance_execution_contract() -> WorkItemExecutionContr
 
 data v2_emitter_producer_provenance_contract_note: String = "The validation is this node's red control stated almost verbatim. The ticket demands that 'a result recorded as made by the new generator, with no receipt from a run that actually produced it, has to be impossible to write', and witness_restored_binding_without_executed_receipt_does_not_authorize_reds asserts exactly that: a restored binding without an executed receipt does not authorize an emitter-produced claim. It is chosen over the suite's other twenty-six claims because it is the one that fails if the unrepresentability itself lapses, rather than one that checks a roster stayed in step."
 
+data v2_emitter_direct_rust_door_execution_contract_note: String = "THE TWO-CLAUSE CLOSING DISCRIMINATOR for v2-emitter-direct-rust-door. The validation is deliberately RED while WrittenSourceIndependentOfSeedEmitter assesses through producer provenance and names CandidateGenerationSerializeTargetWiring: candidate_generation still stops at translate and the node's red control also demands that removing the seed emitter leaves the written source unchanged. MissingTranslationRuleRefuses is established today through the rust_add missing-rules serialize refusal, so the aggregate cannot green on zero progress toward wiring serialize_target. The paired fixture suite proves both arms discriminate; the bound acceptance witness imports no fixture admissions."
+
+fn v2_emitter_direct_rust_door_execution_contract() -> WorkItemExecutionContract {
+  gunbc_claim_execution_contract(
+    entry: "src/v2/test/claim/self_host/v2_emitter_direct_rust_door_acceptance_test.dag" as FilePath,
+    function: "witness_v2_emitter_direct_rust_door_closing_contract_holds" as NonEmptyStr,
+  )
+}
+
 fn v1_seed_honesty_decision_execution_contract() -> WorkItemExecutionContract {
   gunbc_claim_execution_contract(
     entry: "src/v2/test/claim/execution/seed_honesty_discharge_unavailable_test.dag" as FilePath,
@@ -1112,7 +1121,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     )
     ),
-    active_large(
+    with_execution(active_large(
       identity: "rn_B7PXF6JQRHY19AEQPXGBP12DCT",
       id: "v2-emitter-direct-rust-door",
       owner: "self-host",
@@ -1126,7 +1135,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         out_of_scope: "Not building the new generator as a native program yet, and no second set of Rust rules beside the ones we already have.",
         handback: "The written source, the compile result, which generator made it, and proof the old one was never called."
       )
-    ),
+    ), v2_emitter_direct_rust_door_execution_contract()),
     active(
       identity: "rn_KD37MRQ3ZA6F502DBKE6FE0VB8",
       id: "v2-emitter-first-behavioral-module",
