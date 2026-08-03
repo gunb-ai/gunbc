@@ -106,7 +106,7 @@ cgroup_memory_peak
 
 **Acceptance:** second and subsequent entries sharing the same module universe do **not** each repay ≈2s. “Faster” alone is not enough — the receipt must show the setup tax moving.
 
-**P1 receipt (bank pending merge):** [p1-retention-vs-drain-cohort-receipt.md](p1-retention-vs-drain-cohort-receipt.md) on PR **#7725** (`valiant-deer-205`) — **REJECT**. Mode A vs Mode B on the armed floor path (`p1_cohort_probe` → production `run_discovery_corpus_with_options`); entries 2..34 tax indistinguishable; Mode B OOM at entry 34 (~5+ GiB). **Redirect = assembly / materialization reuse** (by measurement, not #7597 prior). No retention-policy change in that PR; probe is scaffold with dissolve-on.
+**P1 receipt (bank pending merge):** `docs/plans/p1-retention-vs-drain-cohort-receipt.md` on PR **#7725** (`valiant-deer-205`) — **REJECT**. Mode A vs Mode B on the armed floor path (`p1_cohort_probe` → production `run_discovery_corpus_with_options`); entries 2..34 tax indistinguishable; Mode B OOM at entry 34 (~5+ GiB). **Redirect = assembly / materialization reuse** (by measurement, not #7597 prior). No retention-policy change in that PR; probe is scaffold with dissolve-on. *(Relative md link deferred until #7725 merges — dangling-link wall.)*
 
 ### P2 — Selection degradation explicit
 
