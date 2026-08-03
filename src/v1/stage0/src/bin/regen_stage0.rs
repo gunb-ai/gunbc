@@ -25,15 +25,16 @@ const BOOTSTRAP_TIMING_RECEIPT_ENV: &str = "GUNBC_BOOTSTRAP_TIMING_RECEIPT";
 const DEFAULT_BOOTSTRAP_TIMING_RECEIPT: &str =
     "target/bootstrap_timing/v1_regen_stage0_receipt.json";
 
-// Single authority: gunbc.stage0_emit_model.generated_stage0_files
-// (dag/gunbc/stage0_emit_model.dag). Hand-maintained registry authority:
+// Single authority: gunbc.stage0_emit_plan_generated.generated_stage0_files, a committed
+// projection derived from the parse-observed regen source closure by gunbc.stage0_emit_plan.
+// Hand-maintained registry authority:
 // gunbc.stage0_crate_layout_generated (frontier-derived; regen via
 // generated_artifact_gate main_wet). Witness: stage0_emit_model_witness_test.dag
 // + stage0_crate_layout_witness_test.dag + self_host/crate_layout_witness_test.dag.
 // Construction close (#7258 follow-up): the Rust GENERATED_STAGE0_FILES const is
 // deleted; regen reads the .dag list through lens_string_list_data so a second
 // hand copy cannot drift.
-const STAGE0_EMIT_MODEL_AUTHORITY_REL: &str = "dag/gunbc/stage0_emit_model.dag";
+const STAGE0_EMIT_PLAN_PROJECTION_REL: &str = "dag/gunbc/stage0_emit_plan_generated.dag";
 const GENERATED_STAGE0_FILES_DATA_NAME: &str = "generated_stage0_files";
 
 fn generated_stage0_files() -> &'static [String] {
@@ -41,7 +42,7 @@ fn generated_stage0_files() -> &'static [String] {
     FILES
         .get_or_init(|| {
             v1_compiler::cli_run::lens_string_list_data(
-                STAGE0_EMIT_MODEL_AUTHORITY_REL,
+                STAGE0_EMIT_PLAN_PROJECTION_REL,
                 GENERATED_STAGE0_FILES_DATA_NAME,
                 false,
             )
@@ -741,7 +742,7 @@ fn rustfmt_generated_crate(dir: &Path) -> Result<(), String> {
 struct HandVerifyReport {
     /// Emitter produces a candidate byte-identical (after identical rustfmt normalization)
     /// to the committed hand file: the HAND entry is now a dead scaffold and the file
-    /// should be flipped into gunbc.stage0_emit_model.generated_stage0_files.
+    /// should be promoted in the frontier; generated membership then derives automatically.
     matches: Vec<String>,
     /// Emitter produces a candidate that differs from committed: either the known emitter
     /// gap that justifies hand-maintenance, or an unintended hand-edit. Inspect the diff.
@@ -849,7 +850,7 @@ fn print_hand_verify_report(report: &HandVerifyReport) {
     );
     if !report.matches.is_empty() {
         println!(
-            "  MATCH (emitter reproduces these -- flip to gunbc.stage0_emit_model.generated_stage0_files): {}",
+            "  MATCH (emitter reproduces these -- promote their frontier disposition): {}",
             report.matches.join(", ")
         );
     }
@@ -1034,8 +1035,8 @@ fn assert_output_set_matches_registry(
         .collect();
     if !unregistered_fresh.is_empty() {
         return Err(format!(
-            "fresh self-compile emitted unregistered stage0 file(s): {}\n\
-             Add generated files to gunbc.stage0_emit_model.generated_stage0_files or mark hand-maintained files explicitly.",
+            "fresh self-compile emitted file(s) absent from the derived stage0 emission plan: {}\n\
+             Fix the source-side emission model or classify seed-retained files in the frontier; do not hand-register paths.",
             unregistered_fresh.join(", ")
         ));
     }
@@ -1047,7 +1048,7 @@ fn assert_output_set_matches_registry(
         .collect();
     if !missing_fresh.is_empty() {
         return Err(format!(
-            "generated_stage0_files contains file(s) missing from fresh self-compile: {}",
+            "derived stage0 emission plan contains file(s) missing from fresh self-compile: {}",
             missing_fresh.join(", ")
         ));
     }
@@ -1069,8 +1070,8 @@ fn assert_output_set_matches_registry(
     }
     if !unregistered_committed_generated.is_empty() {
         return Err(format!(
-            "committed generated stage0 file(s) are not registered: {}\n\
-             Add them to gunbc.stage0_emit_model.generated_stage0_files or remove the stale committed outputs.",
+            "committed generated stage0 file(s) are absent from the derived emission plan: {}\n\
+             Fix the source-side emission model or remove stale committed outputs.",
             unregistered_committed_generated.join(", ")
         ));
     }
@@ -1216,10 +1217,9 @@ mod tests {
         }
     }
 
-    /// Construction close of the #7258 dual-copy fork: regen must read
-    /// `gunbc.stage0_emit_model.generated_stage0_files` and must not carry a second
-    /// hand list const. RED: re-introduce the deleted roster const → this fails;
-    /// drop a known generated basename from the .dag list → the positives fail.
+    /// Construction close of the generated-path fork: regen reads the enrolled projection and
+    /// carries no Rust roster. The projection is regenerated from source identities + the .dag
+    /// emission rule, never edited as a registration surface.
     #[test]
     fn generated_stage0_files_read_from_dag_authority_not_rust_const() {
         let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/bin/regen_stage0.rs");
@@ -1232,7 +1232,7 @@ mod tests {
         );
         assert!(
             source.contains("lens_string_list_data"),
-            "regen_stage0 must read generated_stage0_files via the host .dag list reader"
+            "regen_stage0 must read the derived generated_stage0_files projection via the host .dag list reader"
         );
         let files = generated_stage0_files();
         assert!(
@@ -1269,7 +1269,27 @@ mod tests {
 
         let err = assert_output_set_matches_registry(&committed, &fresh)
             .expect_err("unregistered fresh file must fail");
-        assert!(err.contains("fresh self-compile emitted unregistered stage0 file"));
+        assert!(err.contains(
+            "fresh self-compile emitted file(s) absent from the derived stage0 emission plan"
+        ));
+
+        let _ = fs::remove_dir_all(committed);
+        let _ = fs::remove_dir_all(fresh);
+    }
+
+    #[test]
+    fn output_set_rejects_modeled_file_missing_from_fresh_emit() {
+        let committed = temp_test_dir("committed");
+        let fresh = temp_test_dir("fresh");
+        seed_registered_files(&committed, "// Generated by v1 compiler -- do not edit\n");
+        seed_registered_files(&fresh, "// Generated by v1 compiler -- do not edit\n");
+        let missing = generated_stage0_files()[0].as_str();
+        fs::remove_file(fresh.join(missing)).expect("remove modeled fresh output");
+
+        let err = assert_output_set_matches_registry(&committed, &fresh)
+            .expect_err("modeled file absent from fresh emit must fail");
+        assert!(err.contains("derived stage0 emission plan contains file(s) missing"));
+        assert!(err.contains(missing));
 
         let _ = fs::remove_dir_all(committed);
         let _ = fs::remove_dir_all(fresh);
