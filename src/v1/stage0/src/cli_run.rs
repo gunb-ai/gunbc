@@ -51,10 +51,11 @@ mod phase_profile;
 pub(crate) mod test_module_hygiene_bridge;
 #[doc(hidden)]
 pub use materialization_provider_consumer::{
-    materialization_provider_ctx_build_count_for_test, reset_materialization_provider_ctx_for_test,
-    resolve_closure_request_key_from_digests, resolved_graph_parts_semantic_digest,
-    serve_resolved_graph_stored_disk_probe, serve_resolved_graph_stored_disk_probe_for_test,
-    ResolvedGraphProviderOutcome, OUTPUT_COMPILE_CLEAN_DIAGNOSTIC_UNION,
+    materialization_provider_ctx_build_count_for_test, provider_ctx_reentrancy_refusal_for_test,
+    reset_materialization_provider_ctx_for_test, resolve_closure_request_key_from_digests,
+    resolved_graph_parts_semantic_digest, serve_resolved_graph_stored_disk_probe,
+    serve_resolved_graph_stored_disk_probe_for_test, ResolvedGraphProviderOutcome,
+    OUTPUT_COMPILE_CLEAN_DIAGNOSTIC_UNION,
 };
 pub use phase_profile::{set_phase, FloorPhase, PhaseProfile};
 
@@ -6731,6 +6732,22 @@ pub(crate) fn cross_process_provider_routing_suppressed() -> bool {
     CROSS_PROCESS_PROVIDER_ROUTING_SUPPRESSED.with(|c| c.get() > 0)
 }
 
+/// Count of resolved-graph stores skipped because the provider-bootstrap window was
+/// open. The skip is bounded (only the provider's own closure resolves inside that
+/// window) and observable, so the deficit can never be masked by silence.
+static PROVIDER_BOOTSTRAP_STORE_SKIPS: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+
+fn record_provider_bootstrap_store_skip() {
+    PROVIDER_BOOTSTRAP_STORE_SKIPS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+}
+
+/// Observed count of bootstrap-window store skips — the countable half of the
+/// disclosed refusal (§5).
+pub fn provider_bootstrap_store_skip_count() -> usize {
+    PROVIDER_BOOTSTRAP_STORE_SKIPS.load(std::sync::atomic::Ordering::SeqCst)
+}
+
 pub(crate) fn with_cross_process_provider_routing_suppressed<F, R>(f: F) -> R
 where
     F: FnOnce() -> R,
@@ -10588,7 +10605,18 @@ fn resolved_graph_from_sources_with_index(
             ),
         );
     }
-    if let Some(cache_root) = resolved_graph_cache_root_from_env() {
+    // The store direction of the seam obeys the SAME bootstrap suppression as the
+    // read direction. The flag names a window in which provider routing may not be
+    // re-entered at all; honouring it on the probe alone left the store calling
+    // `resolve_closure_request_key_from_digests` while the provider ctx was still
+    // mid-construction, so `materialization_provider_ctx` saw an empty memo slot and
+    // rebuilt the whole provider closure — a nested resolve that re-entered this same
+    // store, unbounded, ~1GB per level (repeat-resolve OOM, root-caused 2026-08-03).
+    // Counted, never silent: a suppressed store is a bounded bootstrap-window skip
+    // whose frequency stays observable (§5 — a failure arm must refuse, never widen).
+    if cross_process_provider_routing_suppressed() {
+        record_provider_bootstrap_store_skip();
+    } else if let Some(cache_root) = resolved_graph_cache_root_from_env() {
         // A failed store write is a disclosed refusal, never a silent shrug —
         // the swallowed error hid that big closures never landed on disk (only
         // the prelude artifact ever existed), which mis-shaped a whole OOM

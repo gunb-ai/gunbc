@@ -4,7 +4,7 @@ use crate::resolved_graph_cache::{
 };
 use crate::std_content_hash::fnv1a64_structural_hex_digest;
 use crate::v1_interpreter::{self, ExecutionMode, InterpContext, Value};
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 // SCAFFOLD (§7 seed-retained HAND-RUST — authority: gunbc.materialization_provider_consumer_scaffold;
@@ -52,15 +52,49 @@ fn build_materialization_provider_ctx_cold() -> Result<InterpContext, String> {
     ))
 }
 
+thread_local! {
+    /// Open exactly while `build_materialization_provider_ctx_cold` is running. The
+    /// memo slot is only written AFTER the cold build returns, so during the build a
+    /// re-entrant demand reads an empty slot and would rebuild the provider closure —
+    /// each rebuild a full nested resolve that can re-enter again. That is the
+    /// unbounded-recursion shape behind the repeat-resolve OOM.
+    static MATERIALIZATION_PROVIDER_CTX_BUILDING: Cell<bool> = const { Cell::new(false) };
+}
+
+/// Re-entrant provider-ctx construction is a typed, located refusal — never a silent
+/// rebuild that recurses. Suppressing routing at each known seam is validation (it
+/// concedes the re-entrant state is writable, one missed seam away from an OOM); this
+/// wall makes the recursion itself unreachable regardless of which caller re-enters
+/// (§5 — correctness by construction, and a failure arm that refuses rather than
+/// widens). It fails loud and located, so a new re-entrant caller surfaces as a
+/// diagnostic instead of as a dead runner.
 fn materialization_provider_ctx() -> Result<Rc<InterpContext>, String> {
-    MATERIALIZATION_PROVIDER_CTX.with(|slot| {
-        if let Some(ctx) = slot.borrow().clone() {
-            return Ok(ctx);
+    if let Some(ctx) = MATERIALIZATION_PROVIDER_CTX.with(|slot| slot.borrow().clone()) {
+        return Ok(ctx);
+    }
+    if MATERIALIZATION_PROVIDER_CTX_BUILDING.with(|b| b.get()) {
+        return Err(
+            "materialization_provider_ctx: re-entrant provider-ctx construction refused \
+             (a demand for the materialization provider was raised while the provider's own \
+             authority closure was still being resolved). Resolving that closure must not route \
+             back through the provider — the caller is inside the bootstrap window and must \
+             suppress provider routing."
+                .to_string(),
+        );
+    }
+    struct BuildGuard;
+    impl Drop for BuildGuard {
+        fn drop(&mut self) {
+            MATERIALIZATION_PROVIDER_CTX_BUILDING.with(|b| b.set(false));
         }
-        let ctx = Rc::new(build_materialization_provider_ctx_cold()?);
-        *slot.borrow_mut() = Some(ctx.clone());
-        Ok(ctx)
-    })
+    }
+    MATERIALIZATION_PROVIDER_CTX_BUILDING.with(|b| b.set(true));
+    let ctx = {
+        let _guard = BuildGuard;
+        Rc::new(build_materialization_provider_ctx_cold()?)
+    };
+    MATERIALIZATION_PROVIDER_CTX.with(|slot| *slot.borrow_mut() = Some(ctx.clone()));
+    Ok(ctx)
 }
 
 fn wire_digest_str(hex: &str) -> Result<Value, String> {
@@ -459,6 +493,19 @@ pub fn serve_resolved_graph_stored_disk_probe_for_test(
 #[doc(hidden)]
 pub fn materialization_provider_ctx_build_count_for_test() -> usize {
     MATERIALIZATION_PROVIDER_CTX_BUILD_COUNT.load(std::sync::atomic::Ordering::SeqCst)
+}
+
+/// Drives the re-entrancy wall directly: opens the build window (as an in-flight
+/// cold build does), clears the memo, and demands the ctx. The wall's discriminating
+/// control — with the wall removed this rebuilds the provider closure instead of
+/// refusing, which is the unbounded-recursion shape.
+#[doc(hidden)]
+pub fn provider_ctx_reentrancy_refusal_for_test() -> Result<Rc<InterpContext>, String> {
+    MATERIALIZATION_PROVIDER_CTX.with(|slot| *slot.borrow_mut() = None);
+    MATERIALIZATION_PROVIDER_CTX_BUILDING.with(|b| b.set(true));
+    let result = materialization_provider_ctx();
+    MATERIALIZATION_PROVIDER_CTX_BUILDING.with(|b| b.set(false));
+    result
 }
 
 #[doc(hidden)]
