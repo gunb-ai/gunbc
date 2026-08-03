@@ -37,11 +37,11 @@ fn run_entry_capturing_stderr(entry: String, function: String) -> String {
   result.stderr
 }
 
-data undeclared_subject_note: String = "generated_artifact_drift_test reaches Filesystem.Read from .dag call sites that carry no `expect:` — measured 67 undeclared dispatches at the time of writing. The COUNT is deliberately not pinned: it tracks how many artifacts the registry holds and would turn an unrelated registry edit into a red here, which is the brittle-pin failure this corpus already knows. The claim is the receipt's PRESENCE, which is the property the mechanism actually owns."
+data undeclared_subject_note: String = "generated_artifact_drift_fixed_point_witness_test reaches Filesystem.Read from .dag call sites that carry no `expect:` — measured 67 undeclared dispatches at the time of writing (count tracks committed artifact registry size). The COUNT is deliberately not pinned: it tracks how many artifacts the registry holds and would turn an unrelated registry edit into a red here, which is the brittle-pin failure this corpus already knows. The claim is the receipt's PRESENCE, which is the property the mechanism actually owns."
 
 test fn undeclared_effects_emit_the_frontier_receipt_holds() -> Bool {
   let stderr = run_entry_capturing_stderr(
-    entry: "dag/test/claim/generated_artifact_drift_test.dag",
+    entry: "dag/test/claim/long/generated_artifact_drift_fixed_point_witness_test.dag",
     function: "witness_committed_is_fixed_point"
   )
   string_contains(s: stderr, pattern: frontier_marker)

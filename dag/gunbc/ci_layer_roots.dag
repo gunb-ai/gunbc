@@ -1077,6 +1077,18 @@ data falsifier_substrate_long_lane_rows: List<SubstrateLongLaneRow> = [
     function: "vacuity_consumer_witness_shadows_reconcile_with_admitted_exceptions",
     reason: "sibling corpus-ingest witness in the same file as the bound consumer witness (review 47233 enrollment sweep): live-shadow reconciliation against admitted exceptions. Measured 29754ms cold",
     dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt"
+  },
+  SubstrateLongLaneRow {
+    entry: "dag/test/claim/long/generated_artifact_drift_fixed_point_witness_test.dag",
+    function: "witness_committed_is_fixed_point",
+    reason: "ReadsLiveTree fixed-point receipt: reads every committed artifact from disk and asserts artifact_generate reproduces bytes byte-for-byte. Measured 1005ms warm on srv_fleet_arm64 (witness_row_cost_basis) but flaked at 5004ms in falsifier discovery-corpus batch 1 under host contention (run 30550328673, BudgetExceeded) — borderline over the 5s fast-lane budget",
+    dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured cold run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt"
+  },
+  SubstrateLongLaneRow {
+    entry: "dag/test/claim/long/generated_artifact_drift_fixed_point_witness_test.dag",
+    function: "witness_committed_fixed_point_red_control",
+    reason: "RED control paired with witness_committed_is_fixed_point (same file, same Filesystem.Read + artifact_generate cost shape)",
+    dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured cold run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt"
   }
 ]
 
