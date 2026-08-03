@@ -236,7 +236,7 @@ the existing backstop would be the same overstatement §4.1 corrects one level d
 
 **Where the real safety boundary is.** It was never last-green. It is ensuring the exact tree
 becoming `main` passed current checks **before** it becomes `main` — merge-queue candidate
-gating, `require_up_to_date`, and flipping `merge_freshness` from `GatingComputedDeferred` to
+gating, `require_up_to_date`, and flipping `gunbc.ci_failure_class` `merge_freshness_gating_status` from `GatingComputedDeferred` to
 `GatingEnforced`. Today that staleness verdict is computed and then discarded (§1's shadow-mode
 problem), which is how a PR approved against a superseded tree can land onto a newer `main`
 incorrectly. That is the correction to prioritize, not a wider baseline.
@@ -244,7 +244,7 @@ incorrectly. That is the correction to prioritize, not a wider baseline.
 ## 6. Dissolution
 
 This note retires when the `before..head` baseline lands **and** the merge-queue candidate
-gate is enforcing (`merge_freshness` = `GatingEnforced`) — at which point the architecture it
+gate is enforcing (`gunbc.ci_failure_class` `merge_freshness_gating_status` = `GatingEnforced`) — at which point the architecture it
 argues for is real and the note is describing the past. *(Corrected 2026-08-03: the trigger
 previously read "when stage 2 lands". Stage 2 is now rejected, so that condition could never be
 met and this row would have been permanently undissolvable — an unfireable trigger is
