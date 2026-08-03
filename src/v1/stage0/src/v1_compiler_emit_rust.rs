@@ -75,8 +75,12 @@ pub use crate::v1_compiler_infer_env::{
     authored_name, empty_symbol_index, lookup_type_by_name, lookup_type_for,
 };
 pub use crate::v1_compiler_infer_env::{GlobalBareLookupState, TypeBinding, TypeEnv};
+pub use crate::v1_compiler_infer_items::empty_qualified_item_registry;
 use crate::v1_compiler_infer_items::ItemKind::{DataItem, OtherItem, TypeItem};
-pub use crate::v1_compiler_infer_items::{ItemInfo, ItemKind, ResolvedGraph, TypedModule};
+use crate::v1_compiler_infer_items::QualifiedItemRegistryBuild::*;
+pub use crate::v1_compiler_infer_items::{
+    ItemInfo, ItemKind, QualifiedItemRegistryBuild, ResolvedGraph, TypedModule,
+};
 pub use crate::v1_compiler_infer_resolve::{
     is_width_nat_type_literal, lookup_unit_variant_phantom_type, resolve_node,
 };
@@ -3995,63 +3999,62 @@ pub fn build_data_item_index(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<HashMap<St
     )
 }
 
+pub fn qualified_item_registry_insert(
+    build: Rc<QualifiedItemRegistryBuild>,
+    qualified_name: String,
+    info: Rc<ItemInfo>,
+) -> Rc<QualifiedItemRegistryBuild> {
+    match (*build.clone()).clone() {
+        QualifiedItemRegistryBuild::QualifiedRegistryDuplicate {
+            key, first, second, ..
+        } => build.clone(),
+        QualifiedItemRegistryBuild::QualifiedRegistryBuilt {
+            registry: registry, ..
+        } => match v1_rt::map_get(&registry, qualified_name.clone()) {
+            Some(existing) => Rc::new(QualifiedItemRegistryBuild::QualifiedRegistryDuplicate {
+                key: qualified_name.clone(),
+                first: existing.clone(),
+                second: info.clone(),
+            }),
+            None => Rc::new(QualifiedItemRegistryBuild::QualifiedRegistryBuilt {
+                registry: v1_rt::rc_map_insert(
+                    registry.clone(),
+                    qualified_name.clone(),
+                    info.clone(),
+                ),
+            }),
+        },
+    }
+}
+
 pub fn build_qualified_item_registry(
     modules: Rc<Vec<Rc<TypedModule>>>,
-) -> Rc<HashMap<String, Rc<ItemInfo>>> {
+) -> Rc<QualifiedItemRegistryBuild> {
     modules.clone().iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, Rc<ItemInfo>>(),
-        |acc: Rc<HashMap<String, Rc<ItemInfo>>>, tm: Rc<TypedModule>| {
+        empty_qualified_item_registry(),
+        |acc: Rc<QualifiedItemRegistryBuild>, tm: Rc<TypedModule>| {
             let module_name = authored_name_at(
                 tm.type_env.clone().source_indices.clone(),
                 tm.module.clone(),
             );
-            Rc::new(v1_rt::map_keys(&tm.item_registry.clone()))
-                .iter()
-                .cloned()
-                .fold(
-                    acc,
-                    |acc2: Rc<HashMap<String, Rc<ItemInfo>>>, item_name: String| {
-                        match v1_rt::map_get(&tm.item_registry.clone(), item_name.clone()) {
-                            Some(info) => {
-                                let qualified_name = v1_rt::concat(
-                                    v1_rt::concat(module_name.clone(), ".".to_string()),
-                                    item_name.clone(),
-                                );
-                                match v1_rt::map_get(&acc2, qualified_name.clone()) {
-                                    Some(_) => v1_rt::rc_map_insert(
-                                        acc2.clone(),
-                                        qualified_name.clone(),
-                                        duplicate_qualified_item_registry_marker(
-                                            qualified_name.clone(),
-                                        ),
-                                    ),
-                                    None => v1_rt::rc_map_insert(
-                                        acc2.clone(),
-                                        qualified_name.clone(),
-                                        info.clone(),
-                                    ),
-                                }
-                            }
-                            None => acc2.clone(),
-                        }
-                    },
-                )
-        },
-    )
-}
-
-pub fn merge_item_registries(
-    bare: Rc<HashMap<String, Rc<ItemInfo>>>,
-    qualified: Rc<HashMap<String, Rc<ItemInfo>>>,
-) -> Rc<HashMap<String, Rc<ItemInfo>>> {
-    Rc::new(v1_rt::map_keys(&qualified)).iter().cloned().fold(
-        bare.clone(),
-        |acc: Rc<HashMap<String, Rc<ItemInfo>>>, key: String| match v1_rt::map_get(
-            &qualified,
-            key.clone(),
-        ) {
-            Some(info) => v1_rt::rc_map_insert(acc.clone(), key.clone(), info.clone()),
-            None => acc.clone(),
+            tm.items.clone().iter().cloned().fold(
+                acc,
+                |acc2: Rc<QualifiedItemRegistryBuild>, item: Rc<Node>| {
+                    let item_name =
+                        authored_name_at(tm.type_env.clone().source_indices.clone(), item.clone());
+                    match v1_rt::map_get(&tm.item_registry.clone(), item_name.clone()) {
+                        Some(info) => qualified_item_registry_insert(
+                            acc2.clone(),
+                            v1_rt::concat(
+                                v1_rt::concat(module_name.clone(), ".".to_string()),
+                                item_name.clone(),
+                            ),
+                            info.clone(),
+                        ),
+                        None => acc2.clone(),
+                    }
+                },
+            )
         },
     )
 }
@@ -4059,36 +4062,31 @@ pub fn merge_item_registries(
 pub fn value_ref_leaf_key_collision_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Construction wall for the cross-module half of the qualified-value-reference dotted-render class (sibling of value_ref_self_module_normalization_note for the same-module half). #7685 keyed registry lookup on the leaf name so the is_data call-suffix decision fired for dotted references, but the flat item_registry is keyed by bare name with last-write-wins across the closure — so module_a.homonym_value could consult module_b's ItemInfo when both modules declare the same leaf. Fix: merge a qualified-name overlay (module.leaf -> ItemInfo, one authority per declaring module) at emit time and key cross-module lookups on the full normalized spelling; same-module references still normalize to bare before lookup. Rendering uses the exact qualified registry row for BOTH declaration kind and declaring module — never the authored qualifier string alone (§5 fabricated-plausible-output refusal). Duplicate exact module.leaf overlay keys refuse via duplicate_qualified_item_registry_marker rather than last-write-wins.".to_string()
+            "Construction wall for the cross-module half of the qualified-value-reference dotted-render class (sibling of value_ref_self_module_normalization_note for the same-module half). #7685 keyed registry lookup on the leaf name so the is_data call-suffix decision fired for dotted references, but the flat item_registry is keyed by bare name with last-write-wins across the closure — so module_a.homonym_value could consult module_b's ItemInfo when both modules declare the same leaf. Fix: a separate QualifiedItemRegistry (module.leaf -> ItemInfo, one authority per declaring module) built from stable declaration order; only value-reference emission consumes it — the bare item_registry is never merged with qualified keys. Cross-module lookups use the full normalized spelling; same-module references still normalize to bare before lookup. Rendering uses the exact qualified registry row for BOTH declaration kind and declaring module — never the authored qualifier string alone (§5 fabricated-plausible-output refusal). Duplicate exact module.leaf keys are a typed QualifiedRegistryDuplicate build result, not a writable map row.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn duplicate_qualified_item_registry_marker_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Fail-closed marker row for duplicate exact module.leaf keys in the qualified item_registry overlay. build_qualified_item_registry refuses a second distinct ItemInfo at the same qualified key instead of last-write-wins. lookup_item_for_value_ref and emit_value_ref_ident surface compile_error! when this marker is reached.".to_string()
-        };
+pub fn emit_qualified_item_registry_refusal(build: Rc<QualifiedItemRegistryBuild>) -> String {
+    match (*build.clone()).clone() {
+        QualifiedItemRegistryBuild::QualifiedRegistryDuplicate {
+            key, first, second, ..
+        } => emit_error_expr(
+            v1_rt::concat(
+                "duplicate qualified item_registry key — refuse ambiguous module.leaf overlay: "
+                    .to_string(),
+                key.clone(),
+            ),
+            RenderTarget::Rust,
+        ),
+        QualifiedItemRegistryBuild::QualifiedRegistryBuilt {
+            registry: registry, ..
+        } => emit_error_expr(
+            "qualified item registry internal refusal on built registry".to_string(),
+            RenderTarget::Rust,
+        ),
     }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn duplicate_qualified_item_registry_marker(name: String) -> Rc<ItemInfo> {
-    Rc::new(ItemInfo {
-        name: name.clone(),
-        module_name: "__DUPLICATE_QUALIFIED_ITEM_REGISTRY_KEY__".to_string(),
-        kind: ItemKind::OtherItem,
-        service_names: Rc::new(vec![]),
-        resource_names: Rc::new(vec![]),
-        params: Rc::new(vec![]),
-        is_self_recursive: false,
-        has_non_tail_self_call: false,
-    })
-}
-
-pub fn is_duplicate_qualified_item_registry_marker(info: Rc<ItemInfo>) -> bool {
-    (info.module_name.clone() == "__DUPLICATE_QUALIFIED_ITEM_REGISTRY_KEY__".to_string())
 }
 
 pub fn value_ref_registry_lookup_key(resolved_name: String) -> String {
@@ -4104,12 +4102,19 @@ pub fn value_ref_registry_lookup_key(resolved_name: String) -> String {
 
 pub fn lookup_item_for_value_ref(
     resolved_name: String,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    build: Rc<QualifiedItemRegistryBuild>,
 ) -> Option<Rc<ItemInfo>> {
-    lookup_item(
-        registry.clone(),
-        value_ref_registry_lookup_key(resolved_name.clone()),
-    )
+    match (*build.clone()).clone() {
+        QualifiedItemRegistryBuild::QualifiedRegistryDuplicate {
+            key, first, second, ..
+        } => None,
+        QualifiedItemRegistryBuild::QualifiedRegistryBuilt {
+            registry: registry, ..
+        } => lookup_item(
+            registry.clone(),
+            value_ref_registry_lookup_key(resolved_name.clone()),
+        ),
+    }
 }
 
 pub fn emit_qualified_value_ref_crate_ident(
@@ -4117,30 +4122,15 @@ pub fn emit_qualified_value_ref_crate_ident(
     info: Rc<ItemInfo>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
 ) -> String {
-    if is_duplicate_qualified_item_registry_marker(info.clone()) {
-        emit_error_expr(
-            "duplicate qualified item_registry key — refuse ambiguous module.leaf overlay"
-                .to_string(),
-            RenderTarget::Rust,
-        )
-    } else {
+    v1_rt::concat(
         v1_rt::concat(
             v1_rt::concat(
-                v1_rt::concat(
-                    "crate::".to_string(),
-                    module_to_filename(info.module_name.clone()),
-                ),
-                "::".to_string(),
+                "crate::".to_string(),
+                module_to_filename(info.module_name.clone()),
             ),
-            emit_import_name(leaf.clone(), registry.clone()),
-        )
-    }
-}
-
-pub fn value_ref_item_info_refusal(info: Rc<ItemInfo>) -> String {
-    emit_error_expr(
-        "duplicate qualified item_registry key — refuse ambiguous module.leaf overlay".to_string(),
-        RenderTarget::Rust,
+            "::".to_string(),
+        ),
+        emit_import_name(leaf.clone(), registry.clone()),
     )
 }
 
@@ -4337,6 +4327,7 @@ pub fn emit_rust_block_stmts(
     mut text: Rc<Vec<String>>,
     mut scope: Rc<InferScope>,
     mut registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    mut qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     mut depth: i64,
     mut shared_types: Rc<BTreeSet<String>>,
     mut emit_info: Rc<EmitGraphInfo>,
@@ -4353,6 +4344,7 @@ pub fn emit_rust_block_stmts(
                 let line = emit_typed_expr(
                     stmt.clone(),
                     registry.clone(),
+                    qualified_item_registry.clone(),
                     scope.clone(),
                     depth.clone(),
                     shared_types.clone(),
@@ -4385,6 +4377,7 @@ pub fn emit_rust_init_block_stmts(
     mut text: Rc<Vec<String>>,
     mut scope: Rc<InferScope>,
     mut registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    mut qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     mut depth: i64,
     mut shared_types: Rc<BTreeSet<String>>,
     mut emit_info: Rc<EmitGraphInfo>,
@@ -4417,6 +4410,7 @@ pub fn emit_rust_init_block_stmts(
                         let raw_line = emit_typed_expr(
                             stmt.clone(),
                             registry.clone(),
+                            qualified_item_registry.clone(),
                             scope.clone(),
                             depth.clone(),
                             shared_types.clone(),
@@ -4994,14 +4988,12 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
             fn_return_type: None,
         });
         let shared_types = emit_info.shared_types.clone();
-        let registry = merge_item_registries(
-            typed.item_registry.clone(),
-            build_qualified_item_registry(typed.modules.clone()),
-        );
+        let bare_registry = typed.item_registry.clone();
+        let qualified_item_registry = build_qualified_item_registry(typed.modules.clone());
         let data_items = build_data_item_index(typed.modules.clone());
         let workflow_funcs = collect_workflow_funcs(
             typed.modules.clone(),
-            registry.clone(),
+            bare_registry.clone(),
             emit_info.read_only_params_index.clone(),
         );
         let workflow_default_diags = validate_workflow_param_defaults(workflow_funcs.clone());
@@ -5051,7 +5043,8 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
             for tm in typed.modules.clone().iter().cloned() {
                 __result.push(emit_module_full(
                     tm.clone(),
-                    registry.clone(),
+                    bare_registry.clone(),
+                    qualified_item_registry.clone(),
                     emit_info.clone(),
                     shared_types.clone(),
                     svc_module_map.clone(),
@@ -5389,11 +5382,14 @@ pub fn emit_module(
             fn_return_type: None,
         });
         let shared_types = emit_info.shared_types.clone();
+        let qualified_item_registry =
+            build_qualified_item_registry(Rc::new(vec![typed_module.clone()]));
         let export_sets = build_module_export_sets(Rc::new(vec![typed_module.clone()]));
         let module_index = build_module_index(Rc::new(vec![typed_module.clone()]));
         emit_module_full(
             typed_module.clone(),
             registry.clone(),
+            qualified_item_registry.clone(),
             emit_info.clone(),
             shared_types.clone(),
             v1_rt::rc_empty_map::<String, String>(),
@@ -6964,6 +6960,7 @@ pub fn reference_derived_use_lines(
 pub fn emit_module_full(
     typed_module: Rc<TypedModule>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     emit_info: Rc<EmitGraphInfo>,
     shared_types: Rc<BTreeSet<String>>,
     svc_module_map: Rc<HashMap<String, String>>,
@@ -7312,6 +7309,7 @@ pub fn emit_module_full(
                     item.clone(),
                     authored_name(scope.type_env.clone(), m.clone()),
                     registry.clone(),
+                    qualified_item_registry.clone(),
                     scope.clone(),
                     shared_types.clone(),
                     emit_info.clone(),
@@ -11427,6 +11425,7 @@ pub fn emit_typed_item(
     item: Rc<Node>,
     module_name: String,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     scope: Rc<InferScope>,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
@@ -11771,6 +11770,7 @@ pub fn emit_typed_item(
                                     item.uses.clone(),
                                     item.body.clone().clone().unwrap(),
                                     registry.clone(),
+                                    qualified_item_registry.clone(),
                                     scope.clone(),
                                     shared_types.clone(),
                                     fn_emit_info.clone(),
@@ -11782,6 +11782,7 @@ pub fn emit_typed_item(
                                     resolved_type(item.clone()),
                                     item.body.clone().clone().unwrap(),
                                     registry.clone(),
+                                    qualified_item_registry.clone(),
                                     scope.clone(),
                                     shared_types.clone(),
                                     fn_emit_info.clone(),
@@ -11795,6 +11796,7 @@ pub fn emit_typed_item(
                                 item.type_annotation.clone().clone().unwrap(),
                                 item.body.clone().clone().unwrap(),
                                 registry.clone(),
+                                qualified_item_registry.clone(),
                                 scope.clone(),
                                 0,
                                 shared_types.clone(),
@@ -14009,6 +14011,7 @@ pub fn emit_fn_def(
     inferred: Rc<Node>,
     body: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     scope: Rc<InferScope>,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
@@ -14235,6 +14238,7 @@ pub fn emit_rust_fn_body_expr(
     texpr: Rc<Node>,
     return_is_unit: bool,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
@@ -14244,6 +14248,7 @@ pub fn emit_rust_fn_body_expr(
         emit_rust_unit_discarding_stmt(
             texpr.clone(),
             registry.clone(),
+            qualified_item_registry.clone(),
             scope.clone(),
             depth.clone(),
             shared_types.clone(),
@@ -14253,6 +14258,7 @@ pub fn emit_rust_fn_body_expr(
         emit_typed_expr(
             texpr.clone(),
             registry.clone(),
+            qualified_item_registry.clone(),
             scope.clone(),
             depth.clone(),
             shared_types.clone(),
@@ -14274,6 +14280,7 @@ pub fn inferred_expr_is_optional(texpr: Rc<Node>) -> bool {
 pub fn emit_rust_unit_discarding_optional_typed(
     texpr: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
@@ -14294,6 +14301,7 @@ pub fn emit_rust_unit_discarding_optional_typed(
                     Some(f) => emit_rust_unit_discarding_stmt(
                         field_init_node_value(f.clone()),
                         registry.clone(),
+                        qualified_item_registry.clone(),
                         scope.clone(),
                         depth.clone(),
                         shared_types.clone(),
@@ -14320,6 +14328,7 @@ pub fn emit_rust_unit_discarding_optional_typed(
 pub fn emit_rust_unit_discarding_stmt(
     texpr: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
@@ -14338,6 +14347,7 @@ pub fn emit_rust_unit_discarding_stmt(
                                 emit_rust_unit_discarding_stmt(
                                     v.clone(),
                                     registry.clone(),
+                                    qualified_item_registry.clone(),
                                     scope.clone(),
                                     depth.clone(),
                                     shared_types.clone(),
@@ -14348,6 +14358,7 @@ pub fn emit_rust_unit_discarding_stmt(
                             emit_rust_unit_discarding_stmt(
                                 bd.clone(),
                                 registry.clone(),
+                                qualified_item_registry.clone(),
                                 scope.clone(),
                                 depth.clone(),
                                 shared_types.clone(),
@@ -14357,6 +14368,7 @@ pub fn emit_rust_unit_discarding_stmt(
                         None => emit_rust_unit_discarding_stmt(
                             v.clone(),
                             registry.clone(),
+                            qualified_item_registry.clone(),
                             scope.clone(),
                             depth.clone(),
                             shared_types.clone(),
@@ -14369,6 +14381,7 @@ pub fn emit_rust_unit_discarding_stmt(
                         let val_str = emit_typed_expr(
                             v.clone(),
                             registry.clone(),
+                            qualified_item_registry.clone(),
                             scope.clone(),
                             depth.clone(),
                             shared_types.clone(),
@@ -14383,6 +14396,7 @@ pub fn emit_rust_unit_discarding_stmt(
                                 emit_rust_unit_discarding_stmt(
                                     bd.clone(),
                                     registry.clone(),
+                                    qualified_item_registry.clone(),
                                     scope.clone(),
                                     depth.clone(),
                                     shared_types.clone(),
@@ -14400,6 +14414,7 @@ pub fn emit_rust_unit_discarding_stmt(
                     __result.push(emit_rust_unit_discarding_stmt(
                         child.clone(),
                         registry.clone(),
+                        qualified_item_registry.clone(),
                         scope.clone(),
                         depth.clone(),
                         shared_types.clone(),
@@ -14416,6 +14431,7 @@ pub fn emit_rust_unit_discarding_stmt(
                 let cond_str = emit_typed_expr(
                     c.clone(),
                     registry.clone(),
+                    qualified_item_registry.clone(),
                     scope.clone(),
                     depth.clone(),
                     shared_types.clone(),
@@ -14425,6 +14441,7 @@ pub fn emit_rust_unit_discarding_stmt(
                 let then_str = emit_rust_unit_discarding_stmt(
                     t.clone(),
                     registry.clone(),
+                    qualified_item_registry.clone(),
                     scope.clone(),
                     (depth.clone() + 1),
                     shared_types.clone(),
@@ -14435,6 +14452,7 @@ pub fn emit_rust_unit_discarding_stmt(
                         let else_str = emit_rust_unit_discarding_stmt(
                             eb.clone(),
                             registry.clone(),
+                            qualified_item_registry.clone(),
                             scope.clone(),
                             (depth.clone() + 1),
                             shared_types.clone(),
@@ -14486,6 +14504,7 @@ pub fn emit_rust_unit_discarding_stmt(
                     emit_rust_unit_discarding_optional_typed(
                         texpr.clone(),
                         registry.clone(),
+                        qualified_item_registry.clone(),
                         scope.clone(),
                         depth.clone(),
                         shared_types.clone(),
@@ -14496,6 +14515,7 @@ pub fn emit_rust_unit_discarding_stmt(
                         emit_typed_expr(
                             texpr.clone(),
                             registry.clone(),
+                            qualified_item_registry.clone(),
                             scope.clone(),
                             depth.clone(),
                             shared_types.clone(),
@@ -14511,6 +14531,7 @@ pub fn emit_rust_unit_discarding_stmt(
                     emit_rust_unit_discarding_optional_typed(
                         texpr.clone(),
                         registry.clone(),
+                        qualified_item_registry.clone(),
                         scope.clone(),
                         depth.clone(),
                         shared_types.clone(),
@@ -14523,6 +14544,7 @@ pub fn emit_rust_unit_discarding_stmt(
                             emit_typed_expr(
                                 texpr.clone(),
                                 registry.clone(),
+                                qualified_item_registry.clone(),
                                 scope.clone(),
                                 depth.clone(),
                                 shared_types.clone(),
@@ -14540,6 +14562,7 @@ pub fn emit_rust_unit_discarding_stmt(
                 emit_typed_expr(
                     texpr.clone(),
                     registry.clone(),
+                    qualified_item_registry.clone(),
                     scope.clone(),
                     depth.clone(),
                     shared_types.clone(),
@@ -14552,6 +14575,7 @@ pub fn emit_rust_unit_discarding_stmt(
                 emit_typed_expr(
                     texpr.clone(),
                     registry.clone(),
+                    qualified_item_registry.clone(),
                     scope.clone(),
                     depth.clone(),
                     shared_types.clone(),
@@ -14571,6 +14595,7 @@ pub fn emit_fn_def_non_tco(
     ret_str: String,
     body: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
@@ -14584,6 +14609,7 @@ pub fn emit_fn_def_non_tco(
                 body.clone(),
                 return_is_unit.clone(),
                 registry.clone(),
+                qualified_item_registry.clone(),
                 scope.clone(),
                 (depth.clone() + 2),
                 shared_types.clone(),
@@ -14651,6 +14677,7 @@ pub fn emit_fn_def_non_tco(
                 body.clone(),
                 return_is_unit.clone(),
                 registry.clone(),
+                qualified_item_registry.clone(),
                 scope.clone(),
                 (depth.clone() + 1),
                 shared_types.clone(),
@@ -14705,6 +14732,7 @@ pub fn emit_func_def(
     uses: Rc<Vec<Rc<Node>>>,
     body: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     scope: Rc<InferScope>,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
@@ -14751,6 +14779,7 @@ pub fn emit_func_def(
         let body_str = emit_func_body(
             body.clone(),
             registry.clone(),
+            qualified_item_registry.clone(),
             body_scope.clone(),
             (depth.clone() + 1),
             shared_types.clone(),
@@ -14800,6 +14829,7 @@ pub fn emit_func_def(
 pub fn emit_func_body(
     body: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
@@ -14815,6 +14845,7 @@ pub fn emit_func_body(
                 let val_str = emit_typed_expr(
                     v.clone(),
                     registry.clone(),
+                    qualified_item_registry.clone(),
                     scope.clone(),
                     depth.clone(),
                     shared_types.clone(),
@@ -14834,6 +14865,7 @@ pub fn emit_func_body(
                         emit_func_body(
                             bd.clone(),
                             registry.clone(),
+                            qualified_item_registry.clone(),
                             next_scope.clone(),
                             depth.clone(),
                             shared_types.clone(),
@@ -14854,6 +14886,7 @@ pub fn emit_func_body(
                             Rc::new(vec![]),
                             scope.clone(),
                             registry.clone(),
+                            qualified_item_registry.clone(),
                             depth.clone(),
                             shared_types.clone(),
                             emit_info.clone(),
@@ -14867,6 +14900,7 @@ pub fn emit_func_body(
                                         emit_typed_expr(
                                             return_value(s.clone()),
                                             registry.clone(),
+                                            qualified_item_registry.clone(),
                                             init_state.scope.clone(),
                                             depth.clone(),
                                             shared_types.clone(),
@@ -14882,6 +14916,7 @@ pub fn emit_func_body(
                                         emit_typed_expr(
                                             s.clone(),
                                             registry.clone(),
+                                            qualified_item_registry.clone(),
                                             init_state.scope.clone(),
                                             depth.clone(),
                                             shared_types.clone(),
@@ -14914,6 +14949,7 @@ pub fn emit_func_body(
                     emit_typed_expr(
                         return_value(body.clone()),
                         registry.clone(),
+                        qualified_item_registry.clone(),
                         scope.clone(),
                         depth.clone(),
                         shared_types.clone(),
@@ -14929,6 +14965,7 @@ pub fn emit_func_body(
                     emit_typed_expr(
                         body.clone(),
                         registry.clone(),
+                        qualified_item_registry.clone(),
                         scope.clone(),
                         depth.clone(),
                         shared_types.clone(),
@@ -17331,36 +17368,45 @@ pub fn value_ref_ident_dotted_fallback_note() -> String {
 pub fn emit_value_ref_ident(
     name: String,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified_build: Rc<QualifiedItemRegistryBuild>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
-    if v1_rt::string_contains(&name, ".".to_string()) {
-        {
-            let leaf = value_ref_qualified_leaf(name.clone());
-            let qualifier = value_ref_qualifier_prefix(name.clone());
-            if (qualifier.clone() != "".to_string()) {
-                match lookup_item_for_value_ref(name.clone(), registry.clone()) {
+    match (*qualified_build.clone()).clone() {
+        QualifiedItemRegistryBuild::QualifiedRegistryDuplicate {
+            key, first, second, ..
+        } => emit_qualified_item_registry_refusal(qualified_build.clone()),
+        QualifiedItemRegistryBuild::QualifiedRegistryBuilt { registry: _, .. } => {
+            if v1_rt::string_contains(&name, ".".to_string()) {
+                {
+                    let leaf = value_ref_qualified_leaf(name.clone());
+                    let qualifier = value_ref_qualifier_prefix(name.clone());
+                    if (qualifier.clone() != "".to_string()) {
+                        match lookup_item_for_value_ref(name.clone(), qualified_build.clone()) {
     Some(info) => emit_qualified_value_ref_crate_ident(leaf.clone(), info.clone(), registry.clone()),
     None => emit_error_expr("qualified value reference missing exact registry row — refuse authored qualifier".to_string(), RenderTarget::Rust),
 }
-            } else {
-                match v1_rt::map_get(&registry, leaf.clone()) {
-                    Some(info) => emit_qualified_value_ref_crate_ident(
-                        leaf.clone(),
-                        info.clone(),
-                        registry.clone(),
-                    ),
-                    None => {
-                        if freemonoid_empty_from_emit_info(leaf.clone(), emit_info.clone()) {
-                            emit_freemonoid_empty_rc_value()
-                        } else {
-                            emit_ident(leaf.clone(), RenderTarget::Rust)
+                    } else {
+                        match v1_rt::map_get(&registry, leaf.clone()) {
+                            Some(info) => emit_qualified_value_ref_crate_ident(
+                                leaf.clone(),
+                                info.clone(),
+                                registry.clone(),
+                            ),
+                            None => {
+                                if freemonoid_empty_from_emit_info(leaf.clone(), emit_info.clone())
+                                {
+                                    emit_freemonoid_empty_rc_value()
+                                } else {
+                                    emit_ident(leaf.clone(), RenderTarget::Rust)
+                                }
+                            }
                         }
                     }
                 }
+            } else {
+                emit_ident(name.clone(), RenderTarget::Rust)
             }
         }
-    } else {
-        emit_ident(name.clone(), RenderTarget::Rust)
     }
 }
 
@@ -17396,6 +17442,7 @@ pub fn emit_var_ref(
     resolved_type: Option<Rc<InferredNode>>,
     shared_types: Rc<BTreeSet<String>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified_build: Rc<QualifiedItemRegistryBuild>,
     emit_info: Rc<EmitGraphInfo>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_name: String,
@@ -17462,59 +17509,63 @@ pub fn emit_var_ref(
                                 body.clone()
                             }
                         }
-                        None => {
-                            match lookup_item_for_value_ref(resolved_name.clone(), registry.clone())
-                            {
+                        None => match (*qualified_build.clone()).clone() {
+                            QualifiedItemRegistryBuild::QualifiedRegistryDuplicate {
+                                key,
+                                first,
+                                second,
+                                ..
+                            } => emit_qualified_item_registry_refusal(qualified_build.clone()),
+                            QualifiedItemRegistryBuild::QualifiedRegistryBuilt {
+                                registry: _,
+                                ..
+                            } => match lookup_item_for_value_ref(
+                                resolved_name.clone(),
+                                qualified_build.clone(),
+                            ) {
                                 Some(info) => {
-                                    if is_duplicate_qualified_item_registry_marker(info.clone()) {
-                                        value_ref_item_info_refusal(info.clone())
+                                    let is_data = (info.kind.clone() == ItemKind::DataItem);
+                                    if is_data.clone() {
+                                        v1_rt::concat(
+                                            emit_value_ref_ident(
+                                                name.clone(),
+                                                registry.clone(),
+                                                qualified_build.clone(),
+                                                emit_info.clone(),
+                                            ),
+                                            "()".to_string(),
+                                        )
                                     } else {
                                         {
-                                            let is_data = (info.kind.clone() == ItemKind::DataItem);
-                                            if is_data.clone() {
-                                                v1_rt::concat(
-                                                    emit_value_ref_ident(
-                                                        name.clone(),
-                                                        registry.clone(),
-                                                        emit_info.clone(),
-                                                    ),
-                                                    "()".to_string(),
-                                                )
+                                            let is_function_value =
+                                                match binding_kind.clone().as_deref().cloned() {
+                                                    Some(VarBindingKind::FunctionValueBinding) => {
+                                                        true
+                                                    }
+                                                    _ => false,
+                                                };
+                                            let ident = emit_value_ref_ident(
+                                                resolved_name.clone(),
+                                                registry.clone(),
+                                                qualified_build.clone(),
+                                                emit_info.clone(),
+                                            );
+                                            let ident_str = if is_function_value.clone() {
+                                                ident.clone()
                                             } else {
-                                                {
-                                                    let is_function_value = match binding_kind
-                                                        .clone()
-                                                        .as_deref()
-                                                        .cloned()
-                                                    {
-                                                        Some(
-                                                            VarBindingKind::FunctionValueBinding,
-                                                        ) => true,
-                                                        _ => false,
-                                                    };
-                                                    let ident = emit_value_ref_ident(
-                                                        resolved_name.clone(),
-                                                        registry.clone(),
-                                                        emit_info.clone(),
-                                                    );
-                                                    let ident_str = if is_function_value.clone() {
-                                                        ident.clone()
-                                                    } else {
-                                                        if moves_by_value.clone() {
-                                                            ident.clone()
-                                                        } else {
-                                                            match resolved_type.clone() {
-                                                                Some(_) => apply_type_template1(
-                                                                    sharing.clone_value.clone(),
-                                                                    ident.clone(),
-                                                                ),
-                                                                _ => ident.clone(),
-                                                            }
-                                                        }
-                                                    };
-                                                    ident_str.clone()
+                                                if moves_by_value.clone() {
+                                                    ident.clone()
+                                                } else {
+                                                    match resolved_type.clone() {
+                                                        Some(_) => apply_type_template1(
+                                                            sharing.clone_value.clone(),
+                                                            ident.clone(),
+                                                        ),
+                                                        _ => ident.clone(),
+                                                    }
                                                 }
-                                            }
+                                            };
+                                            ident_str.clone()
                                         }
                                     }
                                 }
@@ -17522,6 +17573,7 @@ pub fn emit_var_ref(
                                     let ident = emit_value_ref_ident(
                                         resolved_name.clone(),
                                         registry.clone(),
+                                        qualified_build.clone(),
                                         emit_info.clone(),
                                     );
                                     let ident_str = if moves_by_value.clone() {
@@ -17537,8 +17589,8 @@ pub fn emit_var_ref(
                                     };
                                     ident_str.clone()
                                 }
-                            }
-                        }
+                            },
+                        },
                     };
                     ref_str
                 }
@@ -17550,6 +17602,7 @@ pub fn emit_var_ref(
 pub fn emit_typed_expr_base(
     texpr: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
@@ -17623,43 +17676,53 @@ pub fn emit_typed_expr_base(
                                     }
                                 }
                             }
-                            None => match lookup_item_for_value_ref(
-                                value_ref_normalize_self_module(
-                                    n.clone(),
-                                    scope.module_name.clone(),
+                            None => match (*qualified_item_registry.clone()).clone() {
+                                QualifiedItemRegistryBuild::QualifiedRegistryDuplicate {
+                                    key,
+                                    first,
+                                    second,
+                                    ..
+                                } => emit_qualified_item_registry_refusal(
+                                    qualified_item_registry.clone(),
                                 ),
-                                registry.clone(),
-                            ) {
-                                Some(info) => {
-                                    if is_duplicate_qualified_item_registry_marker(info.clone()) {
-                                        value_ref_item_info_refusal(info.clone())
-                                    } else {
-                                        {
-                                            let is_data = (info.kind.clone() == ItemKind::DataItem);
-                                            if is_data.clone() {
-                                                v1_rt::concat(
-                                                    emit_value_ref_ident(
-                                                        n.clone(),
-                                                        registry.clone(),
-                                                        emit_info.clone(),
-                                                    ),
-                                                    "()".to_string(),
-                                                )
-                                            } else {
+                                QualifiedItemRegistryBuild::QualifiedRegistryBuilt {
+                                    registry: _,
+                                    ..
+                                } => match lookup_item_for_value_ref(
+                                    value_ref_normalize_self_module(
+                                        n.clone(),
+                                        scope.module_name.clone(),
+                                    ),
+                                    qualified_item_registry.clone(),
+                                ) {
+                                    Some(info) => {
+                                        let is_data = (info.kind.clone() == ItemKind::DataItem);
+                                        if is_data.clone() {
+                                            v1_rt::concat(
                                                 emit_value_ref_ident(
                                                     n.clone(),
                                                     registry.clone(),
+                                                    qualified_item_registry.clone(),
                                                     emit_info.clone(),
-                                                )
-                                            }
+                                                ),
+                                                "()".to_string(),
+                                            )
+                                        } else {
+                                            emit_value_ref_ident(
+                                                n.clone(),
+                                                registry.clone(),
+                                                qualified_item_registry.clone(),
+                                                emit_info.clone(),
+                                            )
                                         }
                                     }
-                                }
-                                None => emit_value_ref_ident(
-                                    n.clone(),
-                                    registry.clone(),
-                                    emit_info.clone(),
-                                ),
+                                    None => emit_value_ref_ident(
+                                        n.clone(),
+                                        registry.clone(),
+                                        qualified_item_registry.clone(),
+                                        emit_info.clone(),
+                                    ),
+                                },
                             },
                         }
                     }
@@ -17668,6 +17731,7 @@ pub fn emit_typed_expr_base(
             _ => emit_typed_expr(
                 texpr.clone(),
                 registry.clone(),
+                qualified_item_registry.clone(),
                 scope.clone(),
                 depth.clone(),
                 shared_types.clone(),
@@ -17736,6 +17800,7 @@ pub fn emit_typed_field_access(
     field: String,
     summary: Option<Rc<FieldSummary>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
@@ -17745,6 +17810,7 @@ pub fn emit_typed_field_access(
         let base_str = emit_typed_expr_base(
             base.clone(),
             registry.clone(),
+            qualified_item_registry.clone(),
             scope.clone(),
             depth.clone(),
             shared_types.clone(),
@@ -17768,6 +17834,7 @@ pub fn emit_typed_field_access(
                     emit_typed_expr(
                         base.clone(),
                         registry.clone(),
+                        qualified_item_registry.clone(),
                         scope.clone(),
                         depth.clone(),
                         shared_types.clone(),
@@ -18248,26 +18315,27 @@ pub fn rust_wrap_runtime_collection_result(
 pub fn emit_rust_expr_var(
     expr: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
+    scope: Rc<InferScope>,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    module_name: String,
 ) -> String {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprVar {
             binding_kind: binding_kind,
             ..
         } => {
-            let n = expr_var_name_at(expr.clone(), source_indices.clone());
+            let n = expr_var_name_at(expr.clone(), scope.type_env.clone().source_indices.clone());
             emit_var_ref(
                 n.clone(),
                 binding_kind.clone(),
                 expr.inferred.clone(),
                 shared_types.clone(),
                 registry.clone(),
+                qualified_item_registry.clone(),
                 emit_info.clone(),
-                source_indices.clone(),
-                module_name.clone(),
+                scope.type_env.clone().source_indices.clone(),
+                scope.module_name.clone(),
             )
         }
         _ => emit_error_expr(
@@ -18280,6 +18348,7 @@ pub fn emit_rust_expr_var(
 pub fn emit_rust_expr_field_access(
     expr: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
@@ -18307,6 +18376,7 @@ pub fn emit_rust_expr_field_access(
                             f.clone(),
                             summary.clone(),
                             registry.clone(),
+                            qualified_item_registry.clone(),
                             scope.clone(),
                             depth.clone(),
                             shared_types.clone(),
@@ -18319,6 +18389,7 @@ pub fn emit_rust_expr_field_access(
                         f.clone(),
                         summary.clone(),
                         registry.clone(),
+                        qualified_item_registry.clone(),
                         scope.clone(),
                         depth.clone(),
                         shared_types.clone(),
@@ -18337,6 +18408,7 @@ pub fn emit_rust_expr_field_access(
 pub fn emit_rust_expr_call(
     expr: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
@@ -18350,6 +18422,7 @@ pub fn emit_rust_expr_call(
                 expr.children.clone(),
                 expr.inferred.clone(),
                 registry.clone(),
+                qualified_item_registry.clone(),
                 scope.clone(),
                 depth.clone(),
                 shared_types.clone(),
@@ -18366,6 +18439,7 @@ pub fn emit_rust_expr_call(
 pub fn emit_rust_expr_method_call(
     expr: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
@@ -18388,6 +18462,7 @@ pub fn emit_rust_expr_method_call(
                 expr.inferred.clone(),
                 method_semantics.clone(),
                 registry.clone(),
+                qualified_item_registry.clone(),
                 scope.clone(),
                 depth.clone(),
                 shared_types.clone(),
@@ -18404,6 +18479,7 @@ pub fn emit_rust_expr_method_call(
 pub fn emit_rust_expr_match(
     expr: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
@@ -18417,6 +18493,7 @@ pub fn emit_rust_expr_match(
                 s.clone(),
                 arm_list.clone(),
                 registry.clone(),
+                qualified_item_registry.clone(),
                 scope.clone(),
                 depth.clone(),
                 shared_types.clone(),
@@ -18433,6 +18510,7 @@ pub fn emit_rust_expr_match(
 pub fn emit_rust_expr_if(
     expr: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
@@ -18448,6 +18526,7 @@ pub fn emit_rust_expr_if(
                 t.clone(),
                 e.clone(),
                 registry.clone(),
+                qualified_item_registry.clone(),
                 scope.clone(),
                 depth.clone(),
                 shared_types.clone(),
@@ -18464,6 +18543,7 @@ pub fn emit_rust_expr_if(
 pub fn emit_rust_expr_let(
     expr: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
@@ -18480,6 +18560,7 @@ pub fn emit_rust_expr_let(
                 v.clone(),
                 bd.clone(),
                 registry.clone(),
+                qualified_item_registry.clone(),
                 scope.clone(),
                 depth.clone(),
                 shared_types.clone(),
@@ -18505,6 +18586,7 @@ pub fn concrete_peel_optional_ctor_note() -> String {
 pub fn emit_rust_expr_record_lit(
     expr: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
@@ -18564,6 +18646,7 @@ pub fn emit_rust_expr_record_lit(
                 parent_enum.clone(),
                 expanded_rt.clone(),
                 registry.clone(),
+                qualified_item_registry.clone(),
                 scope.clone(),
                 depth.clone(),
                 shared_types.clone(),
@@ -18614,6 +18697,7 @@ pub fn emit_rust_expr_record_lit(
 pub fn emit_rust_expr_string_interp(
     expr: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
@@ -18643,6 +18727,7 @@ pub fn emit_rust_expr_string_interp(
             emit_typed_string_interp(
                 ps.clone(),
                 registry.clone(),
+                qualified_item_registry.clone(),
                 scope.clone(),
                 depth.clone(),
                 shared_types.clone(),
@@ -18659,6 +18744,7 @@ pub fn emit_rust_expr_string_interp(
 pub fn emit_rust_expr_block(
     expr: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
@@ -18668,6 +18754,7 @@ pub fn emit_rust_expr_block(
         ExprData::ExprBlock => emit_typed_block(
             expr.children.clone(),
             registry.clone(),
+            qualified_item_registry.clone(),
             scope.clone(),
             depth.clone(),
             shared_types.clone(),
@@ -18683,6 +18770,7 @@ pub fn emit_rust_expr_block(
 pub fn emit_rust_expr_cast(
     expr: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
@@ -18697,6 +18785,7 @@ pub fn emit_rust_expr_cast(
                 emit_typed_expr(
                     child.clone(),
                     registry.clone(),
+                    qualified_item_registry.clone(),
                     scope.clone(),
                     depth.clone(),
                     shared_types.clone(),
@@ -18716,6 +18805,7 @@ pub fn emit_rust_expr_cast(
 pub fn emit_rust_expr_for_each(
     expr: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
@@ -18732,6 +18822,7 @@ pub fn emit_rust_expr_for_each(
                 c.clone(),
                 bd.clone(),
                 registry.clone(),
+                qualified_item_registry.clone(),
                 scope.clone(),
                 depth.clone(),
                 shared_types.clone(),
@@ -18748,6 +18839,7 @@ pub fn emit_rust_expr_for_each(
 pub fn emit_rust_expr_index(
     expr: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
@@ -18761,6 +18853,7 @@ pub fn emit_rust_expr_index(
                 b.clone(),
                 i.clone(),
                 registry.clone(),
+                qualified_item_registry.clone(),
                 scope.clone(),
                 depth.clone(),
                 shared_types.clone(),
@@ -18777,6 +18870,7 @@ pub fn emit_rust_expr_index(
 pub fn emit_rust_expr_slice(
     expr: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
@@ -18792,6 +18886,7 @@ pub fn emit_rust_expr_slice(
                 s.clone(),
                 e.clone(),
                 registry.clone(),
+                qualified_item_registry.clone(),
                 scope.clone(),
                 depth.clone(),
                 shared_types.clone(),
@@ -18808,6 +18903,7 @@ pub fn emit_rust_expr_slice(
 pub fn emit_rust_expr_bin_op(
     expr: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
@@ -18824,6 +18920,7 @@ pub fn emit_rust_expr_bin_op(
             binop_left(expr.clone()),
             binop_right(expr.clone()),
             registry.clone(),
+            qualified_item_registry.clone(),
             scope.clone(),
             depth.clone(),
             shared_types.clone(),
@@ -18839,6 +18936,7 @@ pub fn emit_rust_expr_bin_op(
 pub fn emit_typed_expr(
     texpr: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
@@ -18855,6 +18953,7 @@ pub fn emit_typed_expr(
                 emit_typed_expr(
                     child.clone(),
                     registry.clone(),
+                    qualified_item_registry.clone(),
                     scope.clone(),
                     depth.clone(),
                     shared_types.clone(),
@@ -18866,16 +18965,17 @@ pub fn emit_typed_expr(
                 emit_rust_expr_var(
                     expr.clone(),
                     registry.clone(),
+                    qualified_item_registry.clone(),
+                    scope.clone(),
                     shared_types.clone(),
                     emit_info.clone(),
-                    scope.type_env.clone().source_indices.clone(),
-                    scope.module_name.clone(),
                 )
             },
             |expr| {
                 emit_rust_expr_field_access(
                     expr.clone(),
                     registry.clone(),
+                    qualified_item_registry.clone(),
                     scope.clone(),
                     depth.clone(),
                     shared_types.clone(),
@@ -18886,6 +18986,7 @@ pub fn emit_typed_expr(
                 emit_rust_expr_call(
                     expr.clone(),
                     registry.clone(),
+                    qualified_item_registry.clone(),
                     scope.clone(),
                     depth.clone(),
                     shared_types.clone(),
@@ -18896,6 +18997,7 @@ pub fn emit_typed_expr(
                 emit_rust_expr_method_call(
                     expr.clone(),
                     registry.clone(),
+                    qualified_item_registry.clone(),
                     scope.clone(),
                     depth.clone(),
                     shared_types.clone(),
@@ -18906,6 +19008,7 @@ pub fn emit_typed_expr(
                 emit_rust_expr_match(
                     expr.clone(),
                     registry.clone(),
+                    qualified_item_registry.clone(),
                     scope.clone(),
                     depth.clone(),
                     shared_types.clone(),
@@ -18916,6 +19019,7 @@ pub fn emit_typed_expr(
                 emit_rust_expr_if(
                     expr.clone(),
                     registry.clone(),
+                    qualified_item_registry.clone(),
                     scope.clone(),
                     depth.clone(),
                     shared_types.clone(),
@@ -18926,6 +19030,7 @@ pub fn emit_typed_expr(
                 emit_rust_expr_let(
                     expr.clone(),
                     registry.clone(),
+                    qualified_item_registry.clone(),
                     scope.clone(),
                     depth.clone(),
                     shared_types.clone(),
@@ -18936,6 +19041,7 @@ pub fn emit_typed_expr(
                 emit_rust_expr_record_lit(
                     expr.clone(),
                     registry.clone(),
+                    qualified_item_registry.clone(),
                     scope.clone(),
                     depth.clone(),
                     shared_types.clone(),
@@ -18946,6 +19052,7 @@ pub fn emit_typed_expr(
                 emit_rust_expr_string_interp(
                     expr.clone(),
                     registry.clone(),
+                    qualified_item_registry.clone(),
                     scope.clone(),
                     depth.clone(),
                     shared_types.clone(),
@@ -18956,6 +19063,7 @@ pub fn emit_typed_expr(
                 emit_rust_expr_block(
                     expr.clone(),
                     registry.clone(),
+                    qualified_item_registry.clone(),
                     scope.clone(),
                     depth.clone(),
                     shared_types.clone(),
@@ -18966,6 +19074,7 @@ pub fn emit_typed_expr(
                 emit_rust_expr_cast(
                     expr.clone(),
                     registry.clone(),
+                    qualified_item_registry.clone(),
                     scope.clone(),
                     depth.clone(),
                     shared_types.clone(),
@@ -18976,6 +19085,7 @@ pub fn emit_typed_expr(
                 emit_rust_expr_for_each(
                     expr.clone(),
                     registry.clone(),
+                    qualified_item_registry.clone(),
                     scope.clone(),
                     depth.clone(),
                     shared_types.clone(),
@@ -18986,6 +19096,7 @@ pub fn emit_typed_expr(
                 emit_rust_expr_index(
                     expr.clone(),
                     registry.clone(),
+                    qualified_item_registry.clone(),
                     scope.clone(),
                     depth.clone(),
                     shared_types.clone(),
@@ -18996,6 +19107,7 @@ pub fn emit_typed_expr(
                 emit_rust_expr_slice(
                     expr.clone(),
                     registry.clone(),
+                    qualified_item_registry.clone(),
                     scope.clone(),
                     depth.clone(),
                     shared_types.clone(),
@@ -19006,6 +19118,7 @@ pub fn emit_typed_expr(
                 emit_rust_expr_bin_op(
                     expr.clone(),
                     registry.clone(),
+                    qualified_item_registry.clone(),
                     scope.clone(),
                     depth.clone(),
                     shared_types.clone(),
@@ -19019,6 +19132,7 @@ pub fn emit_typed_expr(
 pub fn emit_cloned_arg(
     texpr: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
@@ -19027,6 +19141,7 @@ pub fn emit_cloned_arg(
     emit_typed_expr(
         texpr.clone(),
         registry.clone(),
+        qualified_item_registry.clone(),
         scope.clone(),
         depth.clone(),
         shared_types.clone(),
@@ -19148,6 +19263,7 @@ pub fn is_collection_typed_expr(
 pub fn emit_discriminant_call_lowering(
     value_arg: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
@@ -19158,6 +19274,7 @@ pub fn emit_discriminant_call_lowering(
         let scrutinee = emit_typed_expr(
             arg.clone(),
             registry.clone(),
+            qualified_item_registry.clone(),
             scope.clone(),
             depth.clone(),
             shared_types.clone(),
@@ -19280,6 +19397,7 @@ pub fn emit_typed_call_expr(
     args: Rc<Vec<Rc<Node>>>,
     inferred: Option<Rc<InferredNode>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
@@ -19329,6 +19447,7 @@ pub fn emit_typed_call_expr(
                     func.clone(),
                     args.clone(),
                     registry.clone(),
+                    qualified_item_registry.clone(),
                     scope.clone(),
                     depth.clone(),
                     shared_types.clone(),
@@ -19386,6 +19505,7 @@ pub fn emit_typed_call(
     func: String,
     args: Rc<Vec<Rc<Node>>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
@@ -19403,6 +19523,7 @@ pub fn emit_typed_call(
                             let list_str = emit_typed_expr(
                                 arg_value(list_arg.clone()),
                                 registry.clone(),
+                                qualified_item_registry.clone(),
                                 scope.clone(),
                                 depth.clone(),
                                 shared_types.clone(),
@@ -19412,6 +19533,7 @@ pub fn emit_typed_call(
                             let index_str = emit_typed_expr(
                                 arg_value(idx_arg.clone()),
                                 registry.clone(),
+                                qualified_item_registry.clone(),
                                 scope.clone(),
                                 depth.clone(),
                                 shared_types.clone(),
@@ -19459,6 +19581,7 @@ pub fn emit_typed_call(
                 let base_str = emit_typed_expr(
                     base_arg.clone(),
                     registry.clone(),
+                    qualified_item_registry.clone(),
                     scope.clone(),
                     depth.clone(),
                     shared_types.clone(),
@@ -19491,6 +19614,7 @@ pub fn emit_typed_call(
                                 emit_typed_expr(
                                     field_init_node_value(f.clone()),
                                     registry.clone(),
+                                    qualified_item_registry.clone(),
                                     scope.clone(),
                                     depth.clone(),
                                     shared_types.clone(),
@@ -19504,6 +19628,7 @@ pub fn emit_typed_call(
                     _ => Rc::new(vec![emit_typed_expr(
                         update_arg.clone(),
                         registry.clone(),
+                        qualified_item_registry.clone(),
                         scope.clone(),
                         depth.clone(),
                         shared_types.clone(),
@@ -19554,6 +19679,7 @@ pub fn emit_typed_call(
                                 emit_typed_expr(
                                     arg_value(value_arg.clone()),
                                     registry.clone(),
+                                    qualified_item_registry.clone(),
                                     scope.clone(),
                                     depth.clone(),
                                     shared_types.clone(),
@@ -19574,7 +19700,7 @@ pub fn emit_typed_call(
             {
                 let decode_args = order_typed_call_args(args.clone(), func.clone(), scope.clone());
                 let decode_result = match decode_args.clone().first().cloned() {
-    Some(value_arg) => v1_rt::concat(v1_rt::concat("String::from_utf8(".to_string(), emit_typed_expr(arg_value(value_arg.clone()), registry.clone(), scope.clone(), depth.clone(), shared_types.clone(), emit_info.clone(), 1024)), ".clone()).map_err(|e| format!(\"invalid UTF-8 in access payload: {}\", e))?".to_string()),
+    Some(value_arg) => v1_rt::concat(v1_rt::concat("String::from_utf8(".to_string(), emit_typed_expr(arg_value(value_arg.clone()), registry.clone(), qualified_item_registry.clone(), scope.clone(), depth.clone(), shared_types.clone(), emit_info.clone(), 1024)), ".clone()).map_err(|e| format!(\"invalid UTF-8 in access payload: {}\", e))?".to_string()),
     None => "compile_error!(\"utf8_decode_bytes call missing value argument\")".to_string(),
 };
                 return decode_result;
@@ -19587,6 +19713,7 @@ pub fn emit_typed_call(
                     Some(value_arg) => emit_discriminant_call_lowering(
                         value_arg.clone(),
                         registry.clone(),
+                        qualified_item_registry.clone(),
                         scope.clone(),
                         depth.clone(),
                         shared_types.clone(),
@@ -19756,7 +19883,12 @@ pub fn emit_typed_call(
                 emit_ident(runtime_name.clone(), RenderTarget::Rust),
             )
         } else {
-            emit_value_ref_ident(func.clone(), registry.clone(), emit_info.clone())
+            emit_value_ref_ident(
+                func.clone(),
+                registry.clone(),
+                qualified_item_registry.clone(),
+                emit_info.clone(),
+            )
         };
         let func_name = if callee_self_capture.clone() {
             v1_rt::concat(func_ident.clone(), ".clone()".to_string())
@@ -19795,6 +19927,7 @@ pub fn fill_default_args(
     ordered: Rc<Vec<Rc<Node>>>,
     callee: Option<Rc<ItemInfo>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
@@ -19870,6 +20003,7 @@ pub fn fill_op_default_args(
     ordered: Rc<Vec<Rc<Node>>>,
     op_params: Rc<Vec<Rc<Node>>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
@@ -19976,6 +20110,7 @@ pub fn emit_typed_for_each(
     collection: Rc<Node>,
     body: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
@@ -19986,6 +20121,7 @@ pub fn emit_typed_for_each(
         let coll_str = emit_typed_expr(
             collection.clone(),
             registry.clone(),
+            qualified_item_registry.clone(),
             scope.clone(),
             depth.clone(),
             shared_types.clone(),
@@ -20005,6 +20141,7 @@ pub fn emit_typed_for_each(
         let body_str = emit_typed_expr(
             body.clone(),
             registry.clone(),
+            qualified_item_registry.clone(),
             body_scope.clone(),
             (depth.clone() + 2),
             shared_types.clone(),
@@ -20023,6 +20160,7 @@ pub fn emit_typed_index(
     base: Rc<Node>,
     index: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
@@ -20033,6 +20171,7 @@ pub fn emit_typed_index(
         let base_str = emit_typed_expr(
             base.clone(),
             registry.clone(),
+            qualified_item_registry.clone(),
             scope.clone(),
             depth.clone(),
             shared_types.clone(),
@@ -20042,6 +20181,7 @@ pub fn emit_typed_index(
         let index_str = emit_typed_expr(
             index.clone(),
             registry.clone(),
+            qualified_item_registry.clone(),
             scope.clone(),
             depth.clone(),
             shared_types.clone(),
@@ -20085,6 +20225,7 @@ pub fn emit_typed_slice(
     start: Rc<Node>,
     end: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
@@ -20095,6 +20236,7 @@ pub fn emit_typed_slice(
         let base_str = emit_typed_expr(
             base.clone(),
             registry.clone(),
+            qualified_item_registry.clone(),
             scope.clone(),
             depth.clone(),
             shared_types.clone(),
@@ -20104,6 +20246,7 @@ pub fn emit_typed_slice(
         let start_str = emit_typed_expr(
             start.clone(),
             registry.clone(),
+            qualified_item_registry.clone(),
             scope.clone(),
             depth.clone(),
             shared_types.clone(),
@@ -20113,6 +20256,7 @@ pub fn emit_typed_slice(
         let end_str = emit_typed_expr(
             end.clone(),
             registry.clone(),
+            qualified_item_registry.clone(),
             scope.clone(),
             depth.clone(),
             shared_types.clone(),
@@ -20363,6 +20507,7 @@ pub fn emit_typed_collection_lambda(
     lambda_expr: Rc<Node>,
     elem_type_str: String,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
@@ -20400,6 +20545,7 @@ pub fn emit_typed_collection_lambda(
             let body_str = emit_typed_expr(
                 bd.clone(),
                 registry.clone(),
+                qualified_item_registry.clone(),
                 lambda_scope.clone(),
                 depth.clone(),
                 shared_types.clone(),
@@ -20417,6 +20563,7 @@ pub fn emit_typed_collection_lambda(
         _ => emit_typed_expr(
             lambda_expr.clone(),
             registry.clone(),
+            qualified_item_registry.clone(),
             scope.clone(),
             depth.clone(),
             shared_types.clone(),
@@ -20431,6 +20578,7 @@ pub fn emit_typed_fold_lambda(
     acc_type_str: String,
     elem_type_str: String,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
@@ -20497,6 +20645,7 @@ pub fn emit_typed_fold_lambda(
             let body_str = emit_typed_expr(
                 bd.clone(),
                 registry.clone(),
+                qualified_item_registry.clone(),
                 lambda_scope.clone(),
                 depth.clone(),
                 shared_types.clone(),
@@ -20548,6 +20697,7 @@ pub fn emit_typed_fold_lambda(
         _ => emit_typed_expr(
             lambda_expr.clone(),
             registry.clone(),
+            qualified_item_registry.clone(),
             scope.clone(),
             depth.clone(),
             shared_types.clone(),
@@ -20564,6 +20714,7 @@ pub fn emit_rust_fold_method_call(
     receiver: Rc<Node>,
     args: Rc<Vec<Rc<Node>>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
@@ -20573,6 +20724,7 @@ pub fn emit_rust_fold_method_call(
         let recv_str = emit_typed_expr(
             receiver.clone(),
             registry.clone(),
+            qualified_item_registry.clone(),
             scope.clone(),
             depth.clone(),
             shared_types.clone(),
@@ -20933,6 +21085,7 @@ pub fn emit_rust_fold_method_call(
                                     emit_typed_expr(
                                         arg_value(init_arg.clone()),
                                         registry.clone(),
+                                        qualified_item_registry.clone(),
                                         scope.clone(),
                                         depth.clone(),
                                         shared_types.clone(),
@@ -20947,6 +21100,7 @@ pub fn emit_rust_fold_method_call(
                 _ => emit_typed_expr(
                     arg_value(init_arg.clone()),
                     registry.clone(),
+                    qualified_item_registry.clone(),
                     scope.clone(),
                     depth.clone(),
                     shared_types.clone(),
@@ -20962,6 +21116,7 @@ pub fn emit_rust_fold_method_call(
                 lambda_acc_type_str.clone(),
                 fold_elem_type_str.clone(),
                 registry.clone(),
+                qualified_item_registry.clone(),
                 scope.clone(),
                 depth.clone(),
                 shared_types.clone(),
@@ -21025,6 +21180,7 @@ pub fn emit_rust_sort_by_method_call(
     receiver: Rc<Node>,
     args: Rc<Vec<Rc<Node>>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
@@ -21034,6 +21190,7 @@ pub fn emit_rust_sort_by_method_call(
         let recv_str = emit_typed_expr(
             receiver.clone(),
             registry.clone(),
+            qualified_item_registry.clone(),
             scope.clone(),
             depth.clone(),
             shared_types.clone(),
@@ -21071,6 +21228,7 @@ pub fn emit_rust_sort_by_method_call(
                 arg_value(a.clone()),
                 elem_type_str.clone(),
                 registry.clone(),
+                qualified_item_registry.clone(),
                 scope.clone(),
                 depth.clone(),
                 shared_types.clone(),
@@ -21094,6 +21252,7 @@ pub fn emit_rust_map_method_call(
     receiver: Rc<Node>,
     args: Rc<Vec<Rc<Node>>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
@@ -21103,6 +21262,7 @@ pub fn emit_rust_map_method_call(
         let recv_str = emit_typed_expr(
             receiver.clone(),
             registry.clone(),
+            qualified_item_registry.clone(),
             scope.clone(),
             depth.clone(),
             shared_types.clone(),
@@ -21112,6 +21272,7 @@ pub fn emit_rust_map_method_call(
         let first_arg_str = emit_typed_first_arg(
             args.clone(),
             registry.clone(),
+            qualified_item_registry.clone(),
             scope.clone(),
             depth.clone(),
             shared_types.clone(),
@@ -21156,6 +21317,7 @@ pub fn emit_rust_map_method_call(
                         let body_str = emit_typed_expr(
                             bd.clone(),
                             registry.clone(),
+                            qualified_item_registry.clone(),
                             lambda_scope.clone(),
                             depth.clone(),
                             shared_types.clone(),
@@ -21230,6 +21392,7 @@ pub fn emit_rust_map_method_call(
                                 let body_str = emit_typed_expr(
                                     bd.clone(),
                                     registry.clone(),
+                                    qualified_item_registry.clone(),
                                     lambda_scope.clone(),
                                     depth.clone(),
                                     shared_types.clone(),
@@ -21271,6 +21434,7 @@ pub fn emit_rust_higher_order_method(
     receiver: Rc<Node>,
     args: Rc<Vec<Rc<Node>>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
@@ -21281,6 +21445,7 @@ pub fn emit_rust_higher_order_method(
         let recv_str = emit_typed_expr(
             receiver.clone(),
             registry.clone(),
+            qualified_item_registry.clone(),
             scope.clone(),
             depth.clone(),
             shared_types.clone(),
@@ -21290,6 +21455,7 @@ pub fn emit_rust_higher_order_method(
         let first_arg_str = emit_typed_first_arg(
             args.clone(),
             registry.clone(),
+            qualified_item_registry.clone(),
             scope.clone(),
             depth.clone(),
             shared_types.clone(),
@@ -21328,6 +21494,7 @@ pub fn emit_rust_higher_order_method(
                     let body_str = emit_typed_expr(
                         bd.clone(),
                         registry.clone(),
+                        qualified_item_registry.clone(),
                         lambda_scope.clone(),
                         depth.clone(),
                         shared_types.clone(),
@@ -21407,6 +21574,7 @@ pub fn emit_rust_get_method_call(
     receiver: Rc<Node>,
     args: Rc<Vec<Rc<Node>>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
@@ -21416,6 +21584,7 @@ pub fn emit_rust_get_method_call(
         let recv_str = emit_typed_expr(
             receiver.clone(),
             registry.clone(),
+            qualified_item_registry.clone(),
             scope.clone(),
             depth.clone(),
             shared_types.clone(),
@@ -21426,6 +21595,7 @@ pub fn emit_rust_get_method_call(
             Some(a) => emit_typed_expr(
                 arg_value(a.clone()),
                 registry.clone(),
+                qualified_item_registry.clone(),
                 scope.clone(),
                 depth.clone(),
                 shared_types.clone(),
@@ -21475,6 +21645,7 @@ pub fn emit_rust_with_method_call(
     receiver: Rc<Node>,
     args: Rc<Vec<Rc<Node>>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
@@ -21484,6 +21655,7 @@ pub fn emit_rust_with_method_call(
         let base_str = emit_typed_expr(
             receiver.clone(),
             registry.clone(),
+            qualified_item_registry.clone(),
             scope.clone(),
             depth.clone(),
             shared_types.clone(),
@@ -21527,6 +21699,7 @@ pub fn emit_rust_with_method_call(
                         emit_typed_expr(
                             field_init_node_value(f.clone()),
                             registry.clone(),
+                            qualified_item_registry.clone(),
                             scope.clone(),
                             depth.clone(),
                             shared_types.clone(),
@@ -21540,6 +21713,7 @@ pub fn emit_rust_with_method_call(
             _ => Rc::new(vec![emit_typed_expr(
                 update_arg.clone(),
                 registry.clone(),
+                qualified_item_registry.clone(),
                 scope.clone(),
                 depth.clone(),
                 shared_types.clone(),
@@ -21582,6 +21756,7 @@ pub fn emit_rust_with_method_call(
 pub fn emit_rust_first_method_call(
     receiver: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
@@ -21603,6 +21778,7 @@ pub fn emit_rust_first_method_call(
                     let recv_str = emit_typed_expr(
                         skip_recv.clone(),
                         registry.clone(),
+                        qualified_item_registry.clone(),
                         scope.clone(),
                         depth.clone(),
                         shared_types.clone(),
@@ -21612,6 +21788,7 @@ pub fn emit_rust_first_method_call(
                     let n_str = emit_typed_first_arg(
                         skip_args.clone(),
                         registry.clone(),
+                        qualified_item_registry.clone(),
                         scope.clone(),
                         depth.clone(),
                         shared_types.clone(),
@@ -21630,6 +21807,7 @@ pub fn emit_rust_first_method_call(
                     let recv_str = emit_typed_expr(
                         receiver.clone(),
                         registry.clone(),
+                        qualified_item_registry.clone(),
                         scope.clone(),
                         depth.clone(),
                         shared_types.clone(),
@@ -21644,6 +21822,7 @@ pub fn emit_rust_first_method_call(
             let recv_str = emit_typed_expr(
                 receiver.clone(),
                 registry.clone(),
+                qualified_item_registry.clone(),
                 scope.clone(),
                 depth.clone(),
                 shared_types.clone(),
@@ -21661,6 +21840,7 @@ pub fn emit_rust_generic_method_call(
     args: Rc<Vec<Rc<Node>>>,
     result_type: Option<Rc<InferredNode>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
@@ -21677,6 +21857,7 @@ pub fn emit_rust_generic_method_call(
                 let recv_str = emit_typed_expr_base(
                     receiver.clone(),
                     registry.clone(),
+                    qualified_item_registry.clone(),
                     scope.clone(),
                     depth.clone(),
                     shared_types.clone(),
@@ -21688,6 +21869,7 @@ pub fn emit_rust_generic_method_call(
                         __result.push(emit_cloned_arg(
                             arg_value(a.clone()),
                             registry.clone(),
+                            qualified_item_registry.clone(),
                             scope.clone(),
                             depth.clone(),
                             shared_types.clone(),
@@ -21722,6 +21904,7 @@ pub fn emit_rust_generic_method_call(
                         emit_typed_expr_base(
                             receiver.clone(),
                             registry.clone(),
+                            qualified_item_registry.clone(),
                             scope.clone(),
                             depth.clone(),
                             shared_types.clone(),
@@ -21732,6 +21915,7 @@ pub fn emit_rust_generic_method_call(
                     emit_cloned_arg(
                         receiver.clone(),
                         registry.clone(),
+                        qualified_item_registry.clone(),
                         scope.clone(),
                         depth.clone(),
                         shared_types.clone(),
@@ -21744,6 +21928,7 @@ pub fn emit_rust_generic_method_call(
                         __result.push(emit_cloned_arg(
                             arg_value(a.clone()),
                             registry.clone(),
+                            qualified_item_registry.clone(),
                             scope.clone(),
                             depth.clone(),
                             shared_types.clone(),
@@ -21788,6 +21973,7 @@ pub fn emit_typed_method_call(
     result_type: Option<Rc<InferredNode>>,
     method_semantics: Option<Rc<MethodSemantics>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
@@ -21806,6 +21992,7 @@ pub fn emit_typed_method_call(
                     args.clone(),
                     op_params.clone(),
                     registry.clone(),
+                    qualified_item_registry.clone(),
                     scope.clone(),
                     depth.clone(),
                     shared_types.clone(),
@@ -21858,6 +22045,7 @@ pub fn emit_typed_method_call(
                             let arg_str = emit_typed_expr(
                                 arg_value(a.clone()),
                                 registry.clone(),
+                                qualified_item_registry.clone(),
                                 scope.clone(),
                                 depth.clone(),
                                 shared_types.clone(),
@@ -21953,6 +22141,7 @@ pub fn emit_typed_method_call(
                         receiver.clone(),
                         args.clone(),
                         registry.clone(),
+                        qualified_item_registry.clone(),
                         scope.clone(),
                         depth.clone(),
                         shared_types.clone(),
@@ -21964,6 +22153,7 @@ pub fn emit_typed_method_call(
                             receiver.clone(),
                             args.clone(),
                             registry.clone(),
+                            qualified_item_registry.clone(),
                             scope.clone(),
                             depth.clone(),
                             shared_types.clone(),
@@ -21975,6 +22165,7 @@ pub fn emit_typed_method_call(
                                 receiver.clone(),
                                 args.clone(),
                                 registry.clone(),
+                                qualified_item_registry.clone(),
                                 scope.clone(),
                                 depth.clone(),
                                 shared_types.clone(),
@@ -21998,6 +22189,7 @@ pub fn emit_typed_method_call(
                                     receiver.clone(),
                                     args.clone(),
                                     registry.clone(),
+                                    qualified_item_registry.clone(),
                                     scope.clone(),
                                     depth.clone(),
                                     shared_types.clone(),
@@ -22009,6 +22201,7 @@ pub fn emit_typed_method_call(
                                             receiver.clone(),
                                             args.clone(),
                                             registry.clone(),
+                                            qualified_item_registry.clone(),
                                             scope.clone(),
                                             depth.clone(),
                                             shared_types.clone(),
@@ -22020,6 +22213,7 @@ pub fn emit_typed_method_call(
                                                 receiver.clone(),
                                                 args.clone(),
                                                 registry.clone(),
+                                                qualified_item_registry.clone(),
                                                 scope.clone(),
                                                 depth.clone(),
                                                 shared_types.clone(),
@@ -22035,6 +22229,7 @@ pub fn emit_typed_method_call(
                                                     args.clone(),
                                                     result_type.clone(),
                                                     registry.clone(),
+                                                    qualified_item_registry.clone(),
                                                     scope.clone(),
                                                     depth.clone(),
                                                     shared_types.clone(),
@@ -22046,6 +22241,7 @@ pub fn emit_typed_method_call(
                                                         let recv_str = emit_typed_expr(
                                                             receiver.clone(),
                                                             registry.clone(),
+                                                            qualified_item_registry.clone(),
                                                             scope.clone(),
                                                             depth.clone(),
                                                             shared_types.clone(),
@@ -22058,6 +22254,7 @@ pub fn emit_typed_method_call(
                                                                 __result.push(emit_typed_expr(
                                                                     arg_value(a.clone()),
                                                                     registry.clone(),
+                                                                    qualified_item_registry.clone(),
                                                                     scope.clone(),
                                                                     depth.clone(),
                                                                     shared_types.clone(),
@@ -22083,6 +22280,7 @@ pub fn emit_typed_method_call(
                                                         emit_rust_first_method_call(
                                                             receiver.clone(),
                                                             registry.clone(),
+                                                            qualified_item_registry.clone(),
                                                             scope.clone(),
                                                             depth.clone(),
                                                             shared_types.clone(),
@@ -22093,6 +22291,7 @@ pub fn emit_typed_method_call(
                                                             let recv_str_raw = emit_typed_expr(
                                                                 receiver.clone(),
                                                                 registry.clone(),
+                                                                qualified_item_registry.clone(),
                                                                 scope.clone(),
                                                                 depth.clone(),
                                                                 shared_types.clone(),
@@ -22115,6 +22314,7 @@ pub fn emit_typed_method_call(
                                                                 emit_typed_first_arg(
                                                                     args.clone(),
                                                                     registry.clone(),
+                                                                    qualified_item_registry.clone(),
                                                                     scope.clone(),
                                                                     depth.clone(),
                                                                     shared_types.clone(),
@@ -22151,6 +22351,8 @@ pub fn emit_typed_method_call(
                                                                         args.clone(),
                                                                         result_type.clone(),
                                                                         registry.clone(),
+                                                                        qualified_item_registry
+                                                                            .clone(),
                                                                         scope.clone(),
                                                                         depth.clone(),
                                                                         shared_types.clone(),
@@ -22181,6 +22383,7 @@ pub fn emit_typed_method_call(
                         receiver.clone(),
                         args.clone(),
                         registry.clone(),
+                        qualified_item_registry.clone(),
                         scope.clone(),
                         depth.clone(),
                         shared_types.clone(),
@@ -22191,6 +22394,7 @@ pub fn emit_typed_method_call(
                         let recv_str = emit_typed_expr(
                             receiver.clone(),
                             registry.clone(),
+                            qualified_item_registry.clone(),
                             scope.clone(),
                             depth.clone(),
                             shared_types.clone(),
@@ -22202,6 +22406,7 @@ pub fn emit_typed_method_call(
                                 let first_arg_str = emit_typed_first_arg(
                                     args.clone(),
                                     registry.clone(),
+                                    qualified_item_registry.clone(),
                                     scope.clone(),
                                     depth.clone(),
                                     shared_types.clone(),
@@ -22230,6 +22435,7 @@ pub fn emit_typed_method_call(
                                         __result.push(emit_typed_expr(
                                             arg_value(a.clone()),
                                             registry.clone(),
+                                            qualified_item_registry.clone(),
                                             scope.clone(),
                                             depth.clone(),
                                             shared_types.clone(),
@@ -22267,6 +22473,7 @@ pub fn emit_typed_method_call(
 pub fn emit_typed_first_arg(
     args: Rc<Vec<Rc<Node>>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
@@ -22276,6 +22483,7 @@ pub fn emit_typed_first_arg(
         Some(a) => emit_typed_expr(
             arg_value(a.clone()),
             registry.clone(),
+            qualified_item_registry.clone(),
             scope.clone(),
             depth.clone(),
             shared_types.clone(),
@@ -22448,6 +22656,7 @@ pub fn freemonoid_empty_branch_body(
     empty_arm: Option<Rc<Node>>,
     catchall: Option<Rc<Node>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
@@ -22457,6 +22666,7 @@ pub fn freemonoid_empty_branch_body(
         Some(ea) => emit_typed_expr(
             arm_body(ea.clone()),
             registry.clone(),
+            qualified_item_registry.clone(),
             scope.clone(),
             depth.clone(),
             shared_types.clone(),
@@ -22479,6 +22689,7 @@ pub fn freemonoid_empty_branch_body(
                     emit_typed_expr(
                         arm_body(wa.clone()),
                         registry.clone(),
+                        qualified_item_registry.clone(),
                         scope.clone(),
                         depth.clone(),
                         shared_types.clone(),
@@ -22497,6 +22708,7 @@ pub fn freemonoid_nonempty_branch_body(
     catchall: Option<Rc<Node>>,
     si: Rc<HashMap<String, Rc<NewlineIndex>>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
@@ -22520,6 +22732,7 @@ pub fn freemonoid_nonempty_branch_body(
                 emit_typed_expr(
                     arm_body(ca.clone()),
                     registry.clone(),
+                    qualified_item_registry.clone(),
                     scope.clone(),
                     depth.clone(),
                     shared_types.clone(),
@@ -22544,6 +22757,7 @@ pub fn freemonoid_nonempty_branch_body(
                     emit_typed_expr(
                         arm_body(wa.clone()),
                         registry.clone(),
+                        qualified_item_registry.clone(),
                         scope.clone(),
                         depth.clone(),
                         shared_types.clone(),
@@ -22561,6 +22775,7 @@ pub fn emit_native_freemonoid_match(
     scrut_str: String,
     arms: Rc<Vec<Rc<Node>>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
@@ -22575,6 +22790,7 @@ pub fn emit_native_freemonoid_match(
             empty_arm.clone(),
             catchall.clone(),
             registry.clone(),
+            qualified_item_registry.clone(),
             scope.clone(),
             depth.clone(),
             shared_types.clone(),
@@ -22585,6 +22801,7 @@ pub fn emit_native_freemonoid_match(
             catchall.clone(),
             si.clone(),
             registry.clone(),
+            qualified_item_registry.clone(),
             scope.clone(),
             depth.clone(),
             shared_types.clone(),
@@ -22617,6 +22834,7 @@ pub fn emit_typed_match(
     scrutinee: Rc<Node>,
     arms: Rc<Vec<Rc<Node>>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
@@ -22626,6 +22844,7 @@ pub fn emit_typed_match(
         let scrut_str = emit_typed_expr(
             scrutinee.clone(),
             registry.clone(),
+            qualified_item_registry.clone(),
             scope.clone(),
             depth.clone(),
             shared_types.clone(),
@@ -22655,6 +22874,7 @@ pub fn emit_typed_match(
                 scrut_str.clone(),
                 arms.clone(),
                 registry.clone(),
+                qualified_item_registry.clone(),
                 scope.clone(),
                 depth.clone(),
                 shared_types.clone(),
@@ -22684,6 +22904,7 @@ pub fn emit_typed_match(
                 __result.push(emit_typed_match_arm(
                     arm.clone(),
                     registry.clone(),
+                    qualified_item_registry.clone(),
                     scope.clone(),
                     depth.clone(),
                     shared_types.clone(),
@@ -22770,6 +22991,7 @@ pub fn emit_typed_match(
                                         __result.push(emit_typed_match_arm(
                                             arm.clone(),
                                             registry.clone(),
+                                            qualified_item_registry.clone(),
                                             scope.clone(),
                                             depth.clone(),
                                             shared_types.clone(),
@@ -22815,6 +23037,7 @@ pub fn emit_typed_match(
 pub fn emit_typed_match_arm(
     arm: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
@@ -22891,6 +23114,7 @@ pub fn emit_typed_match_arm(
             Some(g) => emit_typed_expr(
                 g.clone(),
                 registry.clone(),
+                qualified_item_registry.clone(),
                 scope.clone(),
                 depth.clone(),
                 shared_types.clone(),
@@ -22935,6 +23159,7 @@ pub fn emit_typed_match_arm(
                         })),
                         shared_types.clone(),
                         registry.clone(),
+                        qualified_item_registry.clone(),
                         emit_info.clone(),
                         si.clone(),
                         scope.module_name.clone(),
@@ -22943,6 +23168,7 @@ pub fn emit_typed_match_arm(
                     emit_typed_expr(
                         arm_b.clone(),
                         registry.clone(),
+                        qualified_item_registry.clone(),
                         scope.clone(),
                         depth.clone(),
                         shared_types.clone(),
@@ -22954,6 +23180,7 @@ pub fn emit_typed_match_arm(
             _ => emit_typed_expr(
                 arm_b.clone(),
                 registry.clone(),
+                qualified_item_registry.clone(),
                 scope.clone(),
                 depth.clone(),
                 shared_types.clone(),
@@ -23013,6 +23240,7 @@ pub fn emit_typed_if(
     then_branch: Rc<Node>,
     else_branch: Option<Rc<Node>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
@@ -23022,6 +23250,7 @@ pub fn emit_typed_if(
         let cond_str = emit_typed_expr(
             condition.clone(),
             registry.clone(),
+            qualified_item_registry.clone(),
             scope.clone(),
             depth.clone(),
             shared_types.clone(),
@@ -23040,6 +23269,7 @@ pub fn emit_typed_if(
                 emit_typed_expr(
                     node.clone(),
                     registry.clone(),
+                    qualified_item_registry.clone(),
                     scope.clone(),
                     d.clone(),
                     shared_types.clone(),
@@ -23056,6 +23286,7 @@ pub fn emit_typed_let(
     value: Rc<Node>,
     body: Option<Rc<Node>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
@@ -23065,6 +23296,7 @@ pub fn emit_typed_let(
         let val_str = emit_typed_expr(
             value.clone(),
             registry.clone(),
+            qualified_item_registry.clone(),
             scope.clone(),
             depth.clone(),
             shared_types.clone(),
@@ -23080,6 +23312,7 @@ pub fn emit_typed_let(
                 emit_typed_expr(
                     bd.clone(),
                     registry.clone(),
+                    qualified_item_registry.clone(),
                     sc.clone(),
                     depth.clone(),
                     shared_types.clone(),
@@ -23542,6 +23775,7 @@ pub fn emit_field_value_with_context(
     outer_type_name: Option<String>,
     field_name: String,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
@@ -23606,6 +23840,7 @@ pub fn emit_field_value_with_context(
                         corrected_parent.clone(),
                         resolved_type(field_value.clone()),
                         registry.clone(),
+                        qualified_item_registry.clone(),
                         scope.clone(),
                         depth.clone(),
                         shared_types.clone(),
@@ -23629,6 +23864,7 @@ pub fn emit_field_value_with_context(
                 None => emit_typed_expr(
                     field_value.clone(),
                     registry.clone(),
+                    qualified_item_registry.clone(),
                     scope.clone(),
                     depth.clone(),
                     shared_types.clone(),
@@ -23640,6 +23876,7 @@ pub fn emit_field_value_with_context(
         _ => emit_typed_expr(
             field_value.clone(),
             registry.clone(),
+            qualified_item_registry.clone(),
             scope.clone(),
             depth.clone(),
             shared_types.clone(),
@@ -23789,6 +24026,7 @@ pub fn emit_typed_record_lit(
     parent_enum: Option<String>,
     resolved_type: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
@@ -23846,6 +24084,7 @@ pub fn emit_typed_record_lit(
                                 let fval0 = emit_typed_expr(
                                     field_init_node_value(f.clone()),
                                     registry.clone(),
+                                    qualified_item_registry.clone(),
                                     scope.clone(),
                                     depth.clone(),
                                     shared_types.clone(),
@@ -23976,6 +24215,7 @@ pub fn emit_typed_record_lit(
                                                 let fval = emit_typed_expr(
                                                     field_init_node_value(f.clone()),
                                                     registry.clone(),
+                                                    qualified_item_registry.clone(),
                                                     scope.clone(),
                                                     depth.clone(),
                                                     shared_types.clone(),
@@ -24029,6 +24269,7 @@ pub fn emit_typed_record_lit(
                                             __result.push(emit_typed_expr(
                                                 field_init_node_value(f.clone()),
                                                 registry.clone(),
+                                                qualified_item_registry.clone(),
                                                 scope.clone(),
                                                 depth.clone(),
                                                 shared_types.clone(),
@@ -24157,6 +24398,7 @@ pub fn emit_typed_record_lit(
                             Some(f) => emit_typed_expr(
                                 field_init_node_value(f.clone()),
                                 registry.clone(),
+                                qualified_item_registry.clone(),
                                 scope.clone(),
                                 depth.clone(),
                                 shared_types.clone(),
@@ -24184,6 +24426,7 @@ pub fn emit_typed_record_lit(
                             Some(f) => emit_typed_expr(
                                 field_init_node_value(f.clone()),
                                 registry.clone(),
+                                qualified_item_registry.clone(),
                                 scope.clone(),
                                 depth.clone(),
                                 shared_types.clone(),
@@ -24246,6 +24489,7 @@ pub fn emit_typed_record_lit(
                             let inner = emit_typed_expr(
                                 field_init_node_value(f.clone()),
                                 registry.clone(),
+                                qualified_item_registry.clone(),
                                 scope.clone(),
                                 depth.clone(),
                                 shared_types.clone(),
@@ -24296,6 +24540,7 @@ pub fn emit_typed_record_lit(
                                             bare_qualified_name.clone(),
                                             "0".to_string(),
                                             registry.clone(),
+                                            qualified_item_registry.clone(),
                                             scope.clone(),
                                             depth.clone(),
                                             shared_types.clone(),
@@ -24345,6 +24590,7 @@ pub fn emit_typed_record_lit(
                                                     bare_qualified_name.clone(),
                                                     f_name.clone(),
                                                     registry.clone(),
+                                                    qualified_item_registry.clone(),
                                                     scope.clone(),
                                                     depth.clone(),
                                                     shared_types.clone(),
@@ -24590,6 +24836,7 @@ pub fn emit_typed_bin_op(
     left: Rc<Node>,
     right: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
@@ -24599,6 +24846,7 @@ pub fn emit_typed_bin_op(
         let l_str = emit_typed_expr(
             left.clone(),
             registry.clone(),
+            qualified_item_registry.clone(),
             scope.clone(),
             depth.clone(),
             shared_types.clone(),
@@ -24608,6 +24856,7 @@ pub fn emit_typed_bin_op(
         let r_str = emit_typed_expr(
             right.clone(),
             registry.clone(),
+            qualified_item_registry.clone(),
             scope.clone(),
             depth.clone(),
             shared_types.clone(),
@@ -24806,6 +25055,7 @@ pub fn is_string_typed_expr(
 pub fn emit_typed_string_interp(
     parts: Rc<Vec<Rc<StringPart>>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
@@ -24831,6 +25081,7 @@ pub fn emit_typed_string_interp(
                 __result.push(typed_interp_format_part(
                     p.clone(),
                     registry.clone(),
+                    qualified_item_registry.clone(),
                     scope.clone(),
                     depth.clone(),
                     shared_types.clone(),
@@ -24898,6 +25149,7 @@ pub fn emit_typed_string_interp(
 pub fn typed_interp_format_part(
     part: Rc<StringPart>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
@@ -24921,6 +25173,7 @@ pub fn typed_interp_format_part(
             arg_expr: emit_typed_expr(
                 e.clone(),
                 registry.clone(),
+                qualified_item_registry.clone(),
                 scope.clone(),
                 depth.clone(),
                 shared_types.clone(),
@@ -24934,6 +25187,7 @@ pub fn typed_interp_format_part(
 pub fn emit_typed_block(
     stmts: Rc<Vec<Rc<Node>>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
@@ -24945,6 +25199,7 @@ pub fn emit_typed_block(
             Rc::new(vec![]),
             scope.clone(),
             registry.clone(),
+            qualified_item_registry.clone(),
             (depth.clone() + 1),
             shared_types.clone(),
             emit_info.clone(),
@@ -24964,6 +25219,7 @@ pub fn emit_tco_init_block_stmts(
     mut text: Rc<Vec<String>>,
     mut scope: Rc<InferScope>,
     mut registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    mut qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     mut depth: i64,
     mut shared_types: Rc<BTreeSet<String>>,
     mut emit_info: Rc<EmitGraphInfo>,
@@ -24998,6 +25254,7 @@ pub fn emit_tco_init_block_stmts(
                             stmt.clone(),
                             params.clone(),
                             registry.clone(),
+                            qualified_item_registry.clone(),
                             scope.clone(),
                             depth.clone(),
                             shared_types.clone(),
@@ -25024,6 +25281,7 @@ pub fn emit_tco_init_stmt(
     stmt: Rc<Node>,
     params: Rc<Vec<Rc<Node>>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
@@ -25037,6 +25295,7 @@ pub fn emit_tco_init_stmt(
             let val_str = emit_typed_expr(
                 v.clone(),
                 registry.clone(),
+                qualified_item_registry.clone(),
                 scope.clone(),
                 depth.clone(),
                 shared_types.clone(),
@@ -25072,6 +25331,7 @@ pub fn emit_tco_init_stmt(
         _ => emit_typed_expr(
             stmt.clone(),
             registry.clone(),
+            qualified_item_registry.clone(),
             scope.clone(),
             depth.clone(),
             shared_types.clone(),
@@ -25086,6 +25346,7 @@ pub fn emit_typed_tco_body(
     fn_name: String,
     params: Rc<Vec<Rc<Node>>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
@@ -25097,6 +25358,7 @@ pub fn emit_typed_tco_body(
             fn_name.clone(),
             params.clone(),
             registry.clone(),
+            qualified_item_registry.clone(),
             scope.clone(),
             (depth.clone() + 1),
             shared_types.clone(),
@@ -25115,6 +25377,7 @@ pub fn emit_typed_tco_body(
 pub fn emit_rust_tco_non_self_call(
     frame: Rc<TcoFrame>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
@@ -25128,6 +25391,7 @@ pub fn emit_rust_tco_non_self_call(
                 f.clone(),
                 frame.expr.clone().children.clone(),
                 registry.clone(),
+                qualified_item_registry.clone(),
                 frame.scope.clone(),
                 frame.depth.clone(),
                 shared_types.clone(),
@@ -25150,6 +25414,7 @@ pub fn emit_rust_tco_if(
     fn_name: String,
     params: Rc<Vec<Rc<Node>>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
@@ -25161,6 +25426,7 @@ pub fn emit_rust_tco_if(
             let cond_str = emit_typed_expr(
                 c.clone(),
                 registry.clone(),
+                qualified_item_registry.clone(),
                 frame.scope.clone(),
                 frame.depth.clone(),
                 shared_types.clone(),
@@ -25172,6 +25438,7 @@ pub fn emit_rust_tco_if(
                 fn_name.clone(),
                 params.clone(),
                 registry.clone(),
+                qualified_item_registry.clone(),
                 frame.scope.clone(),
                 (frame.depth.clone() + 1),
                 shared_types.clone(),
@@ -25184,6 +25451,7 @@ pub fn emit_rust_tco_if(
                         fn_name.clone(),
                         params.clone(),
                         registry.clone(),
+                        qualified_item_registry.clone(),
                         frame.scope.clone(),
                         (frame.depth.clone() + 1),
                         shared_types.clone(),
@@ -25240,6 +25508,7 @@ pub fn freemonoid_tco_empty_branch_body(
     fn_name: String,
     params: Rc<Vec<Rc<Node>>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
@@ -25251,6 +25520,7 @@ pub fn freemonoid_tco_empty_branch_body(
             fn_name.clone(),
             params.clone(),
             registry.clone(),
+            qualified_item_registry.clone(),
             scope.clone(),
             depth.clone(),
             shared_types.clone(),
@@ -25274,6 +25544,7 @@ pub fn freemonoid_tco_empty_branch_body(
                         fn_name.clone(),
                         params.clone(),
                         registry.clone(),
+                        qualified_item_registry.clone(),
                         scope.clone(),
                         depth.clone(),
                         shared_types.clone(),
@@ -25293,6 +25564,7 @@ pub fn freemonoid_tco_nonempty_branch_body(
     fn_name: String,
     params: Rc<Vec<Rc<Node>>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
@@ -25318,6 +25590,7 @@ pub fn freemonoid_tco_nonempty_branch_body(
                     fn_name.clone(),
                     params.clone(),
                     registry.clone(),
+                    qualified_item_registry.clone(),
                     scope.clone(),
                     depth.clone(),
                     shared_types.clone(),
@@ -25343,6 +25616,7 @@ pub fn freemonoid_tco_nonempty_branch_body(
                         fn_name.clone(),
                         params.clone(),
                         registry.clone(),
+                        qualified_item_registry.clone(),
                         scope.clone(),
                         depth.clone(),
                         shared_types.clone(),
@@ -25361,6 +25635,7 @@ pub fn emit_native_freemonoid_tco_match(
     fn_name: String,
     params: Rc<Vec<Rc<Node>>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
@@ -25377,6 +25652,7 @@ pub fn emit_native_freemonoid_tco_match(
             fn_name.clone(),
             params.clone(),
             registry.clone(),
+            qualified_item_registry.clone(),
             scope.clone(),
             depth.clone(),
             shared_types.clone(),
@@ -25389,6 +25665,7 @@ pub fn emit_native_freemonoid_tco_match(
             fn_name.clone(),
             params.clone(),
             registry.clone(),
+            qualified_item_registry.clone(),
             scope.clone(),
             depth.clone(),
             shared_types.clone(),
@@ -25422,6 +25699,7 @@ pub fn emit_rust_tco_match(
     fn_name: String,
     params: Rc<Vec<Rc<Node>>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
@@ -25432,6 +25710,7 @@ pub fn emit_rust_tco_match(
             let scrut_str = emit_typed_expr(
                 s.clone(),
                 registry.clone(),
+                qualified_item_registry.clone(),
                 frame.scope.clone(),
                 frame.depth.clone(),
                 shared_types.clone(),
@@ -25607,6 +25886,7 @@ pub fn emit_rust_tco_let(
     fn_name: String,
     params: Rc<Vec<Rc<Node>>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
@@ -25621,6 +25901,7 @@ pub fn emit_rust_tco_let(
             let val_str = emit_typed_expr(
                 v.clone(),
                 registry.clone(),
+                qualified_item_registry.clone(),
                 frame.scope.clone(),
                 frame.depth.clone(),
                 shared_types.clone(),
@@ -25678,6 +25959,7 @@ pub fn emit_rust_tco_let(
                         fn_name.clone(),
                         params.clone(),
                         registry.clone(),
+                        qualified_item_registry.clone(),
                         next_scope.clone(),
                         frame.depth.clone(),
                         shared_types.clone(),
@@ -25699,6 +25981,7 @@ pub fn emit_rust_tco_block(
     fn_name: String,
     params: Rc<Vec<Rc<Node>>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
@@ -25714,6 +25997,7 @@ pub fn emit_rust_tco_block(
                         Rc::new(vec![]),
                         frame.scope.clone(),
                         registry.clone(),
+                        qualified_item_registry.clone(),
                         frame.depth.clone(),
                         shared_types.clone(),
                         emit_info.clone(),
@@ -25725,6 +26009,7 @@ pub fn emit_rust_tco_block(
                             fn_name.clone(),
                             params.clone(),
                             registry.clone(),
+                            qualified_item_registry.clone(),
                             init_state.scope.clone(),
                             frame.depth.clone(),
                             shared_types.clone(),
@@ -25756,6 +26041,7 @@ pub fn emit_rust_tco_block(
 pub fn emit_rust_tco_default_return(
     frame: Rc<TcoFrame>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
@@ -25763,6 +26049,7 @@ pub fn emit_rust_tco_default_return(
         let val_str = emit_typed_expr(
             frame.expr.clone(),
             registry.clone(),
+            qualified_item_registry.clone(),
             frame.scope.clone(),
             frame.depth.clone(),
             shared_types.clone(),
@@ -25781,6 +26068,7 @@ pub fn emit_typed_tco_expr(
     fn_name: String,
     params: Rc<Vec<Rc<Node>>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
@@ -25808,6 +26096,7 @@ pub fn emit_typed_tco_expr(
             emit_rust_tco_non_self_call(
                 frame.clone(),
                 registry.clone(),
+                qualified_item_registry.clone(),
                 shared_types.clone(),
                 emit_info.clone(),
             )
@@ -25818,6 +26107,7 @@ pub fn emit_typed_tco_expr(
                 fn_name.clone(),
                 params.clone(),
                 registry.clone(),
+                qualified_item_registry.clone(),
                 shared_types.clone(),
                 emit_info.clone(),
             )
@@ -25828,6 +26118,7 @@ pub fn emit_typed_tco_expr(
                 fn_name.clone(),
                 params.clone(),
                 registry.clone(),
+                qualified_item_registry.clone(),
                 shared_types.clone(),
                 emit_info.clone(),
             )
@@ -25838,6 +26129,7 @@ pub fn emit_typed_tco_expr(
                 fn_name.clone(),
                 params.clone(),
                 registry.clone(),
+                qualified_item_registry.clone(),
                 shared_types.clone(),
                 emit_info.clone(),
             )
@@ -25848,6 +26140,7 @@ pub fn emit_typed_tco_expr(
                 fn_name.clone(),
                 params.clone(),
                 registry.clone(),
+                qualified_item_registry.clone(),
                 shared_types.clone(),
                 emit_info.clone(),
             )
@@ -25856,6 +26149,7 @@ pub fn emit_typed_tco_expr(
             emit_rust_tco_default_return(
                 frame.clone(),
                 registry.clone(),
+                qualified_item_registry.clone(),
                 shared_types.clone(),
                 emit_info.clone(),
             )
@@ -25868,6 +26162,7 @@ pub fn emit_typed_tco_match_arm(
     fn_name: String,
     params: Rc<Vec<Rc<Node>>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
@@ -25919,6 +26214,7 @@ pub fn emit_typed_tco_match_arm(
             Some(g) => emit_typed_expr(
                 g.clone(),
                 registry.clone(),
+                qualified_item_registry.clone(),
                 scope.clone(),
                 depth.clone(),
                 shared_types.clone(),
@@ -25953,6 +26249,7 @@ pub fn emit_typed_tco_match_arm(
             fn_name.clone(),
             params.clone(),
             registry.clone(),
+            qualified_item_registry.clone(),
             scope.clone(),
             depth.clone(),
             shared_types.clone(),
@@ -26033,6 +26330,7 @@ pub fn emit_typed_tco_reassign(
     args: Rc<Vec<Rc<Node>>>,
     params: Rc<Vec<Rc<Node>>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
@@ -26171,6 +26469,7 @@ pub fn emit_typed_tco_reassign(
                 __result.push(emit_typed_expr(
                     av.clone(),
                     registry.clone(),
+                    qualified_item_registry.clone(),
                     scope.clone(),
                     depth.clone(),
                     shared_types.clone(),
@@ -28939,6 +29238,7 @@ pub fn emit_data_def(
     type_node: Rc<Node>,
     value: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
@@ -29056,6 +29356,7 @@ pub fn emit_data_def(
                     None => emit_typed_expr(
                         value.clone(),
                         registry.clone(),
+                        qualified_item_registry.clone(),
                         scope.clone(),
                         depth.clone(),
                         shared_types.clone(),
@@ -29093,6 +29394,7 @@ pub fn emit_data_def(
                     type_node.clone(),
                     value.clone(),
                     registry.clone(),
+                    qualified_item_registry.clone(),
                     scope.clone(),
                     depth.clone(),
                     shared_types.clone(),
@@ -29161,6 +29463,7 @@ pub fn emit_data_def_body(
     type_node: Rc<Node>,
     value: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified_item_registry: Rc<QualifiedItemRegistryBuild>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
@@ -29221,6 +29524,7 @@ pub fn emit_data_def_body(
                         Some(n) => emit_typed_expr(
                             n.clone(),
                             registry.clone(),
+                            qualified_item_registry.clone(),
                             scope.clone(),
                             depth.clone(),
                             shared_types.clone(),
@@ -29233,6 +29537,7 @@ pub fn emit_data_def_body(
                         Some(n) => emit_typed_expr(
                             n.clone(),
                             registry.clone(),
+                            qualified_item_registry.clone(),
                             scope.clone(),
                             depth.clone(),
                             shared_types.clone(),
@@ -29249,6 +29554,7 @@ pub fn emit_data_def_body(
                         Some(n) => emit_typed_expr(
                             n.clone(),
                             registry.clone(),
+                            qualified_item_registry.clone(),
                             scope.clone(),
                             depth.clone(),
                             shared_types.clone(),
@@ -29265,6 +29571,7 @@ pub fn emit_data_def_body(
                         Some(n) => emit_typed_expr(
                             n.clone(),
                             registry.clone(),
+                            qualified_item_registry.clone(),
                             scope.clone(),
                             depth.clone(),
                             shared_types.clone(),
@@ -29352,6 +29659,7 @@ pub fn emit_data_def_body(
                                             let val_str = emit_typed_expr(
                                                 field_init_node_value(f.clone()),
                                                 registry.clone(),
+                                                qualified_item_registry.clone(),
                                                 scope.clone(),
                                                 depth.clone(),
                                                 shared_types.clone(),
@@ -29403,6 +29711,7 @@ pub fn emit_data_def_body(
                                 let val_str = emit_typed_expr(
                                     value.clone(),
                                     registry.clone(),
+                                    qualified_item_registry.clone(),
                                     scope.clone(),
                                     depth.clone(),
                                     shared_types.clone(),
@@ -29417,6 +29726,7 @@ pub fn emit_data_def_body(
                             let val_str = emit_typed_expr(
                                 value.clone(),
                                 registry.clone(),
+                                qualified_item_registry.clone(),
                                 scope.clone(),
                                 depth.clone(),
                                 shared_types.clone(),
