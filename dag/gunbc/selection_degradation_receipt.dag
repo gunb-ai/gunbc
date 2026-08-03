@@ -16,7 +16,7 @@ import extdeps.languages.json.emit {
 
 data selection_degradation_receipt_path: String = "target/floor-selection-degradation-receipt.txt"
 
-data selection_degradation_receipt_note: String = "P2 of the floor prep-tax program (still-moth-459, 2026-08-03): every floor discovery run publishes selection honesty — state, selected/total entry groups, ratio, and fallback_reason — so an affected run that executes the whole corpus is a COUNTED performance degradation (SelectionSuperset), never quiet success (DESIGN section 5). Authority for classification and receipt shape; the seed transport in cli_run.rs resolves this module and calls selection_degradation_receipt_line with measured counts only."
+data selection_degradation_receipt_note: String = "P2 of the floor prep-tax program (still-moth-459, 2026-08-03): every floor discovery run publishes selection honesty — state, selected/total entry groups, ratio, and fallback_reason — so an affected run that executes the whole corpus is a COUNTED performance degradation (SelectionSuperset), never quiet success (DESIGN section 5). SelectionDegradationUnavailable is the unknown selection_mode_tag fail-closed arm only; upfront categorization_unavailable augments Applied/Superset fallback_reason, not that state. Authority for classification and receipt shape; the seed transport in cli_run.rs resolves this module and calls selection_degradation_receipt_line with measured counts only."
 
 data selection_degradation_receipt_marker: NonEmptyStr = "[selection-degradation]" as NonEmptyStr
 

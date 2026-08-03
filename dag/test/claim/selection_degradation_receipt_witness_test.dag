@@ -125,3 +125,18 @@ test fn sdr_receipt_body_carries_all_five_fields() -> Bool {
     && string_contains(s: body, pattern: "selection_ratio=0.7149")
     && string_contains(s: body, pattern: "fallback_reason=")
 }
+
+test fn sdr_unknown_mode_tag_is_unavailable_fail_closed() -> Bool {
+  let r = selection_degradation_receipt_of(
+    selection_mode_tag: "bogus" as NonEmptyStr,
+    selected: 1,
+    total: 2,
+    categorization_unavailable: false,
+    categorization_reason: ""
+  )
+  selection_degradation_state_tag(state: r.selection_state) == "SelectionUnavailable"
+    && string_contains(
+      s: r.fallback_reason,
+      pattern: "SelectionUnavailable: upfront import-closure categorization failed"
+    )
+}
