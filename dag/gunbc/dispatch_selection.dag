@@ -72,9 +72,9 @@ type CursorCredentialRef
   = CursorLocalLoginRef
   | CursorApiKeySecretRef { secret_ref: SecretRef }
 
-type CodexDeepRealization
-  = CodexDeepConfigured { effort: ReasoningEffort }
-  | CodexDeepUnavailable
+type DeepRealization
+  = DeepConfigured { effort: ReasoningEffort }
+  | DeepUnavailable
 
 type CodexOffer {
   instance: ProviderInstance
@@ -82,7 +82,7 @@ type CodexOffer {
   account_binding: AdmittedAccountBinding
   readiness: ProviderReadiness
   default_effort: ReasoningEffort
-  deep: CodexDeepRealization
+  deep: DeepRealization
   process_fingerprint: NonEmptyStr
 }
 
@@ -91,7 +91,7 @@ type ClaudeOffer {
   credential: ClaudeCredentialRef
   readiness: ProviderReadiness
   default_effort: ReasoningEffort
-  deep: CodexDeepRealization
+  deep: DeepRealization
   process_fingerprint: NonEmptyStr
 }
 
@@ -327,7 +327,7 @@ fn codex_offer_for_instance(instance: HostDashboardInstance) -> CodexOffer {
     ),
     readiness: ProviderAuthenticated,
     default_effort: ReasoningMedium,
-    deep: CodexDeepUnavailable,
+    deep: DeepUnavailable,
     process_fingerprint: dispatch_codex_process_fingerprint,
   }
 }
@@ -381,7 +381,6 @@ fn default_provider_selection_request() -> ProviderSelectionRequest {
 fn codex_effort_for_profile(
   offer: CodexOffer,
   profile: ExecutionProfile,
-  explicit_effort: ReasoningEffort,
 ) -> DispatchSelectionResult {
   match profile {
     ProfileAutomatic => {
@@ -407,7 +406,7 @@ fn codex_effort_for_profile(
     }
     ProfileDeep =>
       match offer.deep {
-        CodexDeepConfigured { effort } => {
+        DeepConfigured { effort } => {
           let resolved = ResolvedCodex {
             selection: ResolvedCodexSelection {
               account: codex_roadmap_account_selection(),
@@ -428,7 +427,7 @@ fn codex_effort_for_profile(
             ),
           }
         }
-        CodexDeepUnavailable =>
+        DeepUnavailable =>
           DispatchSelectionRefused {
             node_sizing: Unsized,
             requested_selection: SelectAutomatically { profile: ProfileDeep },
@@ -454,7 +453,6 @@ fn resolve_codex_offer(
       match codex_effort_for_profile(
         offer: offer,
         profile: profile,
-        explicit_effort: offer.default_effort,
       ) {
         DispatchSelectionResolved { receipt } =>
           DispatchSelectionResolved {
@@ -498,7 +496,7 @@ fn resolve_codex_offer(
         }
         ProfileDeep =>
           match offer.deep {
-            CodexDeepConfigured { effort: deep_effort } => {
+            DeepConfigured { effort: deep_effort } => {
               let resolved = ResolvedCodex {
                 selection: ResolvedCodexSelection {
                   account: account,
@@ -519,7 +517,7 @@ fn resolve_codex_offer(
                 ),
               }
             }
-            CodexDeepUnavailable =>
+            DeepUnavailable =>
               DispatchSelectionRefused {
                 node_sizing: node_sizing,
                 requested_selection: request,
