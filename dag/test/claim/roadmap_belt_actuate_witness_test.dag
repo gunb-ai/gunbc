@@ -36,14 +36,18 @@ import gunbc.roadmap_workflow_progress {
   WorkflowAttemptProgress,
   workflow_attempt_progress,
 }
-import gunbc.worker_lifecycle { WorkerProcessExited, WorkerProcessRunning }
-import gunbc.roadmap_dashboard_instance { srv2_preview_dashboard_instance }
+import gunbc.worker_lifecycle {
+  WorkerProcessExited,
+  WorkerProcessRunning,
+  worker_observation_without_provider_probe,
+}
 import gunbc.roadmap_dispatch_actuator {
   dispatch_tmux_session_name,
   HostExecArgv,
   host_exec_argv,
   DispatchLiveSession,
-  dispatch_worker_observation,
+  CodexDispatchProvider,
+  dispatch_provider_instance_for,
 }
 import gunbc.roadmap_belt { DispatchMember, DesiredMember, ObservedMember }
 import std.upsert_decision { ObservationVerdict, Converged }
@@ -152,7 +156,9 @@ fn live_session(node_id: String, verdict: ObservationVerdict) -> DispatchLiveSes
     node_id: node_id,
     windows: 1,
     lease_verdict: verdict,
-    worker: dispatch_worker_observation(),
+    worker: worker_observation_without_provider_probe(
+      instance: dispatch_provider_instance_for(provider: CodexDispatchProvider),
+    ),
   }
 }
 
