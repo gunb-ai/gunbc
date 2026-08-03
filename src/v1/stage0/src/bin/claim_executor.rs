@@ -1506,6 +1506,27 @@ const DISCOVERY_AGGREGATE_ENTRY: &str = "<discovery corpus — many entries>";
 const MERGE_ADMISSION_CAPTURE_REFUSAL_WIRE: &str = "target/merge-admission-capture-refusal.txt";
 const MERGE_ADMISSION_REFRESH_REFUSAL_WIRE: &str = "target/merge-admission-refresh-refusal.txt";
 
+/// The .dag writers anchor both wires at `git.Inspect.Toplevel()` while these reads run
+/// from the executor's cwd; anchoring the read on the same toplevel keeps a non-root cwd
+/// from turning a written typed cause into a false "wire absent" (review 47663). A failed
+/// toplevel resolution falls back to the bare relpath — the pre-anchor behavior — because
+/// the wire read is itself a diagnostic path: degrading its precision is acceptable,
+/// swallowing the stage failure it decorates is not.
+fn merge_admission_wire_read(relpath: &str) -> std::io::Result<String> {
+    let toplevel = std::process::Command::new("git")
+        .args(["rev-parse", "--show-toplevel"])
+        .output()
+        .ok()
+        .filter(|out| out.status.success())
+        .and_then(|out| String::from_utf8(out.stdout).ok())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    match toplevel {
+        Some(root) => fs::read_to_string(Path::new(&root).join(relpath)),
+        None => fs::read_to_string(relpath),
+    }
+}
+
 struct ClaimResult {
     function: String,
     /// The entry file this claim was declared in. Carried rather than looked up: a
@@ -3518,7 +3539,7 @@ fn run_pre_walk_execution(
             // floor-population-budget-refusal.txt pattern; merge_admission_capture
             // merge_admission_capture_refusal_wire_note). Wire-absent is its own
             // reported state, never folded into a generic failure.
-            let cause = match fs::read_to_string(MERGE_ADMISSION_CAPTURE_REFUSAL_WIRE) {
+            let cause = match merge_admission_wire_read(MERGE_ADMISSION_CAPTURE_REFUSAL_WIRE) {
                 Ok(wire) => format!("capture refusal wire: {}", wire.trim()),
                 Err(_) => "typed child returned false with no capture-refusal wire (child died before writing its cause, or the wire write itself refused — indistinguishable from here: the Bool claim is the only surviving channel)".to_string(),
             };
@@ -6412,7 +6433,7 @@ fn run_walk(
                         // as the pre-walk capture). Read fresh per failure; absent wire
                         // is its own reported state.
                         let stage_cause =
-                            match fs::read_to_string(MERGE_ADMISSION_REFRESH_REFUSAL_WIRE) {
+                            match merge_admission_wire_read(MERGE_ADMISSION_REFRESH_REFUSAL_WIRE) {
                                 Ok(wire) => format!("; refusal wire: {}", wire.trim()),
                                 Err(_) => String::new(),
                             };
