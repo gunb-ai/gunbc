@@ -124,8 +124,8 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
     entry: "src/v2/test/claim/long/v2_emitter_direct_rust_door_acceptance_test.dag",
     f: "witness_v2_emitter_direct_rust_door_closing_contract_holds",
     kind: CorpusWitnessKind,
-    reason: "the discriminating closing validation for roadmap node v2-emitter-direct-rust-door, RED BY DESIGN while this candidate slice lands SourceProduced→CargoGreen only; merging the slice does NOT accept the roadmap node. Quarantined until full closing contract greens with behavioral/promotion successors.",
-    dissolve_on: "roadmap node v2-emitter-direct-rust-door acceptance criteria execute green with full qualification ladder — this row deletes in the completing change, promoting the unchanged acceptance witness to ordinary DiscoverySelection as the permanent direct-rust-door regression wall"
+    reason: "closing validation for roadmap node v2-emitter-direct-rust-door — RED BY EXECUTION on branch head (claim_batch FAIL: ingest-path assess_written_source_independent_of_seed_emitter does not establish WrittenSourceIndependentOfSeedEmitter; closing_contract_holds frontier nonzero). Wet fixture path reaches CargoGreen separately; this row stays until closing_contract_holds greens, then deletes per v2_emitter_direct_rust_door_contract_dissolution_note.",
+    dissolve_on: "witness_v2_emitter_direct_rust_door_closing_contract_holds greens by execution with frontier zero — this row deletes in the completing change, promoting the unchanged acceptance witness to ordinary DiscoverySelection as the permanent direct-rust-door regression wall"
   ),
   known_red_probe(
     entry: "dag/test/claim/self_host_parse_engine_hooks_behavioral_witness_test.dag",
