@@ -45,7 +45,6 @@ pub use crate::v1_compiler_infer::InferScope;
 pub use crate::v1_compiler_infer::{build_params_scope, expr_span, extend_scope};
 pub use crate::v1_compiler_infer_env::authored_name;
 pub use crate::v1_compiler_infer_env::{TypeBinding, TypeEnv};
-pub use crate::v1_compiler_infer_items::empty_qualified_item_registry;
 pub use crate::v1_compiler_infer_items::{ItemInfo, ResolvedGraph, TypedModule};
 pub use crate::v1_compiler_infer_service::{
     extract_typed_service_name, is_typed_service_call_receiver,
@@ -368,7 +367,7 @@ pub fn emit_py_module(
 ) -> Rc<TextFile> {
     {
         let m = typed_module.module.clone();
-        let scope = module_emit_scope(typed_module.clone(), empty_qualified_item_registry());
+        let scope = module_emit_scope(typed_module.clone());
         let si = scope.type_env.clone().source_indices.clone();
         let mod_name_str = authored_name_at(si.clone(), m.clone());
         let prelude = emit_py_prelude(typed_module.clone());

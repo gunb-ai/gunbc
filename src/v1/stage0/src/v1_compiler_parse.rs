@@ -1801,7 +1801,7 @@ pub fn expect_name(tokens: Rc<TokenStream>) -> Rc<NameResult> {
 
 pub fn is_name_keyword(token: Rc<Token>) -> bool {
     if is_keyword_shape(token.shape.clone()) {
-        match v1_rt::lookup(&dag_non_name_keywords, token.text.clone()) {
+        match v1_rt::lookup(&dag_non_name_keywords(), token.text.clone()) {
             Some(_) => false,
             None => true,
         }
@@ -2120,7 +2120,7 @@ pub fn is_conj_with_children(n: Rc<Node>) -> bool {
 pub fn child_inferred_or_empty(ch: Rc<Node>) -> Rc<Node> {
     match ch.inferred.clone().as_deref().cloned() {
         Some(InferredNode::Resolved { node: rt, .. }) => rt.clone(),
-        _ => error_type,
+        _ => error_type(),
     }
 }
 
@@ -3137,7 +3137,7 @@ pub fn parse_item(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ItemResu
         let tok = token_stream_first(tokens.clone());
         let kw = tok_keyword_text(tok.clone());
         let span = token_span(tok.clone());
-        let form = find_item_form(dag_syntax_spec.item_forms.clone(), kw.clone());
+        let form = find_item_form(dag_syntax_spec().item_forms.clone(), kw.clone());
         match form.clone() {
     Some(f) => parse_item_by_form(tokens.clone(), ctx.clone(), f.clone()),
     None => Rc::new(ItemResult {
@@ -7583,49 +7583,49 @@ pub fn parse_rest_fields(
                 EatResult::EatUnchanged { tokens: _, .. } => r3.tokens.clone(),
             };
             ctx = r3.ctx.clone();
-            if (fname.clone() == transport_url_key.clone()) {
+            if (fname.clone() == transport_url_key()) {
                 {
                     let __tco_0 = Some(r3.expr.clone());
                     base_url = __tco_0;
                     continue;
                 }
             } else {
-                if (fname.clone() == transport_method_key.clone()) {
+                if (fname.clone() == transport_method_key()) {
                     {
                         let __tco_0 = Some(r3.expr.clone());
                         method = __tco_0;
                         continue;
                     }
                 } else {
-                    if (fname.clone() == transport_path_template_key.clone()) {
+                    if (fname.clone() == transport_path_template_key()) {
                         {
                             let __tco_0 = Some(r3.expr.clone());
                             path_template = __tco_0;
                             continue;
                         }
                     } else {
-                        if (fname.clone() == transport_query_key.clone()) {
+                        if (fname.clone() == transport_query_key()) {
                             {
                                 let __tco_0 = Some(r3.expr.clone());
                                 query = __tco_0;
                                 continue;
                             }
                         } else {
-                            if (fname.clone() == transport_body_key.clone()) {
+                            if (fname.clone() == transport_body_key()) {
                                 {
                                     let __tco_0 = Some(r3.expr.clone());
                                     request_body = __tco_0;
                                     continue;
                                 }
                             } else {
-                                if (fname.clone() == transport_response_format_key.clone()) {
+                                if (fname.clone() == transport_response_format_key()) {
                                     {
                                         let __tco_0 = Some(r3.expr.clone());
                                         response_format = __tco_0;
                                         continue;
                                     }
                                 } else {
-                                    if (fname.clone() == transport_headers_key.clone()) {
+                                    if (fname.clone() == transport_headers_key()) {
                                         let h = match (*r3.expr.clone().expr_data.clone()).clone() {
     ExprData::ExprRecordLit { .. } => r3.expr.clone().children.clone(),
     _ => return Rc::new(TransportResult {
@@ -7644,8 +7644,8 @@ pub fn parse_rest_fields(
                                             continue;
                                         }
                                     } else {
-                                        if ((fname.clone() == transport_auth_basic_key.clone())
-                                            || (fname.clone() == transport_tls_key.clone()))
+                                        if ((fname.clone() == transport_auth_basic_key())
+                                            || (fname.clone() == transport_tls_key()))
                                         {
                                             let field = make_field_init_node(
                                                 fname.clone(),
@@ -7773,7 +7773,7 @@ pub fn parse_shell_fields(
                     continue;
                 }
             } else {
-                if (fname.clone() == transport_stdin_key.clone()) {
+                if (fname.clone() == transport_stdin_key()) {
                     let r3 = parse_expr(r2.tokens.clone(), ctx.clone());
                     if has_err(r3.err.clone()) {
                         return Rc::new(TransportResult {
@@ -7894,9 +7894,7 @@ pub fn parse_file_fields(
                 EatResult::EatConsumed { tokens: __ec, .. } => __ec.clone(),
                 EatResult::EatUnchanged { tokens: _, .. } => r3.tokens.clone(),
             };
-            if ((fname.clone() == "path".to_string())
-                || (fname.clone() == transport_path_key.clone()))
-            {
+            if ((fname.clone() == "path".to_string()) || (fname.clone() == transport_path_key())) {
                 {
                     let __tco_0 = r3.ctx.clone();
                     let __tco_1 = Some(r3.expr.clone());
@@ -11180,7 +11178,7 @@ pub fn parse_expr_loop(
                                                     });
                                                 }
                                                 let binop_opt = find_operator_binop(
-                                                    dag_syntax_spec.operators.clone(),
+                                                    dag_syntax_spec().operators.clone(),
                                                     op_tok.text.clone(),
                                                 );
                                                 match binop_opt.clone() {
@@ -11279,7 +11277,7 @@ pub fn find_operator_bp(ops: Rc<Vec<Rc<OperatorSpec>>>, symbol: String) -> Optio
 
 pub fn infix_bp(tokens: Rc<TokenStream>) -> Option<BindingPower> {
     match token_stream_first(tokens.clone()) {
-        Some(t) => find_operator_bp(dag_syntax_spec.operators.clone(), t.text.clone()),
+        Some(t) => find_operator_bp(dag_syntax_spec().operators.clone(), t.text.clone()),
         None => None,
     }
 }
@@ -11568,7 +11566,7 @@ pub fn parse_primary(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprR
             Some(TokenShape::ShKeyword) => {
                 let kw_text = tok.clone().unwrap().text.clone();
                 let lit_val =
-                    v1_rt::lookup(&dag_syntax_spec.keyword_literals.clone(), kw_text.clone());
+                    v1_rt::lookup(&dag_syntax_spec().keyword_literals.clone(), kw_text.clone());
                 match lit_val.clone() {
                     Some(lv) => Rc::new(ExprResult {
                         expr: make_expr_node(
@@ -12865,7 +12863,7 @@ pub fn parse_expr_loop_no_brace(
                                                     });
                                                 }
                                                 let binop_opt = find_operator_binop(
-                                                    dag_syntax_spec.operators.clone(),
+                                                    dag_syntax_spec().operators.clone(),
                                                     op_tok.text.clone(),
                                                 );
                                                 match binop_opt.clone() {
@@ -13324,7 +13322,7 @@ pub fn parse_pattern(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Patte
             Some(TokenShape::ShKeyword) => {
                 let kw_text = tok.clone().unwrap().text.clone();
                 let lit_val =
-                    v1_rt::lookup(&dag_syntax_spec.keyword_literals.clone(), kw_text.clone());
+                    v1_rt::lookup(&dag_syntax_spec().keyword_literals.clone(), kw_text.clone());
                 match lit_val.clone() {
                     Some(lv) => Rc::new(PatternResult {
                         pattern: Rc::new(MatchPattern::LitPattern { value: lv.clone() }),

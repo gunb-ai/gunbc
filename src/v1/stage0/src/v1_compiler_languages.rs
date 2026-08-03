@@ -492,24 +492,24 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
     Rc::new(LanguageSpec {
         target_name: "rust".to_string(),
         reserved_words: Rc::new(ReservedWords {
-            keywords: rust_reserved.clone(),
+            keywords: rust_reserved(),
             strategy: Rc::new(ReservedWordStrategy::SuffixEscape {
-                suffix: rust_reserved_escape_suffix.clone(),
+                suffix: rust_reserved_escape_suffix(),
             }),
         }),
         scaffold: Rc::new(ProjectScaffold {
             manifest_file: Some("Cargo.toml".to_string()),
             module_init_file: None,
-            source_file_extension: rust_source_extension.clone(),
-            source_dir: Some(rust_source_dir.clone()),
+            source_file_extension: rust_source_extension(),
+            source_dir: Some(rust_source_dir()),
         }),
         serialization: Rc::new(SerializationSpec {
-            struct_derives: Some(rust_struct_derives.clone()),
-            struct_derives_copy: Some(rust_struct_derives_copy.clone()),
-            enum_derives: Some(rust_enum_derives.clone()),
-            enum_derives_copy: Some(rust_enum_derives_copy.clone()),
-            tag_attribute: Some(rust_serde_tag.clone()),
-            rename_attribute_template: Some(rust_serde_rename_template.clone()),
+            struct_derives: Some(rust_struct_derives()),
+            struct_derives_copy: Some(rust_struct_derives_copy()),
+            enum_derives: Some(rust_enum_derives()),
+            enum_derives_copy: Some(rust_enum_derives_copy()),
+            tag_attribute: Some(rust_serde_tag()),
+            rename_attribute_template: Some(rust_serde_rename_template()),
             derive_attribute: None,
             default_value: None,
         }),
@@ -522,7 +522,7 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
             async_decorator: Some("#[tokio::test]".to_string()),
         }),
         visibility: Rc::new(VisibilitySpec::KeywordVisibility {
-            prefix: rust_visibility.clone(),
+            prefix: rust_visibility(),
         }),
         sharing: Rc::new(SharingStrategy {
             needs_sharing: true,
@@ -581,26 +581,20 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
             temp_assign_op: " = ".to_string(),
         }),
         items: Rc::new(ItemKeywords {
-            func_keyword: item_keyword_for_kind(rust_item_forms.clone(), ItemFormKind::FuncForm),
-            async_prefix: rust_async_prefix.clone(),
-            struct_keyword: item_keyword_for_kind(
-                rust_item_forms.clone(),
-                ItemFormKind::StructForm,
-            ),
-            enum_keyword: item_keyword_for_kind(rust_item_forms.clone(), ItemFormKind::EnumForm),
+            func_keyword: item_keyword_for_kind(rust_item_forms(), ItemFormKind::FuncForm),
+            async_prefix: rust_async_prefix(),
+            struct_keyword: item_keyword_for_kind(rust_item_forms(), ItemFormKind::StructForm),
+            enum_keyword: item_keyword_for_kind(rust_item_forms(), ItemFormKind::EnumForm),
             type_alias_keyword: item_keyword_for_kind(
-                rust_item_forms.clone(),
+                rust_item_forms(),
                 ItemFormKind::TypeAliasForm,
             ),
-            param_separator: rust_param_separator.clone(),
-            return_arrow: rust_return_arrow.clone(),
-            param_type_sep: rust_param_type_sep.clone(),
-            module_keyword: item_keyword_for_kind(
-                rust_item_forms.clone(),
-                ItemFormKind::ModuleForm,
-            ),
-            import_keyword: rust_import_keyword.clone(),
-            import_from_keyword: rust_import_from_keyword.clone(),
+            param_separator: rust_param_separator(),
+            return_arrow: rust_return_arrow(),
+            param_type_sep: rust_param_type_sep(),
+            module_keyword: item_keyword_for_kind(rust_item_forms(), ItemFormKind::ModuleForm),
+            import_keyword: rust_import_keyword(),
+            import_from_keyword: rust_import_from_keyword(),
         }),
         expression_semantics: Rc::new(ExpressionSemantics {
             if_value_form: IfValueForm::IfExpression,
@@ -617,20 +611,20 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
             return_suffix: "".to_string(),
             suppress_unit_return: false,
         }),
-        lambda_template: rust_lambda_template.clone(),
-        error_expr_template: rust_error_expr_template.clone(),
-        list_literal_empty: rust_list_literal_empty.clone(),
-        list_literal_template: rust_list_literal_template.clone(),
-        null_coalesce_template: rust_null_coalesce_template.clone(),
-        error_type_template: rust_error_type_template.clone(),
-        type_arg_open: rust_type_arg_open.clone(),
-        type_arg_close: rust_type_arg_close.clone(),
-        void_type: rust_void_type.clone(),
+        lambda_template: rust_lambda_template(),
+        error_expr_template: rust_error_expr_template(),
+        list_literal_empty: rust_list_literal_empty(),
+        list_literal_template: rust_list_literal_template(),
+        null_coalesce_template: rust_null_coalesce_template(),
+        error_type_template: rust_error_type_template(),
+        type_arg_open: rust_type_arg_open(),
+        type_arg_close: rust_type_arg_close(),
+        void_type: rust_void_type(),
         tuple_syntax: Rc::new(TupleSyntax {
-            empty: rust_tuple_empty.clone(),
-            pair_template: rust_tuple_pair_template.clone(),
-            multi_template: rust_tuple_multi_template.clone(),
-            separator: rust_tuple_separator.clone(),
+            empty: rust_tuple_empty(),
+            pair_template: rust_tuple_pair_template(),
+            multi_template: rust_tuple_multi_template(),
+            separator: rust_tuple_separator(),
             first_accessor: ".0".to_string(),
             second_accessor: ".1".to_string(),
         }),
@@ -680,15 +674,15 @@ pub fn python_spec() -> Rc<LanguageSpec> {
     Rc::new(LanguageSpec {
         target_name: "python".to_string(),
         reserved_words: Rc::new(ReservedWords {
-            keywords: python_reserved.clone(),
+            keywords: python_reserved(),
             strategy: Rc::new(ReservedWordStrategy::SuffixEscape {
-                suffix: python_reserved_escape_suffix.clone(),
+                suffix: python_reserved_escape_suffix(),
             }),
         }),
         scaffold: Rc::new(ProjectScaffold {
             manifest_file: Some("requirements.txt".to_string()),
-            module_init_file: Some(python_module_init.clone()),
-            source_file_extension: python_source_extension.clone(),
+            module_init_file: Some(python_module_init()),
+            source_file_extension: python_source_extension(),
             source_dir: None,
         }),
         serialization: Rc::new(SerializationSpec {
@@ -698,8 +692,8 @@ pub fn python_spec() -> Rc<LanguageSpec> {
             enum_derives_copy: None,
             tag_attribute: None,
             rename_attribute_template: None,
-            derive_attribute: Some(python_derive_attribute.clone()),
-            default_value: Some(python_default_value.clone()),
+            derive_attribute: Some(python_derive_attribute()),
+            default_value: Some(python_default_value()),
         }),
         test_conventions: Rc::new(TestConventions {
             file_prefix: "test_".to_string(),
@@ -769,26 +763,20 @@ pub fn python_spec() -> Rc<LanguageSpec> {
             temp_assign_op: " = ".to_string(),
         }),
         items: Rc::new(ItemKeywords {
-            func_keyword: item_keyword_for_kind(python_item_forms.clone(), ItemFormKind::FuncForm),
-            async_prefix: python_async_prefix.clone(),
-            struct_keyword: item_keyword_for_kind(
-                python_item_forms.clone(),
-                ItemFormKind::StructForm,
-            ),
-            enum_keyword: item_keyword_for_kind(python_item_forms.clone(), ItemFormKind::EnumForm),
+            func_keyword: item_keyword_for_kind(python_item_forms(), ItemFormKind::FuncForm),
+            async_prefix: python_async_prefix(),
+            struct_keyword: item_keyword_for_kind(python_item_forms(), ItemFormKind::StructForm),
+            enum_keyword: item_keyword_for_kind(python_item_forms(), ItemFormKind::EnumForm),
             type_alias_keyword: item_keyword_for_kind(
-                python_item_forms.clone(),
+                python_item_forms(),
                 ItemFormKind::TypeAliasForm,
             ),
-            param_separator: python_param_separator.clone(),
-            return_arrow: python_return_arrow.clone(),
-            param_type_sep: python_param_type_sep.clone(),
-            module_keyword: item_keyword_for_kind(
-                python_item_forms.clone(),
-                ItemFormKind::ModuleForm,
-            ),
-            import_keyword: python_import_keyword.clone(),
-            import_from_keyword: python_import_from_keyword.clone(),
+            param_separator: python_param_separator(),
+            return_arrow: python_return_arrow(),
+            param_type_sep: python_param_type_sep(),
+            module_keyword: item_keyword_for_kind(python_item_forms(), ItemFormKind::ModuleForm),
+            import_keyword: python_import_keyword(),
+            import_from_keyword: python_import_from_keyword(),
         }),
         expression_semantics: Rc::new(ExpressionSemantics {
             if_value_form: IfValueForm::ConditionalTernary,
@@ -805,20 +793,20 @@ pub fn python_spec() -> Rc<LanguageSpec> {
             return_suffix: "".to_string(),
             suppress_unit_return: false,
         }),
-        lambda_template: python_lambda_template.clone(),
-        error_expr_template: python_error_expr_template.clone(),
-        list_literal_empty: python_list_literal_empty.clone(),
-        list_literal_template: python_list_literal_template.clone(),
-        null_coalesce_template: python_null_coalesce_template.clone(),
-        error_type_template: python_error_type_template.clone(),
-        type_arg_open: python_type_arg_open.clone(),
-        type_arg_close: python_type_arg_close.clone(),
-        void_type: python_void_type.clone(),
+        lambda_template: python_lambda_template(),
+        error_expr_template: python_error_expr_template(),
+        list_literal_empty: python_list_literal_empty(),
+        list_literal_template: python_list_literal_template(),
+        null_coalesce_template: python_null_coalesce_template(),
+        error_type_template: python_error_type_template(),
+        type_arg_open: python_type_arg_open(),
+        type_arg_close: python_type_arg_close(),
+        void_type: python_void_type(),
         tuple_syntax: Rc::new(TupleSyntax {
-            empty: python_tuple_empty.clone(),
-            pair_template: python_tuple_pair_template.clone(),
-            multi_template: python_tuple_multi_template.clone(),
-            separator: python_tuple_separator.clone(),
+            empty: python_tuple_empty(),
+            pair_template: python_tuple_pair_template(),
+            multi_template: python_tuple_multi_template(),
+            separator: python_tuple_separator(),
             first_accessor: "[0]".to_string(),
             second_accessor: "[1]".to_string(),
         }),
@@ -870,9 +858,9 @@ pub fn go_spec() -> Rc<LanguageSpec> {
     Rc::new(LanguageSpec {
         target_name: "go".to_string(),
         reserved_words: Rc::new(ReservedWords {
-            keywords: go_reserved.clone(),
+            keywords: go_reserved(),
             strategy: Rc::new(ReservedWordStrategy::SuffixEscape {
-                suffix: go_reserved_escape_suffix.clone(),
+                suffix: go_reserved_escape_suffix(),
             }),
         }),
         scaffold: Rc::new(ProjectScaffold {
@@ -959,20 +947,17 @@ pub fn go_spec() -> Rc<LanguageSpec> {
             temp_assign_op: " := ".to_string(),
         }),
         items: Rc::new(ItemKeywords {
-            func_keyword: item_keyword_for_kind(go_item_forms.clone(), ItemFormKind::FuncForm),
-            async_prefix: go_async_prefix.clone(),
-            struct_keyword: item_keyword_for_kind(go_item_forms.clone(), ItemFormKind::StructForm),
-            enum_keyword: item_keyword_for_kind(go_item_forms.clone(), ItemFormKind::EnumForm),
-            type_alias_keyword: item_keyword_for_kind(
-                go_item_forms.clone(),
-                ItemFormKind::TypeAliasForm,
-            ),
-            param_separator: go_param_separator.clone(),
-            return_arrow: go_return_arrow.clone(),
-            param_type_sep: go_param_type_sep.clone(),
-            module_keyword: item_keyword_for_kind(go_item_forms.clone(), ItemFormKind::ModuleForm),
-            import_keyword: go_import_keyword.clone(),
-            import_from_keyword: go_import_from_keyword.clone(),
+            func_keyword: item_keyword_for_kind(go_item_forms(), ItemFormKind::FuncForm),
+            async_prefix: go_async_prefix(),
+            struct_keyword: item_keyword_for_kind(go_item_forms(), ItemFormKind::StructForm),
+            enum_keyword: item_keyword_for_kind(go_item_forms(), ItemFormKind::EnumForm),
+            type_alias_keyword: item_keyword_for_kind(go_item_forms(), ItemFormKind::TypeAliasForm),
+            param_separator: go_param_separator(),
+            return_arrow: go_return_arrow(),
+            param_type_sep: go_param_type_sep(),
+            module_keyword: item_keyword_for_kind(go_item_forms(), ItemFormKind::ModuleForm),
+            import_keyword: go_import_keyword(),
+            import_from_keyword: go_import_from_keyword(),
         }),
         expression_semantics: Rc::new(ExpressionSemantics {
             if_value_form: IfValueForm::IfStatement,
@@ -984,20 +969,20 @@ pub fn go_spec() -> Rc<LanguageSpec> {
             return_suffix: ", nil".to_string(),
             suppress_unit_return: true,
         }),
-        lambda_template: go_lambda_template.clone(),
-        error_expr_template: go_error_expr_template.clone(),
-        list_literal_empty: go_list_literal_empty.clone(),
-        list_literal_template: go_list_literal_template.clone(),
-        null_coalesce_template: go_null_coalesce_template.clone(),
-        error_type_template: go_error_type_template.clone(),
-        type_arg_open: go_type_arg_open.clone(),
-        type_arg_close: go_type_arg_close.clone(),
-        void_type: go_void_type.clone(),
+        lambda_template: go_lambda_template(),
+        error_expr_template: go_error_expr_template(),
+        list_literal_empty: go_list_literal_empty(),
+        list_literal_template: go_list_literal_template(),
+        null_coalesce_template: go_null_coalesce_template(),
+        error_type_template: go_error_type_template(),
+        type_arg_open: go_type_arg_open(),
+        type_arg_close: go_type_arg_close(),
+        void_type: go_void_type(),
         tuple_syntax: Rc::new(TupleSyntax {
-            empty: go_tuple_empty.clone(),
-            pair_template: go_tuple_pair_template.clone(),
-            multi_template: go_tuple_multi_template.clone(),
-            separator: go_tuple_separator.clone(),
+            empty: go_tuple_empty(),
+            pair_template: go_tuple_pair_template(),
+            multi_template: go_tuple_multi_template(),
+            separator: go_tuple_separator(),
             first_accessor: ".First".to_string(),
             second_accessor: ".Second".to_string(),
         }),
@@ -1043,13 +1028,13 @@ pub fn dag_spec() -> Rc<LanguageSpec> {
     Rc::new(LanguageSpec {
         target_name: "dag".to_string(),
         reserved_words: Rc::new(ReservedWords {
-            keywords: dag_reserved.clone(),
+            keywords: dag_reserved(),
             strategy: Rc::new(ReservedWordStrategy::NoEscape),
         }),
         scaffold: Rc::new(ProjectScaffold {
             manifest_file: None,
             module_init_file: None,
-            source_file_extension: dag_source_extension.clone(),
+            source_file_extension: dag_source_extension(),
             source_dir: None,
         }),
         serialization: Rc::new(SerializationSpec {
@@ -1130,17 +1115,17 @@ pub fn dag_spec() -> Rc<LanguageSpec> {
             temp_assign_op: " = ".to_string(),
         }),
         items: Rc::new(ItemKeywords {
-            func_keyword: dag_func_keyword.clone(),
-            async_prefix: dag_async_prefix.clone(),
-            struct_keyword: dag_struct_keyword.clone(),
-            enum_keyword: dag_enum_keyword.clone(),
-            type_alias_keyword: dag_type_alias_keyword.clone(),
-            param_separator: dag_param_separator.clone(),
-            return_arrow: dag_return_arrow.clone(),
-            param_type_sep: dag_param_type_sep.clone(),
-            module_keyword: dag_module_keyword.clone(),
-            import_keyword: dag_import_keyword.clone(),
-            import_from_keyword: dag_import_from_keyword.clone(),
+            func_keyword: dag_func_keyword(),
+            async_prefix: dag_async_prefix(),
+            struct_keyword: dag_struct_keyword(),
+            enum_keyword: dag_enum_keyword(),
+            type_alias_keyword: dag_type_alias_keyword(),
+            param_separator: dag_param_separator(),
+            return_arrow: dag_return_arrow(),
+            param_type_sep: dag_param_type_sep(),
+            module_keyword: dag_module_keyword(),
+            import_keyword: dag_import_keyword(),
+            import_from_keyword: dag_import_from_keyword(),
         }),
         expression_semantics: Rc::new(ExpressionSemantics {
             if_value_form: IfValueForm::IfExpression,
@@ -1157,20 +1142,20 @@ pub fn dag_spec() -> Rc<LanguageSpec> {
             return_suffix: "".to_string(),
             suppress_unit_return: false,
         }),
-        lambda_template: dag_lambda_template.clone(),
-        error_expr_template: dag_error_expr_template.clone(),
-        list_literal_empty: dag_list_literal_empty.clone(),
-        list_literal_template: dag_list_literal_template.clone(),
-        null_coalesce_template: dag_null_coalesce_template.clone(),
-        error_type_template: dag_error_type_template.clone(),
-        type_arg_open: dag_type_arg_open.clone(),
-        type_arg_close: dag_type_arg_close.clone(),
-        void_type: dag_void_type.clone(),
+        lambda_template: dag_lambda_template(),
+        error_expr_template: dag_error_expr_template(),
+        list_literal_empty: dag_list_literal_empty(),
+        list_literal_template: dag_list_literal_template(),
+        null_coalesce_template: dag_null_coalesce_template(),
+        error_type_template: dag_error_type_template(),
+        type_arg_open: dag_type_arg_open(),
+        type_arg_close: dag_type_arg_close(),
+        void_type: dag_void_type(),
         tuple_syntax: Rc::new(TupleSyntax {
-            empty: dag_tuple_empty.clone(),
-            pair_template: dag_tuple_pair_template.clone(),
-            multi_template: dag_tuple_multi_template.clone(),
-            separator: dag_tuple_separator.clone(),
+            empty: dag_tuple_empty(),
+            pair_template: dag_tuple_pair_template(),
+            multi_template: dag_tuple_multi_template(),
+            separator: dag_tuple_separator(),
             first_accessor: ".0".to_string(),
             second_accessor: ".1".to_string(),
         }),
@@ -1225,15 +1210,15 @@ pub fn language_spec_for_target(target: RenderTarget) -> Rc<LanguageSpec> {
 
 pub fn target_keyword(target: RenderTarget, key: String) -> String {
     match target.clone() {
-        RenderTarget::Rust => match v1_rt::lookup(&rust_keywords, key.clone()) {
+        RenderTarget::Rust => match v1_rt::lookup(&rust_keywords(), key.clone()) {
             Some(kw) => kw.clone(),
             None => key.clone(),
         },
-        RenderTarget::Go => match v1_rt::lookup(&go_keywords, key.clone()) {
+        RenderTarget::Go => match v1_rt::lookup(&go_keywords(), key.clone()) {
             Some(kw) => kw.clone(),
             None => key.clone(),
         },
-        RenderTarget::Python => match v1_rt::lookup(&python_keywords, key.clone()) {
+        RenderTarget::Python => match v1_rt::lookup(&python_keywords(), key.clone()) {
             Some(kw) => kw.clone(),
             None => key.clone(),
         },
@@ -1243,10 +1228,10 @@ pub fn target_keyword(target: RenderTarget, key: String) -> String {
 
 pub fn target_operators(target: RenderTarget) -> Rc<Vec<Rc<OperatorSpec>>> {
     match target.clone() {
-        RenderTarget::Rust => rust_operators,
-        RenderTarget::Python => python_operators,
-        RenderTarget::Go => go_operators,
-        RenderTarget::Dag => dag_operators,
+        RenderTarget::Rust => rust_operators(),
+        RenderTarget::Python => python_operators(),
+        RenderTarget::Go => go_operators(),
+        RenderTarget::Dag => dag_operators(),
     }
 }
 
@@ -1311,7 +1296,7 @@ pub fn is_string_like(target: RenderTarget, name: String) -> bool {
     match target.clone() {
         RenderTarget::Rust => {
             let mut __found = false;
-            for t in rust_string_types.clone().iter().cloned() {
+            for t in rust_string_types().iter().cloned() {
                 if (t.clone() == name.clone()) {
                     __found = true;
                     break;
@@ -1321,7 +1306,7 @@ pub fn is_string_like(target: RenderTarget, name: String) -> bool {
         }
         RenderTarget::Go => {
             let mut __found = false;
-            for t in go_string_types.clone().iter().cloned() {
+            for t in go_string_types().iter().cloned() {
                 if (t.clone() == name.clone()) {
                     __found = true;
                     break;
@@ -1331,7 +1316,7 @@ pub fn is_string_like(target: RenderTarget, name: String) -> bool {
         }
         RenderTarget::Python => {
             let mut __found = false;
-            for t in python_string_types.clone().iter().cloned() {
+            for t in python_string_types().iter().cloned() {
                 if (t.clone() == name.clone()) {
                     __found = true;
                     break;

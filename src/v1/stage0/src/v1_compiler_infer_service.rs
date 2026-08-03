@@ -342,7 +342,7 @@ pub fn check_service_method_call_node(
                     Some(op) => {
                         if ((op.outputs.clone().len() as i64) == 0) {
                             Some(Rc::new(ServiceMethodResult {
-                                result_type: unit_type.clone(),
+                                result_type: unit_type(),
                                 op_params: op.params.clone(),
                             }))
                         } else {

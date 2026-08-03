@@ -2,7 +2,6 @@
 // Source module: v1.compiler.infer_items
 
 use self::ItemKind::*;
-use self::QualifiedItemRegistryBuild::*;
 use crate::std_interface_summary::ExportKind::{ExportData, ExportFn, ExportService, ExportType};
 pub use crate::std_interface_summary::{interface_summary_rollup, signature_contract};
 pub use crate::std_interface_summary::{ExportEntry, ExportKind, InterfaceSummary};
@@ -53,25 +52,6 @@ pub struct ItemInfo {
     pub params: Rc<Vec<Rc<Node>>>,
     pub is_self_recursive: bool,
     pub has_non_tail_self_call: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "_variant")]
-pub enum QualifiedItemRegistryBuild {
-    QualifiedRegistryBuilt {
-        registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    },
-    QualifiedRegistryDuplicate {
-        key: String,
-        first: Rc<ItemInfo>,
-        second: Rc<ItemInfo>,
-    },
-}
-
-pub fn empty_qualified_item_registry() -> Rc<QualifiedItemRegistryBuild> {
-    Rc::new(QualifiedItemRegistryBuild::QualifiedRegistryBuilt {
-        registry: v1_rt::rc_empty_map::<String, Rc<ItemInfo>>(),
-    })
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

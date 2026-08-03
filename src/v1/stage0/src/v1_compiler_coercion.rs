@@ -28,27 +28,27 @@ use std::rc::Rc;
 
 pub fn target_checkpoints(target: RenderTarget) -> Rc<Vec<Rc<TypeCheckpoint>>> {
     match target.clone() {
-        RenderTarget::Rust => rust_type_checkpoints,
-        RenderTarget::Python => python_type_checkpoints,
-        RenderTarget::Go => go_type_checkpoints,
-        RenderTarget::Dag => dag_type_checkpoints,
+        RenderTarget::Rust => rust_type_checkpoints(),
+        RenderTarget::Python => python_type_checkpoints(),
+        RenderTarget::Go => go_type_checkpoints(),
+        RenderTarget::Dag => dag_type_checkpoints(),
     }
 }
 
 pub fn target_inhabitants(target: RenderTarget) -> Rc<Vec<Rc<InhabitantDecl>>> {
     match target.clone() {
-        RenderTarget::Rust => rust_algebra_inhabitants,
-        RenderTarget::Python => python_algebra_inhabitants,
-        RenderTarget::Go => go_algebra_inhabitants,
+        RenderTarget::Rust => rust_algebra_inhabitants(),
+        RenderTarget::Python => python_algebra_inhabitants(),
+        RenderTarget::Go => go_algebra_inhabitants(),
         RenderTarget::Dag => Rc::new(vec![]),
     }
 }
 
 pub fn target_callable(target: RenderTarget) -> Rc<CallableRepr> {
     match target.clone() {
-        RenderTarget::Rust => rust_callable,
-        RenderTarget::Python => python_callable,
-        RenderTarget::Go => go_callable,
+        RenderTarget::Rust => rust_callable(),
+        RenderTarget::Python => python_callable(),
+        RenderTarget::Go => go_callable(),
         RenderTarget::Dag => Rc::new(CallableRepr {
             template: "fn({params}) -> {return}".to_string(),
             param_separator: ", ".to_string(),
@@ -60,18 +60,18 @@ pub fn target_callable(target: RenderTarget) -> Rc<CallableRepr> {
 
 pub fn target_optional_template(target: RenderTarget) -> String {
     match target.clone() {
-        RenderTarget::Rust => rust_optional_template,
-        RenderTarget::Python => python_optional_template,
-        RenderTarget::Go => go_optional_template,
+        RenderTarget::Rust => rust_optional_template(),
+        RenderTarget::Python => python_optional_template(),
+        RenderTarget::Go => go_optional_template(),
         RenderTarget::Dag => "{0}?".to_string(),
     }
 }
 
 pub fn target_cast_syntax(target: RenderTarget) -> Option<Rc<CastSyntax>> {
     match target.clone() {
-        RenderTarget::Rust => Some(rust_cast_syntax.clone()),
-        RenderTarget::Python => Some(python_cast_syntax.clone()),
-        RenderTarget::Go => Some(go_cast_syntax.clone()),
+        RenderTarget::Rust => Some(rust_cast_syntax()),
+        RenderTarget::Python => Some(python_cast_syntax()),
+        RenderTarget::Go => Some(go_cast_syntax()),
         RenderTarget::Dag => None,
     }
 }
