@@ -1,10 +1,10 @@
 # Floor prep-tax program — stop paying ~2s per entry to re-arrange work
 
-**Status:** executing program (session `still-moth-459`, 2026-08-03). Measurement-first; no width or native expansion until the retention experiment decides the mechanism.
+**Status:** executing program (session `still-moth-459`, 2026-08-03). Measurement-first. **P1 gates width expansion and broad native enrollment only** — it does **not** defer five-minute step 3’s already-landed bounded production native cutover (#7599 → #7671’s live 3-member cohort), which remains NEXT under `gunbc.roadmap_authority` / [five-minute-ci-gate-design](five-minute-ci-gate-design.md).
 
-**Parent authorities (do not fork):** [five-minute-ci-gate-design](five-minute-ci-gate-design.md) · [v1-run-stability-throughline](v1-run-stability-throughline.md) · [m2-floor-retention-measurement-receipt](m2-floor-retention-measurement-receipt.md) · [per-entry-assembly-decomposition-measurement](per-entry-assembly-decomposition-measurement.md) · [witness-realization-plan](witness-realization-plan.md) · `dag/gunbc/executor_schedule_retention.dag` · `dag/gunbc/plans/ci_selection_vs_scheduling.dag`
+**Parent authorities (do not fork):** [five-minute-ci-gate-design](five-minute-ci-gate-design.md) · [v1-run-stability-throughline](v1-run-stability-throughline.md) · [m2-floor-retention-measurement-receipt](m2-floor-retention-measurement-receipt.md) · [per-entry-assembly-decomposition-measurement](per-entry-assembly-decomposition-measurement.md) · [cross-worker-typecheck-share-design](cross-worker-typecheck-share-design.md) · [witness-realization-plan](witness-realization-plan.md) · `dag/gunbc/executor_schedule_retention.dag` · `dag/gunbc/plans/ci_selection_vs_scheduling.dag`
 
-**DESIGN refs:** §1 (time is the value), §2 (one shared preparation, N consumers), §5 (refuse / count degradation — never present a full floor as a successful “affected” run), §6 (displaced cost; no purity trap on parallelize-first).
+**DESIGN refs:** §1 (time is the value), §2 (one shared preparation, N consumers), §3 (single dispatch authority — five-minute sequence owns bounded native cutover), §5 (refuse / count degradation — never present a full floor as a successful “affected” run), §6 (displaced cost; no purity trap on parallelize-first).
 
 ---
 
@@ -46,20 +46,26 @@ Related in-flight (do not duplicate): PR **#7720** (sleek-dove) — affected-set
 | M2 schedule-derived retention (#7129) | Live; width-1 peak ~6.3–10.7 GiB | Still drops the completed entry’s **resolved-graph pin** every entry; still pays per-entry **assembly** (symbol-index merge / rewiring — see #7597) |
 | Entry-graph union (shared typecheck hypothesis) | **CLOSED** no-go (#7533) | Typed cache already once-per-content-key; union construction is not the prize |
 | Per-entry assembly decomposition (#7597) | Measured | Prices the surface (~1.5–1.7s/entry class on the 50-entry harness); does not select a mechanism |
-| Native selected-batch (#7599) + production kind cutover (#7671) | Live; **3-member** cohort | Optimizes the ~150 ms evaluation slice; leaves the ~77s resolve intact |
+| Native selected-batch (#7599) + production kind cutover (#7671) | Live; **3-member** cohort | Optimizes the ~150 ms evaluation slice; leaves the ~77s resolve intact. **Five-minute step 3 stays NEXT** — this program does not park it |
 | Five-minute program “retention PARKED” row | Stated for **memory pressure** absence at width 1 | **Reopened here on the time axis** — lack of memory distress is not license to destroy reusable prep every entry |
 
 `resolved_graph_memo` is keyed by **entry subject**. Retaining graph A does not serve entry B. So “stop dropping graphs” alone is insufficient unless paired with **shared module/index universe + cheap per-entry assembly from retained facts** (materialization / native bundle / assembly memo — mechanism chosen by P1 receipt, not by taste).
+
+### Preliminary lower bound (retain-all-equivalent path — not yet P1 floor A/B)
+
+`claim_batch` never arms schedule-retention / `[floor-drain]`. On the banked #7597 representative-50 harness (`docs/plans/receipts/per-entry-assembly-decomposition/representative-50-r1.txt`): first resolve **28.3 s**; entries 2..50 median resolve **1194 ms**, mean of core (&lt;5 s) **1537 ms**, witness eval mean **2.4 ms**. Schedule-retention **not** armed. So even a path that already retains typed/index state across entries still pays ~1.2–1.5 s/entry of assembly-class work — a floor under Mode B. **P1’s floor A/B receipt is still required** (production eviction may add more); this only warns that Mode B collapsing to ≪1 s is unlikely without an assembly/materialization mechanism.
 
 ---
 
 ## 3. Parallelism on a 16 GiB runner
 
-**Width 2 is not the first move.** Process peak ~6.27 GiB (uncapped host) → 2× ≈ 12.5 GiB before OS, rustc, allocator transients, duplicated indexes. Native selected-batch cgroup peak ~11.1 GiB. Width 3 excluded at present footprint. Width 2 only as a **hard-governed** experiment **after** retention is bounded and shared preparation exists; otherwise workers duplicate the cold prep this program exists to remove.
+**Width 2 is not the first move — and is not reachable profitably today.** Process peak ~6.27 GiB (uncapped host) → 2× ≈ 12.5 GiB before OS, rustc, allocator transients, duplicated indexes. Native selected-batch cgroup peak ~11.1 GiB. Width 3 excluded at present footprint.
+
+**Measured latch (production discovery pool):** `cli_run.rs` samples `target_width` **once** at adaptive-pool entry; when `≤1` it takes the inline-drain branch and never reaches the governor AIMD path that would admit plural workers. Un-latching without shared indexes is a **measured loss** on the same 621 entry-groups: serial **11.75 min GREEN** (CI 29707161743, `max_width_reached=1`, peak 6.97 GB) vs un-latched **47 min+ unfinished** (CI 29714863168) vs un-latched OOM-killed at **101.6 GB in 11 min** (CI 29710324768). Reason named in-code: Amdahl — each worker’s front cost is its **own** whole-tree index (~10.7 GB, minutes) against ~12 minutes of corpus work. dissolve-on cited there: **Rc→Arc / shared index** ([cross-worker-typecheck-share-design](cross-worker-typecheck-share-design.md) open decision 2), which also **increases** co-resident retention — the win is a width crossover, not a given.
 
 Productive parallelism shape (ordered):
 
-1. Build / load the shared module/index universe **once**
+1. Build / load the shared module/index universe **once** (Rc→Arc / index share is the mechanism that retires the width latch)
 2. Reuse resolved / assembled facts across entry groups under a memory envelope
 3. Partition **already-prepared** work
 4. Admit workers under the global memory governor
@@ -76,7 +82,7 @@ Fixed cohort, two modes:
 * **A — current:** schedule-retention eviction on (production default)
 * **B — retain-all pole:** `GUNBC_SCHEDULE_RETENTION_EVICT=0` (existing measurement control; drops nothing)
 
-Then, only if A→B shows the ~2s tax collapsing for entries 2..N sharing a module universe, implement **bounded retention**: drain when a memory threshold is crossed, not on every entry completion. If A→B does **not** collapse the tax, the prize is **assembly reuse / materialization / shared index view** (route to `module-grain-materialization` / assembly mechanism), not softer eviction.
+Then, only if A→B shows the ~2s tax collapsing for entries 2..N sharing a module universe, implement **bounded retention**: drain when a memory threshold is crossed, not on every entry completion. If A→B does **not** collapse the tax, the prize is **assembly reuse / materialization / shared index view** (route to `module-grain-materialization` / assembly mechanism), not softer eviction. The preliminary `claim_batch` lower bound above already tilts toward that redirect — still confirm on the armed floor path.
 
 Per entry (required receipt fields):
 
@@ -106,23 +112,26 @@ selection_ratio=…
 fallback_reason=…
 ```
 
-An “affected” run that selects all 842 must **say so**. Large supersets remain sound selection but are a **counted performance degradation**, not a green affordance story.
+An “affected” run that selects all 842 must **say so**. Large supersets remain sound selection but are a **counted performance degradation**, not a green affordance story. May proceed in parallel with P1 (receipt surface only). Do not duplicate #7720.
 
-### P3 — Width-2 trial only after P1’s bounded retention
+### P3 — Width-2 trial (conjunction gate)
 
-On a real 16 GiB runner: hard-cap aggregate worker memory; prevent simultaneous native compile peaks; share immutable indexes; start with two **interpreted** shards; refuse the second worker when the envelope cannot admit it. Compare **CPU time and wall** so duplicated cold work cannot masquerade as a win.
+**Gate = P1 banked AND index sharing landed** (the Rc→Arc / shared-index dissolve-on that retires the width≤1 latch). P1 alone is **not** sufficient — a perfect retention result does not make width-2 profitable while each worker still builds its own whole-tree index (measured refutation: CI 29707161743 / 29714863168 / 29710324768 above).
 
-### P4 — Expand native enrollment afterward
+When both hold, on a real 16 GiB runner: hard-cap aggregate worker memory; prevent simultaneous native compile peaks; start with two **interpreted** shards; refuse the second worker when the envelope cannot admit it. Compare **CPU time and wall** so duplicated cold work cannot masquerade as a win. Expect a retention/width crossover, not a free win ([cross-worker-typecheck-share-design](cross-worker-typecheck-share-design.md) §7).
 
-Class-by-class after setup is amortized. Until then, native migration optimizes the wrong term.
+### P4 — Expand native enrollment (broad), after prep amortized
+
+**Not** five-minute step 3 (bounded 3-member cohort — already live / stays NEXT under that authority). This leaf is **class-by-class enlargement** of the native cohort after D1 setup is amortized. Until then, broad native migration optimizes the wrong term for floor wall.
 
 ---
 
 ## 5. Relationship to the five-minute sequence
 
-Does **not** replace the operator sequence in `five-minute-ci-gate-design.md`. It **inserts a binding precondition** in front of “width” and “broad native”:
+Does **not** replace the operator sequence in `five-minute-ci-gate-design.md` and does **not** fork its dispatch authority (§3). Specifically:
 
-* Steps that enlarge **evaluation** efficiency (native cutover) stay valuable for self-host and large bodies.
+* **Five-minute step 3** (bounded production native cutover) remains **NEXT** / live — this program must not be read as parking it behind P1.
+* This program inserts a binding precondition in front of **width>1** and **broad** native enrollment (P3/P4 here).
 * Steps that claim **floor wall** recovery without amortizing prep are mispriced until P1’s mechanism lands or is honestly routed to materialization/assembly.
 
 Update the five-minute “retention PARKED” disposition when P1’s receipt is banked (time-axis reopen + mechanism or honest redirect).
@@ -135,8 +144,8 @@ Delete or fold this note when:
 
 1. Floor receipts show amortized prep (entries 2..N in a shared universe ≪ 2s setup), **and**
 2. Selection receipts expose state/ratio/fallback on every affected run, **and**
-3. Width>1 / native expansion decisions cite those receipts rather than this bridge doc —
+3. Width>1 / broad native decisions cite those receipts (and the index-share conjunction) rather than this bridge doc —
 
 or when the operator recuts the program into the five-minute / materialization authorities directly.
 
-Session closeout work item: `floor prep tax e2e closeout`. Child leaves: P1–P4 as created under `still-moth-459`.
+Session closeout: `sleek-fox-808` (waits on parent Complete). Live leaves: P1 `valiant-deer-205`, P2 `warm-wolf-777`, P3 `merry-ibex-227` (HOLD — conjunction), P4 `sharp-carp-537` (HOLD — broad enrollment only).
