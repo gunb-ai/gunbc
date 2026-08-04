@@ -181,23 +181,6 @@ fn admit_citation_retrieval_observation(
   }
 }
 
-fn citation_retrieval_observation_layer_gate_accepts(
-  layer: CitationArtifactLayer,
-  observation: CitationRetrievalObservation,
-) -> Bool {
-  match admit_citation_retrieval_observation(layer: layer, observation: observation) {
-    CitationLayerAdmitted => true
-    CitationLayerRefusedUpstreamObservation => false
-  }
-}
-
-fn citation_retrieval_observation_layer_gate_widened_sketch(
-  _layer: CitationArtifactLayer,
-  _observation: CitationRetrievalObservation,
-) -> Bool {
-  true
-}
-
 data citation_retrieval_observation_layer_gate_substrate_scaffold: Disposition = Scaffold {
   dissolves_to: SubstrateMandatoryTag,
   bind: DeclarationRef {
@@ -220,6 +203,17 @@ data citation_cit1_pdf_profile_scaffold: Disposition = Scaffold {
 
 data citation_cit1_pdf_profile_dissolve_on: String = "dissolve-on: citation_cit1_pdf_profile — ordered RFC 8118 fragment sequence, safe profile (page, nameddest, structelem), navigable URL projection, and one real versioned PDF consumer land in CIT-1 after CIT-0 sign-off."
 
+data citation_cit2_mediawiki_provider_observation_scaffold: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "extdeps.mediawiki",
+    decl_name: "extdeps_external_authority_anchor",
+    field: WholeDeclaration,
+  },
+}
+
+data citation_cit2_mediawiki_provider_observation_dissolve_on: String = "dissolve-on: citation_cit2_mediawiki_provider_observation — provider-bound revision lookup outcomes (found, missing, suppressed) with revision identity and content digest typed through std.content_hash (Action API base-16 SHA-1 vs internal base-36 distinguished at the extdeps MediaWiki model), not as bare hex in std.citation. Lands in CIT-2 beside generic extdeps.mediawiki protocol shapes separate from site realizations."
+
 type CitationRecordedFact<Revision, Representation, Selector> {
   cited: CitedResource<Revision, Representation, Selector>
 }
@@ -235,30 +229,6 @@ fn citation_recorded_fact<Revision, Representation, Selector>(
 }
 
 data citation_evidence_interface_note: String = "CitationRecordedFact is the provenance payload consumed by std.claim_evidence EvidenceLink — same authority, provenance, maximum_conclusion, fidelity, supporting/challenging, insufficiency, and EvidenceAdmissionPolicy machinery. Rich citations do not form a competing evidence system."
-
-type ProviderObservation
-  = ProviderRevisionFound {
-      revision_id: NonEmptyStr,
-      content_sha1_hex: NonEmptyStr,
-    }
-  | ProviderRevisionMissing
-  | ProviderRevisionSuppressed
-
-fn provider_observation_is_found(observation: ProviderObservation) -> Bool {
-  match observation {
-    ProviderRevisionFound { revision_id: _, content_sha1_hex: _ } => true
-    ProviderRevisionMissing => false
-    ProviderRevisionSuppressed => false
-  }
-}
-
-fn provider_observation_revision_id(observation: ProviderObservation) -> NonEmptyStr? {
-  match observation {
-    ProviderRevisionFound { revision_id: id, content_sha1_hex: _ } => id
-    ProviderRevisionMissing => none
-    ProviderRevisionSuppressed => none
-  }
-}
 
 fn default_fragment_selector(value: NonEmptyStr) -> CitationSelector {
   fragment_selector(conforms_to: extdeps_external_authority_anchor, value: value)

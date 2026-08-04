@@ -9,17 +9,12 @@ import std.citation {
   ObservingProductLayer, UpstreamModuleLayer,
   CitationLayerAdmitted, CitationLayerRefusedUpstreamObservation,
   admit_citation_retrieval_observation,
-  citation_retrieval_observation_layer_gate_accepts,
-  citation_retrieval_observation_layer_gate_widened_sketch,
   citation_recorded_fact,
   text_quote_selector,
   TextQuoteSelectorVariant,
   retrieved_representation,
   representation_pin_pinned,
   cited_resource,
-  provider_observation_is_found,
-  provider_observation_revision_id,
-  ProviderRevisionFound, ProviderRevisionMissing, ProviderRevisionSuppressed,
 }
 import std.claim_evidence { RecordedFactId }
 import std.content_hash { Sha256Digest, as_content_hash_cryptographic }
@@ -119,22 +114,6 @@ test fn retrieval_observation_refused_in_upstream_module_layer() -> Bool {
   }
 }
 
-test fn layer_gate_red_control_widened_sketch_accepts_upstream_observation() -> Bool {
-  let observation = witness_upstream_unreachable_observation
-  let layer = UpstreamModuleLayer {
-    module_path: "extdeps.sec.operating_metrics" as NonEmptyStr,
-  }
-  let authority = citation_retrieval_observation_layer_gate_accepts(
-    layer: layer,
-    observation: observation,
-  )
-  let widened = citation_retrieval_observation_layer_gate_widened_sketch(
-    layer: layer,
-    observation: observation,
-  )
-  widened && !authority
-}
-
 test fn citation_recorded_fact_feeds_claim_evidence_interface() -> Bool {
   let fact = citation_recorded_fact(
     id: "cit0-fixture-fact" as RecordedFactId,
@@ -142,30 +121,6 @@ test fn citation_recorded_fact_feeds_claim_evidence_interface() -> Bool {
   )
   fact.id == ("cit0-fixture-fact" as RecordedFactId)
     && witness_authority.uri.locator == "example.test/cit0-fixture"
-}
-
-test fn provider_observation_found_decodes_fixture_revision() -> Bool {
-  provider_observation_is_found(
-    observation: ProviderRevisionFound {
-      revision_id: "424242" as NonEmptyStr,
-      content_sha1_hex: "deadbeef" as NonEmptyStr,
-    },
-  )
-    && provider_observation_revision_id(
-      observation: ProviderRevisionFound {
-        revision_id: "424242" as NonEmptyStr,
-        content_sha1_hex: "deadbeef" as NonEmptyStr,
-      },
-    ) == ("424242" as NonEmptyStr)
-}
-
-test fn provider_observation_missing_red_on_found_predicate() -> Bool {
-  !provider_observation_is_found(observation: ProviderRevisionMissing)
-    && provider_observation_revision_id(observation: ProviderRevisionMissing) == none
-}
-
-test fn provider_observation_suppressed_red_on_found_predicate() -> Bool {
-  !provider_observation_is_found(observation: ProviderRevisionSuppressed)
 }
 
 test fn web_annotation_authority_is_cited_for_selectors() -> Bool {
