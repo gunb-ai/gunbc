@@ -1,0 +1,353 @@
+module gunbc.physics.classical_path_additivity
+
+import std.types { Bool, Int, List, NonEmptyStr }
+
+data classical_path_additivity_note: String = "Downstream physics model-debugging layer for exclusive-alternative raw-count additivity: N_both = N_left + N_right. Not std.algebra_law — experiment-specific count equality lives here until a generic distributivity substrate lands in Slice B."
+
+type SyntheticSlitArrangement
+  = BothSlitsOpen
+  | SlitOneOpen
+  | SlitTwoOpen
+  | BothSlitsBlocked
+
+type ScreenBand
+  = CentralBand
+  | FirstMinimumBand
+  | FirstSideMaximumBand
+
+type SyntheticMatchedExposureSession
+  = SyntheticMatchedExposureOne {}
+
+type PathAdditivityLocationKey {
+  exposure: SyntheticMatchedExposureSession
+  band: ScreenBand
+}
+
+type SyntheticDoubleSlitFixture
+  = SyntheticDoubleSlitFixtureOne {}
+
+type SyntheticArrivalCountObservationRow {
+  fixture: SyntheticDoubleSlitFixture
+  arrangement: SyntheticSlitArrangement
+  band: ScreenBand
+  exposure: SyntheticMatchedExposureSession
+  arrival_count: Int
+}
+
+type ArrivalCountResolution
+  = ArrivalCountResolved {
+      count: Int
+      contributing_rows: Int
+    }
+  | ArrivalCountMissing {
+      arrangement: SyntheticSlitArrangement
+      band: ScreenBand
+      exposure: SyntheticMatchedExposureSession
+    }
+  | ArrivalCountAmbiguous {
+      arrangement: SyntheticSlitArrangement
+      band: ScreenBand
+      exposure: SyntheticMatchedExposureSession
+      matching_rows: Int
+    }
+
+type AdditivityInputResolution
+  = AdditivityInputsResolved {
+      left: Int
+      right: Int
+      both: Int
+      left_contributing_rows: Int
+      right_contributing_rows: Int
+      both_contributing_rows: Int
+    }
+  | AdditivityInputsIncomplete {
+      missing_arrangement: SyntheticSlitArrangement
+      band: ScreenBand
+      exposure: SyntheticMatchedExposureSession
+    }
+  | AdditivityInputsAmbiguous {
+      band: ScreenBand
+      exposure: SyntheticMatchedExposureSession
+      matching_rows: Int
+    }
+
+type AdditivityMismatchDirection
+  = ObservedBelowPrediction
+  | ObservedAbovePrediction
+
+type PathAdditivityCounterexampleWitness {
+  left_alternative_count: Int
+  right_alternative_count: Int
+  both_open_observed_count: Int
+  classical_additive_prediction: Int
+  mismatch_direction: AdditivityMismatchDirection
+}
+
+type PathAdditivitySubject
+  = PathAdditivitySyntheticFixture {}
+
+type PathAdditivityRefutationReceipt {
+  subject: PathAdditivitySubject
+  witness: PathAdditivityCounterexampleWitness
+  location: PathAdditivityLocationKey
+}
+
+fn classical_exclusive_alternative_arrival_prediction(
+  left_only_count: Int,
+  right_only_count: Int,
+) -> Int {
+  left_only_count + right_only_count
+}
+
+fn arrival_count_row_matches(
+  row: SyntheticArrivalCountObservationRow,
+  fixture: SyntheticDoubleSlitFixture,
+  arrangement: SyntheticSlitArrangement,
+  band: ScreenBand,
+  exposure: SyntheticMatchedExposureSession,
+) -> Bool {
+  row.fixture == fixture
+    && row.arrangement == arrangement
+    && row.band == band
+    && row.exposure == exposure
+}
+
+fn resolve_arrival_count_at(
+  rows: List<SyntheticArrivalCountObservationRow>,
+  fixture: SyntheticDoubleSlitFixture,
+  arrangement: SyntheticSlitArrangement,
+  band: ScreenBand,
+  exposure: SyntheticMatchedExposureSession,
+) -> ArrivalCountResolution {
+  let folded = fold(
+    rows,
+    init: ArrivalCountFoldAcc {
+      match_count: 0,
+      sum: 0,
+    },
+    f: fn(acc, row) {
+      if arrival_count_row_matches(
+        row: row,
+        fixture: fixture,
+        arrangement: arrangement,
+        band: band,
+        exposure: exposure,
+      ) {
+        ArrivalCountFoldAcc {
+          match_count: acc.match_count + 1,
+          sum: acc.sum + row.arrival_count,
+        }
+      } else {
+        acc
+      }
+    },
+  )
+  if folded.match_count == 0 {
+    ArrivalCountMissing {
+      arrangement: arrangement,
+      band: band,
+      exposure: exposure,
+    }
+  } else {
+    if folded.match_count == 1 {
+      ArrivalCountResolved {
+        count: folded.sum,
+        contributing_rows: 1,
+      }
+    } else {
+      ArrivalCountAmbiguous {
+        arrangement: arrangement,
+        band: band,
+        exposure: exposure,
+        matching_rows: folded.match_count,
+      }
+    }
+  }
+}
+
+type ArrivalCountFoldAcc {
+  match_count: Int
+  sum: Int
+}
+
+fn resolve_additivity_inputs(
+  rows: List<SyntheticArrivalCountObservationRow>,
+  fixture: SyntheticDoubleSlitFixture,
+  band: ScreenBand,
+  exposure: SyntheticMatchedExposureSession,
+) -> AdditivityInputResolution {
+  let left_resolution = resolve_arrival_count_at(
+    rows: rows,
+    fixture: fixture,
+    arrangement: SlitOneOpen,
+    band: band,
+    exposure: exposure,
+  )
+  let right_resolution = resolve_arrival_count_at(
+    rows: rows,
+    fixture: fixture,
+    arrangement: SlitTwoOpen,
+    band: band,
+    exposure: exposure,
+  )
+  let both_resolution = resolve_arrival_count_at(
+    rows: rows,
+    fixture: fixture,
+    arrangement: BothSlitsOpen,
+    band: band,
+    exposure: exposure,
+  )
+  match left_resolution {
+    ArrivalCountMissing { arrangement: ma, band: b, exposure: e } =>
+      AdditivityInputsIncomplete {
+        missing_arrangement: ma,
+        band: b,
+        exposure: e,
+      }
+    ArrivalCountAmbiguous { band: b, exposure: e, matching_rows: n } =>
+      AdditivityInputsAmbiguous {
+        band: b,
+        exposure: e,
+        matching_rows: n,
+      }
+    ArrivalCountResolved { count: left, contributing_rows: left_rows } =>
+      match right_resolution {
+        ArrivalCountMissing { arrangement: ma, band: b, exposure: e } =>
+          AdditivityInputsIncomplete {
+            missing_arrangement: ma,
+            band: b,
+            exposure: e,
+          }
+        ArrivalCountAmbiguous { band: b, exposure: e, matching_rows: n } =>
+          AdditivityInputsAmbiguous {
+            band: b,
+            exposure: e,
+            matching_rows: n,
+          }
+        ArrivalCountResolved { count: right, contributing_rows: right_rows } =>
+          match both_resolution {
+            ArrivalCountMissing { arrangement: ma, band: b, exposure: e } =>
+              AdditivityInputsIncomplete {
+                missing_arrangement: ma,
+                band: b,
+                exposure: e,
+              }
+            ArrivalCountAmbiguous { band: b, exposure: e, matching_rows: n } =>
+              AdditivityInputsAmbiguous {
+                band: b,
+                exposure: e,
+                matching_rows: n,
+              }
+            ArrivalCountResolved { count: both, contributing_rows: both_rows } =>
+              AdditivityInputsResolved {
+                left: left,
+                right: right,
+                both: both,
+                left_contributing_rows: left_rows,
+                right_contributing_rows: right_rows,
+                both_contributing_rows: both_rows,
+              }
+          }
+      }
+  }
+}
+
+fn path_additivity_mismatch_direction(
+  observed_both: Int,
+  prediction: Int,
+) -> AdditivityMismatchDirection? {
+  if observed_both < prediction {
+    ObservedBelowPrediction
+  } else {
+    if observed_both > prediction {
+      ObservedAbovePrediction
+    } else {
+      absent
+    }
+  }
+}
+
+fn path_additivity_witness_matches_additive_prediction(
+  witness: PathAdditivityCounterexampleWitness,
+) -> Bool {
+  witness.classical_additive_prediction == (witness.left_alternative_count + witness.right_alternative_count)
+}
+
+fn path_additivity_witness_is_counterexample(
+  witness: PathAdditivityCounterexampleWitness,
+) -> Bool {
+  path_additivity_witness_matches_additive_prediction(witness: witness)
+    && (witness.both_open_observed_count != witness.classical_additive_prediction)
+}
+
+fn path_additivity_refutation_holds_for_synthetic_fixture(
+  receipt: PathAdditivityRefutationReceipt,
+) -> Bool {
+  match receipt.subject {
+    PathAdditivitySyntheticFixture {} =>
+      path_additivity_witness_is_counterexample(witness: receipt.witness)
+  }
+}
+
+fn derive_path_additivity_refutation_at_band(
+  rows: List<SyntheticArrivalCountObservationRow>,
+  fixture: SyntheticDoubleSlitFixture,
+  band: ScreenBand,
+  exposure: SyntheticMatchedExposureSession,
+) -> PathAdditivityRefutationReceipt? {
+  match resolve_additivity_inputs(
+    rows: rows,
+    fixture: fixture,
+    band: band,
+    exposure: exposure,
+  ) {
+    AdditivityInputsResolved {
+      left: left,
+      right: right,
+      both: both,
+      left_contributing_rows: _,
+      right_contributing_rows: _,
+      both_contributing_rows: _,
+    } => {
+      let prediction = classical_exclusive_alternative_arrival_prediction(
+        left_only_count: left,
+        right_only_count: right,
+      )
+      match path_additivity_mismatch_direction(observed_both: both, prediction: prediction) {
+        ObservedBelowPrediction =>
+          PathAdditivityRefutationReceipt {
+            subject: PathAdditivitySyntheticFixture {},
+            witness: PathAdditivityCounterexampleWitness {
+              left_alternative_count: left,
+              right_alternative_count: right,
+              both_open_observed_count: both,
+              classical_additive_prediction: prediction,
+              mismatch_direction: ObservedBelowPrediction,
+            },
+            location: PathAdditivityLocationKey {
+              exposure: exposure,
+              band: band,
+            },
+          }
+        ObservedAbovePrediction =>
+          PathAdditivityRefutationReceipt {
+            subject: PathAdditivitySyntheticFixture {},
+            witness: PathAdditivityCounterexampleWitness {
+              left_alternative_count: left,
+              right_alternative_count: right,
+              both_open_observed_count: both,
+              classical_additive_prediction: prediction,
+              mismatch_direction: ObservedAbovePrediction,
+            },
+            location: PathAdditivityLocationKey {
+              exposure: exposure,
+              band: band,
+            },
+          }
+        absent => absent
+      }
+    }
+    AdditivityInputsIncomplete { .. } => absent
+    AdditivityInputsAmbiguous { .. } => absent
+  }
+}
