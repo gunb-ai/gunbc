@@ -4,6 +4,9 @@ import v2.compiler.self_host.emitter_producer_provenance {
   SourceProduced,
   emission_qualification_eq
 }
+import v2.lens.production_qualification_origin_census_structural_fixture {
+  structural_red_control_mint_site_qualified_name
+}
 import v2.lens.production_qualification_origin_census {
   FixtureDerived,
   UnknownOrigin,
@@ -25,6 +28,15 @@ import v2.std.logic { Bool }
 import v2.std.text { String }
 
 data production_qualification_origin_census_witness_note: String = "Production-qualification origin PROBE witnesses (wise-ram-22 recut): per-PR discovery carries planted closed-subject checks only (DESIGN §5). Live fn_arrow_decl_facts_live() walks (admission, policy-oracle count, frontier RED probes) are long-lane in test/claim/long/production_qualification_origin_census_witness_test.dag."
+
+data production_qualification_origin_census_fixture_module_reach_note: String = "Genuine module-graph edge into v2.lens.production_qualification_origin_census_structural_fixture (inert-lens hygiene, DESIGN.md §6): long-lane witnesses reference the live probe only through census lens helpers, not a compile-time import of the fixture module. This witness imports structural_red_control_mint_site_qualified_name so the infra fixture stays reached by a discovered per-PR witness."
+
+test fn witness_structural_fixture_module_reached_by_symbol_reference() -> Bool {
+  string_contains(
+    s: structural_red_control_mint_site_qualified_name,
+    pattern: "structural_red_control_mint_site_probe"
+  )
+}
 
 test fn witness_planted_fixture_origin_count_matches_oracle() -> Bool {
   int_eq(
