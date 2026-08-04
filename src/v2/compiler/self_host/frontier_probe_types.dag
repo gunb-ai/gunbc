@@ -24,7 +24,7 @@ import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.optional { Absent, Present }
-import v2.std.text { String, trim }
+import v2.std.text { String }
 
 data frontier_fixture_cemented_producer_note: String = "FixtureCemented is forward-declared for the fixture-free self-host bar; inhabited by the behavioral-equivalence probe when it detects injected fixtures cementing greens (e.g. add_arrow_eval_allocate_literal, pick-lit hardcoding) — not by frontier_classify_rejection_reason (assemble/emit stage only)."
 
@@ -97,10 +97,6 @@ fn frontier_survey_source_roots_digest_holds(digest: Fnv1a64Structural) -> Bool 
   content_hash_validate_lower_hex_length(text: digest.digest, expected_hex_digits: 16)
 }
 
-fn frontier_survey_git_stdout_line(raw: String) -> String {
-  trim(raw)
-}
-
 fn frontier_survey_commit_tree_binding_holds(
   commit: CommitSha,
   tree: GitObjectId
@@ -109,8 +105,7 @@ fn frontier_survey_commit_tree_binding_holds(
   if !result.success {
     false
   } else {
-    let hash = frontier_survey_git_stdout_line(raw: result.tree)
-    match git_object_id_from_untagged_hex(hex: hash) {
+    match git_object_id_from_untagged_hex(hex: result.tree) {
       Present { value: observed } => git_object_id_eq(left: observed, right: tree)
       Absent => false
     }
