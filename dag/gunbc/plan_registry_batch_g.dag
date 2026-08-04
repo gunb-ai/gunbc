@@ -17,6 +17,7 @@ import gunbc.plans.fleet_acceptance_criteria { fleet_acceptance_criteria_plan }
 import gunbc.plans.structural_quadratic_wall_coverage_audit { structural_quadratic_wall_coverage_audit_plan }
 import gunbc.plans.extdeps_modeling_preflight { extdeps_modeling_preflight_plan }
 import gunbc.plans.discrete_cost_derivation { discrete_cost_derivation_plan }
+import gunbc.plans.v2_complexity_capability_parity { v2_complexity_capability_parity_plan }
 
 data batch_g_plans: List<Plan> = [
   ci_humming_plan,
@@ -34,5 +35,6 @@ data batch_g_plans: List<Plan> = [
   structural_quadratic_wall_coverage_audit_plan,
   ci_performance_tanking_evidence_plan,
   extdeps_modeling_preflight_plan,
-  discrete_cost_derivation_plan
+  discrete_cost_derivation_plan,
+  v2_complexity_capability_parity_plan
 ]

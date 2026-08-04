@@ -72,6 +72,7 @@ docs/plans/solve-higher-order-design.md merge=generated-artifact
 docs/plans/structural-quadratic-wall-coverage-audit.md merge=generated-artifact
 docs/plans/testgen-oracle.md merge=generated-artifact
 docs/plans/typescript-gap-census.md merge=generated-artifact
+docs/plans/v2-complexity-capability-parity.md merge=generated-artifact
 docs/plans/v2-self-hosting.md merge=generated-artifact
 docs/plans/value-null-split.md merge=generated-artifact
 docs/plans/wiring-liveness-preflight.md merge=generated-artifact
