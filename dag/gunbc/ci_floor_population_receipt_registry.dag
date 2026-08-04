@@ -5,6 +5,7 @@ import std.nat { Nat }
 
 type FloorPopulationReceiptKind
   = PhaseJournal {}
+  | PreWalkCapture {}
   | BatchWall {}
   | CompileCleanWall {}
   | Component {}
@@ -62,6 +63,7 @@ data ci_floor_population_receipt_registry_note: String = "Expected receipt ident
 fn floor_population_receipt_kind_label(kind: FloorPopulationReceiptKind) -> String {
   match kind {
     PhaseJournal {} => "PhaseJournal"
+    PreWalkCapture {} => "PreWalkCapture"
     BatchWall {} => "BatchWall"
     CompileCleanWall {} => "CompileCleanWall"
     Component {} => "Component"
@@ -114,10 +116,10 @@ fn exact_rel(path: String) -> FloorReceiptLocator {
 fn ci_floor_population_receipt_registry() -> List<FloorPopulationReceiptRegistryRow> {
   [
     FloorPopulationReceiptRegistryRow {
-      kind: PopulationReceiptManifest {},
-      locator: exact_rel(path: "manifest.tsv"),
-      producer_phase: AfterFloorAlways {},
-      journal_phase: "AfterFloorAlways" as NonEmptyStr,
+      kind: PreWalkCapture {},
+      locator: exact_rel(path: "receipts/pre-walk-capture.tsv"),
+      producer_phase: BeforeFloor {},
+      journal_phase: "pre-walk-capture" as NonEmptyStr,
       required_for_settlement: true
     },
     FloorPopulationReceiptRegistryRow {
