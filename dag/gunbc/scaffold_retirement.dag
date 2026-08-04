@@ -124,7 +124,10 @@ fn node_is_scaffold_initializer(body: Node) -> Bool {
   atom_lexeme_list_contains(
     atoms: scaffold_subtree_atoms(n: body),
     lexeme: "Scaffold"
-  )
+  ) || match first_construction_mechanism(node: body) {
+    Present { value: _ } => true
+    Absent => false
+  }
 }
 
 fn construction_mechanism_from_lexeme(lex: String) -> ConstructionMechanism? {
@@ -185,8 +188,8 @@ fn decl_field_lexeme_from_field_node(node: Node, field_node: Node, lex: String) 
   }
 }
 
-fn decl_field_from_declaration_ref_conj(node: Node) -> DeclField? {
-  match list_at_optional(xs: node_positional_child_targets(node: node), index: 3) {
+fn decl_field_from_declaration_ref_conj_at(node: Node, field_index: Int) -> DeclField? {
+  match list_at_optional(xs: node_positional_child_targets(node: node), index: field_index) {
     Present { value: field_node } =>
       match node_atom_lexeme_optional(node: field_node) {
         Present { value: lex } => decl_field_lexeme_from_field_node(node: node, field_node: field_node, lex: lex)
@@ -196,25 +199,36 @@ fn decl_field_from_declaration_ref_conj(node: Node) -> DeclField? {
   }
 }
 
-fn declaration_ref_when_declaration_ref_conj(node: Node) -> DeclarationRef? {
-  match list_at_optional(xs: node_positional_child_targets(node: node), index: 1) {
+fn decl_field_from_declaration_ref_conj(node: Node) -> DeclField? {
+  match decl_field_from_declaration_ref_conj_at(node: node, field_index: 3) {
+    Present { value: field } => Present { value: field }
+    Absent =>
+      match decl_field_from_declaration_ref_conj_at(node: node, field_index: 2) {
+        Present { value: field } => Present { value: field }
+        Absent => Present { value: WholeDeclaration }
+      }
+  }
+}
+
+fn declaration_ref_pair_at_indices(
+  node: Node,
+  module_index: Int,
+  decl_index: Int
+) -> DeclarationRef? {
+  match list_at_optional(xs: node_positional_child_targets(node: node), index: module_index) {
     Present { value: module_node } =>
-      match list_at_optional(xs: node_positional_child_targets(node: node), index: 2) {
+      match list_at_optional(xs: node_positional_child_targets(node: node), index: decl_index) {
         Present { value: decl_node } =>
           match node_atom_lexeme_optional(node: module_node) {
             Present { value: module_path } =>
               match node_atom_lexeme_optional(node: decl_node) {
                 Present { value: decl_name } =>
-                  match decl_field_from_declaration_ref_conj(node: node) {
-                    Present { value: field } =>
-                      Present {
-                        value: DeclarationRef {
-                          module_path: module_path,
-                          decl_name: decl_name,
-                          field: field,
-                        }
-                      }
-                    Absent => Absent
+                  Present {
+                    value: DeclarationRef {
+                      module_path: module_path,
+                      decl_name: decl_name,
+                      field: WholeDeclaration,
+                    }
                   }
                 Absent => Absent
               }
@@ -226,21 +240,53 @@ fn declaration_ref_when_declaration_ref_conj(node: Node) -> DeclarationRef? {
   }
 }
 
-fn declaration_ref_for_root_lexeme(node: Node, lex: String) -> DeclarationRef? {
-  match lex {
-    "DeclarationRef" => declaration_ref_when_declaration_ref_conj(node: node)
-    _ => Absent
+fn declaration_ref_when_declaration_ref_conj(node: Node) -> DeclarationRef? {
+  match declaration_ref_pair_at_indices(node: node, module_index: 1, decl_index: 2) {
+    Present { value: bind } =>
+      match decl_field_from_declaration_ref_conj(node: node) {
+        Present { value: field } =>
+          Present {
+            value: DeclarationRef {
+              module_path: bind.module_path,
+              decl_name: bind.decl_name,
+              field: field,
+            }
+          }
+        Absent => Present { value: bind }
+      }
+    Absent =>
+      match declaration_ref_pair_at_indices(node: node, module_index: 0, decl_index: 1) {
+        Present { value: bind } =>
+          match decl_field_from_declaration_ref_conj(node: node) {
+            Present { value: field } =>
+              Present {
+                value: DeclarationRef {
+                  module_path: bind.module_path,
+                  decl_name: bind.decl_name,
+                  field: field,
+                }
+              }
+            Absent => Present { value: bind }
+          }
+        Absent => Absent
+      }
   }
 }
 
 fn declaration_ref_from_declaration_ref_conj(node: Node) -> DeclarationRef? {
-  match node_atom_lexeme_optional(node: node) {
-    Present { value: lex } => declaration_ref_for_root_lexeme(node: node, lex: lex)
+  match declaration_ref_when_declaration_ref_conj(node: node) {
+    Present { value: bind } => Present { value: bind }
     Absent =>
-      match list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
-        Present { value: child } => declaration_ref_from_declaration_ref_conj(node: child)
-        Absent => Absent
-      }
+      fold(
+        node_positional_child_targets(node: node),
+        init: Absent,
+        f: fn(acc, child) {
+          match acc {
+            Present { value: _ } => acc
+            Absent => declaration_ref_from_declaration_ref_conj(node: child)
+          }
+        }
+      )
   }
 }
 
