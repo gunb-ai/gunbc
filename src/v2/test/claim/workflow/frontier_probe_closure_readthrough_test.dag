@@ -13,8 +13,7 @@ import v2.compiler.source_authority {
   SourceRef,
   SourceRootCoverageComplete,
   content_hash_of_value,
-  frontier_probe_discovered_closure_seal,
-  source_ref_for_observed_storage_path
+  frontier_probe_discovered_closure_seal
 }
 import v2.std.cross_tree.import_model { DagTree }
 import std.algebra { Cons, Empty }
@@ -23,10 +22,6 @@ import v2.std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
-
-fn fp_readthrough_ref_algebra() -> SourceRef {
-  source_ref_for_observed_storage_path(path: "dag/std/algebra.dag")
-}
 
 fn fp_readthrough_closure_subject_matching_digest(
   refs: List<SourceRef>,
