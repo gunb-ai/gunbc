@@ -19,7 +19,7 @@ use std::rc::Rc;
 pub fn namespace_reference_derived_closure_production_admissions_witness_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "N3-A v1 executing witnesses: production returns neutral ReferenceBindingObservation carriers only — no admission types or assess_* imports in src/v1. Capability projection and closing-contract composition live at dag/test/claim witnesses.".to_string()
+            "N3-A v1 executing witnesses: production returns neutral ReferenceBindingObservation carriers only — no admission types or assess_* imports in src/v1 production modules. Capability projection and closing-contract composition live at witness seams (dag/test/claim for assessment rows; src/v1/tests/claim for the closing acceptance witness).".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())

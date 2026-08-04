@@ -36,7 +36,7 @@ use std::rc::Rc;
 pub fn namespace_reference_derived_closure_production_admissions_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "N3-A production observers for namespace-reference-derived-closure clauses (a-d). Returns neutral std.reference_binding_observation.ReferenceBindingObservation carriers only — no ReferenceDerivedClosureAdmission, no assess_*, no roadmap vocabulary. namespace_structural_binding_observations_a_through_d is the sole export for this row; assessment lives at the dag witness seam.".to_string()
+            "N3-A production observers for namespace-reference-derived-closure clauses (a-d). Returns neutral std.reference_binding_observation.ReferenceBindingObservation carriers only — no ReferenceDerivedClosureAdmission, no assess_*, no roadmap vocabulary. namespace_structural_binding_observations_a_through_d is the sole export for this row; assessment lives at the witness seam.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
