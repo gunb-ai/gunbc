@@ -67,9 +67,24 @@ type WitnessSeam {
   consumer: String
 }
 
+type WitnessCostBasis
+  = MeasuredAtExactSubject { wall_ms: Int, receipt: String }
+  | EstimatedFromSiblingClass { source_witness: String, basis: String }
+
+type ScheduledWitnessEnvelope {
+  cadence: String
+  wall_budget_ms: Int
+  max_staleness: String
+}
+
 type WitnessSpan
   = SpanUndeclared
   | SpanSeams { seams: List<WitnessSeam> }
+  | SpanEnrolled {
+      seams: List<WitnessSeam>,
+      cost_basis: WitnessCostBasis,
+      envelope: ScheduledWitnessEnvelope
+    }
 
 fn witness_kind_eq(a: WitnessKind, b: WitnessKind) -> Bool {
   match a {

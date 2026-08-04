@@ -39,7 +39,16 @@ import v2.compiler.source_authority {
 import std.realization_schedule {
   string_list_eq, ScheduleWitnessEntry,
   WitnessKind, CorpusWitnessKind, ExecutionWitnessKind, witness_kind_eq,
-  WitnessSeam, WitnessSpan, SpanUndeclared, SpanSeams
+  WitnessSeam, WitnessSpan, SpanUndeclared, SpanSeams, SpanEnrolled,
+  WitnessCostBasis, MeasuredAtExactSubject, EstimatedFromSiblingClass,
+  ScheduledWitnessEnvelope
+}
+import gunbc.ci_layer_roots {
+  frontier_probe_witness_measure_receipt_read_failure,
+  frontier_probe_witness_measure_receipt_hash_mismatch,
+  frontier_probe_witness_measure_receipt_elision_boundary,
+  frontier_probe_witness_measure_receipt_below_cap,
+  frontier_probe_witness_measure_receipt_second_root
 }
 
 data doc_reachability_witness_entry: String = "dag/test/claim/doc_reachability_witness_test.dag"
@@ -1432,22 +1441,74 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
       entry: "src/v2/test/claim/workflow/frontier_probe_closure_readthrough_test.dag",
-      check_fns: [
-        "frontier_probe_read_failure_detail_refused_holds",
-        "frontier_probe_hash_mismatch_detail_carries_observed_holds"
-      ],
+      check_fns: ["frontier_probe_read_failure_detail_refused_holds"],
       kind: ExecutionWitnessKind,
-      span: SpanSeams {
+      span: SpanEnrolled {
         seams: [
           WitnessSeam {
-            producer: "GithubActionsCiJob_fast_lane_budget_5s",
+            producer: "GithubActionsCiJob",
             consumer: "frontier_probe_read_failure_detail_refused_holds"
-          },
+          }
+        ],
+        cost_basis: MeasuredAtExactSubject {
+          wall_ms: 3,
+          receipt: frontier_probe_witness_measure_receipt_read_failure
+        },
+        envelope: ScheduledWitnessEnvelope {
+          cadence: "per_pr",
+          wall_budget_ms: 5000,
+          max_staleness: "0"
+        }
+      }
+    },
+    surfaces: [GithubActionsCiJob]
+  },
+  CommitCheckEnrollment {
+    check: CommitWitnessClaim {
+      entry: "src/v2/test/claim/workflow/frontier_probe_closure_readthrough_test.dag",
+      check_fns: ["frontier_probe_hash_mismatch_detail_carries_observed_holds"],
+      kind: ExecutionWitnessKind,
+      span: SpanEnrolled {
+        seams: [
           WitnessSeam {
-            producer: "GithubActionsCiJob_fast_lane_budget_5s",
+            producer: "GithubActionsCiJob",
             consumer: "frontier_probe_hash_mismatch_detail_carries_observed_holds"
           }
-        ]
+        ],
+        cost_basis: MeasuredAtExactSubject {
+          wall_ms: 2,
+          receipt: frontier_probe_witness_measure_receipt_hash_mismatch
+        },
+        envelope: ScheduledWitnessEnvelope {
+          cadence: "per_pr",
+          wall_budget_ms: 5000,
+          max_staleness: "0"
+        }
+      }
+    },
+    surfaces: [GithubActionsCiJob]
+  },
+  CommitCheckEnrollment {
+    check: CommitWitnessClaim {
+      entry: "src/v2/test/claim/workflow/frontier_probe_closure_readthrough_test.dag",
+      check_fns: ["frontier_probe_ninety_one_read_compiler_closure_elision_integrates_holds"],
+      kind: ExecutionWitnessKind,
+      span: SpanEnrolled {
+        seams: [
+          WitnessSeam {
+            producer: "GithubActionsCiJob",
+            consumer: "frontier_probe_ninety_one_read_compiler_closure_elision_integrates_holds"
+          }
+        ],
+        cost_basis: MeasuredAtExactSubject {
+          wall_ms: 3,
+          receipt: frontier_probe_witness_measure_receipt_elision_boundary
+        },
+        envelope: ScheduledWitnessEnvelope {
+          cadence: "per_pr",
+          wall_budget_ms: 5000,
+          max_staleness: "0"
+        }
       }
     },
     surfaces: [GithubActionsCiJob]
@@ -1455,31 +1516,24 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
       entry: "src/v2/test/claim/long/frontier_probe_closure_matrix_integration_test.dag",
-      check_fns: ["frontier_probe_ninety_one_read_compiler_closure_elision_integrates_holds"],
-      kind: ExecutionWitnessKind,
-      span: SpanSeams {
-        seams: [
-          WitnessSeam {
-            producer: "FalsifierCadenceJob_max_staleness_4h_lane_budget_overlay_3ms",
-            consumer: "frontier_probe_ninety_one_read_compiler_closure_elision_integrates_holds"
-          }
-        ]
-      }
-    },
-    surfaces: [FalsifierCadenceJob]
-  },
-  CommitCheckEnrollment {
-    check: CommitWitnessClaim {
-      entry: "src/v2/test/claim/long/frontier_probe_closure_matrix_integration_test.dag",
       check_fns: ["frontier_probe_below_cap_complete_population_gates_pass_holds"],
       kind: ExecutionWitnessKind,
-      span: SpanSeams {
+      span: SpanEnrolled {
         seams: [
           WitnessSeam {
-            producer: "FalsifierCadenceJob_max_staleness_4h_lane_budget_784772ms",
+            producer: "FalsifierCadenceJob",
             consumer: "frontier_probe_below_cap_complete_population_gates_pass_holds"
           }
-        ]
+        ],
+        cost_basis: MeasuredAtExactSubject {
+          wall_ms: 784772,
+          receipt: frontier_probe_witness_measure_receipt_below_cap
+        },
+        envelope: ScheduledWitnessEnvelope {
+          cadence: "4h",
+          wall_budget_ms: 900000,
+          max_staleness: "4h"
+        }
       }
     },
     surfaces: [FalsifierCadenceJob]
@@ -1489,13 +1543,22 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
       entry: "src/v2/test/claim/long/frontier_probe_closure_matrix_integration_test.dag",
       check_fns: ["frontier_probe_second_source_root_population_gates_pass_holds"],
       kind: ExecutionWitnessKind,
-      span: SpanSeams {
+      span: SpanEnrolled {
         seams: [
           WitnessSeam {
-            producer: "FalsifierCadenceJob_max_staleness_4h_lane_budget_742109ms",
+            producer: "FalsifierCadenceJob",
             consumer: "frontier_probe_second_source_root_population_gates_pass_holds"
           }
-        ]
+        ],
+        cost_basis: MeasuredAtExactSubject {
+          wall_ms: 742109,
+          receipt: frontier_probe_witness_measure_receipt_second_root
+        },
+        envelope: ScheduledWitnessEnvelope {
+          cadence: "4h",
+          wall_budget_ms: 900000,
+          max_staleness: "4h"
+        }
       }
     },
     surfaces: [FalsifierCadenceJob]
@@ -1749,15 +1812,64 @@ fn witness_seam_lists_eq(left: List<WitnessSeam>, right: List<WitnessSeam>) -> B
   }
 }
 
+fn witness_cost_basis_eq(a: WitnessCostBasis, b: WitnessCostBasis) -> Bool {
+  match a {
+    MeasuredAtExactSubject { wall_ms, receipt } => match b {
+      MeasuredAtExactSubject { wall_ms: wall_ms2, receipt: receipt2 } =>
+        (wall_ms == wall_ms2) && (receipt == receipt2)
+      EstimatedFromSiblingClass { source_witness: _, basis: _ } => false
+    }
+    EstimatedFromSiblingClass { source_witness, basis } => match b {
+      MeasuredAtExactSubject { wall_ms: _, receipt: _ } => false
+      EstimatedFromSiblingClass { source_witness: source_witness2, basis: basis2 } =>
+        (source_witness == source_witness2) && (basis == basis2)
+    }
+  }
+}
+
+fn scheduled_witness_envelope_eq(a: ScheduledWitnessEnvelope, b: ScheduledWitnessEnvelope) -> Bool {
+  (a.cadence == b.cadence)
+    && (a.wall_budget_ms == b.wall_budget_ms)
+    && (a.max_staleness == b.max_staleness)
+}
+
+fn witness_cost_basis_wellformed(basis: WitnessCostBasis) -> Bool {
+  match basis {
+    MeasuredAtExactSubject { wall_ms, receipt } => wall_ms > 0 && receipt != ""
+    EstimatedFromSiblingClass { source_witness, basis } =>
+      source_witness != "" && basis != ""
+  }
+}
+
+fn scheduled_witness_envelope_wellformed(envelope: ScheduledWitnessEnvelope) -> Bool {
+  envelope.cadence != ""
+    && envelope.wall_budget_ms > 0
+    && envelope.max_staleness != ""
+}
+
 fn witness_span_eq(a: WitnessSpan, b: WitnessSpan) -> Bool {
   match a {
     SpanUndeclared => match b {
       SpanUndeclared => true
       SpanSeams { seams: _ } => false
+      SpanEnrolled { seams: _, cost_basis: _, envelope: _ } => false
     }
     SpanSeams { seams } => match b {
       SpanUndeclared => false
       SpanSeams { seams: other } => witness_seam_lists_eq(left: seams, right: other)
+      SpanEnrolled { seams: _, cost_basis: _, envelope: _ } => false
+    }
+    SpanEnrolled { seams, cost_basis, envelope } => match b {
+      SpanUndeclared => false
+      SpanSeams { seams: _ } => false
+      SpanEnrolled {
+        seams: other_seams,
+        cost_basis: other_basis,
+        envelope: other_envelope
+      } =>
+        witness_seam_lists_eq(left: seams, right: other_seams)
+          && witness_cost_basis_eq(a: cost_basis, b: other_basis)
+          && scheduled_witness_envelope_eq(a: envelope, b: other_envelope)
     }
   }
 }
@@ -2185,6 +2297,11 @@ fn witness_span_wellformed(span: WitnessSpan) -> Bool {
   match span {
     SpanUndeclared => true
     SpanSeams { seams } => seams.count() > 0 && seams_wellformed_and_distinct(seams: seams)
+    SpanEnrolled { seams, cost_basis, envelope } =>
+      seams.count() > 0
+        && seams_wellformed_and_distinct(seams: seams)
+        && witness_cost_basis_wellformed(basis: cost_basis)
+        && scheduled_witness_envelope_wellformed(envelope: envelope)
   }
 }
 

@@ -39,6 +39,16 @@ import std.witness_admission {
 
 data witness_layer_roots: List<String> = ["dag", "src/v2"]
 
+data frontier_probe_witness_measure_receipt_read_failure: String = "target/frontier-probe-survey/matrix_readthrough_claim_batch_receipt.log"
+
+data frontier_probe_witness_measure_receipt_hash_mismatch: String = "target/frontier-probe-survey/matrix_readthrough_claim_batch_receipt.log"
+
+data frontier_probe_witness_measure_receipt_elision_boundary: String = "target/frontier-probe-survey/matrix_readthrough_claim_batch_receipt.log"
+
+data frontier_probe_witness_measure_receipt_below_cap: String = "target/frontier-probe-survey/matrix_integration_claim_batch_receipt.log"
+
+data frontier_probe_witness_measure_receipt_second_root: String = "target/frontier-probe-survey/second_root_measure_receipt.log"
+
 fn compile_clean_source_roots() -> List<String> {
   concat(witness_layer_roots, ["src/v1"])
 }
@@ -503,7 +513,7 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
   WitnessExclusionRow {
     pattern: "frontier_probe_closure_matrix_integration_test.dag",
     classification: FalsifierRehomedBinWet,
-    reason: "PR #7762 frontier probe closure integration matrix (operator msg_fca587a5/b79b6254): frontier_probe_below_cap_complete_population_gates_pass_holds and frontier_probe_second_source_root_population_gates_pass_holds execute full receipt_for_subject with observed SourceRef rows through assemble — measured claim_batch --wet: below_cap 784772ms (130x bin_witness_wet_per_row_wall_budget_seconds). Scheduled consumer: FalsifierCadenceJob enrollment plus falsifier_rehomed_bin_wet_rows for the two full-pipeline legs. Read-through controls moved per-PR to src/v2/test/claim/workflow/frontier_probe_closure_readthrough_test.dag.",
+    reason: "PR #7762 frontier probe closure integration matrix (operator msg_b51df9e7): frontier_probe_below_cap_complete_population_gates_pass_holds and frontier_probe_second_source_root_population_gates_pass_holds execute full receipt_for_subject with observed SourceRef rows through assemble — measured claim_batch --wet eval wall: below_cap 784772ms, second_root 742109ms (130x and 123x bin_witness_wet_per_row_wall_budget_seconds). Scheduled consumer: FalsifierCadenceJob enrollment plus falsifier_rehomed_bin_wet_rows. Cheap wet controls (read_failure 3ms, hash_mismatch 2ms, elision boundary 3ms measured eval) run per-PR on GithubActionsCiJob via src/v2/test/claim/workflow/frontier_probe_closure_readthrough_test.dag — not 523ms/181ms (those were erroneous full-resolve figures from an earlier exclusion row before read-through was split out).",
     dissolve_on: "measured eval for below_cap and second_root lands under bin_witness_wet_per_row_wall_budget_seconds on a measured run — then re-enroll per-PR discovery consciously, or delete when emit-stage positives are no longer full-pipeline priced"
   },
   WitnessExclusionRow {

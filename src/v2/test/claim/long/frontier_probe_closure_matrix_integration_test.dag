@@ -1,9 +1,7 @@
 module v2.test.long.frontier_probe_closure_matrix_integration
 
 import v2.compiler.self_host.frontier_probe {
-  FrontierProbeCoveragePermitted,
   FrontierProbeIngestSubject,
-  frontier_probe_coverage_gate,
   frontier_probe_discovered_closure_subject_for_matrix,
   frontier_probe_receipt_for_subject
 }
@@ -16,23 +14,17 @@ import v2.compiler.source_authority {
   SourceRef,
   SourceRootCoverage,
   SourceRootCoverageComplete,
-  SourceRootManifestElided,
   frontier_probe_discovered_closure_seal,
   source_ref_for_observed_storage_path
 }
-import v2.std.algebra { length }
 import std.algebra { Cons, Empty }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import v2.test.workflow.host_source_root_ingest_manifest {
-  host_source_root_closure_refs,
-  host_source_root_ingest_coverage_receipt
-}
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-data frontier_probe_closure_matrix_integration_cadence_note: String = "PR #7762 scheduled integration witnesses (operator msg_fca587a5/b79b6254): three legs on FalsifierCadenceJob with declared SpanSeams (4h cadence, max staleness one window). Per-PR mechanism controls: src/v2/test/claim/workflow/frontier_probe_closure_matrix_test.dag (9 synthetic). Per-PR read-through controls: src/v2/test/claim/workflow/frontier_probe_closure_readthrough_test.dag (read_failure + hash_mismatch, wet, under fast-lane budget). below_cap and second_root re-homed to falsifier_rehomed_bin_wet_rows with measured exact-head eval. Elision leg requires overlay: discover_source_root_ingest --entry src/v2/compiler/00_compile.dag then claim_batch with overlay after src/v2."
+data frontier_probe_closure_matrix_integration_cadence_note: String = "PR #7762 scheduled integration witnesses (operator msg_b51df9e7): below_cap and second_root on FalsifierCadenceJob with SpanEnrolled measured envelopes (4h cadence). Per-PR mechanism controls: src/v2/test/claim/workflow/frontier_probe_closure_matrix_test.dag (9 synthetic). Per-PR wet controls: src/v2/test/claim/workflow/frontier_probe_closure_readthrough_test.dag (read_failure 3ms, hash_mismatch 2ms, elision boundary 3ms — measured claim_batch eval wall, not full-pipeline resolve). below_cap and second_root re-homed to falsifier_rehomed_bin_wet_rows with measured exact-head eval (784772ms / 742109ms)."
 
 fn fp_matrix_ref_a() -> SourceRef {
   source_ref_for_observed_storage_path(path: "dag/std/algebra.dag")
@@ -103,29 +95,4 @@ test fn frontier_probe_second_source_root_population_gates_pass_holds() -> Bool 
       fixture_module_path: ""
     ).detail
   )
-}
-
-test fn frontier_probe_ninety_one_read_compiler_closure_elision_integrates_holds() -> Bool {
-  let ingest_count = host_source_root_ingest_coverage_receipt.ingest_read_count
-  if ingest_count <= 64 {
-    false
-  } else {
-    match host_source_root_ingest_coverage_receipt.coverage {
-      SourceRootManifestElided { read_count: elided_reads, cap: cap } =>
-        if elided_reads > cap && elided_reads == ingest_count {
-          match frontier_probe_coverage_gate(
-            coverage: host_source_root_ingest_coverage_receipt.coverage,
-            refs: host_source_root_closure_refs,
-            ingest_read_count: ingest_count
-          ) {
-            FrontierProbeCoveragePermitted =>
-              length(xs: host_source_root_closure_refs) == elided_reads
-            _ => false
-          }
-        } else {
-          false
-        }
-      _ => false
-    }
-  }
 }

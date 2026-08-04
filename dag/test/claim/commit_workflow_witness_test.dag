@@ -16,7 +16,9 @@ import gunbc.commit_workflow {
   witness_span_wellformed
 }
 import std.realization_schedule {
-  WitnessSeam, SpanSeams, SpanUndeclared,
+  WitnessSeam, SpanSeams, SpanUndeclared, SpanEnrolled,
+  WitnessCostBasis, MeasuredAtExactSubject,
+  ScheduledWitnessEnvelope,
   CorpusWitnessKind, ExecutionWitnessKind, witness_kind_eq
 }
 import gunbc.ci_spec { gunbc_ci_floor_gates }
@@ -95,6 +97,43 @@ test fn witness_span_rejects_duplicate_seams() -> Bool {
 
 test fn witness_span_rejects_empty_seam_list() -> Bool {
   !witness_span_wellformed(span: SpanSeams { seams: [] })
+}
+
+test fn witness_span_enrolled_accepts_measured_envelope() -> Bool {
+  witness_span_wellformed(span: SpanEnrolled {
+    seams: [
+      WitnessSeam {
+        producer: "GithubActionsCiJob",
+        consumer: "frontier_probe_read_failure_detail_refused_holds"
+      }
+    ],
+    cost_basis: MeasuredAtExactSubject {
+      wall_ms: 3,
+      receipt: "target/frontier-probe-survey/matrix_readthrough_claim_batch_receipt.log"
+    },
+    envelope: ScheduledWitnessEnvelope {
+      cadence: "per_pr",
+      wall_budget_ms: 5000,
+      max_staleness: "0"
+    }
+  })
+}
+
+test fn witness_span_enrolled_rejects_zero_wall_budget() -> Bool {
+  !witness_span_wellformed(span: SpanEnrolled {
+    seams: [
+      WitnessSeam { producer: "FalsifierCadenceJob", consumer: "example_witness_holds" }
+    ],
+    cost_basis: MeasuredAtExactSubject {
+      wall_ms: 100,
+      receipt: "target/example-receipt.log"
+    },
+    envelope: ScheduledWitnessEnvelope {
+      cadence: "4h",
+      wall_budget_ms: 0,
+      max_staleness: "4h"
+    }
+  })
 }
 
 data allowed_long_lane_explicit_entry: String = "src/v2/test/claim/long/parse_table_memo_governed_witness_test.dag"
