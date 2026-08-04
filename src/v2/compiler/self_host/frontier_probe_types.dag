@@ -58,7 +58,9 @@ type FrontierProbeReceipt {
   located_reason: Symbol
 }
 
-data frontier_survey_subject_grounding_note: String = "FrontierSurveySubject pins one execution-measured survey: source_commit + source_tree (GitObjectId authority — operator GitTreeObjectId names the same tree-object fact), survey_executable Sha256Digest (binary built from that tree), ordered source_roots_digest Fnv1a64Structural, and probe_policy_revision ContentHash (structural family only). Receipts from different subjects cannot be combined into one exact-head survey."
+data frontier_survey_subject_grounding_note: String = "FrontierSurveySubject pins one execution-measured survey: source_commit + source_tree (GitObjectId authority — operator GitTreeObjectId names the same tree-object fact), survey_executable Sha256Digest (binary built from that tree), ordered source_roots_digest Fnv1a64Structural, and probe_policy_revision ContentHash (structural family only). Every shard receipt must carry its complete FrontierSurveySubject; aggregation proceeds only when all 27 subjects compare exactly equal. Receipts from different subjects cannot be combined into one exact-head survey."
+
+data frontier_survey_provenance_holes_note: String = "PROVENANCE HOLES (operator still-bat-561, 2026-08-04) — must close before the one authoritative 27/27:\n\nHOLE 1: well-formed checks digest shapes but must prove source_tree == tree(source_commit) — typed git commit-to-tree binding receipt (not authorable unrelated values in the manifest).\n\nHOLE 2: survey_executable hash must prove the binary was built from that source tree — build receipt binding commit, tree, compiler sources, executable digest, source-root set, and probe-policy revision.\n\nHOLE 3: emit-manifest-only must not relabel mixed-head TSV rows — every shard receipt carries its complete FrontierSurveySubject; aggregation proceeds only when all 27 subjects compare exactly equal (structural per-row requirement).\n\nCHAIN (last of four): #7776 vocabulary merge → #7762 final → #7767 assemble diagnostics → this survey. Do not run 27/27 until #7762 and #7767 both merge — #7762 ref-population gap means subjects can still be forged on today's probe."
 
 type FrontierSurveySubject {
   source_commit: CommitSha
@@ -126,7 +128,7 @@ fn frontier_survey_subject_eq(
     }
 }
 
-data frontier_survey_build_provenance_note: String = "survey_executable SHA-256 alone does not prove the binary was built from source_tree — a clean worktree can still run a stale target/release/frontier_probe_survey. The seed bin embeds FRONTIER_PROBE_SURVEY_BUILD_COMMIT and BUILD_TREE at compile time (build.rs) and refuses resolve_survey_subject when runtime HEAD/tree or current_exe hash disagrees. Manifest rows must carry the complete FrontierSurveySubject per shard; aggregation refuses subject mismatch (never relabel mixed-head TSV rows at emit time)."
+data frontier_survey_build_provenance_note: String = "survey_executable SHA-256 alone does not prove the binary was built from source_tree — a clean worktree can still run a stale target/release/frontier_probe_survey. Closeout requires a build receipt binding commit, tree, compiler sources, probe executable digest, source-root set, and probe-policy revision from a clean detached worktree. The seed bin embeds FRONTIER_PROBE_SURVEY_BUILD_COMMIT and BUILD_TREE at compile time (build.rs) and refuses resolve_survey_subject when runtime HEAD/tree disagrees — partial; full build-provenance wall remains open (hole 2). Every shard receipt must carry complete FrontierSurveySubject; aggregation refuses when any of 27 subjects differ (hole 3 — structural per-row requirement, not aggregate-only check)."
 
 fn frontier_blocker_is_name_resolution_reason(reason: Symbol) -> Bool {
   reason == ^resolve_reason_unbound_symbol
