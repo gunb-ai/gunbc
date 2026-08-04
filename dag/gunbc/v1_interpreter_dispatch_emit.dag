@@ -364,7 +364,7 @@ fn render_dispatch_generated_rs(rows: List<InterpreterPrimitiveDispatchArm>) -> 
 
 fn dispatch_emit_site_bridge_module(site: InterpreterDispatchEmitSite) -> Optional<QualifiedName> {
   match site {
-    EvalCallBridgeFamilySite { module } => Present { value: module }
+    EvalCallBridgeFamilySite { module: bridge_module } => Present { value: bridge_module }
     EvalBuiltinInnerSite => Absent
     EvalAlgebraMethodInnerSite => Absent
     EvalCallNativeInterceptSite => Absent
