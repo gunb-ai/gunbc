@@ -25,9 +25,14 @@ import v2.std.collection {
   optional_absent,
   optional_present
 }
-import v2.std.compilers.lexing { symbol_lexeme }
+import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
+import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.fn_index { FnArrowDecl, fn_arrow_decl_facts_live }
 import v2.std.grammar { node_atom_identity_optional }
+import v2.std.node_query {
+  call_callee_target,
+  node_is_call
+}
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
 import v2.std.node {
@@ -230,19 +235,83 @@ fn node_contains_atom_text(node: Node, wanted: String) -> Bool {
   )
 }
 
-fn callees_from_node(node: Node) -> List<String> {
+type CalleeCollectState {
+  node: Node
+  callees: List<String>
+}
+
+fn callee_collect_init(n: Node) -> CalleeCollectState {
+  CalleeCollectState { node: n, callees: empty_string_list }
+}
+
+fn maybe_snoc_callee_text(callees: List<String>, text: String) -> List<String> {
+  if contains(xs: callees, item: text, eq: string_eq) {
+    callees
+  } else {
+    list_snoc_item(xs: callees, item: text)
+  }
+}
+
+fn callee_text_from_call_node(node: Node) -> List<String> {
+  if node_is_call(node: node) {
+    match call_callee_target(node: node) {
+      Accepted { value: callee_node, diagnostics: _ } =>
+        match node_atom_identity_optional(node: callee_node) {
+          Present { value: sym } =>
+            [symbol_lexeme(sym: sym)]
+          Absent => empty_string_list
+        }
+      Rejected { diagnostics: _ } => empty_string_list
+    }
+  } else {
+    empty_string_list
+  }
+}
+
+fn callee_collect_merge(
+  left: List<String>,
+  right: List<String>
+) -> List<String> {
+  fold_list(
+    xs: right,
+    empty: left,
+    cons: fn(acc, text) { maybe_snoc_callee_text(callees: acc, text: text) }
+  )
+}
+
+fn callee_collect_step(
+  acc: CalleeCollectState,
+  _edge: Edge,
+  child: CalleeCollectState
+) -> CalleeCollectState {
+  let merged = callee_collect_merge(left: acc.callees, right: child.callees)
+  let with_call = callee_collect_merge(
+    left: merged,
+    right: callee_text_from_call_node(node: child.node)
+  )
+  CalleeCollectState { node: acc.node, callees: with_call }
+}
+
+fn callee_collect_algebra() -> NodeFold<CalleeCollectState> {
+  NodeFold { init: callee_collect_init, step: callee_collect_step }
+}
+
+fn callees_from_atom_scan(node: Node) -> List<String> {
   fold_list(
     xs: atom_identities_in_node(node: node),
     empty: empty_string_list,
     cons: fn(acc, sym) {
-      let text = symbol_lexeme(sym: sym)
-      if contains(xs: acc, item: text, eq: string_eq) {
-        acc
-      } else {
-        list_snoc_item(xs: acc, item: text)
-      }
+      maybe_snoc_callee_text(callees: acc, text: symbol_lexeme(sym: sym))
     }
   )
+}
+
+fn callees_from_node(node: Node) -> List<String> {
+  let from_call_walk = callee_collect_merge(
+    left: fold_node(n: node, algebra: callee_collect_algebra()).callees,
+    right: callee_text_from_call_node(node: node)
+  )
+  callee_collect_merge(left: from_call_walk, right: callees_from_atom_scan(node: node))
 }
 
 fn decl_contains_callee(decl: FnArrowDecl, callee: String) -> Bool {
@@ -258,8 +327,18 @@ fn decl_has_qualifying_mint_callee(decl: FnArrowDecl) -> Bool {
     || decl_contains_callee(decl: decl, callee: advance_cargo_green_callee)
 }
 
+data direct_rust_door_target_model_callee: String = "direct_rust_door_target_model"
+
+fn decl_has_fixture_marker(decl: FnArrowDecl) -> Bool {
+  decl_contains_atom(decl: decl, atom: direct_rust_door_inferred_tree_atom)
+    || (
+      decl_contains_callee(decl: decl, callee: mint_written_callee)
+        && decl_contains_callee(decl: decl, callee: direct_rust_door_target_model_callee)
+    )
+}
+
 fn decl_origin_from_structure(decl: FnArrowDecl) -> ProductionQualificationOrigin {
-  if decl_contains_atom(decl: decl, atom: direct_rust_door_inferred_tree_atom) {
+  if decl_has_fixture_marker(decl: decl) {
     FixtureDerived
   } else {
     UnknownOrigin
@@ -297,7 +376,7 @@ fn maybe_snoc_site_row(
       item: DerivedProductionQualificationMintSiteRow {
         qualified_name: qualified_name,
         qualification_axis: axis,
-        origin: origin
+        evidence_origin: origin
       }
     )
   }
@@ -380,9 +459,59 @@ fn known_fixture_origin_mint_surface_count_in_scope() -> Int {
   )
 }
 
-fn production_qualification_origin_probe_admission_holds() -> Bool {
+fn production_qualification_origin_probe_admission_holds_for_decls(
+  decls: List<FnArrowDecl>
+) -> Bool {
   count_derived_mint_sites_with_origin(
-    sites: derived_production_qualification_mint_sites_live(),
+    sites: derived_production_qualification_mint_sites_from_facts(decls: decls),
     origin: UnknownOrigin
   ) == 0
+}
+
+fn probe_mint_callee_atom_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: symbol_intern_lexeme(lexeme: mint_written_callee) } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn unknown_origin_red_control_planted_decl() -> FnArrowDecl {
+  FnArrowDecl {
+    qualified_name: "synthetic.production_qualification_origin_census.unknown_origin_red_control",
+    name: "unknown_origin_red_control_planted_decl",
+    output: Node {
+      kind: TypeNode { connective: Conj },
+      children: [
+        Edge { label: Positional, target: probe_mint_callee_atom_node() }
+      ],
+      occurrence_id: SyntheticOccurrence
+    },
+    params: []
+  }
+}
+
+fn structural_red_control_decl_present_live() -> Bool {
+  any(
+    xs: fn_arrow_decl_facts_live(),
+    predicate: fn(decl) {
+      string_eq(a: decl.name, b: "structural_red_control_mint_site_probe")
+    }
+  )
+}
+
+fn structural_red_control_decl_has_mint_callee_live() -> Bool {
+  any(
+    xs: fn_arrow_decl_facts_live(),
+    predicate: fn(decl) {
+      string_eq(a: decl.name, b: "structural_red_control_mint_site_probe")
+        && decl_contains_callee(decl: decl, callee: mint_written_callee)
+    }
+  )
+}
+
+fn production_qualification_origin_probe_admission_holds() -> Bool {
+  production_qualification_origin_probe_admission_holds_for_decls(
+    decls: fn_arrow_decl_facts_live()
+  )
 }

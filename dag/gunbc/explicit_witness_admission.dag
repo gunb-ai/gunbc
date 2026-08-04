@@ -168,6 +168,27 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
     kind: ExecutionWitnessKind,
     reason: "SelfEmitted wet behavioral receipt, red on assemble (same cargo/shim closure refuse class as its parse_engine_hooks peer; cadence run 30126573464). Owner: #7199 falsifier lane / self-host assemble. This is the row whose file-grain pairing forced the documented workaround: the file's sibling declared_source_refs_complete_holds is offline, so classifying the FILE QuarantineProbeExpectRed would have orphaned it and the file was downgraded to OfflineLocalRecipe in prose instead. At exact grain the receipt is admitted here and the sibling keeps the file's path policy, with neither fact restating the other.",
     dissolve_on: "the local wet receipt greens under gunbc_falsifier_self_host_wet_receipt_wall_budget; this row deletes and the green wet SelfHostWetReceiptBinding restores"
+  ),
+  known_red_probe(
+    entry: "src/v2/test/claim/self_host/production_qualification_origin_census_witness_test.dag",
+    f: "witness_repository_wide_census_requires_call_occurrence_frontier_reds",
+    kind: CorpusWitnessKind,
+    reason: "Admitted RED (wise-ram-22 recut): repository-wide production-qualification origin census is not closed — fn_arrow_decl_facts_live() is entry-closure scoped. Owner: witness-evidence-lifecycle / call-occurrence derivation frontier.",
+    dissolve_on: "call-reachable production-qualification classification shares the effect_reach skeleton authority, this witness greens, and this row deletes"
+  ),
+  known_red_probe(
+    entry: "src/v2/test/claim/self_host/production_qualification_origin_census_witness_test.dag",
+    f: "witness_ingest_mint_surface_requires_call_occurrence_frontier_reds",
+    kind: CorpusWitnessKind,
+    reason: "Admitted RED: generate_provenanced_rust_candidate_from_ingest mint callee is pruned from G2 skeleton marshal — structural probe cannot discover ingest-inline surfaces without call-occurrence derivation. Owner: witness-evidence-lifecycle lane.",
+    dissolve_on: "call-occurrence derivation discovers ingest-inline mint surfaces structurally, this witness greens, and this row deletes"
+  ),
+  known_red_probe(
+    entry: "src/v2/test/claim/self_host/production_qualification_origin_census_witness_test.dag",
+    f: "witness_direct_door_smoke_requires_closure_or_call_occurrence_frontier_reds",
+    kind: CorpusWitnessKind,
+    reason: "Admitted RED: direct-door smoke is outside witness entry import closure without roster imports — repository-wide discovery requires call-occurrence substrate. Owner: witness-evidence-lifecycle lane.",
+    dissolve_on: "whole-tree or call-occurrence substrate includes direct-door smoke without witness-import roster, this witness greens, and this row deletes"
   )
 ]
 

@@ -15,7 +15,7 @@ data structural_red_control_fixture_note: String = "Structural RED-control fixtu
 data structural_red_control_mint_site_qualified_name: String = "v2.lens.production_qualification_origin_census_structural_fixture.structural_red_control_mint_site_probe"
 
 fn structural_red_control_mint_site_probe() -> Bool {
-  match mint_written_provenanced_rust_artifact(
+  let mint_ok = match mint_written_provenanced_rust_artifact(
     inferred: direct_rust_door_inferred_tree,
     target: direct_rust_door_target_model(),
     module_path: direct_rust_door_module_path,
@@ -24,4 +24,5 @@ fn structural_red_control_mint_site_probe() -> Bool {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
+  mint_ok
 }

@@ -6,42 +6,57 @@ import v2.lens.production_qualification_origin_census_structural_fixture {
 }
 import v2.lens.production_qualification_origin_census {
   FixtureDerived,
-  ProductionQualificationCountAxis,
-  ProductionQualificationOrigin,
-  QualificationCargoGreen,
   QualificationSourceProduced,
   UnknownOrigin,
   count_derived_fixture_origin_mint_sites,
   count_derived_mint_sites_with_origin,
   derived_production_qualification_mint_sites_live,
+  derived_sites_for_decl,
+  empty_site_list,
   known_fixture_origin_mint_surface_count_in_scope,
   production_qualification_count_axis_eq,
   production_qualification_origin_eq,
   production_qualification_origin_probe_admission_holds,
-  production_qualification_origin_probe_law
+  production_qualification_origin_probe_admission_holds_for_decls,
+  structural_red_control_decl_has_mint_callee_live,
+  structural_red_control_decl_present_live,
+  string_eq,
+  unknown_origin_red_control_planted_decl
 }
 import v2.std.algebra { any }
+import v2.std.fn_index { fn_arrow_decl_substrate_is_whole_tree }
+import v2.std.integer { int_eq }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 
 data production_qualification_origin_census_witness_note: String = "Production-qualification origin PROBE witnesses (wise-ram-22 recut): structural skeleton discovery only — no witness-import closure roster, no declaration-name classifier pins. Identity joins for ingest/direct-door repository-wide surfaces are admitted RED until call-occurrence derivation lands. Structural RED control imports a real mint+fixture fn; classifier must discover it without a taught qualified name."
+
+test fn witness_debug_structural_decl_present() -> Bool {
+  structural_red_control_decl_present_live()
+}
+
+test fn witness_debug_structural_decl_has_mint_callee() -> Bool {
+  structural_red_control_decl_has_mint_callee_live()
+}
 
 test fn witness_production_qualification_origin_probe_admission_holds() -> Bool {
   production_qualification_origin_probe_admission_holds()
 }
 
 test fn witness_known_fixture_origin_count_is_honest_in_scope() -> Bool {
-  known_fixture_origin_mint_surface_count_in_scope()
-    == count_derived_fixture_origin_mint_sites(
+  int_eq(
+    a: known_fixture_origin_mint_surface_count_in_scope(),
+    b: count_derived_fixture_origin_mint_sites(
       sites: derived_production_qualification_mint_sites_live()
     )
+  )
 }
 
 test fn witness_structural_red_control_mint_site_discovered() -> Bool {
   any(
     xs: derived_production_qualification_mint_sites_live(),
     predicate: fn(row) {
-      (row.qualified_name == structural_red_control_mint_site_qualified_name)
+      string_eq(a: row.qualified_name, b: structural_red_control_mint_site_qualified_name)
         && production_qualification_count_axis_eq(
           left: row.qualification_axis,
           right: QualificationSourceProduced
@@ -54,32 +69,47 @@ test fn witness_structural_red_control_mint_site_discovered() -> Bool {
   )
 }
 
-data witness_repository_wide_census_requires_call_occurrence_frontier_red_note: String = "Admitted RED (wise-ram-22): repository-wide production-qualification origin census is not closed — fn_arrow_decl_facts_live() is entry-closure scoped and name/ingest surfaces are not structurally visible. Greening requires call-occurrence derivation per production_qualification_origin_call_occurrence_frontier_note."
+test fn witness_unknown_origin_red_control_refuses_admission() -> Bool {
+  let planted_sites = derived_sites_for_decl(
+    sites: empty_site_list,
+    decl: unknown_origin_red_control_planted_decl()
+  )
+  (count_derived_mint_sites_with_origin(sites: planted_sites, origin: UnknownOrigin) > 0)
+    && !production_qualification_origin_probe_admission_holds_for_decls(
+      decls: [unknown_origin_red_control_planted_decl()]
+    )
+}
+
+data witness_repository_wide_census_requires_call_occurrence_frontier_red_note: String = "Admitted RED (wise-ram-22): repository-wide production-qualification origin census is not closed — fn_arrow_decl_facts_live() is entry-closure scoped. Greening requires fn_arrow_decl_substrate_is_whole_tree plus call-occurrence derivation."
 
 test fn witness_repository_wide_census_requires_call_occurrence_frontier_reds() -> Bool {
-  false
+  fn_arrow_decl_substrate_is_whole_tree()
 }
 
 data witness_ingest_mint_surface_requires_call_occurrence_frontier_red_note: String = "Admitted RED: generate_provenanced_rust_candidate_from_ingest mint callee is pruned from G2 skeleton marshal — structural probe cannot discover ingest-inline surfaces without call-occurrence derivation."
 
 test fn witness_ingest_mint_surface_requires_call_occurrence_frontier_reds() -> Bool {
-  false
+  any(
+    xs: derived_production_qualification_mint_sites_live(),
+    predicate: fn(row) {
+      string_contains(
+        s: row.qualified_name,
+        pattern: "generate_provenanced_rust_candidate_from_ingest"
+      )
+    }
+  )
 }
 
 data witness_direct_door_smoke_requires_closure_or_call_occurrence_frontier_red_note: String = "Admitted RED: direct-door smoke is not in the witness entry import closure without a roster import — repository-wide discovery requires call-occurrence substrate or whole-tree fn_arrow facts."
 
 test fn witness_direct_door_smoke_requires_closure_or_call_occurrence_frontier_reds() -> Bool {
-  false
-}
-
-test fn witness_probe_law_states_repository_wide_frequency_unknown() -> Bool {
-  production_qualification_origin_probe_law
-    == "Production-qualification origin PROBE (session keen-lark-681, wise-ram-22 recut): NOT a repository-wide census. fn_arrow_decl_facts_live() scope is entry-closure today; repository-wide frequency is unknown. This carrier reports fixture-origin mint surfaces discovered by STRUCTURAL skeleton rules (mint/advance callee atoms + fixture marker atoms) only — never declaration-name recognition. Known direct-door fixture-origin mint surfaces detected in scope: see known_fixture_origin_mint_surface_count_in_scope(). Repository-wide frequency: unknown. Dissolve-on: derive every resolved call occurrence capable of constructing or advancing a production qualification (effect_reach / call-occurrence substrate), classify CompilerDerived | FixtureDerived | ExecutionMeasured | UnknownOrigin with UnknownOrigin failing admission, include BehavioralEquivalent, and retire name/closure pins."
-}
-
-test fn witness_unknown_origin_rows_fail_admission_red_control() -> Bool {
-  count_derived_mint_sites_with_origin(
-    sites: derived_production_qualification_mint_sites_live(),
-    origin: UnknownOrigin
-  ) > 0
+  any(
+    xs: derived_production_qualification_mint_sites_live(),
+    predicate: fn(row) {
+      string_contains(
+        s: row.qualified_name,
+        pattern: "run_direct_rust_door_emit_write_compile_smoke"
+      )
+    }
+  )
 }
