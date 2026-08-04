@@ -19,6 +19,7 @@ use self::ScopedWitnessExecutionOutcome::*;
 use self::ScopedWitnessExecutionReceiptDecode::*;
 use self::ScopedWitnessProcessIsolation::*;
 use self::WitnessCostBasis::*;
+use self::WitnessCostClock::*;
 use self::WitnessKind::*;
 use self::WitnessSpan::*;
 pub use crate::std_algebra::FreeMonoid;
@@ -109,17 +110,58 @@ pub struct WitnessSeam {
     pub consumer: String,
 }
 
+pub fn witness_cost_clock_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Which clock duration_ms names (operator msg_e24f4cab, 2026-08-04): run_claim_timed builds performance receipts from wall_nanos (performance_receipt_from_witness) while the per-witness eval budget gate consumes thread CPU nanos (budget_completion_outcome). Both are reported in milliseconds — without this tag a stored figure is not comparable to a threshold. claim_batch receipt logs cited on MeasuredAtExactSubject rows are WitnessCostWallEval unless re-measured on ThreadCpu.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum WitnessCostClock {
+    WitnessCostWallEval,
+    WitnessCostThreadCpuEval,
+}
+
+pub fn witness_cost_clock_eq(a: WitnessCostClock, b: WitnessCostClock) -> bool {
+    match a.clone() {
+        WitnessCostClock::WitnessCostWallEval => match b.clone() {
+            WitnessCostClock::WitnessCostWallEval => true,
+            WitnessCostClock::WitnessCostThreadCpuEval => false,
+        },
+        WitnessCostClock::WitnessCostThreadCpuEval => match b.clone() {
+            WitnessCostClock::WitnessCostThreadCpuEval => true,
+            WitnessCostClock::WitnessCostWallEval => false,
+        },
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum WitnessCostBasis {
     MeasuredAtExactSubject {
-        wall_ms: i64,
+        clock: WitnessCostClock,
+        duration_ms: i64,
         receipt: String,
     },
     EstimatedFromSiblingClass {
+        clock: WitnessCostClock,
         source_witness: String,
         basis: String,
     },
+}
+impl WitnessCostBasis {
+    pub fn clock(&self) -> WitnessCostClock {
+        match self {
+            WitnessCostBasis::MeasuredAtExactSubject { clock: __val, .. } => __val.clone(),
+            WitnessCostBasis::EstimatedFromSiblingClass { clock: __val, .. } => __val.clone(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -1628,6 +1670,10 @@ pub struct CorpusWitnessKind;
 pub struct ExecutionWitnessKind;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct NativeBundleWitnessKind;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct WitnessCostWallEval;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct WitnessCostThreadCpuEval;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RunnableMemoryNegligible;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

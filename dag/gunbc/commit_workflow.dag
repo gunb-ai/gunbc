@@ -40,7 +40,8 @@ import std.realization_schedule {
   string_list_eq, ScheduleWitnessEntry,
   WitnessKind, CorpusWitnessKind, ExecutionWitnessKind, witness_kind_eq,
   WitnessSeam, WitnessSpan, SpanUndeclared, SpanSeams, SpanEnrolled,
-  WitnessCostBasis, MeasuredAtExactSubject, EstimatedFromSiblingClass,
+  WitnessCostBasis, WitnessCostClock, WitnessCostWallEval, WitnessCostThreadCpuEval,
+  MeasuredAtExactSubject, EstimatedFromSiblingClass, witness_cost_clock_eq,
   ScheduledWitnessEnvelope
 }
 import gunbc.ci_layer_roots {
@@ -1451,7 +1452,8 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
           }
         ],
         cost_basis: MeasuredAtExactSubject {
-          wall_ms: 3,
+          clock: WitnessCostWallEval,
+          duration_ms: 3,
           receipt: frontier_probe_witness_measure_receipt_read_failure
         },
         envelope: ScheduledWitnessEnvelope {
@@ -1476,7 +1478,8 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
           }
         ],
         cost_basis: MeasuredAtExactSubject {
-          wall_ms: 2,
+          clock: WitnessCostWallEval,
+          duration_ms: 2,
           receipt: frontier_probe_witness_measure_receipt_hash_mismatch
         },
         envelope: ScheduledWitnessEnvelope {
@@ -1501,7 +1504,8 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
           }
         ],
         cost_basis: MeasuredAtExactSubject {
-          wall_ms: 3,
+          clock: WitnessCostWallEval,
+          duration_ms: 3,
           receipt: frontier_probe_witness_measure_receipt_elision_boundary
         },
         envelope: ScheduledWitnessEnvelope {
@@ -1526,7 +1530,8 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
           }
         ],
         cost_basis: MeasuredAtExactSubject {
-          wall_ms: 784772,
+          clock: WitnessCostWallEval,
+          duration_ms: 784772,
           receipt: frontier_probe_witness_measure_receipt_below_cap
         },
         envelope: ScheduledWitnessEnvelope {
@@ -1551,7 +1556,8 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
           }
         ],
         cost_basis: MeasuredAtExactSubject {
-          wall_ms: 742109,
+          clock: WitnessCostWallEval,
+          duration_ms: 742109,
           receipt: frontier_probe_witness_measure_receipt_second_root
         },
         envelope: ScheduledWitnessEnvelope {
@@ -1814,15 +1820,27 @@ fn witness_seam_lists_eq(left: List<WitnessSeam>, right: List<WitnessSeam>) -> B
 
 fn witness_cost_basis_eq(a: WitnessCostBasis, b: WitnessCostBasis) -> Bool {
   match a {
-    MeasuredAtExactSubject { wall_ms, receipt } => match b {
-      MeasuredAtExactSubject { wall_ms: wall_ms2, receipt: receipt2 } =>
-        (wall_ms == wall_ms2) && (receipt == receipt2)
-      EstimatedFromSiblingClass { source_witness: _, basis: _ } => false
+    MeasuredAtExactSubject { clock, duration_ms, receipt } => match b {
+      MeasuredAtExactSubject {
+        clock: clock2,
+        duration_ms: duration_ms2,
+        receipt: receipt2
+      } =>
+        witness_cost_clock_eq(a: clock, b: clock2)
+          && (duration_ms == duration_ms2)
+          && (receipt == receipt2)
+      EstimatedFromSiblingClass { clock: _, source_witness: _, basis: _ } => false
     }
-    EstimatedFromSiblingClass { source_witness, basis } => match b {
-      MeasuredAtExactSubject { wall_ms: _, receipt: _ } => false
-      EstimatedFromSiblingClass { source_witness: source_witness2, basis: basis2 } =>
-        (source_witness == source_witness2) && (basis == basis2)
+    EstimatedFromSiblingClass { clock, source_witness, basis } => match b {
+      MeasuredAtExactSubject { clock: _, duration_ms: _, receipt: _ } => false
+      EstimatedFromSiblingClass {
+        clock: clock2,
+        source_witness: source_witness2,
+        basis: basis2
+      } =>
+        witness_cost_clock_eq(a: clock, b: clock2)
+          && (source_witness == source_witness2)
+          && (basis == basis2)
     }
   }
 }
@@ -1835,8 +1853,9 @@ fn scheduled_witness_envelope_eq(a: ScheduledWitnessEnvelope, b: ScheduledWitnes
 
 fn witness_cost_basis_wellformed(basis: WitnessCostBasis) -> Bool {
   match basis {
-    MeasuredAtExactSubject { wall_ms, receipt } => wall_ms > 0 && receipt != ""
-    EstimatedFromSiblingClass { source_witness, basis } =>
+    MeasuredAtExactSubject { clock: _, duration_ms, receipt } =>
+      duration_ms > 0 && receipt != ""
+    EstimatedFromSiblingClass { clock: _, source_witness, basis } =>
       source_witness != "" && basis != ""
   }
 }

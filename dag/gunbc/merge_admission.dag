@@ -33,7 +33,8 @@ import gunbc.commit_workflow {
 import std.realization_schedule {
   WitnessKind, CorpusWitnessKind, ExecutionWitnessKind, NativeBundleWitnessKind,
   WitnessSeam, WitnessSpan, SpanUndeclared, SpanSeams, SpanEnrolled,
-  WitnessCostBasis, MeasuredAtExactSubject, EstimatedFromSiblingClass,
+  WitnessCostBasis, WitnessCostClock, WitnessCostWallEval, WitnessCostThreadCpuEval,
+  MeasuredAtExactSubject, EstimatedFromSiblingClass, witness_cost_clock_eq,
   ScheduledWitnessEnvelope,
 }
 import gunbc.ci_gate {
@@ -153,16 +154,35 @@ fn witness_seam_content_hash(seam: WitnessSeam) -> ContentHash {
   as_content_hash_structural(structural: witness_seam_content_hash_structural(seam: seam))
 }
 
+fn witness_cost_clock_content_hash_structural(clock: WitnessCostClock) -> Fnv1a64Structural {
+  match clock {
+    WitnessCostWallEval => content_hash_atom(value: "WitnessCostWallEval")
+    WitnessCostThreadCpuEval => content_hash_atom(value: "WitnessCostThreadCpuEval")
+  }
+}
+
 fn witness_cost_basis_content_hash_structural(basis: WitnessCostBasis) -> Fnv1a64Structural {
   match basis {
-    MeasuredAtExactSubject { wall_ms, receipt } =>
+    MeasuredAtExactSubject { clock, duration_ms, receipt } =>
       content_hash_combine_structural(
-        left: content_hash_tagged_structural(tag: "MeasuredAtExactSubject", payload: content_hash_atom(value: receipt)),
-        right: content_hash_atom(value: concat("", wall_ms))
+        left: content_hash_combine_structural(
+          left: witness_cost_clock_content_hash_structural(clock: clock),
+          right: content_hash_tagged_structural(
+            tag: "MeasuredAtExactSubject",
+            payload: content_hash_atom(value: receipt)
+          )
+        ),
+        right: content_hash_atom(value: concat("", duration_ms))
       )
-    EstimatedFromSiblingClass { source_witness, basis } =>
+    EstimatedFromSiblingClass { clock, source_witness, basis } =>
       content_hash_combine_structural(
-        left: content_hash_tagged_structural(tag: "EstimatedFromSiblingClass", payload: content_hash_atom(value: source_witness)),
+        left: content_hash_combine_structural(
+          left: witness_cost_clock_content_hash_structural(clock: clock),
+          right: content_hash_tagged_structural(
+            tag: "EstimatedFromSiblingClass",
+            payload: content_hash_atom(value: source_witness)
+          )
+        ),
         right: content_hash_atom(value: basis)
       )
   }
