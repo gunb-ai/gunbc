@@ -1,0 +1,150 @@
+module extdeps.github.effect
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.github.app { GitHubAppPermission, GitHubAppPermissionName, AppAccessRead, AppAccessWrite }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/rest/authentication/permissions-required-for-github-apps"
+  }
+}
+
+data contents_write_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/rest/git/refs#update-a-reference"
+  }
+}
+
+data workflow_dispatch_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/rest/actions/workflows#create-a-workflow-dispatch-event"
+  }
+}
+
+data organization_runner_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/rest/actions/self-hosted-runners#create-a-registration-token-for-an-organization"
+  }
+}
+
+data effect_to_permission_derivation_note: String = "PERMISSIONS ARE DERIVED FROM THE EFFECT, NOT AUTHORED BESIDE IT. A consumer row carrying a free-text purpose and a hand-written permission list is two restatements of one fact, and the second one drifts: the runner consumer in the first cut of gunbc.auth.github_apps read 'register ephemeral self-hosted runners on a fleet host' while asserting repository `administration: write`, when organization-level runner registration takes the ORGANIZATION permission `organization_self_hosted_runners: write`. The prose and the list disagreed and nothing could tell, because neither was derived from the other.\n\nHere the effect is the single authored fact and the permission set is a projection of it. The projection is where GitHub's rules live — including the one this repository needs: advancing a branch costs `contents: write`, and costs `workflows: write` IN ADDITION exactly when the advanced tree touches .github/workflows/**. A second SCM provider supplies its own projection over the same effect vocabulary; the effect rows do not move."
+
+type RepositoryPath { value: NonEmptyStr }
+
+type GitHubRepositoryRef {
+  owner: NonEmptyStr
+  name: NonEmptyStr
+}
+
+type GitHubOrganizationRef { login: NonEmptyStr }
+
+type GitBranchRef { name: NonEmptyStr }
+
+type GitHubWorkflowRef { file_name: NonEmptyStr }
+
+type CommitSha { value: NonEmptyStr }
+
+type GitHubEffect
+  = AdvanceRepositoryBranch {
+      repository: GitHubRepositoryRef
+      branch: GitBranchRef
+      changed_paths: List<RepositoryPath>
+    }
+  | DispatchWorkflow {
+      repository: GitHubRepositoryRef
+      workflow: GitHubWorkflowRef
+      subject: CommitSha
+    }
+  | RegisterOrganizationRunner {
+      organization: GitHubOrganizationRef
+    }
+
+data workflow_directory_prefix: NonEmptyStr = ".github/workflows/"
+
+fn path_has_prefix(path: NonEmptyStr, prefix: NonEmptyStr) -> Bool {
+  let prefix_len = string_length(s: prefix)
+  if string_length(s: path) < prefix_len {
+    false
+  } else {
+    substring(s: path, start: 0, end: prefix_len) == prefix
+  }
+}
+
+fn is_workflow_projection_path(path: RepositoryPath) -> Bool {
+  path_has_prefix(path: path.value, prefix: workflow_directory_prefix)
+}
+
+fn any_workflow_projection_path(paths: List<RepositoryPath>) -> Bool {
+  fold_list(
+    xs: paths,
+    empty: false,
+    cons: fn(found, p) { found || is_workflow_projection_path(path: p) }
+  )
+}
+
+fn workflow_projection_paths(paths: List<RepositoryPath>) -> List<RepositoryPath> {
+  filter(paths, p => is_workflow_projection_path(path: p))
+}
+
+data contents_write: GitHubAppPermission = GitHubAppPermission {
+  name: GitHubAppPermissionName { wire_name: "contents" },
+  access: AppAccessWrite
+}
+
+data workflows_write: GitHubAppPermission = GitHubAppPermission {
+  name: GitHubAppPermissionName { wire_name: "workflows" },
+  access: AppAccessWrite
+}
+
+data actions_write: GitHubAppPermission = GitHubAppPermission {
+  name: GitHubAppPermissionName { wire_name: "actions" },
+  access: AppAccessWrite
+}
+
+data metadata_read: GitHubAppPermission = GitHubAppPermission {
+  name: GitHubAppPermissionName { wire_name: "metadata" },
+  access: AppAccessRead
+}
+
+data organization_self_hosted_runners_write: GitHubAppPermission = GitHubAppPermission {
+  name: GitHubAppPermissionName { wire_name: "organization_self_hosted_runners" },
+  access: AppAccessWrite
+}
+
+fn github_effect_required_permissions(effect: GitHubEffect) -> List<GitHubAppPermission> {
+  match effect {
+    AdvanceRepositoryBranch { repository: _, branch: _, changed_paths } =>
+      if any_workflow_projection_path(paths: changed_paths) {
+        [metadata_read, contents_write, workflows_write]
+      } else {
+        [metadata_read, contents_write]
+      }
+    DispatchWorkflow { repository: _, workflow: _, subject: _ } =>
+      [metadata_read, actions_write]
+    RegisterOrganizationRunner { organization: _ } =>
+      [metadata_read, organization_self_hosted_runners_write]
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.github.effect",
+      decl_name: "GitHubEffect",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps.github.effect.extdeps_external_authority_anchor,
+  further_citations: [
+    extdeps.github.effect.contents_write_citation,
+    extdeps.github.effect.workflow_dispatch_citation,
+    extdeps.github.effect.organization_runner_citation
+  ]
+}

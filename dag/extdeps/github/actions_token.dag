@@ -1,0 +1,120 @@
+module extdeps.github.actions_token
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.github.app { GitHubAppPermissionName, GitHubAppPermissionAccess, AppAccessRead, AppAccessWrite, permission_name_eq }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#permissions"
+  }
+}
+
+data automatic_token_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/actions/security-for-github-actions/security-guides/automatic-token-authentication"
+  }
+}
+
+data actions_token_scope_closure_note: String = "THE CLOSED SCOPE VOCABULARY OF GITHUB_TOKEN, MODELLED AS A COPRODUCT SO THE ABSENT SCOPE IS UNWRITABLE. Every arm below is a key GitHub accepts under a workflow or job `permissions:` mapping. `workflows` is NOT an arm because GitHub's vocabulary has no such key — the Actions token cannot be granted authority over .github/workflows/** by any configuration, which is a different state from a GitHub App permission that merely has not been granted yet. Representing the two the same way is the state-space conflation that lets an unobtainable capability be modelled as a pending one; here `actions_token_scope_for_permission_name` returns Absent for `workflows` and there is no arm a caller could construct to make it Present."
+
+type ActionsTokenScope
+  = ActionsScope
+  | ArtifactMetadataScope
+  | AttestationsScope
+  | ChecksScope
+  | CodeQualityScope
+  | ContentsScope
+  | DeploymentsScope
+  | DiscussionsScope
+  | IdTokenScope
+  | IssuesScope
+  | PackagesScope
+  | PagesScope
+  | PullRequestsScope
+  | SecurityEventsScope
+  | StatusesScope
+  | VulnerabilityAlertsScope
+
+fn actions_token_scope_wire_name(scope: ActionsTokenScope) -> NonEmptyStr {
+  match scope {
+    ActionsScope => "actions"
+    ArtifactMetadataScope => "artifact-metadata"
+    AttestationsScope => "attestations"
+    ChecksScope => "checks"
+    CodeQualityScope => "code-quality"
+    ContentsScope => "contents"
+    DeploymentsScope => "deployments"
+    DiscussionsScope => "discussions"
+    IdTokenScope => "id-token"
+    IssuesScope => "issues"
+    PackagesScope => "packages"
+    PagesScope => "pages"
+    PullRequestsScope => "pull-requests"
+    SecurityEventsScope => "security-events"
+    StatusesScope => "statuses"
+    VulnerabilityAlertsScope => "vulnerability-alerts"
+  }
+}
+
+data all_actions_token_scopes: List<ActionsTokenScope> = [
+  ActionsScope, ArtifactMetadataScope, AttestationsScope, ChecksScope, CodeQualityScope,
+  ContentsScope, DeploymentsScope, DiscussionsScope, IdTokenScope, IssuesScope,
+  PackagesScope, PagesScope, PullRequestsScope, SecurityEventsScope, StatusesScope,
+  VulnerabilityAlertsScope
+]
+
+data app_permission_wire_name_divergence_note: String = "GitHub App permission names and Actions `permissions:` keys are two spellings of one underlying authority axis and they DIVERGE on separator: the App REST surface names `pull_requests` and `security_events` with underscores, the workflow `permissions:` mapping spells the same keys `pull-requests` and `security-events`. The projection below is therefore a real translation, not an identity — writing it as string equality would silently classify `pull_requests` as unavailable to GITHUB_TOKEN and refuse a push the Actions token can in fact perform."
+
+fn actions_token_scope_for_permission_name(name: GitHubAppPermissionName) -> ActionsTokenScope? {
+  fold_list(
+    xs: all_actions_token_scopes,
+    empty: none,
+    cons: fn(found, scope) {
+      match found {
+        Present { value: v } => Present { value: v }
+        Absent =>
+          if name.wire_name == actions_token_scope_wire_name(scope: scope) {
+            Present { value: scope }
+          } else if name.wire_name == "pull_requests" && permission_name_eq(a: GitHubAppPermissionName { wire_name: "pull-requests" }, b: GitHubAppPermissionName { wire_name: actions_token_scope_wire_name(scope: scope) }) {
+            Present { value: scope }
+          } else if name.wire_name == "security_events" && actions_token_scope_wire_name(scope: scope) == "security-events" {
+            Present { value: scope }
+          } else {
+            none
+          }
+      }
+    }
+  )
+}
+
+fn actions_token_can_carry(name: GitHubAppPermissionName) -> Bool {
+  match actions_token_scope_for_permission_name(name: name) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+data workflows_permission_name: GitHubAppPermissionName = GitHubAppPermissionName { wire_name: "workflows" }
+
+fn actions_token_may_write_workflow_files() -> Bool {
+  actions_token_can_carry(name: workflows_permission_name)
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.github.actions_token",
+      decl_name: "ActionsTokenScope",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps.github.actions_token.extdeps_external_authority_anchor,
+  further_citations: [
+    extdeps.github.actions_token.automatic_token_citation
+  ]
+}
