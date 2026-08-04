@@ -13,9 +13,16 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data the_wand_company: Vendor<Hardware> = Vendor { legal_name: "The Wand Company" }
+data issuing_party_compliance_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.thewandcompany.com/pip-boy-3000-manual/"
+  }
+}
 
-data legal_name_grain_note: String = "legal_name carries the trading name exactly as the cited sources spell it. No incorporation suffix is asserted: the retail listings and the encyclopedia entry read by this session all render the name bare, and appending a company-form suffix that no read source states would be a fabricated fact about a real legal entity (DESIGN section 5). Dissolve-on: a companies-register citation grounds the registered form."
+data the_wand_company: Vendor<Hardware> = Vendor { legal_name: "The Wand Company Limited" }
+
+data legal_name_grain_note: String = "The registered form is grounded, and the grounding arrived by fixing a read path rather than by finding a new source. An earlier revision carried the bare trading name and declared that no source stated a suffix — true only because the manuals were unreadable to a refused fetcher. Both product manuals carry the same compliance block: 'Issuing Party: The Wand Company Limited, 3 Laundress Lane, Cambridge CB2 1SD, UK'. The address is deliberately not modeled: no consumer needs it, and a registered office is a fact with its own lifecycle."
 
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
@@ -26,5 +33,5 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
     }
   },
   first_citation: extdeps_external_authority_anchor,
-  further_citations: []
+  further_citations: [issuing_party_compliance_authority]
 }

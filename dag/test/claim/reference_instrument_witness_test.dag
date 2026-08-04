@@ -4,90 +4,125 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.design.reference_instrument {
   InstrumentBehaviourAxis, OpticalInstability, RestingOffsetCalibration,
   ImpulseGlitch, ImpulseThreshold, TiltDerivedReadout, BuoyantDrift,
-  CitedInstrument, PipBoy3000FalloutNewVegas, PipBoy3000MkVTvSeries,
-  axis_is_cited_on, instrument_covers_axes, directive_requested_axes,
-  named_referent, named_referent_covers_directive, any_single_instrument_covers_directive,
-  pip_boy_3000_setting_count, pip_boy_mk_v_setting_count,
-  cited_instrument_eq,
+  pip_boy_3000_subject, pip_boy_mk_v_subject,
+  axis_is_cited_on, subject_covers_axes, directive_requested_axes,
+  named_referent, named_referent_covers_directive, mk_v_covers_directive,
+  axis_is_originated, axis_has_any_evidence, axis_provenance_is_total,
+  all_evidence_is_contained, all_sources_read_directly,
+  reference_instrument_evidence, evidence_fact_is_inside_subject_module,
+  ReferenceInstrumentEvidence, impulse_glitch_evidence,
 }
+import extdeps.external_authority { external_subject_ref_eq }
+import std.decl_ref { DeclarationRef, decl_ref }
 import extdeps.instrument.pip_boy_3000 {
-  pip_boy_3000_settings, pip_boy_3000_setting_label, pip_boy_3000_licensing_statement,
+  pip_boy_3000_settings, pip_boy_3000_setting_label,
+  pip_boy_3000_glitch_modes, pip_boy_3000_glitch_mode_label,
+  pip_boy_3000_licensing_statement,
 }
 import extdeps.instrument.pip_boy_3000_mk_v {
-  pip_boy_mk_v_settings, pip_boy_mk_v_setting_label, pip_boy_mk_v_licensing_statement,
+  pip_boy_mk_v_capabilities, pip_boy_mk_v_capability_label,
+  pip_boy_mk_v_licensing_statement,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data reference_instrument_witness_note: String = "Receipts for the two cited Pip-Boy products and the join over them (sixth CRT-thread pass, operator correction 2026-08-04: there are two products, and the settings the directive wanted are not all on the one it named). The load-bearing claim is the REFERENT CORRECTION — the named referent does not cover the requested axes while the sibling does — because that is the fact an earlier strategy capture got wrong by attributing one manual's settings to the other product. Its RED control is the same predicate asked of the instrument that does cover, so a change that collapsed the two products into one roster would green the claim and red the control."
+data reference_instrument_witness_note: String = "Receipts for the two cited Pip-Boy products and the join over them, RECUT against a direct read of both manuals (2026-08-04). The prior witness set was ten green claims over an inverted attribution, and it is the reason these claims are shaped differently: they read the product rosters and the evidence rows, and the evidence rows point INTO the product modules, so a wrong setting can no longer be consistent with a right attribution. What no in-repo witness can establish is that a quoted wording matches the upstream document — that is a read-path fact, carried as a SourceReadReceipt, and the lesson recorded rather than papered over is that ten structural greens did not make the upstream claim true."
 
-fn setting_labels_contain_3000(wanted: String) -> Bool {
+fn setting_present(wanted: String) -> Bool {
   fold(pip_boy_3000_settings, init: false, f: (acc, row) =>
     acc || pip_boy_3000_setting_label(s: row.setting) == wanted)
 }
 
-fn setting_labels_contain_mk_v(wanted: String) -> Bool {
-  fold(pip_boy_mk_v_settings, init: false, f: (acc, row) =>
-    acc || pip_boy_mk_v_setting_label(s: row.setting) == wanted)
+fn capability_present(wanted: String) -> Bool {
+  fold(pip_boy_mk_v_capabilities, init: false, f: (acc, c) =>
+    acc || pip_boy_mk_v_capability_label(c: c) == wanted)
+}
+
+fn glitch_mode_present(wanted: String) -> Bool {
+  fold(pip_boy_3000_glitch_modes, init: false, f: (acc, m) =>
+    acc || pip_boy_3000_glitch_mode_label(m: m) == wanted)
 }
 
 test fn witness_two_products_are_distinct_subjects() -> Bool {
   return pip_boy_3000_licensing_statement != pip_boy_mk_v_licensing_statement
-    && pip_boy_3000_licensing_statement == "Officially Licensed by Bethesda."
-    && pip_boy_mk_v_licensing_statement == "Officially Licensed Collectible by Amazon Studios."
+    && !external_subject_ref_eq(a: pip_boy_3000_subject, b: pip_boy_mk_v_subject)
 }
 
-test fn witness_impulse_settings_are_cited_on_mk_v_only() -> Bool {
-  return setting_labels_contain_mk_v(wanted: "Glitch on tap")
-    && setting_labels_contain_mk_v(wanted: "Tap threshold")
-    && !setting_labels_contain_3000(wanted: "Glitch on tap")
-    && !setting_labels_contain_3000(wanted: "Tap threshold")
+test fn witness_impulse_settings_belong_to_the_named_referent() -> Bool {
+  return setting_present(wanted: "Glitch on tap")
+    && setting_present(wanted: "Tap threshold")
+    && setting_present(wanted: "CRT jitter")
+    && setting_present(wanted: "Vertical shift")
 }
 
-test fn witness_shared_display_settings_are_cited_on_both() -> Bool {
-  return setting_labels_contain_3000(wanted: "CRT jitter")
-    && setting_labels_contain_mk_v(wanted: "CRT jitter")
-    && setting_labels_contain_3000(wanted: "Vertical shift")
-    && setting_labels_contain_mk_v(wanted: "Vertical shift")
+test fn witness_glitch_modes_are_grounded() -> Bool {
+  return glitch_mode_present(wanted: "Off")
+    && glitch_mode_present(wanted: "Short")
+    && glitch_mode_present(wanted: "Persistent")
 }
 
-test fn witness_setting_rosters_are_sized_as_read() -> Bool {
-  return pip_boy_3000_setting_count() == 4
-    && pip_boy_mk_v_setting_count() == 4
+test fn witness_mk_v_carries_only_its_own_manuals_capabilities() -> Bool {
+  return capability_present(wanted: "Changing the display colour")
+    && capability_present(wanted: "Demo mode")
+    && capability_present(wanted: "FM radio function")
+    && !capability_present(wanted: "Glitch on tap")
+    && !capability_present(wanted: "CRT jitter")
 }
 
-test fn witness_named_referent_does_not_cover_the_directive() -> Bool {
-  return !named_referent_covers_directive()
-    && cited_instrument_eq(a: named_referent, b: PipBoy3000FalloutNewVegas)
+test fn witness_named_referent_covers_the_directive() -> Bool {
+  return named_referent_covers_directive()
+    && external_subject_ref_eq(a: named_referent, b: pip_boy_3000_subject)
 }
 
-test fn witness_the_sibling_product_does_cover_the_directive() -> Bool {
-  return any_single_instrument_covers_directive()
-    && instrument_covers_axes(
-      instrument: PipBoy3000MkVTvSeries,
-      axes: directive_requested_axes)
+test fn witness_mk_v_does_not_cover_the_directive() -> Bool {
+  return !mk_v_covers_directive()
+    && !axis_is_cited_on(axis: ImpulseGlitch, subject: pip_boy_mk_v_subject)
+    && !axis_is_cited_on(axis: OpticalInstability, subject: pip_boy_mk_v_subject)
 }
 
-test fn witness_impulse_axes_resolve_to_mk_v() -> Bool {
-  return axis_is_cited_on(axis: ImpulseGlitch, instrument: PipBoy3000MkVTvSeries)
-    && axis_is_cited_on(axis: ImpulseThreshold, instrument: PipBoy3000MkVTvSeries)
-    && !axis_is_cited_on(axis: ImpulseGlitch, instrument: PipBoy3000FalloutNewVegas)
-    && !axis_is_cited_on(axis: ImpulseThreshold, instrument: PipBoy3000FalloutNewVegas)
+test fn witness_impulse_axes_resolve_to_the_named_referent() -> Bool {
+  return axis_is_cited_on(axis: ImpulseGlitch, subject: pip_boy_3000_subject)
+    && axis_is_cited_on(axis: ImpulseThreshold, subject: pip_boy_3000_subject)
+    && axis_is_cited_on(axis: TiltDerivedReadout, subject: pip_boy_3000_subject)
+    && axis_is_cited_on(axis: RestingOffsetCalibration, subject: pip_boy_3000_subject)
 }
 
-test fn witness_tilt_readout_is_cited_on_the_fallout_unit_only() -> Bool {
-  return axis_is_cited_on(axis: TiltDerivedReadout, instrument: PipBoy3000FalloutNewVegas)
-    && !axis_is_cited_on(axis: TiltDerivedReadout, instrument: PipBoy3000MkVTvSeries)
+test fn witness_every_evidence_row_lands_in_its_own_subject_module() -> Bool {
+  return all_evidence_is_contained()
 }
 
-test fn witness_shared_axes_resolve_to_both() -> Bool {
-  return axis_is_cited_on(axis: OpticalInstability, instrument: PipBoy3000FalloutNewVegas)
-    && axis_is_cited_on(axis: OpticalInstability, instrument: PipBoy3000MkVTvSeries)
-    && axis_is_cited_on(axis: RestingOffsetCalibration, instrument: PipBoy3000FalloutNewVegas)
-    && axis_is_cited_on(axis: RestingOffsetCalibration, instrument: PipBoy3000MkVTvSeries)
+test fn witness_a_cross_attached_evidence_row_is_refused() -> Bool {
+  let cross_attached = ReferenceInstrumentEvidence {
+    instrument: pip_boy_mk_v_subject,
+    axis: ImpulseGlitch,
+    fact: optical_fact_of_the_sibling(),
+  }
+  return !evidence_fact_is_inside_subject_module(row: cross_attached)
+    && evidence_fact_is_inside_subject_module(row: impulse_glitch_evidence)
 }
 
-test fn witness_buoyant_drift_has_no_upstream_citation() -> Bool {
-  return !axis_is_cited_on(axis: BuoyantDrift, instrument: PipBoy3000FalloutNewVegas)
-    && !axis_is_cited_on(axis: BuoyantDrift, instrument: PipBoy3000MkVTvSeries)
+fn optical_fact_of_the_sibling() -> DeclarationRef {
+  decl_ref(
+    module_path: "extdeps.instrument.pip_boy_3000",
+    decl_name: "glitch_on_tap_row")
+}
+
+test fn witness_buoyant_drift_is_originated_not_cited() -> Bool {
+  return axis_is_originated(axis: BuoyantDrift)
+    && !axis_has_any_evidence(axis: BuoyantDrift)
+    && !axis_is_cited_on(axis: BuoyantDrift, subject: pip_boy_3000_subject)
+    && !axis_is_cited_on(axis: BuoyantDrift, subject: pip_boy_mk_v_subject)
+}
+
+test fn witness_every_axis_has_exactly_one_provenance_kind() -> Bool {
+  return axis_provenance_is_total(axis: OpticalInstability)
+    && axis_provenance_is_total(axis: RestingOffsetCalibration)
+    && axis_provenance_is_total(axis: ImpulseGlitch)
+    && axis_provenance_is_total(axis: ImpulseThreshold)
+    && axis_provenance_is_total(axis: TiltDerivedReadout)
+    && axis_provenance_is_total(axis: BuoyantDrift)
+}
+
+test fn witness_both_manuals_were_read_directly() -> Bool {
+  return all_sources_read_directly()
 }

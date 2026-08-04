@@ -48,20 +48,30 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 
 data subject_separation_note: String = "This module models the Fallout 3 / New Vegas Pip-Boy 3000 ONLY. The Fallout TV series Pip-Boy 3000 Mk V is a SEPARATE independently governed product with its own module (extdeps.instrument.pip_boy_3000_mk_v), its own manual, its own settings menu, and — the fact that most plainly settles the question — a DIFFERENT LICENSOR: this product's retail listing states Bethesda, the Mk V listing states Amazon Studios. DESIGN section 3 'External upstream decomposition': one shared shape does not merge independently governed entities that inhabit it. A change to the Mk V's settings must not require editing this file, and the agnostic axis both inhabit lives in the downstream join (gunbc.design.reference_instrument), never in a hub here that enumerates both."
 
-data manual_read_path_note: String = "PROVENANCE GRAIN: the manual URI above is the authority for every setting row below, but this session could not fetch it — www.thewandcompany.com returned HTTP 403 to every path tried (product page, both manuals, the WEBPRINT PDF). The manual_wording strings are therefore quotations surfaced through a search index rather than a direct read, and the retail-listing facts are the only ones this session read at first hand. The typed receipt for that read path — and the coverage obligation it creates — is a downstream observation and lives in gunbc.design.reference_instrument, not here (DESIGN section 3: observations this repository produces are receipts in the observing layer, never properties authored inside an upstream module)."
+data manual_read_path_note: String = "PROVENANCE: every setting row below is quoted from a DIRECT read of the manual URI above (2026-08-04). An earlier revision of this module carried search-index quotations because the fetcher was refused HTTP 403; the refusal was the fetcher's user agent, not the site, and a browser user agent retrieves the page at HTTP 200. The typed read receipt lives downstream in gunbc.design.reference_instrument."
+
+data compliance_block_names_the_mk_v_note: String = "THE FACT THAT INVERTED THE FIRST REVISION OF THIS MODULE, recorded because it will mislead the next reader the same way. This manual's regulatory block reads: 'Model name: PIP-BOY 3000 Mk V, Model number: WRC18423. Issuing Party: The Wand Company Limited' — the FALLOUT 3 / NEW VEGAS manual page carries the Mk V model name and number in its compliance footer, identically to the TV-series manual. A search index reading this page therefore has 'Mk V' and 'WRC18423' in scope beside every setting on it, and duly attributed Glitch on tap and Tap threshold to the Mk V. They are settings of THIS product. The model number is consequently NOT a product discriminator and no module should carry it as one; the discriminators that hold are the manual URI, the licensor on the retail listing, and the settings menus themselves."
 
 type PipBoy3000Setting
-  = CrtJitter
+  = DisplayTimeout
+  | GlitchOnTap
+  | TapThreshold
+  | CrtJitter
   | VerticalShift
   | ShowDebugInfo
   | SoundEffectsVolume
+  | MuteSpeakerWhenHeadphonesConnected
 
 fn pip_boy_3000_setting_label(s: PipBoy3000Setting) -> NonEmptyStr {
   match s {
+    DisplayTimeout => "Display timeout"
+    GlitchOnTap => "Glitch on tap"
+    TapThreshold => "Tap threshold"
     CrtJitter => "CRT jitter"
     VerticalShift => "Vertical shift"
     ShowDebugInfo => "Show Debug info"
     SoundEffectsVolume => "Sound Effects volume"
+    MuteSpeakerWhenHeadphonesConnected => "Mute speaker when headphones connected"
   }
 }
 
@@ -69,6 +79,24 @@ type PipBoy3000SettingRow {
   setting: PipBoy3000Setting
   manual_wording: NonEmptyStr
   authority: ExternalAuthority
+}
+
+data display_timeout_row: PipBoy3000SettingRow = PipBoy3000SettingRow {
+  setting: DisplayTimeout,
+  manual_wording: "Adjusts the number of minutes before the Pip-Boy powers down the screen and automatically goes to sleep from 1 minute to 30 minutes.",
+  authority: pip_boy_3000_manual_authority,
+}
+
+data glitch_on_tap_row: PipBoy3000SettingRow = PipBoy3000SettingRow {
+  setting: GlitchOnTap,
+  manual_wording: "Glitch on tap adds a random amount of glitching effects to the display: a very authentic-looking display wobble, static and both vertical and horizontal hold issues. When activated, glitches can be caused or resolved by tapping on the top of the Pip-Boy. Once selected scroll to choose Off, Short or Persistent.",
+  authority: pip_boy_3000_manual_authority,
+}
+
+data tap_threshold_row: PipBoy3000SettingRow = PipBoy3000SettingRow {
+  setting: TapThreshold,
+  manual_wording: "Scroll to highlight and then press click to select. Set the tap threshold sensitivity, where setting 1 is the most sensitive.",
+  authority: pip_boy_3000_manual_authority,
 }
 
 data crt_jitter_row: PipBoy3000SettingRow = PipBoy3000SettingRow {
@@ -79,13 +107,13 @@ data crt_jitter_row: PipBoy3000SettingRow = PipBoy3000SettingRow {
 
 data vertical_shift_row: PipBoy3000SettingRow = PipBoy3000SettingRow {
   setting: VerticalShift,
-  manual_wording: "Moves the display position up or down by a few pixels.",
+  manual_wording: "Moves the display position up or down by a few pixels. Scroll to select the value, positive numbers move the screen up and negative move it down.",
   authority: pip_boy_3000_manual_authority,
 }
 
 data show_debug_info_row: PipBoy3000SettingRow = PipBoy3000SettingRow {
   setting: ShowDebugInfo,
-  manual_wording: "If the Pip-Boy software is misbehaving or gets itself in a muddle, then enabling this option will provide useful onscreen information that will help diagnose the issue. Show debug info is not required in normal operation.",
+  manual_wording: "If the Pip-Boy software is misbehaving or gets itself in a muddle, then enabling this option will provide useful onscreen information that will help us work with you to diagnose the issue. Show debug info is not required in normal operation.",
   authority: pip_boy_3000_manual_authority,
 }
 
@@ -95,23 +123,70 @@ data sound_effects_volume_row: PipBoy3000SettingRow = PipBoy3000SettingRow {
   authority: pip_boy_3000_manual_authority,
 }
 
+data mute_speaker_row: PipBoy3000SettingRow = PipBoy3000SettingRow {
+  setting: MuteSpeakerWhenHeadphonesConnected,
+  manual_wording: "Due to the fact that the headphone socket doubles as an antenna extension socket, auto muting of the Pip-Boy's speaker when headphones are inserted into the socket is not possible.",
+  authority: pip_boy_3000_manual_authority,
+}
+
 data pip_boy_3000_settings: List<PipBoy3000SettingRow> = [
+  display_timeout_row,
+  glitch_on_tap_row,
+  tap_threshold_row,
   crt_jitter_row,
   vertical_shift_row,
   show_debug_info_row,
-  sound_effects_volume_row
+  sound_effects_volume_row,
+  mute_speaker_row
 ]
 
-data settings_roster_closure_note: String = "This roster is the display/audio settings this session's sources attribute to THIS product's settings menu. It is not asserted complete, and — load-bearing for the design lane that cites it — no 'Glitch on tap' or 'Tap threshold' row appears here: every source read attributes those two to the Mk V. Whether this product also exposes them is UNRESOLVED rather than denied, and the coverage obligation for resolving it lives downstream in gunbc.design.reference_instrument. Absence from this roster is not evidence of absence from the product (DESIGN section 5: a gap is a typed, located obligation, never a silent verdict)."
+data glitch_mode_note: String = "GROUNDED, and an earlier revision of this corpus wrongly declared it uncited. The manual's Glitch on tap entry ends 'Once selected scroll to choose Off, Short or Persistent', so the three option values are the manual's own words. The first revision recorded them as an external analysis's invention and refused to model them — a refusal is not automatically the safe arm when the source does carry the fact, and the read path that produced that refusal was a search index rather than the manual."
+
+type PipBoy3000GlitchMode
+  = GlitchOff
+  | GlitchShort
+  | GlitchPersistent
+
+fn pip_boy_3000_glitch_mode_label(m: PipBoy3000GlitchMode) -> NonEmptyStr {
+  match m {
+    GlitchOff => "Off"
+    GlitchShort => "Short"
+    GlitchPersistent => "Persistent"
+  }
+}
+
+data pip_boy_3000_glitch_modes: List<PipBoy3000GlitchMode> = [
+  GlitchOff,
+  GlitchShort,
+  GlitchPersistent
+]
+
+data settings_roster_closure_note: String = "The Display and Sound settings groups as the manual enumerates them, read directly. Absence from this roster is still not evidence of absence from the product — the manual carries further groups this module does not model — so a consumer asking whether some other setting exists gets a coverage obligation downstream, never a denial from a short roster."
 
 type PipBoy3000MotionFeature
-  = | TiltDerivedGeigerSimulation
+  = TiltDerivedGeigerSimulation
+  | AccelerometerEngineeringReadout
+  | ImpulseGlitchOnTap
 
-data motion_feature_wording: NonEmptyStr = "a tilt-to-click Geiger counter simulation"
+fn pip_boy_3000_motion_feature_label(f: PipBoy3000MotionFeature) -> NonEmptyStr {
+  match f {
+    TiltDerivedGeigerSimulation => "tilt-derived Geiger simulation"
+    AccelerometerEngineeringReadout => "accelerometer engineering readout"
+    ImpulseGlitchOnTap => "impulse glitch on tap"
+  }
+}
 
-data pip_boy_3000_motion_features: List<PipBoy3000MotionFeature> = [TiltDerivedGeigerSimulation]
+data tilt_geiger_wording: NonEmptyStr = "Using the Pip-Boy internal accelerometer, tilting the Pip-Boy at different angles increases or decreases the apparent amount of ambient ionizing radiation."
 
-data motion_feature_note: String = "The one motion-derived behaviour this session's sources attribute to this product: an onboard tilt reading drives a simulated Geiger readout. Recorded because it establishes that THIS product carries a usable motion sensor at all — which is what makes the impulse-driven behaviours modeled on the Mk V a question about this product's firmware rather than about its hardware."
+data accelerometer_readout_wording: NonEmptyStr = "The Pip-Boy's unique serial number, software version, chip core temperature, system clock and charging status are displayed along with a graphical representation of the accelerometer measurements."
+
+data pip_boy_3000_motion_features: List<PipBoy3000MotionFeature> = [
+  TiltDerivedGeigerSimulation,
+  AccelerometerEngineeringReadout,
+  ImpulseGlitchOnTap
+]
+
+data motion_feature_note: String = "THREE accelerometer-derived behaviours, all on this product: the tilt-driven Geiger simulation, a raw engineering readout that graphs the accelerometer measurements, and the impulse glitch that a tap causes or resolves. Together they are why this product — the one the frontend directive actually named — is the grounded realization of the impulse behaviour the design lane wants, not merely a unit that happens to contain a sensor."
 
 data retail_listing_shape_note: String = "The listing facts below are flat cited leaves rather than a RetailListingFacts record, deliberately. The record shape has no single home today: it cannot live in either product module without the sibling re-declaring it (the section 2 failure — net concepts growing by re-invention), it cannot live in a generic extdeps hub because a hub may not carry product-specific rows, and it cannot live in the downstream join without inverting the citation direction. Two verbatim quotations beside an already-typed authority do not need a shape to be grounded. Dissolve-on: a second consumer needs the listing as a subject, at which point the shape gets a real home and both products reference it."
 

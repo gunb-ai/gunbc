@@ -46,69 +46,49 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   ]
 }
 
-data subject_separation_note: String = "This module models the Fallout TV series Pip-Boy 3000 Mk V ONLY. The Fallout 3 / New Vegas Pip-Boy 3000 is a SEPARATE independently governed product with its own module (extdeps.instrument.pip_boy_3000), its own manual, its own settings menu, and a different licensor — this product's retail listing states Amazon Studios, the other states Bethesda. The two share a manufacturer (extdeps.vendor.the_wand_company) and a family name; neither makes them one subject. DESIGN section 3 'External upstream decomposition'."
+data subject_separation_note: String = "This module models the Fallout TV series Pip-Boy 3000 Mk V ONLY, and it carries only what THIS product's own manual grounds. The Fallout 3 / New Vegas Pip-Boy 3000 is a separate independently governed product with its own module. They share a manufacturer and a family name; neither makes them one subject. DESIGN section 3 'External upstream decomposition'."
 
-data manual_read_path_note: String = "PROVENANCE GRAIN: as with the sibling product, www.thewandcompany.com returned HTTP 403 to this session on every path tried, so the manual_wording strings below are quotations surfaced through a search index rather than a direct read; the retail-listing facts are the only ones read at first hand. The typed receipt and the coverage obligation live downstream in gunbc.design.reference_instrument."
+data manual_read_path_note: String = "PROVENANCE: read directly from the manual URI above (2026-08-04), and this module is much shorter than its sibling because a direct read is what shortened it. An earlier revision carried a settings menu — Glitch on tap, Tap threshold, CRT jitter, Vertical shift — that this manual does not contain: those are the sibling product's settings, attributed here by a search index that had both manuals in scope. The mechanism is recorded at the sibling's compliance_block_names_the_mk_v_note. Nothing replaced them, because the correct action on discovering a fact belongs to another subject is to remove it, not to relocate a guess."
 
-data model_number_note: String = "model_number is search-surfaced alongside the settings wording and was NOT read from the manual or the listing directly. It is carried because it is the sharpest identity handle a future direct read can confirm or refute; treat it as the weakest fact in this module."
+data maintenance_submenu_wording: NonEmptyStr = "The Pip-Boy's various settings can be adjusted via the MAINTENANCE submenu."
 
-data pip_boy_mk_v_model_number: NonEmptyStr = "WRC18423"
+type PipBoyMkVCapability
+  = DisplayColourSelection
+  | DisplayBrightness
+  | QuickNightViewBrightness
+  | DemoMode
+  | Clock
+  | Alarm
+  | AlarmSnooze
+  | FmRadio
 
-type PipBoyMkVSetting
-  = GlitchOnTap
-  | TapThreshold
-  | CrtJitter
-  | VerticalShift
-
-fn pip_boy_mk_v_setting_label(s: PipBoyMkVSetting) -> NonEmptyStr {
-  match s {
-    GlitchOnTap => "Glitch on tap"
-    TapThreshold => "Tap threshold"
-    CrtJitter => "CRT jitter"
-    VerticalShift => "Vertical shift"
+fn pip_boy_mk_v_capability_label(c: PipBoyMkVCapability) -> NonEmptyStr {
+  match c {
+    DisplayColourSelection => "Changing the display colour"
+    DisplayBrightness => "Setting the display brightness"
+    QuickNightViewBrightness => "Quick night-view display brightness adjustment"
+    DemoMode => "Demo mode"
+    Clock => "Using and setting the clock"
+    Alarm => "Setting the alarm"
+    AlarmSnooze => "Alarm snooze"
+    FmRadio => "FM radio function"
   }
 }
 
-type PipBoyMkVSettingRow {
-  setting: PipBoyMkVSetting
-  manual_wording: NonEmptyStr
-  authority: ExternalAuthority
-}
-
-data glitch_on_tap_row: PipBoyMkVSettingRow = PipBoyMkVSettingRow {
-  setting: GlitchOnTap,
-  manual_wording: "Adds a random amount of glitching effects to the display: a very authentic-looking display wobble, static and both vertical and horizontal hold issues. When activated, glitches can be caused or resolved by tapping on the top of the Pip-Boy.",
-  authority: pip_boy_mk_v_manual_authority,
-}
-
-data tap_threshold_row: PipBoyMkVSettingRow = PipBoyMkVSettingRow {
-  setting: TapThreshold,
-  manual_wording: "Set the tap threshold sensitivity, where setting 1 is the most sensitive.",
-  authority: pip_boy_mk_v_manual_authority,
-}
-
-data crt_jitter_row: PipBoyMkVSettingRow = PipBoyMkVSettingRow {
-  setting: CrtJitter,
-  manual_wording: "Toggles between on and off, and adds a varying blurriness to the screen graphics similar to the effect seen on a faulty CRT.",
-  authority: pip_boy_mk_v_manual_authority,
-}
-
-data vertical_shift_row: PipBoyMkVSettingRow = PipBoyMkVSettingRow {
-  setting: VerticalShift,
-  manual_wording: "Moves the display position up or down by a few pixels. Positive numbers move the screen up and negative move it down.",
-  authority: pip_boy_mk_v_manual_authority,
-}
-
-data pip_boy_mk_v_settings: List<PipBoyMkVSettingRow> = [
-  glitch_on_tap_row,
-  tap_threshold_row,
-  crt_jitter_row,
-  vertical_shift_row
+data pip_boy_mk_v_capabilities: List<PipBoyMkVCapability> = [
+  DisplayColourSelection,
+  DisplayBrightness,
+  QuickNightViewBrightness,
+  DemoMode,
+  Clock,
+  Alarm,
+  AlarmSnooze,
+  FmRadio
 ]
 
-data tap_threshold_direction_note: String = "The threshold scale runs INVERTED against the intuition its name invites: the manual states setting 1 is the MOST sensitive, so a rising number raises the impulse a tap must clear, not the responsiveness. Recorded explicitly because a design consumer reading 'sensitivity 1..9' left-to-right will get it backwards, and because the sixth-pass strategy capture did exactly that before this row existed."
+data capability_roster_grain_note: String = "These are the manual's own section headings for what the MAINTENANCE submenu and the mode selector expose, not a settings-menu roster transcribed entry by entry as the sibling module carries. The grain differs because the two manuals are written differently, and forcing this product's facts into the sibling's shape would be modeling the sibling rather than this product. Absence of a display-effect capability here is not a denial: the downstream join holds that as a typed coverage obligation."
 
-data glitch_response_option_values_note: String = "NOT MODELED, DELIBERATELY: an external analysis attributed three option values — Off, Short, Persistent — to this setting. No source this session reached carries them; the only corroboration found is that the glitch can be turned off. The BEHAVIOUR the design lane wants from them is separately grounded and IS modeled, in the glitch_on_tap_row wording: glitches are 'caused or resolved by tapping', which is the tap-to-break and tap-to-fix pair. Authoring the three names anyway would put an uncited enum beside a cited quotation and let a design consumer treat invented option values as upstream fact (DESIGN section 5: no fabricated plausible output). Dissolve-on: a direct manual read confirms or refutes them."
+data shared_compliance_identity_note: String = "The regulatory block — 'Model name: PIP-BOY 3000 Mk V, Model number: WRC18423. Issuing Party: The Wand Company Limited' — appears IDENTICALLY in this manual and in the Fallout 3 / New Vegas manual. It therefore does NOT discriminate the two products, and an earlier revision of this module carried WRC18423 as this product's identifying model number on exactly that mistake. No model-number row is declared here. The discriminators that actually hold are the manual URI, the licensor on the retail listing, and the capability rosters themselves."
 
 data pip_boy_mk_v_retail_listing_title: NonEmptyStr = "Fallout from The Wand Company: Pip-Boy Life Size Wearable Cosplay die-cast Replica. Memory Foam Cuff, LCD Screen, FM Radio, Alarm Clock and Stand. Officially Licensed Collectible by Amazon Studios."
 
