@@ -1,0 +1,252 @@
+module gunbc.repository_census_observation
+
+import std.types { String, NonEmptyStr, Bool, Int, List }
+import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField }
+import std.content_hash {
+  Fnv1a64Structural,
+  content_hash_atom,
+  content_hash_tagged_structural,
+  content_hash_combine_structural,
+  content_hash_eq_structural,
+}
+import gunbc.guarantee_measurement { MeasurementRevision, GitRevision, ContentFingerprint }
+
+data repository_census_authority_note: String = "CENSUS-0A, the repository census observation FACT (operator-directed 2026-08-04). It exists because five measurement errors landed across four sessions in one day, each producing a number that LOOKED precise: a readiness census keyed on a name suffix (17 claimed, 10 real); a concat census keyed on a binder name (117 against a real 204, so a PR body was honestly wrong); a corpus count reported dag-only as if repo-wide; a per-root count whose glob missed the files at the root; and a PR reported open that was closed. Each number was constructible WITHOUT its population, its revision and the identity of the method that produced it, so nothing could refuse it. THIS STAGE CARRIES THE FACT ONLY: population, subject revision, method EXECUTION identity, intrinsically identified rows, one content identity, and a derived row count. What it deliberately does NOT carry is any statement about how much of the population was covered or what may be concluded from the rows — coverage receipts, the duplicate-free denominator join and the inference ceiling are CENSUS-0B, and the first actual DOMAIN claim belongs to a real consuming census after that. Splitting there is not sequencing convenience: a conclusion is exactly the thing this repository keeps getting wrong, so it does not land until the receipts it must be derived FROM exist."
+
+data repository_census_recut_note: String = "WHY THIS IS A RECUT, recorded because the defect is more instructive than the fix (operator ruling 2026-08-04, superseding the first cut of this carrier). The first cut removed the authored count field and derived the maximum conclusion instead of storing it — both correct and both preserved here — and then left the conclusion SELECTED BY AUTHORED LABELS one identifier away. A caller wrote method: StructuralClassifier { classifier: any_decl_ref } together with the nullary tag CompleteForDeclaredPopulation and received the strongest available conclusion, with no classifier executed, no population enumerated and no coverage join performed. A DeclarationRef is a record of module, declaration and field SPELLINGS; it does not establish that the declaration resolves, that it ran, what arguments it took, or that it classified the intended subject. So the carrier built to prevent unsupported numbers demonstrated the class it was meant to prevent, and its own witness suite could not see it because the suite asserted that an observation supports the conclusion derived from itself. The rule this module now keeps: A NAME MAY NOT STAND WHERE A RECEIPT BELONGS. Every field that an inference will later read is an executed identity, never a tag that merely sounds evidentiary."
+
+data repository_census_placement_note: String = "This carrier is REPOSITORY-SPECIFIC and lives in gunbc, not std. The first cut placed it in std.census_observation while importing gunbc.guarantee_measurement MeasurementRevision, which is the layer inversion rejected for Disposition of RoadmapNodeIdentity: a neutral substrate module cannot depend on a program's own vocabulary and still be neutral. Both known consumers — the language-residue census and the scaffold-retirement census — are gunbc repository censuses, and the population this module models is a repository with source roots. Extraction into std FOLLOWS a genuinely non-gunbc consumer rather than preceding one; a std module with only gunbc consumers is generality claimed rather than demonstrated."
+
+data repository_census_homonym_note: String = "Naming diligence (DESIGN section 3). The word observation carries three OTHER concepts in this tree and none is a nickname for another, so none are to be consolidated. std.observation observes a PROCESS advancing through time (run, batch, entry, dwell, attention). std.upsert_decision.ObservationVerdict classifies a desired-versus-observed STATE for reconcile and upsert. gunbc.observation_emit_census is an INSTANCE of a census, the emit-site roster, and is a candidate consumer rather than a peer authority. This module carries a MEASUREMENT OF A REPOSITORY POPULATION AT A REVISION. The distinguishing question, in the form std.observation already uses: upsert asks what is true of the world, std.observation asks how far the work has got, and this module asks what was measured, over what, at which revision, and by which executed method."
+
+type RepositoryIdentity = NonEmptyStr where brand("RepositoryIdentity")
+type SourceRootIdentity = NonEmptyStr where brand("SourceRootIdentity")
+type CensusSubjectKey = NonEmptyStr where brand("CensusSubjectKey")
+
+data repository_census_tagged_combination_note: String = "Identities are built by TAGGED STRUCTURAL COMBINATION, field by field, and this module deliberately contains no separator characters and no string joining inside any content address. The first cut serialized population and coverage with pipe, comma, tilde and at-sign before hashing, which is a mini wire grammar invented inside a content hash: unless every component provably excludes or canonically escapes those characters, distinct field tuples collapse onto one representation. Two source roots spelled a,b as ONE root and a and b as TWO roots produced the identical joined string, so the address could not tell one population from the other. Each field is instead hashed under its own tag and combined, so a component's characters can never be mistaken for structure. This also makes the omission class from review 48109 visible: a field that no census_..._identity function reads is a field the content address does not cover."
+
+fn census_tagged_identity(tag: NonEmptyStr, value: NonEmptyStr) -> Fnv1a64Structural {
+  content_hash_tagged_structural(tag: tag, payload: content_hash_atom(value: value))
+}
+
+fn census_declaration_ref_identity(reference: DeclarationRef) -> Fnv1a64Structural {
+  let module_part = census_tagged_identity(
+    tag: "census-declaration-module",
+    value: reference.module_path,
+  )
+  let name_part = census_tagged_identity(
+    tag: "census-declaration-name",
+    value: reference.decl_name,
+  )
+  let field_part = match reference.field {
+    WholeDeclaration =>
+      census_tagged_identity(tag: "census-declaration-field-whole", value: "whole")
+    NamedField { field_name: named } =>
+      census_tagged_identity(tag: "census-declaration-field-named", value: named)
+  }
+  content_hash_combine_structural(
+    left: module_part,
+    right: content_hash_combine_structural(left: name_part, right: field_part),
+  )
+}
+
+fn census_revision_identity(revision: MeasurementRevision) -> Fnv1a64Structural {
+  match revision {
+    GitRevision { commit: commit } =>
+      census_tagged_identity(tag: "census-revision-git", value: commit as NonEmptyStr)
+    ContentFingerprint { digest: digest } =>
+      census_tagged_identity(
+        tag: "census-revision-fingerprint",
+        value: digest.digest as NonEmptyStr,
+      )
+  }
+}
+
+data repository_census_population_nonempty_roots_note: String = "Source roots are carried as a required FIRST root plus the remainder, never as one list that could be empty. A census over zero source roots is not a census with a defect to be caught, it is a shape with no meaning, so the emptiness is made unwritable rather than validated (DESIGN section 5 construction over validation). Two of the five errors this module answers were exactly a source-root fact nobody was required to state: a dag-only count reported as repo-wide, and a glob that missed the files at the root. No list refinement exists in the corpus today, so the non-empty carrier is the first-plus-rest idiom std.claim_evidence already uses for ClaimReadinessPolicy, rather than a new mechanism. Dissolve-on: a list where-refinement collapses this pair to one refined field and deletes this note."
+
+type RepositoryPopulation {
+  repository: RepositoryIdentity
+  first_source_root: SourceRootIdentity
+  additional_source_roots: List<SourceRootIdentity>
+  inclusion_rule: DeclarationRef
+  exclusion_rule: DeclarationRef?
+}
+
+fn repository_census_source_roots(population: RepositoryPopulation) -> List<SourceRootIdentity> {
+  append([population.first_source_root], items: population.additional_source_roots)
+}
+
+fn repository_census_source_root_count(population: RepositoryPopulation) -> Int {
+  count(repository_census_source_roots(population: population))
+}
+
+fn repository_census_population_identity(population: RepositoryPopulation) -> Fnv1a64Structural {
+  let repository_part = census_tagged_identity(
+    tag: "census-population-repository",
+    value: population.repository as NonEmptyStr,
+  )
+  let roots_part = fold(
+    repository_census_source_roots(population: population),
+    init: census_tagged_identity(tag: "census-population-roots", value: "roots"),
+    f: fn(acc, root) {
+      content_hash_combine_structural(
+        left: acc,
+        right: census_tagged_identity(
+          tag: "census-population-source-root",
+          value: root as NonEmptyStr,
+        ),
+      )
+    },
+  )
+  let inclusion_part = content_hash_tagged_structural(
+    tag: "census-population-inclusion-rule",
+    payload: census_declaration_ref_identity(reference: population.inclusion_rule),
+  )
+  let exclusion_part = match population.exclusion_rule {
+    Present { value: exclusion } =>
+      content_hash_tagged_structural(
+        tag: "census-population-exclusion-rule",
+        payload: census_declaration_ref_identity(reference: exclusion),
+      )
+    Absent =>
+      census_tagged_identity(tag: "census-population-exclusion-absent", value: "absent")
+  }
+  content_hash_combine_structural(
+    left: repository_part,
+    right: content_hash_combine_structural(
+      left: roots_part,
+      right: content_hash_combine_structural(left: inclusion_part, right: exclusion_part),
+    ),
+  )
+}
+
+data repository_census_method_receipt_note: String = "The method is an EXECUTION RECEIPT, not a name. This is the blocker the recut exists for: the first cut carried a DeclarationRef and let the strongest conclusion be selected from it, but a declaration reference establishes only how a symbol is SPELLED — not that it resolved, ran, took particular arguments, or classified the intended subject. Four fields are therefore required together and none is optional. classifier names the declaration; classifier_revision pins WHICH version of it ran, because the same declaration at two revisions is two methods; invocation_identity is the content address of the exact invocation, so a classifier run with different arguments is a different execution rather than the same one re-described; and output_identity is the content address of what the execution actually produced, which is what makes the rows attributable to this run rather than assembled beside it. A receipt is constructible without an execution having occurred — nothing in this substrate can reach out and verify that a process ran — so the honest rung is stated rather than overclaimed: this shape makes the OMISSION of execution identity unwritable, and makes a mismatched invocation or output DETECTABLE by address, but it does not by itself prove the classifier executed. The producer-side wall belongs with whoever mints receipts from real runs. What is dead here is the previous shape, in which no field even existed to be checked. CAPABILITY AND FIDELITY — what semantic contract the classifier implements, and therefore what its output may be read as — are deliberately NOT here: they are CENSUS-0B, because a fidelity claim that no inference consumes yet would be exactly the vocabulary-claiming-coverage this recut removed."
+
+type CensusMethodExecutionReceipt {
+  classifier: DeclarationRef
+  classifier_revision: MeasurementRevision
+  invocation_identity: Fnv1a64Structural
+  output_identity: Fnv1a64Structural
+}
+
+fn census_method_execution_identity(method: CensusMethodExecutionReceipt) -> Fnv1a64Structural {
+  let classifier_part = content_hash_tagged_structural(
+    tag: "census-method-classifier",
+    payload: census_declaration_ref_identity(reference: method.classifier),
+  )
+  let revision_part = content_hash_tagged_structural(
+    tag: "census-method-classifier-revision",
+    payload: census_revision_identity(revision: method.classifier_revision),
+  )
+  let invocation_part = content_hash_tagged_structural(
+    tag: "census-method-invocation",
+    payload: method.invocation_identity,
+  )
+  let output_part = content_hash_tagged_structural(
+    tag: "census-method-output",
+    payload: method.output_identity,
+  )
+  content_hash_combine_structural(
+    left: classifier_part,
+    right: content_hash_combine_structural(
+      left: revision_part,
+      right: content_hash_combine_structural(left: invocation_part, right: output_part),
+    ),
+  )
+}
+
+data repository_census_row_identity_note: String = "Row identity is INTRINSIC — stamped at mint time and stored on the row — never a function a reader supplies. The first cut computed the observation address from a row_key callback passed at READ time, and three consequences followed that its own witnesses could not see. The same stored observation had a different identity for every caller, so the address was a property of the reader rather than of the fact. A constant key function collapsed every observation onto one address. And most damagingly, only the SUBJECT KEY was hashed, never the measured VALUE, so a row could be reclassified — the very measurement the census exists to record — with the content address unchanged. That directly falsified this module's own claim that editing a measured fact yields a new observation, which is why it is written down here rather than quietly fixed: a note asserting a property the code did not have is the same defect class as a number asserting a population it never enumerated. The row now stamps subject and value together at construction, and the observation folds the identities the rows ACTUALLY STORE."
+
+data repository_census_row_rendering_boundary_note: String = "HONEST BOUNDARY, declared rather than hidden: value_rendering is the caller's canonical rendering of the measured value, and the row's identity is computed from it rather than from the Value structure itself. The substrate has no structural hash over an arbitrary type parameter, so a carrier generic over Value cannot address its own payload without one. Two callers rendering the same value differently therefore produce different identities, and a caller rendering two different values identically produces one — the residual forgery surface, and it is narrow, at mint time, and local to one function. It is NOT the read-time hole it replaces: the rendering is fixed WITH the row and stored, so an identity cannot vary per reader or per call. Dissolve-on: a structural content hash over a type parameter, at which point value_rendering deletes and the identity derives from the value directly. sole_constructor is declared on the row so the identity cannot be hand-stamped from another module; its completeness for GENERIC carriers is recorded as unverified in DESIGN section 4b, so this is a declared wall whose enforcement is measured by that audit rather than claimed here."
+
+type CensusObservedRow<Value> sole_constructor {
+  subject: CensusSubjectKey
+  value: Value
+  value_rendering: NonEmptyStr
+  identity: Fnv1a64Structural
+}
+
+fn census_observed_row<Value>(
+  subject: CensusSubjectKey,
+  value: Value,
+  value_rendering: NonEmptyStr,
+) -> CensusObservedRow<Value> {
+  CensusObservedRow {
+    subject: subject,
+    value: value,
+    value_rendering: value_rendering,
+    identity: content_hash_combine_structural(
+      left: census_tagged_identity(
+        tag: "census-row-subject",
+        value: subject as NonEmptyStr,
+      ),
+      right: census_tagged_identity(
+        tag: "census-row-value",
+        value: value_rendering,
+      ),
+    ),
+  }
+}
+
+data repository_census_observation_note: String = "The fact, and only the fact. There is NO count field: a stored count is a second representation of what the rows already determine, and being a second representation it can disagree with them — which is precisely what a census claiming 17 over a real 10 was. Because no such field exists, that disagreement is unwritable rather than caught (DESIGN section 4b: validation is unnecessary when the invalid state has no representation), and repository_census_row_count is a projection with no competing path to a number. There is also NO coverage field and NO conclusion: the first cut stored a nullary CompleteForDeclaredPopulation tag beside a separately derived completeness fold, two writable authorities that could disagree while the conclusion read the stored one. Coverage returns in CENSUS-0B as a RECEIPT produced by the exact denominator join, so there will be no independently writable complete arm to disagree with anything."
+
+type RepositoryCensusObservation<Value> {
+  population: RepositoryPopulation
+  observed_at_revision: MeasurementRevision
+  method: CensusMethodExecutionReceipt
+  rows: List<CensusObservedRow<Value>>
+}
+
+fn repository_census_row_count<Value>(observation: RepositoryCensusObservation<Value>) -> Int {
+  count(observation.rows)
+}
+
+fn repository_census_subject_keys<Value>(
+  observation: RepositoryCensusObservation<Value>,
+) -> List<CensusSubjectKey> {
+  observation.rows |> map(row => row.subject)
+}
+
+data repository_census_identity_note: String = "CURRENT STATE IS ALWAYS A NEW OBSERVATION, made structural rather than requested. Identity is the content address of everything measured — population, subject revision, method execution receipt, and the identity each row stamped at mint — so there is no stored id that could survive an edit and no reader-supplied function that could vary it. Updating an observation in place is not forbidden, it is meaningless: change any measured field and the identity is a different one, so an older observation stays true about its pinned revision because nothing can overwrite it and keep its name. Row ORDER is part of the address, and that is deliberate and declared rather than incidental: the fold is deterministic exactly when the caller's enumeration is, following the honesty probe_set_digest already keeps for the probe roster. Sorting here would need an order authority this module does not own, and a host-order sort would be the determinism leak std.determinism refuses. A consumer needing order-insensitive comparison compares subject identities, which is CENSUS-0B's denominator join."
+
+fn repository_census_observation_identity<Value>(
+  observation: RepositoryCensusObservation<Value>,
+) -> Fnv1a64Structural {
+  let population_part = content_hash_tagged_structural(
+    tag: "census-observation-population",
+    payload: repository_census_population_identity(population: observation.population),
+  )
+  let revision_part = content_hash_tagged_structural(
+    tag: "census-observation-revision",
+    payload: census_revision_identity(revision: observation.observed_at_revision),
+  )
+  let method_part = content_hash_tagged_structural(
+    tag: "census-observation-method",
+    payload: census_method_execution_identity(method: observation.method),
+  )
+  let header = content_hash_combine_structural(
+    left: population_part,
+    right: content_hash_combine_structural(left: revision_part, right: method_part),
+  )
+  fold(observation.rows, init: header, f: fn(acc, row) {
+    content_hash_combine_structural(
+      left: acc,
+      right: content_hash_tagged_structural(
+        tag: "census-observation-row",
+        payload: row.identity,
+      ),
+    )
+  })
+}
+
+fn repository_census_observation_identity_eq<Value>(
+  left: RepositoryCensusObservation<Value>,
+  right: RepositoryCensusObservation<Value>,
+) -> Bool {
+  content_hash_eq_structural(
+    left: repository_census_observation_identity(observation: left),
+    right: repository_census_observation_identity(observation: right),
+  )
+}
+
+data repository_census_deferred_to_0b_note: String = "What CENSUS-0B owes, stated here so the absence is a declared frontier rather than an oversight, and so nothing downstream reads this stage as more than it is. (a) An EXACT COVERAGE RECEIPT produced by a denominator join — the population independently enumerated, reconciled against the observed subjects at identity grain, with duplicate-free subject identity checked INSIDE the receipt rather than offered beside it as a diagnostic a caller may ignore, since rows A, A, B must not be able to carry an exhaustive status. (b) A METHOD CAPABILITY receipt saying which exact semantic contract the executed classifier implements, because a structural classifier can classify the wrong thing and an artifact read can be a lossy projection, so semantic fidelity does not follow from the method's shape. (c) The derived INFERENCE CEILING — deliberately named a ceiling and not a conclusion, because the strongest thing a generic carrier can produce is a bound on what could be concluded, never the domain claim itself. The domain claim belongs to the consuming census, which reads rows AND ceiling: a census of three rows is not evidence of absence, and the first cut's suite asserted exactly that because it let the generic carrier support itself. Until 0B lands, NOTHING in this module states or implies how much of the population was covered, and no consumer may read the absence of a coverage field as coverage."

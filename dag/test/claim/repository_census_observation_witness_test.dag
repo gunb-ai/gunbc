@@ -1,0 +1,363 @@
+module test.claim.repository_census_observation_witness
+
+import std.types { String, NonEmptyStr, Bool, Int, List }
+import std.decl_ref { DeclarationRef, decl_ref, decl_field_ref }
+import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_eq_structural }
+import gunbc.repository_census_observation {
+  RepositoryIdentity,
+  SourceRootIdentity,
+  CensusSubjectKey,
+  RepositoryPopulation,
+  CensusMethodExecutionReceipt,
+  CensusObservedRow,
+  RepositoryCensusObservation,
+  census_observed_row,
+  census_method_execution_identity,
+  census_declaration_ref_identity,
+  census_revision_identity,
+  repository_census_source_roots,
+  repository_census_source_root_count,
+  repository_census_population_identity,
+  repository_census_row_count,
+  repository_census_subject_keys,
+  repository_census_observation_identity,
+  repository_census_observation_identity_eq,
+}
+import gunbc.guarantee_measurement { MeasurementRevision, GitRevision, ContentFingerprint }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn census_witness_decl(name: String) -> DeclarationRef {
+  decl_ref(module_path: "test.claim.repository_census_observation_witness", decl_name: name)
+}
+
+data census_witness_revision: MeasurementRevision = GitRevision {
+  commit: "64aed6007e0000000000000000000000000000ff",
+}
+
+data census_witness_later_revision: MeasurementRevision = GitRevision {
+  commit: "b12027cd940000000000000000000000000000ff",
+}
+
+fn census_witness_digest(seed: String) -> Fnv1a64Structural {
+  content_hash_atom(value: seed as NonEmptyStr)
+}
+
+fn census_witness_method() -> CensusMethodExecutionReceipt {
+  CensusMethodExecutionReceipt {
+    classifier: census_witness_decl(name: "census_witness_classifier"),
+    classifier_revision: census_witness_revision,
+    invocation_identity: census_witness_digest(seed: "invocation-alpha"),
+    output_identity: census_witness_digest(seed: "output-alpha"),
+  }
+}
+
+data census_witness_repo_wide_population: RepositoryPopulation = RepositoryPopulation {
+  repository: "gunbc" as RepositoryIdentity,
+  first_source_root: "dag" as SourceRootIdentity,
+  additional_source_roots: ["src/v2" as SourceRootIdentity],
+  inclusion_rule: census_witness_decl(name: "census_witness_inclusion_rule"),
+  exclusion_rule: Absent,
+}
+
+data census_witness_dag_only_population: RepositoryPopulation = RepositoryPopulation {
+  repository: "gunbc" as RepositoryIdentity,
+  first_source_root: "dag" as SourceRootIdentity,
+  additional_source_roots: [],
+  inclusion_rule: census_witness_decl(name: "census_witness_inclusion_rule"),
+  exclusion_rule: Absent,
+}
+
+data census_witness_two_roots_population: RepositoryPopulation = RepositoryPopulation {
+  repository: "gunbc" as RepositoryIdentity,
+  first_source_root: "a" as SourceRootIdentity,
+  additional_source_roots: ["b" as SourceRootIdentity],
+  inclusion_rule: census_witness_decl(name: "census_witness_inclusion_rule"),
+  exclusion_rule: Absent,
+}
+
+data census_witness_one_joined_root_population: RepositoryPopulation = RepositoryPopulation {
+  repository: "gunbc" as RepositoryIdentity,
+  first_source_root: "a,b" as SourceRootIdentity,
+  additional_source_roots: [],
+  inclusion_rule: census_witness_decl(name: "census_witness_inclusion_rule"),
+  exclusion_rule: Absent,
+}
+
+fn census_witness_row(subject: String, rendering: String) -> CensusObservedRow<String> {
+  census_observed_row(
+    subject: subject as CensusSubjectKey,
+    value: rendering,
+    value_rendering: rendering as NonEmptyStr,
+  )
+}
+
+data census_witness_rows: List<CensusObservedRow<String>> = [
+  census_witness_row(subject: "dag/std/algebra.dag", rendering: "residue-kind=shell"),
+  census_witness_row(subject: "dag/std/measure.dag", rendering: "residue-kind=shell"),
+]
+
+data census_witness_reclassified_rows: List<CensusObservedRow<String>> = [
+  census_witness_row(subject: "dag/std/algebra.dag", rendering: "residue-kind=typescript"),
+  census_witness_row(subject: "dag/std/measure.dag", rendering: "residue-kind=shell"),
+]
+
+fn census_witness_observation(
+  population: RepositoryPopulation,
+  revision: MeasurementRevision,
+  method: CensusMethodExecutionReceipt,
+  rows: List<CensusObservedRow<String>>,
+) -> RepositoryCensusObservation<String> {
+  RepositoryCensusObservation {
+    population: population,
+    observed_at_revision: revision,
+    method: method,
+    rows: rows,
+  }
+}
+
+fn census_witness_baseline() -> RepositoryCensusObservation<String> {
+  census_witness_observation(
+    population: census_witness_repo_wide_population,
+    revision: census_witness_revision,
+    method: census_witness_method(),
+    rows: census_witness_rows,
+  )
+}
+
+test fn witness_observation_identity_does_not_depend_on_who_reads_it() -> Bool {
+  let observation = census_witness_baseline()
+  let first_read = repository_census_observation_identity(observation: observation)
+  let second_read = repository_census_observation_identity(observation: observation)
+  let rebuilt = census_witness_baseline()
+  content_hash_eq_structural(left: first_read, right: second_read)
+    && repository_census_observation_identity_eq(left: observation, right: rebuilt)
+}
+
+test fn witness_reclassifying_a_row_value_changes_the_observation_identity() -> Bool {
+  let observed = census_witness_baseline()
+  let reclassified = census_witness_observation(
+    population: census_witness_repo_wide_population,
+    revision: census_witness_revision,
+    method: census_witness_method(),
+    rows: census_witness_reclassified_rows,
+  )
+  let same_subjects = repository_census_subject_keys(observation: observed)
+  let reclassified_subjects = repository_census_subject_keys(observation: reclassified)
+  let subject_count_matches = count(same_subjects) == count(reclassified_subjects)
+  let row_count_matches =
+    repository_census_row_count(observation: observed)
+  let reclassified_count = repository_census_row_count(observation: reclassified)
+  subject_count_matches
+    && row_count_matches == reclassified_count
+    && !repository_census_observation_identity_eq(left: observed, right: reclassified)
+}
+
+test fn witness_changing_a_row_subject_changes_the_observation_identity() -> Bool {
+  let observed = census_witness_baseline()
+  let moved = census_witness_observation(
+    population: census_witness_repo_wide_population,
+    revision: census_witness_revision,
+    method: census_witness_method(),
+    rows: [
+      census_witness_row(subject: "dag/std/types.dag", rendering: "residue-kind=shell"),
+      census_witness_row(subject: "dag/std/measure.dag", rendering: "residue-kind=shell"),
+    ],
+  )
+  !repository_census_observation_identity_eq(left: observed, right: moved)
+}
+
+test fn witness_a_row_stamps_its_identity_from_both_subject_and_value() -> Bool {
+  let base = census_witness_row(subject: "s", rendering: "v")
+  let other_value = census_witness_row(subject: "s", rendering: "w")
+  let other_subject = census_witness_row(subject: "t", rendering: "v")
+  let repeat = census_witness_row(subject: "s", rendering: "v")
+  content_hash_eq_structural(left: base.identity, right: repeat.identity)
+    && !content_hash_eq_structural(left: base.identity, right: other_value.identity)
+    && !content_hash_eq_structural(left: base.identity, right: other_subject.identity)
+}
+
+test fn witness_one_joined_root_is_not_the_same_population_as_two_roots() -> Bool {
+  let two_roots = repository_census_population_identity(
+    population: census_witness_two_roots_population,
+  )
+  let one_joined = repository_census_population_identity(
+    population: census_witness_one_joined_root_population,
+  )
+  let two_root_count = repository_census_source_root_count(
+    population: census_witness_two_roots_population,
+  )
+  let joined_root_count = repository_census_source_root_count(
+    population: census_witness_one_joined_root_population,
+  )
+  two_root_count == 2
+    && joined_root_count == 1
+    && !content_hash_eq_structural(left: two_roots, right: one_joined)
+}
+
+test fn witness_a_dag_only_census_is_not_the_same_observation_as_a_repo_wide_one() -> Bool {
+  let repo_wide = census_witness_baseline()
+  let dag_only = census_witness_observation(
+    population: census_witness_dag_only_population,
+    revision: census_witness_revision,
+    method: census_witness_method(),
+    rows: census_witness_rows,
+  )
+  let repo_wide_rows = repository_census_row_count(observation: repo_wide)
+  let dag_only_rows = repository_census_row_count(observation: dag_only)
+  repo_wide_rows == dag_only_rows
+    && !repository_census_observation_identity_eq(left: repo_wide, right: dag_only)
+}
+
+test fn witness_the_same_measurement_at_a_later_revision_is_a_new_observation() -> Bool {
+  let pinned = census_witness_baseline()
+  let later = census_witness_observation(
+    population: census_witness_repo_wide_population,
+    revision: census_witness_later_revision,
+    method: census_witness_method(),
+    rows: census_witness_rows,
+  )
+  !repository_census_observation_identity_eq(left: pinned, right: later)
+}
+
+test fn witness_every_method_execution_field_reaches_the_identity() -> Bool {
+  let baseline = census_witness_method()
+  let other_classifier = CensusMethodExecutionReceipt {
+    classifier: census_witness_decl(name: "census_witness_other_classifier"),
+    classifier_revision: census_witness_revision,
+    invocation_identity: census_witness_digest(seed: "invocation-alpha"),
+    output_identity: census_witness_digest(seed: "output-alpha"),
+  }
+  let other_classifier_revision = CensusMethodExecutionReceipt {
+    classifier: census_witness_decl(name: "census_witness_classifier"),
+    classifier_revision: census_witness_later_revision,
+    invocation_identity: census_witness_digest(seed: "invocation-alpha"),
+    output_identity: census_witness_digest(seed: "output-alpha"),
+  }
+  let other_invocation = CensusMethodExecutionReceipt {
+    classifier: census_witness_decl(name: "census_witness_classifier"),
+    classifier_revision: census_witness_revision,
+    invocation_identity: census_witness_digest(seed: "invocation-beta"),
+    output_identity: census_witness_digest(seed: "output-alpha"),
+  }
+  let other_output = CensusMethodExecutionReceipt {
+    classifier: census_witness_decl(name: "census_witness_classifier"),
+    classifier_revision: census_witness_revision,
+    invocation_identity: census_witness_digest(seed: "invocation-alpha"),
+    output_identity: census_witness_digest(seed: "output-beta"),
+  }
+  let baseline_identity = census_method_execution_identity(method: baseline)
+  !content_hash_eq_structural(
+    left: baseline_identity,
+    right: census_method_execution_identity(method: other_classifier),
+  )
+    && !content_hash_eq_structural(
+      left: baseline_identity,
+      right: census_method_execution_identity(method: other_classifier_revision),
+    )
+    && !content_hash_eq_structural(
+      left: baseline_identity,
+      right: census_method_execution_identity(method: other_invocation),
+    )
+    && !content_hash_eq_structural(
+      left: baseline_identity,
+      right: census_method_execution_identity(method: other_output),
+    )
+}
+
+test fn witness_two_runs_of_one_classifier_at_one_revision_stay_distinct_observations() -> Bool {
+  let first_run = census_witness_baseline()
+  let second_run = census_witness_observation(
+    population: census_witness_repo_wide_population,
+    revision: census_witness_revision,
+    method: CensusMethodExecutionReceipt {
+      classifier: census_witness_decl(name: "census_witness_classifier"),
+      classifier_revision: census_witness_revision,
+      invocation_identity: census_witness_digest(seed: "invocation-beta"),
+      output_identity: census_witness_digest(seed: "output-beta"),
+    },
+    rows: census_witness_rows,
+  )
+  !repository_census_observation_identity_eq(left: first_run, right: second_run)
+}
+
+test fn witness_every_population_field_reaches_the_identity() -> Bool {
+  let baseline = repository_census_population_identity(
+    population: census_witness_repo_wide_population,
+  )
+  let other_repository = repository_census_population_identity(
+    population: RepositoryPopulation {
+      repository: "other-repo" as RepositoryIdentity,
+      first_source_root: "dag" as SourceRootIdentity,
+      additional_source_roots: ["src/v2" as SourceRootIdentity],
+      inclusion_rule: census_witness_decl(name: "census_witness_inclusion_rule"),
+      exclusion_rule: Absent,
+    },
+  )
+  let other_inclusion = repository_census_population_identity(
+    population: RepositoryPopulation {
+      repository: "gunbc" as RepositoryIdentity,
+      first_source_root: "dag" as SourceRootIdentity,
+      additional_source_roots: ["src/v2" as SourceRootIdentity],
+      inclusion_rule: census_witness_decl(name: "census_witness_other_inclusion_rule"),
+      exclusion_rule: Absent,
+    },
+  )
+  let with_exclusion = repository_census_population_identity(
+    population: RepositoryPopulation {
+      repository: "gunbc" as RepositoryIdentity,
+      first_source_root: "dag" as SourceRootIdentity,
+      additional_source_roots: ["src/v2" as SourceRootIdentity],
+      inclusion_rule: census_witness_decl(name: "census_witness_inclusion_rule"),
+      exclusion_rule: Present {
+        value: census_witness_decl(name: "census_witness_exclusion_rule"),
+      },
+    },
+  )
+  !content_hash_eq_structural(left: baseline, right: other_repository)
+    && !content_hash_eq_structural(left: baseline, right: other_inclusion)
+    && !content_hash_eq_structural(left: baseline, right: with_exclusion)
+}
+
+test fn witness_a_declaration_field_selector_reaches_the_identity() -> Bool {
+  let whole = census_declaration_ref_identity(
+    reference: census_witness_decl(name: "census_witness_classifier"),
+  )
+  let named = census_declaration_ref_identity(
+    reference: decl_field_ref(
+      module_path: "test.claim.repository_census_observation_witness",
+      decl_name: "census_witness_classifier",
+      field_name: "rows",
+    ),
+  )
+  !content_hash_eq_structural(left: whole, right: named)
+}
+
+test fn witness_a_git_revision_and_a_content_fingerprint_are_not_interchangeable() -> Bool {
+  let git = census_revision_identity(revision: census_witness_revision)
+  let fingerprint = census_revision_identity(
+    revision: ContentFingerprint { digest: census_witness_digest(seed: "subject-material") },
+  )
+  !content_hash_eq_structural(left: git, right: fingerprint)
+}
+
+test fn witness_row_count_is_a_projection_of_rows() -> Bool {
+  let empty = census_witness_observation(
+    population: census_witness_repo_wide_population,
+    revision: census_witness_revision,
+    method: census_witness_method(),
+    rows: [],
+  )
+  repository_census_row_count(observation: empty) == 0
+    && repository_census_row_count(observation: census_witness_baseline()) == 2
+    && count(census_witness_rows) == repository_census_row_count(
+      observation: census_witness_baseline(),
+    )
+}
+
+test fn witness_source_roots_are_present_and_nonempty_by_construction() -> Bool {
+  repository_census_source_root_count(population: census_witness_repo_wide_population) == 2
+    && repository_census_source_root_count(population: census_witness_dag_only_population) == 1
+    && count(repository_census_source_roots(population: census_witness_dag_only_population)) == 1
+}
