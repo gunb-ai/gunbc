@@ -2,15 +2,28 @@ module gunbc.ci_floor_population_receipt_registry
 
 import std.types { Bool, NonEmptyStr, String }
 import std.nat { Nat }
+import std.content_hash { Sha256Digest, sha256_hex_digest }
+import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex }
+import gunbc.merge_admission_subject { WalkAttemptId, walk_attempt_id }
+
+type CiEvidenceSubjectWire {
+  github_run_id: String?,
+  github_run_attempt: String?,
+  github_job_key: String?,
+  head_commit: String?,
+  tested_tree: String?,
+  walk_attempt_id: String?,
+  artifact_digest: String?,
+}
 
 type CiEvidenceSubject {
-  github_run_id: Nat?,
-  github_run_attempt: Nat?,
-  github_job_id: Nat?,
-  head_commit: NonEmptyStr?,
-  tested_tree: NonEmptyStr?,
-  walk_attempt_id: NonEmptyStr?,
-  artifact_digest: NonEmptyStr?,
+  github_run_id: NonEmptyStr,
+  github_run_attempt: NonEmptyStr,
+  github_job_key: NonEmptyStr,
+  head_commit: GitObjectId,
+  tested_tree: GitObjectId,
+  walk_attempt_id: WalkAttemptId,
+  artifact_digest: Sha256Digest,
 }
 
 type FloorPopulationReceiptKind
@@ -43,6 +56,11 @@ type FloorPopulationReceiptProducerPhase
   | AfterFloorAlways {}
   | OptionalWorker {}
 
+type ProducerPhaseStanding
+  = PhaseReached {}
+  | PhaseNotReached {}
+  | PhaseStandingUnknown {}
+
 type FloorPopulationReceiptRegistryRow {
   kind: FloorPopulationReceiptKind,
   path: NonEmptyStr,
@@ -52,20 +70,75 @@ type FloorPopulationReceiptRegistryRow {
 
 type ManifestObservationStanding
   = ObservedPresent { size_bytes: Nat, content_digest: NonEmptyStr? }
-  | ObservedMissing { producer_phase_reached: Bool }
+  | ObservedMissing {}
   | NotApplicable { reason: NonEmptyStr }
 
 type FloorPopulationReceiptManifestRow {
   subject: CiEvidenceSubject,
   kind: FloorPopulationReceiptKind,
-  expected_path: NonEmptyStr,
+  expected_pattern: NonEmptyStr,
+  observed_path: NonEmptyStr?,
   standing: ManifestObservationStanding,
   producer_phase: FloorPopulationReceiptProducerPhase,
+  producer_phase_standing: ProducerPhaseStanding,
 }
+
+type RegistryWellFormedVerdict
+  = RegistryWellFormed { row_count: Nat }
+  | DuplicateKind { kind_label: NonEmptyStr }
+  | DuplicatePath { path: NonEmptyStr }
+  | MissingRequiredKind { kind_label: NonEmptyStr }
+  | UnknownObservedPath { path: NonEmptyStr }
 
 data ci_floor_population_receipt_manifest_path: String = "target/floor-population-receipt-manifest.tsv"
 
-data ci_floor_population_receipt_registry_note: String = "Exact path registry for CI-floor population persistence (operator review on #7785): one modeled roster, not a multiline literal nickname. required_for_settlement marks the subset that admission/native/attribution folds consume; the full roster is uploaded so red-path evidence is durable. Manifest path is always written after the floor (AfterFloorAlways) so if-no-files-found: error is sound — the manifest itself is the guaranteed file. Dissolve-on: a harvester emits CiFloorPopulationEvidence from artifact bytes and this registry becomes the path authority for that fold."
+data ci_floor_population_receipt_manifest_schema: String = "gunbc.ci_floor_population_receipt_manifest.v2"
+
+data ci_floor_population_receipt_registry_note: String = "Exact path registry for CI-floor population persistence (operator review on #7785 commit 3): one modeled roster, not a multiline literal nickname. required_for_settlement marks the subset that admission/native/attribution folds consume; the full roster is uploaded so red-path evidence is durable. Manifest v2 emits a subject header plus one row per concrete file (wildcard expansion; attempt directories enumerate contained receipts). CiEvidenceSubjectWire carries raw optional fields; CiEvidenceSubject is valid-by-construction (GitObjectId / WalkAttemptId / Sha256Digest). Dissolve-on: harvester emits CiFloorPopulationEvidence from artifact bytes + Actions step metadata and this registry becomes the path authority for that fold."
+
+fn floor_population_receipt_kind_label(kind: FloorPopulationReceiptKind) -> String {
+  match kind {
+    PhaseJournal {} => "PhaseJournal"
+    BatchWall {} => "BatchWall"
+    CompileCleanWall {} => "CompileCleanWall"
+    Component {} => "Component"
+    Resolve {} => "Resolve"
+    SelectionDegradation {} => "SelectionDegradation"
+    Materialization {} => "Materialization"
+    OnSuccessMaterialization {} => "OnSuccessMaterialization"
+    PopulationBudgetRefusal {} => "PopulationBudgetRefusal"
+    NativeTransition {} => "NativeTransition"
+    GateWarmCost {} => "GateWarmCost"
+    WitnessRowCost {} => "WitnessRowCost"
+    WetWitnessRowOutcome {} => "WetWitnessRowOutcome"
+    WitnessRowCostDrift {} => "WitnessRowCostDrift"
+    CompileCleanCostDrift {} => "CompileCleanCostDrift"
+    CompileCleanCost {} => "CompileCleanCost"
+    ScopedWitnessExecution {} => "ScopedWitnessExecution"
+    WorkerObservation {} => "WorkerObservation"
+    WorkerTerminal {} => "WorkerTerminal"
+    AttemptDirectory {} => "AttemptDirectory"
+    PopulationReceiptManifest {} => "PopulationReceiptManifest"
+  }
+}
+
+fn floor_population_receipt_producer_phase_label(phase: FloorPopulationReceiptProducerPhase) -> String {
+  match phase {
+    BeforeFloor {} => "BeforeFloor"
+    DuringFloor {} => "DuringFloor"
+    OnSuccessStage {} => "OnSuccessStage"
+    AfterFloorAlways {} => "AfterFloorAlways"
+    OptionalWorker {} => "OptionalWorker"
+  }
+}
+
+fn producer_phase_standing_label(standing: ProducerPhaseStanding) -> String {
+  match standing {
+    PhaseReached {} => "Reached"
+    PhaseNotReached {} => "NotReached"
+    PhaseStandingUnknown {} => "Unknown"
+  }
+}
 
 fn ci_floor_population_receipt_registry() -> List<FloorPopulationReceiptRegistryRow> {
   [
@@ -192,8 +265,24 @@ fn ci_floor_population_receipt_registry() -> List<FloorPopulationReceiptRegistry
   ]
 }
 
+fn settlement_required_kind_labels() -> List<String> {
+  [
+    "PopulationReceiptManifest",
+    "PhaseJournal",
+    "BatchWall",
+    "CompileCleanWall",
+    "Component",
+    "NativeTransition",
+    "AttemptDirectory",
+  ]
+}
+
 fn ci_floor_population_receipt_registry_paths() -> List<String> {
   ci_floor_population_receipt_registry() |> map(r => r.path as String)
+}
+
+fn ci_floor_population_receipt_registry_kind_labels() -> List<String> {
+  ci_floor_population_receipt_registry() |> map(r => floor_population_receipt_kind_label(kind: r.kind))
 }
 
 fn ci_floor_population_receipts_upload_paths() -> String {
@@ -204,27 +293,199 @@ fn ci_floor_population_receipt_registry_row_count() -> Nat {
   length(xs: ci_floor_population_receipt_registry())
 }
 
-fn ci_floor_population_receipt_registry_includes_manifest() -> Bool {
+fn ci_floor_population_receipt_registry_body_tsv() -> String {
   ci_floor_population_receipt_registry()
-    |> any(r => match r.kind {
-      PopulationReceiptManifest {} => true
-      _ => false
-    })
+    |> filter(r => !(floor_population_receipt_kind_label(kind: r.kind) == "PopulationReceiptManifest"))
+    |> map(r => concat(
+      concat(floor_population_receipt_kind_label(kind: r.kind), "\t"),
+      concat(
+        concat(r.path as String, "\t"),
+        floor_population_receipt_producer_phase_label(phase: r.producer_phase)
+      )
+    ))
+    |> join(separator: "\n")
 }
 
-fn ci_floor_population_receipt_registry_includes_gate_warm_cost() -> Bool {
-  ci_floor_population_receipt_registry()
-    |> any(r => match r.kind {
-      GateWarmCost {} => true
-      _ => false
-    })
+fn string_list_contains_exact(xs: List<String>, needle: String) -> Bool {
+  xs |> any(x => x == needle)
 }
 
-fn ci_evidence_subject_incomplete() -> CiEvidenceSubject {
-  CiEvidenceSubject {
+fn registry_path_matches_pattern(path: String, pattern: String) -> Bool {
+  if pattern == "target/floor-worker-terminal-*.tsv" {
+    string_contains(s: path, pattern: "target/floor-worker-terminal-")
+      && string_contains(s: path, pattern: ".tsv")
+      && !(string_contains(s: path, pattern: "*"))
+  } else if pattern == "target/floor-attempt-*/" {
+    string_contains(s: path, pattern: "target/floor-attempt-")
+      && !(string_contains(s: path, pattern: "*"))
+  } else {
+    path == pattern
+  }
+}
+
+fn registry_rows_duplicate_kind(rows: List<FloorPopulationReceiptRegistryRow>) -> NonEmptyStr? {
+  fold(rows, init: { seen: [] as List<String>, dup: none as NonEmptyStr? }, f: fn(acc, r) {
+    let label = floor_population_receipt_kind_label(kind: r.kind)
+    if string_list_contains_exact(xs: acc.seen, needle: label) {
+      { seen: acc.seen, dup: Present { value: label as NonEmptyStr } }
+    } else {
+      { seen: concat(acc.seen, [label]), dup: acc.dup }
+    }
+  }).dup
+}
+
+fn registry_rows_duplicate_path(rows: List<FloorPopulationReceiptRegistryRow>) -> NonEmptyStr? {
+  fold(rows, init: { seen: [] as List<String>, dup: none as NonEmptyStr? }, f: fn(acc, r) {
+    let path = r.path as String
+    if string_list_contains_exact(xs: acc.seen, needle: path) {
+      { seen: acc.seen, dup: Present { value: r.path } }
+    } else {
+      { seen: concat(acc.seen, [path]), dup: acc.dup }
+    }
+  }).dup
+}
+
+fn registry_rows_missing_required_kind(rows: List<FloorPopulationReceiptRegistryRow>) -> NonEmptyStr? {
+  let labels = rows |> map(r => floor_population_receipt_kind_label(kind: r.kind))
+  fold(settlement_required_kind_labels(), init: none as NonEmptyStr?, f: fn(acc, required) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => {
+        if string_list_contains_exact(xs: labels, needle: required) {
+          none
+        } else {
+          Present { value: required as NonEmptyStr }
+        }
+      }
+    }
+  })
+}
+
+fn registry_rows_well_formed(rows: List<FloorPopulationReceiptRegistryRow>) -> RegistryWellFormedVerdict {
+  match registry_rows_duplicate_kind(rows: rows) {
+    Present { value: kind_label } => DuplicateKind { kind_label: kind_label }
+    Absent => match registry_rows_duplicate_path(rows: rows) {
+      Present { value: path } => DuplicatePath { path: path }
+      Absent => match registry_rows_missing_required_kind(rows: rows) {
+        Present { value: kind_label } => MissingRequiredKind { kind_label: kind_label }
+        Absent => RegistryWellFormed { row_count: length(xs: rows) }
+      }
+    }
+  }
+}
+
+fn ci_floor_population_receipt_registry_well_formed() -> RegistryWellFormedVerdict {
+  registry_rows_well_formed(rows: ci_floor_population_receipt_registry())
+}
+
+fn observe_path_against_registry(path: NonEmptyStr) -> RegistryWellFormedVerdict {
+  let p = path as String
+  let matched = ci_floor_population_receipt_registry()
+    |> any(r => registry_path_matches_pattern(path: p, pattern: r.path as String))
+  if matched {
+    RegistryWellFormed { row_count: 1 }
+  } else {
+    UnknownObservedPath { path: path }
+  }
+}
+
+fn planted_duplicate_kind_rows() -> List<FloorPopulationReceiptRegistryRow> {
+  let row = FloorPopulationReceiptRegistryRow {
+    kind: PhaseJournal {},
+    path: "target/floor-phase-journal.tsv" as NonEmptyStr,
+    producer_phase: DuringFloor {},
+    required_for_settlement: true
+  }
+  let dup = FloorPopulationReceiptRegistryRow {
+    kind: PhaseJournal {},
+    path: "target/floor-phase-journal-dup.tsv" as NonEmptyStr,
+    producer_phase: DuringFloor {},
+    required_for_settlement: true
+  }
+  [row, dup]
+}
+
+fn planted_duplicate_path_rows() -> List<FloorPopulationReceiptRegistryRow> {
+  let row = FloorPopulationReceiptRegistryRow {
+    kind: PhaseJournal {},
+    path: "target/floor-phase-journal.tsv" as NonEmptyStr,
+    producer_phase: DuringFloor {},
+    required_for_settlement: true
+  }
+  let dup = FloorPopulationReceiptRegistryRow {
+    kind: BatchWall {},
+    path: "target/floor-phase-journal.tsv" as NonEmptyStr,
+    producer_phase: DuringFloor {},
+    required_for_settlement: true
+  }
+  [row, dup]
+}
+
+fn nonempty_string_opt(raw: String?) -> NonEmptyStr? {
+  match raw {
+    Absent => none
+    Present { value: s } => {
+      if s == "" {
+        none
+      } else {
+        Present { value: s as NonEmptyStr }
+      }
+    }
+  }
+}
+
+fn ci_evidence_subject_from_wire(w: CiEvidenceSubjectWire) -> CiEvidenceSubject? {
+  match nonempty_string_opt(raw: w.github_run_id) {
+    Absent => none
+    Present { value: run_id } => match nonempty_string_opt(raw: w.github_run_attempt) {
+      Absent => none
+      Present { value: run_attempt } => match nonempty_string_opt(raw: w.github_job_key) {
+        Absent => none
+        Present { value: job_key } => match nonempty_string_opt(raw: w.head_commit) {
+          Absent => none
+          Present { value: head_raw } => match nonempty_string_opt(raw: w.tested_tree) {
+            Absent => none
+            Present { value: tree_raw } => match nonempty_string_opt(raw: w.walk_attempt_id) {
+              Absent => none
+              Present { value: walk_raw } => match nonempty_string_opt(raw: w.artifact_digest) {
+                Absent => none
+                Present { value: digest_raw } => match git_object_id_from_untagged_hex(hex: head_raw as String) {
+                  Absent => none
+                  Present { value: head } => match git_object_id_from_untagged_hex(hex: tree_raw as String) {
+                    Absent => none
+                    Present { value: tree } => match walk_attempt_id(raw: walk_raw as String) {
+                      Absent => none
+                      Present { value: walk } => match sha256_hex_digest(hex: digest_raw as String) {
+                        Absent => none
+                        Present { value: digest } => Present {
+                          value: CiEvidenceSubject {
+                            github_run_id: run_id,
+                            github_run_attempt: run_attempt,
+                            github_job_key: job_key,
+                            head_commit: head,
+                            tested_tree: tree,
+                            walk_attempt_id: walk,
+                            artifact_digest: digest,
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn ci_evidence_subject_wire_incomplete() -> CiEvidenceSubjectWire {
+  CiEvidenceSubjectWire {
     github_run_id: none,
     github_run_attempt: none,
-    github_job_id: none,
+    github_job_key: none,
     head_commit: none,
     tested_tree: none,
     walk_attempt_id: none,
@@ -232,27 +493,9 @@ fn ci_evidence_subject_incomplete() -> CiEvidenceSubject {
   }
 }
 
-fn ci_evidence_subject_fields_present(s: CiEvidenceSubject) -> Bool {
-  match s.github_run_id {
+fn ci_evidence_subject_wire_fields_present(w: CiEvidenceSubjectWire) -> Bool {
+  match ci_evidence_subject_from_wire(w: w) {
+    Present { value: _ } => true
     Absent => false
-    Present { value: _ } => match s.github_run_attempt {
-      Absent => false
-      Present { value: _ } => match s.github_job_id {
-        Absent => false
-        Present { value: _ } => match s.head_commit {
-          Absent => false
-          Present { value: _ } => match s.tested_tree {
-            Absent => false
-            Present { value: _ } => match s.walk_attempt_id {
-              Absent => false
-              Present { value: _ } => match s.artifact_digest {
-                Absent => false
-                Present { value: _ } => true
-              }
-            }
-          }
-        }
-      }
-    }
   }
 }

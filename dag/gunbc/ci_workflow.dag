@@ -52,7 +52,8 @@ import gunbc.falsifier_run_control {
 import gunbc.ci_floor_population_receipt_registry {
   ci_floor_population_receipts_upload_paths,
   ci_floor_population_receipt_manifest_path,
-  ci_floor_population_receipt_registry_paths,
+  ci_floor_population_receipt_manifest_schema,
+  ci_floor_population_receipt_registry_body_tsv,
 }
 import extdeps.github.actions {
   Workflow, Job, Step, RunStep, UsesStep,
@@ -690,18 +691,21 @@ fn ci_build_job() -> Job {
 
 data ci_floor_population_receipts_artifact_name: String = "ci-floor-population-receipts"
 
-data ci_floor_population_receipts_upload_note: String = "PR2 persistence seam (operator 2026-08-04; roster corrected per #7785 review): exact path authority is gunbc.ci_floor_population_receipt_registry — complete claim_executor floor-population roster (settlement subset + cost/worker/attempt paths), not a hand multiline literal. Always-run manifest step writes target/floor-population-receipt-manifest.tsv first so this upload can use if-no-files-found: error (the manifest is the guaranteed file; individual receipts may still be absent on early red). Shared with falsifier via ci_floor_population_receipts_upload_step. Dissolve-on: harvester emits CiFloorPopulationEvidence from artifact bytes; MissingArtifactOpen becomes per-run manifest standing rather than source-only vocabulary."
+data ci_floor_population_receipts_main_floor_artifact_name: String = "ci-floor-population-receipts-main-floor"
+
+data ci_floor_population_receipts_upload_note: String = "PR2 persistence seam (operator 2026-08-04; manifest v2 per #7785 review commit 3): exact path authority is gunbc.ci_floor_population_receipt_registry. Manifest writes gunbc.ci_floor_population_receipt_manifest.v2 — subject header (run/attempt/job/head/tree/walk) plus one row per concrete file (wildcard expansion; attempt directories enumerate contained receipts with per-file digests). Always-run so if-no-files-found: error is sound. Affected CI uploads ci-floor-population-receipts; falsifier uploads ci-floor-population-receipts-main-floor immediately after the main floor before cold controls. Dissolve-on: harvester joins Actions step metadata + artifact bytes into CiFloorPopulationEvidence."
 
 fn ci_floor_population_receipt_manifest_script() -> String {
-  let paths = ci_floor_population_receipt_registry_paths()
-    |> filter(p => !(p == ci_floor_population_receipt_manifest_path))
-    |> join(separator: "\n")
+  let body = ci_floor_population_receipt_registry_body_tsv()
   let prelude = concat(
     concat("set -euo pipefail\nMANIFEST=\"", ci_floor_population_receipt_manifest_path),
-    "\"\nmkdir -p target\n\{\n  printf '%s\\n' 'expected_path	standing	size_bytes	sha256	producer_phase_reached'\n  while IFS= read -r path; do\n    [ -z \"$path\" ] && continue\n    if compgen -G \"$path\" > /dev/null; then\n      first=$(compgen -G \"$path\" | head -n 1)\n      if [ -d \"$first\" ]; then\n        size=$(du -sb \"$first\" 2>/dev/null | cut -f1 || echo 0)\n        digest=\n      else\n        size=$(wc -c < \"$first\" | tr -d ' ')\n        digest=$(sha256sum \"$first\" | cut -d' ' -f1)\n      fi\n      printf '%s\\t%s\\t%s\\t%s\\t%s\\n' \"$path\" ObservedPresent \"$size\" \"$digest\" true\n    else\n      printf '%s\\t%s\\t%s\\t%s\\t%s\\n' \"$path\" ObservedMissing 0 '' unknown\n    fi\n  done <<'GUNBC_RECEIPT_PATHS'\n"
+    concat(
+      concat("\"\nSCHEMA=\"", ci_floor_population_receipt_manifest_schema),
+      "\"\nmkdir -p target\nRUN_ID=\"$\{GITHUB_RUN_ID:-\}\"\nRUN_ATTEMPT=\"$\{GITHUB_RUN_ATTEMPT:-\}\"\nJOB_KEY=\"$\{GITHUB_JOB:-\}\"\nHEAD_COMMIT=\"$\{GITHUB_SHA:-\}\"\nif [ -n \"$HEAD_COMMIT\" ] && command -v git >/dev/null 2>&1; then\n  TESTED_TREE=$(git rev-parse \"$HEAD_COMMIT^{tree}\" 2>/dev/null || true)\nelse\n  TESTED_TREE=\nfi\nWALK_ATTEMPT=\"$\{GUNBC_WALK_ATTEMPT_ID:-\}\"\nif [ -z \"$WALK_ATTEMPT\" ] && [ -n \"$RUN_ID\" ] && [ -n \"$RUN_ATTEMPT\" ] && [ -n \"$JOB_KEY\" ]; then\n  WALK_ATTEMPT=\"$\{RUN_ID\}-$\{RUN_ATTEMPT\}-$\{JOB_KEY\}\"\nfi\nARTIFACT_DIGEST=\nemit_row() \{\n  kind=\"$1\"; pattern=\"$2\"; observed=\"$3\"; standing=\"$4\"; phase=\"$5\"; phase_standing=\"$6\"; size=\"$7\"; digest=\"$8\"\n  printf '%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\n' \"$kind\" \"$pattern\" \"$observed\" \"$standing\" \"$phase\" \"$phase_standing\" \"$size\" \"$digest\"\n\}\nemit_file_row() \{\n  kind=\"$1\"; pattern=\"$2\"; observed=\"$3\"; phase=\"$4\"; phase_standing=\"$5\"\n  size=$(wc -c < \"$observed\" | tr -d ' ')\n  digest=$(sha256sum \"$observed\" | cut -d' ' -f1)\n  emit_row \"$kind\" \"$pattern\" \"$observed\" ObservedPresent \"$phase\" \"$phase_standing\" \"$size\" \"$digest\"\n\}\n\{\n  printf '%s\\n' \"$SCHEMA\"\n  printf 'run_id=%s\\n' \"$RUN_ID\"\n  printf 'run_attempt=%s\\n' \"$RUN_ATTEMPT\"\n  printf 'job_key=%s\\n' \"$JOB_KEY\"\n  printf 'head_commit=%s\\n' \"$HEAD_COMMIT\"\n  printf 'tested_tree=%s\\n' \"$TESTED_TREE\"\n  printf 'walk_attempt=%s\\n' \"$WALK_ATTEMPT\"\n  printf 'artifact_digest=%s\\n' \"$ARTIFACT_DIGEST\"\n  printf '%s\\n' 'kind	expected_pattern	observed_path	standing	producer_phase	producer_phase_standing	size_bytes	content_digest'\n  while IFS=$'\\t' read -r kind pattern phase; do\n    [ -z \"$kind\" ] && continue\n    if [ \"$phase\" = \"OptionalWorker\" ]; then\n      missing_phase_standing=Unknown\n    else\n      missing_phase_standing=NotReached\n    fi\n    matches=$(compgen -G \"$pattern\" || true)\n    if [ -z \"$matches\" ]; then\n      emit_row \"$kind\" \"$pattern\" \"\" ObservedMissing \"$phase\" \"$missing_phase_standing\" 0 \"\"\n      continue\n    fi\n    emitted=0\n    while IFS= read -r match; do\n      [ -z \"$match\" ] && continue\n      if [ -d \"$match\" ]; then\n        while IFS= read -r f; do\n          [ -z \"$f\" ] && continue\n          emit_file_row \"$kind\" \"$pattern\" \"$f\" \"$phase\" Reached\n          emitted=1\n        done < <(find \"$match\" -type f | sort)\n        if [ \"$emitted\" -eq 0 ]; then\n          emit_row \"$kind\" \"$pattern\" \"$match\" ObservedMissing \"$phase\" Reached 0 \"\"\n        fi\n      else\n        emit_file_row \"$kind\" \"$pattern\" \"$match\" \"$phase\" Reached\n        emitted=1\n      fi\n    done <<EOF\n$matches\nEOF\n  done <<'GUNBC_RECEIPT_REGISTRY'\n"
+    )
   )
-  let epilogue = "\nGUNBC_RECEIPT_PATHS\n\} > \"$MANIFEST\"\necho \"[floor-population-receipt-manifest] wrote $MANIFEST\"\nwc -l \"$MANIFEST\"\n"
-  concat(concat(prelude, paths), epilogue)
+  let epilogue = "\nGUNBC_RECEIPT_REGISTRY\n\} > \"$MANIFEST\"\necho \"[floor-population-receipt-manifest] wrote $MANIFEST schema=$SCHEMA\"\nwc -l \"$MANIFEST\"\n"
+  concat(concat(prelude, body), epilogue)
 }
 
 fn ci_floor_population_receipt_manifest_step() -> Step {
@@ -718,14 +722,14 @@ fn ci_floor_population_receipt_manifest_step() -> Step {
   }
 }
 
-fn ci_floor_population_receipts_upload_step() -> Step {
+fn ci_floor_population_receipts_upload_step_named(artifact_name: String, step_name: String) -> Step {
   UsesStep {
-    name: Present { value: "Upload CI floor population receipts (always)" },
+    name: Present { value: step_name },
     id: none,
     uses: upload_artifact_action,
     with: Present {
       value: [
-        kv(key: "name", value: yaml_string(s: ci_floor_population_receipts_artifact_name)),
+        kv(key: "name", value: yaml_string(s: artifact_name)),
         kv(key: "path", value: yaml_string(s: ci_floor_population_receipts_upload_paths())),
         kv(key: "if-no-files-found", value: yaml_string(s: "error")),
         kv(key: "retention-days", value: yaml_int(n: 30)),
@@ -737,6 +741,20 @@ fn ci_floor_population_receipts_upload_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
   }
+}
+
+fn ci_floor_population_receipts_upload_step() -> Step {
+  ci_floor_population_receipts_upload_step_named(
+    artifact_name: ci_floor_population_receipts_artifact_name,
+    step_name: "Upload CI floor population receipts (always)"
+  )
+}
+
+fn ci_floor_population_receipts_main_floor_upload_step() -> Step {
+  ci_floor_population_receipts_upload_step_named(
+    artifact_name: ci_floor_population_receipts_main_floor_artifact_name,
+    step_name: "Upload CI floor population receipts main-floor (always)"
+  )
 }
 
 fn ci_job() -> Job {

@@ -3,7 +3,7 @@ module gunbc.ci_floor_population_reconcile
 import std.types { Bool, NonEmptyStr }
 import std.nat { Nat }
 import std.measure { Millisecond, millisecond, millisecond_count, measure_add, basis_point, basis_point_count }
-import gunbc.ci_floor_population_receipt_registry { CiEvidenceSubject, ci_evidence_subject_incomplete }
+import gunbc.ci_floor_population_receipt_registry { CiEvidenceSubjectWire, ci_evidence_subject_wire_incomplete }
 
 type MechanismEvidenceSettle
   = Delivered {}
@@ -20,7 +20,7 @@ type NestedBatchDiagnostic
   | NestedMissing { label: NonEmptyStr }
 
 type CiJobExclusivePopulations {
-  subject: CiEvidenceSubject,
+  subject: CiEvidenceSubjectWire,
   checkout_setup: ExclusiveElapsedObservation,
   release_bin_transfer: ExclusiveElapsedObservation,
   floor_wrapper_elapsed: ExclusiveElapsedObservation,
@@ -198,10 +198,10 @@ fn harvested_subject_a_nested_diagnostics() -> NestedFloorDiagnostics {
 
 fn harvested_subject_a_exclusive_populations() -> CiJobExclusivePopulations {
   CiJobExclusivePopulations {
-    subject: ci_evidence_subject_incomplete(),
+    subject: ci_evidence_subject_wire_incomplete(),
     checkout_setup: MissingExclusiveObservation { owed: "github step elapsed: checkout/setup/toolchain" as NonEmptyStr },
     release_bin_transfer: MissingExclusiveObservation { owed: "github step elapsed: release-bin download+verify" as NonEmptyStr },
-    floor_wrapper_elapsed: MissingExclusiveObservation { owed: "floor-batch-wall-receipt.txt exclusive floor wrapper elapsed" as NonEmptyStr },
+    floor_wrapper_elapsed: MissingExclusiveObservation { owed: "github Actions step elapsed: floor wrapper (not batch-wall nested receipt)" as NonEmptyStr },
     post_floor_observation: MissingExclusiveObservation { owed: "github step elapsed: peak post / observation" as NonEmptyStr },
     receipt_upload: MissingExclusiveObservation { owed: "github step elapsed: population receipt upload" as NonEmptyStr },
   }
