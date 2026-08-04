@@ -1,16 +1,21 @@
 module v2.test.claim.self_host.production_qualification_origin_census_witness_test
 
+import tools.direct_rust_door_transport { run_direct_rust_door_emit_write_compile_smoke }
+import v2.compiler.self_host.candidate_generation {
+  generate_provenanced_rust_candidate_from_ingest
+}
 import v2.compiler.self_host.emitter_producer_provenance { ProductionRouted }
 import v2.lens.production_qualification_origin_census {
   ExecutionMeasuredOrigin,
   FixtureInferredTreeOrigin,
   FixtureIngestInlineOrigin,
+  ProductionQualificationCountAxis,
+  ProductionQualificationEvidenceOrigin,
   QualificationCargoGreen,
   QualificationSourceProduced,
   count_derived_fixture_origin_mint_sites,
   count_derived_mint_sites_with_axis,
   count_derived_mint_sites_with_origin,
-  derived_mint_site_for_qualified_name,
   derived_production_qualification_mint_sites_from_facts,
   derived_production_qualification_mint_sites_live,
   derived_production_qualification_origin_census_holds,
@@ -19,9 +24,10 @@ import v2.lens.production_qualification_origin_census {
   planted_fixture_mint_site_decl,
   planted_fixture_mint_site_qualified_name,
   production_qualification_count_axis_for_emission_qualification,
+  production_qualification_count_axis_eq,
   production_qualification_evidence_origin_eq
 }
-import v2.std.algebra { list_snoc_item }
+import v2.std.algebra { any, list_snoc_item }
 import v2.std.collection { Absent, Present }
 import v2.std.fn_index { fn_arrow_decl_facts_live }
 import v2.std.logic { Bool }
@@ -29,50 +35,47 @@ import v2.std.text { String }
 
 data production_qualification_origin_census_witness_note: String = "Fixture-origin production qualification census witnesses (session keen-lark-681): population derived from fn_arrow_decl_facts_live skeletons — identity-join witnesses pin known live mint surfaces; planted synthetic FnArrowDecl raises the independently derived fixture-origin count (discriminating RED, not list-length tautology). fn_arrow_decl_facts_live is entry-closure scoped today (#5364 whole-tree substrate still pending per wiring_liveness_whole_tree.bin), so this module imports the two canonical live mint surfaces for reachability only — not a hand registry. Parent context: wise-ram-22 witness-evidence-lifecycle step 2."
 
+fn derived_live_site_matches(
+  qualified_name: String,
+  axis: ProductionQualificationCountAxis,
+  origin: ProductionQualificationEvidenceOrigin
+) -> Bool {
+  any(
+    xs: derived_production_qualification_mint_sites_live(),
+    predicate: fn(row) {
+      (row.qualified_name == qualified_name)
+        && production_qualification_count_axis_eq(left: row.qualification_axis, right: axis)
+        && production_qualification_evidence_origin_eq(
+          left: row.evidence_origin,
+          right: origin
+        )
+    }
+  )
+}
+
 test fn witness_derived_production_qualification_origin_census_holds() -> Bool {
   derived_production_qualification_origin_census_holds()
 }
 
 test fn witness_derived_scan_includes_ingest_mint_entry() -> Bool {
-  match derived_mint_site_for_qualified_name(
-    sites: derived_production_qualification_mint_sites_live(),
+  derived_live_site_matches(
     qualified_name: ingest_mint_entry_qualified_name,
-    axis: QualificationSourceProduced
-  ) {
-    Present { value: row } =>
-      production_qualification_evidence_origin_eq(
-        left: row.evidence_origin,
-        right: FixtureIngestInlineOrigin
-      )
-    Absent => false
-  }
+    axis: QualificationSourceProduced,
+    origin: FixtureIngestInlineOrigin
+  )
 }
 
 test fn witness_derived_scan_includes_direct_door_fixture_mint_surfaces() -> Bool {
-  match derived_mint_site_for_qualified_name(
-    sites: derived_production_qualification_mint_sites_live(),
+  derived_live_site_matches(
     qualified_name: direct_door_smoke_qualified_name,
-    axis: QualificationSourceProduced
-  ) {
-    Present { value: source_produced } =>
-      production_qualification_evidence_origin_eq(
-        left: source_produced.evidence_origin,
-        right: FixtureInferredTreeOrigin
-      )
-        && match derived_mint_site_for_qualified_name(
-          sites: derived_production_qualification_mint_sites_live(),
-          qualified_name: direct_door_smoke_qualified_name,
-          axis: QualificationCargoGreen
-        ) {
-          Present { value: cargo_green } =>
-            production_qualification_evidence_origin_eq(
-              left: cargo_green.evidence_origin,
-              right: FixtureInferredTreeOrigin
-            )
-          Absent => false
-        }
-    Absent => false
-  }
+    axis: QualificationSourceProduced,
+    origin: FixtureInferredTreeOrigin
+  )
+    && derived_live_site_matches(
+      qualified_name: direct_door_smoke_qualified_name,
+      axis: QualificationCargoGreen,
+      origin: FixtureInferredTreeOrigin
+    )
 }
 
 test fn witness_no_production_routed_derived_mint_sites_at_baseline() -> Bool {
@@ -105,16 +108,18 @@ test fn witness_planted_fixture_mint_site_increases_derived_fixture_origin_count
     decls: list_snoc_item(xs: fn_arrow_decl_facts_live(), item: planted)
   )
   (count_derived_fixture_origin_mint_sites(sites: with_plant) == (live_fixture_count + 1))
-    && match derived_mint_site_for_qualified_name(
-      sites: with_plant,
-      qualified_name: planted_fixture_mint_site_qualified_name,
-      axis: QualificationSourceProduced
-    ) {
-      Present { value: row } =>
-        production_qualification_evidence_origin_eq(
-          left: row.evidence_origin,
-          right: FixtureInferredTreeOrigin
-        )
-      Absent => false
-    }
+    && any(
+      xs: with_plant,
+      predicate: fn(row) {
+        (row.qualified_name == planted_fixture_mint_site_qualified_name)
+          && production_qualification_count_axis_eq(
+            left: row.qualification_axis,
+            right: QualificationSourceProduced
+          )
+          && production_qualification_evidence_origin_eq(
+            left: row.evidence_origin,
+            right: FixtureInferredTreeOrigin
+          )
+      }
+    )
 }

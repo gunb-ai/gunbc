@@ -1,6 +1,5 @@
 module v2.lens.production_qualification_origin_census
 
-import v2.compiler.self_host.direct_rust_door_fixture { direct_rust_door_inferred_tree }
 import v2.compiler.self_host.emitter_producer_provenance {
   CargoGreen,
   EmissionQualification,
@@ -474,26 +473,13 @@ fn derived_production_qualification_origin_census_holds() -> Bool {
 
 data planted_fixture_mint_site_qualified_name: String = "synthetic.production_qualification_origin_census.planted_site"
 
-fn census_probe_atom(sym: Symbol) -> Node {
-  Node {
-    kind: TypeNode { connective: Atom { identity: sym } },
-    children: [],
-    occurrence_id: SyntheticOccurrence
-  }
-}
-
 fn planted_fixture_mint_site_decl() -> FnArrowDecl {
   FnArrowDecl {
     qualified_name: planted_fixture_mint_site_qualified_name,
     name: "planted_fixture_mint_site",
     output: Node {
       kind: TypeNode { connective: Conj },
-      children: [
-        Edge {
-          label: Positional,
-          target: census_probe_atom(sym: ^direct_rust_door_inferred_tree)
-        }
-      ],
+      children: [],
       occurrence_id: SyntheticOccurrence
     },
     params: []
