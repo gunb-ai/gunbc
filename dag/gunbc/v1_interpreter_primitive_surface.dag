@@ -70,20 +70,16 @@ fn form_is_unknown(form: InterpreterDispatchForm) -> Bool {
   }
 }
 
-fn v1_interpreter_derived_arms() -> List<InterpreterPrimitiveDispatchArm> {
-  v1_interpreter_authored_roster_arms()
-}
-
 fn v1_interpreter_free_call_arms() -> List<InterpreterPrimitiveDispatchArm> {
-  v1_interpreter_derived_arms() |> filter(r => r.form == FreeCall)
+  v1_interpreter_authored_roster_arms() |> filter(r => r.form == FreeCall)
 }
 
 fn v1_interpreter_method_call_arms() -> List<InterpreterPrimitiveDispatchArm> {
-  v1_interpreter_derived_arms() |> filter(r => r.form == MethodCall)
+  v1_interpreter_authored_roster_arms() |> filter(r => r.form == MethodCall)
 }
 
 fn v1_interpreter_unknown_form_arms() -> List<InterpreterPrimitiveDispatchArm> {
-  v1_interpreter_derived_arms() |> filter(r => form_is_unknown(form: r.form))
+  v1_interpreter_authored_roster_arms() |> filter(r => form_is_unknown(form: r.form))
 }
 
 fn v1_interpreter_declared_arms() -> List<InterpreterPrimitiveDispatchArm> {
@@ -94,6 +90,7 @@ fn v1_interpreter_declared_arms() -> List<InterpreterPrimitiveDispatchArm> {
       authored_spelling: "lookup",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_method_call",
+      dispatch_emit_site: EvalMethodCallShortCircuitSite,
       enumeration: DeclaredHere {
         dissolve_on: "eval_method_call's lookup short-circuit is an if-guard rather than a match arm, so it has no token authority to expand from. It dissolves when the short-circuit is either deleted in favour of the algebra arm it shadows, or rewritten as an arm of a v1_method_short_circuit_arms macro in the shape the other five sites now use.",
       },
@@ -104,6 +101,7 @@ fn v1_interpreter_declared_arms() -> List<InterpreterPrimitiveDispatchArm> {
       authored_spelling: "Filesystem.Read",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_service_call",
+      dispatch_emit_site: EvalServiceCallCarveOutSite,
       enumeration: DeclaredHere {
         dissolve_on: "the hermetic checkout carve-out in eval_service_call is the interpreter's only service-name dispatch of its own; every other service operation resolves against ctx.service_ops from the declared .dag corpus. This row dissolves when the carve-out does.",
       },
@@ -120,7 +118,7 @@ fn arm_declares_dissolution_trigger(arm: InterpreterPrimitiveDispatchArm) -> Boo
 }
 
 fn v1_interpreter_primitive_arms() -> List<InterpreterPrimitiveDispatchArm> {
-  v1_interpreter_derived_arms() |> concat(v1_interpreter_declared_arms())
+  v1_interpreter_authored_roster_arms() |> concat(v1_interpreter_declared_arms())
 }
 
 fn distinct_strings(xs: List<String>) -> List<String> {
@@ -128,7 +126,7 @@ fn distinct_strings(xs: List<String>) -> List<String> {
 }
 
 fn v1_interpreter_derived_arm_count() -> Int {
-  count(v1_interpreter_derived_arms())
+  count(v1_interpreter_authored_roster_arms())
 }
 
 fn v1_interpreter_declared_arm_count() -> Int {
@@ -219,6 +217,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "parse_stage0_cargo_manifest_bins",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -227,6 +226,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "stage0_emission_source_identities_host",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -235,6 +235,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "to_string",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -243,6 +244,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "utf8_decode_bytes",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -251,6 +253,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "bytes_octets",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -259,6 +262,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "octets_bytes",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -267,6 +271,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "utf8_encode_bytes",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -275,6 +280,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "discriminant",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -283,6 +289,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "chars_to_string",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -291,6 +298,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "get",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -299,6 +307,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "parse_int",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -307,6 +316,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "record_source_chars_index_lookup",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -315,6 +325,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "trace_mark",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -323,6 +334,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "concat",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -331,6 +343,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "count",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -339,6 +352,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "reverse",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -347,6 +361,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "string_length",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -355,6 +370,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "substring",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -363,6 +379,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "char_at",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -371,6 +388,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "string_contains",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -379,6 +397,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "starts_with",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -387,6 +406,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "length",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -395,6 +415,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "contains",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -403,6 +424,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "replace",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -411,6 +433,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "code_point",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -419,6 +442,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "from_code_point",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -427,6 +451,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "is_xid_start",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -435,6 +460,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "is_xid_continue",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -443,6 +469,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "is_emoji_ident",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -451,6 +478,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "list_push",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -459,6 +487,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "append",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -467,6 +496,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "list_concat",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -475,6 +505,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "empty_map",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -483,6 +514,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "empty_set",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -491,6 +523,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "set_insert",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -499,6 +532,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "set_union",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -507,6 +541,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "set_contains",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -515,6 +550,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "map_insert",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -523,6 +559,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "lookup",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -531,6 +568,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "map_keys",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -539,6 +577,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "map_values",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -547,6 +586,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "map_contains_key",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -555,6 +595,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "map_has",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -563,6 +604,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "map_is_empty",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -571,6 +613,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "rc_ptr_eq",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -579,6 +622,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "rc_vec_ptr_eq",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -587,6 +631,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "map_merge",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -595,6 +640,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "str_eq",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -603,6 +649,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "atom_identity_hash",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -611,6 +658,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "observed_peak_resident_bytes",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -619,6 +667,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "observed_monotonic_nanos",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -627,6 +676,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "hash_combine",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -635,6 +685,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "filesystem_read",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -643,6 +694,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "emit_host_run_transport",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -651,6 +703,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "emit_host_run_transport_cached",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -659,6 +712,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "emit_host_native_cache_evict",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -667,6 +721,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "contiguous_loop_elementwise_kernel",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -675,6 +730,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "contiguous_loop_elementwise_float_kernel",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -683,6 +739,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "layer_import_facts",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -691,6 +748,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "import_resolution_facts",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -699,6 +757,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "reference_resolution_facts",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -707,6 +766,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "concept_decl_facts",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -715,6 +775,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "export_signature_facts",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -723,6 +784,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "decl_facts",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -731,6 +793,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "module_declaration_facts",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -739,6 +802,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "fact_cardinality_decl_facts",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -747,6 +811,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "languages_consumer_census_data_decl_count",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -755,6 +820,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "languages_consumer_census_per_language_row_count",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -763,6 +829,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "languages_consumer_census_format_row_count",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -771,6 +838,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "languages_consumer_census_external_consumer_count",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -779,6 +847,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "languages_consumer_census_is_composition_only",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -787,6 +856,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "languages_consumer_census_has_external_consumer",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -795,6 +865,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "shell_materialize_operation_argv",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -803,6 +874,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "shell_transport_operation_rows",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -811,6 +883,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "extdeps_qualified_name_resolves_in_derived_module_set",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -819,6 +892,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "transport_script_position_facts_for_path",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -827,6 +901,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "extdeps_shape_transport_policy_facts_for_qualified_name",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -835,6 +910,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "extdeps_external_authority_facts_for_qualified_name",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -843,6 +919,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "extdeps_external_authority_live_clean_tree_holds",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -851,6 +928,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "extdeps_external_authority_live_roster_module_count",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -859,6 +937,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "doc_graph_orphan_count",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -867,6 +946,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "doc_graph_admitted_root_count",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -875,6 +955,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "doc_graph_dangling_link_count",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -883,6 +964,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "doc_graph_doc_count",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -891,6 +973,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "compile_dag_rust_emit_check",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -899,6 +982,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "compile_dag_diagnostic_census",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -907,6 +991,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "witness_layer_roots_compile_clean_check",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -915,6 +1000,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "witness_layer_roots_compile_clean_emit_check",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -923,6 +1009,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "consume_floor_compile_clean_gate_verdict",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -931,6 +1018,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "witness_compile_clean_cli_floor_verdicts_agree",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -939,6 +1027,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "test_migration_debt_module_count",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -947,6 +1036,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "test_migration_debt_total_loc",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -955,6 +1045,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "test_migration_debt_total_test_fns",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -963,6 +1054,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "test_migration_debt_module_names",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -971,6 +1063,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "test_migration_debt_known_covered_module_is_not_debt",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -979,6 +1072,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "test_migration_legacy_behavior_ids",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -987,6 +1081,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "test_migration_witness_behavior_ids",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -995,6 +1090,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "test_migration_behavior_discovery_holds",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1003,6 +1099,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "test_migration_delete_guard_holds",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1011,6 +1108,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "test_migration_delete_guard_uncovered_deletes",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1019,6 +1117,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "inert_carrier_names_live",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1027,6 +1126,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "inert_carrier_declared_count",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1035,6 +1135,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "inert_lens_unreached_module_count",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1043,6 +1144,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "inert_lens_top_level_module_count",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1051,6 +1153,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "non_fold_residue_count",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1059,6 +1162,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "non_fold_residue_unrostered_count",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1067,6 +1171,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "non_fold_residue_stale_roster_count",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1075,6 +1180,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "non_fold_residue_coproduct_universe_count",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1083,6 +1189,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "commit_witness_claim_roster_unresolvable_count",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1091,6 +1198,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "commit_witness_claim_pair_resolvable",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1099,6 +1207,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "non_fold_residue_wildcard_red_fixture_holds",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1107,6 +1216,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "non_fold_residue_total_fold_green_fixture_holds",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1115,6 +1225,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "non_fold_residue_roster_red_fixture_holds",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1123,6 +1234,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "non_fold_residue_synthetic_unrostered_red_holds",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1131,6 +1243,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "complexity_linearity_syntactic_finding_count",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1139,6 +1252,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "complexity_linearity_wildcard_facts",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1147,6 +1261,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "fallback_arm_census_facts",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1155,6 +1270,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "fallback_arm_census_class_count",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1163,6 +1279,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "fallback_arm_census_total",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1171,6 +1288,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "fallback_arm_census_reconciliation_holds",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1179,6 +1297,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "complexity_linearity_syntactic_site_fired",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1187,6 +1306,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "census_corpus_roots_follow_layer_authority",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1195,6 +1315,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "resolution_divergence_silent_pick_gate_in_process",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1203,6 +1324,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "lookup",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_algebra_method_inner",
+      dispatch_emit_site: EvalAlgebraMethodInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1211,6 +1333,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "map",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_algebra_method_inner",
+      dispatch_emit_site: EvalAlgebraMethodInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1219,6 +1342,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "filter",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_algebra_method_inner",
+      dispatch_emit_site: EvalAlgebraMethodInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1227,6 +1351,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "fold",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_algebra_method_inner",
+      dispatch_emit_site: EvalAlgebraMethodInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1235,6 +1360,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "flat_map",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_algebra_method_inner",
+      dispatch_emit_site: EvalAlgebraMethodInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1243,6 +1369,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "any",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_algebra_method_inner",
+      dispatch_emit_site: EvalAlgebraMethodInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1251,6 +1378,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "all",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_algebra_method_inner",
+      dispatch_emit_site: EvalAlgebraMethodInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1259,6 +1387,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "sort_by",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_algebra_method_inner",
+      dispatch_emit_site: EvalAlgebraMethodInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1267,6 +1396,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "list_push",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_algebra_method_inner",
+      dispatch_emit_site: EvalAlgebraMethodInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1275,6 +1405,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "concat",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_algebra_method_inner",
+      dispatch_emit_site: EvalAlgebraMethodInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1283,6 +1414,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "append",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_algebra_method_inner",
+      dispatch_emit_site: EvalAlgebraMethodInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1291,6 +1423,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "push",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_algebra_method_inner",
+      dispatch_emit_site: EvalAlgebraMethodInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1299,6 +1432,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "length",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_algebra_method_inner",
+      dispatch_emit_site: EvalAlgebraMethodInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1307,6 +1441,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "count",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_algebra_method_inner",
+      dispatch_emit_site: EvalAlgebraMethodInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1315,6 +1450,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "size",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_algebra_method_inner",
+      dispatch_emit_site: EvalAlgebraMethodInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1323,6 +1459,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "is_empty",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_algebra_method_inner",
+      dispatch_emit_site: EvalAlgebraMethodInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1331,6 +1468,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "first",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_algebra_method_inner",
+      dispatch_emit_site: EvalAlgebraMethodInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1339,6 +1477,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "last",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_algebra_method_inner",
+      dispatch_emit_site: EvalAlgebraMethodInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1347,6 +1486,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "reverse",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_algebra_method_inner",
+      dispatch_emit_site: EvalAlgebraMethodInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1355,6 +1495,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "skip",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_algebra_method_inner",
+      dispatch_emit_site: EvalAlgebraMethodInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1363,6 +1504,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "take",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_algebra_method_inner",
+      dispatch_emit_site: EvalAlgebraMethodInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1371,6 +1513,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "enumerate",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_algebra_method_inner",
+      dispatch_emit_site: EvalAlgebraMethodInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1379,6 +1522,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "contains",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_algebra_method_inner",
+      dispatch_emit_site: EvalAlgebraMethodInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1387,6 +1531,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "has",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_algebra_method_inner",
+      dispatch_emit_site: EvalAlgebraMethodInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1395,6 +1540,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "join",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_algebra_method_inner",
+      dispatch_emit_site: EvalAlgebraMethodInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1403,6 +1549,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "chars",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_algebra_method_inner",
+      dispatch_emit_site: EvalAlgebraMethodInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1411,6 +1558,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "map_get",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_algebra_method_inner",
+      dispatch_emit_site: EvalAlgebraMethodInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1419,6 +1567,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "get",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_algebra_method_inner",
+      dispatch_emit_site: EvalAlgebraMethodInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1427,6 +1576,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "map_keys",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_algebra_method_inner",
+      dispatch_emit_site: EvalAlgebraMethodInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1435,6 +1585,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "map_values",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_algebra_method_inner",
+      dispatch_emit_site: EvalAlgebraMethodInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1443,6 +1594,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "map_contains_key",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_algebra_method_inner",
+      dispatch_emit_site: EvalAlgebraMethodInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1451,6 +1603,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "map_has",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_algebra_method_inner",
+      dispatch_emit_site: EvalAlgebraMethodInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1459,6 +1612,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "map_is_empty",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_algebra_method_inner",
+      dispatch_emit_site: EvalAlgebraMethodInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1467,6 +1621,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "insert",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_algebra_method_inner",
+      dispatch_emit_site: EvalAlgebraMethodInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1475,6 +1630,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "map_insert",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_algebra_method_inner",
+      dispatch_emit_site: EvalAlgebraMethodInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1483,6 +1639,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "merge",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_algebra_method_inner",
+      dispatch_emit_site: EvalAlgebraMethodInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1491,6 +1648,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "keys",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_algebra_method_inner",
+      dispatch_emit_site: EvalAlgebraMethodInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1499,6 +1657,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "values",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_algebra_method_inner",
+      dispatch_emit_site: EvalAlgebraMethodInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1507,6 +1666,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "replace",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_algebra_method_inner",
+      dispatch_emit_site: EvalAlgebraMethodInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1515,6 +1675,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "split",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_algebra_method_inner",
+      dispatch_emit_site: EvalAlgebraMethodInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1523,6 +1684,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "trim",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_algebra_method_inner",
+      dispatch_emit_site: EvalAlgebraMethodInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1531,6 +1693,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "starts_with",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_algebra_method_inner",
+      dispatch_emit_site: EvalAlgebraMethodInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1539,6 +1702,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "ends_with",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_algebra_method_inner",
+      dispatch_emit_site: EvalAlgebraMethodInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1547,6 +1711,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "substring",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_algebra_method_inner",
+      dispatch_emit_site: EvalAlgebraMethodInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1555,6 +1720,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "char_at",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_algebra_method_inner",
+      dispatch_emit_site: EvalAlgebraMethodInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1563,6 +1729,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "index_by",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_algebra_method_inner",
+      dispatch_emit_site: EvalAlgebraMethodInnerSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1571,6 +1738,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "resolve_type_node",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_call",
+      dispatch_emit_site: EvalCallBridgeFamilySite { module: "v2.std.node" },
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1579,6 +1747,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "symbol_intern_lexeme",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_call",
+      dispatch_emit_site: EvalCallBridgeFamilySite { module: "v2.std.compilers.lexing" },
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1587,6 +1756,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "symbol_lexeme",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_call",
+      dispatch_emit_site: EvalCallBridgeFamilySite { module: "v2.std.compilers.lexing" },
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1595,6 +1765,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "qualified_name_from_dotted_string",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_call",
+      dispatch_emit_site: EvalCallBridgeFamilySite { module: "v2.std.qualified_name" },
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1603,6 +1774,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "coproduct_nullary_inhabitants",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_call",
+      dispatch_emit_site: EvalCallBridgeFamilySite { module: "v2.std.node_query" },
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1611,6 +1783,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "concept_decl_facts_live",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_call",
+      dispatch_emit_site: EvalCallBridgeFamilySite { module: "v2.std.concept_index" },
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1619,6 +1792,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "fn_arrow_decl_facts_live",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_call",
+      dispatch_emit_site: EvalCallBridgeFamilySite { module: "v2.std.fn_index" },
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1627,6 +1801,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "fn_arrow_decl_substrate_is_whole_tree",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_call",
+      dispatch_emit_site: EvalCallBridgeFamilySite { module: "v2.std.fn_index" },
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1635,6 +1810,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "corpus_dependency_view_per_pr_substrate_refuse",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_call",
+      dispatch_emit_site: EvalCallBridgeFamilySite { module: "v2.lens.affected_set.corpus_dependency_view" },
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1643,6 +1819,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "data_init_decl_facts_live",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_call",
+      dispatch_emit_site: EvalCallBridgeFamilySite { module: "v2.std.data_index" },
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1651,6 +1828,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "inert_lens_unreached_module_count",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_call",
+      dispatch_emit_site: EvalCallBridgeFamilySite { module: "v2.lens.inert_lens" },
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1659,6 +1837,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "inert_lens_top_level_module_count",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_call",
+      dispatch_emit_site: EvalCallBridgeFamilySite { module: "v2.lens.inert_lens" },
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1667,6 +1846,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "empty_map_primitive_delegate",
       realization_module: "v1_interpreter",
       dispatch_symbol: "try_v2_std_collection_map_primitive_grounding",
+      dispatch_emit_site: TryV2StdCollectionMapPrimitiveGroundingSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1675,6 +1855,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "empty_map",
       realization_module: "v1_interpreter",
       dispatch_symbol: "try_v2_std_collection_map_primitive_grounding",
+      dispatch_emit_site: TryV2StdCollectionMapPrimitiveGroundingSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1683,6 +1864,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "map_insert",
       realization_module: "v1_interpreter",
       dispatch_symbol: "try_v2_std_collection_map_primitive_grounding",
+      dispatch_emit_site: TryV2StdCollectionMapPrimitiveGroundingSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1691,6 +1873,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "fold_list",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_call",
+      dispatch_emit_site: EvalCallNativeInterceptSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1699,6 +1882,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "fold_list_right",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_call",
+      dispatch_emit_site: EvalCallNativeInterceptSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1707,6 +1891,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "parse_table_lookup",
       realization_module: "v1_interpreter",
       dispatch_symbol: "try_parse_table_memo_dispatch",
+      dispatch_emit_site: TryParseTableMemoDispatchSite,
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1715,6 +1900,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "parse_table_insert",
       realization_module: "v1_interpreter",
       dispatch_symbol: "try_parse_table_memo_dispatch",
+      dispatch_emit_site: TryParseTableMemoDispatchSite,
       enumeration: AuthoredInRoster,
     },
   ]

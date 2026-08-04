@@ -14,7 +14,7 @@ import gunbc.v1_interpreter_primitive_surface {
   form_is_unknown,
   shadowed_spellings,
   v1_interpreter_declared_arms,
-  v1_interpreter_derived_arms,
+  v1_interpreter_authored_roster_arms,
   v1_interpreter_primitive_arms,
   v1_interpreter_unknown_form_arms,
 }
@@ -42,7 +42,7 @@ fn known_dispatch_sites_contribute_rows() -> Bool {
     "try_v2_std_collection_map_primitive_grounding",
     "try_parse_table_memo_dispatch",
   ]
-  symbols |> all(s => v1_interpreter_derived_arms() |> any(r => r.dispatch_symbol == s))
+  symbols |> all(s => v1_interpreter_authored_roster_arms() |> any(r => r.dispatch_symbol == s))
 }
 
 fn duplicate_row_keys_refuse() -> Bool {
