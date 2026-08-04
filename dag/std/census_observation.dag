@@ -318,8 +318,9 @@ fn census_conclusion_strength_key(strength: CensusConclusionStrength) -> String 
 }
 
 fn census_conclusion_eq(left: CensusConclusion, right: CensusConclusion) -> Bool {
-  census_conclusion_strength_key(strength: left.strength)
-    == census_conclusion_strength_key(strength: right.strength)
+  let left_key = census_conclusion_strength_key(strength: left.strength)
+  let right_key = census_conclusion_strength_key(strength: right.strength)
+  left_key == right_key
     && content_hash_eq_structural(left: left.derived_from, right: right.derived_from)
 }
 

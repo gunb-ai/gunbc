@@ -1,0 +1,582 @@
+module test.claim.census_observation_witness
+
+import std.types { String, NonEmptyStr, Bool, Int, List }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.content_hash { content_hash_eq_structural }
+import std.claim_evidence {
+  RecordedFact,
+  EvidenceProvenance,
+  EvidenceFreshness,
+  EvidenceFidelity,
+  EvidenceSupports,
+  EvidenceLink,
+  claim_assessment_from_links,
+  claim_information_state,
+}
+import std.census_observation {
+  RepositoryIdentity,
+  SourceRootIdentity,
+  CensusSubjectKey,
+  RepositoryPopulation,
+  CensusMethod,
+  StructuralClassifier,
+  TextPatternScan,
+  ArtifactIdentityRead,
+  MethodSubjectFidelity,
+  SemanticSubjects,
+  TextualMatchesOnly,
+  CoverageRequirement,
+  CensusCoverage,
+  CompleteForDeclaredPopulation,
+  Sampled,
+  CoverageUnestablished,
+  CensusObservation,
+  CensusConclusion,
+  CensusCompleteness,
+  CensusRowsMatchPopulation,
+  CensusRowsIncomplete,
+  CensusRowsUnexpected,
+  CensusRowsDiverged,
+  census_population_source_roots,
+  census_population_source_root_count,
+  census_method_subject_fidelity,
+  census_row_count,
+  census_observation_identity,
+  census_maximum_conclusion,
+  census_conclusion_supports_semantic_subject_claim,
+  census_conclusion_supports_textual_absence,
+  census_conclusion_supports_semantic_absence,
+  census_conclusion_is_floor_only,
+  census_method_declaration,
+  census_coverage_missing_requirements,
+  census_completeness_by_identity,
+  census_duplicate_subject_keys,
+  census_evidence_link,
+  census_evidence_link_conclusion_is_derived,
+}
+import gunbc.guarantee_measurement { MeasurementRevision, GitRevision }
+import gunbc.readback_independence { ReadBackProbe, ProbeInert }
+import extdeps.external_authority { ExternalAuthority, extdeps_external_authority_anchor }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+type CensusFixtureRow {
+  key: CensusSubjectKey
+}
+
+fn fixture_row(key: String) -> CensusFixtureRow {
+  CensusFixtureRow { key: key as CensusSubjectKey }
+}
+
+fn fixture_row_key(row: CensusFixtureRow) -> CensusSubjectKey {
+  row.key
+}
+
+fn fixture_inclusion_rule() -> DeclarationRef {
+  decl_ref(
+    module_path: "test.claim.census_observation_witness",
+    decl_name: "fixture_inclusion_rule",
+  )
+}
+
+fn fixture_classifier() -> DeclarationRef {
+  decl_ref(
+    module_path: "test.claim.census_observation_witness",
+    decl_name: "fixture_classifier",
+  )
+}
+
+fn fixture_scanner() -> DeclarationRef {
+  decl_ref(
+    module_path: "test.claim.census_observation_witness",
+    decl_name: "fixture_scanner",
+  )
+}
+
+fn fixture_selection() -> DeclarationRef {
+  decl_ref(
+    module_path: "test.claim.census_observation_witness",
+    decl_name: "fixture_selection",
+  )
+}
+
+data fixture_repo_wide_population: RepositoryPopulation = RepositoryPopulation {
+  repository: "gunbc" as RepositoryIdentity,
+  first_source_root: "dag" as SourceRootIdentity,
+  additional_source_roots: ["src/v2" as SourceRootIdentity],
+  inclusion_rule: fixture_inclusion_rule(),
+  exclusion_rule: Absent,
+}
+
+data fixture_dag_only_population: RepositoryPopulation = RepositoryPopulation {
+  repository: "gunbc" as RepositoryIdentity,
+  first_source_root: "dag" as SourceRootIdentity,
+  additional_source_roots: [],
+  inclusion_rule: fixture_inclusion_rule(),
+  exclusion_rule: Absent,
+}
+
+data fixture_revision: MeasurementRevision = GitRevision {
+  commit: "64aed6007e0000000000000000000000000000ff",
+}
+
+data fixture_later_revision: MeasurementRevision = GitRevision {
+  commit: "b12027cd940000000000000000000000000000ff",
+}
+
+data fixture_probe: ReadBackProbe = ReadBackProbe {
+  label: "census-fixture-probe",
+  subject: "census fixture rows",
+  effect_on_subject: ProbeInert,
+}
+
+fn structural_complete_census(rows: List<CensusFixtureRow>) -> CensusObservation<CensusFixtureRow> {
+  CensusObservation {
+    population: fixture_repo_wide_population,
+    observed_at_revision: fixture_revision,
+    method: StructuralClassifier { classifier: fixture_classifier() },
+    rows: rows,
+    coverage: CompleteForDeclaredPopulation,
+  }
+}
+
+fn text_pattern_complete_census(rows: List<CensusFixtureRow>) -> CensusObservation<CensusFixtureRow> {
+  CensusObservation {
+    population: fixture_repo_wide_population,
+    observed_at_revision: fixture_revision,
+    method: TextPatternScan { scanner: fixture_scanner() },
+    rows: rows,
+    coverage: CompleteForDeclaredPopulation,
+  }
+}
+
+fn structural_sampled_census(rows: List<CensusFixtureRow>) -> CensusObservation<CensusFixtureRow> {
+  CensusObservation {
+    population: fixture_repo_wide_population,
+    observed_at_revision: fixture_revision,
+    method: StructuralClassifier { classifier: fixture_classifier() },
+    rows: rows,
+    coverage: Sampled { selection: fixture_selection() },
+  }
+}
+
+fn coverage_unestablished_census(rows: List<CensusFixtureRow>) -> CensusObservation<CensusFixtureRow> {
+  CensusObservation {
+    population: fixture_repo_wide_population,
+    observed_at_revision: fixture_revision,
+    method: StructuralClassifier { classifier: fixture_classifier() },
+    rows: rows,
+    coverage: CoverageUnestablished {
+      first_missing: CoverageRequirement {
+        requirement: fixture_inclusion_rule(),
+        unmet_because: "the walk could not enumerate one declared source root",
+      },
+      additional_missing: [],
+    },
+  }
+}
+
+data binder_name_rows: List<CensusFixtureRow> = [
+  fixture_row(key: "acc-site-1"),
+  fixture_row(key: "acc-site-2"),
+]
+
+data semantic_rows: List<CensusFixtureRow> = [
+  fixture_row(key: "acc-site-1"),
+  fixture_row(key: "acc-site-2"),
+  fixture_row(key: "grown-site-1"),
+]
+
+test fn witness_text_pattern_census_cannot_conclude_about_semantic_subjects() -> Bool {
+  let observation = text_pattern_complete_census(rows: binder_name_rows)
+  let conclusion = census_maximum_conclusion(
+    observation: observation,
+    row_key: fixture_row_key,
+  )
+  census_conclusion_supports_textual_absence(conclusion: conclusion)
+    && !census_conclusion_supports_semantic_subject_claim(conclusion: conclusion)
+    && !census_conclusion_supports_semantic_absence(conclusion: conclusion)
+    && census_method_subject_fidelity(
+      method: TextPatternScan { scanner: fixture_scanner() },
+    ) == TextualMatchesOnly
+}
+
+test fn witness_every_method_names_a_declaration_and_no_arm_carries_prose() -> Bool {
+  let structural = StructuralClassifier { classifier: fixture_classifier() }
+  let textual = TextPatternScan { scanner: fixture_scanner() }
+  let artifact = ArtifactIdentityRead {
+    producer: fixture_classifier(),
+    artifact: fixture_revision,
+  }
+  let structural_decl = census_method_declaration(method: structural)
+  let textual_decl = census_method_declaration(method: textual)
+  let artifact_decl = census_method_declaration(method: artifact)
+  (structural_decl.decl_name as String) == "fixture_classifier"
+    && (textual_decl.decl_name as String) == "fixture_scanner"
+    && (artifact_decl.decl_name as String) == "fixture_classifier"
+    && census_method_subject_fidelity(method: structural) == SemanticSubjects
+    && census_method_subject_fidelity(method: artifact) == SemanticSubjects
+    && census_method_subject_fidelity(method: textual) == TextualMatchesOnly
+}
+
+test fn witness_unestablished_coverage_names_at_least_one_unmet_requirement() -> Bool {
+  let unestablished = coverage_unestablished_census(rows: [])
+  let complete = structural_complete_census(rows: [])
+  let sampled = structural_sampled_census(rows: [])
+  count(census_coverage_missing_requirements(coverage: unestablished.coverage)) == 1
+    && count(census_coverage_missing_requirements(coverage: complete.coverage)) == 0
+    && count(census_coverage_missing_requirements(coverage: sampled.coverage)) == 0
+}
+
+test fn witness_structural_complete_census_supports_semantic_absence() -> Bool {
+  let observation = structural_complete_census(rows: semantic_rows)
+  let conclusion = census_maximum_conclusion(
+    observation: observation,
+    row_key: fixture_row_key,
+  )
+  census_conclusion_supports_semantic_subject_claim(conclusion: conclusion)
+    && census_conclusion_supports_semantic_absence(conclusion: conclusion)
+    && census_conclusion_supports_textual_absence(conclusion: conclusion)
+    && !census_conclusion_is_floor_only(conclusion: conclusion)
+}
+
+test fn witness_sampled_census_cannot_support_a_whole_corpus_absence_claim() -> Bool {
+  let observation = structural_sampled_census(rows: semantic_rows)
+  let conclusion = census_maximum_conclusion(
+    observation: observation,
+    row_key: fixture_row_key,
+  )
+  census_conclusion_is_floor_only(conclusion: conclusion)
+    && census_conclusion_supports_semantic_subject_claim(conclusion: conclusion)
+    && !census_conclusion_supports_semantic_absence(conclusion: conclusion)
+    && !census_conclusion_supports_textual_absence(conclusion: conclusion)
+}
+
+test fn witness_coverage_unestablished_supports_no_conclusion_at_all() -> Bool {
+  let observation = coverage_unestablished_census(rows: [])
+  let conclusion = census_maximum_conclusion(
+    observation: observation,
+    row_key: fixture_row_key,
+  )
+  !census_conclusion_supports_semantic_subject_claim(conclusion: conclusion)
+    && !census_conclusion_supports_semantic_absence(conclusion: conclusion)
+    && !census_conclusion_supports_textual_absence(conclusion: conclusion)
+    && !census_conclusion_is_floor_only(conclusion: conclusion)
+    && census_row_count(observation: observation) == 0
+}
+
+test fn witness_empty_rows_under_unestablished_coverage_are_not_an_emptiness_claim() -> Bool {
+  let unestablished = coverage_unestablished_census(rows: [])
+  let complete = structural_complete_census(rows: [])
+  let unestablished_conclusion = census_maximum_conclusion(
+    observation: unestablished,
+    row_key: fixture_row_key,
+  )
+  let complete_conclusion = census_maximum_conclusion(
+    observation: complete,
+    row_key: fixture_row_key,
+  )
+  census_row_count(observation: unestablished) == census_row_count(observation: complete)
+    && !census_conclusion_supports_semantic_absence(conclusion: unestablished_conclusion)
+    && census_conclusion_supports_semantic_absence(conclusion: complete_conclusion)
+}
+
+test fn witness_row_count_is_a_projection_of_rows() -> Bool {
+  census_row_count(observation: structural_complete_census(rows: [])) == 0
+    && census_row_count(observation: structural_complete_census(rows: binder_name_rows)) == 2
+    && census_row_count(observation: structural_complete_census(rows: semantic_rows)) == 3
+    && count(semantic_rows) == census_row_count(observation: structural_complete_census(rows: semantic_rows))
+}
+
+test fn witness_an_authored_total_can_diverge_from_its_rows_but_is_unwritable_here() -> Bool {
+  let authored_total = 17
+  let observed_rows = semantic_rows
+  let authored_shape_diverges = authored_total != count(observed_rows)
+  let carrier_row_count = census_row_count(
+    observation: structural_complete_census(rows: observed_rows),
+  )
+  let carrier_cannot_diverge = carrier_row_count == count(observed_rows)
+  authored_shape_diverges && carrier_cannot_diverge
+}
+
+test fn witness_completeness_is_an_identity_join_not_a_count_equality() -> Bool {
+  let observation = structural_complete_census(rows: binder_name_rows)
+  let expected = [
+    "grown-site-1" as CensusSubjectKey,
+    "grown-site-2" as CensusSubjectKey,
+  ]
+  let count_equality_would_pass = census_row_count(observation: observation) == count(expected)
+  let verdict = census_completeness_by_identity(
+    observation: observation,
+    row_key: fixture_row_key,
+    expected: expected,
+  )
+  count_equality_would_pass
+    && match verdict {
+      CensusRowsMatchPopulation => false
+      CensusRowsIncomplete { missing: _ } => false
+      CensusRowsUnexpected { unexpected: _ } => false
+      CensusRowsDiverged { missing: m, unexpected: u } => count(m) == 2 && count(u) == 2
+    }
+}
+
+test fn witness_missing_and_unexpected_verdicts_stay_distinct() -> Bool {
+  let observation = structural_complete_census(rows: binder_name_rows)
+  let superset = [
+    "acc-site-1" as CensusSubjectKey,
+    "acc-site-2" as CensusSubjectKey,
+    "acc-site-3" as CensusSubjectKey,
+  ]
+  let subset = ["acc-site-1" as CensusSubjectKey]
+  let exact = [
+    "acc-site-1" as CensusSubjectKey,
+    "acc-site-2" as CensusSubjectKey,
+  ]
+  let incomplete = census_completeness_by_identity(
+    observation: observation,
+    row_key: fixture_row_key,
+    expected: superset,
+  )
+  let unexpected = census_completeness_by_identity(
+    observation: observation,
+    row_key: fixture_row_key,
+    expected: subset,
+  )
+  let matched = census_completeness_by_identity(
+    observation: observation,
+    row_key: fixture_row_key,
+    expected: exact,
+  )
+  match incomplete {
+    CensusRowsIncomplete { missing: m } => count(m) == 1
+    CensusRowsMatchPopulation => false
+    CensusRowsUnexpected { unexpected: _ } => false
+    CensusRowsDiverged { missing: _, unexpected: _ } => false
+  } && match unexpected {
+    CensusRowsUnexpected { unexpected: u } => count(u) == 1
+    CensusRowsMatchPopulation => false
+    CensusRowsIncomplete { missing: _ } => false
+    CensusRowsDiverged { missing: _, unexpected: _ } => false
+  } && match matched {
+    CensusRowsMatchPopulation => true
+    CensusRowsIncomplete { missing: _ } => false
+    CensusRowsUnexpected { unexpected: _ } => false
+    CensusRowsDiverged { missing: _, unexpected: _ } => false
+  }
+}
+
+test fn witness_duplicate_subject_keys_are_reported_once_each() -> Bool {
+  let observation = structural_complete_census(rows: [
+    fixture_row(key: "acc-site-1"),
+    fixture_row(key: "acc-site-1"),
+    fixture_row(key: "acc-site-2"),
+  ])
+  let duplicates = census_duplicate_subject_keys(
+    observation: observation,
+    row_key: fixture_row_key,
+  )
+  census_row_count(observation: observation) == 3
+    && count(duplicates) == 1
+    && count(census_duplicate_subject_keys(
+      observation: structural_complete_census(rows: binder_name_rows),
+      row_key: fixture_row_key,
+    )) == 0
+}
+
+test fn witness_source_roots_are_present_and_nonempty_by_construction() -> Bool {
+  census_population_source_root_count(population: fixture_repo_wide_population) == 2
+    && census_population_source_root_count(population: fixture_dag_only_population) == 1
+    && count(census_population_source_roots(population: fixture_dag_only_population)) == 1
+}
+
+test fn witness_a_dag_only_census_is_not_the_same_observation_as_a_repo_wide_one() -> Bool {
+  let repo_wide = structural_complete_census(rows: semantic_rows)
+  let dag_only = CensusObservation {
+    population: fixture_dag_only_population,
+    observed_at_revision: fixture_revision,
+    method: StructuralClassifier { classifier: fixture_classifier() },
+    rows: semantic_rows,
+    coverage: CompleteForDeclaredPopulation,
+  }
+  let repo_wide_identity = census_observation_identity(
+    observation: repo_wide,
+    row_key: fixture_row_key,
+  )
+  let dag_only_identity = census_observation_identity(
+    observation: dag_only,
+    row_key: fixture_row_key,
+  )
+  census_row_count(observation: repo_wide) == census_row_count(observation: dag_only)
+    && !content_hash_eq_structural(left: repo_wide_identity, right: dag_only_identity)
+}
+
+test fn witness_the_same_measurement_at_a_later_revision_is_a_new_observation() -> Bool {
+  let pinned = structural_complete_census(rows: semantic_rows)
+  let later = CensusObservation {
+    population: fixture_repo_wide_population,
+    observed_at_revision: fixture_later_revision,
+    method: StructuralClassifier { classifier: fixture_classifier() },
+    rows: semantic_rows,
+    coverage: CompleteForDeclaredPopulation,
+  }
+  !content_hash_eq_structural(
+    left: census_observation_identity(observation: pinned, row_key: fixture_row_key),
+    right: census_observation_identity(observation: later, row_key: fixture_row_key),
+  )
+    && content_hash_eq_structural(
+      left: census_observation_identity(observation: pinned, row_key: fixture_row_key),
+      right: census_observation_identity(
+        observation: structural_complete_census(rows: semantic_rows),
+        row_key: fixture_row_key,
+      ),
+    )
+}
+
+test fn witness_editing_rows_or_method_yields_a_different_observation_identity() -> Bool {
+  let original = structural_complete_census(rows: semantic_rows)
+  let edited_rows = structural_complete_census(rows: binder_name_rows)
+  let edited_method = text_pattern_complete_census(rows: semantic_rows)
+  let edited_coverage = structural_sampled_census(rows: semantic_rows)
+  let original_identity = census_observation_identity(
+    observation: original,
+    row_key: fixture_row_key,
+  )
+  !content_hash_eq_structural(
+    left: original_identity,
+    right: census_observation_identity(observation: edited_rows, row_key: fixture_row_key),
+  )
+    && !content_hash_eq_structural(
+      left: original_identity,
+      right: census_observation_identity(observation: edited_method, row_key: fixture_row_key),
+    )
+    && !content_hash_eq_structural(
+      left: original_identity,
+      right: census_observation_identity(observation: edited_coverage, row_key: fixture_row_key),
+    )
+}
+
+test fn witness_changing_only_the_method_changes_what_may_be_concluded() -> Bool {
+  let structural = structural_complete_census(rows: semantic_rows)
+  let textual = text_pattern_complete_census(rows: semantic_rows)
+  let structural_conclusion = census_maximum_conclusion(
+    observation: structural,
+    row_key: fixture_row_key,
+  )
+  let textual_conclusion = census_maximum_conclusion(
+    observation: textual,
+    row_key: fixture_row_key,
+  )
+  census_row_count(observation: structural) == census_row_count(observation: textual)
+    && census_conclusion_supports_semantic_subject_claim(conclusion: structural_conclusion)
+    && !census_conclusion_supports_semantic_subject_claim(conclusion: textual_conclusion)
+}
+
+fn fixture_census_link(
+  fact_id: String,
+  observation: CensusObservation<CensusFixtureRow>,
+) -> EvidenceLink<CensusObservation<CensusFixtureRow>, CensusConclusion, ExternalAuthority, MethodSubjectFidelity, ReadBackProbe> {
+  census_evidence_link(
+    fact_id: fact_id,
+    observation: observation,
+    row_key: fixture_row_key,
+    direction: EvidenceSupports,
+    inference_rule: "census-observation-supports-its-derived-maximum-conclusion",
+    authority: extdeps_external_authority_anchor,
+    provenance: EvidenceProvenance {
+      entity: "census-fixture-rows",
+      activity: "census-fixture-walk",
+      agent: "census-observation-witness",
+    },
+    fidelity: EvidenceFidelity {
+      boundary: TextualMatchesOnly,
+      losses: ["the scan sees matching text, never the subject the text stands for"],
+    },
+    probe_independence: fixture_probe,
+    basis: "measured at the pinned fixture revision",
+  )
+}
+
+test fn witness_an_evidence_link_conclusion_is_derived_not_authored() -> Bool {
+  let observation = text_pattern_complete_census(rows: binder_name_rows)
+  let link = fixture_census_link(
+    fact_id: "census-text-pattern-fact",
+    observation: observation,
+  )
+  census_evidence_link_conclusion_is_derived(link: link, row_key: fixture_row_key)
+    && !census_conclusion_supports_semantic_subject_claim(
+      conclusion: link.freshness.maximum_conclusion,
+    )
+}
+
+test fn witness_a_conclusion_derived_from_another_observation_is_detected() -> Bool {
+  let weak_observation = text_pattern_complete_census(rows: binder_name_rows)
+  let strong_observation = structural_complete_census(rows: semantic_rows)
+  let borrowed_conclusion = census_maximum_conclusion(
+    observation: strong_observation,
+    row_key: fixture_row_key,
+  )
+  let honest_link = fixture_census_link(
+    fact_id: "census-honest-fact",
+    observation: weak_observation,
+  )
+  let forged_link = EvidenceLink {
+    fact: RecordedFact {
+      id: "census-forged-fact",
+      value: weak_observation,
+    },
+    direction: EvidenceSupports,
+    inference_rule: "census-observation-supports-its-derived-maximum-conclusion",
+    authority: extdeps_external_authority_anchor,
+    provenance: EvidenceProvenance {
+      entity: "census-fixture-rows",
+      activity: "census-fixture-walk",
+      agent: "census-observation-witness",
+    },
+    freshness: EvidenceFreshness {
+      maximum_conclusion: borrowed_conclusion,
+      basis: "measured at the pinned fixture revision",
+    },
+    fidelity: EvidenceFidelity {
+      boundary: TextualMatchesOnly,
+      losses: ["the scan sees matching text, never the subject the text stands for"],
+    },
+    probe_independence: fixture_probe,
+  }
+  census_evidence_link_conclusion_is_derived(link: honest_link, row_key: fixture_row_key)
+    && !census_evidence_link_conclusion_is_derived(link: forged_link, row_key: fixture_row_key)
+    && census_conclusion_supports_semantic_subject_claim(conclusion: borrowed_conclusion)
+}
+
+test fn witness_a_census_link_assesses_only_its_own_derived_conclusion() -> Bool {
+  let weak_observation = text_pattern_complete_census(rows: binder_name_rows)
+  let strong_observation = structural_complete_census(rows: semantic_rows)
+  let weak_link = fixture_census_link(
+    fact_id: "census-weak-fact",
+    observation: weak_observation,
+  )
+  let weak_conclusion = census_maximum_conclusion(
+    observation: weak_observation,
+    row_key: fixture_row_key,
+  )
+  let strong_conclusion = census_maximum_conclusion(
+    observation: strong_observation,
+    row_key: fixture_row_key,
+  )
+  let own_state = claim_information_state(
+    assessment: claim_assessment_from_links(
+      claim: weak_conclusion,
+      links: [weak_link],
+    ),
+  )
+  let stronger_state = claim_information_state(
+    assessment: claim_assessment_from_links(
+      claim: strong_conclusion,
+      links: [weak_link],
+    ),
+  )
+  own_state.support
+    && !own_state.challenge
+    && !stronger_state.support
+    && !stronger_state.challenge
+}
