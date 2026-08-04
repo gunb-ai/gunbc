@@ -5227,8 +5227,10 @@ fn write_selection_degradation_receipt_at(
 
 /// SCAFFOLD (§7 seed-retained HAND-RUST — authority: `gunbc.ci_materialization`
 /// `compile_anchor_obligation_subject`, `native_bundle_obligation_subject`,
-/// `gunbc.floor_materialization` `floor_index_build_share_provider_id`; dissolve-on: executor obligation
-/// observation expressed as modeled `.dag` effects / self-emitted constants).
+/// `gunbc.floor_materialization` `floor_index_build_share_provider_id`;
+/// checkable receipt: `floor_resolve_obligation_seed_constants_match_dag_authority`;
+/// dissolve-on: witness-realization P4 executor cutover — obligation observation as
+/// modeled `.dag` effects / self-emitted constants).
 ///
 /// Semantic resolve obligations the floor roster owes each run — a closed universe,
 /// distinct from physical cold resolves performed (`resolve_nanos > 0`). Observed here;
@@ -8930,6 +8932,98 @@ mod tests {
     /// The `<entry>::<function>` a refusal locates itself at — the same shape the
     /// production caller passes.
     const TEST_PLAN_SITE: &str = "src/v2/workflow/ci_floor_plan.dag::gunbc_ci_floor_plan";
+
+    fn repo_root_from_manifest() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../..")
+            .canonicalize()
+            .expect("repo root from CARGO_MANIFEST_DIR")
+    }
+
+    fn dag_source_from_repo(rel: &str) -> String {
+        let path = repo_root_from_manifest().join(rel);
+        std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()))
+    }
+
+    fn dag_record_string_field(source: &str, data_name: &str, field: &str) -> String {
+        let marker = format!("data {data_name}:");
+        let start = source
+            .find(&marker)
+            .unwrap_or_else(|| panic!("data row {data_name} not found in authority source"));
+        let slice = &source[start..];
+        let field_marker = format!("{field}: \"");
+        let fstart = slice
+            .find(&field_marker)
+            .unwrap_or_else(|| panic!("field {field} not found on data row {data_name}"))
+            + field_marker.len();
+        let rest = &slice[fstart..];
+        let end = rest
+            .find('"')
+            .expect("unterminated string field in authority source");
+        rest[..end].to_string()
+    }
+
+    fn dag_string_data_literal(source: &str, data_name: &str) -> String {
+        let marker = format!("data {data_name}: String = \"");
+        let start = source
+            .find(&marker)
+            .unwrap_or_else(|| panic!("string data row {data_name} not found in authority source"))
+            + marker.len();
+        let rest = &source[start..];
+        let end = rest
+            .find('"')
+            .expect("unterminated string literal in authority source");
+        rest[..end].to_string()
+    }
+
+    /// Seed-retained executor literals must track the `.dag` authority rows they observe.
+    /// Renaming an obligation subject in `gunbc.ci_materialization` without updating the
+    /// HAND-Rust bridge must redd here, not at runtime as "obligation missing".
+    #[test]
+    fn floor_resolve_obligation_seed_constants_match_dag_authority() {
+        let ci_materialization = dag_source_from_repo("dag/gunbc/ci_materialization.dag");
+        assert_eq!(
+            dag_record_string_field(
+                &ci_materialization,
+                "compile_anchor_obligation_subject",
+                "entry"
+            ),
+            COMPILE_ANCHOR_OBLIGATION_ENTRY,
+        );
+        assert_eq!(
+            dag_record_string_field(
+                &ci_materialization,
+                "compile_anchor_obligation_subject",
+                "function"
+            ),
+            COMPILE_ANCHOR_OBLIGATION_FUNCTION,
+        );
+        assert_eq!(
+            dag_record_string_field(
+                &ci_materialization,
+                "native_bundle_obligation_subject",
+                "entry"
+            ),
+            NATIVE_BUNDLE_OBLIGATION_ENTRY,
+        );
+        assert_eq!(
+            dag_record_string_field(
+                &ci_materialization,
+                "native_bundle_obligation_subject",
+                "function"
+            ),
+            NATIVE_BUNDLE_OBLIGATION_FUNCTION,
+        );
+
+        let floor_materialization = dag_source_from_repo("dag/gunbc/floor_materialization.dag");
+        assert_eq!(
+            dag_string_data_literal(
+                &floor_materialization,
+                "floor_index_build_share_provider_id"
+            ),
+            FLOOR_INDEX_BUILD_SHARE_PROVIDER_ID,
+        );
+    }
 
     #[test]
     fn floor_finalization_refuses_unattributed_physical_resolve() {
