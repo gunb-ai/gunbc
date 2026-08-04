@@ -170,27 +170,6 @@ fn normalize_declaration_ref(bind: DeclarationRef) -> DeclarationRef {
   }
 }
 
-fn node_skeleton_atom_lexemes(node: Node) -> List<String> {
-  let here = match decl_facts_skeleton_atom_lexeme_optional(node: node) {
-    Present { value: lex } => [lex]
-    Absent => []
-  }
-  fold(
-    node_positional_child_targets(node: node),
-    init: here,
-    f: fn(acc, child) {
-      list_append(left: acc, right: node_skeleton_atom_lexemes(node: child))
-    }
-  )
-}
-
-fn bind_skeleton_atom_lexemes(body: Node) -> List<String> {
-  match bind_child_node(body: body) {
-    Present { value: bind_conj } => node_skeleton_atom_lexemes(node: bind_conj)
-    Absent => []
-  }
-}
-
 fn dissolves_to_child_node(body: Node) -> Node? {
   list_at_optional(xs: node_positional_child_targets(node: body), index: 0)
 }
@@ -245,89 +224,47 @@ fn dissolves_to_from_exact_scaffold_body(body: Node) -> ConstructionMechanism? {
   }
 }
 
-fn named_field_from_declaration_ref_conj(node: Node, field_node: Node) -> DeclField? {
-  match list_at_optional(xs: node_positional_child_targets(node: node), index: 4) {
-    Present { value: name_node } =>
-      match decl_facts_skeleton_atom_lexeme_optional(node: name_node) {
-        Present { value: field_name } =>
-          Present { value: NamedField { field_name: field_name } }
-        Absent => Absent
-      }
-    Absent =>
-      match list_at_optional(xs: node_positional_child_targets(node: field_node), index: 0) {
-        Present { value: name_node } =>
-          match decl_facts_skeleton_atom_lexeme_optional(node: name_node) {
-            Present { value: field_name } =>
-              Present { value: NamedField { field_name: field_name } }
+fn named_field_name_from_field_node(field_node: Node) -> String? {
+  fold(
+    node_positional_child_targets(node: field_node),
+    init: Absent,
+    f: fn(acc, child) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          match decl_facts_skeleton_atom_lexeme_optional(node: child) {
+            Present { value: lex } =>
+              match lex {
+                "NamedField" => Absent
+                "WholeDeclaration" => Absent
+                _ => Present { value: lex }
+              }
             Absent => Absent
           }
+      }
+    }
+  )
+}
+
+fn decl_field_from_field_conj(field_node: Node) -> DeclField? {
+  match named_field_name_from_field_node(field_node: field_node) {
+    Present { value: field_name } =>
+      Present { value: NamedField { field_name: field_name } }
+    Absent =>
+      match decl_facts_skeleton_atom_lexeme_optional(node: field_node) {
+        Present { value: lex } =>
+          match lex {
+            "WholeDeclaration" => Present { value: WholeDeclaration }
+            _ => Absent
+          }
         Absent => Absent
       }
-  }
-}
-
-fn decl_field_lexeme_from_field_node(node: Node, field_node: Node, lex: String) -> DeclField? {
-  match lex {
-    "WholeDeclaration" => Present { value: WholeDeclaration }
-    "NamedField" => named_field_from_declaration_ref_conj(node: node, field_node: field_node)
-    _ => Absent
-  }
-}
-
-fn decl_field_from_field_node_optional(field_node: Node) -> DeclField? {
-  match decl_facts_skeleton_atom_lexeme_optional(node: field_node) {
-    Present { value: lex } =>
-      match lex {
-        "WholeDeclaration" => Present { value: WholeDeclaration }
-        _ => Absent
-      }
-    Absent =>
-      fold(
-        node_positional_child_targets(node: field_node),
-        init: Absent,
-        f: fn(acc, nested) {
-          match acc {
-            Present { value: _ } => acc
-            Absent =>
-              match decl_facts_skeleton_atom_lexeme_optional(node: nested) {
-                Present { value: field_name } =>
-                  Present { value: NamedField { field_name: field_name } }
-                Absent => Absent
-              }
-          }
-        }
-      )
   }
 }
 
 fn decl_field_from_declaration_ref_conj_at(node: Node, field_index: Int) -> DeclField? {
   match list_at_optional(xs: node_positional_child_targets(node: node), index: field_index) {
-    Present { value: field_node } =>
-      match decl_facts_skeleton_atom_lexeme_optional(node: field_node) {
-        Present { value: lex } =>
-          match lex {
-            "NamedField" =>
-              match list_at_optional(
-                xs: node_positional_child_targets(node: node),
-                index: field_index + 1
-              ) {
-                Present { value: name_node } =>
-                  match decl_facts_skeleton_atom_lexeme_optional(node: name_node) {
-                    Present { value: field_name } =>
-                      Present { value: NamedField { field_name: field_name } }
-                    Absent => Absent
-                  }
-                Absent =>
-                  named_field_from_declaration_ref_conj(node: node, field_node: field_node)
-              }
-            _ => decl_field_lexeme_from_field_node(node: node, field_node: field_node, lex: lex)
-          }
-        Absent =>
-          match decl_field_from_field_node_optional(field_node: field_node) {
-            Present { value: field } => Present { value: field }
-            Absent => Absent
-          }
-      }
+    Present { value: field_node } => decl_field_from_field_conj(field_node: field_node)
     Absent => Absent
   }
 }
