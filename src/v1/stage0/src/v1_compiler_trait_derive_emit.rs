@@ -1378,14 +1378,6 @@ pub struct CloneBoundRound {
     pub added: i64,
 }
 
-pub fn v1_generic_param_declares_clone_bound(
-    param: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    (authored_name_at(source_indices.clone(), param_node_type_expr(param.clone()))
-        == "Clone".to_string())
-}
-
 pub fn v1_clone_bound_round_add(
     round: Rc<CloneBoundRound>,
     type_name: String,
@@ -1452,14 +1444,11 @@ pub fn v1_clone_bound_seed_for_item(
                 round,
                 |acc: Rc<CloneBoundRound>, p: Rc<Node>| {
                     let param_name = generic_param_name_at(p.clone(), source_indices.clone());
-                    if (v1_item_type_param_needs_clone_bound_struct(
+                    if v1_item_type_param_needs_clone_bound_struct(
                         param_name.clone(),
                         field_type_exprs.clone(),
                         source_indices.clone(),
-                    ) || v1_generic_param_declares_clone_bound(
-                        p.clone(),
-                        source_indices.clone(),
-                    )) {
+                    ) {
                         v1_clone_bound_round_add(acc.clone(), type_name.clone(), param_name.clone())
                     } else {
                         acc.clone()

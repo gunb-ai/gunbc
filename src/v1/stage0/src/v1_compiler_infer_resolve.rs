@@ -1958,15 +1958,6 @@ pub fn resolve_field(
     }
 }
 
-pub fn is_emitter_clone_bound_marker(
-    type_expr: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    (((authored_name_at(source_indices.clone(), type_expr.clone()) == "Clone".to_string())
-        && (type_expr.connective.clone() == Connective::NoConnective))
-        && ((type_expr.children.clone().len() as i64) == 0))
-}
-
 pub fn resolve_param(
     param: Rc<Node>,
     env: Rc<TypeEnv>,
@@ -1974,104 +1965,69 @@ pub fn resolve_param(
 ) -> Rc<ParamResolveResult> {
     {
         let authored_type = param_node_type_expr(param.clone());
-        if is_emitter_clone_bound_marker(authored_type.clone(), env.source_indices.clone()) {
-            {
-                let default_resolved = match param_node_default_value(param.clone()) {
-                    Some(default_value) => Some(resolve_expr_types(
-                        default_value.clone(),
-                        env.clone(),
-                        module_name.clone(),
-                    )),
-                    None => None,
-                };
-                let default_diags = match default_resolved.clone() {
-                    Some(result) => result.diagnostics.clone(),
-                    None => Rc::new(vec![]),
-                };
-                let default_expr = match default_resolved.clone() {
-                    Some(result) => Some(result.expr.clone()),
-                    None => None,
-                };
-                Rc::new(ParamResolveResult {
-                    param: make_resolved_param_node(
-                        param_node_name_at(param.clone(), env.source_indices.clone()),
-                        authored_type.clone(),
-                        default_expr.clone(),
-                        param.properties.clone(),
-                        param.span.clone(),
-                        node_name_span(param.clone()),
-                    ),
-                    diagnostics: default_diags.clone(),
-                })
-            }
+        let type_result = resolve_node(authored_type.clone(), env.clone(), module_name.clone());
+        let type_resolved = type_result.resolved.clone();
+        let rendered_type = if ((authored_type.children.clone().len() as i64) > 0) {
+            Rc::new(Node {
+                name: authored_type.name.clone(),
+                span: authored_type.span.clone(),
+                ident_span: authored_type.ident_span.clone(),
+                children: type_resolved.children.clone(),
+                connective: authored_type.connective.clone(),
+                params: authored_type.params.clone(),
+                inferred: Some(Rc::new(InferredNode::Resolved {
+                    node: type_resolved.clone(),
+                })),
+                return_cardinality: authored_type.return_cardinality.clone(),
+                uses: authored_type.uses.clone(),
+                body: authored_type.body.clone(),
+                transport: authored_type.transport.clone(),
+                properties: type_resolved.properties.clone(),
+                type_annotation: authored_type.type_annotation.clone(),
+                is_self_recursive: authored_type.is_self_recursive.clone(),
+                has_non_tail_self_call: authored_type.has_non_tail_self_call.clone(),
+                match_pattern: authored_type.match_pattern.clone(),
+                expr_data: authored_type.expr_data.clone(),
+                ident: None,
+            })
         } else {
-            {
-                let type_result =
-                    resolve_node(authored_type.clone(), env.clone(), module_name.clone());
-                let type_resolved = type_result.resolved.clone();
-                let rendered_type = if ((authored_type.children.clone().len() as i64) > 0) {
-                    Rc::new(Node {
-                        name: authored_type.name.clone(),
-                        span: authored_type.span.clone(),
-                        ident_span: authored_type.ident_span.clone(),
-                        children: type_resolved.children.clone(),
-                        connective: authored_type.connective.clone(),
-                        params: authored_type.params.clone(),
-                        inferred: Some(Rc::new(InferredNode::Resolved {
-                            node: type_resolved.clone(),
-                        })),
-                        return_cardinality: authored_type.return_cardinality.clone(),
-                        uses: authored_type.uses.clone(),
-                        body: authored_type.body.clone(),
-                        transport: authored_type.transport.clone(),
-                        properties: type_resolved.properties.clone(),
-                        type_annotation: authored_type.type_annotation.clone(),
-                        is_self_recursive: authored_type.is_self_recursive.clone(),
-                        has_non_tail_self_call: authored_type.has_non_tail_self_call.clone(),
-                        match_pattern: authored_type.match_pattern.clone(),
-                        expr_data: authored_type.expr_data.clone(),
-                        ident: None,
-                    })
-                } else {
-                    type_resolved.clone()
-                };
-                let type_diags = v1_rt::concat(
-                    type_result.diagnostics.clone(),
-                    missing_generic_args_diagnostics(
-                        authored_type.clone(),
-                        env.clone(),
-                        module_name.clone(),
-                    ),
-                );
-                let default_resolved = match param_node_default_value(param.clone()) {
-                    Some(default_value) => Some(resolve_expr_types(
-                        default_value.clone(),
-                        env.clone(),
-                        module_name.clone(),
-                    )),
-                    None => None,
-                };
-                let default_diags = match default_resolved.clone() {
-                    Some(result) => result.diagnostics.clone(),
-                    None => Rc::new(vec![]),
-                };
-                let default_expr = match default_resolved.clone() {
-                    Some(result) => Some(result.expr.clone()),
-                    None => None,
-                };
-                Rc::new(ParamResolveResult {
-                    param: make_resolved_param_node(
-                        param_node_name_at(param.clone(), env.source_indices.clone()),
-                        rendered_type.clone(),
-                        default_expr.clone(),
-                        v1_rt::concat(param.properties.clone(), type_resolved.properties.clone()),
-                        param.span.clone(),
-                        node_name_span(param.clone()),
-                    ),
-                    diagnostics: v1_rt::concat(type_diags.clone(), default_diags.clone()),
-                })
-            }
-        }
+            type_resolved.clone()
+        };
+        let type_diags = v1_rt::concat(
+            type_result.diagnostics.clone(),
+            missing_generic_args_diagnostics(
+                authored_type.clone(),
+                env.clone(),
+                module_name.clone(),
+            ),
+        );
+        let default_resolved = match param_node_default_value(param.clone()) {
+            Some(default_value) => Some(resolve_expr_types(
+                default_value.clone(),
+                env.clone(),
+                module_name.clone(),
+            )),
+            None => None,
+        };
+        let default_diags = match default_resolved.clone() {
+            Some(result) => result.diagnostics.clone(),
+            None => Rc::new(vec![]),
+        };
+        let default_expr = match default_resolved.clone() {
+            Some(result) => Some(result.expr.clone()),
+            None => None,
+        };
+        Rc::new(ParamResolveResult {
+            param: make_resolved_param_node(
+                param_node_name_at(param.clone(), env.source_indices.clone()),
+                rendered_type.clone(),
+                default_expr.clone(),
+                v1_rt::concat(param.properties.clone(), type_resolved.properties.clone()),
+                param.span.clone(),
+                node_name_span(param.clone()),
+            ),
+            diagnostics: v1_rt::concat(type_diags.clone(), default_diags.clone()),
+        })
     }
 }
 

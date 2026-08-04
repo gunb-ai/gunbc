@@ -5567,43 +5567,6 @@ pub fn parse_optional_type_params(
     }
 }
 
-pub fn parse_type_param_bound_type_expr(
-    name: String,
-    name_span: Rc<SourceSpan>,
-    tokens: Rc<TokenStream>,
-    ctx: Rc<ParseContext>,
-) -> Rc<TypeResult> {
-    match (*eat(tokens.clone(), Rc::new(ExpectedToken::ExpectColon))).clone() {
-        EatResult::EatConsumed {
-            tokens: bound_tokens,
-            ..
-        } => {
-            let bound_r = expect_ident(bound_tokens.clone());
-            if has_err(bound_r.err.clone()) {
-                Rc::new(TypeResult {
-                    type_expr: leaf_type_node(name.clone(), name_span.clone()),
-                    tokens: tokens.clone(),
-                    ctx: ctx.clone(),
-                    err: bound_r.err.clone(),
-                })
-            } else {
-                Rc::new(TypeResult {
-                    type_expr: leaf_type_node(bound_r.name.clone(), bound_r.span.clone()),
-                    tokens: bound_r.tokens.clone(),
-                    ctx: ctx.clone(),
-                    err: None,
-                })
-            }
-        }
-        EatResult::EatUnchanged { tokens: __eu, .. } => Rc::new(TypeResult {
-            type_expr: leaf_type_node(name.clone(), name_span.clone()),
-            tokens: tokens.clone(),
-            ctx: ctx.clone(),
-            err: None,
-        }),
-    }
-}
-
 pub fn collect_type_param_names(
     mut tokens: Rc<TokenStream>,
     mut ctx: Rc<ParseContext>,
@@ -5613,40 +5576,27 @@ pub fn collect_type_param_names(
         if tok_is_ident(token_stream_first(tokens.clone())) {
             let r = expect_ident(tokens.clone());
             let span = r.span.clone();
-            let bound_result = parse_type_param_bound_type_expr(
-                r.name.clone(),
-                span.clone(),
-                r.tokens.clone(),
-                ctx.clone(),
-            );
             let param = make_param_node(
                 r.name.clone(),
-                bound_result.type_expr.clone(),
+                leaf_type_node(r.name.clone(), span.clone()),
                 None,
                 span.clone(),
                 span.clone(),
             );
             let next_params = v1_rt::rc_list_push(params.clone(), param.clone());
-            match (*eat(
-                bound_result.tokens.clone(),
-                Rc::new(ExpectedToken::ExpectComma),
-            ))
-            .clone()
-            {
+            match (*eat(r.tokens.clone(), Rc::new(ExpectedToken::ExpectComma))).clone() {
                 EatResult::EatConsumed { tokens: __ec, .. } => {
                     let __tco_0 = __ec.clone();
-                    let __tco_1 = bound_result.ctx.clone();
-                    let __tco_2 = next_params.clone();
+                    let __tco_1 = next_params.clone();
                     tokens = __tco_0;
-                    ctx = __tco_1;
-                    params = __tco_2;
+                    params = __tco_1;
                     continue;
                 }
                 EatResult::EatUnchanged { tokens: __eu, .. } => {
                     break Rc::new(TypeParamsResult {
                         params: next_params.clone(),
-                        tokens: bound_result.tokens.clone(),
-                        ctx: bound_result.ctx.clone(),
+                        tokens: r.tokens.clone(),
+                        ctx: ctx.clone(),
                     });
                 }
             }
