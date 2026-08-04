@@ -5227,7 +5227,7 @@ fn write_selection_degradation_receipt_at(
 
 /// SCAFFOLD (§7 seed-retained HAND-RUST — authority: `gunbc.ci_materialization`
 /// `compile_anchor_obligation_subject`, `native_bundle_obligation_subject`,
-/// `ci_floor_resolve_shared_pool_provider_id`; dissolve-on: executor obligation
+/// `gunbc.floor_materialization` `floor_index_build_share_provider_id`; dissolve-on: executor obligation
 /// observation expressed as modeled `.dag` effects / self-emitted constants).
 ///
 /// Semantic resolve obligations the floor roster owes each run — a closed universe,

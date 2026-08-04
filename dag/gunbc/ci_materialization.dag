@@ -20,6 +20,7 @@ import extdeps.cache.materialization {
 import extdeps.cache.sccache { sccache_local_facts, sccache_local_id }
 import v2.workflow.ci_release_build_emit { ci_release_build_script }
 import extdeps.github.actions { Workflow, Job, Step, RunStep, UsesStep }
+import gunbc.floor_materialization { floor_index_build_share_provider_id }
 import v2.std.logic { all, any }
 
 
@@ -351,15 +352,11 @@ fn cold_realization(id: ResolveObligationIdentity, nanos: Nat) -> ResolveRealiza
   }
 }
 
-data ci_floor_resolve_shared_pool_provider_id: String = "process_shared_index"
-
-data ci_floor_resolve_shared_pool_provider_authority_note: String = "Provider id for SatisfiedFromSharedPool realizations. MUST equal gunbc.floor_materialization floor_index_build_share_provider_id; witness floor_resolve_realization_witness_test witness_warm_provider_matches_floor_materialization executes the identity join."
-
 fn warm_realization(id: ResolveObligationIdentity) -> ResolveRealization {
   SatisfiedFromSharedPool {
     obligation: expected_obligation(id: id),
-    provider: ResolveSharedPoolProvider { provider_id: ci_floor_resolve_shared_pool_provider_id },
-    receipt: ResolveSharedPoolReceipt { provider_id: ci_floor_resolve_shared_pool_provider_id },
+    provider: ResolveSharedPoolProvider { provider_id: floor_index_build_share_provider_id },
+    receipt: ResolveSharedPoolReceipt { provider_id: floor_index_build_share_provider_id },
   }
 }
 

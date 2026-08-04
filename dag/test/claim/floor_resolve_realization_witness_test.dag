@@ -24,7 +24,6 @@ import gunbc.ci_materialization {
   resolve_obligation_roster_agrees_with_declared_count,
   ci_floor_expected_resolve_obligation_count,
   ci_floor_declared_resolve_count,
-  ci_floor_resolve_shared_pool_provider_id,
 }
 import gunbc.floor_materialization { floor_index_build_share_provider_id }
 import v2.std.collection { List }
@@ -78,7 +77,7 @@ fn broken_warm_native_realization() -> ResolveRealization {
   SatisfiedFromSharedPool {
     obligation: expected_obligation(id: NativeBundleEscapingEntry),
     provider: ResolveSharedPoolProvider { provider_id: "" },
-    receipt: ResolveSharedPoolReceipt { provider_id: ci_floor_resolve_shared_pool_provider_id },
+    receipt: ResolveSharedPoolReceipt { provider_id: floor_index_build_share_provider_id },
   }
 }
 
@@ -98,10 +97,6 @@ fn cold_without_resolve_receipt_realizations() -> List<ResolveRealization> {
 
 fn broken_cold_native_realization() -> ResolveRealization {
   cold_realization(id: NativeBundleEscapingEntry, nanos: 0)
-}
-
-test fn witness_warm_provider_matches_floor_materialization() -> Bool {
-  ci_floor_resolve_shared_pool_provider_id == floor_index_build_share_provider_id
 }
 
 test fn witness_admit_anchor_cold_and_native_cold() -> Bool {
