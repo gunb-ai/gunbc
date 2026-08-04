@@ -6,7 +6,6 @@ import std.unicode.types {
   unicode_surrogate_first_code_point,
   unicode_surrogate_last_code_point,
 }
-import extdeps.external_authority { ExternalAuthority }
 
 type UriScheme
   = Http
@@ -93,14 +92,7 @@ fn parse_href_scheme(url: String) -> ParsedHrefScheme {
   }
 }
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https,
-    locator: "www.rfc-editor.org/rfc/rfc3986#section-2.1",
-  },
-}
-
-data uri_component_encode_authority_note: String = "RFC 3986 section 2.1 percent-encoding for extdeps.uri (authority: extdeps.uri extdeps_external_authority_anchor). Unreserved ALPHA / DIGIT / -._~ pass through; reserved and non-ASCII scalars encode as UTF-8 octets percent-encoded with UPPERCASE hex. UriUnicodeScalar and UriUtf8Octet are distinct domains — UTF-8 decomposition never re-enters the scalar encoder with octet values. Scalar bounds consume std.unicode.types unicode_scalar_max_code_point and surrogate range rows."
+data uri_component_encode_authority_note: String = "RFC 3986 section 2.1 percent-encoding for extdeps.uri (authority: extdeps.uri_component extdeps_external_authority_anchor). Unreserved ALPHA / DIGIT / -._~ pass through; reserved and non-ASCII scalars encode as UTF-8 octets percent-encoded with UPPERCASE hex. UriUnicodeScalar and UriUtf8Octet are distinct domains — UTF-8 decomposition never re-enters the scalar encoder with octet values. Scalar bounds consume std.unicode.types unicode_scalar_max_code_point and surrogate range rows."
 
 type UriHexNibble
   = UriNibble0

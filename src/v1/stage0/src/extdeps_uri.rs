@@ -12,6 +12,10 @@ use self::UriScheme::*;
 use self::UriUnicodeScalarConstruction::*;
 use self::UriUtf8OctetConstruction::*;
 pub use crate::std_types::NonEmptyStr;
+pub use crate::std_unicode_types::{
+    unicode_scalar_max_code_point, unicode_surrogate_first_code_point,
+    unicode_surrogate_last_code_point,
+};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
@@ -165,7 +169,7 @@ pub fn parse_href_scheme(url: String) -> Rc<ParsedHrefScheme> {
 pub fn uri_component_encode_authority_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "RFC 3986 URI-component percent-encoding for extdeps.uri. Unreserved ALPHA / DIGIT / -._~ pass through; reserved and non-ASCII scalars encode as UTF-8 octets percent-encoded with UPPERCASE hex. UriUnicodeScalar and UriUtf8Octet are distinct domains — UTF-8 decomposition never re-enters the scalar encoder with octet values.".to_string()
+            "RFC 3986 section 2.1 percent-encoding for extdeps.uri (authority: extdeps.uri_component extdeps_external_authority_anchor). Unreserved ALPHA / DIGIT / -._~ pass through; reserved and non-ASCII scalars encode as UTF-8 octets percent-encoded with UPPERCASE hex. UriUnicodeScalar and UriUtf8Octet are distinct domains — UTF-8 decomposition never re-enters the scalar encoder with octet values. Scalar bounds consume std.unicode.types unicode_scalar_max_code_point and surrogate range rows.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -288,6 +292,7 @@ pub enum UriPercentEncodeRefusalCause {
     UriPercentEncodeSurrogateScalarRefused { cp: i64 },
     UriPercentEncodeUnicodeScalarOutOfRangeRefused { cp: i64 },
     UriPercentEncodeUtf8OctetOutOfRangeRefused { value: i64 },
+    UriPercentEncodeEmptyInputRefused,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -435,17 +440,27 @@ pub fn uri_hex_nibble_wire(nibble: UriHexNibble) -> String {
 }
 
 pub fn uri_unicode_scalar_construction(cp: i64) -> Rc<UriUnicodeScalarConstruction> {
-    if (cp.clone() > 1114111) {
+    if (cp.clone() < 0) {
         Rc::new(UriUnicodeScalarConstruction::UriUnicodeScalarOutOfRangeRefused { cp: cp.clone() })
     } else {
-        if ((cp.clone() >= 55296) && (cp.clone() <= 57343)) {
+        if (cp.clone() > unicode_scalar_max_code_point()) {
             Rc::new(
-                UriUnicodeScalarConstruction::UriUnicodeScalarSurrogateRefused { cp: cp.clone() },
+                UriUnicodeScalarConstruction::UriUnicodeScalarOutOfRangeRefused { cp: cp.clone() },
             )
         } else {
-            Rc::new(UriUnicodeScalarConstruction::UriUnicodeScalarConstructed(
-                UriUnicodeScalar { cp: cp.clone() },
-            ))
+            if ((cp.clone() >= unicode_surrogate_first_code_point())
+                && (cp.clone() <= unicode_surrogate_last_code_point()))
+            {
+                Rc::new(
+                    UriUnicodeScalarConstruction::UriUnicodeScalarSurrogateRefused {
+                        cp: cp.clone(),
+                    },
+                )
+            } else {
+                Rc::new(UriUnicodeScalarConstruction::UriUnicodeScalarConstructed(
+                    UriUnicodeScalar { cp: cp.clone() },
+                ))
+            }
         }
     }
 }
@@ -738,7 +753,12 @@ pub fn uri_percent_encode_component(value: String) -> Rc<UriPercentEncodeCompone
 }
 
 pub fn uri_percent_encode_code_points(code_points: Rc<Vec<i64>>) -> Rc<UriPercentEncodeComponent> {
-    match (*code_points.clone().iter().cloned().fold(Rc::new(UriPercentEncodeFoldState::UriPercentEncodeBuilding {
+    if ((code_points.clone().len() as i64) == 0) {
+        Rc::new(UriPercentEncodeComponent::UriPercentComponentRefused {
+            cause: Rc::new(UriPercentEncodeRefusalCause::UriPercentEncodeEmptyInputRefused),
+        })
+    } else {
+        match (*code_points.clone().iter().cloned().fold(Rc::new(UriPercentEncodeFoldState::UriPercentEncodeBuilding {
     wire: "".to_string(),
 }), |acc: Rc<UriPercentEncodeFoldState>, cp: i64| match (*acc.clone()).clone() {
     UriPercentEncodeFoldState::UriPercentEncodeRefused { cause: _, .. } => acc.clone(),
@@ -768,6 +788,7 @@ pub fn uri_percent_encode_code_points(code_points: Rc<Vec<i64>>) -> Rc<UriPercen
 }),
     UriPercentEncodeFoldState::UriPercentEncodeBuilding { wire: wire, .. } => Rc::new(UriPercentEncodeComponent::UriPercentComponentEncoded(wire.clone())),
 }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

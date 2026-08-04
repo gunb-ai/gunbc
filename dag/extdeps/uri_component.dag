@@ -1,0 +1,13 @@
+module extdeps.uri_component
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.rfc-editor.org/rfc/rfc3986#section-2.1"
+  }
+}
+
+data uri_component_percent_encode_citation_note: String = "Cited upstream: RFC 3986 section 2.1 percent-encoding (https://www.rfc-editor.org/rfc/rfc3986#section-2.1). extdeps.uri uri_percent_encode_* functions realize this section over UriUnicodeScalar / UriUtf8Octet; path grammar remains extdeps.uri_path extdeps_external_authority_anchor (section 3.3)."
