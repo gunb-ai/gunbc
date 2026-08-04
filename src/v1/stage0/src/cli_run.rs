@@ -37033,5 +37033,90 @@ mod selected_entry_closure_overlap_arithmetic {
     }
 }
 
+#[cfg(test)]
+mod clone_bound_emit_debug {
+    use super::compile_dag_rust_emit_check;
+    use crate::v1_compiler_artifact::RenderTarget;
+    use crate::v1_compiler_compile;
+    use std::rc::Rc;
+
+    fn dump(name: &str, source: &str, path: &str, incl: &[&str], excl: &[&str]) {
+        let ok = compile_dag_rust_emit_check(
+            source,
+            path,
+            &incl.iter().map(|s| s.to_string()).collect::<Vec<_>>(),
+            &excl.iter().map(|s| s.to_string()).collect::<Vec<_>>(),
+        );
+        let module_index = super::build_module_path_index_from_witness_roots();
+        let sources =
+            super::resolve_virtual_source_with_imports("test.dag", source, &module_index);
+        let result =
+            v1_compiler_compile::compile_sources(Rc::new(sources.into()), RenderTarget::Rust);
+        let hard: Vec<_> = result
+            .diagnostics
+            .iter()
+            .filter(|d| super::compile_clean_diagnostic_is_hard(d))
+            .collect();
+        eprintln!("=== {name} ok={ok} hard_diags={} ===", hard.len());
+        for d in &hard {
+            eprintln!("  HARD: {d:?}");
+        }
+        if let Some(f) = result.files.iter().find(|f| f.path == path) {
+            for line in f.content.lines() {
+                if line.contains("inspect") {
+                    eprintln!("  LINE: {line}");
+                }
+            }
+        } else {
+            eprintln!("  FILE NOT FOUND: {path}");
+            for f in result.files.iter() {
+                eprintln!("  have: {}", f.path);
+            }
+        }
+    }
+
+    #[test]
+    fn debug_claim_batch_hermetic_path() {
+        use crate::v1_interpreter::ExecutionMode;
+        let ws = super::workspace_root();
+        let roots: Vec<String> = super::witness_layer_roots()
+            .iter()
+            .map(|r| ws.join(r).to_string_lossy().into_owned())
+            .collect();
+        let claims = [
+            (
+                "dag/test/claim/generic_item_clone_bound_witness_test.dag".to_string(),
+                "fn_phantom_alpha_renamed_negative_control".to_string(),
+            ),
+            (
+                "dag/test/claim/generic_item_clone_bound_witness_test.dag".to_string(),
+                "fn_bounded_phantom_wf_bound_positive_control".to_string(),
+            ),
+        ];
+        let hermetic = super::run_claims_in_process(&roots, &claims, ExecutionMode::Hermetic);
+        let wet = super::run_claims_in_process(&roots, &claims, ExecutionMode::Wet);
+        eprintln!("hermetic={hermetic} wet={wet}");
+        assert!(wet, "wet path should pass");
+    }
+
+    #[test]
+    fn debug_clone_bound_witnesses() {
+        dump(
+            "alpha",
+            "module fn_clone_bound_witness.alpha_phantom\n\ntype Holder<T> {\n  tag: Int\n}\n\nfn inspect<N>(h: Holder<N>) -> String {\n  \"holder\"\n}\n",
+            "src/fn_clone_bound_witness_alpha_phantom.rs",
+            &["fn inspect<N>"],
+            &["fn inspect<N: Clone>"],
+        );
+        dump(
+            "bounded",
+            "module fn_clone_bound_witness.alpha_bounded_phantom\n\ntype BoundedPhantom<T: Clone> {\n  tag: Int\n}\n\nfn inspect<N>(h: BoundedPhantom<N>) -> String {\n  \"bounded\"\n}\n",
+            "src/fn_clone_bound_witness_alpha_bounded_phantom.rs",
+            &["fn inspect<N: Clone>"],
+            &["fn inspect<N>"],
+        );
+    }
+}
+
 #[path = "census_exclude_derive.rs"]
 pub mod census_exclude_derive;
