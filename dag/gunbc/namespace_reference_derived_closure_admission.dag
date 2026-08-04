@@ -145,7 +145,10 @@ fn assess_reference_derived_closure_observation(
         OccurrenceReferenceBindingDecided {
           result: OccurrenceAmbiguous { candidates },
         } =>
-          if candidates.rest.is_empty()
+          if match candidates.rest {
+            Empty => true
+            Cons { head: _, tail: _ } => false
+          }
             && first_declaration.value != second_declaration.value
             && candidates.first.containment.terminal.value == first_declaration.value
             && candidates.second.containment.terminal.value == second_declaration.value {

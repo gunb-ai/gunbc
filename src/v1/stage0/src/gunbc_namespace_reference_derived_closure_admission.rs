@@ -278,8 +278,15 @@ pub fn assess_reference_derived_closure_observation(
                     else {
                         unreachable!()
                     };
-                    if (((v1_rt::is_empty(candidates.rest.clone())
-                        && (first_declaration.value.clone() != second_declaration.value.clone()))
+                    if ((({
+                        let __fm = candidates.rest.clone();
+                        if __fm.is_empty() {
+                            true
+                        } else {
+                            false
+                        }
+                    } && (first_declaration.value.clone()
+                        != second_declaration.value.clone()))
                         && (candidates
                             .first
                             .clone()
