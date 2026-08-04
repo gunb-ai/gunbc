@@ -2,6 +2,8 @@ module extdeps.pdf_citation
 
 import std.types { NonEmptyStr, String, Int, List, Bool }
 import std.content_hash { Sha256Digest, Sha256DigestHex }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.disposition { Disposition, RealizationDispatch }
 import extdeps.uri { Uri }
 
 data pdf_citation_vocabulary_note: String = "Typed PDF citation anchors per RFC 8118 section 3 (authority: extdeps.standards.rfc_8118). Fragment parameters are a closed coproduct sequence — never a string in Uri.locator. Content pins record verification at citation time: Verified carries a Sha256Digest minted only through the content_hash wall; Unreachable carries an explicit cause rather than silent absence."
@@ -90,6 +92,24 @@ type PdfCitationDetail {
   open_parameters: PdfOpenParameterSequence
   content_pin: DocumentContentPin
 }
+
+type CitedPdfDocument {
+  uri: Uri
+  content_pin: DocumentContentPin
+}
+
+data cited_pdf_document_model_note: String = "One upstream PDF document, one authority row: uri and content_pin live on CitedPdfDocument so every citing module imports the row instead of re-authoring the digest (§3 single authority). Open-parameter fragments stay per-citation on PdfCitationDetail."
+
+data pdf_verified_content_pin_reverification_scaffold: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "test.claim.pdf_content_pin_reverification_witness",
+    decl_name: "pdf_verified_content_pin_reverification_witness_scaffold_note",
+    field: WholeDeclaration,
+  },
+}
+
+data pdf_verified_content_pin_reverification_dissolve_on: String = "dissolve-on: pdf_verified_content_pin_reverification — Verified DocumentContentPin rows are recorded at citation time only; no CI fetch re-hashes them today. DISSOLVES WHEN test.claim.pdf_content_pin_reverification_witness enrolls on the affected-set-falsifier cadence (gunbc.falsifier_workflow affected-set-falsifier), wet-fetches each Verified pin locator, and refuses on digest drift against the cited CitedPdfDocument row."
 
 fn pdf_open_page(page: Int) -> PdfOpenParameter {
   OpenPage(PdfOpenPage { page: page })

@@ -9,8 +9,8 @@ import extdeps.pdf_citation {
   pdf_open_parameters_include_page, document_content_pin_is_verified,
   document_content_pin_digest_eq, pdf_page_number_is_valid,
 }
-import extdeps.external_authority { ExternalAuthority, external_authority_with_pdf_citation }
-import extdeps.uri { Uri, Https }
+import extdeps.external_authority { ExternalAuthority, external_authority_for_cited_pdf }
+import extdeps.runtime.abi.sysv_amd64 { x86_64_abi_cited_pdf_document }
 import extdeps.standards.rfc_8118 {
   extdeps_external_authority_anchor,
   rfc_8118_supersedes_rfc_3778_note,
@@ -18,25 +18,18 @@ import extdeps.standards.rfc_8118 {
 import std.content_hash { Sha256DigestHex }
 import std.types { Bool, List }
 
-data x86_64_abi_pdf_sha256_hex: Sha256DigestHex = "69e117a13b560b1b957c15f05a61b130ca56828f05dca951e27cb8e2ada14283" as Sha256DigestHex
-
 data drifted_pdf_sha256_hex: Sha256DigestHex = "0000000000000000000000000000000000000000000000000000000000000000" as Sha256DigestHex
 
-data witness_pdf_uri: Uri = Uri {
-  scheme: Https,
-  locator: "refspecs.linuxfoundation.org/elf/x86_64-abi-0.99.pdf",
-}
-
-data witness_verified_pin: DocumentContentPin = document_content_pin_verified(hex: x86_64_abi_pdf_sha256_hex)
+data witness_verified_pin: DocumentContentPin = x86_64_abi_cited_pdf_document.content_pin
 
 data witness_pdf_citation: PdfCitationDetail = pdf_citation_detail(
   open_parameters: [pdf_open_page(page: 1)],
   content_pin: witness_verified_pin,
 )
 
-data witness_pdf_authority: ExternalAuthority = external_authority_with_pdf_citation(
-  uri: witness_pdf_uri,
-  detail: witness_pdf_citation,
+data witness_pdf_authority: ExternalAuthority = external_authority_for_cited_pdf(
+  document: x86_64_abi_cited_pdf_document,
+  open_parameters: [pdf_open_page(page: 1)],
 )
 
 test fn rfc_8118_anchor_cites_current_standard_not_3778() -> Bool {
@@ -70,7 +63,7 @@ test fn verified_content_pin_matches_cited_bytes() -> Bool {
   )
 }
 
-test fn verified_content_pin_red_on_drifted_digest() -> Bool {
+test fn document_content_pin_digest_eq_refuses_drifted_hex() -> Bool {
   !document_content_pin_digest_eq(
     left: witness_verified_pin,
     right: document_content_pin_verified(hex: drifted_pdf_sha256_hex),

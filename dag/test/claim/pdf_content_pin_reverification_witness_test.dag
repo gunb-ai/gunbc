@@ -1,0 +1,5 @@
+module test.claim.pdf_content_pin_reverification_witness
+
+import std.types { String }
+
+data pdf_verified_content_pin_reverification_witness_scaffold_note: String = "Scaffold bind target for extdeps.pdf_citation pdf_verified_content_pin_reverification_scaffold. Wet-only re-verification (no CI fetch on PRs): when landed, enroll on gunbc.falsifier_workflow affected-set-falsifier cadence, re-fetch each Verified DocumentContentPin locator, and refuse on digest drift against the authoritative CitedPdfDocument row."

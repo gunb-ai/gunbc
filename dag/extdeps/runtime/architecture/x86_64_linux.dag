@@ -10,6 +10,7 @@ import extdeps.runtime.abi.sysv_amd64 {
   amd64_inhabitant_rdx,
   amd64_inhabitant_rsi,
   sysv_amd64_linux_syscall_convention,
+  x86_64_abi_cited_pdf_document,
 }
 import extdeps.runtime.syscalls.linux { linux_x86_64_syscall_abi }
 import extdeps.toolchain.types { X86_64 }
@@ -19,22 +20,11 @@ import std.os.invocation { SyscallAbiSurface }
 import std.measure { bit_width, bit_width_count, byte_size, byte_size_count }
 import std.types { Bool }
 
-import extdeps.external_authority { ExternalAuthority, external_authority_with_pdf_citation }
-import extdeps.pdf_citation { pdf_citation_detail, document_content_pin_verified }
-import std.content_hash { Sha256DigestHex }
-import extdeps.uri { Uri, Https }
+import extdeps.external_authority { ExternalAuthority, external_authority_for_cited_pdf }
 
-data x86_64_abi_pdf_sha256_hex: Sha256DigestHex = "69e117a13b560b1b957c15f05a61b130ca56828f05dca951e27cb8e2ada14283" as Sha256DigestHex
-
-data extdeps_external_authority_anchor: ExternalAuthority = external_authority_with_pdf_citation(
-  uri: Uri {
-    scheme: Https
-    locator: "refspecs.linuxfoundation.org/elf/x86_64-abi-0.99.pdf"
-  },
-  detail: pdf_citation_detail(
-    open_parameters: [],
-    content_pin: document_content_pin_verified(hex: x86_64_abi_pdf_sha256_hex),
-  ),
+data extdeps_external_authority_anchor: ExternalAuthority = external_authority_for_cited_pdf(
+  document: x86_64_abi_cited_pdf_document,
+  open_parameters: [],
 )
 
 data x86_64_stack_grows_down: StackLayout = { grows_down: true }

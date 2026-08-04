@@ -1,16 +1,32 @@
 module extdeps.external_authority
 
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, List }
 import std.decl_ref { DeclarationRef }
 import std.roster_frontier { declaration_ref_eq }
 import extdeps.uri { Uri, File }
-import extdeps.pdf_citation { PdfCitationDetail }
+import extdeps.pdf_citation {
+  PdfCitationDetail, CitedPdfDocument, PdfOpenParameter,
+  pdf_citation_detail,
+}
 
 fn external_authority_with_pdf_citation(uri: Uri, detail: PdfCitationDetail) -> ExternalAuthority {
   ExternalAuthority {
     uri: uri,
     pdf: detail,
   }
+}
+
+fn external_authority_for_cited_pdf(
+  document: CitedPdfDocument,
+  open_parameters: List<PdfOpenParameter>,
+) -> ExternalAuthority {
+  external_authority_with_pdf_citation(
+    uri: document.uri,
+    detail: pdf_citation_detail(
+      open_parameters: open_parameters,
+      content_pin: document.content_pin,
+    ),
+  )
 }
 
 data external_authority_pdf_citation_carrier_note: String = "Optional pdf: PdfCitationDetail? beside uri (operator mandate 2026-08-04, rich PDF citation anchors). Uri stays the document locator; RFC 8118 open parameters and the optional content pin live in the typed sidecar rather than smuggled into locator. Absent pdf means uri-only citation — the prior shape. Present pdf carries a closed coproduct fragment sequence plus an explicit DocumentContentPin (Unpinned | Verified | Unreachable) so absent never reads as verified and paywalled sources refuse honestly."
