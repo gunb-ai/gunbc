@@ -1,6 +1,6 @@
 module gunbc.roadmap_model
 
-import std.types { NonEmptyStr, Present, Absent }
+import std.types { NonEmptyStr }
 import std.content_hash { Fnv1a64Structural }
 import std.content_hash { content_hash_atom, content_hash_combine_structural, content_hash_tagged_structural, content_hash_eq_structural }
 import gunbc.roadmap_status {
@@ -170,8 +170,7 @@ fn node_accepted(receipts: List<RoadmapAcceptanceReceipt>, rn: RoadmapNode) -> B
 
 data acceptance_receipt_continuity_wall_note: String = "THE FAIL-OPEN roadmap_acceptance_receipt_note DECLARES BUT DID NOT CLOSE. Acceptance is a durable typed fact, never row deletion — yet removing a RoadmapAcceptanceReceipt row from the authority silently returned the node to the active set with no refusal. A prior validation slice kept a second hand-maintained baseline_nodes ledger beside roadmap_acceptance_receipts, so deleting both rows stayed green — the dual representation this repository keeps paying for. THIS SLICE LANDS THE CONSTRUCTION ANSWER: roadmap_acceptance_event_history is the single authority; roadmap_acceptance_receipts is a projection only. AcceptanceRecorded appends a receipt; AcceptanceRevoked names the exact prior receipt, a disposition, and audit fields. Replay refuses a vanished recorded receipt without an exact matching revocation, a wrong prior digest, a revocation while the exact receipt is still live, a revocation with nothing live to remove, and duplicate revocations for one removal. A sealed prefix chain digest refuses edits to prior events without updating the pin; witness tests compare prior history to mutated history for the deletion arms."
 
-type AcceptanceRevocationDisposition
-  = AcceptanceNodeReopensActiveFrontier
+type AcceptanceRevocationDisposition = AcceptanceNodeReopensActiveFrontier
 
 type RoadmapAcceptanceEvent
   = AcceptanceRecorded { receipt: RoadmapAcceptanceReceipt }
@@ -244,20 +243,25 @@ fn non_empty_str_list_eq_ordered(a: List<NonEmptyStr>, b: List<NonEmptyStr>) -> 
   }
 }
 
-type DropFirstState<T> {
+type DropFirstStrState {
   skipped: Bool
-  rest: List<T>
+  rest: List<NonEmptyStr>
+}
+
+type DropFirstEventState {
+  skipped: Bool
+  rest: List<RoadmapAcceptanceEvent>
 }
 
 fn drop_first_non_empty_str(items: List<NonEmptyStr>) -> List<NonEmptyStr> {
   fold(
     items,
-    init: DropFirstState<NonEmptyStr> { skipped: false, rest: [] },
+    init: DropFirstStrState { skipped: false, rest: [] },
     f: fn(state, item) {
       if state.skipped {
-        DropFirstState<NonEmptyStr> { skipped: true, rest: concat(state.rest, [item]) }
+        DropFirstStrState { skipped: true, rest: concat(state.rest, [item]) }
       } else {
-        DropFirstState<NonEmptyStr> { skipped: true, rest: state.rest }
+        DropFirstStrState { skipped: true, rest: state.rest }
       }
     },
   ).rest
@@ -361,14 +365,16 @@ fn acceptance_history_chain_digest(events: List<RoadmapAcceptanceEvent>) -> Fnv1
   )
 }
 
+fn empty_acceptance_events() -> List<RoadmapAcceptanceEvent> {
+  []
+}
+
 fn take_acceptance_events(
   events: List<RoadmapAcceptanceEvent>,
   n: Int,
 ) -> List<RoadmapAcceptanceEvent> {
-  if n <= 0 {
-    []
-  } else if count(events) == 0 {
-    []
+  if n <= 0 || count(events) == 0 {
+    empty_acceptance_events()
   } else {
     concat(
       [first(events)],
@@ -378,14 +384,34 @@ fn take_acceptance_events(
 }
 
 fn drop_first_acceptance_event(events: List<RoadmapAcceptanceEvent>) -> List<RoadmapAcceptanceEvent> {
-  skip(xs: events, n: 1)
+  fold(
+    events,
+    init: DropFirstEventState { skipped: false, rest: [] },
+    f: fn(state, event) {
+      if state.skipped {
+        DropFirstEventState { skipped: true, rest: concat(state.rest, [event]) }
+      } else {
+        DropFirstEventState { skipped: true, rest: state.rest }
+      }
+    },
+  ).rest
 }
 
 fn acceptance_history_extends_prior(
   prior: List<RoadmapAcceptanceEvent>,
   current: List<RoadmapAcceptanceEvent>,
 ) -> Bool {
-  is_prefix_of(prefix: prior, xs: current, eq: acceptance_event_eq)
+  if count(prior) == 0 {
+    true
+  } else if count(current) < count(prior) {
+    false
+  } else {
+    acceptance_event_eq(a: first(prior), b: first(current))
+      && acceptance_history_extends_prior(
+        prior: drop_first_acceptance_event(events: prior),
+        current: drop_first_acceptance_event(events: current),
+      )
+  }
 }
 
 fn replay_acceptance_event(
@@ -396,7 +422,7 @@ fn replay_acceptance_event(
     AcceptanceRecorded { receipt } =>
       if receipt_live_for_node(live: state.live, id: receipt.node)
         || receipt_present_exact(receipts: state.live, receipt: receipt) {
-        Absent
+        none
       } else {
         Present { value: AcceptanceHistoryReplayState {
           live: concat(state.live, [receipt]),
@@ -407,7 +433,7 @@ fn replay_acceptance_event(
     AcceptanceRevoked { exact_prior_receipt, disposition: _, reason: _, revoked_by: _, revoked_on: _ } =>
       if !receipt_present_exact(receipts: state.live, receipt: exact_prior_receipt)
         || receipt_present_exact(receipts: state.revoked, receipt: exact_prior_receipt) {
-        Absent
+        none
       } else {
         Present { value: AcceptanceHistoryReplayState {
           live: remove_exact_receipt(receipts: state.live, receipt: exact_prior_receipt),
@@ -429,7 +455,11 @@ fn replay_acceptance_history(events: List<RoadmapAcceptanceEvent>) -> Acceptance
     f: fn(acc, event) {
       match acc {
         Absent => Absent
-        Present { value: state } => replay_acceptance_event(state: state, event: event)
+        Present { value: state } =>
+          match replay_acceptance_event(state: state, event: event) {
+            Absent => Absent
+            Present { value: next } => Present { value: next }
+          }
       }
     },
   )
