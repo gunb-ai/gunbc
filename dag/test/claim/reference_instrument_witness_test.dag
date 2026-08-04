@@ -15,11 +15,13 @@ import gunbc.design.reference_instrument {
 import extdeps.external_authority { external_subject_ref_eq }
 import std.decl_ref { DeclarationRef, decl_ref }
 import extdeps.instrument.pip_boy_3000 {
+  pip_boy_3000_manufacturer,
   pip_boy_3000_settings, pip_boy_3000_setting_label,
   pip_boy_3000_glitch_modes, pip_boy_3000_glitch_mode_label,
   pip_boy_3000_licensing_statement,
 }
 import extdeps.instrument.pip_boy_3000_mk_v {
+  pip_boy_mk_v_manufacturer,
   pip_boy_mk_v_capabilities, pip_boy_mk_v_capability_label,
   pip_boy_mk_v_licensing_statement,
 }
@@ -45,6 +47,12 @@ fn glitch_mode_present(wanted: String) -> Bool {
 
 test fn witness_two_products_are_distinct_subjects() -> Bool {
   return pip_boy_3000_licensing_statement != pip_boy_mk_v_licensing_statement
+    && !external_subject_ref_eq(a: pip_boy_3000_subject, b: pip_boy_mk_v_subject)
+}
+
+test fn witness_both_products_share_one_manufacturer_and_stay_distinct_subjects() -> Bool {
+  return pip_boy_3000_manufacturer.legal_name == pip_boy_mk_v_manufacturer.legal_name
+    && pip_boy_3000_manufacturer.legal_name == "The Wand Company Limited"
     && !external_subject_ref_eq(a: pip_boy_3000_subject, b: pip_boy_mk_v_subject)
 }
 
