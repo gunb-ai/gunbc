@@ -352,9 +352,7 @@ fn path_additivity_witness_observed_vs_prediction(
 fn path_additivity_witness_is_counterexample(
   witness: PathAdditivityCounterexampleWitness,
 ) -> Bool {
-  let prediction = path_additivity_witness_classical_additive_prediction(witness: witness)
-  witness.both_open_observed_count != prediction
-    && path_additivity_witness_observed_vs_prediction(witness: witness) != Equal
+  path_additivity_witness_observed_vs_prediction(witness: witness) != Equal
 }
 
 fn path_additivity_refutation_holds_for_synthetic_fixture(
@@ -389,22 +387,7 @@ fn path_additivity_refutation_receipt_resolution_from_resolved_counts(
           exposure: exposure,
         },
       }
-    Less =>
-      RefutationReceiptResolved {
-        receipt: PathAdditivityRefutationReceipt {
-          subject: PathAdditivitySyntheticFixture {},
-          witness: PathAdditivityCounterexampleWitness {
-            left_alternative_count: left,
-            right_alternative_count: right,
-            both_open_observed_count: both,
-          },
-          location: PathAdditivityLocationKey {
-            exposure: exposure,
-            band: band,
-          },
-        },
-      }
-    Greater =>
+    _ =>
       RefutationReceiptResolved {
         receipt: PathAdditivityRefutationReceipt {
           subject: PathAdditivitySyntheticFixture {},
