@@ -23360,7 +23360,10 @@ mod node_frontier_plumbing_controls {
             ),
             1,
         );
-        assert_ne!(planted, content, "the plant must actually change the source");
+        assert_ne!(
+            planted, content,
+            "the plant must actually change the source"
+        );
         let current = super::frozen_path_deferral_keys_from_source(&planted);
         let added = super::frozen_path_deferral_additions_in(&current, &base);
         assert_eq!(
