@@ -40,7 +40,8 @@ fn fixture_bundle_from_digest(digest: Sha512Digest) -> CodexRuntimeBundle {
   CodexRuntimeBundle {
     root: "/tmp/codex-runtime-fixture" as FilePath,
     executable_rel: "node_modules/@openai/codex/bin/codex.js" as NonEmptyStr,
-    required_digest: digest,
+    platform_package_rel: "node_modules/@openai/codex-linux-arm64" as NonEmptyStr,
+    admitted_digests: [digest],
     identity: content_hash_of_value(value: digest.hex),
   }
 }

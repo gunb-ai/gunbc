@@ -34,6 +34,26 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 
 data npm_ci_ignore_scripts_note: String = "npm ci --ignore-scripts is the FIRST Codex materialization realization: exact lock install with lifecycle scripts forbidden. workdir via env -C (cargo.BuildInheritEnv precedent). gunbc.package_delivery owns product policy (when to call); this module owns the npm CLI shape."
 
+data npm_offline_cache_note: String = "Controlled cache realization: npm.Cache.Add seeds an isolated --cache from gunbc-admitted local tarball bytes; npm.Ci.IgnoreScriptsOffline then runs with --offline so no network package acquisition remains after admission. gunbc.package_delivery owns which archives populate the cache."
+
+service npm.Cache {
+  operation Add {
+    input { cache: FilePath, tarball: FilePath }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell {
+      argv: ["npm", "cache", "add", "{tarball}", "--cache", "{cache}"]
+    }
+    exit {
+      0 => Unit "local tarball added to isolated npm cache"
+      nonzero => String "npm cache add failed"
+    }
+  }
+}
+
 service npm.Ci {
   operation IgnoreScripts {
     input { workdir: FilePath }
@@ -48,6 +68,32 @@ service npm.Ci {
     exit {
       0 => Unit "lock install completed with scripts ignored"
       nonzero => String "npm ci --ignore-scripts failed"
+    }
+  }
+
+  operation IgnoreScriptsOffline {
+    input { workdir: FilePath, cache: FilePath }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell {
+      argv: [
+        "env",
+        "-C",
+        "{workdir}",
+        "npm",
+        "ci",
+        "--offline",
+        "--ignore-scripts",
+        "--cache",
+        "{cache}",
+      ]
+    }
+    exit {
+      0 => Unit "offline lock install completed from isolated cache with scripts ignored"
+      nonzero => String "npm ci --offline --ignore-scripts failed"
     }
   }
 }

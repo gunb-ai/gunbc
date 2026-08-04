@@ -15,6 +15,16 @@ import std.content_hash {
 import extdeps.npm {
   npm_decode_integrity,
   npm_decode_package_lock_format,
+  npm_decode_package_lock_text,
+  npm_json_boolean_member,
+  npm_json_string_list_member_observation,
+  NpmBooleanMemberAbsent,
+  NpmBooleanMemberObserved,
+  NpmBooleanMemberWrongType,
+  NpmBooleanMemberDuplicate,
+  NpmStringListMemberAbsent,
+  NpmStringListMemberObserved,
+  NpmStringListMemberWrongType,
   NpmSingleSha512Integrity,
   NpmSingleSha1Integrity,
   NpmIntegrityUnsupportedAlgorithm,
@@ -24,6 +34,15 @@ import extdeps.npm {
   NpmPackageLockFormatDecoded,
   NpmPackageLockFormatUnsupported,
   NpmPackageLockV3,
+  NpmPackageLockParsed,
+  NpmPackageLockParseRefused,
+}
+import extdeps.languages.json.emit {
+  JsonObject,
+  JsonKeyValue,
+  JsonBool,
+  JsonString,
+  JsonArray,
 }
 
 data witness_note: String = "Measured npm SRI from docs/probes/provider_interface_acquisition_2026-08-03.json @anthropic-ai/claude-agent-sdk — not a tree-copied oracle. Exact hex is the discriminating oracle for the decoder; same-input roundtrip alone is not. Overpadding RED proves noncanonical base64 refuses even when shared base64_decode would accept trailing '='."
@@ -120,5 +139,64 @@ test fn npm_sri_preserves_sha1_as_native_arm() -> Bool {
   match npm_decode_integrity(wire: "sha1-AAECAwQFBgcICQoLDA0ODxAREhM=") {
     NpmSingleSha1Integrity { digest: _ } => true
     _ => false
+  }
+}
+
+test fn npm_boolean_member_distinguishes_absent_observed_wrong_type() -> Bool {
+  let absent_obj = JsonObject { members: [] }
+  let observed_obj = JsonObject {
+    members: [JsonKeyValue { key: "optional", value: JsonBool { value: true } }],
+  }
+  let wrong_obj = JsonObject {
+    members: [JsonKeyValue { key: "optional", value: JsonString { value: "false" } }],
+  }
+  match npm_json_boolean_member(v: absent_obj, key: "optional") {
+    NpmBooleanMemberAbsent =>
+      match npm_json_boolean_member(v: observed_obj, key: "optional") {
+        NpmBooleanMemberObserved { value } =>
+          value
+            && match npm_json_boolean_member(v: wrong_obj, key: "optional") {
+              NpmBooleanMemberWrongType { observed: _ } => true
+              _ => false
+            }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn npm_string_list_member_refuses_wrong_type() -> Bool {
+  let wrong = JsonObject {
+    members: [JsonKeyValue { key: "os", value: JsonString { value: "linux" } }],
+  }
+  let absent = JsonObject { members: [] }
+  let ok = JsonObject {
+    members: [
+      JsonKeyValue {
+        key: "os",
+        value: JsonArray { elements: [JsonString { value: "linux" }] },
+      },
+    ],
+  }
+  match npm_json_string_list_member_observation(v: wrong, key: "os") {
+    NpmStringListMemberWrongType { observed: _ } =>
+      match npm_json_string_list_member_observation(v: absent, key: "os") {
+        NpmStringListMemberAbsent =>
+          match npm_json_string_list_member_observation(v: ok, key: "os") {
+            NpmStringListMemberObserved { values } => count(values) == 1
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn lock_node_with_stringly_has_install_script_is_unsupported() -> Bool {
+  let text = "{\"name\":\"x\",\"lockfileVersion\":3,\"packages\":{\"\":{\"name\":\"x\"},\"node_modules/a\":{\"version\":\"1.0.0\",\"resolved\":\"https://registry.npmjs.org/a/-/a-1.0.0.tgz\",\"integrity\":\"sha512-yG3sPWNda/2YAIQIDq9MrrjoCTIQ7rxYM5IasrG3VBcuhCLTkgeg/JzqmJq1V98RE4MJ5jCxDXXQlOjrditFRw==\",\"hasInstallScript\":\"false\"}}}"
+  match npm_decode_package_lock_text(text: text) {
+    NpmPackageLockParsed { manager: _, nodes, unsupported, graph: _ } =>
+      count(nodes) == 1 && count(unsupported) == 1
+    NpmPackageLockParseRefused { cause: _ } => false
   }
 }

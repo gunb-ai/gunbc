@@ -22,13 +22,17 @@ import gunbc.package_delivery {
   CodexPackageLockParseFailed,
   CodexPackageLockUnsupportedNodes,
   CodexPackageLockGraphRefused,
-  codex_artifact_named,
+  codex_wrapper_lookup,
+  CodexWrapperUnique,
   codex_admit_npm_integrity,
   CodexNpmIntegrityAdmitted,
   admit_observed_archive_digest,
   PackageArchiveDigestObserved,
   PackageArchiveDigestMatched,
   PackageArchiveDigestMismatch,
+  codex_map_uname_to_npm_target,
+  CodexNpmRuntimeTargetObserved,
+  codex_target_required_registry_nodes,
 }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
@@ -55,22 +59,19 @@ test fn committed_codex_lock_parses_v3_roster() -> Bool {
 
 test fn committed_codex_lock_admits_under_codex_profile() -> Bool {
   match admit_codex_package_lock_text(text: committed_codex_lock_text()) {
-    CodexPackageLockAdmitted { graph: _, registry_artifacts } =>
-      count(registry_artifacts) == 7
+    CodexPackageLockAdmitted { graph: _, nodes, registry_artifacts } =>
+      count(registry_artifacts) == 7 && count(nodes) == 8
     CodexPackageLockParseFailed { cause: _ } => false
     CodexPackageLockUnsupportedNodes { unsupported: _ } => false
     CodexPackageLockGraphRefused { admission: _ } => false
   }
 }
 
-test fn openai_codex_selection_pin_and_codex_integrity_hold() -> Bool {
+test fn openai_codex_wrapper_selected_by_exact_lock_node_key() -> Bool {
   match admit_codex_package_lock_text(text: committed_codex_lock_text()) {
-    CodexPackageLockAdmitted { graph: _, registry_artifacts } =>
-      match codex_artifact_named(
-        artifacts: registry_artifacts,
-        name: "@openai/codex" as NonEmptyStr,
-      ) {
-        Present { value: artifact } =>
+    CodexPackageLockAdmitted { graph, nodes: _, registry_artifacts: _ } =>
+      match codex_wrapper_lookup(graph: graph) {
+        CodexWrapperUnique { node: _, artifact } =>
           (artifact.version as String) == "0.146.0"
             && match codex_admit_npm_integrity(integrity: artifact.expected_integrity) {
               CodexNpmIntegrityAdmitted { digest } =>
@@ -86,7 +87,21 @@ test fn openai_codex_selection_pin_and_codex_integrity_hold() -> Bool {
                   }
               _ => false
             }
-        Absent => false
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn linux_arm64_target_closure_includes_wrapper_and_platform() -> Bool {
+  match admit_codex_package_lock_text(text: committed_codex_lock_text()) {
+    CodexPackageLockAdmitted { graph: _, nodes, registry_artifacts: _ } =>
+      match codex_map_uname_to_npm_target(kernel: "Linux", machine: "aarch64") {
+        CodexNpmRuntimeTargetObserved { target } => {
+          let required = codex_target_required_registry_nodes(nodes: nodes, target: target)
+          count(required) == 2
+        }
+        _ => false
       }
     _ => false
   }
@@ -94,12 +109,9 @@ test fn openai_codex_selection_pin_and_codex_integrity_hold() -> Bool {
 
 test fn archive_digest_admission_matches_and_mismatches() -> Bool {
   match admit_codex_package_lock_text(text: committed_codex_lock_text()) {
-    CodexPackageLockAdmitted { graph: _, registry_artifacts } =>
-      match codex_artifact_named(
-        artifacts: registry_artifacts,
-        name: "@openai/codex" as NonEmptyStr,
-      ) {
-        Present { value: artifact } =>
+    CodexPackageLockAdmitted { graph, nodes: _, registry_artifacts: _ } =>
+      match codex_wrapper_lookup(graph: graph) {
+        CodexWrapperUnique { node: _, artifact } =>
           match codex_admit_npm_integrity(integrity: artifact.expected_integrity) {
             CodexNpmIntegrityAdmitted { digest: expected } => {
               let matched = admit_observed_archive_digest(
@@ -135,7 +147,7 @@ test fn archive_digest_admission_matches_and_mismatches() -> Bool {
             }
             _ => false
           }
-        Absent => false
+        _ => false
       }
     _ => false
   }
