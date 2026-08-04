@@ -49,12 +49,21 @@ import v2.std.optional {
   optional_absent,
   optional_present
 }
+import v2.std.collection { List }
 import v2.std.cross_tree.import_model { SourceRootRef, SourceRootSet }
 import v2.std.cross_tree.resolution { source_root_set_insert }
 import v2.std.provenance { SpanIndex }
-import v2.std.compilers.target_model { TargetModel }
+import v2.std.compilers.lexing { symbol_intern_lexeme }
 import extdeps.communication.fidelity_carriers { medium_section_equal }
-import extdeps.communication.medium { DecodeFidelity, Medium }
+import extdeps.communication.medium { Lossless, Medium }
+import extdeps.filesystem.filesystem_io
+import std.content_hash {
+  ContentHash,
+  ContentHashComparison,
+  ContentHashEqual,
+  compare_content_hash,
+  content_hash_of_value
+}
 import v2.compiler.translate { target_serialize_source_from_model }
 import std.content_hash { ContentHash, content_hash_of_value }
 import v2.std.text { String }
@@ -171,6 +180,64 @@ fn source_ref_for_storage_path(path: String) -> SourceRef {
     path: path,
     source_root: source_root_for_storage_path(path: path),
     content_hash: content_hash_of_value(value: "selection-unpinned" as NonEmptyStr)
+  }
+}
+
+data source_ref_read_through_note: String = "Read-through for ingest-manifest SourceRef rows (ingest-manifest-source-ref-carrier-design.md stage 3): filesystem_read at consumption, content identity verified against the ref's ContentHash before parse. Hash mismatch refuses with both digests; missing/unreadable paths refuse as read failures rather than misclassified parse errors."
+
+fn dag_source_content_hash_for_text(text: String) -> ContentHash {
+  content_hash_of_value(value: text)
+}
+
+fn dag_source_read_witness_from_source_ref(ref: SourceRef) -> Outcome<DagSourceReadWitness> {
+  let read = filesystem_read(path: ref.path)
+  let actual = dag_source_content_hash_for_text(text: read.content)
+  match compare_content_hash(left: ref.content_hash, right: actual) {
+    ContentHashEqual =>
+      outcome_accepted(
+        value: DagSourceReadWitness {
+          source: Medium { carried: read.content, fidelity: Lossless },
+          artifact: Artifact {
+            kind: SourceFile,
+            id: symbol_intern_lexeme(lexeme: ref.path),
+            file_path: ref.path
+          },
+          compilation_unit: symbol_intern_lexeme(lexeme: ref.path),
+          source_root: ref.source_root
+        }
+      )
+    _ =>
+      outcome_rejected(
+        d: diagnostics_singleton(
+          d: port_locus(
+            port: ^source_ref_content_hash_mismatch,
+            reason: ^source_ref_content_hash_mismatch
+          )
+        )
+      )
+  }
+}
+
+fn source_root_ingest_from_source_refs(refs: List<SourceRef>) -> Outcome<SourceRootIngest> {
+  match fold_list(
+    xs: refs,
+    empty: outcome_accepted(value: Empty),
+    cons: fn(acc, ref) {
+      match acc {
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+        Accepted { value: prior, diagnostics: _ } =>
+          match dag_source_read_witness_from_source_ref(ref: ref) {
+            Rejected { diagnostics: d } => Rejected { diagnostics: d }
+            Accepted { value: witness, diagnostics: _ } =>
+              outcome_accepted(
+                value: list_snoc_item(xs: prior, item: witness)
+              )
+          }
+      }
+    }
+  ) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: ingest, diagnostics: _ } => outcome_accepted(value: ingest)
   }
 }
 

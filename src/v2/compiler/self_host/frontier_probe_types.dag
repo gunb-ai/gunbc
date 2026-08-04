@@ -1,7 +1,10 @@
 module v2.compiler.self_host.frontier_probe_types
 
+import v2.compiler.source_authority { SourceRef }
+import v2.std.integer { Int }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol }
+import v2.std.qualified_name { QualifiedName }
 import v2.std.text { String }
 
 data frontier_fixture_cemented_producer_note: String = "FixtureCemented is forward-declared for the fixture-free self-host bar; inhabited by the behavioral-equivalence probe when it detects injected fixtures cementing greens (e.g. add_arrow_eval_allocate_literal, pick-lit hardcoding) — not by frontier_classify_rejection_reason (assemble/emit stage only)."
@@ -29,11 +32,20 @@ data frontier_probe_pre_emit_upstream_semantic_scan_dissolve_trigger: String = "
 
 data upstream_semantic_compiler_error_class: Symbol = ^CompilerError
 
+type FrontierProbeDetail
+  = FrontierProbeDetailAbsent
+  | MissingModule { requested: QualifiedName }
+  | SourceRootManifestElidedProbe { read_count: Int, cap: Int }
+  | FrontierProbeSourceReadRefused { source_ref: SourceRef, cause: Symbol }
+
+data frontier_probe_detail_note: String = "Survey receipts carry structural probe detail beside the reason symbol. MissingModule holds the QualifiedName sought (not only its dotted projection). SourceRootManifestElidedProbe records inline-manifest elision when the live closure cannot be consumed through SourceRef rows. FrontierProbeSourceReadRefused preserves read-through failures separately from parse or module-not-found misclassification."
+
 type FrontierProbeReceipt {
   module_path: String
   blocker_class: FrontierBlockerClass
   located_stage: FrontierProbeStage
   located_reason: Symbol
+  detail: FrontierProbeDetail
 }
 
 fn frontier_blocker_is_name_resolution_reason(reason: Symbol) -> Bool {
