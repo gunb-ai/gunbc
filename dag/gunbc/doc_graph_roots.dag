@@ -542,6 +542,16 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     dissolution: HasTrigger { text: "v2.lens.cost carries grounded SizeExpr/CostExpr with normalize_cost_expr_to_symbolic live, the C1 blocking-wall baseline roster is green post-carrier, bounded-summation and CostRefused witnesses execute green, and parity note C1 acceptance is met — then the carriers state the capability and this bind deletes with the doc." },
   },
   HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "constructor-reference-admission-design",
+    primary_work: DeclarationRef { module_path: "v2.compiler.self_host.behavioral_comparison_receipt", decl_name: "behavioral_admission_seal_ceiling_note", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "v2.compiler.self_host.behavioral_comparison_receipt", decl_name: "mint_behavioral_comparison_observation", field: WholeDeclaration },
+      DeclarationRef { module_path: "v2.test.claim.self_host.direct_rust_door_qualification_witness_test", decl_name: "fully_matching_derived_seal_forgery_advance_succeeds_red", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "ConstructorReferenceAdmission lands on BehavioralComparisonObservation (call-edge admission in the operator-chosen infer authority — record-literal and call-edge in one construction-admission authority, no separate pass), fully_matching_derived_seal_forgery_advance_succeeds_red flips from green to refuse on the forge path, and the doc migrates into a registered gunbc.plan.Plan row or deletes with the std carrier — then this bind deletes with the md." },
+  },
+  HandAuthoredDocBind {
     home: ProbeDoc,
     slug: "g1-cited-symbol-control-declaration-absent",
     primary_work: DeclarationRef { module_path: "v2.std.node", decl_name: "G1_planted_declaration_absent_control_RED", field: WholeDeclaration },
