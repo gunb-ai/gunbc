@@ -498,20 +498,7 @@ pub fn v1_declared_type_app_mentions_param_non_phantom_loop(
                         slot_name.clone(),
                     );
                     let here = if slot_is_phantom.clone() {
-                        if v1_type_expr_is_bare_param(
-                            slot_name.clone(),
-                            arg_expr.clone(),
-                            source_indices.clone(),
-                        ) {
-                            false
-                        } else {
-                            v1_type_expr_mentions_param_non_phantom(
-                                param_name.clone(),
-                                arg_expr.clone(),
-                                type_decl_items.clone(),
-                                source_indices.clone(),
-                            )
-                        }
+                        false
                     } else {
                         v1_type_expr_mentions_param_non_phantom(
                             param_name.clone(),
@@ -895,28 +882,28 @@ pub fn v1_generic_params_needing_clone_bound(
         Rc::new({
             let mut __result = Vec::new();
             for g in generic_param_names.clone().iter().cloned() {
-                if (!v1_phantom_only_param_names_contains(phantom_only.clone(), g.clone())
-                    && ((v1_type_param_needs_clone_bound(
+                if (v1_fn_param_wf_needs_clone(
+                    g.clone(),
+                    value_params.clone(),
+                    ret.clone(),
+                    bounds.clone(),
+                    type_decl_items.clone(),
+                    source_indices.clone(),
+                ) || (!v1_phantom_only_param_names_contains(phantom_only.clone(), g.clone())
+                    && (v1_type_param_needs_clone_bound(
                         g.clone(),
                         return_is_bare_generic.clone(),
                         ret_name.clone(),
                         body_is_param_ref.clone(),
                         value_params.clone(),
                         source_indices.clone(),
-                    ) || v1_fn_param_wf_needs_clone(
-                        g.clone(),
-                        value_params.clone(),
-                        ret.clone(),
-                        bounds.clone(),
-                        type_decl_items.clone(),
-                        source_indices.clone(),
-                    )) || v1_fn_param_type_needs_clone_bound(
+                    ) || v1_fn_param_type_needs_clone_bound(
                         g.clone(),
                         value_params.clone(),
                         bounds.clone(),
                         type_decl_items.clone(),
                         source_indices.clone(),
-                    )))
+                    ))))
                 {
                     __result.push(g);
                 }
@@ -1170,17 +1157,16 @@ pub fn v1_type_expr_wf_needs_clone_param(
                             Some(s) => s.clone(),
                             None => v1_rt::rc_empty_set::<String>(),
                         };
-                        (nested.clone()
-                            || v1_declared_arg_positions_need_clone_param(
-                                param_name.clone(),
-                                decl.params.clone(),
-                                type_expr.children.clone(),
-                                bound_params.clone(),
-                                type_decl_items.clone(),
-                                source_indices.clone(),
-                            ))
+                        v1_declared_arg_positions_need_clone_param(
+                            param_name.clone(),
+                            decl.params.clone(),
+                            type_expr.children.clone(),
+                            bound_params.clone(),
+                            type_decl_items.clone(),
+                            source_indices.clone(),
+                        )
                     }
-                    None => nested.clone(),
+                    None => nested,
                 }
             }
         }
@@ -1301,6 +1287,14 @@ pub struct CloneBoundRound {
     pub added: i64,
 }
 
+pub fn v1_generic_param_declares_clone_bound(
+    param: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    (authored_name_at(source_indices.clone(), param_node_type_expr(param.clone()))
+        == "Clone".to_string())
+}
+
 pub fn v1_clone_bound_round_add(
     round: Rc<CloneBoundRound>,
     type_name: String,
@@ -1367,11 +1361,14 @@ pub fn v1_clone_bound_seed_for_item(
                 round,
                 |acc: Rc<CloneBoundRound>, p: Rc<Node>| {
                     let param_name = generic_param_name_at(p.clone(), source_indices.clone());
-                    if v1_item_type_param_needs_clone_bound_struct(
+                    if (v1_item_type_param_needs_clone_bound_struct(
                         param_name.clone(),
                         field_type_exprs.clone(),
                         source_indices.clone(),
-                    ) {
+                    ) || v1_generic_param_declares_clone_bound(
+                        p.clone(),
+                        source_indices.clone(),
+                    )) {
                         v1_clone_bound_round_add(acc.clone(), type_name.clone(), param_name.clone())
                     } else {
                         acc.clone()
