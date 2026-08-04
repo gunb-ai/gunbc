@@ -409,7 +409,7 @@ data production_qualification_planted_fixture_origin_oracle_note: String = "Clos
 
 data production_qualification_planted_fixture_origin_oracle_count: Int = 1
 
-data production_qualification_live_scope_fixture_origin_oracle_note: String = "Honest live-scope policy oracle (wise-ram-22): G2 fn-arrow marshal does not yet surface mint callees on live fixture fns in the witness entry closure, so the live FixtureDerived population is zero until call-occurrence derivation lands — not a repository-wide frequency of three."
+data production_qualification_live_scope_fixture_origin_oracle_note: String = "Honest live-scope policy oracle (wise-ram-22, DESIGN §5 policy budget): G2 fn-arrow marshal does not yet surface mint callees on live fixture fns in the witness entry closure, so the live FixtureDerived population is zero today — not a repository-wide frequency of three. Dissolve-on: when marshal partially lifts, update production_qualification_live_scope_fixture_origin_oracle_count to the closed-subject expected population or retire this witness — never leave a stale zero literal as a change-detector."
 
 data production_qualification_live_scope_fixture_origin_oracle_count: Int = 0
 
