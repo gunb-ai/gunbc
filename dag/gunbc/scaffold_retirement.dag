@@ -39,11 +39,20 @@ import v2.lens.disposition_redundancy {
   decl_ref_eq,
   disposition_redundancy_violation_count,
 }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.disposition {
+  Disposition,
+  Scaffold,
+  ConstructionMechanism,
+  SingleAuthority,
+  RealizationDispatch,
+  SubstrateMandatoryTag,
+}
 
 data scaffold_retirement_pilot_derivation_note: String = "POPULATION IS DERIVED, NEVER AUTHORED. derived_scaffold_disposition_sites() folds decl_facts(pool_roots) body nodes over witness_layer_roots (dag + src/v2): every DataItem whose initializer variant is Scaffold (Disposition-typed by construction — Scaffold is only a Disposition constructor). Structural Node-tree selection only — not regex, not a hand roster. The pilot takes the first fifteen rows, lexicographically stable in the decl_facts corpus walk (rel_path, name), whose rel_path is under dag/gunbc/ — a reproducible convenience sample, not a representative census of the full derived population; exclusion rates measured on the pilot must not be read as corpus-wide rates. Obligation bindings use the interim carrier-path substring heuristic documented in scaffold_retirement_obligation_join_scaffold_note until roadmap rows carry an explicit DeclarationRef obligation anchor; zero or plural matches become typed exclusions, never fabricated owners."
 
 data scaffold_retirement_obligation_join_scaffold_note: String = "INTERIM HEURISTIC — NOT an identity join on site.bind. obligation_candidates_for_site selects declared_roadmap_nodes() rows whose carrier paths string_contains site.rel_path, site.bind.module_path, site.bind.decl_name, or site.carrier_module. Unique hit → binding; zero or plural → typed exclusion. Dissolve-on: roadmap obligation rows carry an explicit DeclarationRef anchor and derived_binding_for_site joins site.bind against that anchor via decl_ref_eq, retiring substring carrier-path matching."
+
+data scaffold_retirement_declaration_ref_reader_scaffold_note: String = "INTERIM NODE-TREE READER — positional-child decode of DeclarationRef conjuncts in decl_facts body skeletons, not the substrate DeclarationRef authority. Dissolve-on: substrate refuses unwritable DeclarationRef at construction and enrollment widens to every structural DeclarationRef carrier when the Node-tree reader lands (v2.lens.cited_symbol_resolution cited_symbol_resolution_law)."
 
 type ScaffoldDispositionSite {
   qualified_name: String
@@ -51,7 +60,7 @@ type ScaffoldDispositionSite {
   carrier_decl: String
   rel_path: String
   bind: DeclarationRef
-  dissolves_to: String
+  dissolves_to: ConstructionMechanism
 }
 
 type ScaffoldRetirementBinding {
@@ -112,48 +121,38 @@ fn atom_lexeme_list_contains(atoms: List<Symbol>, lexeme: String) -> Bool {
 }
 
 fn node_is_scaffold_initializer(body: Node) -> Bool {
-  match list_at_optional(xs: node_positional_child_targets(node: body), index: 0) {
-    Present { value: head } =>
-      match node_atom_lexeme_optional(node: head) {
-        Present { value: lex } => lex == "Scaffold"
-        Absent => false
-      }
-    Absent =>
-      match node_atom_lexeme_optional(node: body) {
-        Present { value: lex } => lex == "Scaffold"
-        Absent => false
-      }
+  atom_lexeme_list_contains(
+    atoms: scaffold_subtree_atoms(n: body),
+    lexeme: "Scaffold"
+  )
+}
+
+fn construction_mechanism_from_lexeme(lex: String) -> ConstructionMechanism? {
+  match lex {
+    "SingleAuthority" => Present { value: SingleAuthority }
+    "RealizationDispatch" => Present { value: RealizationDispatch }
+    "SubstrateMandatoryTag" => Present { value: SubstrateMandatoryTag }
+    _ => Absent
   }
 }
 
-fn construction_mechanism_lexeme(sym: Symbol) -> Bool {
-  let lex = symbol_lexeme(sym: sym)
-  lex == "SingleAuthority"
-    || lex == "RealizationDispatch"
-    || lex == "SubstrateMandatoryTag"
-}
-
-fn first_construction_mechanism_lexeme(node: Node) -> String? {
+fn first_construction_mechanism(node: Node) -> ConstructionMechanism? {
   fold(
     scaffold_subtree_atoms(n: node),
     init: Absent,
     f: fn(acc, sym) {
       match acc {
         Present { value: _ } => acc
-        Absent =>
-          match construction_mechanism_lexeme(sym: sym) {
-            true => Present { value: symbol_lexeme(sym: sym) }
-            false => Absent
-          }
+        Absent => construction_mechanism_from_lexeme(lex: symbol_lexeme(sym: sym))
       }
     }
   )
 }
 
-fn dissolves_to_from_scaffold_body(body: Node) -> String? {
+fn dissolves_to_from_scaffold_body(body: Node) -> ConstructionMechanism? {
   match list_at_optional(xs: node_positional_child_targets(node: body), index: 1) {
-    Present { value: dissolves_to_init } => first_construction_mechanism_lexeme(node: dissolves_to_init)
-    Absent => first_construction_mechanism_lexeme(node: body)
+    Present { value: dissolves_to_init } => first_construction_mechanism(node: dissolves_to_init)
+    Absent => first_construction_mechanism(node: body)
   }
 }
 
@@ -256,11 +255,25 @@ fn declaration_ref_from_bind_init(bind_init: Node) -> DeclarationRef? {
   }
 }
 
-fn bind_from_scaffold_body(body: Node) -> DeclarationRef? {
-  match list_at_optional(xs: node_positional_child_targets(node: body), index: 2) {
-    Present { value: bind_init } => declaration_ref_from_bind_init(bind_init: bind_init)
-    Absent => Absent
+fn declaration_ref_from_node_tree(node: Node) -> DeclarationRef? {
+  match declaration_ref_from_declaration_ref_conj(node: node) {
+    Present { value: bind } => Present { value: bind }
+    Absent =>
+      fold(
+        node_positional_child_targets(node: node),
+        init: Absent,
+        f: fn(acc, child) {
+          match acc {
+            Present { value: _ } => acc
+            Absent => declaration_ref_from_node_tree(node: child)
+          }
+        }
+      )
   }
+}
+
+fn bind_from_scaffold_body(body: Node) -> DeclarationRef? {
+  declaration_ref_from_node_tree(node: body)
 }
 
 fn scaffold_site_when_disposition_scaffold(
@@ -531,7 +544,7 @@ fn corpus_present_declaration_refs() -> List<DeclarationRef> {
 
 fn site_disposition_for_redundancy(site: ScaffoldDispositionSite) -> Disposition {
   Scaffold {
-    dissolves_to: SingleAuthority,
+    dissolves_to: site.dissolves_to,
     bind: site.bind,
   }
 }

@@ -62,7 +62,7 @@ test fn derived_population_includes_known_specimen_by_identity() -> Bool {
     Present { value: site } =>
       site.bind.module_path == population_positive_specimen_bind_module
         && site.bind.decl_name == population_positive_specimen_bind_decl
-        && site.dissolves_to == "SingleAuthority"
+        && site.dissolves_to == SingleAuthority
     Absent => false
   }
 }
