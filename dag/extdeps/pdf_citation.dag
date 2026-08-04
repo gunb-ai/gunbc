@@ -2,6 +2,7 @@ module extdeps.pdf_citation
 
 import std.types { NonEmptyStr, String, Int, List, Bool }
 import std.content_hash { Sha256Digest, Sha256DigestHex }
+import extdeps.uri { Uri }
 
 data pdf_citation_vocabulary_note: String = "Typed PDF citation anchors per RFC 8118 section 3 (authority: extdeps.standards.rfc_8118). Fragment parameters are a closed coproduct sequence — never a string in Uri.locator. Content pins record verification at citation time: Verified carries a Sha256Digest minted only through the content_hash wall; Unreachable carries an explicit cause rather than silent absence."
 
@@ -55,7 +56,7 @@ type PdfOpenSearch {
 }
 
 type PdfOpenFdf {
-  uri: NonEmptyStr
+  uri: Uri
 }
 
 type PdfOpenParameter
