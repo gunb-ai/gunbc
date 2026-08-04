@@ -10,21 +10,17 @@ import v2.compiler.self_host.frontier_probe {
 import v2.compiler.self_host.frontier_probe_types {
   FrontierProbeClosurePopulationRefused,
   FrontierProbeCoverageRefused,
-  FrontierProbeDetail,
-  SourceRefContentHashMismatch,
-  SourceRefReadRefused
+  FrontierProbeDetail
 }
 import v2.compiler.source_authority {
   SourceRef,
   SourceRootCoverage,
   SourceRootCoverageComplete,
   SourceRootManifestElided,
-  content_hash_of_value,
   frontier_probe_discovered_closure_seal,
   source_ref_for_observed_storage_path
 }
 import v2.std.algebra { length }
-import v2.std.cross_tree.import_model { DagTree }
 import std.algebra { Cons, Empty }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
@@ -36,7 +32,7 @@ import v2.test.workflow.host_source_root_ingest_manifest {
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-data frontier_probe_closure_matrix_integration_cadence_note: String = "PR #7762 boundary/integration matrix (operator ruling msg_fca587a5, 2026-08-04): scheduled wet witnesses enrolled on FalsifierCadenceJob (4h cadence, max staleness one cadence window). Per-PR fast mechanism controls live in src/v2/test/claim/workflow/frontier_probe_closure_matrix_test.dag (SubstrateInputsOnly synthetic fixtures). frontier_probe_below_cap_complete_population_gates_pass_holds and frontier_probe_second_source_root_population_gates_pass_holds are population-totality / full-pipeline integration legs re-homed to falsifier_rehomed_bin_wet_rows (measured claim_batch --wet 2026-08-04: below_cap 784772ms). frontier_probe_ninety_one_read_compiler_closure_elision_integrates_holds is boundary-class population-totality: requires ingest overlay with ingest_read_count>64 and SourceRootManifestElided — generate overlay via discover_source_root_ingest --entry src/v2/compiler/00_compile.dag then claim_batch with --source-root target/frontier-probe-survey/overlay (measured 165 reads at cap 64 on HEAD). frontier_probe_read_failure_detail_refused_holds and frontier_probe_hash_mismatch_detail_carries_observed_holds are external-effect read-through controls (measured ~3ms and ~2ms). CADENCE RECEIPT: target/frontier-probe-survey/matrix_integration_claim_batch_receipt.log"
+data frontier_probe_closure_matrix_integration_cadence_note: String = "PR #7762 scheduled integration witnesses (operator msg_fca587a5/b79b6254): three legs on FalsifierCadenceJob with declared SpanSeams (4h cadence, max staleness one window). Per-PR mechanism controls: src/v2/test/claim/workflow/frontier_probe_closure_matrix_test.dag (9 synthetic). Per-PR read-through controls: src/v2/test/claim/workflow/frontier_probe_closure_readthrough_test.dag (read_failure + hash_mismatch, wet, under fast-lane budget). below_cap and second_root re-homed to falsifier_rehomed_bin_wet_rows with measured exact-head eval. Elision leg requires overlay: discover_source_root_ingest --entry src/v2/compiler/00_compile.dag then claim_batch with overlay after src/v2."
 
 fn fp_matrix_ref_a() -> SourceRef {
   source_ref_for_observed_storage_path(path: "dag/std/algebra.dag")
@@ -80,46 +76,6 @@ fn fp_matrix_second_root_subject() -> FrontierProbeIngestSubject {
     coverage: SourceRootCoverageComplete,
     ingest_read_count: 2,
     entry: fp_matrix_ref_v2()
-  )
-}
-
-fn fp_matrix_missing_path_ref() -> SourceRef {
-  SourceRef {
-    path: "dag/nonexistent_fp_matrix_probe_path.dag",
-    source_root: DagTree,
-    content_hash: content_hash_of_value(value: "missing-path" as NonEmptyStr)
-  }
-}
-
-fn fp_matrix_read_failure_subject() -> FrontierProbeIngestSubject {
-  fp_matrix_closure_subject_matching_digest(
-    refs: Cons {
-      head: fp_matrix_missing_path_ref(),
-      tail: Empty
-    },
-    coverage: SourceRootCoverageComplete,
-    ingest_read_count: 1,
-    entry: fp_matrix_missing_path_ref()
-  )
-}
-
-fn fp_matrix_wrong_hash_ref() -> SourceRef {
-  SourceRef {
-    path: "dag/std/algebra.dag",
-    source_root: DagTree,
-    content_hash: content_hash_of_value(value: "wrong-hash-bytes" as NonEmptyStr)
-  }
-}
-
-fn fp_matrix_hash_mismatch_subject() -> FrontierProbeIngestSubject {
-  fp_matrix_closure_subject_matching_digest(
-    refs: Cons {
-      head: fp_matrix_wrong_hash_ref(),
-      tail: Empty
-    },
-    coverage: SourceRootCoverageComplete,
-    ingest_read_count: 1,
-    entry: fp_matrix_wrong_hash_ref()
   )
 }
 
@@ -171,25 +127,5 @@ test fn frontier_probe_ninety_one_read_compiler_closure_elision_integrates_holds
         }
       _ => false
     }
-  }
-}
-
-test fn frontier_probe_read_failure_detail_refused_holds() -> Bool {
-  match frontier_probe_receipt_for_subject(
-    subject: fp_matrix_read_failure_subject(),
-    fixture_module_path: ""
-  ).detail {
-    SourceRefReadRefused { source_ref: _, error: _ } => true
-    _ => false
-  }
-}
-
-test fn frontier_probe_hash_mismatch_detail_carries_observed_holds() -> Bool {
-  match frontier_probe_receipt_for_subject(
-    subject: fp_matrix_hash_mismatch_subject(),
-    fixture_module_path: ""
-  ).detail {
-    SourceRefContentHashMismatch { source_ref: _, expected: _, observed: _ } => true
-    _ => false
   }
 }

@@ -1431,16 +1431,72 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
-      entry: "src/v2/test/claim/long/frontier_probe_closure_matrix_integration_test.dag",
+      entry: "src/v2/test/claim/workflow/frontier_probe_closure_readthrough_test.dag",
       check_fns: [
-        "frontier_probe_below_cap_complete_population_gates_pass_holds",
-        "frontier_probe_second_source_root_population_gates_pass_holds",
-        "frontier_probe_ninety_one_read_compiler_closure_elision_integrates_holds",
         "frontier_probe_read_failure_detail_refused_holds",
         "frontier_probe_hash_mismatch_detail_carries_observed_holds"
       ],
       kind: ExecutionWitnessKind,
-      span: SpanUndeclared
+      span: SpanSeams {
+        seams: [
+          WitnessSeam {
+            producer: "GithubActionsCiJob_fast_lane_budget_5s",
+            consumer: "frontier_probe_read_failure_detail_refused_holds"
+          },
+          WitnessSeam {
+            producer: "GithubActionsCiJob_fast_lane_budget_5s",
+            consumer: "frontier_probe_hash_mismatch_detail_carries_observed_holds"
+          }
+        ]
+      }
+    },
+    surfaces: [GithubActionsCiJob]
+  },
+  CommitCheckEnrollment {
+    check: CommitWitnessClaim {
+      entry: "src/v2/test/claim/long/frontier_probe_closure_matrix_integration_test.dag",
+      check_fns: ["frontier_probe_ninety_one_read_compiler_closure_elision_integrates_holds"],
+      kind: ExecutionWitnessKind,
+      span: SpanSeams {
+        seams: [
+          WitnessSeam {
+            producer: "FalsifierCadenceJob_max_staleness_4h_lane_budget_overlay_3ms",
+            consumer: "frontier_probe_ninety_one_read_compiler_closure_elision_integrates_holds"
+          }
+        ]
+      }
+    },
+    surfaces: [FalsifierCadenceJob]
+  },
+  CommitCheckEnrollment {
+    check: CommitWitnessClaim {
+      entry: "src/v2/test/claim/long/frontier_probe_closure_matrix_integration_test.dag",
+      check_fns: ["frontier_probe_below_cap_complete_population_gates_pass_holds"],
+      kind: ExecutionWitnessKind,
+      span: SpanSeams {
+        seams: [
+          WitnessSeam {
+            producer: "FalsifierCadenceJob_max_staleness_4h_lane_budget_784772ms",
+            consumer: "frontier_probe_below_cap_complete_population_gates_pass_holds"
+          }
+        ]
+      }
+    },
+    surfaces: [FalsifierCadenceJob]
+  },
+  CommitCheckEnrollment {
+    check: CommitWitnessClaim {
+      entry: "src/v2/test/claim/long/frontier_probe_closure_matrix_integration_test.dag",
+      check_fns: ["frontier_probe_second_source_root_population_gates_pass_holds"],
+      kind: ExecutionWitnessKind,
+      span: SpanSeams {
+        seams: [
+          WitnessSeam {
+            producer: "FalsifierCadenceJob_max_staleness_4h_lane_budget_pending_measurement",
+            consumer: "frontier_probe_second_source_root_population_gates_pass_holds"
+          }
+        ]
+      }
     },
     surfaces: [FalsifierCadenceJob]
   },

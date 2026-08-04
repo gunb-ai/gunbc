@@ -503,7 +503,7 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
   WitnessExclusionRow {
     pattern: "frontier_probe_closure_matrix_integration_test.dag",
     classification: FalsifierRehomedBinWet,
-    reason: "PR #7762 frontier probe closure integration matrix (operator msg_fca587a5, 2026-08-04): frontier_probe_below_cap_complete_population_gates_pass_holds and frontier_probe_second_source_root_population_gates_pass_holds execute full receipt_for_subject with observed SourceRef rows through assemble — measured claim_batch --wet 2026-08-04: below_cap 784772ms (130x bin_witness_wet_per_row_wall_budget_seconds). Scheduled consumer: FalsifierCadenceJob enrollment plus falsifier_rehomed_bin_wet_rows for the two full-pipeline legs; sibling read_failure (~523ms) and hash_mismatch (~181ms) legs ride the same cadence entry without re-home.",
+    reason: "PR #7762 frontier probe closure integration matrix (operator msg_fca587a5/b79b6254): frontier_probe_below_cap_complete_population_gates_pass_holds and frontier_probe_second_source_root_population_gates_pass_holds execute full receipt_for_subject with observed SourceRef rows through assemble — measured claim_batch --wet: below_cap 784772ms (130x bin_witness_wet_per_row_wall_budget_seconds). Scheduled consumer: FalsifierCadenceJob enrollment plus falsifier_rehomed_bin_wet_rows for the two full-pipeline legs. Read-through controls moved per-PR to src/v2/test/claim/workflow/frontier_probe_closure_readthrough_test.dag.",
     dissolve_on: "measured eval for below_cap and second_root lands under bin_witness_wet_per_row_wall_budget_seconds on a measured run — then re-enroll per-PR discovery consciously, or delete when emit-stage positives are no longer full-pipeline priced"
   },
   WitnessExclusionRow {
