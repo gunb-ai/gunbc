@@ -1,5 +1,8 @@
 #![allow(clippy::disallowed_macros)]
 
+#[path = "claim_executor_floor_evidence.rs"]
+mod floor_evidence;
+
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, ExitStatus};
@@ -271,6 +274,12 @@ fn enforce_floor_compile_clean_clamp(
         );
         return true;
     }
+    let _ = publish_settlement_floor_receipt(
+        "CompileCleanWall",
+        "receipts/compile-clean-wall.txt",
+        body.as_bytes(),
+        "DuringFloor",
+    );
     eprintln!(
         "[receipt] floor compile-clean wall: wall_ms={wall_ms} units={units} scope={subject} (receipt: {})",
         path.display()
@@ -2231,7 +2240,16 @@ fn write_native_transition_receipt(body: &str) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| format!("native transition receipt mkdir: {e}"))?;
     }
-    fs::write(path, body).map_err(|e| format!("native transition receipt write: {e}"))
+    fs::write(path, body).map_err(|e| format!("native transition receipt write: {e}"))?;
+    if !publish_settlement_floor_receipt(
+        "NativeTransition",
+        "receipts/native-transition.tsv",
+        body.as_bytes(),
+        "DuringFloor",
+    ) {
+        return Err("native transition floor-evidence write refused".to_string());
+    }
+    Ok(())
 }
 
 /// Acceptance and fallback are gated on DIFFERENT planted-red evidence, and the
@@ -4962,8 +4980,16 @@ fn write_floor_component_receipt_at(
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
-    match std::fs::write(&path, doc) {
+    match std::fs::write(&path, &doc) {
         Ok(()) => {
+            if !publish_settlement_floor_receipt(
+                "Component",
+                "receipts/component.json",
+                doc.as_bytes(),
+                "DuringFloor",
+            ) {
+                return false;
+            }
             eprintln!(
                 "[receipt] floor component receipt: {} component(s) ({})",
                 total_batches,
@@ -5092,6 +5118,33 @@ fn write_resolve_receipt(
 /// archaeology exercise. `OverBudget` rows correspond one-to-one with the FLOOR-BATCH-OVER-BUDGET
 /// refusals the walk printed; a clamp-less run (falsifier/regen plans) records walls with
 /// `verdict=Unbudgeted`. Returns false on a write error — the walk fails closed here.
+fn publish_settlement_floor_receipt(
+    kind: &str,
+    relative_path: &str,
+    body: &[u8],
+    producer_phase: &str,
+) -> bool {
+    let attempt = match observe_walk_attempt_id() {
+        Ok(id) => id,
+        Err(_) => return true, // evidence root not installed; legacy path still written by caller
+    };
+    match floor_evidence::write_floor_receipt(&attempt, kind, relative_path, body, producer_phase) {
+        Ok(path) => {
+            eprintln!(
+                "[floor-evidence] wrote {kind} → {} (attempt={attempt})",
+                path.display()
+            );
+            true
+        }
+        Err(e) => {
+            eprintln!(
+                "claim_executor: floor evidence write refused for {kind}/{relative_path}: {e}"
+            );
+            false
+        }
+    }
+}
+
 fn write_batch_wall_receipt(batch_records: &[BatchRecord]) -> bool {
     write_batch_wall_receipt_at(std::path::Path::new("target"), batch_records)
 }
@@ -5127,6 +5180,14 @@ fn write_batch_wall_receipt_at(base: &std::path::Path, batch_records: &[BatchRec
             "claim_executor: failed to write batch-wall receipt {}: {e} — walk fails closed here",
             path.display()
         );
+        return false;
+    }
+    if !publish_settlement_floor_receipt(
+        "BatchWall",
+        "receipts/batch-wall.txt",
+        body.as_bytes(),
+        "DuringFloor",
+    ) {
         return false;
     }
     eprintln!(
@@ -5915,6 +5976,22 @@ fn write_on_success_stage_receipt(
         );
         return false;
     }
+    let rel = format!("stages/{}/receipt.tsv", stage_index + 1);
+    let kind = match stage_index + 1 {
+        1 => "OnSuccessStage1",
+        2 => "OnSuccessStage2",
+        _ => "OnSuccessStage1", // additional stages still observed under stage-1 kind until registry grows
+    };
+    if stage_index < 2
+        && !publish_settlement_floor_receipt(kind, &rel, body.as_bytes(), "OnSuccessStage")
+    {
+        return false;
+    }
+    trace_floor_phase(
+        &format!("on-success-stage-{}", stage_index + 1),
+        if passed { "completed" } else { "failed" },
+        plan_site,
+    );
     eprintln!(
         "[receipt] on-success stage {}: {} claim(s), {} resolve(s), {}ms (receipt: {})",
         stage_index + 1,
@@ -6366,6 +6443,19 @@ fn write_materialization_receipt_at(
             path.display()
         );
         return false;
+    }
+    if population == "on-success floor"
+        && !publish_settlement_floor_receipt(
+            "OnSuccessMaterialization",
+            "receipts/on-success-materialization.txt",
+            body.as_bytes(),
+            "OnSuccessStage",
+        )
+    {
+        return false;
+    }
+    if population == "on-success floor" {
+        trace_floor_phase("on-success-materialization", "completed", "");
     }
     eprintln!(
         "[receipt] {population} materialization: keyed_calls={} unkeyed_calls={} duplicated_keys={} (single_site={} multi_site={}) wasted_ms={} memo_hits={} memo_misses={} (receipt: {})",
@@ -7530,6 +7620,7 @@ fn run_walk(
     let batch_wall_receipt_ok =
         !emit_ordinary_floor_receipts || write_batch_wall_receipt(&batch_records);
     trace_floor_phase("batch-wall-receipt", "completed", "");
+    trace_floor_phase("DuringFloor", "completed", "ordinary-floor-receipts");
     trace_floor_phase("gate-warm-cost-receipt", "started", "");
     let gate_warm_cost_receipt_ok = !emit_ordinary_floor_receipts
         || write_gate_warm_cost_receipt(&batch_records, falsifier_cadence);
@@ -9053,20 +9144,29 @@ fn run() -> Result<ExitCode, ExitCode> {
             return Err(ExitCode::from(1));
         }
     }
-    // Walk-attempt identity, observed at the SAME altitude and for the same reason as the
-    // shape refusal above: a walk that cannot identify itself cannot write a receipt anyone
-    // can attribute, and that is knowable now rather than after a 20-30 minute floor. Only
-    // demanded when stages exist — a plan with no on-success stages writes no attempt-scoped
-    // receipt, so requiring identity of it would be a refusal with no subject.
-    let walk_attempt_id: Option<String> = if on_success_stages.is_empty() {
-        None
-    } else {
-        match observe_walk_attempt_id() {
-            Ok(id) => Some(id),
-            Err(msg) => {
+    // Walk-attempt identity: always install FloorEvidenceRoot when identity is observable
+    // (CI GITHUB_* or GUNBC_WALK_ATTEMPT_ID). On-success stages still hard-refuse when
+    // identity is missing; ordinary-floor settlement receipts dual-write into the root
+    // when identity is present (operator ruling on #7785).
+    let walk_attempt_id: Option<String> = match observe_walk_attempt_id() {
+        Ok(id) => {
+            if let Err(e) = floor_evidence::install_floor_evidence_root(&id) {
+                eprintln!("claim_executor: floor evidence root install refused: {e}");
+                return Err(ExitCode::from(1));
+            }
+            // Ensure child workers inherit the same attempt id.
+            std::env::set_var("GUNBC_WALK_ATTEMPT_ID", &id);
+            Some(id)
+        }
+        Err(msg) => {
+            if !on_success_stages.is_empty() {
                 eprintln!("claim_executor: ON-SUCCESS-STAGE-REFUSED: {msg}");
                 return Err(ExitCode::from(1));
             }
+            eprintln!(
+                "claim_executor: floor evidence root not installed ({msg}) — settlement receipt observations will be absent for this walk"
+            );
+            None
         }
     };
     // Floor finalization is carried BY the plan value (walk_finalization_note) — the
