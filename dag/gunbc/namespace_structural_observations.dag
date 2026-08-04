@@ -11,7 +11,7 @@ import std.reference_binding_observation {
 }
 import std.types { Bool, List, NonEmptyStr }
 
-data namespace_structural_observations_closing_contract_note: String = "N3-A ordinary-compile closing predicate. The witness is the same function before and after the transition: Unavailable and Refused red today; Produced greens only when all four structural ReferenceBindingObservation clause shapes are present. Hand-built fixture observations exercised in dag/test/claim/namespace_reference_derived_closure_production_admissions_witness_test.dag do not feed this seam — they are discriminating evidence only."
+data namespace_structural_observations_closing_contract_note: String = "N3-A ordinary-compile closing predicate. The witness is the same function before and after the transition: Unavailable and Refused red today; Produced greens only when all four structural ReferenceBindingObservation clause shapes are present. Hand-built fixture observations exercised in src/v1/tests/claim/namespace_reference_derived_closure_production_admissions_witness_test.dag do not feed this seam — they are discriminating evidence only."
 
 type OrdinaryCompileStructuralObservations
   = OrdinaryCompileStructuralObservationsUnavailable {

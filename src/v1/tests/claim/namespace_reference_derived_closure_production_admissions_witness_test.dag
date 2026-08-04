@@ -1,5 +1,22 @@
 module v1.tests.claim.namespace_reference_derived_closure_production_admissions_witness_test
 
+import gunbc.namespace_reference_derived_closure_admission {
+  assess_reference_binding_observation,
+  ReferenceDerivedClosureAdmission,
+  ReferenceDerivedClosureEstablished,
+  ReferenceDerivedClosureUnavailable,
+  SameFileEarlierNeighbourVisible,
+  SiblingDecisionBranchExcluded,
+  LaterDeclarationExcluded,
+  DistinctSameSpelledDeclarationsPreserved,
+  RepeatedMentionsCollapseDependency,
+  UnrelatedLoadedFileExcluded,
+  P2aReferenceDependencyProjection7515,
+  P2aPoolIndependentDependencyProjection7515,
+}
+import gunbc.namespace_reference_derived_closure_contract {
+  reference_derived_closure_closing_frontier_count,
+}
 import std.reference_binding_observation {
   DistinctHomonymObservation,
   LaterDeclarationObservation,
@@ -11,7 +28,7 @@ import v1.gunbc.namespace_reference_derived_closure_production_observations {
 }
 import std.types { Bool, Int, List }
 
-data namespace_reference_derived_closure_production_admissions_witness_note: String = "N3-A v1 executing witnesses: production returns neutral ReferenceBindingObservation carriers only — no roadmap capability imports in src/v1 production modules. Capability projection and closing-contract composition live at witness seams (dag/test/claim for assessment rows; dag/test/claim for the closing acceptance witness)."
+data namespace_reference_derived_closure_production_admissions_witness_note: String = "N3-A production and assessment witnesses under src/v1/tests/claim — outside witness_layer_roots compile-clean entries, scheduled via v1_claim_scoped_witness_batch (dag plus src/v1 envelope). v1 production returns neutral ReferenceBindingObservation carriers; assess_reference_binding_observation projects capability admissions here. The namespace-structural-observations closing witness (dag/test/claim/namespace_structural_observations_acceptance_test.dag) stays QuarantineProbeExpectRed until an ordinary compiled file feeds it. Discriminating RED: witness_closing_contract_still_reds_until_dependency_clauses_land exercises the parent frontier count."
 
 test fn witness_structural_production_returns_four_observations() -> Bool {
   count(namespace_structural_binding_observations_a_through_d()) == 4
@@ -43,4 +60,41 @@ test fn witness_structural_production_variants_match_clauses_a_through_d() -> Bo
       } => true
       _ => false
     })
+}
+
+test fn witness_structural_production_observations_establish_clauses_a_through_d() -> Bool {
+  let admissions =
+    namespace_structural_binding_observations_a_through_d()
+      |> map(observation => assess_reference_binding_observation(observation: observation))
+  count(admissions) == 4
+    && [
+      SameFileEarlierNeighbourVisible,
+      SiblingDecisionBranchExcluded,
+      LaterDeclarationExcluded,
+      DistinctSameSpelledDeclarationsPreserved,
+    ] |> all(capability => admissions |> any(status => match status {
+      ReferenceDerivedClosureEstablished { receipt } => receipt.capability == capability
+      _ => false
+    }))
+}
+
+test fn witness_closing_contract_still_reds_until_dependency_clauses_land() -> Bool {
+  let structural_admissions =
+    namespace_structural_binding_observations_a_through_d()
+      |> map(observation => assess_reference_binding_observation(observation: observation))
+  reference_derived_closure_closing_frontier_count(
+    admissions: concat(
+      structural_admissions,
+      [
+        ReferenceDerivedClosureUnavailable {
+          capability: RepeatedMentionsCollapseDependency,
+          trigger: P2aReferenceDependencyProjection7515,
+        },
+        ReferenceDerivedClosureUnavailable {
+          capability: UnrelatedLoadedFileExcluded,
+          trigger: P2aPoolIndependentDependencyProjection7515,
+        },
+      ],
+    ),
+  ) == 2
 }

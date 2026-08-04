@@ -124,7 +124,7 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
     entry: "dag/test/claim/namespace_structural_observations_acceptance_test.dag",
     f: "witness_namespace_structural_observations_closing_contract_holds",
     kind: CorpusWitnessKind,
-    reason: "the discriminating closing validation for roadmap node namespace-structural-observations, RED BY DESIGN until ONE ORDINARY COMPILED FILE produces all four structural ReferenceBindingObservation carriers through the compile path. Hand-built inline fixtures in v1.gunbc.namespace_reference_derived_closure_production_observations are discriminating evidence exercised by dag/test/claim/namespace_reference_derived_closure_production_admissions_witness_test.dag but do not displace the row's stated ordinary-compile handback. Bound by namespace_structural_observations_execution_contract.",
+    reason: "the discriminating closing validation for roadmap node namespace-structural-observations, RED BY DESIGN until ONE ORDINARY COMPILED FILE produces all four structural ReferenceBindingObservation carriers through the compile path. Hand-built inline fixtures in v1.gunbc.namespace_reference_derived_closure_production_observations are discriminating evidence exercised by src/v1/tests/claim/namespace_reference_derived_closure_production_admissions_witness_test.dag but do not displace the row's stated ordinary-compile handback. Bound by namespace_structural_observations_execution_contract.",
     dissolve_on: "one ordinary compiled file produces all four observations and this witness greens by execution — this row deletes in the completing change, promoting the witness to ordinary scoped discovery as the permanent structural-observations regression wall"
   ),
   known_red_probe(
