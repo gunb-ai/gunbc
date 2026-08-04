@@ -1,7 +1,7 @@
 module std.language_target_identity
 
 import std.decl_ref { DeclarationRef }
-import std.roster_frontier { declaration_ref_eq }
+import std.roster_frontier { declaration_ref_eq, declaration_ref_in_list }
 import std.types { Bool, Int, List, String }
 import extdeps.external_authority { ExternalModelScope }
 
@@ -145,10 +145,6 @@ type ProjectionLookup
   | ProjectionAbsent { subject: DeclarationRef }
   | ProjectionAmbiguous { subject: DeclarationRef }
 
-fn subject_in_list(target: DeclarationRef, subjects: List<DeclarationRef>) -> Bool {
-  fold(subjects, init: false, f: fn(acc, s) { acc || declaration_ref_eq(a: s, b: target) })
-}
-
 fn subject_occurrence_count(
   target: DeclarationRef,
   subjects: List<DeclarationRef>
@@ -240,9 +236,9 @@ fn projection_subject_is_registered(
   projection: LanguageTargetProjection,
   registry: List<LanguageTargetRegistration>
 ) -> Bool {
-  subject_in_list(
+  declaration_ref_in_list(
     target: projection.subject,
-    subjects: registration_subjects(registry: registry)
+    refs: registration_subjects(registry: registry)
   )
 }
 
@@ -260,7 +256,7 @@ fn tally_contains(tally: NamedTargetTally, candidate: DeclarationRef) -> Bool {
     TallyMany { first: f, second: sec, rest: r } =>
       declaration_ref_eq(a: f, b: candidate)
         || declaration_ref_eq(a: sec, b: candidate)
-        || subject_in_list(target: candidate, subjects: r)
+        || declaration_ref_in_list(target: candidate, refs: r)
   }
 }
 
@@ -306,7 +302,7 @@ fn resolve_target_for_surface(
         candidates: tally_many_candidates(first: f, second: sec, rest: r)
       }
     TallyOne { target: t } =>
-      if subject_in_list(target: t, subjects: registration_subjects(registry: registry)) {
+      if declaration_ref_in_list(target: t, refs: registration_subjects(registry: registry)) {
         TargetResolved { target: t }
       } else {
         TargetNotRegistered { target: t }
@@ -329,7 +325,7 @@ fn surface_row_violations(
         LegacyFrontier => [SurfaceMissingTargetIdentity { authority: row.authority, surface: row.surface }]
       }
     Present { value: t } =>
-      if subject_in_list(target: t, subjects: registration_subjects(registry: registry)) {
+      if declaration_ref_in_list(target: t, refs: registration_subjects(registry: registry)) {
         []
       } else {
         [SurfaceNamesUnknownTarget {
@@ -454,7 +450,7 @@ fn identified_row_count(
     match r.target {
       Absent => acc
       Present { value: t } =>
-        if subject_in_list(target: t, subjects: subjects) { acc + 1 } else { acc }
+        if declaration_ref_in_list(target: t, refs: subjects) { acc + 1 } else { acc }
     }
   })
 }
