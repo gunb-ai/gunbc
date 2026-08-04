@@ -144,6 +144,22 @@ test fn selection_control_enrolled_exactly_once_on_falsifier_and_never_on_ci() -
     && step_count_named(steps: ci_job_steps(), name: selection_control_step_name) == 0
 }
 
+data main_floor_population_upload_step_name: String = "Upload CI floor population receipts main-floor (always)"
+
+data compile_clean_cold_control_step_name: String = "compile-clean whole-tree cold control (scoped-PR admission counterpart)"
+
+test fn main_floor_population_upload_before_cold_controls() -> Bool {
+  let steps = falsifier_job_steps()
+  let floor = step_index_of(steps: steps, name: "affected-set falsifier (predict-only cold run)")
+  let upload = step_index_of(steps: steps, name: main_floor_population_upload_step_name)
+  let cold = step_index_of(steps: steps, name: compile_clean_cold_control_step_name)
+  (floor >= 0) && (upload >= 0) && (cold >= 0)
+    && (floor < upload)
+    && (upload < cold)
+    && step_count_named(steps: steps, name: main_floor_population_upload_step_name) == 1
+    && step_count_named(steps: ci_job_steps(), name: main_floor_population_upload_step_name) == 0
+}
+
 test fn selection_control_order_witness_discriminates() -> Bool {
   let build_steps = falsifier_build_job_steps()
   let floor_steps = falsifier_floor_job_steps()

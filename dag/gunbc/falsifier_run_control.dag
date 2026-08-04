@@ -41,17 +41,55 @@ data falsifier_control_prerequisite_note: String = "Cold controls execute after 
 
 data gunbc_falsifier_compile_clean_cold_control_timeout_minutes: Int = 30
 
-data gunbc_falsifier_compile_clean_cold_control_note: String = "Compile-clean whole-tree cold control (2026-07-16, lands with the per-PR import-closure scoping in tools.dag_compile_clean_scope): PR floors now compile only the affected entry closure, and main pushes already skip on an empty diff — so this step is the deterministic whole-tree execution of the compile-clean gate, on the falsifier cadence, mirroring how the predict-only cold run controls witness selection. GUNBC_CI_COMPILE_CLEAN_COLD_CONTROL=1 forces the scope plan to WholeTree before any diff observation (a widen-to-more-checking control arm, not an escape hatch — it can only force the gate to run in full). Plan function gunbc_ci_plan_artifact_batches is batch 1 of the floor schedule: exactly the compile-clean anchor through the same executor path that installs and consumes the in-run compile receipt. F0 (2026-08-04): if_condition uses falsifier_control_prerequisite_if so this control runs even when the predict-only floor reddens."
+data gunbc_falsifier_compile_clean_cold_control_note: String = "Compile-clean whole-tree cold control (2026-07-16, lands with the per-PR import-closure scoping in tools.dag_compile_clean_scope): PR floors now compile only the affected entry closure, and main pushes already skip on an empty diff — so this step is the deterministic whole-tree execution of the compile-clean gate, on the falsifier cadence, mirroring how the predict-only cold run controls witness selection. GUNBC_CI_COMPILE_CLEAN_COLD_CONTROL=1 forces the scope plan to WholeTree before any diff observation (a widen-to-more-checking control arm, not an escape hatch — it can only force the gate to run in full). Plan function gunbc_ci_plan_artifact_batches is batch 1 of the floor schedule: exactly the compile-clean anchor through the same executor path that installs and consumes the in-run compile receipt. F0 (2026-08-04): if_condition uses falsifier_control_prerequisite_if so this control runs even when the predict-only floor reddens. Per #7785: distinct GUNBC_WALK_ATTEMPT_ID + GUNBC_FLOOR_PHASE_JOURNAL under target/falsifier-compile-clean-cold/ so this invocation does not share attempt identity with the main floor; after the run, shared target/floor-* receipts are snapshotted into that root so a later control cannot erase this evidence. Main-floor population artifact is uploaded BEFORE this step."
+
+data falsifier_compile_clean_cold_receipt_root: String = "target/falsifier-compile-clean-cold"
+
+data falsifier_native_cache_cold_receipt_root: String = "target/falsifier-native-cache-cold"
+
+fn falsifier_control_receipt_snapshot_shell(root: String) -> String {
+  concat(
+    concat("mkdir -p ", root),
+    concat(
+      "\nfor p in \\\n  target/floor-phase-journal.tsv \\\n  target/floor-batch-wall-receipt.txt \\\n  target/floor-compile-clean-wall-receipt.txt \\\n  target/floor-component-receipt.json \\\n  target/floor-resolve-receipt.txt \\\n  target/floor-selection-degradation-receipt.txt \\\n  target/floor-materialization-receipt.txt \\\n  target/floor-population-budget-refusal.txt \\\n  target/native-selected-witness-transition-receipt.tsv \\\n  target/floor-gate-warm-cost-receipt.tsv \\\n  target/floor-witness-row-cost-receipt.tsv \\\n  target/floor-wet-witness-row-outcome-receipt.tsv \\\n  target/floor-witness-row-cost-drift-receipt.tsv \\\n  target/floor-compile-clean-cost-drift-receipt.tsv \\\n  target/floor-compile-clean-cost-receipt.tsv \\\n  target/scoped-witness-execution-receipt.tsv \\\n  target/floor-worker-observation-receipt.tsv\ndo\n  if [ -e \"$p\" ]; then cp -a \"$p\" ",
+      concat(
+        concat(root, "/; fi\ndone\nif compgen -G 'target/floor-worker-terminal-*.tsv' > /dev/null; then cp -a target/floor-worker-terminal-*.tsv "),
+        concat(
+          concat(root, "/; fi\nif compgen -G 'target/floor-attempt-*' > /dev/null; then cp -a target/floor-attempt-* "),
+          concat(root, "/; fi\n")
+        )
+      )
+    )
+  )
+}
 
 fn compile_clean_cold_control_invoke() -> String {
   concat(
     concat("ROOT=", concat(ci_repo_root_shell(), "\n")),
-    claim_executor_run_plan_shell(
-      source_roots: witness_layer_roots,
-      plan_entry: "src/v2/workflow/ci_floor_plan.dag",
-      plan_function: CiPlanArtifactPlan,
-      notice_title: Absent,
-      rooted: false
+    concat(
+      "export GUNBC_WALK_ATTEMPT_ID=falsifier-compile-clean-cold\n",
+      concat(
+        concat("export GUNBC_FLOOR_PHASE_JOURNAL=", falsifier_compile_clean_cold_receipt_root),
+        concat(
+          "/floor-phase-journal.tsv\n",
+          concat(
+            concat("mkdir -p ", falsifier_compile_clean_cold_receipt_root),
+            concat(
+              "\n",
+              concat(
+                claim_executor_run_plan_shell(
+                  source_roots: witness_layer_roots,
+                  plan_entry: "src/v2/workflow/ci_floor_plan.dag",
+                  plan_function: CiPlanArtifactPlan,
+                  notice_title: Absent,
+                  rooted: false
+                ),
+                concat("\n", falsifier_control_receipt_snapshot_shell(root: falsifier_compile_clean_cold_receipt_root))
+              )
+            )
+          )
+        )
+      )
     )
   )
 }
@@ -74,17 +112,35 @@ fn compile_clean_cold_control_step() -> Step {
 
 data gunbc_falsifier_native_cache_cold_control_timeout_minutes: Int = 30
 
-data gunbc_falsifier_native_cache_cold_control_note: String = "Native-cache cold control (P6 durable-cache rail, 2026-07-21): the nightly Wet emit-on-demand/self-host receipt batch re-executed with GUNBC_CI_NATIVE_CACHE_COLD_CONTROL=1, which makes emit_host_run_transport_cached ignore every .native_ready marker — the full emit+cargo+run chain runs cold on the falsifier cadence while the main falsifier_step's run of the same batch stays warm (the warm-rate receipt the per-PR enrollment decision reads). Widen-to-more-checking control arm, not an escape hatch: the env can only force the transport to do MORE work, never skip it. Mirrors compile_clean_cold_control_step. F0 (2026-08-04): if_condition uses falsifier_control_prerequisite_if so this control runs even when the predict-only floor reddens. SERIAL after compile-clean — must not compete for memory with the dying floor control."
+data gunbc_falsifier_native_cache_cold_control_note: String = "Native-cache cold control (P6 durable-cache rail, 2026-07-21): the nightly Wet emit-on-demand/self-host receipt batch re-executed with GUNBC_CI_NATIVE_CACHE_COLD_CONTROL=1, which makes emit_host_run_transport_cached ignore every .native_ready marker — the full emit+cargo+run chain runs cold on the falsifier cadence while the main falsifier_step's run of the same batch stays warm (the warm-rate receipt the per-PR enrollment decision reads). Widen-to-more-checking control arm, not an escape hatch: the env can only force the transport to do MORE work, never skip it. Mirrors compile_clean_cold_control_step. F0 (2026-08-04): if_condition uses falsifier_control_prerequisite_if so this control runs even when the predict-only floor reddens. SERIAL after compile-clean — must not compete for memory with the dying floor control. Per #7785: distinct walk-attempt + phase-journal root under target/falsifier-native-cache-cold/ with post-run snapshot, after the main-floor population artifact has already been uploaded."
 
 fn native_cache_cold_control_invoke() -> String {
   concat(
     concat("ROOT=", concat(ci_repo_root_shell(), "\n")),
-    claim_executor_run_plan_shell(
-      source_roots: witness_layer_roots,
-      plan_entry: "src/v2/workflow/ci_floor_plan.dag",
-      plan_function: FalsifierNativeCacheColdPlan,
-      notice_title: Absent,
-      rooted: false
+    concat(
+      "export GUNBC_WALK_ATTEMPT_ID=falsifier-native-cache-cold\n",
+      concat(
+        concat("export GUNBC_FLOOR_PHASE_JOURNAL=", falsifier_native_cache_cold_receipt_root),
+        concat(
+          "/floor-phase-journal.tsv\n",
+          concat(
+            concat("mkdir -p ", falsifier_native_cache_cold_receipt_root),
+            concat(
+              "\n",
+              concat(
+                claim_executor_run_plan_shell(
+                  source_roots: witness_layer_roots,
+                  plan_entry: "src/v2/workflow/ci_floor_plan.dag",
+                  plan_function: FalsifierNativeCacheColdPlan,
+                  notice_title: Absent,
+                  rooted: false
+                ),
+                concat("\n", falsifier_control_receipt_snapshot_shell(root: falsifier_native_cache_cold_receipt_root))
+              )
+            )
+          )
+        )
+      )
     )
   )
 }

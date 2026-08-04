@@ -1,19 +1,104 @@
 module test.claim.ci_floor_population_receipt_registry_witness
 
-import std.types { Bool }
+import std.types { Bool, NonEmptyStr }
 import gunbc.ci_floor_population_receipt_registry {
+  RegistryWellFormed,
+  DuplicateKind,
+  DuplicatePath,
+  UnknownObservedPath,
   ci_floor_population_receipt_registry_row_count,
-  ci_floor_population_receipt_registry_includes_manifest,
-  ci_floor_population_receipt_registry_includes_gate_warm_cost,
+  ci_floor_population_receipt_registry_kind_labels,
+  ci_floor_population_receipt_registry_paths,
+  ci_floor_population_receipt_registry_well_formed,
   ci_floor_population_receipts_upload_paths,
-  ci_evidence_subject_incomplete,
-  ci_evidence_subject_fields_present,
+  ci_evidence_subject_wire_incomplete,
+  ci_evidence_subject_wire_fields_present,
+  registry_rows_well_formed,
+  planted_duplicate_kind_rows,
+  planted_duplicate_path_rows,
+  observe_path_against_registry,
+  settlement_required_kind_labels,
+  string_list_contains_exact,
 }
 
-test fn witness_registry_includes_manifest_and_gate_warm() -> Bool {
-  ci_floor_population_receipt_registry_includes_manifest()
-    && ci_floor_population_receipt_registry_includes_gate_warm_cost()
-    && ci_floor_population_receipt_registry_row_count() >= 18
+fn expected_registry_kind_labels() -> List<String> {
+  [
+    "PopulationReceiptManifest",
+    "PhaseJournal",
+    "BatchWall",
+    "CompileCleanWall",
+    "Component",
+    "Resolve",
+    "SelectionDegradation",
+    "Materialization",
+    "PopulationBudgetRefusal",
+    "NativeTransition",
+    "GateWarmCost",
+    "WitnessRowCost",
+    "WetWitnessRowOutcome",
+    "WitnessRowCostDrift",
+    "CompileCleanCostDrift",
+    "CompileCleanCost",
+    "ScopedWitnessExecution",
+    "WorkerObservation",
+    "WorkerTerminal",
+    "AttemptDirectory",
+  ]
+}
+
+fn expected_registry_paths() -> List<String> {
+  [
+    "target/floor-population-receipt-manifest.tsv",
+    "target/floor-phase-journal.tsv",
+    "target/floor-batch-wall-receipt.txt",
+    "target/floor-compile-clean-wall-receipt.txt",
+    "target/floor-component-receipt.json",
+    "target/floor-resolve-receipt.txt",
+    "target/floor-selection-degradation-receipt.txt",
+    "target/floor-materialization-receipt.txt",
+    "target/floor-population-budget-refusal.txt",
+    "target/native-selected-witness-transition-receipt.tsv",
+    "target/floor-gate-warm-cost-receipt.tsv",
+    "target/floor-witness-row-cost-receipt.tsv",
+    "target/floor-wet-witness-row-outcome-receipt.tsv",
+    "target/floor-witness-row-cost-drift-receipt.tsv",
+    "target/floor-compile-clean-cost-drift-receipt.tsv",
+    "target/floor-compile-clean-cost-receipt.tsv",
+    "target/scoped-witness-execution-receipt.tsv",
+    "target/floor-worker-observation-receipt.tsv",
+    "target/floor-worker-terminal-*.tsv",
+    "target/floor-attempt-*/",
+  ]
+}
+
+fn list_string_eq(left: List<String>, right: List<String>) -> Bool {
+  length(xs: left) == length(xs: right)
+    && fold(left, init: { ok: true, idx: 0 }, f: fn(acc, x) {
+      if !acc.ok {
+        acc
+      } else if !(x == right.skip(n: acc.idx).first()) {
+        { ok: false, idx: acc.idx }
+      } else {
+        { ok: true, idx: acc.idx + 1 }
+      }
+    }).ok
+}
+
+test fn witness_registry_well_formed_exact_identities() -> Bool {
+  match ci_floor_population_receipt_registry_well_formed() {
+    RegistryWellFormed { row_count } =>
+      row_count == 20
+        && list_string_eq(
+          left: ci_floor_population_receipt_registry_kind_labels(),
+          right: expected_registry_kind_labels()
+        )
+        && list_string_eq(
+          left: ci_floor_population_receipt_registry_paths(),
+          right: expected_registry_paths()
+        )
+        && ci_floor_population_receipt_registry_row_count() == 20
+    _ => false
+  }
 }
 
 test fn witness_upload_paths_derived_from_registry() -> Bool {
@@ -22,12 +107,67 @@ test fn witness_upload_paths_derived_from_registry() -> Bool {
     && string_contains(s: paths, pattern: "target/floor-gate-warm-cost-receipt.tsv")
     && string_contains(s: paths, pattern: "target/floor-worker-observation-receipt.tsv")
     && string_contains(s: paths, pattern: "target/scoped-witness-execution-receipt.tsv")
+    && string_contains(s: paths, pattern: "target/floor-attempt-*/")
 }
 
-test fn witness_incomplete_subject_refuses_fields_present() -> Bool {
-  !ci_evidence_subject_fields_present(s: ci_evidence_subject_incomplete())
+test fn witness_incomplete_wire_refuses_subject() -> Bool {
+  !ci_evidence_subject_wire_fields_present(w: ci_evidence_subject_wire_incomplete())
+}
+
+test fn witness_required_kinds_pinned() -> Bool {
+  let required = settlement_required_kind_labels()
+  length(xs: required) == 7
+    && string_list_contains_exact(xs: required, needle: "PopulationReceiptManifest")
+    && string_list_contains_exact(xs: required, needle: "AttemptDirectory")
+    && string_list_contains_exact(xs: required, needle: "NativeTransition")
+}
+
+test fn witness_planted_duplicate_kind_refuses() -> Bool {
+  match registry_rows_well_formed(rows: planted_duplicate_kind_rows()) {
+    DuplicateKind { kind_label } => (kind_label as String) == "PhaseJournal"
+    _ => false
+  }
+}
+
+test fn witness_planted_duplicate_path_refuses() -> Bool {
+  match registry_rows_well_formed(rows: planted_duplicate_path_rows()) {
+    DuplicatePath { path } => (path as String) == "target/floor-phase-journal.tsv"
+    _ => false
+  }
+}
+
+test fn witness_unknown_observed_path_refuses() -> Bool {
+  match observe_path_against_registry(path: "target/not-a-registered-receipt.txt" as NonEmptyStr) {
+    UnknownObservedPath { path } => (path as String) == "target/not-a-registered-receipt.txt"
+    _ => false
+  }
+}
+
+test fn witness_registered_path_and_wildcard_accept() -> Bool {
+  match observe_path_against_registry(path: "target/floor-phase-journal.tsv" as NonEmptyStr) {
+    RegistryWellFormed { row_count: _ } =>
+      match observe_path_against_registry(path: "target/floor-worker-terminal-0-abc.tsv" as NonEmptyStr) {
+        RegistryWellFormed { row_count: _ } =>
+          match observe_path_against_registry(path: "target/floor-attempt-run1/on-success-stage-1-receipt.tsv" as NonEmptyStr) {
+            RegistryWellFormed { row_count: _ } => true
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
 }
 
 test fn red_registry_must_not_omit_manifest() -> Bool {
-  ci_floor_population_receipt_registry_includes_manifest()
+  string_list_contains_exact(
+    xs: ci_floor_population_receipt_registry_kind_labels(),
+    needle: "PopulationReceiptManifest"
+  )
+}
+
+test fn red_duplicate_kind_must_not_well_form() -> Bool {
+  match registry_rows_well_formed(rows: planted_duplicate_kind_rows()) {
+    RegistryWellFormed { row_count: _ } => false
+    _ => true
+  }
 }

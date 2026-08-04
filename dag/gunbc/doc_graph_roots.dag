@@ -170,6 +170,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
       DeclarationRef { module_path: "gunbc.ci_floor_population_reconcile", decl_name: "current_warm_hit_settle", field: WholeDeclaration },
       DeclarationRef { module_path: "gunbc.ci_workflow", decl_name: "ci_floor_population_receipts_upload_step", field: WholeDeclaration },
       DeclarationRef { module_path: "gunbc.ci_floor_population_receipt_registry", decl_name: "CiEvidenceSubject", field: WholeDeclaration },
+      DeclarationRef { module_path: "gunbc.ci_floor_population_receipt_registry", decl_name: "CiEvidenceSubjectWire", field: WholeDeclaration },
       DeclarationRef { module_path: "gunbc.ci_floor_population_receipt_registry", decl_name: "ci_floor_population_receipt_registry", field: WholeDeclaration },
     ],
     dissolution: HasTrigger { text: "every sub-lane row is accepted or honestly retired and the program parent five-minute-ci-gate is accepted on fleet receipts showing a representative leaf .dag PR at ≤5 minutes wall with byte-identical verdicts vs a cold recompute control — or the operator recuts the program and this note is superseded by a registered plan row." },

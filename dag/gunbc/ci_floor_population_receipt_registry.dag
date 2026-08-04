@@ -324,7 +324,7 @@ fn registry_path_matches_pattern(path: String, pattern: String) -> Bool {
 }
 
 fn registry_rows_duplicate_kind(rows: List<FloorPopulationReceiptRegistryRow>) -> NonEmptyStr? {
-  fold(rows, init: { seen: [] as List<String>, dup: none as NonEmptyStr? }, f: fn(acc, r) {
+  fold(rows, init: { seen: [], dup: none }, f: fn(acc, r) {
     let label = floor_population_receipt_kind_label(kind: r.kind)
     if string_list_contains_exact(xs: acc.seen, needle: label) {
       { seen: acc.seen, dup: Present { value: label as NonEmptyStr } }
@@ -335,7 +335,7 @@ fn registry_rows_duplicate_kind(rows: List<FloorPopulationReceiptRegistryRow>) -
 }
 
 fn registry_rows_duplicate_path(rows: List<FloorPopulationReceiptRegistryRow>) -> NonEmptyStr? {
-  fold(rows, init: { seen: [] as List<String>, dup: none as NonEmptyStr? }, f: fn(acc, r) {
+  fold(rows, init: { seen: [], dup: none }, f: fn(acc, r) {
     let path = r.path as String
     if string_list_contains_exact(xs: acc.seen, needle: path) {
       { seen: acc.seen, dup: Present { value: r.path } }
@@ -347,7 +347,7 @@ fn registry_rows_duplicate_path(rows: List<FloorPopulationReceiptRegistryRow>) -
 
 fn registry_rows_missing_required_kind(rows: List<FloorPopulationReceiptRegistryRow>) -> NonEmptyStr? {
   let labels = rows |> map(r => floor_population_receipt_kind_label(kind: r.kind))
-  fold(settlement_required_kind_labels(), init: none as NonEmptyStr?, f: fn(acc, required) {
+  fold(settlement_required_kind_labels(), init: none, f: fn(acc, required) {
     match acc {
       Present { value: _ } => acc
       Absent => {
