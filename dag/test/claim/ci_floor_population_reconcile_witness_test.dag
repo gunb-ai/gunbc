@@ -9,7 +9,7 @@ import gunbc.ci_floor_population_reconcile {
   MissingArtifact,
   ObservedWall,
   harvested_subject_a_partial_partition,
-  harvested_subject_a_assigned_ms,
+  harvested_subject_a_assigned_wall,
   harvested_subject_a_ci_job_wall,
   harvested_subject_a_meets_ninety_five_percent,
   partition_attribution_basis_points,
@@ -22,8 +22,7 @@ import gunbc.ci_floor_population_reconcile {
 }
 
 test fn witness_subject_a_assigned_is_classified_only() -> Bool {
-  let assigned = harvested_subject_a_assigned_ms()
-  assigned == 606958
+  millisecond_count(m: harvested_subject_a_assigned_wall()) == 606958
 }
 
 test fn witness_subject_a_below_ninety_five_until_uploads() -> Bool {
@@ -32,8 +31,8 @@ test fn witness_subject_a_below_ninety_five_until_uploads() -> Bool {
 
 test fn witness_subject_a_attribution_basis_points() -> Bool {
   let bp = partition_attribution_basis_points(
-    assigned_ms: harvested_subject_a_assigned_ms(),
-    ci_job_ms: millisecond_count(m: harvested_subject_a_ci_job_wall())
+    assigned: harvested_subject_a_assigned_wall(),
+    ci_job: harvested_subject_a_ci_job_wall()
   )
   bp == 2419
 }

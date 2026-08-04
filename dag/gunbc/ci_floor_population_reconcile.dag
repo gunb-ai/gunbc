@@ -42,16 +42,18 @@ fn observed_wall_ms(o: PopulationObservation) -> Nat {
   }
 }
 
-fn partition_assigned_wall_ms(p: CiJobPopulationPartition) -> Nat {
+fn partition_assigned_wall(p: CiJobPopulationPartition) -> Millisecond {
   let a = observed_wall_ms(o: p.pre_walk_capture)
   let b = observed_wall_ms(o: p.discovery_resolve)
   let c = observed_wall_ms(o: p.discovery_eval)
   let d = observed_wall_ms(o: p.on_success_stages)
   let e = observed_wall_ms(o: p.named_remainder)
-  a + b + c + d + e
+  millisecond(count: a + b + c + d + e)
 }
 
-fn partition_attribution_basis_points(assigned_ms: Nat, ci_job_ms: Nat) -> Nat {
+fn partition_attribution_basis_points(assigned: Millisecond, ci_job: Millisecond) -> Nat {
+  let assigned_ms = millisecond_count(m: assigned)
+  let ci_job_ms = millisecond_count(m: ci_job)
   if ci_job_ms == 0 {
     basis_point_count(bp: basis_point(count: 0))
   } else {
@@ -59,8 +61,8 @@ fn partition_attribution_basis_points(assigned_ms: Nat, ci_job_ms: Nat) -> Nat {
   }
 }
 
-fn partition_meets_ninety_five_percent(assigned_ms: Nat, ci_job_ms: Nat) -> Bool {
-  let bp = partition_attribution_basis_points(assigned_ms: assigned_ms, ci_job_ms: ci_job_ms)
+fn partition_meets_ninety_five_percent(assigned: Millisecond, ci_job: Millisecond) -> Bool {
+  let bp = partition_attribution_basis_points(assigned: assigned, ci_job: ci_job)
   bp >= 9500
 }
 
@@ -78,14 +80,14 @@ fn harvested_subject_a_ci_job_wall() -> Millisecond {
   millisecond(count: 2509000)
 }
 
-fn harvested_subject_a_assigned_ms() -> Nat {
-  partition_assigned_wall_ms(p: harvested_subject_a_partial_partition())
+fn harvested_subject_a_assigned_wall() -> Millisecond {
+  partition_assigned_wall(p: harvested_subject_a_partial_partition())
 }
 
 fn harvested_subject_a_meets_ninety_five_percent() -> Bool {
   partition_meets_ninety_five_percent(
-    assigned_ms: harvested_subject_a_assigned_ms(),
-    ci_job_ms: millisecond_count(m: harvested_subject_a_ci_job_wall())
+    assigned: harvested_subject_a_assigned_wall(),
+    ci_job: harvested_subject_a_ci_job_wall()
   )
 }
 
