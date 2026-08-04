@@ -7,10 +7,11 @@ use std::rc::Rc;
 use crate::v1_rt;
 use crate::NonEmptyVec;
 use crate::NonEmptyBTreeSet;
-pub use crate::gunbc_namespace_reference_derived_closure_admission::{ReferenceDerivedClosureAdmission, ReferenceDerivedClosureCapability, ReferenceDerivedClosureScenarioFailure, ReferenceDerivedClosureObservation};
+pub use crate::gunbc_namespace_reference_derived_closure_admission::{ReferenceDerivedClosureAdmission, ReferenceDerivedClosureCapability, ReferenceDerivedClosureTrigger, ReferenceDerivedClosureScenarioFailure, ReferenceDerivedClosureObservation};
 pub use crate::gunbc_namespace_reference_derived_closure_admission::{assess_reference_derived_closure_observation};
-use crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerivedClosureAdmission::{ReferenceDerivedClosureRefused};
-use crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerivedClosureCapability::{SameFileEarlierNeighbourVisible, SiblingDecisionBranchExcluded, LaterDeclarationExcluded, DistinctSameSpelledDeclarationsPreserved};
+use crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerivedClosureAdmission::{ReferenceDerivedClosureRefused, ReferenceDerivedClosureUnavailable};
+use crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerivedClosureCapability::{SameFileEarlierNeighbourVisible, SiblingDecisionBranchExcluded, LaterDeclarationExcluded, DistinctSameSpelledDeclarationsPreserved, RepeatedMentionsCollapseDependency, UnrelatedLoadedFileExcluded};
+use crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerivedClosureTrigger::{P2aReferenceDependencyProjection7515, P2aPoolIndependentDependencyProjection7515};
 use crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerivedClosureScenarioFailure::{SameFileNeighbourMissing, SiblingBranchLeaked, LaterDeclarationLeaked, DistinctDeclarationCollapsed};
 use crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerivedClosureObservation::{SameFileNeighbourObservation, SiblingBranchObservation, LaterDeclarationObservation, DistinctHomonymObservation};
 pub use crate::std_occurrence_identity::{OccurrenceTransport};
@@ -25,7 +26,7 @@ use self::NrdfcParsed::*;
 pub fn namespace_reference_derived_closure_production_admissions_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "N3-A production observers for namespace-reference-derived-closure clauses (a-d). Each observe_* fn parses one authored fixture through v1.compiler.parse.parse_with_table (via parse_authored_occurrence_binding_source), projects OccurrenceBindingCandidateInputs from parser facts only, runs resolve_reference_binding_outcome_via_structural_candidates (P2a+P1), and feeds the typed observation through assess_reference_derived_closure_observation unchanged. The contract-owned namespace_reference_derived_closure_acceptance_admissions seam wires these in when production integration lands.".to_string()
+            "N3-A production observers for namespace-reference-derived-closure clauses (a-d). Each observe_* fn parses one authored fixture through v1.compiler.parse.parse_with_table (via parse_authored_occurrence_binding_source), projects OccurrenceBindingCandidateInputs from parser facts only, runs resolve_reference_binding_outcome_via_structural_candidates (P2a+P1), and feeds the typed observation through assess_reference_derived_closure_observation unchanged. namespace_reference_derived_closure_acceptance_admissions is the production admission aggregate: it composes these observe_* rows with explicit Unavailable rows for clauses (e-f), and lives here rather than in gunbc.namespace_reference_derived_closure_contract so the dag-layer contract stays importable under witness_layer_roots without a dag→src/v1 edge.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -313,4 +314,26 @@ pub fn observe_distinct_same_spelled_declarations_preserved() -> Rc<ReferenceDer
             }
         },
     }
+}
+
+pub fn namespace_reference_derived_closure_acceptance_admissions(
+) -> Rc<Vec<Rc<ReferenceDerivedClosureAdmission>>> {
+    Rc::new(vec![
+        observe_same_file_earlier_neighbour_visible(),
+        observe_sibling_decision_branch_excluded(),
+        observe_later_declaration_excluded(),
+        observe_distinct_same_spelled_declarations_preserved(),
+        Rc::new(
+            ReferenceDerivedClosureAdmission::ReferenceDerivedClosureUnavailable {
+                capability: ReferenceDerivedClosureCapability::RepeatedMentionsCollapseDependency,
+                trigger: ReferenceDerivedClosureTrigger::P2aReferenceDependencyProjection7515,
+            },
+        ),
+        Rc::new(
+            ReferenceDerivedClosureAdmission::ReferenceDerivedClosureUnavailable {
+                capability: ReferenceDerivedClosureCapability::UnrelatedLoadedFileExcluded,
+                trigger: ReferenceDerivedClosureTrigger::P2aPoolIndependentDependencyProjection7515,
+            },
+        ),
+    ])
 }

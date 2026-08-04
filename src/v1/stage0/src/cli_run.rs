@@ -3661,10 +3661,9 @@ fn witness_layer_roots_compile_clean_sources_for_plan(
         }
         CompileCleanScopePlan::WholeTree => {
             eprintln!("compile-clean scope: whole-tree entry closure (witness_layer_roots)");
-            let entry_roots = witness_layer_roots();
-            let pool_roots = compile_clean_source_roots();
-            let mei = build_multi_entry_index_primary_precedence(&pool_roots);
-            load_compile_clean_entry_sources(&entry_roots, &mei, None).map(|mut sources| {
+            let roots = witness_layer_roots();
+            let mei = build_multi_entry_index_primary_precedence(&roots);
+            load_compile_clean_entry_sources(&roots, &mei, None).map(|mut sources| {
                 append_test_floor_compile_clean_inject(&mut sources);
                 Some(sources)
             })
@@ -3679,10 +3678,9 @@ fn witness_layer_roots_compile_clean_sources_for_plan(
                 .iter()
                 .map(|p| workspace_relative_repo_path(p))
                 .collect();
-            let entry_roots = witness_layer_roots();
-            let pool_roots = compile_clean_source_roots();
-            let mei = build_multi_entry_index_primary_precedence(&pool_roots);
-            load_compile_clean_entry_sources(&entry_roots, &mei, Some(&filter)).map(Some)
+            let roots = witness_layer_roots();
+            let mei = build_multi_entry_index_primary_precedence(&roots);
+            load_compile_clean_entry_sources(&roots, &mei, Some(&filter)).map(Some)
         }
     }
 }

@@ -7,18 +7,16 @@ use std::rc::Rc;
 use crate::v1_rt;
 use crate::NonEmptyVec;
 use crate::NonEmptyBTreeSet;
-pub use crate::gunbc_namespace_reference_derived_closure_admission::{ReferenceDerivedClosureAdmission, ReferenceDerivedClosureCapability, ReferenceDerivedClosureTrigger};
+pub use crate::gunbc_namespace_reference_derived_closure_admission::{ReferenceDerivedClosureAdmission, ReferenceDerivedClosureCapability};
 use crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerivedClosureAdmission::{ReferenceDerivedClosureEstablished, ReferenceDerivedClosureRefused, ReferenceDerivedClosureUnavailable};
 use crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerivedClosureCapability::{RepeatedMentionsCollapseDependency, UnrelatedLoadedFileExcluded, SameFileEarlierNeighbourVisible, SiblingDecisionBranchExcluded, LaterDeclarationExcluded, DistinctSameSpelledDeclarationsPreserved};
-use crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerivedClosureTrigger::{P2aReferenceDependencyProjection7515, P2aPoolIndependentDependencyProjection7515};
 pub use crate::std_types::{Bool, List};
 use crate::std_types::Bool::*;
-pub use crate::v1_gunbc_namespace_reference_derived_closure_production_admissions::{observe_same_file_earlier_neighbour_visible, observe_sibling_decision_branch_excluded, observe_later_declaration_excluded, observe_distinct_same_spelled_declarations_preserved};
 
 pub fn namespace_reference_derived_closure_contract_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "THE CLOSING CONDITION for roadmap node namespace-reference-derived-closure, transcribed at the node's own six-clause grain. Each clause is a closed capability and is established only by assessing the corresponding typed production observation: an earlier same-file neighbour is visible; a sibling decision branch is excluded; a later declaration is excluded; two distinct same-spelled declaration identities both survive for the canonical ambiguity fold; repeated mentions project one provider-file dependency; and an unrelated loaded file never enters that projection. The first four observations carry the result of the MERGED P1 resolve_reference_occurrence_binding kernel, so the check cannot substitute a second none/one/many decision. Missing, refused, and explicitly unavailable evidence all remain in the derived frontier; duplicate admissions cannot erase a missing capability, and zero progress is red.\n\nThis module deliberately does NOT derive visibility or dependencies. namespace_reference_derived_closure_acceptance_admissions is the sole production admission seam owned here; v1.gunbc.namespace_reference_derived_closure_production_admissions exposes per-clause observe_* production paths that wire into it as each clause lands. The fixture witnesses in test.claim.namespace_reference_derived_closure_contract_test prove this fold discriminates; the quarantined closing witness consumes only namespace_reference_derived_closure_acceptance_admissions — copying fixture observations into it would be specification-without-execution.".to_string()
+            "THE CLOSING CONDITION for roadmap node namespace-reference-derived-closure, transcribed at the node's own six-clause grain. Each clause is a closed capability and is established only by assessing the corresponding typed production observation: an earlier same-file neighbour is visible; a sibling decision branch is excluded; a later declaration is excluded; two distinct same-spelled declaration identities both survive for the canonical ambiguity fold; repeated mentions project one provider-file dependency; and an unrelated loaded file never enters that projection. The first four observations carry the result of the MERGED P1 resolve_reference_occurrence_binding kernel, so the check cannot substitute a second none/one/many decision. Missing, refused, and explicitly unavailable evidence all remain in the derived frontier; duplicate admissions cannot erase a missing capability, and zero progress is red.\n\nThis module deliberately does NOT derive visibility or dependencies and does NOT import v1.* — witness_layer_roots is dag plus src/v2 only, so a dag/gunbc import of src/v1 would break ordinary discovery and quarantine resolve. The production admission aggregate lives in v1.gunbc.namespace_reference_derived_closure_production_admissions.namespace_reference_derived_closure_acceptance_admissions, which composes per-clause observe_* production paths as each clause lands. The fixture witnesses in test.claim.namespace_reference_derived_closure_contract_test prove this fold discriminates; the quarantined closing witness in src/v1/tests/claim consumes only that production aggregate — copying fixture observations into it would be specification-without-execution.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -27,7 +25,7 @@ pub fn namespace_reference_derived_closure_contract_note() -> String {
 pub fn namespace_reference_derived_closure_contract_dissolution_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "DISSOLVES BY GREENING, never deletion. Production-derived observations are added to namespace_reference_derived_closure_acceptance_admissions as each clause becomes executable. When all six establish, the unchanged closing witness greens; its QuarantineProbeExpectRed exclusion and known-red roster entry delete in the same change, promoting it to the ordinary discovery corpus as the permanent regression wall.".to_string()
+            "DISSOLVES BY GREENING, never deletion. Production-derived observations are added to v1.gunbc.namespace_reference_derived_closure_production_admissions.namespace_reference_derived_closure_acceptance_admissions as each clause becomes executable. When all six establish, the unchanged closing witness greens; its QuarantineProbeExpectRed exclusion and known-red roster entry delete in the same change, promoting it to the ordinary discovery corpus as the permanent regression wall.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -114,26 +112,4 @@ pub fn reference_derived_closure_closing_contract_holds(
     admissions: Rc<Vec<Rc<ReferenceDerivedClosureAdmission>>>,
 ) -> bool {
     (reference_derived_closure_closing_frontier_count(admissions.clone()) == 0)
-}
-
-pub fn namespace_reference_derived_closure_acceptance_admissions(
-) -> Rc<Vec<Rc<ReferenceDerivedClosureAdmission>>> {
-    Rc::new(vec![
-        observe_same_file_earlier_neighbour_visible(),
-        observe_sibling_decision_branch_excluded(),
-        observe_later_declaration_excluded(),
-        observe_distinct_same_spelled_declarations_preserved(),
-        Rc::new(
-            ReferenceDerivedClosureAdmission::ReferenceDerivedClosureUnavailable {
-                capability: ReferenceDerivedClosureCapability::RepeatedMentionsCollapseDependency,
-                trigger: ReferenceDerivedClosureTrigger::P2aReferenceDependencyProjection7515,
-            },
-        ),
-        Rc::new(
-            ReferenceDerivedClosureAdmission::ReferenceDerivedClosureUnavailable {
-                capability: ReferenceDerivedClosureCapability::UnrelatedLoadedFileExcluded,
-                trigger: ReferenceDerivedClosureTrigger::P2aPoolIndependentDependencyProjection7515,
-            },
-        ),
-    ])
 }
