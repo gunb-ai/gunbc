@@ -10,6 +10,7 @@ import v2.compiler.source_authority {
   SourceRootProvenanceCoverageReceipt,
 }
 import std.algebra { Cons, Empty }
+import v2.std.collection { List }
 
 import v2.std.text { String }
 
@@ -32,5 +33,7 @@ data host_compiler_closure_admission: Admission = Admission {
   },
   imports: Empty
 }
+
+data frontier_probe_closure_paths: List<String> = Empty
 
 data frontier_probe_entry_module_path: String = ""

@@ -59,7 +59,6 @@ import v2.std.node {
   NodeFoldTopDown,
   Symbol,
   TypeNode,
-  fold_node,
   fold_node_topdown,
   well_formed
 }

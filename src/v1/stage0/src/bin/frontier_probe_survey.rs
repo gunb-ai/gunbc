@@ -248,14 +248,23 @@ fn unknown_probe_row(module_path: &str, cause: &str) -> ProbeReceiptRow {
     }
 }
 
-fn write_probe_overlay_manifest(module_path: &str, ingest_manifest: &Path) -> Result<(), String> {
+fn write_probe_overlay_manifest(
+    module_path: &str,
+    ingest_manifest: &Path,
+    closure_paths: &[String],
+) -> Result<(), String> {
     let escaped = module_path.replace('\\', "/");
     // The emitted ingest manifest already imports `String` in its header block
     // (`host_source_root_ingest_content_hash: String`), and post-namespace-wave the
     // grammar accepts imports ONLY in the header — a trailing `import` at EOF is now a
-    // parse error ("expected item declaration"). Append the `data` decl alone; String
-    // is already in scope.
-    let append = format!("\ndata frontier_probe_entry_module_path: String = \"{escaped}\"\n");
+    // parse error ("expected item declaration"). Append overlay `data` decls alone;
+    // String is already in scope.
+    let mut append = format!("\ndata frontier_probe_entry_module_path: String = \"{escaped}\"\n");
+    if !closure_paths.is_empty() {
+        append.push_str("\ndata frontier_probe_closure_paths: List<String> = ");
+        append.push_str(&emit_string_list_dag(closure_paths)?);
+        append.push('\n');
+    }
     let mut body =
         fs::read_to_string(ingest_manifest).map_err(|e| format!("read ingest manifest: {e}"))?;
     if body.contains("frontier_probe_entry_module_path") {
@@ -263,6 +272,22 @@ fn write_probe_overlay_manifest(module_path: &str, ingest_manifest: &Path) -> Re
     }
     body.push_str(&append);
     fs::write(ingest_manifest, body).map_err(|e| format!("append module_path overlay: {e}"))
+}
+
+fn manifest_path_escape(path: &str) -> Result<String, String> {
+    if path.contains('{') || path.contains('}') {
+        return Err(format!("manifest path contains brace: {path}"));
+    }
+    Ok(path.replace('\\', "/"))
+}
+
+fn emit_string_list_dag(items: &[String]) -> Result<String, String> {
+    let mut out = String::from("Empty");
+    for item in items.iter().rev() {
+        let escaped = manifest_path_escape(item)?;
+        out = format!("Cons {{\n  head: \"{escaped}\",\n  tail: {out}\n}}");
+    }
+    Ok(out)
 }
 
 fn per_module_overlay_dir(survey_dir: &Path, module_path: &str) -> PathBuf {
@@ -283,17 +308,24 @@ fn run_probe_for_module(
     fs::create_dir_all(&overlay_dir)
         .map_err(|e| format!("mkdir overlay {:?}: {e}", overlay_dir))?;
 
-    let discover_root = source_roots
-        .first()
-        .cloned()
-        .unwrap_or_else(|| "src/v2".to_string());
-    let records = discover_source_root_reads_for_entry(&[discover_root], module_path, &exclude)?;
+    let mut discover_roots: Vec<String> =
+        WITNESS_LAYER_ROOTS.iter().map(|r| r.to_string()).collect();
+    for root in source_roots {
+        if !discover_roots.iter().any(|existing| existing == root) {
+            discover_roots.push(root.clone());
+        }
+    }
+    let records = discover_source_root_reads_for_entry(&discover_roots, module_path, &exclude)?;
     let entry_source =
         fs::read_to_string(module_path).map_err(|e| format!("read entry {module_path}: {e}"))?;
     let admission = parse_source_root_entry_admission(&entry_source)?;
     let ingest_manifest = overlay_dir.join("host_source_root_ingest_manifest.dag");
     emit_source_root_ingest_manifest(&ingest_manifest, &records, Some(&admission))?;
-    write_probe_overlay_manifest(module_path, &ingest_manifest)?;
+    let closure_paths: Vec<String> = records
+        .iter()
+        .map(|rec| rec.file_path.replace('\\', "/"))
+        .collect();
+    write_probe_overlay_manifest(module_path, &ingest_manifest, &closure_paths)?;
 
     let mut roots: Vec<String> = WITNESS_LAYER_ROOTS.iter().map(|r| r.to_string()).collect();
     roots.push(overlay_dir.to_string_lossy().into_owned());

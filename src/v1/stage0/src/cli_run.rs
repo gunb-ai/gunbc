@@ -24928,6 +24928,7 @@ pub fn emit_source_root_ingest_manifest(
         out.push_str("  ResolutionSubject\n");
         out.push_str("}\n");
         out.push_str("import v2.std.algebra { Cons, Empty }\n");
+        out.push_str("import v2.std.collection { List }\n");
     }
     out.push('\n');
     out.push_str(&format!(

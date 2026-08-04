@@ -11,6 +11,7 @@ import v2.compiler.name_resolve {
   admit_import_entry,
   resolve_with_admission,
   resolve_with_admission_policy,
+  subject_module_root_for_name,
   validate_module_roots
 }
 import v2.std.cross_tree.resolution { source_root_index_empty }
@@ -22,10 +23,18 @@ import v2.extdeps.languages.dag {
 import std.algebra { Cons, Empty, FreeMonoid }
 import v2.std.algebra { fold_list_node }
 import v2.std.collection { empty_map }
-import v2.std.diagnostic { Accepted, None, Outcome, Rejected, diagnostics_eq }
+import v2.std.compilers.lexing { symbol_lexeme }
+import v2.std.diagnostic {
+  Accepted,
+  None,
+  Outcome,
+  Rejected,
+  Textual,
+  diagnostics_eq
+}
+import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
 import v2.std.logic { Bool }
 import v2.std.node { Atom, Conj, Edge, Named, Node, Positional, Symbol, TypeNode, SyntheticOccurrence }
-import v2.std.qualified_name { QualifiedName }
 import v2.std.resolution_policy { ImportScoped }
 import v2.std.verification {
   CompilesClaim,
@@ -35,6 +44,21 @@ import v2.std.verification {
   Tier1,
   Unit,
   manual_claim_anchor
+}
+
+fn resolve_module_not_found_preserves_missing_module_identity() -> Bool {
+  let missing = fc_qn(seg: ^fc_missing_seg)
+  match subject_module_root_for_name(roots: fc_single_found_root(), name: missing) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      match d.head.at {
+        Textual { file: module_file, extent: _ } =>
+          d.head.reason == ^resolve_module_not_found
+            && symbol_lexeme(sym: module_file)
+              == qualified_name_to_dotted_string(qn: missing)
+        _ => false
+      }
+  }
 }
 
 fn fc_pass_node() -> Node {
@@ -318,6 +342,14 @@ data claim_resolve_subject_name_not_in_roots_is_rejected: TestClaim = CompilesCl
   label: "name_resolve/resolve_with_admission: subject name not in validated roots is rejected",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: fc_claim_input(ok: resolve_subject_name_not_in_roots_is_rejected()),
+  expected_value: fc_pass_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_resolve_module_not_found_preserves_missing_module_identity: TestClaim = CompilesClaim {
+  label: "name_resolve/module_root_find: missing module diagnostic carries exact QualifiedName identity",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: fc_claim_input(ok: resolve_module_not_found_preserves_missing_module_identity()),
   expected_value: fc_pass_node(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }

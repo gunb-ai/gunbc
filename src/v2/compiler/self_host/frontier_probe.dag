@@ -25,7 +25,7 @@ import v2.extdeps.languages.rust { rust_target_model }
 import v2.lens.reference_deps { reference_deps_ingest_source_text }
 import extdeps.communication.medium { Lossless, Medium }
 import extdeps.filesystem.filesystem_io
-import std.algebra { Cons, Empty, FreeMonoid }
+import std.algebra { Cons, Empty }
 import v2.std.algebra { fold_list, length, list_reverse }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.collection { List }
@@ -44,7 +44,6 @@ import v2.std.diagnostic {
   textual_whole_file_diagnostic
 }
 import v2.std.integer { Int }
-import v2.std.logic { Bool }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }
 

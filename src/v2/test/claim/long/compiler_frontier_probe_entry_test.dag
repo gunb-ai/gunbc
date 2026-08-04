@@ -1,7 +1,10 @@
 module v2.test.long.compiler_frontier_probe_entry
 
+import v2.compiler.name_resolve { Admission }
 import v2.compiler.self_host.frontier_probe {
-  frontier_probe_emit_from_ingest
+  frontier_probe_admission_for_entry,
+  frontier_probe_emit_from_ingest,
+  frontier_probe_ingest_for_entry
 }
 import v2.compiler.self_host.frontier_probe_types {
   EmitSurfaceGap,
@@ -14,7 +17,9 @@ import v2.compiler.self_host.frontier_probe_types {
   UnknownProbeCause,
   FixtureCemented
 }
+import v2.compiler.source_authority { SourceRootIngest }
 import v2.test.workflow.host_source_root_ingest_manifest {
+  frontier_probe_closure_paths,
   frontier_probe_entry_module_path,
   host_compiler_closure_admission,
   host_source_root_ingest
@@ -24,11 +29,29 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
+fn frontier_probe_entry_ingest() -> SourceRootIngest {
+  frontier_probe_ingest_for_entry(
+    closure_paths: frontier_probe_closure_paths,
+    fallback_ingest: host_source_root_ingest
+  )
+}
+
+fn frontier_probe_entry_admission() -> Admission {
+  match frontier_probe_admission_for_entry(
+    ingest: frontier_probe_entry_ingest(),
+    module_path: frontier_probe_entry_module_path,
+    fallback_admission: host_compiler_closure_admission
+  ) {
+    Accepted { value: admission, diagnostics: _ } => admission
+    Rejected { diagnostics: _ } => host_compiler_closure_admission
+  }
+}
+
 fn frontier_probe_entry_receipt() -> FrontierProbeReceipt {
   frontier_probe_emit_from_ingest(
     module_path: frontier_probe_entry_module_path,
-    ingest: host_source_root_ingest,
-    admission: host_compiler_closure_admission
+    ingest: frontier_probe_entry_ingest(),
+    admission: frontier_probe_entry_admission()
   )
 }
 
