@@ -5,6 +5,13 @@ import std.types { Bool, Int, List, String }
 import extdeps.external_authority { ExternalSubjectRef }
 import extdeps.languages.bash.subject
 import std.language_target_identity {
+  LanguageTargetProjection,
+  LanguageIdLookup,
+  LanguageIdResolved,
+  LanguageIdUnregistered,
+  display_name_for_subject,
+  language_id_to_subject,
+  projection_subject_is_registered,
   LanguageTargetSurfaceAuthority,
   StdLanguageCatalogue,
   TargetModelDeclaration,
@@ -160,6 +167,32 @@ data language_target_surface_census: List<LanguageTargetSurfaceRow> = concat(
   ),
   concat(legacy_frontier_rows, target_vocabulary_rows)
 )
+
+data language_target_projection_note: String = "Requirement D, and the one row it makes concrete. Bash is the only registered subject, so it is the only projection: GNU Bash, .sh/.bash, and legacy_language_id ABSENT — because std.languages has rust, go, python and typescript rows and NO bash row. That absence is the finding, not an omission in this file: the target this repository emits most has never had an entry in the catalogue that was the closest thing to a language key in the tree, which is precisely why a LanguageId could never have served as the identity. legacy_frontier_label carries the name the prose self-host frontier used, so the superseded table's rows can be joined to canonical subjects as they migrate rather than being matched by eye."
+
+data language_target_projections: List<LanguageTargetProjection> = [
+  LanguageTargetProjection {
+    subject: bash_subject_ref,
+    display_name: "GNU Bash",
+    file_extensions: [".sh", ".bash"],
+    legacy_language_id: none,
+    legacy_frontier_label: Present { value: "bash" }
+  }
+]
+
+fn bash_display_name() -> String? {
+  display_name_for_subject(subject: bash_subject_ref, projections: language_target_projections)
+}
+
+fn lookup_language_id(language_id: String) -> LanguageIdLookup {
+  language_id_to_subject(language_id: language_id, projections: language_target_projections)
+}
+
+fn every_projection_subject_is_registered() -> Bool {
+  fold(language_target_projections, init: true, f: fn(acc, p) {
+    acc && projection_subject_is_registered(projection: p, registry: registered_language_targets)
+  })
+}
 
 fn language_target_registry_violations() -> List<LanguageTargetJoinViolation> {
   language_target_join_violations(

@@ -12,7 +12,15 @@ import std.language_target_identity {
   TargetSubjectUnresolvable,
   resolve_target_for_surface,
 }
+import std.language_target_identity {
+  LanguageIdLookup,
+  LanguageIdResolved,
+  LanguageIdUnregistered,
+}
 import gunbc.language_target_registry {
+  bash_display_name,
+  lookup_language_id,
+  every_projection_subject_is_registered,
   bash_subject_ref,
   registered_language_targets,
   language_target_surface_census,
@@ -68,5 +76,32 @@ test fn a_surface_absent_from_the_registry_does_not_resolve() -> Bool {
     TargetResolved { target: _ } => false
     TargetSurfaceAmbiguous { surface: _, candidates: _ } => false
     TargetSubjectUnresolvable { subject: _ } => false
+  }
+}
+
+data projection_direction_note: String = "Requirement D's controls, and the property they pin is DIRECTION rather than content. A projection FROM a registered subject is total (Bash has a display name); a lookup INTO the registry by a legacy key REFUSES when nothing claims it (rust, go, python and typescript all resolve nowhere, because none of them has a canonical subject yet). That asymmetry is what demotes LanguageId from an identity to an attribute: a consumer can still ask for a target's legacy id, but cannot use a legacy id AS a target without the registry either answering or refusing. The rust case is the discriminating one — std.languages genuinely carries a rust_language row, so a consumer treating that catalogue as a key space would resolve it; here it refuses, which is exactly the parallel identity being closed."
+
+test fn projection_from_registered_subject_is_total() -> Bool {
+  match bash_display_name() {
+    Present { value: n } => n == "GNU Bash"
+    Absent => false
+  }
+}
+
+test fn every_projection_hangs_off_a_registered_subject() -> Bool {
+  every_projection_subject_is_registered()
+}
+
+test fn red_legacy_language_id_is_not_an_identity_and_refuses() -> Bool {
+  match lookup_language_id(language_id: "rust") {
+    LanguageIdUnregistered { language_id: l } => l == "rust"
+    LanguageIdResolved { target: _ } => false
+  }
+}
+
+test fn red_unknown_legacy_id_refuses_rather_than_defaulting() -> Bool {
+  match lookup_language_id(language_id: "not_a_language") {
+    LanguageIdUnregistered { language_id: _ } => true
+    LanguageIdResolved { target: _ } => false
   }
 }

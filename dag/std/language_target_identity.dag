@@ -81,6 +81,62 @@ type NamedTargetTally
   | TallyOne { target: ExternalSubjectRef }
   | TallyMany { candidates: List<ExternalSubjectRef> }
 
+data language_target_projection_law: String = "LEGACY KEYS BECOME PROJECTIONS, NEVER PARALLEL IDENTITIES (operator requirement D, 2026-08-04). LanguageId, display name, file extensions, short labels and the old prose-table names are attributes hanging off the canonical subject and are DERIVED from it where needed; none of them may be keyed on. The distinction is enforced by DIRECTION, which is the whole content of this row: asking the registry for a target's LanguageId is a projection and total for a registered subject, while asking which target a LanguageId denotes is a LOOKUP that REFUSES when no registered subject claims it. Before this, std.languages Language.id was the closest thing to a language key in the tree and nothing stopped a consumer from treating it as identity; after this, a legacy id that resolves nowhere is a typed refusal at the lookup rather than a second identity quietly in use. That refusal is not hypothetical today: std.languages carries rust, go, python and typescript rows and NO bash row, so the target this repository emits most has no legacy id at all — which is why the projection carries the legacy id as OPTIONAL rather than pretending every subject has one."
+
+type LanguageTargetProjection {
+  subject: ExternalSubjectRef
+  display_name: String
+  file_extensions: List<String>
+  legacy_language_id: String?
+  legacy_frontier_label: String?
+}
+
+type LanguageIdLookup
+  = LanguageIdResolved { target: ExternalSubjectRef }
+  | LanguageIdUnregistered { language_id: String }
+
+fn projection_for_subject(
+  subject: ExternalSubjectRef,
+  projections: List<LanguageTargetProjection>
+) -> LanguageTargetProjection? {
+  fold(projections, init: none, f: fn(acc, p) {
+    if external_subject_ref_eq(a: p.subject, b: subject) { Present { value: p } } else { acc }
+  })
+}
+
+fn display_name_for_subject(
+  subject: ExternalSubjectRef,
+  projections: List<LanguageTargetProjection>
+) -> String? {
+  match projection_for_subject(subject: subject, projections: projections) {
+    Absent => none
+    Present { value: p } => Present { value: p.display_name }
+  }
+}
+
+fn language_id_to_subject(
+  language_id: String,
+  projections: List<LanguageTargetProjection>
+) -> LanguageIdLookup {
+  fold(projections, init: LanguageIdUnregistered { language_id: language_id }, f: fn(acc, p) {
+    match p.legacy_language_id {
+      Absent => acc
+      Present { value: lid } =>
+        if lid == language_id { LanguageIdResolved { target: p.subject } } else { acc }
+    }
+  })
+}
+
+fn projection_subject_is_registered(
+  projection: LanguageTargetProjection,
+  registry: List<LanguageTargetRegistration>
+) -> Bool {
+  subject_in_list(
+    target: projection.subject,
+    subjects: registration_subjects(registry: registry)
+  )
+}
+
 fn registration_subjects(registry: List<LanguageTargetRegistration>) -> List<ExternalSubjectRef> {
   fold(registry, init: [], f: fn(acc, r) { concat(acc, [r.subject]) })
 }
