@@ -796,7 +796,7 @@ fn v1_type_expr_wf_needs_clone_param(
           Present { value: s } => s
           Absent => empty_set()
         }
-        v1_declared_arg_positions_need_clone_param(
+        nested || v1_declared_arg_positions_need_clone_param(
           param_name: param_name,
           decl_params: decl.params,
           type_args: type_expr.children,

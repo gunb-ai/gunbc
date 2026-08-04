@@ -1247,16 +1247,17 @@ pub fn v1_type_expr_wf_needs_clone_param(
                             Some(s) => s.clone(),
                             None => v1_rt::rc_empty_set::<String>(),
                         };
-                        v1_declared_arg_positions_need_clone_param(
-                            param_name.clone(),
-                            decl.params.clone(),
-                            type_expr.children.clone(),
-                            bound_params.clone(),
-                            type_decl_items.clone(),
-                            source_indices.clone(),
-                        )
+                        (nested.clone()
+                            || v1_declared_arg_positions_need_clone_param(
+                                param_name.clone(),
+                                decl.params.clone(),
+                                type_expr.children.clone(),
+                                bound_params.clone(),
+                                type_decl_items.clone(),
+                                source_indices.clone(),
+                            ))
                     }
-                    None => nested,
+                    None => nested.clone(),
                 }
             }
         }
