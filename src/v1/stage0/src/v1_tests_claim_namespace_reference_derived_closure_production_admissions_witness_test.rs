@@ -19,7 +19,7 @@ use crate::std_types::Bool::*;
 pub fn namespace_reference_derived_closure_production_admissions_witness_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "N3-A executing witnesses: each structural clause (a-d) is established by an independent production parse→P2a→assess path. The contract-owned aggregate leaves clauses (e-f) unavailable (frontier 2). Discriminating RED: witness_closing_contract_still_reds_until_dependency_clauses_land — the acceptance predicate is unchanged and must not green until all six capabilities establish.".to_string()
+            "N3-A executing witnesses: each structural clause (a-d) is established by an independent production parse→P2a→assess path. Inline six-row lists here leave clauses (e-f) unavailable (frontier 2); the acceptance witness at test.claim.namespace_reference_derived_closure_acceptance composes the full closing list. Discriminating RED: witness_closing_contract_still_reds_until_dependency_clauses_land — the acceptance predicate is unchanged and must not green until all six capabilities establish.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())

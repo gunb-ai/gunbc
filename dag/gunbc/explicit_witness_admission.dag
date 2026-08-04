@@ -285,23 +285,23 @@ fn known_red_entry_is_v1_scoped(entry: String) -> Bool {
   starts_with(s: entry, prefix: "src/v1/")
 }
 
+fn known_red_entry_needs_v1_envelope(entry: String) -> Bool {
+  known_red_entry_is_v1_scoped(entry: entry)
+    || entry == "dag/test/claim/namespace_reference_derived_closure_acceptance_test.dag"
+}
+
 fn known_red_probe_corpus_roster() -> List<ScheduleWitnessEntry> {
   fold(
     known_red_probe_roster_of_kind(kind: CorpusWitnessKind),
     init: [],
     f: fn(acc, witness) {
-      if known_red_entry_is_v1_scoped(entry: witness.entry) {
+      if known_red_entry_needs_v1_envelope(entry: witness.entry) {
         acc
       } else {
         concat(acc, [witness])
       }
     }
   )
-}
-
-fn known_red_entry_needs_v1_envelope(entry: String) -> Bool {
-  known_red_entry_is_v1_scoped(entry: entry)
-    || entry == "dag/test/claim/namespace_reference_derived_closure_acceptance_test.dag"
 }
 
 fn known_red_probe_v1_envelope_roster() -> List<ScheduleWitnessEntry> {

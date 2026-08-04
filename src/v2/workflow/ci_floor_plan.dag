@@ -946,7 +946,7 @@ fn falsifier_self_host_wet_batch_enrolled() -> Bool {
     && (length(xs: falsifier_self_host_wet_entries()) > 0)
 }
 
-data falsifier_known_red_probe_batch_note: String = "Nightly falsifier batch 3 (Phase 0(b) admission invariant): the declared Hermetic probe lane for known-red quarantined witnesses whose subject resolves under witness_layer_roots (gunbc.explicit_witness_admission known_red_probe_corpus_roster — see known_red_probe_note). src/v1-scoped known-red rows run on the ordinary floor under the dag plus src/v1 envelope (v1_claim_scoped_known_red_probe_batch). Runs SelectionApplied after the wet self-host batch; EXPECT RED on main so greening is a counted un-quarantine event, never a hand discovery. Distinct from falsifier_self_host_wet (green-only SelfEmitted receipts)."
+data falsifier_known_red_probe_batch_note: String = "Nightly falsifier batch 3 (Phase 0(b) admission invariant): the declared Hermetic probe lane for known-red quarantined witnesses whose subject resolves under witness_layer_roots (gunbc.explicit_witness_admission known_red_probe_corpus_roster — see known_red_probe_note). Rows needing the dag plus src/v1 envelope (src/v1 paths and dag witnesses that import v1.*) run on the ordinary floor under v1_claim_scoped_known_red_probe_batch. Runs SelectionApplied after the wet self-host batch; EXPECT RED on main so greening is a counted un-quarantine event, never a hand discovery. Distinct from falsifier_self_host_wet (green-only SelfEmitted receipts)."
 
 fn falsifier_known_red_probe_batch_enrolled() -> Bool {
   length(xs: known_red_probe_corpus_roster()) > 0
