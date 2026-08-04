@@ -214,6 +214,24 @@ test fn red_duplicate_registration_refuses() -> Bool {
   })
 }
 
+data duplicate_registration_grain_control_note: String = "The grain control for review 48205's first finding. red_duplicate_registration_refuses above proves the class is EMITTED, which stayed true while the count was wrong — three registrations of one subject produced three violations for one defect, because the fold reported per ROW rather than per SUBJECT. Emission and grain are different properties and only the first had a control, which is exactly how the surface-side version of this bug survived until it was fixed in the same module. Three rather than two registrations is deliberate: a per-row implementation returns 2 for two rows and 3 for three, so pinning at three discriminates against both the old shape and an off-by-one dedup."
+
+test fn duplicate_registration_reported_once_not_per_row() -> Bool {
+  let thrice = [bash_registration(), bash_registration(), bash_registration()]
+  fold(language_target_join_violations(rows: [], registry: thrice),
+    init: 0,
+    f: fn(acc, v) {
+      acc + match v {
+        DuplicateRegistryTarget { target: _ } => 1
+        SurfaceMissingTargetIdentity { authority: _, surface: _ } => 0
+        SurfaceNamesUnknownTarget { authority: _, surface: _, named: _ } => 0
+        SurfaceJoinsMultipleTargets { authority: _, surface: _, first: _, second: _ } => 0
+        TargetVocabularyHasNoRegistryTarget { surface: _ } => 0
+        DuplicateSurfaceLocus { surface: _ } => 0
+      }
+    }) == 1
+}
+
 test fn red_unregistered_surface_reports_located_refusal_not_silence() -> Bool {
   let unknown = SurfaceModule { module_path: "v2.extdeps.languages.spice" }
   match resolve_target_for_surface(

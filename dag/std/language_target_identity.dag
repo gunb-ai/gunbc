@@ -403,18 +403,33 @@ fn duplicate_surface_locus_violations(
   scanned.violations
 }
 
+data duplicate_registration_grain_note: String = "ONCE PER DUPLICATED SUBJECT, NOT ONCE PER ROW (review 48205, 2026-08-04). The first version folded the registry and emitted a violation for every row whose subject occurred more than once, so one subject registered twice produced TWO violations for ONE defect, and a subject registered five times produced five. That is the same row-versus-identity confusion multi_target_detector_note fixes on the surface side — the count becomes a function of how the duplication was spread rather than of how many subjects are duplicated — and having corrected it there in this same module while leaving it here was an inconsistency, not a deliberate asymmetry. The accumulator therefore carries the subjects already reported, mirroring MultiTargetScan exactly."
+
+type DuplicateRegistryScan {
+  reported: List<DeclarationRef>
+  violations: List<LanguageTargetJoinViolation>
+}
+
 fn duplicate_registration_violations(
   registry: List<LanguageTargetRegistration>
 ) -> List<LanguageTargetJoinViolation> {
   let subjects = registration_subjects(registry: registry)
-  fold(registry, init: [], f: fn(acc, r) {
+  let scanned = fold(registry, init: DuplicateRegistryScan { reported: [], violations: [] }, f: fn(acc, r) {
     let subj = registration_subject(registration: r)
-    if subject_occurrence_count(target: subj, subjects: subjects) > 1 {
-      concat(acc, [DuplicateRegistryTarget { target: subj }])
-    } else {
+    if declaration_ref_in_list(target: subj, refs: acc.reported) {
       acc
+    } else {
+      if subject_occurrence_count(target: subj, subjects: subjects) > 1 {
+        DuplicateRegistryScan {
+          reported: concat(acc.reported, [subj]),
+          violations: concat(acc.violations, [DuplicateRegistryTarget { target: subj }])
+        }
+      } else {
+        acc
+      }
     }
   })
+  scanned.violations
 }
 
 fn language_target_join_violations(
@@ -506,13 +521,17 @@ fn registry_integrity_clean(
     && duplicate_projection_subject_count(projections: projections) == 0
 }
 
+fn join_violation_count(vs: List<LanguageTargetJoinViolation>) -> Int {
+  fold(vs, init: 0, f: fn(acc, v) { acc + 1 })
+}
+
+data join_clean_shape_note: String = "Written as a zero-count rather than as a fold whose step discards its accumulator and returns a constant false (review 48205, 2026-08-04). The old shape was correct and read as though it might not be — a reader has to simulate the fold to see that any element forces false, which is emptiness stated obliquely. It also earns its keep here: this is the ALL-CLASSES predicate used by the kernel's own clean-join control, deliberately distinct from the two the registry gates on, where accounting tolerates a nonzero missing-identity remainder and integrity does not."
+
 fn language_target_join_clean(
   rows: List<LanguageTargetSurfaceRow>,
   registry: List<LanguageTargetRegistration>
 ) -> Bool {
-  fold(
-    language_target_join_violations(rows: rows, registry: registry),
-    init: true,
-    f: fn(acc, v) { false }
-  )
+  join_violation_count(
+    vs: language_target_join_violations(rows: rows, registry: registry)
+  ) == 0
 }
