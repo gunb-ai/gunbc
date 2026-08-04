@@ -11,7 +11,7 @@ Status: **DRAFT — operator sign-off on direction (loyal-ant-382, 2026-08-04).*
 
 Bare *authority* does not appear below.
 
-Frames: DESIGN §2, §3 (fact-home, external upstream decomposition, cite-the-symbol), §5 (construction before validation), §6 (bare-minimum cost — cited only where copy semantics are now verified).
+Frames: DESIGN §2, §3 (fact-home, external upstream decomposition, cite-the-symbol — **grep the concept, not the name**), §5 (construction before validation).
 
 **Sequence (operator, 2026-08-04):**
 
@@ -30,22 +30,27 @@ Over one day, four independent PRs each invented a **second fact-home** for the 
 
 A topology that collapses these into “do not duplicate” is useless. One that names each relation, states what evidence discharges it, and says which §5 rung applies is the product.
 
-### 0.1 Fifth specimen — homonym at the mandate layer
+### 0.1 Specimens at the mandate layer (not PR lanes)
 
-The work item was titled *Authority relation topology*, priming a note about **permission-to-act** (`std.access`). The corrected subject is **fact provenance** (DESIGN §3: the one place a fact lives). Producing a whole note against the homonym is itself a §3 violation at the documentation layer. Discharge: explicit qualifier (`fact-home` vs `permission-to-act`) or distinct coinage at every boundary. PR #7789 closed; access-kernel map **not** extracted (would carry the mis-priming).
+| label | failure | specimen |
+|---|---|---|
+| **HOMONYM** | lexical collision | work item title primed permission-to-act note; PR #7789 closed |
+| **CENSUS** | observation without population/method | `concat(acc, [` grep under-selected (117/204); PR #7779 body “No concat(acc, [x])” true under wrong pattern, false about `concat(wires, [wire])` in `rfc_8118.dag` — same accumulator-copy shape, different binder spelling |
+
+Both are §3 “grep the name, not the concept” at the measurement layer — precise-looking numbers measuring an accidental lexical property.
 
 ---
 
-## 1. Specimen record (closed lanes — do not touch)
+## 1. Specimen record (closed PR lanes — do not touch)
 
-Four relation kinds, four specimens. Each PR is green in its own lane.
+Four relation kinds, four specimens. Operator framing (relation, not fix):
 
-| label | relation kind | specimen (grep-verifiable) | discharge (landed on specimen branch) |
+| label | relation kind | what went wrong | discharge (specimen branch) |
 |---|---|---|---|
-| **CIT-0** | duplicate fact-home | `CitedResource.authority` vs `Pin.expected_identity` / `RepresentationPin` fork — `resource-says-A` while `pin-says-B` writable | `std.citation` `citation_cit0_note`: authority sole on `CitedResource`; `Pin<CitedRepresentation>` per `pin_subject_must_not_be_self_identifying_note` case (1) |
-| **CIT-1** | observation-required | real PDF digest hand-typed; same 64-hex as `example.test` fixture and cited evidence; no bytes→digest edge | fixture locator separated from cited URI; `Pin<CitedRepresentation>` + observation coproduct (`origin/session/cit-1`) |
-| **QM** | derivation-only | `observed_vs_prediction: Ordering` on `PathAdditivityRefutationReceipt` beside counts; `observed: 5`, `prediction: 20`, `observed_vs_prediction: Greater` writable and passed | field deleted; `path_additivity_witness_observed_vs_prediction()` derived (`c200375c0c6`) |
-| **SCAFFOLD** | identity join | unique substring match between scaffold `rel_path` and roadmap path → durable binding | `RoadmapNodeIdentity` join; 0 → `NoHonestObligationOwner`; plural → `AmbiguousObligationOwners`; `scaffold_disposition_sites_live()` derived population (`ec85b225782`) |
+| **CIT-0** | duplicate fact-home, **unjoined** | source and representation identity deduplicated but left **unjoined** — `CitedResource.authority` vs `Pin.expected_identity` writable independently | `std.citation` `citation_cit0_note`; `Pin<CitedRepresentation>` per `pin_subject_must_not_be_self_identifying_note` |
+| **CIT-1** | observation-required | authored digest **named as observation**, then made **its own expectation** — same 64-hex as `example.test` fixture; no bytes→digest edge | fixture vs cited URI separated; observation coproduct (`origin/session/cit-1`) |
+| **QM** | derivation-only | held/undecided outcomes **convertible into proof-shaped receipts** — `observed_vs_prediction: Ordering` stored beside counts; inconsistent triple passed | field deleted; `path_additivity_witness_observed_vs_prediction()` derived (`c200375c0c6`) |
+| **SCAFFOLD** | identity join | scaffold **arity and fixture names** standing in for **exact variant identity** — substring `rel_path` match → binding | `RoadmapNodeIdentity` join; derived `scaffold_disposition_sites_live()` (`ec85b225782`) |
 
 ---
 
@@ -92,10 +97,18 @@ Relation-typing procedure AUTH-0 generalizes. Before adding a field: name the re
 
 ## 4. Census methodology
 
-**Derived population only** — no hand roster. A census closes step 2 when:
+**Derived population only** — no hand roster. **Every observation carries:**
 
-- population is mechanically reproducible (query + count documented), and
-- each row carries enough to decide step 3 (kind, arms, interchangeability, claimed proposition, copy semantics — not counts alone).
+| field | meaning |
+|---|---|
+| **population** | what was counted (reproducible query or walk) |
+| **revision** | corrected counts when method was wrong (stated, not silent) |
+| **method** | exact derivation — text pattern **or** structural `Node`-tree walk |
+| **maximum conclusion** | what the census can establish — and what it **cannot** |
+
+A census closes step 2 when each row carries enough to decide step 3. **Numbers alone do not close it.**
+
+**Standing rule (operator, 2026-08-04):** grep the **concept**, not the name — binder spelling (`acc` vs `wires`), type-name suffix (`*Readiness` matching `ReadinessLayer`), and glob scope (`src/v1/**/*.dag` missing root files) are all the same defect class: accidental lexical property standing in for structure.
 
 Measured on `main`, 2026-08-04, unless noted.
 
@@ -105,9 +118,12 @@ Measured on `main`, 2026-08-04, unless noted.
 
 ### 5.1 Weak digest parameters
 
-**Derivation query:** `rg 'expected_hash: NonEmptyStr|expected_digest: NonEmptyStr|kernel_digest: NonEmptyStr|digest: NonEmptyStr|content_hash: NonEmptyStr' --glob '*.dag'`
-
-**Population:** **10** writable sites across **5** modules (operator prior “12 sites / 7 modules” superseded by this query on current `main`).
+| | |
+|---|---|
+| **method** | `rg 'expected_hash: NonEmptyStr|expected_digest: NonEmptyStr|kernel_digest: NonEmptyStr|digest: NonEmptyStr|content_hash: NonEmptyStr' --glob '*.dag'` |
+| **population** | **10** writable sites / **5** modules |
+| **revision** | operator prior “12 / 7” superseded by this query on current `main` |
+| **maximum conclusion** | per-site partition candidate below — **not** a single class |
 
 | module | site | kind | what the digest claims to prove | step-3 partition |
 |---|---|---|---|---|
@@ -124,11 +140,12 @@ Measured on `main`, 2026-08-04, unless noted.
 
 ### 5.2 `*Readiness` type surface
 
-**Derivation query:** `rg '^type [A-Za-z]*Readiness' --glob '*.dag'` then drop prefix-match false positives (`ReadinessLayer`, `ReadinessFoldState`, `ClaimReadinessPolicy`, `ToolReadinessRefusal`, …).
-
-**Population:** **10** distinct top-level type names ending in `Readiness`.
-
-**Operator correction recorded:** prior “~17 coproducts” was prefix-match artifact (`ReadinessLayer` matches `*Readiness`). The “N types on one axis” claim is **unverified** — needs kind + arms + interchangeability per name (below).
+| | |
+|---|---|
+| **method** | `rg '^type [A-Za-z]*Readiness' --glob '*.dag'`; drop prefix false positives (`ReadinessLayer`, `ClaimReadinessPolicy`, …) |
+| **population** | **10** distinct top-level type names ending in `Readiness` |
+| **revision** | operator “~17” was prefix-match artifact (`ReadinessLayer` ∈ `*Readiness`) |
+| **maximum conclusion** | per-name kind + arms + interchangeability — **no shared axis found**; does **not** establish one `Readiness<Domain>` parameter |
 
 | type | module | kind | arms (summary) | interchangeability |
 |---|---|---|---|---|
@@ -148,37 +165,35 @@ Measured on `main`, 2026-08-04, unless noted.
 
 ---
 
-### 5.3 `concat(acc, [x])` accumulator sites
+### 5.3 Fold accumulator `concat(<binder>, [x])` sites
 
-**Derivation query:** `rg 'concat\(acc, \[' --glob '*.dag'`
+**Concept:** a fold whose accumulator is rebuilt by appending a single element via `concat`.
 
-**Population (operator reconciliation recorded):**
+#### Text-pattern floor (current method — under-selects)
 
-| scope | sites | files |
-|---|---|---|
-| `dag/` only | **92** | **44** |
-| `src/v2/` only | **20** | **11** |
-| `src/v1/` only | **5** | **4** |
-| **whole repo** | **117** | **59** |
+| query | sites | files | maximum conclusion |
+|---|---|---|---|
+| `concat(acc, [` — **binder name `acc` only** | **117** | **59** | **under-selected** — measures who named the variable, not the shape (57% of floor below) |
+| `concat(<ident>, [` — any binder, single-element list rhs | **204** | **88** | **text-pattern floor** — still not structural; misses shapes not spelled as `concat(binder, [elem])` in source text |
 
-Operator reconciliation: prior `src/v1` count of **3** used `src/v1/**/*.dag`, missing `src/v1/04_resolve.dag` and `src/v1/coercion.dag` at the tree root — same scoping-artifact class as the Readiness prefix-match inflation. **92 + 20 + 5 = 117** reconciles exactly.
+**Revision history:**
 
-**Looser** `concat(acc,` (any rhs): **276** sites / **133** files on `main` (prior agent count 274 — **2-site delta is `src/v1` only**).
+- v1: `concat(acc, [` only — **wrong pattern** (operator + agent, 2026-08-04)
+- v2: `concat(<ident>, [` — operator **204** sites; measured **205** on current `main` (1-site drift)
 
-**Fold context (derived):** **104 / 117** strict-pattern sites occur within ~20 lines of a `fold(` or `f: (acc` binder.
+**Binder distribution (v2 query, top):** `acc` 117 · `result` 8 · `base` 6 · `witness_layer_roots` 5 · `visited` 5 · `inner` 5 · `causes` 5 · `rows` 4 · `existing` 4 · `arg_diags` 4 · `import_parents` 3 · tail of 1–2 each (`wires`, `xs`, …).
 
-**Cost-shape mechanism (corrected — not fact-provenance):** the population count is step-2; pricing belongs elsewhere.
+**CENSUS specimen surface:** PR #7779 claims “No concat(acc, [x])” — **true** under the v1 pattern, **false** about the code: `rfc_8118.dag` carries `concat(wires, [wire])` (accumulator-copy shape, different binder). The v1 census handed an author a way to be **honestly wrong**.
 
-| realization | `Vec` carrier | fold `concat(acc, [x])` cost shape |
-|---|---|---|
-| **Emitted Rust** (`v1_rt.rs`) | `im::Vector` aliased as `Vec` (`Cargo.toml`: RRB tree, O(log n) concatenation) | `list_concat` / `append` use structural sharing — **not** linear accumulator copy per step |
-| **Interpreter** (`v1_interpreter.rs`) | `std::vec::Vec` — imports `im::HashMap` / `im::OrdSet` only, **not** `im::Vector` | `free_monoid_to_vec` materializes both operands; `BinOp` concat arm extends `a` with `b` — **linear copy of accumulator per fold step** → quadratic in fold length |
+#### Structural population (typed gap — not yet derived)
 
-Prior claim that “concat copies” full-stop was wrong: it conflated the two realizations. The CI floor runs **interpreted**, so the bite is on the interpreter path — where corpus-denominated timeouts live — not because emitted Rust is broken.
+**Target:** `Node`-tree property — fold body where callee is `concat`, accumulator binder is the fold accumulator, rhs is a single-element list literal. Decidable from the tree (precedent: `scaffold_disposition_sites_live()` structural walk over witness roots).
 
-**Instrument (already in tree, not yet run on this population):** `v1_interpreter.rs` `MutationCounters.list_concat_items_copied` (incremented at the `BinOp` concat arm, summed in the mutation report ~line 1130); `interp_stats_test.rs` asserts counter behavior. A corpus run yields a **number**, not an adjective — step 3 for this class.
+**Gap:** no enrolled builtin or lens walks fold bodies for this pattern corpus-wide today. **Do not** widen regex and call it exact.
 
-**AUTH-0 pointer only:** DESIGN §6 cost-shape lane; enrolled debt via `v2.lens.complexity_accumulator_copy.roster_gate` (`accumulator_copy_roster_gate_std_test.dag`). No further concat analysis in this note.
+**Cost-shape pointer (out of AUTH-0 scope):** interpreter vs emitted-Rust realization differ (`im::Vector` O(log n) concat in `v1_rt.rs` vs `std::vec::Vec` materialize+extend in `v1_interpreter.rs`); instrument = `list_concat_items_copied` counter (`v1_interpreter.rs`, asserted in `interp_stats_test.rs`). DESIGN §6 / `complexity_accumulator_copy` lane — run counter on structural population when available.
+
+**Not a fact-provenance class** — population + method discipline only in this note.
 
 ---
 
@@ -188,7 +203,7 @@ Prior claim that “concat copies” full-stop was wrong: it conflated the two r
 - Fix the four specimens — closed in their lanes
 - Step 3 construction, `std/` hub, lens enrollment, no-growth frontier
 - Route step-3 decisions to the operator
-- **`concat(acc, [` cost-shape pricing** — population in §5.3 only; mechanism and `list_concat_items_copied` instrument cited out to DESIGN §6 / `complexity_accumulator_copy` lane
+- **Cost-shape pricing for fold-`concat`** — text-pattern floor in §5.3 only; structural population + `list_concat_items_copied` run cited out to DESIGN §6
 
 ---
 
