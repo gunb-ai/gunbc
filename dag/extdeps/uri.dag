@@ -93,7 +93,7 @@ fn parse_href_scheme(url: String) -> ParsedHrefScheme {
   }
 }
 
-data uri_component_encode_authority_note: String = "RFC 3986 section 2.1 percent-encoding for extdeps.uri (authority: extdeps.uri_component extdeps_external_authority_anchor). Unreserved ALPHA / DIGIT / -._~ pass through; reserved and non-ASCII scalars encode as UTF-8 octets percent-encoded with UPPERCASE hex. UriUnicodeScalar (raw Int carrier), UriValidatedScalar (Int where unicode_scalar, minted only by uri_unicode_scalar_construction), and UriUtf8Octet are distinct domains — UTF-8 decomposition never re-enters the scalar encoder with octet values. uri_percent_encode_unicode_scalar_validated accepts UriValidatedScalar only; a hand-built UriUnicodeScalar does not typecheck there."
+data uri_component_encode_authority_note: String = "RFC 3986 section 2.1 percent-encoding (https://www.rfc-editor.org/rfc/rfc3986#section-2.1) realized by extdeps.uri uri_percent_encode_* over UriUnicodeScalar / UriUtf8Octet. RFC 3986 section 3.3 path grammar is cited at extdeps.uri_path extdeps_external_authority_anchor — same specification, distinct section facts, no parallel section module. UriUnicodeScalar is the raw Int carrier; UriValidatedScalar (Int where unicode_scalar) is minted only by uri_unicode_scalar_construction; UriUtf8Octet is the octet wire domain. uri_percent_encode_admitted_scalar_wire accepts UriValidatedScalar only — a hand-built UriUnicodeScalar does not typecheck there."
 
 type UriHexNibble
   = UriNibble0
@@ -298,7 +298,7 @@ fn uri_percent_encode_unicode_scalar(scalar: UriUnicodeScalar) -> UriPercentEnco
     UriUnicodeScalarOutOfRangeRefused { cp: c } =>
       UriPercentEncodeRefused { cause: UriPercentEncodeUnicodeScalarOutOfRangeRefused { cp: c } }
     UriUnicodeScalarConstructed(validated) =>
-      uri_percent_encode_unicode_scalar_validated(scalar: validated)
+      uri_percent_encode_admitted_scalar_wire(scalar: validated)
   }
 }
 
@@ -306,7 +306,7 @@ fn uri_validated_scalar_code_point(scalar: UriValidatedScalar) -> Int {
   scalar + 0
 }
 
-fn uri_percent_encode_unicode_scalar_validated(scalar: UriValidatedScalar) -> UriPercentEncodeFoldState {
+fn uri_percent_encode_admitted_scalar_wire(scalar: UriValidatedScalar) -> UriPercentEncodeFoldState {
   let cp = uri_validated_scalar_code_point(scalar: scalar)
   if uri_component_is_unreserved(cp: cp) {
     UriPercentEncodeBuilding { wire: from_code_point(cp: cp) }
@@ -380,7 +380,7 @@ fn uri_percent_encode_code_point(cp: Int) -> UriPercentEncodeComponent {
     UriUnicodeScalarOutOfRangeRefused { cp: c } =>
       UriPercentComponentRefused { cause: UriPercentEncodeUnicodeScalarOutOfRangeRefused { cp: c } }
     UriUnicodeScalarConstructed(validated) =>
-      match uri_percent_encode_unicode_scalar_validated(scalar: validated) {
+      match uri_percent_encode_admitted_scalar_wire(scalar: validated) {
         UriPercentEncodeRefused { cause: cause } => UriPercentComponentRefused { cause: cause }
         UriPercentEncodeBuilding { wire: wire } => UriPercentComponentEncoded(wire as NonEmptyStr)
       }
@@ -398,7 +398,7 @@ fn uri_percent_encode_scalar_fragment(cp: Int) -> UriPercentEncodeFoldState {
     UriUnicodeScalarOutOfRangeRefused { cp: c } =>
       UriPercentEncodeRefused { cause: UriPercentEncodeUnicodeScalarOutOfRangeRefused { cp: c } }
     UriUnicodeScalarConstructed(scalar) =>
-      uri_percent_encode_unicode_scalar_validated(scalar: scalar)
+      uri_percent_encode_admitted_scalar_wire(scalar: scalar)
   }
 }
 
@@ -422,7 +422,7 @@ fn uri_percent_encode_code_points(code_points: List<Int>) -> UriPercentEncodeCom
                 UriPercentEncodeFragmentsRefused { cause: cause }
               UriPercentEncodeBuilding { wire: wire } =>
                 UriPercentEncodeFragmentsBuilding {
-                  fragments: concat(fragments, [wire]),
+                  fragments: fragments |> list_push(wire),
                 }
             }
         }
@@ -431,7 +431,7 @@ fn uri_percent_encode_code_points(code_points: List<Int>) -> UriPercentEncodeCom
       UriPercentEncodeFragmentsRefused { cause: cause } =>
         UriPercentComponentRefused { cause: cause }
       UriPercentEncodeFragmentsBuilding { fragments: fragments } =>
-        UriPercentComponentEncoded(join(fragments, "") as NonEmptyStr)
+        UriPercentComponentEncoded(join(reverse(fragments), "") as NonEmptyStr)
     }
   }
 }

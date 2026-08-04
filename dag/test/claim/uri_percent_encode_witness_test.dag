@@ -5,14 +5,9 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data witness_negative_scalar: Int = 0 - 1
 
 test fn uri_percent_encode_scalar_e_acute_holds() -> Bool {
-  match uri_unicode_scalar_construction(cp: 233) {
-    UriUnicodeScalarConstructed(validated) =>
-      match uri_percent_encode_unicode_scalar_validated(scalar: validated) {
-        UriPercentEncodeBuilding { wire: w } => w == "%C3%A9"
-        UriPercentEncodeRefused { cause: _ } => false
-      }
-    UriUnicodeScalarSurrogateRefused { cp: _ } => false
-    UriUnicodeScalarOutOfRangeRefused { cp: _ } => false
+  match uri_percent_encode_code_point(cp: 233) {
+    UriPercentComponentEncoded(wire) => wire == "%C3%A9"
+    UriPercentComponentRefused { cause: _ } => false
   }
 }
 
