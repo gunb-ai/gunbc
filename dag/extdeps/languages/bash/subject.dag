@@ -36,6 +36,6 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
       field: WholeDeclaration
     }
   },
-  first_citation: extdeps.languages.bash.subject.extdeps_external_authority_anchor,
-  further_citations: [extdeps.languages.bash.subject.gnu_bash_posix_conformance_authority]
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [gnu_bash_posix_conformance_authority]
 }

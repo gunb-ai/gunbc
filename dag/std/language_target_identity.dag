@@ -1,0 +1,174 @@
+module std.language_target_identity
+
+import std.decl_ref { DeclarationRef }
+import std.roster_frontier { declaration_ref_eq }
+import std.types { Bool, Int, List, String }
+import extdeps.external_authority { ExternalSubjectRef, external_subject_ref_eq }
+
+data language_target_identity_law: String = "ONE JOIN KEY ACROSS EVERY TARGET-BEARING SURFACE (operator verdict, 2026-08-04). A language or medium target is identified by its UPSTREAM SUBJECT — extdeps.external_authority's ExternalSubjectRef, whose declaration is symbolic per external_subject_symbolic_identity_note — never by a name string, a target-model value, an emit function, or a module path. The surfaces this repository writes are joined TO that subject; they are not candidate identities for it. Modelled on std.primitive_identity, which already performs exactly this join for five independently-writable primitive surfaces with typed join violations; the two modules are siblings in shape and deliberately share no rows, because a primitive and a target are different subjects. WHY NOT THE FIVE OBVIOUS CANDIDATES, each rejected for a stated reason: std.languages Language.id is a LanguageId string inside a syntax-template catalogue whose live population is rust/go/python/typescript only — Bash is absent — so it is at most a presentation key; v2.std.compilers.target_model TargetModel carries bundle, lexing, spellings, authority text and runtime configuration but NO identity field, which is correct because one target may have several target-model revisions without changing identity; tools.emit_host_gate's per-language smoke fns are evidence producers, not subjects; std.primitive_identity RealizationTarget is deliberately a three-arm primitive-realization DISPATCH surface (InterpreterHost | EmitRust | EmitTypeScript), not a general language identity, and widening it would fuse two unrelated join keys; gunbc.plans.language_target_self_host_frontier is a markdown prose table that says in its own text that its typed carrier does not yet exist."
+
+data language_target_uncited_refusal_note: String = "AN UNCITED TARGET IS UNWRITABLE, not admitted-then-flagged (DESIGN section 5 construction over validation; the specific direction is loyal-ant-382's, 2026-08-04). LanguageTargetRegistration requires a scope DeclarationRef naming the subject module's extdeps_model_scope declaration, so a target whose upstream is uncited cannot be constructed at all — there is no Absent arm to fall into and therefore no admitted-with-no-citation state to detect later. The citation itself is NOT copied here: ExternalModelScope already makes citations nonempty by construction (external_model_scope_citations_shape_note), so restating one on the registration row would be a second representation of the same fact (DESIGN section 3). This row references the scope; it never duplicates it. The residual honesty boundary is deliberate and named: that the referenced declaration RESOLVES on disk is the existing roster machinery's job (gunbc.extdeps_scope_frontier's roster_paths_resolve_on_disk and its live-cover witness), not a second check minted here."
+
+data language_target_scope_boundary_note: String = "WHAT THIS MODULE IS NOT (operator ruling relayed 2026-08-04). It carries target IDENTITY and the surface join only. It carries NO profile, NO capability set, NO residue row, and NO completion predicate, because those are governed by rules this module deliberately does not encode: profile relevance is an OBLIGATION JOIN rather than an authored label (a candidate is relevant when its target matches the profile's target, its violated obligation is in the profile's required obligations, and it lies inside that obligation's declared applicability scope), residue is separated from capability gaps so one incompleteness never gets two representations, and a profile-relevant-residue verdict is three-state with only its Empty arm — carrying a completeness receipt — admissible as completion evidence. Fusing any of that into the identity kernel would make one carrier serve as both the completion WALL and the migration RATCHET, which the same ruling forbids at different grains. Those rows land on the census and profile carriers when the relevance rule is registered."
+
+type LanguageTargetSurfaceAuthority
+  = StdLanguageCatalogue
+  | TargetModelDeclaration
+  | EmitHostExecution
+  | TargetVocabulary
+  | RuntimeChecker
+  | LegacyFrontier
+
+type LanguageTargetRegistration {
+  subject: ExternalSubjectRef
+  scope: DeclarationRef
+}
+
+type LanguageTargetSurfaceRow {
+  authority: LanguageTargetSurfaceAuthority
+  surface: DeclarationRef
+  target: ExternalSubjectRef?
+}
+
+type LanguageTargetJoinViolation
+  = SurfaceMissingTargetIdentity {
+      authority: LanguageTargetSurfaceAuthority
+      surface: DeclarationRef
+    }
+  | SurfaceNamesUnknownTarget {
+      authority: LanguageTargetSurfaceAuthority
+      surface: DeclarationRef
+      named: ExternalSubjectRef
+    }
+  | DuplicateRegistryTarget { target: ExternalSubjectRef }
+
+data language_target_resolution_note: String = "THE RESIDUE CENSUS DERIVES ITS TARGET THROUGH THIS JOIN; it never carries an independently authored target field (operator verdict, 2026-08-04). An authored target beside an observed sink is a second writable representation of one fact, and the two can disagree — a row reading sink = extdeps.languages.typescript.program alongside target = Bash is well-formed under an authored field and unwritable under a derived one. The observed sink, imported vocabulary, target-model declaration, source artifact, or runtime binding is the input; this is the function. Every non-resolving outcome is a TYPED, LOCATED result rather than an inability to report the site: a Bash sink whose subject is unregistered still reports as a Bash sink observation carrying TargetSurfaceUnregistered, which is what keeps a missing registry entry a registry refusal instead of a census blind spot (DESIGN section 5 — a failure arm must refuse, never widen, and never narrow to nothing)."
+
+type LanguageTargetResolution
+  = TargetResolved { target: ExternalSubjectRef }
+  | TargetSurfaceUnregistered { surface: DeclarationRef }
+  | TargetSurfaceAmbiguous {
+      surface: DeclarationRef
+      candidates: List<ExternalSubjectRef>
+    }
+  | TargetSubjectUnresolvable { subject: ExternalSubjectRef }
+
+data named_target_tally_note: String = "The 0 / 1 / more-than-1 distinction is carried as three NAMED states rather than recovered from a list length, so the ambiguous case cannot be read as resolved by a caller that forgets to check the count. This is also why the fold below never needs a list-length primitive."
+
+type NamedTargetTally
+  = TallyNone
+  | TallyOne { target: ExternalSubjectRef }
+  | TallyMany { candidates: List<ExternalSubjectRef> }
+
+fn registration_subjects(registry: List<LanguageTargetRegistration>) -> List<ExternalSubjectRef> {
+  fold(registry, init: [], f: fn(acc, r) { concat(acc, [r.subject]) })
+}
+
+fn subject_in_list(target: ExternalSubjectRef, subjects: List<ExternalSubjectRef>) -> Bool {
+  fold(subjects, init: false, f: fn(acc, s) { acc || external_subject_ref_eq(a: s, b: target) })
+}
+
+fn subject_occurrence_count(
+  target: ExternalSubjectRef,
+  subjects: List<ExternalSubjectRef>
+) -> Int {
+  fold(subjects, init: 0, f: fn(acc, s) {
+    if external_subject_ref_eq(a: s, b: target) { acc + 1 } else { acc }
+  })
+}
+
+fn tally_push(tally: NamedTargetTally, next: ExternalSubjectRef) -> NamedTargetTally {
+  match tally {
+    TallyNone => TallyOne { target: next }
+    TallyOne { target: first } => TallyMany { candidates: [first, next] }
+    TallyMany { candidates: c } => TallyMany { candidates: concat(c, [next]) }
+  }
+}
+
+fn surface_named_targets(
+  surface: DeclarationRef,
+  rows: List<LanguageTargetSurfaceRow>
+) -> NamedTargetTally {
+  fold(rows, init: TallyNone, f: fn(acc, r) {
+    if declaration_ref_eq(a: r.surface, b: surface) {
+      match r.target {
+        Absent => acc
+        Present { value: t } => tally_push(tally: acc, next: t)
+      }
+    } else {
+      acc
+    }
+  })
+}
+
+fn resolve_target_for_surface(
+  surface: DeclarationRef,
+  rows: List<LanguageTargetSurfaceRow>,
+  registry: List<LanguageTargetRegistration>
+) -> LanguageTargetResolution {
+  match surface_named_targets(surface: surface, rows: rows) {
+    TallyNone => TargetSurfaceUnregistered { surface: surface }
+    TallyMany { candidates: c } => TargetSurfaceAmbiguous { surface: surface, candidates: c }
+    TallyOne { target: t } =>
+      if subject_in_list(target: t, subjects: registration_subjects(registry: registry)) {
+        TargetResolved { target: t }
+      } else {
+        TargetSubjectUnresolvable { subject: t }
+      }
+  }
+}
+
+fn surface_row_violations(
+  row: LanguageTargetSurfaceRow,
+  registry: List<LanguageTargetRegistration>
+) -> List<LanguageTargetJoinViolation> {
+  match row.target {
+    Absent => [SurfaceMissingTargetIdentity { authority: row.authority, surface: row.surface }]
+    Present { value: t } =>
+      if subject_in_list(target: t, subjects: registration_subjects(registry: registry)) {
+        []
+      } else {
+        [SurfaceNamesUnknownTarget {
+          authority: row.authority,
+          surface: row.surface,
+          named: t
+        }]
+      }
+  }
+}
+
+fn duplicate_registration_violations(
+  registry: List<LanguageTargetRegistration>
+) -> List<LanguageTargetJoinViolation> {
+  let subjects = registration_subjects(registry: registry)
+  fold(registry, init: [], f: fn(acc, r) {
+    if subject_occurrence_count(target: r.subject, subjects: subjects) > 1 {
+      concat(acc, [DuplicateRegistryTarget { target: r.subject }])
+    } else {
+      acc
+    }
+  })
+}
+
+fn language_target_join_violations(
+  rows: List<LanguageTargetSurfaceRow>,
+  registry: List<LanguageTargetRegistration>
+) -> List<LanguageTargetJoinViolation> {
+  concat(
+    fold(rows, init: [], f: fn(acc, r) {
+      concat(acc, surface_row_violations(row: r, registry: registry))
+    }),
+    duplicate_registration_violations(registry: registry)
+  )
+}
+
+fn language_target_join_clean(
+  rows: List<LanguageTargetSurfaceRow>,
+  registry: List<LanguageTargetRegistration>
+) -> Bool {
+  fold(
+    language_target_join_violations(rows: rows, registry: registry),
+    init: true,
+    f: fn(acc, v) { false }
+  )
+}

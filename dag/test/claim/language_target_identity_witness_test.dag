@@ -1,0 +1,208 @@
+module test.claim.language_target_identity_witness
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.types { Bool, List, String }
+import extdeps.external_authority { ExternalSubjectRef, external_subject_ref_eq }
+import extdeps.languages.bash.subject
+import std.language_target_identity {
+  LanguageTargetSurfaceAuthority,
+  StdLanguageCatalogue,
+  TargetModelDeclaration,
+  EmitHostExecution,
+  TargetVocabulary,
+  RuntimeChecker,
+  LegacyFrontier,
+  LanguageTargetRegistration,
+  LanguageTargetSurfaceRow,
+  LanguageTargetJoinViolation,
+  SurfaceMissingTargetIdentity,
+  SurfaceNamesUnknownTarget,
+  DuplicateRegistryTarget,
+  LanguageTargetResolution,
+  TargetResolved,
+  TargetSurfaceUnregistered,
+  TargetSurfaceAmbiguous,
+  TargetSubjectUnresolvable,
+  resolve_target_for_surface,
+  language_target_join_violations,
+  language_target_join_clean,
+}
+
+data language_target_identity_witness_note: String = "GREEN and discriminating RED controls for the language-target join kernel (operator verdict 2026-08-04). Every RED here is a state the census would otherwise report as a resolved target, which is the failure this join exists to make unwritable: a surface with no identity, a surface naming a subject nobody registered, two registrations of one subject, and a surface two rows disagree about. The Bash subject is the live specimen and is referenced SYMBOLICALLY through extdeps.languages.bash.subject rather than by spelling its module path in a string, so a rename of that declaration breaks this witness rather than silently passing (DESIGN section 3 cite-the-symbol). WHAT THIS WITNESS DOES NOT COVER, stated rather than implied: these fns are pure in the rows handed to them, so nothing here proves the surface census is COMPLETE — a target-bearing surface nobody authored a row for is invisible to every assertion below. Population completeness is the registry totality wall's job and is not established here."
+
+fn ref_of(module_path: String, decl_name: String) -> DeclarationRef {
+  DeclarationRef {
+    module_path: module_path,
+    decl_name: decl_name,
+    field: WholeDeclaration
+  }
+}
+
+fn bash_subject() -> ExternalSubjectRef {
+  ExternalSubjectRef {
+    declaration: ref_of(
+      module_path: "extdeps.languages.bash.subject",
+      decl_name: "gnu_bash"
+    )
+  }
+}
+
+fn unregistered_subject() -> ExternalSubjectRef {
+  ExternalSubjectRef {
+    declaration: ref_of(
+      module_path: "extdeps.languages.verilog.subject",
+      decl_name: "verilog"
+    )
+  }
+}
+
+fn bash_registration() -> LanguageTargetRegistration {
+  LanguageTargetRegistration {
+    subject: bash_subject(),
+    scope: ref_of(
+      module_path: "extdeps.languages.bash.subject",
+      decl_name: "extdeps_model_scope"
+    )
+  }
+}
+
+fn bash_grammar_surface() -> DeclarationRef {
+  ref_of(module_path: "v2.extdeps.languages.bash", decl_name: "bash_target_model")
+}
+
+fn bash_grammar_row() -> LanguageTargetSurfaceRow {
+  LanguageTargetSurfaceRow {
+    authority: TargetModelDeclaration,
+    surface: bash_grammar_surface(),
+    target: Present { value: bash_subject() }
+  }
+}
+
+test fn green_registered_bash_surface_resolves_to_the_bash_subject() -> Bool {
+  match resolve_target_for_surface(
+    surface: bash_grammar_surface(),
+    rows: [bash_grammar_row()],
+    registry: [bash_registration()]
+  ) {
+    TargetResolved { target: t } => external_subject_ref_eq(a: t, b: bash_subject())
+    TargetSurfaceUnregistered { surface: _ } => false
+    TargetSurfaceAmbiguous { surface: _, candidates: _ } => false
+    TargetSubjectUnresolvable { subject: _ } => false
+  }
+}
+
+test fn green_clean_join_reports_no_violations() -> Bool {
+  language_target_join_clean(
+    rows: [bash_grammar_row()],
+    registry: [bash_registration()]
+  )
+}
+
+test fn red_surface_without_identity_refuses() -> Bool {
+  let rows = [
+    LanguageTargetSurfaceRow {
+      authority: StdLanguageCatalogue,
+      surface: ref_of(module_path: "std.languages", decl_name: "rust_language"),
+      target: none
+    }
+  ]
+  fold(language_target_join_violations(rows: rows, registry: [bash_registration()]),
+    init: false,
+    f: fn(acc, v) {
+      acc || match v {
+        SurfaceMissingTargetIdentity { authority: _, surface: s } => s.decl_name == "rust_language"
+        SurfaceNamesUnknownTarget { authority: _, surface: _, named: _ } => false
+        DuplicateRegistryTarget { target: _ } => false
+      }
+    })
+}
+
+test fn red_surface_naming_unregistered_subject_refuses() -> Bool {
+  let rows = [
+    LanguageTargetSurfaceRow {
+      authority: TargetVocabulary,
+      surface: ref_of(module_path: "v2.extdeps.languages.verilog", decl_name: "verilog_model"),
+      target: Present { value: unregistered_subject() }
+    }
+  ]
+  fold(language_target_join_violations(rows: rows, registry: [bash_registration()]),
+    init: false,
+    f: fn(acc, v) {
+      acc || match v {
+        SurfaceNamesUnknownTarget { authority: _, surface: _, named: n } =>
+          external_subject_ref_eq(a: n, b: unregistered_subject())
+        SurfaceMissingTargetIdentity { authority: _, surface: _ } => false
+        DuplicateRegistryTarget { target: _ } => false
+      }
+    })
+}
+
+test fn red_duplicate_registration_refuses() -> Bool {
+  let violations = language_target_join_violations(
+    rows: [],
+    registry: [bash_registration(), bash_registration()]
+  )
+  fold(violations, init: false, f: fn(acc, v) {
+    acc || match v {
+      DuplicateRegistryTarget { target: t } => external_subject_ref_eq(a: t, b: bash_subject())
+      SurfaceMissingTargetIdentity { authority: _, surface: _ } => false
+      SurfaceNamesUnknownTarget { authority: _, surface: _, named: _ } => false
+    }
+  })
+}
+
+test fn red_unregistered_surface_reports_located_refusal_not_silence() -> Bool {
+  let unknown = ref_of(module_path: "v2.extdeps.languages.spice", decl_name: "spice_deck")
+  match resolve_target_for_surface(
+    surface: unknown,
+    rows: [bash_grammar_row()],
+    registry: [bash_registration()]
+  ) {
+    TargetSurfaceUnregistered { surface: s } => s.decl_name == "spice_deck"
+    TargetResolved { target: _ } => false
+    TargetSurfaceAmbiguous { surface: _, candidates: _ } => false
+    TargetSubjectUnresolvable { subject: _ } => false
+  }
+}
+
+test fn red_two_rows_disagreeing_about_one_surface_refuse_as_ambiguous() -> Bool {
+  let conflicting = [
+    bash_grammar_row(),
+    LanguageTargetSurfaceRow {
+      authority: EmitHostExecution,
+      surface: bash_grammar_surface(),
+      target: Present { value: unregistered_subject() }
+    }
+  ]
+  match resolve_target_for_surface(
+    surface: bash_grammar_surface(),
+    rows: conflicting,
+    registry: [bash_registration()]
+  ) {
+    TargetSurfaceAmbiguous { surface: _, candidates: c } => fold(c, init: 0, f: fn(a, _x) { a + 1 }) == 2
+    TargetResolved { target: _ } => false
+    TargetSurfaceUnregistered { surface: _ } => false
+    TargetSubjectUnresolvable { subject: _ } => false
+  }
+}
+
+test fn red_surface_naming_subject_absent_from_registry_is_unresolvable() -> Bool {
+  let rows = [
+    LanguageTargetSurfaceRow {
+      authority: RuntimeChecker,
+      surface: ref_of(module_path: "tools.emit_host_gate", decl_name: "run_ts_smoke"),
+      target: Present { value: unregistered_subject() }
+    }
+  ]
+  match resolve_target_for_surface(
+    surface: ref_of(module_path: "tools.emit_host_gate", decl_name: "run_ts_smoke"),
+    rows: rows,
+    registry: [bash_registration()]
+  ) {
+    TargetSubjectUnresolvable { subject: s } =>
+      external_subject_ref_eq(a: s, b: unregistered_subject())
+    TargetResolved { target: _ } => false
+    TargetSurfaceUnregistered { surface: _ } => false
+    TargetSurfaceAmbiguous { surface: _, candidates: _ } => false
+  }
+}
