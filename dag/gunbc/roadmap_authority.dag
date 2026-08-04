@@ -1626,21 +1626,6 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The start working, the repeat being harmless, and the refusals."
       )
     ),
-    active_small(
-      identity: "rn_WJDVJZSNQSWQ3XS55NM5VXV18R",
-      id: "roadmap-runtime-readback",
-      owner: "roadmap-runtime",
-      path: "docs/plans/roadmap-workspace-ux-plan.md",
-      t: fields(
-        headline: "Check what actually happened rather than assuming it worked",
-        boundary: "After starting work, separately observe whether a session exists, whether its tools are ready, how the attempt ended, and whether a pull request appeared.",
-        displaced_cost: "The dashboard currently treats 'we sent the request' as 'it is running', so it shows work that does not exist.",
-        first_slice: "Watch one started attempt and show the four facts independently.",
-        red_control: "An accepted request with no observed session never displays as running or finished.",
-        out_of_scope: "Observation never changes the roadmap.",
-        handback: "The four observations plus a stale-state refresh."
-      )
-    ),
     active(
       identity: "rn_C0D3XAPP5RV3RT1CALP0D1460",
       id: "codex-app-server-press-vertical",
@@ -1648,12 +1633,27 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       path: "docs/plans/provider-control-interface-audit.md",
       t: fields(
         headline: "Bundle exact provider dependencies and run Codex app-server through the roadmap press",
-        boundary: "One attributable press trip: exact Codex package selection under scripts-disabled materialization; ProviderInterfaceBinding whose realization nests runtime bundle + transport + lifecycle (provider identity derived, never a writable sibling); subjectful Start naming attempt+turn+interface; device-code enrollment + exact SM credential version + account/read and rateLimits/read; JSON-AST wire parse with raw native event retention; terminal/cause split; page-level OperatorActionItem inbox; persisted turn receipt. Missing app-server never falls back to exec --json; srv1 exec--json/tmux production offer is removed once the receipt path is live.",
+        boundary: "SOLE OWNER of the click→real-work defect for the first press specimen. One attributable press trip: exact Codex package selection under scripts-disabled materialization; ProviderInterfaceBinding whose realization nests runtime bundle + transport + lifecycle (provider identity derived, never a writable sibling); subjectful Start naming attempt+turn+interface; device-code enrollment + exact SM credential version + account/read and rateLimits/read; JSON-AST wire parse with raw native event retention; terminal/cause split; page-level OperatorActionItem inbox; persisted turn receipt that IS the first closing specimen for press read-back. Missing app-server never falls back to exec --json; srv1 exec--json/tmux production offer is removed once the receipt path is live. Generic session/tools/PR observation (roadmap-runtime-readback) is a CHILD that generalizes AFTER this specimen closes — not a sibling startable path for the same defect.",
         displaced_cost: "Replaces CLI-shaped quota guessing and tmux-as-authority with a typed control interface the audit locked, so a press click names a real turn instead of a fabricated dispatch-accepted — and so the operator manages exceptions, not routine provider accounts.",
         first_slice: "Correct realization-shaped binding + package spine + Codex 0.146.0 lock + credential-home lease + usage standing + operator action carriers + app-server Start/adjudication keystone witness; then wire production press + cut over srv1 offer.",
-        red_control: "Missing binary refuses without exec --json; legacy non-production realization refuses; `latest` secret version refuses; malformed JSON refuses; failed+unclassified cannot authorize recovery; agent-authored usage-limit prose is not quota; legacy exec fixture remains fidelity-loss evidence read from file bytes.",
-        out_of_scope: "No Claude Agent SDK trip, no Cursor, no cross-provider recovery policy, no assumed OAuth refresh write-back contract, no socket/daemon transport cutover.",
-        handback: "Carriers under gunbc.codex_* / gunbc.provider_* / extdeps.llm.codex_app_server / extdeps.npm (NpmPackageLockFormat + npm_decode_integrity) / gunbc.package_delivery (Codex integrity profile + materializer); admitted Codex lock + runtime-bundle receipt; keystone witness green; production press path using CodexAppServer only."
+        red_control: "Missing binary refuses without exec --json; legacy non-production realization refuses; `latest` secret version refuses; malformed JSON refuses; failed+unclassified cannot authorize recovery; agent-authored usage-limit prose is not quota; legacy exec fixture remains fidelity-loss evidence read from file bytes; an accepted Start with no observed provider turn never displays as running or finished.",
+        out_of_scope: "No Claude Agent SDK trip, no Cursor, no cross-provider recovery policy, no assumed OAuth refresh write-back contract, no socket/daemon transport cutover. Publication/PR observation stays with the Publication obligation — not reinvented here as a second press path.",
+        handback: "Carriers under gunbc.codex_* / gunbc.provider_* / extdeps.llm.codex_app_server / extdeps.npm (NpmPackageLockFormat + npm_decode_integrity) / gunbc.package_delivery (Codex integrity profile + materializer); admitted Codex lock + runtime-bundle receipt; keystone witness green; production press path using CodexAppServer only; one press → one attributable attempt/turn result visible in the UI."
+      )
+    ),
+    active_small(
+      identity: "rn_WJDVJZSNQSWQ3XS55NM5VXV18R",
+      id: "roadmap-runtime-readback",
+      owner: "roadmap-runtime",
+      path: "docs/plans/roadmap-workspace-ux-plan.md",
+      t: fields(
+        headline: "Generalize press read-back after the Codex specimen closes",
+        boundary: "CHILD OF codex-app-server-press-vertical — not a sibling owner of the click-with-no-work defect. After the Codex press trip lands a subjectful Start + terminal turn receipt as the first closing specimen, generalize observation across providers: session existence, tool readiness, attempt terminal, and Publication/PR appearance as independent facts. Do not start this row while the Codex vertical is open; do not build a parallel session-debris path that competes with app-server turn receipts.",
+        displaced_cost: "Prevents a second worker from implementing competing read-back around old session observations while the Codex vertical already closes the same incident with provider-turn receipts.",
+        first_slice: "After Codex press green: project the four observation axes from the turn-receipt contract onto one non-Codex provider or a synthetic second specimen.",
+        red_control: "An accepted request with no observed provider turn (and no typed refusal) never displays as running or finished; a session-only acknowledgement without turn receipt is not success.",
+        out_of_scope: "Observation never changes the roadmap. Does not reopen a second press path. Publication/PR facts remain owned by Publication obligations.",
+        handback: "Generalized observation axes with the Codex turn receipt as the positive control and a no-turn accepted-request RED."
       )
     ),
 
@@ -1931,8 +1931,8 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
 
     edge(child: "roadmap-runtime-ready-override", parent: "roadmap-runtime-identity-join"),
     edge(child: "roadmap-runtime-dispatch-consumer", parent: "roadmap-runtime-ready-override"),
-    edge(child: "roadmap-runtime-readback", parent: "roadmap-runtime-dispatch-consumer"),
     edge(child: "codex-app-server-press-vertical", parent: "roadmap-runtime-dispatch-consumer"),
+    edge(child: "roadmap-runtime-readback", parent: "codex-app-server-press-vertical"),
 
     edge(child: "fleet-bmc-policy-convergence", parent: "fleet-state-frontier"),
     edge(child: "fleet-closed-loop-converge", parent: "fleet-state-frontier"),

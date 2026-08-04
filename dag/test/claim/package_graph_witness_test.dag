@@ -1,43 +1,34 @@
 module test.claim.package_graph_witness_test
 
 import std.types { NonEmptyStr, String, Bool, List }
-import std.content_hash { ContentHash, structural_content_hash, as_content_hash_structural }
-import extdeps.version { VersionIdentity }
-import extdeps.pin { Pin, ExactPin }
 import extdeps.package {
-  PackageCoordinate, PackageArtifactSource, PinnedPackageArtifactSelection,
   PackageLockNode, PackageDependencyEdge, PackageLockGraph,
   package_lock_lookup_node, package_lock_admit_graph,
   PackageLockNodeUnique, PackageLockNodeAbsent, PackageLockNodeDuplicate,
   PackageLockGraphAdmitted, PackageLockGraphDuplicateNode,
-  PackageLockGraphMissingEdgeDependency,
-  pinned_package_artifact_name,
+  PackageLockGraphMissingEdgeDependency, PackageLockGraphLookupInconsistency,
+  PackageLockGraphMissingRoot,
+}
+import gunbc.package_delivery {
+  admit_codex_package_lock_graph,
 }
 
-type ProbeEcosystem { registry: NonEmptyStr }
+type ProbeSelection {
+  name: NonEmptyStr
+  version: NonEmptyStr
+}
+
 type ProbeKind = ProbeRuntime | ProbeDev
 
-fn d() -> ContentHash {
-  as_content_hash_structural(structural: structural_content_hash(digest: "0123456789abcdef"))
-}
-
-fn sel(name: NonEmptyStr, v: NonEmptyStr) -> PinnedPackageArtifactSelection<ProbeEcosystem> {
-  PinnedPackageArtifactSelection {
-    pin: Pin {
-      subject: PackageCoordinate { ecosystem: ProbeEcosystem { registry: "probe" as NonEmptyStr }, name: name },
-      version: v as VersionIdentity,
-      expected_identity: d(),
-      selection: ExactPin,
-    },
-    source: PackageArtifactSource { locator: "probe" as NonEmptyStr },
+fn node(key: NonEmptyStr, name: NonEmptyStr, v: NonEmptyStr) -> PackageLockNode<NonEmptyStr, ProbeSelection, String> {
+  PackageLockNode {
+    key: key,
+    selection: ProbeSelection { name: name, version: v },
+    metadata: "",
   }
 }
 
-fn node(key: NonEmptyStr, name: NonEmptyStr, v: NonEmptyStr) -> PackageLockNode<NonEmptyStr, PinnedPackageArtifactSelection<ProbeEcosystem>, String> {
-  PackageLockNode { key: key, selection: sel(name: name, v: v), metadata: "" }
-}
-
-fn graph() -> PackageLockGraph<NonEmptyStr, NonEmptyStr, PinnedPackageArtifactSelection<ProbeEcosystem>, String, ProbeKind> {
+fn graph() -> PackageLockGraph<NonEmptyStr, NonEmptyStr, ProbeSelection, String, ProbeKind> {
   PackageLockGraph {
     manager: "probe-pm" as NonEmptyStr,
     roots: ["node_modules/a" as NonEmptyStr],
@@ -124,7 +115,25 @@ test fn duplicate_identical_node_keys_refuse_admission() -> Bool {
   }
 }
 
-test fn pinned_selection_name_projects() -> Bool {
-  let name = pinned_package_artifact_name(selection: sel(name: "a" as NonEmptyStr, v: "1.0.0" as NonEmptyStr))
-  name == ("a" as NonEmptyStr)
+test fn package_delivery_boundary_readmits_raw_graph() -> Bool {
+  match admit_codex_package_lock_graph(raw_graph: graph()) {
+    PackageLockGraphAdmitted { graph: _ } => true
+    _ => false
+  }
 }
+
+test fn admitted_nodes_do_not_surface_as_missing_root() -> Bool {
+  let g = PackageLockGraph {
+    manager: "probe-pm" as NonEmptyStr,
+    roots: [],
+    nodes: [node(key: "only" as NonEmptyStr, name: "a" as NonEmptyStr, v: "1.0.0" as NonEmptyStr)],
+    edges: [],
+  }
+  match package_lock_admit_graph(graph: g) {
+    PackageLockGraphAdmitted { graph: _ } => true
+    PackageLockGraphLookupInconsistency { key: _ } => false
+    PackageLockGraphMissingRoot { key: _ } => false
+    _ => false
+  }
+}
+
