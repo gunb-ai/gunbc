@@ -296,7 +296,8 @@ jobs:
     timeout-minutes: 10
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     concurrency:
-      group: srv1-dashboard-deploy
+      queue: max
+      group: gunbc-deploy-srv1-dashboard
       cancel-in-progress: false
     steps:
       - name: Checkout
