@@ -1,6 +1,7 @@
 module v2.compiler.source_authority
 import v2.std.language_model { LanguageModel }
 
+import extdeps.filesystem.filesystem_io { Filesystem }
 import v2.compiler.normalize { normalize }
 import v2.compiler.normalized_tree { NormalizedTree }
 import v2.compiler.parse {
@@ -35,9 +36,11 @@ import v2.std.diagnostic {
   diagnostics_singleton,
   outcome_accepted,
   outcome_rejected,
-  port_locus
+  port_locus,
+  textual_whole_file_diagnostic
 }
 import v2.std.grammar { ParseTree }
+import v2.std.compilers.lexing { symbol_intern_lexeme }
 import v2.std.node { Node, Symbol, canonicalize_node_strip_provenance }
 import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -53,10 +56,9 @@ import v2.std.collection { List }
 import v2.std.cross_tree.import_model { SourceRootRef, SourceRootSet }
 import v2.std.cross_tree.resolution { source_root_set_insert }
 import v2.std.provenance { SpanIndex }
-import v2.std.compilers.lexing { symbol_intern_lexeme }
+import v2.std.compilers.target_model { TargetModel }
 import extdeps.communication.fidelity_carriers { medium_section_equal }
-import extdeps.communication.medium { Lossless, Medium }
-import extdeps.filesystem.filesystem_io
+import extdeps.communication.medium { DecodeFidelity, Lossless, Medium }
 import std.content_hash {
   ContentHash,
   ContentHashComparison,
@@ -65,8 +67,7 @@ import std.content_hash {
   content_hash_of_value
 }
 import v2.compiler.translate { target_serialize_source_from_model }
-import std.content_hash { ContentHash, content_hash_of_value }
-import v2.std.text { String }
+import v2.std.text { String, string_is_empty }
 import v2.std.witness { Holds, Violates, Witness }
 
 data source_authority_module_note: String = "Wave 2 Gate-A flip lane: v2.compiler.source_authority is the cross-tree ingest and round-trip authority (parse→normalize→resolve→serialize laws over DagSourceReadWitness / SourceRootIngest). Curated seed-linked scaffold defers full tree behavioral oracle until emitter Rc/Optional coherence (#6775) greens rustc on the closure."
@@ -185,36 +186,62 @@ fn source_ref_for_storage_path(path: String) -> SourceRef {
 
 data source_ref_read_through_note: String = "Read-through for ingest-manifest SourceRef rows (ingest-manifest-source-ref-carrier-design.md stage 3): filesystem_read at consumption, content identity verified against the ref's ContentHash before parse. Hash mismatch refuses with both digests; missing/unreadable paths refuse as read failures rather than misclassified parse errors."
 
+data source_ref_content_hash_mismatch: Symbol = ^source_ref_content_hash_mismatch
+
+data source_ref_path_missing: Symbol = ^source_ref_path_missing
+
+data source_ref_path_unreadable: Symbol = ^source_ref_path_unreadable
+
+fn source_ref_read_refused_diagnostic(ref: SourceRef, reason: Symbol) -> NonEmptyDiagnostics {
+  diagnostics_singleton(
+    d: textual_whole_file_diagnostic(
+      reason: reason,
+      module_file: symbol_intern_lexeme(lexeme: ref.path),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    )
+  )
+}
+
 fn dag_source_content_hash_for_text(text: String) -> ContentHash {
   content_hash_of_value(value: text)
 }
 
 fn dag_source_read_witness_from_source_ref(ref: SourceRef) -> Outcome<DagSourceReadWitness> {
-  let read = filesystem_read(path: ref.path)
-  let actual = dag_source_content_hash_for_text(text: read.content)
-  match compare_content_hash(left: ref.content_hash, right: actual) {
-    ContentHashEqual =>
-      outcome_accepted(
-        value: DagSourceReadWitness {
-          source: Medium { carried: read.content, fidelity: Lossless },
-          artifact: Artifact {
-            kind: SourceFile,
-            id: symbol_intern_lexeme(lexeme: ref.path),
-            file_path: ref.path
-          },
-          compilation_unit: symbol_intern_lexeme(lexeme: ref.path),
-          source_root: ref.source_root
-        }
-      )
-    _ =>
-      outcome_rejected(
-        d: diagnostics_singleton(
-          d: port_locus(
-            port: ^source_ref_content_hash_mismatch,
-            reason: ^source_ref_content_hash_mismatch
+  let read = Filesystem.Read(path: ref.path)
+  if !read.success {
+    let reason =
+      if string_is_empty(s: read.content) {
+        source_ref_path_missing
+      } else {
+        source_ref_path_unreadable
+      }
+    outcome_rejected(
+      d: source_ref_read_refused_diagnostic(ref: ref, reason: reason)
+    )
+  } else {
+    let actual = dag_source_content_hash_for_text(text: read.content)
+    match compare_content_hash(left: ref.content_hash, right: actual) {
+      ContentHashEqual =>
+        outcome_accepted(
+          value: DagSourceReadWitness {
+            source: Medium { carried: read.content, fidelity: Lossless },
+            artifact: Artifact {
+              kind: SourceFile,
+              id: symbol_intern_lexeme(lexeme: ref.path),
+              file_path: ref.path
+            },
+            compilation_unit: symbol_intern_lexeme(lexeme: ref.path),
+            source_root: ref.source_root
+          }
+        )
+      _ =>
+        outcome_rejected(
+          d: source_ref_read_refused_diagnostic(
+            ref: ref,
+            reason: source_ref_content_hash_mismatch
           )
         )
-      )
+    }
   }
 }
 

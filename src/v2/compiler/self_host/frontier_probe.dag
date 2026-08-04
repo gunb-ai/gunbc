@@ -5,12 +5,19 @@ import v2.compiler.self_host.compiler_closure_emit {
 }
 import v2.compiler.name_resolve {
   Admission,
-  admission_from_module_root
+  ResolutionSubject,
+  admission_from_module_root,
+  resolve_diagnostics
 }
 import v2.compiler.program_assembly { assemble_program_from_ingest }
 import v2.compiler.self_host.frontier_probe_types {
+  FrontierProbeDetail,
+  FrontierProbeDetailAbsent,
   FrontierProbeReceipt,
+  FrontierProbeSourceReadRefused,
+  MissingModule,
   ProbeStageEmit,
+  SourceRootManifestElidedProbe,
   UnknownProbeCause,
   frontier_classify_rejection_reason,
   frontier_probe_located_stage_for_assemble_outcome,
@@ -18,86 +25,150 @@ import v2.compiler.self_host.frontier_probe_types {
 }
 import v2.compiler.source_authority {
   DagSourceReadWitness,
-  SourceRootIngest
+  SourceRef,
+  SourceRootCoverage,
+  SourceRootCoverageComplete,
+  SourceRootIngest,
+  SourceRootManifestAbsent,
+  SourceRootManifestElided,
+  SourceRootRowsMissing,
+  source_root_ingest_from_source_refs
 }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.extdeps.languages.rust { rust_target_model }
 import v2.lens.reference_deps { reference_deps_ingest_source_text }
-import extdeps.communication.medium { Lossless, Medium }
-import extdeps.filesystem.filesystem_io
 import std.algebra { Cons, Empty }
-import v2.std.algebra { fold_list, length, list_reverse }
-import v2.std.artifact { Artifact, SourceFile }
+import v2.std.algebra { fold_list, length }
 import v2.std.collection { List }
-import v2.std.compilers.lexing { symbol_intern_lexeme }
-import v2.std.cross_tree.import_model { DagTree, SourceRootRef, V2Tree }
+import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
 import v2.std.diagnostic {
   Accepted,
-  ExternalContractUnknown,
-  None,
+  NonEmptyDiagnostics,
   Outcome,
   Rejected,
-  Unavailable,
+  Textual,
   diagnostics_singleton,
-  outcome_accepted,
-  outcome_rejected,
-  textual_whole_file_diagnostic
+  port_locus
 }
-import v2.std.integer { Int }
+import v2.std.qualified_name {
+  qualified_name_from_dotted_string,
+  qualified_name_to_dotted_string
+}
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }
 
-data frontier_probe_emit_from_ingest_consumer_dissolution_trigger: String = "migrate_when_frontier_per_module_probe_receipt_binds — frontier_probe_emit_from_ingest is staged kernel with no substrate consumer yet; roster rows bind via execution_measured_seed_retained_row_from_probe_receipt when per-module survey lands."
+data frontier_probe_ingest_subject_note: String = "Single ingest authority for frontier probe (operator ruling 2026-08-04): FrontierProbeReferencedClosure reads through modeled SourceRef rows with content-hash verification — never a parallel path list beside inline ingest. SourceRootManifestElided on the inline carrier is consumable only when the complete SourceRef population is present; otherwise the probe refuses with SourceRootManifestElidedProbe detail. FrontierProbeFixture is explicit hermetic harness ingest."
 
-data frontier_probe_closure_ingest_note: String = "Frontier probe ingest must not depend on inline Lossless rows past MANIFEST_INLINE_LIST_MAX — 00_compile's closure is 91 reads against cap 64 (source_authority::source_root_coverage_note), so elided inline manifests carry Empty ingest and assemble refuses ^resolve_module_not_found for the subject. Path-only closure rows dissolve the cap: ingest is built at probe time via filesystem_read over every closure path, matching compile_door_ledger's ledger_read_witness transport without inlining corpus text."
+data frontier_probe_source_root_manifest_elided_reason: Symbol = ^frontier_probe_source_root_manifest_elided
 
-fn frontier_probe_source_root_for_path(path: String) -> SourceRootRef {
-  if starts_with(s: path, prefix: "src/v2") {
-    V2Tree
-  } else {
-    DagTree
-  }
-}
+data frontier_probe_source_read_refused_reason: Symbol = ^frontier_probe_source_read_refused
 
-fn frontier_probe_read_witness(path: String) -> DagSourceReadWitness {
-  DagSourceReadWitness {
-    source: Medium {
-      carried: filesystem_read(path: path).content,
-      fidelity: Lossless
-    },
-    artifact: Artifact {
-      kind: SourceFile,
-      id: symbol_intern_lexeme(lexeme: path),
-      file_path: path
-    },
-    compilation_unit: symbol_intern_lexeme(lexeme: path),
-    source_root: frontier_probe_source_root_for_path(path: path)
-  }
-}
+type FrontierProbeIngestSubject
+  = FrontierProbeReferencedClosure {
+      refs: List<SourceRef>,
+      coverage: SourceRootCoverage,
+      ingest_read_count: Int,
+      entry: SourceRef
+    }
+  | FrontierProbeFixture {
+      ingest: SourceRootIngest,
+      admission: Admission
+    }
 
-fn frontier_probe_ingest_from_closure_paths(paths: List<String>) -> SourceRootIngest {
-  list_reverse(
-    xs: fold_list(
-      xs: paths,
-      empty: Empty,
-      cons: fn(acc, p) {
-        Cons {
-          head: frontier_probe_read_witness(path: p),
-          tail: acc
-        }
+fn frontier_probe_source_ref_for_path(
+  refs: List<SourceRef>,
+  path: String
+) -> Optional<SourceRef> {
+  fold_list(
+    xs: refs,
+    empty: optional_absent(),
+    cons: fn(acc, ref) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          if ref.path == path {
+            optional_present(value: ref)
+          } else {
+            optional_absent()
+          }
       }
-    )
+    }
   )
 }
 
-fn frontier_probe_ingest_for_entry(
-  closure_paths: List<String>,
-  fallback_ingest: SourceRootIngest
-) -> SourceRootIngest {
-  if length(xs: closure_paths) > 0 {
-    frontier_probe_ingest_from_closure_paths(paths: closure_paths)
+fn frontier_probe_source_ref_for_read_diagnostic(
+  refs: List<SourceRef>,
+  d: NonEmptyDiagnostics
+) -> Optional<SourceRef> {
+  match d.head.at {
+    Textual { file: module_file, extent: _ } =>
+      frontier_probe_source_ref_for_path(
+        refs: refs,
+        path: symbol_lexeme(sym: module_file)
+      )
+    _ => optional_absent()
+  }
+}
+
+fn frontier_probe_receipt_from_source_read_refused(
+  module_path: String,
+  source_ref: SourceRef,
+  cause: Symbol
+) -> FrontierProbeReceipt {
+  FrontierProbeReceipt {
+    module_path: module_path,
+    blocker_class: UnknownProbeCause { reason: cause },
+    located_stage: ProbeStageAssemble,
+    located_reason: cause,
+    detail: FrontierProbeSourceReadRefused {
+      source_ref: source_ref,
+      cause: cause
+    }
+  }
+}
+
+fn frontier_probe_receipt_from_ingest_read_rejected(
+  module_path: String,
+  refs: List<SourceRef>,
+  d: NonEmptyDiagnostics
+) -> FrontierProbeReceipt {
+  match frontier_probe_source_ref_for_read_diagnostic(refs: refs, d: d) {
+    Present { value: ref } =>
+      frontier_probe_receipt_from_source_read_refused(
+        module_path: module_path,
+        source_ref: ref,
+        cause: d.head.reason
+      )
+    Absent =>
+      frontier_probe_receipt_from_reason_only(
+        module_path: module_path,
+        reason: d.head.reason
+      )
+  }
+}
+
+fn frontier_probe_receipt_from_reason_only(
+  module_path: String,
+  reason: Symbol
+) -> FrontierProbeReceipt {
+  let blocker = frontier_classify_rejection_reason(reason: reason)
+  FrontierProbeReceipt {
+    module_path: module_path,
+    blocker_class: blocker,
+    located_stage: frontier_probe_located_stage_for_assemble_outcome(blocker: blocker),
+    located_reason: reason,
+    detail: FrontierProbeDetailAbsent
+  }
+}
+
+fn frontier_probe_detail_from_assemble(
+  reason: Symbol,
+  admission: Admission
+) -> FrontierProbeDetail {
+  if reason == ^resolve_module_not_found {
+    MissingModule { requested: admission.subject.name }
   } else {
-    fallback_ingest
+    FrontierProbeDetailAbsent
   }
 }
 
@@ -122,7 +193,7 @@ fn frontier_probe_entry_read_witness(
   )
 }
 
-fn frontier_probe_admission_from_ingest_entry(
+fn frontier_probe_admission_from_ingest(
   ingest: SourceRootIngest,
   module_path: String
 ) -> Outcome<Admission> {
@@ -137,60 +208,177 @@ fn frontier_probe_admission_from_ingest_entry(
           admission_from_module_root(root: parse_root)
       }
     Absent =>
-      outcome_rejected(
-        d: diagnostics_singleton(
-          d: textual_whole_file_diagnostic(
-            reason: ^resolve_module_not_found,
-            module_file: symbol_intern_lexeme(lexeme: module_path),
-            correction: Unavailable { reason: ExternalContractUnknown }
-          )
-        )
-      )
+      Rejected { diagnostics: resolve_diagnostics(reason: ^resolve_module_not_found) }
   }
 }
 
-fn frontier_probe_admission_for_entry(
-  ingest: SourceRootIngest,
+fn frontier_probe_receipt_manifest_elided(
   module_path: String,
-  fallback_admission: Admission
-) -> Outcome<Admission> {
-  if module_path != "" {
-    frontier_probe_admission_from_ingest_entry(ingest: ingest, module_path: module_path)
-  } else {
-    outcome_accepted(value: fallback_admission)
-  }
-}
-
-fn frontier_probe_receipt_for_entry(
-  closure_paths: List<String>,
-  fallback_ingest: SourceRootIngest,
-  module_path: String,
-  fallback_admission: Admission
+  read_count: Int,
+  cap: Int
 ) -> FrontierProbeReceipt {
-  let ingest = frontier_probe_ingest_for_entry(
-    closure_paths: closure_paths,
-    fallback_ingest: fallback_ingest
-  )
-  match frontier_probe_admission_for_entry(
-    ingest: ingest,
+  FrontierProbeReceipt {
     module_path: module_path,
-    fallback_admission: fallback_admission
-  ) {
-    Rejected { diagnostics: d } => {
-      let blocker = frontier_classify_rejection_reason(reason: d.head.reason)
-      FrontierProbeReceipt {
-        module_path: module_path,
-        blocker_class: blocker,
-        located_stage: frontier_probe_located_stage_for_assemble_outcome(blocker: blocker),
-        located_reason: d.head.reason
-      }
+    blocker_class: UnknownProbeCause {
+      reason: frontier_probe_source_root_manifest_elided_reason
+    },
+    located_stage: ProbeStageAssemble,
+    located_reason: frontier_probe_source_root_manifest_elided_reason,
+    detail: SourceRootManifestElidedProbe { read_count: read_count, cap: cap }
+  }
+}
+
+fn frontier_probe_detail_from_admission_diagnostic(
+  reason: Symbol,
+  d: NonEmptyDiagnostics
+) -> FrontierProbeDetail {
+  if reason == ^resolve_module_not_found {
+    match d.head.at {
+      Textual { file: module_file, extent: _ } =>
+        MissingModule {
+          requested: qualified_name_from_dotted_string(
+            dotted: symbol_lexeme(sym: module_file)
+          )
+        }
+      _ => FrontierProbeDetailAbsent
     }
-    Accepted { value: admission, diagnostics: _ } =>
+  } else {
+    FrontierProbeDetailAbsent
+  }
+}
+
+fn frontier_probe_receipt_from_admission_diagnostic_rejected(
+  module_path: String,
+  d: NonEmptyDiagnostics
+) -> FrontierProbeReceipt {
+  let reason = d.head.reason
+  let blocker = frontier_classify_rejection_reason(reason: reason)
+  FrontierProbeReceipt {
+    module_path: module_path,
+    blocker_class: blocker,
+    located_stage: frontier_probe_located_stage_for_assemble_outcome(blocker: blocker),
+    located_reason: reason,
+    detail: frontier_probe_detail_from_admission_diagnostic(reason: reason, d: d)
+  }
+}
+
+fn frontier_probe_receipt_from_admission_rejected(
+  module_path: String,
+  reason: Symbol,
+  admission: Admission
+) -> FrontierProbeReceipt {
+  let blocker = frontier_classify_rejection_reason(reason: reason)
+  FrontierProbeReceipt {
+    module_path: module_path,
+    blocker_class: blocker,
+    located_stage: frontier_probe_located_stage_for_assemble_outcome(blocker: blocker),
+    located_reason: reason,
+    detail: frontier_probe_detail_from_assemble(
+      reason: reason,
+      admission: admission
+    )
+  }
+}
+
+fn frontier_probe_receipt_for_subject(
+  subject: FrontierProbeIngestSubject,
+  module_path: String
+) -> FrontierProbeReceipt {
+  match subject {
+    FrontierProbeFixture { ingest: ingest, admission: admission } =>
       frontier_probe_emit_from_ingest(
         module_path: module_path,
         ingest: ingest,
         admission: admission
       )
+    FrontierProbeReferencedClosure {
+      refs: refs,
+      coverage: coverage,
+      ingest_read_count: read_count,
+      entry: entry_ref
+    } =>
+      match coverage {
+        SourceRootManifestElided { read_count: elided_reads, cap: cap } =>
+          if length(xs: refs) != elided_reads || elided_reads != read_count {
+            frontier_probe_receipt_manifest_elided(
+              module_path: module_path,
+              read_count: elided_reads,
+              cap: cap
+            )
+          } else {
+            match source_root_ingest_from_source_refs(refs: refs) {
+              Rejected { diagnostics: d } =>
+                frontier_probe_receipt_from_ingest_read_rejected(
+                  module_path: module_path,
+                  refs: refs,
+                  d: d
+                )
+              Accepted { value: ingest, diagnostics: _ } =>
+                match frontier_probe_admission_from_ingest(
+                  ingest: ingest,
+                  module_path: module_path
+                ) {
+                  Rejected { diagnostics: d } =>
+                    frontier_probe_receipt_from_admission_diagnostic_rejected(
+                      module_path: module_path,
+                      d: d
+                    )
+                  Accepted { value: admission, diagnostics: _ } =>
+                    frontier_probe_emit_from_ingest(
+                      module_path: module_path,
+                      ingest: ingest,
+                      admission: admission
+                    )
+                }
+            }
+          }
+        SourceRootCoverageComplete =>
+          if length(xs: refs) != read_count {
+            frontier_probe_receipt_manifest_elided(
+              module_path: module_path,
+              read_count: read_count,
+              cap: 0
+            )
+          } else {
+            match source_root_ingest_from_source_refs(refs: refs) {
+              Rejected { diagnostics: d } =>
+                frontier_probe_receipt_manifest_elided(
+                  module_path: module_path,
+                  read_count: read_count,
+                  cap: 0
+                )
+              Accepted { value: ingest, diagnostics: _ } =>
+                match frontier_probe_admission_from_ingest(
+                  ingest: ingest,
+                  module_path: module_path
+                ) {
+                  Rejected { diagnostics: d } =>
+                    frontier_probe_receipt_from_admission_diagnostic_rejected(
+                      module_path: module_path,
+                      d: d
+                    )
+                  Accepted { value: admission, diagnostics: _ } =>
+                    frontier_probe_emit_from_ingest(
+                      module_path: module_path,
+                      ingest: ingest,
+                      admission: admission
+                    )
+                }
+            }
+          }
+        SourceRootRowsMissing { read_count: missing_reads, produced_row_count: _ } =>
+          frontier_probe_receipt_manifest_elided(
+            module_path: module_path,
+            read_count: missing_reads,
+            cap: 0
+          )
+        SourceRootManifestAbsent =>
+          frontier_probe_receipt_manifest_elided(
+            module_path: module_path,
+            read_count: read_count,
+            cap: 0
+          )
+      }
   }
 }
 
@@ -210,7 +398,11 @@ fn frontier_probe_emit_from_ingest(
         module_path: module_path,
         blocker_class: blocker,
         located_stage: frontier_probe_located_stage_for_assemble_outcome(blocker: blocker),
-        located_reason: d.head.reason
+        located_reason: d.head.reason,
+        detail: frontier_probe_detail_from_assemble(
+          reason: d.head.reason,
+          admission: admission
+        )
       }
     }
     Accepted { value: _, diagnostics: _ } =>
@@ -226,7 +418,8 @@ fn frontier_probe_emit_from_ingest(
               reason: ^probe_emit_accept_self_host_bar_unbound
             },
             located_stage: ProbeStageEmit,
-            located_reason: ^probe_emit_accept_self_host_bar_unbound
+            located_reason: ^probe_emit_accept_self_host_bar_unbound,
+            detail: FrontierProbeDetailAbsent
           }
         Rejected { diagnostics: d } => {
           let blocker = frontier_classify_rejection_reason(reason: d.head.reason)
@@ -234,7 +427,8 @@ fn frontier_probe_emit_from_ingest(
             module_path: module_path,
             blocker_class: blocker,
             located_stage: frontier_probe_located_stage_for_emit_outcome(blocker: blocker),
-            located_reason: d.head.reason
+            located_reason: d.head.reason,
+            detail: FrontierProbeDetailAbsent
           }
         }
       }

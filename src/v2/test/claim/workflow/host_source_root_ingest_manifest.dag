@@ -5,13 +5,15 @@ import v2.compiler.name_resolve {
   ResolutionSubject,
 }
 import v2.compiler.source_authority {
+  SourceRef,
   SourceRootIngest,
   SourceRootManifestAbsent,
   SourceRootProvenanceCoverageReceipt,
 }
 import std.algebra { Cons, Empty }
+import std.content_hash { Fnv1a64, Fnv1a64Structural }
 import v2.std.collection { List }
-
+import v2.std.cross_tree.import_model { DagTree }
 import v2.std.text { String }
 
 data host_source_root_ingest_content_hash: String = ""
@@ -24,6 +26,8 @@ data host_source_root_ingest_coverage_receipt: SourceRootProvenanceCoverageRecei
 
 data host_source_root_ingest: SourceRootIngest = Empty
 
+data host_source_root_closure_refs: List<SourceRef> = Empty
+
 data host_compiler_closure_admission: Admission = Admission {
   subject: ResolutionSubject {
     name: Cons {
@@ -34,6 +38,10 @@ data host_compiler_closure_admission: Admission = Admission {
   imports: Empty
 }
 
-data frontier_probe_closure_paths: List<String> = Empty
+data frontier_probe_entry_source_ref: SourceRef = SourceRef {
+  path: "",
+  source_root: DagTree,
+  content_hash: Fnv1a64(Fnv1a64Structural { digest: "0000000000000000" })
+}
 
 data frontier_probe_entry_module_path: String = ""

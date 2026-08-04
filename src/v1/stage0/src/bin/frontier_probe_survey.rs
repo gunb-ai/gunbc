@@ -6,8 +6,8 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use v1_compiler::cli_run::{
-    discover_source_root_reads_for_entry, emit_source_root_ingest_manifest,
-    parse_source_root_entry_admission, resolve_entry_graph,
+    discover_source_root_reads_for_entry, emit_source_ref_dag_for_path,
+    emit_source_root_ingest_manifest, parse_source_root_entry_admission, resolve_entry_graph,
 };
 use v1_compiler::v1_interpreter::{self, ExecutionMode, InterpContext, Value};
 
@@ -251,20 +251,13 @@ fn unknown_probe_row(module_path: &str, cause: &str) -> ProbeReceiptRow {
 fn write_probe_overlay_manifest(
     module_path: &str,
     ingest_manifest: &Path,
-    closure_paths: &[String],
+    entry_source_ref: &str,
 ) -> Result<(), String> {
     let escaped = module_path.replace('\\', "/");
-    // The emitted ingest manifest already imports `String` in its header block
-    // (`host_source_root_ingest_content_hash: String`), and post-namespace-wave the
-    // grammar accepts imports ONLY in the header — a trailing `import` at EOF is now a
-    // parse error ("expected item declaration"). Append overlay `data` decls alone;
-    // String is already in scope.
-    let mut append = format!("\ndata frontier_probe_entry_module_path: String = \"{escaped}\"\n");
-    if !closure_paths.is_empty() {
-        append.push_str("\ndata frontier_probe_closure_paths: List<String> = ");
-        append.push_str(&emit_string_list_dag(closure_paths)?);
-        append.push('\n');
-    }
+    let mut append = format!(
+        "\ndata frontier_probe_entry_module_path: String = \"{escaped}\"\n\
+         data frontier_probe_entry_source_ref: SourceRef = {entry_source_ref}\n"
+    );
     let mut body =
         fs::read_to_string(ingest_manifest).map_err(|e| format!("read ingest manifest: {e}"))?;
     if body.contains("frontier_probe_entry_module_path") {
@@ -321,11 +314,8 @@ fn run_probe_for_module(
     let admission = parse_source_root_entry_admission(&entry_source)?;
     let ingest_manifest = overlay_dir.join("host_source_root_ingest_manifest.dag");
     emit_source_root_ingest_manifest(&ingest_manifest, &records, Some(&admission))?;
-    let closure_paths: Vec<String> = records
-        .iter()
-        .map(|rec| rec.file_path.replace('\\', "/"))
-        .collect();
-    write_probe_overlay_manifest(module_path, &ingest_manifest, &closure_paths)?;
+    let entry_source_ref = emit_source_ref_dag_for_path(&records, module_path)?;
+    write_probe_overlay_manifest(module_path, &ingest_manifest, &entry_source_ref)?;
 
     let mut roots: Vec<String> = WITNESS_LAYER_ROOTS.iter().map(|r| r.to_string()).collect();
     roots.push(overlay_dir.to_string_lossy().into_owned());
@@ -339,7 +329,7 @@ fn run_probe_for_module(
 
 fn emit_receipt_row(row: &ProbeReceiptRow) -> String {
     format!(
-        "FrontierProbeReceipt {{\n  module_path: \"{}\",\n  blocker_class: {},\n  located_stage: {},\n  located_reason: {}\n}}",
+        "FrontierProbeReceipt {{\n  module_path: \"{}\",\n  blocker_class: {},\n  located_stage: {},\n  located_reason: {},\n  detail: FrontierProbeDetailAbsent\n}}",
         row.module_path.replace('\\', "/"),
         row.blocker_variant,
         row.located_stage,
