@@ -1,0 +1,265 @@
+module std.citation
+
+import std.types { NonEmptyStr, String, Int, List, Bool, EpochMs }
+import std.content_hash { ContentHash, Sha256Digest, as_content_hash_cryptographic }
+import std.claim_evidence { RecordedFact, RecordedFactId }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.disposition { Disposition, SubstrateMandatoryTag, RealizationDispatch }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri }
+import extdeps.standards.web_annotation { extdeps_external_authority_anchor }
+
+data citation_cit0_note: String = "CIT-0 neutral citation target (operator mandate 2026-08-04). CitedResource consumes ExternalAuthority without extending it. Selectors ground on extdeps.standards.web_annotation (W3C Web Annotation Data Model). RepresentationPin pairs digest and byte-domain at construction (Pinned { digest, domain } | Unpinned); algorithm lives on std.content_hash ContentHash, not on the domain enum. Retrieval observations are dated downstream receipts with request and observed_at — never timeless facts on upstream modules. Citation verification proves reachability, media type, digest, revision match, and selector resolution — not claim truth. Evidence payloads feed std.claim_evidence EvidenceLink via CitationRecordedFact rather than a parallel evidence system."
+
+data citation_observed_at_note: String = "observed_at on CitationRetrievalObservation is EpochMs — UTC milliseconds since the Unix epoch (std.types EpochMs refuses negatives via where range). ISO-8601 wire form is a CIT-3 transport serialization concern, not the observation fact."
+
+data citation_verifier_scope_note: String = "A citation verifier is not a truth verifier. It may establish retrieval, representation digest match, revision identity, and selector resolution. It cannot establish that a tertiary source justifies a normative claim, that a statement is correct, or that a result generalizes."
+
+type CitedResource<Revision, Representation, Selector> {
+  authority: ExternalAuthority
+  revision: Revision?
+  representation: Representation?
+  selector: Selector?
+}
+
+type RepresentationByteDomain
+  = RawResponseBody
+  | DecodedContent
+  | RenderedText
+  | ExtractedPageContent
+
+data representation_byte_domain_note: String = "Names WHICH BYTES are hashed — not which algorithm. RawResponseBody is the exact octet sequence received after transfer decoding and before interpretation. Later domains (DecodedContent, RenderedText, ExtractedPageContent) are reserved for CIT-1+ profiles; CIT-0 admits the type names only."
+
+type RepresentationPin
+  = Pinned { digest: ContentHash, domain: RepresentationByteDomain }
+  | Unpinned
+
+type RetrievedRepresentation {
+  media_type: NonEmptyStr
+  pin: RepresentationPin
+}
+
+type FragmentSelector {
+  conforms_to: ExternalAuthority
+  value: NonEmptyStr
+}
+
+type TextQuoteSelector {
+  exact: NonEmptyStr
+  prefix: NonEmptyStr?
+  suffix: NonEmptyStr?
+}
+
+type TextPositionSelector {
+  start: Int
+  end: Int
+}
+
+type CitationSelector
+  = FragmentSelectorVariant(FragmentSelector)
+  | TextQuoteSelectorVariant(TextQuoteSelector)
+  | TextPositionSelectorVariant(TextPositionSelector)
+  | SelectorRefused { cause: NonEmptyStr }
+
+fn fragment_selector(conforms_to: ExternalAuthority, value: NonEmptyStr) -> CitationSelector {
+  FragmentSelectorVariant(FragmentSelector {
+    conforms_to: conforms_to,
+    value: value,
+  })
+}
+
+fn text_quote_selector(
+  exact: NonEmptyStr,
+  prefix: NonEmptyStr?,
+  suffix: NonEmptyStr?,
+) -> CitationSelector {
+  TextQuoteSelectorVariant(TextQuoteSelector {
+    exact: exact,
+    prefix: prefix,
+    suffix: suffix,
+  })
+}
+
+fn text_position_selector(start: Int, end: Int) -> CitationSelector {
+  TextPositionSelectorVariant(TextPositionSelector {
+    start: start,
+    end: end,
+  })
+}
+
+fn representation_pin_pinned(
+  digest: ContentHash,
+  domain: RepresentationByteDomain,
+) -> RepresentationPin {
+  Pinned {
+    digest: digest,
+    domain: domain,
+  }
+}
+
+fn retrieved_representation(
+  media_type: NonEmptyStr,
+  pin: RepresentationPin,
+) -> RetrievedRepresentation {
+  RetrievedRepresentation {
+    media_type: media_type,
+    pin: pin,
+  }
+}
+
+fn cited_resource<Revision, Representation, Selector>(
+  authority: ExternalAuthority,
+  revision: Revision?,
+  representation: Representation?,
+  selector: Selector?,
+) -> CitedResource<Revision, Representation, Selector> {
+  CitedResource {
+    authority: authority,
+    revision: revision,
+    representation: representation,
+    selector: selector,
+  }
+}
+
+type CitationRetrievalRequest {
+  locator: Uri
+}
+
+type CitationRetrievalResponse {
+  http_status: Int?
+  media_type: NonEmptyStr?
+  representation_pin: RepresentationPin?
+}
+
+type CitationRetrievalObservation
+  = CitationRetrieved {
+      request: CitationRetrievalRequest,
+      observed_at: EpochMs,
+      response: CitationRetrievalResponse,
+    }
+  | CitationAccessRefused {
+      request: CitationRetrievalRequest,
+      observed_at: EpochMs,
+      cause: NonEmptyStr,
+    }
+  | CitationUnreachable {
+      request: CitationRetrievalRequest,
+      observed_at: EpochMs,
+      cause: NonEmptyStr,
+    }
+  | CitationRateLimited {
+      request: CitationRetrievalRequest,
+      observed_at: EpochMs,
+      retry_after_seconds: Int?,
+    }
+
+type CitationArtifactLayer
+  = ObservingProductLayer
+  | UpstreamModuleLayer { module_path: NonEmptyStr }
+
+type CitationLayerAdmission
+  = CitationLayerAdmitted
+  | CitationLayerRefusedUpstreamObservation
+
+fn admit_citation_retrieval_observation(
+  layer: CitationArtifactLayer,
+  observation: CitationRetrievalObservation,
+) -> CitationLayerAdmission {
+  match layer {
+    ObservingProductLayer => CitationLayerAdmitted
+    UpstreamModuleLayer { module_path: _ } =>
+      match observation {
+        CitationRetrieved { request: _, observed_at: _, response: _ } =>
+          CitationLayerRefusedUpstreamObservation
+        CitationAccessRefused { request: _, observed_at: _, cause: _ } =>
+          CitationLayerRefusedUpstreamObservation
+        CitationUnreachable { request: _, observed_at: _, cause: _ } =>
+          CitationLayerRefusedUpstreamObservation
+        CitationRateLimited { request: _, observed_at: _, retry_after_seconds: _ } =>
+          CitationLayerRefusedUpstreamObservation
+      }
+  }
+}
+
+fn citation_retrieval_observation_layer_gate_accepts(
+  layer: CitationArtifactLayer,
+  observation: CitationRetrievalObservation,
+) -> Bool {
+  match admit_citation_retrieval_observation(layer: layer, observation: observation) {
+    CitationLayerAdmitted => true
+    CitationLayerRefusedUpstreamObservation => false
+  }
+}
+
+fn citation_retrieval_observation_layer_gate_widened_sketch(
+  _layer: CitationArtifactLayer,
+  _observation: CitationRetrievalObservation,
+) -> Bool {
+  true
+}
+
+data citation_retrieval_observation_layer_gate_substrate_scaffold: Disposition = Scaffold {
+  dissolves_to: SubstrateMandatoryTag,
+  bind: DeclarationRef {
+    module_path: "std.citation",
+    decl_name: "admit_citation_retrieval_observation",
+    field: WholeDeclaration,
+  },
+}
+
+data citation_retrieval_observation_layer_gate_dissolve_on: String = "dissolve-on: citation_retrieval_observation_layer_gate — CIT-0 ships the layer check (admit_citation_retrieval_observation); DISSOLVES WHEN substrate mandatory-tag or typechecker refusal makes CitationRetrievalObservation unwritable inside extdeps upstream modules."
+
+data citation_cit1_pdf_profile_scaffold: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "extdeps.standards.rfc_8118",
+    decl_name: "extdeps_external_authority_anchor",
+    field: WholeDeclaration,
+  },
+}
+
+data citation_cit1_pdf_profile_dissolve_on: String = "dissolve-on: citation_cit1_pdf_profile — ordered RFC 8118 fragment sequence, safe profile (page, nameddest, structelem), navigable URL projection, and one real versioned PDF consumer land in CIT-1 after CIT-0 sign-off."
+
+type CitationRecordedFact<Revision, Representation, Selector> {
+  cited: CitedResource<Revision, Representation, Selector>
+}
+
+fn citation_recorded_fact<Revision, Representation, Selector>(
+  id: RecordedFactId,
+  cited: CitedResource<Revision, Representation, Selector>,
+) -> RecordedFact<CitationRecordedFact<Revision, Representation, Selector>> {
+  RecordedFact {
+    id: id,
+    value: CitationRecordedFact { cited: cited },
+  }
+}
+
+data citation_evidence_interface_note: String = "CitationRecordedFact is the provenance payload consumed by std.claim_evidence EvidenceLink — same authority, provenance, maximum_conclusion, fidelity, supporting/challenging, insufficiency, and EvidenceAdmissionPolicy machinery. Rich citations do not form a competing evidence system."
+
+type ProviderObservation
+  = ProviderRevisionFound {
+      revision_id: NonEmptyStr,
+      content_sha1_hex: NonEmptyStr,
+    }
+  | ProviderRevisionMissing
+  | ProviderRevisionSuppressed
+
+fn provider_observation_is_found(observation: ProviderObservation) -> Bool {
+  match observation {
+    ProviderRevisionFound { revision_id: _, content_sha1_hex: _ } => true
+    ProviderRevisionMissing => false
+    ProviderRevisionSuppressed => false
+  }
+}
+
+fn provider_observation_revision_id(observation: ProviderObservation) -> NonEmptyStr? {
+  match observation {
+    ProviderRevisionFound { revision_id: id, content_sha1_hex: _ } => id
+    ProviderRevisionMissing => none
+    ProviderRevisionSuppressed => none
+  }
+}
+
+fn default_fragment_selector(value: NonEmptyStr) -> CitationSelector {
+  fragment_selector(conforms_to: extdeps_external_authority_anchor, value: value)
+}
