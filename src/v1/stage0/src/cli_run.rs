@@ -1542,6 +1542,7 @@ const CI_LAYER_ROOTS_AUTHORITY_REL: &str = "dag/gunbc/ci_layer_roots.dag";
 /// representation is what made the old reconciliation weaker than its name.
 const EXPLICIT_WITNESS_ADMISSION_AUTHORITY_REL: &str = "dag/gunbc/explicit_witness_admission.dag";
 const WITNESS_DEFERRAL_FREEZE_AUTHORITY_REL: &str = "dag/gunbc/witness_deferral_freeze.dag";
+const COMMIT_WORKFLOW_AUTHORITY_REL: &str = "dag/gunbc/commit_workflow.dag";
 const WITNESS_LAYER_ROOTS_DATA_NAME: &str = "witness_layer_roots";
 const WITNESS_DISCOVERY_SCAN_DIRS_DATA_NAME: &str = "witness_discovery_scan_dirs";
 const WITNESS_EXCLUSION_FRONTIER_DATA_NAME: &str = "witness_exclusion_frontier";
@@ -16165,6 +16166,11 @@ fn witness_admission_explicit_consumer_keys() -> Vec<String> {
                 keys.push(key);
             }
         }
+        for key in commit_roster_witness_claim_keys().iter().cloned() {
+            if !keys.iter().any(|k| k == &key) {
+                keys.push(key);
+            }
+        }
         keys.sort();
         keys
     })
@@ -16202,6 +16208,72 @@ pub(crate) fn explicit_witness_admission_pairs() -> Vec<(String, String)> {
         .filter_map(|key| key.split_once("::"))
         .map(|(entry, function)| (entry.to_string(), function.to_string()))
         .collect()
+}
+
+/// The THIRD source of an executing consumer, and the one that was missing. `commit_gate_roster`
+/// carries `CommitWitnessClaim` rows at function grain; `project_ci_floor_witness_entries` and
+/// `project_falsifier_witness_entries` turn them into explicit entries that RUN, and explicit rows
+/// merge after discovery with no exclusion filter — so an enrolled witness under an offline path
+/// executes even though the path excludes it (the two-edit rule `enforcement_coverage_exclusion_note`
+/// records: offlining such a witness requires deleting its enrollment too).
+///
+/// Without this, the freeze wall would refuse 31 identities that already have a real consumer —
+/// a fail-closed FALSE POSITIVE, which is still a wrong answer. Only surfaces that execute count:
+/// `GitPrePushHook` is fmt-only since 2026-07-25 and runs no witness, so an enrollment naming only
+/// that surface is not a consumer.
+fn commit_roster_witness_claim_keys() -> &'static [String] {
+    static KEYS: OnceLock<Vec<String>> = OnceLock::new();
+    KEYS.get_or_init(|| {
+        let content = std::fs::read_to_string(workspace_root().join(COMMIT_WORKFLOW_AUTHORITY_REL))
+            .unwrap_or_else(|e| {
+                panic!("witness admission: failed to read {COMMIT_WORKFLOW_AUTHORITY_REL}: {e}")
+            });
+        commit_roster_witness_claim_keys_from_source(&content)
+    })
+}
+
+fn commit_roster_witness_claim_keys_from_source(content: &str) -> Vec<String> {
+    // The ROW head, not the bare constructor name: `CommitWitnessClaim {` also opens the coproduct
+    // declaration and every pattern-match arm over it, and one such arm's window happens to reach a
+    // prose `entry:` literal in a neighbouring note. A row is always a `check:` field of a
+    // `CommitCheckEnrollment`, so that prefix is the identity of a row rather than a guess about it.
+    const HEAD: &str = "check: CommitWitnessClaim {";
+    const EXECUTING_SURFACES: [&str; 2] = ["GithubActionsCiJob", "FalsifierCadenceJob"];
+    let mut keys: Vec<String> = Vec::new();
+    let mut cursor = 0usize;
+    while let Some(offset) = content[cursor..].find(HEAD) {
+        let at = cursor + offset;
+        cursor = at + HEAD.len();
+        let rest = &content[cursor..];
+        let Some(entry) = quoted_after_field(rest, "entry:") else {
+            panic!(
+                "witness admission: CommitWitnessClaim row at byte {at} of \
+                 {COMMIT_WORKFLOW_AUTHORITY_REL} has no parseable `entry:` literal"
+            );
+        };
+        let Some(list) = bracket_list_after_field(rest, "check_fns:") else {
+            panic!(
+                "witness admission: CommitWitnessClaim row `{entry}` in \
+                 {COMMIT_WORKFLOW_AUTHORITY_REL} has no parseable `check_fns:` list"
+            );
+        };
+        let Some(surfaces) = bracket_list_after_field(rest, "surfaces:") else {
+            panic!(
+                "witness admission: CommitWitnessClaim row `{entry}` in \
+                 {COMMIT_WORKFLOW_AUTHORITY_REL} has no parseable enrollment `surfaces:` list"
+            );
+        };
+        if !EXECUTING_SURFACES.iter().any(|s| surfaces.contains(s)) {
+            continue;
+        }
+        for function in quoted_literals(&list) {
+            let key = witness_admission_manifest_key(&entry, &function);
+            if !keys.iter().any(|k| k == &key) {
+                keys.push(key);
+            }
+        }
+    }
+    keys
 }
 
 /// The frozen legacy path-deferral population, read from the one `.dag` authority by the same
@@ -23381,6 +23453,68 @@ mod node_frontier_plumbing_controls {
 
         // The green control on the same pair: unperturbed, the live roster reports no growth.
         assert!(super::frozen_path_deferral_additions_in(&base, &base).is_empty());
+    }
+
+    // The third consumer source, and the surface filter that keeps it honest. `GitPrePushHook` is
+    // fmt-only since 2026-07-25 and runs no witness, so an enrollment naming only that surface is
+    // not a consumer and must not admit — otherwise the wall would be satisfied by an enrollment
+    // on a surface that executes nothing, which is the coverage-by-illusion tier one enum apart.
+    #[test]
+    fn commit_roster_claim_keys_parse_and_ignore_non_executing_surfaces() {
+        let source = concat!(
+            "  | CommitWitnessClaim { entry: String, check_fns: List<String>, kind: WitnessKind }\n",
+            "    CommitWitnessClaim { entry: _, check_fns: _, kind: _ } => false\n",
+            "  CommitCheckEnrollment {\n    check: CommitWitnessClaim {\n",
+            "      entry: \"src/v2/test/claim/long/a_test.dag\",\n",
+            "      check_fns: [\"ci_holds\"],\n      kind: CorpusWitnessKind\n    },\n",
+            "    surfaces: [GithubActionsCiJob]\n  },\n",
+            "  CommitCheckEnrollment {\n    check: CommitWitnessClaim {\n",
+            "      entry: \"src/v2/test/claim/long/b_test.dag\",\n",
+            "      check_fns: [\"falsifier_holds\"],\n      kind: CorpusWitnessKind\n    },\n",
+            "    surfaces: [FalsifierCadenceJob]\n  },\n",
+            "  CommitCheckEnrollment {\n    check: CommitWitnessClaim {\n",
+            "      entry: \"src/v2/test/claim/long/c_test.dag\",\n",
+            "      check_fns: [\"prepush_only_holds\"],\n      kind: CorpusWitnessKind\n    },\n",
+            "    surfaces: [GitPrePushHook]\n  }\n"
+        );
+        let keys = super::commit_roster_witness_claim_keys_from_source(source);
+        assert_eq!(
+            keys,
+            vec![
+                "src/v2/test/claim/long/a_test.dag::ci_holds".to_string(),
+                "src/v2/test/claim/long/b_test.dag::falsifier_holds".to_string(),
+            ],
+            "executing surfaces admit; the coproduct declaration and a pre-push-only row do not"
+        );
+    }
+
+    // The live half of the same fact: an enrolled witness under an offline path is admitted, and
+    // it is admitted by its ENROLLMENT rather than by the freeze — proven by its absence from the
+    // frozen population. Without the enrollment reader this row would refuse.
+    #[test]
+    fn commit_roster_enrolled_offline_witness_is_admitted_and_not_frozen() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        const ENTRY: &str = "src/v2/test/claim/long/parse_table_memo_governed_witness_test.dag";
+        const FUNCTION: &str = "witness_content_key_subject_stable";
+        let key = super::witness_admission_manifest_key(ENTRY, FUNCTION);
+        assert!(
+            super::commit_roster_witness_claim_keys().iter().any(|k| k == &key),
+            "the enrollment authority must name this identity"
+        );
+        assert!(
+            !super::frozen_path_deferral_keys().iter().any(|k| k == &key),
+            "an enrolled witness must NOT also be frozen — the freeze is for identities with no \
+             consumer, and carrying both would restate one fact in two places"
+        );
+        let row = super::DeferredDiscoveryRow {
+            entry: ENTRY.to_string(),
+            function: FUNCTION.to_string(),
+            exclude_reason: "test/claim/long/".to_string(),
+            reads_live_tree: false,
+        };
+        let refused = super::collect_unexecuted_deferred_witnesses(&[row]);
+        assert!(refused.is_empty(), "{refused:?}");
     }
 
     // Fail-closed on the baseline: unreadable is a refusal, never an unchecked pass.

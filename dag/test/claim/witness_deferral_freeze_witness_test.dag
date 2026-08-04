@@ -2,11 +2,12 @@ module dag.test.claim.witness_deferral_freeze_witness
 
 import v2.workflow.witness_admission {
   witness_path_policy_admission_refusal_in,
+  witness_admission_holds_for_row,
   frozen_path_deferrals_all_discovered
 }
 import gunbc.witness_deferral_freeze {
   FrozenPathDeferral,
-  frozen_path_deferrals,
+  frozen_path_deferral_covers,
   frozen_path_deferral_covers_in,
   frozen_path_deferral_row_well_formed,
   frozen_path_deferrals_well_formed
@@ -23,7 +24,7 @@ import std.types { String, List, Bool }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data witness_deferral_freeze_witness_note: String = "MECHANISM ON FIXTURES, per the decomposition rule this lane's own wall enforces: a corpus census may be irreducible but a mechanism never is, so every claim here plants its own tiny rosters and the live-population join runs where it is already paid for — the host admission step the floor executes per PR (cli_run collect_unexecuted_deferred_witnesses / collect_stale_frozen_path_deferrals, pinned by unfrozen_offline_path_row_refuses_as_unclassified_path_deferral and frozen_path_deferral_roster_carries_no_stale_rows). Folding the real 732-identity roster through the live refusal here would be quadratic and would put this file over the very budget whose evasion it exists to close.
+data witness_deferral_freeze_witness_note: String = "MECHANISM ON FIXTURES, per the decomposition rule this lane's own wall enforces: a corpus census may be irreducible but a mechanism never is, so every claim here plants its own tiny rosters and the live-population join runs where it is already paid for — the host admission step the floor executes per PR (cli_run collect_unexecuted_deferred_witnesses / collect_stale_frozen_path_deferrals, pinned by unfrozen_offline_path_row_refuses_as_unclassified_path_deferral and frozen_path_deferral_roster_carries_no_stale_rows). Folding the whole live roster through the live refusal here would be quadratic and would put this file over the very budget whose evasion it exists to close.
 
 THE DISCRIMINATOR every positive claim holds fixed: the row, the offline pattern and the exclusion verdict are identical across the refusing and admitting halves, and only FREEZE MEMBERSHIP moves. That is the fact the wall added — before 2026-08-04 an OfflineLocalRecipe path admitted unconditionally, so the refusing half could not have been written at all."
 
@@ -201,4 +202,20 @@ test fn witness_deferral_freeze_empty_function_list_is_malformed() -> Bool {
 
 test fn witness_deferral_freeze_live_roster_is_well_formed() -> Bool {
   frozen_path_deferrals_well_formed()
+}
+
+data commit_roster_consumer_control_note: String = "THE FALSE-POSITIVE CONTROL, and it caught a real one. A CommitWitnessClaim enrollment on an executing surface makes a witness run as an explicit entry, and explicit rows merge after discovery with no exclusion filter — so an enrolled witness under an offline path executes even though the path excludes it. The first revision of this wall did not read that authority and would have refused 31 such identities: fail-closed, and still a wrong answer. This pair is the discriminator, on a LIVE row rather than a fixture, because the defect was precisely that the live authority was unread: the identity below is admitted while being absent from the frozen population, so its admission can only be coming from its enrollment."
+
+test fn witness_deferral_freeze_commit_roster_enrollment_admits() -> Bool {
+  witness_admission_holds_for_row(
+    entry: "src/v2/test/claim/long/parse_table_memo_governed_witness_test.dag",
+    function: "witness_content_key_subject_stable"
+  )
+}
+
+test fn witness_deferral_freeze_commit_roster_row_is_not_frozen() -> Bool {
+  !frozen_path_deferral_covers(
+    entry: "src/v2/test/claim/long/parse_table_memo_governed_witness_test.dag",
+    function: "witness_content_key_subject_stable"
+  )
 }

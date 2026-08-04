@@ -14,9 +14,9 @@ THE GOVERNING RULE this freeze serves (operator ruling, 2026-08-04): a test is n
 
 WHAT THIS ROSTER IS, AND WHAT IT IS NOT. It is the exact identity-grain population of (entry, function) pairs that path policy admitted with no executing consumer at the moment the wall landed — a frozen debt, not a permission. It is NOT a count: no witness here asserts the roster's size against a literal, because a number copied from the current tree is a snapshot rather than an oracle. Completeness is an identity join over the discovered witness population in both directions — an offline-classified witness outside this roster and outside gunbc.explicit_witness_admission REFUSES as UnclassifiedPathDeferral, and a row here naming a witness the tree no longer carries (file gone, test decl gone, or path no longer offline-classified) REFUSES as a stale freeze row, so the freeze cannot rot into a permission slip.
 
-THE RATCHET, and why it is a freeze rather than a sweep. Classifying every historical resident in one pass would either red the repo or produce 732 guesses at purposes nobody measured; both are worse than the debt. So the population is frozen as-is and the FORWARD hole closes immediately: a new or relocated witness under any OfflineLocalRecipe path must carry an exact admission naming an executing cadence, which is the same bar every other deferral already meets. Legacy rows migrate as their files are touched or as a cadence enrolls them. DISSOLVE-ON: this roster reaching empty — at which point the path-policy pass-through arm in both v2.workflow.witness_admission and the host projection deletes with it, and OfflineLocalRecipe stops being an admission answer at all."
+THE RATCHET, and why it is a freeze rather than a sweep. Classifying every historical resident in one pass would either red the repo or produce 701 guesses at purposes nobody measured; both are worse than the debt. So the population is frozen as-is and the FORWARD hole closes immediately: a new or relocated witness under any OfflineLocalRecipe path must carry an exact admission naming an executing cadence, which is the same bar every other deferral already meets. Legacy rows migrate as their files are touched or as a cadence enrolls them. DISSOLVE-ON: this roster reaching empty — at which point the path-policy pass-through arm in both v2.workflow.witness_admission and the host projection deletes with it, and OfflineLocalRecipe stops being an admission answer at all."
 
-data witness_deferral_freeze_purpose_frontier_note: String = "WHAT THIS FREEZE DELIBERATELY DOES NOT CARRY, so its coverage is not overread. A frozen row records IDENTITY only — that this exact (entry, function) was already deferred by path policy when the wall landed. It records no purpose, no measured cost, and no consumer, because it has none: the whole point of the freeze is that these 732 identities were admitted without any of the three. The purpose taxonomy (which boundary, population, external effect, or resource contract justifies the size) and the per-witness cost envelope are the NEXT slice, and a frozen row is the debt marker that one is owed.
+data witness_deferral_freeze_purpose_frontier_note: String = "WHAT THIS FREEZE DELIBERATELY DOES NOT CARRY, so its coverage is not overread. A frozen row records IDENTITY only — that this exact (entry, function) was already deferred by path policy when the wall landed. It records no purpose, no measured cost, and no consumer, because it has none: the whole point of the freeze is that these 701 identities (152 entries, measured at the freeze point) were admitted without any of the three. The purpose taxonomy (which boundary, population, external effect, or resource contract justifies the size) and the per-witness cost envelope are the NEXT slice, and a frozen row is the debt marker that one is owed.
 
 THREE RESIDUES, each with its trigger, because a gap with a named trigger is a tracked ceiling while the same gap unstated is debt.
 
@@ -321,14 +321,9 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
     entry: "src/v2/test/claim/execution/emit_host_classical_not_ingested_equals_eval_test.dag",
     functions: [
       "ingested_classical_not_eval_subgraph_canonical_octet_zero_holds",
-      "ingested_classical_not_emit_octet_bridge_shape_holds",
-      "ingested_classical_not_emit_source_arm_shape_holds",
-      "ingested_classical_not_canonical_emit_refuses_underived_holds",
-      "ingested_classical_not_resolves_holds", "ingested_classical_not_arrow_has_match_holds",
-      "ingested_classical_not_staging_emit_refuses_underived_holds",
       "ingested_classical_not_staging_swapped_emit_refuses_underived_holds",
       "emit_host_classical_not_ingested_swapped_refuses_holds",
-      "ingested_classical_not_emit_accepts_holds", "ingested_classical_not_real_infer_holds",
+      "ingested_classical_not_real_infer_holds",
       "ingested_classical_not_match_only_param_scrutinee_infer_refuses_holds",
       "ingested_classical_not_arrow_empty_domain_infer_refuses_holds"
     ]
@@ -802,16 +797,6 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
     ]
   },
   FrozenPathDeferral {
-    entry: "src/v2/test/claim/long/gauntlet_lane_enrollment_witness_test.dag",
-    functions: [
-      "witness_rehomed_rows_are_cadence_enrolled", "witness_split_entries_keep_cheap_half_per_pr",
-      "gauntlet_lane_rehome_is_never_bare_deenrollment_holds",
-      "gauntlet_lane_rehome_bare_deenrollment_RED_control_holds",
-      "gauntlet_lane_gate_rehome_is_never_bare_deenrollment_holds",
-      "gauntlet_lane_gate_bare_deenrollment_RED_control_holds"
-    ]
-  },
-  FrozenPathDeferral {
     entry: "src/v2/test/claim/long/identity_captured_navigation_fidelity_test.dag",
     functions: [
       "suspect_finding_projects_to_exactly_one_under_claimed_edge",
@@ -910,13 +895,6 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
     ]
   },
   FrozenPathDeferral {
-    entry: "src/v2/test/claim/long/parse_binding_fidelity_witness_test.dag",
-    functions: [
-      "witness_parse_binding_fidelity_distinct_identifiers_holds",
-      "witness_resolve_distinct_param_bindings_holds"
-    ]
-  },
-  FrozenPathDeferral {
     entry: "src/v2/test/claim/long/parse_table_memo_amortization_test.dag",
     functions: [
       "memo_amort_parse_one_file_holds", "memo_amort_parse_two_files_twice_holds",
@@ -932,17 +910,7 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
       "parse_memo_counter_counters_consistent_holds", "parse_memo_counter_misses_recorded_holds"
     ]
   },
-  FrozenPathDeferral {
-    entry: "src/v2/test/claim/long/parse_table_memo_governed_witness_test.dag",
-    functions: [
-      "witness_materialization_gate_recompute_denies_store",
-      "witness_recompute_fixture_carries_recompute_verdict",
-      "witness_door_insert_refused_for_recompute_table",
-      "witness_door_lookup_refused_for_recompute_table", "witness_memoize_carrier_allows_store",
-      "witness_content_key_subject_stable", "parse_table_memo_door_order_independent",
-      "parse_table_memo_bypass_store_reds", "parse_table_memo_warm_equals_cold_content_hash"
-    ]
-  },
+  FrozenPathDeferral { entry: "src/v2/test/claim/long/parse_table_memo_governed_witness_test.dag", functions: ["parse_table_memo_warm_equals_cold_content_hash"] },
   FrozenPathDeferral {
     entry: "src/v2/test/claim/long/parser_completeness_frontier_test.dag",
     functions: [
@@ -1075,25 +1043,7 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
       "wave1_gate1_b1_symbol_index_frontend_parity_no_regression_witness_holds"
     ]
   },
-  FrozenPathDeferral {
-    entry: "src/v2/test/claim/long/wave1_gate1_c1_copied_port_derivation_witness_test.dag",
-    functions: [
-      "wave1_gate1_c1_derived_list_append_index_witness_holds",
-      "wave1_gate1_c1_derived_list_snoc_index_witness_holds",
-      "wave1_gate1_c1_derived_map_merge_index_witness_holds",
-      "wave1_gate1_c1_arrow_body_cost_domain_excluded_witness_holds",
-      "wave1_gate1_c1_unpriceable_combiner_refusal_witness_holds",
-      "wave1_gate1_c1_multi_linear_ambiguous_refusal_witness_holds",
-      "wave1_gate1_c1_derived_registry_execution_witness_holds"
-    ]
-  },
-  FrozenPathDeferral {
-    entry: "src/v2/test/claim/long/wave1_gate1_d_ingested_bind_loop_eval_witness_test.dag",
-    functions: [
-      "wave1_gate1_d_ingested_bind_executes_witness_holds",
-      "wave1_gate1_d_ingested_loop_executes_witness_holds"
-    ]
-  },
+  FrozenPathDeferral { entry: "src/v2/test/claim/long/wave1_gate1_c1_copied_port_derivation_witness_test.dag", functions: ["wave1_gate1_c1_derived_registry_execution_witness_holds"] },
   FrozenPathDeferral {
     entry: "src/v2/test/claim/long/wave1_gate1_general_body_producer_witness_test.dag",
     functions: [
@@ -1142,7 +1092,8 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
       "witness_zero_consume_is_not_movable", "witness_whole_read_then_consume_is_not_movable",
       "witness_threaded_then_consume_is_not_movable"
     ]
-  }]
+  }
+]
 
 fn frozen_path_deferral_function_listed(functions: List<String>, function: String) -> Bool {
   fold(

@@ -43,11 +43,15 @@ import v2.std.algebra { any, contains, fold_list, length, list_snoc_item, Empty 
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
+import gunbc.commit_workflow {
+  commit_gate_roster,
+  project_ci_floor_witness_entries,
+  project_falsifier_witness_entries
+}
 import gunbc.witness_deferral_freeze {
   FrozenPathDeferral,
   frozen_path_deferrals,
-  frozen_path_deferral_covers_in,
-  frozen_path_deferrals_well_formed
+  frozen_path_deferral_covers_in
 }
 import std.witness_admission {
   WitnessConsumerCadence,
@@ -214,6 +218,25 @@ fn witness_path_policy_admission_refusal(
   )
 }
 
+data commit_roster_enrollment_is_a_consumer_note: String = "THE THIRD SOURCE OF AN EXECUTING CONSUMER, and the one consumer_for_explicit_rosters does not see. commit_gate_roster carries CommitWitnessClaim rows at check_fn grain; project_ci_floor_witness_entries and project_falsifier_witness_entries turn them into explicit entries that RUN, and explicit rows merge after discovery with no exclusion filter — so an enrolled witness under an offline path executes even though the path excludes it. gunbc.ci_layer_roots enforcement_coverage_exclusion_note records the same fact from the other direction: offlining such a witness required TWO edits, the exclusion row AND the deletion of its enrollment, because teaching exclusions to veto the roster would have made a second authority.
+
+WHY IT IS CHECKED HERE RATHER THAN FOLDED INTO THE CADENCE. WitnessConsumerCadence has no arm for an enrollment-surface consumer, and minting one would ripple through every total match over it (v2.lens.enforcement.inventory, the admission witness suite) for a fact the admission fold is the only reader of today. So the cadence projection continues to answer WHICH PATH POLICY classifies a row, and this fold answers WHETHER ANYTHING EXECUTES IT, which is the question admission actually asks. DISSOLVE-ON: the arm lands on WitnessConsumerCadence, or v2.workflow.ci_placement Placement supersedes the surface tag as the witness-scheduling authority (the dissolve-on falsifier_cadence_surface_note already names, blocked on per-row warm-cost receipts).
+
+MEASURED COST OF THE OMISSION, which is why this is a correctness fix rather than an extension: 31 identities in the frozen population are enrolled on GithubActionsCiJob today. Without this check the wall would refuse witnesses that already run — a fail-closed FALSE POSITIVE, which is still a wrong answer, and it would have landed on an unrelated lane as a surprise red."
+
+fn witness_commit_roster_enrolled(entry: String, function: String) -> Bool {
+  schedule_contains_entry(
+    xs: project_ci_floor_witness_entries(roster: commit_gate_roster),
+    entry: entry,
+    function: function
+  )
+    || schedule_contains_entry(
+      xs: project_falsifier_witness_entries(roster: commit_gate_roster),
+      entry: entry,
+      function: function
+    )
+}
+
 fn witness_admission_refusal_for_row(
   entry: String,
   function: String,
@@ -221,11 +244,15 @@ fn witness_admission_refusal_for_row(
 ) -> WitnessAdmissionRefusal {
   match consumer_for_explicit_rosters(entry: entry, function: function) {
     NoConsumer =>
-      witness_path_policy_admission_refusal(
-        entry: entry,
-        function: function,
-        excluded_from_discovery: excluded_from_discovery
-      )
+      if witness_commit_roster_enrolled(entry: entry, function: function) {
+        WitnessAdmissionHolds
+      } else {
+        witness_path_policy_admission_refusal(
+          entry: entry,
+          function: function,
+          excluded_from_discovery: excluded_from_discovery
+        )
+      }
     _ => WitnessAdmissionHolds
   }
 }
