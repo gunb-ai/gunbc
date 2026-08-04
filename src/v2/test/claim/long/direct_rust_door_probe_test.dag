@@ -1,0 +1,80 @@
+module v2.test.long.direct_rust_door_probe
+
+import v2.compiler.self_host.candidate_generation {
+  mint_provenanced_rust_artifact
+}
+import v2.compiler.self_host.direct_rust_door_fixture {
+  direct_rust_door_admission,
+  direct_rust_door_ingest,
+  direct_rust_door_inferred_tree,
+  direct_rust_door_module_path,
+  direct_rust_door_target_model
+}
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.infer { infer }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+data direct_rust_door_probe_note: String = "SCRATCH forensic probe: isolates which stage of the ingest path rejects. Not for merge; supersede with observe_direct_rust_door_provenance."
+
+test fn stage_1_assemble_accepted() -> Bool {
+  match assemble_program_from_ingest(
+    ingest: direct_rust_door_ingest(),
+    admission: direct_rust_door_admission(),
+    lm: dag_language_model()
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn stage_2_infer_accepted() -> Bool {
+  match assemble_program_from_ingest(
+    ingest: direct_rust_door_ingest(),
+    admission: direct_rust_door_admission(),
+    lm: dag_language_model()
+  ) {
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer(tree: resolved) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn stage_3_mint_on_fixture_tree_accepted() -> Bool {
+  match mint_provenanced_rust_artifact(
+    inferred: direct_rust_door_inferred_tree,
+    target: direct_rust_door_target_model(),
+    module_path: direct_rust_door_module_path
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn stage_4_mint_on_ingest_derived_tree_accepted() -> Bool {
+  match assemble_program_from_ingest(
+    ingest: direct_rust_door_ingest(),
+    admission: direct_rust_door_admission(),
+    lm: dag_language_model()
+  ) {
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer(tree: resolved) {
+        Accepted { value: inferred, diagnostics: _ } =>
+          match mint_provenanced_rust_artifact(
+            inferred: inferred,
+            target: direct_rust_door_target_model(),
+            module_path: direct_rust_door_module_path
+          ) {
+            Accepted { value: _, diagnostics: _ } => true
+            Rejected { diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
