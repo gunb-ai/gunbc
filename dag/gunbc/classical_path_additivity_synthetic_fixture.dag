@@ -20,8 +20,6 @@ import gunbc.physics.classical_path_additivity {
   PathAdditivitySubject,
   PathAdditivitySyntheticFixture,
   PathAdditivityRefutationReceipt,
-  Less,
-  Greater,
   ArrivalCountResolution,
   ArrivalCountResolved,
   ArrivalCountMissing,
@@ -30,12 +28,16 @@ import gunbc.physics.classical_path_additivity {
   AdditivityInputsResolved,
   AdditivityInputsIncomplete,
   AdditivityInputsAmbiguous,
+  AdditivityInputFailure,
+  AdditivityInputMissing,
+  AdditivityInputAmbiguous,
   resolve_arrival_count_at,
   resolve_additivity_inputs,
   derive_path_additivity_refutation_at_band,
   path_additivity_refutation_holds_for_synthetic_fixture,
   path_additivity_refutation_from_resolved,
   path_additivity_witness_is_counterexample,
+  path_additivity_witness_observed_vs_prediction,
   PathAdditivityBandVerdict,
   PathAdditivityRefutationAtBand,
   PathAdditivityHeldAtBand,
@@ -114,18 +116,38 @@ data synthetic_fixture_arrival_count_observations: List<SyntheticArrivalCountObs
 
 data path_additivity_subject: PathAdditivitySubject = PathAdditivitySyntheticFixture {}
 
-fn synthetic_first_minimum_refutation_receipt() -> PathAdditivityRefutationReceipt {
+fn synthetic_first_minimum_verdict() -> PathAdditivityBandVerdict {
+  derive_path_additivity_refutation_at_band(
+    rows: synthetic_fixture_arrival_count_observations,
+    fixture: synthetic_double_slit_fixture,
+    band: FirstMinimumBand,
+    exposure: SyntheticMatchedExposureOne {},
+  )
+}
+
+fn synthetic_first_minimum_refutation_receipt_from_fold() -> PathAdditivityRefutationReceipt {
+  match synthetic_first_minimum_verdict() {
+    PathAdditivityRefutationAtBand { receipt: receipt } => receipt
+    PathAdditivityHeldAtBand {
+      band: held_band,
+      exposure: held_exposure,
+    } => synthetic_first_minimum_refutation_receipt_direct()
+    PathAdditivityUndecidedAtBand { failure: undecided_failure } =>
+      synthetic_first_minimum_refutation_receipt_direct()
+  }
+}
+
+fn synthetic_first_minimum_refutation_receipt_direct() -> PathAdditivityRefutationReceipt {
   path_additivity_refutation_from_resolved(
     left: 10,
     right: 10,
     both: 5,
     band: FirstMinimumBand,
     exposure: SyntheticMatchedExposureOne {},
-    observed_vs_prediction: Less,
   )
 }
 
-data classical_path_additivity_refuted: PathAdditivityRefutationReceipt = synthetic_first_minimum_refutation_receipt()
+data classical_path_additivity_refuted: PathAdditivityRefutationReceipt = synthetic_first_minimum_refutation_receipt_from_fold()
 
 fn classical_path_additivity_refutation_holds() -> Bool {
   path_additivity_refutation_holds_for_synthetic_fixture(receipt: classical_path_additivity_refuted)
@@ -155,12 +177,12 @@ fn classical_path_additivity_central_band_refutation_holds() -> Bool {
       },
     } =>
       path_additivity_witness_is_counterexample(witness: w)
-        && w.observed_vs_prediction == Greater
+        && path_additivity_witness_observed_vs_prediction(witness: w) == Greater
     PathAdditivityHeldAtBand {
       band: held_band,
       exposure: held_exposure,
     } => false
-    PathAdditivityUndecidedAtBand { resolution: undecided_resolution } => false
+    PathAdditivityUndecidedAtBand { failure: undecided_failure } => false
   }
 }
 
@@ -225,9 +247,19 @@ fn synthetic_missing_row_yields_incomplete_inputs() -> Bool {
       both_contributing_rows: resolved_both_rows,
     } => false
     AdditivityInputsAmbiguous {
+      arrangement: ambiguous_arrangement,
       band: ambiguous_band,
       exposure: ambiguous_exposure,
       matching_rows: ambiguous_matching_rows,
     } => false
   }
+}
+
+fn synthetic_direct_kernel_receipt_matches_fold() -> Bool {
+  let direct = synthetic_first_minimum_refutation_receipt_direct()
+  let folded = synthetic_first_minimum_refutation_receipt_from_fold()
+  direct.witness.left_alternative_count == folded.witness.left_alternative_count
+    && direct.witness.right_alternative_count == folded.witness.right_alternative_count
+    && direct.witness.both_open_observed_count == folded.witness.both_open_observed_count
+    && direct.witness.classical_additive_prediction == folded.witness.classical_additive_prediction
 }

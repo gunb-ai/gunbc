@@ -93,7 +93,7 @@ data bach_buildup_7_electrons: BachBuildupObservationRow = BachBuildupObservatio
 data bach_buildup_209_electrons: BachBuildupObservationRow = BachBuildupObservationRow {
   apparatus: bach_et_al_2013_double_slit,
   detected_electrons: 209,
-  pattern_status: PatternDiscernible,
+  pattern_status: PatternNotYetDiscernible,
 }
 
 data bach_buildup_1004_electrons: BachBuildupObservationRow = BachBuildupObservationRow {
@@ -116,9 +116,4 @@ data bach_buildup_observations: List<BachBuildupObservationRow> = [
   bach_buildup_6235_electrons,
 ]
 
-type BachRawCountObservationRow {
-  apparatus: BachEtAl2013DoubleSlitExperiment
-  arrival_count: NonNegativeInt
-}
-
-data bach_et_al_2013_raw_count_observations: List<BachRawCountObservationRow> = []
+data figure_3_buildup_progression_note: String = "Figure 3 panels a–e map to 2, 7, 209, 1004, and 6235 electrons. Panels 3a–3c appear completely random; pattern discernible only in 3d (1004 electrons); 3e clearly visible (6235)."

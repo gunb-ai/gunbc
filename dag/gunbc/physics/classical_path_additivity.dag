@@ -69,6 +69,20 @@ type AdditivityInputResolution
       exposure: SyntheticMatchedExposureSession
     }
   | AdditivityInputsAmbiguous {
+      arrangement: SlitMaskConfiguration
+      band: ScreenBand
+      exposure: SyntheticMatchedExposureSession
+      matching_rows: NonNegativeInt
+    }
+
+type AdditivityInputFailure
+  = AdditivityInputMissing {
+      missing_arrangement: SlitMaskConfiguration
+      band: ScreenBand
+      exposure: SyntheticMatchedExposureSession
+    }
+  | AdditivityInputAmbiguous {
+      arrangement: SlitMaskConfiguration
       band: ScreenBand
       exposure: SyntheticMatchedExposureSession
       matching_rows: NonNegativeInt
@@ -79,7 +93,6 @@ type PathAdditivityCounterexampleWitness {
   right_alternative_count: NonNegativeInt
   both_open_observed_count: NonNegativeInt
   classical_additive_prediction: NonNegativeInt
-  observed_vs_prediction: Ordering
 }
 
 type PathAdditivitySubject
@@ -100,7 +113,7 @@ type PathAdditivityBandVerdict
       exposure: SyntheticMatchedExposureSession
     }
   | PathAdditivityUndecidedAtBand {
-      resolution: AdditivityInputResolution
+      failure: AdditivityInputFailure
     }
 
 fn classical_exclusive_alternative_arrival_prediction(
@@ -215,8 +228,9 @@ fn resolve_additivity_inputs(
         band: b,
         exposure: e,
       }
-    ArrivalCountAmbiguous { band: b, exposure: e, matching_rows: n } =>
+    ArrivalCountAmbiguous { arrangement: ma, band: b, exposure: e, matching_rows: n } =>
       AdditivityInputsAmbiguous {
+        arrangement: ma,
         band: b,
         exposure: e,
         matching_rows: n,
@@ -229,8 +243,9 @@ fn resolve_additivity_inputs(
             band: b,
             exposure: e,
           }
-        ArrivalCountAmbiguous { band: b, exposure: e, matching_rows: n } =>
+        ArrivalCountAmbiguous { arrangement: ma, band: b, exposure: e, matching_rows: n } =>
           AdditivityInputsAmbiguous {
+            arrangement: ma,
             band: b,
             exposure: e,
             matching_rows: n,
@@ -243,8 +258,9 @@ fn resolve_additivity_inputs(
                 band: b,
                 exposure: e,
               }
-            ArrivalCountAmbiguous { band: b, exposure: e, matching_rows: n } =>
+            ArrivalCountAmbiguous { arrangement: ma, band: b, exposure: e, matching_rows: n } =>
               AdditivityInputsAmbiguous {
+                arrangement: ma,
                 band: b,
                 exposure: e,
                 matching_rows: n,
@@ -278,6 +294,15 @@ fn path_additivity_compare_observed_to_prediction(
   }
 }
 
+fn path_additivity_witness_observed_vs_prediction(
+  witness: PathAdditivityCounterexampleWitness,
+) -> Ordering {
+  path_additivity_compare_observed_to_prediction(
+    observed_both: witness.both_open_observed_count,
+    prediction: witness.classical_additive_prediction,
+  )
+}
+
 fn path_additivity_witness_matches_additive_prediction(
   witness: PathAdditivityCounterexampleWitness,
 ) -> Bool {
@@ -289,6 +314,7 @@ fn path_additivity_witness_is_counterexample(
 ) -> Bool {
   path_additivity_witness_matches_additive_prediction(witness: witness)
     && (witness.both_open_observed_count != witness.classical_additive_prediction)
+    && (path_additivity_witness_observed_vs_prediction(witness: witness) != Equal)
 }
 
 fn path_additivity_refutation_holds_for_synthetic_fixture(
@@ -306,7 +332,6 @@ fn path_additivity_refutation_from_resolved(
   both: NonNegativeInt,
   band: ScreenBand,
   exposure: SyntheticMatchedExposureSession,
-  observed_vs_prediction: Ordering,
 ) -> PathAdditivityRefutationReceipt {
   let prediction = classical_exclusive_alternative_arrival_prediction(
     left_only_count: left,
@@ -319,7 +344,6 @@ fn path_additivity_refutation_from_resolved(
       right_alternative_count: right,
       both_open_observed_count: both,
       classical_additive_prediction: prediction,
-      observed_vs_prediction: observed_vs_prediction,
     },
     location: PathAdditivityLocationKey {
       exposure: exposure,
@@ -370,7 +394,6 @@ fn derive_path_additivity_refutation_at_band(
               both: both,
               band: band,
               exposure: exposure,
-              observed_vs_prediction: Less,
             ),
           }
         Greater =>
@@ -381,7 +404,6 @@ fn derive_path_additivity_refutation_at_band(
               both: both,
               band: band,
               exposure: exposure,
-              observed_vs_prediction: Greater,
             ),
           }
       }
@@ -392,19 +414,21 @@ fn derive_path_additivity_refutation_at_band(
       exposure: incomplete_exposure,
     } =>
       PathAdditivityUndecidedAtBand {
-        resolution: AdditivityInputsIncomplete {
+        failure: AdditivityInputMissing {
           missing_arrangement: missing_arrangement,
           band: incomplete_band,
           exposure: incomplete_exposure,
         },
       }
     AdditivityInputsAmbiguous {
+      arrangement: ambiguous_arrangement,
       band: ambiguous_band,
       exposure: ambiguous_exposure,
       matching_rows: ambiguous_rows,
     } =>
       PathAdditivityUndecidedAtBand {
-        resolution: AdditivityInputsAmbiguous {
+        failure: AdditivityInputAmbiguous {
+          arrangement: ambiguous_arrangement,
           band: ambiguous_band,
           exposure: ambiguous_exposure,
           matching_rows: ambiguous_rows,
