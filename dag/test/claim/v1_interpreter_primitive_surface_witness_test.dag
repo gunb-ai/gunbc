@@ -2,7 +2,6 @@ module test.claim.v1_interpreter_primitive_surface_witness_test
 
 import gunbc.v1_interpreter_primitive_surface {
   AuthoredInRoster,
-  DerivedFromDispatch,
   EvalBuiltinInnerSite,
   FreeCall,
   InterpreterPrimitiveArmId,
@@ -32,7 +31,7 @@ fn planted_row(identity: String, spelling: String, symbol: String) -> Interprete
     realization_module: "planted",
     dispatch_symbol: symbol,
     dispatch_emit_site: EvalBuiltinInnerSite,
-    enumeration: DerivedFromDispatch,
+    enumeration: AuthoredInRoster,
   }
 }
 
