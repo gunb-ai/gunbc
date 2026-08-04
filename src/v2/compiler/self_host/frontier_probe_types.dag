@@ -1,6 +1,13 @@
 module v2.compiler.self_host.frontier_probe_types
 
-import v2.compiler.source_authority { SourceRef }
+import v2.compiler.source_authority {
+  SourceRef,
+  SourceRootCoverage,
+  SourceRootCoverageComplete,
+  SourceRootManifestAbsent,
+  SourceRootManifestElided,
+  SourceRootRowsMissing
+}
 import std.content_hash { ContentHash }
 import v2.std.optional { Optional }
 import v2.std.integer { Int }
@@ -38,13 +45,16 @@ type FrontierProbeDetail
   = FrontierProbeDetailAbsent
   | MissingModule { requested: QualifiedName }
   | SourceRootManifestElidedProbe { read_count: Int, cap: Int }
-  | FrontierProbeSourceReadRefused {
+  | FrontierProbeClosurePopulationRefused { cause: Symbol }
+  | FrontierProbeCoverageRefused { coverage: SourceRootCoverage }
+  | SourceRefReadRefused { source_ref: SourceRef, error: String }
+  | SourceRefContentHashMismatch {
       source_ref: SourceRef,
-      cause: Symbol,
-      observed_content_hash: Optional<ContentHash>
+      expected: ContentHash,
+      observed: ContentHash
     }
 
-data frontier_probe_detail_note: String = "Survey receipts carry structural probe detail beside the reason symbol. MissingModule holds the QualifiedName sought (not only its dotted projection). SourceRootManifestElidedProbe records inline-manifest elision when the live closure cannot be consumed through SourceRef rows. FrontierProbeSourceReadRefused preserves read-through failures separately from parse or module-not-found misclassification; on content-hash mismatch observed_content_hash carries the read-through digest beside source_ref.content_hash (expected)."
+data frontier_probe_detail_note: String = "Survey receipts carry structural probe detail beside the reason symbol. MissingModule holds the QualifiedName sought (not only its dotted projection). SourceRootManifestElidedProbe records inline-manifest elision when the inline carrier cannot supply the closure. FrontierProbeClosurePopulationRefused records entry-binding and closure-population identity failures (duplicate refs, count mismatch, entry not exactly once). FrontierProbeCoverageRefused preserves the original SourceRootCoverage arm. SourceRefReadRefused carries the filesystem error string without fabricating missing-vs-unreadable. SourceRefContentHashMismatch carries expected and observed ContentHash beside the ref."
 
 type FrontierProbeReceipt {
   module_path: String

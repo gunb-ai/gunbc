@@ -187,20 +187,63 @@ fn source_ref_for_storage_path(path: String) -> SourceRef {
 
 data source_ref_read_through_note: String = "Read-through for ingest-manifest SourceRef rows (ingest-manifest-source-ref-carrier-design.md stage 3): filesystem_read at consumption, content identity verified against the ref's ContentHash before parse. Hash mismatch refuses with both digests; missing/unreadable paths refuse as read failures rather than misclassified parse errors."
 
+data source_ref_read_refused: Symbol = ^source_ref_read_refused
+
 data source_ref_content_hash_mismatch: Symbol = ^source_ref_content_hash_mismatch
 
-data source_ref_path_missing: Symbol = ^source_ref_path_missing
+fn source_ref_eq(left: SourceRef, right: SourceRef) -> Bool {
+  (left.path == right.path)
+    && (left.source_root == right.source_root)
+    && (compare_content_hash(left: left.content_hash, right: right.content_hash)
+      == ContentHashEqual)
+}
 
-data source_ref_path_unreadable: Symbol = ^source_ref_path_unreadable
-
-fn source_ref_read_refused_diagnostic(ref: SourceRef, reason: Symbol) -> NonEmptyDiagnostics {
-  diagnostics_singleton(
-    d: textual_whole_file_diagnostic(
-      reason: reason,
-      module_file: symbol_intern_lexeme(lexeme: ref.path),
-      correction: Unavailable { reason: ExternalContractUnknown }
-    )
+fn source_ref_count_in_list(refs: List<SourceRef>, target: SourceRef) -> Int {
+  fold_list(
+    xs: refs,
+    empty: 0,
+    cons: fn(count, ref) {
+      if source_ref_eq(left: ref, right: target) {
+        count + 1
+      } else {
+        count
+      }
+    }
   )
+}
+
+fn source_ref_list_has_duplicate(refs: List<SourceRef>) -> Bool {
+  fold_list(
+    xs: refs,
+    empty: false,
+    cons: fn(found, ref) {
+      if found {
+        true
+      } else {
+        source_ref_count_in_list(refs: refs, target: ref) > 1
+      }
+    }
+  )
+}
+
+fn source_ref_read_failed_diagnostic(ref: SourceRef, error: String) -> NonEmptyDiagnostics {
+  NonEmptyDiagnostics {
+    head: Diagnostic {
+      reason: source_ref_read_refused,
+      at: textual_whole_file_locus(file: symbol_intern_lexeme(lexeme: ref.path)),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    },
+    tail: [
+      NonEmptyDiagnostics {
+        head: Diagnostic {
+          reason: source_ref_read_refused,
+          at: port_locus(port: symbol_intern_lexeme(lexeme: error)),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        },
+        tail: []
+      }
+    ]
+  }
 }
 
 fn source_ref_content_hash_mismatch_diagnostic(
@@ -253,14 +296,8 @@ fn dag_source_content_hash_for_text(text: String) -> ContentHash {
 fn dag_source_read_witness_from_source_ref(ref: SourceRef) -> Outcome<DagSourceReadWitness> {
   let read = Filesystem.Read(path: ref.path)
   if !read.success {
-    let reason =
-      if string_is_empty(s: read.content) {
-        source_ref_path_missing
-      } else {
-        source_ref_path_unreadable
-      }
     outcome_rejected(
-      d: source_ref_read_refused_diagnostic(ref: ref, reason: reason)
+      d: source_ref_read_failed_diagnostic(ref: ref, error: read.error)
     )
   } else {
     let actual = dag_source_content_hash_for_text(text: read.content)
