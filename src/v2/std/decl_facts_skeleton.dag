@@ -78,11 +78,9 @@ fn skeleton_marshal_atom_lexeme_optional(node: Node) -> SkeletonMarshalAtomLexem
 }
 
 fn node_skeleton_edge_targets(node: Node) -> List<Node> {
-  fold_list_right(
-    xs: node.children,
-    empty: Empty,
-    snoc: fn(acc, e) { Cons { head: e.target, tail: acc } }
-  )
+  list_reverse(xs: fold(node.children, init: Empty, f: fn(acc, e) {
+    Cons { head: e.target, tail: acc }
+  }))
 }
 
 fn node_skeleton_marshal_atom_lexemes(node: Node) -> List<SkeletonMarshalAtomLexeme> {
