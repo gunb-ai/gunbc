@@ -19,9 +19,17 @@ import extdeps.standards.rfc_8118 {
   pdf_open_parameters_include_page,
   project_navigable_uri,
   NavigableUriProjected,
+  NavigableUriRefused,
+  PdfOpenParameterPercentEncodeRefused,
   SequenceConstructed,
   pdf_profile_parameter_wire,
+  PdfProfileParameterWired,
   pdf_open_fragment_selector,
+  PdfOpenFragmentSelectorConstructed,
+  PdfOpenNamedDest,
+  OpenNamedDest,
+  pdf_open_nameddest_wire_from_scalar_code_points,
+  PdfOpenParameterSequence,
 }
 import std.citation { FragmentSelectorVariant }
 import gunbc.citation.pdf_safe_profile {
@@ -42,6 +50,7 @@ import extdeps.uri {
   Uri,
   Https,
   uri_percent_encode_component,
+  uri_percent_encode_code_points,
   UriPercentComponentEncoded,
   UriPercentComponentRefused,
   uri_hex_nibble_construction,
@@ -136,7 +145,10 @@ test fn project_navigable_uri_safe_refuses_mixed_admitted_and_refused_parameters
 test fn pdf_profile_parameter_wire_encodes_ampersand_in_nameddest() -> Bool {
   match pdf_open_nameddest(name: "a&b" as NonEmptyStr) {
     ParameterConstructed(parameter) =>
-      pdf_profile_parameter_wire(parameter: parameter) == "nameddest=a%26b"
+      match pdf_profile_parameter_wire(parameter: parameter) {
+        PdfProfileParameterWired { wire: w } => w == "nameddest=a%26b"
+        _ => false
+      }
     _ => false
   }
 }
@@ -144,7 +156,10 @@ test fn pdf_profile_parameter_wire_encodes_ampersand_in_nameddest() -> Bool {
 test fn pdf_profile_parameter_wire_encodes_hash_in_structelem() -> Bool {
   match pdf_open_structelem(struct_id: "id#1" as NonEmptyStr) {
     ParameterConstructed(parameter) =>
-      pdf_profile_parameter_wire(parameter: parameter) == "structelem=id%231"
+      match pdf_profile_parameter_wire(parameter: parameter) {
+        PdfProfileParameterWired { wire: w } => w == "structelem=id%231"
+        _ => false
+      }
     _ => false
   }
 }
@@ -152,7 +167,10 @@ test fn pdf_profile_parameter_wire_encodes_hash_in_structelem() -> Bool {
 test fn pdf_profile_parameter_wire_encodes_equals_in_nameddest() -> Bool {
   match pdf_open_nameddest(name: "a=b" as NonEmptyStr) {
     ParameterConstructed(parameter) =>
-      pdf_profile_parameter_wire(parameter: parameter) == "nameddest=a%3db"
+      match pdf_profile_parameter_wire(parameter: parameter) {
+        PdfProfileParameterWired { wire: w } => w == "nameddest=a%3db"
+        _ => false
+      }
     _ => false
   }
 }
@@ -160,7 +178,10 @@ test fn pdf_profile_parameter_wire_encodes_equals_in_nameddest() -> Bool {
 test fn pdf_profile_parameter_wire_encodes_percent_in_nameddest() -> Bool {
   match pdf_open_nameddest(name: "100%25" as NonEmptyStr) {
     ParameterConstructed(parameter) =>
-      pdf_profile_parameter_wire(parameter: parameter) == "nameddest=100%2525"
+      match pdf_profile_parameter_wire(parameter: parameter) {
+        PdfProfileParameterWired { wire: w } => w == "nameddest=100%2525"
+        _ => false
+      }
     _ => false
   }
 }
@@ -168,7 +189,10 @@ test fn pdf_profile_parameter_wire_encodes_percent_in_nameddest() -> Bool {
 test fn pdf_profile_parameter_wire_encodes_space_in_nameddest() -> Bool {
   match pdf_open_nameddest(name: "a b" as NonEmptyStr) {
     ParameterConstructed(parameter) =>
-      pdf_profile_parameter_wire(parameter: parameter) == "nameddest=a%20b"
+      match pdf_profile_parameter_wire(parameter: parameter) {
+        PdfProfileParameterWired { wire: w } => w == "nameddest=a%20b"
+        _ => false
+      }
     _ => false
   }
 }
@@ -191,9 +215,35 @@ test fn pdf_open_fragment_selector_conforms_to_rfc_8118() -> Bool {
   match rfc_pdf_open_parameter_sequence(constructions: [pdf_open_page(page: 1)]) {
     SequenceConstructed(sequence) =>
       match pdf_open_fragment_selector(sequence: sequence) {
-        FragmentSelectorVariant(s) =>
+        PdfOpenFragmentSelectorConstructed(FragmentSelectorVariant(s)) =>
           s.conforms_to.uri.locator == extdeps_external_authority_anchor.uri.locator
             && s.value == ("page=1" as NonEmptyStr)
+        _ => false
+      }
+    _ => false
+  }
+}
+
+data witness_unencodable_scalar_code_points: List<Int> = [1114112]
+
+test fn uri_percent_encode_component_refuses_code_point_beyond_unicode_max() -> Bool {
+  match uri_percent_encode_code_points(code_points: witness_unencodable_scalar_code_points) {
+    UriPercentComponentRefused { cause: UriHexNibbleOutOfRange { digit: 1114112 } } => true
+    _ => false
+  }
+}
+
+test fn project_navigable_uri_refuses_unencodable_nameddest_value() -> Bool {
+  match pdf_open_nameddest_wire_from_scalar_code_points(
+    name: "plant" as NonEmptyStr,
+    code_points: witness_unencodable_scalar_code_points,
+  ) {
+    PdfProfileParameterWireRefused { parameter: p, cause: _ } =>
+      match project_navigable_uri(
+        base: witness_pdf_base_uri,
+        sequence: PdfOpenParameterSequence { parameters: [p] },
+      ) {
+        NavigableUriRefused { cause: PdfOpenParameterPercentEncodeRefused { parameter: _, cause: _ } } => true
         _ => false
       }
     _ => false

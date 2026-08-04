@@ -421,7 +421,11 @@ fn uri_percent_encode_admitted_scalar_wire(scalar: UriValidatedScalar) -> UriPer
                 }
 =======
 fn uri_percent_encode_code_point_state(cp: Int) -> UriPercentEncodeFoldState {
-  if uri_component_is_unreserved(cp: cp) {
+  if cp > 1114111 {
+    UriPercentEncodeRefused { cause: UriHexNibbleOutOfRange { digit: cp } }
+  } else if cp >= 55296 && cp <= 57343 {
+    UriPercentEncodeRefused { cause: UriHexNibbleOutOfRange { digit: cp } }
+  } else if uri_component_is_unreserved(cp: cp) {
     UriPercentEncodeBuilding { wire: from_code_point(cp: cp) }
   } else if cp < 128 {
     match uri_percent_octet_wire(byte: cp) {
@@ -546,8 +550,12 @@ fn uri_percent_encode_code_points(code_points: List<Int>) -> UriPercentEncodeCom
     }
 =======
 fn uri_percent_encode_component(value: NonEmptyStr) -> UriPercentEncodeComponent {
+  uri_percent_encode_code_points(code_points: (value as String) |> chars)
+}
+
+fn uri_percent_encode_code_points(code_points: List<Int>) -> UriPercentEncodeComponent {
   match fold(
-    (value as String) |> chars,
+    code_points,
     init: UriPercentEncodeBuilding { wire: "" },
     f: fn(acc, cp) {
       match acc {

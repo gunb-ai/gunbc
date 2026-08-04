@@ -32,6 +32,8 @@ import extdeps.standards.rfc_8118 {
   pdf_open_page,
   rfc_pdf_open_parameter_sequence,
   SequenceConstructed,
+  PdfOpenFragmentSelectorConstructed,
+  PdfOpenFragmentSelectorRefused,
 }
 import gunbc.citation.pdf_safe_profile {
   PdfSafeParameterSequenceConstruction,
@@ -148,18 +150,32 @@ data x86_64_abi_pdf_syscall_convention_sequence: PdfSafeParameterSequenceConstru
   constructions: [pdf_open_page(page: 28)],
 )
 
+fn x86_64_abi_pdf_fragment_selector_from_page(page: PositiveInt) -> CitationSelector {
+  match pdf_open_fragment_selector(
+    sequence: match rfc_pdf_open_parameter_sequence(constructions: [pdf_open_page(page: page)]) {
+      SequenceConstructed(seq) => seq
+    },
+  ) {
+    PdfOpenFragmentSelectorConstructed(selector) => selector
+    PdfOpenFragmentSelectorRefused { cause: _ } =>
+      x86_64_abi_pdf_fragment_selector_from_page(page: 1)
+  }
+}
+
 fn x86_64_abi_pdf_citation_selector_from_safe(
   construction: PdfSafeParameterSequenceConstruction,
 ) -> CitationSelector {
   match construction {
     SafeSequenceConstructed(sequence) =>
-      pdf_open_fragment_selector(
+      match pdf_open_fragment_selector(
         sequence: pdf_safe_parameter_sequence_to_rfc(sequence: sequence),
-      )
-    SafeSequenceConstructionRefused { cause: _ } =>
-      match rfc_pdf_open_parameter_sequence(constructions: [pdf_open_page(page: 1)]) {
-        SequenceConstructed(seq) => pdf_open_fragment_selector(sequence: seq)
+      ) {
+        PdfOpenFragmentSelectorConstructed(selector) => selector
+        PdfOpenFragmentSelectorRefused { cause: _ } =>
+          x86_64_abi_pdf_fragment_selector_from_page(page: 1)
       }
+    SafeSequenceConstructionRefused { cause: _ } =>
+      x86_64_abi_pdf_fragment_selector_from_page(page: 1)
   }
 }
 

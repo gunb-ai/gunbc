@@ -2,7 +2,7 @@ module gunbc.citation.pdf_safe_profile
 
 import std.types { NonEmptyStr, List, Bool }
 import std.integer { PositiveInt }
-import extdeps.uri { Uri }
+import extdeps.uri { Uri, UriHexNibbleConstruction }
 import extdeps.standards.rfc_8118 {
   PdfProfileParameter,
   PdfProfileParameterConstruction,
@@ -22,7 +22,10 @@ import extdeps.standards.rfc_8118 {
   OpenSearch,
   OpenFdf,
   NavigableUriProjection,
+  NavigableUriProjected,
   NavigableUriRefused,
+  BaseLocatorAlreadyCarriesFragment,
+  PdfOpenParameterPercentEncodeRefused,
   project_navigable_uri,
 }
 
@@ -65,6 +68,10 @@ type PdfSafeParameterSequenceFoldState
 type NavigableUriSafeRefusalCause
   = SafeParameterConstructionRefusedInSequence { cause: PdfProfileRefusalCause }
   | BaseLocatorAlreadyCarriesFragmentFromRfc { locator: NonEmptyStr }
+  | PdfOpenParameterPercentEncodeRefusedFromSafe {
+      parameter: PdfProfileParameter,
+      cause: UriHexNibbleConstruction,
+    }
 
 type NavigableUriSafeProjection
   = NavigableUriSafeProjected { uri: Uri }
@@ -167,6 +174,10 @@ fn project_navigable_uri_safe(base: Uri, construction: PdfSafeParameterSequenceC
         NavigableUriRefused { cause: BaseLocatorAlreadyCarriesFragment { locator: l } } =>
           NavigableUriSafeRefused {
             cause: BaseLocatorAlreadyCarriesFragmentFromRfc { locator: l },
+          }
+        NavigableUriRefused { cause: PdfOpenParameterPercentEncodeRefused { parameter: p, cause: c } } =>
+          NavigableUriSafeRefused {
+            cause: PdfOpenParameterPercentEncodeRefusedFromSafe { parameter: p, cause: c },
           }
       }
   }
