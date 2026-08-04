@@ -1,0 +1,117 @@
+module gunbc.namespace_structural_observations
+
+import std.reference_binding_observation {
+  ReferenceBindingObservation,
+  SameFileNeighbourObservation,
+  SiblingBranchObservation,
+  LaterDeclarationObservation,
+  DistinctHomonymObservation,
+  RepeatedMentionDependencyObservation,
+  UnrelatedLoadedFileObservation,
+}
+import std.types { Bool, List, NonEmptyStr }
+
+data namespace_structural_observations_closing_contract_note: String = "N3-A ordinary-compile closing predicate. The witness is the same function before and after the transition: Unavailable and Refused red today; Produced greens only when all four structural ReferenceBindingObservation clause shapes are present. Hand-built fixture observations exercised in dag/test/claim/namespace_reference_derived_closure_production_admissions_witness_test.dag do not feed this seam — they are discriminating evidence only."
+
+type OrdinaryCompileStructuralObservations
+  = OrdinaryCompileStructuralObservationsUnavailable {
+      trigger: NonEmptyStr,
+    }
+  | OrdinaryCompileStructuralObservationsRefused {
+      cause: NonEmptyStr,
+    }
+  | OrdinaryCompileStructuralObservationsProduced {
+      observations: List<ReferenceBindingObservation>,
+    }
+
+fn ordinary_compile_structural_observations_status() -> OrdinaryCompileStructuralObservations {
+  OrdinaryCompileStructuralObservationsUnavailable {
+    trigger: "P2aStructuralCandidateProducer7515 ordinary-compile observation seam not wired" as NonEmptyStr,
+  }
+}
+
+fn structural_observations_include_same_file_neighbour(
+  observations: List<ReferenceBindingObservation>,
+) -> Bool {
+  fold(observations, init: false, f: fn(found, o) {
+    found || match o {
+      SameFileNeighbourObservation { neighbour: _, resolution: _ } => true
+      SiblingBranchObservation { own_branch_declaration: _, sibling_branch_declaration: _, resolution: _ } => false
+      LaterDeclarationObservation { later_declaration: _, resolution: _ } => false
+      DistinctHomonymObservation { first_declaration: _, second_declaration: _, resolution: _ } => false
+      RepeatedMentionDependencyObservation { provider_file: _, projected_dependencies: _ } => false
+      UnrelatedLoadedFileObservation { provider_file: _, unrelated_loaded_file: _, projected_dependencies: _ } => false
+    }
+  })
+}
+
+fn structural_observations_include_sibling_branch(
+  observations: List<ReferenceBindingObservation>,
+) -> Bool {
+  fold(observations, init: false, f: fn(found, o) {
+    found || match o {
+      SameFileNeighbourObservation { neighbour: _, resolution: _ } => false
+      SiblingBranchObservation { own_branch_declaration: _, sibling_branch_declaration: _, resolution: _ } => true
+      LaterDeclarationObservation { later_declaration: _, resolution: _ } => false
+      DistinctHomonymObservation { first_declaration: _, second_declaration: _, resolution: _ } => false
+      RepeatedMentionDependencyObservation { provider_file: _, projected_dependencies: _ } => false
+      UnrelatedLoadedFileObservation { provider_file: _, unrelated_loaded_file: _, projected_dependencies: _ } => false
+    }
+  })
+}
+
+fn structural_observations_include_later_declaration(
+  observations: List<ReferenceBindingObservation>,
+) -> Bool {
+  fold(observations, init: false, f: fn(found, o) {
+    found || match o {
+      SameFileNeighbourObservation { neighbour: _, resolution: _ } => false
+      SiblingBranchObservation { own_branch_declaration: _, sibling_branch_declaration: _, resolution: _ } => false
+      LaterDeclarationObservation { later_declaration: _, resolution: _ } => true
+      DistinctHomonymObservation { first_declaration: _, second_declaration: _, resolution: _ } => false
+      RepeatedMentionDependencyObservation { provider_file: _, projected_dependencies: _ } => false
+      UnrelatedLoadedFileObservation { provider_file: _, unrelated_loaded_file: _, projected_dependencies: _ } => false
+    }
+  })
+}
+
+fn structural_observations_include_distinct_homonym(
+  observations: List<ReferenceBindingObservation>,
+) -> Bool {
+  fold(observations, init: false, f: fn(found, o) {
+    found || match o {
+      SameFileNeighbourObservation { neighbour: _, resolution: _ } => false
+      SiblingBranchObservation { own_branch_declaration: _, sibling_branch_declaration: _, resolution: _ } => false
+      LaterDeclarationObservation { later_declaration: _, resolution: _ } => false
+      DistinctHomonymObservation { first_declaration: _, second_declaration: _, resolution: _ } => true
+      RepeatedMentionDependencyObservation { provider_file: _, projected_dependencies: _ } => false
+      UnrelatedLoadedFileObservation { provider_file: _, unrelated_loaded_file: _, projected_dependencies: _ } => false
+    }
+  })
+}
+
+fn structural_observations_cover_n3_a_clauses(
+  observations: List<ReferenceBindingObservation>,
+) -> Bool {
+  structural_observations_include_same_file_neighbour(observations: observations)
+    && structural_observations_include_sibling_branch(observations: observations)
+    && structural_observations_include_later_declaration(observations: observations)
+    && structural_observations_include_distinct_homonym(observations: observations)
+}
+
+fn ordinary_compile_structural_closing_contract_holds(
+  status: OrdinaryCompileStructuralObservations,
+) -> Bool {
+  match status {
+    OrdinaryCompileStructuralObservationsUnavailable { trigger: _ } => false
+    OrdinaryCompileStructuralObservationsRefused { cause: _ } => false
+    OrdinaryCompileStructuralObservationsProduced { observations: observations } =>
+      structural_observations_cover_n3_a_clauses(observations: observations)
+  }
+}
+
+fn namespace_structural_observations_ordinary_compile_closing_contract_holds() -> Bool {
+  ordinary_compile_structural_closing_contract_holds(
+    status: ordinary_compile_structural_observations_status(),
+  )
+}

@@ -9,134 +9,134 @@ test fn witness_json_cites_rfc8259() -> Bool {
 }
 
 test fn witness_escape_backslash_and_quote() -> Bool {
-  extdeps.languages.json.emit.escape_json_string(s: "a\"b\\c") == "a\\\"b\\\\c"
+  escape_json_string(s: "a\"b\\c") == "a\\\"b\\\\c"
 }
 
 test fn witness_escape_newline() -> Bool {
-  extdeps.languages.json.emit.escape_json_string(s: "line one\nline two") == "line one\\nline two"
+  escape_json_string(s: "line one\nline two") == "line one\\nline two"
 }
 
 test fn witness_escape_tab() -> Bool {
-  extdeps.languages.json.emit.escape_json_string(s: concat("a", concat(from_code_point(cp: 9), "b"))) == "a\\tb"
+  escape_json_string(s: concat("a", concat(from_code_point(cp: 9), "b"))) == "a\\tb"
 }
 
 test fn witness_escape_carriage_return() -> Bool {
-  extdeps.languages.json.emit.escape_json_string(s: concat("x", concat(from_code_point(cp: 13), "y"))) == "x\\ry"
+  escape_json_string(s: concat("x", concat(from_code_point(cp: 13), "y"))) == "x\\ry"
 }
 
 test fn witness_escape_control_u0001() -> Bool {
-  extdeps.languages.json.emit.escape_json_string(s: from_code_point(cp: 1)) == "\\u0001"
+  escape_json_string(s: from_code_point(cp: 1)) == "\\u0001"
 }
 
 test fn witness_quote_json_string() -> Bool {
-  extdeps.languages.json.emit.quote_json_string(s: "hello") == "\"hello\""
-    && extdeps.languages.json.emit.quote_json_string(s: "a\"b") == "\"a\\\"b\""
+  quote_json_string(s: "hello") == "\"hello\""
+    && quote_json_string(s: "a\"b") == "\"a\\\"b\""
 }
 
 test fn witness_serialize_null() -> Bool {
-  extdeps.languages.json.emit.serialize_json(v: extdeps.languages.json.emit.json_null()) == "null"
+  serialize_json(v: json_null()) == "null"
 }
 
 test fn witness_serialize_bool() -> Bool {
-  extdeps.languages.json.emit.serialize_json(v: extdeps.languages.json.emit.json_bool(b: true)) == "true"
-    && extdeps.languages.json.emit.serialize_json(v: extdeps.languages.json.emit.json_bool(b: false)) == "false"
+  serialize_json(v: json_bool(b: true)) == "true"
+    && serialize_json(v: json_bool(b: false)) == "false"
 }
 
 test fn witness_serialize_int() -> Bool {
-  extdeps.languages.json.emit.serialize_json(v: extdeps.languages.json.emit.json_int(n: 42)) == "42"
+  serialize_json(v: json_int(n: 42)) == "42"
 }
 
 test fn witness_serialize_object() -> Bool {
-  extdeps.languages.json.emit.serialize_json(v: extdeps.languages.json.emit.json_object(members: [
-    extdeps.languages.json.emit.json_kv(key: "host", value: extdeps.languages.json.emit.json_string(s: "srv1")),
-    extdeps.languages.json.emit.json_kv(key: "runner_count", value: extdeps.languages.json.emit.json_int(n: 4)),
+  serialize_json(v: json_object(members: [
+    json_kv(key: "host", value: json_string(s: "srv1")),
+    json_kv(key: "runner_count", value: json_int(n: 4)),
   ])) == "{\"host\": \"srv1\", \"runner_count\": 4}"
 }
 
 test fn witness_serialize_nested_object() -> Bool {
-  extdeps.languages.json.emit.serialize_json(v: extdeps.languages.json.emit.json_object(members: [
-    extdeps.languages.json.emit.json_kv(key: "Password", value: extdeps.languages.json.emit.json_string(s: "secret")),
+  serialize_json(v: json_object(members: [
+    json_kv(key: "Password", value: json_string(s: "secret")),
   ])) == "{\"Password\": \"secret\"}"
 }
 
 test fn witness_serialize_array() -> Bool {
-  extdeps.languages.json.emit.serialize_json(v: extdeps.languages.json.emit.json_array(elements: [extdeps.languages.json.emit.json_string(s: "a"), extdeps.languages.json.emit.json_string(s: "b")])) == "[\"a\", \"b\"]"
+  serialize_json(v: json_array(elements: [json_string(s: "a"), json_string(s: "b")])) == "[\"a\", \"b\"]"
 }
 
 test fn witness_int_list_helper() -> Bool {
-  extdeps.languages.json.emit.json_int_list(nums: [1, 2, 3]) == "[1, 2, 3]"
+  json_int_list(nums: [1, 2, 3]) == "[1, 2, 3]"
 }
 
 test fn witness_str_list_helper() -> Bool {
-  extdeps.languages.json.emit.json_str_list(items: ["x", "y"]) == "[\"x\", \"y\"]"
+  json_str_list(items: ["x", "y"]) == "[\"x\", \"y\"]"
 }
 
 test fn witness_grammar_rows_cover_json_value_variants() -> Bool {
-  length(xs: extdeps.languages.json.grammar.json_production_rows) >= 8
+  length(xs: json_production_rows) >= 8
 }
 
 test fn witness_invalid_number_lexeme_rejected() -> Bool {
-  !extdeps.languages.json.grammar.json_number_lexeme_valid(s: "not-a-number")
-    && !extdeps.languages.json.grammar.json_number_lexeme_valid(s: "12abc")
-    && !extdeps.languages.json.grammar.json_number_lexeme_valid(s: "")
-    && !extdeps.languages.json.grammar.json_number_lexeme_valid(s: "01")
+  !json_number_lexeme_valid(s: "not-a-number")
+    && !json_number_lexeme_valid(s: "12abc")
+    && !json_number_lexeme_valid(s: "")
+    && !json_number_lexeme_valid(s: "01")
 }
 
 test fn witness_json_int_lexeme_always_valid() -> Bool {
-  extdeps.languages.json.grammar.json_number_lexeme_valid(s: extdeps.languages.json.grammar.json_int_lexeme(n: 42) as String)
-    && extdeps.languages.json.grammar.json_number_lexeme_valid(s: extdeps.languages.json.grammar.json_int_lexeme(n: -7) as String)
-    && extdeps.languages.json.grammar.json_number_lexeme_valid(s: extdeps.languages.json.grammar.json_int_lexeme(n: 0) as String)
+  json_number_lexeme_valid(s: json_int_lexeme(n: 42) as String)
+    && json_number_lexeme_valid(s: json_int_lexeme(n: -7) as String)
+    && json_number_lexeme_valid(s: json_int_lexeme(n: 0) as String)
 }
 
 test fn witness_json_number_lexeme_valid_accepts_fraction_and_exp() -> Bool {
-  extdeps.languages.json.grammar.json_number_lexeme_valid(s: "12.34")
-    && extdeps.languages.json.grammar.json_number_lexeme_valid(s: "1e10")
-    && extdeps.languages.json.grammar.json_number_lexeme_valid(s: "-0.5e+2")
+  json_number_lexeme_valid(s: "12.34")
+    && json_number_lexeme_valid(s: "1e10")
+    && json_number_lexeme_valid(s: "-0.5e+2")
 }
 
 test fn witness_json_number_lexeme_refuses_invalid_at_construction() -> Bool {
-  match extdeps.languages.json.grammar.json_number_lexeme(s: "not-a-number") {
+  match json_number_lexeme(s: "not-a-number") {
     none => true
     Present { value: _ } => false
   }
-    && match extdeps.languages.json.grammar.json_number_lexeme(s: "12abc") {
+    && match json_number_lexeme(s: "12abc") {
       none => true
       Present { value: _ } => false
     }
-    && match extdeps.languages.json.grammar.json_number_lexeme(s: "") {
+    && match json_number_lexeme(s: "") {
       none => true
       Present { value: _ } => false
     }
 }
 
 test fn witness_json_number_lexeme_accepts_valid_at_construction() -> Bool {
-  match extdeps.languages.json.grammar.json_number_lexeme(s: "12.34") {
+  match json_number_lexeme(s: "12.34") {
     Present { value: l } => (l as String) == "12.34"
     none => false
   }
-    && match extdeps.languages.json.grammar.json_number_lexeme(s: "-7") {
+    && match json_number_lexeme(s: "-7") {
       Present { value: l } => (l as String) == "-7"
       none => false
     }
 }
 
 test fn witness_json_number_from_lexeme_string_refuses_invalid() -> Bool {
-  match extdeps.languages.json.emit.json_number_from_lexeme_string(s: "01") {
+  match json_number_from_lexeme_string(s: "01") {
     Absent => true
     Present { value: _ } => false
   }
 }
 
 test fn witness_unicode_escape_hex4_boundary_0fff() -> Bool {
-  extdeps.languages.json.emit.json_unicode_escape_hex4(cp: 4095) == "0FFF"
+  json_unicode_escape_hex4(cp: 4095) == "0FFF"
 }
 
 test fn witness_unicode_escape_hex4_boundary_ffff() -> Bool {
-  extdeps.languages.json.emit.json_unicode_escape_hex4(cp: 65535) == "FFFF"
+  json_unicode_escape_hex4(cp: 65535) == "FFFF"
 }
 
 
-data json_text_exponent_regression_note: String = "review 44043 RED. RFC 8259's exp production requires 1*DIGIT, but json_text_parse_number consumed the marker and optional sign without demanding one, so `1e` parsed as a complete number and json_text_parseable called the document well-formed. That is the fail-open the admission receipt check now sits on top of. These witnesses pin both directions and, critically, the AGREEMENT between the two readings of one RFC production: the text parser and the extdeps.languages.json.grammar.json_number_lexeme_valid lexeme surface had forked, and only the lexeme surface was correct."
+data json_text_exponent_regression_note: String = "review 44043 RED. RFC 8259's exp production requires 1*DIGIT, but json_text_parse_number consumed the marker and optional sign without demanding one, so `1e` parsed as a complete number and json_text_parseable called the document well-formed. That is the fail-open the admission receipt check now sits on top of. These witnesses pin both directions and, critically, the AGREEMENT between the two readings of one RFC production: the text parser and the json_number_lexeme_valid lexeme surface had forked, and only the lexeme surface was correct."
 
 test fn witness_json_text_bare_exponent_refused() -> Bool {
   !extdeps.languages.json.parse.json_text_parseable(s: "1e")

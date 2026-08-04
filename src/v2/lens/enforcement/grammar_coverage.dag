@@ -1,22 +1,5 @@
 module v2.lens.enforcement.grammar_coverage
 
-import extdeps.filesystem.filesystem_io { filesystem_read }
-import v2.compiler.normalize { normalize }
-import v2.compiler.parse { parse_module }
-import v2.compiler.tokenize { tokenize }
-import v2.extdeps.languages.dag { dag_language_model }
-import v2.lens.coverage { dedupe_snoc }
-import v2.lens.enforcement.standing_intent { whole_corpus_scope }
-import v2.std.algebra { filter, fold_list, list_append }
-import v2.std.collection { List }
-import v2.std.decl_index { DeclFact, decl_facts }
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.integer { Int }
-import v2.std.logic { Bool }
-import v2.std.node { Symbol, symbol_identity_digest }
-import v2.std.text { String }
-import std.algebra { Empty }
-
 
 type GrammarCoverageParseVerdict
   = ParsedClean

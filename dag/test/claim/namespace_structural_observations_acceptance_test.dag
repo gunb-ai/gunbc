@@ -1,16 +1,15 @@
 module test.claim.namespace_structural_observations_acceptance
 
+import gunbc.namespace_structural_observations {
+  namespace_structural_observations_ordinary_compile_closing_contract_holds,
+}
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data namespace_structural_observations_acceptance_note: String = "THE CLOSING VALIDATION for roadmap node namespace-structural-observations (N3-A). RED BY DESIGN until ONE ORDINARY COMPILED FILE produces all four ReferenceBindingObservation carriers through the compile path — hand-built inline fixtures in v1.gunbc.namespace_reference_derived_closure_production_observations are exercised separately by dag/test/claim/namespace_reference_derived_closure_production_admissions_witness_test.dag and do not satisfy this contract. The row's first_slice sequencing is write the closing check first, then make an ordinary compiled file produce through it; this witness is the first half. Enrolled QuarantineProbeExpectRed until the ordinary-compile transition greens it. Does not touch the parent namespace-reference-derived-closure witness; clauses (e-f) belong to N3-B/N3-C/N3-D."
+data namespace_structural_observations_acceptance_note: String = "THE CLOSING VALIDATION for roadmap node namespace-structural-observations (N3-A). RED BY DESIGN until ordinary_compile_structural_observations_status returns Produced with all four structural ReferenceBindingObservation carriers from ONE ORDINARY COMPILED FILE — hand-built inline fixtures in v1.gunbc.namespace_reference_derived_closure_production_observations are exercised separately by dag/test/claim/namespace_reference_derived_closure_production_admissions_witness_test.dag and do not satisfy this contract. The predicate ordinary_compile_structural_closing_contract_holds is stable across the transition; only the status seam changes from Unavailable to Produced. Enrolled QuarantineProbeExpectRed until that transition greens it. Does not touch the parent namespace-reference-derived-closure witness; clauses (e-f) belong to N3-B/N3-C/N3-D."
 
 test fn witness_namespace_structural_observations_closing_contract_holds() -> Bool {
   namespace_structural_observations_ordinary_compile_closing_contract_holds()
-}
-
-fn namespace_structural_observations_ordinary_compile_closing_contract_holds() -> Bool {
-  false
 }
