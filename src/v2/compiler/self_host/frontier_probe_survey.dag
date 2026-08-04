@@ -151,7 +151,7 @@ data frontier_probe_exact_head_closeout_note: String = "Lane 1 exact-current-hea
 
 fn frontier_survey_probe_policy_revision_holds(revision: ContentHash) -> Bool {
   match revision {
-    Fnv1a64(structural: Fnv1a64Structural) =>
+    Fnv1a64(structural) =>
       frontier_survey_source_roots_digest_holds(digest: structural)
     _ => false
   }
