@@ -184,6 +184,33 @@ inverted its finding.
 
 ---
 
+## 6b. Where the reconciliation starts
+
+The §4 population is as concentrated as the prose itself: **1,400 KiB across 1,370 sites in 617 files,
+with 50% of the marker mass in 63 of them.** A split pass can cover half the problem in ~63 files, and
+**124 mega-notes carry a marker between them (381 KiB)** — that intersection is the highest-density
+target in the corpus and the natural first slice.
+
+| # | KiB | sites | file |
+|---|---|---|---|
+| 1 | 57.9 | 21 | `src/v1/04_infer.dag` |
+| 2 | 42.2 | 44 | `dag/gunbc/ci_layer_roots.dag` |
+| 3 | 42.0 | 21 | `dag/gunbc/ci_spec.dag` |
+| 4 | 32.5 | 15 | `dag/gunbc/commit_workflow.dag` |
+| 5 | 24.6 | 11 | `dag/gunbc/ci_workflow.dag` |
+| 6 | 23.3 | 13 | `dag/gunbc/ci_materialization.dag` |
+| 7 | 21.5 | 13 | `dag/extdeps/pin.dag` |
+| 8 | 19.9 | 17 | `src/v2/workflow/ci_floor_plan.dag` |
+
+`ci_layer_roots.dag` is already censused at row grain by
+[dissolution-census-a](dissolution-census-a-ci-layer-roots.md), so it is the one file where the split
+pass can start from typed rows rather than a fresh read — which makes it the cheapest proof of the
+policy, not the biggest win. **Note that `src/v1/04_infer.dag` and `dag/gunbc/ci_spec.dag` are
+load-bearing per DESIGN §7 and the Building-&-checks section**; they head the list by mass but must not
+lead the pass.
+
+---
+
 ## 7. Decisions this audit needs
 
 - **D1 — is the 90%-delete premise withdrawn?** The evidence says the deletable-as-worthless fraction is
