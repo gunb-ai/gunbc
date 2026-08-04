@@ -19,7 +19,12 @@ import std.language_target_identity {
   LanguageIdUnregistered,
 }
 import std.roster_frontier { declaration_ref_eq }
+import std.language_target_identity {
+  ExternalGrounding,
+  ProjectGrounding,
+}
 import gunbc.language_target_registry {
+  registered_language_targets,
   dag_subject_ref,
   registered_target_count,
   bash_display_name,
@@ -83,6 +88,13 @@ test fn a_surface_absent_from_the_registry_does_not_resolve() -> Bool {
   }
 }
 
+type GroundingArmsSeen {
+  external: Bool
+  project: Bool
+}
+
+data both_arms_oracle_note: String = "This asserts what the test's NAME claims — that both grounding arms are inhabited — and is true at 3 targets or 300. It previously asserted registered_target_count() == 3, a literal copied from the tree standing in for the property, which DESIGN section 5 names directly: automating that literal collapses it to measure() == measure(), so the manual update was the test's entire content, and it would have gone red the moment the registry grew rather than when the property broke. Caught by fierce-heron-301 on the stacked PR and by cursor review 48132 here."
+
 data projection_direction_note: String = "Requirement D's controls, and the property they pin is DIRECTION rather than content. A projection FROM a registered subject is total (Bash has a display name); a lookup INTO the registry by a legacy key REFUSES when nothing claims it (rust, go, python and typescript all resolve nowhere, because none of them has a canonical subject yet). That asymmetry is what demotes LanguageId from an identity to an attribute: a consumer can still ask for a target's legacy id, but cannot use a legacy id AS a target without the registry either answering or refusing. The rust case is the discriminating one — std.languages genuinely carries a rust_language row, so a consumer treating that catalogue as a key space would resolve it; here it refuses, which is exactly the parallel identity being closed."
 
 test fn projection_from_registered_subject_is_total() -> Bool {
@@ -119,5 +131,11 @@ test fn project_grounded_target_derives_its_own_authority_as_subject() -> Bool {
 }
 
 test fn registry_carries_both_grounding_arms() -> Bool {
-  registered_target_count() == 3
+  let arms = fold(registered_language_targets, init: GroundingArmsSeen { external: false, project: false }, f: fn(acc, r) {
+    match r.grounding {
+      ExternalGrounding { scope: _ } => GroundingArmsSeen { external: true, project: acc.project }
+      ProjectGrounding { authority: _ } => GroundingArmsSeen { external: acc.external, project: true }
+    }
+  })
+  arms.external && arms.project
 }
