@@ -1,0 +1,43 @@
+module test.claim.package_delivery_codex_integrity_witness_test
+
+import std.types { Bool, String }
+import std.content_hash { Sha512Digest }
+import extdeps.npm {
+  npm_decode_integrity,
+  NpmSingleSha512Integrity,
+  NpmSingleSha1Integrity,
+}
+import gunbc.package_delivery {
+  codex_admit_npm_integrity,
+  CodexNpmIntegrityAdmitted,
+  CodexNpmIntegritySha1Unsupported,
+}
+
+data witness_note: String = "Codex product integrity profile — lives with gunbc.package_delivery, not extdeps.npm. Upstream decoder may admit SHA-1; Codex refuses it."
+
+data claude_agent_sdk_integrity: String = "sha512-glc7SdwPkOkLw8oxwLo9PKTdLJGqW/PIR4urWXFoRtX9YllwozsEVc5Tc1+EvLSkfrsxPJqQWqOgpjUOQXf1oA=="
+
+data claude_agent_sdk_integrity_hex: String = "82573b49dc0f90e90bc3ca31c0ba3d3ca4dd2c91aa5bf3c8478bab59716846d5fd625970a33b0455ce53735f84bcb4a47ebb313c9a905aa3a0a6350e4177f5a0"
+
+test fn codex_admits_measured_sha512_integrity() -> Bool {
+  match npm_decode_integrity(wire: claude_agent_sdk_integrity) {
+    NpmSingleSha512Integrity { digest } =>
+      match codex_admit_npm_integrity(decoded: NpmSingleSha512Integrity { digest: digest }) {
+        CodexNpmIntegrityAdmitted { digest: admitted } =>
+          (admitted.hex as String) == claude_agent_sdk_integrity_hex
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn codex_profile_refuses_sha1_integrity() -> Bool {
+  match npm_decode_integrity(wire: "sha1-AAECAwQFBgcICQoLDA0ODxAREhM=") {
+    NpmSingleSha1Integrity { digest } =>
+      match codex_admit_npm_integrity(decoded: NpmSingleSha1Integrity { digest: digest }) {
+        CodexNpmIntegritySha1Unsupported { digest: _ } => true
+        _ => false
+      }
+    _ => false
+  }
+}

@@ -50,7 +50,7 @@ data npm_integrity_decode_note: String = "W3C SRI permits one or more hash expre
 data npm_resolved_graph_boundary_note: String = "TWO npm-owned facts, do not fuse. NpmParsedPackageRoster carries path-keyed nodes and declared dependency maps from the lock JSON. Exact consumer→dependency PackageLockGraph edges require an npm-owned realization receipt (resolver / Arborist / post-npm-ci read-back) — never name→first-matching-node inventing inside gunbc. npm remains the resolver; gunbc models and verifies its result."
 
 type NpmPackageLockFormat
-  = NpmPackageLockV3
+  = | NpmPackageLockV3
 
 type NpmPackageLockFormatDecode
   = NpmPackageLockFormatDecoded {

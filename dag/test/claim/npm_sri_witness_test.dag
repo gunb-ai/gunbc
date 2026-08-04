@@ -14,19 +14,19 @@ import std.content_hash {
 
 import extdeps.npm {
   npm_decode_integrity,
-  codex_admit_npm_integrity,
+  npm_decode_package_lock_format,
   NpmSingleSha512Integrity,
   NpmSingleSha1Integrity,
   NpmIntegrityUnsupportedAlgorithm,
   NpmIntegrityMultipleExpressionsUnsupported,
   NpmIntegrityOptionsUnsupported,
   NpmIntegrityMalformed,
-  CodexNpmIntegrityAdmitted,
-  CodexNpmIntegritySha1Unsupported,
-  CodexNpmIntegrityNotAdmitted,
+  NpmPackageLockFormatDecoded,
+  NpmPackageLockFormatUnsupported,
+  NpmPackageLockV3,
 }
 
-data witness_note: String = "Measured npm SRI from docs/probes/provider_interface_acquisition_2026-08-03.json @anthropic-ai/claude-agent-sdk — not a tree-copied oracle. Exact hex is the discriminating oracle for the decoder; same-input roundtrip alone is not."
+data witness_note: String = "Measured npm SRI from docs/probes/provider_interface_acquisition_2026-08-03.json @anthropic-ai/claude-agent-sdk — not a tree-copied oracle. Exact hex is the discriminating oracle for the decoder; same-input roundtrip alone is not. Overpadding RED proves noncanonical base64 refuses even when shared base64_decode would accept trailing '='."
 
 data claude_agent_sdk_integrity: String = "sha512-glc7SdwPkOkLw8oxwLo9PKTdLJGqW/PIR4urWXFoRtX9YllwozsEVc5Tc1+EvLSkfrsxPJqQWqOgpjUOQXf1oA=="
 
@@ -36,11 +36,6 @@ test fn npm_sri_parses_measured_claude_agent_sdk_integrity_exact_hex() -> Bool {
   match npm_decode_integrity(wire: claude_agent_sdk_integrity) {
     NpmSingleSha512Integrity { digest } =>
       (digest.hex as String) == claude_agent_sdk_integrity_hex
-        && match codex_admit_npm_integrity(decoded: NpmSingleSha512Integrity { digest: digest }) {
-          CodexNpmIntegrityAdmitted { digest: admitted } =>
-            (admitted.hex as String) == claude_agent_sdk_integrity_hex
-          _ => false
-        }
     _ => false
   }
 }
@@ -83,6 +78,15 @@ test fn npm_sri_refuses_wrong_decoded_length() -> Bool {
   }
 }
 
+test fn npm_sri_refuses_noncanonical_overpadding() -> Bool {
+  let overpadded = concat(claude_agent_sdk_integrity, "=")
+  match npm_decode_integrity(wire: overpadded) {
+    NpmIntegrityMalformed { reason } =>
+      (reason as String) == "sha512 base64 payload is noncanonical"
+    _ => false
+  }
+}
+
 test fn npm_sri_refuses_options() -> Bool {
   match npm_decode_integrity(
     wire: "sha512-glc7SdwPkOkLw8oxwLo9PKTdLJGqW/PIR4urWXFoRtX9YllwozsEVc5Tc1+EvLSkfrsxPJqQWqOgpjUOQXf1oA==?ct=application/javascript",
@@ -101,13 +105,20 @@ test fn npm_sri_refuses_multiple_expressions() -> Bool {
   }
 }
 
-test fn codex_profile_refuses_sha1_integrity() -> Bool {
-  match npm_decode_integrity(wire: "sha1-AAECAwQFBgcICQoLDA0ODxAREhM=") {
-    NpmSingleSha1Integrity { digest } =>
-      match codex_admit_npm_integrity(decoded: NpmSingleSha1Integrity { digest: digest }) {
-        CodexNpmIntegritySha1Unsupported { digest: _ } => true
+test fn npm_package_lock_format_admits_v3_only() -> Bool {
+  match npm_decode_package_lock_format(observed: 3) {
+    NpmPackageLockFormatDecoded { format: NpmPackageLockV3 } =>
+      match npm_decode_package_lock_format(observed: 2) {
+        NpmPackageLockFormatUnsupported { observed } => observed == 2
         _ => false
       }
+    _ => false
+  }
+}
+
+test fn npm_sri_preserves_sha1_as_native_arm() -> Bool {
+  match npm_decode_integrity(wire: "sha1-AAECAwQFBgcICQoLDA0ODxAREhM=") {
+    NpmSingleSha1Integrity { digest: _ } => true
     _ => false
   }
 }
