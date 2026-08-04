@@ -6,7 +6,7 @@ import v2.std.logic { Bool }
 import v2.std.collection { List }
 import gunbc.ci_materialization { ci_floor_declared_resolve_count }
 
-data floor_resolve_realization_note: String = "Cold-vs-warm resolve REALIZATION model (shared CI floor item 0, 2026-08-04): ci_floor_declared_resolve_count names a CLOSED UNIVERSE of semantic resolve OBLIGATIONS — obligations the floor roster structurally owes each run — not the count of physical cold resolves performed (resolve_nanos > 0). Those diverge when an escaping entry pools warm against the shared index: native escape remains structurally present and the obligation is SatisfiedFromSharedPool, not absent. Operator ruling: lowering the declaration when warm PRs measured fewer cold resolves conflated the two facts. THE GATE checks obligation accounting (roster complete, disposition per row); cold_resolves_total stays observational in the receipt only. Precedent: ci_floor_materialization_receipt_note's unkeyed == 0 relation over a tree-copied count pin. Dissolve-on: persistent content-keyed store makes the escape set empty by construction and obligations collapse to one anchor — declared count lowers consciously in that PR, per ci_floor_resolve_receipt_note discipline."
+data floor_resolve_realization_note: String = "Cold-vs-warm resolve REALIZATION model (shared CI floor item 0, 2026-08-04): ci_floor_declared_resolve_count names a CLOSED UNIVERSE of semantic resolve OBLIGATIONS — obligations the floor roster structurally owes each run — not the count of physical cold resolves performed (resolve_nanos > 0). Those diverge when an escaping entry pools warm against the shared index: native escape remains structurally present and the obligation is SatisfiedFromSharedPool, not absent. Operator ruling: lowering the declaration when warm PRs measured fewer cold resolves conflated the two facts. ROSTER AUTHORITY (review #7810): ci_floor_resolve_obligation_roster enumerates the closed universe; ci_floor_resolve_obligation_count DERIVES from roster length — never aliases the declared literal, so adding a variant is self-consistent by construction. resolve_obligation_roster_agrees_with_declared_count cross-checks the independently authored declaration against roster size. THE GATE checks obligation accounting (identity join + declared count); cold_resolves_total stays observational in the receipt only. Dissolve-on: persistent content-keyed store collapses obligations to one anchor — declared count lowers consciously in that PR, per ci_floor_resolve_receipt_note discipline."
 
 data compile_anchor_obligation_entry: String = "dag/tools/floor_effect_gate_witness.dag"
 
@@ -42,7 +42,11 @@ fn ci_floor_resolve_obligation_roster() -> List<ResolveObligationIdentity> {
 }
 
 fn ci_floor_resolve_obligation_count() -> Nat {
-  ci_floor_declared_resolve_count
+  ci_floor_resolve_obligation_roster() |> count
+}
+
+fn resolve_obligation_roster_agrees_with_declared_count() -> Bool {
+  ci_floor_resolve_obligation_count() == ci_floor_declared_resolve_count
 }
 
 fn resolve_obligation_identity_label(id: ResolveObligationIdentity) -> String {

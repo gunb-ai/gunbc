@@ -4,11 +4,12 @@ import gunbc.floor_resolve_realization {
   ResolveObligationReceipt,
   CompileAnchorWholeTree,
   NativeBundleEscapingEntry,
-  ci_floor_resolve_obligation_count,
   resolve_obligation_finalization_holds,
   resolve_obligation_receipt,
   cold_resolves_performed,
   resolve_obligation_receipts_match_roster,
+  resolve_obligation_roster_agrees_with_declared_count,
+  ci_floor_resolve_obligation_count,
 }
 import gunbc.ci_materialization { ci_floor_declared_resolve_count }
 import v2.std.collection { List }
@@ -57,9 +58,19 @@ test fn witness_warm_pr_obligations_hold_with_one_cold() -> Bool {
     && cold_resolves_performed(receipts: warm_pr_receipts()) == 1
 }
 
-test fn witness_declared_count_is_obligation_count_authority() -> Bool {
-  ci_floor_resolve_obligation_count() == ci_floor_declared_resolve_count
-    && ci_floor_declared_resolve_count == 2
+test fn witness_roster_count_matches_declared_authority() -> Bool {
+  resolve_obligation_roster_agrees_with_declared_count()
+}
+
+test fn witness_forked_declared_count_reds_against_roster() -> Bool {
+  !resolve_obligation_finalization_holds(
+    receipts: cold_main_receipts(),
+    declared_obligation_count: ci_floor_declared_resolve_count + 1,
+  )
+}
+
+test fn witness_roster_length_reds_on_wrong_count() -> Bool {
+  ci_floor_resolve_obligation_count() != ci_floor_declared_resolve_count + 1
 }
 
 test fn witness_missing_obligation_reds() -> Bool {
