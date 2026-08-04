@@ -35,7 +35,7 @@ A topology that collapses these into “do not duplicate” is useless. One that
 | label | failure | specimen |
 |---|---|---|
 | **HOMONYM** | lexical collision | work item title primed permission-to-act note; PR #7789 closed |
-| **CENSUS** | observation without population/method | `concat(acc, [` grep under-selected (117/204); PR #7779 body “No concat(acc, [x])” true under wrong pattern, false about `concat(wires, [wire])` in `rfc_8118.dag` — same accumulator-copy shape, different binder spelling |
+| **CENSUS** | observation without population/method | `concat(acc, [` grep under-selected (117/204); PR #7779 body “No concat(acc, [x])” true under v1 pattern only — on PR #7779 head `dag/extdeps/standards/rfc_8118.dag` carries `concat(wires, [wire])` and `concat(acc, [parameter])`, both accumulator-copy shape, both missed by the v1 binder filter |
 | **BOUNDARY** | interior cause flattened at public entry | CIT-0: expected/observed split then `Pin` subject identifying nothing; QM: verdict coproduct correct, constructor still mints receipts from raw counts; URI encoder: surrogate vs out-of-range distinguished internally, both collapse to `UriHexNibbleOutOfRange` at public entry — plus substrate nudge: module collision rule forbids variant-name reuse, so re-surfacing an interior cause at a boundary tends toward prefixed parallel arms (one vocabulary written twice) |
 
 Both **CENSUS** and **HOMONYM** are §3 “grep the name, not the concept” at the measurement layer. **BOUNDARY** is a different kind: precise vocabulary built correctly one layer in, then **collapsed at the boundary** — not author carelessness alone; the substrate’s variant-name collision rule can push toward prefixed parallel arm sets.
@@ -44,14 +44,14 @@ Both **CENSUS** and **HOMONYM** are §3 “grep the name, not the concept” at 
 
 ## 1. Specimen record (closed PR lanes — do not touch)
 
-Four relation kinds, four specimens. Operator framing (relation, not fix). **Discharge symbols live on closed specimen branches, not `main`** — verify with `git grep <symbol> origin/session/<lane>` (review 48039); only symbols named here that also appear on `main` are grep-verifiable without fetching a branch.
+Four relation kinds, four specimens. Operator framing (relation, not fix). **Discharge symbols live on closed specimen branches, not `main`** — after `git fetch origin session/<lane>`, verify with `git grep <symbol> origin/session/<lane>` (reviews 48039, 48048). Cite **branch ref + module + symbol**, not a bare short commit hash (those are not fetchable remote refs).
 
 | label | relation kind | what went wrong | discharge (specimen branch) |
 |---|---|---|---|
 | **CIT-0** | duplicate fact-home, **unjoined** | source and representation identity deduplicated but left **unjoined** — `CitedResource.authority` vs `Pin.expected_identity` writable independently | `origin/session/cit-0` — `dag/std/citation.dag` `citation_cit0_note`; `Pin<CitedRepresentation>` per `extdeps.pin` `pin_subject_must_not_be_self_identifying_note` (latter on `main`) |
 | **CIT-1** | observation-required | authored digest **named as observation**, then made **its own expectation** — same 64-hex as `example.test` fixture; no bytes→digest edge | `origin/session/cit-1` — fixture vs cited URI separated; `CitationRetrievalObservation` observation coproduct |
-| **QM** | derivation-only | held/undecided outcomes **convertible into proof-shaped receipts** — `observed_vs_prediction: Ordering` stored beside counts; inconsistent triple passed | `origin/session/fierce-lynx-76` (`c200375c0c6`) — stored field deleted; `dag/gunbc/physics/bach_double_slit_path_additivity.dag` `path_additivity_witness_observed_vs_prediction` derived |
-| **SCAFFOLD** | identity join | scaffold **arity and fixture names** standing in for **exact variant identity** — substring `rel_path` match → binding | `origin/session/royal-boar-448` (`ec85b225782`) — `gunbc.scaffold_retirement` `scaffold_disposition_sites_live`; `RoadmapNodeIdentity` join |
+| **QM** | derivation-only | held/undecided outcomes **convertible into proof-shaped receipts** — `observed_vs_prediction: Ordering` stored beside counts; inconsistent triple passed | `origin/session/fierce-lynx-76` — stored field deleted; `dag/gunbc/physics/bach_double_slit_path_additivity.dag` `path_additivity_witness_observed_vs_prediction` derived |
+| **SCAFFOLD** | identity join | scaffold **arity and fixture names** standing in for **exact variant identity** — substring `rel_path` match → binding | `origin/session/royal-boar-448` — `gunbc.scaffold_retirement` `derived_scaffold_disposition_sites`; `RoadmapNodeIdentity` join |
 
 ---
 
@@ -196,11 +196,11 @@ Measured on `main`, 2026-08-04, unless noted.
 
 **Binder distribution (v2 query, top):** `acc` 117 · `result` 8 · `base` 6 · `witness_layer_roots` 5 · `visited` 5 · `inner` 5 · `causes` 5 · `rows` 4 · `existing` 4 · `arg_diags` 4 · `import_parents` 3 · tail of 1–2 each (`wires`, `xs`, …).
 
-**CENSUS specimen surface:** PR #7779 claims “No concat(acc, [x])” — **true** under the v1 pattern, **false** about the code: `rfc_8118.dag` carries `concat(wires, [wire])` (accumulator-copy shape, different binder). The v1 census handed an author a way to be **honestly wrong**.
+**CENSUS specimen surface:** PR #7779 claims “No concat(acc, [x])” — **true** under the v1 `concat(acc, [` pattern only. On PR #7779 head (`git fetch origin pull/7779/head` → `review/pr-7779`), `dag/extdeps/standards/rfc_8118.dag` carries `concat(wires, [wire])` and fold arms with `concat(acc, [parameter])` — same accumulator-copy shape, different binder spellings; the v1 census handed an author a way to be **honestly wrong**.
 
 #### Structural population (typed gap — not yet derived)
 
-**Target:** `Node`-tree property — fold body where callee is `concat`, accumulator binder is the fold accumulator, rhs is a single-element list literal. Decidable from the tree (precedent: `scaffold_disposition_sites_live()` structural walk over witness roots).
+**Target:** `Node`-tree property — fold body where callee is `concat`, accumulator binder is the fold accumulator, rhs is a single-element list literal. Decidable from the tree (precedent: `derived_scaffold_disposition_sites()` structural walk over witness roots on `origin/session/royal-boar-448`).
 
 **Gap:** no enrolled builtin or lens walks fold bodies for this pattern corpus-wide today. **Do not** widen regex and call it exact.
 
