@@ -11,6 +11,7 @@ import gunbc.stage0_rust_host_observation {
   RustSourceHostObservation,
   current_stage0_rust_source_observation
 }
+import gunbc.generated_artifact { GeneratedArtifact, artifact_path, generated_artifact_registry }
 import gunbc.stage0_emit_model { is_generated_stage0_file }
 import gunbc.stage0_emit_plan_generated { generated_stage0_files }
 import std.content_hash { Fnv1a64Structural }
@@ -19,7 +20,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import gunbc.roadmap_model { RoadmapNodeId }
 import v2.compiler.self_host.frontier { hand_maintained_stage0_filenames }
-import v2.std.algebra { any, fold_list, length, list_map, list_snoc_item }
+import v2.std.algebra { any, filter, fold_list, length, list_map, list_snoc_item }
 import v2.std.collection { List }
 import v2.std.text { String }
 import v2.workflow.rust_crate_partition { stage0_partition_crate_rows }
@@ -145,7 +146,7 @@ fn count_stale_lifecycle_rows(tracked_paths: List<String>, lifecycle_paths: List
 
 fn count_hand_maintained_in_tracked(tracked_paths: List<String>) -> Int {
   fold_list(
-    xs: derived_hand_maintained_stage0_repo_paths(),
+    xs: derived_hand_maintained_disposition_repo_paths(),
     empty: 0,
     cons: fn(count, hand_path) {
       if path_in_list(path: hand_path, paths: tracked_paths) {
@@ -159,7 +160,7 @@ fn count_hand_maintained_in_tracked(tracked_paths: List<String>) -> Int {
 
 fn count_hand_maintained_in_prior_tracked(prior_tracked_paths: List<String>) -> Int {
   fold_list(
-    xs: derived_hand_maintained_stage0_repo_paths(),
+    xs: derived_hand_maintained_disposition_repo_paths(),
     empty: 0,
     cons: fn(count, hand_path) {
       if path_in_list(path: hand_path, paths: prior_tracked_paths) {
@@ -344,6 +345,97 @@ fn derived_hand_maintained_stage0_repo_paths() -> List<String> {
   )
 }
 
+data generated_artifact_disposition_derivation_note: String = "derived_hand_maintained_stage0_repo_paths() answers ONE question: which paths must be pub-mod-declared for the crate to link (layout membership, per hand_maintained_stage0_filenames_authority_ref). It does not answer who maintains a path's contents. A layout member's maintenance disposition is DERIVED, never hand-enumerated: gunbc.generated_artifact's generated_artifact_registry is the closed, single authority over every drift-gated artifact this repo produces, and artifact_path is its per-variant path projection — the same projection generated_artifact_emit.dag's artifact_generate dispatch already reads. Any stage0-src path that is a member of that registry (generated_artifact_stage0_src_repo_paths, an identity join by artifact_path, not a filename literal) is EmitFrom the registry's real generation authority, never HandScaffold and never silently excluded by a hand-picked path. v1_interpreter_dispatch_generated.rs (V1InterpreterDispatchGeneratedRsArtifact) is the discriminating case that exposed the conflation; bootstrap_stage0_crate_layout_generated.rs (Stage0CrateLayoutGeneratedRsArtifact) is the second instance the same join surfaces — both derive from the identical registry membership check, no per-file code. derived_hand_maintained_disposition_repo_paths() is the corrected maintenance-disposition population: layout membership minus the generated-artifact-registry overlap. This is the single authority consumed by count_hand_maintained_in_tracked/count_hand_maintained_in_prior_tracked and by gunbc.stage0_rust_honest_frontier_integration's exact_hand_maintained_* joins."
+
+data v1_interpreter_dispatch_generated_repo_path: String = stage0_src_repo_path(
+  filename: "v1_interpreter_dispatch_generated.rs"
+)
+
+data bootstrap_stage0_crate_layout_generated_repo_path: String = stage0_src_repo_path(
+  filename: "bootstrap_stage0_crate_layout_generated.rs"
+)
+
+data generated_artifact_emit_authority_ref: DeclarationRef = DeclarationRef {
+  module_path: "gunbc.generated_artifact_emit",
+  decl_name: "artifact_generate",
+  field: WholeDeclaration
+}
+
+fn generated_artifact_repo_paths() -> List<String> {
+  list_map(xs: generated_artifact_registry, f: fn(a) { artifact_path(a: a) })
+}
+
+fn generated_artifact_stage0_src_repo_paths() -> List<String> {
+  filter(
+    xs: generated_artifact_repo_paths(),
+    predicate: fn(path) { path_has_prefix(path: path, prefix: stage0_src_repo_prefix) }
+  )
+}
+
+fn generated_artifact_stage0_src_disposition_rows() -> List<RustSourceLifecycleRow> {
+  list_map(
+    xs: generated_artifact_stage0_src_repo_paths(),
+    f: fn(path) {
+      RustSourceLifecycleRow {
+        path: path,
+        roles: [],
+        maintenance_dispositions: [
+          EmitFrom { authority: generated_artifact_emit_authority_ref }
+        ]
+      }
+    }
+  )
+}
+
+fn disposition_authority_rows() -> List<RustSourceLifecycleRow> {
+  fold_list(
+    xs: generated_artifact_stage0_src_disposition_rows(),
+    empty: rust_source_lifecycle_residue_rows,
+    cons: fn(acc, row) { list_snoc_item(xs: acc, item: row) }
+  )
+}
+
+fn derived_hand_maintained_disposition_repo_paths() -> List<String> {
+  filter(
+    xs: derived_hand_maintained_stage0_repo_paths(),
+    predicate: fn(path) {
+      !path_in_list(path: path, paths: generated_artifact_stage0_src_repo_paths())
+    }
+  )
+}
+
+fn generated_artifact_layout_overlap_repo_paths() -> List<String> {
+  filter(
+    xs: derived_hand_maintained_stage0_repo_paths(),
+    predicate: fn(path) { path_in_list(path: path, paths: generated_artifact_stage0_src_repo_paths()) }
+  )
+}
+
+fn generated_artifact_layout_overlap_subset_of_hand_maintained_holds() -> Bool {
+  fold_list(
+    xs: generated_artifact_layout_overlap_repo_paths(),
+    empty: true,
+    cons: fn(ok, path) {
+      ok && path_in_list(path: path, paths: derived_hand_maintained_stage0_repo_paths())
+    }
+  )
+}
+
+fn generated_artifact_stage0_src_disposition_rows_well_formed() -> Bool {
+  fold_list(
+    xs: generated_artifact_stage0_src_disposition_rows(),
+    empty: true,
+    cons: fn(ok, row) { ok && lifecycle_row_well_formed(row: row) }
+  )
+}
+
+fn generated_artifact_stage0_src_disjoint_from_residue_holds() -> Bool {
+  !any(
+    xs: generated_artifact_stage0_src_repo_paths(),
+    predicate: fn(path) { path_in_list(path: path, paths: residue_lifecycle_repo_paths()) }
+  )
+}
+
 fn partition_crate_lib_repo_path(crate_dir: String) -> String {
   concat(crate_dir, "/src/lib.rs")
 }
@@ -385,10 +477,6 @@ fn path_matches_discovery_prefix_hint(path: String) -> Bool {
   )
 }
 
-data residue_bootstrap_layout_copy_reason: String = "bootstrap copy of gunbc.stage0_crate_layout_generated.rs committed under src/v1/stage0/src for stage0 seed compile — not a generated_stage0_files basename"
-
-data residue_bootstrap_layout_copy_dissolve_on: String = "dissolve-on: bootstrap_stage0_crate_layout_generated.rs is either enrolled in generated_stage0_files or deleted when layout regen routes through a single authority"
-
 data residue_cssl_assembly_reason: String = "hand-retained cssl seed-linked closure assembly kernel — not regen-emitted; counted scaffold until harness consolidation emits it"
 
 data residue_cssl_assembly_dissolve_on: String = "dissolve-on: cssl_seed_linked_closure_assembly.rs migrates to generated_stage0_files membership or a typed emit producer row deletes the hand file"
@@ -416,11 +504,6 @@ fn residue_row(path: String, reason: String, dissolve_on: String) -> RustSourceL
 }
 
 data rust_source_lifecycle_residue_rows: List<RustSourceLifecycleRow> = [
-  residue_row(
-    path: "src/v1/stage0/src/bootstrap_stage0_crate_layout_generated.rs",
-    reason: residue_bootstrap_layout_copy_reason,
-    dissolve_on: residue_bootstrap_layout_copy_dissolve_on
-  ),
   residue_row(
     path: "src/v1/stage0/src/cssl_seed_linked_closure_assembly.rs",
     reason: residue_cssl_assembly_reason,
@@ -468,7 +551,8 @@ fn residue_lifecycle_repo_paths() -> List<String> {
 }
 
 fn file_grain_lifecycle_repo_paths() -> List<String> {
-  list_concat_unique(acc: derived_authority_join_repo_paths(), items: residue_lifecycle_repo_paths())
+  let with_residue = list_concat_unique(acc: derived_authority_join_repo_paths(), items: residue_lifecycle_repo_paths())
+  list_concat_unique(acc: with_residue, items: generated_artifact_stage0_src_repo_paths())
 }
 
 fn witness_observation_covering_lifecycle_plus_extra(extra_path: String) -> RustManifestObserved {
@@ -679,6 +763,9 @@ fn stage0_rust_lifecycle_scaffold_join_mechanical_checks_holds() -> Bool {
     && duplicate_exact_paths_zero_holds()
     && rust_source_lifecycle_residue_rows_well_formed()
     && rust_source_lifecycle_residue_paths_unique()
+    && generated_artifact_layout_overlap_subset_of_hand_maintained_holds()
+    && generated_artifact_stage0_src_disposition_rows_well_formed()
+    && generated_artifact_stage0_src_disjoint_from_residue_holds()
 }
 
 fn stage0_rust_lifecycle_scaffold_mechanical_checks_holds() -> Bool {
