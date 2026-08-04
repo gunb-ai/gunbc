@@ -68,6 +68,7 @@ jobs:
           restore-keys: |
             cargo-ci-${{ runner.os }}-${{ runner.arch }}-
       - name: Build release bins (claim_executor + gunbc)
+        id: release_build
         run: |
           # 🟡 dissolve-on: ci_release_build_script — concat-built foreign-executor (GitHub Actions run:) release-build runner (ROOT stamp + verify-artifacts + sccache stats wrapping the orch-emitted EAGAIN retry core); membership of --bin / verify paths is derived from gunbc.ci_release_bins, but the runner transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes the release-build runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
@@ -130,6 +131,7 @@ jobs:
           "$ROOT/target/release/claim_executor" --source-root dag --source-root src/v2 --plan-entry src/v2/workflow/ci_floor_plan.dag --plan-function gunbc_ci_plan_artifact_plan
         env:
           GUNBC_CI_COMPILE_CLEAN_COLD_CONTROL: 1
+        if: always() && !cancelled() && steps.release_build.outcome == 'success'
         timeout-minutes: 30
       - name: native-cache cold control (warm-tier admission counterpart)
         run: |
@@ -137,6 +139,7 @@ jobs:
           "$ROOT/target/release/claim_executor" --source-root dag --source-root src/v2 --plan-entry src/v2/workflow/ci_floor_plan.dag --plan-function gunbc_falsifier_native_cache_cold_plan
         env:
           GUNBC_CI_NATIVE_CACHE_COLD_CONTROL: 1
+        if: always() && !cancelled() && steps.release_build.outcome == 'success'
         timeout-minutes: 30
       - name: Floor cgroup peak post-read (calibration; survives a killed floor)
         run: |

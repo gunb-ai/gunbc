@@ -28,9 +28,9 @@ test fn falsifier_required_control_roles_is_closed_population_of_three() -> Bool
 
 test fn falsifier_cold_controls_use_prerequisite_if_not_default_success() -> Bool {
   match compile_clean_cold_control_step() {
-    RunStep { if_condition: cc, .. } =>
+    RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: cc, continue_on_error: _, timeout_minutes: _ } =>
       match native_cache_cold_control_step() {
-        RunStep { if_condition: nc, .. } =>
+        RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: nc, continue_on_error: _, timeout_minutes: _ } =>
           match cc {
             Present { value: s } =>
               (s == falsifier_control_prerequisite_if)
@@ -53,7 +53,7 @@ test fn falsifier_yml_cold_controls_carry_prerequisite_if() -> Bool {
 
 test fn ci_containment_compile_clean_enrolled_with_prerequisite_if() -> Bool {
   match ci_containment_compile_clean_cold_control_step() {
-    RunStep { if_condition: c, .. } =>
+    RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: c, continue_on_error: _, timeout_minutes: _ } =>
       match c {
         Present { value: s } => s == ci_containment_prerequisite_if
         _ => false
