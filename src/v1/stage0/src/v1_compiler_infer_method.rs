@@ -573,6 +573,11 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
+            "decl_facts_reflection_fixture_witness_host".to_string(),
+            bool_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
             "export_signature_facts".to_string(),
             list_of_type_variable("decl_fact_elem".to_string()),
         );

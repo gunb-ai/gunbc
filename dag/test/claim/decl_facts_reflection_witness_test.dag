@@ -2,136 +2,45 @@ module test.claim.decl_facts_reflection_witness_test
 
 import v2.std.decl_facts_skeleton {
   decl_facts_nullary_variant_value_identity_gap_note,
-  decl_facts_reflection_fixture_facts,
-  decl_fact_skeleton_for_qualified_name,
-  skeleton_contains_atom_lexeme,
-  skeleton_atom_lexeme_count,
+  decl_facts_reflection_fixture_witness,
 }
 
-import v2.std.collection { Absent, Present }
-
-data decl_facts_reflection_witness_note: String = "Step-1 prerequisite (#7796): executing evidence for narrow decl_facts skeleton reflection. Positive controls prove outer record-literal variant constructors and DeclarationRef field literals surface structurally. Negative controls prove plain literals do not gain coproduct variant atoms. Gap controls prove nullary variant VALUE references (ExprVar SingleAuthority) are absent under parse-only marshal — not closed by capitalization or arity heuristics; see decl_facts_nullary_variant_value_identity_gap_note. Rust tests in v1-compiler-tests compile-only in CI (nextest retired 2026-07-11); this module is the merge-blocking consumer."
-
-data qn_planted_scaffold_specimen: String = "test.fixture.decl_facts_reflection.specimens.planted_scaffold_specimen"
-data qn_planted_terminal_specimen: String = "test.fixture.decl_facts_reflection.specimens.planted_terminal_specimen"
-data qn_planted_nullary_disposition_specimen: String = "test.fixture.decl_facts_reflection.specimens.planted_nullary_disposition_specimen"
-data qn_planted_named_field_ref_specimen: String = "test.fixture.decl_facts_reflection.specimens.planted_named_field_ref_specimen"
-data qn_planted_plain_int_specimen: String = "test.fixture.decl_facts_reflection.specimens.planted_plain_int_specimen"
-data qn_uses_param_only: String = "test.fixture.decl_facts_reflection.specimens.uses_param_only"
-data qn_uses_local: String = "test.fixture.decl_facts_reflection.specimens.uses_local"
+data decl_facts_reflection_witness_note: String = "Step-1 prerequisite (#7796): executing evidence for narrow decl_facts skeleton reflection. Positive controls prove outer record-literal variant constructors and DeclarationRef field literals surface structurally via eval_decl_facts Value oracle (host bridge — substrate Node walk cannot read marshaled atoms). Gap controls prove nullary variant VALUE references (ExprVar SingleAuthority, WholeDeclaration) are absent under parse-only marshal. Rust tests in v1-compiler-tests are developer convenience only (compile-only in CI; nextest retired 2026-07-11)."
 
 test fn w_outer_variant_scaffold_constructor_surfaces() -> Bool {
-  match decl_fact_skeleton_for_qualified_name(
-    facts: decl_facts_reflection_fixture_facts(),
-    qn: qn_planted_scaffold_specimen
-  ) {
-    Present { value: skeleton } =>
-      skeleton_contains_atom_lexeme(node: skeleton, lexeme: "Scaffold")
-        && skeleton_atom_lexeme_count(node: skeleton, lexeme: "Scaffold") == 1
-    Absent => false
-  }
+  decl_facts_reflection_fixture_witness(case: "outer_variant_scaffold")
 }
 
 test fn w_outer_variant_terminal_constructor_surfaces() -> Bool {
-  match decl_fact_skeleton_for_qualified_name(
-    facts: decl_facts_reflection_fixture_facts(),
-    qn: qn_planted_terminal_specimen
-  ) {
-    Present { value: skeleton } =>
-      skeleton_contains_atom_lexeme(node: skeleton, lexeme: "Terminal")
-    Absent => false
-  }
+  decl_facts_reflection_fixture_witness(case: "outer_variant_terminal")
 }
 
 test fn w_declaration_ref_bind_fields_surface_in_scaffold_specimen() -> Bool {
-  match decl_fact_skeleton_for_qualified_name(
-    facts: decl_facts_reflection_fixture_facts(),
-    qn: qn_planted_scaffold_specimen
-  ) {
-    Present { value: skeleton } =>
-      skeleton_contains_atom_lexeme(node: skeleton, lexeme: "DeclarationRef")
-        && skeleton_contains_atom_lexeme(
-          node: skeleton,
-          lexeme: "test.fixture.decl_facts_reflection.specimens"
-        )
-        && skeleton_contains_atom_lexeme(node: skeleton, lexeme: "planted_scaffold_specimen")
-        && !skeleton_contains_atom_lexeme(node: skeleton, lexeme: "WholeDeclaration")
-    Absent => false
-  }
+  decl_facts_reflection_fixture_witness(case: "declaration_ref_bind_fields")
 }
 
 test fn w_named_field_declaration_ref_surfaces() -> Bool {
-  match decl_fact_skeleton_for_qualified_name(
-    facts: decl_facts_reflection_fixture_facts(),
-    qn: qn_planted_named_field_ref_specimen
-  ) {
-    Present { value: skeleton } =>
-      skeleton_contains_atom_lexeme(node: skeleton, lexeme: "NamedField")
-        && skeleton_contains_atom_lexeme(node: skeleton, lexeme: "dissolves_to")
-    Absent => false
-  }
+  decl_facts_reflection_fixture_witness(case: "named_field_declaration_ref")
 }
 
 test fn w_plain_int_specimen_has_no_coproduct_variant_atoms() -> Bool {
-  match decl_fact_skeleton_for_qualified_name(
-    facts: decl_facts_reflection_fixture_facts(),
-    qn: qn_planted_plain_int_specimen
-  ) {
-    Present { value: skeleton } =>
-      !skeleton_contains_atom_lexeme(node: skeleton, lexeme: "Scaffold")
-        && !skeleton_contains_atom_lexeme(node: skeleton, lexeme: "Terminal")
-        && !skeleton_contains_atom_lexeme(node: skeleton, lexeme: "SingleAuthority")
-        && !skeleton_contains_atom_lexeme(node: skeleton, lexeme: "DeclarationRef")
-    Absent => false
-  }
+  decl_facts_reflection_fixture_witness(case: "plain_int_no_variant_atoms")
 }
 
 test fn w_nullary_variant_value_absent_without_infer_stamping_top_level() -> Bool {
-  match decl_fact_skeleton_for_qualified_name(
-    facts: decl_facts_reflection_fixture_facts(),
-    qn: qn_planted_nullary_disposition_specimen
-  ) {
-    Present { value: skeleton } =>
-      !skeleton_contains_atom_lexeme(node: skeleton, lexeme: "SingleAuthority")
-    Absent => false
-  }
+  decl_facts_reflection_fixture_witness(case: "nullary_variant_value_absent_top_level")
 }
 
 test fn w_nullary_variant_value_absent_without_infer_stamping_nested() -> Bool {
-  match decl_fact_skeleton_for_qualified_name(
-    facts: decl_facts_reflection_fixture_facts(),
-    qn: qn_planted_scaffold_specimen
-  ) {
-    Present { value: skeleton } =>
-      !skeleton_contains_atom_lexeme(node: skeleton, lexeme: "SingleAuthority")
-    Absent => false
-  }
+  decl_facts_reflection_fixture_witness(case: "nullary_variant_value_absent_nested")
 }
 
 test fn w_fn_body_param_reference_does_not_gain_variant_atoms() -> Bool {
-  match decl_fact_skeleton_for_qualified_name(
-    facts: decl_facts_reflection_fixture_facts(),
-    qn: qn_uses_param_only
-  ) {
-    Present { value: skeleton } =>
-      !skeleton_contains_atom_lexeme(node: skeleton, lexeme: "Scaffold")
-        && !skeleton_contains_atom_lexeme(node: skeleton, lexeme: "SingleAuthority")
-        && !skeleton_contains_atom_lexeme(node: skeleton, lexeme: "DeclarationRef")
-    Absent => false
-  }
+  decl_facts_reflection_fixture_witness(case: "fn_body_param_no_variant_atoms")
 }
 
 test fn w_fn_body_local_bindings_do_not_gain_variant_atoms() -> Bool {
-  match decl_fact_skeleton_for_qualified_name(
-    facts: decl_facts_reflection_fixture_facts(),
-    qn: qn_uses_local
-  ) {
-    Present { value: skeleton } =>
-      !skeleton_contains_atom_lexeme(node: skeleton, lexeme: "Scaffold")
-        && !skeleton_contains_atom_lexeme(node: skeleton, lexeme: "SingleAuthority")
-        && !skeleton_contains_atom_lexeme(node: skeleton, lexeme: "DeclarationRef")
-    Absent => false
-  }
+  decl_facts_reflection_fixture_witness(case: "fn_body_local_no_variant_atoms")
 }
 
 test fn w_gap_note_names_infer_binding_kind_authority() -> Bool {

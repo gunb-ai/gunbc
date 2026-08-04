@@ -10919,6 +10919,14 @@ macro_rules! v1_builtin_arms {
                 )?))
             },
 
+            arm "free_call.decl_facts_reflection_fixture_witness_host" { "decl_facts_reflection_fixture_witness_host" } => {
+                let case = expect_str($positional.first().copied(), "decl_facts_reflection_fixture_witness_host")?;
+                Ok(Some(crate::coproduct_reflection::eval_decl_facts_reflection_fixture_witness(
+                    $ctx,
+                    &case,
+                )?))
+            },
+
             arm "free_call.module_declaration_facts" { "module_declaration_facts" } => {
                 let pool_roots =
                     expect_str_list($positional.first().copied(), "module_declaration_facts")?;

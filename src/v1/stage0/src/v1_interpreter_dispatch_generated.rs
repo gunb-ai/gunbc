@@ -65,6 +65,7 @@ pub enum EvalBuiltinArm {
     FreeCallConceptDeclFacts,
     FreeCallExportSignatureFacts,
     FreeCallDeclFacts,
+    FreeCallDeclFactsReflectionFixtureWitnessHost,
     FreeCallModuleDeclarationFacts,
     FreeCallFactCardinalityDeclFacts,
     FreeCallLanguagesConsumerCensusDataDeclCount,
@@ -193,6 +194,7 @@ pub fn lookup_eval_builtin_inner(spelling: &str) -> Option<EvalBuiltinArm> {
         "concept_decl_facts" => Some(EvalBuiltinArm::FreeCallConceptDeclFacts),
         "export_signature_facts" => Some(EvalBuiltinArm::FreeCallExportSignatureFacts),
         "decl_facts" => Some(EvalBuiltinArm::FreeCallDeclFacts),
+        "decl_facts_reflection_fixture_witness_host" => Some(EvalBuiltinArm::FreeCallDeclFactsReflectionFixtureWitnessHost),
         "module_declaration_facts" => Some(EvalBuiltinArm::FreeCallModuleDeclarationFacts),
         "fact_cardinality_decl_facts" => Some(EvalBuiltinArm::FreeCallFactCardinalityDeclFacts),
         "languages_consumer_census_data_decl_count" => Some(EvalBuiltinArm::FreeCallLanguagesConsumerCensusDataDeclCount),
@@ -319,6 +321,7 @@ macro_rules! eval_builtin_inner_arm {
     ("free_call.concept_decl_facts") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallConceptDeclFacts };
     ("free_call.export_signature_facts") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallExportSignatureFacts };
     ("free_call.decl_facts") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallDeclFacts };
+    ("free_call.decl_facts_reflection_fixture_witness_host") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallDeclFactsReflectionFixtureWitnessHost };
     ("free_call.module_declaration_facts") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallModuleDeclarationFacts };
     ("free_call.fact_cardinality_decl_facts") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallFactCardinalityDeclFacts };
     ("free_call.languages_consumer_census_data_decl_count") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallLanguagesConsumerCensusDataDeclCount };
