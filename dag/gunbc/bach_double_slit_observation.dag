@@ -19,11 +19,15 @@ import extdeps.physics.bach_et_al_2013_double_slit {
   BothSlitsDoubleSlitDiffractionObserved,
 }
 
-data bach_observation_layer_note: String = "Observing-layer receipts for Bach et al. 2013. Verdicts derive from extdeps rows — not constant Bool assertions."
+data bach_observation_layer_note: String = "Observing-layer receipts for Bach et al. 2013. Buildup progression consumes extdeps.physics.bach_et_al_2013_double_slit.bach_buildup_observations as the sole population authority — not a parallel copy."
 
 data which_path_coverage_obligation_note: String = "Which-path distinguishability evidence is absent from cited Bach et al. 2013; obligation recorded here per DESIGN section 3."
 
-data bach_raw_count_triplet_coverage_dissolve_on: String = "DISSOLVE-ON: extdeps carries raw matched-exposure arrival rows at a grain that supports left, right, and both counts under one exposure identity; then bach_quantitative_path_additivity_gap may gain a positive readiness counterpart derived from triplet coverage."
+data bach_quantitative_path_additivity_gap_note: String = "Authored coverage gap (explicit gap rung, not a derived readiness verdict): cited Bach et al. 2013 does not supply a raw matched-exposure per-band arrival triplet for N_both = N_slit_one + N_slit_two."
+
+data bach_which_path_evidence_gap_note: String = "Authored coverage gap (explicit gap rung, not a derived readiness verdict): cited Bach et al. 2013 controlled which slits were open, not whether which-path information existed."
+
+data bach_raw_count_triplet_coverage_dissolve_on: String = "DISSOLVE-ON: extdeps carries raw matched-exposure arrival rows at a grain that supports left, right, and both counts under one exposure identity; then bach_quantitative_path_additivity_gap may gain a positive cited counterpart."
 
 data bach_which_path_evidence_dissolve_on: String = "DISSOLVE-ON: a cited upstream authority for which-path distinguishability evidence lands; then bach_which_path_evidence_gap may gain a positive cited counterpart."
 
@@ -85,7 +89,7 @@ fn bach_distribution_observations_complete() -> Bool {
 fn bach_ensemble_interference_holds_for_distribution(
   observations: List<BachDistributionObservation>,
 ) -> Bool {
-  bach_cited_buildup_matches_source_population()
+  bach_cited_buildup_matches_extdeps_source_population()
     && bach_distribution_observations_complete_for(observations: observations)
 }
 
@@ -107,43 +111,13 @@ fn bach_buildup_row_is_canonical_apparatus(row: BachBuildupProgressionRow) -> Bo
   }
 }
 
-type BachBuildupPopulationExpectation {
-  detected_electrons: NonNegativeInt
-  expected_status: PatternStatus
-}
-
-data bach_source_buildup_population_fixture: List<BachBuildupPopulationExpectation> = [
-  BachBuildupPopulationExpectation {
-    detected_electrons: 2,
-    expected_status: PatternNotYetDiscernible,
-  },
-  BachBuildupPopulationExpectation {
-    detected_electrons: 7,
-    expected_status: PatternNotYetDiscernible,
-  },
-  BachBuildupPopulationExpectation {
-    detected_electrons: 209,
-    expected_status: PatternNotYetDiscernible,
-  },
-  BachBuildupPopulationExpectation {
-    detected_electrons: 1004,
-    expected_status: PatternDiscernible,
-  },
-  BachBuildupPopulationExpectation {
-    detected_electrons: 6235,
-    expected_status: PatternClearlyVisible,
-  },
-]
-
-data bach_source_buildup_population_fixture_note: String = "Controlled fixture for Figure 3 panels a-e (doi 10.1088/1367-2630/15/3/033018): 2/7/209 NotYet, 1004 first Discernible, 6235 ClearlyVisible."
-
-fn bach_buildup_row_matches_fixture_entry(
+fn bach_buildup_row_matches_extdeps_source_row(
   row: BachBuildupProgressionRow,
-  expectation: BachBuildupPopulationExpectation,
+  source_row: BachBuildupObservationRow,
 ) -> Bool {
   bach_buildup_row_is_canonical_apparatus(row: row)
-    && row.detected_electrons == expectation.detected_electrons
-    && row.pattern_status == expectation.expected_status
+    && row.detected_electrons == source_row.detected_electrons
+    && row.pattern_status == source_row.pattern_status
 }
 
 type OrderedPopulationMatchAcc {
@@ -151,9 +125,9 @@ type OrderedPopulationMatchAcc {
   valid: Bool
 }
 
-fn fold_ordered_population_expectation(
+fn fold_ordered_extdeps_source_row(
   acc: OrderedPopulationMatchAcc,
-  expectation: BachBuildupPopulationExpectation,
+  source_row: BachBuildupObservationRow,
 ) -> OrderedPopulationMatchAcc {
   if !acc.valid {
     acc
@@ -162,7 +136,7 @@ fn fold_ordered_population_expectation(
       HeadFound { value: head_row } =>
         match list_tail(xs: acc.remaining_rows) {
           TailFound { tail: tail_rows } =>
-            if bach_buildup_row_matches_fixture_entry(row: head_row, expectation: expectation) {
+            if bach_buildup_row_matches_extdeps_source_row(row: head_row, source_row: source_row) {
               OrderedPopulationMatchAcc {
                 remaining_rows: tail_rows,
                 valid: true,
@@ -174,7 +148,7 @@ fn fold_ordered_population_expectation(
               }
             }
           TailAbsent =>
-            if bach_buildup_row_matches_fixture_entry(row: head_row, expectation: expectation) {
+            if bach_buildup_row_matches_extdeps_source_row(row: head_row, source_row: source_row) {
               OrderedPopulationMatchAcc {
                 remaining_rows: [],
                 valid: true,
@@ -195,36 +169,36 @@ fn fold_ordered_population_expectation(
   }
 }
 
-fn bach_buildup_matches_ordered_source_population(
+fn bach_buildup_matches_ordered_extdeps_population(
   rows: List<BachBuildupProgressionRow>,
-  fixture: List<BachBuildupPopulationExpectation>,
+  source: List<BachBuildupObservationRow>,
 ) -> Bool {
   let acc = fold(
-    fixture,
+    source,
     init: OrderedPopulationMatchAcc {
       remaining_rows: rows,
       valid: true,
     },
-    f: fn(a, exp) {
-      fold_ordered_population_expectation(acc: a, expectation: exp)
+    f: fn(a, source_row) {
+      fold_ordered_extdeps_source_row(acc: a, source_row: source_row)
     },
   )
   acc.valid && (acc.remaining_rows |> count) == 0
 }
 
-fn bach_cited_buildup_matches_source_population() -> Bool {
-  bach_buildup_matches_ordered_source_population(
+fn bach_cited_buildup_matches_extdeps_source_population() -> Bool {
+  bach_buildup_matches_ordered_extdeps_population(
     rows: bach_cited_buildup_progression_rows(),
-    fixture: bach_source_buildup_population_fixture,
+    source: bach_buildup_observations,
   )
 }
 
 fn bach_buildup_population_rejects_planted_rows(
   rows: List<BachBuildupProgressionRow>,
 ) -> Bool {
-  !bach_buildup_matches_ordered_source_population(
+  !bach_buildup_matches_ordered_extdeps_population(
     rows: rows,
-    fixture: bach_source_buildup_population_fixture,
+    source: bach_buildup_observations,
   )
 }
 

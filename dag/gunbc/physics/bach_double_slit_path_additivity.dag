@@ -118,9 +118,18 @@ type PathAdditivityBandVerdict
       failure: AdditivityInputFailure
     }
 
+type RefutationNotEstablishedReason
+  = AdditivityHeld {
+      band: ScreenBand
+      exposure: SyntheticMatchedExposureSession
+    }
+  | AdditivityUndecided {
+      failure: AdditivityInputFailure
+    }
+
 type RefutationReceiptResolution
   = RefutationReceiptResolved { receipt: PathAdditivityRefutationReceipt }
-  | RefutationNotEstablished { verdict: PathAdditivityBandVerdict }
+  | RefutationNotEstablished { reason: RefutationNotEstablishedReason }
 
 fn refutation_receipt_resolution_from_band_verdict(
   verdict: PathAdditivityBandVerdict,
@@ -133,14 +142,14 @@ fn refutation_receipt_resolution_from_band_verdict(
       exposure: held_exposure,
     } =>
       RefutationNotEstablished {
-        verdict: PathAdditivityHeldAtBand {
+        reason: AdditivityHeld {
           band: held_band,
           exposure: held_exposure,
         },
       }
     PathAdditivityUndecidedAtBand { failure: undecided_failure } =>
       RefutationNotEstablished {
-        verdict: PathAdditivityUndecidedAtBand { failure: undecided_failure },
+        reason: AdditivityUndecided { failure: undecided_failure },
       }
   }
 }
@@ -373,7 +382,7 @@ fn path_additivity_refutation_receipt_resolution_from_resolved_counts(
   match ordering {
     Equal =>
       RefutationNotEstablished {
-        verdict: PathAdditivityHeldAtBand {
+        reason: AdditivityHeld {
           band: band,
           exposure: exposure,
         },
@@ -443,7 +452,7 @@ fn derive_path_additivity_refutation_at_band(
         RefutationReceiptResolved { receipt: receipt } =>
           PathAdditivityRefutationAtBand { receipt: receipt }
         RefutationNotEstablished {
-          verdict: PathAdditivityHeldAtBand {
+          reason: AdditivityHeld {
             band: held_band,
             exposure: held_exposure,
           },
@@ -452,7 +461,8 @@ fn derive_path_additivity_refutation_at_band(
             band: held_band,
             exposure: held_exposure,
           }
-        RefutationNotEstablished { verdict: undecided_verdict } => undecided_verdict
+        RefutationNotEstablished { reason: AdditivityUndecided { failure: undecided_failure } } =>
+          PathAdditivityUndecidedAtBand { failure: undecided_failure }
       }
     }
     AdditivityInputsIncomplete {
