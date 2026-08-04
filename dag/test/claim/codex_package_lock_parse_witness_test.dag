@@ -1,0 +1,159 @@
+module test.claim.codex_package_lock_parse_witness_test
+
+import extdeps.filesystem.filesystem_io
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.types { Bool, String, NonEmptyStr }
+import std.content_hash { Sha512Hash, sha512_hex_digest }
+import extdeps.npm {
+  npm_decode_package_lock_text,
+  NpmPackageLockParsed,
+  NpmPackageLockParseRefused,
+  NpmRootLockPath,
+  NpmRelativeLockPath,
+  NpmRegistrySelected,
+  NpmRootProject,
+  npm_registry_artifact_pin,
+}
+import extdeps.pin { ExactPin }
+import gunbc.package_delivery {
+  codex_runtime_lock_path,
+  admit_codex_package_lock_text,
+  CodexPackageLockAdmitted,
+  CodexPackageLockParseFailed,
+  CodexPackageLockUnsupportedNodes,
+  CodexPackageLockGraphRefused,
+  codex_artifact_named,
+  codex_admit_npm_integrity,
+  CodexNpmIntegrityAdmitted,
+  admit_observed_archive_digest,
+  PackageArchiveDigestObserved,
+  PackageArchiveDigestMatched,
+  PackageArchiveDigestMismatch,
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data witness_note: String = "Parses the committed provider-runtime/codex/package-lock.json (npm-generated v3). Empty edges by design. RED: unsupported lockfileVersion refuses. Archive digest admission is the pure expected/observed compare — observation realization is the typed file-hash dissolve-on."
+
+data openai_codex_integrity_hex: String = "c86dec3d635d6bfd980084080eaf4caeb8e8093210eebc5833921ab2b1b754172e8422d39207a0fc9cea989ab557df11138309e630b10d75d094e8eb762b4547"
+
+fn committed_codex_lock_text() -> String {
+  filesystem_read(path: codex_runtime_lock_path as String).content
+}
+
+test fn committed_codex_lock_parses_v3_roster() -> Bool {
+  match npm_decode_package_lock_text(text: committed_codex_lock_text()) {
+    NpmPackageLockParsed { manager: _, nodes, unsupported, graph } =>
+      count(unsupported) == 0
+        && count(nodes) == 8
+        && count(graph.nodes) == 8
+        && count(graph.edges) == 0
+        && count(graph.roots) == 1
+    NpmPackageLockParseRefused { cause: _ } => false
+  }
+}
+
+test fn committed_codex_lock_admits_under_codex_profile() -> Bool {
+  match admit_codex_package_lock_text(text: committed_codex_lock_text()) {
+    CodexPackageLockAdmitted { graph: _, registry_artifacts } =>
+      count(registry_artifacts) == 7
+    CodexPackageLockParseFailed { cause: _ } => false
+    CodexPackageLockUnsupportedNodes { unsupported: _ } => false
+    CodexPackageLockGraphRefused { admission: _ } => false
+  }
+}
+
+test fn openai_codex_selection_pin_and_codex_integrity_hold() -> Bool {
+  match admit_codex_package_lock_text(text: committed_codex_lock_text()) {
+    CodexPackageLockAdmitted { graph: _, registry_artifacts } =>
+      match codex_artifact_named(
+        artifacts: registry_artifacts,
+        name: "@openai/codex" as NonEmptyStr,
+      ) {
+        Present { value: artifact } =>
+          (artifact.version as String) == "0.146.0"
+            && match codex_admit_npm_integrity(integrity: artifact.expected_integrity) {
+              CodexNpmIntegrityAdmitted { digest } =>
+                (digest.hex as String) == openai_codex_integrity_hex
+                  && match npm_registry_artifact_pin(artifact: artifact).selection {
+                    ExactPin =>
+                      match npm_registry_artifact_pin(artifact: artifact).expected_identity {
+                        Sha512Hash(pinned) =>
+                          (pinned.hex as String) == openai_codex_integrity_hex
+                        _ => false
+                      }
+                    _ => false
+                  }
+              _ => false
+            }
+        Absent => false
+      }
+    _ => false
+  }
+}
+
+test fn archive_digest_admission_matches_and_mismatches() -> Bool {
+  match admit_codex_package_lock_text(text: committed_codex_lock_text()) {
+    CodexPackageLockAdmitted { graph: _, registry_artifacts } =>
+      match codex_artifact_named(
+        artifacts: registry_artifacts,
+        name: "@openai/codex" as NonEmptyStr,
+      ) {
+        Present { value: artifact } =>
+          match codex_admit_npm_integrity(integrity: artifact.expected_integrity) {
+            CodexNpmIntegrityAdmitted { digest: expected } => {
+              let matched = admit_observed_archive_digest(
+                expected: expected,
+                observation: PackageArchiveDigestObserved {
+                  locator: artifact.resolved.locator,
+                  observed: expected,
+                },
+              )
+              let wrong_hex = "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+              match sha512_hex_digest(hex: wrong_hex) {
+                Present { value: other } =>
+                  match matched {
+                    PackageArchiveDigestMatched { locator: _, digest: _ } =>
+                      match admit_observed_archive_digest(
+                        expected: expected,
+                        observation: PackageArchiveDigestObserved {
+                          locator: artifact.resolved.locator,
+                          observed: other,
+                        },
+                      ) {
+                        PackageArchiveDigestMismatch {
+                          locator: _,
+                          expected: _,
+                          observed: _,
+                        } => true
+                        _ => false
+                      }
+                    _ => false
+                  }
+                Absent => false
+              }
+            }
+            _ => false
+          }
+        Absent => false
+      }
+    _ => false
+  }
+}
+
+test fn lockfile_v2_text_refuses() -> Bool {
+  let v2 = "{\"name\":\"x\",\"lockfileVersion\":2,\"packages\":{\"\":{\"name\":\"x\"}}}"
+  match npm_decode_package_lock_text(text: v2) {
+    NpmPackageLockParseRefused { cause: _ } => true
+    NpmPackageLockParsed { manager: _, nodes: _, unsupported: _, graph: _ } => false
+  }
+}
+
+test fn link_node_is_unsupported_not_half_modeled() -> Bool {
+  let text = "{\"name\":\"x\",\"lockfileVersion\":3,\"packages\":{\"\":{\"name\":\"x\"},\"node_modules/local\":{\"link\":true,\"resolved\":\"../local\"}}}"
+  match npm_decode_package_lock_text(text: text) {
+    NpmPackageLockParsed { manager: _, nodes, unsupported, graph: _ } =>
+      count(nodes) == 1 && count(unsupported) == 1
+    NpmPackageLockParseRefused { cause: _ } => false
+  }
+}
