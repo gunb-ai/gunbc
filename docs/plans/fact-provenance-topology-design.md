@@ -1,6 +1,6 @@
 # Fact provenance topology — AUTH-0 design note
 
-Status: **DRAFT — operator sign-off on direction (loyal-ant-382, 2026-08-04).** Local to session `cool-ram-632`; no PR open. Design-note only — **no hub, no construction, no frontier** without further sign-off.
+Status: **DRAFT — operator sign-off on direction (loyal-ant-382, 2026-08-04).** Design-note only — **no hub, no construction, no frontier** without further sign-off.
 
 **Homonym rule (operator, 2026-08-04):** *Authority* names two unrelated concepts. This note uses explicit qualifiers only:
 
