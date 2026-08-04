@@ -10,11 +10,15 @@ import gunbc.scaffold_retirement {
   project_scaffold_site_from_body_fact_for_pool,
   scaffold_site_lookup,
   proposed_binding_for_site,
+  dissolves_to_from_exact_scaffold_body,
   ScaffoldSiteLookupUnique,
+  ScaffoldSiteDecoded,
   ScaffoldCandidateDecodeRefused,
+  ExactStructuralDecodeEvidence,
   BodyShapeNotScaffoldRecord,
   DeclaredTypeNotDisposition,
 }
+import std.disposition { SingleAuthority }
 import test.fixture.scaffold_retirement.specimens {
   scaffold_retirement_fixture_pool_roots,
   planted_exact_scaffold_specimen_qn,
@@ -36,14 +40,49 @@ test fn scaffold_retirement_long_lane_execution_receipt_is_declared() -> Bool {
     && length(xs: scaffold_retirement_long_witness_function_roster) == 8
 }
 
+test fn fixture_decl_facts_marshal_surfaces_dissolves_to_variant_atom() -> Bool {
+  match decl_facts(pool_roots: scaffold_retirement_fixture_pool_roots)
+    |> filter(f => f.qualified_name == planted_exact_scaffold_specimen_qn)
+    |> first
+  {
+    Present { value: fact } =>
+      match dissolves_to_from_exact_scaffold_body(body: fact.node) {
+        Present { value: SingleAuthority } => true
+        _ => false
+      }
+    Absent => false
+  }
+}
+
+test fn fixture_non_scaffold_body_lacks_dissolves_to_variant_atom() -> Bool {
+  match decl_facts(pool_roots: scaffold_retirement_fixture_pool_roots)
+    |> filter(f => f.qualified_name == planted_non_disposition_specimen_qn)
+    |> first
+  {
+    Present { value: fact } =>
+      match dissolves_to_from_exact_scaffold_body(body: fact.node) {
+        Absent => true
+        _ => false
+      }
+    Absent => false
+  }
+}
+
 test fn fixture_exact_decode_admits_planted_specimen() -> Bool {
-  match scaffold_site_lookup(
-    qn: planted_exact_scaffold_specimen_qn,
-    sites: derived_scaffold_disposition_sites_for_pool(pool_roots: scaffold_retirement_fixture_pool_roots)
-  ) {
-    ScaffoldSiteLookupUnique { site: site } =>
-      site.bind.decl_name == "planted_exact_scaffold_specimen"
-    _ => false
+  match decl_facts(pool_roots: scaffold_retirement_fixture_pool_roots)
+    |> filter(f => f.qualified_name == planted_exact_scaffold_specimen_qn)
+    |> first
+  {
+    Present { value: fact } =>
+      match project_scaffold_site_from_body_fact_for_pool(
+        body_fact: fact,
+        pool_roots: scaffold_retirement_fixture_pool_roots
+      ) {
+        ScaffoldSiteDecoded { site: site, evidence: ExactStructuralDecodeEvidence } =>
+          site.bind.decl_name == "planted_exact_scaffold_specimen"
+        _ => false
+      }
+    Absent => false
   }
 }
 
@@ -52,7 +91,8 @@ test fn fixture_wrong_shape_is_refused_not_silent() -> Bool {
     xs: derived_scaffold_disposition_refused_for_pool(pool_roots: scaffold_retirement_fixture_pool_roots),
     predicate: fn(row) {
       row.qualified_name == planted_nullary_disposition_specimen_qn
-        && row.cause == BodyShapeNotScaffoldRecord
+        && (row.cause == BodyShapeNotScaffoldRecord
+          || row.cause == DeclaredTypeNotDisposition)
     }
   ) == 1
 }

@@ -65,9 +65,9 @@ fn decl_fact_node_skeleton(
         Value::List(items) => items,
         other => panic!("expected decl_facts List, got {other:?}"),
     };
-    for row in items {
+    for row in items.iter() {
         let fields = match row {
-            Value::Record { fields, .. } => fields,
+            Value::Record { fields, .. } => fields.as_ref(),
             other => panic!("expected DeclFact Record, got {other:?}"),
         };
         let qn = match ctx.field(fields, "qualified_name") {
@@ -80,6 +80,66 @@ fn decl_fact_node_skeleton(
         return ctx.field(fields, "node").cloned();
     }
     None
+}
+
+fn marshaled_node_positional_child_count(val: &Value, ctx: &InterpContext) -> usize {
+    let fields = match val {
+        Value::Record { type_name, fields, .. } if ctx.sym_eq(*type_name, "Node") => fields.as_ref(),
+        _ => return 0,
+    };
+    let edges = match ctx.field(fields, "children") {
+        Some(Value::List(items)) => items,
+        _ => return 0,
+    };
+    edges
+        .iter()
+        .filter(|edge| {
+            let edge_fields = match edge {
+                Value::Record { fields, .. } => fields.as_ref(),
+                _ => return false,
+            };
+            matches!(
+                ctx.field(edge_fields, "label"),
+                Some(Value::Variant { variant_name, .. })
+                    if ctx.sym_eq(*variant_name, "Positional")
+            )
+        })
+        .count()
+}
+
+#[test]
+fn fixture_pool_scaffold_body_positional_child_count() {
+    let ctx = wet_ctx();
+    let roots = vec![workspace_root()
+        .join("dag/test/fixture/scaffold_retirement")
+        .to_string_lossy()
+        .into_owned()];
+    let rows = eval_decl_facts(&ctx, &roots).expect("eval_decl_facts");
+    let skeleton = decl_fact_node_skeleton(
+        &ctx,
+        &rows,
+        "test.fixture.scaffold_retirement.specimens.planted_exact_scaffold_specimen",
+    )
+    .expect("missing fixture row");
+    let count = marshaled_node_positional_child_count(&skeleton, &ctx);
+    eprintln!("fixture scaffold body positional child count: {count}");
+    assert!(count >= 2, "expected at least dissolves_to and bind children, got {count}");
+}
+
+#[test]
+fn fixture_pool_decl_facts_finds_planted_specimen() {
+    let ctx = wet_ctx();
+    let roots = vec![workspace_root()
+        .join("dag/test/fixture/scaffold_retirement")
+        .to_string_lossy()
+        .into_owned()];
+    let rows = eval_decl_facts(&ctx, &roots).expect("eval_decl_facts");
+    let skeleton = decl_fact_node_skeleton(&ctx, &rows, "test.fixture.scaffold_retirement.specimens.planted_exact_scaffold_specimen")
+        .unwrap_or_else(|| panic!("missing fixture decl_facts row; rows={}", match &rows { Value::List(items) => items.len(), _ => 0 }));
+    assert!(
+        value_contains_atom_identity(&skeleton, &ctx, "SingleAuthority"),
+        "fixture scaffold specimen must marshal dissolves_to atom"
+    );
 }
 
 #[test]

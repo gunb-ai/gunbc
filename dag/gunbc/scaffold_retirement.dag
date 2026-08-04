@@ -362,12 +362,7 @@ fn declared_type_atom_is_disposition(fact: DeclFact) -> Bool {
 }
 
 fn is_scaffold_shape_candidate(fact: DeclFact) -> Bool {
-  match fact.kind {
-    DataItem =>
-      declared_type_atom_is_disposition(fact: fact)
-        && length(xs: node_positional_child_targets(node: fact.node)) == 2
-    _ => false
-  }
+  is_scaffold_shape_candidate_for_pool(fact: fact, pool_roots: witness_layer_roots)
 }
 
 fn scaffold_decode_refusal_row(
