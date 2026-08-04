@@ -52,7 +52,7 @@ failures=0
 for mod in "${MODULES[@]}"; do
   echo "=== probing $mod ===" >&2
   rm -f "$SURVEY_DIR/tmp_row.tsv"
-  if ! CTRL_BUILD_BYPASS_SHIMS=1 "$BIN" \
+  if ! "$BIN" \
     --source-root src/v2 \
     --module "$mod" \
     --survey-dir "$SURVEY_DIR" \
