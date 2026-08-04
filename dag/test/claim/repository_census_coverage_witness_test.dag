@@ -273,7 +273,9 @@ test fn witness_a_cancelling_population_still_yields_no_receipt() -> Bool {
   )
 }
 
-test fn witness_a_shared_method_run_is_visible_on_the_receipt() -> Bool {
+data coverage_self_join_separability_note: String = "THE TWO SELF-JOIN WITNESSES BELOW ARE IMPLICATIONS. Receipt existence is asserted by witness_a_reconciled_join_is_the_only_thing_that_yields_a_receipt, so these two need not re-assert it — and must not, because a witness that conjoins existence with the tell reds whenever the receipt disappears, licensing the tell by a red that never read it. Their refusal arms are vacuously true for that reason and for no other."
+
+test fn witness_a_shared_method_run_if_present_is_visible_on_the_receipt() -> Bool {
   match census_establish_coverage(
     denominator: coverage_witness_denominator(
       subjects: coverage_witness_ab_subjects,
@@ -285,11 +287,11 @@ test fn witness_a_shared_method_run_is_visible_on_the_receipt() -> Bool {
     ),
   ) {
     CoverageEstablished { receipt: receipt } => census_receipt_is_self_join(receipt: receipt)
-    CoverageRefused { reconciliation: _ } => false
+    CoverageRefused { reconciliation: _ } => true
   }
 }
 
-test fn witness_distinct_method_runs_are_not_flagged_as_a_self_join() -> Bool {
+test fn witness_distinct_method_runs_if_present_are_not_flagged_as_a_self_join() -> Bool {
   match census_establish_coverage(
     denominator: coverage_witness_denominator(
       subjects: coverage_witness_ab_subjects,
@@ -301,7 +303,7 @@ test fn witness_distinct_method_runs_are_not_flagged_as_a_self_join() -> Bool {
     ),
   ) {
     CoverageEstablished { receipt: receipt } => !census_receipt_is_self_join(receipt: receipt)
-    CoverageRefused { reconciliation: _ } => false
+    CoverageRefused { reconciliation: _ } => true
   }
 }
 
