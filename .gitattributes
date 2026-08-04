@@ -99,6 +99,7 @@ src/v1/stage0/src/extdeps_uri.rs merge=generated-artifact
 src/v1/stage0/src/extdeps_uri_path.rs merge=generated-artifact
 src/v1/stage0/src/extdeps_version.rs merge=generated-artifact
 src/v1/stage0/src/extdeps_version_semver.rs merge=generated-artifact
+src/v1/stage0/src/gunbc_namespace_reference_derived_closure_admission.rs merge=generated-artifact
 src/v1/stage0/src/gunbc_namespace_reference_derived_closure_contract.rs merge=generated-artifact
 src/v1/stage0/src/gunbc_rust_decl_type_overlay.rs merge=generated-artifact
 src/v1/stage0/src/gunbc_stage0_crate_layout_generated.rs merge=generated-artifact
