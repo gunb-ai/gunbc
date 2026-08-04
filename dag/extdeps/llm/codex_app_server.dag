@@ -1,0 +1,45 @@
+module extdeps.llm.codex_app_server
+
+import std.types { NonEmptyStr, String, FilePath }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/openai/codex"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.llm.codex_app_server",
+      decl_name: "CodexAppServerTransport",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps.llm.codex_app_server.extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data codex_app_server_subject_note: String = "THE SUBJECT IS the Codex app-server control interface (stdio/JSON-RPC style methods initialize, account/read, rateLimits/read, thread/turn) — not exec --json and not gunbc product policy. Observed against @openai/codex 0.146.0 in the provider-control-interface audit."
+
+type CodexAppServerTransport
+  = CodexAppServerStdio
+  | CodexAppServerUnixSocket {
+      path: FilePath
+    }
+
+type CodexAppServerMethod
+  = CodexAppServerInitialize
+  | CodexAppServerAccountRead
+  | CodexAppServerRateLimitsRead
+  | CodexAppServerThreadTurn
+
+data codex_app_server_method_note: String = "FIRST SLICE names the press-trip method sequence. Wire request/response shapes land with the JSON-AST reader; this module owns the method vocabulary cited from the generated app-server schema, not fabricated params."
+
+type CodexAppServerExecutable {
+  path: FilePath
+}

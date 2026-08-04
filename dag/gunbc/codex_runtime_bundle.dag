@@ -1,0 +1,26 @@
+module gunbc.codex_runtime_bundle
+
+import std.types { NonEmptyStr, FilePath, String }
+import std.content_hash { ContentHash, Sha512Digest }
+import gunbc.package_delivery {
+  CodexRuntimeBundle,
+  CodexRuntimeMaterialization,
+  materialize_codex_runtime_bundle,
+  CodexRuntimeMaterialized,
+  codex_runtime_lock_path,
+  codex_runtime_manifest_path,
+}
+
+data codex_runtime_bundle_note: String = "Release-bundled Codex runtime identity. Built only via gunbc.package_delivery.materialize_codex_runtime_bundle (admit lock → acquire+SHA-512 the required artifact → npm ci --ignore-scripts → executable read-back). The deployed host performs no registry resolution."
+
+fn codex_bundle_executable_path(bundle: CodexRuntimeBundle) -> FilePath {
+  concat(bundle.root as String, concat("/", bundle.executable_rel as String)) as FilePath
+}
+
+fn codex_bundle_identity(bundle: CodexRuntimeBundle) -> ContentHash {
+  bundle.identity
+}
+
+fn codex_bundle_required_digest(bundle: CodexRuntimeBundle) -> Sha512Digest {
+  bundle.required_digest
+}

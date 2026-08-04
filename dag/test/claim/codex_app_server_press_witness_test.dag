@@ -1,0 +1,127 @@
+module test.claim.codex_app_server_press_witness_test
+
+import std.types { Bool, String, NonEmptyStr, FilePath }
+import std.content_hash { content_hash_of_value, sha512_hex_digest, Sha512Digest }
+import gunbc.package_delivery { CodexRuntimeBundle }
+import gunbc.provider_interface_binding {
+  bind_codex_app_server_stdio,
+  ProviderInterfaceResolved,
+  ProviderControlInterface,
+}
+import gunbc.codex_app_server_press {
+  admit_codex_press_start,
+  CodexPressStartAdmitted,
+  CodexPressAttemptId,
+  CodexPressTurnId,
+  codex_press_method_itinerary,
+}
+import gunbc.provider_turn_adjudication {
+  automatic_recovery_authorized,
+  press_display_finished,
+  press_display_running,
+  ProviderTurnNotObserved,
+  ProviderTurnFailed,
+  ProviderNativeCauseUnknown,
+  ProviderNativeCauseClassified,
+  RetryableTransient,
+}
+import extdeps.llm.codex_app_server {
+  CodexAppServerStdio,
+  CodexAppServerInitialize,
+}
+
+data witness_note: String = "Hermetic press carriers: itinerary + stdio binding + terminal/cause adjudication RED. Live JSON-RPC turn execution is the next wet slice."
+
+data fixture_digest_hex: String = "c86dec3d635d6bfd980084080eaf4caeb8e8093210eebc5833921ab2b1b754172e8422d39207a0fc9cea989ab557df11138309e630b10d75d094e8eb762b4547"
+
+fn fixture_bundle_from_digest(digest: Sha512Digest) -> CodexRuntimeBundle {
+  CodexRuntimeBundle {
+    root: "/tmp/codex-runtime-fixture" as FilePath,
+    executable_rel: "node_modules/@openai/codex/bin/codex.js" as NonEmptyStr,
+    required_digest: digest,
+    identity: content_hash_of_value(value: digest.hex),
+  }
+}
+
+test fn press_itinerary_is_four_steps_starting_with_initialize() -> Bool {
+  let steps = codex_press_method_itinerary()
+  match steps.first() {
+    Present { value: step } =>
+      match step {
+        CodexAppServerInitialize => count(steps) == 4
+        _ => false
+      }
+    Absent => false
+  }
+}
+
+test fn stdio_binding_derives_from_runtime_bundle() -> Bool {
+  match sha512_hex_digest(hex: fixture_digest_hex) {
+    Absent => false
+    Present { value: digest } =>
+      match bind_codex_app_server_stdio(bundle: fixture_bundle_from_digest(digest: digest)) {
+        ProviderInterfaceResolved { binding } =>
+          match binding.interface {
+            CodexAppServer {} =>
+              match binding.transport {
+                CodexAppServerStdio =>
+                  (binding.executable.path as String) == "/tmp/codex-runtime-fixture/node_modules/@openai/codex/bin/codex.js"
+                _ => false
+              }
+          }
+        _ => false
+      }
+  }
+}
+
+test fn press_start_names_attempt_turn_and_binding() -> Bool {
+  match sha512_hex_digest(hex: fixture_digest_hex) {
+    Absent => false
+    Present { value: digest } =>
+      match admit_codex_press_start(
+        attempt: "attempt-fixture-1" as CodexPressAttemptId,
+        turn: "turn-fixture-1" as CodexPressTurnId,
+        bundle: fixture_bundle_from_digest(digest: digest),
+      ) {
+        CodexPressStartAdmitted { start, itinerary } =>
+          (start.attempt as String) == "attempt-fixture-1"
+            && (start.turn as String) == "turn-fixture-1"
+            && count(itinerary) == 4
+        _ => false
+      }
+  }
+}
+
+test fn accepted_start_without_turn_never_displays_as_running_or_finished() -> Bool {
+  match sha512_hex_digest(hex: fixture_digest_hex) {
+    Absent => false
+    Present { value: digest } =>
+      match admit_codex_press_start(
+        attempt: "attempt-fixture-2" as CodexPressAttemptId,
+        turn: "turn-fixture-2" as CodexPressTurnId,
+        bundle: fixture_bundle_from_digest(digest: digest),
+      ) {
+        CodexPressStartAdmitted { start: _, itinerary: _ } =>
+          press_display_running(disposition: ProviderTurnNotObserved) == false
+            && press_display_finished(disposition: ProviderTurnNotObserved) == false
+            && automatic_recovery_authorized(disposition: ProviderTurnNotObserved) == false
+        _ => false
+      }
+  }
+}
+
+test fn failed_unclassified_cannot_authorize_recovery() -> Bool {
+  let unknown = ProviderTurnFailed {
+    cause: ProviderNativeCauseUnknown {
+      evidence: "malformed app-server line retained as evidence" as NonEmptyStr,
+    },
+  }
+  let classified_retryable = ProviderTurnFailed {
+    cause: ProviderNativeCauseClassified {
+      class: RetryableTransient,
+      evidence: "provider-native retryable class with retained evidence" as NonEmptyStr,
+    },
+  }
+  automatic_recovery_authorized(disposition: unknown) == false
+    && automatic_recovery_authorized(disposition: classified_retryable) == true
+}
