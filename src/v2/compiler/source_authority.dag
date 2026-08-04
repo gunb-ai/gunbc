@@ -63,7 +63,12 @@ import std.content_hash {
   ContentHash,
   ContentHashComparison,
   ContentHashEqual,
+  Fnv1a64Structural,
+  as_content_hash_structural,
   compare_content_hash,
+  content_hash_atom,
+  content_hash_combine_structural,
+  content_hash_eq_structural,
   content_hash_of_value,
   serialize_content_hash
 }
@@ -111,6 +116,7 @@ type SourceRootCoverage
 type SourceRootProvenanceCoverageReceipt {
   ingest_read_count: Int
   produced_row_count: Int
+  discovered_source_refs_digest: Fnv1a64Structural
   coverage: SourceRootCoverage
 }
 
