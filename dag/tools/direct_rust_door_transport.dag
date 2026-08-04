@@ -302,7 +302,7 @@ fn run_direct_rust_door_behavioral_qualification_smoke() -> Bool {
 fn run_direct_rust_door_divergent_behavioral_receipt_refused() -> Bool {
   let dir = shell.Mktemp.Dir()
   let src_dir = shell.Mkdir.Parents(path: concat(dir.path, "/src"))
-  let pipeline_ok = match mint_written_synthetic_emitted_artifact_from_fixture_inferred(
+  let pipeline_ok = match mint_written_synthetic_emitted_artifact_from_fixture_inferred_for_behavioral_qualification(
     inferred: direct_rust_door_inferred_tree,
     target: direct_rust_door_target_model(),
     module_path: direct_rust_door_module_path,
