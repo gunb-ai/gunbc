@@ -384,71 +384,230 @@ fn npm_json_string_member(v: JsonValue, key: String) -> String? {
   }
 }
 
-fn npm_json_bool_member_or_false(v: JsonValue, key: String) -> Bool {
+type NpmBooleanMemberObservation
+  = NpmBooleanMemberAbsent
+  | NpmBooleanMemberObserved {
+      value: Bool
+    }
+  | NpmBooleanMemberDuplicate {
+      count: Int
+    }
+  | NpmBooleanMemberWrongType {
+      observed: JsonValue
+    }
+  | NpmBooleanMemberNotAnObject
+
+data npm_boolean_member_observation_note: String = "Absent / observed / duplicate / wrong-type are DISTINCT. package-lock defaults apply only on Absent (npm docs: missing Boolean flags are false). Duplicate and wrong-type refuse — never collapse to false."
+
+fn npm_json_boolean_member(v: JsonValue, key: String) -> NpmBooleanMemberObservation {
   match json_object_unique_member(v: v, key: key) {
     JsonMemberFound { value } =>
       match value {
-        JsonBool { value: b } => b
-        JsonNull => false
-        JsonString { value: _ } => false
-        JsonNumber { lexeme: _ } => false
-        JsonArray { elements: _ } => false
-        JsonObject { members: _ } => false
+        JsonBool { value: b } => NpmBooleanMemberObserved { value: b }
+        other => NpmBooleanMemberWrongType { observed: other }
       }
-    JsonMemberAbsent => false
-    JsonMemberDuplicated { count: _ } => false
-    JsonMemberNotAnObject => false
+    JsonMemberAbsent => NpmBooleanMemberAbsent
+    JsonMemberDuplicated { count } => NpmBooleanMemberDuplicate { count: count }
+    JsonMemberNotAnObject => NpmBooleanMemberNotAnObject
   }
 }
 
-fn npm_json_string_list_member(v: JsonValue, key: String) -> List<NonEmptyStr> {
+type NpmStringListMemberObservation
+  = NpmStringListMemberAbsent
+  | NpmStringListMemberObserved {
+      values: List<NonEmptyStr>
+    }
+  | NpmStringListMemberDuplicate {
+      count: Int
+    }
+  | NpmStringListMemberWrongType {
+      observed: JsonValue
+    }
+  | NpmStringListMemberNonStringElement {
+      observed: JsonValue
+    }
+  | NpmStringListMemberNotAnObject
+
+data npm_string_list_member_observation_note: String = "Platform os/cpu lists: Absent means unconstrained ([]). Duplicate, wrong container type, or non-string element refuse — never silently project to []."
+
+type NpmStringListFoldAcc
+  = NpmStringListFoldOk {
+      values: List<NonEmptyStr>
+    }
+  | NpmStringListFoldBadElement {
+      observed: JsonValue
+    }
+
+fn npm_json_string_list_member_observation(
+  v: JsonValue,
+  key: String,
+) -> NpmStringListMemberObservation {
   match json_object_unique_member(v: v, key: key) {
     JsonMemberFound { value } =>
       match value {
-        JsonArray { elements } =>
-          fold(
+        JsonArray { elements } => {
+          let acc = fold(
             elements,
-            init: [],
-            f: (acc, el) => match el {
-              JsonString { value: s } =>
-                if s == "" {
-                  acc
-                } else {
-                  acc |> list_push(s as NonEmptyStr)
+            init: NpmStringListFoldOk { values: [] },
+            f: (state, el) => match state {
+              NpmStringListFoldBadElement { observed } =>
+                NpmStringListFoldBadElement { observed: observed }
+              NpmStringListFoldOk { values: xs } =>
+                match el {
+                  JsonString { value: s } =>
+                    if s == "" {
+                      NpmStringListFoldOk { values: xs }
+                    } else {
+                      NpmStringListFoldOk {
+                        values: xs |> list_push(s as NonEmptyStr),
+                      }
+                    }
+                  other => NpmStringListFoldBadElement { observed: other }
                 }
-              JsonNull => acc
-              JsonBool { value: _ } => acc
-              JsonNumber { lexeme: _ } => acc
-              JsonArray { elements: _ } => acc
-              JsonObject { members: _ } => acc
             },
           )
-        JsonNull => []
-        JsonBool { value: _ } => []
-        JsonString { value: _ } => []
-        JsonNumber { lexeme: _ } => []
-        JsonObject { members: _ } => []
+          match acc {
+            NpmStringListFoldOk { values } =>
+              NpmStringListMemberObserved { values: values }
+            NpmStringListFoldBadElement { observed } =>
+              NpmStringListMemberNonStringElement { observed: observed }
+          }
+        }
+        other => NpmStringListMemberWrongType { observed: other }
       }
-    JsonMemberAbsent => []
-    JsonMemberDuplicated { count: _ } => []
-    JsonMemberNotAnObject => []
+    JsonMemberAbsent => NpmStringListMemberAbsent
+    JsonMemberDuplicated { count } => NpmStringListMemberDuplicate { count: count }
+    JsonMemberNotAnObject => NpmStringListMemberNotAnObject
   }
 }
 
-fn npm_lock_node_metadata_from_json(v: JsonValue) -> NpmLockNodeMetadata {
-  NpmLockNodeMetadata {
-    flags: NpmLockNodeFlags {
-      dev: npm_json_bool_member_or_false(v: v, key: "dev"),
-      optional: npm_json_bool_member_or_false(v: v, key: "optional"),
-      dev_optional: npm_json_bool_member_or_false(v: v, key: "devOptional"),
-      in_bundle: npm_json_bool_member_or_false(v: v, key: "inBundle"),
-      has_install_script: npm_json_bool_member_or_false(v: v, key: "hasInstallScript"),
-      has_shrinkwrap: npm_json_bool_member_or_false(v: v, key: "hasShrinkwrap"),
-    },
-    platform: NpmPlatformConstraint {
-      os: npm_json_string_list_member(v: v, key: "os"),
-      cpu: npm_json_string_list_member(v: v, key: "cpu"),
-    },
+type NpmLockNodeMetadataDecode
+  = NpmLockNodeMetadataDecoded {
+      metadata: NpmLockNodeMetadata
+    }
+  | NpmLockNodeMetadataRefused {
+      cause: NonEmptyStr
+    }
+
+fn npm_boolean_flag_default_false(
+  observation: NpmBooleanMemberObservation,
+) -> Bool? {
+  match observation {
+    NpmBooleanMemberAbsent => Present { value: false }
+    NpmBooleanMemberObserved { value } => Present { value: value }
+    NpmBooleanMemberDuplicate { count: _ } => none
+    NpmBooleanMemberWrongType { observed: _ } => none
+    NpmBooleanMemberNotAnObject => none
+  }
+}
+
+fn npm_string_list_default_empty(
+  observation: NpmStringListMemberObservation,
+) -> List<NonEmptyStr>? {
+  match observation {
+    NpmStringListMemberAbsent => Present { value: [] }
+    NpmStringListMemberObserved { values } => Present { value: values }
+    NpmStringListMemberDuplicate { count: _ } => none
+    NpmStringListMemberWrongType { observed: _ } => none
+    NpmStringListMemberNonStringElement { observed: _ } => none
+    NpmStringListMemberNotAnObject => none
+  }
+}
+
+fn npm_lock_node_metadata_from_json(v: JsonValue) -> NpmLockNodeMetadataDecode {
+  let dev_o = npm_boolean_flag_default_false(
+    observation: npm_json_boolean_member(v: v, key: "dev"),
+  )
+  let optional_o = npm_boolean_flag_default_false(
+    observation: npm_json_boolean_member(v: v, key: "optional"),
+  )
+  let dev_optional_o = npm_boolean_flag_default_false(
+    observation: npm_json_boolean_member(v: v, key: "devOptional"),
+  )
+  let in_bundle_o = npm_boolean_flag_default_false(
+    observation: npm_json_boolean_member(v: v, key: "inBundle"),
+  )
+  let has_install_o = npm_boolean_flag_default_false(
+    observation: npm_json_boolean_member(v: v, key: "hasInstallScript"),
+  )
+  let has_shrink_o = npm_boolean_flag_default_false(
+    observation: npm_json_boolean_member(v: v, key: "hasShrinkwrap"),
+  )
+  let os_o = npm_string_list_default_empty(
+    observation: npm_json_string_list_member_observation(v: v, key: "os"),
+  )
+  let cpu_o = npm_string_list_default_empty(
+    observation: npm_json_string_list_member_observation(v: v, key: "cpu"),
+  )
+  match dev_o {
+    Absent =>
+      NpmLockNodeMetadataRefused { cause: "dev boolean member refused" as NonEmptyStr }
+    Present { value: dev } =>
+      match optional_o {
+        Absent =>
+          NpmLockNodeMetadataRefused {
+            cause: "optional boolean member refused" as NonEmptyStr,
+          }
+        Present { value: optional } =>
+          match dev_optional_o {
+            Absent =>
+              NpmLockNodeMetadataRefused {
+                cause: "devOptional boolean member refused" as NonEmptyStr,
+              }
+            Present { value: dev_optional } =>
+              match in_bundle_o {
+                Absent =>
+                  NpmLockNodeMetadataRefused {
+                    cause: "inBundle boolean member refused" as NonEmptyStr,
+                  }
+                Present { value: in_bundle } =>
+                  match has_install_o {
+                    Absent =>
+                      NpmLockNodeMetadataRefused {
+                        cause: "hasInstallScript boolean member refused" as NonEmptyStr,
+                      }
+                    Present { value: has_install_script } =>
+                      match has_shrink_o {
+                        Absent =>
+                          NpmLockNodeMetadataRefused {
+                            cause: "hasShrinkwrap boolean member refused" as NonEmptyStr,
+                          }
+                        Present { value: has_shrinkwrap } =>
+                          match os_o {
+                            Absent =>
+                              NpmLockNodeMetadataRefused {
+                                cause: "os string-list member refused" as NonEmptyStr,
+                              }
+                            Present { value: os } =>
+                              match cpu_o {
+                                Absent =>
+                                  NpmLockNodeMetadataRefused {
+                                    cause: "cpu string-list member refused" as NonEmptyStr,
+                                  }
+                                Present { value: cpu } =>
+                                  NpmLockNodeMetadataDecoded {
+                                    metadata: NpmLockNodeMetadata {
+                                      flags: NpmLockNodeFlags {
+                                        dev: dev,
+                                        optional: optional,
+                                        dev_optional: dev_optional,
+                                        in_bundle: in_bundle,
+                                        has_install_script: has_install_script,
+                                        has_shrinkwrap: has_shrinkwrap,
+                                      },
+                                      platform: NpmPlatformConstraint {
+                                        os: os,
+                                        cpu: cpu,
+                                      },
+                                    },
+                                  }
+                              }
+                          }
+                      }
+                  }
+              }
+          }
+      }
   }
 }
 
@@ -496,89 +655,131 @@ fn npm_decode_lock_node(path_key: NpmLockPathKey, node: JsonValue) -> NpmLockNod
       }
     }
     NpmRelativeLockPath { key } => {
-      let link = npm_json_bool_member_or_false(v: node, key: "link")
       let resolved = npm_json_string_member(v: node, key: "resolved")
       let integrity = npm_json_string_member(v: node, key: "integrity")
       let version = npm_json_string_member(v: node, key: "version")
-      if link {
+      match npm_json_boolean_member(v: node, key: "link") {
+        NpmBooleanMemberDuplicate { count: _ } =>
+          NpmLockNodeFormUnsupported {
+            key: path_key,
+            native_form: "link-boolean-duplicate" as NonEmptyStr,
+          }
+        NpmBooleanMemberWrongType { observed: _ } =>
+          NpmLockNodeFormUnsupported {
+            key: path_key,
+            native_form: "link-boolean-wrong-type" as NonEmptyStr,
+          }
+        NpmBooleanMemberNotAnObject =>
+          NpmLockNodeFormUnsupported {
+            key: path_key,
+            native_form: "link-boolean-not-object" as NonEmptyStr,
+          }
+        NpmBooleanMemberObserved { value: true } =>
+          NpmLockNodeFormUnsupported {
+            key: path_key,
+            native_form: "link" as NonEmptyStr,
+          }
+        NpmBooleanMemberAbsent =>
+          npm_decode_registry_lock_node(
+            path_key: path_key,
+            key: key,
+            node: node,
+            resolved: resolved,
+            integrity: integrity,
+            version: version,
+          )
+        NpmBooleanMemberObserved { value: false } =>
+          npm_decode_registry_lock_node(
+            path_key: path_key,
+            key: key,
+            node: node,
+            resolved: resolved,
+            integrity: integrity,
+            version: version,
+          )
+      }
+    }
+  }
+}
+
+fn npm_decode_registry_lock_node(
+  path_key: NpmLockPathKey,
+  key: NonEmptyStr,
+  node: JsonValue,
+  resolved: String?,
+  integrity: String?,
+  version: String?,
+) -> NpmLockNodeDecode {
+  match resolved {
+    Present { value: loc } =>
+      if loc.starts_with(prefix: "git+") || loc.starts_with(prefix: "git://") {
         NpmLockNodeFormUnsupported {
           key: path_key,
-          native_form: "link" as NonEmptyStr,
+          native_form: "git" as NonEmptyStr,
+        }
+      } else if loc.starts_with(prefix: "file:") {
+        NpmLockNodeFormUnsupported {
+          key: path_key,
+          native_form: "file" as NonEmptyStr,
         }
       } else {
-        match resolved {
-          Present { value: loc } =>
-            if loc.starts_with(prefix: "git+") || loc.starts_with(prefix: "git://") {
-              NpmLockNodeFormUnsupported {
-                key: path_key,
-                native_form: "git" as NonEmptyStr,
-              }
-            } else if loc.starts_with(prefix: "file:") {
-              NpmLockNodeFormUnsupported {
-                key: path_key,
-                native_form: "file" as NonEmptyStr,
-              }
-            } else {
-              match version {
-                Present { value: ver } =>
-                  match integrity {
-                    Present { value: sri } =>
-                      match npm_registry_package_name(node: node, path_key: key) {
-                        Present { value: pkg_name } =>
-                          match npm_registry_integrity_from_decode(
-                            decoded: npm_decode_integrity(wire: sri),
-                          ) {
-                            NpmRegistryIntegrityAdmitted { integrity: expected } =>
-                              NpmLockNodeDecoded {
-                                selection: NpmRegistrySelected {
-                                  artifact: NpmRegistryArtifact {
-                                    package: PackageCoordinate {
-                                      ecosystem: NpmRegistry {
-                                        registry: "https://registry.npmjs.org/" as NonEmptyStr,
-                                      },
-                                      name: pkg_name,
-                                    },
-                                    version: ver as NonEmptyStr,
-                                    resolved: NpmResolvedRegistryArtifact {
-                                      locator: loc as NonEmptyStr,
-                                    },
-                                    expected_integrity: expected,
-                                  },
+        match version {
+          Present { value: ver } =>
+            match integrity {
+              Present { value: sri } =>
+                match npm_registry_package_name(node: node, path_key: key) {
+                  Present { value: pkg_name } =>
+                    match npm_registry_integrity_from_decode(
+                      decoded: npm_decode_integrity(wire: sri),
+                    ) {
+                      NpmRegistryIntegrityAdmitted { integrity: expected } =>
+                        NpmLockNodeDecoded {
+                          selection: NpmRegistrySelected {
+                            artifact: NpmRegistryArtifact {
+                              package: PackageCoordinate {
+                                ecosystem: NpmRegistry {
+                                  registry: "https://registry.npmjs.org/" as NonEmptyStr,
                                 },
-                              }
-                            NpmRegistryIntegrityWireRefused { cause: _ } =>
-                              NpmLockNodeFormUnsupported {
-                                key: path_key,
-                                native_form: "registry-integrity-wire-refused" as NonEmptyStr,
-                              }
-                          }
-                        Absent =>
-                          NpmLockNodeFormUnsupported {
-                            key: path_key,
-                            native_form: "registry-name-unresolvable" as NonEmptyStr,
-                          }
-                      }
-                    Absent =>
-                      NpmLockNodeFormUnsupported {
-                        key: path_key,
-                        native_form: "registry-missing-integrity" as NonEmptyStr,
-                      }
-                  }
-                Absent =>
-                  NpmLockNodeFormUnsupported {
-                    key: path_key,
-                    native_form: "registry-missing-version" as NonEmptyStr,
-                  }
-              }
+                                name: pkg_name,
+                              },
+                              version: ver as NonEmptyStr,
+                              resolved: NpmResolvedRegistryArtifact {
+                                locator: loc as NonEmptyStr,
+                              },
+                              expected_integrity: expected,
+                            },
+                          },
+                        }
+                      NpmRegistryIntegrityWireRefused { cause: _ } =>
+                        NpmLockNodeFormUnsupported {
+                          key: path_key,
+                          native_form: "registry-integrity-wire-refused" as NonEmptyStr,
+                        }
+                    }
+                  Absent =>
+                    NpmLockNodeFormUnsupported {
+                      key: path_key,
+                      native_form: "registry-name-unresolvable" as NonEmptyStr,
+                    }
+                }
+              Absent =>
+                NpmLockNodeFormUnsupported {
+                  key: path_key,
+                  native_form: "registry-missing-integrity" as NonEmptyStr,
+                }
             }
           Absent =>
             NpmLockNodeFormUnsupported {
               key: path_key,
-              native_form: "non-root-missing-resolved" as NonEmptyStr,
+              native_form: "registry-missing-version" as NonEmptyStr,
             }
         }
       }
-    }
+    Absent =>
+      NpmLockNodeFormUnsupported {
+        key: path_key,
+        native_form: "non-root-missing-resolved" as NonEmptyStr,
+      }
   }
 }
 
@@ -614,19 +815,30 @@ fn npm_decode_package_lock_text(text: String) -> NpmPackageLockParse {
                                     path_key: path_key,
                                     node: member.value,
                                   ) {
-                                    NpmLockNodeDecoded { selection } => {
-                                      let row = PackageLockNode {
-                                        key: path_key,
-                                        selection: selection,
-                                        metadata: npm_lock_node_metadata_from_json(
-                                          v: member.value,
-                                        ),
+                                    NpmLockNodeDecoded { selection } =>
+                                      match npm_lock_node_metadata_from_json(v: member.value) {
+                                        NpmLockNodeMetadataDecoded { metadata } => {
+                                          let row = PackageLockNode {
+                                            key: path_key,
+                                            selection: selection,
+                                            metadata: metadata,
+                                          }
+                                          NpmLockDecodeAcc {
+                                            accepted: acc.accepted |> list_push(row),
+                                            unsupported: acc.unsupported,
+                                          }
+                                        }
+                                        NpmLockNodeMetadataRefused { cause } =>
+                                          NpmLockDecodeAcc {
+                                            accepted: acc.accepted,
+                                            unsupported: acc.unsupported |> list_push(
+                                              NpmLockNodeFormUnsupportedCarrier {
+                                                key: path_key,
+                                                native_form: cause,
+                                              },
+                                            ),
+                                          }
                                       }
-                                      NpmLockDecodeAcc {
-                                        accepted: acc.accepted |> list_push(row),
-                                        unsupported: acc.unsupported,
-                                      }
-                                    }
                                     NpmLockNodeFormUnsupported { key, native_form } =>
                                       NpmLockDecodeAcc {
                                         accepted: acc.accepted,

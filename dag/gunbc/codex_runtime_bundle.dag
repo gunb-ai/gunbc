@@ -1,6 +1,6 @@
 module gunbc.codex_runtime_bundle
 
-import std.types { NonEmptyStr, FilePath, String }
+import std.types { NonEmptyStr, FilePath, String, List }
 import std.content_hash { ContentHash, Sha512Digest }
 import gunbc.package_delivery {
   CodexRuntimeBundle,
@@ -11,7 +11,7 @@ import gunbc.package_delivery {
   codex_runtime_manifest_path,
 }
 
-data codex_runtime_bundle_note: String = "Release-bundled Codex runtime identity. Built only via gunbc.package_delivery.materialize_codex_runtime_bundle (admit lock → acquire+SHA-512 the required artifact → npm ci --ignore-scripts → executable read-back). The deployed host performs no registry resolution."
+data codex_runtime_bundle_note: String = "Release-bundled Codex runtime identity. Built only via gunbc.package_delivery.materialize_codex_runtime_bundle (admit lock → admit every target-required archive → seed isolated npm cache → npm ci --offline --ignore-scripts → executable + platform-package read-back). The deployed host performs no registry resolution."
 
 fn codex_bundle_executable_path(bundle: CodexRuntimeBundle) -> FilePath {
   concat(bundle.root as String, concat("/", bundle.executable_rel as String)) as FilePath
@@ -21,6 +21,6 @@ fn codex_bundle_identity(bundle: CodexRuntimeBundle) -> ContentHash {
   bundle.identity
 }
 
-fn codex_bundle_required_digest(bundle: CodexRuntimeBundle) -> Sha512Digest {
-  bundle.required_digest
+fn codex_bundle_admitted_digests(bundle: CodexRuntimeBundle) -> List<Sha512Digest> {
+  bundle.admitted_digests
 }

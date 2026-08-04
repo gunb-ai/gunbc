@@ -123,6 +123,28 @@ service shell.Test {
   }
 }
 
+service shell.Uname {
+  operation KernelName {
+    input {}
+    output { name: String from "stdout", success: Bool from "exit_success" }
+    transport shell { argv: ["uname", "-s"] }
+    exit {
+      0 => Unit
+      nonzero => String "uname -s failed"
+    }
+  }
+
+  operation Machine {
+    input {}
+    output { machine: String from "stdout", success: Bool from "exit_success" }
+    transport shell { argv: ["uname", "-m"] }
+    exit {
+      0 => Unit
+      nonzero => String "uname -m failed"
+    }
+  }
+}
+
 service shell.Mktemp {
   operation Dir {
     input {}
