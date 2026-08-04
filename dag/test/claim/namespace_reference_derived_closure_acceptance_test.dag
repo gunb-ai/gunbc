@@ -1,6 +1,7 @@
 module test.claim.namespace_reference_derived_closure_acceptance
 
 import gunbc.namespace_reference_derived_closure_admission {
+  assess_reference_binding_observation,
   ReferenceDerivedClosureUnavailable,
   RepeatedMentionsCollapseDependency,
   UnrelatedLoadedFileExcluded,
@@ -11,33 +12,32 @@ import gunbc.namespace_reference_derived_closure_contract {
   reference_derived_closure_closing_contract_holds,
 }
 import v1.gunbc.namespace_reference_derived_closure_production_admissions {
-  observe_same_file_earlier_neighbour_visible,
-  observe_sibling_decision_branch_excluded,
-  observe_later_declaration_excluded,
-  observe_distinct_same_spelled_declarations_preserved,
+  namespace_structural_binding_observations_a_through_d,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, List }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data namespace_reference_derived_closure_acceptance_note: String = "THE DISCRIMINATING CLOSING VALIDATION for roadmap node namespace-reference-derived-closure. RED ON PURPOSE while clauses (e-f) remain unavailable. Composition lives inline in the witness test (operator ruling loyal-ram-550): the contract predicate is unchanged and takes admissions as a parameter; each lane owns ONE observe/supplier function for its clause(s); this witness imports both dag contract/admission types and v1 production observers. N3-A supplies structural clauses (a-d); clauses (e-f) remain literal Unavailable rows until N3-B/N3-C land their suppliers. Executes under the dag plus src/v1 envelope (known_red_probe_v1_envelope_roster) because the witness imports v1.*."
+data namespace_reference_derived_closure_acceptance_note: String = "THE DISCRIMINATING CLOSING VALIDATION for roadmap node namespace-reference-derived-closure. RED ON PURPOSE while clauses (e-f) remain unavailable. Composition lives inline in the witness test (operator ruling loyal-ram-550): the contract predicate is unchanged and takes admissions as a parameter; v1 production returns neutral ReferenceBindingObservation carriers only; this witness assesses at the seam. N3-A supplies structural clauses (a-d); clauses (e-f) remain literal Unavailable rows until N3-B/N3-C land their suppliers. Executes under the dag plus src/v1 envelope (known_red_probe_v1_envelope_roster) because the witness imports v1.*."
 
 test fn witness_namespace_reference_derived_closure_closing_contract_holds() -> Bool {
+  let structural_admissions =
+    namespace_structural_binding_observations_a_through_d()
+      |> map(observation => assess_reference_binding_observation(observation: observation))
   reference_derived_closure_closing_contract_holds(
-    admissions: [
-      observe_same_file_earlier_neighbour_visible(),
-      observe_sibling_decision_branch_excluded(),
-      observe_later_declaration_excluded(),
-      observe_distinct_same_spelled_declarations_preserved(),
-      ReferenceDerivedClosureUnavailable {
-        capability: RepeatedMentionsCollapseDependency,
-        trigger: P2aReferenceDependencyProjection7515,
-      },
-      ReferenceDerivedClosureUnavailable {
-        capability: UnrelatedLoadedFileExcluded,
-        trigger: P2aPoolIndependentDependencyProjection7515,
-      },
-    ],
+    admissions: concat(
+      structural_admissions,
+      [
+        ReferenceDerivedClosureUnavailable {
+          capability: RepeatedMentionsCollapseDependency,
+          trigger: P2aReferenceDependencyProjection7515,
+        },
+        ReferenceDerivedClosureUnavailable {
+          capability: UnrelatedLoadedFileExcluded,
+          trigger: P2aPoolIndependentDependencyProjection7515,
+        },
+      ],
+    ),
   )
 }

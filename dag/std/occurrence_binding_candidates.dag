@@ -1110,39 +1110,6 @@ fn resolve_reference_via_structural_candidates(
   }
 }
 
-data resolve_reference_binding_outcome_via_structural_candidates_note: String = "P2a outcome surface for namespace-reference-derived-closure production admissions: same candidate population and P1 fold as resolve_reference_binding_via_structural_candidates, but returns OccurrenceReferenceBindingOutcome for assess_reference_derived_closure_observation. Index-build refusals other than transport validation collapse to OccurrenceReferenceBindingTransportRefused so a failed production path cannot masquerade as Established."
-
-fn resolve_reference_binding_outcome_via_structural_candidates(
-  transport: OccurrenceTransport,
-  inputs: OccurrenceBindingCandidateInputs,
-  reference: ReferenceOccurrence,
-) -> OccurrenceReferenceBindingOutcome {
-  match occurrence_candidate_index_build(transport: transport, inputs: inputs) {
-    OccurrenceCandidateIndexReady { index: index } =>
-      resolve_reference_occurrence_binding(
-        transport: transport,
-        occurrence: reference.occurrence,
-        supplied_candidates: candidate_occurrence_ids_for_reference(
-          index: index,
-          reference: reference,
-        ),
-      )
-    OccurrenceCandidateIndexTransportRefused { refusal: refusal } =>
-      OccurrenceReferenceBindingTransportRefused { refusal: refusal }
-    _ =>
-      match occurrence_transport_validate(transport: transport) {
-        OccurrenceTransportRefused { refusal: refusal } =>
-          OccurrenceReferenceBindingTransportRefused { refusal: refusal }
-        OccurrenceTransportValidated { transport: _ } =>
-          OccurrenceReferenceBindingTransportRefused {
-            refusal: UnknownOccurrenceIdentity {
-              occurrence: reference.occurrence,
-            },
-          }
-      }
-  }
-}
-
 fn resolve_reference_binding_via_structural_candidates(
   transport: OccurrenceTransport,
   inputs: OccurrenceBindingCandidateInputs,

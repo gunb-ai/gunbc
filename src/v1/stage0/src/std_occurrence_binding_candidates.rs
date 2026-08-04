@@ -1474,57 +1474,6 @@ pub fn resolve_reference_via_structural_candidates(
     }
 }
 
-pub fn resolve_reference_binding_outcome_via_structural_candidates_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "P2a outcome surface for namespace-reference-derived-closure production admissions: same candidate population and P1 fold as resolve_reference_binding_via_structural_candidates, but returns OccurrenceReferenceBindingOutcome for assess_reference_derived_closure_observation. Index-build refusals other than transport validation collapse to OccurrenceReferenceBindingTransportRefused so a failed production path cannot masquerade as Established.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn resolve_reference_binding_outcome_via_structural_candidates(
-    transport: Rc<OccurrenceTransport>,
-    inputs: Rc<OccurrenceBindingCandidateInputs>,
-    reference: Rc<ReferenceOccurrence>,
-) -> Rc<OccurrenceReferenceBindingOutcome> {
-    match (*occurrence_candidate_index_build(transport.clone(), inputs.clone())).clone() {
-        OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexReady { index: index, .. } => {
-            resolve_reference_occurrence_binding(
-                transport.clone(),
-                reference.occurrence.clone(),
-                candidate_occurrence_ids_for_reference(index.clone(), reference.clone()),
-            )
-        }
-        OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexTransportRefused {
-            refusal: refusal,
-            ..
-        } => Rc::new(
-            OccurrenceReferenceBindingOutcome::OccurrenceReferenceBindingTransportRefused {
-                refusal: refusal.clone(),
-            },
-        ),
-        _ => match (*occurrence_transport_validate(transport.clone())).clone() {
-            OccurrenceTransportValidation::OccurrenceTransportRefused {
-                refusal: refusal, ..
-            } => Rc::new(
-                OccurrenceReferenceBindingOutcome::OccurrenceReferenceBindingTransportRefused {
-                    refusal: refusal.clone(),
-                },
-            ),
-            OccurrenceTransportValidation::OccurrenceTransportValidated {
-                transport: _, ..
-            } => Rc::new(
-                OccurrenceReferenceBindingOutcome::OccurrenceReferenceBindingTransportRefused {
-                    refusal: Rc::new(OccurrenceTransportRefusal::UnknownOccurrenceIdentity {
-                        occurrence: reference.occurrence.clone(),
-                    }),
-                },
-            ),
-        },
-    }
-}
-
 pub fn resolve_reference_binding_via_structural_candidates(
     transport: Rc<OccurrenceTransport>,
     inputs: Rc<OccurrenceBindingCandidateInputs>,
