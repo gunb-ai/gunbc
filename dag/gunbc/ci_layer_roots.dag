@@ -1125,33 +1125,15 @@ data falsifier_substrate_long_lane_rows: List<SubstrateLongLaneRow> = [
     dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery"
   },
   SubstrateLongLaneRow {
-    entry: "src/v2/test/claim/long/production_qualification_origin_census_witness_test.dag",
+    entry: "src/v2/test/claim/long/production_qualification_origin_probe_witness_test.dag",
     function: "witness_production_qualification_origin_probe_admission_holds",
     reason: "production_qualification_origin_probe_admission_holds() walks fn_arrow_decl_facts_live() and exceeded 5000ms fast-lane budget on PR CI (d3fb2fed): eval-budget routing only — planted closed-subject witnesses stay per-PR discovery",
     dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured cold run and re-enrolls per-PR discovery"
   },
   SubstrateLongLaneRow {
-    entry: "src/v2/test/claim/long/production_qualification_origin_census_witness_test.dag",
+    entry: "src/v2/test/claim/long/production_qualification_origin_probe_witness_test.dag",
     function: "witness_live_scope_fixture_origin_count_matches_policy_oracle",
     reason: "live-scope policy-oracle count walks fn_arrow_decl_facts_live() via known_fixture_origin_mint_surface_count_in_scope() and exceeded 5000ms fast-lane budget on PR CI (99330ad0): eval-budget routing only",
-    dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured cold run and re-enrolls per-PR discovery"
-  },
-  SubstrateLongLaneRow {
-    entry: "src/v2/test/claim/long/production_qualification_origin_census_witness_test.dag",
-    function: "witness_live_structural_fixture_body_mint_skeleton_visible_reds",
-    reason: "structural_red_control_live_body_skeleton_visible() walks fn_arrow_decl_facts_live(); bundled with other production_qualification_origin_census live probes in long lane (eval-budget routing only)",
-    dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured cold run and re-enrolls per-PR discovery"
-  },
-  SubstrateLongLaneRow {
-    entry: "src/v2/test/claim/long/production_qualification_origin_census_witness_test.dag",
-    function: "witness_ingest_mint_surface_requires_call_occurrence_frontier_reds",
-    reason: "ingest_mint_surface_discovered_in_live_scope() walks derived_production_qualification_mint_sites_live(); bundled with other production_qualification_origin_census live probes in long lane (eval-budget routing only)",
-    dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured cold run and re-enrolls per-PR discovery"
-  },
-  SubstrateLongLaneRow {
-    entry: "src/v2/test/claim/long/production_qualification_origin_census_witness_test.dag",
-    function: "witness_direct_door_smoke_requires_closure_or_call_occurrence_frontier_reds",
-    reason: "derived_production_qualification_mint_sites_live() walk; bundled with other production_qualification_origin_census live probes in long lane (eval-budget routing only)",
     dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured cold run and re-enrolls per-PR discovery"
   },
   SubstrateLongLaneRow {

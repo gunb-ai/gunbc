@@ -1,20 +1,23 @@
-module v2.test.long.production_qualification_origin_census_witness
+module v2.test.long.production_qualification_origin_probe_witness
 
-import v2.lens.production_qualification_origin_census {
+import v2.lens.production_qualification_origin_probe {
   derived_production_qualification_mint_sites_live,
   ingest_mint_surface_discovered_in_live_scope,
   known_fixture_origin_mint_surface_count_in_scope,
   production_qualification_live_scope_fixture_origin_oracle_count,
   production_qualification_origin_probe_admission_holds,
-  production_qualification_repository_wide_origin_census_closed,
-  structural_red_control_live_body_skeleton_visible
+  production_qualification_repository_wide_origin_probe_closed,
+  structural_red_control_live_fixture_mint_site_discovered
+}
+import v2.test.claim.self_host.production_qualification_origin_probe_structural_fixture {
+  structural_red_control_mint_site_qualified_name
 }
 import v2.std.algebra { any }
 import v2.std.integer { int_eq }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 
-data production_qualification_origin_census_long_witness_note: String = "LONG lane (operator 5s rule): witnesses that walk fn_arrow_decl_facts_live() or derived_production_qualification_mint_sites_live() exceed per-PR discovery budget. Enrolled on falsifier_substrate_long_lane_rows (nightly falsifier batch 6). Planted closed-subject witnesses stay in self_host/. Local recipe: claim_batch --source-root dag --source-root src/v2 --entry src/v2/test/claim/long/production_qualification_origin_census_witness_test.dag --functions <csv>"
+data production_qualification_origin_probe_long_witness_note: String = "LONG lane (operator 5s rule): witnesses that walk fn_arrow_decl_facts_live() or derived_production_qualification_mint_sites_live() exceed per-PR discovery budget. GREEN witnesses only on falsifier_substrate_long_lane_rows (nightly falsifier batch 6). Expecting-RED frontier witnesses are explicit_witness_admission only — never dual-enrolled in ordinary long projection. Planted closed-subject witnesses stay in self_host/. Local recipe: claim_batch --source-root dag --source-root src/v2 --entry src/v2/test/claim/long/production_qualification_origin_probe_witness_test.dag --functions <csv>"
 
 test fn witness_production_qualification_origin_probe_admission_holds() -> Bool {
   production_qualification_origin_probe_admission_holds()
@@ -27,19 +30,21 @@ test fn witness_live_scope_fixture_origin_count_matches_policy_oracle() -> Bool 
   )
 }
 
-data witness_live_structural_fixture_body_mint_skeleton_visible_red_note: String = "Admitted RED: G2 fn-arrow marshal currently yields an empty skeleton for the live structural_red_control_mint_site_probe body (match/let mint call); classifier cannot discover the real fn until call-occurrence derivation or marshal exposes callee atoms."
+data witness_live_structural_fixture_mint_site_discovered_red_note: String = "Admitted RED: G2 fn-arrow marshal currently yields an empty skeleton for the live structural_red_control_mint_site_probe body (match/let mint call); classifier cannot discover the exact FixtureDerived SourceProduced row until call-occurrence derivation or marshal exposes callee atoms."
 
-test fn witness_live_structural_fixture_body_mint_skeleton_visible_reds() -> Bool {
-  structural_red_control_live_body_skeleton_visible()
+test fn witness_live_structural_fixture_mint_site_discovered_reds() -> Bool {
+  structural_red_control_live_fixture_mint_site_discovered(
+    live_qualified_name: structural_red_control_mint_site_qualified_name
+  )
 }
 
-data witness_repository_wide_census_requires_call_occurrence_frontier_red_note: String = "Admitted RED (wise-ram-22): repository-wide production-qualification origin census is not closed — fn_arrow_decl_substrate_is_whole_tree alone is insufficient. Greening requires production_qualification_call_occurrence_derivation_landed (call-reachable classification on effect_reach substrate)."
+data witness_repository_wide_origin_probe_requires_call_occurrence_frontier_red_note: String = "Admitted RED (wise-ram-22): repository-wide production-qualification origin probe is not closed — fn_arrow_decl_facts_live() is entry-closure scoped. Greening requires production_qualification_call_occurrence_derivation_landed (call-reachable classification on effect_reach substrate)."
 
-test fn witness_repository_wide_census_requires_call_occurrence_frontier_reds() -> Bool {
-  production_qualification_repository_wide_origin_census_closed()
+test fn witness_repository_wide_origin_probe_requires_call_occurrence_frontier_reds() -> Bool {
+  production_qualification_repository_wide_origin_probe_closed()
 }
 
-data witness_ingest_mint_surface_requires_call_occurrence_frontier_red_note: String = "Admitted RED: generate_provenanced_rust_candidate_from_ingest calls mint_provenanced_rust_artifact at fn-arrow skeleton grain; G2 marshal currently prunes that ExprCall — witness greens when structural census discovers a SourceProduced row on the ingest entry via mint_provenanced_rust_artifact (not mint_written_provenanced_rust_artifact, which ingest does not call)."
+data witness_ingest_mint_surface_requires_call_occurrence_frontier_red_note: String = "Admitted RED: generate_provenanced_rust_candidate_from_ingest calls mint_provenanced_rust_artifact at fn-arrow skeleton grain; G2 marshal currently prunes that ExprCall — witness greens when structural probe discovers a SourceProduced row on the ingest entry via mint_provenanced_rust_artifact."
 
 test fn witness_ingest_mint_surface_requires_call_occurrence_frontier_reds() -> Bool {
   ingest_mint_surface_discovered_in_live_scope()
