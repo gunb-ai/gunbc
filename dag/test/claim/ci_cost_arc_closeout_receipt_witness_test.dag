@@ -27,8 +27,7 @@ test fn witness_selection_ratio_identity() -> Bool {
 }
 
 test fn witness_resolve_dominates_eval() -> Bool {
-  millisecond_count(m: harvested_resolve_wall())
-    > millisecond_count(m: harvested_eval_wall()) * 5
+  millisecond_count(m: harvested_resolve_wall()) > millisecond_count(m: harvested_eval_wall()) * 5
 }
 
 test fn witness_cold_baseline_is_197130() -> Bool {
