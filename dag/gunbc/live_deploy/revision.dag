@@ -13,14 +13,12 @@ data deploy_ordering_is_not_the_queues_job_note: String = "THE QUEUE KNOWS WHICH
 
 data deploy_monotonic_join_note: String = "THE TRANSITION IS A JOIN ON THE ANCESTRY ORDER: next_active = active ⊔ candidate. That is the whole ordering law, and the three algebraic properties it buys are why order-independence is a theorem here rather than a hope — on a linear main history the transition is IDEMPOTENT (retrying one candidate changes nothing), ORDER-INDEPENDENT (executing B,A,C or C,A,B both end at C), and MONOTONIC (an older candidate cannot replace a newer active revision). The permutation acceptance test asserts exactly that: every permutation of three ordered revisions ends active at the newest."
 
-// ---------------------------------------------------------------------------
-// The target
-// ---------------------------------------------------------------------------
-
 data deploy_target_is_the_public_service_note: String = "THE TARGET IS THE PUBLIC DEPLOYMENT, NOT ONE OF ITS ALTERNATING RUNTIME UNITS. The previous carrier named a host, a destination directory and a single service unit `gunbc-dashboard` — a unit that does not exist on the machine, on a model that predates blue/green. Under blue/green there is no one unit to name: production currently runs `gunbc-roadmap.service`, the green slot carries its own derived unit and tree-sync names, the two slots share one public root Tailscale route, and a cutover mutates an idle slot, the route, and the retiring runtime.\\n\\nSo the identity is the public service with its two slots, and everything else DERIVES from it: the scheduler queue group, the host-side exclusive lease, the slot specifications, the root route, and the active-revision observation. Deriving them from one target is what makes 'same target' mean 'same bytes at risk' — a job name is a CI-side label, so renaming the job would silently mint a different lock while the same host resources are still being mutated, and naming one slot's unit would mean the lock alternates with the cutover it is supposed to serialize."
 
-type DeploymentTarget
-  = Srv1Dashboard
+data deploy_target_single_variant_note: String = "One variant, declared with the leading-pipe form so it is a CLOSED COPRODUCT rather than a type alias. `type DeploymentTarget = Srv1Dashboard` parses as an alias to an undeclared type, which is why the sum form is spelled this way (the sole corpus precedent is extdeps.crypto.hash HashAlgorithm). The distinction is load-bearing: every derivation below matches on the target, so a second deployment target added here fails to compile until it states its own queue group, lease path, and slots — an alias would have silently accepted anything."
+
+type DeploymentTarget =
+  | Srv1Dashboard
 
 fn deploy_target_key(target: DeploymentTarget) -> String {
   match target {
@@ -52,15 +50,11 @@ fn deploy_target_lease_path(target: DeploymentTarget) -> FilePath {
   concat(concat("/var/lib/gunbc/deploy-lease/", deploy_target_key(target: target)), ".lock") as FilePath
 }
 
-data deploy_slot_revision_receipt_note: String = "THE ACTIVE REVISION IS READ FROM THE ROUTED SLOT, which is why the receipt lives inside each slot rather than in one global file keyed by a service unit. Under blue/green a crash can land between preparing a slot, flipping the route, and updating a global marker, so a single marker can describe a tree that is not the one being served. Per-slot receipts make the PUBLIC ROUTE select the authority: whichever slot the route points at is by definition the one serving the public, and its receipt is the revision the public is getting. A half-prepared idle slot cannot mislead the next run, because nothing reads the idle slot's receipt to decide.\\n\\nThe receipt is written as part of slot preparation and is immutable for that preparation — readiness must establish that the running slot corresponds to this identity, so a slot whose receipt and served surface disagree is not ready rather than silently authoritative."
+data deploy_slot_revision_receipt_note: String = "THE ACTIVE REVISION IS READ FROM THE ROUTED SLOT, so the receipt is keyed PER SLOT rather than being one global file keyed by a service unit. Under blue/green a crash can land between preparing a slot, flipping the route, and updating a global marker, so a single marker can describe a tree that is not the one being served. Per-slot receipts make the PUBLIC ROUTE select the authority: whichever slot the route points at is by definition the one serving the public, and its receipt is the revision the public is getting. A half-prepared idle slot cannot mislead the next run, because nothing reads the idle slot's receipt to decide.\\n\\nIT LIVES OUTSIDE THE RSYNCED TREE, and that placement is load-bearing rather than tidy. A marker inside repo_root is destroyed by the very `rsync --delete` whose outcome it describes, so after a partial or interrupted sync the record would describe a tree that was never fully written — the state the guard exists to detect becomes the state it cannot see. Keeping it beside the destination means it is written ONLY after the slot has restarted and its surface has been read back, so a crash mid-deploy leaves the previous revision recorded and the next run correctly classifies the incomplete slot as still-at-the-old-revision rather than trusting a marker a failed run had already advanced.\\n\\n🟡 dissolve-on: the served process publishing the immutable identity it was launched with, so the active revision is read from the RUNNING process rather than from a file beside it. A file states what the last successful writer intended; only the process can state what is actually bound. Until then readiness's existing surface-digest equality is what ties the receipt to the running graph, and this file is the weaker of the two facts."
 
 fn deploy_slot_revision_receipt_path(slot: DeploymentSpec) -> FilePath {
-  concat(concat(slot.names.unit_name as String, "."), "deployed-revision") as FilePath
+  join(["/var/lib/gunbc/deploy-revision/", slot.names.unit_name as String, ".sha"], "") as FilePath
 }
-
-// ---------------------------------------------------------------------------
-// The observation
-// ---------------------------------------------------------------------------
 
 data deploy_revision_probe_note: String = "The relation is OBSERVED, not inferred from timestamps or run numbers. `git merge-base --is-ancestor A B` answers it in one exit code — 0 for yes, 1 for no, 128 for a bad object — and the exit-1 case is a legitimate ANSWER rather than an error, which is precisely what lets UnrelatedHistories and RelationUnverifiable stay separate variants. Two probes are needed because a single direction cannot distinguish 'candidate is older' from 'unrelated': is_ancestor(deployed, candidate) and is_ancestor(candidate, deployed) together give (true,true)=same, (true,false)=advance, (false,true)=superseded, (false,false)=unrelated. Equality is decided by SHA comparison BEFORE any probe, because it is the common no-op case and deserves neither a subprocess nor a chance to misclassify. Timestamps are explicitly NOT an input: wall-clock ordering of CI runs is exactly the signal that is already inverted, and commit dates are attacker- and rebase-controlled."
 
@@ -89,10 +83,6 @@ fn deploy_revision_relation_from_probes(
     }
   }
 }
-
-// ---------------------------------------------------------------------------
-// The decision
-// ---------------------------------------------------------------------------
 
 data deploy_decision_is_one_value_note: String = "ONE VALUE, NOT THREE PREDICATES. The previous shape exposed deploy_revision_proceeds / _terminal_success / _refuses as three independent Booleans over the verdict and left every caller to compose them correctly — which is the composition that never happened, so the module sat inert while the actuator mutated unguarded. A caller that reads only `proceeds` cannot distinguish 'nothing to do' from 'refuse', and nothing forces it to ask the other two.\\n\\nSo the decision is a single value whose arms ARE the three dispositions, and mutation requires the Advance arm's payload. Keep and Refuse differ in exit code and in what they emit, never in what they mutate: both perform zero deployment effects."
 

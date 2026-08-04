@@ -1,34 +1,155 @@
 module test.claim.deploy_revision_witness
 
 import gunbc.live_deploy.revision {
-  DeployTargetId,
+  DeploymentTarget,
+  Srv1Dashboard,
   DeployRevisionRelation,
   SameRevision,
   DeployedIsAncestor,
   CandidateIsAncestor,
   UnrelatedHistories,
   RelationUnverifiable,
-  DeployRevisionVerdict,
-  RevisionAlreadyConverged,
-  RevisionAdvance,
-  RevisionSupersededNoOp,
-  RevisionRefused,
-  classify_deploy_revision,
-  deploy_revision_proceeds,
-  deploy_revision_terminal_success,
-  deploy_revision_refuses,
+  DeployDecision,
+  Keep,
+  Advance,
+  Refuse,
+  KeepReason,
+  AlreadyActive,
+  CandidateSuperseded,
+  UnrelatedRevisionHistories,
+  RevisionRelationUnverifiable,
+  decide_deploy_revision,
   deploy_revision_relation_from_probes,
-  deploy_revision_state_path,
-  deploy_target_mutex_group,
-  srv1_dashboard_target,
+  deploy_slot_revision_receipt_path,
+  deploy_target_queue_group,
+  deploy_target_lease_path,
+  deploy_target_blue_slot,
+  deploy_target_green_slot,
 }
-import std.types { NonEmptyStr, CommitSha }
+import std.types { NonEmptyStr, CommitSha, String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data sha_older: CommitSha = "1111111111111111111111111111111111111111"
-data sha_newer: CommitSha = "2222222222222222222222222222222222222222"
+data permutation_acceptance_note: String = "THE ORDERING LAW, ASSERTED AS AN ACCEPTANCE RATHER THAN AS A SPELLING. The witness this file replaces pinned the emitted concurrency YAML substring — a test that greens in the exact production state that cancelled the newest candidate, because it verified that serialization TEXT exists and said nothing about monotonicity, candidate retention, or final convergence. That is the wrong RED boundary for the property, which is 'cutovers cannot overlap AND the final state is the newest admitted revision'.\\n\\nSo the law is executed instead: for revisions A < B < C, EVERY permutation of [A,B,C] is folded against the same initial active state and the final active revision must be C. That single assertion covers idempotence, order-independence and monotonicity at once, and it fails if any arm mutates when it should not."
+
+data sha_a: CommitSha = "1111111111111111111111111111111111111111"
+data sha_b: CommitSha = "2222222222222222222222222222222222222222"
+data sha_c: CommitSha = "3333333333333333333333333333333333333333"
+data sha_unrelated: CommitSha = "9999999999999999999999999999999999999999"
+
+data linear_history: List<CommitSha> = [sha_a, sha_b, sha_c]
+
+fn revision_index(sha: CommitSha) -> Int {
+  if sha == sha_a { 0 } else { if sha == sha_b { 1 } else { if sha == sha_c { 2 } else { 0 - 1 } } }
+}
+
+data linear_relation_note: String = "The ancestry ORACLE for the fixture is a position in a declared linear history, not a call to git. That keeps the acceptance hermetic while exercising the real decision function: deploy_revision_relation_from_probes takes the two probe Booleans, so the fixture supplies what `git merge-base --is-ancestor` would answer for a linear main. A revision outside the declared history yields index -1 and is ancestor of nothing in either direction, which is exactly the UnrelatedHistories observation."
+
+fn linear_is_ancestor(earlier: CommitSha, later: CommitSha) -> Bool {
+  let i = revision_index(sha: earlier)
+  let j = revision_index(sha: later)
+  i >= 0 && j >= 0 && i <= j
+}
+
+fn linear_relation(deployed: CommitSha, candidate: CommitSha) -> DeployRevisionRelation {
+  deploy_revision_relation_from_probes(
+    deployed: deployed,
+    candidate: candidate,
+    deployed_is_ancestor_of_candidate: linear_is_ancestor(earlier: deployed, later: candidate),
+    candidate_is_ancestor_of_deployed: linear_is_ancestor(earlier: candidate, later: deployed),
+  )
+}
+
+data step_is_the_join_note: String = "One step of `next_active = active ⊔ candidate`. ONLY the Advance arm moves the active revision — Keep and Refuse return the active revision unchanged, which is the executable statement of 'performs zero deployment effects'. The admission payload is destructured here rather than the candidate being re-read from the caller's scope, so the step advances to the revision the DECISION admitted, never to whatever the caller happened to be holding."
+
+fn deploy_step(active: CommitSha, candidate: CommitSha) -> CommitSha {
+  match decide_deploy_revision(
+    deployed: active,
+    candidate: candidate,
+    relation: linear_relation(deployed: active, candidate: candidate),
+  ) {
+    Advance { admission: adm } => adm.to
+    Keep { reason: _ } => active
+    Refuse { cause: _ } => active
+  }
+}
+
+fn deploy_fold(initial: CommitSha, candidates: List<CommitSha>) -> CommitSha {
+  fold(candidates, initial, (acc, c) => deploy_step(active: acc, candidate: c))
+}
+
+data all_permutations: List<List<CommitSha>> = [
+  [sha_a, sha_b, sha_c],
+  [sha_a, sha_c, sha_b],
+  [sha_b, sha_a, sha_c],
+  [sha_b, sha_c, sha_a],
+  [sha_c, sha_a, sha_b],
+  [sha_c, sha_b, sha_a],
+]
+
+test fn every_permutation_converges_to_the_newest_revision() -> Bool {
+  all(all_permutations, p => deploy_fold(initial: sha_a, candidates: p) == sha_c)
+}
+
+test fn permutation_fixture_is_non_degenerate() -> Bool {
+  count(all_permutations) == 6
+    && all(all_permutations, p => count(p) == 3)
+    && sha_a != sha_b && sha_b != sha_c && sha_a != sha_c
+}
+
+data red_control_note: String = "THE DISCRIMINATING RED. If the decision were not monotonic — if a superseded candidate advanced instead of keeping — the permutation law would break, and this control proves the fixture can express that break. Folding the newest revision first and then an OLDER one must NOT move the active revision backward; a mutation-on-superseded regression turns this red while the permutation test above would also fail, so the two fail together rather than one masking the other."
+
+test fn an_older_candidate_after_a_newer_active_does_not_move_the_active_revision() -> Bool {
+  deploy_step(active: sha_c, candidate: sha_a) == sha_c
+    && deploy_step(active: sha_c, candidate: sha_b) == sha_c
+}
+
+test fn an_equal_candidate_performs_no_mutation() -> Bool {
+  deploy_step(active: sha_b, candidate: sha_b) == sha_b
+}
+
+test fn a_forward_candidate_advances_to_exactly_that_candidate() -> Bool {
+  deploy_step(active: sha_a, candidate: sha_b) == sha_b
+    && deploy_step(active: sha_a, candidate: sha_c) == sha_c
+}
+
+test fn deploying_the_same_candidate_twice_is_idempotent() -> Bool {
+  let once = deploy_step(active: sha_a, candidate: sha_b)
+  deploy_step(active: once, candidate: sha_b) == once
+}
+
+test fn an_unrelated_revision_refuses_and_mutates_nothing() -> Bool {
+  match decide_deploy_revision(
+    deployed: sha_b,
+    candidate: sha_unrelated,
+    relation: linear_relation(deployed: sha_b, candidate: sha_unrelated),
+  ) {
+    Refuse { cause: c } => match c {
+      UnrelatedRevisionHistories => deploy_step(active: sha_b, candidate: sha_unrelated) == sha_b
+      RevisionRelationUnverifiable { cause: _ } => false
+    }
+    Keep { reason: _ } => false
+    Advance { admission: _ } => false
+  }
+}
+
+test fn an_unverifiable_relation_refuses_rather_than_assuming_newer() -> Bool {
+  match decide_deploy_revision(
+    deployed: sha_a,
+    candidate: sha_c,
+    relation: RelationUnverifiable { cause: "ancestry probe could not answer" as NonEmptyStr },
+  ) {
+    Refuse { cause: c } => match c {
+      RevisionRelationUnverifiable { cause: why } => why == ("ancestry probe could not answer" as NonEmptyStr)
+      UnrelatedRevisionHistories => false
+    }
+    Keep { reason: _ } => false
+    Advance { admission: _ } => false
+  }
+}
+
+data decision_totality_note: String = "Every observation lands in exactly one disposition, asserted rather than trusted. This is what makes the three-way split real: a new relation variant fails to compile until it states which disposition it belongs to, and the counts below fail if two arms ever collapse into one."
 
 data all_relations: List<DeployRevisionRelation> = [
   SameRevision,
@@ -38,99 +159,90 @@ data all_relations: List<DeployRevisionRelation> = [
   RelationUnverifiable { cause: "probe failed" as NonEmptyStr },
 ]
 
-test fn deployed_ancestor_of_candidate_advances() -> Bool {
-  match classify_deploy_revision(relation: DeployedIsAncestor) {
-    RevisionAdvance => true
-    _ => false
+fn decision_is_advance(d: DeployDecision) -> Bool {
+  match d {
+    Advance { admission: _ } => true
+    Keep { reason: _ } => false
+    Refuse { cause: _ } => false
   }
 }
 
-test fn same_revision_is_already_converged() -> Bool {
-  match classify_deploy_revision(relation: SameRevision) {
-    RevisionAlreadyConverged => true
-    _ => false
+fn decision_is_keep(d: DeployDecision) -> Bool {
+  match d {
+    Keep { reason: _ } => true
+    Advance { admission: _ } => false
+    Refuse { cause: _ } => false
   }
 }
 
-test fn candidate_ancestor_of_deployed_is_superseded_noop() -> Bool {
-  match classify_deploy_revision(relation: CandidateIsAncestor) {
-    RevisionSupersededNoOp => true
-    _ => false
+fn decision_is_refuse(d: DeployDecision) -> Bool {
+  match d {
+    Refuse { cause: _ } => true
+    Advance { admission: _ } => false
+    Keep { reason: _ } => false
   }
 }
 
-test fn superseded_run_is_success_not_a_refusal() -> Bool {
-  let v = classify_deploy_revision(relation: CandidateIsAncestor)
-  deploy_revision_terminal_success(verdict: v)
-    && !deploy_revision_refuses(verdict: v)
-    && !deploy_revision_proceeds(verdict: v)
-}
-
-test fn unrelated_histories_refuse() -> Bool {
-  let v = classify_deploy_revision(relation: UnrelatedHistories)
-  deploy_revision_refuses(verdict: v)
-    && !deploy_revision_proceeds(verdict: v)
-    && !deploy_revision_terminal_success(verdict: v)
-}
-
-test fn unverifiable_relation_refuses_and_keeps_its_cause() -> Bool {
-  let why = "no persisted revision on host" as NonEmptyStr
-  match classify_deploy_revision(relation: RelationUnverifiable { cause: why }) {
-    RevisionRefused { cause: c } => c == why
-    _ => false
-  }
-}
-
-test fn only_advance_performs_the_mutation() -> Bool {
-  fold(all_relations, init: true, f: fn(ok, rel) {
-    let v = classify_deploy_revision(relation: rel)
-    ok && (deploy_revision_proceeds(verdict: v) == match rel {
-      DeployedIsAncestor => true
-      _ => false
-    })
-  })
+test fn exactly_one_relation_advances_and_two_refuse() -> Bool {
+  let ds = map(all_relations, r => decide_deploy_revision(deployed: sha_a, candidate: sha_b, relation: r))
+  count(filter(ds, d => decision_is_advance(d: d))) == 1
+    && count(filter(ds, d => decision_is_keep(d: d))) == 2
+    && count(filter(ds, d => decision_is_refuse(d: d))) == 2
 }
 
 test fn every_relation_lands_in_exactly_one_disposition() -> Bool {
-  fold(all_relations, init: true, f: fn(ok, rel) {
-    let v = classify_deploy_revision(relation: rel)
-    let p = deploy_revision_proceeds(verdict: v)
-    let t = deploy_revision_terminal_success(verdict: v)
-    let r = deploy_revision_refuses(verdict: v)
-    ok && ((p && !t && !r) || (!p && t && !r) || (!p && !t && r))
+  all(all_relations, r => {
+    let d = decide_deploy_revision(deployed: sha_a, candidate: sha_b, relation: r)
+    let n = count(filter([decision_is_advance(d: d), decision_is_keep(d: d), decision_is_refuse(d: d)], b => b))
+    n == 1
   })
 }
 
-test fn probe_pair_folds_to_the_four_cases() -> Bool {
+test fn the_advance_admission_carries_both_endpoints() -> Bool {
+  match decide_deploy_revision(deployed: sha_a, candidate: sha_c, relation: DeployedIsAncestor) {
+    Advance { admission: adm } => adm.from == sha_a && adm.to == sha_c
+    Keep { reason: _ } => false
+    Refuse { cause: _ } => false
+  }
+}
+
+test fn probe_pair_folds_to_the_four_observations() -> Bool {
   match deploy_revision_relation_from_probes(
-    deployed: sha_older, candidate: sha_newer,
-    deployed_is_ancestor_of_candidate: true, candidate_is_ancestor_of_deployed: false
-  ) { DeployedIsAncestor => true  _ => false }
-    && match deploy_revision_relation_from_probes(
-      deployed: sha_newer, candidate: sha_older,
-      deployed_is_ancestor_of_candidate: false, candidate_is_ancestor_of_deployed: true
-    ) { CandidateIsAncestor => true  _ => false }
-    && match deploy_revision_relation_from_probes(
-      deployed: sha_older, candidate: sha_newer,
-      deployed_is_ancestor_of_candidate: false, candidate_is_ancestor_of_deployed: false
-    ) { UnrelatedHistories => true  _ => false }
+    deployed: sha_a, candidate: sha_b,
+    deployed_is_ancestor_of_candidate: true, candidate_is_ancestor_of_deployed: false,
+  ) { DeployedIsAncestor => true, _ => false }
+  && match deploy_revision_relation_from_probes(
+    deployed: sha_b, candidate: sha_a,
+    deployed_is_ancestor_of_candidate: false, candidate_is_ancestor_of_deployed: true,
+  ) { CandidateIsAncestor => true, _ => false }
+  && match deploy_revision_relation_from_probes(
+    deployed: sha_a, candidate: sha_unrelated,
+    deployed_is_ancestor_of_candidate: false, candidate_is_ancestor_of_deployed: false,
+  ) { UnrelatedHistories => true, _ => false }
+  && match deploy_revision_relation_from_probes(
+    deployed: sha_a, candidate: sha_a,
+    deployed_is_ancestor_of_candidate: true, candidate_is_ancestor_of_deployed: true,
+  ) { SameRevision => true, _ => false }
 }
 
-test fn equal_shas_short_circuit_before_the_probes() -> Bool {
-  match deploy_revision_relation_from_probes(
-    deployed: sha_newer, candidate: sha_newer,
-    deployed_is_ancestor_of_candidate: false, candidate_is_ancestor_of_deployed: false
-  ) { SameRevision => true  _ => false }
+data target_derivation_note: String = "The target derivations are asserted at identity grain rather than by spelling a literal, so the queue group and lease are proven to come from ONE target. The blue and green slots must be distinct — a target whose two slots collapsed to one unit would serialize against nothing and would make the cutover restart the slot it is replacing."
+
+test fn the_queue_group_and_lease_derive_from_the_target() -> Bool {
+  deploy_target_queue_group(target: Srv1Dashboard) == "gunbc-deploy-srv1-dashboard"
+    && string_contains(deploy_target_lease_path(target: Srv1Dashboard) as String, "srv1-dashboard")
 }
 
-test fn mutex_group_is_the_deployment_domain_not_the_job_name() -> Bool {
-  let g = deploy_target_mutex_group(target: srv1_dashboard_target)
-  string_contains(s: g, pattern: "gunbc-dashboard")
-    && !string_contains(s: g, pattern: "deploy_dashboard_srv1")
+test fn the_two_slots_are_distinct_and_carry_distinct_receipts() -> Bool {
+  let blue = deploy_target_blue_slot(target: Srv1Dashboard)
+  let green = deploy_target_green_slot(target: Srv1Dashboard)
+  blue.names.unit_name != green.names.unit_name
+    && deploy_slot_revision_receipt_path(slot: blue) != deploy_slot_revision_receipt_path(slot: green)
 }
 
-test fn revision_state_lives_outside_the_rsynced_tree() -> Bool {
-  let p = deploy_revision_state_path(target: srv1_dashboard_target) as String
-  !string_contains(s: p, pattern: srv1_dashboard_target.destination as String)
-    && string_contains(s: p, pattern: "/var/lib/gunbc/")
+data receipt_outside_tree_note: String = "The receipt path must not live under the slot's rsynced repo_root, because `rsync --delete` would destroy the record whose whole purpose is to survive a partial sync. Asserted rather than commented, since the two paths are derived independently and could drift."
+
+test fn the_revision_receipt_lives_outside_the_rsynced_tree() -> Bool {
+  let blue = deploy_target_blue_slot(target: Srv1Dashboard)
+  let receipt = deploy_slot_revision_receipt_path(slot: blue) as String
+  !string_contains(receipt, blue.service.repo_root as String)
 }

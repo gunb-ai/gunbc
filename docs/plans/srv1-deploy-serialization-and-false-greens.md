@@ -1,6 +1,8 @@
 # srv1 deploy — the concurrency race, the false greens, and the misattributed refusal
 
-Status: DIAGNOSIS, no fix landed (2026-07-29, session sleek-lynx-322). Origin: operator asked to root-cause a `deploy_dashboard_srv1` failure reporting `ServedSurfaceStale`, then directed that the **false greens and the misattributed errors matter as much as the flake**.
+Status: DIAGNOSIS (2026-07-29, session sleek-lynx-322), **partially superseded 2026-08-04 — see §10**. Origin: operator asked to root-cause a `deploy_dashboard_srv1` failure reporting `ServedSurfaceStale`, then directed that the **false greens and the misattributed errors matter as much as the flake**.
+
+**What changed since this was written.** Serialization landed (#7551) as job-level `concurrency` with `cancel-in-progress: false` — the §5 first-row mechanism — but **without** the §6 freshness precondition, which is precisely the combination §6 predicted would be *strictly worse than today's honest red*. #7462 had landed the freshness classifier two days earlier with **no production consumer**. §10 records the resulting live incident and the operator ruling that supersedes §7's proposed shape.
 
 **Epistemic status, stated up front** — an earlier revision of this line claimed "nothing here is inferred from the shape of the code alone", and that was false of its own contents (review 44766 caught it). Three tiers are used deliberately and marked where they appear:
 
@@ -135,14 +137,16 @@ That is not the deploy's reason. It is `extdeps.render.terminal`'s `TerminalWrit
 
 So the located diagnosis was recoverable, but the primary channel actively misdirected: "cursor-control bytes" reads as corrupt output, not as "srv1 is serving another commit." This fires on **every** refusal whose reason carries a captured multi-line diagnostic, which is the entire class the field was introduced for.
 
-## 4. A fourth finding: the fix is currently inexpressible
+## 4. A fourth finding: the fix was inexpressible — CLOSED 2026-08-04
 
-Two silent drops in the emitter mean the obvious fix would typecheck and change nothing — the §5 specification-without-execution trap:
+**Both emitter drops are closed; this section is retained as the record of what they were, not as an open blocker.** As written on 2026-07-29 it said:
 
-- **`job_yaml` never emits `concurrency`.** `Job.concurrency: ConcurrencySpec?` exists on the type (`dag/extdeps/github/actions.dag:120`), but `job_yaml` (`dag/extdeps/languages/yaml/gha_workflow.dag:324`) emits `runs-on`, `needs`, `timeout-minutes`, `if`, `permissions`, `steps`, `env`, `continue-on-error` — and drops `concurrency` (along with `name`, `strategy`, `outputs`). Setting the field on the deploy job today is a no-op.
-- **`queue` is never emitted.** `ConcurrencySpec` distinguishes `ConcurrencyMappingQueueMax` from `ConcurrencyMappingQueueNotMax`, and `CancelInProgressWhenQueueMax` correctly models GitHub's constraint that `queue: max` forces `cancel-in-progress: false`. But `concurrency_mapping_queue_max` emits only `group` and `cancel-in-progress` — no `queue` key — so the two variants serialize **identically**. A modeled distinction with no realization difference.
+- **`job_yaml` never emits `concurrency`.** `Job.concurrency: ConcurrencySpec?` existed on the type but `job_yaml` dropped it (along with `name`, `strategy`, `outputs`), so setting the field on the deploy job was a no-op.
+- **`queue` is never emitted.** `concurrency_mapping_queue_max` emitted only `group` and `cancel-in-progress`, so `ConcurrencyMappingQueueMax` and `ConcurrencyMappingQueueNotMax` serialized **identically** — a modeled distinction with no realization difference.
 
-Both must be closed before any concurrency row can be believed, and both want a discriminating RED (a witness asserting the emitted YAML *contains* the key).
+Both were subsequently repaired with the discriminating REDs this section asked for. `extdeps.languages.yaml.gha_workflow` `optional_job_concurrency_kv` now projects the field (its `job_field_projection_completeness_note` records the per-field disposition, including `strategy` being deleted rather than projected), and `concurrency_mapping_queue_max` now emits a real `queue` key (`concurrency_queue_max_emission_note`), witnessed by `gha_job_projection_witness_test` asserting the emitted mapping contains it and that the two variants no longer serialize identically.
+
+**Consequence for §5 and §8 Q4:** `queue: max` is a live option, not a latent bug, so the single-runner-label route is no longer the cheapest path by default.
 
 ## 5. What GitHub can and cannot do
 
@@ -273,3 +277,54 @@ d6ec32b98f success 23:12:52 -> 23:16:27
 ```
 
 25 deploy jobs; 5 overlap events involving 11 of them; 3 refusals, every one inside an overlap window, and no non-overlapping deploy failed. The other 8 overlapping jobs are the **identity-unproven greens** of §3.2 — successes whose own source closure and binary were never established as live, which is not the same claim as 8 wrong-tree deployments.
+
+---
+
+## 10. The predicted regression, observed (2026-08-04, session still-hawk-637)
+
+§6 said serialization without a freshness precondition would let an older deploy run second, converge, and green — silently regressing the live dashboard. That is now observed rather than predicted.
+
+### 10.1 The incident
+
+Operator-reported run [30863337319](https://github.com/gunb-ai/gunbc/actions/runs/30863337319). The linked `deploy_dashboard_srv1` job did **not** run and fail: it concluded **`cancelled` with an empty step list** (started `00:37:03`, completed `00:37:39`, 0 steps). Its prerequisite `ci` job succeeded. It was a *pending* entry evicted from the concurrency group.
+
+Three main pushes, and the deploy order inverted against commit order in both possible directions at once:
+
+| commit | pushed | deploy window | outcome |
+|---|---|---|---|
+| `6d46cdc687` | 23:39:24 (**oldest**) | 00:37:44 → 00:41:22 | **success — ran last** |
+| `ed9785817e` | 23:39:49 | 00:34:12 → 00:37:43 | success |
+| `1a984a151d` | 23:45:23 (**newest**) | — | **cancelled, 0 steps — never deployed** |
+
+Ancestry-verified with `git merge-base --is-ancestor`: `6d46cdc687` is an ancestor of `ed9785817e`, so the final host state is the **oldest** of the three trees, installed by a **green** job, while the newest commit's deploy was discarded.
+
+### 10.2 The rate
+
+Over the 44 most recent main pushes (34 deploys executed; ancestry-verified, not timestamp-inferred): **6 (18%) deployed an older tree over a newer one**, 5 of the 6 reporting `success`; **4 more were evicted while pending and never deployed at all**. Every inversion pair was confirmed by `merge-base --is-ancestor`.
+
+*Epistemic note:* this census was collected by this session from the GitHub API and is **not** an executable receipt in the repository. It is reported as motivating evidence, not as an acceptance basis — the acceptance is the executed permutation law in §10.4. The linked cancellation and the queue semantics alone establish the design defect.
+
+### 10.3 Why the queue could never have been right
+
+GitHub orders concurrency entries by *when they begin waiting* — after `needs:` resolves — never by push order or commit ancestry, and documents that ordering is not guaranteed. The queue knows which job started waiting most recently; it does not know which content is newest, and §2.3 already showed arrival is inverted against commit order in practice.
+
+The deeper defect: each deploy job owns one immutable checkout and one verified release artifact, and no durable register records `desired[srv1-dashboard] = <revision>`. So the concurrency queue was acting as a **lossy desired-state store**, and cancelling a pending job deleted the system's only actionable carrier for that revision.
+
+A scheduler cancellation is also not a deployment verdict: `SchedulerCancelled(candidate)` ≠ `Keep{CandidateSuperseded}`. The second is an observed ancestry fact; the first means only that GitHub removed a job.
+
+### 10.4 The ruling (operator, 2026-08-04) — supersedes §7's proposed shape
+
+> Recut srv1 deployment as a monotonic reconciliation of one public `Srv1Dashboard` target. Immediately use `queue: max` so admitted release carriers are not discarded. Under a target-scoped exclusive lease, compare the currently routed slot's revision with the explicit candidate revision: stale/equal is a counted exit-zero no-op, descendant advances through the existing verified blue/green cutover, and unrelated/unverifiable refuses before mutation. Mutation must require the advance admission. Preserve every CI verdict; do not require every commit to actuate.
+
+The guarantee, stated once: *after admitted work settles, the public srv1 dashboard serves the newest deploy-admitted main revision; during convergence the public route never moves backward and never points at an unverified candidate.* Safety and liveness are halves of one guarantee — wiring only the freshness guard can leave srv1 permanently on an intermediate revision when the newest job has already been cancelled, so `queue: max` and monotonicity must land together.
+
+The ordering law is a join, `next_active = active ⊔ candidate`, which on a linear main history is idempotent, order-independent and monotonic. That is why the scheduler no longer has to preserve commit order — and why the acceptance is *every permutation of three ordered revisions converges to the newest*, not a substring pin on the emitted concurrency block. The old witness asserted that serialization **text** existed and greened in the exact state that cancelled the newest candidate.
+
+Two carrier corrections the ruling forces, beyond the ordering law:
+
+- **The target is the public service, not one of its alternating units.** §7's `DeployTargetId` named `service_unit: gunbc-dashboard` — a unit that exists on no machine, on a model predating blue/green. Production runs `gunbc-roadmap.service`, green carries its own derived names, and both share one root route. The lock, queue group, slots, route and active-revision observation all derive from one `Srv1Dashboard` target.
+- **The active revision is read from the routed slot**, via a per-slot receipt outside the rsynced tree — not from §7's global marker keyed by one service unit, which under blue/green can describe a slot that is not the one serving.
+
+### 10.5 Open, and deliberately not improvised
+
+The **host-side exclusive lease** (§7 item 1b) spanning route observation through final readback is not yet landed. Scheduler concurrency serializes CI-routed deploys but cannot exclude the `live_deploy_apply_srv1_operator_wet` entrypoint, so the observe-then-mutate race across those two paths remains open — as it is today. It is called out rather than papered over because a correct lease held across discrete effects needs a session-scoped effect model, and the cheap spellings (a lock file with an expiry) reintroduce a staleness heuristic that DESIGN §4 rules out.

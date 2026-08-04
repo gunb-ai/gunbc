@@ -45,13 +45,15 @@ import std.disposition { Disposition, RealizationDispatch, Scaffold, SingleAutho
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.types { Duration }
 import gunbc.repo_identity { gunbc_default_branch_name }
+import gunbc.live_deploy.revision { Srv1Dashboard, deploy_target_queue_group }
 import extdeps.github.actions {
   Workflow, Job, Step, RunStep, UsesStep,
   WorkflowTrigger, Push, PullRequest, WorkflowDispatch, MergeGroup,
   DispatchInput, InputString,
   PullRequestActivity, Opened, Synchronize, Reopened, ReadyForReview,
   WorkflowPermissions, PermRead, PermWrite,
-  ConcurrencySpec, ConcurrencyMappingQueueNotMax, CancelInProgressBool, CancelInProgressExpression,
+  ConcurrencySpec, ConcurrencyMappingQueueNotMax, ConcurrencyMappingQueueMax,
+  CancelInProgressBool, CancelInProgressExpression, QueueMaxCancelInProgressFalse,
   checkout_action, setup_rust_action, cache_action,
   upload_artifact_action, download_artifact_action
 }
@@ -496,8 +498,7 @@ data gunbc_ci_prelude_allowance_minutes: Int = 5
 data gunbc_ci_release_build_step_timeout_minutes: Int = 45
 
 data gunbc_ci_deploy_job_backstop_timeout_minutes: Int = 10
-data srv1_dashboard_deploy_concurrency_group: String = "srv1-dashboard-deploy"
-data srv1_dashboard_deploy_serialization_note: String = "Blue/green selection is observe-then-mutate, so two deploy jobs may not overlap: both could observe blue active, then the first flips green while the second restarts what has become the active green slot, recreating the outage. Job-grain concurrency serializes the entire cutover with cancel-in-progress=false; QueueNotMax may replace an older pending deployment with the newest main revision, but it never interrupts the one holding the host mutation window."
+data srv1_dashboard_deploy_serialization_note: String = "QUEUE: MAX, BECAUSE A PENDING DEPLOY JOB IS THE ONLY CARRIER OF ITS CANDIDATE. Each deploy job owns one immutable checkout and one verified release artifact, and no durable register elsewhere records `desired[srv1-dashboard] = <revision>`. So cancelling a pending job DELETES the system's only actionable carrier for that revision, and the concurrency queue was accidentally serving as a lossy desired-state store.\\n\\nThe previous QueueNotMax spec claimed it 'may replace an older pending deployment with the newest main revision'. That claim was false in the direction that matters: GitHub orders queue entries by when they BEGIN WAITING — after `needs:` resolves — never by commit ancestry, so the survivor is the newest ARRIVAL, not the newest revision. On run 30863337319 the evicted pending job carried the NEWEST commit while the job that ran last carried the OLDEST, installed its older tree, and reported success.\\n\\nThe cancellation law this satisfies: a deployment candidate may be discarded only when another surviving work item is proven to subsume it, and pending-replacement provides no such proof. `queue: max` permits up to a documented 100 pending entries and forces cancel-in-progress false, so admitted carriers survive to execute. Execution ORDER is still not commit order and still is not guaranteed — that no longer matters, because gunbc.live_deploy.revision makes the actuator monotonic under ancestry, so any execution order converges to the newest candidate.\\n\\nDISSOLVES TO QueueNotMax once a durable desired-state register exists: when every surviving deploy job re-reads `desired[target]` and can obtain the corresponding immutable artifact, cancelling a pending job is safe because both jobs would reconcile to the same durable revision. Today it is unsafe because the job IS the desired state.\\n\\nThe group derives from the deployment target rather than a job-shaped literal — renaming the job must not silently mint a different lock while the same host resources are mutated. Scheduler concurrency remains pressure shaping; the mutual-exclusion authority is the host-side lease, because a GitHub group cannot exclude the operator entrypoint into the same actuator."
 
 fn gunbc_ci_build_job_backstop_timeout_minutes() -> Int {
   gunbc_ci_aux_step_timeout_minutes + gunbc_ci_v1_compiler_tests_compile_gate_timeout_minutes + gunbc_ci_release_build_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
@@ -535,10 +536,9 @@ fn ci_deploy_job(stage: DeployStage) -> Job {
     timeout_minutes: Present { value: gunbc_ci_deploy_job_backstop_timeout_minutes },
     continue_on_error: none,
     concurrency: Present {
-      value: ConcurrencyMappingQueueNotMax {
-        group: srv1_dashboard_deploy_concurrency_group,
-        cancel_in_progress: Present { value: CancelInProgressBool { value: false } },
-        explicit_single: none,
+      value: ConcurrencyMappingQueueMax {
+        group: deploy_target_queue_group(target: Srv1Dashboard),
+        cancel_in_progress: Present { value: QueueMaxCancelInProgressFalse },
       }
     },
     permissions: none

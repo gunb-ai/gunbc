@@ -121,12 +121,15 @@ test fn witness_ci_yml_deploy_job_consumes_release_bins_artifact() -> Bool {
     && !string_contains(s: yaml, pattern: "Deploy dashboard to srv1 (live_deploy_apply_srv1_wet)\n        run: |\n          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)\n          \"$CARGO_BIN\" build")
 }
 
-test fn witness_ci_yml_deploy_job_serializes_blue_green_cutovers() -> Bool {
+data deploy_concurrency_witness_boundary_note: String = "THIS WITNESS USED TO PIN A SPELLING AND CERTIFY THE WRONG PROPERTY. It asserted the emitted text `group: srv1-dashboard-deploy / cancel-in-progress: false`, which greens in the EXACT production state that cancelled the newest candidate on run 30863337319 — a pending job evicted with zero steps while the oldest commit's deploy ran last and reported success. The property is 'cutovers cannot overlap AND the final state is the newest admitted revision'; a substring pin covers only the first conjunct, and covers it by spelling rather than by behavior (operator ruling 2026-08-04).\\n\\nSo it is split. The ORDERING half is an executed acceptance in test.claim.deploy_revision_witness — every permutation of three ordered revisions converges to the newest. What remains here is the PRODUCTION-COMPOSITION half that only the emitted workflow can state: the deploy job must be QueueMax, because a pending deploy job is the sole carrier of its candidate revision and artifact, so pending-replacement destroys admitted work. Asserting `queue: max` is present AND that the pending-replacement default is absent makes the emitted mode discriminating in both directions, which a single positive substring never was."
+
+test fn witness_ci_yml_deploy_job_retains_pending_candidates() -> Bool {
   let yaml = expected_ci_yml()
   string_contains(
     s: yaml,
-    pattern: "    concurrency:\n      group: srv1-dashboard-deploy\n      cancel-in-progress: false"
+    pattern: "    concurrency:\n      queue: max\n      group: gunbc-deploy-srv1-dashboard\n      cancel-in-progress: false"
   )
+    && !string_contains(s: yaml, pattern: "group: srv1-dashboard-deploy")
 }
 
 test fn witness_workflow_deploy_job_matches_enrollment() -> Bool {
