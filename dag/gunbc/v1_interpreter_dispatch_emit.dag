@@ -151,8 +151,13 @@ fn rust_variant_collision_synthetic_red_control() -> Bool {
 
 data spelling_collision_note: String = "A ROSTER ROW SPELLING COLLIDES ONLY WITHIN ITS OWN DISPATCH SITE. Two distinct arm identities at one site sharing one authored_spelling would emit two identical match-arm string literals into that site's generated lookup_* function -- Rust's own unreachable-pattern lint would flag it, but a lint is advisory, not a modeled refusal, so generation refuses first. Cross-site reuse of the same spelling is legitimate and already witnessed (lookup is dispatched both by the eval_method_call short-circuit and by the algebra arm it shadows) -- the check is scoped per site, never across the whole roster."
 
+fn rows_with_spelling(site_rows: List<InterpreterPrimitiveDispatchArm>, spelling: String) -> List<InterpreterPrimitiveDispatchArm> {
+  site_rows |> filter(r => r.authored_spelling == spelling)
+}
+
 fn site_has_spelling_collision(site_rows: List<InterpreterPrimitiveDispatchArm>) -> Bool {
-  count(distinct_identities(rows: site_rows)) != count(distinct_spellings(rows: site_rows))
+  distinct_spellings(rows: site_rows)
+    |> any(spelling => count(distinct_identities(rows: rows_with_spelling(site_rows: site_rows, spelling: spelling))) > 1)
 }
 
 fn roster_site_has_spelling_collision(site_key: String, rows: List<InterpreterPrimitiveDispatchArm>) -> Bool {
