@@ -2,8 +2,9 @@ module extdeps.standards.rfc_8118
 
 import std.types { NonEmptyStr, String, List, Bool }
 import std.integer { PositiveInt }
+import std.citation { CitationSelector, fragment_selector }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
-import extdeps.uri { Uri, Https }
+import extdeps.uri { Uri, Https, uri_percent_encode_component }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -20,19 +21,16 @@ data iso_32000_2_authority: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data rfc_8118_normative_relationship_note: String = "RFC 8118 (Informational, March 2017) specifies PDF Open Parameters for fragment identifiers and OBSOLETES RFC 3778. Where RFC 8118 and ISO 32000-2 disagree on PDF document semantics, ISO 32000-2 controls — cited as iso_32000_2_authority in extdeps_model_scope.further_citations. This module models the CIT-1 safe profile only: page, nameddest, structelem. All other RFC 8118 section-3 parameters are refused by typed PdfProfileRefusalCause arms naming which parameter and why."
+data rfc_8118_normative_relationship_note: String = "RFC 8118 (Informational, March 2017) specifies PDF Open Parameters for fragment identifiers and OBSOLETES RFC 3778. Where RFC 8118 and ISO 32000-2 disagree on PDF document semantics, ISO 32000-2 controls — cited as iso_32000_2_authority in extdeps_model_scope.further_citations. This module models the upstream RFC 8118 section-3 vocabulary and wire semantics only. gunbc product admission policy lives in gunbc.citation.pdf_safe_profile."
 
-data pdf_open_parameter_sequence_note: String = "RFC 8118 section 3: PDF fragment parameters are an ORDERED sequence separated by ampersand; later parameters override earlier ones, so page should precede zoom in full RFC — the CIT-1 safe profile admits only page, nameddest, and structelem as a closed coproduct list, never a string in Uri.locator."
+data pdf_open_parameter_sequence_note: String = "RFC 8118 section 3: PDF fragment parameters are an ORDERED sequence separated by ampersand; later parameters override earlier ones. Parameter values may be URI-encoded (RFC 8118); wire serialization routes through extdeps.uri uri_percent_encode_component."
 
-data pdf_profile_parameter_admitted_only_note: String = "PdfProfileParameter carries only admitted safe-profile parameters. Refusal is not a kind of parameter — ParameterConstructionRefused is a separate construction outcome from pdf_open_zoom and siblings, and PdfOpenParameterSequenceConstruction refuses the whole sequence if any construction is refused. A refused parameter cannot sit inside a sequence to be silently dropped at wire time (empty-observation narrow, DESIGN section 5)."
+data project_navigable_uri_fragment_decompose_dissolve_on: String = "dissolve-on: extdeps.uri Uri decomposes authority, path, query, and fragment as typed fields. Until then Uri.locator compresses all wire parts into one NonEmptyStr, so whether a base already carries a fragment is not a modeled question — only a string scan. project_navigable_uri refuses BaseLocatorAlreadyCarriesFragment when appending a PDF open-parameter wire form would synthesize a second # (RFC 3986 permits exactly one fragment)."
 
-data project_navigable_uri_fragment_decompose_dissolve_on: String = "dissolve-on: extdeps.uri Uri decomposes authority, path, query, and fragment as typed fields. Until then Uri.locator compresses all wire parts into one NonEmptyStr, so whether a base already carries a fragment is not a modeled question — only a string scan. project_navigable_uri refuses BaseLocatorAlreadyCarriesFragment when appending a PDF open-parameter wire form would synthesize a second # (RFC 3986 permits exactly one fragment). Do not strip or replace an existing fragment silently — that would be arm widening, not refusal."
-
-data citation_cit1_witness_split_note: String = "CIT-1 witnesses split across citation_cit1_witness_test and citation_cit1_consumer_witness_test because extdeps_external_authority_anchor is not module-scoped in v1-seed — the same collision std.decl_ref decl_ref_constructor_authority_note documents, which redded primitive_identity_join on main. dissolve-on: namespace-only resolution lane gives declarations module-scoped identity so one witness file can import both rfc_8118 and sysv_amd64 without homonym shadowing. The split is an accommodation with an end date, not witness-file organization policy."
+data citation_cit1_witness_split_note: String = "CIT-1 witnesses split across citation_cit1_witness_test and citation_cit1_consumer_witness_test because extdeps_external_authority_anchor is not module-scoped in v1-seed. dissolve-on: namespace-only resolution lane gives declarations module-scoped identity so one witness file can import both rfc_8118 and sysv_amd64 without homonym shadowing."
 
 type NavigableUriRefusalCause
   = BaseLocatorAlreadyCarriesFragment { locator: NonEmptyStr }
-  | ParameterConstructionRefusedInSequence { cause: PdfProfileRefusalCause }
 
 type NavigableUriProjection
   = NavigableUriProjected { uri: Uri }
@@ -54,19 +52,6 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: [iso_32000_2_authority],
 }
 
-type PdfRefusedParameterKind
-  = PdfParameterComment
-  | PdfParameterEmbeddedFile
-  | PdfParameterZoom
-  | PdfParameterView
-  | PdfParameterViewRect
-  | PdfParameterHighlight
-  | PdfParameterSearch
-  | PdfParameterFdf
-
-type PdfProfileRefusalCause
-  = ParameterOutsideCit1SafeProfile { parameter: PdfRefusedParameterKind }
-
 type PdfOpenPage {
   page: PositiveInt
 }
@@ -79,14 +64,55 @@ type PdfOpenStructElem {
   struct_id: NonEmptyStr
 }
 
+type PdfOpenZoom {
+  scale_percent: PositiveInt
+}
+
+type PdfOpenComment {
+  comment_id: NonEmptyStr
+}
+
+type PdfOpenView {
+  keyword: NonEmptyStr
+  position: String
+}
+
+type PdfOpenViewRect {
+  left: PositiveInt
+  top: PositiveInt
+  width: PositiveInt
+  height: PositiveInt
+}
+
+type PdfOpenHighlight {
+  left: PositiveInt
+  right: PositiveInt
+  top: PositiveInt
+  bottom: PositiveInt
+}
+
+type PdfOpenSearch {
+  words: NonEmptyStr
+}
+
+type PdfOpenFdf {
+  uri: Uri
+}
+
 type PdfProfileParameter
   = OpenPage(PdfOpenPage)
   | OpenNamedDest(PdfOpenNamedDest)
   | OpenStructElem(PdfOpenStructElem)
+  | OpenZoom(PdfOpenZoom)
+  | OpenComment(PdfOpenComment)
+  | OpenView(PdfOpenView)
+  | OpenViewRect(PdfOpenViewRect)
+  | OpenHighlight(PdfOpenHighlight)
+  | OpenSearch(PdfOpenSearch)
+  | OpenFdf(PdfOpenFdf)
 
 type PdfProfileParameterConstruction
   = ParameterConstructed(PdfProfileParameter)
-  | ParameterConstructionRefused { cause: PdfProfileRefusalCause }
 
 type PdfOpenParameterSequence {
   parameters: List<PdfProfileParameter>
@@ -94,7 +120,6 @@ type PdfOpenParameterSequence {
 
 type PdfOpenParameterSequenceConstruction
   = SequenceConstructed(PdfOpenParameterSequence)
-  | SequenceConstructionRefused { cause: PdfProfileRefusalCause }
 
 fn pdf_open_page(page: PositiveInt) -> PdfProfileParameterConstruction {
   ParameterConstructed(OpenPage(PdfOpenPage { page: page }))
@@ -108,95 +133,100 @@ fn pdf_open_structelem(struct_id: NonEmptyStr) -> PdfProfileParameterConstructio
   ParameterConstructed(OpenStructElem(PdfOpenStructElem { struct_id: struct_id }))
 }
 
-fn pdf_open_comment(_comment_id: NonEmptyStr) -> PdfProfileParameterConstruction {
-  ParameterConstructionRefused {
-    cause: ParameterOutsideCit1SafeProfile { parameter: PdfParameterComment },
-  }
+fn pdf_open_zoom(scale_percent: PositiveInt) -> PdfProfileParameterConstruction {
+  ParameterConstructed(OpenZoom(PdfOpenZoom { scale_percent: scale_percent }))
 }
 
-fn pdf_open_embedded_file(_name: NonEmptyStr) -> PdfProfileParameterConstruction {
-  ParameterConstructionRefused {
-    cause: ParameterOutsideCit1SafeProfile { parameter: PdfParameterEmbeddedFile },
-  }
+fn pdf_open_comment(comment_id: NonEmptyStr) -> PdfProfileParameterConstruction {
+  ParameterConstructed(OpenComment(PdfOpenComment { comment_id: comment_id }))
 }
 
-fn pdf_open_zoom(_scale_percent: PositiveInt) -> PdfProfileParameterConstruction {
-  ParameterConstructionRefused {
-    cause: ParameterOutsideCit1SafeProfile { parameter: PdfParameterZoom },
-  }
+fn pdf_open_view(keyword: NonEmptyStr, position: String) -> PdfProfileParameterConstruction {
+  ParameterConstructed(OpenView(PdfOpenView { keyword: keyword, position: position }))
 }
 
-fn pdf_open_view(_keyword: NonEmptyStr, _position: String) -> PdfProfileParameterConstruction {
-  ParameterConstructionRefused {
-    cause: ParameterOutsideCit1SafeProfile { parameter: PdfParameterView },
-  }
+fn pdf_open_viewrect(left: PositiveInt, top: PositiveInt, width: PositiveInt, height: PositiveInt) -> PdfProfileParameterConstruction {
+  ParameterConstructed(OpenViewRect(PdfOpenViewRect {
+    left: left,
+    top: top,
+    width: width,
+    height: height,
+  }))
 }
 
-fn pdf_open_viewrect(_left: PositiveInt, _top: PositiveInt, _width: PositiveInt, _height: PositiveInt) -> PdfProfileParameterConstruction {
-  ParameterConstructionRefused {
-    cause: ParameterOutsideCit1SafeProfile { parameter: PdfParameterViewRect },
-  }
+fn pdf_open_highlight(left: PositiveInt, right: PositiveInt, top: PositiveInt, bottom: PositiveInt) -> PdfProfileParameterConstruction {
+  ParameterConstructed(OpenHighlight(PdfOpenHighlight {
+    left: left,
+    right: right,
+    top: top,
+    bottom: bottom,
+  }))
 }
 
-fn pdf_open_highlight(_left: PositiveInt, _right: PositiveInt, _top: PositiveInt, _bottom: PositiveInt) -> PdfProfileParameterConstruction {
-  ParameterConstructionRefused {
-    cause: ParameterOutsideCit1SafeProfile { parameter: PdfParameterHighlight },
-  }
+fn pdf_open_search(words: NonEmptyStr) -> PdfProfileParameterConstruction {
+  ParameterConstructed(OpenSearch(PdfOpenSearch { words: words }))
 }
 
-fn pdf_open_search(_words: NonEmptyStr) -> PdfProfileParameterConstruction {
-  ParameterConstructionRefused {
-    cause: ParameterOutsideCit1SafeProfile { parameter: PdfParameterSearch },
-  }
-}
-
-fn pdf_open_fdf(_uri: Uri) -> PdfProfileParameterConstruction {
-  ParameterConstructionRefused {
-    cause: ParameterOutsideCit1SafeProfile { parameter: PdfParameterFdf },
-  }
+fn pdf_open_fdf(uri: Uri) -> PdfProfileParameterConstruction {
+  ParameterConstructed(OpenFdf(PdfOpenFdf { uri: uri }))
 }
 
 type PdfOpenParameterSequenceFoldState
   = SequenceFoldBuilding { parameters: List<PdfProfileParameter> }
-  | SequenceFoldRefused { cause: PdfProfileRefusalCause }
 
-fn pdf_open_parameter_sequence(constructions: List<PdfProfileParameterConstruction>) -> PdfOpenParameterSequenceConstruction {
+fn rfc_pdf_open_parameter_sequence(constructions: List<PdfProfileParameterConstruction>) -> PdfOpenParameterSequenceConstruction {
   match fold(constructions, init: SequenceFoldBuilding { parameters: [] }, f: fn(acc, construction) {
     match acc {
-      SequenceFoldRefused { cause: _ } => acc
       SequenceFoldBuilding { parameters: admitted } =>
         match construction {
-          ParameterConstructionRefused { cause: cause } => SequenceFoldRefused { cause: cause }
           ParameterConstructed(parameter) =>
-            SequenceFoldBuilding { parameters: concat(admitted, [parameter]) }
+            SequenceFoldBuilding { parameters: [parameter] |> concat(admitted) }
         }
     }
   }) {
-    SequenceFoldRefused { cause: cause } => SequenceConstructionRefused { cause: cause }
     SequenceFoldBuilding { parameters: parameters } =>
-      SequenceConstructed(PdfOpenParameterSequence { parameters: parameters })
+      SequenceConstructed(PdfOpenParameterSequence { parameters: reverse(parameters) })
   }
 }
 
 fn pdf_profile_parameter_wire(parameter: PdfProfileParameter) -> String {
   match parameter {
     OpenPage(PdfOpenPage { page: p }) => concat("page=", to_string(p))
-    OpenNamedDest(PdfOpenNamedDest { name: n }) => concat("nameddest=", n)
-    OpenStructElem(PdfOpenStructElem { struct_id: id }) => concat("structelem=", id)
+    OpenNamedDest(PdfOpenNamedDest { name: n }) =>
+      concat("nameddest=", uri_percent_encode_component(value: n))
+    OpenStructElem(PdfOpenStructElem { struct_id: id }) =>
+      concat("structelem=", uri_percent_encode_component(value: id))
+    OpenZoom(PdfOpenZoom { scale_percent: p }) => concat("zoom=", to_string(p))
+    OpenComment(PdfOpenComment { comment_id: id }) =>
+      concat("comment=", uri_percent_encode_component(value: id))
+    OpenView(PdfOpenView { keyword: k, position: pos }) =>
+      concat(concat("view=", uri_percent_encode_component(value: k)), concat(",", pos))
+    OpenViewRect(PdfOpenViewRect { left: l, top: t, width: w, height: h }) =>
+      concat(
+        concat(
+          concat(concat("viewrect=", to_string(l)), concat(",", to_string(t))),
+          concat(",", to_string(w)),
+        ),
+        concat(",", to_string(h)),
+      )
+    OpenHighlight(PdfOpenHighlight { left: l, right: r, top: t, bottom: b }) =>
+      concat(
+        concat(
+          concat(concat("highlight=", to_string(l)), concat(",", to_string(r))),
+          concat(",", to_string(t)),
+        ),
+        concat(",", to_string(b)),
+      )
+    OpenSearch(PdfOpenSearch { words: w }) =>
+      concat("search=", uri_percent_encode_component(value: w))
+    OpenFdf(PdfOpenFdf { uri: u }) => concat("fdf=", u.locator)
   }
 }
 
 fn pdf_open_parameter_sequence_wire(sequence: PdfOpenParameterSequence) -> String {
-  fold(
-    sequence.parameters,
-    init: "",
-    f: fn(acc, parameter) {
-      if acc == "" {
-        pdf_profile_parameter_wire(parameter: parameter)
-      } else {
-        concat(acc, concat("&", pdf_profile_parameter_wire(parameter: parameter)))
-      }
-    },
+  join(
+    map(sequence.parameters, fn(parameter) { pdf_profile_parameter_wire(parameter: parameter) }),
+    "&",
   )
 }
 
@@ -204,30 +234,23 @@ fn uri_locator_carries_fragment(locator: NonEmptyStr) -> Bool {
   string_contains(s: locator, pattern: "#")
 }
 
-fn project_navigable_uri(base: Uri, sequence_construction: PdfOpenParameterSequenceConstruction) -> NavigableUriProjection {
-  match sequence_construction {
-    SequenceConstructionRefused { cause: cause } =>
+fn project_navigable_uri(base: Uri, sequence: PdfOpenParameterSequence) -> NavigableUriProjection {
+  let fragment = pdf_open_parameter_sequence_wire(sequence: sequence)
+  if fragment == "" {
+    NavigableUriProjected { uri: base }
+  } else {
+    if uri_locator_carries_fragment(locator: base.locator) {
       NavigableUriRefused {
-        cause: ParameterConstructionRefusedInSequence { cause: cause },
+        cause: BaseLocatorAlreadyCarriesFragment { locator: base.locator },
       }
-    SequenceConstructed(sequence) =>
-      let fragment = pdf_open_parameter_sequence_wire(sequence: sequence)
-      if fragment == "" {
-        NavigableUriProjected { uri: base }
-      } else {
-        if uri_locator_carries_fragment(locator: base.locator) {
-          NavigableUriRefused {
-            cause: BaseLocatorAlreadyCarriesFragment { locator: base.locator },
-          }
-        } else {
-          NavigableUriProjected {
-            uri: Uri {
-              scheme: base.scheme,
-              locator: concat(base.locator, concat("#", fragment)) as NonEmptyStr,
-            },
-          }
-        }
+    } else {
+      NavigableUriProjected {
+        uri: Uri {
+          scheme: base.scheme,
+          locator: concat(base.locator, concat("#", fragment)) as NonEmptyStr,
+        },
       }
+    }
   }
 }
 
@@ -238,5 +261,12 @@ fn pdf_open_parameters_include_page(sequence: PdfOpenParameterSequence, page: Po
       OpenPage(PdfOpenPage { page: n }) => n == page
       _ => false
     },
+  )
+}
+
+fn pdf_open_fragment_selector(sequence: PdfOpenParameterSequence) -> CitationSelector {
+  fragment_selector(
+    conforms_to: extdeps_external_authority_anchor,
+    value: pdf_open_parameter_sequence_wire(sequence: sequence) as NonEmptyStr,
   )
 }

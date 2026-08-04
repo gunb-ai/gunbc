@@ -566,16 +566,28 @@ test fn reconcile_incomparable_on_byte_domain_mismatch() -> Bool {
 
 test fn pdf_fragment_selector_conforms_to_rfc_8118_not_web_annotation() -> Bool {
   match witness_pdf_fragment_selector {
-    FragmentSelectorVariant(s) => s.conforms_to.uri.locator == witness_fragment_spec_authority.uri.locator
+    FragmentSelectorVariant(got) =>
+      match fragment_selector(
+        conforms_to: witness_fragment_spec_authority,
+        value: witness_pdf_fragment_wire,
+      ) {
+        FragmentSelectorVariant(want) => got.value == want.value
+        _ => false
+      }
     _ => false
   }
 }
 
 test fn pdf_fragment_selector_red_wrong_conforms_to_web_annotation() -> Bool {
   match witness_false_web_annotation_fragment_selector {
-    FragmentSelectorVariant(s) =>
-      s.conforms_to.uri.locator != witness_fragment_spec_authority.uri.locator
-        && s.conforms_to.uri.locator == web_annotation_authority.uri.locator
+    FragmentSelectorVariant(got) =>
+      match fragment_selector(
+        conforms_to: web_annotation_authority,
+        value: witness_pdf_fragment_wire,
+      ) {
+        FragmentSelectorVariant(want) => got.value == want.value
+        _ => false
+      }
     _ => false
   }
 }

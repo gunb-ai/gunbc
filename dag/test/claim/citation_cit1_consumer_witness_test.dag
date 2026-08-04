@@ -1,37 +1,84 @@
 module test.claim.citation_cit1_consumer_witness
 
 import extdeps.runtime.abi.sysv_amd64 {
-  x86_64_abi_pdf_fragment,
-  x86_64_abi_pdf_navigable_projection,
+  x86_64_abi_pdf_byte_extraction,
   x86_64_abi_pdf_pin,
+  x86_64_abi_pdf_draft_version,
+  x86_64_abi_pdf_wet_receipt_hex,
+  x86_64_abi_syscall_convention_citation_fact,
+  x86_64_abi_pdf_syscall_fragment_selector,
+  x86_64_abi_pdf_navigable_version_uri,
+  x86_64_abi_pdf_navigable_syscall_uri,
+  x86_64_abi_pdf_expected_digest_from_extraction,
+  x86_64_abi_syscall_evidence_link,
+  x86_64_abi_pdf_authority,
 }
-import extdeps.standards.rfc_8118 { pdf_open_parameters_include_page, NavigableUriProjected, SequenceConstructed }
-import extdeps.pin { pin_currency_gap, AuthoredPinHasNoReviewDate, ExactPin }
-import std.types { Bool }
+import std.citation {
+  RepresentationRetrieved,
+  FragmentSelectorVariant,
+  CitationRecordedFact,
+}
+import std.claim_evidence { EvidenceSupports }
+import std.content_hash { sha256_hex_digest, content_hash_eq_cryptographic }
+import extdeps.version { VersionIdentity }
+import extdeps.pin { pin_currency_gap, AuthoredPinHasNoReviewDate, ExactPin, Pin }
+import std.types { Bool, NonEmptyStr }
 
-test fn x86_64_abi_pdf_consumer_carries_exact_pin_and_page_fragment() -> Bool {
-  match x86_64_abi_pdf_fragment {
-    SequenceConstructed(sequence) =>
-      pdf_open_parameters_include_page(sequence, 1)
-        && match x86_64_abi_pdf_navigable_projection {
-          NavigableUriProjected { uri: u } =>
-            string_contains(s: u.locator, pattern: "x86_64-abi-0.99.pdf")
-          _ => false
-        }
-        && match x86_64_abi_pdf_pin.selection {
-          ExactPin => true
-          _ => false
-        }
+test fn x86_64_abi_pdf_extraction_receipt_mints_digest_via_validating_path() -> Bool {
+  match sha256_hex_digest(hex: x86_64_abi_pdf_wet_receipt_hex) {
+    Present { value: digest } =>
+      content_hash_eq_cryptographic(
+        left: digest,
+        right: x86_64_abi_pdf_expected_digest_from_extraction(extraction: x86_64_abi_pdf_byte_extraction),
+      )
+    Absent => false
+  }
+}
+
+test fn x86_64_abi_pdf_pin_carries_draft_edition_0_99_6() -> Bool {
+  x86_64_abi_pdf_draft_version == ("0.99.6" as VersionIdentity)
+    && match x86_64_abi_pdf_pin {
+      Pin { selection: ExactPin, subject: _, version: _, expected_identity: _ } => true
+      _ => false
+    }
+}
+
+test fn x86_64_abi_version_cover_uri_uses_page_one() -> Bool {
+  x86_64_abi_pdf_navigable_version_uri().locator == "refspecs.linuxfoundation.org/elf/x86_64-abi-0.99.pdf#page=1"
+}
+
+test fn x86_64_abi_syscall_convention_uri_uses_page_twenty_eight() -> Bool {
+  x86_64_abi_pdf_navigable_syscall_uri().locator == "refspecs.linuxfoundation.org/elf/x86_64-abi-0.99.pdf#page=28"
+}
+
+test fn x86_64_abi_syscall_citation_selector_conforms_to_rfc_8118() -> Bool {
+  match x86_64_abi_pdf_syscall_fragment_selector {
+    FragmentSelectorVariant(s) =>
+      string_contains(s: s.conforms_to.uri.locator, pattern: "rfc8118")
+        && s.value == ("page=28" as NonEmptyStr)
+        && s.conforms_to.uri.locator != x86_64_abi_pdf_authority.uri.locator
     _ => false
   }
 }
 
-test fn x86_64_abi_navigable_uri_projects_page_fragment() -> Bool {
-  match x86_64_abi_pdf_navigable_projection {
-    NavigableUriProjected { uri: u } =>
-      u.locator == "refspecs.linuxfoundation.org/elf/x86_64-abi-0.99.pdf#page=1"
-    _ => false
-  }
+test fn x86_64_abi_syscall_citation_bound_to_evidence_link() -> Bool {
+  x86_64_abi_syscall_evidence_link().fact.id == x86_64_abi_syscall_convention_citation_fact.id
+    && x86_64_abi_syscall_evidence_link().direction == EvidenceSupports
+    && match x86_64_abi_pdf_byte_extraction {
+      RepresentationRetrieved { observed: o, request: _, observed_at: _, http_status: _ } =>
+        match x86_64_abi_syscall_evidence_link().fact.value {
+          CitationRecordedFact { cited: c } =>
+            match c.representation {
+              Present { value: repr } =>
+                match repr.observed {
+                  Present { value: obs } => obs.observed_identity == o.observed_identity
+                  none => false
+                }
+              none => false
+            }
+        }
+      _ => false
+    }
 }
 
 test fn pin_currency_gap_is_total_not_citation_current() -> Bool {

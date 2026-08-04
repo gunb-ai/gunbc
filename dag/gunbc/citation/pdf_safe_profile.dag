@@ -1,0 +1,183 @@
+module gunbc.citation.pdf_safe_profile
+
+import std.types { NonEmptyStr, List, Bool }
+import std.integer { PositiveInt }
+import extdeps.uri { Uri }
+import extdeps.standards.rfc_8118 {
+  PdfProfileParameter,
+  PdfProfileParameterConstruction,
+  PdfOpenParameterSequence,
+  PdfOpenPage,
+  PdfOpenNamedDest,
+  PdfOpenStructElem,
+  ParameterConstructed,
+  OpenPage,
+  OpenNamedDest,
+  OpenStructElem,
+  OpenZoom,
+  OpenComment,
+  OpenView,
+  OpenViewRect,
+  OpenHighlight,
+  OpenSearch,
+  OpenFdf,
+  NavigableUriProjection,
+  NavigableUriRefused,
+  project_navigable_uri,
+}
+
+data pdf_safe_profile_note: String = "gunbc bounded admission policy for RFC 8118 PDF open parameters — NOT upstream semantics. extdeps.standards.rfc_8118 owns the full RFC vocabulary; this module declines parameters gunbc has not yet admitted for citation use."
+
+type PdfRefusedParameterKind
+  = PdfParameterComment
+  | PdfParameterEmbeddedFile
+  | PdfParameterZoom
+  | PdfParameterView
+  | PdfParameterViewRect
+  | PdfParameterHighlight
+  | PdfParameterSearch
+  | PdfParameterFdf
+
+type PdfProfileRefusalCause
+  = ParameterOutsideCit1SafeProfile { parameter: PdfRefusedParameterKind }
+
+type PdfSafeProfileParameter
+  = SafeOpenPage(PdfOpenPage)
+  | SafeOpenNamedDest(PdfOpenNamedDest)
+  | SafeOpenStructElem(PdfOpenStructElem)
+
+type PdfSafeProfileParameterConstruction
+  = SafeParameterConstructed(PdfSafeProfileParameter)
+  | SafeParameterConstructionRefused { cause: PdfProfileRefusalCause }
+
+type PdfSafeParameterSequence {
+  parameters: List<PdfSafeProfileParameter>
+}
+
+type PdfSafeParameterSequenceConstruction
+  = SafeSequenceConstructed(PdfSafeParameterSequence)
+  | SafeSequenceConstructionRefused { cause: PdfProfileRefusalCause }
+
+type PdfSafeParameterSequenceFoldState
+  = SafeSequenceFoldBuilding { parameters: List<PdfSafeProfileParameter> }
+  | SafeSequenceFoldRefused { cause: PdfProfileRefusalCause }
+
+type NavigableUriSafeRefusalCause
+  = SafeParameterConstructionRefusedInSequence { cause: PdfProfileRefusalCause }
+  | BaseLocatorAlreadyCarriesFragmentFromRfc { locator: NonEmptyStr }
+
+type NavigableUriSafeProjection
+  = NavigableUriSafeProjected { uri: Uri }
+  | NavigableUriSafeRefused { cause: NavigableUriSafeRefusalCause }
+
+fn pdf_safe_open_page(page: PositiveInt) -> PdfSafeProfileParameterConstruction {
+  SafeParameterConstructed(SafeOpenPage(PdfOpenPage { page: page }))
+}
+
+fn pdf_safe_open_nameddest(name: NonEmptyStr) -> PdfSafeProfileParameterConstruction {
+  SafeParameterConstructed(SafeOpenNamedDest(PdfOpenNamedDest { name: name }))
+}
+
+fn pdf_safe_open_structelem(struct_id: NonEmptyStr) -> PdfSafeProfileParameterConstruction {
+  SafeParameterConstructed(SafeOpenStructElem(PdfOpenStructElem { struct_id: struct_id }))
+}
+
+fn admit_rfc_pdf_profile_parameter(construction: PdfProfileParameterConstruction) -> PdfSafeProfileParameterConstruction {
+  match construction {
+    ParameterConstructed(parameter) =>
+      match parameter {
+        OpenPage(p) => SafeParameterConstructed(SafeOpenPage(p))
+        OpenNamedDest(d) => SafeParameterConstructed(SafeOpenNamedDest(d))
+        OpenStructElem(e) => SafeParameterConstructed(SafeOpenStructElem(e))
+        OpenZoom(_) =>
+          SafeParameterConstructionRefused {
+            cause: ParameterOutsideCit1SafeProfile { parameter: PdfParameterZoom },
+          }
+        OpenComment(_) =>
+          SafeParameterConstructionRefused {
+            cause: ParameterOutsideCit1SafeProfile { parameter: PdfParameterComment },
+          }
+        OpenView(_) =>
+          SafeParameterConstructionRefused {
+            cause: ParameterOutsideCit1SafeProfile { parameter: PdfParameterView },
+          }
+        OpenViewRect(_) =>
+          SafeParameterConstructionRefused {
+            cause: ParameterOutsideCit1SafeProfile { parameter: PdfParameterViewRect },
+          }
+        OpenHighlight(_) =>
+          SafeParameterConstructionRefused {
+            cause: ParameterOutsideCit1SafeProfile { parameter: PdfParameterHighlight },
+          }
+        OpenSearch(_) =>
+          SafeParameterConstructionRefused {
+            cause: ParameterOutsideCit1SafeProfile { parameter: PdfParameterSearch },
+          }
+        OpenFdf(_) =>
+          SafeParameterConstructionRefused {
+            cause: ParameterOutsideCit1SafeProfile { parameter: PdfParameterFdf },
+          }
+      }
+  }
+}
+
+fn pdf_safe_parameter_sequence(constructions: List<PdfProfileParameterConstruction>) -> PdfSafeParameterSequenceConstruction {
+  match fold(constructions, init: SafeSequenceFoldBuilding { parameters: [] }, f: fn(acc, construction) {
+    match acc {
+      SafeSequenceFoldRefused { cause: _ } => acc
+      SafeSequenceFoldBuilding { parameters: admitted } =>
+        match admit_rfc_pdf_profile_parameter(construction: construction) {
+          SafeParameterConstructionRefused { cause: cause } => SafeSequenceFoldRefused { cause: cause }
+          SafeParameterConstructed(parameter) =>
+            SafeSequenceFoldBuilding { parameters: [parameter] |> concat(admitted) }
+        }
+    }
+  }) {
+    SafeSequenceFoldRefused { cause: cause } => SafeSequenceConstructionRefused { cause: cause }
+    SafeSequenceFoldBuilding { parameters: parameters } =>
+      SafeSequenceConstructed(PdfSafeParameterSequence { parameters: reverse(parameters) })
+  }
+}
+
+fn pdf_safe_parameter_sequence_to_rfc(sequence: PdfSafeParameterSequence) -> PdfOpenParameterSequence {
+  PdfOpenParameterSequence {
+    parameters: map(
+      sequence.parameters,
+      parameter => match parameter {
+        SafeOpenPage(p) => OpenPage(p)
+        SafeOpenNamedDest(d) => OpenNamedDest(d)
+        SafeOpenStructElem(e) => OpenStructElem(e)
+      },
+    ),
+  }
+}
+
+fn project_navigable_uri_safe(base: Uri, construction: PdfSafeParameterSequenceConstruction) -> NavigableUriSafeProjection {
+  match construction {
+    SafeSequenceConstructionRefused { cause: cause } =>
+      NavigableUriSafeRefused {
+        cause: SafeParameterConstructionRefusedInSequence { cause: cause },
+      }
+    SafeSequenceConstructed(sequence) =>
+      match project_navigable_uri(
+        base: base,
+        sequence: pdf_safe_parameter_sequence_to_rfc(sequence: sequence),
+      ) {
+        NavigableUriProjected { uri: u } => NavigableUriSafeProjected { uri: u }
+        NavigableUriRefused { cause: BaseLocatorAlreadyCarriesFragment { locator: l } } =>
+          NavigableUriSafeRefused {
+            cause: BaseLocatorAlreadyCarriesFragmentFromRfc { locator: l },
+          }
+      }
+  }
+}
+
+fn pdf_safe_parameters_include_page(sequence: PdfSafeParameterSequence, page: PositiveInt) -> Bool {
+  any(
+    sequence.parameters,
+    parameter => match parameter {
+      SafeOpenPage(PdfOpenPage { page: n }) => n == page
+      _ => false
+    },
+  )
+}

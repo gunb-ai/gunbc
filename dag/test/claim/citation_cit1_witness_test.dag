@@ -9,26 +9,36 @@ import extdeps.standards.rfc_8118 {
   extdeps_model_scope,
   PdfOpenPage,
   OpenPage,
+  OpenZoom,
   ParameterConstructed,
-  ParameterConstructionRefused,
-  ParameterOutsideCit1SafeProfile,
-  PdfParameterZoom,
-  PdfParameterComment,
-  SequenceConstructionRefused,
-  SequenceConstructed,
-  NavigableUriProjected,
-  NavigableUriRefused,
-  BaseLocatorAlreadyCarriesFragment,
-  ParameterConstructionRefusedInSequence,
+  rfc_pdf_open_parameter_sequence,
   pdf_open_page,
   pdf_open_zoom,
-  pdf_open_comment,
-  pdf_open_parameter_sequence,
+  pdf_open_nameddest,
+  pdf_open_structelem,
   pdf_open_parameters_include_page,
   project_navigable_uri,
+  NavigableUriProjected,
+  SequenceConstructed,
   pdf_profile_parameter_wire,
+  pdf_open_fragment_selector,
 }
-import extdeps.uri { Uri, Https }
+import std.citation { FragmentSelectorVariant }
+import gunbc.citation.pdf_safe_profile {
+  ParameterOutsideCit1SafeProfile,
+  PdfParameterZoom,
+  SafeParameterConstructionRefused,
+  SafeSequenceConstructionRefused,
+  SafeSequenceConstructed,
+  pdf_safe_parameter_sequence,
+  pdf_safe_parameters_include_page,
+  project_navigable_uri_safe,
+  NavigableUriSafeProjected,
+  NavigableUriSafeRefused,
+  BaseLocatorAlreadyCarriesFragmentFromRfc,
+  SafeParameterConstructionRefusedInSequence,
+}
+import extdeps.uri { Uri, Https, uri_percent_encode_component }
 import std.types { Bool, NonEmptyStr }
 
 data witness_pdf_base_uri: Uri = Uri {
@@ -37,94 +47,142 @@ data witness_pdf_base_uri: Uri = Uri {
 }
 
 test fn rfc_8118_anchor_cites_current_standard_not_3778() -> Bool {
-  extdeps_model_scope.first_citation.uri.locator == rfc_8118_section_3_locator && string_contains(s: rfc_8118_normative_relationship_note, pattern: "OBSOLETES RFC 3778") && string_contains(s: rfc_8118_normative_relationship_note, pattern: "ISO 32000-2 controls")
+  extdeps_model_scope.first_citation.uri.locator == rfc_8118_section_3_locator && string_contains(s: rfc_8118_normative_relationship_note, pattern: "OBSOLETES RFC 3778") && string_contains(s: rfc_8118_normative_relationship_note, pattern: "gunbc.citation.pdf_safe_profile")
 }
 
 test fn iso_32000_2_is_further_citation() -> Bool {
   extdeps_model_scope.further_citations |> any(c => c.uri.locator == iso_32000_2_authority.uri.locator)
 }
 
-test fn pdf_open_page_admits_positive_one() -> Bool {
+test fn rfc_pdf_open_page_admits_positive_one() -> Bool {
   match pdf_open_page(page: 1) {
     ParameterConstructed(OpenPage(PdfOpenPage { page: p })) => p == 1
     _ => false
   }
 }
 
-test fn pdf_open_zoom_refuses_outside_safe_profile() -> Bool {
+test fn rfc_pdf_open_zoom_is_upstream_constructed_not_refused() -> Bool {
   match pdf_open_zoom(scale_percent: 100) {
-    ParameterConstructionRefused { cause: ParameterOutsideCit1SafeProfile { parameter: PdfParameterZoom } } => true
+    ParameterConstructed(OpenZoom(zoom)) => zoom.scale_percent == 100
     _ => false
   }
 }
 
-test fn pdf_open_comment_refuses_with_typed_parameter_kind() -> Bool {
-  match pdf_open_comment(comment_id: "note-1" as NonEmptyStr) {
-    ParameterConstructionRefused { cause: ParameterOutsideCit1SafeProfile { parameter: PdfParameterComment } } => true
+test fn gunbc_safe_profile_refuses_zoom() -> Bool {
+  match pdf_safe_parameter_sequence(constructions: [pdf_open_zoom(scale_percent: 100)]) {
+    SafeSequenceConstructionRefused { cause: ParameterOutsideCit1SafeProfile { parameter: PdfParameterZoom } } => true
     _ => false
   }
 }
 
-test fn pdf_open_parameter_sequence_refuses_only_refused_parameters() -> Bool {
-  match pdf_open_parameter_sequence(constructions: [pdf_open_zoom(scale_percent: 100)]) {
-    SequenceConstructionRefused { cause: ParameterOutsideCit1SafeProfile { parameter: PdfParameterZoom } } => true
+test fn gunbc_safe_profile_admits_page_only_sequence() -> Bool {
+  match pdf_safe_parameter_sequence(constructions: [pdf_open_page(page: 1)]) {
+    SafeSequenceConstructed(sequence) => pdf_safe_parameters_include_page(sequence, 1)
     _ => false
   }
 }
 
-test fn pdf_open_parameters_include_page_holds_for_authored_page() -> Bool {
-  match pdf_open_parameter_sequence(constructions: [pdf_open_page(page: 1)]) {
-    SequenceConstructed(sequence) => pdf_open_parameters_include_page(sequence, 1)
-    _ => false
-  }
-}
-
-test fn pdf_open_parameters_include_page_red_wrong_page() -> Bool {
-  match pdf_open_parameter_sequence(constructions: [pdf_open_page(page: 1)]) {
-    SequenceConstructed(sequence) => !pdf_open_parameters_include_page(sequence, 99)
+test fn pdf_safe_parameters_include_page_red_wrong_page() -> Bool {
+  match pdf_safe_parameter_sequence(constructions: [pdf_open_page(page: 1)]) {
+    SafeSequenceConstructed(sequence) => !pdf_safe_parameters_include_page(sequence, 99)
     _ => false
   }
 }
 
 test fn project_navigable_uri_appends_ordered_fragment() -> Bool {
-  match project_navigable_uri(
+  match rfc_pdf_open_parameter_sequence(constructions: [pdf_open_page(page: 1)]) {
+    SequenceConstructed(sequence) =>
+      match project_navigable_uri(base: witness_pdf_base_uri, sequence: sequence) {
+        NavigableUriProjected { uri: u } => u.locator == "example.test/fixture.pdf#page=1"
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn project_navigable_uri_safe_refuses_when_base_carries_fragment() -> Bool {
+  match pdf_safe_parameter_sequence(constructions: [pdf_open_page(page: 1)]) {
+    SafeSequenceConstructed(_) =>
+      match project_navigable_uri_safe(
+        base: extdeps_external_authority_anchor.uri,
+        construction: pdf_safe_parameter_sequence(constructions: [pdf_open_page(page: 1)]),
+      ) {
+        NavigableUriSafeRefused { cause: BaseLocatorAlreadyCarriesFragmentFromRfc { locator: l } } =>
+          l == rfc_8118_section_3_locator
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn project_navigable_uri_safe_refuses_mixed_admitted_and_refused_parameters() -> Bool {
+  match project_navigable_uri_safe(
     base: witness_pdf_base_uri,
-    sequence_construction: pdf_open_parameter_sequence(constructions: [pdf_open_page(page: 1)]),
+    construction: pdf_safe_parameter_sequence(constructions: [pdf_open_page(page: 1), pdf_open_zoom(scale_percent: 100)]),
   ) {
-    NavigableUriProjected { uri: u } => u.locator == "example.test/fixture.pdf#page=1"
+    NavigableUriSafeRefused { cause: SafeParameterConstructionRefusedInSequence { cause: ParameterOutsideCit1SafeProfile { parameter: PdfParameterZoom } } } => true
     _ => false
   }
 }
 
-test fn project_navigable_uri_refuses_when_base_carries_fragment() -> Bool {
-  match project_navigable_uri(
-    base: extdeps_external_authority_anchor.uri,
-    sequence_construction: pdf_open_parameter_sequence(constructions: [pdf_open_page(page: 1)]),
-  ) {
-    NavigableUriRefused { cause: BaseLocatorAlreadyCarriesFragment { locator: l } } =>
-      l == rfc_8118_section_3_locator
+test fn pdf_profile_parameter_wire_encodes_ampersand_in_nameddest() -> Bool {
+  match pdf_open_nameddest(name: "a&b" as NonEmptyStr) {
+    ParameterConstructed(parameter) =>
+      pdf_profile_parameter_wire(parameter: parameter) == "nameddest=a%26b"
     _ => false
   }
 }
 
-test fn project_navigable_uri_refuses_mixed_admitted_and_refused_parameters() -> Bool {
-  match project_navigable_uri(
-    base: witness_pdf_base_uri,
-    sequence_construction: pdf_open_parameter_sequence(constructions: [pdf_open_page(page: 1), pdf_open_zoom(scale_percent: 100)]),
-  ) {
-    NavigableUriRefused { cause: ParameterConstructionRefusedInSequence { cause: ParameterOutsideCit1SafeProfile { parameter: PdfParameterZoom } } } => true
+test fn pdf_profile_parameter_wire_encodes_hash_in_structelem() -> Bool {
+  match pdf_open_structelem(struct_id: "id#1" as NonEmptyStr) {
+    ParameterConstructed(parameter) =>
+      pdf_profile_parameter_wire(parameter: parameter) == "structelem=id%231"
     _ => false
   }
 }
 
-test fn pdf_profile_parameter_wire_names_page() -> Bool {
-  match pdf_open_page(page: 3) {
-    ParameterConstructed(parameter) => pdf_profile_parameter_wire(parameter: parameter) == "page=3"
+test fn pdf_profile_parameter_wire_encodes_equals_in_nameddest() -> Bool {
+  match pdf_open_nameddest(name: "a=b" as NonEmptyStr) {
+    ParameterConstructed(parameter) =>
+      pdf_profile_parameter_wire(parameter: parameter) == "nameddest=a%3db"
+    _ => false
+  }
+}
+
+test fn pdf_profile_parameter_wire_encodes_percent_in_nameddest() -> Bool {
+  match pdf_open_nameddest(name: "100%25" as NonEmptyStr) {
+    ParameterConstructed(parameter) =>
+      pdf_profile_parameter_wire(parameter: parameter) == "nameddest=100%2525"
+    _ => false
+  }
+}
+
+test fn pdf_profile_parameter_wire_encodes_space_in_nameddest() -> Bool {
+  match pdf_open_nameddest(name: "a b" as NonEmptyStr) {
+    ParameterConstructed(parameter) =>
+      pdf_profile_parameter_wire(parameter: parameter) == "nameddest=a%20b"
+    _ => false
+  }
+}
+
+test fn uri_percent_encode_component_round_trip_unreserved() -> Bool {
+  uri_percent_encode_component(value: "page-1_ok" as NonEmptyStr) == ("page-1_ok" as NonEmptyStr)
+}
+
+test fn pdf_open_fragment_selector_conforms_to_rfc_8118() -> Bool {
+  match rfc_pdf_open_parameter_sequence(constructions: [pdf_open_page(page: 1)]) {
+    SequenceConstructed(sequence) =>
+      match pdf_open_fragment_selector(sequence: sequence) {
+        FragmentSelectorVariant(s) =>
+          s.conforms_to.uri.locator == extdeps_external_authority_anchor.uri.locator
+            && s.value == ("page=1" as NonEmptyStr)
+        _ => false
+      }
     _ => false
   }
 }
 
 test fn citation_cit1_witness_split_names_homonym_accommodation() -> Bool {
-  string_contains(s: citation_cit1_witness_split_note, pattern: "decl_ref_constructor_authority_note")
+  string_contains(s: citation_cit1_witness_split_note, pattern: "homonym shadowing")
     && string_contains(s: citation_cit1_witness_split_note, pattern: "namespace-only resolution")
 }
