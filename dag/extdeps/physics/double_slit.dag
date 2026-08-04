@@ -1,6 +1,6 @@
 module extdeps.physics.double_slit
 
-import std.types { String }
+import std.types { String, Int, List }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -29,34 +29,95 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: []
 }
 
-data double_slit_citation_note: String = "Cited upstream: Bach, R., Pope, D., Liou, S.-H. and Batelaan, H., 'Controlled double-slit electron diffraction', New Journal of Physics volume 15, article 033018, 2013 (doi 10.1088/1367-2630/15/3/033018). Locator is the publisher DOI redirect.\n\nWHAT THIS MODULE OWNS. Apparatus vocabulary for this one experiment and abstract-level cited facts only. It does NOT carry per-band arrival totals, qualitative verdict functions, classical reasoning, lattice law vocabulary, or downstream coverage obligations for missing axes."
+data double_slit_citation_note: String = "Cited upstream: Bach, R., Pope, D., Liou, S.-H. and Batelaan, H., 'Controlled double-slit electron diffraction', New Journal of Physics volume 15, article 033018, 2013 (doi 10.1088/1367-2630/15/3/033018). arXiv:1210.6243. WHAT THIS MODULE OWNS: apparatus vocabulary and source-grounded categorical and buildup observation rows only."
 
 data abstract_observed_distributions_note: String = "Abstract verbatim: By placing a movable mask in front of a double-slit to control the transmission through the individual slits, probability distributions for single- and double-slit arrangements were observed."
 
-data per_band_quantitative_gap_note: String = "PER-BAND QUANTITATIVE GAP. The publisher landing page and abstract were reachable at the DOI locator; full-text figure extraction with a declared per-band method was NOT performed in this change. This module therefore carries NO per-band arrival_count rows. A quantitative path-additivity fold over Bach et al. 2013 is blocked pending extractable per-band data — the refusal and mechanism fixture live in gunbc."
+data raw_count_not_evaluable_note: String = "RAW COUNT PATH ADDITIVITY NOT EVALUABLE. Figures 1 and 2 present normalized probability distributions; the paper sums frames then normalizes. It does not supply a raw matched-exposure per-band arrival triplet for N_both = N_slit_one + N_slit_two. bach_et_al_2013_raw_count_observations is intentionally empty."
 
-data which_path_upstream_gap_note: String = "Bach et al. controlled which SLITS were open, not whether WHICH-PATH information existed. Missing which-path observations are a downstream coverage obligation in gunbc, not an Unobserved property authored here."
+data which_path_upstream_gap_note: String = "Bach et al. controlled which slits were open, not whether which-path information existed. Missing which-path evidence is a downstream coverage obligation in gunbc."
 
-data slit_arrangement_note: String = "Mask positions are the experiment control axis from the cited apparatus description."
+data slit_mask_note: String = "Mask can block slit 1, slit 2, both, or neither (figure caption). BothSlitsBlocked is an apparatus configuration only — not an arrival observation."
 
-type SlitArrangement
+type SlitMaskConfiguration
   = BothSlitsOpen
-  | OnlyLeftSlitOpen
-  | OnlyRightSlitOpen
+  | SlitOneOpen
+  | SlitTwoOpen
   | BothSlitsBlocked
 
-data screen_band_note: String = "Three logically distinguished screen bands for downstream modeling — not fitted coordinates transcribed from figures."
+data single_electron_rate_note: String = "Paper states roughly one detected electron per second and only one electron in the apparatus at a time."
 
-type ScreenBand
-  = CentralBand
-  | FirstMinimumBand
-  | FirstSideMaximumBand
+data trial_versus_ensemble_grain_note: String = "Trial grain: one localized detection event. Ensemble grain: accumulated buildup panels and summed normalized distributions."
 
-data matched_exposure_note: String = "Matched exposure session type for structural exposure-keying when per-band quantitative rows land with a declared extraction method."
+type BachDistributionObservation
+  = SlitOneSingleSlitDiffractionObserved
+  | SlitTwoSingleSlitDiffractionObserved
+  | BothSlitsDoubleSlitDiffractionObserved
 
-type BachMatchedExposureSession
-  = Bach2013MatchedExposureOne {}
+data bach_slit_one_single_slit_diffraction_observed: BachDistributionObservation = SlitOneSingleSlitDiffractionObserved
 
-data trial_versus_ensemble_grain_note: String = "Trial grain: one localized electron detection at a band. Ensemble grain: accumulated totals across many trials at matched exposure — not carried as numeric rows until figure extraction lands."
+data bach_slit_two_single_slit_diffraction_observed: BachDistributionObservation = SlitTwoSingleSlitDiffractionObserved
 
-data single_electron_note: String = "The cited experiment detects one electron at a time; distributions accumulate from individual arrivals (abstract-level apparatus fact)."
+data bach_both_slits_double_slit_diffraction_observed: BachDistributionObservation = BothSlitsDoubleSlitDiffractionObserved
+
+data bach_distribution_observations: List<BachDistributionObservation> = [
+  bach_slit_one_single_slit_diffraction_observed,
+  bach_slit_two_single_slit_diffraction_observed,
+  bach_both_slits_double_slit_diffraction_observed,
+]
+
+type PatternStatus
+  = PatternNotYetDiscernible
+  | PatternDiscernible
+  | PatternClearlyVisible
+
+type BachBuildupObservationRow {
+  apparatus: BachEtAl2013DoubleSlitExperiment
+  detected_electrons: Int
+  pattern_status: PatternStatus
+}
+
+data bach_buildup_2_electrons: BachBuildupObservationRow = BachBuildupObservationRow {
+  apparatus: bach_et_al_2013_double_slit,
+  detected_electrons: 2,
+  pattern_status: PatternNotYetDiscernible,
+}
+
+data bach_buildup_7_electrons: BachBuildupObservationRow = BachBuildupObservationRow {
+  apparatus: bach_et_al_2013_double_slit,
+  detected_electrons: 7,
+  pattern_status: PatternNotYetDiscernible,
+}
+
+data bach_buildup_209_electrons: BachBuildupObservationRow = BachBuildupObservationRow {
+  apparatus: bach_et_al_2013_double_slit,
+  detected_electrons: 209,
+  pattern_status: PatternDiscernible,
+}
+
+data bach_buildup_1004_electrons: BachBuildupObservationRow = BachBuildupObservationRow {
+  apparatus: bach_et_al_2013_double_slit,
+  detected_electrons: 1004,
+  pattern_status: PatternDiscernible,
+}
+
+data bach_buildup_6235_electrons: BachBuildupObservationRow = BachBuildupObservationRow {
+  apparatus: bach_et_al_2013_double_slit,
+  detected_electrons: 6235,
+  pattern_status: PatternClearlyVisible,
+}
+
+data bach_buildup_observations: List<BachBuildupObservationRow> = [
+  bach_buildup_2_electrons,
+  bach_buildup_7_electrons,
+  bach_buildup_209_electrons,
+  bach_buildup_1004_electrons,
+  bach_buildup_6235_electrons,
+]
+
+type BachRawCountObservationRow {
+  apparatus: BachEtAl2013DoubleSlitExperiment
+  arrival_count: Int
+}
+
+data bach_et_al_2013_raw_count_observations: List<BachRawCountObservationRow> = []

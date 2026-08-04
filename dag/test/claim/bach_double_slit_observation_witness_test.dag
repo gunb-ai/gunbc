@@ -1,18 +1,61 @@
 module test.claim.bach_double_slit_observation_witness_test
 
-import std.types { Bool }
+import std.types { Bool, NonEmptyStr }
 import gunbc.bach_double_slit_observation {
-  bach_quantitative_path_additivity_fold_is_refused,
-  bach_which_path_outcome_is_uncited,
+  BachRawCountPathAdditivityNotEvaluable,
+  BachRawCountPathAdditivityReady,
+  BachWhichPathEvidenceUncited,
+  BachWhichPathEvidenceCited,
+  BachObservationCapability,
+  RawMatchedExposureCountRowsPresent,
+  WhichPathAuthorityCited,
+  bach_quantitative_path_additivity_readiness_derived,
+  bach_which_path_evidence_readiness_derived,
+  bach_quantitative_evidence_readiness,
+  bach_which_path_evidence_readiness,
+  bach_distribution_observations_complete,
+  bach_buildup_fold_derives_ensemble_interference,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-test fn w_bach_quantitative_path_additivity_fold_refused() -> Bool {
-  bach_quantitative_path_additivity_fold_is_refused()
+test fn w_bach_raw_count_path_additivity_not_evaluable_derived() -> Bool {
+  match bach_quantitative_path_additivity_readiness_derived() {
+    BachRawCountPathAdditivityNotEvaluable { cause: _ } => true
+    BachRawCountPathAdditivityReady {} => false
+  }
 }
 
-test fn w_bach_which_path_coverage_obligation_uncited() -> Bool {
-  bach_which_path_outcome_is_uncited()
+test fn w_bach_which_path_evidence_uncited_derived() -> Bool {
+  match bach_which_path_evidence_readiness_derived() {
+    BachWhichPathEvidenceUncited { missing_authority: _ } => true
+    BachWhichPathEvidenceCited {} => false
+  }
+}
+
+test fn w_bach_quantitative_readiness_flips_when_raw_rows_planted() -> Bool {
+  match bach_quantitative_evidence_readiness(
+    capabilities: [RawMatchedExposureCountRowsPresent],
+  ) {
+    BachRawCountPathAdditivityReady {} => true
+    BachRawCountPathAdditivityNotEvaluable { cause: _ } => false
+  }
+}
+
+test fn w_bach_which_path_readiness_flips_when_authority_planted() -> Bool {
+  match bach_which_path_evidence_readiness(
+    capabilities: [WhichPathAuthorityCited],
+  ) {
+    BachWhichPathEvidenceCited {} => true
+    BachWhichPathEvidenceUncited { missing_authority: _ } => false
+  }
+}
+
+test fn w_bach_categorical_distribution_observations_complete() -> Bool {
+  bach_distribution_observations_complete()
+}
+
+test fn w_bach_buildup_fold_derives_ensemble_interference() -> Bool {
+  bach_buildup_fold_derives_ensemble_interference()
 }

@@ -1,39 +1,139 @@
 module gunbc.bach_double_slit_observation
 
-import std.types { Bool, NonEmptyStr, String }
+import std.types { Bool, Int, List, NonEmptyStr, String }
 import extdeps.physics.double_slit {
   BachEtAl2013DoubleSlitExperiment,
   bach_et_al_2013_double_slit,
+  BachDistributionObservation,
+  bach_distribution_observations,
+  BachBuildupObservationRow,
+  bach_buildup_observations,
+  bach_et_al_2013_raw_count_observations,
+  PatternStatus,
+  PatternNotYetDiscernible,
+  PatternDiscernible,
+  PatternClearlyVisible,
+  SlitOneSingleSlitDiffractionObserved,
+  SlitTwoSingleSlitDiffractionObserved,
+  BothSlitsDoubleSlitDiffractionObserved,
 }
 
-data bach_observation_layer_note: String = "Observing-layer receipts for Bach et al. 2013. extdeps.physics.double_slit owns apparatus vocabulary and abstract-level cited facts only — no per-band counts. This module records coverage obligations and quantitative-fold refusal rather than inventing measurement rows."
+data bach_observation_layer_note: String = "Observing-layer receipts for Bach et al. 2013. Verdicts derive from extdeps rows — not constant Bool assertions."
 
-data which_path_coverage_obligation_note: String = "DESIGN section 3: missing observations are coverage obligations downstream, never Unobserved properties inside the upstream module. Which-path detection under illumination was NOT part of Bach et al. 2013."
+data which_path_coverage_obligation_note: String = "Which-path distinguishability evidence is absent from cited Bach et al. 2013; obligation recorded here per DESIGN section 3."
 
-type WhichPathOutcomeUncited {
-  missing_authority: NonEmptyStr
+type BachObservationCapability
+  = RawMatchedExposureCountRowsPresent
+  | WhichPathAuthorityCited
+
+type BachRawCountPathAdditivityReadiness
+  = BachRawCountPathAdditivityNotEvaluable { cause: NonEmptyStr }
+  | BachRawCountPathAdditivityReady {}
+
+type BachWhichPathEvidenceReadiness
+  = BachWhichPathEvidenceUncited { missing_authority: NonEmptyStr }
+  | BachWhichPathEvidenceCited {}
+
+fn bach_observation_capabilities_from_extdeps() -> List<BachObservationCapability> {
+  if (bach_et_al_2013_raw_count_observations |> count) > 0 {
+    [RawMatchedExposureCountRowsPresent]
+  } else {
+    []
+  }
 }
 
-data bach_which_path_outcome_uncited: WhichPathOutcomeUncited = WhichPathOutcomeUncited {
-  missing_authority: "a cited which-path or quantum-eraser experiment; Bach et al. 2013 controlled slit transmission only" as NonEmptyStr,
+fn bach_quantitative_evidence_readiness(
+  capabilities: List<BachObservationCapability>,
+) -> BachRawCountPathAdditivityReadiness {
+  let has_raw_rows = capabilities |> any(c =>
+    match c {
+      RawMatchedExposureCountRowsPresent => true
+      WhichPathAuthorityCited => false
+    },
+  )
+  if has_raw_rows {
+    BachRawCountPathAdditivityReady {}
+  } else {
+    BachRawCountPathAdditivityNotEvaluable {
+      cause: "bach_et_al_2013_raw_count_observations is empty; figures report normalized distributions not raw matched-exposure counts" as NonEmptyStr,
+    }
+  }
 }
 
-data bach_quantitative_fold_refusal_note: String = "QUANTITATIVE FOLD REFUSED. Per-band arrival totals are not extractable from the cited source in this change. The classical path-additivity fold over Bach rows is blocked until figure extraction with a declared method lands extractable per-band data in extdeps or a sibling cited module. Mechanism tests use gunbc.classical_path_additivity_synthetic_fixture — honestly labeled synthetic population, not Bach provenance."
-
-type BachQuantitativePathAdditivityFoldRefused {
-  cited_experiment: BachEtAl2013DoubleSlitExperiment
-  cause: NonEmptyStr
+fn bach_quantitative_path_additivity_readiness_derived() -> BachRawCountPathAdditivityReadiness {
+  bach_quantitative_evidence_readiness(
+    capabilities: bach_observation_capabilities_from_extdeps(),
+  )
 }
 
-data bach_quantitative_path_additivity_fold_refused: BachQuantitativePathAdditivityFoldRefused = BachQuantitativePathAdditivityFoldRefused {
-  cited_experiment: bach_et_al_2013_double_slit,
-  cause: "per-band arrival_count rows absent from extdeps.physics.double_slit pending declared figure extraction from Bach et al. 2013" as NonEmptyStr,
+fn bach_which_path_evidence_readiness(
+  capabilities: List<BachObservationCapability>,
+) -> BachWhichPathEvidenceReadiness {
+  let cited = capabilities |> any(c =>
+    match c {
+      WhichPathAuthorityCited => true
+      RawMatchedExposureCountRowsPresent => false
+    },
+  )
+  if cited {
+    BachWhichPathEvidenceCited {}
+  } else {
+    BachWhichPathEvidenceUncited {
+      missing_authority: "a cited which-path or quantum-eraser experiment; Bach et al. 2013 controlled slit transmission only" as NonEmptyStr,
+    }
+  }
 }
 
-fn bach_quantitative_path_additivity_fold_is_refused() -> Bool {
-  true
+fn bach_which_path_evidence_readiness_derived() -> BachWhichPathEvidenceReadiness {
+  bach_which_path_evidence_readiness(
+    capabilities: bach_observation_capabilities_from_extdeps(),
+  )
 }
 
-fn bach_which_path_outcome_is_uncited() -> Bool {
-  true
+fn bach_distribution_observations_complete() -> Bool {
+  (bach_distribution_observations |> count) == 3
+    && bach_distribution_observations |> any(o => o == SlitOneSingleSlitDiffractionObserved)
+    && bach_distribution_observations |> any(o => o == SlitTwoSingleSlitDiffractionObserved)
+    && bach_distribution_observations |> any(o => o == BothSlitsDoubleSlitDiffractionObserved)
+}
+
+type BuildupFoldAcc {
+  max_electrons: Int
+  saw_not_yet: Bool
+  saw_discernible: Bool
+  saw_clearly_visible: Bool
+}
+
+fn fold_buildup_acc(acc: BuildupFoldAcc, row: BachBuildupObservationRow) -> BuildupFoldAcc {
+  let max_electrons = if row.detected_electrons > acc.max_electrons {
+    row.detected_electrons
+  } else {
+    acc.max_electrons
+  }
+  let saw_not_yet = acc.saw_not_yet || (row.pattern_status == PatternNotYetDiscernible)
+  let saw_discernible = acc.saw_discernible || (row.pattern_status == PatternDiscernible)
+  let saw_clearly_visible = acc.saw_clearly_visible || (row.pattern_status == PatternClearlyVisible)
+  BuildupFoldAcc {
+    max_electrons: max_electrons,
+    saw_not_yet: saw_not_yet,
+    saw_discernible: saw_discernible,
+    saw_clearly_visible: saw_clearly_visible,
+  }
+}
+
+fn bach_buildup_fold_derives_ensemble_interference() -> Bool {
+  let acc = fold(
+    bach_buildup_observations,
+    init: BuildupFoldAcc {
+      max_electrons: 0,
+      saw_not_yet: false,
+      saw_discernible: false,
+      saw_clearly_visible: false,
+    },
+    f: fn(a, row) { fold_buildup_acc(acc: a, row: row) },
+  )
+  acc.saw_not_yet
+    && acc.saw_discernible
+    && acc.saw_clearly_visible
+    && acc.max_electrons == 6235
 }

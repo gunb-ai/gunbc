@@ -1,84 +1,82 @@
 module test.claim.classical_path_additivity_synthetic_fixture_witness_test
 
-import std.types { Bool, NonEmptyStr }
-import std.algebra_law {
-  ClassicalPathAdditivityCounterexampleWitness,
-  ClassicalPathAdditivityRefutationReceipt,
-  ClassicalPathAdditivitySyntheticFixture,
-  classical_path_additivity_refutation_holds_for_synthetic_fixture,
+import std.types { Bool }
+import gunbc.physics.classical_path_additivity {
+  PathAdditivityRefutationReceipt,
+  PathAdditivitySyntheticFixture,
+  PathAdditivityCounterexampleWitness,
+  path_additivity_refutation_holds_for_synthetic_fixture,
+  ObservedBelowPrediction,
+  ObservedAbovePrediction,
 }
 import gunbc.classical_path_additivity_synthetic_fixture {
   classical_path_additivity_refutation_holds,
   classical_path_additivity_refuted,
   path_additivity_subject,
-  classical_path_additivity_no_refutation_at_blocked_zero_counts,
-  naive_normalized_probability_sum_trap_would_misfire_at_first_minimum,
-  correctly_normalized_additive_underpredicts_at_central_band,
-  central_band_additive_witness_is_not_counterexample,
+  classical_path_additivity_central_band_refutation_holds,
+  synthetic_blocked_count_is_resolved_zero_not_missing,
+  synthetic_missing_row_yields_incomplete_inputs,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-test fn w_synthetic_classical_path_additivity_refuted_by_fold_derivation() -> Bool {
+test fn w_synthetic_path_additivity_refuted_by_fold_derivation() -> Bool {
   classical_path_additivity_refutation_holds()
 }
 
-test fn w_synthetic_classical_path_additivity_rejects_fabricated_both_open_count() -> Bool {
+test fn w_synthetic_path_additivity_rejects_fabricated_both_open_count() -> Bool {
   let witness = classical_path_additivity_refuted.witness
-  let fabricated = ClassicalPathAdditivityCounterexampleWitness {
+  let fabricated = PathAdditivityCounterexampleWitness {
     left_alternative_count: witness.left_alternative_count,
     right_alternative_count: witness.right_alternative_count,
     both_open_observed_count: witness.classical_additive_prediction,
     classical_additive_prediction: witness.classical_additive_prediction,
+    mismatch_direction: witness.mismatch_direction,
   }
-  let bad_receipt = ClassicalPathAdditivityRefutationReceipt {
+  let bad_receipt = PathAdditivityRefutationReceipt {
     subject: path_additivity_subject,
     witness: fabricated,
-    location_label: classical_path_additivity_refuted.location_label,
+    location: classical_path_additivity_refuted.location,
   }
-  !classical_path_additivity_refutation_holds_for_synthetic_fixture(receipt: bad_receipt)
+  !path_additivity_refutation_holds_for_synthetic_fixture(receipt: bad_receipt)
 }
 
-test fn w_synthetic_classical_path_additivity_rejects_corrupted_left_count() -> Bool {
+test fn w_synthetic_path_additivity_rejects_corrupted_left_count() -> Bool {
   let witness = classical_path_additivity_refuted.witness
-  let fabricated = ClassicalPathAdditivityCounterexampleWitness {
+  let fabricated = PathAdditivityCounterexampleWitness {
     left_alternative_count: witness.left_alternative_count + 1,
     right_alternative_count: witness.right_alternative_count,
     both_open_observed_count: witness.both_open_observed_count,
     classical_additive_prediction: witness.classical_additive_prediction,
+    mismatch_direction: witness.mismatch_direction,
   }
-  let bad_receipt = ClassicalPathAdditivityRefutationReceipt {
+  let bad_receipt = PathAdditivityRefutationReceipt {
     subject: path_additivity_subject,
     witness: fabricated,
-    location_label: classical_path_additivity_refuted.location_label,
+    location: classical_path_additivity_refuted.location,
   }
-  !classical_path_additivity_refutation_holds_for_synthetic_fixture(receipt: bad_receipt)
+  !path_additivity_refutation_holds_for_synthetic_fixture(receipt: bad_receipt)
 }
 
-test fn w_synthetic_no_refutation_at_blocked_zero_counts() -> Bool {
-  classical_path_additivity_no_refutation_at_blocked_zero_counts()
+test fn w_synthetic_central_band_refutes_with_observed_above_prediction() -> Bool {
+  classical_path_additivity_central_band_refutation_holds()
 }
 
-test fn w_synthetic_normalized_probability_trap_is_not_the_witness() -> Bool {
-  naive_normalized_probability_sum_trap_would_misfire_at_first_minimum()
-    && classical_path_additivity_refuted.witness.both_open_observed_count < classical_path_additivity_refuted.witness.classical_additive_prediction
+test fn w_synthetic_blocked_count_is_resolved_zero_not_missing() -> Bool {
+  synthetic_blocked_count_is_resolved_zero_not_missing()
 }
 
-test fn w_synthetic_central_band_additive_underpredicts_observed_both_open() -> Bool {
-  correctly_normalized_additive_underpredicts_at_central_band()
-}
-
-test fn w_synthetic_central_band_is_not_counterexample_witness() -> Bool {
-  central_band_additive_witness_is_not_counterexample()
+test fn w_synthetic_missing_row_yields_incomplete_inputs() -> Bool {
+  synthetic_missing_row_yields_incomplete_inputs()
 }
 
 test fn w_synthetic_path_additivity_subject_is_synthetic_fixture_coproduct() -> Bool {
-  path_additivity_subject == ClassicalPathAdditivitySyntheticFixture {}
+  path_additivity_subject == PathAdditivitySyntheticFixture {}
 }
 
-test fn w_synthetic_path_additivity_witness_names_first_minimum_band() -> Bool {
-  classical_path_additivity_refuted.location_label == ("SyntheticMatchedExposureOne:FirstMinimumBand:BothSlitsOpen" as NonEmptyStr)
-    && classical_path_additivity_refuted.witness.both_open_observed_count == 5
+test fn w_synthetic_first_minimum_witness_below_prediction() -> Bool {
+  classical_path_additivity_refuted.witness.both_open_observed_count == 5
     && classical_path_additivity_refuted.witness.classical_additive_prediction == 20
+    && classical_path_additivity_refuted.witness.mismatch_direction == ObservedBelowPrediction
 }

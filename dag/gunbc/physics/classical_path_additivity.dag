@@ -112,6 +112,11 @@ fn arrival_count_row_matches(
     && row.exposure == exposure
 }
 
+type ArrivalCountFoldAcc {
+  match_count: Int
+  sum: Int
+}
+
 fn resolve_arrival_count_at(
   rows: List<SyntheticArrivalCountObservationRow>,
   fixture: SyntheticDoubleSlitFixture,
@@ -163,11 +168,6 @@ fn resolve_arrival_count_at(
       }
     }
   }
-}
-
-type ArrivalCountFoldAcc {
-  match_count: Int
-  sum: Int
 }
 
 fn resolve_additivity_inputs(
@@ -252,17 +252,29 @@ fn resolve_additivity_inputs(
   }
 }
 
+fn additivity_mismatch_direction_when_different(
+  observed_both: Int,
+  prediction: Int,
+) -> AdditivityMismatchDirection {
+  if observed_both < prediction {
+    ObservedBelowPrediction
+  } else {
+    ObservedAbovePrediction
+  }
+}
+
 fn path_additivity_mismatch_direction(
   observed_both: Int,
   prediction: Int,
 ) -> AdditivityMismatchDirection? {
-  if observed_both < prediction {
-    ObservedBelowPrediction
+  if observed_both == prediction {
+    none
   } else {
-    if observed_both > prediction {
-      ObservedAbovePrediction
-    } else {
-      absent
+    Present {
+      value: additivity_mismatch_direction_when_different(
+        observed_both: observed_both,
+        prediction: prediction,
+      ),
     }
   }
 }
@@ -289,6 +301,34 @@ fn path_additivity_refutation_holds_for_synthetic_fixture(
   }
 }
 
+fn path_additivity_refutation_from_resolved(
+  left: Int,
+  right: Int,
+  both: Int,
+  band: ScreenBand,
+  exposure: SyntheticMatchedExposureSession,
+  mismatch_direction: AdditivityMismatchDirection,
+) -> PathAdditivityRefutationReceipt {
+  let prediction = classical_exclusive_alternative_arrival_prediction(
+    left_only_count: left,
+    right_only_count: right,
+  )
+  PathAdditivityRefutationReceipt {
+    subject: PathAdditivitySyntheticFixture {},
+    witness: PathAdditivityCounterexampleWitness {
+      left_alternative_count: left,
+      right_alternative_count: right,
+      both_open_observed_count: both,
+      classical_additive_prediction: prediction,
+      mismatch_direction: mismatch_direction,
+    },
+    location: PathAdditivityLocationKey {
+      exposure: exposure,
+      band: band,
+    },
+  }
+}
+
 fn derive_path_additivity_refutation_at_band(
   rows: List<SyntheticArrivalCountObservationRow>,
   fixture: SyntheticDoubleSlitFixture,
@@ -305,49 +345,49 @@ fn derive_path_additivity_refutation_at_band(
       left: left,
       right: right,
       both: both,
-      left_contributing_rows: _,
-      right_contributing_rows: _,
-      both_contributing_rows: _,
+      left_contributing_rows: left_rows,
+      right_contributing_rows: right_rows,
+      both_contributing_rows: both_rows,
     } => {
       let prediction = classical_exclusive_alternative_arrival_prediction(
         left_only_count: left,
         right_only_count: right,
       )
       match path_additivity_mismatch_direction(observed_both: both, prediction: prediction) {
-        ObservedBelowPrediction =>
-          PathAdditivityRefutationReceipt {
-            subject: PathAdditivitySyntheticFixture {},
-            witness: PathAdditivityCounterexampleWitness {
-              left_alternative_count: left,
-              right_alternative_count: right,
-              both_open_observed_count: both,
-              classical_additive_prediction: prediction,
+        Present { value: ObservedBelowPrediction } =>
+          Present {
+            value: path_additivity_refutation_from_resolved(
+              left: left,
+              right: right,
+              both: both,
+              band: band,
+              exposure: exposure,
               mismatch_direction: ObservedBelowPrediction,
-            },
-            location: PathAdditivityLocationKey {
-              exposure: exposure,
-              band: band,
-            },
+            ),
           }
-        ObservedAbovePrediction =>
-          PathAdditivityRefutationReceipt {
-            subject: PathAdditivitySyntheticFixture {},
-            witness: PathAdditivityCounterexampleWitness {
-              left_alternative_count: left,
-              right_alternative_count: right,
-              both_open_observed_count: both,
-              classical_additive_prediction: prediction,
+        Present { value: ObservedAbovePrediction } =>
+          Present {
+            value: path_additivity_refutation_from_resolved(
+              left: left,
+              right: right,
+              both: both,
+              band: band,
+              exposure: exposure,
               mismatch_direction: ObservedAbovePrediction,
-            },
-            location: PathAdditivityLocationKey {
-              exposure: exposure,
-              band: band,
-            },
+            ),
           }
-        absent => absent
+        Absent => none
       }
     }
-    AdditivityInputsIncomplete { .. } => absent
-    AdditivityInputsAmbiguous { .. } => absent
+    AdditivityInputsIncomplete {
+      missing_arrangement: missing_arrangement,
+      band: incomplete_band,
+      exposure: incomplete_exposure,
+    } => none
+    AdditivityInputsAmbiguous {
+      band: ambiguous_band,
+      exposure: ambiguous_exposure,
+      matching_rows: ambiguous_rows,
+    } => none
   }
 }

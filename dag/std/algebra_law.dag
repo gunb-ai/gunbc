@@ -1,10 +1,10 @@
 module std.algebra_law
 
-import std.types { Float, NonEmptyStr, Int, is_kernel_type }
+import std.types { Float, is_kernel_type }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 
-data algebra_law_slice_note: String = "Slice-1 associativity (AssociativityOperationSubject / AssociativityFloatAdd). Slice-A classical path additivity: ClassicalPathAdditivitySyntheticFixture mechanism tests in gunbc.classical_path_additivity_synthetic_fixture; Bach et al. 2013 quantitative fold refused in gunbc.bach_double_slit_observation pending per-band figure extraction. Lattice distributivity (Slice B) deferred. LawExhaustivelyVerified and LawDeclaredByAuthority remain omitted."
+data algebra_law_slice_note: String = "Slice-1 associativity evidence only (AssociativityOperationSubject / AssociativityFloatAdd). Classical path-additivity mechanism and Bach observations live in gunbc.physics.classical_path_additivity and gunbc.bach_double_slit_observation. Lattice distributivity (Slice B) deferred. LawExhaustivelyVerified and LawDeclaredByAuthority remain omitted."
 
 data algebra_law_subject_coproduct_expansion_disposition: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
@@ -31,22 +31,6 @@ type AssociativityRefutationReceipt<T> {
   witness: AssociativityCounterexampleWitness<T>
 }
 
-type ClassicalPathAdditivityCounterexampleWitness {
-  left_alternative_count: Int
-  right_alternative_count: Int
-  both_open_observed_count: Int
-  classical_additive_prediction: Int
-}
-
-type ClassicalPathAdditivityOperationSubject
-  = ClassicalPathAdditivitySyntheticFixture {}
-
-type ClassicalPathAdditivityRefutationReceipt {
-  subject: ClassicalPathAdditivityOperationSubject
-  witness: ClassicalPathAdditivityCounterexampleWitness
-  location_label: NonEmptyStr
-}
-
 fn float_kernel_type_in_authority_roster() -> Bool {
   is_kernel_type(name: "Float")
 }
@@ -67,27 +51,5 @@ fn associativity_refutation_holds_for_float_add(
   match receipt.subject {
     AssociativityFloatAdd {} =>
       float_add_associativity_witness_matches_execution(witness: receipt.witness)
-  }
-}
-
-fn classical_path_additivity_witness_matches_additive_prediction(
-  witness: ClassicalPathAdditivityCounterexampleWitness,
-) -> Bool {
-  witness.classical_additive_prediction == (witness.left_alternative_count + witness.right_alternative_count)
-}
-
-fn classical_path_additivity_witness_is_counterexample(
-  witness: ClassicalPathAdditivityCounterexampleWitness,
-) -> Bool {
-  classical_path_additivity_witness_matches_additive_prediction(witness: witness)
-    && (witness.both_open_observed_count < witness.classical_additive_prediction)
-}
-
-fn classical_path_additivity_refutation_holds_for_synthetic_fixture(
-  receipt: ClassicalPathAdditivityRefutationReceipt,
-) -> Bool {
-  match receipt.subject {
-    ClassicalPathAdditivitySyntheticFixture {} =>
-      classical_path_additivity_witness_is_counterexample(witness: receipt.witness)
   }
 }
