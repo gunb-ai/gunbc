@@ -21,6 +21,7 @@ import gunbc.explicit_witness_admission {
   explicit_witness_admissions_well_formed,
   explicit_witness_admission_duplicate_count,
   known_red_probe_corpus_roster,
+  known_red_probe_v1_scoped_roster,
   known_red_probe_execution_roster
 }
 import std.witness_admission {
@@ -753,7 +754,10 @@ data witness_admission_fixture_note: String = "Phase 0(b): floor_skip control fi
 data known_red_probe_note: String = "Phase 0(b) quarantine probe cadence (module-identity-storage-binding): known-red frontier witnesses that EXPECT RED on main — the falsifier probe batch runs them SelectionApplied; greening is a counted un-quarantine event (per-row dissolve_on on the authority). Distinct from falsifier_self_host_wet (green-only SelfEmitted receipts). SINGLE AUTHORITY (2026-08-03): the rows live at function grain in gunbc.explicit_witness_admission explicit_witness_admissions and BOTH consumers derive from them — this roster is the falsifier batch's projection, and v2.workflow.floor_discovery_producer drops exactly the same (entry, function) pairs from per-PR discovery. The former shape was a dual representation: a QuarantineProbeExpectRed WitnessExclusionRow removing the whole FILE plus a probe_red(entry, f) row enrolling one FUNCTION, reconciled by a check instead of by construction. Those pattern rows are deleted; a pattern row that re-states a quarantine is now refused by witness_exclusion_row_well_formed."
 
 fn known_red_probe_roster() -> List<ScheduleWitnessEntry> {
-  known_red_probe_corpus_roster()
+  concat(
+    known_red_probe_corpus_roster(),
+    known_red_probe_v1_scoped_roster()
+  )
 }
 
 data long_lane_exclusion_note: String = "test/claim/long/ is the LONG-test home (operator 5-second rule, 2026-07-12; authority + enforcement: gunbc_ci_fast_lane_rule_note / gunbc_ci_fast_lane_witness_eval_budget in v2.workflow.ci_floor_plan): a witness whose own eval reaches 5s does not run in per-PR discovery — the executor's cooperative eval deadline REDs it by name (EvalBudgetExceeded), and the fix is moving its file here (dag/test/claim/long/, src/v2/test/claim/long/), where discovery excludes it at dir grain and it runs via the local recipe (claim_batch --source-root dag --source-root src/v2 --entry <file> --functions <csv>) or the scheduled lane's future enrollment. First residents (receipted): s1_closure_receipt_test (whole-closure re-parse through the interpreted v2 frontend, 90+min eval, the run-29183446733 wedge class) and self_host_module_emit_derisk_test (~31s/witness). Named consumer with file-grain exclusion row: compiler_frontier_per_module_probe_test.dag (compiler_frontier_per_module_probe_exclusion_note). Unlike the roster exclusions above, membership here is a HOME, not a per-file ruling: the 5s deadline makes an over-budget fast-lane witness unwritable-in-place, so the roster cannot silently grow stale (§5 construction over validation). Dissolve-on: per-witness declared cost envelopes (witness-cost-locality admission law) subsume the dir grain."

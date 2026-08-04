@@ -281,8 +281,36 @@ fn known_red_probe_roster_of_kind(kind: WitnessKind) -> List<ScheduleWitnessEntr
   )
 }
 
+fn known_red_entry_is_v1_scoped(entry: String) -> Bool {
+  starts_with(s: entry, prefix: "src/v1/")
+}
+
 fn known_red_probe_corpus_roster() -> List<ScheduleWitnessEntry> {
-  known_red_probe_roster_of_kind(kind: CorpusWitnessKind)
+  fold(
+    known_red_probe_roster_of_kind(kind: CorpusWitnessKind),
+    init: [],
+    f: fn(acc, witness) {
+      if known_red_entry_is_v1_scoped(entry: witness.entry) {
+        acc
+      } else {
+        concat(acc, [witness])
+      }
+    }
+  )
+}
+
+fn known_red_probe_v1_scoped_roster() -> List<ScheduleWitnessEntry> {
+  fold(
+    known_red_probe_roster_of_kind(kind: CorpusWitnessKind),
+    init: [],
+    f: fn(acc, witness) {
+      if known_red_entry_is_v1_scoped(entry: witness.entry) {
+        concat(acc, [witness])
+      } else {
+        acc
+      }
+    }
+  )
 }
 
 fn known_red_probe_execution_roster() -> List<ScheduleWitnessEntry> {

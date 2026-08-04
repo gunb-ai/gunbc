@@ -10,6 +10,7 @@ import gunbc.explicit_witness_admission {
   explicit_witness_admissions_well_formed_in,
   known_red_probe,
   known_red_probe_corpus_roster,
+  known_red_probe_v1_scoped_roster,
   known_red_probe_execution_roster
 }
 import gunbc.ci_layer_roots { known_red_probe_roster }
@@ -101,13 +102,14 @@ test fn every_live_admission_is_reached_by_its_own_row() -> Bool {
 
 test fn every_admission_is_projected_into_exactly_one_cadence_roster() -> Bool {
   let corpus_rows = length(xs: known_red_probe_corpus_roster())
+  let v1_scoped_rows = length(xs: known_red_probe_v1_scoped_roster())
   let execution_rows = length(xs: known_red_probe_execution_roster())
-  let projected = corpus_rows + execution_rows
+  let projected = corpus_rows + v1_scoped_rows + execution_rows
   projected == length(xs: explicit_witness_admissions)
 }
 
-test fn ci_layer_roots_probe_roster_is_the_corpus_projection() -> Bool {
-  length(xs: known_red_probe_roster()) == length(xs: known_red_probe_corpus_roster())
+test fn ci_layer_roots_probe_roster_is_the_union_of_corpus_and_v1_scoped() -> Bool {
+  length(xs: known_red_probe_roster()) == (length(xs: known_red_probe_corpus_roster()) + length(xs: known_red_probe_v1_scoped_roster()))
 }
 
 fn synthetic_admission(f: String) -> ExplicitWitnessAdmission {
