@@ -13,20 +13,28 @@ import gunbc.stage0_rust_source_lifecycle_scaffold {
   ManifestStateScaffoldRefused,
   ObservedCargoPathUntracked,
   CargoTargetMissingLifecycleDisposition,
+  EmitFrom,
   behavioral_oracle_carrier_ref,
   classified_residue_disjoint_holds,
   derived_generated_hand_disjoint_holds,
   derived_generated_stage0_repo_paths,
+  derived_hand_maintained_disposition_repo_paths,
+  derived_hand_maintained_stage0_repo_paths,
   duplicate_exact_paths_zero_holds,
   file_grain_paths_avoid_discovery_prefix_holds,
   generated_authority_subset_of_derived_holds,
   generated_repo_paths_cover_authority_holds,
   generated_stage0_files_authority_ref,
+  layout_disposition_override_disjoint_from_residue_holds,
+  layout_disposition_override_repo_paths,
+  layout_disposition_override_rows_well_formed,
+  layout_disposition_override_subset_of_hand_maintained_holds,
   lifecycle_row_well_formed,
   lifecycle_row_well_formed_query_scaffold,
   list_paths_all_unique,
   manifest_state_verdict_scaffold_holds,
   partition_crate_paths_complete_holds,
+  path_in_list,
   residue_row,
   rust_source_manifest_state_verdict,
   rust_source_manifest_state_verdict_query_scaffold,
@@ -34,6 +42,9 @@ import gunbc.stage0_rust_source_lifecycle_scaffold {
   stage0_rust_lifecycle_scaffold_join_mechanical_checks_holds,
   stage0_rust_lifecycle_scaffold_mechanical_checks_holds,
   stage0_rust_source_lifecycle_scaffold_note,
+  v1_interpreter_dispatch_emit_authority_ref,
+  v1_interpreter_dispatch_generated_disposition_row,
+  v1_interpreter_dispatch_generated_repo_path,
   witness_duplicate_tracked_observation,
   witness_honest_minimal_observation_ok,
   witness_hand_maintained_growth_observation,
@@ -51,7 +62,7 @@ import gunbc.stage0_rust_host_observation {
 import gunbc.stage0_emit_model { generated_stage0_file_count }
 import std.content_hash { Fnv1a64Structural }
 import std.disposition { RealizationDispatch, Scaffold, SingleAuthority }
-import v2.std.algebra { length }
+import v2.std.algebra { any, length }
 import v2.std.text { String }
 
 data stage0_rust_source_lifecycle_scaffold_witness_note: String = "Stage0 lifecycle scaffold witnesses after the PR B host activation. The live observation must inhabit RustManifestObserved with path evidence; typed host refusals remain distinct inputs to the existing verdict. The lifecycle classification is still an honest scaffold and may remain red on the repository-wide unclassified population."
@@ -304,4 +315,63 @@ test fn scaffold_residue_red_control_duplicate_path_reds() -> Bool {
       paths: paths,
       target: "src/v1/stage0/src/bootstrap_stage0_crate_layout_generated.rs"
     ) == 2
+}
+
+test fn scaffold_v1_interpreter_dispatch_generated_is_layout_member() -> Bool {
+  path_in_list(
+    path: v1_interpreter_dispatch_generated_repo_path,
+    paths: derived_hand_maintained_stage0_repo_paths()
+  )
+}
+
+test fn scaffold_v1_interpreter_dispatch_generated_excluded_from_disposition_population() -> Bool {
+  !path_in_list(
+    path: v1_interpreter_dispatch_generated_repo_path,
+    paths: derived_hand_maintained_disposition_repo_paths()
+  )
+}
+
+test fn scaffold_v1_interpreter_dispatch_generated_disposition_is_emit_from_gunbc_emit_authority() -> Bool {
+  let row = v1_interpreter_dispatch_generated_disposition_row
+  row.path == v1_interpreter_dispatch_generated_repo_path
+    && length(xs: row.maintenance_dispositions) == 1
+    && any(
+      xs: row.maintenance_dispositions,
+      predicate: fn(disposition) {
+        match disposition {
+          EmitFrom { authority: authority } =>
+            authority.module_path == "gunbc.v1_interpreter_dispatch_emit"
+              && authority.decl_name == "expected_v1_interpreter_dispatch_generated_rs"
+          _ => false
+        }
+      }
+    )
+}
+
+test fn scaffold_v1_interpreter_dispatch_generated_authority_ref_matches_row() -> Bool {
+  v1_interpreter_dispatch_emit_authority_ref.module_path == "gunbc.v1_interpreter_dispatch_emit"
+    && v1_interpreter_dispatch_emit_authority_ref.decl_name == "expected_v1_interpreter_dispatch_generated_rs"
+}
+
+test fn scaffold_layout_disposition_override_repo_paths_is_exactly_the_override_row() -> Bool {
+  layout_disposition_override_repo_paths() == [v1_interpreter_dispatch_generated_repo_path]
+}
+
+test fn scaffold_layout_disposition_override_subset_of_hand_maintained_holds_green() -> Bool {
+  layout_disposition_override_subset_of_hand_maintained_holds()
+}
+
+test fn scaffold_layout_disposition_override_rows_well_formed_green() -> Bool {
+  layout_disposition_override_rows_well_formed()
+}
+
+test fn scaffold_layout_disposition_override_disjoint_from_residue_holds_green() -> Bool {
+  layout_disposition_override_disjoint_from_residue_holds()
+}
+
+test fn scaffold_disposition_population_excludes_exactly_the_override_paths() -> Bool {
+  let disposition_count = length(xs: derived_hand_maintained_disposition_repo_paths())
+  let layout_count = length(xs: derived_hand_maintained_stage0_repo_paths())
+  let override_count = length(xs: layout_disposition_override_repo_paths())
+  disposition_count == layout_count - override_count
 }

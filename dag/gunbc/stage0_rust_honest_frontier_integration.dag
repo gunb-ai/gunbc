@@ -25,14 +25,14 @@ import gunbc.stage0_rust_product_reachability {
   product_reachability_receipt
 }
 import gunbc.stage0_rust_source_lifecycle_scaffold {
-  derived_hand_maintained_stage0_repo_paths,
+  derived_hand_maintained_disposition_repo_paths,
   path_in_list
 }
 import v2.std.algebra { filter }
 import v2.std.collection { List }
 import v2.std.text { String }
 
-data stage0_rust_honest_frontier_integration_note: String = "Lane C integration join: composes C1 lifecycle_totality_receipt and C2 product_reachability_receipt over the same RustManifestObserved subject. Answers v1-hand-queue-drain: which remaining hand-written paths shipping products actually reach — exact path identity join of derived_hand_maintained_stage0_repo_paths with product-reachable verdicts, never a count oracle. Discovery completeness and disposition decision stay separate reports."
+data stage0_rust_honest_frontier_integration_note: String = "Lane C integration join: composes C1 lifecycle_totality_receipt and C2 product_reachability_receipt over the same RustManifestObserved subject. Answers v1-hand-queue-drain: which remaining hand-written paths shipping products actually reach — exact path identity join of derived_hand_maintained_disposition_repo_paths with product-reachable verdicts, never a count oracle. derived_hand_maintained_disposition_repo_paths is layout membership (derived_hand_maintained_stage0_repo_paths) minus rust_source_lifecycle_layout_disposition_override_rows: a path can be a legitimate crate-layout member (SeedRetainedScaffoldRegistration) while its content carries a Generated/EmitFrom disposition, e.g. v1_interpreter_dispatch_generated.rs emitted from gunbc.v1_interpreter_dispatch_emit — layout membership and maintenance disposition are independent axes, never inferred from one list. Discovery completeness and disposition decision stay separate reports."
 
 type HonestFrontierIntegrationReceipt
   = HonestFrontierIntegrationDerived {
@@ -46,7 +46,7 @@ type HonestFrontierIntegrationReceipt
 fn exact_hand_maintained_product_reachable_paths(
   verdicts: List<RustProductReachabilityVerdict>
 ) -> List<String> {
-  let hand_paths = derived_hand_maintained_stage0_repo_paths()
+  let hand_paths = derived_hand_maintained_disposition_repo_paths()
   let product_reachable = exact_product_reachable_paths_from_verdicts(verdicts: verdicts)
   filter(
     xs: hand_paths,
@@ -57,7 +57,7 @@ fn exact_hand_maintained_product_reachable_paths(
 fn exact_hand_maintained_reachability_refused_paths(
   verdicts: List<RustProductReachabilityVerdict>
 ) -> List<String> {
-  let hand_paths = derived_hand_maintained_stage0_repo_paths()
+  let hand_paths = derived_hand_maintained_disposition_repo_paths()
   let refused = exact_reachability_refused_paths_from_verdicts(verdicts: verdicts)
   filter(
     xs: hand_paths,

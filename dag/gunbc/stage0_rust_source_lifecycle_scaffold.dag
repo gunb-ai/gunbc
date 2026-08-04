@@ -145,7 +145,7 @@ fn count_stale_lifecycle_rows(tracked_paths: List<String>, lifecycle_paths: List
 
 fn count_hand_maintained_in_tracked(tracked_paths: List<String>) -> Int {
   fold_list(
-    xs: derived_hand_maintained_stage0_repo_paths(),
+    xs: derived_hand_maintained_disposition_repo_paths(),
     empty: 0,
     cons: fn(count, hand_path) {
       if path_in_list(path: hand_path, paths: tracked_paths) {
@@ -159,7 +159,7 @@ fn count_hand_maintained_in_tracked(tracked_paths: List<String>) -> Int {
 
 fn count_hand_maintained_in_prior_tracked(prior_tracked_paths: List<String>) -> Int {
   fold_list(
-    xs: derived_hand_maintained_stage0_repo_paths(),
+    xs: derived_hand_maintained_disposition_repo_paths(),
     empty: 0,
     cons: fn(count, hand_path) {
       if path_in_list(path: hand_path, paths: prior_tracked_paths) {
@@ -341,6 +341,68 @@ fn derived_hand_maintained_stage0_repo_paths() -> List<String> {
   list_map(
     xs: hand_maintained_stage0_filenames(),
     f: fn(filename) { stage0_src_repo_path(filename: filename) }
+  )
+}
+
+data layout_disposition_override_note: String = "derived_hand_maintained_stage0_repo_paths() answers ONE question: which paths must be pub-mod-declared for the crate to link (layout membership, per hand_maintained_stage0_filenames_authority_ref). It does not answer who maintains a path's contents. rust_source_lifecycle_layout_disposition_override_rows carries the exact-path exceptions where layout membership and maintenance disposition diverge — a path can be a legitimate scaffold-registration layout member (SeedRetainedScaffoldRegistration) while its content is Generated/EmitFrom a real emit authority. derived_hand_maintained_disposition_repo_paths() is the corrected maintenance-disposition population: layout membership minus the override paths. This is the single authority consumed by count_hand_maintained_in_tracked/count_hand_maintained_in_prior_tracked and by gunbc.stage0_rust_honest_frontier_integration's exact_hand_maintained_* joins."
+
+data v1_interpreter_dispatch_emit_authority_ref: DeclarationRef = DeclarationRef {
+  module_path: "gunbc.v1_interpreter_dispatch_emit",
+  decl_name: "expected_v1_interpreter_dispatch_generated_rs",
+  field: WholeDeclaration
+}
+
+data v1_interpreter_dispatch_generated_repo_path: String = stage0_src_repo_path(
+  filename: "v1_interpreter_dispatch_generated.rs"
+)
+
+data v1_interpreter_dispatch_generated_disposition_row: RustSourceLifecycleRow = RustSourceLifecycleRow {
+  path: v1_interpreter_dispatch_generated_repo_path,
+  roles: [],
+  maintenance_dispositions: [
+    EmitFrom { authority: v1_interpreter_dispatch_emit_authority_ref }
+  ]
+}
+
+data rust_source_lifecycle_layout_disposition_override_rows: List<RustSourceLifecycleRow> = [
+  v1_interpreter_dispatch_generated_disposition_row
+]
+
+fn layout_disposition_override_repo_paths() -> List<String> {
+  list_map(xs: rust_source_lifecycle_layout_disposition_override_rows, f: fn(row) { row.path })
+}
+
+fn derived_hand_maintained_disposition_repo_paths() -> List<String> {
+  filter(
+    xs: derived_hand_maintained_stage0_repo_paths(),
+    predicate: fn(path) {
+      !path_in_list(path: path, paths: layout_disposition_override_repo_paths())
+    }
+  )
+}
+
+fn layout_disposition_override_subset_of_hand_maintained_holds() -> Bool {
+  fold_list(
+    xs: layout_disposition_override_repo_paths(),
+    empty: true,
+    cons: fn(ok, path) {
+      ok && path_in_list(path: path, paths: derived_hand_maintained_stage0_repo_paths())
+    }
+  )
+}
+
+fn layout_disposition_override_rows_well_formed() -> Bool {
+  fold_list(
+    xs: rust_source_lifecycle_layout_disposition_override_rows,
+    empty: true,
+    cons: fn(ok, row) { ok && lifecycle_row_well_formed(row: row) }
+  )
+}
+
+fn layout_disposition_override_disjoint_from_residue_holds() -> Bool {
+  !any(
+    xs: layout_disposition_override_repo_paths(),
+    predicate: fn(path) { path_in_list(path: path, paths: residue_lifecycle_repo_paths()) }
   )
 }
 
@@ -679,6 +741,9 @@ fn stage0_rust_lifecycle_scaffold_join_mechanical_checks_holds() -> Bool {
     && duplicate_exact_paths_zero_holds()
     && rust_source_lifecycle_residue_rows_well_formed()
     && rust_source_lifecycle_residue_paths_unique()
+    && layout_disposition_override_subset_of_hand_maintained_holds()
+    && layout_disposition_override_rows_well_formed()
+    && layout_disposition_override_disjoint_from_residue_holds()
 }
 
 fn stage0_rust_lifecycle_scaffold_mechanical_checks_holds() -> Bool {
