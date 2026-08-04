@@ -337,10 +337,6 @@ fn known_red_probe_v1_envelope_roster() -> List<ScheduleWitnessEntry> {
   )
 }
 
-fn known_red_probe_v1_scoped_roster() -> List<ScheduleWitnessEntry> {
-  known_red_probe_v1_envelope_roster()
-}
-
 fn known_red_probe_execution_roster() -> List<ScheduleWitnessEntry> {
   known_red_probe_roster_of_kind(kind: ExecutionWitnessKind)
 }

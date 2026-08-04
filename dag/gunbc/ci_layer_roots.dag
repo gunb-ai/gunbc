@@ -22,7 +22,6 @@ import gunbc.explicit_witness_admission {
   explicit_witness_admission_duplicate_count,
   known_red_probe_corpus_roster,
   known_red_probe_v1_envelope_roster,
-  known_red_probe_v1_scoped_roster,
   known_red_probe_execution_roster
 }
 import std.witness_admission {
@@ -763,7 +762,7 @@ data known_red_probe_note: String = "Phase 0(b) quarantine probe cadence (module
 fn known_red_probe_roster() -> List<ScheduleWitnessEntry> {
   concat(
     known_red_probe_corpus_roster(),
-    known_red_probe_v1_scoped_roster()
+    known_red_probe_v1_envelope_roster()
   )
 }
 
