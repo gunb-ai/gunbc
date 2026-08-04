@@ -1,7 +1,12 @@
 module extdeps.linux.flock
 
 import std.types { String, List, Int, Duration, FilePath, NonEmptyStr }
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority {
+  ExternalAuthority,
+  ExternalModelScope,
+  ExternalSubjectRef,
+}
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
 import extdeps.exec.command { ArgvCommand }
 
@@ -11,6 +16,27 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
     locator: "man7.org/linux/man-pages/man1/flock.1.html"
   }
 }
+
+data flock_2_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "man7.org/linux/man-pages/man2/flock.2.html"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.linux.flock",
+      decl_name: "flock_exclusive_command",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [flock_2_authority]
+}
+
+data flock_two_citations_note: String = "TWO citations because the model rests on two different upstream surfaces, and collapsing them would hide which document backs which claim. flock(1) is the COMMAND form this builds argv for — its option spellings, and the documented --conflict-exit-code behavior the outcome split depends on. flock(2) is the SYSCALL whose semantics are the reason this is a usable lease at all: the lock is held across exec, released when the last descriptor referring to the open file description is closed (so process exit, including abnormal exit, releases it), and it is advisory rather than mandatory. Citing only the CLI page would leave the load-bearing lifetime and advisory-scope facts uncited."
 
 data flock_upstream_note: String = "util-linux flock(1), the command form: `flock [options] file|directory command [arguments]`. The upstream names are kept (DESIGN §3 — cite the source, keep its real names, model what the API actually does) rather than being re-coined as a generic 'lock' vocabulary, because the semantics that make this usable as a deployment lease are flock(2)'s specific ones and a nickname would hide them.\\n\\nTHE TWO PROPERTIES THIS IS SELECTED FOR, both upstream facts rather than conveniences: an exclusive lock is held across `exec` and is released when the holding process EXITS — including on crash or kill, because the kernel drops the open file description — so the critical section is exactly the lifetime of the wrapped process and there is no stale-lock cleanup policy to invent. That is why the lease needs no expiry, and why inventing one would have been the §4 heuristic the closed system does not need.\\n\\nTHE PROPERTY THIS DOES NOT HAVE, named because a deployment lease depends on it: flock(2) is ADVISORY. It excludes only callers that also take the lock on the same file. A mutation path that does not route through this wrapper is not excluded by it, so 'every entrypoint enters through the leased launcher' is a real obligation and not a formality."
 

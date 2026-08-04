@@ -130,6 +130,7 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/git/publication_transport.dag",
   "dag/extdeps/github/actions_environment.dag",
   "dag/extdeps/github/push_event.dag",
+  "dag/extdeps/linux/flock.dag",
   "dag/extdeps/standards/ieee_754_2019.dag",
   "dag/extdeps/os/debian.dag",
   "dag/extdeps/tools/wc.dag",
