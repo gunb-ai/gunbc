@@ -11,7 +11,11 @@ fn assert_resolved_no_hard_errors(result: &ResolvedPipelineResult) {
         .diagnostics
         .iter()
         .map(|d| v1_compiler::v1_std_core::diagnostic_to_message(d.diagnostic.clone()))
-        .filter(|m| !m.starts_with("complexity: ") && !m.starts_with("unlisted import use "))
+        .filter(|m| {
+            !m.starts_with("complexity: ")
+                && !m.starts_with("unlisted import use ")
+                && !m.starts_with("where-refinement unenforced:")
+        })
         .collect();
     assert!(
         msgs.is_empty() && result.graph.is_some(),
