@@ -1,10 +1,14 @@
 module gunbc.runner_host_deploy
 
-import gunbc.repository { gunbc_repository }
 import std.types { NonEmptyStr, String, Int, List }
 import extdeps.exec.command { ArgvCommand, shell_command_render }
-import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending }
-import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
+import extdeps.cloud.gcp.secret_ref { SecretRef }
+import extdeps.github.app { GitHubAppRegistration }
+import gunbc.auth.github_apps {
+  gunbai_ci_registration,
+  gunbai_ci_declared_installation_id,
+  gunbai_ci_app_pem_secret
+}
 import extdeps.cache.sccache { SccacheBinaryRelease, sccache_release_0_15_0, sccache_install_script }
 import extdeps.crypto.hash { Digest, sha256_digest }
 import extdeps.container.docker_ce { docker_ce_apt_repo_noble_arm64, docker_ce_packages, docker_ce_repo_install_script }
@@ -16,23 +20,22 @@ data runner_host_deploy_citation: String = "§3 cite-upstream, do-not-re-coin: G
 data runner_host_deploy_upstream_installer: NonEmptyStr = "ctrl:scripts/session-dashboard/host/install-actions-runner.sh"
 data runner_host_deploy_upstream_fanout: NonEmptyStr = "ctrl:scripts/session-dashboard/host/deploy-runner-hosts.sh"
 
+data github_app_runner_config_regrounding_note: String = "RE-GROUNDED onto gunbc.auth.github_apps, which is now the single authority for this organization's GitHub App registrations. This row previously carried app_id 2653532, an installation ID, an owner and a SecretRef inline, which made it a second home for facts about an App — and the cost of that showed up the moment a SECOND App entered the picture: gunbai[bot] (3909950) actors this repository's admitted workflow runs, and nothing here said which App this row was, so 'the gunbc GitHub App' read as though there were only one.\n\nThe fields are now references. What stays here is the only fact that is genuinely about runner-host DEPLOYMENT rather than about the App: which registration and installation this host's runners register against. org is dropped rather than kept as a field because it was always gunbc_repository.owner restated — and after this change it is derivable a second way, from the registration's own owner, so keeping it would be a third representation of one fact."
+
 type GithubAppRunnerConfig {
-  app_id: NonEmptyStr
+  registration: GitHubAppRegistration
   installation_id: NonEmptyStr
-  org: NonEmptyStr
   app_pem_secret: SecretRef
 }
 
+fn github_app_runner_org(config: GithubAppRunnerConfig) -> NonEmptyStr {
+  config.registration.owner
+}
+
 data gunbc_ci_github_app: GithubAppRunnerConfig = GithubAppRunnerConfig {
-  app_id: "2653532",
-  installation_id: "104134109",
-  org: gunbc_repository.owner,
-  app_pem_secret: SecretRef {
-    project: fleet_secrets_gcp_project,
-    secret: "ci-github-app-private-key",
-    version: "latest",
-    hash_state: HashPending,
-  },
+  registration: gunbai_ci_registration,
+  installation_id: gunbai_ci_declared_installation_id,
+  app_pem_secret: gunbai_ci_app_pem_secret,
 }
 
 type RunnerHostDeploy {
