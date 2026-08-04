@@ -36,8 +36,9 @@ A topology that collapses these into “do not duplicate” is useless. One that
 |---|---|---|
 | **HOMONYM** | lexical collision | work item title primed permission-to-act note; PR #7789 closed |
 | **CENSUS** | observation without population/method | `concat(acc, [` grep under-selected (117/204); PR #7779 body “No concat(acc, [x])” true under wrong pattern, false about `concat(wires, [wire])` in `rfc_8118.dag` — same accumulator-copy shape, different binder spelling |
+| **BOUNDARY** | interior cause flattened at public entry | CIT-0: expected/observed split then `Pin` subject identifying nothing; QM: verdict coproduct correct, constructor still mints receipts from raw counts; URI encoder: surrogate vs out-of-range distinguished internally, both collapse to `UriHexNibbleOutOfRange` at public entry — plus substrate nudge: module collision rule forbids variant-name reuse, so re-surfacing an interior cause at a boundary tends toward prefixed parallel arms (one vocabulary written twice) |
 
-Both are §3 “grep the name, not the concept” at the measurement layer — precise-looking numbers measuring an accidental lexical property.
+Both **CENSUS** and **HOMONYM** are §3 “grep the name, not the concept” at the measurement layer. **BOUNDARY** is a different kind: precise vocabulary built correctly one layer in, then **collapsed at the boundary** — not author carelessness alone; the substrate’s variant-name collision rule can push toward prefixed parallel arm sets.
 
 ---
 
@@ -87,6 +88,16 @@ Four relation kinds, four specimens. Operator framing (relation, not fix):
 
 **Discharge:** join on declared key (`RoadmapNodeIdentity`); 0/plural → typed exclusion; derived population walk — never substring uniqueness.
 
+### 2.5 Boundary flattening — interior cause collapsed at public entry
+
+**Question:** does the public carrier preserve the interior discrimination, or one prefixed parallel arm set?
+
+**Specimens (2026-08-04, three children):** CIT-0 separated expected from observed then gave the pin a subject that identifies nothing at the boundary; QM built the right verdict coproduct but left a constructor minting receipts from raw counts; URI encoder distinguished surrogate from out-of-range internally then collapsed both into `UriHexNibbleOutOfRange` at the public entry.
+
+**Substrate neighbor (not author error alone):** the module collision rule forbids reusing a variant name — re-surfacing an interior cause at a boundary nudges toward a prefixed parallel arm set, i.e. one cause vocabulary written twice.
+
+**Discharge:** public entry projects interior causes without collapse; constructor routes through the verdict coproduct; boundary arms are derived from interior arms, not a fresh vocabulary.
+
 ---
 
 ## 3. Worked precedent — `pin_subject_must_not_be_self_identifying_note`
@@ -115,6 +126,8 @@ Measured on `main`, 2026-08-04, unless noted.
 ---
 
 ## 5. Live censuses (step 2)
+
+**Step-2 outcomes (not shortfalls):** two of three operator-flagged candidates **retired at census** — `*Readiness` had **no shared axis** (ten domain verdict types, naming suffix only); fold-`concat` is a **DESIGN §6 cost-shape** class (interpreter-realization quadratic; emitted-Rust `im::Vector` O(log n) concat), **not fact provenance** — cited out with `list_concat_items_copied` as the measurement instrument. Weak-digest census remains **open** (unpartitioned, per-site rows below).
 
 ### 5.1 Weak digest parameters
 

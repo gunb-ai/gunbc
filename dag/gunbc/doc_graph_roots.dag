@@ -492,6 +492,13 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     dissolution: HasTrigger { text: "live slice lands: ordinary sessions lose public-write credentials, git.PublicationTransport dispatch binds to PublicationAuthority, and shadow witness becomes regression control — then register as gunbc.plan.Plan row or delete with carriers" },
   },
   HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "fact-provenance-topology-design",
+    primary_work: DeclarationRef { module_path: "gunbc.plans.fact_provenance_topology", decl_name: "fact_provenance_topology_authority_note", field: WholeDeclaration },
+    additional_works: [],
+    dissolution: HasTrigger { text: "each relation kind in the topology has a named construction wall or honest ratchet row in the guarantee recovery ledger; the weak-digest census is enrolled as a derived population with RED controls or refuted; step-3 construction decisions are landed or this note migrates into a registered gunbc.plan.Plan row whose registration becomes the binding" },
+  },
+  HandAuthoredDocBind {
     home: ProbeDoc,
     slug: "g1-cited-symbol-control-declaration-absent",
     primary_work: DeclarationRef { module_path: "v2.std.node", decl_name: "G1_planted_declaration_absent_control_RED", field: WholeDeclaration },
