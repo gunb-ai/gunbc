@@ -398,6 +398,18 @@ fn acceptance_receipt_digest(receipt: RoadmapAcceptanceReceipt) -> Fnv1a64Struct
   )
 }
 
+fn acceptance_revocation_disposition_digest(
+  disposition: AcceptanceRevocationDisposition,
+) -> Fnv1a64Structural {
+  match disposition {
+    AcceptanceNodeReopensActiveFrontier {} =>
+      content_hash_tagged_structural(
+        tag: "roadmap-acceptance-reopens-active-frontier-v1",
+        payload: content_hash_atom(value: "AcceptanceNodeReopensActiveFrontier" as NonEmptyStr),
+      )
+  }
+}
+
 fn acceptance_event_digest(event: RoadmapAcceptanceEvent) -> Fnv1a64Structural {
   match event {
     AcceptanceRecorded { receipt } =>
@@ -411,7 +423,7 @@ fn acceptance_event_digest(event: RoadmapAcceptanceEvent) -> Fnv1a64Structural {
         payload: content_hash_combine_structural(
           left: acceptance_receipt_digest(receipt: exact_prior_receipt),
           right: content_hash_combine_structural(
-            left: content_hash_atom(value: "AcceptanceNodeReopensActiveFrontier" as NonEmptyStr),
+            left: acceptance_revocation_disposition_digest(disposition: disposition),
             right: content_hash_combine_structural(
               left: content_hash_atom(value: reason),
               right: content_hash_combine_structural(

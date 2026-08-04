@@ -293,6 +293,7 @@ pub fn project_roadmap_acceptance_event_history_from_authority_text(
     if let Err(error) = std::fs::create_dir_all(overlay_path.parent().unwrap())
         .and_then(|_| std::fs::write(&overlay_path, authority_text))
     {
+        let _ = std::fs::remove_dir_all(&temp_dir);
         return RoadmapAcceptanceHistoryProjection::Refused {
             detail: format!("failed to stage authority overlay: {error}"),
         };
