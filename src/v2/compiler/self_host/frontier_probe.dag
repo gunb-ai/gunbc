@@ -161,6 +161,39 @@ fn frontier_probe_admission_for_entry(
   }
 }
 
+fn frontier_probe_receipt_for_entry(
+  closure_paths: List<String>,
+  fallback_ingest: SourceRootIngest,
+  module_path: String,
+  fallback_admission: Admission
+) -> FrontierProbeReceipt {
+  let ingest = frontier_probe_ingest_for_entry(
+    closure_paths: closure_paths,
+    fallback_ingest: fallback_ingest
+  )
+  match frontier_probe_admission_for_entry(
+    ingest: ingest,
+    module_path: module_path,
+    fallback_admission: fallback_admission
+  ) {
+    Rejected { diagnostics: d } => {
+      let blocker = frontier_classify_rejection_reason(reason: d.head.reason)
+      FrontierProbeReceipt {
+        module_path: module_path,
+        blocker_class: blocker,
+        located_stage: frontier_probe_located_stage_for_assemble_outcome(blocker: blocker),
+        located_reason: d.head.reason
+      }
+    }
+    Accepted { value: admission, diagnostics: _ } =>
+      frontier_probe_emit_from_ingest(
+        module_path: module_path,
+        ingest: ingest,
+        admission: admission
+      )
+  }
+}
+
 fn frontier_probe_emit_from_ingest(
   module_path: String,
   ingest: SourceRootIngest,
