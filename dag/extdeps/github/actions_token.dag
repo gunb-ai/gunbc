@@ -68,14 +68,28 @@ fn axis_actions_scope_name(axis: GitHubPermissionAxis) -> NonEmptyStr? {
 
 fn axis_max_actions_access(axis: GitHubPermissionAxis) -> GitHubAppPermissionAccess? {
   match axis {
+    ActionsAxis => Present { value: AppAccessWrite }
+    ArtifactMetadataAxis => Present { value: AppAccessWrite }
+    AttestationsAxis => Present { value: AppAccessWrite }
+    ChecksAxis => Present { value: AppAccessWrite }
+    CodeQualityAxis => Present { value: AppAccessWrite }
+    ContentsAxis => Present { value: AppAccessWrite }
+    DeploymentsAxis => Present { value: AppAccessWrite }
+    DiscussionsAxis => Present { value: AppAccessWrite }
     IdTokenAxis => Present { value: AppAccessWrite }
-    ModelsAxis => Present { value: AppAccessRead }
-    VulnerabilityAlertsAxis => Present { value: AppAccessRead }
+    IssuesAxis => Present { value: AppAccessWrite }
     MetadataAxis => none
+    ModelsAxis => Present { value: AppAccessRead }
+    PackagesAxis => Present { value: AppAccessWrite }
+    PagesAxis => Present { value: AppAccessWrite }
+    PullRequestsAxis => Present { value: AppAccessWrite }
+    RepositoryProjectsAxis => Present { value: AppAccessWrite }
+    SecurityEventsAxis => Present { value: AppAccessWrite }
+    StatusesAxis => Present { value: AppAccessWrite }
+    VulnerabilityAlertsAxis => Present { value: AppAccessRead }
     WorkflowsAxis => none
     AdministrationAxis => none
     OrganizationSelfHostedRunnersAxis => none
-    _ => Present { value: AppAccessWrite }
   }
 }
 
@@ -127,12 +141,28 @@ fn permission_level_access(level: PermissionLevel) -> GitHubAppPermissionAccess?
 
 fn declared_level_for_axis(perms: WorkflowPermissions, axis: GitHubPermissionAxis) -> PermissionLevel? {
   match axis {
-    ContentsAxis => perms.contents
-    PullRequestsAxis => perms.pull_requests
-    IssuesAxis => perms.issues
     ActionsAxis => perms.actions
+    ContentsAxis => perms.contents
     IdTokenAxis => perms.id_token
-    _ => none
+    IssuesAxis => perms.issues
+    PullRequestsAxis => perms.pull_requests
+    ArtifactMetadataAxis => none
+    AttestationsAxis => none
+    ChecksAxis => none
+    CodeQualityAxis => none
+    DeploymentsAxis => none
+    DiscussionsAxis => none
+    MetadataAxis => none
+    ModelsAxis => none
+    PackagesAxis => none
+    PagesAxis => none
+    RepositoryProjectsAxis => none
+    SecurityEventsAxis => none
+    StatusesAxis => none
+    VulnerabilityAlertsAxis => none
+    WorkflowsAxis => none
+    AdministrationAxis => none
+    OrganizationSelfHostedRunnersAxis => none
   }
 }
 
