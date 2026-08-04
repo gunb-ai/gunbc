@@ -1,5 +1,57 @@
 module v2.lens.enforcement.receipts
 
+import v2.lens.cost { SymbolicCost, cost_lens }
+import v2.lens.enforcement.contract { EnrollmentDiscoveryReceipt, LensContract }
+import v2.lens.enforcement.vocab {
+  BoundConsumerWitness,
+  ConsumerKind,
+  ConsumerWitnessBinding,
+  EnrolledInFloorRoster,
+  HasReceiptRef,
+  LensModuleFunctionObserved,
+  NoConsumer,
+  NoConsumerWitness,
+  NoReceiptRef,
+  PrePushHook,
+  RedControlAbsent,
+  RedControlFailedToFlip,
+  RedControlPassed,
+  RedControlStatus,
+  ScopeCovers,
+  ScopeMissing,
+  ScopeNarrowed,
+  ScopeRoster,
+  ScopeSatisfaction,
+  SelfApplicationAbsent,
+  SelfApplicationStatus,
+  SubjectRoster,
+  TypeReflectionUnavailable,
+  WitnessOnly,
+  consumer_kind_eq,
+  scope_roster_covers,
+}
+import v2.lens.registry { Cost, LensIdV0, lens_id_v0_eq }
+import v2.std.algebra { any, contains, fold, concat, Empty, Cons }
+import v2.std.collection { List }
+import v2.std.decl_index { DeclFact, decl_facts_is_fn_like }
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
+import v2.std.node {
+  Atom,
+  ComputationNode,
+  Edge,
+  Loop,
+  Named,
+  Node,
+  Positional,
+  SyntheticOccurrence,
+  TypeNode,
+}
+import v2.std.qualified_name { qualified_name_from_dotted_string }
+import v2.std.text { String }
+import v2.std.witness { Witness, Holds, Violates }
+import std.realization_schedule { ScheduleWitnessEntry, schedule_witness_entry_eq }
+
 
 type SubjectJudgment
   = BodyJudged { verdict: Witness<SymbolicCost> }
