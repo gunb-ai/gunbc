@@ -36,7 +36,20 @@ import gunbc.roadmap_execution_contract {
 }
 import gunbc.git_diff_change_window {
   ChangeWindowPreparationRefusal,
-  change_window_preparation_refusal_detail,
+  ChangeWindowMergeBaseRefused,
+  ChangeWindowTargetGenerationRefused,
+  ChangeWindowHeadObjectIdRefused,
+  ChangeWindowPersistenceRefused,
+  GitMergeBaseObservation,
+  GitMergeBaseObserved,
+  GitMergeBaseProgramUnavailable,
+  GitMergeBaseExecutionFailed,
+  GitMergeBaseOutputMalformed,
+  GitTargetGenerationObservation,
+  GitTargetGenerationObserved,
+  GitTargetGenerationProgramUnavailable,
+  GitTargetGenerationExecutionFailed,
+  GitTargetGenerationOutputMalformed,
 }
 import extdeps.languages.json.parse {
   parse_json,
@@ -576,6 +589,49 @@ fn validation_oracle_gate(
             }
           }
       }
+  }
+}
+
+fn change_window_preparation_refusal_detail(cause: ChangeWindowPreparationRefusal) -> String {
+  match cause {
+    ChangeWindowMergeBaseRefused { observation: observation } =>
+      match observation {
+        GitMergeBaseProgramUnavailable { program, reason } =>
+          join([program, " was not available to observe merge-base: ", reason], "")
+        GitMergeBaseExecutionFailed { program, exit_code, stdout, stderr } =>
+          join([
+            program,
+            " merge-base observation failed (exit ",
+            to_string(exit_code),
+            "): ",
+            stderr,
+          ], "")
+        GitMergeBaseOutputMalformed { stdout } =>
+          join(["merge-base observation returned malformed stdout: ", stdout], "")
+        GitMergeBaseObserved { target: _, target_generation: _, base: _, head: _ } =>
+          "unreachable merge-base observed arm in refusal detail"
+      }
+    ChangeWindowTargetGenerationRefused { observation: observation } =>
+      match observation {
+        GitTargetGenerationProgramUnavailable { program, reason } =>
+          join([program, " was not available to read target generation: ", reason], "")
+        GitTargetGenerationExecutionFailed { program, exit_code, stdout, stderr } =>
+          join([
+            program,
+            " target-generation observation failed (exit ",
+            to_string(exit_code),
+            "): ",
+            stderr,
+          ], "")
+        GitTargetGenerationOutputMalformed { stdout } =>
+          join(["target-generation observation returned malformed stdout: ", stdout], "")
+        GitTargetGenerationObserved { generation: _ } =>
+          "unreachable target-generation observed arm in refusal detail"
+      }
+    ChangeWindowHeadObjectIdRefused { head_hex } =>
+      join(["verification subject head is not a valid git object id: ", head_hex], "")
+    ChangeWindowPersistenceRefused { path, cause } =>
+      join(["git diff window receipt could not be written at ", concat(path, ": "), cause], "")
   }
 }
 

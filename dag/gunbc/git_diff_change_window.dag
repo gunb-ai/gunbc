@@ -34,16 +34,6 @@ import std.content_hash {
   content_hash_combine_structural,
   content_hash_eq_structural,
 }
-import gunbc.roadmap_execution_contract {
-  ValidationOperation,
-  GunbcClaimValidation,
-  CargoTestValidation,
-  CargoFmtValidation,
-  WorkItemExecutionContract,
-  ExecutionContractUnspecified,
-  ExecutionContract,
-}
-
 data git_diff_change_window_note: String = "Git realization of an exact affected-set comparison window. Producers observe merge-base(head, target_generation) in a Git worktree and persist a head- and window-identity-addressed receipt; consumers (gunbc.diff_baseline, floor_diff_observe) read the path named by GUNBC_DIFF_WINDOW_PATH. This module is Git-specific — other SCM realizations carry their own native receipts beneath a future compatibility envelope."
 
 data gunbc_diff_window_path_env: NonEmptyStr = "GUNBC_DIFF_WINDOW_PATH"
@@ -353,66 +343,4 @@ fn git_diff_window_env_assignment(path: String) -> String {
     concat(gunbc_diff_window_path_env as String, "="),
     path
   )
-}
-
-fn validation_consumes_affected_set_window(validation: ValidationOperation) -> Bool {
-  match validation {
-    GunbcClaimValidation { entry: _, function: _ } => true
-    CargoTestValidation { filter: _ } => false
-    CargoFmtValidation => false
-  }
-}
-
-fn execution_contract_needs_diff_window(contract: WorkItemExecutionContract) -> Bool {
-  match contract {
-    ExecutionContractUnspecified => false
-    ExecutionContract { validations, extra_capabilities: _ } =>
-      any(
-        validations,
-        validation => validation_consumes_affected_set_window(validation: validation),
-      )
-  }
-}
-
-fn change_window_preparation_refusal_detail(cause: ChangeWindowPreparationRefusal) -> String {
-  match cause {
-    ChangeWindowMergeBaseRefused { observation: observation } =>
-      match observation {
-        GitMergeBaseProgramUnavailable { program, reason } =>
-          join([program, " was not available to observe merge-base: ", reason], "")
-        GitMergeBaseExecutionFailed { program, exit_code, stdout, stderr } =>
-          join([
-            program,
-            " merge-base observation failed (exit ",
-            to_string(exit_code),
-            "): ",
-            stderr,
-          ], "")
-        GitMergeBaseOutputMalformed { stdout } =>
-          join(["merge-base observation returned malformed stdout: ", stdout], "")
-        GitMergeBaseObserved { target: _, target_generation: _, base: _, head: _ } =>
-          "unreachable merge-base observed arm in refusal detail"
-      }
-    ChangeWindowTargetGenerationRefused { observation: observation } =>
-      match observation {
-        GitTargetGenerationProgramUnavailable { program, reason } =>
-          join([program, " was not available to read target generation: ", reason], "")
-        GitTargetGenerationExecutionFailed { program, exit_code, stdout, stderr } =>
-          join([
-            program,
-            " target-generation observation failed (exit ",
-            to_string(exit_code),
-            "): ",
-            stderr,
-          ], "")
-        GitTargetGenerationOutputMalformed { stdout } =>
-          join(["target-generation observation returned malformed stdout: ", stdout], "")
-        GitTargetGenerationObserved { generation: _ } =>
-          "unreachable target-generation observed arm in refusal detail"
-      }
-    ChangeWindowHeadObjectIdRefused { head_hex } =>
-      join(["verification subject head is not a valid git object id: ", head_hex], "")
-    ChangeWindowPersistenceRefused { path, cause } =>
-      join(["git diff window receipt could not be written at ", concat(path, ": "), cause], "")
-  }
 }
