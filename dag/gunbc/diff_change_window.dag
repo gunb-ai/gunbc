@@ -112,7 +112,7 @@ fn diff_window_relation_wire(relation: DiffWindowRelation) -> String {
 
 fn diff_window_json(window: ExactDiffWindow) -> String {
   serialize_json(
-    value: json_object(
+    v: json_object(
       members: [
         json_kv(key: "schema", value: json_string(s: diff_window_schema)),
         json_kv(

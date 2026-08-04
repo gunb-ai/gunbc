@@ -2993,11 +2993,133 @@ type BeltValidationRun {
   verdict: ValidationVerdict
 }
 
+data belt_diff_window_producer_note: String = "Roadmap verification produces a head-addressed ExactDiffWindow immediately before validation. The belt observes merge-base(head, instance.dispatch_base_ref) in the detached verification checkout, writes the receipt beside the verification evidence, and binds GUNBC_DIFF_WINDOW_PATH through the modeled EnvironmentBindingCapability for the validation subprocess."
+
+fn belt_observe_merge_base_sha(
+  instance: HostDashboardInstance,
+  worktree: String,
+  head_sha: String,
+) -> String? {
+  match belt_exec(
+    cmd: host_exec_argv(
+      program: dispatch_capability_program(
+        environment: instance.execution_environment,
+        cap: GitWorkspaceCapability,
+      ),
+      args: [
+        "merge-base",
+        head_sha,
+        instance.dispatch_base_ref as String,
+      ],
+    ),
+    workdir: worktree,
+  ) {
+    ExecOk { stdout } =>
+      let sha = trim(stdout)
+      if sha == "" { none } else { Present { value: sha } }
+    ExecFailed { program: _, exit_code: _, stderr: _ } => none
+    ExecRefused { program: _, reason: _ } => none
+  }
+}
+
+fn belt_prepare_diff_window_for_verification(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+  subject: VerificationSubject,
+  worktree: String,
+) -> DiffWindowPrepareOutcome {
+  let head_sha = subject.head_sha as String
+  match belt_observe_merge_base_sha(
+    instance: instance,
+    worktree: worktree,
+    head_sha: head_sha,
+  ) {
+    Absent =>
+      DiffWindowPrepareRefused {
+        reason: join([
+          "merge-base observation refused for head ",
+          head_sha,
+          " against ",
+          instance.dispatch_base_ref as String,
+        ], ""),
+      }
+    Present { value: merge_base_sha } =>
+      match git_object_id_from_untagged_hex(hex: merge_base_sha) {
+        Absent =>
+          DiffWindowPrepareRefused {
+            reason: join([
+              "merge-base observation returned an invalid object id: ",
+              merge_base_sha,
+            ], ""),
+          }
+        Present { value: base } =>
+          match git_object_id_from_untagged_hex(hex: head_sha) {
+            Absent =>
+              DiffWindowPrepareRefused {
+                reason: join([
+                  "verification subject head is not a valid object id: ",
+                  head_sha,
+                ], ""),
+              }
+            Present { value: head } =>
+              let window = exact_diff_window_for_verification(
+                base: base,
+                head: head,
+                relation: ClaimedMergeBase {},
+              )
+              let path = dispatch_attempt_diff_window_path_for_instance(
+                instance: instance,
+                node_id: node_id,
+                attempt_key: attempt_key,
+                head_sha: head_sha,
+              )
+              let write = Filesystem.Write(
+                path: path,
+                content: diff_window_json(window: window),
+              )
+              if write.success {
+                DiffWindowPrepared { path: path, window: window }
+              } else {
+                DiffWindowPrepareRefused {
+                  reason: join([
+                    "diff window receipt could not be written: ",
+                    write.error,
+                  ], ""),
+                }
+              }
+          }
+      }
+  }
+}
+
+fn belt_exec_with_diff_window_env(
+  instance: HostDashboardInstance,
+  cmd: HostExecArgv,
+  workdir: String,
+  diff_window_path: String,
+) -> BeltExecOutcome {
+  belt_exec(
+    cmd: host_exec_argv(
+      program: dispatch_capability_program(
+        environment: instance.execution_environment,
+        cap: EnvironmentBindingCapability,
+      ),
+      args: concat(
+        [diff_window_env_assignment(path: diff_window_path)],
+        concat([cmd.program], cmd.args),
+      ),
+    ),
+    workdir: workdir,
+  )
+}
+
 fn belt_run_validation_operations(
   instance: HostDashboardInstance,
   validations: List<ValidationOperation>,
   worktree: String,
   oracle_identity: ContentHash,
+  diff_window_path: String,
 ) -> BeltValidationRun {
   fold(
     validations,
@@ -3025,12 +3147,14 @@ fn belt_run_validation_operations(
               }
             Present { value: command } => {
               let wire = modeled_validation_command_wire(command: command)
-              match belt_exec(
+              match belt_exec_with_diff_window_env(
+                instance: instance,
                 cmd: host_exec_argv(
                   program: command.program as String,
                   args: command.args,
                 ),
                 workdir: worktree,
+                diff_window_path: diff_window_path,
               ) {
                 ExecOk { stdout } =>
                   BeltValidationRun {
@@ -3273,6 +3397,58 @@ fn belt_verify_run_and_persist(
       }
     }
   } else {
+    match belt_prepare_diff_window_for_verification(
+      instance: instance,
+      node_id: node_id,
+      attempt_key: progress.attempt_key,
+      subject: subject,
+      worktree: worktree,
+    ) {
+      DiffWindowPrepareRefused { reason } => {
+        let run = BeltValidationRun {
+          executions: [],
+          verdict: ValidationRefused {
+            cause: ValidationCommandRefused {
+              program: "env",
+              reason: reason,
+            },
+          },
+        }
+        let receipt = VerificationReceipt {
+          subject: subject,
+          oracle_identity: match pinned_identity {
+            Present { value: identity } => identity
+            Absent =>
+              as_content_hash_structural(
+                structural: content_hash_atom(value: "oracle-pin-unreadable")
+              )
+          },
+          executions: run.executions,
+          verdict: run.verdict,
+        }
+        let write = Filesystem.Write(
+          path: dispatch_attempt_verification_receipt_path_for_instance(
+            instance: instance,
+            node_id: node_id,
+            attempt_key: progress.attempt_key,
+            head_sha: subject.head_sha as String,
+          ),
+          content: verification_receipt_json(receipt: receipt),
+        )
+        if write.success {
+          VerifyRecorded {
+            node_id: progress.node_id,
+            verdict_key: validation_verdict_key(verdict: run.verdict),
+            detail: validation_verdict_detail(verdict: run.verdict),
+          }
+        } else {
+          VerifyWriteFailed {
+            node_id: progress.node_id,
+            detail: write.error,
+          }
+        }
+      }
+      DiffWindowPrepared { path: diff_window_path, window: _ } => {
     let observations = belt_oracle_observations_in_worktree(
       contract: node.execution,
       worktree: worktree,
@@ -3318,6 +3494,7 @@ fn belt_verify_run_and_persist(
               validations: validations,
               worktree: worktree,
               oracle_identity: identity,
+              diff_window_path: diff_window_path,
             )
         }
     }
@@ -3352,6 +3529,8 @@ fn belt_verify_run_and_persist(
       VerifyWriteFailed {
         node_id: progress.node_id,
         detail: write.error,
+      }
+    }
       }
     }
   }
