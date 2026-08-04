@@ -1,6 +1,6 @@
 module gunbc.roadmap_model
 
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, Present, Absent }
 import std.content_hash { Fnv1a64Structural }
 import std.content_hash { content_hash_atom, content_hash_combine_structural, content_hash_tagged_structural, content_hash_eq_structural }
 import gunbc.roadmap_status {
@@ -11,7 +11,6 @@ import gunbc.roadmap_status {
   HandbackNotDelivered, HandbackDelivered,
   red_control_evidence_satisfied, handback_evidence_satisfied,
 }
-import v2.std.algebra { is_prefix_of }
 import gunbc.roadmap_execution_contract { WorkItemExecutionContract }
 
 type RoadmapNodeId = NonEmptyStr where brand("RoadmapNodeId")
@@ -245,22 +244,23 @@ fn non_empty_str_list_eq_ordered(a: List<NonEmptyStr>, b: List<NonEmptyStr>) -> 
   }
 }
 
+type DropFirstState<T> {
+  skipped: Bool
+  rest: List<T>
+}
+
 fn drop_first_non_empty_str(items: List<NonEmptyStr>) -> List<NonEmptyStr> {
-  if count(items) == 0 {
-    []
-  } else {
-    fold(
-      items,
-      init: (seen: false, rest: [] as List<NonEmptyStr>),
-      f: fn(state, item) {
-        if state.seen {
-          (seen: true, rest: concat(state.rest, [item]))
-        } else {
-          (seen: true, rest: state.rest)
-        }
-      },
-    ).rest
-  }
+  fold(
+    items,
+    init: DropFirstState<NonEmptyStr> { skipped: false, rest: [] },
+    f: fn(state, item) {
+      if state.skipped {
+        DropFirstState<NonEmptyStr> { skipped: true, rest: concat(state.rest, [item]) }
+      } else {
+        DropFirstState<NonEmptyStr> { skipped: true, rest: state.rest }
+      }
+    },
+  ).rest
 }
 
 fn acceptance_receipt_eq(a: RoadmapAcceptanceReceipt, b: RoadmapAcceptanceReceipt) -> Bool {
@@ -378,21 +378,7 @@ fn take_acceptance_events(
 }
 
 fn drop_first_acceptance_event(events: List<RoadmapAcceptanceEvent>) -> List<RoadmapAcceptanceEvent> {
-  if count(events) == 0 {
-    []
-  } else {
-    fold(
-      events,
-      init: (seen: false, rest: [] as List<RoadmapAcceptanceEvent>),
-      f: fn(state, event) {
-        if state.seen {
-          (seen: true, rest: concat(state.rest, [event]))
-        } else {
-          (seen: true, rest: state.rest)
-        }
-      },
-    ).rest
-  }
+  skip(xs: events, n: 1)
 }
 
 fn acceptance_history_extends_prior(
