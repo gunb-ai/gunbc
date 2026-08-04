@@ -1,0 +1,75 @@
+module test.claim.package_graph_witness_test
+
+import std.types { NonEmptyStr, String, Bool, List }
+import std.content_hash { ContentHash, structural_content_hash, as_content_hash_structural }
+import extdeps.version { VersionIdentity }
+import extdeps.pin { Pin, ExactPin }
+import extdeps.package {
+  PackageCoordinate, PackageArtifactSource, PackageSelection,
+  PackageLockNode, PackageDependencyEdge, PackageLockGraph,
+  package_lock_contains_key, package_graph_edges_all_resolve,
+  package_graph_roots_all_resolve, package_selection_name,
+}
+
+type ProbeEcosystem { registry: NonEmptyStr }
+type ProbeKind = ProbeRuntime | ProbeDev
+
+fn d() -> ContentHash {
+  as_content_hash_structural(structural: structural_content_hash(digest: "0123456789abcdef"))
+}
+
+fn sel(name: NonEmptyStr, v: NonEmptyStr) -> PackageSelection<ProbeEcosystem> {
+  PackageSelection {
+    pin: Pin {
+      subject: PackageCoordinate { ecosystem: ProbeEcosystem { registry: "probe" as NonEmptyStr }, name: name },
+      version: v as VersionIdentity,
+      expected_identity: d(),
+      selection: ExactPin,
+    },
+    source: PackageArtifactSource { locator: "probe" as NonEmptyStr },
+  }
+}
+
+fn node(key: NonEmptyStr, name: NonEmptyStr, v: NonEmptyStr) -> PackageLockNode<NonEmptyStr, PackageSelection<ProbeEcosystem>, String> {
+  PackageLockNode { key: key, selection: sel(name: name, v: v), metadata: "" }
+}
+
+fn graph() -> PackageLockGraph<NonEmptyStr, NonEmptyStr, PackageSelection<ProbeEcosystem>, String, ProbeKind> {
+  PackageLockGraph {
+    manager: "probe-pm" as NonEmptyStr,
+    roots: ["node_modules/a" as NonEmptyStr],
+    nodes: [
+      node(key: "node_modules/a" as NonEmptyStr, name: "a" as NonEmptyStr, v: "1.0.0" as NonEmptyStr),
+      node(key: "node_modules/b/node_modules/a" as NonEmptyStr, name: "a" as NonEmptyStr, v: "1.0.0" as NonEmptyStr),
+    ],
+    edges: [PackageDependencyEdge {
+      consumer: "node_modules/a" as NonEmptyStr,
+      dependency: "node_modules/b/node_modules/a" as NonEmptyStr,
+      kind: ProbeRuntime,
+    }],
+  }
+}
+
+test fn same_name_version_different_paths_stay_distinct() -> Bool {
+  package_lock_contains_key(graph: graph(), key: "node_modules/a" as NonEmptyStr)
+    && package_lock_contains_key(graph: graph(), key: "node_modules/b/node_modules/a" as NonEmptyStr)
+    && !package_lock_contains_key(graph: graph(), key: "node_modules/c" as NonEmptyStr)
+}
+
+test fn edges_and_roots_resolve() -> Bool {
+  package_graph_edges_all_resolve(graph: graph()) && package_graph_roots_all_resolve(graph: graph())
+}
+
+test fn edge_to_missing_node_refuses() -> Bool {
+  let g = PackageLockGraph {
+    manager: "probe-pm" as NonEmptyStr,
+    roots: [],
+    nodes: [node(key: "node_modules/a" as NonEmptyStr, name: "a" as NonEmptyStr, v: "1.0.0" as NonEmptyStr)],
+    edges: [PackageDependencyEdge {
+      consumer: "node_modules/a" as NonEmptyStr,
+      dependency: "node_modules/missing" as NonEmptyStr,
+      kind: ProbeRuntime,
+    }],
+  }
+  !package_graph_edges_all_resolve(graph: g)
+}
