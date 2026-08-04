@@ -70,15 +70,15 @@ fn dispatch_emit_succeeds_on_live_roster() -> Bool {
 }
 
 fn distinct_bridge_family_site_count() -> Int {
-  count(distinct_strings(xs: v1_interpreter_authored_roster_arms()
+  count(gunbc.v1_interpreter_dispatch_emit.distinct_strings(xs: v1_interpreter_authored_roster_arms()
     |> filter(r => match r.dispatch_emit_site { EvalCallBridgeFamilySite { module: _ } => true, _ => false })
     |> map(r => dispatch_emit_site_key(site: r.dispatch_emit_site))))
 }
 
 fn bridge_family_sites_are_split_per_family_red_control() -> Bool {
-  distinct_bridge_family_site_count() == 9
-    && dispatch_emit_site_key(site: EvalCallBridgeFamilySite { module: qualified_name_from_dotted_string(dotted: "v2.std.node") })
-      != dispatch_emit_site_key(site: EvalCallBridgeFamilySite { module: qualified_name_from_dotted_string(dotted: "v2.std.compilers.lexing") })
+  let node_key = dispatch_emit_site_key(site: EvalCallBridgeFamilySite { module: qualified_name_from_dotted_string(dotted: "v2.std.node") })
+  let lexing_key = dispatch_emit_site_key(site: EvalCallBridgeFamilySite { module: qualified_name_from_dotted_string(dotted: "v2.std.compilers.lexing") })
+  distinct_bridge_family_site_count() == 9 && node_key != lexing_key
 }
 
 fn live_roster_has_no_rust_variant_collisions() -> Bool {

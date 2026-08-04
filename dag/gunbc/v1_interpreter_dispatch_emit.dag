@@ -68,17 +68,13 @@ fn drop_first_segment(segments: List<String>) -> List<String> {
 }
 
 fn module_pascal_after_domain_prefix(module: QualifiedName) -> String {
-  qualified_name_to_dotted_string(qn: module)
-    |> split(delimiter: ".")
-    |> drop_first_segment
+  drop_first_segment(segments: qualified_name_to_dotted_string(qn: module) |> split(delimiter: "."))
     |> map(segment => to_pascal_segment(segment: segment))
     |> join(separator: "")
 }
 
 fn module_slug_after_domain_prefix(module: QualifiedName) -> String {
-  qualified_name_to_dotted_string(qn: module)
-    |> split(delimiter: ".")
-    |> drop_first_segment
+  drop_first_segment(segments: qualified_name_to_dotted_string(qn: module) |> split(delimiter: "."))
     |> join(separator: "_")
 }
 
