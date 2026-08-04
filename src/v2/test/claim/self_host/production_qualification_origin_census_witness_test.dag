@@ -1,8 +1,5 @@
 module v2.test.claim.self_host.production_qualification_origin_census_witness_test
 
-import v2.lens.production_qualification_origin_census_structural_fixture {
-  structural_red_control_mint_site_probe
-}
 import v2.compiler.self_host.emitter_producer_provenance {
   SourceProduced,
   emission_qualification_eq
@@ -11,17 +8,12 @@ import v2.lens.production_qualification_origin_census {
   FixtureDerived,
   UnknownOrigin,
   count_derived_mint_sites_with_origin,
-  derived_production_qualification_mint_sites_live,
   derived_sites_for_decl,
   empty_site_list,
   planted_fixture_origin_mint_site_count,
   production_qualification_origin_eq,
-  production_qualification_origin_probe_admission_holds,
   production_qualification_origin_probe_admission_holds_for_decls,
   production_qualification_planted_fixture_origin_oracle_count,
-  production_qualification_repository_wide_origin_census_closed,
-  ingest_mint_surface_discovered_in_live_scope,
-  structural_red_control_live_body_skeleton_visible,
   structural_red_control_planted_decl,
   structural_red_control_planted_qualified_name,
   string_eq,
@@ -32,11 +24,7 @@ import v2.std.integer { int_eq }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 
-data production_qualification_origin_census_witness_note: String = "Production-qualification origin PROBE witnesses (wise-ram-22 recut): structural skeleton discovery only — no witness-import closure roster, no declaration-name classifier pins. Planted count witness uses closed-subject oracle (DESIGN §5). Live-scope policy-oracle count witness is long-lane (fn_arrow_decl_facts_live walk exceeds 5s discovery budget). Structural GREEN uses a synthetic planted decl whose qualified name is oracle-only; the classifier reads callee+fixture-marker skeleton only."
-
-test fn witness_production_qualification_origin_probe_admission_holds() -> Bool {
-  production_qualification_origin_probe_admission_holds()
-}
+data production_qualification_origin_census_witness_note: String = "Production-qualification origin PROBE witnesses (wise-ram-22 recut): per-PR discovery carries planted closed-subject checks only (DESIGN §5). Live fn_arrow_decl_facts_live() walks (admission, policy-oracle count, frontier RED probes) are long-lane in test/claim/long/production_qualification_origin_census_witness_test.dag."
 
 test fn witness_planted_fixture_origin_count_matches_oracle() -> Bool {
   int_eq(
@@ -74,36 +62,4 @@ test fn witness_unknown_origin_red_control_refuses_admission() -> Bool {
     && !production_qualification_origin_probe_admission_holds_for_decls(
       decls: [unknown_origin_red_control_planted_decl()]
     )
-}
-
-data witness_live_structural_fixture_body_mint_skeleton_visible_red_note: String = "Admitted RED: G2 fn-arrow marshal currently yields an empty skeleton for the live structural_red_control_mint_site_probe body (match/let mint call); classifier cannot discover the real fn until call-occurrence derivation or marshal exposes callee atoms."
-
-test fn witness_live_structural_fixture_body_mint_skeleton_visible_reds() -> Bool {
-  structural_red_control_live_body_skeleton_visible()
-}
-
-data witness_repository_wide_census_requires_call_occurrence_frontier_red_note: String = "Admitted RED (wise-ram-22): repository-wide production-qualification origin census is not closed — fn_arrow_decl_substrate_is_whole_tree alone is insufficient. Greening requires production_qualification_call_occurrence_derivation_landed (call-reachable classification on effect_reach substrate)."
-
-test fn witness_repository_wide_census_requires_call_occurrence_frontier_reds() -> Bool {
-  production_qualification_repository_wide_origin_census_closed()
-}
-
-data witness_ingest_mint_surface_requires_call_occurrence_frontier_red_note: String = "Admitted RED: generate_provenanced_rust_candidate_from_ingest calls mint_provenanced_rust_artifact at fn-arrow skeleton grain; G2 marshal currently prunes that ExprCall — witness greens when structural census discovers a SourceProduced row on the ingest entry via mint_provenanced_rust_artifact (not mint_written_provenanced_rust_artifact, which ingest does not call)."
-
-test fn witness_ingest_mint_surface_requires_call_occurrence_frontier_reds() -> Bool {
-  ingest_mint_surface_discovered_in_live_scope()
-}
-
-data witness_direct_door_smoke_requires_closure_or_call_occurrence_frontier_red_note: String = "Admitted RED: direct-door smoke is not in the witness entry import closure without a roster import — repository-wide discovery requires call-occurrence substrate or whole-tree fn_arrow facts."
-
-test fn witness_direct_door_smoke_requires_closure_or_call_occurrence_frontier_reds() -> Bool {
-  any(
-    xs: derived_production_qualification_mint_sites_live(),
-    predicate: fn(row) {
-      string_contains(
-        s: row.qualified_name,
-        pattern: "run_direct_rust_door_emit_write_compile_smoke"
-      )
-    }
-  )
 }

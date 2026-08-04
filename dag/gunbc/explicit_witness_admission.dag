@@ -170,28 +170,28 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
     dissolve_on: "the local wet receipt greens under gunbc_falsifier_self_host_wet_receipt_wall_budget; this row deletes and the green wet SelfHostWetReceiptBinding restores"
   ),
   known_red_probe(
-    entry: "src/v2/test/claim/self_host/production_qualification_origin_census_witness_test.dag",
+    entry: "src/v2/test/claim/long/production_qualification_origin_census_witness_test.dag",
     f: "witness_live_structural_fixture_body_mint_skeleton_visible_reds",
     kind: CorpusWitnessKind,
     reason: "Admitted RED: G2 fn-arrow marshal yields empty skeleton for live structural_red_control_mint_site_probe mint body today. Owner: witness-evidence-lifecycle / call-occurrence derivation frontier.",
     dissolve_on: "live structural_red_control_mint_site_probe body exposes mint callee atoms in fn_arrow_decl_facts_live output without a taught qualified-name pin, this witness greens, and this row deletes"
   ),
   known_red_probe(
-    entry: "src/v2/test/claim/self_host/production_qualification_origin_census_witness_test.dag",
+    entry: "src/v2/test/claim/long/production_qualification_origin_census_witness_test.dag",
     f: "witness_repository_wide_census_requires_call_occurrence_frontier_reds",
     kind: CorpusWitnessKind,
     reason: "Admitted RED (wise-ram-22 recut): repository-wide production-qualification origin census is not closed — fn_arrow_decl_facts_live() is entry-closure scoped. Owner: witness-evidence-lifecycle / call-occurrence derivation frontier.",
     dissolve_on: "production_qualification_call_occurrence_derivation_landed is true, derived_production_qualification_mint_sites_live() derives from resolved call occurrences corpus-wide, witness_repository_wide_census_requires_call_occurrence_frontier_reds greens, and this row deletes"
   ),
   known_red_probe(
-    entry: "src/v2/test/claim/self_host/production_qualification_origin_census_witness_test.dag",
+    entry: "src/v2/test/claim/long/production_qualification_origin_census_witness_test.dag",
     f: "witness_ingest_mint_surface_requires_call_occurrence_frontier_reds",
     kind: CorpusWitnessKind,
     reason: "Admitted RED: generate_provenanced_rust_candidate_from_ingest calls mint_provenanced_rust_artifact at fn-arrow skeleton grain; G2 marshal prunes that ExprCall today. Owner: witness-evidence-lifecycle lane.",
     dissolve_on: "G2 fn-arrow marshal exposes mint_provenanced_rust_artifact on generate_provenanced_rust_candidate_from_ingest, ingest rows classify CompilerDerived (not UnknownOrigin), ingest_mint_surface_discovered_in_live_scope() is true, witness_ingest_mint_surface_requires_call_occurrence_frontier_reds greens, and this row deletes"
   ),
   known_red_probe(
-    entry: "src/v2/test/claim/self_host/production_qualification_origin_census_witness_test.dag",
+    entry: "src/v2/test/claim/long/production_qualification_origin_census_witness_test.dag",
     f: "witness_direct_door_smoke_requires_closure_or_call_occurrence_frontier_reds",
     kind: CorpusWitnessKind,
     reason: "Admitted RED: direct-door smoke is outside witness entry import closure without roster imports — repository-wide discovery requires call-occurrence substrate. Owner: witness-evidence-lifecycle lane.",
