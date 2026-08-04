@@ -7,7 +7,11 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
-BIN="$ROOT/target/debug/frontier_probe_survey"
+BIN="$ROOT/target/release/frontier_probe_survey"
+if [[ ! -x "$BIN" ]]; then
+  echo "frontier_probe_survey: build release bin first: cargo build --release -p v1-compiler --bin frontier_probe_survey" >&2
+  exit 1
+fi
 SURVEY_DIR="$ROOT/target/frontier-probe-survey"
 TSV="$SURVEY_DIR/frontier_probe_survey.tsv"
 MANIFEST="$SURVEY_DIR/host_frontier_probe_survey_manifest.dag"

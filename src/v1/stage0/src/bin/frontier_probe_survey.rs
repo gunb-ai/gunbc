@@ -3,7 +3,7 @@
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::ExitCode;
+use std::process::{Command, ExitCode};
 
 use v1_compiler::cli_run::{
     discover_source_root_reads_for_entry, emit_source_root_ingest_manifest,
@@ -315,7 +315,13 @@ fn emit_receipt_row(row: &ProbeReceiptRow) -> String {
     )
 }
 
-fn emit_survey_manifest(path: &Path, rows: &[ProbeReceiptRow]) -> Result<(), String> {
+fn emit_survey_manifest(
+    path: &Path,
+    rows: &[ProbeReceiptRow],
+    source_head: &str,
+    binary_sha256: &str,
+    source_root: &str,
+) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| format!("mkdir {:?}: {e}", parent))?;
     }
@@ -330,7 +336,11 @@ fn emit_survey_manifest(path: &Path, rows: &[ProbeReceiptRow]) -> Result<(), Str
          import v2.compiler.self_host.frontier_probe_types {{ FrontierProbeReceipt }}\n\
          import v2.std.algebra {{ Cons, Empty }}\n\
          import v2.std.collection {{ List }}\n\
-         import v2.std.logic {{ Int }}\n\n\
+         import v2.std.logic {{ Int }}\n\
+         import v2.std.text {{ String }}\n\n\
+         data host_frontier_probe_survey_source_head: String = \"{source_head}\"\n\n\
+         data host_frontier_probe_survey_binary_sha256: String = \"{binary_sha256}\"\n\n\
+         data host_frontier_probe_survey_source_root: String = \"{source_root}\"\n\n\
          data host_frontier_probe_survey_module_count: Int = {}\n\n\
          data host_frontier_probe_survey: List<FrontierProbeReceipt> = {list}\n",
         rows.len()
@@ -396,6 +406,36 @@ fn cluster_summary(rows: &[ProbeReceiptRow]) -> String {
         "verdict: (see frontier_gap_clustering_from_receipts on emitted manifest)".to_string(),
     );
     lines.join("\n")
+}
+
+fn resolve_survey_pin_metadata(source_roots: &[String]) -> (String, String, String) {
+    let source_root = source_roots
+        .first()
+        .cloned()
+        .unwrap_or_else(|| "src/v2".to_string());
+    let source_head = Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .output()
+        .ok()
+        .and_then(|out| {
+            if out.status.success() {
+                Some(String::from_utf8_lossy(&out.stdout).trim().to_string())
+            } else {
+                None
+            }
+        })
+        .unwrap_or_default();
+    let binary_sha256 = std::env::current_exe()
+        .ok()
+        .and_then(|path| {
+            fs::read(path).ok().map(|bytes| {
+                use sha2::{Digest, Sha256};
+                let digest = Sha256::digest(bytes);
+                format!("{:x}", digest)
+            })
+        })
+        .unwrap_or_default();
+    (source_head, binary_sha256, source_root)
 }
 
 fn run() -> Result<ExitCode, ExitCode> {
@@ -513,7 +553,16 @@ fn run() -> Result<ExitCode, ExitCode> {
         }
     }
 
-    emit_survey_manifest(&survey_manifest, &rows).map_err(|msg| {
+    let (source_head, binary_sha256, pin_source_root) = resolve_survey_pin_metadata(&source_roots);
+
+    emit_survey_manifest(
+        &survey_manifest,
+        &rows,
+        &source_head,
+        &binary_sha256,
+        &pin_source_root,
+    )
+    .map_err(|msg| {
         eprintln!("frontier_probe_survey: {msg}");
         ExitCode::from(1)
     })?;
