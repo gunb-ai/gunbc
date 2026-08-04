@@ -358,18 +358,48 @@ pub fn reference_named(
     transport: Rc<OccurrenceTransport>,
     name: String,
 ) -> Option<Rc<ReferenceOccurrence>> {
+    match references_named(transport.clone(), name.clone())
+        .first()
+        .cloned()
+    {
+        Some(reference) => Some(reference.clone()),
+        None => None,
+    }
+}
+
+pub fn references_named(
+    transport: Rc<OccurrenceTransport>,
+    name: String,
+) -> Rc<Vec<Rc<ReferenceOccurrence>>> {
     transport.references.clone().iter().cloned().fold(
-        None,
-        |found: _, reference: Rc<ReferenceOccurrence>| match found.clone() {
-            Some(_) => found.clone(),
-            None => {
-                match index_entry_for_occurrence(transport.clone(), reference.occurrence.clone()) {
-                    None => None,
-                    Some(entry) => {
-                        match (entry.projection.clone().authored_name.clone() == name.clone()) {
-                            true => Some(reference.clone()),
-                            false => None,
-                        }
+        Rc::new(vec![]),
+        |acc: Rc<Vec<Rc<ReferenceOccurrence>>>, reference: Rc<ReferenceOccurrence>| {
+            match index_entry_for_occurrence(transport.clone(), reference.occurrence.clone()) {
+                None => acc.clone(),
+                Some(entry) => {
+                    match (entry.projection.clone().authored_name.clone() == name.clone()) {
+                        true => v1_rt::concat(acc.clone(), Rc::new(vec![reference.clone()])),
+                        false => acc.clone(),
+                    }
+                }
+            }
+        },
+    )
+}
+
+pub fn declarations_named(
+    transport: Rc<OccurrenceTransport>,
+    name: String,
+) -> Rc<Vec<Rc<DeclarationOccurrence>>> {
+    transport.declarations.clone().iter().cloned().fold(
+        Rc::new(vec![]),
+        |acc: Rc<Vec<Rc<DeclarationOccurrence>>>, declaration: Rc<DeclarationOccurrence>| {
+            match index_entry_for_occurrence(transport.clone(), declaration.occurrence.clone()) {
+                None => acc.clone(),
+                Some(entry) => {
+                    match (entry.projection.clone().authored_name.clone() == name.clone()) {
+                        true => v1_rt::concat(acc.clone(), Rc::new(vec![declaration.clone()])),
+                        false => acc.clone(),
                     }
                 }
             }
