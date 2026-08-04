@@ -4,19 +4,20 @@ import std.types { NonEmptyStr, Timestamp }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
-import extdeps.coverage { CoverageClosureEntry, CoverageClosureFact }
+import extdeps.crypto.hash { HashAlgorithm, Sha256 }
+import extdeps.github.github { GitHubUser }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
-    locator: "docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/authenticating-as-a-github-app-installation"
+    locator: "docs.github.com/en/rest/apps/apps"
   }
 }
 
-data jwt_citation: ExternalAuthority = ExternalAuthority {
+data installation_auth_citation: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
-    locator: "docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/generating-a-json-web-token-jwt-for-a-github-app"
+    locator: "docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/authenticating-as-a-github-app-installation"
   }
 }
 
@@ -27,125 +28,192 @@ data private_key_citation: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data app_shapes_scope_note: String = "The AGNOSTIC GitHub App shapes, and deliberately nothing concrete. extdeps.external_authority's external_model_scope_law is explicit that a generic hub 'may not enumerate concrete products, dispatch among their authorities, carry product-specific version rows, or store consumer coverage state', and that 'observations produced by this repository are receipts in the observing product/workflow layer (downstream), never Unobserved properties authored inside an upstream module'. So no App registered in any organization appears here, no organization's installation is named, and no field in this module ever holds a verdict about what this repository managed to observe. Those all live above extdeps, on the product layer that owns the App.\n\nWHAT THIS MODULE IS FOR. GitHub's server-to-server credential path is private key -> App JWT -> installation access token, and the resulting token is scoped at issuance to a chosen subset of the installation's repositories and permissions. The existing extdeps.github.github GitHubAuthToken cannot express any of that: it carries a token, a list of OAuth SCOPES, and an expiry, and OAuth scopes are a different and non-interchangeable vocabulary from GitHub App permissions. Modeling the installation path as a widened GitHubAuthToken would fuse two upstream credential kinds that GitHub itself keeps apart, so the App-shaped carriers are declared here beside it rather than on top of it."
+type GitHubAppId { value: Int }
 
-data jwt_issuer_claim_note: String = "The JWT 'iss' claim. GitHub's cited JWT reference now recommends the App's CLIENT ID over its numeric App ID as the issuer value, and accepts either. Both are modeled because both are real and observable — the numeric App ID is what several REST responses return, so a model that dropped it could not reconcile an observation against a declaration — but the issuer preference is stated once, here, rather than being re-decided at each minting site. GitHubAppJwtIssuer is a closed sum rather than a Bool or a free string so that a third accepted issuer form, if GitHub adds one, is a variant with a citation instead of a silent re-spelling."
+type GitHubAppInstallationId { value: Int }
 
-type GitHubAppJwtIssuer
-  = IssuerClientId
-  | IssuerAppId
-
-data jwt_issuer_preferred: GitHubAppJwtIssuer = IssuerClientId
+type GitHubRepositoryId { value: Int }
 
 type GitHubAppRegistration {
-  owner: NonEmptyStr
-  app_id: NonEmptyStr
+  owner: GitHubUser
+  app_id: GitHubAppId
   client_id: NonEmptyStr
   slug: NonEmptyStr
-  homepage: NonEmptyStr?
+  homepage: Uri?
 }
 
-data private_key_identity_note: String = "A private key is identified by its FINGERPRINT, never by its material. GitHub's cited key-management reference shows the fingerprint on the App settings surface, which makes it the one value that can be compared between what GitHub holds and what a custody store holds WITHOUT either side transporting the PEM to the other. That property is the whole reason this carrier exists: gunbc.auth.materialized_secret records an incident in which Secret Manager reported a key version present and enabled while the key inside it had been deleted from the App, and no existence check on either side could have caught it because neither side was comparing identities.\n\nGitHub App private keys do not expire on their own and must be explicitly revoked, and GitHub permits an App to hold several keys at once so a rotation can overlap without downtime. Both facts are why status is a sum with a Retiring arm rather than a Bool: during a correct rotation two keys are legitimately live at the same time, and a two-valued model would have to call one of them wrong."
+type GitHubAppPermissionName { wire_name: NonEmptyStr }
 
-type GitHubAppPrivateKeyStatus
-  = KeyActive
-  | KeyRetiring
-  | KeyRevoked
-
-type GitHubAppPrivateKeyIdentity {
-  sha256_fingerprint: NonEmptyStr
-  status: GitHubAppPrivateKeyStatus
-}
-
-data permission_vocabulary_note: String = "GitHub App permissions are NAMED resource grants at a level (contents: write, pull_requests: write, metadata: read), which is a different vocabulary from the OAuth scopes extdeps.github.github GitHubScope closes over. The permission NAME is carried as a string rather than as a closed sum on purpose, and the reason is the §3 authority rule rather than convenience: the set of permission names is GitHub's to extend, it grows without any change on this side, and a closed enum here would silently drop a permission an installation actually holds — turning an observation this repository cannot represent into one it reports as absent, which is the empty-observation narrow DESIGN names. The LEVEL is closed, because read/write/admin is the fixed ladder the upstream defines."
-
-type GitHubAppPermissionLevel
-  = AppPermRead
-  | AppPermWrite
-  | AppPermAdmin
+type GitHubAppPermissionAccess
+  = AppAccessRead
+  | AppAccessWrite
 
 type GitHubAppPermission {
-  name: NonEmptyStr
-  level: GitHubAppPermissionLevel
+  name: GitHubAppPermissionName
+  access: GitHubAppPermissionAccess
 }
 
-type GitHubAppRepositorySelection
-  = AllRepositories
-  | SelectedRepositories { repository_full_names: List<NonEmptyStr> }
+fn permission_access_rank(access: GitHubAppPermissionAccess) -> Int {
+  match access {
+    AppAccessRead => 1
+    AppAccessWrite => 2
+  }
+}
+
+fn permission_access_at_least(
+  held: GitHubAppPermissionAccess,
+  requested: GitHubAppPermissionAccess
+) -> Bool {
+  permission_access_rank(access: held) >= permission_access_rank(access: requested)
+}
+
+fn permission_name_eq(a: GitHubAppPermissionName, b: GitHubAppPermissionName) -> Bool {
+  a.wire_name == b.wire_name
+}
+
+type GitHubAppPermissionSetAdmission
+  = PermissionSetAdmitted { permissions: List<GitHubAppPermission> }
+  | PermissionSetDuplicateName { name: GitHubAppPermissionName }
+
+data no_admitted_permissions: List<GitHubAppPermission> = []
+
+fn permission_name_occurrences(
+  perms: List<GitHubAppPermission>,
+  name: GitHubAppPermissionName
+) -> Int {
+  fold_list(
+    xs: perms,
+    empty: 0,
+    cons: fn(n, p) { if permission_name_eq(a: p.name, b: name) { n + 1 } else { n } }
+  )
+}
+
+fn first_duplicated_permission(perms: List<GitHubAppPermission>) -> GitHubAppPermission? {
+  fold_list(
+    xs: perms,
+    empty: none,
+    cons: fn(found, p) {
+      match found {
+        Present { value: v } => Present { value: v }
+        Absent =>
+          if permission_name_occurrences(perms: perms, name: p.name) > 1 {
+            Present { value: p }
+          } else {
+            none
+          }
+      }
+    }
+  )
+}
+
+fn admit_permission_set(perms: List<GitHubAppPermission>) -> GitHubAppPermissionSetAdmission {
+  match first_duplicated_permission(perms: perms) {
+    Present { value: dup } => PermissionSetDuplicateName { name: dup.name }
+    Absent => PermissionSetAdmitted { permissions: perms }
+  }
+}
+
+type GitHubAppRepositorySelectionMode
+  = SelectionAll
+  | SelectionSelected
 
 type GitHubAppInstallation {
-  installation_id: NonEmptyStr
-  installation_account: NonEmptyStr
-  repository_selection: GitHubAppRepositorySelection
+  installation_id: GitHubAppInstallationId
+  account: GitHubUser
+  repository_selection: GitHubAppRepositorySelectionMode
   permissions: List<GitHubAppPermission>
   subscribed_events: List<NonEmptyStr>
 }
 
-data owner_versus_installation_account_note: String = "GitHubAppRegistration.owner and GitHubAppInstallation.installation_account are separate fields even where one organization currently holds both. They answer different questions — who REGISTERED the App, and into whose account it is INSTALLED — and they come apart the moment a staging organization, a replacement provider, or an installation outside the owning org appears. Collapsing them while they happen to agree would make that later case a schema change rather than a new row."
+type GitHubInstallationRepositoryNarrowing
+  = RepositoryNarrowingOmitted
+  | SelectedRepositoryNames { names: List<NonEmptyStr> }
+  | SelectedRepositoryIds { ids: List<GitHubRepositoryId> }
 
-data credential_request_note: String = "The issuance REQUEST, modeled separately from the credential it yields. GitHub's installation-token endpoint accepts an optional repository subset and an optional permission subset, each of which may only NARROW what the installation already grants — the endpoint refuses a request for a repository or permission the installation does not hold. Carrying the request as its own value is what lets a receipt state what was ASKED FOR beside what was RETURNED; with only the credential, a narrowing that silently did not happen would be indistinguishable from one that did."
+type GitHubInstallationPermissionNarrowing
+  = PermissionNarrowingOmitted
+  | SelectedPermissions { permissions: List<GitHubAppPermission> }
 
-type GitHubInstallationCredentialRequest {
-  installation_id: NonEmptyStr
-  repository_full_names: List<NonEmptyStr>
-  permissions: List<GitHubAppPermission>
+type GitHubInstallationTokenRequest {
+  installation_id: GitHubAppInstallationId
+  repositories: GitHubInstallationRepositoryNarrowing
+  permissions: GitHubInstallationPermissionNarrowing
 }
 
-data token_opacity_note: String = "The credential value is opaque and must stay that way. GitHub began rolling out a changed installation-token format in April 2026, so no model, parser, witness, or log redactor in this tree may assume a fixed length, a legacy 'ghs_' prefix, or any internal structure. The only facts a consumer may rely on are the ones carried as fields beside it — expiry, repositories, permissions, issuing App and installation — which is precisely why they are fields and not something to be recovered from the string."
-
-type GitHubInstallationCredential {
+type GitHubInstallationTokenResponse {
   token: Secret
   expires_at: Timestamp
-  app_id: NonEmptyStr
-  installation_id: NonEmptyStr
-  repository_full_names: List<NonEmptyStr>
+  repository_selection: GitHubAppRepositorySelectionMode
   permissions: List<GitHubAppPermission>
 }
 
-data credential_provenance_note: String = "Provenance survives into the credential because GitHub treats the resulting events DIFFERENTLY, and erasing it would erase the only fact that predicts that difference. A push authenticated with the Actions-issued job credential is attributed to the github-actions[bot] actor, and on a public repository the pull_request run that push triggers is parked pending approval; the same push authenticated with an ordinary App installation credential is attributed to that App's bot actor and runs without approval. Both runtime values are secret strings of no fixed shape, so nothing recoverable FROM the credential distinguishes them — the distinction is where it came from, and it has to be carried.\n\nThis is not a preference about logging. A workflow that predicts its own consequences (which actor will appear, whether a run will be admitted) is making a claim that is only checkable if the provenance of the credential it used is part of the model."
-
-type GitHubCredentialProvenance
-  = ActionsDefaultJobCredential
-  | AppInstallationCredential { app_id: NonEmptyStr, installation_id: NonEmptyStr }
-
-fn credential_provenance(cred: GitHubInstallationCredential) -> GitHubCredentialProvenance {
-  AppInstallationCredential { app_id: cred.app_id, installation_id: cred.installation_id }
-}
-
-data permission_level_at_least_note: String = "The narrowing order on a single permission. A request is a narrowing of an installation grant only if every requested permission is held at a level the installation meets or exceeds, so the ladder needs an explicit order rather than equality: an installation holding contents: write does satisfy a request for contents: read, and an installation holding contents: read does not satisfy a request for contents: write. Declared here on the closed sum so that the admission check downstream reads the order from the upstream vocabulary instead of re-deriving it."
-
-fn permission_level_rank(level: GitHubAppPermissionLevel) -> Int {
-  match level {
-    AppPermRead => 1
-    AppPermWrite => 2
-    AppPermAdmin => 3
+fn requested_permissions(narrowing: GitHubInstallationPermissionNarrowing, installation: GitHubAppInstallation) -> List<GitHubAppPermission> {
+  match narrowing {
+    PermissionNarrowingOmitted => installation.permissions
+    SelectedPermissions { permissions } => permissions
   }
 }
 
-fn permission_level_at_least(held: GitHubAppPermissionLevel, requested: GitHubAppPermissionLevel) -> Bool {
-  permission_level_rank(level: held) >= permission_level_rank(level: requested)
+fn permission_access_in(
+  perms: List<GitHubAppPermission>,
+  name: GitHubAppPermissionName
+) -> GitHubAppPermissionAccess? {
+  fold_list(
+    xs: perms,
+    empty: none,
+    cons: fn(found, p) {
+      match found {
+        Present { value: v } => Present { value: v }
+        Absent => if permission_name_eq(a: p.name, b: name) { Present { value: p.access } } else { none }
+      }
+    }
+  )
 }
 
-data structural_coverage_gap_app_observation_surfaces: List<CoverageClosureEntry> = [
-  {
-    facts: [
-      Subject { path: "GitHubAppRegistration" },
-      Missing { item: "GET /app response ingestion" },
-      Missing { item: "GET /app/installations response ingestion" }
-    ],
-    trigger: "an App-JWT-authenticated observation producer runs in this tree"
-  },
-  {
-    facts: [
-      Subject { path: "GitHubAppPrivateKeyIdentity" },
-      RequiresArm { arm: "private-key create and delete" },
-      Missing { item: "REST endpoint for App private-key management" }
-    ],
-    trigger: "GitHub publishes a private-key management REST surface"
-  }
-]
+fn permission_narrowing_is_within(
+  narrowing: GitHubInstallationPermissionNarrowing,
+  installation: GitHubAppInstallation
+) -> Bool {
+  fold_list(
+    xs: requested_permissions(narrowing: narrowing, installation: installation),
+    empty: true,
+    cons: fn(ok, r) {
+      ok && match permission_access_in(perms: installation.permissions, name: r.name) {
+        Absent => false
+        Present { value: held } => permission_access_at_least(held: held, requested: r.access)
+      }
+    }
+  )
+}
 
-data private_key_management_is_operator_action_note: String = "There is deliberately no private-key create or delete OPERATION in this module. GitHub's cited key-management reference describes generating and deleting App private keys through the App settings interface, and no corresponding REST endpoint was found when this module was written. Declaring transport-bound operations for them would model a surface that does not exist. The rotation lane must therefore carry those two edges as operator actions with exact preconditions and readback — observable before and after, unautomatable in between — rather than omitting them from the workflow, which would leave the rotation's most dangerous steps outside the model entirely. The coverage entry above is the dissolution trigger."
+type GitHubAppKeyFingerprintEncoding
+  = FingerprintBase64
+
+type GitHubAppPublicKeyFingerprint {
+  algorithm: HashAlgorithm
+  encoding: GitHubAppKeyFingerprintEncoding
+  digest: NonEmptyStr
+}
+
+fn sha256_base64_key_fingerprint(digest: NonEmptyStr) -> GitHubAppPublicKeyFingerprint {
+  GitHubAppPublicKeyFingerprint {
+    algorithm: Sha256,
+    encoding: FingerprintBase64,
+    digest: digest,
+  }
+}
+
+fn key_fingerprint_eq(a: GitHubAppPublicKeyFingerprint, b: GitHubAppPublicKeyFingerprint) -> Bool {
+  match a.algorithm {
+    Sha256 => match b.algorithm {
+      Sha256 => match a.encoding {
+        FingerprintBase64 => match b.encoding {
+          FingerprintBase64 => a.digest == b.digest
+        }
+      }
+    }
+  }
+}
 
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
@@ -157,7 +225,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   },
   first_citation: extdeps.github.app.extdeps_external_authority_anchor,
   further_citations: [
-    extdeps.github.app.jwt_citation,
+    extdeps.github.app.installation_auth_citation,
     extdeps.github.app.private_key_citation
   ]
 }
