@@ -48,9 +48,46 @@ test fn witness_runner_app_grants_no_contents() -> Bool {
     && access_of(perms: derived, name: "administration") == AppAccessWrite
 }
 
-test fn witness_no_workflows_write_on_either_app() -> Bool {
-  !has_permission(perms: gunbai_bot_required_permissions, name: "workflows")
+data heal_workflow_grant_gap_note: String = "THE LIVE GAP, MADE COUNTABLE. The auto-heal declares it needs workflows:write to repair .github/workflows/** — the self-hosted workflow definitions CI runs under — and the installation does not grant it. Before this change that gap was a sentence in four notes; it is now one row in gunbai_bot_ungranted_permissions and one derived HealPolicy. witness_workflow_grant_gap_is_counted pins the gap's exact membership so a grant landing (or a second requirement appearing) reds this file rather than passing silently. The discriminating pair proving the flip is DATA rather than an edit — the same fold yielding AuthorCommitRequired under an ungranted set and AutoPushEligible under a granted one — is witness_workflow_heal_policy_derives_from_grant, and it lives in test.claim.generated_artifact_drift beside the fold it exercises rather than here: this module declares no imports and so resolves bare across the pool, and importing gunbc.generated_artifact to reach that fold would flip it to import-scoped visibility and unbind every existing reference in it. The runner app is unaffected — it pushes nothing."
+
+test fn witness_workflow_grant_gap_is_counted() -> Bool {
+  has_permission(perms: gunbai_bot_required_permissions, name: "workflows")
+    && access_of(perms: gunbai_bot_required_permissions, name: "workflows") == AppAccessWrite
+    && !app_holds_permission(
+         granted: gunbai_bot_installation_granted_permissions,
+         required: heal_workflow_projection_permission
+       )
+    && !heal_app_can_push_workflow_paths()
+    && length(gunbai_bot_ungranted_permissions) == 1
+    && has_permission(perms: gunbai_bot_ungranted_permissions, name: "workflows")
     && !has_permission(perms: gunbai_ci_required_permissions, name: "workflows")
+}
+
+test fn witness_granted_set_covers_every_other_bot_requirement() -> Bool {
+  app_holds_permission(
+    granted: gunbai_bot_installation_granted_permissions,
+    required: GitHubAppPermission { name: wire(name: "contents"), access: AppAccessWrite }
+  ) && app_holds_permission(
+    granted: gunbai_bot_installation_granted_permissions,
+    required: GitHubAppPermission { name: wire(name: "actions"), access: AppAccessWrite }
+  ) && app_holds_permission(
+    granted: gunbai_bot_installation_granted_permissions,
+    required: GitHubAppPermission { name: wire(name: "metadata"), access: AppAccessRead }
+  ) && !app_holds_permission(
+    granted: gunbai_bot_installation_granted_permissions,
+    required: GitHubAppPermission { name: wire(name: "metadata"), access: AppAccessWrite }
+  )
+}
+
+test fn witness_ungranted_gap_is_empty_when_everything_is_granted() -> Bool {
+  length(ungranted_required_permissions(
+    enrollment: gunbai_bot_enrollment,
+    granted: gunbai_bot_required_permissions
+  )) == 0
+    && length(ungranted_required_permissions(
+         enrollment: gunbai_bot_enrollment,
+         granted: []
+       )) == length(gunbai_bot_required_permissions)
 }
 
 test fn witness_permission_access_order_is_asymmetric() -> Bool {

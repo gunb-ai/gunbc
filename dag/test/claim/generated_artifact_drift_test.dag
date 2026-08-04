@@ -11,6 +11,7 @@ import gunbc.generated_artifact {
   generated_artifact_registry,
   committed_generated_artifacts, artifact_path, artifact_commit_policy, artifact_is_committed,
   artifact_heal_policy,
+  artifact_heal_policy_under,
   partition_committed_by_heal_policy,
   auto_push_eligible_committed_artifacts, author_commit_required_committed_artifacts,
   classify_heal_repair_paths, path_requires_author_commit,
@@ -165,6 +166,28 @@ test fn witness_commit_policy_reasons() -> Bool {
     && match artifact_commit_policy(a: RunnerDeployArtifact) { NotCommitted => true  _ => false }
     && match artifact_commit_policy(a: AutoinstallUserDataArtifact { spec: srv3_autoinstall_spec }) { NotCommitted => true  _ => false }
     && match artifact_commit_policy(a: ProxyDhcpDnsmasqArtifact { spec: srv3_install_server_spec }) { NotCommitted => true  _ => false }
+}
+
+data workflow_heal_grant_derivation_note: String = "THE WORKFLOW HEAL POLICY IS DERIVED FROM THE INSTALLATION GRANT, NOT ASSERTED. artifact_heal_policy_under is the real fold; artifact_heal_policy is it applied to gunbc.auth.github_apps heal_app_can_push_workflow_paths(). witness_heal_policy_workflow_artifacts_require_author_commit above pins TODAY's outcome through the live path; this pair pins the DERIVATION, so a grant of workflows:write flips .github/workflows/** to AutoPushEligible by editing one permission row rather than this fold, the heal shell, or any path list. Without the granted-true half, a hardcoded AuthorCommitRequired would satisfy the live witness identically — that is exactly the discriminating input DESIGN section 5 requires, and it is why the Bool is a parameter of the fold instead of a call inside it."
+
+fn heal_policy_under_is(a: GeneratedArtifact, can_push: Bool, expected: HealPolicy) -> Bool {
+  match artifact_heal_policy_under(a: a, can_push_workflow_paths: can_push) {
+    AutoPushEligible => match expected { AutoPushEligible => true  _ => false }
+    AuthorCommitRequired { consumer: _ } => match expected {
+      AuthorCommitRequired { consumer: _ } => true
+      AutoPushEligible => false
+    }
+  }
+}
+
+test fn witness_workflow_heal_policy_derives_from_grant() -> Bool {
+  heal_policy_under_is(a: CiYamlArtifact, can_push: false, expected: AuthorCommitRequired { consumer: GithubActionsWorkflow })
+    && heal_policy_under_is(a: FalsifierYamlArtifact, can_push: false, expected: AuthorCommitRequired { consumer: GithubActionsWorkflow })
+    && heal_policy_under_is(a: CiYamlArtifact, can_push: true, expected: AutoPushEligible)
+    && heal_policy_under_is(a: FalsifierYamlArtifact, can_push: true, expected: AutoPushEligible)
+    && heal_policy_under_is(a: GitignoreArtifact, can_push: false, expected: AutoPushEligible)
+    && heal_policy_under_is(a: DesignArtifact, can_push: false, expected: AutoPushEligible)
+    && heal_policy_under_is(a: DesignArtifact, can_push: true, expected: AutoPushEligible)
 }
 
 fn heal_policy_is(a: GeneratedArtifact, expected: HealPolicy) -> Bool {

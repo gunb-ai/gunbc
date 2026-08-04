@@ -118,13 +118,14 @@ data gunbai_bot_enrollment: GitHubAppEnrollment = GitHubAppEnrollment {
     {
       consumer: DeclarationRef {
         module_path: "gunbc.ci_workflow",
-        decl_name: "ci_heal_regen_step",
+        decl_name: "ci_heal_commit_push_step",
         field: WholeDeclaration
       },
-      purpose: "push the regenerated generated-artifact commit to the admitted attempt branch",
+      purpose: "push the regenerated generated-artifact commit to the admitted attempt branch, including the .github/workflows/** projections that define the self-hosted CI this heal runs under",
       required_permissions: [
         perm(wire_name: "metadata", access: AppAccessRead),
         perm(wire_name: "contents", access: AppAccessWrite),
+        perm(wire_name: "workflows", access: AppAccessWrite),
       ]
     },
     {
@@ -138,22 +139,11 @@ data gunbai_bot_enrollment: GitHubAppEnrollment = GitHubAppEnrollment {
         perm(wire_name: "metadata", access: AppAccessRead),
         perm(wire_name: "actions", access: AppAccessWrite),
       ]
-    },
-    {
-      consumer: DeclarationRef {
-        module_path: "gunbc.generated_artifact",
-        decl_name: "artifact_heal_policy",
-        field: WholeDeclaration
-      },
-      purpose: "push regenerated .github/workflows/** projections so the auto-heal can repair the self-hosted workflow definitions CI runs under",
-      required_permissions: [
-        perm(wire_name: "metadata", access: AppAccessRead),
-        perm(wire_name: "contents", access: AppAccessWrite),
-        perm(wire_name: "workflows", access: AppAccessWrite),
-      ]
     }
   ]
 }
+
+data enrollment_consumer_is_the_effecting_step_note: String = "A CONSUMER ROW NAMES THE DECLARATION THAT PERFORMS THE EFFECT, not one that merely precedes or classifies it (cursor/composer-2.5, review 48030). The heal row originally cited gunbc.ci_workflow ci_heal_regen_step while describing a push; regen only writes the local worktree and ci_heal_commit_push_step is what reaches GitHub, so contents:write was attributed to a step that never authenticates. It read as correct because permissions live on the enrollment row rather than on the referenced declaration — the misattribution changed no derived value and would have gone on being copied.\n\nWHY workflows:write ALSO LANDS ON THE PUSH STEP rather than on gunbc.generated_artifact artifact_heal_policy: that fold decides WHICH paths are eligible, it does not push them. Both permissions belong to the one declaration that performs the authenticated push, which is why this is a single consumer row and not two."
 
 data no_permissions: List<GitHubAppPermission> = []
 
@@ -233,14 +223,12 @@ fn ungranted_required_permissions(
   )
 }
 
-data gunbai_bot_ungranted_permissions: List<GitHubAppPermission> =
-  ungranted_required_permissions(
-    enrollment: gunbai_bot_enrollment,
-    granted: gunbai_bot_installation_granted_permissions
-  )
+data gunbai_bot_ungranted_permissions: List<GitHubAppPermission> = ungranted_required_permissions(
+  enrollment: gunbai_bot_enrollment,
+  granted: gunbai_bot_installation_granted_permissions
+)
 
-data heal_workflow_projection_permission: GitHubAppPermission =
-  perm(wire_name: "workflows", access: AppAccessWrite)
+data heal_workflow_projection_permission: GitHubAppPermission = perm(wire_name: "workflows", access: AppAccessWrite)
 
 fn heal_app_can_push_workflow_paths() -> Bool {
   app_holds_permission(

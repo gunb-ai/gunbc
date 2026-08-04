@@ -632,7 +632,7 @@ fn ci_heal_author_commit_upload_step() -> Step {
   }
 }
 
-data ci_heal_job_note: String = "CI auto-heal for the DERIVABLE red class remains pull_request-only and independent of ci. Auto-push-eligible generated artifacts follow the HealProduced push+dispatch path. Workflow projections (.github/workflows/**) are AuthorCommitRequired: the GitHub App lacks workflows:write, so the heal job regenerates them, packages the corrected bytes as an artifact, emits a typed HealAuthorCommitRequired diagnostic naming every affected path and the local regen command, and never attempts a push it knows GitHub will reject. The drift gate stays red until the authoring branch commits the workflow bytes. contents:write and actions:write remain scoped to this job only. Main is not auto-healed."
+data ci_heal_job_note: String = "CI auto-heal for the DERIVABLE red class remains pull_request-only and independent of ci. Auto-push-eligible generated artifacts follow the HealProduced push+dispatch path. Workflow projections (.github/workflows/**) classify through gunbc.generated_artifact artifact_heal_policy, which derives eligibility from the installation grant owned by gunbc.auth.github_apps (heal_app_can_push_workflow_paths). While workflows:write is ungranted they are AuthorCommitRequired, so the heal job regenerates them, packages the corrected bytes as an artifact, emits a typed HealAuthorCommitRequired diagnostic naming every affected path and the local regen command, and never attempts a push it knows GitHub will reject. The drift gate stays red until the authoring branch commits the workflow bytes. contents:write and actions:write remain scoped to this job only. Main is not auto-healed."
 
 fn ci_heal_generated_artifacts_job() -> Job {
   Job {
