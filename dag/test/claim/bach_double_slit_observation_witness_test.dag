@@ -26,6 +26,7 @@ import extdeps.physics.bach_et_al_2013_double_slit {
   PatternNotYetDiscernible,
   SlitOneSingleSlitDiffractionObserved,
   SlitTwoSingleSlitDiffractionObserved,
+  BothSlitsDoubleSlitDiffractionObserved,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -124,5 +125,16 @@ test fn w_bach_interference_rejects_missing_both_open_diffraction_observation() 
   ]
   bach_double_slit_interference_evidence_rejects_for_distribution(
     observations: without_both_open,
+  )
+}
+
+test fn w_bach_interference_rejects_duplicate_distribution_observation() -> Bool {
+  let duplicate_both_open = [
+    BothSlitsDoubleSlitDiffractionObserved,
+    BothSlitsDoubleSlitDiffractionObserved,
+    BothSlitsDoubleSlitDiffractionObserved,
+  ]
+  bach_double_slit_interference_evidence_rejects_for_distribution(
+    observations: duplicate_both_open,
   )
 }

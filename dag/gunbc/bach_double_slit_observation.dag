@@ -343,13 +343,63 @@ fn bach_cited_buildup_progression_holds() -> Bool {
   bach_buildup_progression_holds_for(rows: bach_buildup_observations)
 }
 
+fn bach_distribution_observation_rank(
+  observation: BachDistributionObservation,
+) -> Int {
+  match observation {
+    SlitOneSingleSlitDiffractionObserved => 0
+    SlitTwoSingleSlitDiffractionObserved => 1
+    BothSlitsDoubleSlitDiffractionObserved => 2
+  }
+}
+
+type DistributionObservationSequenceFoldAcc {
+  expected_rank: Int
+  valid: Bool
+}
+
+fn fold_distribution_observation_sequence(
+  acc: DistributionObservationSequenceFoldAcc,
+  observation: BachDistributionObservation,
+) -> DistributionObservationSequenceFoldAcc {
+  if !acc.valid {
+    acc
+  } else {
+    let rank = bach_distribution_observation_rank(observation: observation)
+    if rank == acc.expected_rank {
+      DistributionObservationSequenceFoldAcc {
+        expected_rank: acc.expected_rank + 1,
+        valid: true,
+      }
+    } else {
+      DistributionObservationSequenceFoldAcc {
+        expected_rank: acc.expected_rank,
+        valid: false,
+      }
+    }
+  }
+}
+
+fn bach_distribution_observations_are_canonical_triplet_once(
+  observations: List<BachDistributionObservation>,
+) -> Bool {
+  let folded = fold(
+    observations,
+    init: DistributionObservationSequenceFoldAcc {
+      expected_rank: 0,
+      valid: true,
+    },
+    f: fn(acc, observation) {
+      fold_distribution_observation_sequence(acc: acc, observation: observation)
+    },
+  )
+  folded.valid && folded.expected_rank == 3 && (observations |> count) == 3
+}
+
 fn bach_distribution_observations_complete_for(
   observations: List<BachDistributionObservation>,
 ) -> Bool {
-  (observations |> count) == 3
-    && observations |> any(o => o == SlitOneSingleSlitDiffractionObserved)
-    && observations |> any(o => o == SlitTwoSingleSlitDiffractionObserved)
-    && observations |> any(o => o == BothSlitsDoubleSlitDiffractionObserved)
+  bach_distribution_observations_are_canonical_triplet_once(observations: observations)
 }
 
 fn bach_distribution_observations_complete() -> Bool {
