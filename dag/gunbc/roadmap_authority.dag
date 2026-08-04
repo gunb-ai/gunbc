@@ -1980,6 +1980,10 @@ type AcceptedRoadmapNodeIdsProjection
   = AcceptedRoadmapNodeIdsProjected { ids: List<RoadmapNodeId> }
   | AcceptedRoadmapNodeIdsProjectionRefused { detail: String }
 
+type RoadmapAuthorityProjection
+  = RoadmapAuthorityProjected { doc: RoadmapDocument }
+  | RoadmapAuthorityProjectionRefused { detail: String }
+
 fn accepted_roadmap_nodes_projection() -> AcceptedRoadmapNodesProjection {
   match roadmap_acceptance_receipts() {
     RoadmapAcceptanceReceiptsProjected { receipts: receipts } =>
@@ -2000,10 +2004,14 @@ fn accepted_roadmap_node_ids_projection() -> AcceptedRoadmapNodeIdsProjection {
   }
 }
 
+fn active_roadmap_nodes_for_accepted(accepted: List<RoadmapNodeId>) -> List<RoadmapNode> {
+  declared_roadmap_nodes() |> filter(n => !(accepted |> any(a => a == n.node)))
+}
+
 fn active_roadmap_nodes() -> List<RoadmapNode> {
   match accepted_roadmap_node_ids_projection() {
     AcceptedRoadmapNodeIdsProjected { ids: accepted } =>
-      declared_roadmap_nodes() |> filter(n => !(accepted |> any(a => a == n.node)))
+      active_roadmap_nodes_for_accepted(accepted: accepted)
     AcceptedRoadmapNodeIdsProjectionRefused { detail: _ } => []
   }
 }
@@ -2022,14 +2030,18 @@ data closing_contract_task_naming_correction_note: String = "THESE ARE CLOSING-C
 
 data closing_contract_task_derivation_note: String = "CLOSING-CONTRACT TASKS ARE DERIVED, NOT AUTHORED (operator ruling 2026-07-29: 'you shouldn't need to manually maintain that stuff — the relationship should be inferred from one side or the other'). The first cut hand-wrote four acceptance nodes and four edges, and one had to be hand-removed within minutes because pderive-typesafe-nullary-reflection was already accepted: a new prerequisite on completed work retroactively un-satisfies it, which witness_accepted_parents_precede_dependents caught. That is the hand-maintained-count failure this repository refuses everywhere else — two things that must be kept in step, drifting the moment either side moves.\n\nThe relationship is a FUNCTION of the node: startable (every prerequisite accepted) AND unbound (ExecutionContractUnspecified) means its closing validation does not exist, so authoring that validation is the work that unblocks it. Nothing else needs saying. An accepted node leaves the active set and its task disappears; a node that gains a contract stops being unbound and its task disappears; a node whose prerequisite lands becomes startable and its task appears. No cleanup step exists because there is nothing to clean.\n\nThe frontier is deliberately STARTABLE-only rather than every unbound node. A terminus like v1-zero-hand-maintained-rust is unbound too, but surfacing a closing-contract task for work whose prerequisites are years out is noise that would bury the four rows that matter today.\n\nOn identity: a derived row takes a deterministic id from its target rather than a minted one, and that is consistent with the identity law rather than an exception to it. The law governs declared DELIVERABLES, which must survive rename and reordering. A closing-contract task is a projection of a frontier state — it has no history to preserve, it exists exactly while its target lacks a contract, and if the target's slug changes it is honestly a different task."
 
+fn node_is_startable_for_accepted(n: RoadmapNode, accepted: List<RoadmapNodeId>) -> Bool {
+  all(
+    roadmap_parent_ids(edges: declared_roadmap_edges(), node: n.node),
+    p => accepted |> any(a => a == (p as String)),
+  )
+}
+
 fn node_is_startable(n: RoadmapNode) -> Bool {
   match accepted_roadmap_node_ids_projection() {
     AcceptedRoadmapNodeIdsProjectionRefused { detail: _ } => false
     AcceptedRoadmapNodeIdsProjected { ids: accepted } =>
-      all(
-        roadmap_parent_ids(edges: declared_roadmap_edges(), node: n.node),
-        p => accepted |> any(a => a == (p as String)),
-      )
+      node_is_startable_for_accepted(n: n, accepted: accepted)
   }
 }
 
@@ -2055,14 +2067,18 @@ fn ticket_red_control_of(n: RoadmapNode) -> String {
 
 data roadmap_identity_prefix_is_cosmetic_note: String = "DO NOT 'FIX' 2-scm-compatibility-shape's rnfx_ IDENTITY PREFIX. It reads as a test-fixture prefix where every other declared node uses rn_, and that asymmetry is real but it is COSMETIC: no witness asserts any prefix, and roadmap_node_identity_law constrains what may not be an identity INPUT (slug, title, criteria digest, containment position, dependency neighbourhood, declaration order, file position), never the alphabet of the minted value.\n\nRewriting it would be the actual violation. The law's whole persistence argument is that an identity must survive edits, reordering, regeneration and independent branches; mutating a live identity for tidiness is precisely the churn it exists to forbid, and it would silently break anything holding the old value. The prefix carries no meaning to any mechanism, so the honest disposition is to leave it and record why — which is what this row is for. A prefix convention worth enforcing would be enforced at MINT time by construction, not by editing identities already in the graph."
 
+fn startable_nodes_missing_closing_contract_for_accepted(accepted: List<RoadmapNodeId>) -> List<RoadmapNode> {
+  declared_roadmap_nodes()
+    |> filter(n => !(accepted |> any(a => a == n.node)))
+    |> filter(n => node_lacks_closing_validation(n: n))
+    |> filter(n => node_is_startable_for_accepted(n: n, accepted: accepted))
+}
+
 fn startable_nodes_missing_closing_contract() -> List<RoadmapNode> {
   match accepted_roadmap_node_ids_projection() {
     AcceptedRoadmapNodeIdsProjectionRefused { detail: _ } => []
     AcceptedRoadmapNodeIdsProjected { ids: accepted } =>
-      declared_roadmap_nodes()
-        |> filter(n => !(accepted |> any(a => a == n.node)))
-        |> filter(n => node_lacks_closing_validation(n: n))
-        |> filter(n => node_is_startable(n: n))
+      startable_nodes_missing_closing_contract_for_accepted(accepted: accepted)
   }
 }
 
@@ -2123,12 +2139,16 @@ fn closing_contract_task_edges() -> List<RoadmapEdge> {
     })
 }
 
+fn active_roadmap_edges_for_accepted(accepted: List<RoadmapNodeId>) -> List<RoadmapEdge> {
+  declared_roadmap_edges() |> filter(e =>
+    !(accepted |> any(a => a == e.child)) && !(accepted |> any(a => a == e.parent)))
+}
+
 fn active_roadmap_edges() -> List<RoadmapEdge> {
   match accepted_roadmap_node_ids_projection() {
     AcceptedRoadmapNodeIdsProjectionRefused { detail: _ } => []
     AcceptedRoadmapNodeIdsProjected { ids: accepted } =>
-      declared_roadmap_edges() |> filter(e =>
-        !(accepted |> any(a => a == e.child)) && !(accepted |> any(a => a == e.parent)))
+      active_roadmap_edges_for_accepted(accepted: accepted)
   }
 }
 
@@ -2146,6 +2166,83 @@ data roadmap_focus_selection_note: String = "THE ONE ROW THAT SETS THE VIEW. Foc
 data roadmap_focus_selection: RoadmapFocus = FocusOnOwners {
   label: "the v1 deletion lane + the guarantee-ladder climbs",
   owners: ["self-host", "compiler-guarantee"],
+}
+
+fn closing_contract_task_edges_for_accepted(accepted: List<RoadmapNodeId>) -> List<RoadmapEdge> {
+  startable_nodes_missing_closing_contract_for_accepted(accepted: accepted)
+    |> map(n => RoadmapEdge {
+      child: n.node,
+      parent: concat(n.node as String, "-closing-contract") as RoadmapNodeId,
+    })
+}
+
+fn projected_roadmap_nodes_for_accepted(accepted: List<RoadmapNodeId>) -> List<RoadmapNode> {
+  concat(
+    active_roadmap_nodes_for_accepted(accepted: accepted),
+    startable_nodes_missing_closing_contract_for_accepted(accepted: accepted)
+      |> map(n => closing_contract_task_for(n: n)),
+  )
+}
+
+fn projected_roadmap_edges_for_accepted(accepted: List<RoadmapNodeId>) -> List<RoadmapEdge> {
+  concat(
+    active_roadmap_edges_for_accepted(accepted: accepted),
+    closing_contract_task_edges_for_accepted(accepted: accepted),
+  )
+}
+
+fn active_section_for_acceptance(focus: RoadmapFocus, accepted: List<RoadmapNodeId>) -> RoadmapSection {
+  let nodes = projected_roadmap_nodes_for_accepted(accepted: accepted)
+  let edges = projected_roadmap_edges_for_accepted(accepted: accepted)
+  RoadmapSection {
+    title: "Active deliverables — dependency order",
+    elements: concat(
+      [
+        section_prose(content: "The graph has eleven lanes: SCM compatibility · namespace · P-derive · observation · placement · v1 exit (four finish lines: compiler fixed point, interpreter deleted, products v1-free, zero hand-maintained Rust) · shell · roadmap runtime · fleet/hygiene · hermetic toolchain · compiler-guarantee (the DESIGN §4b ladder climbs; rung STATE lives in the guarantee claims carrier and is emitted, never restated in tickets — [gap analysis](docs/plans/compiler-guarantee-recovery-gap-analysis.md)). The three independent SCM R0 models, the separate P−1 evidence carrier, R1 compatibility-shape extraction, and P0 user-contract/landing spine are accepted; the operator-authored P1 proof-kernel node is active and fail-closed pending its first discriminating closing validation, while P2 and later product lanes remain parked. The toolchain pin model is an independent root. The P-derive receipt feeds the emitter fixed point, so the v1 chain nests under it. Node fields define boundary, first slice, RED control, exclusions, owner, and handback."),
+      ],
+      concat(
+        if focus_is_active(focus: focus) {
+          [section_prose(content: focus_notice(
+            focus: focus,
+            nodes: nodes,
+            edges: edges,
+          ))]
+        } else {
+          []
+        },
+        [
+          section_group(
+            label: "",
+            nodes: focus_visible_nodes(
+              focus: focus,
+              nodes: nodes,
+              edges: edges,
+            ),
+            edges: focus_visible_edges(
+              focus: focus,
+              nodes: nodes,
+              edges: edges,
+            )
+          ),
+        ],
+      ),
+    ),
+  }
+}
+
+fn roadmap_authority_projection() -> RoadmapAuthorityProjection {
+  match accepted_roadmap_node_ids_projection() {
+    AcceptedRoadmapNodeIdsProjectionRefused { detail: detail } =>
+      RoadmapAuthorityProjectionRefused { detail: detail }
+    AcceptedRoadmapNodeIdsProjected { ids: accepted } =>
+      RoadmapAuthorityProjected {
+        doc: RoadmapDocument {
+          preamble: preamble(),
+          lead_lanes: [],
+          sections: [active_section_for_acceptance(focus: roadmap_focus_selection, accepted: accepted)],
+        },
+      }
+  }
 }
 
 fn active_section() -> RoadmapSection {
@@ -2869,22 +2966,31 @@ fn guarantee_ladder_edges() -> List<RoadmapEdge> {
 
 
 fn roadmap_authority() -> RoadmapDocument {
-  RoadmapDocument {
-    preamble: preamble(),
-    lead_lanes: [],
-    sections: [active_section()],
+  match roadmap_authority_projection() {
+    RoadmapAuthorityProjected { doc: doc } => doc
+    RoadmapAuthorityProjectionRefused { detail: _ } =>
+      RoadmapDocument {
+        preamble: preamble(),
+        lead_lanes: [],
+        sections: [],
+      }
   }
 }
 
 fn authored_merged_prs() -> List<Int> { [] }
 
 fn expected_roadmap_md() -> String {
-  serialize_markdown_source(
-    doc: project_roadmap_to_markdown(
-      doc: roadmap_authority(),
-      merged: authored_merged_prs()
-    )
-  )
+  match roadmap_authority_projection() {
+    RoadmapAuthorityProjectionRefused { detail: detail } =>
+      join(["# roadmap unavailable\n\n", detail, "\n"], "")
+    RoadmapAuthorityProjected { doc: doc } =>
+      serialize_markdown_source(
+        doc: project_roadmap_to_markdown(
+          doc: doc,
+          merged: authored_merged_prs()
+        )
+      )
+  }
 }
 
 fn roadmap_drifted(committed: String) -> Bool {

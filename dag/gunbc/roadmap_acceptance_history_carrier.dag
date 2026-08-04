@@ -24,12 +24,18 @@ fn parse_roadmap_acceptance_event_history_carrier(text: String) -> RoadmapAccept
 }
 
 fn load_roadmap_acceptance_event_history(path: String) -> RoadmapAcceptanceEventHistoryLoad {
-  let read = filesystem_read(path: path)
-  match parse_roadmap_acceptance_event_history_carrier(text: read.content) {
-    RoadmapAcceptanceEventHistoryParsed { events: events } =>
-      RoadmapAcceptanceEventHistoryLoaded { events: events }
-    RoadmapAcceptanceEventHistoryParseRefused { detail: detail } =>
-      RoadmapAcceptanceEventHistoryLoadRefused { detail: detail }
+  let read = Filesystem.Read(path: path)
+  if !read.success {
+    RoadmapAcceptanceEventHistoryLoadRefused {
+      detail: concat("carrier read refused: ", read.error),
+    }
+  } else {
+    match parse_roadmap_acceptance_event_history_carrier(text: read.content) {
+      RoadmapAcceptanceEventHistoryParsed { events: events } =>
+        RoadmapAcceptanceEventHistoryLoaded { events: events }
+      RoadmapAcceptanceEventHistoryParseRefused { detail: detail } =>
+        RoadmapAcceptanceEventHistoryLoadRefused { detail: detail }
+    }
   }
 }
 
