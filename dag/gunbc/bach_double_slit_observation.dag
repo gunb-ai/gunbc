@@ -28,10 +28,10 @@ type BachObservationCapability
   | WhichPathAuthorityCited
 
 type BachRawCountPathAdditivityRefusalCause
-  = BachRawCountObservationRowsAbsent
+  = BachRawCountObservationRowsAbsent {}
 
 type BachWhichPathEvidenceRefusalCause
-  = BachWhichPathAuthorityAbsent
+  = BachWhichPathAuthorityAbsent {}
 
 type BachRawCountPathAdditivityReadiness
   = BachRawCountPathAdditivityNotEvaluable { cause: BachRawCountPathAdditivityRefusalCause }
@@ -62,7 +62,7 @@ fn bach_quantitative_evidence_readiness(
     BachRawCountPathAdditivityReady {}
   } else {
     BachRawCountPathAdditivityNotEvaluable {
-      cause: BachRawCountObservationRowsAbsent,
+      cause: BachRawCountObservationRowsAbsent {},
     }
   }
 }
@@ -86,7 +86,7 @@ fn bach_which_path_evidence_readiness(
     BachWhichPathEvidenceCited {}
   } else {
     BachWhichPathEvidenceUncited {
-      cause: BachWhichPathAuthorityAbsent,
+      cause: BachWhichPathAuthorityAbsent {},
     }
   }
 }

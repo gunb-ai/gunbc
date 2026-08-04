@@ -24,14 +24,14 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn w_bach_raw_count_path_additivity_not_evaluable_derived() -> Bool {
   match bach_quantitative_path_additivity_readiness_derived() {
-    BachRawCountPathAdditivityNotEvaluable { cause: BachRawCountObservationRowsAbsent } => true
+    BachRawCountPathAdditivityNotEvaluable { cause: BachRawCountObservationRowsAbsent {} } => true
     BachRawCountPathAdditivityReady {} => false
   }
 }
 
 test fn w_bach_which_path_evidence_uncited_derived() -> Bool {
   match bach_which_path_evidence_readiness_derived() {
-    BachWhichPathEvidenceUncited { cause: BachWhichPathAuthorityAbsent } => true
+    BachWhichPathEvidenceUncited { cause: BachWhichPathAuthorityAbsent {} } => true
     BachWhichPathEvidenceCited {} => false
   }
 }
@@ -41,7 +41,7 @@ test fn w_bach_quantitative_readiness_flips_when_raw_rows_planted() -> Bool {
     capabilities: [RawMatchedExposureCountRowsPresent],
   ) {
     BachRawCountPathAdditivityReady {} => true
-    BachRawCountPathAdditivityNotEvaluable { cause: BachRawCountObservationRowsAbsent } => false
+    BachRawCountPathAdditivityNotEvaluable { cause: BachRawCountObservationRowsAbsent {} } => false
   }
 }
 
@@ -50,7 +50,7 @@ test fn w_bach_which_path_readiness_flips_when_authority_planted() -> Bool {
     capabilities: [WhichPathAuthorityCited],
   ) {
     BachWhichPathEvidenceCited {} => true
-    BachWhichPathEvidenceUncited { cause: BachWhichPathAuthorityAbsent } => false
+    BachWhichPathEvidenceUncited { cause: BachWhichPathAuthorityAbsent {} } => false
   }
 }
 
