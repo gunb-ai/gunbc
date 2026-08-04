@@ -141,6 +141,7 @@ type ModuleRootLookup
   = ModuleRootFound { root: Node }
   | ModuleRootMissing { requested: QualifiedName }
   | ModuleRootAmbiguous { requested: QualifiedName }
+  | ModuleRootLookupRejected { diagnostics: NonEmptyDiagnostics }
 
 fn resolve_module_not_found_diagnostic_from_missing(
   requested: QualifiedName
@@ -379,8 +380,8 @@ fn module_root_lookup(
       }
     }
   ) {
-    Rejected { diagnostics: _ } =>
-      ModuleRootMissing { requested: name }
+    Rejected { diagnostics: d } =>
+      ModuleRootLookupRejected { diagnostics: d }
     Accepted { value: fold_state, diagnostics: _ } =>
       match fold_state {
         NoPassingCandidate =>
@@ -408,6 +409,8 @@ fn module_root_find(
       }
     ModuleRootAmbiguous { requested: _ } =>
       Rejected { diagnostics: resolve_diagnostics(reason: ^resolve_duplicate_module_name) }
+    ModuleRootLookupRejected { diagnostics: d } =>
+      Rejected { diagnostics: d }
   }
 }
 

@@ -36,11 +36,17 @@ import v2.compiler.self_host.frontier_probe_types {
 }
 import v2.compiler.source_authority {
   DagSourceReadWitness,
+  DiscoveredSourceRefsDigest,
+  DiscoveredSourceRefsDigestFromList,
+  DiscoveredSourceRefsDigestUnavailable,
   SourceRef,
   SourceRefFilesystemReadRefused,
+  SourceRefListDigestNonStructuralRefused,
+  SourceRefListDigestOk,
   SourceRefReadAccepted,
   SourceRefReadHashMismatch,
   SourceRefReadResult,
+  SourceRootCoverage,
   SourceRootCoverageComplete,
   SourceRootIngest,
   SourceRootIngestBuildOk,
@@ -50,7 +56,7 @@ import v2.compiler.source_authority {
   SourceRootRowsMissing,
   source_ref_content_hash_mismatch,
   source_ref_count_in_list,
-  source_ref_list_digest,
+  source_ref_list_digest_build,
   source_ref_read_refused,
   source_root_ingest_build_from_source_refs,
   source_storage_hash_conflict_in_list,
@@ -91,6 +97,10 @@ data frontier_probe_closure_storage_hash_conflict_reason: Symbol = ^frontier_pro
 
 data frontier_probe_closure_refs_digest_mismatch_reason: Symbol = ^frontier_probe_closure_refs_digest_mismatch
 
+data frontier_probe_closure_refs_digest_unavailable_reason: Symbol = ^frontier_probe_closure_refs_digest_unavailable
+
+data frontier_probe_closure_non_structural_hash_reason: Symbol = ^frontier_probe_closure_non_structural_hash
+
 data frontier_probe_closure_count_mismatch_reason: Symbol = ^frontier_probe_closure_count_mismatch
 
 data frontier_probe_entry_binding_refused_reason: Symbol = ^frontier_probe_entry_binding_refused
@@ -101,14 +111,14 @@ type FrontierProbeCoverageGate
   = FrontierProbeCoveragePermitted
   | FrontierProbeCoverageBlocked { coverage: SourceRootCoverage }
 
-data frontier_probe_ingest_subject_note: String = "Single ingest authority for frontier probe (operator ruling 2026-08-04): FrontierProbeReferencedClosure reads through modeled SourceRef rows with content-hash verification and proves closure population identity (no duplicate refs, entry exactly once, count matches ingest_read_count) before read-through. Receipt module_path is derived from entry.path only. FrontierProbeFixture is explicit hermetic harness ingest."
+data frontier_probe_ingest_subject_note: String = "Single ingest authority for frontier probe (operator ruling 2026-08-04): FrontierProbeReferencedClosure reads through modeled SourceRef rows with content-hash verification and proves closure population identity (no duplicate refs, entry exactly once, count matches ingest_read_count, digest matches when DiscoveredSourceRefsDigestFromList) before read-through. Receipt module_path is derived from entry.path only. CEILING: refs and digest are separate parameters — a synthetic subject can supply a mutually consistent pair without independent discovery; next trigger is probe-side discovery (discovered_source_refs_digest_ceiling_note). FrontierProbeFixture is explicit hermetic harness ingest."
 
 type FrontierProbeIngestSubject
   = FrontierProbeReferencedClosure {
       refs: List<SourceRef>,
       coverage: SourceRootCoverage,
       ingest_read_count: Int,
-      discovered_source_refs_digest: Fnv1a64Structural,
+      discovered_source_refs_digest: DiscoveredSourceRefsDigest,
       entry: SourceRef
     }
   | FrontierProbeFixture {
@@ -381,7 +391,7 @@ fn frontier_probe_receipt_from_referenced_closure(
   refs: List<SourceRef>,
   coverage: SourceRootCoverage,
   ingest_read_count: Int,
-  discovered_source_refs_digest: Fnv1a64Structural,
+  discovered_source_refs_digest: DiscoveredSourceRefsDigest,
   entry: SourceRef
 ) -> FrontierProbeReceipt {
   let module_path = entry.path
@@ -405,54 +415,69 @@ fn frontier_probe_receipt_from_referenced_closure(
       module_path: module_path,
       cause: frontier_probe_closure_count_mismatch_reason
     )
-  } else if !content_hash_eq_structural(
-    left: source_ref_list_digest(refs: refs),
-    right: discovered_source_refs_digest
-  ) {
-    frontier_probe_receipt_from_population_refused(
-      module_path: module_path,
-      cause: frontier_probe_closure_refs_digest_mismatch_reason
-    )
   } else {
-    match frontier_probe_coverage_gate(
-      coverage: coverage,
-      refs: refs,
-      ingest_read_count: ingest_read_count
-    ) {
-      FrontierProbeCoverageBlocked { coverage: blocked } =>
-        frontier_probe_receipt_from_coverage_refused(
+    match discovered_source_refs_digest {
+      DiscoveredSourceRefsDigestUnavailable { cause: _ } =>
+        frontier_probe_receipt_from_population_refused(
           module_path: module_path,
-          coverage: blocked
+          cause: frontier_probe_closure_refs_digest_unavailable_reason
         )
-      FrontierProbeCoveragePermitted =>
-        match source_root_ingest_build_from_source_refs(refs: refs) {
-          SourceRootIngestBuildReadFailed { result: r } =>
-            frontier_probe_receipt_from_read_failed(
+      DiscoveredSourceRefsDigestFromList { digest: expected } =>
+        match source_ref_list_digest_build(refs: refs) {
+          SourceRefListDigestNonStructuralRefused { path: _ } =>
+            frontier_probe_receipt_from_population_refused(
               module_path: module_path,
-              result: r
+              cause: frontier_probe_closure_non_structural_hash_reason
             )
-          SourceRootIngestBuildOk { ingest: ingest } =>
-            match frontier_probe_admission_from_ingest(
-              ingest: ingest,
-              module_path: module_path
-            ) {
-              Rejected { diagnostics: d } => {
-                let reason = d.head.reason
-                let blocker = frontier_classify_rejection_reason(reason: reason)
-                FrontierProbeReceipt {
-                  module_path: module_path,
-                  blocker_class: blocker,
-                  located_stage: frontier_probe_located_stage_for_assemble_outcome(blocker: blocker),
-                  located_reason: reason,
-                  detail: FrontierProbeDetailAbsent
-                }
+          SourceRefListDigestOk { digest: computed } =>
+            if !content_hash_eq_structural(left: computed, right: expected) {
+              frontier_probe_receipt_from_population_refused(
+                module_path: module_path,
+                cause: frontier_probe_closure_refs_digest_mismatch_reason
+              )
+            } else {
+              match frontier_probe_coverage_gate(
+                coverage: coverage,
+                refs: refs,
+                ingest_read_count: ingest_read_count
+              ) {
+                FrontierProbeCoverageBlocked { coverage: blocked } =>
+                  frontier_probe_receipt_from_coverage_refused(
+                    module_path: module_path,
+                    coverage: blocked
+                  )
+                FrontierProbeCoveragePermitted =>
+                  match source_root_ingest_build_from_source_refs(refs: refs) {
+                    SourceRootIngestBuildReadFailed { result: r } =>
+                      frontier_probe_receipt_from_read_failed(
+                        module_path: module_path,
+                        result: r
+                      )
+                    SourceRootIngestBuildOk { ingest: ingest } =>
+                      match frontier_probe_admission_from_ingest(
+                        ingest: ingest,
+                        module_path: module_path
+                      ) {
+                        Rejected { diagnostics: d } => {
+                          let reason = d.head.reason
+                          let blocker = frontier_classify_rejection_reason(reason: reason)
+                          FrontierProbeReceipt {
+                            module_path: module_path,
+                            blocker_class: blocker,
+                            located_stage: frontier_probe_located_stage_for_assemble_outcome(blocker: blocker),
+                            located_reason: reason,
+                            detail: FrontierProbeDetailAbsent
+                          }
+                        }
+                        Accepted { value: admission, diagnostics: _ } =>
+                          frontier_probe_emit_from_ingest(
+                            module_path: module_path,
+                            ingest: ingest,
+                            admission: admission
+                          )
+                      }
+                  }
               }
-              Accepted { value: admission, diagnostics: _ } =>
-                frontier_probe_emit_from_ingest(
-                  module_path: module_path,
-                  ingest: ingest,
-                  admission: admission
-                )
             }
         }
     }

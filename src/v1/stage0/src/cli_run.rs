@@ -24957,6 +24957,7 @@ pub fn emit_source_root_ingest_manifest(
     out.push_str("module v2.test.workflow.host_source_root_ingest_manifest\n\n\n");
     out.push_str("import v2.compiler.source_authority {\n");
     out.push_str("  DagSourceReadWitness,\n");
+    out.push_str("  DiscoveredSourceRefsDigestFromList,\n");
     out.push_str("  SourceRef,\n");
     out.push_str("  SourceRootIngest,\n");
     out.push_str("  SourceRootCoverageComplete,\n");
@@ -25011,7 +25012,7 @@ pub fn emit_source_root_ingest_manifest(
     out.push_str(&format!("  ingest_read_count: {read_count},\n"));
     out.push_str(&format!("  produced_row_count: {produced_row_count},\n"));
     out.push_str(&format!(
-        "  discovered_source_refs_digest: Fnv1a64Structural {{ digest: \"{}\" }},\n",
+        "  discovered_source_refs_digest: DiscoveredSourceRefsDigestFromList {{ digest: Fnv1a64Structural {{ digest: \"{}\" }} }},\n",
         source_ref_list_structural_digest_hex(records)
     ));
     if produced_row_count == read_count {

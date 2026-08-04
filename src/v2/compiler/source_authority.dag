@@ -113,10 +113,21 @@ type SourceRootCoverage
   | SourceRootRowsMissing { read_count: Int, produced_row_count: Int }
   | SourceRootManifestAbsent
 
+type DiscoveredSourceRefsDigestUnavailableCause
+  = DiscoveredSourceRefsDigestNoRefList { reason: String }
+
+type DiscoveredSourceRefsDigest
+  = DiscoveredSourceRefsDigestFromList { digest: Fnv1a64Structural }
+  | DiscoveredSourceRefsDigestUnavailable {
+      cause: DiscoveredSourceRefsDigestUnavailableCause
+    }
+
+data discovered_source_refs_digest_ceiling_note: String = "CEILING (operator ruling 2026-08-04): DiscoveredSourceRefsDigestFromList proves the supplied ref list matches what THAT producer discovered over its records vector. FrontierProbeReferencedClosure still accepts refs and digest as separate parameters — a synthetic subject can supply a mutually consistent pair without proving closure equals independent discovery. Next trigger: probe performs its own discovery rather than consuming a supplied population."
+
 type SourceRootProvenanceCoverageReceipt {
   ingest_read_count: Int
   produced_row_count: Int
-  discovered_source_refs_digest: Fnv1a64Structural
+  discovered_source_refs_digest: DiscoveredSourceRefsDigest
   coverage: SourceRootCoverage
 }
 
@@ -201,35 +212,88 @@ fn source_storage_identity_digest(storage: SourceStorageIdentity) -> Fnv1a64Stru
   )
 }
 
-fn source_ref_content_hash_structural(hash: ContentHash) -> Fnv1a64Structural {
+type SourceRefContentHashStructural
+  = SourceRefContentHashStructuralOk { digest: Fnv1a64Structural }
+  | SourceRefContentHashStructuralNonFnv1a64
+
+fn source_ref_content_hash_structural(hash: ContentHash) -> SourceRefContentHashStructural {
   match hash {
-    Fnv1a64(structural) => structural
-    _ => content_hash_atom(value: "non-fnv1a64-content-hash")
+    Fnv1a64(structural) => SourceRefContentHashStructuralOk { digest: structural }
+    _ => SourceRefContentHashStructuralNonFnv1a64
   }
 }
 
-fn source_ref_identity_digest(ref: SourceRef) -> Fnv1a64Structural {
+fn source_ref_identity_digest_from_structural(
+  ref: SourceRef,
+  structural: Fnv1a64Structural
+) -> Fnv1a64Structural {
   content_hash_combine_structural(
     left: source_storage_identity_digest(
       storage: source_storage_identity_from_ref(ref: ref)
     ),
-    right: source_ref_content_hash_structural(hash: ref.content_hash)
+    right: structural
   )
 }
 
+type SourceRefListDigestBuild
+  = SourceRefListDigestOk { digest: Fnv1a64Structural }
+  | SourceRefListDigestNonStructuralRefused { path: String }
+
 data source_ref_list_digest_seed: String = "source-ref-closure-list"
 
-fn source_ref_list_digest(refs: List<SourceRef>) -> Fnv1a64Structural {
-  fold_list(
+fn source_ref_list_digest_build(refs: List<SourceRef>) -> SourceRefListDigestBuild {
+  match fold_list(
     xs: refs,
-    empty: content_hash_atom(value: source_ref_list_digest_seed),
+    empty: SourceRefListDigestOk {
+      digest: content_hash_atom(value: source_ref_list_digest_seed)
+    },
     cons: fn(acc, ref) {
-      content_hash_combine_structural(
-        left: acc,
-        right: source_ref_identity_digest(ref: ref)
-      )
+      match acc {
+        SourceRefListDigestNonStructuralRefused { path: _ } => acc
+        SourceRefListDigestOk { digest: prior } =>
+          match source_ref_content_hash_structural(hash: ref.content_hash) {
+            SourceRefContentHashStructuralNonFnv1a64 =>
+              SourceRefListDigestNonStructuralRefused { path: ref.path }
+            SourceRefContentHashStructuralOk { digest: structural } =>
+              SourceRefListDigestOk {
+                digest: content_hash_combine_structural(
+                  left: prior,
+                  right: source_ref_identity_digest_from_structural(
+                    ref: ref,
+                    structural: structural
+                  )
+                )
+              }
+          }
+      }
     }
-  )
+  ) {
+    SourceRefListDigestNonStructuralRefused { path: path } =>
+      SourceRefListDigestNonStructuralRefused { path: path }
+    SourceRefListDigestOk { digest: d } =>
+      SourceRefListDigestOk { digest: d }
+  }
+}
+
+fn source_ref_list_digest(refs: List<SourceRef>) -> Fnv1a64Structural {
+  match source_ref_list_digest_build(refs: refs) {
+    SourceRefListDigestOk { digest: d } => d
+    SourceRefListDigestNonStructuralRefused { path: _ } =>
+      content_hash_atom(value: "source-ref-list-digest-non-structural-refused")
+  }
+}
+
+fn discovered_source_refs_digest_for_refs(refs: List<SourceRef>) -> DiscoveredSourceRefsDigest {
+  match source_ref_list_digest_build(refs: refs) {
+    SourceRefListDigestOk { digest: d } =>
+      DiscoveredSourceRefsDigestFromList { digest: d }
+    SourceRefListDigestNonStructuralRefused { path: _ } =>
+      DiscoveredSourceRefsDigestUnavailable {
+        cause: DiscoveredSourceRefsDigestNoRefList {
+          reason: "non-fnv1a64-content-hash-in-closure-ref"
+        }
+      }
+  }
 }
 
 fn source_storage_count_in_list(
@@ -319,6 +383,19 @@ fn source_ref_for_storage_path(path: String) -> SourceRef {
     path: path,
     source_root: source_root_for_storage_path(path: path),
     content_hash: content_hash_of_value(value: "selection-unpinned" as NonEmptyStr)
+  }
+}
+
+fn source_ref_for_observed_storage_path(path: String) -> SourceRef {
+  let read = Filesystem.Read(path: path)
+  SourceRef {
+    path: path,
+    source_root: source_root_for_storage_path(path: path),
+    content_hash: if read.success {
+      dag_source_content_hash_for_text(text: read.content)
+    } else {
+      content_hash_of_value(value: "filesystem-read-failed" as NonEmptyStr)
+    }
   }
 }
 
@@ -475,15 +552,6 @@ fn source_ref_read_result_to_outcome(result: SourceRefReadResult) -> Outcome<Dag
           observed: observed
         )
       )
-  }
-}
-
-fn dag_source_observed_content_hash_for_ref(ref: SourceRef) -> Optional<ContentHash> {
-  let read = Filesystem.Read(path: ref.path)
-  if read.success {
-    optional_present(value: dag_source_content_hash_for_text(text: read.content))
-  } else {
-    optional_absent()
   }
 }
 
@@ -1192,7 +1260,11 @@ fn source_root_provenance_coverage_receipt(
   SourceRootProvenanceCoverageReceipt {
     ingest_read_count: length(xs: ingest),
     produced_row_count: length(xs: produced),
-    discovered_source_refs_digest: content_hash_atom(value: "source-root-provenance-no-ref-list"),
+    discovered_source_refs_digest: DiscoveredSourceRefsDigestUnavailable {
+      cause: DiscoveredSourceRefsDigestNoRefList {
+        reason: "ingest-provenance-path-no-ref-list"
+      }
+    },
     coverage: if length(xs: ingest) == length(xs: produced) {
       SourceRootCoverageComplete
     } else {

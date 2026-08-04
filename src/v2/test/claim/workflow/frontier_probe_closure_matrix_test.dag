@@ -14,11 +14,14 @@ import v2.compiler.self_host.frontier_probe_types {
   FrontierProbeClosurePopulationRefused,
   FrontierProbeCoverageRefused,
   FrontierProbeDetailAbsent,
+  FrontierProbeReceipt,
+  ProbeStageEmit,
   SourceRefContentHashMismatch,
   SourceRefReadRefused
 }
 import v2.compiler.source_authority {
   DagTree,
+  DiscoveredSourceRefsDigest,
   SourceRef,
   SourceRootCoverage,
   SourceRootCoverageComplete,
@@ -26,24 +29,23 @@ import v2.compiler.source_authority {
   SourceRootManifestElided,
   SourceRootRowsMissing,
   content_hash_of_value,
-  source_ref_for_storage_path,
-  source_ref_list_digest
+  discovered_source_refs_digest_for_refs,
+  source_ref_for_observed_storage_path
 }
 import std.algebra { Cons, Empty }
-import std.content_hash { Fnv1a64Structural }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 
 fn fp_matrix_ref_a() -> SourceRef {
-  source_ref_for_storage_path(path: "dag/std/algebra.dag")
+  source_ref_for_observed_storage_path(path: "dag/std/algebra.dag")
 }
 
 fn fp_matrix_ref_b() -> SourceRef {
-  source_ref_for_storage_path(path: "dag/std/types.dag")
+  source_ref_for_observed_storage_path(path: "dag/std/types.dag")
 }
 
 fn fp_matrix_ref_v2() -> SourceRef {
-  source_ref_for_storage_path(path: "src/v2/std/text.dag")
+  source_ref_for_observed_storage_path(path: "src/v2/std/text.dag")
 }
 
 fn fp_matrix_closure_subject(
@@ -51,7 +53,7 @@ fn fp_matrix_closure_subject(
   coverage: SourceRootCoverage,
   ingest_read_count: Int,
   entry: SourceRef,
-  discovered_source_refs_digest: Fnv1a64Structural
+  discovered_source_refs_digest: DiscoveredSourceRefsDigest
 ) -> FrontierProbeIngestSubject {
   FrontierProbeReferencedClosure {
     refs: refs,
@@ -73,7 +75,7 @@ fn fp_matrix_closure_subject_matching_digest(
     coverage: coverage,
     ingest_read_count: ingest_read_count,
     entry: entry,
-    discovered_source_refs_digest: source_ref_list_digest(refs: refs)
+    discovered_source_refs_digest: discovered_source_refs_digest_for_refs(refs: refs)
   )
 }
 
@@ -240,6 +242,15 @@ fn fp_matrix_storage_hash_conflict_subject() -> FrontierProbeIngestSubject {
   )
 }
 
+fn fp_matrix_substituted_refs_digest() -> DiscoveredSourceRefsDigest {
+  discovered_source_refs_digest_for_refs(
+    refs: Cons {
+      head: fp_matrix_ref_a(),
+      tail: Cons { head: fp_matrix_ref_a(), tail: Empty }
+    }
+  )
+}
+
 fn fp_matrix_substituted_refs_subject() -> FrontierProbeIngestSubject {
   fp_matrix_closure_subject(
     refs: Cons {
@@ -249,12 +260,7 @@ fn fp_matrix_substituted_refs_subject() -> FrontierProbeIngestSubject {
     coverage: SourceRootCoverageComplete,
     ingest_read_count: 2,
     entry: fp_matrix_ref_a(),
-    discovered_source_refs_digest: source_ref_list_digest(
-      refs: Cons {
-        head: fp_matrix_ref_a(),
-        tail: Cons { head: fp_matrix_ref_a(), tail: Empty }
-      }
-    )
+    discovered_source_refs_digest: fp_matrix_substituted_refs_digest()
   )
 }
 
@@ -348,10 +354,15 @@ test fn frontier_probe_below_cap_complete_passes_population_gate_holds() -> Bool
   match frontier_probe_receipt_for_subject(
     subject: fp_matrix_below_cap_complete_subject(),
     fixture_module_path: ""
-  ).detail {
-    FrontierProbeCoverageRefused { coverage: _ } => false
-    FrontierProbeClosurePopulationRefused { cause: _ } => false
-    _ => true
+  ) {
+    FrontierProbeReceipt {
+      located_stage: ProbeStageEmit,
+      detail: FrontierProbeDetailAbsent,
+      module_path: _,
+      blocker_class: _,
+      located_reason: _
+    } => true
+    _ => false
   }
 }
 
@@ -359,10 +370,15 @@ test fn frontier_probe_elided_complete_refs_passes_population_gate_holds() -> Bo
   match frontier_probe_receipt_for_subject(
     subject: fp_matrix_elided_complete_refs_subject(),
     fixture_module_path: ""
-  ).detail {
-    FrontierProbeCoverageRefused { coverage: _ } => false
-    FrontierProbeClosurePopulationRefused { cause: _ } => false
-    _ => true
+  ) {
+    FrontierProbeReceipt {
+      located_stage: ProbeStageEmit,
+      detail: FrontierProbeDetailAbsent,
+      module_path: _,
+      blocker_class: _,
+      located_reason: _
+    } => true
+    _ => false
   }
 }
 
@@ -370,10 +386,15 @@ test fn frontier_probe_second_source_root_passes_population_gate_holds() -> Bool
   match frontier_probe_receipt_for_subject(
     subject: fp_matrix_second_root_subject(),
     fixture_module_path: ""
-  ).detail {
-    FrontierProbeCoverageRefused { coverage: _ } => false
-    FrontierProbeClosurePopulationRefused { cause: _ } => false
-    _ => true
+  ) {
+    FrontierProbeReceipt {
+      located_stage: ProbeStageEmit,
+      detail: FrontierProbeDetailAbsent,
+      module_path: _,
+      blocker_class: _,
+      located_reason: _
+    } => true
+    _ => false
   }
 }
 
