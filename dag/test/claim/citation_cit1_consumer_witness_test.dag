@@ -7,11 +7,15 @@ import extdeps.runtime.abi.sysv_amd64 {
   x86_64_abi_pdf_wet_receipt_hex,
   x86_64_abi_syscall_convention_citation_fact,
   x86_64_abi_pdf_syscall_fragment_selector,
-  x86_64_abi_pdf_navigable_version_uri,
-  x86_64_abi_pdf_navigable_syscall_uri,
+  x86_64_abi_pdf_version_navigable_uri_projection,
+  x86_64_abi_pdf_syscall_navigable_uri_projection,
+  x86_64_abi_pdf_navigable_uri_from_nameddest_scalar_code_points,
   x86_64_abi_pdf_expected_digest_from_extraction,
   x86_64_abi_syscall_evidence_link,
   x86_64_abi_pdf_authority,
+  X86_64AbiPdfExpectedDigestConstructed,
+  X86_64AbiPdfNavigableUriProjected,
+  X86_64AbiPdfNavigableUriRefused,
 }
 import std.citation {
   RepresentationRetrieved,
@@ -23,15 +27,21 @@ import std.claim_evidence { EvidenceSupports }
 import std.content_hash { sha256_hex_digest, content_hash_eq_cryptographic }
 import extdeps.version { VersionIdentity }
 import extdeps.pin { pin_currency_gap, AuthoredPinHasNoReviewDate, ExactPin, Pin }
-import std.types { Bool, NonEmptyStr }
+import std.types { Bool, NonEmptyStr, List }
+import gunbc.citation.pdf_safe_profile { PdfOpenParameterPercentEncodeRefusedFromSafe }
+import extdeps.uri { UriHexNibbleOutOfRange }
+import extdeps.standards.rfc_8118 { OpenNamedDest }
+
+data witness_unencodable_scalar_code_points: List<Int> = [1114112]
 
 test fn x86_64_abi_pdf_extraction_receipt_mints_digest_via_validating_path() -> Bool {
   match sha256_hex_digest(hex: x86_64_abi_pdf_wet_receipt_hex) {
     Present { value: digest } =>
-      content_hash_eq_cryptographic(
-        left: digest,
-        right: x86_64_abi_pdf_expected_digest_from_extraction(extraction: x86_64_abi_pdf_byte_extraction),
-      )
+      match x86_64_abi_pdf_expected_digest_from_extraction(extraction: x86_64_abi_pdf_byte_extraction) {
+        X86_64AbiPdfExpectedDigestConstructed(expected) =>
+          content_hash_eq_cryptographic(left: digest, right: expected)
+        _ => false
+      }
     Absent => false
   }
 }
@@ -45,11 +55,34 @@ test fn x86_64_abi_pdf_pin_carries_draft_edition_0_99_6() -> Bool {
 }
 
 test fn x86_64_abi_version_cover_uri_uses_page_one() -> Bool {
-  x86_64_abi_pdf_navigable_version_uri().locator == "refspecs.linuxfoundation.org/elf/x86_64-abi-0.99.pdf#page=1"
+  match x86_64_abi_pdf_version_navigable_uri_projection {
+    X86_64AbiPdfNavigableUriProjected { uri: u } =>
+      u.locator == "refspecs.linuxfoundation.org/elf/x86_64-abi-0.99.pdf#page=1"
+    _ => false
+  }
 }
 
 test fn x86_64_abi_syscall_convention_uri_uses_page_twenty_eight() -> Bool {
-  x86_64_abi_pdf_navigable_syscall_uri().locator == "refspecs.linuxfoundation.org/elf/x86_64-abi-0.99.pdf#page=28"
+  match x86_64_abi_pdf_syscall_navigable_uri_projection {
+    X86_64AbiPdfNavigableUriProjected { uri: u } =>
+      u.locator == "refspecs.linuxfoundation.org/elf/x86_64-abi-0.99.pdf#page=28"
+    _ => false
+  }
+}
+
+test fn x86_64_abi_consumer_refuses_unencodable_nameddest_navigable_uri() -> Bool {
+  match x86_64_abi_pdf_navigable_uri_from_nameddest_scalar_code_points(
+    name: "plant" as NonEmptyStr,
+    code_points: witness_unencodable_scalar_code_points,
+  ) {
+    X86_64AbiPdfNavigableUriRefused {
+      cause: PdfOpenParameterPercentEncodeRefusedFromSafe {
+        parameter: OpenNamedDest(_),
+        cause: UriHexNibbleOutOfRange { digit: 1114112 },
+      },
+    } => true
+    _ => false
+  }
 }
 
 test fn x86_64_abi_syscall_citation_selector_conforms_to_rfc_8118() -> Bool {
