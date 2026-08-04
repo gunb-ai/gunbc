@@ -15,6 +15,13 @@ fn main() {
 
     let commit = git_output(&["rev-parse", "HEAD"]).unwrap_or_default();
     let tree = git_output(&["rev-parse", "HEAD^{tree}"]).unwrap_or_default();
+    let dirty = git_output(&["status", "--porcelain"])
+        .map(|s| !s.is_empty())
+        .unwrap_or(true);
     println!("cargo:rustc-env=FRONTIER_PROBE_SURVEY_BUILD_COMMIT={commit}");
     println!("cargo:rustc-env=FRONTIER_PROBE_SURVEY_BUILD_TREE={tree}");
+    println!(
+        "cargo:rustc-env=FRONTIER_PROBE_SURVEY_BUILD_DIRTY={}",
+        if dirty { "1" } else { "0" }
+    );
 }
