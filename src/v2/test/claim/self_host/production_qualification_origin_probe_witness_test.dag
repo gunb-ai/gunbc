@@ -18,6 +18,7 @@ import v2.lens.production_qualification_origin_probe {
   structural_red_control_planted_decl,
   structural_red_control_planted_qualified_name,
   string_eq,
+  target_without_fixture_tree_red_control_planted_decl,
   unknown_origin_red_control_planted_decl
 }
 import v2.test.claim.self_host.production_qualification_origin_probe_structural_fixture {
@@ -89,5 +90,26 @@ test fn witness_parameter_borne_fixture_mint_classifies_unknown_origin() -> Bool
         right: UnknownOrigin
       )
     }
+  )
+}
+
+test fn witness_target_without_fixture_tree_classifies_unknown_origin() -> Bool {
+  any(
+    xs: derived_sites_for_decl(
+      sites: empty_site_list,
+      decl: target_without_fixture_tree_red_control_planted_decl()
+    ),
+    predicate: fn(row) {
+      production_qualification_origin_eq(
+        left: row.evidence_origin,
+        right: UnknownOrigin
+      )
+    }
+  )
+}
+
+test fn witness_planted_fixture_origin_refuses_production_admission() -> Bool {
+  !production_qualification_origin_probe_admission_holds_for_decls(
+    decls: [structural_red_control_planted_decl()]
   )
 }

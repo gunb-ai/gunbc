@@ -44,7 +44,9 @@ import v2.std.text { String }
 
 data production_qualification_origin_probe_law: String = "Production-qualification origin PROBE (session keen-lark-681, wise-ram-22 recut): NOT a repository-wide census. fn_arrow_decl_facts_live() scope is entry-closure today; repository-wide frequency is unknown. This carrier reports fixture-origin mint surfaces discovered by STRUCTURAL skeleton rules (mint/advance callee atoms + direct_rust_door_inferred_tree fixture-tree marker only — never target-model proxy, never declaration-name recognition). Origin vocabulary: ProductionQualificationOrigin = CompilerDerived | FixtureDerived | UnknownOrigin only — ExecutionMeasured is ProductionEvidenceGrounding, not an origin (a fixture-derived artifact may also be execution-measured). Known direct-door fixture-origin mint surfaces detected in live scope: see known_fixture_origin_mint_surface_count_in_scope() (honest live-read; today matches production_qualification_live_scope_fixture_origin_oracle_count). Classifier proof uses planted_fixture_origin_mint_site_count() against production_qualification_planted_fixture_origin_oracle_count. Repository-wide frequency: unknown. Dissolve-on: derive every resolved call occurrence capable of constructing or advancing a production qualification (effect_reach / call-occurrence substrate), classify origins with call/dataflow evidence, attach ProductionEvidenceGrounding orthogonally, and retire name/closure pins."
 
-data production_qualification_origin_call_occurrence_frontier_note: String = "SCAFFOLD frontier (wise-ram-22 required recut): population is NOT derived from resolved call occurrences yet — only fn-arrow skeleton callee/marker projection inside the witness entry's import closure. Ingest-inline surfaces whose mint callee is pruned by G2 marshal, indirect consumer reachability, and repository-wide mint sites outside the closure are invisible. Dissolve-on when call-reachable production-qualification classification shares the effect_reach skeleton authority."
+data production_qualification_origin_call_occurrence_frontier_note: String = "SCAFFOLD frontier (wise-ram-22 required recut): population is NOT derived from resolved call occurrences yet — only fn-arrow skeleton callee/marker projection inside the witness entry's import closure. Ingest-inline surfaces whose mint callee is pruned by G2 marshal, indirect consumer reachability, and repository-wide mint sites outside the closure are invisible. No admitted RED witness keys on a manually flippable boolean — repository-wide closure waits for a queryable call-occurrence population authority. Dissolve-on when call-reachable production-qualification classification shares the effect_reach skeleton authority."
+
+data production_qualification_construction_wall_path_frontier_note: String = "Construction-wall path split (wise-ram-22 addendum, royal-crab-235 lane): sole_constructor record-literal refusal executes on the v1 seed infer path only — v2.compiler.04_infer carries zero sole_constructor handling today. A construction site this probe discovers is NOT automatically in a guarded population; guard presence is a property of the compiler PATH, not the site. This probe classifies structural skeleton origin only — it never infers 'sole_constructor exists therefore this form is walled'."
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: SingleAuthority }
@@ -428,13 +430,23 @@ fn ingest_mint_surface_discovered_in_live_scope() -> Bool {
   )
 }
 
-fn production_qualification_origin_probe_admission_holds_for_decls(
+data production_qualification_origin_probe_admission_note: String = "Production admission (not mere classification totality): refuses both UnknownOrigin and FixtureDerived discovered rows — fixture-derived production qualification is the forbidden class. discovered_origin_classification_is_total_for_decls is the weaker predicate (UnknownOrigin count zero only) for witnesses that need classification totality without production admission."
+
+fn discovered_origin_classification_is_total_for_decls(
   decls: List<FnArrowDecl>
 ) -> Bool {
   count_derived_mint_sites_with_origin(
     sites: derived_production_qualification_mint_sites_from_facts(decls: decls),
     origin: UnknownOrigin
   ) == 0
+}
+
+fn production_qualification_origin_probe_admission_holds_for_decls(
+  decls: List<FnArrowDecl>
+) -> Bool {
+  let sites = derived_production_qualification_mint_sites_from_facts(decls: decls)
+  (count_derived_mint_sites_with_origin(sites: sites, origin: UnknownOrigin) == 0)
+    && (count_derived_mint_sites_with_origin(sites: sites, origin: FixtureDerived) == 0)
 }
 
 fn probe_mint_callee_atom_node() -> Node {
@@ -485,6 +497,18 @@ fn parameter_borne_fixture_mint_planted_decl() -> FnArrowDecl {
   }
 }
 
+fn probe_fixture_tree_atom_node() -> Node {
+  Node {
+    kind: TypeNode {
+      connective: Atom {
+        identity: symbol_intern_lexeme(lexeme: direct_rust_door_inferred_tree_atom)
+      }
+    },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
 fn probe_target_model_callee_atom_node() -> Node {
   Node {
     kind: TypeNode {
@@ -501,6 +525,24 @@ fn structural_red_control_planted_decl() -> FnArrowDecl {
   FnArrowDecl {
     qualified_name: structural_red_control_planted_qualified_name,
     name: "structural_red_control_planted_decl",
+    output: Node {
+      kind: TypeNode { connective: Conj },
+      children: [
+        Edge { label: Positional, target: probe_mint_callee_atom_node() },
+        Edge { label: Positional, target: probe_fixture_tree_atom_node() }
+      ],
+      occurrence_id: SyntheticOccurrence
+    },
+    params: []
+  }
+}
+
+data target_without_fixture_tree_red_control_qualified_name: String = "synthetic.production_qualification_origin_probe.target_without_fixture_tree_red_control"
+
+fn target_without_fixture_tree_red_control_planted_decl() -> FnArrowDecl {
+  FnArrowDecl {
+    qualified_name: target_without_fixture_tree_red_control_qualified_name,
+    name: "target_without_fixture_tree_red_control_planted_decl",
     output: Node {
       kind: TypeNode { connective: Conj },
       children: [

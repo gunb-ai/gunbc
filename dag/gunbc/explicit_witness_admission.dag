@@ -178,13 +178,6 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
   ),
   known_red_probe(
     entry: "src/v2/test/claim/long/production_qualification_origin_probe_witness_test.dag",
-    f: "witness_repository_wide_origin_probe_requires_call_occurrence_frontier_reds",
-    kind: CorpusWitnessKind,
-    reason: "Admitted RED (wise-ram-22 recut): repository-wide production-qualification origin probe is not closed — fn_arrow_decl_facts_live() is entry-closure scoped. Owner: witness-evidence-lifecycle / call-occurrence derivation frontier.",
-    dissolve_on: "production_qualification_call_occurrence_derivation_landed is true, derived_production_qualification_mint_sites_live() derives from resolved call occurrences corpus-wide, witness_repository_wide_origin_probe_requires_call_occurrence_frontier_reds greens, and this row deletes"
-  ),
-  known_red_probe(
-    entry: "src/v2/test/claim/long/production_qualification_origin_probe_witness_test.dag",
     f: "witness_ingest_mint_surface_requires_call_occurrence_frontier_reds",
     kind: CorpusWitnessKind,
     reason: "Admitted RED: generate_provenanced_rust_candidate_from_ingest calls mint_provenanced_rust_artifact at fn-arrow skeleton grain; G2 marshal prunes that ExprCall today. Owner: witness-evidence-lifecycle lane.",
