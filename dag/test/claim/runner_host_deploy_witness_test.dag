@@ -72,7 +72,7 @@ test fn srv4_runner_installer_command_cites_installer_with_env() -> Bool {
 test fn srv4_runner_app_from_secret_manager() -> Bool {
   github_app_runner_org(config: gunbc_ci_github_app) as String == "gunb-ai"
     && gunbc_ci_github_app.app_pem_secret.secret as String == "ci-github-app-private-key"
-    && gunbc_ci_github_app.registration.app_id as String == "2653532"
+    && gunbc_ci_github_app.app.app_id.value == 2653532
 }
 
 test fn srv4_enables_five_named_runner_instances() -> Bool {

@@ -3,9 +3,9 @@ module gunbc.runner_host_deploy
 import std.types { NonEmptyStr, String, Int, List }
 import extdeps.exec.command { ArgvCommand, shell_command_render }
 import extdeps.cloud.gcp.secret_ref { SecretRef }
-import extdeps.github.app { GitHubAppRegistration }
 import gunbc.auth.github_apps {
-  gunbai_ci_registration,
+  DeclaredGitHubApp,
+  gunbai_ci_declared,
   gunbai_ci_declared_installation_id,
   gunbai_ci_app_pem_secret
 }
@@ -23,17 +23,17 @@ data runner_host_deploy_upstream_fanout: NonEmptyStr = "ctrl:scripts/session-das
 data github_app_runner_config_regrounding_note: String = "RE-GROUNDED onto gunbc.auth.github_apps, which is now the single authority for this organization's GitHub App registrations. This row previously carried app_id 2653532, an installation ID, an owner and a SecretRef inline, which made it a second home for facts about an App — and the cost of that showed up the moment a SECOND App entered the picture: gunbai[bot] (3909950) actors this repository's admitted workflow runs, and nothing here said which App this row was, so 'the gunbc GitHub App' read as though there were only one.\n\nThe fields are now references. What stays here is the only fact that is genuinely about runner-host DEPLOYMENT rather than about the App: which registration and installation this host's runners register against. org is dropped rather than kept as a field because it was always gunbc_repository.owner restated — and after this change it is derivable a second way, from the registration's own owner, so keeping it would be a third representation of one fact."
 
 type GithubAppRunnerConfig {
-  registration: GitHubAppRegistration
+  app: DeclaredGitHubApp
   installation_id: NonEmptyStr
   app_pem_secret: SecretRef
 }
 
 fn github_app_runner_org(config: GithubAppRunnerConfig) -> NonEmptyStr {
-  config.registration.owner
+  config.app.owner_login
 }
 
 data gunbc_ci_github_app: GithubAppRunnerConfig = GithubAppRunnerConfig {
-  registration: gunbai_ci_registration,
+  app: gunbai_ci_declared,
   installation_id: gunbai_ci_declared_installation_id,
   app_pem_secret: gunbai_ci_app_pem_secret,
 }

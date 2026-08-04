@@ -2,41 +2,35 @@ module test.claim.github_app_registry
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data witness_subject_note: String = "The two gunb-ai GitHub Apps as gunbc.auth.github_apps models them, and the permission grant DERIVED from their enrolled consumers. The conjuncts below use the real registrations and the real enrollments rather than synthetic fixtures, so a claim here is a statement about the Apps this repository actually authenticates with."
-
-data distinctness_hinge_note: String = "THE conjunct this module exists for. gunbc.runner_host_deploy carried app_id 2653532 while the App actoring this repository's admitted workflow runs is 3909950 — two independently registered Apps with different purposes and different keys. A model with one 'the gunbc GitHub App' row would have been silently wrong for whichever half it did not describe. Both identity axes are asserted because either alone is a weaker claim: two registrations could share a client_id only by a modeling error, and asserting only app_id would not catch a copied client_id."
-
-test fn witness_two_apps_are_distinct() -> Bool {
-  gunbai_bot_registration.app_id != gunbai_ci_registration.app_id
-    && gunbai_bot_registration.client_id != gunbai_ci_registration.client_id
-    && gunbai_bot_registration.app_id == "3909950"
-    && gunbai_ci_registration.app_id == "2653532"
-    && gunbai_bot_registration.owner == gunbai_ci_registration.owner
-}
-
-data shared_owner_note: String = "The owner conjunct above asserts the Apps AGREE, which is the opposite direction from the rest and is deliberate: both are registered by gunb-ai today, and extdeps.github.app keeps registration owner and installation account as separate fields precisely so that this coincidence is recorded as a fact rather than assumed as a law. If a replacement provider or staging organization later registers one of them elsewhere, this conjunct is the thing that notices."
-
-fn permission_level_of(perms: List<GitHubAppPermission>, name: NonEmptyStr) -> GitHubAppPermissionLevel {
-  permission_max_level(perms: perms, name: name)
+fn wire(name: NonEmptyStr) -> GitHubAppPermissionName {
+  GitHubAppPermissionName { wire_name: name }
 }
 
 fn has_permission(perms: List<GitHubAppPermission>, name: NonEmptyStr) -> Bool {
-  permission_name_in_list(name: name, names: permission_names(perms: perms))
+  permission_name_in_list(name: wire(name: name), names: permission_names(perms: perms))
 }
 
-data derivation_note: String = "The derived union is what the App SHOULD hold, computed from enrolled consumers rather than transcribed from the GitHub settings UI. These conjuncts check the derivation itself: that every enrolled consumer's need appears, at the level that consumer needs."
+fn access_of(perms: List<GitHubAppPermission>, name: NonEmptyStr) -> GitHubAppPermissionAccess {
+  permission_max_access(perms: perms, name: wire(name: name))
+}
+
+test fn witness_two_apps_are_distinct() -> Bool {
+  gunbai_bot_declared.app_id.value != gunbai_ci_declared.app_id.value
+    && gunbai_bot_declared.client_id != gunbai_ci_declared.client_id
+    && gunbai_bot_declared.app_id.value == 3909950
+    && gunbai_ci_declared.app_id.value == 2653532
+    && gunbai_bot_declared.owner_login == gunbai_ci_declared.owner_login
+}
 
 test fn witness_bot_permissions_derived_from_consumers() -> Bool {
   let derived = gunbai_bot_required_permissions
   has_permission(perms: derived, name: "contents")
-    && permission_level_of(perms: derived, name: "contents") == AppPermWrite
+    && access_of(perms: derived, name: "contents") == AppAccessWrite
     && has_permission(perms: derived, name: "actions")
-    && permission_level_of(perms: derived, name: "actions") == AppPermWrite
+    && access_of(perms: derived, name: "actions") == AppAccessWrite
     && has_permission(perms: derived, name: "metadata")
-    && permission_level_of(perms: derived, name: "metadata") == AppPermRead
+    && access_of(perms: derived, name: "metadata") == AppAccessRead
 }
-
-data dedup_hinge_note: String = "metadata: read is required by BOTH enrolled gunbai[bot] consumers, so a union that merely concatenated consumer needs would emit it twice. A duplicated row is not cosmetic here: the grant verdict compares this list against an installation's permissions, and a manifest containing one resource twice cannot be compared against one that contains it once. This conjunct pins the fold's identity grain — a permission is identified by NAME, and the same name at two levels is one grant at the higher level."
 
 test fn witness_permission_union_dedupes_by_name() -> Bool {
   let derived = gunbai_bot_required_permissions
@@ -46,33 +40,24 @@ test fn witness_permission_union_dedupes_by_name() -> Bool {
     && has_permission(perms: raw, name: "metadata")
 }
 
-data purpose_separation_hinge_note: String = "The over-grant this separation prevents, asserted as an absence. gunbai-ci registers self-hosted runners and has no enrolled consumer needing repository CONTENTS, so contents must not appear in its derived union. If a single App had been modeled for both purposes, every agent worker holding a contents credential would also have held runner-administration authority over the fleet's execution surface, and every runner-provisioning path would have been able to write repository contents. Neither is needed by either purpose, and an absence is the only way to state that."
-
 test fn witness_runner_app_grants_no_contents() -> Bool {
   let derived = gunbai_ci_required_permissions
   !has_permission(perms: derived, name: "contents")
     && !has_permission(perms: derived, name: "pull_requests")
     && has_permission(perms: derived, name: "administration")
-    && permission_level_of(perms: derived, name: "administration") == AppPermWrite
+    && access_of(perms: derived, name: "administration") == AppAccessWrite
 }
-
-data workflows_absence_note: String = "workflows: write is absent from the agent App's derived union, and its absence is permanent rather than pending. The CI heal already classifies HealAuthorCommitRequired with cause GitHubAppLacksWorkflowsWrite when a regeneration would touch .github/workflows, routing that change to a human author instead of self-applying it. Granting the permission would dissolve a refusal that is correct, so no consumer may enroll it."
 
 test fn witness_no_workflows_write_on_either_app() -> Bool {
   !has_permission(perms: gunbai_bot_required_permissions, name: "workflows")
     && !has_permission(perms: gunbai_ci_required_permissions, name: "workflows")
 }
 
-data level_order_note: String = "The narrowing order, which decides whether an installation grant satisfies a request. It is asymmetric and both directions are asserted, because a symmetric implementation (equality) would refuse a legitimate read request against a write grant, and an inverted one would admit a write request against a read grant — the second being a real privilege escalation."
-
-test fn witness_permission_level_order_is_asymmetric() -> Bool {
-  permission_level_at_least(held: AppPermWrite, requested: AppPermRead)
-    && permission_level_at_least(held: AppPermRead, requested: AppPermRead)
-    && !permission_level_at_least(held: AppPermRead, requested: AppPermWrite)
-    && permission_level_at_least(held: AppPermAdmin, requested: AppPermWrite)
+test fn witness_permission_access_order_is_asymmetric() -> Bool {
+  permission_access_at_least(held: AppAccessWrite, requested: AppAccessRead)
+    && permission_access_at_least(held: AppAccessRead, requested: AppAccessRead)
+    && !permission_access_at_least(held: AppAccessRead, requested: AppAccessWrite)
 }
-
-data unobserved_refuses_hinge_note: String = "RED CONTROL for the whole observation lane, and the conjunct that keeps this module honest about what it has NOT done. No App-JWT-authenticated producer runs in this tree, so nothing here has been reconciled against GitHub. Every verdict must therefore be UnknownRefused — never Converged. A Converged here would mean the model had certified a permission grant and a key fingerprint it never looked at, which is the exact shape of the srv4 incident gunbc.auth.materialized_secret records: a green answer produced by checking something other than the question."
 
 test fn witness_all_verdicts_refuse_until_observed() -> Bool {
   observation_verdict_eq(a: gunbai_bot_key_verdict, b: UnknownRefused)
@@ -81,47 +66,37 @@ test fn witness_all_verdicts_refuse_until_observed() -> Bool {
     && !observation_verdict_eq(a: gunbai_bot_permission_verdict, b: Converged)
 }
 
-data fingerprint_drift_note: String = "RED CONTROL: a wrong fingerprint must produce Drifted, not Converged and not a silent adoption of the observed value. Drift is the honest verdict because the remedy requires knowing WHICH side is stale — the store may hold a superseded key, or the declaration may be a bad transcription — and a reconciliation that overwrote the declaration would destroy the evidence needed to tell those apart."
-
 test fn witness_fingerprint_mismatch_drifts() -> Bool {
-  let wrong = GitHubAppPrivateKeyIdentity {
-    sha256_fingerprint: "SHA256:0000000000000000000000000000000000000000000=",
-    status: KeyActive,
-  }
-  let matching = GitHubAppPrivateKeyIdentity {
-    sha256_fingerprint: gunbai_bot_declared_key_fingerprint,
-    status: KeyActive,
+  let wrong = ManagedGitHubAppKey {
+    fingerprint: sha256_base64_key_fingerprint(digest: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="),
+    role: ActiveSigningKey,
   }
   observation_verdict_eq(
     a: key_fingerprint_verdict(declared: gunbai_bot_declared_key, observed: AppObserved { value: wrong }),
     b: Drifted
   ) && observation_verdict_eq(
-    a: key_fingerprint_verdict(declared: gunbai_bot_declared_key, observed: AppObserved { value: matching }),
+    a: key_fingerprint_verdict(declared: gunbai_bot_declared_key, observed: AppObserved { value: gunbai_bot_declared_key }),
     b: Converged
   )
 }
 
-data positive_control_note: String = "The matching arm above is the POSITIVE CONTROL for the drift claim. Without it, witness_fingerprint_mismatch_drifts would pass against a function that returned Drifted unconditionally — an assertion that a check fires proves nothing unless the same check is also shown not to fire on the good input."
-
 fn installation_holding(perms: List<GitHubAppPermission>) -> GitHubAppInstallation {
   GitHubAppInstallation {
-    installation_id: "0",
-    installation_account: "gunb-ai",
-    repository_selection: AllRepositories,
+    installation_id: GitHubAppInstallationId { value: 0 },
+    account: GitHubUser { login: "gunb-ai", id: 0, type: Organization },
+    repository_selection: SelectionAll,
     permissions: perms,
     subscribed_events: [],
   }
 }
 
-data over_grant_hinge_note: String = "RED CONTROL for the direction nobody notices. An installation holding MORE than its enrolled consumers require breaks nothing at runtime — no error, no failure, no signal — so a one-sided check would report it Converged forever. That is the state both Apps are in today: authority granted through the UI that no code in this repository can explain. The verdict must be Drifted, and the under-grant case is asserted beside it so the check is shown to be genuinely two-sided rather than merely strict."
-
 test fn witness_grant_verdict_catches_both_directions() -> Bool {
   let exact = installation_holding(perms: gunbai_ci_required_permissions)
   let over = installation_holding(perms: concat(
     gunbai_ci_required_permissions,
-    [GitHubAppPermission { name: "contents", level: AppPermWrite }]
+    [GitHubAppPermission { name: wire(name: "contents"), access: AppAccessWrite }]
   ))
-  let under = installation_holding(perms: [GitHubAppPermission { name: "metadata", level: AppPermRead }])
+  let under = installation_holding(perms: [GitHubAppPermission { name: wire(name: "metadata"), access: AppAccessRead }])
   observation_verdict_eq(
     a: app_permission_grant_verdict(enrollment: gunbai_ci_enrollment, observed: AppObserved { value: exact }),
     b: Converged
@@ -134,11 +109,52 @@ test fn witness_grant_verdict_catches_both_directions() -> Bool {
   )
 }
 
-data consumer_enrollment_note: String = "Every derived permission traces to a named consumer declaration. These conjuncts assert the enrollments are non-empty and that the agent App's consumers are the two heal steps that run in CI today — so a reader can go from a permission in the union back to the code that requires it, which is the question that matters when narrowing a grant."
-
 test fn witness_every_app_has_enrolled_consumers() -> Bool {
   length(gunbai_bot_enrollment.consumers) == 2
     && length(gunbai_ci_enrollment.consumers) == 1
     && length(gunbai_bot_required_permissions) > 0
     && length(gunbai_ci_required_permissions) > 0
+}
+
+test fn witness_duplicate_permission_name_refused() -> Bool {
+  let dup = [
+    GitHubAppPermission { name: wire(name: "contents"), access: AppAccessRead },
+    GitHubAppPermission { name: wire(name: "contents"), access: AppAccessWrite },
+  ]
+  let ok = [
+    GitHubAppPermission { name: wire(name: "contents"), access: AppAccessWrite },
+    GitHubAppPermission { name: wire(name: "metadata"), access: AppAccessRead },
+  ]
+  match admit_permission_set(perms: dup) {
+    PermissionSetDuplicateName { name: n } => n.wire_name == "contents"
+    PermissionSetAdmitted { permissions: _ } => false
+  } && match admit_permission_set(perms: ok) {
+    PermissionSetAdmitted { permissions: p } => length(p) == 2
+    PermissionSetDuplicateName { name: _ } => false
+  }
+}
+
+test fn witness_omitted_narrowing_is_not_empty_selection() -> Bool {
+  let inst = installation_holding(perms: [
+    GitHubAppPermission { name: wire(name: "contents"), access: AppAccessWrite },
+    GitHubAppPermission { name: wire(name: "metadata"), access: AppAccessRead },
+  ])
+  length(requested_permissions(narrowing: PermissionNarrowingOmitted, installation: inst)) == 2
+    && length(requested_permissions(narrowing: SelectedPermissions { permissions: [] }, installation: inst)) == 0
+}
+
+test fn witness_narrowing_may_only_narrow() -> Bool {
+  let inst = installation_holding(perms: [
+    GitHubAppPermission { name: wire(name: "contents"), access: AppAccessRead },
+  ])
+  permission_narrowing_is_within(
+    narrowing: SelectedPermissions { permissions: [GitHubAppPermission { name: wire(name: "contents"), access: AppAccessRead }] },
+    installation: inst
+  ) && !permission_narrowing_is_within(
+    narrowing: SelectedPermissions { permissions: [GitHubAppPermission { name: wire(name: "contents"), access: AppAccessWrite }] },
+    installation: inst
+  ) && !permission_narrowing_is_within(
+    narrowing: SelectedPermissions { permissions: [GitHubAppPermission { name: wire(name: "actions"), access: AppAccessRead }] },
+    installation: inst
+  ) && permission_narrowing_is_within(narrowing: PermissionNarrowingOmitted, installation: inst)
 }

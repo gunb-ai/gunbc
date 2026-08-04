@@ -186,8 +186,8 @@ fn permission_narrowing_is_within(
   )
 }
 
-type GitHubAppKeyFingerprintEncoding
-  = FingerprintBase64
+type GitHubAppKeyFingerprintEncoding =
+  | FingerprintBase64
 
 type GitHubAppPublicKeyFingerprint {
   algorithm: HashAlgorithm

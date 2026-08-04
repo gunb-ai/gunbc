@@ -1,46 +1,46 @@
 module gunbc.auth.github_apps
 
-import std.types { NonEmptyStr, Timestamp }
+import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.upsert_decision { ObservationVerdict, Converged, Drifted, UnknownRefused }
 import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending }
 import extdeps.github.app {
+  GitHubAppId,
   GitHubAppRegistration,
   GitHubAppInstallation,
   GitHubAppPermission,
-  GitHubAppPermissionLevel,
-  AppPermRead,
-  AppPermWrite,
-  GitHubAppPrivateKeyIdentity,
-  GitHubAppPrivateKeyStatus,
-  KeyActive,
-  GitHubAppRepositorySelection
+  GitHubAppPermissionName,
+  GitHubAppPermissionAccess,
+  AppAccessRead,
+  AppAccessWrite,
+  GitHubAppPublicKeyFingerprint,
+  sha256_base64_key_fingerprint,
+  key_fingerprint_eq,
+  permission_access_at_least,
+  permission_name_eq
 }
 import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
 
-data github_apps_layer_note: String = "The gunb-ai organization's GitHub Apps, homed on the PRODUCT layer because they are this organization's resources rather than facts about GitHub. extdeps.external_authority's external_model_scope_law forbids the upstream hub from enumerating concrete products or storing consumer coverage state, and it places observations produced by this repository downstream as receipts — so extdeps.github.app carries the shapes and this module carries the two Apps that inhabit them, together with every verdict about what has actually been observed of them.\n\nTHERE ARE TWO APPS AND THEY ARE NOT INTERCHANGEABLE. This was found by reading the tree rather than by being told: gunbc.runner_host_deploy already carried app_id 2653532 while the App that appears as the actor on this repository's admitted workflow runs is 3909950. A single 'the gunbc GitHub App' row would have had to be one or the other, and either choice would have been silently wrong for half the consumers."
+type DeclaredGitHubApp {
+  owner_login: NonEmptyStr
+  app_id: GitHubAppId
+  client_id: NonEmptyStr
+  slug: NonEmptyStr
+}
 
-data app_purpose_separation_note: String = "WHY TWO APPS RATHER THAN ONE WITH THE UNION OF BOTH PERMISSION SETS. The two purposes need disjoint and differently dangerous grants. Runner registration mints join tokens for self-hosted runners, which is an administrative capability over the fleet's execution surface; agent repository access pushes branches and opens pull requests, which is a content capability over the repository. An App holding both would hand every agent worker the ability to register execution capacity, and every runner-provisioning path the ability to write repository contents — neither of which either purpose needs.\n\nKeeping them apart is also what makes the permission manifests below legible: each App's grant is the union of the credential profiles enrolled against it, so a permission with no profile requiring it is visible as unexplained rather than accumulating unnoticed."
-
-data gunbai_bot_registration: GitHubAppRegistration = GitHubAppRegistration {
-  owner: "gunb-ai",
-  app_id: "3909950",
+data gunbai_bot_declared: DeclaredGitHubApp = DeclaredGitHubApp {
+  owner_login: "gunb-ai",
+  app_id: GitHubAppId { value: 3909950 },
   client_id: "Iv23lidZeLYckmtvN3e8",
   slug: "gunbai",
-  homepage: "https://github.com/organizations/gunb-ai",
 }
 
-data gunbai_bot_purpose_note: String = "gunbai[bot] is the AGENT-ACCESS App: it is how LLM agent workers and repository-bound workflows read and write this organization's repositories — cloning, fetching, advancing an attempt branch, opening and updating pull requests, and dispatching admitted workflows. It is the App this program builds an issuer for.\n\nIts observable consequence is the reason PR 3 exists. On a public repository a push authenticated with the Actions-issued job credential produces a github-actions[bot] actor whose pull_request run is parked pending manual approval; a push authenticated as this App produces a gunbai[bot] actor whose run is admitted immediately. Measured on this repository 2026-08-04: of the runs parked at action_required, every one had actor github-actions[bot], and no run actored by gunbai[bot] was parked."
-
-data gunbai_ci_registration: GitHubAppRegistration = GitHubAppRegistration {
-  owner: "gunb-ai",
-  app_id: "2653532",
+data gunbai_ci_declared: DeclaredGitHubApp = DeclaredGitHubApp {
+  owner_login: "gunb-ai",
+  app_id: GitHubAppId { value: 2653532 },
   client_id: "Iv23liq8VGaImxKCyjaR",
   slug: "gunbai-ci",
-  homepage: none,
 }
-
-data gunbai_ci_purpose_note: String = "gunbai-ci is the RUNNER-REGISTRATION App, and it is the one this tree already used before this module existed: gunbc.runner_host_deploy's gunbc_ci_github_app carried its App ID and installation inline, and ci-github-app-private-key in Secret Manager holds its key. Its purpose is minting the join tokens that register ephemeral self-hosted runners on fleet hosts, which is what the ctrl installer that module cites consumes.\n\nThe secret name is therefore HONEST for this App and must not be renamed: 'ci-github-app-private-key' names the key of the App that provisions CI capacity. What was misleading was never the name — it was the absence of any second App in the model, which left the name looking like it meant 'the GitHub App key' generically. gunbai[bot] needs its OWN key secret, named for itself, rather than a rename of this one."
 
 data gunbai_ci_app_pem_secret: SecretRef = SecretRef {
   project: fleet_secrets_gcp_project,
@@ -49,63 +49,35 @@ data gunbai_ci_app_pem_secret: SecretRef = SecretRef {
   hash_state: HashPending,
 }
 
-data gunbai_ci_secret_version_latest_defect: String = "DECLARED DEFECT, carried rather than quietly fixed because repairing it is a consumer migration and not an edit here. This SecretRef pins version 'latest', which means the signing key an authored request resolves to can change under it without the request changing — a concurrent rotation silently re-points every consumer, and no receipt can bind the key that was actually used. An issuer receipt must bind the RESOLVED numeric version, its payload hash, and the GitHub public-key fingerprint it corresponds to; a consumer may select through a modeled alias, but 'latest' must not remain the authority. The value is left exactly as gunbc.runner_host_deploy has it so that this module is a re-grounding with no behavior change; the repair belongs with the issuer that introduces resolved-version binding."
-
-data gunbai_bot_app_pem_secret_absent_note: String = "gunbai[bot] has NO modeled private-key SecretRef, and that absence is deliberate and load-bearing. No secret holding this App's key has been observed in Secret Manager from this tree, and authoring a SecretRef for one would assert a custody fact nobody has checked — the precise shape of the incident gunbc.auth.materialized_secret records, where a store reported a key present while the App had deleted it. When the issuer lane provisions this App's key it lands as its own secret named for this App, with its version resolved and its fingerprint reconciled against a live observation, not as a row written ahead of the thing it describes."
-
-data gunbai_bot_declared_key_fingerprint: NonEmptyStr = "SHA256:B+ANMzYq0nhBn6L7STPkdsEw07QkdXXvbj0gjxvt5BQ="
-
-data declared_fingerprint_provenance_note: String = "This fingerprint is DECLARED, transcribed from the App settings surface by the operator on 2026-08-04, and it is not an observation. It is carried so that the first authenticated observation has something to disagree with — a reconciliation needs a prior expectation to be a check rather than a recording. Until that observation runs, every verdict this module projects about it is UnknownRefused, and the reconciliation function below returns Drifted rather than Converged on mismatch precisely so that a transcription error surfaces as drift instead of silently becoming the new truth."
-
-data gunbai_bot_declared_key: GitHubAppPrivateKeyIdentity = GitHubAppPrivateKeyIdentity {
-  sha256_fingerprint: gunbai_bot_declared_key_fingerprint,
-  status: KeyActive,
-}
-
-data observation_absent_note: String = "EVERY observed surface below is absent, and refuses. Resolving an installation, its repository selection, its granted permissions, its subscribed events, its webhook configuration, or its live key inventory all require authenticating AS the App — private key, JWT, then the installations endpoint — and no such producer runs in this tree today. That is the same state gunbc.auth.materialized_secret declares for its liveness probe, and for the same reason: an observation that has not happened is UnknownRefused, never a default that resembles what it would have found.\n\nSo the installation IDs, permission manifests and event subscriptions of both Apps are NOT authored here from the settings pages. gunbc.runner_host_deploy's inline installation_id 104134109 is carried forward for gunbai-ci as an unreconciled declaration below, because it is already load-bearing for runner provisioning and removing it would break a live consumer; it is marked as exactly that rather than promoted to an observed fact."
-
 data gunbai_ci_declared_installation_id: NonEmptyStr = "104134109"
 
-data gunbai_bot_installation_unresolved_note: String = "gunbai[bot]'s installation ID is NOT declared. Unlike gunbai-ci's, no consumer in this tree needs it yet, so there is nothing to carry forward and no reason to transcribe a number that the first authenticated observation will resolve properly. Its absence is what makes the issuer's acceptance bar real: the issuer must RESOLVE the installation from the App identity, and a row here would let it appear to have done so while reading a constant."
+type ManagedGitHubAppKeyRole
+  = ActiveSigningKey
+  | RetiringSigningKey
+
+type ManagedGitHubAppKey {
+  fingerprint: GitHubAppPublicKeyFingerprint
+  role: ManagedGitHubAppKeyRole
+}
+
+data gunbai_bot_declared_key: ManagedGitHubAppKey = ManagedGitHubAppKey {
+  fingerprint: sha256_base64_key_fingerprint(digest: "B+ANMzYq0nhBn6L7STPkdsEw07QkdXXvbj0gjxvt5BQ="),
+  role: ActiveSigningKey,
+}
 
 type GitHubAppObservation<T>
   = AppObserved { value: T }
   | AppUnobserved { reason: NonEmptyStr }
 
-data app_observation_shape_note: String = "A two-armed observation rather than an optional. An option would make 'not observed' and 'observed to be absent' the same value, and those have different remedies — the first is a producer that has not run, the second is an App that is not installed. This is the state-space conflation DESIGN names, and it is exactly the distinction gunbc.auth.materialized_secret had to separate after review found a destroyed store version and an upstream-revoked key emerging as one refusal."
+data gunbai_bot_registration_observation: GitHubAppObservation<GitHubAppRegistration> = AppUnobserved { reason: "no App-JWT-authenticated observation producer runs in this tree; gunbai[bot] has no modeled key custody" }
 
-data gunbai_bot_installation_observation: GitHubAppObservation<GitHubAppInstallation> = AppUnobserved { reason: "no App-JWT-authenticated observation producer runs in this tree; requires the gunbai[bot] private key, which has no modeled custody yet" }
+data gunbai_bot_installation_observation: GitHubAppObservation<GitHubAppInstallation> = AppUnobserved { reason: "no App-JWT-authenticated observation producer runs in this tree; gunbai[bot] has no modeled key custody" }
 
 data gunbai_ci_installation_observation: GitHubAppObservation<GitHubAppInstallation> = AppUnobserved { reason: "no App-JWT-authenticated observation producer runs in this tree; ci-github-app-private-key is modeled but no JWT-mint producer consumes it" }
 
-data gunbai_bot_key_inventory_observation: GitHubAppObservation<GitHubAppPrivateKeyIdentity> = AppUnobserved { reason: "GitHub App private-key inventory requires App-JWT authentication; declared fingerprint is a transcription, not a reconciliation" }
+data gunbai_bot_key_observation: GitHubAppObservation<ManagedGitHubAppKey> = AppUnobserved { reason: "GitHub App private-key inventory requires App-JWT authentication" }
 
-data webhook_surface_unmanaged_note: String = "The webhook is a BEHAVIORAL surface of each App that this model does not yet manage, and saying so is the point. An App with an active webhook is delivering repository events to some endpoint with some secret; whether that endpoint exists, whether a secret is configured, which events it subscribes to, and whether deliveries are succeeding are all facts with consequences, and none of them are observed here. They must not be folded into credential issuance — an issuer that reported healthy because a webhook was configured would be answering a different question — and they must not be assumed inert. The honest state is a named unobserved surface with its own trigger."
-
-data gunbai_bot_webhook_observation: GitHubAppObservation<NonEmptyStr> = AppUnobserved { reason: "webhook configuration, secret presence, subscribed events and delivery health are unobserved; requires App-JWT authentication" }
-
-data oauth_surface_out_of_scope_note: String = "The OAuth client-secret surface is deliberately NOT modeled for either App. A client secret, callback URL, user authorization and device flow belong to USER OAuth flows; the server-to-server path this program builds is private key -> App JWT -> installation token and touches none of them. The Client ID is carried above because it is the recommended JWT issuer claim, which is a fact about the server-to-server path — carrying it does not pull the rest of the OAuth surface in with it. No client secret should be created for either App merely to complete a record, because an unused credential that exists is strictly worse than one that does not."
-
-fn key_fingerprint_verdict(
-  declared: GitHubAppPrivateKeyIdentity,
-  observed: GitHubAppObservation<GitHubAppPrivateKeyIdentity>
-) -> ObservationVerdict {
-  match observed {
-    AppUnobserved { reason: _ } => UnknownRefused
-    AppObserved { value } =>
-      if value.sha256_fingerprint == declared.sha256_fingerprint {
-        Converged
-      } else {
-        Drifted
-      }
-  }
-}
-
-data key_fingerprint_verdict_note: String = "The reconciliation the srv4 incident needed and did not have. It compares the fingerprint GitHub reports for the App against the one this repository believes, and it is asymmetric in the way that matters: with no observation it returns UnknownRefused rather than Converged, so an unprobed key is never reported as agreeing. A mismatch returns Drifted rather than overwriting the declaration, because the remedy for drift is an investigation into WHICH side is stale — the store may hold a superseded key, or the declaration may be a bad transcription — and a function that silently adopted the observed value would destroy the evidence needed to tell those apart."
-
-data gunbai_bot_key_verdict: ObservationVerdict = key_fingerprint_verdict(declared: gunbai_bot_declared_key, observed: gunbai_bot_key_inventory_observation)
-
-data permission_ownership_note: String = "PERMISSIONS ARE OWNED HERE, NOT IN THE GITHUB UI (operator directive 2026-08-04). Today both Apps' permission grants exist only as settings someone clicked, which makes them unreviewable, undiffable, and unattributable — nothing records WHY any permission is held, so a grant added for one experiment stays forever and nobody can tell which consumer would break if it were removed.\n\nThe repair is to make the grant DERIVED rather than declared. Each consumer that actually uses an App is enrolled below with the permissions that consumer needs, named by a DeclarationRef to its own declaration in this repository. The App's required grant is then the union of its enrolled consumers' needs, computed by app_required_permissions — so a permission exists in the model exactly because some named consumer requires it, and a permission with no consumer cannot be written here at all. That is the construction form of the property: 'unexplained permission' is not a state this carrier can hold, so it needs no check.\n\nWHAT THIS DOES NOT YET DO. The derived union is what the App SHOULD hold; it is not what GitHub reports it holds. Reconciling the two needs an authenticated observation of the installation, which no producer in this tree performs — so app_permission_grant_verdict returns UnknownRefused for both Apps today. The direction of authority is nevertheless fixed by this module: when that observation lands, a divergence is drift to be repaired by narrowing the UI grant to the derived union, not by editing the union to match what was found."
+data gunbai_bot_webhook_observation: GitHubAppObservation<NonEmptyStr> = AppUnobserved { reason: "webhook endpoint, secret presence, subscribed events and delivery health are unobserved" }
 
 type GitHubAppConsumer {
   consumer: DeclarationRef
@@ -114,16 +86,16 @@ type GitHubAppConsumer {
 }
 
 type GitHubAppEnrollment {
-  registration: GitHubAppRegistration
+  declared: DeclaredGitHubApp
   consumers: List<GitHubAppConsumer>
 }
 
-data consumer_is_a_declaration_ref_note: String = "A consumer is named by DeclarationRef — module plus declaration in the containment tree's own key space — rather than by prose or a file path. DESIGN's §3 cite-the-symbol rule is the reason: a symbolic citation is decidable by name resolution, so a consumer that is renamed or deleted while still enrolled here is a resolvable defect rather than prose that rots silently. It also makes the reverse question answerable, which is the one that matters when narrowing a grant: given a permission, which declarations would stop working without it."
-
-data metadata_read_note: String = "metadata: read appears on every consumer below because GitHub requires it alongside any repository permission; it is not a per-consumer choice. It is repeated on each consumer rather than added once to the union so that the union stays a pure fold over consumer needs with no privileged extra term — a special case in the derivation would be exactly the kind of unattributed grant this module exists to prevent."
+fn perm(wire_name: NonEmptyStr, access: GitHubAppPermissionAccess) -> GitHubAppPermission {
+  GitHubAppPermission { name: GitHubAppPermissionName { wire_name: wire_name }, access: access }
+}
 
 data gunbai_ci_enrollment: GitHubAppEnrollment = GitHubAppEnrollment {
-  registration: gunbai_ci_registration,
+  declared: gunbai_ci_declared,
   consumers: [
     {
       consumer: DeclarationRef {
@@ -133,17 +105,15 @@ data gunbai_ci_enrollment: GitHubAppEnrollment = GitHubAppEnrollment {
       },
       purpose: "register ephemeral self-hosted runners on a fleet host",
       required_permissions: [
-        { name: "metadata", level: AppPermRead },
-        { name: "administration", level: AppPermWrite },
+        perm(wire_name: "metadata", access: AppAccessRead),
+        perm(wire_name: "administration", access: AppAccessWrite),
       ]
     }
   ]
 }
 
-data gunbai_ci_enrollment_note: String = "One consumer, and it is the one that was already in the tree: gunbc.runner_host_deploy binds this App's ID, installation and key secret so the cited ctrl installer can mint runner join tokens. Minting a self-hosted runner registration token is an administration-level capability. This App therefore has no derived reason to hold contents, pull_requests or actions, and if an authenticated observation shows it holding them, the finding is an over-grant to narrow rather than a manifest to widen."
-
 data gunbai_bot_enrollment: GitHubAppEnrollment = GitHubAppEnrollment {
-  registration: gunbai_bot_registration,
+  declared: gunbai_bot_declared,
   consumers: [
     {
       consumer: DeclarationRef {
@@ -151,10 +121,10 @@ data gunbai_bot_enrollment: GitHubAppEnrollment = GitHubAppEnrollment {
         decl_name: "ci_heal_regen_step",
         field: WholeDeclaration
       },
-      purpose: "push the regenerated generated-artifact commit back to the admitted attempt branch",
+      purpose: "push the regenerated generated-artifact commit to the admitted attempt branch",
       required_permissions: [
-        { name: "metadata", level: AppPermRead },
-        { name: "contents", level: AppPermWrite },
+        perm(wire_name: "metadata", access: AppAccessRead),
+        perm(wire_name: "contents", access: AppAccessWrite),
       ]
     },
     {
@@ -165,28 +135,24 @@ data gunbai_bot_enrollment: GitHubAppEnrollment = GitHubAppEnrollment {
       },
       purpose: "dispatch the heal revalidation run against the immutable healed head",
       required_permissions: [
-        { name: "metadata", level: AppPermRead },
-        { name: "actions", level: AppPermWrite },
+        perm(wire_name: "metadata", access: AppAccessRead),
+        perm(wire_name: "actions", access: AppAccessWrite),
       ]
     }
   ]
 }
 
-data gunbai_bot_enrollment_note: String = "Two enrolled consumers, both real and both already running in CI today — the heal's regeneration push and the heal's revalidation dispatch. They are enrolled against gunbai[bot] because that is the App whose credential this program will issue to them; today both authenticate with the Actions job credential instead, which is precisely the defect PR 3 repairs.\n\nDELIBERATELY NOT ENROLLED YET: the LLM agent workers. Agent push/pull is this App's main purpose, and it is why pull_requests write will belong in the union — but a worker consumer must name the declaration that binds its credential, and no such declaration exists until the worker credential lane lands. Enrolling a consumer that does not exist would put a permission in the derived union with no reachable consumer behind it, which is the exact failure this derivation prevents. So the union below is currently NARROWER than the App's eventual grant, and it is honest about that: it says what today's real consumers need, and it grows when a real consumer arrives.\n\nALSO ABSENT, and this one is permanent: workflows write. The heal's own script classifies HealAuthorCommitRequired with cause GitHubAppLacksWorkflowsWrite when a regeneration would touch .github/workflows, and that refusal is correct behavior to preserve — a generated workflow change should reach a human author, not be self-applied by the bot that generated it."
+data no_permissions: List<GitHubAppPermission> = []
 
-fn permission_name_in_list(name: NonEmptyStr, names: List<NonEmptyStr>) -> Bool {
+data no_permission_names: List<GitHubAppPermissionName> = []
+
+fn permission_name_in_list(name: GitHubAppPermissionName, names: List<GitHubAppPermissionName>) -> Bool {
   fold_list(
     xs: names,
     empty: false,
-    cons: fn(found, n) { found || n == name }
+    cons: fn(found, n) { found || permission_name_eq(a: n, b: name) }
   )
 }
-
-data no_permissions: List<GitHubAppPermission> = []
-
-data no_permission_names: List<NonEmptyStr> = []
-
-data typed_empty_accumulator_note: String = "The two empty accumulators are annotated declarations rather than bare [] literals at the fold sites, because a bare empty list carries no element type and the folds below build their result from it — the compiler refuses it with 'expected type is not a collection' rather than guessing. Declaring them once also keeps the two folds' identity grains visibly distinct: one accumulates permissions, the other accumulates the names those permissions are keyed by."
 
 fn enrollment_permissions(enrollment: GitHubAppEnrollment) -> List<GitHubAppPermission> {
   fold_list(
@@ -196,7 +162,7 @@ fn enrollment_permissions(enrollment: GitHubAppEnrollment) -> List<GitHubAppPerm
   )
 }
 
-fn permission_names(perms: List<GitHubAppPermission>) -> List<NonEmptyStr> {
+fn permission_names(perms: List<GitHubAppPermission>) -> List<GitHubAppPermissionName> {
   fold_list(
     xs: perms,
     empty: no_permission_names,
@@ -206,26 +172,39 @@ fn permission_names(perms: List<GitHubAppPermission>) -> List<NonEmptyStr> {
   )
 }
 
-fn permission_max_level(perms: List<GitHubAppPermission>, name: NonEmptyStr) -> GitHubAppPermissionLevel {
+fn permission_max_access(perms: List<GitHubAppPermission>, name: GitHubAppPermissionName) -> GitHubAppPermissionAccess {
   fold_list(
     xs: perms,
-    empty: AppPermRead,
+    empty: AppAccessRead,
     cons: fn(acc, p) {
-      if p.name == name && permission_level_at_least(held: p.level, requested: acc) { p.level } else { acc }
+      if permission_name_eq(a: p.name, b: name) && permission_access_at_least(held: p.access, requested: acc) { p.access } else { acc }
     }
   )
 }
 
 fn app_required_permissions(enrollment: GitHubAppEnrollment) -> List<GitHubAppPermission> {
   let all = enrollment_permissions(enrollment: enrollment)
-  map(permission_names(perms: all), n => GitHubAppPermission { name: n, level: permission_max_level(perms: all, name: n) })
+  map(permission_names(perms: all), n => GitHubAppPermission { name: n, access: permission_max_access(perms: all, name: n) })
 }
-
-data app_required_permissions_note: String = "The union, at the WEAKEST level that satisfies every enrolled consumer — which is the maximum over consumers, not the minimum. Two consumers of one App asking for contents at read and at write must yield write, because a read-only grant would break the second; taking the minimum would produce a grant that satisfies nobody. permission_level_at_least supplies the order from the upstream vocabulary rather than re-deriving it here, so a change in GitHub's level ladder is a one-place edit in extdeps.\n\nThe fold is over names first and levels second because a permission is identified by its name: the same resource appearing twice at different levels is ONE grant, and emitting both rows would produce a manifest that cannot be compared against an installation's."
 
 data gunbai_bot_required_permissions: List<GitHubAppPermission> = app_required_permissions(enrollment: gunbai_bot_enrollment)
 
 data gunbai_ci_required_permissions: List<GitHubAppPermission> = app_required_permissions(enrollment: gunbai_ci_enrollment)
+
+fn permissions_subsumed(held: List<GitHubAppPermission>, required: List<GitHubAppPermission>) -> Bool {
+  fold_list(
+    xs: required,
+    empty: true,
+    cons: fn(ok, r) {
+      ok && permission_name_in_list(name: r.name, names: permission_names(perms: held))
+         && permission_access_at_least(held: permission_max_access(perms: held, name: r.name), requested: r.access)
+    }
+  )
+}
+
+fn permissions_equal(a: List<GitHubAppPermission>, b: List<GitHubAppPermission>) -> Bool {
+  permissions_subsumed(held: b, required: a) && permissions_subsumed(held: a, required: b)
+}
 
 fn app_permission_grant_verdict(
   enrollment: GitHubAppEnrollment,
@@ -234,29 +213,26 @@ fn app_permission_grant_verdict(
   match observed {
     AppUnobserved { reason: _ } => UnknownRefused
     AppObserved { value } =>
-      if permissions_equal(
-        a: app_required_permissions(enrollment: enrollment),
-        b: value.permissions
-      ) { Converged } else { Drifted }
+      if permissions_equal(a: app_required_permissions(enrollment: enrollment), b: value.permissions) {
+        Converged
+      } else {
+        Drifted
+      }
   }
 }
 
-fn permissions_equal(a: List<GitHubAppPermission>, b: List<GitHubAppPermission>) -> Bool {
-  permissions_subsumed(held: b, required: a) && permissions_subsumed(held: a, required: b)
+fn key_fingerprint_verdict(
+  declared: ManagedGitHubAppKey,
+  observed: GitHubAppObservation<ManagedGitHubAppKey>
+) -> ObservationVerdict {
+  match observed {
+    AppUnobserved { reason: _ } => UnknownRefused
+    AppObserved { value } =>
+      if key_fingerprint_eq(a: value.fingerprint, b: declared.fingerprint) { Converged } else { Drifted }
+  }
 }
 
-fn permissions_subsumed(held: List<GitHubAppPermission>, required: List<GitHubAppPermission>) -> Bool {
-  fold_list(
-    xs: required,
-    empty: true,
-    cons: fn(ok, r) {
-      ok && permission_name_in_list(name: r.name, names: permission_names(perms: held))
-         && permission_level_at_least(held: permission_max_level(perms: held, name: r.name), requested: r.level)
-    }
-  )
-}
-
-data grant_verdict_is_two_sided_note: String = "The verdict compares in BOTH directions, and each direction is a different defect. A required permission the installation does not hold is an under-grant: an enrolled consumer will fail at runtime with a permissions error. A permission the installation holds that no enrolled consumer requires is an OVER-grant: nothing breaks, nobody notices, and the App quietly carries authority no code in this repository can explain — which is the state both Apps are in today and the reason this module exists. A one-sided check would have reported the over-grant as fine, so equality is the honest comparison even though only one side ever causes a visible failure."
+data gunbai_bot_key_verdict: ObservationVerdict = key_fingerprint_verdict(declared: gunbai_bot_declared_key, observed: gunbai_bot_key_observation)
 
 data gunbai_bot_permission_verdict: ObservationVerdict = app_permission_grant_verdict(enrollment: gunbai_bot_enrollment, observed: gunbai_bot_installation_observation)
 
