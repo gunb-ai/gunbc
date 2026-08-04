@@ -104,23 +104,34 @@ fn build() -> Int {
     );
 }
 
-#[test]
-fn uri_percent_encode_code_points_accumulates_with_map_then_join() {
-    let src = r#"module test.stats_uri_encode
-import extdeps.uri {
+fn uri_percent_encode_push_counters_for_scalar_count(
+    scalar_count: usize,
+) -> v1_interpreter::MutationCounters {
+    let code_points: Vec<i64> = (0..scalar_count)
+        .map(|i| 33 + ((i % 5) as i64 * 10))
+        .collect();
+    let code_points_src = code_points
+        .iter()
+        .map(|cp| cp.to_string())
+        .collect::<Vec<_>>()
+        .join(", ");
+    let src = format!(
+        r#"module test.stats_uri_encode_{scalar_count}
+import extdeps.uri {{
   uri_percent_encode_code_points,
   UriPercentComponentEncoded,
   UriPercentComponentRefused,
-}
+}}
 
-fn build() -> Bool {
-  match uri_percent_encode_code_points(code_points: [33, 64, 35, 36, 37]) {
-    UriPercentComponentEncoded(wire) => wire == "%21%40%23%24%25"
-    UriPercentComponentRefused { cause: _ } => false
-  }
-}
-"#;
-    let resolved = resolve(src);
+fn build() -> Bool {{
+  match uri_percent_encode_code_points(code_points: [{code_points_src}]) {{
+    UriPercentComponentEncoded(_) => true
+    UriPercentComponentRefused {{ cause: _ }} => false
+  }}
+}}
+"#
+    );
+    let resolved = resolve(&src);
     let graph = resolved.graph.as_ref().expect("graph");
     let ctx =
         cli_run::make_eval_context(graph, resolved.source_indices.clone(), ExecutionMode::Wet);
@@ -129,12 +140,23 @@ fn build() -> Bool {
         Ok(Value::Bool(true)) => {}
         other => panic!("expected Bool(true), got {other:?}"),
     }
-    let counters = ctx.mutation_counters_snapshot();
+    ctx.mutation_counters_snapshot()
+}
+
+#[test]
+fn uri_percent_encode_code_points_accumulates_with_map_then_join() {
+    let small = uri_percent_encode_push_counters_for_scalar_count(5);
+    let large = uri_percent_encode_push_counters_for_scalar_count(50);
     assert_eq!(
-        counters.list_concat_calls, 0,
-        "map-then-join must not fold-grow via list_concat"
+        large.list_push_calls, small.list_push_calls,
+        "list_push_calls must not scale with encoded scalar count (5-scalar run={}, 50-scalar run={})",
+        small.list_push_calls, large.list_push_calls
     );
-    assert_eq!(counters.list_concat_items_copied, 0);
+    assert_eq!(
+        large.list_push_items_copied, small.list_push_items_copied,
+        "list_push_items_copied must not scale with encoded scalar count (5-scalar run={}, 50-scalar run={})",
+        small.list_push_items_copied, large.list_push_items_copied
+    );
 }
 
 #[test]
