@@ -4,7 +4,6 @@ import v2.lens.production_qualification_origin_probe {
   derived_production_qualification_mint_sites_live,
   ingest_mint_surface_discovered_in_live_scope,
   known_fixture_origin_mint_surface_count_in_scope,
-  production_qualification_live_scope_fixture_origin_oracle_count,
   production_qualification_origin_probe_admission_holds,
   structural_red_control_live_fixture_mint_site_discovered
 }
@@ -12,7 +11,6 @@ import v2.test.claim.self_host.production_qualification_origin_probe_structural_
   structural_red_control_mint_site_qualified_name
 }
 import v2.std.algebra { any }
-import v2.std.integer { int_eq }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 
@@ -22,11 +20,10 @@ test fn witness_production_qualification_origin_probe_admission_holds() -> Bool 
   production_qualification_origin_probe_admission_holds()
 }
 
-test fn witness_live_scope_fixture_origin_count_matches_policy_oracle() -> Bool {
-  int_eq(
-    a: known_fixture_origin_mint_surface_count_in_scope(),
-    b: production_qualification_live_scope_fixture_origin_oracle_count
-  )
+data witness_live_scope_fixture_origin_discoverable_in_entry_closure_red_note: String = "Admitted RED (review 48255): live FixtureDerived mint sites are not discoverable in fn_arrow_decl_facts_live() entry closure today (G2 marshal prunes callee atoms). Replaces the retired 0==0 policy-oracle equality witness — greens when marshal exposes live fixture mint surfaces and known_fixture_origin_mint_surface_count_in_scope() > 0."
+
+test fn witness_live_scope_fixture_origin_discoverable_in_entry_closure_reds() -> Bool {
+  known_fixture_origin_mint_surface_count_in_scope() > 0
 }
 
 data witness_live_structural_fixture_mint_site_discovered_red_note: String = "Admitted RED: G2 fn-arrow marshal currently yields an empty skeleton for the live structural_red_control_mint_site_probe body (match/let mint call); classifier cannot discover the exact FixtureDerived SourceProduced row until call-occurrence derivation or marshal exposes callee atoms."

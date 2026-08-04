@@ -171,6 +171,13 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
   ),
   known_red_probe(
     entry: "src/v2/test/claim/long/production_qualification_origin_probe_witness_test.dag",
+    f: "witness_live_scope_fixture_origin_discoverable_in_entry_closure_reds",
+    kind: CorpusWitnessKind,
+    reason: "Admitted RED (review 48255): retired 0==0 policy-oracle equality — live FixtureDerived mint sites not discoverable in entry closure until G2 marshal exposes callee atoms. Owner: witness-evidence-lifecycle / marshal frontier.",
+    dissolve_on: "G2 fn-arrow marshal exposes live fixture mint callees in fn_arrow_decl_facts_live entry closure, known_fixture_origin_mint_surface_count_in_scope() > 0, witness_live_scope_fixture_origin_discoverable_in_entry_closure_reds greens, and this row deletes — re-enroll with closed-subject expected population or monotone debt contract, never a tree-copied literal"
+  ),
+  known_red_probe(
+    entry: "src/v2/test/claim/long/production_qualification_origin_probe_witness_test.dag",
     f: "witness_live_structural_fixture_mint_site_discovered_reds",
     kind: CorpusWitnessKind,
     reason: "Admitted RED: G2 fn-arrow marshal yields empty skeleton for live structural_red_control_mint_site_probe mint body today — classifier cannot discover the exact FixtureDerived SourceProduced row. Owner: witness-evidence-lifecycle / call-occurrence derivation frontier.",

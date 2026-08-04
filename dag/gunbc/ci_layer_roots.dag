@@ -1131,12 +1131,6 @@ data falsifier_substrate_long_lane_rows: List<SubstrateLongLaneRow> = [
     dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured cold run and re-enrolls per-PR discovery"
   },
   SubstrateLongLaneRow {
-    entry: "src/v2/test/claim/long/production_qualification_origin_probe_witness_test.dag",
-    function: "witness_live_scope_fixture_origin_count_matches_policy_oracle",
-    reason: "live-scope policy-oracle count walks fn_arrow_decl_facts_live() via known_fixture_origin_mint_surface_count_in_scope() and exceeded 5000ms fast-lane budget on PR CI (99330ad0): eval-budget routing only",
-    dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured cold run and re-enrolls per-PR discovery"
-  },
-  SubstrateLongLaneRow {
     entry: "src/v2/test/claim/long/v2_emitter_direct_rust_door_acceptance_test.dag",
     function: "witness_v2_emitter_direct_rust_door_closing_contract_holds",
     reason: "same ingest-path closure cost as direct_rust_door emission long witness (exceeds 5s fast-lane budget). Witness REDs by execution: ingest-path assess_written_source_independent_of_seed_emitter does not establish WrittenSourceIndependentOfSeedEmitter — functional gap tracked on explicit_witness_admission known_red row; long-lane enrollment is eval-budget routing only",
