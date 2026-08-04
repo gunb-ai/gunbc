@@ -664,12 +664,27 @@ fn marshal_generic(
     let name = node_authored_name(node, si);
     let mut edges: Vec<Value> = Vec::with_capacity(node.children.len() + 1);
     let mut refs: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
-    if node_references_param(node, &name, param_names) {
+    if matches!(node.expr_data.as_ref(), ExprData::ExprRecordLit { .. }) && !name.is_empty() {
+        // Outer coproduct/record variant constructor (e.g. Scaffold, Terminal, DeclarationRef).
+        edges.push(edge_positional(ctx, atom_identity_node(ctx, &name)));
+    } else if node_references_param(node, &name, param_names) {
         edges.push(edge_positional(ctx, atom_identity_node(ctx, &name)));
     } else if matches!(node.expr_data.as_ref(), ExprData::ExprCall { .. }) && !name.is_empty() {
         // G2 live-read call reachability: callee atoms make cross-fn carrier chains
         // visible in the fn-arrow skeleton (docs/plans/live-read-witness-classification-design.md P1).
         edges.push(edge_positional(ctx, atom_identity_node(ctx, &name)));
+    } else if !name.is_empty() {
+        if let ExprData::ExprVar { binding_kind } = node.expr_data.as_ref() {
+            if matches!(
+                binding_kind,
+                Some(bk) if matches!(bk.as_ref(), VarBindingKind::VariantValueBinding { .. })
+            ) && !node_references_param(node, &name, param_names)
+            {
+                // Nullary variant VALUE references only (e.g. dissolves_to: SingleAuthority).
+                // Deliberately excludes binding_kind None (unresolved) and FunctionValueBinding.
+                edges.push(edge_positional(ctx, atom_identity_node(ctx, &name)));
+            }
+        }
     }
     if let Some(literal_edge) = marshal_string_literal_atom(ctx, node) {
         edges.push(literal_edge);

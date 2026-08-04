@@ -1,0 +1,387 @@
+//! Generic `decl_facts` data-init skeleton reflection prerequisite (step 1 / #7759 split).
+//!
+//! Narrow marshal arms: outer record-literal variant identity + nullary variant VALUE
+//! references (`VariantValueBinding` only). Measured fixture-pool census + negative
+//! controls for locals, parameters, function values, and duplicate atoms.
+
+use std::collections::BTreeSet;
+use std::rc::Rc;
+
+use im::HashMap;
+use v1_compiler::coproduct_reflection::{eval_decl_facts, eval_fn_arrow_decl_facts_live};
+use v1_compiler::v1_compiler_infer_emit_info::empty_emit_graph_info;
+use v1_compiler::v1_compiler_infer_items::ResolvedGraph;
+use v1_compiler::v1_interpreter::{ExecutionMode, InterpContext, Value};
+
+use crate::helpers::workspace_root;
+
+const FIXTURE_POOL: &str = "dag/test/fixture/decl_facts_reflection";
+
+const QN_SCAFFOLD: &str = "test.fixture.decl_facts_reflection.specimens.planted_scaffold_specimen";
+const QN_TERMINAL: &str = "test.fixture.decl_facts_reflection.specimens.planted_terminal_specimen";
+const QN_NULLARY: &str =
+    "test.fixture.decl_facts_reflection.specimens.planted_nullary_disposition_specimen";
+const QN_NAMED_FIELD_REF: &str =
+    "test.fixture.decl_facts_reflection.specimens.planted_named_field_ref_specimen";
+const QN_PLAIN_INT: &str = "test.fixture.decl_facts_reflection.specimens.planted_plain_int_specimen";
+const QN_FN_PARAM: &str = "test.fixture.decl_facts_reflection.specimens.uses_param_only";
+const QN_FN_LOCAL: &str = "test.fixture.decl_facts_reflection.specimens.uses_local";
+
+fn wet_ctx() -> InterpContext {
+    let graph = ResolvedGraph {
+        modules: Rc::new(im::vector![]),
+        item_registry: Rc::new(HashMap::new()),
+        diagnostics: Rc::new(im::vector![]),
+        emit_graph_info: empty_emit_graph_info(),
+    };
+    InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Wet)
+}
+
+fn fixture_roots() -> Vec<String> {
+    vec![
+        workspace_root()
+            .join(FIXTURE_POOL)
+            .to_string_lossy()
+            .into_owned(),
+    ]
+}
+
+fn collect_atom_identities(val: &Value, ctx: &InterpContext, out: &mut BTreeSet<String>) {
+    match val {
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } => {
+            if ctx.sym_eq(*variant_name, "Atom")
+                && let Some((_, Value::Str(identity))) = fields
+                    .iter()
+                    .find(|(k, _)| ctx.sym_eq(*k, "identity"))
+            {
+                out.insert(identity.to_string());
+            }
+            for (_, v) in fields.iter() {
+                collect_atom_identities(v, ctx, out);
+            }
+        }
+        Value::Record { fields, .. } => {
+            for (_, v) in fields.iter() {
+                collect_atom_identities(v, ctx, out);
+            }
+        }
+        Value::List(items) => {
+            for v in items.iter() {
+                collect_atom_identities(v, ctx, out);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn count_atom_identity(val: &Value, ctx: &InterpContext, identity: &str) -> usize {
+    let mut count = 0usize;
+    fn walk(val: &Value, ctx: &InterpContext, identity: &str, count: &mut usize) {
+        match val {
+            Value::Variant {
+                variant_name,
+                fields,
+                ..
+            } => {
+                if ctx.sym_eq(*variant_name, "Atom")
+                    && fields.iter().any(|(k, v)| {
+                        ctx.sym_eq(*k, "identity")
+                            && matches!(v, Value::Str(s) if s.as_str() == identity)
+                    })
+                {
+                    *count += 1;
+                }
+                for (_, v) in fields.iter() {
+                    walk(v, ctx, identity, count);
+                }
+            }
+            Value::Record { fields, .. } => {
+                for (_, v) in fields.iter() {
+                    walk(v, ctx, identity, count);
+                }
+            }
+            Value::List(items) => {
+                for v in items.iter() {
+                    walk(v, ctx, identity, count);
+                }
+            }
+            _ => {}
+        }
+    }
+    walk(val, ctx, identity, &mut count);
+    count
+}
+
+fn value_contains_atom_identity(val: &Value, ctx: &InterpContext, identity: &str) -> bool {
+    count_atom_identity(val, ctx, identity) > 0
+}
+
+fn decl_fact_node_skeleton(
+    ctx: &InterpContext,
+    rows: &Value,
+    qualified_name: &str,
+) -> Option<Value> {
+    let items = match rows {
+        Value::List(items) => items,
+        other => panic!("expected decl_facts List, got {other:?}"),
+    };
+    for row in items.iter() {
+        let fields = match row {
+            Value::Record { fields, .. } => fields.as_ref(),
+            other => panic!("expected DeclFact Record, got {other:?}"),
+        };
+        let qn = match ctx.field(fields, "qualified_name") {
+            Some(Value::Str(s)) => s.as_str(),
+            other => panic!("expected qualified_name Str, got {other:?}"),
+        };
+        if qn != qualified_name {
+            continue;
+        }
+        return ctx.field(fields, "node").cloned();
+    }
+    None
+}
+
+fn fn_arrow_body_skeleton(
+    ctx: &InterpContext,
+    rows: &Value,
+    qualified_name: &str,
+) -> Option<Value> {
+    let items = match rows {
+        Value::List(items) => items,
+        other => panic!("expected fn_arrow_decl_facts List, got {other:?}"),
+    };
+    for row in items.iter() {
+        let fields = match row {
+            Value::Record { fields, .. } => fields.as_ref(),
+            other => panic!("expected FnArrowDeclFact Record, got {other:?}"),
+        };
+        let qn = match ctx.field(fields, "qualified_name") {
+            Some(Value::Str(s)) => s.as_str(),
+            other => panic!("expected qualified_name Str, got {other:?}"),
+        };
+        if qn != qualified_name {
+            continue;
+        }
+        return ctx.field(fields, "body").cloned();
+    }
+    None
+}
+
+fn fixture_decl_facts(ctx: &InterpContext) -> Value {
+    eval_decl_facts(ctx, &fixture_roots()).expect("eval_decl_facts")
+}
+
+fn fixture_fn_arrow_facts(ctx: &InterpContext) -> Value {
+    eval_fn_arrow_decl_facts_live(ctx, &[]).expect("eval_fn_arrow_decl_facts_live")
+}
+
+fn census_fixture_pool_data_init_atoms(ctx: &InterpContext) -> (usize, BTreeSet<String>) {
+    let rows = fixture_decl_facts(ctx);
+    let items = match &rows {
+        Value::List(items) => items,
+        other => panic!("expected List, got {other:?}"),
+    };
+    let mut all = BTreeSet::new();
+    for row in items.iter() {
+        let fields = match row {
+            Value::Record { fields, .. } => fields.as_ref(),
+            _ => continue,
+        };
+        let kind = ctx.field(fields, "kind");
+        let is_data = matches!(
+            kind,
+            Some(Value::Variant {
+                variant_name,
+                fields: kf,
+                ..
+            }) if ctx.sym_eq(*variant_name, "DataItem") && kf.is_empty()
+        );
+        if !is_data {
+            continue;
+        }
+        if let Some(node) = ctx.field(fields, "node") {
+            collect_atom_identities(node, ctx, &mut all);
+        }
+    }
+    let count = all.len();
+    (count, all)
+}
+
+#[test]
+fn outer_variant_identity_scaffold_specimen() {
+    let ctx = wet_ctx();
+    let skeleton = decl_fact_node_skeleton(&ctx, &fixture_decl_facts(&ctx), QN_SCAFFOLD)
+        .expect("missing scaffold specimen");
+    assert!(
+        value_contains_atom_identity(&skeleton, &ctx, "Scaffold"),
+        "Scaffold outer variant constructor must appear in skeleton"
+    );
+    assert_eq!(
+        count_atom_identity(&skeleton, &ctx, "Scaffold"),
+        1,
+        "Scaffold constructor atom must appear exactly once (no duplicate emission)"
+    );
+}
+
+#[test]
+fn outer_variant_identity_terminal_specimen() {
+    let ctx = wet_ctx();
+    let skeleton = decl_fact_node_skeleton(&ctx, &fixture_decl_facts(&ctx), QN_TERMINAL)
+        .expect("missing terminal specimen");
+    assert!(
+        value_contains_atom_identity(&skeleton, &ctx, "Terminal"),
+        "Terminal outer variant constructor must appear in skeleton"
+    );
+}
+
+#[test]
+fn nullary_variant_value_atom_in_scaffold_specimen() {
+    let ctx = wet_ctx();
+    let skeleton = decl_fact_node_skeleton(&ctx, &fixture_decl_facts(&ctx), QN_SCAFFOLD)
+        .expect("missing scaffold specimen");
+    assert!(
+        value_contains_atom_identity(&skeleton, &ctx, "SingleAuthority"),
+        "nullary ConstructionMechanism variant value must surface as atom"
+    );
+}
+
+#[test]
+fn nullary_variant_value_atom_in_nullary_disposition_specimen() {
+    let ctx = wet_ctx();
+    let skeleton = decl_fact_node_skeleton(&ctx, &fixture_decl_facts(&ctx), QN_NULLARY)
+        .expect("missing nullary disposition specimen");
+    assert!(
+        value_contains_atom_identity(&skeleton, &ctx, "SingleAuthority"),
+        "top-level nullary Disposition arm must surface variant identity"
+    );
+}
+
+#[test]
+fn declaration_ref_fields_present_in_scaffold_bind() {
+    let ctx = wet_ctx();
+    let skeleton = decl_fact_node_skeleton(&ctx, &fixture_decl_facts(&ctx), QN_SCAFFOLD)
+        .expect("missing scaffold specimen");
+    assert!(
+        value_contains_atom_identity(&skeleton, &ctx, "DeclarationRef"),
+        "DeclarationRef constructor must appear in bind conj"
+    );
+    assert!(
+        value_contains_atom_identity(&skeleton, &ctx, "test.fixture.decl_facts_reflection.specimens"),
+        "module_path literal must appear in bind conj"
+    );
+    assert!(
+        value_contains_atom_identity(&skeleton, &ctx, "planted_scaffold_specimen"),
+        "decl_name literal must appear in bind conj"
+    );
+    assert!(
+        value_contains_atom_identity(&skeleton, &ctx, "WholeDeclaration"),
+        "WholeDeclaration field arm must appear in bind conj"
+    );
+}
+
+#[test]
+fn named_field_declaration_ref_fields_present() {
+    let ctx = wet_ctx();
+    let skeleton =
+        decl_fact_node_skeleton(&ctx, &fixture_decl_facts(&ctx), QN_NAMED_FIELD_REF)
+            .expect("missing named-field ref specimen");
+    assert!(
+        value_contains_atom_identity(&skeleton, &ctx, "NamedField"),
+        "NamedField constructor must appear"
+    );
+    assert!(
+        value_contains_atom_identity(&skeleton, &ctx, "dissolves_to"),
+        "field_name literal must appear"
+    );
+}
+
+#[test]
+fn plain_int_specimen_has_no_coproduct_variant_atoms() {
+    let ctx = wet_ctx();
+    let skeleton = decl_fact_node_skeleton(&ctx, &fixture_decl_facts(&ctx), QN_PLAIN_INT)
+        .expect("missing plain int specimen");
+    let mut atoms = BTreeSet::new();
+    collect_atom_identities(&skeleton, &ctx, &mut atoms);
+    assert!(
+        !atoms.contains("Scaffold")
+            && !atoms.contains("Terminal")
+            && !atoms.contains("SingleAuthority")
+            && !atoms.contains("DeclarationRef"),
+        "plain Int literal must not gain coproduct variant atoms, got {atoms:?}"
+    );
+}
+
+#[test]
+fn fn_body_param_reference_does_not_duplicate_param_atom() {
+    let ctx = wet_ctx();
+    let body = fn_arrow_body_skeleton(&ctx, &fixture_fn_arrow_facts(&ctx), QN_FN_PARAM)
+        .expect("missing uses_param_only fn");
+    assert_eq!(
+        count_atom_identity(&body, &ctx, "x"),
+        1,
+        "parameter reference should surface exactly one x atom"
+    );
+    assert!(
+        !value_contains_atom_identity(&body, &ctx, "SingleAuthority"),
+        "param-only fn must not gain variant-value atoms"
+    );
+}
+
+#[test]
+fn fn_body_local_binding_does_not_surface_local_as_variant_atom() {
+    let ctx = wet_ctx();
+    let body = fn_arrow_body_skeleton(&ctx, &fixture_fn_arrow_facts(&ctx), QN_FN_LOCAL)
+        .expect("missing uses_local fn");
+    assert!(
+        !value_contains_atom_identity(&body, &ctx, "z"),
+        "local binding name must not surface as variant-value atom"
+    );
+    assert!(
+        !value_contains_atom_identity(&body, &ctx, "SingleAuthority"),
+        "local-using fn must not gain spurious variant-value atoms"
+    );
+}
+
+#[test]
+fn fixture_pool_data_init_atom_census_is_bounded() {
+    let ctx = wet_ctx();
+    let (unique_count, atoms) = census_fixture_pool_data_init_atoms(&ctx);
+    // Measured fixture pool (5 data items): bounded blast radius for the narrow arms.
+    // Update only when fixture specimens intentionally change.
+    assert!(
+        unique_count >= 8 && unique_count <= 20,
+        "fixture pool unique atom count out of expected band: {unique_count} atoms={atoms:?}"
+    );
+}
+
+#[test]
+fn live_corpus_scaffold_marker_still_surfaces_nullary_variant_atom() {
+    let ctx = wet_ctx();
+    let roots = vec![
+        workspace_root().join("dag").to_string_lossy().into_owned(),
+        workspace_root()
+            .join("src/v2")
+            .to_string_lossy()
+            .into_owned(),
+    ];
+    let rows = eval_decl_facts(&ctx, &roots).expect("eval_decl_facts");
+    let skeleton = decl_fact_node_skeleton(
+        &ctx,
+        &rows,
+        "std.bytes.bytes_seam_host_realization_marker",
+    )
+    .expect("missing std.bytes.bytes_seam_host_realization_marker");
+    assert!(
+        value_contains_atom_identity(&skeleton, &ctx, "SingleAuthority"),
+        "live corpus scaffold marker must retain nullary variant atom"
+    );
+    assert!(
+        value_contains_atom_identity(&skeleton, &ctx, "Scaffold"),
+        "live corpus scaffold marker must retain outer Scaffold variant identity"
+    );
+}
