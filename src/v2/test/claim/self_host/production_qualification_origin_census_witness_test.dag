@@ -27,7 +27,7 @@ import v2.std.fn_index { fn_arrow_decl_facts_live }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 
-data production_qualification_origin_census_witness_note: String = "Fixture-origin production qualification census witnesses (session keen-lark-681): population derived from fn_arrow_decl_facts_live skeletons — identity-join witnesses pin known live mint surfaces; planted synthetic FnArrowDecl raises the independently derived fixture-origin count (discriminating RED, not list-length tautology). Parent context: wise-ram-22 witness-evidence-lifecycle step 2."
+data production_qualification_origin_census_witness_note: String = "Fixture-origin production qualification census witnesses (session keen-lark-681): population derived from fn_arrow_decl_facts_live skeletons — identity-join witnesses pin known live mint surfaces; planted synthetic FnArrowDecl raises the independently derived fixture-origin count (discriminating RED, not list-length tautology). fn_arrow_decl_facts_live is entry-closure scoped today (#5364 whole-tree substrate still pending per wiring_liveness_whole_tree.bin), so this module imports the two canonical live mint surfaces for reachability only — not a hand registry. Parent context: wise-ram-22 witness-evidence-lifecycle step 2."
 
 test fn witness_derived_production_qualification_origin_census_holds() -> Bool {
   derived_production_qualification_origin_census_holds()

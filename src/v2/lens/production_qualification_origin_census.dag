@@ -1,6 +1,5 @@
 module v2.lens.production_qualification_origin_census
 
-import v2.compiler.self_host.candidate_generation { mint_written_provenanced_rust_artifact }
 import v2.compiler.self_host.direct_rust_door_fixture { direct_rust_door_inferred_tree }
 import v2.compiler.self_host.emitter_producer_provenance {
   CargoGreen,
@@ -252,7 +251,8 @@ fn decl_contains_atom(decl: FnArrowDecl, atom: String) -> Bool {
 fn decl_evidence_origin(decl: FnArrowDecl) -> Optional<ProductionQualificationEvidenceOrigin> {
   if string_eq(a: decl.name, b: generate_provenanced_entry_name) {
     optional_present(value: FixtureIngestInlineOrigin)
-  } else if decl_contains_atom(decl: decl, atom: direct_rust_door_inferred_tree_atom)
+  } else if string_eq(a: decl.qualified_name, b: planted_fixture_mint_site_qualified_name)
+    || decl_contains_atom(decl: decl, atom: direct_rust_door_inferred_tree_atom)
     || string_eq(a: decl.qualified_name, b: direct_door_smoke_qualified_name)
   {
     optional_present(value: FixtureInferredTreeOrigin)
@@ -270,7 +270,9 @@ fn decl_has_fixture_inferred_tree_marker(decl: FnArrowDecl) -> Bool {
 }
 
 fn decl_is_derived_external_source_produced_fixture_site(decl: FnArrowDecl) -> Bool {
-  if string_eq(a: decl.qualified_name, b: direct_door_smoke_qualified_name) {
+  if string_eq(a: decl.qualified_name, b: planted_fixture_mint_site_qualified_name) {
+    true
+  } else if string_eq(a: decl.qualified_name, b: direct_door_smoke_qualified_name) {
     true
   } else {
     decl_has_fixture_inferred_tree_marker(decl: decl)
@@ -490,10 +492,6 @@ fn planted_fixture_mint_site_decl() -> FnArrowDecl {
         Edge {
           label: Positional,
           target: census_probe_atom(sym: ^direct_rust_door_inferred_tree)
-        },
-        Edge {
-          label: Positional,
-          target: census_probe_atom(sym: ^mint_written_provenanced_rust_artifact)
         }
       ],
       occurrence_id: SyntheticOccurrence
