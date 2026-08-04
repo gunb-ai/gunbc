@@ -1,0 +1,86 @@
+module v2.test.claim.self_host.production_qualification_origin_census_witness_test
+
+import v2.compiler.self_host.emitter_producer_provenance {
+  CargoGreen,
+  ProductionRouted,
+  SourceProduced
+}
+import v2.compiler.self_host.production_qualification_origin_census {
+  ExecutionMeasuredOrigin,
+  FixtureInferredTreeOrigin,
+  FixtureIngestInlineOrigin,
+  count_fixture_origin_production_qualification_mint_sites,
+  count_production_qualification_mint_sites_with_origin,
+  count_production_qualification_mint_sites_with_qualification,
+  execution_measured_production_qualification_baseline,
+  fixture_inferred_tree_origin_mint_site_baseline,
+  fixture_ingest_inline_origin_mint_site_baseline,
+  fixture_origin_production_qualification_baseline,
+  production_qualification_mint_site_cargo_green_inferred_tree,
+  production_qualification_mint_site_for_id,
+  production_qualification_mint_site_source_produced_ingest,
+  production_qualification_mint_site_source_produced_inferred_tree,
+  production_qualification_origin_census_holds,
+  production_routed_mint_site_baseline
+}
+import v2.std.logic { Bool }
+import v2.std.optional { Absent, Present }
+import v2.std.text { String }
+
+data production_qualification_origin_census_witness_note: String = "Fixture-origin production qualification census witnesses (session keen-lark-681): closed registry pins every live SourceProduced/CargoGreen/ProductionRouted mint site and its evidence-origin axis. RED control: a synthetic fourth row would raise fixture-origin count above baseline=3. Parent context: wise-ram-22 witness-evidence-lifecycle step 2 — SourceProduced on ingest vs inferred-tree paths must stay distinguishable before DirectRustDoorProvenanceObservation lands."
+
+test fn witness_production_qualification_origin_census_holds() -> Bool {
+  production_qualification_origin_census_holds()
+}
+
+test fn witness_fixture_origin_production_qualification_count_is_three() -> Bool {
+  count_fixture_origin_production_qualification_mint_sites()
+    == fixture_origin_production_qualification_baseline
+    && count_production_qualification_mint_sites_with_origin(
+      origin: FixtureIngestInlineOrigin
+    ) == fixture_ingest_inline_origin_mint_site_baseline
+    && count_production_qualification_mint_sites_with_origin(
+      origin: FixtureInferredTreeOrigin
+    ) == fixture_inferred_tree_origin_mint_site_baseline
+}
+
+test fn witness_registered_mint_sites_match_fixture_origin_axes() -> Bool {
+  match production_qualification_mint_site_for_id(
+    site_id: production_qualification_mint_site_source_produced_ingest.site_id
+  ) {
+    Present { value: ingest } =>
+      ingest.evidence_origin == FixtureIngestInlineOrigin
+        && ingest.qualification == SourceProduced
+    Absent => false
+  }
+    && match production_qualification_mint_site_for_id(
+      site_id: production_qualification_mint_site_source_produced_inferred_tree.site_id
+    ) {
+      Present { value: inferred } =>
+        inferred.evidence_origin == FixtureInferredTreeOrigin
+          && inferred.qualification == SourceProduced
+      Absent => false
+    }
+    && match production_qualification_mint_site_for_id(
+      site_id: production_qualification_mint_site_cargo_green_inferred_tree.site_id
+    ) {
+      Present { value: cargo } =>
+        cargo.evidence_origin == FixtureInferredTreeOrigin
+          && cargo.qualification == CargoGreen
+      Absent => false
+    }
+}
+
+test fn witness_no_production_routed_mint_sites_at_baseline() -> Bool {
+  count_production_qualification_mint_sites_with_qualification(
+    qualification: ProductionRouted
+  ) == production_routed_mint_site_baseline
+}
+
+data witness_execution_measured_origin_absent_at_baseline_red_note: String = "RED control: execution-measured production qualification mint sites stay zero until witness-realization binds wet verdict digests — fixture-origin must not be the only path."
+
+test fn witness_execution_measured_origin_absent_at_baseline_reds() -> Bool {
+  count_production_qualification_mint_sites_with_origin(
+    origin: ExecutionMeasuredOrigin
+  ) == execution_measured_production_qualification_baseline
+}
