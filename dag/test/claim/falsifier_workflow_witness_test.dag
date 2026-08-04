@@ -8,9 +8,12 @@ import gunbc.falsifier_workflow {
   gunbc_falsifier_job_backstop_timeout_minutes,
   gunbc_falsifier_step_timeout_minutes,
   gunbc_falsifier_step_timeout_basis_is_measured_not_composed,
+  expected_falsifier_yml
+}
+import gunbc.falsifier_run_control {
   gunbc_falsifier_compile_clean_cold_control_timeout_minutes,
   gunbc_falsifier_native_cache_cold_control_timeout_minutes,
-  expected_falsifier_yml
+  falsifier_control_prerequisite_if,
 }
 import gunbc.ci_workflow { gunbc_ci_selection_control_step_timeout_minutes }
 import extdeps.github.actions { ConcurrencyMappingQueueNotMax, CancelInProgressBool }
@@ -131,6 +134,16 @@ test fn falsifier_artifact_path_is_workflow_file() -> Bool {
 
 test fn falsifier_yaml_projection_evaluates() -> Bool {
   length_of(s: expected_falsifier_yml()) > 0
+}
+
+test fn falsifier_cold_control_steps_follow_floor_in_job_order() -> Bool {
+  let steps = falsifier_job_steps()
+  let floor = step_index_of(steps: steps, name: "affected-set falsifier (predict-only cold run)")
+  let compile_clean = step_index_of(steps: steps, name: "compile-clean whole-tree cold control (scoped-PR admission counterpart)")
+  let native_cache = step_index_of(steps: steps, name: "native-cache cold control (warm-tier admission counterpart)")
+  (floor >= 0) && (compile_clean >= 0) && (native_cache >= 0)
+    && (floor < compile_clean)
+    && (compile_clean < native_cache)
 }
 
 fn length_of(s: String) -> Int {

@@ -1,0 +1,70 @@
+module test.claim.falsifier_run_control_witness_test
+
+import std.types { Bool, String, Int }
+import gunbc.falsifier_run_control {
+  falsifier_required_control_roles,
+  falsifier_control_prerequisite_if,
+  ci_containment_prerequisite_if,
+  compile_clean_cold_control_step,
+  native_cache_cold_control_step,
+  ci_containment_compile_clean_cold_control_step,
+  AffectedSetPredictOnlyCold,
+  CompileCleanWholeTreeCold,
+  NativeCacheCold,
+}
+import gunbc.falsifier_workflow { expected_falsifier_yml }
+import gunbc.ci_yaml_emit { expected_ci_yml }
+import extdeps.github.actions { RunStep }
+import gunbc.ci_materialization { step_display_name }
+
+data falsifier_run_control_witness_note: String = "F0 executing consumer (operator mandate 2026-08-04): cold controls must use always()+release_build prerequisite, not default success(). Verified defect on run 30935833427 where steps 13-14 were SKIPPED while step 12 receipt upload PASSED. The closed control-role roster must enumerate exactly three roles so a control cannot silently vanish."
+
+test fn falsifier_required_control_roles_is_closed_population_of_three() -> Bool {
+  count(xs: falsifier_required_control_roles) == 3
+    && falsifier_required_control_roles[0] == AffectedSetPredictOnlyCold
+    && falsifier_required_control_roles[1] == CompileCleanWholeTreeCold
+    && falsifier_required_control_roles[2] == NativeCacheCold
+}
+
+test fn falsifier_cold_controls_use_prerequisite_if_not_default_success() -> Bool {
+  match compile_clean_cold_control_step() {
+    RunStep { if_condition: cc, .. } =>
+      match native_cache_cold_control_step() {
+        RunStep { if_condition: nc, .. } =>
+          match cc {
+            Present { value: s } =>
+              (s == falsifier_control_prerequisite_if)
+                && match nc {
+                  Present { value: s2 } => s2 == falsifier_control_prerequisite_if
+                  _ => false
+                }
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn falsifier_yml_cold_controls_carry_prerequisite_if() -> Bool {
+  string_contains(s: expected_falsifier_yml(), pattern: falsifier_control_prerequisite_if)
+    && string_contains(s: expected_falsifier_yml(), pattern: "release_build")
+}
+
+test fn ci_containment_compile_clean_enrolled_with_prerequisite_if() -> Bool {
+  match ci_containment_compile_clean_cold_control_step() {
+    RunStep { if_condition: c, .. } =>
+      match c {
+        Present { value: s } => s == ci_containment_prerequisite_if
+        _ => false
+      }
+    _ => false
+  }
+    && string_contains(s: expected_ci_yml(), pattern: "F0 containment")
+    && string_contains(s: expected_ci_yml(), pattern: ci_containment_prerequisite_if)
+}
+
+test fn falsifier_prerequisite_if_discriminates_from_bare_always() -> Bool {
+  falsifier_control_prerequisite_if != "always()"
+    && string_contains(s: falsifier_control_prerequisite_if, pattern: "release_build")
+}

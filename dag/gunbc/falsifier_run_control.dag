@@ -1,0 +1,128 @@
+module gunbc.falsifier_run_control
+
+import std.types { String, NonEmptyStr, List, Int }
+import extdeps.languages.yaml.types { yaml_string, kv }
+import extdeps.github.actions { Step, RunStep }
+import gunbc.ci_layer_roots { witness_layer_roots }
+import gunbc.cli_invoke {
+  CiPlanArtifactPlan,
+  FalsifierNativeCacheColdPlan,
+  claim_executor_run_plan_shell,
+}
+import gunbc.merge_admission_produce { ci_repo_root_shell }
+import v2.std.collection { Absent }
+
+type FalsifierControlRole
+  = AffectedSetPredictOnlyCold
+  | CompileCleanWholeTreeCold
+  | NativeCacheCold
+
+data falsifier_run_control_note: String = "Closed population of required falsifier control roles (F0, operator mandate 2026-08-04). A control cannot silently vanish because a step was renamed or moved — the roster is the authority the totality receipt (F1) and alert router consume. Three defects repaired as one program: (1) workload instability in the predict-only cold floor, (2) control dependency where later controls inherit default success() and skip when an earlier step reds, (3) alert totality where the early floor-component receipt denominator stops at floor batches. This module owns the RUN-LEVEL control model; floor_component_receipt owns batch-grain rows inside the affected-set control."
+
+fn falsifier_control_role_label(role: FalsifierControlRole) -> NonEmptyStr {
+  match role {
+    AffectedSetPredictOnlyCold => "affected-set predict-only cold" as NonEmptyStr
+    CompileCleanWholeTreeCold => "compile-clean whole-tree cold" as NonEmptyStr
+    NativeCacheCold => "native-cache cold" as NonEmptyStr
+  }
+}
+
+data falsifier_required_control_roles: List<FalsifierControlRole> = [
+  AffectedSetPredictOnlyCold,
+  CompileCleanWholeTreeCold,
+  NativeCacheCold
+]
+
+data falsifier_release_build_step_id: String = "release_build"
+
+data falsifier_control_prerequisite_if: String = "always() && !cancelled() && steps.release_build.outcome == 'success'"
+
+data falsifier_control_prerequisite_note: String = "Cold controls execute after the affected-set control CONCLUDES, not after it succeeds — provided checkout, toolchain, and release binaries succeeded. always() lifts the default success() gate that skipped compile-clean and native-cache whenever the predict-only floor reddened (verified run 30935833427: steps 13-14 SKIPPED while step 12 receipt upload PASSED via its own always()). The release_build prerequisite refuses when binaries were never built; it does NOT require the floor step to succeed."
+
+data gunbc_falsifier_compile_clean_cold_control_timeout_minutes: Int = 30
+
+data gunbc_falsifier_compile_clean_cold_control_note: String = "Compile-clean whole-tree cold control (2026-07-16, lands with the per-PR import-closure scoping in tools.dag_compile_clean_scope): PR floors now compile only the affected entry closure, and main pushes already skip on an empty diff — so this step is the deterministic whole-tree execution of the compile-clean gate, on the falsifier cadence, mirroring how the predict-only cold run controls witness selection. GUNBC_CI_COMPILE_CLEAN_COLD_CONTROL=1 forces the scope plan to WholeTree before any diff observation (a widen-to-more-checking control arm, not an escape hatch — it can only force the gate to run in full). Plan function gunbc_ci_plan_artifact_batches is batch 1 of the floor schedule: exactly the compile-clean anchor through the same executor path that installs and consumes the in-run compile receipt. F0 (2026-08-04): if_condition uses falsifier_control_prerequisite_if so this control runs even when the predict-only floor reddens."
+
+fn compile_clean_cold_control_invoke() -> String {
+  concat(
+    concat("ROOT=", concat(ci_repo_root_shell(), "\n")),
+    claim_executor_run_plan_shell(
+      source_roots: witness_layer_roots,
+      plan_entry: "src/v2/workflow/ci_floor_plan.dag",
+      plan_function: CiPlanArtifactPlan,
+      notice_title: Absent,
+      rooted: false
+    )
+  )
+}
+
+fn compile_clean_cold_control_step() -> Step {
+  RunStep {
+    name: Present { value: "compile-clean whole-tree cold control (scoped-PR admission counterpart)" },
+    id: none,
+    run: compile_clean_cold_control_invoke(),
+    shell: none,
+    env: Present {
+      value: [kv(key: "GUNBC_CI_COMPILE_CLEAN_COLD_CONTROL", value: yaml_string(s: "1"))]
+    },
+    working_directory: none,
+    if_condition: Present { value: falsifier_control_prerequisite_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_falsifier_compile_clean_cold_control_timeout_minutes }
+  }
+}
+
+data gunbc_falsifier_native_cache_cold_control_timeout_minutes: Int = 30
+
+data gunbc_falsifier_native_cache_cold_control_note: String = "Native-cache cold control (P6 durable-cache rail, 2026-07-21): the nightly Wet emit-on-demand/self-host receipt batch re-executed with GUNBC_CI_NATIVE_CACHE_COLD_CONTROL=1, which makes emit_host_run_transport_cached ignore every .native_ready marker — the full emit+cargo+run chain runs cold on the falsifier cadence while the main falsifier_step's run of the same batch stays warm (the warm-rate receipt the per-PR enrollment decision reads). Widen-to-more-checking control arm, not an escape hatch: the env can only force the transport to do MORE work, never skip it. Mirrors compile_clean_cold_control_step. F0 (2026-08-04): if_condition uses falsifier_control_prerequisite_if so this control runs even when the predict-only floor reddens. SERIAL after compile-clean — must not compete for memory with the dying floor control."
+
+fn native_cache_cold_control_invoke() -> String {
+  concat(
+    concat("ROOT=", concat(ci_repo_root_shell(), "\n")),
+    claim_executor_run_plan_shell(
+      source_roots: witness_layer_roots,
+      plan_entry: "src/v2/workflow/ci_floor_plan.dag",
+      plan_function: FalsifierNativeCacheColdPlan,
+      notice_title: Absent,
+      rooted: false
+    )
+  )
+}
+
+fn native_cache_cold_control_step() -> Step {
+  RunStep {
+    name: Present { value: "native-cache cold control (warm-tier admission counterpart)" },
+    id: none,
+    run: native_cache_cold_control_invoke(),
+    shell: none,
+    env: Present {
+      value: [kv(key: "GUNBC_CI_NATIVE_CACHE_COLD_CONTROL", value: yaml_string(s: "1"))]
+    },
+    working_directory: none,
+    if_condition: Present { value: falsifier_control_prerequisite_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_falsifier_native_cache_cold_control_timeout_minutes }
+  }
+}
+
+data ci_containment_compile_clean_cold_control_note: String = "F0 containment (operator mandate 2026-08-04): until the falsifier cadence reliably runs compile-clean whole-tree cold control, EVERY merge candidate and main push runs it here — the control that must run is NOT the one that is dying (step 11 predict-only floor), and step 13 succeeded in the last healthy falsifier run 30793942277. Dissolve-on: falsifier cadence restores reliable compile-clean execution and this per-PR step deletes. Runs after the scoped floor concludes (always), provided release bins unpacked successfully."
+
+data ci_release_bins_step_id: String = "release_bins"
+
+data ci_containment_prerequisite_if: String = "always() && !cancelled() && steps.release_bins.outcome == 'success'"
+
+fn ci_containment_compile_clean_cold_control_step() -> Step {
+  RunStep {
+    name: Present { value: "compile-clean whole-tree cold control (F0 containment — every merge candidate)" },
+    id: none,
+    run: compile_clean_cold_control_invoke(),
+    shell: none,
+    env: Present {
+      value: [kv(key: "GUNBC_CI_COMPILE_CLEAN_COLD_CONTROL", value: yaml_string(s: "1"))]
+    },
+    working_directory: none,
+    if_condition: Present { value: ci_containment_prerequisite_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_falsifier_compile_clean_cold_control_timeout_minutes }
+  }
+}

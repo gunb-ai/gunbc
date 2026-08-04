@@ -45,6 +45,10 @@ import std.disposition { Disposition, RealizationDispatch, Scaffold, SingleAutho
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.types { Duration }
 import gunbc.repo_identity { gunbc_default_branch_name }
+import gunbc.falsifier_run_control {
+  ci_containment_compile_clean_cold_control_step,
+  gunbc_falsifier_compile_clean_cold_control_timeout_minutes,
+}
 import extdeps.github.actions {
   Workflow, Job, Step, RunStep, UsesStep,
   WorkflowTrigger, Push, PullRequest, WorkflowDispatch, MergeGroup,
@@ -309,7 +313,7 @@ fn ci_v1_compiler_tests_compile_gate_step() -> Step {
 fn ci_release_build_step() -> Step {
   RunStep {
     name: Present { value: "Build release bins (claim_executor + gunbc)" },
-    id: none,
+    id: Present { value: "release_build" },
     run: ci_release_build_script(),
     shell: none,
     env: none,
@@ -391,7 +395,7 @@ fn ci_release_bins_download_step() -> Step {
 fn ci_release_bins_unpack_verify_step() -> Step {
   RunStep {
     name: Present { value: "Unpack + verify release bins (claim_executor --verify-build-artifacts; fail-closed)" },
-    id: none,
+    id: Present { value: "release_bins" },
     run: ci_release_bins_unpack_verify_script(),
     shell: none,
     env: none,
@@ -506,7 +510,7 @@ fn gunbc_ci_build_job_backstop_timeout_minutes() -> Int {
 data gunbc_ci_receipt_gate_steps_moved_in_executor_note: String = "The resolve-receipt and materialization-receipt gate STEPS are deleted (ruling 2026-07-30): their laws — resolves_total equals the declared count, and the materialization receipt exists/parses/keyed nonzero — now run INSIDE claim_executor as ordinary-floor finalization (run_walk, FloorFinalization), so a receipt-law violation blocks every on-success stage instead of redding a step AFTER admission had already stamped. The two aux terms leave the backstop sum in the same motion, keeping it the exact step-sum + prelude the witness pins. The receipt FILES keep writing — they are observability the falsifier and operators read — only the shell re-validation of them is gone, because keeping it would be a second representation of the floor-completion rule."
 
 fn gunbc_ci_job_backstop_timeout_minutes() -> Int {
-  gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_workflow_wrapper_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
+  gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_workflow_wrapper_timeout_minutes + gunbc_falsifier_compile_clean_cold_control_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
 }
 
 fn gunbc_ci_regen_job_backstop_timeout_minutes() -> Int {
@@ -684,7 +688,7 @@ fn ci_job() -> Job {
     id: "ci",
     name: none,
     runner: gunbc_ci_selected_runner_spec(),
-    steps: concat(ci_floor_job_prelude_steps(), [ci_release_bins_download_step(), ci_release_bins_unpack_verify_step(), ci_floor_peak_pre_step(), ci_floor_step(), ci_floor_peak_post_step()]),
+    steps: concat(ci_floor_job_prelude_steps(), [ci_release_bins_download_step(), ci_release_bins_unpack_verify_step(), ci_floor_peak_pre_step(), ci_floor_step(), ci_containment_compile_clean_cold_control_step(), ci_floor_peak_post_step()]),
     needs: ["build", "regen"],
     env: none,
     outputs: none,
