@@ -1,0 +1,106 @@
+module extdeps.npm
+
+import std.types { NonEmptyStr, String, Bool, List }
+import std.integer { UInt8 }
+import std.encoding { base64_decode, Standard }
+import std.content_hash {
+  ContentHash,
+  Sha512Digest,
+  sha512_hex_digest,
+  as_content_hash_sha512,
+}
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.numeric.base16 { byte_hex_lower }
+import extdeps.version { VersionIdentity }
+import extdeps.pin { Pin, ExactPin }
+import extdeps.package {
+  PackageCoordinate,
+  PackageArtifactSource,
+  PackageSelection,
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.npmjs.com/cli/v10/configuring-npm/package-lock-json"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.npm",
+      decl_name: "NpmRegistry",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data npm_sri_wire_note: String = "npm package integrity uses Subresource Integrity wire form sha512-<base64> on each lock entry (package-lock v3 packages.*.integrity). Canonical ContentHash storage is lowercase hex via std.content_hash.Sha512Digest — the same 128-digit carrier as extdeps.container.oci.digest OciSha512DigestHex. This module owns the npm-specific base64 wire parser; std.content_hash owns the hex family member."
+
+type NpmRegistry {
+  registry: NonEmptyStr
+}
+
+type NpmLockPathKey = NonEmptyStr
+
+type NpmDependencyKind
+  = NpmRuntimeDependency
+  | NpmDevDependency
+  | NpmOptionalDependency
+
+type NpmLockNodeMetadata {
+  has_install_script: Bool
+  optional: Bool
+}
+
+type NpmManagerIdentity {
+  lockfile_version: NonEmptyStr
+  npm_version: NonEmptyStr
+}
+
+fn npm_octets_to_lower_hex(octets: List<UInt8>) -> String {
+  map(octets, octet => byte_hex_lower(v: octet)) |> join(separator: "")
+}
+
+fn npm_subresource_integrity_sha512_base64(wire: String) -> ContentHash? {
+  if !wire.starts_with(prefix: "sha512-") {
+    none
+  } else {
+    let encoded = wire.substring(start: 7, end: wire.length())
+    match base64_decode(s: encoded, variant: Standard) {
+      Present { value: octets } =>
+        if count(octets) == 64 {
+          match sha512_hex_digest(hex: npm_octets_to_lower_hex(octets: octets)) {
+            Present { value: digest } =>
+              Present { value: as_content_hash_sha512(digest: digest) }
+            Absent => none
+          }
+        } else {
+          none
+        }
+      Absent => none
+    }
+  }
+}
+
+fn npm_selection(
+  name: NonEmptyStr,
+  version: NonEmptyStr,
+  identity: ContentHash,
+  locator: NonEmptyStr,
+) -> PackageSelection<NpmRegistry> {
+  PackageSelection {
+    pin: Pin {
+      subject: PackageCoordinate { ecosystem: NpmRegistry { registry: "npmjs" as NonEmptyStr }, name: name },
+      version: version as VersionIdentity,
+      expected_identity: identity,
+      selection: ExactPin,
+    },
+    source: PackageArtifactSource { locator: locator },
+  }
+}
