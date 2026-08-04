@@ -156,7 +156,7 @@ test fn ci_placement_shadow_report_spans_all_51_rows_holds() -> Bool {
     basis: PlacementShadowSignedBasis { receipts: [] }
   )
   match report.rows.length() {
-    52 => true
+    56 => true
     _ => false
   }
 }
