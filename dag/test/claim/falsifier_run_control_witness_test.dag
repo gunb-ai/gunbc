@@ -15,7 +15,6 @@ import gunbc.falsifier_run_control {
 import gunbc.falsifier_workflow { expected_falsifier_yml }
 import gunbc.ci_yaml_emit { expected_ci_yml }
 import extdeps.github.actions { RunStep }
-import gunbc.ci_materialization { step_display_name }
 
 data falsifier_run_control_witness_note: String = "F0 executing consumer (operator mandate 2026-08-04): cold controls must use always()+release_build prerequisite, not default success(). Verified defect on run 30935833427 where steps 13-14 were SKIPPED while step 12 receipt upload PASSED. The closed control-role roster must enumerate exactly three roles so a control cannot silently vanish."
 

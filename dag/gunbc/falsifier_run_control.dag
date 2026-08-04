@@ -35,7 +35,7 @@ data falsifier_required_control_roles: List<FalsifierControlRole> = [
 
 data falsifier_release_build_step_id: String = "release_build"
 
-data falsifier_control_prerequisite_if: String = "always() && !cancelled() && steps.release_build.outcome == 'success'"
+data falsifier_control_prerequisite_if: String = concat("always() && !cancelled() && steps.", concat(falsifier_release_build_step_id, ".outcome == 'success'"))
 
 data falsifier_control_prerequisite_note: String = "Cold controls execute after the affected-set control CONCLUDES, not after it succeeds — provided checkout, toolchain, and release binaries succeeded. always() lifts the default success() gate that skipped compile-clean and native-cache whenever the predict-only floor reddened (verified run 30935833427: steps 13-14 SKIPPED while step 12 receipt upload PASSED via its own always()). The release_build prerequisite refuses when binaries were never built; it does NOT require the floor step to succeed."
 
@@ -109,7 +109,7 @@ data ci_containment_compile_clean_cold_control_note: String = "F0 containment (o
 
 data ci_release_bins_step_id: String = "release_bins"
 
-data ci_containment_prerequisite_if: String = "always() && !cancelled() && steps.release_bins.outcome == 'success'"
+data ci_containment_prerequisite_if: String = concat("always() && !cancelled() && steps.", concat(ci_release_bins_step_id, ".outcome == 'success'"))
 
 fn ci_containment_compile_clean_cold_control_step() -> Step {
   RunStep {

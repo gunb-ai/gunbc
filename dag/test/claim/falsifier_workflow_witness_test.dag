@@ -146,6 +146,22 @@ test fn falsifier_cold_control_steps_follow_floor_in_job_order() -> Bool {
     && (compile_clean < native_cache)
 }
 
+data ci_containment_step_name: String = "compile-clean whole-tree cold control (F0 containment — every merge candidate)"
+
+test fn ci_containment_follows_floor_in_job_order() -> Bool {
+  let steps = ci_job_steps()
+  let floor = step_index_of(steps: steps, name: "gunbc ci (.dag witnesses + gates)")
+  let containment = step_index_of(steps: steps, name: ci_containment_step_name)
+  let peak_post = step_index_of(steps: steps, name: "Floor cgroup peak post-read (calibration; survives a killed floor)")
+  (floor >= 0) && (containment >= 0) && (peak_post >= 0)
+    && (floor < containment)
+    && (containment < peak_post)
+}
+
+test fn ci_containment_enrolled_exactly_once_on_ci_job() -> Bool {
+  step_count_named(steps: ci_job_steps(), name: ci_containment_step_name) == 1
+}
+
 fn length_of(s: String) -> Int {
   s.length()
 }
