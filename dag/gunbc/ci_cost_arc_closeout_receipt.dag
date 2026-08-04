@@ -1,0 +1,212 @@
+module gunbc.ci_cost_arc_closeout_receipt
+
+import std.types { Bool, NonEmptyStr }
+import std.nat { Nat }
+import std.measure {
+  Millisecond,
+  ByteSize,
+  millisecond,
+  millisecond_count,
+  byte_size,
+  measure_add,
+}
+
+type HarvestKind
+  = HandHarvestedDatedAudit {}
+
+type AffectedSelection
+  = SelectionApplied {}
+
+type AffectedCiCostAuditSubject {
+  harvest: HarvestKind,
+  github_actions_run_id: Nat,
+  head_commit: NonEmptyStr,
+  job_name: NonEmptyStr,
+  selection: AffectedSelection,
+}
+
+type FullCorpusSubjectHarvest
+  = NotHarvested {}
+
+type AdmissionSettle
+  = CaptureMeasuredNetOpen {}
+
+type NativeFleetSettle
+  = EnrollmentLandedFleetRateOpen {}
+
+type WarmHitSettle
+  = PartiallyDeliveredSkipProofOpen {}
+
+type RetentionSettle
+  = ClosedReject {}
+
+type UnionSettle
+  = ClosedNoRepeatedTypecheck {}
+
+type SelectionHonestySettle
+  = Landed {}
+
+type EndToEndResidual
+  = UnattributedCiJobWall {}
+
+type CompilerNextMeasuredTarget
+  = PerEntryAssembly {}
+
+fn affected_ci_cost_audit_subject() -> AffectedCiCostAuditSubject {
+  AffectedCiCostAuditSubject {
+    harvest: HandHarvestedDatedAudit {},
+    github_actions_run_id: 30863019228,
+    head_commit: "ed9785817ed8" as NonEmptyStr,
+    job_name: "ci" as NonEmptyStr,
+    selection: SelectionApplied {},
+  }
+}
+
+fn full_corpus_subject_harvest() -> FullCorpusSubjectHarvest {
+  NotHarvested {}
+}
+
+fn build_wall() -> Millisecond {
+  millisecond(count: 237000)
+}
+
+fn regen_wall() -> Millisecond {
+  millisecond(count: 510000)
+}
+
+fn ci_job_wall() -> Millisecond {
+  millisecond(count: 2509000)
+}
+
+fn pipeline_sum_wall() -> Millisecond {
+  measure_add(a: measure_add(a: build_wall(), b: regen_wall()), b: ci_job_wall())
+}
+
+fn capture_wall() -> Millisecond {
+  millisecond(count: 110820)
+}
+
+fn discovery_resolve_wall() -> Millisecond {
+  millisecond(count: 431122)
+}
+
+fn discovery_eval_wall() -> Millisecond {
+  millisecond(count: 65016)
+}
+
+fn classified_ci_wall() -> Millisecond {
+  measure_add(
+    a: measure_add(a: capture_wall(), b: discovery_resolve_wall()),
+    b: discovery_eval_wall()
+  )
+}
+
+fn unattributed_ci_wall() -> Millisecond {
+  millisecond(count: millisecond_count(m: ci_job_wall()) - millisecond_count(m: classified_ci_wall()))
+}
+
+fn cold_admission_baseline_wall() -> Millisecond {
+  millisecond(count: 197130)
+}
+
+fn selected_entry_groups() -> Nat {
+  297
+}
+
+fn total_entry_groups() -> Nat {
+  916
+}
+
+fn discovery_witness_total() -> Nat {
+  6610
+}
+
+fn discovery_witness_skipped() -> Nat {
+  4174
+}
+
+fn discovery_witness_deferred() -> Nat {
+  1020
+}
+
+fn floor_drain_peak_rss() -> ByteSize {
+  byte_size(count: 8513646592)
+}
+
+fn calibration_floor_peak_rss() -> ByteSize {
+  byte_size(count: 10821181440)
+}
+
+fn capture_swap_after() -> Nat {
+  0
+}
+
+fn assembly_symbol_index_merge_wall() -> Millisecond {
+  millisecond(count: 65161)
+}
+
+fn assembly_root_symbol_index_wall() -> Millisecond {
+  millisecond(count: 32084)
+}
+
+fn assembly_rewire_import_str_wall() -> Millisecond {
+  millisecond(count: 164938)
+}
+
+fn assembly_symbol_index_wall() -> Millisecond {
+  millisecond(count: 43675)
+}
+
+fn assembly_root_variant_base_wall() -> Millisecond {
+  millisecond(count: 14178)
+}
+
+fn admission_settle() -> AdmissionSettle {
+  CaptureMeasuredNetOpen {}
+}
+
+fn native_fleet_settle() -> NativeFleetSettle {
+  EnrollmentLandedFleetRateOpen {}
+}
+
+fn warm_hit_settle() -> WarmHitSettle {
+  PartiallyDeliveredSkipProofOpen {}
+}
+
+fn retention_settle() -> RetentionSettle {
+  ClosedReject {}
+}
+
+fn union_settle() -> UnionSettle {
+  ClosedNoRepeatedTypecheck {}
+}
+
+fn selection_honesty_settle() -> SelectionHonestySettle {
+  Landed {}
+}
+
+fn end_to_end_residual() -> EndToEndResidual {
+  UnattributedCiJobWall {}
+}
+
+fn compiler_next_measured_target() -> CompilerNextMeasuredTarget {
+  PerEntryAssembly {}
+}
+
+fn ci_job_wall_reconciles() -> Bool {
+  let job = millisecond_count(m: ci_job_wall())
+  let parts = millisecond_count(m: classified_ci_wall()) + millisecond_count(m: unattributed_ci_wall())
+  job == parts
+}
+
+fn pipeline_sum_reconciles() -> Bool {
+  let sum = millisecond_count(m: pipeline_sum_wall())
+  let parts = millisecond_count(m: build_wall()) + millisecond_count(m: regen_wall()) + millisecond_count(m: ci_job_wall())
+  sum == parts
+}
+
+fn classified_equals_capture_resolve_eval() -> Bool {
+  let classified = millisecond_count(m: classified_ci_wall())
+  let parts = millisecond_count(m: capture_wall()) + millisecond_count(m: discovery_resolve_wall()) + millisecond_count(m: discovery_eval_wall())
+  classified == parts
+}
