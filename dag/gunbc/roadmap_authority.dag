@@ -647,6 +647,57 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The decision function plus worked none/one/many examples actually run, with the malformed-population and wrong-role refusals executing."
       )
     ),
+    active_sized(
+      identity: "rn_7QF3M2KDX8VNAT6JWZR0PC5HY",
+      id: "namespace-structural-observations",
+      owner: "namespace",
+      path: "docs/plans/namespace-unique-on-chain-operational-plan.md",
+      intricacy: IntricacyHigh,
+      volume: VolumeMedium,
+      t: fields(
+        headline: "Work out what a name can see from where it is written, inside one file",
+        boundary: "Make an ordinary compiled path produce, for each name written in a file, the declarations actually in view from that position, and record which one answered. Four cases, each shown on its own: an ordinary neighbour written earlier in the same file is in view; a declaration inside a different branch of a decision is not; a declaration written further down is not; and two declarations spelled the same at genuinely different positions stay distinct rather than merging.",
+        displaced_cost: "The parser walk that can answer this already exists and is switched on, but nothing in an ordinary compile asks it. Until it is asked on a real compile, every claim about what a name can see rests on hand-built examples, and the four rules above are asserted rather than observed.",
+        first_slice: "Write the closing check for this row first, then make one ordinary compiled file produce all four observations through it.",
+        red_control: "Each of the four cases fails on its own when the rule is broken: a neighbour written earlier goes missing, a declaration from another branch leaks in, one written further down leaks in, or two same-spelled declarations merge into one.",
+        out_of_scope: "Names answered by another file, and working out what a file depends on — both belong to the next row. Does not change the check that closes the parent row, and does not stand in for the cases it does not cover.",
+        handback: "One ordinary compiled file producing all four observations, each case shown failing on its own, and the closing check written and bound."
+      )
+    ),
+    active_sized(
+      identity: "rn_4LT9SBW1EGKM3XQPZ7DVNC02J",
+      id: "namespace-cross-file-provenance",
+      owner: "namespace",
+      path: "docs/plans/namespace-unique-on-chain-operational-plan.md",
+      intricacy: IntricacyHigh,
+      volume: VolumeLarge,
+      t: fields(
+        headline: "Answer names that live in another file, and derive what each file depends on",
+        boundary: "Work out, for a name whose answer lives in another file, which declaration answers it, then derive from those answers what the file depends on. Keep two separate results: for every mention, which declaration answered it; and for the file, the set of distinct files it depends on. Repeated mentions of one target collapse only in the second.",
+        displaced_cost: "What a file depends on is written out by hand today, so it can disagree with what the file actually refers to. Hundreds of files were patched by hand to keep the two in step — work that should never have existed, because what a file depends on follows from what it refers to.",
+        first_slice: "Write the closing check for this row first, then answer one name across a file boundary and derive that file's dependencies from the answers alone.",
+        red_control: "Two mentions of one target give one dependency but stay two separate records of which mention produced it; and no dependency appears that no name asked for.",
+        out_of_scope: "No hand-written dependency statements, no falling back to searching everything currently loaded, and no discarding which particular mention produced which dependency. The same-file rules belong to the previous row.",
+        handback: "One file's dependencies derived from its answers alone, matching what was written by hand, with both results kept separate and the closing check written and bound."
+      )
+    ),
+    active_sized(
+      identity: "rn_9WK5DZP6TAY2QN8XFVB13JMHR",
+      id: "namespace-pool-independence",
+      owner: "namespace",
+      path: "docs/plans/namespace-unique-on-chain-operational-plan.md",
+      intricacy: IntricacyHigh,
+      volume: VolumeMedium,
+      t: fields(
+        headline: "Loading an unrelated file must not change any answer",
+        boundary: "Run the same source twice — once with an unrelated file loaded alongside it, once without — and compare the whole result: which declaration each name answered to, which mention produced which dependency, what the file depends on, and which names refused. Nothing may differ.",
+        displaced_cost: "Names currently resolve partly by luck: a file's names find their targets when some unrelated file elsewhere happens to have pulled those targets in. That makes every green result conditional on what else was loaded, and it is why removing dependency statements had to be stopped across the whole repository.",
+        first_slice: "Write the closing check for this row first, then run one source under both pools and compare the full result.",
+        red_control: "A perturbation that changes which declaration a name answered to is caught even when the set of files depended on happens to come out the same.",
+        out_of_scope: "Does not compare only the list of files depended on — that alone can hide a changed answer underneath an unchanged list.",
+        handback: "One source run under both pools with the full result identical, and a planted difference shown being caught."
+      )
+    ),
     with_execution(active_large(
       identity: "rn_G0299VOOIL1XOOSXY3J4YUYDLH",
       id: "namespace-reference-derived-closure",
@@ -656,7 +707,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         headline: "Work out what each name can see, and let that be what a file depends on",
         boundary: "From where a name is written, work outward to every declaration actually in view — including ordinary neighbours in the same file — respecting where things were written relative to each other. Then record, for each name, exactly which declaration answered it, and derive what each file depends on from those answers.",
         displaced_cost: "What a file depends on is currently written out by hand as a separate statement, so it can disagree with what the file actually refers to. Hundreds of files were patched by hand to keep those two in step, which is work that should never have existed: what a file depends on is a consequence of what it refers to, not a second thing to maintain.",
-        first_slice: "One ordinary production file: work out what each name in it can see, bind each name, and derive the file's dependencies from those bindings alone.",
+        first_slice: "Admit all six observations from the three rows in front of this one through the existing check, retire the expecting-red enrolment, and close the row.",
         red_control: "A neighbour in the same file is in view; something inside a different branch of a decision is not; something written further down is not; the same name written twice in genuinely different places stays ambiguous; repeated mentions of one thing collapse to a single dependency; and nothing depends on an unrelated file happening to be loaded at the same time.",
         out_of_scope: "No hand-written dependency statements, no falling back to searching everything that happens to be loaded, no mass edits across the repository, and no throwing away which particular name produced which dependency.",
         handback: "The derived dependencies for one real file, matching what was written by hand, with each of the red controls actually run."
@@ -1558,6 +1609,24 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         red_control: "An accepted request with no observed session never displays as running or finished.",
         out_of_scope: "Observation never changes the roadmap.",
         handback: "The four observations plus a stale-state refresh."
+      )
+    ),
+
+    active_sized(
+      identity: "rn_2NDX8VQ4KJ7ZTBM5WGPRAF06L",
+      id: "roadmap-receipt-continuity",
+      owner: "roadmap-runtime",
+      path: "docs/plans/roadmap-workspace-ux-plan.md",
+      intricacy: IntricacyMedium,
+      volume: VolumeSmall,
+      t: fields(
+        headline: "An accepted thing cannot quietly become unaccepted again",
+        boundary: "Compare the acceptance records held before a change against those held after. A record that was valid and is now gone refuses, unless a revocation names the exact item, the exact record being withdrawn, a reason, and what follows from it. Rewriting an item's pass/fail test while keeping its record is the existing digest path and is not a withdrawal.",
+        displaced_cost: "An accepted fact that goes missing puts an item back on the board as if it had never been done, and the only way anyone notices is by redoing the work. That happened: a branch spent real effort reconstructing an acceptance record that already existed, because nothing refused when it went absent.",
+        first_slice: "Write the closing check for this row first, then compare the two populations across one real change.",
+        red_control: "A removed record with no withdrawal refuses; a kept record passes; a removal with its exact matching withdrawal passes; a withdrawal naming a different item or a different record refuses; a withdrawal with nothing removed refuses; two withdrawals claiming one removal refuse; and rewriting a pass/fail test with the record kept stays on the digest path.",
+        out_of_scope: "Not the check for items that never had a closing test — that already exists and finds a different thing. Does not decide whether any particular withdrawal was a good idea.",
+        handback: "The comparison running over one real change, with each of the listed cases shown separately, and the closing check written and bound."
       )
     ),
 
