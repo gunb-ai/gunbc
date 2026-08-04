@@ -1,0 +1,209 @@
+module gunbc.heal_push_plan
+
+import std.types { NonEmptyStr, String, List }
+import extdeps.github.app { GitHubAppPermissionName }
+import extdeps.github.effect {
+  GitHubEffect,
+  AdvanceRepositoryBranch,
+  GitHubRepositoryRef,
+  GitBranchRef,
+  RepositoryPath,
+  is_workflow_projection_path
+}
+import extdeps.github.actions_token { workflows_permission_name }
+import gunbc.auth.github_apps { GitHubAppControlPlaneState }
+import gunbc.auth.github_credential {
+  GitHubCredentialAuthority,
+  CredentialCapability,
+  CredentialGrants,
+  CredentialKindCannotSatisfy,
+  CredentialGrantNotObserved,
+  credential_authorizes,
+  unsatisfied_capabilities,
+  live_heal_push_credential,
+  live_heal_control_plane
+}
+import gunbc.generated_artifact {
+  GeneratedArtifact,
+  artifact_path,
+  committed_generated_artifacts
+}
+import gunbc.repository { gunbc_repository }
+
+data heal_push_plan_authority_note: String = "WHETHER A GENERATED ARTIFACT CAN BE AUTO-PUSHED IS A RELATION, NOT A PROPERTY OF THE ARTIFACT. It holds among the artifact's repository path, the branch being advanced, the credential selected for that push, and the provider state observed for that credential. gunbc.generated_artifact owns what each artifact IS and where it lives; this module owns whether a particular writer, holding a particular credential, may advance the branch with it. The prior cut asked artifact_heal_policy(a) with no credential argument, which is why it could answer for a token it had never been shown.\\n\\nThe live answer today: the heal job pushes with the Actions job credential, GitHub's permissions vocabulary has no workflows key at all, so advancing the branch over .github/workflows/** is CredentialKindCannotSatisfy — structurally unauthorized rather than pending a grant. Those paths therefore stay author-commit-required, which is the same population the emitted heal script staged before this recut; the derivation changed, the bytes did not."
+
+data heal_branch_placeholder: GitBranchRef = GitBranchRef { name: "refs/heads/attempt" }
+
+data heal_repository: GitHubRepositoryRef = GitHubRepositoryRef {
+  owner: gunbc_repository.owner,
+  name: gunbc_repository.name
+}
+
+fn artifact_repository_path(a: GeneratedArtifact) -> RepositoryPath {
+  RepositoryPath { value: artifact_path(a: a) }
+}
+
+fn advance_branch_effect(paths: List<RepositoryPath>) -> GitHubEffect {
+  AdvanceRepositoryBranch {
+    repository: heal_repository,
+    branch: heal_branch_placeholder,
+    changed_paths: paths
+  }
+}
+
+fn artifact_push_authorized(
+  a: GeneratedArtifact,
+  authority: GitHubCredentialAuthority,
+  control_plane: GitHubAppControlPlaneState
+) -> Bool {
+  credential_authorizes(
+    authority: authority,
+    control_plane: control_plane,
+    effect: advance_branch_effect(paths: [artifact_repository_path(a: a)])
+  )
+}
+
+type HealPushRefusal
+  = PushCredentialKindCannotSatisfy {
+      paths: List<RepositoryPath>
+      missing: GitHubAppPermissionName
+    }
+  | PushCredentialGrantNotObserved {
+      paths: List<RepositoryPath>
+      missing: GitHubAppPermissionName
+    }
+
+type HealPushPlan
+  = HealPushNothingToDo
+  | HealPushReady { artifacts: List<GeneratedArtifact> }
+  | HealPushPartial {
+      ready: List<GeneratedArtifact>
+      refused: List<GeneratedArtifact>
+      cause: HealPushRefusal
+    }
+  | HealPushRefused {
+      refused: List<GeneratedArtifact>
+      cause: HealPushRefusal
+    }
+
+fn first_refusal_cause(
+  refused: List<GeneratedArtifact>,
+  authority: GitHubCredentialAuthority,
+  control_plane: GitHubAppControlPlaneState
+) -> HealPushRefusal {
+  let paths = map(refused, a => artifact_repository_path(a: a))
+  let unsatisfied = unsatisfied_capabilities(
+    authority: authority,
+    control_plane: control_plane,
+    effect: advance_branch_effect(paths: paths)
+  )
+  fold_list(
+    xs: unsatisfied,
+    empty: PushCredentialGrantNotObserved { paths: paths, missing: workflows_permission_name },
+    cons: fn(acc, c) {
+      match c {
+        CredentialKindCannotSatisfy { missing } =>
+          PushCredentialKindCannotSatisfy { paths: paths, missing: missing }
+        CredentialGrantNotObserved { missing } =>
+          match acc {
+            PushCredentialKindCannotSatisfy { paths: _, missing: _ } => acc
+            PushCredentialGrantNotObserved { paths: _, missing: _ } =>
+              PushCredentialGrantNotObserved { paths: paths, missing: missing }
+          }
+        CredentialGrants => acc
+      }
+    }
+  )
+}
+
+fn plan_heal_push(
+  artifacts: List<GeneratedArtifact>,
+  authority: GitHubCredentialAuthority,
+  control_plane: GitHubAppControlPlaneState
+) -> HealPushPlan {
+  let ready = filter(artifacts, a => artifact_push_authorized(a: a, authority: authority, control_plane: control_plane))
+  let refused = filter(artifacts, a => !artifact_push_authorized(a: a, authority: authority, control_plane: control_plane))
+  if count(artifacts) == 0 {
+    HealPushNothingToDo
+  } else if count(refused) == 0 {
+    HealPushReady { artifacts: ready }
+  } else if count(ready) == 0 {
+    HealPushRefused {
+      refused: refused,
+      cause: first_refusal_cause(refused: refused, authority: authority, control_plane: control_plane)
+    }
+  } else {
+    HealPushPartial {
+      ready: ready,
+      refused: refused,
+      cause: first_refusal_cause(refused: refused, authority: authority, control_plane: control_plane)
+    }
+  }
+}
+
+data live_heal_push_plan: HealPushPlan = plan_heal_push(
+  artifacts: committed_generated_artifacts(),
+  authority: live_heal_push_credential,
+  control_plane: live_heal_control_plane
+)
+
+fn plan_ready_artifacts(plan: HealPushPlan) -> List<GeneratedArtifact> {
+  match plan {
+    HealPushNothingToDo => []
+    HealPushReady { artifacts } => artifacts
+    HealPushPartial { ready, refused: _, cause: _ } => ready
+    HealPushRefused { refused: _, cause: _ } => []
+  }
+}
+
+fn plan_refused_artifacts(plan: HealPushPlan) -> List<GeneratedArtifact> {
+  match plan {
+    HealPushNothingToDo => []
+    HealPushReady { artifacts: _ } => []
+    HealPushPartial { ready: _, refused, cause: _ } => refused
+    HealPushRefused { refused, cause: _ } => refused
+  }
+}
+
+fn auto_push_eligible_committed_artifacts() -> List<GeneratedArtifact> {
+  plan_ready_artifacts(plan: live_heal_push_plan)
+}
+
+fn author_commit_required_committed_artifacts() -> List<GeneratedArtifact> {
+  plan_refused_artifacts(plan: live_heal_push_plan)
+}
+
+fn auto_push_eligible_committed_artifact_paths() -> List<String> {
+  map(auto_push_eligible_committed_artifacts(), a => artifact_path(a: a))
+}
+
+fn author_commit_required_committed_artifact_paths() -> List<String> {
+  map(author_commit_required_committed_artifacts(), a => artifact_path(a: a))
+}
+
+fn path_requires_author_commit(path: String) -> Bool {
+  any(author_commit_required_committed_artifact_paths(), p => p == path)
+}
+
+type HealRepairDisposition
+  = HealRepairNoDrift
+  | HealRepairAutoPushEligibleOnly { paths: List<String> }
+  | HealRepairAuthorCommitRequired { paths: List<String> }
+  | HealRepairMixed {
+      auto_push_paths: List<String>,
+      author_commit_paths: List<String>
+    }
+
+fn classify_heal_repair_paths(changed_paths: List<String>) -> HealRepairDisposition {
+  let author = filter(changed_paths, p => path_requires_author_commit(path: p))
+  let auto_push = filter(changed_paths, p => !path_requires_author_commit(path: p))
+  if count(changed_paths) == 0 {
+    HealRepairNoDrift
+  } else if count(author) == 0 {
+    HealRepairAutoPushEligibleOnly { paths: auto_push }
+  } else if count(auto_push) == 0 {
+    HealRepairAuthorCommitRequired { paths: author }
+  } else {
+    HealRepairMixed { auto_push_paths: auto_push, author_commit_paths: author }
+  }
+}

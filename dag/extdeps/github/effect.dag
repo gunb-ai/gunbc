@@ -34,6 +34,8 @@ data organization_runner_citation: ExternalAuthority = ExternalAuthority {
   }
 }
 
+data metadata_baseline_note: String = "metadata:read IS NOT AN EFFECT REQUIREMENT AND IS DELIBERATELY ABSENT BELOW. It is a baseline GitHub Apps carry on every installation, so attaching it to the effect made it a requirement of the ACT rather than of the credential kind — and the discriminating witness caught the consequence immediately: the Actions job credential has no metadata scope at all (GitHub's permissions vocabulary omits it because Actions grants that access implicitly), so an effect demanding metadata:read refused every ordinary push GITHUB_TOKEN performs today. The baseline now lives at the App credential layer in gunbc.auth.github_credential, which is the only place it is true."
+
 data effect_to_permission_derivation_note: String = "PERMISSIONS ARE DERIVED FROM THE EFFECT, NOT AUTHORED BESIDE IT. A consumer row carrying a free-text purpose and a hand-written permission list is two restatements of one fact, and the second one drifts: the runner consumer in the first cut of gunbc.auth.github_apps read 'register ephemeral self-hosted runners on a fleet host' while asserting repository `administration: write`, when organization-level runner registration takes the ORGANIZATION permission `organization_self_hosted_runners: write`. The prose and the list disagreed and nothing could tell, because neither was derived from the other.\n\nHere the effect is the single authored fact and the permission set is a projection of it. The projection is where GitHub's rules live — including the one this repository needs: advancing a branch costs `contents: write`, and costs `workflows: write` IN ADDITION exactly when the advanced tree touches .github/workflows/**. A second SCM provider supplies its own projection over the same effect vocabulary; the effect rows do not move."
 
 type RepositoryPath { value: NonEmptyStr }
@@ -122,14 +124,14 @@ fn github_effect_required_permissions(effect: GitHubEffect) -> List<GitHubAppPer
   match effect {
     AdvanceRepositoryBranch { repository: _, branch: _, changed_paths } =>
       if any_workflow_projection_path(paths: changed_paths) {
-        [metadata_read, contents_write, workflows_write]
+        [contents_write, workflows_write]
       } else {
-        [metadata_read, contents_write]
+        [contents_write]
       }
     DispatchWorkflow { repository: _, workflow: _, subject: _ } =>
-      [metadata_read, actions_write]
+      [actions_write]
     RegisterOrganizationRunner { organization: _ } =>
-      [metadata_read, organization_self_hosted_runners_write]
+      [organization_self_hosted_runners_write]
   }
 }
 
