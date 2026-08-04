@@ -275,13 +275,18 @@ pub enum RoadmapAcceptanceHistoryProjection {
     Refused { detail: String },
 }
 
+static ROADMAP_AUTHORITY_OVERLAY_SEQ: AtomicU64 = AtomicU64::new(0);
+
 pub fn project_roadmap_acceptance_event_history_from_authority_text(
     authority_text: &str,
 ) -> RoadmapAcceptanceHistoryProjection {
     let workspace = workspace_root();
-    let temp_dir = workspace
-        .join("target")
-        .join(format!("gunbc-roadmap-auth-proj-{}", std::process::id()));
+    let overlay_seq = ROADMAP_AUTHORITY_OVERLAY_SEQ.fetch_add(1, Ordering::Relaxed);
+    let temp_dir = workspace.join("target").join(format!(
+        "gunbc-roadmap-auth-proj-{}-{}",
+        std::process::id(),
+        overlay_seq
+    ));
     if let Err(error) = std::fs::remove_dir_all(&temp_dir) {
         if error.kind() != std::io::ErrorKind::NotFound {
             return RoadmapAcceptanceHistoryProjection::Refused {

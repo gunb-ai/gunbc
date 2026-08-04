@@ -2965,15 +2965,31 @@ fn guarantee_ladder_edges() -> List<RoadmapEdge> {
 }
 
 
+data roadmap_authority_accessor_note: String = "Operational consumers (belt, dispatch, forecast, page, spawn) match roadmap_authority_projection() and propagate RoadmapAuthorityProjectionRefused. roadmap_authority() is retained for witnesses that run with a loaded carrier; on refusal it returns an explicit unavailable document rather than a silent empty active graph."
+
+fn roadmap_authority_refusal_document(detail: String) -> RoadmapDocument {
+  RoadmapDocument {
+    preamble: [
+      HeadingBlock { level: H1, inlines: [TextInline { text: "gunbc — Roadmap (unavailable)" }] },
+      ParagraphBlock {
+        inlines: [TextInline {
+          text: concat(
+            "Acceptance history projection refused; match roadmap_authority_projection() at operational boundaries: ",
+            detail,
+          ),
+        }],
+      },
+    ],
+    lead_lanes: [],
+    sections: [],
+  }
+}
+
 fn roadmap_authority() -> RoadmapDocument {
   match roadmap_authority_projection() {
     RoadmapAuthorityProjected { doc: doc } => doc
-    RoadmapAuthorityProjectionRefused { detail: _ } =>
-      RoadmapDocument {
-        preamble: preamble(),
-        lead_lanes: [],
-        sections: [],
-      }
+    RoadmapAuthorityProjectionRefused { detail: detail } =>
+      roadmap_authority_refusal_document(detail: detail)
   }
 }
 
@@ -2982,7 +2998,7 @@ fn authored_merged_prs() -> List<Int> { [] }
 fn expected_roadmap_md() -> String {
   match roadmap_authority_projection() {
     RoadmapAuthorityProjectionRefused { detail: detail } =>
-      join(["# roadmap unavailable\n\n", detail, "\n"], "")
+      concat("# roadmap unavailable\n\n", concat(detail, "\n"))
     RoadmapAuthorityProjected { doc: doc } =>
       serialize_markdown_source(
         doc: project_roadmap_to_markdown(

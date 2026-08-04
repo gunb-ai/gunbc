@@ -47,7 +47,7 @@ import gunbc.roadmap_static_site {
 import gunbc.roadmap_belt_actuate {
   BeltDispatchResult,
   DispatchSpawned, DispatchAlreadyLive, DispatchNodeNotFound,
-  DispatchDisabled, DispatchNodeAlreadyDone, DispatchObserveRefused, DispatchSpawnFailed,
+  DispatchDisabled, DispatchNodeAlreadyDone, DispatchObserveRefused, DispatchAuthorityRefused, DispatchSpawnFailed,
   belt_dispatch_node, belt_dispatch_node_for_instance,
   belt_dispatch_result_json_value,
   belt_dispatch_result_for_label,
@@ -241,6 +241,7 @@ fn belt_dispatch_status(r: BeltDispatchResult) -> HttpStatus {
     DispatchNodeNotFound { node_id: _ } => 404
     DispatchNodeAlreadyDone { node_id: _ } => 409
     DispatchObserveRefused { node_id: _, reason: _ } => 503
+    DispatchAuthorityRefused { node_id: _, detail: _ } => 503
     DispatchSpawnFailed { node_id: _, step: _, detail: _ } => 502
   }
 }

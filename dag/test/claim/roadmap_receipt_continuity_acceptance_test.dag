@@ -14,12 +14,20 @@ import gunbc.roadmap_authority {
   accepted_roadmap_node_ids_projection,
   AcceptedRoadmapNodeIdsProjected,
   AcceptedRoadmapNodeIdsProjectionRefused,
+  roadmap_authority_projection,
+  RoadmapAuthorityProjected,
+  RoadmapAuthorityProjectionRefused,
+}
+import gunbc.roadmap_acceptance_history_carrier {
+  load_roadmap_acceptance_event_history,
 }
 import gunbc.roadmap_acceptance_history_observation {
   PriorHistoryGitObservationRefused,
   PriorHistoryObserved,
+  prior_history_from_carrier_text,
   acceptance_history_integrity_holds_from_prior_observation,
 }
+import gunbc.roadmap_spawner { doc_all_nodes, roadmap_dispatch_file_content }
 import gunbc.roadmap_model {
   acceptance_history_integrity_holds,
   acceptance_history_extends_prior,
@@ -114,6 +122,10 @@ test fn roadmap_receipt_continuity_acceptance_contract_holds() -> Bool {
     && witness_digest_field_mutation_without_revocation_refuses_prefix()
     && witness_accepted_node_ids_projection_refuses_when_receipts_projection_refuses()
     && witness_receipts_projection_refuses_when_history_load_refuses()
+    && witness_missing_head_carrier_path_read_refuses()
+    && witness_unreadable_merge_base_carrier_parse_refuses_prior_observation()
+    && witness_missing_carrier_prevents_silent_empty_authority_projection()
+    && witness_dispatch_never_presents_empty_frontier_on_authority_refusal()
 }
 
 test fn witness_deleted_history_event_refuses() -> Bool {
@@ -292,5 +304,47 @@ test fn witness_accepted_node_ids_projection_refuses_when_receipts_projection_re
         AcceptedRoadmapNodeIdsProjectionRefused { detail: node_detail } =>
           node_detail == receipt_detail
       }
+  }
+}
+
+test fn witness_missing_head_carrier_path_read_refuses() -> Bool {
+  match load_roadmap_acceptance_event_history(
+    path: "target/gunbc_missing_roadmap_carrier_probe_should_not_exist.jsonl",
+  ) {
+    RoadmapAcceptanceEventHistoryLoaded { events: _ } => false
+    RoadmapAcceptanceEventHistoryLoadRefused { detail: detail } => detail != ""
+  }
+}
+
+test fn witness_unreadable_merge_base_carrier_parse_refuses_prior_observation() -> Bool {
+  match prior_history_from_carrier_text(carrier_text: "not-jsonl-carrier\n") {
+    PriorHistoryObserved { prior: _ } => false
+    PriorHistoryGitObservationRefused { detail: detail } =>
+      string_contains(s: detail, pattern: "merge-base carrier parse refused")
+  }
+}
+
+test fn witness_missing_carrier_prevents_silent_empty_authority_projection() -> Bool {
+  match roadmap_acceptance_event_history_load() {
+    RoadmapAcceptanceEventHistoryLoadRefused { detail: _ } =>
+      match roadmap_authority_projection() {
+        RoadmapAuthorityProjectionRefused { detail: _ } => true
+        RoadmapAuthorityProjected { doc: doc } => count(doc_all_nodes(doc: doc)) == 0
+      }
+    RoadmapAcceptanceEventHistoryLoaded { events: _ } =>
+      match roadmap_authority_projection() {
+        RoadmapAuthorityProjected { doc: doc } => count(doc_all_nodes(doc: doc)) > 0
+        RoadmapAuthorityProjectionRefused { detail: _ } => false
+      }
+  }
+}
+
+test fn witness_dispatch_never_presents_empty_frontier_on_authority_refusal() -> Bool {
+  match roadmap_authority_projection() {
+    RoadmapAuthorityProjectionRefused { detail: detail } =>
+      string_contains(s: roadmap_dispatch_file_content(), pattern: detail)
+        && string_contains(s: roadmap_dispatch_file_content(), pattern: "\"refused\":true")
+    RoadmapAuthorityProjected { doc: _ } =>
+      !string_contains(s: roadmap_dispatch_file_content(), pattern: "\"refused\":true")
   }
 }

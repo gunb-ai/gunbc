@@ -5,7 +5,11 @@ import std.types { String, Int, Bool, List, NonEmptyStr, FilePath, CommitSha }
 import gunbc.roadmap_model { RoadmapNode, RoadmapNodeId, node_criteria_digest }
 import gunbc.roadmap_spawner { SpawnFrontier, spawn_frontier, doc_all_nodes }
 import gunbc.roadmap_status { signoff_accepts }
-import gunbc.roadmap_authority { roadmap_authority, authored_merged_prs }
+import gunbc.roadmap_authority {
+  roadmap_authority_projection,
+  RoadmapAuthorityProjected, RoadmapAuthorityProjectionRefused,
+  authored_merged_prs,
+}
 import gunbc.roadmap_belt {
   BeltRunState, Running, Paused,
   BeltCapacity,
@@ -2054,13 +2058,26 @@ fn belt_run_once_in(
   instance: HostDashboardInstance,
   spawn_workdir: String,
 ) -> BeltTickResult {
-  belt_tick_for_instance(
-    instance: instance,
-    state: roadmap_belt_default_run_state,
-    frontier: spawn_frontier(doc: roadmap_authority(), merged: authored_merged_prs()),
-    cap: roadmap_belt_default_capacity,
-    spawn_workdir: spawn_workdir,
-  )
+  match roadmap_authority_projection() {
+    RoadmapAuthorityProjectionRefused { detail: detail } =>
+      BeltTickResult {
+        observe_refused: true,
+        observe_refusal_reason: concat("roadmap authority projection refused: ", detail),
+        reconcile: belt_tick_empty_reconcile(state: roadmap_belt_default_run_state),
+        spawn_outcomes: [],
+        teardown_outcomes: [],
+        verify_outcomes: belt_verify_attempts_for_instance(instance: instance),
+        publish_outcomes: belt_publish_attempts_for_instance(instance: instance),
+      }
+    RoadmapAuthorityProjected { doc: doc } =>
+      belt_tick_for_instance(
+        instance: instance,
+        state: roadmap_belt_default_run_state,
+        frontier: spawn_frontier(doc: doc, merged: authored_merged_prs()),
+        cap: roadmap_belt_default_capacity,
+        spawn_workdir: spawn_workdir,
+      )
+  }
 }
 
 fn belt_run_once() -> BeltTickResult {
@@ -2458,6 +2475,7 @@ fn belt_validation_summary_for_node(
   node_id: String,
 ) -> String {
   match belt_lookup_node(node_id: node_id) {
+    AuthorityProjectionRefused { detail: _ } => ""
     NodeMissing => ""
     NodeFound { node } =>
       execution_contract_validation_summary(
@@ -2776,6 +2794,10 @@ fn belt_verification_subject_observation_for_attempt(
   attempt_key: String,
 ) -> VerificationSubjectObservation {
   match belt_lookup_node(node_id: node_id) {
+    AuthorityProjectionRefused { detail: detail } =>
+      VerificationSubjectUnobserved {
+        reason: concat("roadmap authority projection refused: ", detail),
+      }
     NodeMissing =>
       VerificationSubjectUnobserved {
         reason: "the roadmap authority declares no node with this id, so there is no verification subject",
@@ -3056,6 +3078,11 @@ fn belt_verify_attempt_for_instance(
   match progress.provider {
     ProviderCompleted { activity: _ } =>
       match belt_lookup_node(node_id: progress.node_id) {
+        AuthorityProjectionRefused { detail: detail } =>
+          VerifyDeferred {
+            node_id: progress.node_id,
+            reason: concat("roadmap authority projection refused: ", detail),
+          }
         NodeMissing =>
           VerifyDeferred {
             node_id: progress.node_id,
@@ -3864,6 +3891,7 @@ data belt_dispatch_node_note: String = "Per-node MANUAL dispatch — the click p
 type BeltNodeLookup
   = NodeFound { node: RoadmapNode }
   | NodeMissing
+  | AuthorityProjectionRefused { detail: String }
 
 fn belt_find_node_in(nodes: List<RoadmapNode>, node_id: String) -> BeltNodeLookup {
   let matches = nodes |> filter(n => n.node == node_id)
@@ -3871,12 +3899,18 @@ fn belt_find_node_in(nodes: List<RoadmapNode>, node_id: String) -> BeltNodeLooku
     match acc {
       NodeFound { node: _ } => acc
       NodeMissing => NodeFound { node: n }
+      AuthorityProjectionRefused { detail: _ } => acc
     }
   })
 }
 
 fn belt_lookup_node(node_id: String) -> BeltNodeLookup {
-  belt_find_node_in(nodes: doc_all_nodes(doc: roadmap_authority()), node_id: node_id)
+  match roadmap_authority_projection() {
+    RoadmapAuthorityProjectionRefused { detail: detail } =>
+      AuthorityProjectionRefused { detail: detail }
+    RoadmapAuthorityProjected { doc: doc } =>
+      belt_find_node_in(nodes: doc_all_nodes(doc: doc), node_id: node_id)
+  }
 }
 
 fn belt_node_session_live(live: List<DispatchLiveSession>, node_id: String) -> Bool {
@@ -3890,6 +3924,7 @@ type BeltDispatchResult
   | DispatchNodeNotFound { node_id: String }
   | DispatchNodeAlreadyDone { node_id: String }
   | DispatchObserveRefused { node_id: String, reason: String }
+  | DispatchAuthorityRefused { node_id: String, detail: String }
   | DispatchSpawnFailed { node_id: String, step: String, detail: String }
 
 fn belt_dispatch_node_for_instance(
@@ -3905,6 +3940,8 @@ fn belt_dispatch_node_for_instance(
     }
     DashboardActuating => {
   match belt_lookup_node(node_id: node_id) {
+    AuthorityProjectionRefused { detail: detail } =>
+      DispatchAuthorityRefused { node_id: node_id, detail: detail }
     NodeMissing => DispatchNodeNotFound { node_id: node_id }
     NodeFound { node: node } =>
       if signoff_accepts(s: node.signoff) {
@@ -3968,6 +4005,7 @@ fn belt_dispatch_status_label(r: BeltDispatchResult) -> String {
     DispatchNodeNotFound { node_id: _ } => "node_not_found"
     DispatchNodeAlreadyDone { node_id: _ } => "already_done_signed_off"
     DispatchObserveRefused { node_id: _, reason: _ } => "observe_refused"
+    DispatchAuthorityRefused { node_id: _, detail: _ } => "authority_refused"
     DispatchSpawnFailed { node_id: _, step: _, detail: _ } => "spawn_failed"
   }
 }
@@ -3998,6 +4036,7 @@ fn belt_dispatch_result_band(r: BeltDispatchResult) -> DispatchBand {
     DispatchNodeNotFound { node_id: _ } => BandFail
     DispatchNodeAlreadyDone { node_id: _ } => BandFail
     DispatchObserveRefused { node_id: _, reason: _ } => BandLoud
+    DispatchAuthorityRefused { node_id: _, detail: _ } => BandLoud
     DispatchSpawnFailed { node_id: _, step: _, detail: _ } => BandLoud
   }
 }
@@ -4059,6 +4098,7 @@ fn belt_dispatch_result_exemplars() -> List<BeltDispatchResult> {
     DispatchNodeNotFound { node_id: "x" },
     DispatchNodeAlreadyDone { node_id: "x" },
     DispatchObserveRefused { node_id: "x", reason: "r" },
+    DispatchAuthorityRefused { node_id: "x", detail: "d" },
     DispatchSpawnFailed { node_id: "x", step: "s", detail: "d" },
   ]
 }
@@ -4127,6 +4167,12 @@ fn belt_dispatch_result_json_value(r: BeltDispatchResult) -> JsonValue {
         json_kv(key: "node_id", value: json_string(s: nid)),
         json_kv(key: "status", value: json_string(s: belt_dispatch_status_label(r: r))),
         json_kv(key: "reason", value: json_string(s: r2)),
+      ])
+    DispatchAuthorityRefused { node_id: nid, detail: d } =>
+      json_object(members: [
+        json_kv(key: "node_id", value: json_string(s: nid)),
+        json_kv(key: "status", value: json_string(s: belt_dispatch_status_label(r: r))),
+        json_kv(key: "detail", value: json_string(s: d)),
       ])
     DispatchSpawnFailed { node_id: nid, step: st, detail: d } =>
       json_object(members: [

@@ -41,8 +41,12 @@ import gunbc.roadmap_model {
 import gunbc.roadmap_belt { BeltCapacity }
 import gunbc.roadmap_authority {
   declared_roadmap_nodes,
-  active_roadmap_nodes,
-  active_roadmap_edges,
+  active_roadmap_nodes_for_accepted,
+  active_roadmap_edges_for_accepted,
+  roadmap_authority_projection,
+  RoadmapAuthorityProjected, RoadmapAuthorityProjectionRefused,
+  accepted_roadmap_node_ids_projection,
+  AcceptedRoadmapNodeIdsProjected, AcceptedRoadmapNodeIdsProjectionRefused,
   roadmap_acceptance_receipts,
   RoadmapAcceptanceReceiptsProjected,
   RoadmapAcceptanceReceiptsProjectionRefused,
@@ -413,6 +417,7 @@ type ForecastRefusal
     }
   | WorkerConcurrencyCapInvalid { declared_cap: Int }
   | CalibrationHistoryRefused { refusals: List<CycleTimeHistoryRefusal> }
+  | RoadmapAuthorityProjectionRefused { detail: String }
   | ForecastBuildRefused { node: RoadmapNodeId }
 
 type ScheduleForecastResult
@@ -439,6 +444,7 @@ fn no_calibration_gap_count(result: ScheduleForecastResult) -> Int {
         NodeUnsized { nodes: _ } => 0
         CycleTimeObservationNonPositive { nodes: _ } => 0
         CalibrationHistoryRefused { refusals: _ } => 0
+        RoadmapAuthorityProjectionRefused { detail: _ } => 0
         ForecastBuildRefused { node: _ } => 0
       }
     )
@@ -823,14 +829,24 @@ fn live_roadmap_schedule_forecast(
   assumptions: ScheduleForecastAssumptions,
   anchor: ForecastAnchorObservation,
 ) -> ScheduleForecastResult {
-  let builds = roadmap_cycle_time_observation_builds()
-  schedule_forecast(
-    nodes: active_roadmap_nodes(),
-    edges: active_roadmap_edges(),
-    observations: accepted_cycle_time_observations(builds: builds),
-    history_refusals: cycle_time_history_refusals(builds: builds),
-    population_exclusions: cycle_time_population_exclusions(builds: builds),
-    assumptions: assumptions,
-    anchor: anchor,
-  )
+  match roadmap_authority_projection() {
+    RoadmapAuthorityProjectionRefused { detail: detail } =>
+      ScheduleForecastRefused { refusals: [RoadmapAuthorityProjectionRefused { detail: detail }] }
+    RoadmapAuthorityProjected { doc: _ } =>
+      match accepted_roadmap_node_ids_projection() {
+        AcceptedRoadmapNodeIdsProjected { ids: accepted } =>
+          let builds = roadmap_cycle_time_observation_builds()
+          schedule_forecast(
+            nodes: active_roadmap_nodes_for_accepted(accepted: accepted),
+            edges: active_roadmap_edges_for_accepted(accepted: accepted),
+            observations: accepted_cycle_time_observations(builds: builds),
+            history_refusals: cycle_time_history_refusals(builds: builds),
+            population_exclusions: cycle_time_population_exclusions(builds: builds),
+            assumptions: assumptions,
+            anchor: anchor,
+          )
+        AcceptedRoadmapNodeIdsProjectionRefused { detail: detail } =>
+          ScheduleForecastRefused { refusals: [RoadmapAuthorityProjectionRefused { detail: detail }] }
+      }
+  }
 }

@@ -4,7 +4,11 @@ import std.types { String, Int, List, Bool }
 import gunbc.roadmap_model { RoadmapNode, RoadmapNodeId }
 import gunbc.roadmap_document { RoadmapDocument }
 import gunbc.roadmap_spawner { SpawnFrontier, spawn_frontier }
-import gunbc.roadmap_authority { roadmap_authority, authored_merged_prs }
+import gunbc.roadmap_authority {
+  roadmap_authority_projection,
+  RoadmapAuthorityProjected, RoadmapAuthorityProjectionRefused,
+  authored_merged_prs,
+}
 import gunbc.membership_reconcile {
   MembershipPlan, MemberAction,
   MemberUpsert, MemberTeardown, MemberTeardownRefused,
@@ -169,13 +173,22 @@ fn belt_json_value(
 }
 
 fn roadmap_belt_status_json() -> String {
-  serialize_json(v: belt_json_value(
-    state: roadmap_belt_default_run_state,
-    doc: roadmap_authority(),
-    merged: authored_merged_prs(),
-    occupied: [],
-    cap: roadmap_belt_default_capacity,
-  ))
+  match roadmap_authority_projection() {
+    RoadmapAuthorityProjectionRefused { detail: detail } =>
+      serialize_json(v: json_object(members: [
+        json_kv(key: "schema", value: json_string(s: "roadmap-belt/v1")),
+        json_kv(key: "refused", value: json_bool(b: true)),
+        json_kv(key: "detail", value: json_string(s: detail)),
+      ]))
+    RoadmapAuthorityProjected { doc: doc } =>
+      serialize_json(v: belt_json_value(
+        state: roadmap_belt_default_run_state,
+        doc: doc,
+        merged: authored_merged_prs(),
+        occupied: [],
+        cap: roadmap_belt_default_capacity,
+      ))
+  }
 }
 
 data belt_reconcile_authority_note: String = "R9 session-grain binding: the belt IS gunbc.membership_reconcile at member-type = dispatch Session. Desired = frontier.ready roadmap nodes; observed = dispatch_live_sessions (belt-owned by construction — the gunbc-dispatch- prefix filter + node-id keying, so a foreign tmux session has no node-id key, is not a member, and never enters Removed). Added -> spawn, Removed(owned) -> reap, Unchanged -> noop, Paused -> no actions, capacity caps upserts. This SUBSUMES belt_step (spawn-only, observed hardcoded empty): belt_step is the degenerate slice-1 precursor and retires when the host-effect driver (slice 2b: MemberUpsert -> dispatch_spawn_commands, MemberTeardown -> tmux_kill_session_argv) consumes belt_reconcile as the sole belt decision. The belt is a CONTINUOUS reconciler => SIBLINGS-CONTINUE (product/plan grain: emit doable spawns+reaps, count+surface refusals), NOT the deploy's atomic wholesale-refuse. It reuses the spine UNCHANGED (zero spine edit) — the grain-agnosticism proof (DESIGN §2 Realization / R9)."

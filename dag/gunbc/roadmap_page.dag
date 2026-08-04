@@ -16,6 +16,8 @@ import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.roadmap_altitude { section_counts, section_counts_wire, statuses_all_routine, SectionCounts }
 import gunbc.roadmap_authority {
   roadmap_authority, authored_merged_prs,
+  roadmap_authority_projection,
+  RoadmapAuthorityProjected, RoadmapAuthorityProjectionRefused,
   accepted_roadmap_node_ids_projection,
   AcceptedRoadmapNodeIdsProjected, AcceptedRoadmapNodeIdsProjectionRefused,
   declared_roadmap_nodes,
@@ -176,7 +178,7 @@ fn lead_budget_violations(nodes: List<RoadmapNode>) -> List<LeadBudgetViolation>
 }
 
 fn roadmap_authority_lead_budget_violations() -> List<LeadBudgetViolation> {
-  lead_budget_violations(nodes: doc_all_nodes(doc: roadmap_authority()))
+  lead_budget_violations(nodes: declared_roadmap_nodes())
 }
 
 data ticket_brief_budget_note: String = "The brief bound (operator's ticket model: a brief is ~100 words or less, read daily). Same shape as the lead budget: authoring residue no construction can forbid, so a typed located counted census — a red carries the node id and the measured count, never a bare Bool. Words, not characters, because the operator priced it in reading, and a word is the unit reading is priced in."
@@ -706,9 +708,9 @@ fn v1_exit_program_progress_view(ready_count: Int) -> ProgramProgressView {
   match accepted_roadmap_node_ids_projection() {
     AcceptedRoadmapNodeIdsProjectionRefused { detail: _ } =>
       ProgramProgressView {
-        name: "v1 exit",
+        name: "v1 exit (acceptance carrier refused)",
         completed: 0,
-        total: count(v1_exit_finish_lines()),
+        total: 0,
         ready_obligation_count: ready_count,
       }
     AcceptedRoadmapNodeIdsProjected { ids: accepted_ids } =>
@@ -856,15 +858,36 @@ fn roadmap_page_for_doc(doc: RoadmapDocument) -> Fragment {
   )
 }
 
+fn roadmap_authority_refusal_markup(detail: String) -> Fragment {
+  el_class("section", "roadmap-authority-refused", [
+    el("h2", [ txt("roadmap unavailable") ]),
+    el_class("p", "roadmap-authority-refused-detail", [
+      txt(concat("acceptance history projection refused: ", detail)),
+    ]),
+  ])
+}
+
 fn roadmap_page_for_authority() -> Fragment {
-  roadmap_page_impl(
-    doc: roadmap_authority(),
-    merged: authored_merged_prs(),
-    main_prefix: [
-      dashboard_instance_banner(),
-      finish_line_progress_markup(),
-    ],
-  )
+  match roadmap_authority_projection() {
+    RoadmapAuthorityProjectionRefused { detail: detail } =>
+      roadmap_page_impl(
+        doc: RoadmapDocument { preamble: [], lead_lanes: [], sections: [] },
+        merged: [],
+        main_prefix: [
+          dashboard_instance_banner(),
+          roadmap_authority_refusal_markup(detail: detail),
+        ],
+      )
+    RoadmapAuthorityProjected { doc: doc } =>
+      roadmap_page_impl(
+        doc: doc,
+        merged: authored_merged_prs(),
+        main_prefix: [
+          dashboard_instance_banner(),
+          finish_line_progress_markup(),
+        ],
+      )
+  }
 }
 
 fn roadmap_daily_workspace_page(doc: RoadmapDocument, merged: List<Int>) -> Fragment {
@@ -874,15 +897,29 @@ fn roadmap_daily_workspace_page(doc: RoadmapDocument, merged: List<Int>) -> Frag
 data daily_page_observed_note: String = "The served daily workspace consumes the OBSERVED attempt evidence at render (the serve handler decomposes the belt observation and passes progress rows or the located refusal), so the active band and every server-rendered activity region are real facts, not placeholders — the same decided views the /workflow.json wire carries, giving the client poll an identical starting DOM (the parity obligation's server half). The zero-argument form stays pure (empty attempts, nominal observation) for witnesses that assert composition without observation."
 
 fn roadmap_daily_workspace_page_for_authority_observed(attempts: List<WorkflowAttemptProgress>, attempts_refused: String?) -> Fragment {
-  roadmap_daily_workspace_page_impl(
-    doc: roadmap_authority(),
-    merged: authored_merged_prs(),
-    main_prefix: [
-      dashboard_instance_banner(),
-    ],
-    attempts: attempts,
-    attempts_refused: attempts_refused,
-  )
+  match roadmap_authority_projection() {
+    RoadmapAuthorityProjectionRefused { detail: detail } =>
+      roadmap_daily_workspace_page_impl(
+        doc: RoadmapDocument { preamble: [], lead_lanes: [], sections: [] },
+        merged: [],
+        main_prefix: [
+          dashboard_instance_banner(),
+          roadmap_authority_refusal_markup(detail: detail),
+        ],
+        attempts: attempts,
+        attempts_refused: attempts_refused,
+      )
+    RoadmapAuthorityProjected { doc: doc } =>
+      roadmap_daily_workspace_page_impl(
+        doc: doc,
+        merged: authored_merged_prs(),
+        main_prefix: [
+          dashboard_instance_banner(),
+        ],
+        attempts: attempts,
+        attempts_refused: attempts_refused,
+      )
+  }
 }
 
 fn roadmap_daily_workspace_page_for_authority() -> Fragment {
