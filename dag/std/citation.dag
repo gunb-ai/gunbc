@@ -1,13 +1,14 @@
 module std.citation
 
 import std.types { NonEmptyStr, String, Int, List, Bool, EpochMs }
+import std.measure { Second }
 import std.content_hash { ContentHash, Sha256Digest, as_content_hash_cryptographic }
 import std.claim_evidence { RecordedFact, RecordedFactId }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, SubstrateMandatoryTag, RealizationDispatch }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri }
-import extdeps.standards.web_annotation { extdeps_external_authority_anchor }
+import extdeps.standards.web_annotation { web_annotation_authority }
 
 data citation_cit0_note: String = "CIT-0 neutral citation target (operator mandate 2026-08-04). CitedResource consumes ExternalAuthority without extending it. Selectors ground on extdeps.standards.web_annotation (W3C Web Annotation Data Model). RepresentationPin pairs digest and byte-domain at construction (Pinned { digest, domain } | Unpinned); algorithm lives on std.content_hash ContentHash, not on the domain enum. Retrieval observations are dated downstream receipts with request and observed_at — never timeless facts on upstream modules. Citation verification proves reachability, media type, digest, revision match, and selector resolution — not claim truth. Evidence payloads feed std.claim_evidence EvidenceLink via CitationRecordedFact rather than a parallel evidence system."
 
@@ -150,7 +151,7 @@ type CitationRetrievalObservation
   | CitationRateLimited {
       request: CitationRetrievalRequest,
       observed_at: EpochMs,
-      retry_after_seconds: Int?,
+      retry_after: Second?,
     }
 
 type CitationArtifactLayer
@@ -175,7 +176,7 @@ fn admit_citation_retrieval_observation(
           CitationLayerRefusedUpstreamObservation
         CitationUnreachable { request: _, observed_at: _, cause: _ } =>
           CitationLayerRefusedUpstreamObservation
-        CitationRateLimited { request: _, observed_at: _, retry_after_seconds: _ } =>
+        CitationRateLimited { request: _, observed_at: _, retry_after: _ } =>
           CitationLayerRefusedUpstreamObservation
       }
   }
@@ -231,5 +232,5 @@ fn citation_recorded_fact<Revision, Representation, Selector>(
 data citation_evidence_interface_note: String = "CitationRecordedFact is the provenance payload consumed by std.claim_evidence EvidenceLink — same authority, provenance, maximum_conclusion, fidelity, supporting/challenging, insufficiency, and EvidenceAdmissionPolicy machinery. Rich citations do not form a competing evidence system."
 
 fn default_fragment_selector(value: NonEmptyStr) -> CitationSelector {
-  fragment_selector(conforms_to: extdeps_external_authority_anchor, value: value)
+  fragment_selector(conforms_to: web_annotation_authority, value: value)
 }

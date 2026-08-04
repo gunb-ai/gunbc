@@ -20,7 +20,7 @@ import std.claim_evidence { RecordedFactId }
 import std.content_hash { Sha256Digest, as_content_hash_cryptographic }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import extdeps.standards.web_annotation { extdeps_external_authority_anchor }
+import extdeps.standards.web_annotation { web_annotation_authority }
 import std.types { Bool, NonEmptyStr, EpochMs }
 
 data witness_authority: ExternalAuthority = ExternalAuthority {
@@ -124,7 +124,7 @@ test fn citation_recorded_fact_feeds_claim_evidence_interface() -> Bool {
 }
 
 test fn web_annotation_authority_is_cited_for_selectors() -> Bool {
-  extdeps_external_authority_anchor.uri.locator == "www.w3.org/TR/annotation-model/"
+  web_annotation_authority.uri.locator == "www.w3.org/TR/annotation-model/"
 }
 
 test fn retrieved_observation_carries_observed_at_and_request() -> Bool {
