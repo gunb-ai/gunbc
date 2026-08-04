@@ -138,7 +138,7 @@ fn observe_roadmap_acceptance_history_prior(
           let head_identity = content_hash_atom(value: head_manifest.content)
           let base_identity = content_hash_atom(value: base_manifest.content)
           if content_hash_eq_structural(left: head_identity, right: base_identity) {
-            PriorHistoryObserved { prior: current_history }
+            prior_history_from_carrier_text(carrier_text: head_manifest.content)
           } else {
             prior_history_from_carrier_text(carrier_text: base_manifest.content)
           }
@@ -148,7 +148,7 @@ fn observe_roadmap_acceptance_history_prior(
   }
 }
 
-data roadmap_acceptance_history_observation_invocation_note: String = "A function, not top-level data, so importing this module cannot reach git.Inspect.HeadCommit by import alone (gunbc.stage0_rust_host_observation host_observation_invocation_note)."
+data roadmap_acceptance_history_observation_invocation_note: String = "A function, not top-level data, so importing this module cannot reach git.Inspect.HeadCommit by import alone (gunbc.stage0_rust_host_observation host_observation_invocation_note). When HEAD and merge-base carrier identities match, prior_history is parsed from git.Core.Show(HEAD carrier) — not the working-tree load — so uncommitted local carrier edits refuse against the committed prior rather than self-matching."
 
 fn current_roadmap_acceptance_history_prior_observation(
   current_history: List<RoadmapAcceptanceEvent>,
