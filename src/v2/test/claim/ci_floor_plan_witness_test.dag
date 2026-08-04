@@ -352,14 +352,15 @@ test fn witness_v1_claim_scoped_batch_is_file_grain_and_batch_owned() -> Bool {
 test fn witness_scoped_batch_is_singleton_and_outside_positional_clamps() -> Bool {
   let batches = gunbc_ci_floor_ordinary_batches()
   let target = RunnableScopedWitnessBatch { batch: v1_claim_scoped_witness_batch }
+  let v1_envelope_known_red_enrolled = v1_claim_scoped_known_red_probe_batch_enrolled()
   (batch_index_of(batches: batches, target: "dag_compile_clean_gate_passes") == 1)
     && (runnable_batch_index(batches: batches, target: target) >= 0)
-    && v1_claim_scoped_known_red_probe_batch_enrolled()
-    && fold(batches, init: false, f: fn(found, batch) {
+    && (v1_envelope_known_red_enrolled == (length(xs: known_red_probe_v1_envelope_roster()) > 0))
+    && (!v1_envelope_known_red_enrolled || fold(batches, init: false, f: fn(found, batch) {
       found || fold(batch, init: false, f: fn(inner, r) {
         inner || v1_claim_scoped_known_red_probe_batch_holds(r: r)
       })
-    })
+    }))
     && (length(xs: gunbc_ci_floor_batch_clamp_params) == length(xs: batches) - 1)
 }
 
@@ -379,12 +380,13 @@ fn v1_claim_scoped_known_red_probe_batch_holds(r: Runnable) -> Bool {
 }
 
 test fn witness_v1_claim_scoped_known_red_probe_batch_uses_v1_roots() -> Bool {
-  v1_claim_scoped_known_red_probe_batch_enrolled()
-    && fold(gunbc_ci_floor_ordinary_batches(), init: false, f: fn(found, batch) {
+  let enrolled = v1_claim_scoped_known_red_probe_batch_enrolled()
+  (enrolled == (length(xs: known_red_probe_v1_envelope_roster()) > 0))
+    && (!enrolled || fold(gunbc_ci_floor_ordinary_batches(), init: false, f: fn(found, batch) {
       found || fold(batch, init: false, f: fn(inner, r) {
         inner || v1_claim_scoped_known_red_probe_batch_holds(r: r)
       })
-    })
+    }))
 }
 
 test fn scoped_witness_execution_receipt_decoder_accepts_writer_projection() -> Bool {
