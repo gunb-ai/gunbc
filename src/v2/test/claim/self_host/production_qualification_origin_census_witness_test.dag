@@ -16,58 +16,18 @@ import v2.lens.production_qualification_origin_census {
   derived_production_qualification_origin_census_holds,
   direct_door_smoke_qualified_name,
   ingest_mint_entry_qualified_name,
+  planted_fixture_mint_site_decl,
+  planted_fixture_mint_site_qualified_name,
   production_qualification_count_axis_for_emission_qualification,
   production_qualification_evidence_origin_eq
 }
 import v2.std.algebra { list_snoc_item }
 import v2.std.collection { Absent, Present }
-import v2.std.fn_index { FnArrowDecl, fn_arrow_decl_facts_live }
+import v2.std.fn_index { fn_arrow_decl_facts_live }
 import v2.std.logic { Bool }
-import v2.std.node {
-  Atom,
-  Conj,
-  Edge,
-  Node,
-  Positional,
-  Symbol,
-  SyntheticOccurrence,
-  TypeNode
-}
 import v2.std.text { String }
 
 data production_qualification_origin_census_witness_note: String = "Fixture-origin production qualification census witnesses (session keen-lark-681): population derived from fn_arrow_decl_facts_live skeletons — identity-join witnesses pin known live mint surfaces; planted synthetic FnArrowDecl raises the independently derived fixture-origin count (discriminating RED, not list-length tautology). Parent context: wise-ram-22 witness-evidence-lifecycle step 2."
-
-data planted_fixture_mint_site_qualified_name: String = "synthetic.production_qualification_origin_census.planted_site"
-
-fn census_probe_atom(sym: Symbol) -> Node {
-  Node {
-    kind: TypeNode { connective: Atom { identity: sym } },
-    children: [],
-    occurrence_id: SyntheticOccurrence
-  }
-}
-
-fn planted_fixture_mint_site_decl() -> FnArrowDecl {
-  FnArrowDecl {
-    qualified_name: planted_fixture_mint_site_qualified_name,
-    name: "planted_fixture_mint_site",
-    output: Node {
-      kind: TypeNode { connective: Conj },
-      children: [
-        Edge {
-          label: Positional,
-          target: census_probe_atom(sym: ^direct_rust_door_inferred_tree)
-        },
-        Edge {
-          label: Positional,
-          target: census_probe_atom(sym: ^mint_written_provenanced_rust_artifact)
-        }
-      ],
-      occurrence_id: SyntheticOccurrence
-    },
-    params: []
-  }
-}
 
 test fn witness_derived_production_qualification_origin_census_holds() -> Bool {
   derived_production_qualification_origin_census_holds()

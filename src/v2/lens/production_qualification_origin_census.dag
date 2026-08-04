@@ -1,5 +1,7 @@
 module v2.lens.production_qualification_origin_census
 
+import v2.compiler.self_host.candidate_generation { mint_written_provenanced_rust_artifact }
+import v2.compiler.self_host.direct_rust_door_fixture { direct_rust_door_inferred_tree }
 import v2.compiler.self_host.emitter_producer_provenance {
   CargoGreen,
   EmissionQualification,
@@ -80,11 +82,10 @@ data empty_site_list: List<DerivedProductionQualificationMintSiteRow> = []
 
 data mint_written_callee: String = "mint_written_provenanced_rust_artifact"
 data advance_cargo_green_callee: String = "advance_written_provenanced_rust_artifact_cargo_green"
-data mint_provenanced_callee: String = "mint_provenanced_rust_artifact"
 data direct_rust_door_inferred_tree_atom: String = "direct_rust_door_inferred_tree"
 data generate_provenanced_entry_name: String = "generate_provenanced_rust_candidate_from_ingest"
 
-data ingest_mint_entry_classifier_note: String = "Ingest SourceProduced site keys on the direct fn-arrow skeleton callee mint_provenanced_rust_artifact (review 47980): generate_provenanced_rust_candidate_from_ingest never calls mint_producer_emission_receipt at the ExprCall site — that mint is one hop inside mint_provenanced_rust_artifact."
+data ingest_mint_entry_classifier_note: String = "Ingest SourceProduced site keys on the declared entry name only (review 47980): G2 fn-arrow skeleton marshal may prune bind_outcome closure callees, so generate_provenanced_rust_candidate_from_ingest is classified by name, not a skeleton callee of mint_provenanced_rust_artifact or mint_producer_emission_receipt."
 
 data ingest_mint_entry_qualified_name: String = "v2.compiler.self_host.candidate_generation.generate_provenanced_rust_candidate_from_ingest"
 data direct_door_smoke_qualified_name: String = "tools.direct_rust_door_transport.run_direct_rust_door_emit_write_compile_smoke"
@@ -251,7 +252,9 @@ fn decl_contains_atom(decl: FnArrowDecl, atom: String) -> Bool {
 fn decl_evidence_origin(decl: FnArrowDecl) -> Optional<ProductionQualificationEvidenceOrigin> {
   if string_eq(a: decl.name, b: generate_provenanced_entry_name) {
     optional_present(value: FixtureIngestInlineOrigin)
-  } else if decl_contains_atom(decl: decl, atom: direct_rust_door_inferred_tree_atom) {
+  } else if decl_contains_atom(decl: decl, atom: direct_rust_door_inferred_tree_atom)
+    || string_eq(a: decl.qualified_name, b: direct_door_smoke_qualified_name)
+  {
     optional_present(value: FixtureInferredTreeOrigin)
   } else {
     optional_absent()
@@ -267,15 +270,21 @@ fn decl_has_fixture_inferred_tree_marker(decl: FnArrowDecl) -> Bool {
 }
 
 fn decl_is_derived_external_source_produced_fixture_site(decl: FnArrowDecl) -> Bool {
-  decl_has_fixture_inferred_tree_marker(decl: decl)
-    && (decl_contains_callee(decl: decl, callee: mint_written_callee)
-      || string_eq(a: decl.qualified_name, b: direct_door_smoke_qualified_name))
+  if string_eq(a: decl.qualified_name, b: direct_door_smoke_qualified_name) {
+    true
+  } else {
+    decl_has_fixture_inferred_tree_marker(decl: decl)
+      && decl_contains_callee(decl: decl, callee: mint_written_callee)
+  }
 }
 
 fn decl_is_derived_cargo_green_fixture_site(decl: FnArrowDecl) -> Bool {
-  decl_has_fixture_inferred_tree_marker(decl: decl)
-    && (decl_contains_callee(decl: decl, callee: advance_cargo_green_callee)
-      || string_eq(a: decl.qualified_name, b: direct_door_smoke_qualified_name))
+  if string_eq(a: decl.qualified_name, b: direct_door_smoke_qualified_name) {
+    true
+  } else {
+    decl_has_fixture_inferred_tree_marker(decl: decl)
+      && decl_contains_callee(decl: decl, callee: advance_cargo_green_callee)
+  }
 }
 
 fn site_row_already_present(
@@ -459,4 +468,36 @@ fn derived_production_qualification_origin_census_holds() -> Bool {
       sites: sites,
       origin: ExecutionMeasuredOrigin
     ) == 0)
+}
+
+data planted_fixture_mint_site_qualified_name: String = "synthetic.production_qualification_origin_census.planted_site"
+
+fn census_probe_atom(sym: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: sym } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn planted_fixture_mint_site_decl() -> FnArrowDecl {
+  FnArrowDecl {
+    qualified_name: planted_fixture_mint_site_qualified_name,
+    name: "planted_fixture_mint_site",
+    output: Node {
+      kind: TypeNode { connective: Conj },
+      children: [
+        Edge {
+          label: Positional,
+          target: census_probe_atom(sym: ^direct_rust_door_inferred_tree)
+        },
+        Edge {
+          label: Positional,
+          target: census_probe_atom(sym: ^mint_written_provenanced_rust_artifact)
+        }
+      ],
+      occurrence_id: SyntheticOccurrence
+    },
+    params: []
+  }
 }
