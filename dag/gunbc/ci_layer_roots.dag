@@ -104,6 +104,12 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     dissolve_on: "per-witness declared cost envelopes subsume test/claim/long/ dir grain (long_lane_exclusion_note trigger), or falsifier_substrate_long_lane enrolls rows with measured eval under gunbc_ci_fast_lane_witness_eval_budget; row deletes when per-PR discovery runs them"
   },
   WitnessExclusionRow {
+    pattern: "long/scaffold_retirement_pilot_witness_test.dag",
+    classification: OfflineLocalRecipe,
+    reason: "scaffold retirement pilot (operator 2026-08-04): live-corpus derived-population witnesses in dag/test/claim/long/scaffold_retirement_pilot_witness_test.dag pay witness_layer_roots decl_facts + export_signature_facts scans — exceeds per-PR 5s fast-lane budget. Required-floor hermetic scanner/binding kernels stay in dag/test/claim/scaffold_retirement_pilot_witness_test.dag. Scheduled home: falsifier_substrate_long_lane_rows scaffold_retirement entries. Local recipe: claim_batch --source-root dag --source-root src/v2 --entry dag/test/claim/long/scaffold_retirement_pilot_witness_test.dag",
+    dissolve_on: "per-witness eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or falsifier_substrate_long_lane executes the roster on every scheduled cadence"
+  },
+  WitnessExclusionRow {
     pattern: "impossible_bug",
     classification: OfflineLocalRecipe,
     reason: excl_predates_per_row_reason,
@@ -1141,6 +1147,24 @@ data falsifier_substrate_long_lane_rows: List<SubstrateLongLaneRow> = [
     function: "witness_production_admissions_close_contract_holds",
     reason: "v2_emitter_direct_rust_door_acceptance_admissions runs both production folds including ingest-path written-source assessment; exceeds 5s fast-lane budget. Closing frontier nonzero until ingest-path establishes WrittenSourceIndependentOfSeedEmitter (functional gap, not slowness alone)",
     dissolve_on: "production admissions close with frontier zero AND eval lands under gunbc_ci_fast_lane_witness_eval_budget — then re-enrolls per-PR discovery"
+  },
+  SubstrateLongLaneRow {
+    entry: "dag/test/claim/long/scaffold_retirement_pilot_witness_test.dag",
+    function: "derived_population_partition_is_exact",
+    reason: "scaffold retirement pilot live census (operator 2026-08-04): witness_layer_roots decl_facts + export_signature_facts structural decode exceeds per-PR 5s fast-lane budget; hermetic fixture kernels remain on required floor",
+    dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt"
+  },
+  SubstrateLongLaneRow {
+    entry: "dag/test/claim/long/scaffold_retirement_pilot_witness_test.dag",
+    function: "fired_dissolution_red_control_fires_when_successor_present",
+    reason: "scaffold retirement pilot fired-dissolution RED control over live derived population",
+    dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt"
+  },
+  SubstrateLongLaneRow {
+    entry: "dag/test/claim/long/scaffold_retirement_pilot_witness_test.dag",
+    function: "pilot_fired_dissolution_count_matches_site_level_fold",
+    reason: "scaffold retirement pilot aggregate fired-dissolution count must match independent per-site fold",
+    dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt"
   }
 ]
 

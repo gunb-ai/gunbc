@@ -1,9 +1,99 @@
 module test.claim.scaffold_retirement_pilot_witness_test
 
-import gunbc.scaffold_retirement { pilot_domain_limit }
+import gunbc.scaffold_retirement {
+  pilot_domain_limit,
+  scaffold_retirement_long_lane_entry,
+  scaffold_retirement_long_witness_function_roster,
+  derived_scaffold_disposition_sites_for_pool,
+  derived_scaffold_disposition_refused_for_pool,
+  scaffold_candidate_count_for_pool,
+  project_scaffold_site_from_body_fact_for_pool,
+  scaffold_site_lookup,
+  proposed_binding_for_site,
+  ScaffoldSiteLookupUnique,
+  ScaffoldCandidateDecodeRefused,
+  BodyShapeNotScaffoldRecord,
+  DeclaredTypeNotDisposition,
+}
+import test.fixture.scaffold_retirement.specimens {
+  scaffold_retirement_fixture_pool_roots,
+  planted_exact_scaffold_specimen_qn,
+  planted_nullary_disposition_specimen_qn,
+  planted_non_disposition_specimen_qn,
+}
+import v2.std.decl_index { decl_facts }
+import v2.std.algebra { length, count_where }
+import v2.std.collection { Absent, Present }
 
-data scaffold_retirement_witness_note: String = "Fast per-PR enrollment stub only. Corpus-scale derived-population, pilot partition, and fired-dissolution witnesses live in test.claim.long.scaffold_retirement_pilot_witness_test (operator 5s fast-lane rule 2026-07-12: each long witness pays a witness_layer_roots decl_facts scan)."
+data scaffold_retirement_witness_note: String = "Required-floor hermetic scanner/binding kernels over dag/test/fixture/scaffold_retirement only, plus long-lane enrollment receipt. Corpus-scale live census witnesses live in test.claim.long.scaffold_retirement_pilot_witness_test (falsifier_substrate_long_lane_rows)."
 
 test fn scaffold_retirement_pilot_domain_limit_is_declared() -> Bool {
   pilot_domain_limit() == 15
+}
+
+test fn scaffold_retirement_long_lane_execution_receipt_is_declared() -> Bool {
+  scaffold_retirement_long_lane_entry == "dag/test/claim/long/scaffold_retirement_pilot_witness_test.dag"
+    && length(xs: scaffold_retirement_long_witness_function_roster) == 8
+}
+
+test fn fixture_exact_decode_admits_planted_specimen() -> Bool {
+  match scaffold_site_lookup(
+    qn: planted_exact_scaffold_specimen_qn,
+    sites: derived_scaffold_disposition_sites_for_pool(pool_roots: scaffold_retirement_fixture_pool_roots)
+  ) {
+    ScaffoldSiteLookupUnique { site: site } =>
+      site.bind.decl_name == "planted_exact_scaffold_specimen"
+    _ => false
+  }
+}
+
+test fn fixture_wrong_shape_is_refused_not_silent() -> Bool {
+  count_where(
+    xs: derived_scaffold_disposition_refused_for_pool(pool_roots: scaffold_retirement_fixture_pool_roots),
+    predicate: fn(row) {
+      row.qualified_name == planted_nullary_disposition_specimen_qn
+        && row.cause == BodyShapeNotScaffoldRecord
+    }
+  ) == 1
+}
+
+test fn fixture_non_disposition_is_not_scaffold() -> Bool {
+  match decl_facts(pool_roots: scaffold_retirement_fixture_pool_roots)
+    |> filter(f => f.qualified_name == planted_non_disposition_specimen_qn)
+    |> first
+  {
+    Present { value: fact } =>
+      match project_scaffold_site_from_body_fact_for_pool(
+        body_fact: fact,
+        pool_roots: scaffold_retirement_fixture_pool_roots
+      ) {
+        ScaffoldCandidateDecodeRefused { refusal: refusal } =>
+          refusal.qualified_name == planted_non_disposition_specimen_qn
+            && refusal.cause == DeclaredTypeNotDisposition
+        _ => false
+      }
+    Absent => false
+  }
+}
+
+test fn fixture_population_partition_is_exact_on_fixture_pool() -> Bool {
+  let candidates = scaffold_candidate_count_for_pool(pool_roots: scaffold_retirement_fixture_pool_roots)
+  let decoded = length(
+    xs: derived_scaffold_disposition_sites_for_pool(pool_roots: scaffold_retirement_fixture_pool_roots)
+  )
+  let refused = length(
+    xs: derived_scaffold_disposition_refused_for_pool(pool_roots: scaffold_retirement_fixture_pool_roots)
+  )
+  candidates == decoded + refused && decoded >= 1
+}
+
+test fn fixture_proposed_binding_is_empty_without_roadmap_anchor() -> Bool {
+  match scaffold_site_lookup(
+    qn: planted_exact_scaffold_specimen_qn,
+    sites: derived_scaffold_disposition_sites_for_pool(pool_roots: scaffold_retirement_fixture_pool_roots)
+  ) {
+    ScaffoldSiteLookupUnique { site: site } =>
+      length(xs: proposed_binding_for_site(site: site)) == 0
+    _ => false
+  }
 }

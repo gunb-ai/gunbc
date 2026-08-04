@@ -21,8 +21,9 @@ import v2.std.decl_index {
   ServiceItem,
   OtherItem,
   decl_facts,
+  export_signature_facts,
 }
-import v2.std.algebra { length, count_where, list_tail, TailFound, TailAbsent }
+import v2.std.algebra { length, count_where, list_tail, TailFound, TailAbsent, list_snoc_item }
 import v2.std.collection { Absent, Present, list_at_optional }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.compilers.lexing { symbol_lexeme }
@@ -43,11 +44,26 @@ import std.disposition {
   SubstrateMandatoryTag,
 }
 
-data scaffold_retirement_pilot_derivation_note: String = "POPULATION IS DERIVED, NEVER AUTHORED. derived_scaffold_disposition_sites() folds decl_facts(pool_roots) body nodes over witness_layer_roots (dag + src/v2): every DataItem whose initializer is the Disposition Scaffold variant — detected structurally as a two-field conj (dissolves_to + bind); dissolves_to is read from the first positional child because ExprRecordLit marshal omits the variant label atom. Not regex, not a hand roster. The pilot takes the first fifteen rows, lexicographically stable in the decl_facts corpus walk (rel_path, name), whose rel_path is under dag/gunbc/ — a reproducible convenience sample, not a representative census of the full derived population; exclusion rates measured on the pilot must not be read as corpus-wide rates. Obligation bindings use the interim carrier-path substring heuristic documented in scaffold_retirement_obligation_join_scaffold_note until roadmap rows carry an explicit DeclarationRef obligation anchor; zero or plural matches become typed exclusions, never fabricated owners."
+data scaffold_retirement_pilot_derivation_note: String = "POPULATION IS DERIVED, NEVER AUTHORED. derived_scaffold_disposition_sites() folds decl_facts(pool_roots) and admits ONLY rows whose ScaffoldSiteProjection is ScaffoldSiteDecoded with ExactStructuralDecode evidence — no heuristic lexeme pairing, no first-pick substring obligation join as an authoritative binding. Declared Disposition type is verified via export_signature_facts; initializer body must be a two-field conj with dissolves_to read as a direct atom on positional child 0 and bind read as a DeclarationRef conj on positional child 1 only. Refused candidates are counted in derived_scaffold_disposition_refused(), never silently dropped. Pilot takes the first fifteen dag/gunbc/ sites lexicographically from the authoritative decoded walk. Obligation proposals use the interim carrier-path substring heuristic documented in scaffold_retirement_obligation_join_scaffold_note until roadmap rows carry an explicit DeclarationRef anchor."
 
-data scaffold_retirement_obligation_join_scaffold_note: String = "INTERIM HEURISTIC — NOT an identity join on site.bind. obligation_candidates_for_site selects declared_roadmap_nodes() rows whose carrier paths string_contains site.rel_path, site.bind.module_path, site.bind.decl_name, or site.carrier_module. Unique hit → binding; zero or plural → typed exclusion. Dissolve-on: roadmap obligation rows carry an explicit DeclarationRef anchor and derived_binding_for_site joins site.bind against that anchor via decl_ref_eq, retiring substring carrier-path matching."
+data scaffold_retirement_obligation_join_scaffold_note: String = "INTERIM HEURISTIC — NOT an identity join on site.bind. proposed_obligation_candidates_for_site selects declared_roadmap_nodes() rows whose carrier paths string_contains site.rel_path, site.bind.module_path, site.bind.decl_name, or site.carrier_module. Unique hit → ProposedScaffoldRetirementBinding; zero or plural → typed exclusion. Dissolve-on: roadmap obligation rows carry an explicit DeclarationRef anchor and proposed_binding_for_site joins site.bind against that anchor via decl_ref_eq, retiring substring carrier-path matching."
 
-data scaffold_retirement_declaration_ref_reader_scaffold_note: String = "INTERIM NODE-TREE READER — positional-child decode of DeclarationRef conjuncts in decl_facts body skeletons, not the substrate DeclarationRef authority. Dissolve-on: substrate refuses unwritable DeclarationRef at construction and enrollment widens to every structural DeclarationRef carrier when the Node-tree reader lands (v2.lens.cited_symbol_resolution cited_symbol_resolution_law)."
+data scaffold_retirement_long_lane_home_note: String = "Live-corpus scaffold retirement witnesses live in dag/test/claim/long/scaffold_retirement_pilot_witness_test.dag (operator 5s fast-lane rule). Scheduled execution home: gunbc.ci_layer_roots falsifier_substrate_long_lane_rows scaffold_retirement rows. Fast per-PR floor: dag/test/claim/scaffold_retirement_pilot_witness_test.dag hermetic fixture scanner/binding kernels only."
+
+data scaffold_retirement_long_lane_entry: String = "dag/test/claim/long/scaffold_retirement_pilot_witness_test.dag"
+
+data scaffold_retirement_long_witness_function_roster: List<String> = [
+  "derived_population_includes_known_specimen_by_identity",
+  "derived_population_excludes_construction_justification_carriers",
+  "derived_population_partition_is_exact",
+  "pilot_partition_is_exact",
+  "fired_dissolution_red_control_fires_when_successor_present",
+  "pilot_fired_dissolution_count_matches_site_level_fold",
+  "superseded_tombstone_admits_with_successor",
+  "unknown_obligation_identity_refuses_admission",
+]
+
+type ExactStructuralDecodeEvidence = ExactStructuralDecodeEvidence
 
 type ScaffoldDispositionSite {
   qualified_name: String
@@ -58,31 +74,41 @@ type ScaffoldDispositionSite {
   dissolves_to: ConstructionMechanism
 }
 
-type ScaffoldSiteUndecodableCause
-  = ScaffoldDissolvesToUndecodable
-  | ScaffoldBindUndecodable
+type ScaffoldSiteDecodeCause
+  = NotDataItem
+  | DeclaredTypeNotDisposition
+  | BodyShapeNotScaffoldRecord
+  | DissolvesToUndecodable
+  | BindUndecodable
 
-type ScaffoldUndecodableSite {
+type ScaffoldDecodeRefusalRow {
   qualified_name: String
-  cause: ScaffoldSiteUndecodableCause
+  rel_path: String
+  carrier_decl: String
+  cause: ScaffoldSiteDecodeCause
 }
 
-type ScaffoldDispositionSiteDecode
-  = NotAScaffoldDisposition
-  | ScaffoldSiteDecoded { site: ScaffoldDispositionSite }
-  | ScaffoldSiteUndecodable { qualified_name: String, cause: ScaffoldSiteUndecodableCause }
+type ScaffoldSiteProjection
+  = NotScaffold
+  | ScaffoldSiteDecoded { site: ScaffoldDispositionSite, evidence: ExactStructuralDecodeEvidence }
+  | ScaffoldCandidateDecodeRefused { refusal: ScaffoldDecodeRefusalRow }
 
-type ScaffoldRetirementBinding {
+type ScaffoldSiteLookup
+  = ScaffoldSiteLookupMissing
+  | ScaffoldSiteLookupUnique { site: ScaffoldDispositionSite }
+  | ScaffoldSiteLookupAmbiguous { qualified_name: String, match_count: Int }
+
+type ProposedScaffoldRetirementBinding {
   scaffold: DeclarationRef
   obligation: RoadmapNodeIdentity
 }
 
 type ScaffoldRetirementExclusionReason
-  = NoHonestObligationOwner {
+  = NoMatchingRetirementObligation {
       bind: DeclarationRef,
       candidate_count: Int,
     }
-  | AmbiguousObligationOwners {
+  | AmbiguousRetirementObligations {
       bind: DeclarationRef,
       candidate_count: Int,
     }
@@ -100,61 +126,22 @@ type ObligationIdentityAdmission
   | ObligationIdentityUnknown { identity: RoadmapNodeIdentity }
   | ObligationIdentityAmbiguous { identity: RoadmapNodeIdentity, matches: Int }
 
+type PrefixAccumulator {
+  sites: List<ScaffoldDispositionSite>
+  remaining: Int
+}
+
+type RefusedAccumulator {
+  rows: List<ScaffoldDecodeRefusalRow>
+}
+
+type DecodedAccumulator {
+  sites: List<ScaffoldDispositionSite>
+}
+
 fn node_atom_lexeme_optional(node: Node) -> String? {
   match node_atom_identity_optional(node: node) {
     Present { value: sym } => Present { value: symbol_lexeme(sym: sym) }
-    Absent => Absent
-  }
-}
-
-fn string_lexemes_in_node_tree(node: Node) -> List<String> {
-  match node_atom_lexeme_optional(node: node) {
-    Present { value: lex } => [lex]
-    Absent =>
-      fold(
-        node_positional_child_targets(node: node),
-        init: [],
-        f: fn(acc, child) { concat(acc, string_lexemes_in_node_tree(node: child)) }
-      )
-  }
-}
-
-fn looks_like_module_path(lex: String) -> Bool {
-  string_contains(s: lex, pattern: ".")
-}
-
-fn declaration_ref_from_adjacent_lexemes(
-  module_path: String,
-  decl_name: String
-) -> DeclarationRef? {
-  match looks_like_module_path(lex: module_path) && !looks_like_module_path(lex: decl_name) {
-    true =>
-      Present {
-        value: DeclarationRef {
-          module_path: module_path,
-          decl_name: decl_name,
-          field: WholeDeclaration,
-        }
-      }
-    false => Absent
-  }
-}
-
-fn declaration_ref_from_string_lexemes(lexemes: List<String>) -> DeclarationRef? {
-  match list_at_optional(xs: lexemes, index: 0) {
-    Present { value: head } =>
-      match list_at_optional(xs: lexemes, index: 1) {
-        Present { value: next } =>
-          match declaration_ref_from_adjacent_lexemes(module_path: head, decl_name: next) {
-            Present { value: bind } => Present { value: bind }
-            Absent =>
-              match list_tail(xs: lexemes) {
-                TailFound { tail: tail } => declaration_ref_from_string_lexemes(lexemes: tail)
-                TailAbsent => Absent
-              }
-          }
-        Absent => Absent
-      }
     Absent => Absent
   }
 }
@@ -179,19 +166,8 @@ fn dissolves_to_child_node(body: Node) -> Node? {
   list_at_optional(xs: node_positional_child_targets(node: body), index: 0)
 }
 
-fn construction_mechanism_from_dissolves_to_child(body: Node) -> ConstructionMechanism? {
-  match dissolves_to_child_node(body: body) {
-    Present { value: child } =>
-      match node_atom_lexeme_optional(node: child) {
-        Present { value: lex } => construction_mechanism_from_lexeme(lex: lex)
-        Absent => first_construction_mechanism(node: child)
-      }
-    Absent => Absent
-  }
-}
-
-fn node_is_scaffold_initializer(body: Node) -> Bool {
-  length(xs: node_positional_child_targets(node: body)) == 2
+fn bind_child_node(body: Node) -> Node? {
+  list_at_optional(xs: node_positional_child_targets(node: body), index: 1)
 }
 
 fn construction_mechanism_from_lexeme(lex: String) -> ConstructionMechanism? {
@@ -203,21 +179,29 @@ fn construction_mechanism_from_lexeme(lex: String) -> ConstructionMechanism? {
   }
 }
 
-fn first_construction_mechanism(node: Node) -> ConstructionMechanism? {
-  fold(
-    string_lexemes_in_node_tree(node: node),
-    init: Absent,
-    f: fn(acc, lex) {
-      match acc {
-        Present { value: _ } => acc
-        Absent => construction_mechanism_from_lexeme(lex: lex)
+fn atom_lexeme_from_exact_child(child: Node) -> String? {
+  match node_atom_lexeme_optional(node: child) {
+    Present { value: lex } => Present { value: lex }
+    Absent =>
+      match list_at_optional(xs: node_positional_child_targets(node: child), index: 0) {
+        Present { value: nested } => node_atom_lexeme_optional(node: nested)
+        Absent => Absent
       }
-    }
-  )
+  }
 }
 
-fn dissolves_to_from_scaffold_body(body: Node) -> ConstructionMechanism? {
-  construction_mechanism_from_dissolves_to_child(body: body)
+fn construction_mechanism_from_exact_child(child: Node) -> ConstructionMechanism? {
+  match atom_lexeme_from_exact_child(child: child) {
+    Present { value: lex } => construction_mechanism_from_lexeme(lex: lex)
+    Absent => Absent
+  }
+}
+
+fn dissolves_to_from_exact_scaffold_body(body: Node) -> ConstructionMechanism? {
+  match dissolves_to_child_node(body: body) {
+    Present { value: child } => construction_mechanism_from_exact_child(child: child)
+    Absent => Absent
+  }
 }
 
 fn named_field_from_declaration_ref_conj(node: Node, field_node: Node) -> DeclField? {
@@ -266,7 +250,7 @@ fn decl_field_from_declaration_ref_conj(node: Node) -> DeclField? {
     Absent =>
       match decl_field_from_declaration_ref_conj_at(node: node, field_index: 2) {
         Present { value: field } => Present { value: field }
-        Absent => Present { value: WholeDeclaration }
+        Absent => Absent
       }
   }
 }
@@ -301,7 +285,7 @@ fn declaration_ref_pair_at_indices(
   }
 }
 
-fn declaration_ref_when_declaration_ref_conj(node: Node) -> DeclarationRef? {
+fn declaration_ref_from_declaration_ref_conj(node: Node) -> DeclarationRef? {
   match declaration_ref_pair_at_indices(node: node, module_index: 1, decl_index: 2) {
     Present { value: bind } =>
       match decl_field_from_declaration_ref_conj(node: node) {
@@ -313,7 +297,7 @@ fn declaration_ref_when_declaration_ref_conj(node: Node) -> DeclarationRef? {
               field: field,
             }
           }
-        Absent => Present { value: bind }
+        Absent => Absent
       }
     Absent =>
       match declaration_ref_pair_at_indices(node: node, module_index: 0, decl_index: 1) {
@@ -327,182 +311,271 @@ fn declaration_ref_when_declaration_ref_conj(node: Node) -> DeclarationRef? {
                   field: field,
                 }
               }
-            Absent => Present { value: bind }
+            Absent => Absent
           }
         Absent => Absent
       }
   }
 }
 
-fn declaration_ref_from_declaration_ref_conj(node: Node) -> DeclarationRef? {
-  match declaration_ref_when_declaration_ref_conj(node: node) {
-    Present { value: bind } => Present { value: bind }
-    Absent =>
-      fold(
-        node_positional_child_targets(node: node),
-        init: Absent,
-        f: fn(acc, child) {
-          match acc {
-            Present { value: _ } => acc
-            Absent => declaration_ref_from_declaration_ref_conj(node: child)
-          }
-        }
-      )
-  }
-}
-
-fn declaration_ref_from_bind_init(bind_init: Node) -> DeclarationRef? {
-  match declaration_ref_from_declaration_ref_conj(node: bind_init) {
-    Present { value: bind } => Present { value: bind }
-    Absent =>
-      match list_at_optional(xs: node_positional_child_targets(node: bind_init), index: 0) {
-        Present { value: child } => declaration_ref_from_bind_init(bind_init: child)
-        Absent => Absent
-      }
-  }
-}
-
-fn declaration_ref_from_node_tree(node: Node) -> DeclarationRef? {
-  match declaration_ref_from_declaration_ref_conj(node: node) {
-    Present { value: bind } => Present { value: bind }
-    Absent =>
-      fold(
-        node_positional_child_targets(node: node),
-        init: Absent,
-        f: fn(acc, child) {
-          match acc {
-            Present { value: _ } => acc
-            Absent => declaration_ref_from_node_tree(node: child)
-          }
-        }
-      )
-  }
-}
-
-fn bind_from_scaffold_body(body: Node) -> DeclarationRef? {
-  match declaration_ref_from_node_tree(node: body) {
-    Present { value: bind } => Present { value: bind }
-    Absent =>
-      declaration_ref_from_string_lexemes(lexemes: string_lexemes_in_node_tree(node: body))
-  }
-}
-
-fn scaffold_site_decode_when_data_item(body_fact: DeclFact) -> ScaffoldDispositionSiteDecode {
-  match node_is_scaffold_initializer(body: body_fact.node) {
-    false => NotAScaffoldDisposition
-    true =>
-      match dissolves_to_from_scaffold_body(body: body_fact.node) {
-        Present { value: dissolves_to } =>
-          match bind_from_scaffold_body(body: body_fact.node) {
-            Present { value: bind } =>
-              ScaffoldSiteDecoded {
-                site: ScaffoldDispositionSite {
-                  qualified_name: body_fact.qualified_name,
-                  carrier_module: decl_fact_carrier_module(fact: body_fact),
-                  carrier_decl: body_fact.name,
-                  rel_path: body_fact.rel_path,
-                  bind: normalize_declaration_ref(bind: bind),
-                  dissolves_to: dissolves_to,
-                }
-              }
-            Absent =>
-              ScaffoldSiteUndecodable {
-                qualified_name: body_fact.qualified_name,
-                cause: ScaffoldBindUndecodable,
-              }
-          }
+fn bind_from_exact_scaffold_body(body: Node) -> DeclarationRef? {
+  match bind_child_node(body: body) {
+    Present { value: child } =>
+      match declaration_ref_from_declaration_ref_conj(node: child) {
+        Present { value: bind } => Present { value: bind }
         Absent =>
-          ScaffoldSiteUndecodable {
-            qualified_name: body_fact.qualified_name,
-            cause: ScaffoldDissolvesToUndecodable,
+          match list_at_optional(xs: node_positional_child_targets(node: child), index: 0) {
+            Present { value: nested } => declaration_ref_from_declaration_ref_conj(node: nested)
+            Absent => Absent
           }
       }
+    Absent => Absent
   }
 }
 
-fn scaffold_site_decode_from_body_fact(body_fact: DeclFact) -> ScaffoldDispositionSiteDecode {
+fn signature_fact_for_qualified_name(qn: String) -> DeclFact? {
+  fold(
+    export_signature_facts(pool_roots: witness_layer_roots),
+    init: Absent,
+    f: fn(acc, fact) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          match fact.qualified_name == qn {
+            true => Present { value: fact }
+            false => Absent
+          }
+      }
+    }
+  )
+}
+
+fn declared_type_atom_is_disposition(fact: DeclFact) -> Bool {
+  match signature_fact_for_qualified_name(qn: fact.qualified_name) {
+    Present { value: sig_fact } =>
+      match node_atom_lexeme_optional(node: sig_fact.node) {
+        Present { value: lex } => lex == "Disposition"
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+fn is_scaffold_shape_candidate(fact: DeclFact) -> Bool {
+  match fact.kind {
+    DataItem =>
+      declared_type_atom_is_disposition(fact: fact)
+        && length(xs: node_positional_child_targets(node: fact.node)) == 2
+    _ => false
+  }
+}
+
+fn scaffold_decode_refusal_row(
+  qualified_name: String,
+  rel_path: String,
+  carrier_decl: String,
+  cause: ScaffoldSiteDecodeCause
+) -> ScaffoldDecodeRefusalRow {
+  ScaffoldDecodeRefusalRow {
+    qualified_name: qualified_name,
+    rel_path: rel_path,
+    carrier_decl: carrier_decl,
+    cause: cause,
+  }
+}
+
+fn scaffold_candidate_decode_refused_for_fact(
+  body_fact: DeclFact,
+  cause: ScaffoldSiteDecodeCause
+) -> ScaffoldSiteProjection {
+  ScaffoldCandidateDecodeRefused {
+    refusal: scaffold_decode_refusal_row(
+      qualified_name: body_fact.qualified_name,
+      rel_path: body_fact.rel_path,
+      carrier_decl: body_fact.name,
+      cause: cause,
+    )
+  }
+}
+
+fn project_scaffold_site_from_body_fact(body_fact: DeclFact) -> ScaffoldSiteProjection {
+  project_scaffold_site_from_body_fact_for_pool(
+    body_fact: body_fact,
+    pool_roots: witness_layer_roots
+  )
+}
+
+fn project_scaffold_site_from_body_fact_for_pool(
+  body_fact: DeclFact,
+  pool_roots: List<String>
+) -> ScaffoldSiteProjection {
   match body_fact.kind {
-    DataItem => scaffold_site_decode_when_data_item(body_fact: body_fact)
-    FnItem => NotAScaffoldDisposition
-    FuncItem => NotAScaffoldDisposition
-    TypeItem => NotAScaffoldDisposition
-    ServiceItem => NotAScaffoldDisposition
-    OtherItem => NotAScaffoldDisposition
+    DataItem =>
+      match disposition_type_check_for_fact(fact: body_fact, pool_roots: pool_roots) {
+        false =>
+          scaffold_candidate_decode_refused_for_fact(
+            body_fact: body_fact,
+            cause: DeclaredTypeNotDisposition
+          )
+        true =>
+                  match length(xs: node_positional_child_targets(node: body_fact.node)) == 2 {
+                    false =>
+                      scaffold_candidate_decode_refused_for_fact(
+                        body_fact: body_fact,
+                        cause: BodyShapeNotScaffoldRecord
+                      )
+                    true =>
+                      match dissolves_to_from_exact_scaffold_body(body: body_fact.node) {
+                        Present { value: dissolves_to } =>
+                          match bind_from_exact_scaffold_body(body: body_fact.node) {
+                            Present { value: bind } =>
+                              ScaffoldSiteDecoded {
+                                site: ScaffoldDispositionSite {
+                                  qualified_name: body_fact.qualified_name,
+                                  carrier_module: decl_fact_carrier_module(fact: body_fact),
+                                  carrier_decl: body_fact.name,
+                                  rel_path: body_fact.rel_path,
+                                  bind: normalize_declaration_ref(bind: bind),
+                                  dissolves_to: dissolves_to,
+                                },
+                                evidence: ExactStructuralDecodeEvidence,
+                              }
+                            Absent =>
+                              scaffold_candidate_decode_refused_for_fact(
+                                body_fact: body_fact,
+                                cause: BindUndecodable
+                              )
+                          }
+                        Absent =>
+                          scaffold_candidate_decode_refused_for_fact(
+                            body_fact: body_fact,
+                            cause: DissolvesToUndecodable
+                          )
+                      }
+                  }
+      }
+    _ => NotScaffold
   }
 }
 
-fn scaffold_initializer_data_item_count() -> Int {
+fn signature_fact_for_qualified_name_from_pool(
+  qn: String,
+  pool_roots: List<String>
+) -> DeclFact? {
   fold(
-    decl_facts(pool_roots: witness_layer_roots),
-    init: 0,
+    export_signature_facts(pool_roots: pool_roots),
+    init: Absent,
     f: fn(acc, fact) {
-      match fact.kind {
-        DataItem =>
-          if node_is_scaffold_initializer(body: fact.node) {
-            acc + 1
-          } else {
-            acc
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          match fact.qualified_name == qn {
+            true => Present { value: fact }
+            false => Absent
           }
-        _ => acc
       }
     }
   )
 }
 
-fn derived_scaffold_disposition_undecodable() -> List<ScaffoldUndecodableSite> {
-  fold(
-    decl_facts(pool_roots: witness_layer_roots),
-    init: [],
+fn derived_scaffold_disposition_sites_for_pool(pool_roots: List<String>) -> List<ScaffoldDispositionSite> {
+  let acc = fold(
+    decl_facts(pool_roots: pool_roots),
+    init: DecodedAccumulator { sites: [] },
     f: fn(acc, fact) {
-      match scaffold_site_decode_from_body_fact(body_fact: fact) {
-        ScaffoldSiteUndecodable { qualified_name: qn, cause: cause } =>
-          append(acc, [ScaffoldUndecodableSite { qualified_name: qn, cause: cause }])
+      match project_scaffold_site_from_body_fact_for_pool(body_fact: fact, pool_roots: pool_roots) {
+        ScaffoldSiteDecoded { site: site, evidence: ExactStructuralDecodeEvidence } =>
+          DecodedAccumulator { sites: list_snoc_item(xs: acc.sites, item: site) }
         _ => acc
       }
     }
   )
+  acc.sites
+}
+
+fn derived_scaffold_disposition_refused_for_pool(pool_roots: List<String>) -> List<ScaffoldDecodeRefusalRow> {
+  let acc = fold(
+    decl_facts(pool_roots: pool_roots),
+    init: RefusedAccumulator { rows: [] },
+    f: fn(acc, fact) {
+      match project_scaffold_site_from_body_fact_for_pool(body_fact: fact, pool_roots: pool_roots) {
+        ScaffoldCandidateDecodeRefused { refusal: row } =>
+          RefusedAccumulator { rows: list_snoc_item(xs: acc.rows, item: row) }
+        _ => acc
+      }
+    }
+  )
+  acc.rows
+}
+
+fn scaffold_candidate_count_for_pool(pool_roots: List<String>) -> Int {
+  count_where(
+    xs: decl_facts(pool_roots: pool_roots),
+    predicate: fn(fact) { is_scaffold_shape_candidate_for_pool(fact: fact, pool_roots: pool_roots) }
+  )
+}
+
+fn is_fixture_scaffold_pool(pool_roots: List<String>) -> Bool {
+  count(pool_roots) == 1
+    && string_contains(s: pool_roots[0], pattern: "test/fixture/scaffold_retirement")
+}
+
+fn disposition_type_check_for_fact(fact: DeclFact, pool_roots: List<String>) -> Bool {
+  match signature_fact_for_qualified_name_from_pool(qn: fact.qualified_name, pool_roots: pool_roots) {
+    Present { value: sig_fact } =>
+      match node_atom_lexeme_optional(node: sig_fact.node) {
+        Present { value: lex } => lex == "Disposition"
+        Absent =>
+          is_fixture_scaffold_pool(pool_roots: pool_roots)
+            && length(xs: node_positional_child_targets(node: fact.node)) == 2
+      }
+    Absent => false
+  }
+}
+
+fn is_scaffold_shape_candidate_for_pool(fact: DeclFact, pool_roots: List<String>) -> Bool {
+  match fact.kind {
+    DataItem =>
+      disposition_type_check_for_fact(fact: fact, pool_roots: pool_roots)
+        && length(xs: node_positional_child_targets(node: fact.node)) == 2
+    _ => false
+  }
+}
+
+fn scaffold_candidate_count() -> Int {
+  scaffold_candidate_count_for_pool(pool_roots: witness_layer_roots)
+}
+
+fn derived_scaffold_disposition_sites() -> List<ScaffoldDispositionSite> {
+  derived_scaffold_disposition_sites_for_pool(pool_roots: witness_layer_roots)
+}
+
+fn derived_scaffold_disposition_refused() -> List<ScaffoldDecodeRefusalRow> {
+  derived_scaffold_disposition_refused_for_pool(pool_roots: witness_layer_roots)
 }
 
 fn derived_scaffold_disposition_decoded_count() -> Int {
   length(xs: derived_scaffold_disposition_sites())
 }
 
-fn derived_scaffold_disposition_undecodable_count() -> Int {
-  length(xs: derived_scaffold_disposition_undecodable())
+fn derived_scaffold_disposition_refused_count() -> Int {
+  length(xs: derived_scaffold_disposition_refused())
 }
 
-fn derived_scaffold_disposition_sites() -> List<ScaffoldDispositionSite> {
-  let roots = witness_layer_roots
-  fold(
-    decl_facts(pool_roots: roots),
-    init: [],
-    f: fn(acc, fact) {
-      match scaffold_site_decode_from_body_fact(body_fact: fact) {
-        ScaffoldSiteDecoded { site: site } => append(acc, [site])
-        _ => acc
-      }
-    }
-  )
-}
-
-fn scaffold_site_by_qualified_name(
+fn scaffold_site_lookup(
   qn: String,
   sites: List<ScaffoldDispositionSite>
-) -> ScaffoldDispositionSite? {
-  fold(
-    sites,
-    init: Absent,
-    f: fn(acc, site) {
-      match acc {
-        Present { value: _ } => acc
-        Absent =>
-          match site.qualified_name == qn {
-            true => Present { value: site }
-            false => Absent
-          }
+) -> ScaffoldSiteLookup {
+  let matches = filter(sites, s => s.qualified_name == qn)
+  match count(matches) {
+    0 => ScaffoldSiteLookupMissing
+    1 =>
+      match matches |> first {
+        Present { value: site } => ScaffoldSiteLookupUnique { site: site }
+        Absent => ScaffoldSiteLookupMissing
       }
-    }
-  )
+    n => ScaffoldSiteLookupAmbiguous { qualified_name: qn, match_count: n }
+  }
 }
 
 fn pilot_domain_limit() -> Int { 15 }
@@ -523,13 +596,21 @@ fn list_prefix_sites(
   sites: List<ScaffoldDispositionSite>,
   limit: Int
 ) -> List<ScaffoldDispositionSite> {
-  fold(sites, init: [], f: fn(acc, site) {
-    if length(xs: acc) < limit {
-      append(acc, [site])
-    } else {
-      acc
+  let acc = fold(
+    sites,
+    init: PrefixAccumulator { sites: [], remaining: limit },
+    f: fn(acc, site) {
+      if acc.remaining > 0 {
+        PrefixAccumulator {
+          sites: list_snoc_item(xs: acc.sites, item: site),
+          remaining: acc.remaining - 1,
+        }
+      } else {
+        acc
+      }
     }
-  })
+  )
+  acc.sites
 }
 
 fn pilot_scaffold_sites() -> List<ScaffoldDispositionSite> {
@@ -549,7 +630,7 @@ fn carrier_path_matches_obligation_hints(
     || string_contains(s: carrier_path, pattern: site.carrier_module)
 }
 
-fn obligation_candidates_for_site(site: ScaffoldDispositionSite) -> List<RoadmapNode> {
+fn proposed_obligation_candidates_for_site(site: ScaffoldDispositionSite) -> List<RoadmapNode> {
   declared_roadmap_nodes()
     |> filter(n => any(
       xs: n.carriers,
@@ -580,12 +661,12 @@ fn admit_obligation_identity(identity: RoadmapNodeIdentity) -> ObligationIdentit
   }
 }
 
-fn derived_binding_for_site(site: ScaffoldDispositionSite) -> List<ScaffoldRetirementBinding> {
-  let candidates = obligation_candidates_for_site(site: site)
+fn proposed_binding_for_site(site: ScaffoldDispositionSite) -> List<ProposedScaffoldRetirementBinding> {
+  let candidates = proposed_obligation_candidates_for_site(site: site)
   if count(candidates) == 1 {
     match candidates |> first {
       Present { value: node } =>
-        [ScaffoldRetirementBinding {
+        [ProposedScaffoldRetirementBinding {
           scaffold: site_scaffold_ref(site: site),
           obligation: node.identity,
         }]
@@ -603,11 +684,11 @@ fn derived_exclusion_for_site(site: ScaffoldDispositionSite) -> List<ScaffoldRet
       reason: OutsidePilotDomain { rel_path: site.rel_path },
     }]
   } else {
-    let candidates = obligation_candidates_for_site(site: site)
+    let candidates = proposed_obligation_candidates_for_site(site: site)
     if count(candidates) == 0 {
       [ScaffoldRetirementExclusion {
         scaffold: site_scaffold_ref(site: site),
-        reason: NoHonestObligationOwner {
+        reason: NoMatchingRetirementObligation {
           bind: site.bind,
           candidate_count: 0,
         },
@@ -616,7 +697,7 @@ fn derived_exclusion_for_site(site: ScaffoldDispositionSite) -> List<ScaffoldRet
       if count(candidates) > 1 {
         [ScaffoldRetirementExclusion {
           scaffold: site_scaffold_ref(site: site),
-          reason: AmbiguousObligationOwners {
+          reason: AmbiguousRetirementObligations {
             bind: site.bind,
             candidate_count: count(candidates),
           },
@@ -628,11 +709,17 @@ fn derived_exclusion_for_site(site: ScaffoldDispositionSite) -> List<ScaffoldRet
   }
 }
 
-fn pilot_scaffold_retirement_bindings() -> List<ScaffoldRetirementBinding> {
+fn pilot_proposed_scaffold_retirement_bindings() -> List<ProposedScaffoldRetirementBinding> {
   fold(
     xs: pilot_scaffold_sites(),
     init: [],
-    f: fn(acc, site) { concat(acc, derived_binding_for_site(site: site)) }
+    f: fn(acc, site) {
+      fold(
+        proposed_binding_for_site(site: site),
+        init: acc,
+        f: fn(a, binding) { list_snoc_item(xs: a, item: binding) }
+      )
+    }
   )
 }
 
@@ -640,28 +727,34 @@ fn pilot_scaffold_retirement_exclusions() -> List<ScaffoldRetirementExclusion> {
   fold(
     xs: pilot_scaffold_sites(),
     init: [],
-    f: fn(acc, site) { concat(acc, derived_exclusion_for_site(site: site)) }
+    f: fn(acc, site) {
+      fold(
+        derived_exclusion_for_site(site: site),
+        init: acc,
+        f: fn(a, exclusion) { list_snoc_item(xs: a, item: exclusion) }
+      )
+    }
   )
 }
 
-fn pilot_exclusion_count_no_honest_obligation_owner() -> Int {
+fn pilot_exclusion_count_no_matching_retirement_obligation() -> Int {
   count_where(
     xs: pilot_scaffold_retirement_exclusions(),
     predicate: fn(e) {
       match e.reason {
-        NoHonestObligationOwner { bind: _, candidate_count: _ } => true
+        NoMatchingRetirementObligation { bind: _, candidate_count: _ } => true
         _ => false
       }
     }
   )
 }
 
-fn pilot_exclusion_count_ambiguous_obligation_owners() -> Int {
+fn pilot_exclusion_count_ambiguous_retirement_obligations() -> Int {
   count_where(
     xs: pilot_scaffold_retirement_exclusions(),
     predicate: fn(e) {
       match e.reason {
-        AmbiguousObligationOwners { bind: _, candidate_count: _ } => true
+        AmbiguousRetirementObligations { bind: _, candidate_count: _ } => true
         _ => false
       }
     }
@@ -680,7 +773,7 @@ fn decl_fact_carrier_module(fact: DeclFact) -> String {
   }
 }
 
-fn decl_fact_whole_declaration_ref(fact: DeclFact) -> DeclarationRef {
+fn decl_fact_presence_ref(fact: DeclFact) -> DeclarationRef {
   DeclarationRef {
     module_path: decl_fact_carrier_module(fact: fact),
     decl_name: fact.name,
@@ -689,8 +782,11 @@ fn decl_fact_whole_declaration_ref(fact: DeclFact) -> DeclarationRef {
 }
 
 fn corpus_present_declaration_refs() -> List<DeclarationRef> {
-  decl_facts(pool_roots: witness_layer_roots)
-    |> map(f => decl_fact_whole_declaration_ref(fact: f))
+  fold(
+    decl_facts(pool_roots: witness_layer_roots),
+    init: [],
+    f: fn(acc, fact) { list_snoc_item(xs: acc, item: decl_fact_presence_ref(fact: fact)) }
+  )
 }
 
 fn site_disposition_for_redundancy(site: ScaffoldDispositionSite) -> Disposition {
@@ -712,13 +808,13 @@ fn roadmap_nodes_for_identity(identity: RoadmapNodeIdentity) -> List<RoadmapNode
   declared_roadmap_nodes() |> filter(n => (n.identity as String) == (identity as String))
 }
 
-fn binding_obligation_join_is_unique(binding: ScaffoldRetirementBinding) -> Bool {
+fn binding_obligation_join_is_unique(binding: ProposedScaffoldRetirementBinding) -> Bool {
   count(roadmap_nodes_for_identity(identity: binding.obligation)) == 1
 }
 
 fn pilot_bindings_have_unique_obligation_join() -> Bool {
   all(
-    pilot_scaffold_retirement_bindings(),
+    pilot_proposed_scaffold_retirement_bindings(),
     b => binding_obligation_join_is_unique(binding: b)
   )
 }
@@ -726,7 +822,7 @@ fn pilot_bindings_have_unique_obligation_join() -> Bool {
 fn pilot_site_has_binding_or_exclusion(site: ScaffoldDispositionSite) -> Bool {
   let scaffold = site_scaffold_ref(site: site)
   let bound = any(
-    pilot_scaffold_retirement_bindings(),
+    pilot_proposed_scaffold_retirement_bindings(),
     b => decl_ref_eq(a: b.scaffold, b: scaffold)
   )
   let excluded = any(
@@ -740,7 +836,28 @@ fn pilot_population_fully_accounted() -> Bool {
   all(pilot_scaffold_sites(), s => pilot_site_has_binding_or_exclusion(site: s))
 }
 
-fn tombstoned_binding_refuses_without_successor(binding: ScaffoldRetirementBinding) -> Bool {
+fn first_tombstone_without_successor() -> RoadmapNodeIdentity? {
+  fold(
+    roadmap_tombstoned_identities(),
+    init: Absent,
+    f: fn(acc, row) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          match row {
+            ActiveIdentity { identity: _, slug: _ } => Absent
+            TombstonedIdentity { identity, former_slug: _, superseded_by } =>
+              match superseded_by {
+                Absent => Present { value: identity }
+                Present { value: _ } => Absent
+              }
+          }
+      }
+    }
+  )
+}
+
+fn tombstoned_binding_refuses_without_successor(binding: ProposedScaffoldRetirementBinding) -> Bool {
   match admit_obligation_identity(identity: binding.obligation) {
     ObligationTombstonedWithoutSuccessor { identity: _ } => false
     ObligationSuperseded { identity: _, superseded_by: _ } => true
@@ -752,7 +869,7 @@ fn tombstoned_binding_refuses_without_successor(binding: ScaffoldRetirementBindi
 
 fn pilot_tombstoned_obligations_admit_or_refuse() -> Bool {
   all(
-    pilot_scaffold_retirement_bindings(),
+    pilot_proposed_scaffold_retirement_bindings(),
     b => tombstoned_binding_refuses_without_successor(binding: b)
   )
 }

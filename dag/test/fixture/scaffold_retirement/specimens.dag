@@ -1,0 +1,26 @@
+module test.fixture.scaffold_retirement.specimens
+
+import std.types { String, Int, List }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data planted_exact_scaffold_specimen: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "test.fixture.scaffold_retirement.specimens",
+    decl_name: "planted_exact_scaffold_specimen",
+    field: WholeDeclaration
+  }
+}
+
+data planted_nullary_disposition_specimen: Disposition = SingleAuthority
+
+data planted_non_disposition_specimen: Int = 42
+
+data planted_exact_scaffold_specimen_qn: String = "test.fixture.scaffold_retirement.specimens.planted_exact_scaffold_specimen"
+
+data planted_nullary_disposition_specimen_qn: String = "test.fixture.scaffold_retirement.specimens.planted_nullary_disposition_specimen"
+
+data planted_non_disposition_specimen_qn: String = "test.fixture.scaffold_retirement.specimens.planted_non_disposition_specimen"
+
+data scaffold_retirement_fixture_pool_roots: List<String> = ["dag/test/fixture/scaffold_retirement"]

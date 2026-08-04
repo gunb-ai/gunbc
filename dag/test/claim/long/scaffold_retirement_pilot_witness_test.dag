@@ -4,19 +4,20 @@ import std.types { String, Bool, Int, List }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.scaffold_retirement {
   ScaffoldDispositionSite,
-  ScaffoldRetirementBinding,
+  ProposedScaffoldRetirementBinding,
   ScaffoldRetirementExclusion,
   derived_scaffold_disposition_sites,
   derived_scaffold_disposition_decoded_count,
-  derived_scaffold_disposition_undecodable_count,
-  scaffold_initializer_data_item_count,
-  scaffold_site_by_qualified_name,
+  derived_scaffold_disposition_refused_count,
+  scaffold_candidate_count,
+  scaffold_site_lookup,
+  ScaffoldSiteLookupUnique,
   pilot_scaffold_sites,
   pilot_domain_limit,
-  pilot_scaffold_retirement_bindings,
+  pilot_proposed_scaffold_retirement_bindings,
   pilot_scaffold_retirement_exclusions,
-  pilot_exclusion_count_no_honest_obligation_owner,
-  pilot_exclusion_count_ambiguous_obligation_owners,
+  pilot_exclusion_count_no_matching_retirement_obligation,
+  pilot_exclusion_count_ambiguous_retirement_obligations,
   pilot_population_fully_accounted,
   pilot_bindings_have_unique_obligation_join,
   pilot_tombstoned_obligations_admit_or_refuse,
@@ -25,16 +26,10 @@ import gunbc.scaffold_retirement {
   site_disposition_for_redundancy,
   corpus_present_declaration_refs,
   admit_obligation_identity,
-  ObligationTombstonedWithoutSuccessor,
+  ObligationIdentityUnknown,
   ObligationSuperseded,
-  ObligationActive,
 }
-import gunbc.roadmap_model { RoadmapNodeIdentity }
-import gunbc.roadmap_identity {
-  TombstonedIdentity,
-  roadmap_tombstoned_identities,
-  record_identity,
-}
+import gunbc.roadmap_identity { TombstonedIdentity, roadmap_tombstoned_identities }
 import v2.lens.disposition_redundancy {
   disposition_redundancy_violation_count,
   decl_ref_eq,
@@ -46,9 +41,9 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data scaffold_retirement_long_witness_note: String = "Corpus-scale scaffold retirement pilot witnesses — derived population from decl_facts over witness_layer_roots, pilot partition, and fired-dissolution RED controls. Long lane only: each witness pays a full witness-layer decl_facts scan (operator 5s fast-lane rule 2026-07-12). Fast per-PR enrollment stub: test.claim.scaffold_retirement_pilot_witness_test."
+data scaffold_retirement_long_witness_note: String = "Corpus-scale scaffold retirement pilot witnesses — exact structural decode population from decl_facts over witness_layer_roots, pilot partition, and fired-dissolution RED controls. Long lane only: scheduled via gunbc.ci_layer_roots falsifier_substrate_long_lane_rows. Fast per-PR floor: test.claim.scaffold_retirement_pilot_witness_test hermetic fixture kernels."
 
-data scaffold_retirement_witness_scope_note: String = "Shape proof for gunbc.scaffold_retirement: population from a pure .dag fold over decl_facts body nodes (DataItem + Scaffold initializer; not grep, not a hand roster); pilot = first fifteen dag/gunbc sites from that derived walk — a convenience sample whose exclusion rate is not representative of the full corpus. Property 4 (obligation acceptance vs present scaffolds) is OUT OF SCOPE for this pilot. Property 6 (staffing) is OUT OF SCOPE by operator mandate."
+data scaffold_retirement_witness_scope_note: String = "Shape proof for gunbc.scaffold_retirement: authoritative population from ScaffoldSiteDecoded rows only; refused candidates counted separately; pilot = first fifteen dag/gunbc sites from derived walk. Property 4 (obligation acceptance vs present scaffolds) OUT OF SCOPE. Property 6 (staffing) OUT OF SCOPE."
 
 data population_positive_specimen_qualified_name: String = "std.bytes.bytes_seam_host_realization_marker"
 
@@ -63,15 +58,15 @@ data fired_dissolution_specimen_bind_module: String = "test.fixture.walk_plan_st
 data fired_dissolution_specimen_bind_decl: String = "walk_plan_stage_overlap_barrier_recipe"
 
 test fn derived_population_includes_known_specimen_by_identity() -> Bool {
-  match scaffold_site_by_qualified_name(
+  match scaffold_site_lookup(
     qn: population_positive_specimen_qualified_name,
     sites: derived_scaffold_disposition_sites()
   ) {
-    Present { value: site } =>
+    ScaffoldSiteLookupUnique { site: site } =>
       site.bind.module_path == population_positive_specimen_bind_module
         && site.bind.decl_name == population_positive_specimen_bind_decl
         && site.dissolves_to == SingleAuthority
-    Absent => false
+    _ => false
   }
 }
 
@@ -90,10 +85,10 @@ test fn derived_population_excludes_construction_justification_carriers() -> Boo
 }
 
 test fn derived_population_partition_is_exact() -> Bool {
-  let initializer_n = scaffold_initializer_data_item_count()
-  let decoded_n = derived_scaffold_disposition_decoded_count()
-  let undecodable_n = derived_scaffold_disposition_undecodable_count()
-  initializer_n == decoded_n + undecodable_n
+  let candidates = scaffold_candidate_count()
+  let decoded = derived_scaffold_disposition_decoded_count()
+  let refused = derived_scaffold_disposition_refused_count()
+  candidates == decoded + refused
 }
 
 test fn pilot_population_is_derived_domain_gate_not_hand_roster() -> Bool {
@@ -110,9 +105,9 @@ test fn pilot_every_site_has_binding_or_exclusion() -> Bool {
 
 test fn pilot_partition_is_exact() -> Bool {
   let pilot_n = length(xs: pilot_scaffold_sites())
-  let bindings = length(xs: pilot_scaffold_retirement_bindings())
+  let bindings = length(xs: pilot_proposed_scaffold_retirement_bindings())
   let exclusions = length(xs: pilot_scaffold_retirement_exclusions())
-  let exclusion_causes = pilot_exclusion_count_no_honest_obligation_owner() + pilot_exclusion_count_ambiguous_obligation_owners()
+  let exclusion_causes = pilot_exclusion_count_no_matching_retirement_obligation() + pilot_exclusion_count_ambiguous_retirement_obligations()
   pilot_n == pilot_domain_limit()
     && bindings + exclusions == pilot_n
     && exclusion_causes + bindings == pilot_n
@@ -127,52 +122,63 @@ test fn pilot_tombstoned_obligations_never_silently_pass() -> Bool {
 }
 
 test fn fired_dissolution_red_control_fires_when_successor_present() -> Bool {
-  match scaffold_site_by_qualified_name(
+  match scaffold_site_lookup(
     qn: fired_dissolution_specimen_qualified_name,
     sites: derived_scaffold_disposition_sites()
   ) {
-    Present { value: site } =>
+    ScaffoldSiteLookupUnique { site: site } =>
       site.bind.module_path == fired_dissolution_specimen_bind_module
         && site.bind.decl_name == fired_dissolution_specimen_bind_decl
         && disposition_redundancy_violation_count(
           dispositions: [site_disposition_for_redundancy(site: site)],
           present: corpus_present_declaration_refs()
         ) == 1
-    Absent => false
+    _ => false
   }
 }
 
 test fn fired_dissolution_red_control_is_quiet_when_successor_absent() -> Bool {
-  match scaffold_site_by_qualified_name(
+  match scaffold_site_lookup(
     qn: population_positive_specimen_qualified_name,
     sites: derived_scaffold_disposition_sites()
   ) {
-    Present { value: site } =>
+    ScaffoldSiteLookupUnique { site: site } =>
       disposition_redundancy_violation_count(
         dispositions: [site_disposition_for_redundancy(site: site)],
         present: []
       ) == 0
-    Absent => false
+    _ => false
   }
 }
 
-test fn pilot_fired_dissolution_count_is_reported_not_hidden() -> Bool {
-  pilot_fired_dissolution_violation_count() >= 0
+test fn pilot_fired_dissolution_count_matches_site_level_fold() -> Bool {
+  let per_site = fold(
+    pilot_scaffold_sites(),
+    init: 0,
+    f: fn(acc, site) {
+      acc + disposition_redundancy_violation_count(
+        dispositions: [site_disposition_for_redundancy(site: site)],
+        present: corpus_present_declaration_refs()
+      )
+    }
+  )
+  per_site == pilot_fired_dissolution_violation_count() && per_site >= 1
 }
 
-test fn tombstone_without_successor_is_a_refusal_not_a_pass() -> Bool {
+test fn superseded_tombstone_admits_with_successor() -> Bool {
   match roadmap_tombstoned_identities() |> first {
-    Present { value: TombstonedIdentity { identity, former_slug: _, superseded_by } } =>
-      match superseded_by {
-        Absent =>
-          match admit_obligation_identity(identity: identity) {
-            ObligationTombstonedWithoutSuccessor { identity: _ } => true
-            ObligationSuperseded { identity: _, superseded_by: _ } => false
-            ObligationActive { identity: _ } => false
-            _ => false
-          }
-        Present { value: _ } => true
+    Present { value: TombstonedIdentity { identity, former_slug: _, superseded_by: Present { value: succ } } } =>
+      match admit_obligation_identity(identity: identity) {
+        ObligationSuperseded { identity: _, superseded_by: observed } => observed == succ
+        _ => false
       }
-    Absent => true
+    _ => false
+  }
+}
+
+test fn unknown_obligation_identity_refuses_admission() -> Bool {
+  match admit_obligation_identity(identity: "rn_PLANTED_UNKNOWN_OBLIGATION_ID" as RoadmapNodeIdentity) {
+    ObligationIdentityUnknown { identity: _ } => true
+    _ => false
   }
 }
