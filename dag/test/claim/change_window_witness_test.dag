@@ -1,0 +1,86 @@
+module test.claim.change_window_witness_test
+
+import std.logic { Bool }
+import std.types { String }
+import extdeps.git.object_store { git_object_id_wire_hex }
+import extdeps.session_dashboard.change_window {
+  DashboardExactReplayObserved,
+  DashboardReplayMalformed,
+  DashboardReplayReadRefused,
+  ClaimedMergeBase,
+  dashboard_replay_from_event_json
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data planted_base_hex: String = "abc123def4567890abc123def4567890abc12345"
+data planted_head_hex: String = "fedcba0987654321fedcba0987654321fedcba09"
+data planted_sha256_hex: String = "cd12b0326b0ea9f272a6dc91e21e490f4cee87b47e6bffa03801420cf81f6bab"
+
+fn valid_change_window_json(base_hex: String, head_hex: String) -> String {
+  concat(
+    concat(
+      concat(
+        concat(
+          concat(
+            "{\"producer\":\"session-dashboard\",\"realization\":\"git\",\"base_object_id\":\"",
+            base_hex
+          ),
+          concat("\",\"head_object_id\":\"", head_hex)
+        ),
+        "\",\"claimed_relation\":\"merge_base\"}"
+      ),
+      ""
+    ),
+    ""
+  )
+}
+
+test fn witness_dashboard_wire_parses_sha1_exact_replay() -> Bool {
+  match dashboard_replay_from_event_json(
+    text: valid_change_window_json(base_hex: planted_base_hex, head_hex: planted_head_hex)
+  ) {
+    DashboardExactReplayObserved { base: base, head: head, claimed_relation: ClaimedMergeBase {}, producer: producer } =>
+      (git_object_id_wire_hex(oid: base) as String) == planted_base_hex
+        && (git_object_id_wire_hex(oid: head) as String) == planted_head_hex
+        && producer == "session-dashboard"
+    DashboardReplayMalformed { detail: _ } => false
+    DashboardReplayReadRefused { path: _, cause: _ } => false
+  }
+}
+
+test fn witness_dashboard_wire_parses_sha256_exact_replay() -> Bool {
+  match dashboard_replay_from_event_json(
+    text: valid_change_window_json(base_hex: planted_sha256_hex, head_hex: planted_head_hex)
+  ) {
+    DashboardExactReplayObserved { base: base, head: _, claimed_relation: _, producer: _ } =>
+      (git_object_id_wire_hex(oid: base) as String) == planted_sha256_hex
+    DashboardReplayMalformed { detail: _ } => false
+    DashboardReplayReadRefused { path: _, cause: _ } => false
+  }
+}
+
+test fn witness_dashboard_wire_refuses_uppercase_object_id() -> Bool {
+  match dashboard_replay_from_event_json(
+    text: valid_change_window_json(
+      base_hex: "ABC123DEF4567890ABC123DEF4567890ABC12345",
+      head_hex: planted_head_hex
+    )
+  ) {
+    DashboardReplayMalformed { detail: _ } => true
+    DashboardExactReplayObserved { base: _, head: _, claimed_relation: _, producer: _ } => false
+    DashboardReplayReadRefused { path: _, cause: _ } => false
+  }
+}
+
+test fn witness_dashboard_wire_refuses_self_compare() -> Bool {
+  match dashboard_replay_from_event_json(
+    text: valid_change_window_json(base_hex: planted_base_hex, head_hex: planted_base_hex)
+  ) {
+    DashboardReplayMalformed { detail: detail } =>
+      string_contains(s: detail, pattern: "self-compare")
+    DashboardExactReplayObserved { base: _, head: _, claimed_relation: _, producer: _ } => false
+    DashboardReplayReadRefused { path: _, cause: _ } => false
+  }
+}

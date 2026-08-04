@@ -23,8 +23,7 @@ import gunbc.diff_baseline {
   resolve_diff_baseline,
   diff_baseline_ref,
   diff_baseline_diff_base,
-  diff_baseline_diff_head,
-  diff_baseline_is_exact_replay
+  diff_baseline_diff_head
 }
 import std.types { String, NonEmptyStr, GitRef }
 import std.logic { Bool }
@@ -189,14 +188,6 @@ fn floor_diff_mode_for_baseline(baseline: DiffBaseline, policy: DiffPolicy) -> D
   }
 }
 
-fn floor_diff_endpoints_for_baseline(baseline: DiffBaseline, policy: DiffPolicy) -> (String, String) {
-  let default_head = floor_resolved_head(policy: policy)
-  (
-    diff_baseline_diff_base(b: baseline),
-    diff_baseline_diff_head(b: baseline, default_head: default_head)
-  )
-}
-
 fn floor_git_diff_range_of_mode(mode: DiffMode) -> GitDiffRange {
   match mode {
     DiffMergeBase => ThreeDot
@@ -221,10 +212,12 @@ fn floor_observe_git_diff_unified(policy: DiffPolicy) -> FloorUnifiedDiffResult 
       match floor_resolve_baseline(policy: policy) {
         BaselineRefused { reason: reason } => UnifiedDiffFail { reason: reason }
         BaselineSelected { baseline: baseline } =>
-          let endpoints = floor_diff_endpoints_for_baseline(baseline: baseline, policy: policy)
           floor_run_git_diff_unified(
-            base: endpoints.0,
-            head: endpoints.1,
+            base: diff_baseline_diff_base(b: baseline),
+            head: diff_baseline_diff_head(
+              b: baseline,
+              default_head: floor_resolved_head(policy: policy)
+            ),
             mode: floor_diff_mode_for_baseline(baseline: baseline, policy: policy)
           )
       }
@@ -298,10 +291,12 @@ fn floor_observe_git_diff_name_status(policy: DiffPolicy) -> FloorNameStatusDiff
       match floor_resolve_baseline(policy: policy) {
         BaselineRefused { reason: reason } => NameStatusDiffFail { reason: reason }
         BaselineSelected { baseline: baseline } =>
-          let endpoints = floor_diff_endpoints_for_baseline(baseline: baseline, policy: policy)
           floor_run_git_diff_name_status(
-            base: endpoints.0,
-            head: endpoints.1,
+            base: diff_baseline_diff_base(b: baseline),
+            head: diff_baseline_diff_head(
+              b: baseline,
+              default_head: floor_resolved_head(policy: policy)
+            ),
             mode: floor_diff_mode_for_baseline(baseline: baseline, policy: policy)
           )
       }

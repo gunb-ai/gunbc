@@ -10,8 +10,7 @@ import extdeps.session_dashboard.change_window {
   DashboardExactReplayObserved,
   DashboardReplayMalformed,
   DashboardReplayReadRefused,
-  GitClaimedMergeBaseRelation,
-  ClaimedMergeBase
+  GitClaimedMergeBaseRelation
 }
 import extdeps.github.actions {
   github_event_name_pull_request,

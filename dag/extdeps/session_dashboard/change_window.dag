@@ -53,7 +53,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 }
 
 type GitClaimedMergeBaseRelation
-  = ClaimedMergeBase
+  = ClaimedMergeBase {}
 
 type DashboardReplayObservation
   = DashboardExactReplayObserved {
@@ -89,7 +89,7 @@ fn change_window_claimed_relation_from_member(doc: JsonValue) -> GitClaimedMerge
     Absent => none
     Present { value: relation } =>
       if relation == change_window_claimed_merge_base {
-        Present { value: ClaimedMergeBase }
+        Present { value: ClaimedMergeBase {} }
       } else {
         none
       }

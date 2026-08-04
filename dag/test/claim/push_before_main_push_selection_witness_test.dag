@@ -69,7 +69,8 @@ fn planted_main_push_baseline_resolution() -> DiffBaselineResolution {
       event_name: "push",
       base_ref: none,
       push_before: Present { value: PushBeforeSha { sha: planted_before_sha } },
-      head_sha: Present { value: planted_head_sha }
+      head_sha: Present { value: planted_head_sha },
+      dashboard_replay: none
     },
     push_parent_ref: gunbc_merge_target_ref,
     default_remote_name: gunbc_default_remote_name
