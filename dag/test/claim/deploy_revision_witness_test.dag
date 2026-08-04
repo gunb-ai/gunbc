@@ -228,7 +228,7 @@ test fn probe_pair_folds_to_the_four_observations() -> Bool {
 data target_derivation_note: String = "The target derivations are asserted at identity grain rather than by spelling a literal, so the queue group and lease are proven to come from ONE target. The blue and green slots must be distinct — a target whose two slots collapsed to one unit would serialize against nothing and would make the cutover restart the slot it is replacing."
 
 test fn the_queue_group_and_lease_derive_from_the_target() -> Bool {
-  deploy_target_queue_group(target: Srv1Dashboard) == "gunbc-deploy-srv1-dashboard"
+  deploy_target_queue_group(target: Srv1Dashboard) == "srv1-dashboard-deploy"
     && string_contains(deploy_target_lease_path(target: Srv1Dashboard) as String, "srv1-dashboard")
 }
 

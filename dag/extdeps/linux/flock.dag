@@ -50,13 +50,7 @@ data flock_conflict_exit_code: Int = 111
 
 fn flock_conflict_exit_code_is_disjoint_from_reserved_ranges() -> Bool {
   let c = flock_conflict_exit_code
-  c != 0
-    && c != 1
-    && !(c >= flock_sysexits_lowest && c <= flock_sysexits_highest)
-    && c != 126
-    && c != 127
-    && c < 128
-    && c >= 0
+  c != 0 && c != 1 && !(c >= flock_sysexits_lowest && c <= flock_sysexits_highest) && c != 126 && c != 127 && c < 128 && c >= 0
 }
 
 data flock_wait_bound_note: String = "The wait bound is a coproduct rather than an optional number because 'wait forever' and 'wait zero' are different intents and neither is the absence of a bound. FlockWaitSeconds carries a real Duration; FlockFailImmediately is -n (--nonblock), which is a decision to refuse rather than queue. There is no unbounded arm: an unbounded wait inside a CI job converts a lease conflict into a job-timeout kill, which reports as an infrastructure failure instead of a typed refusal, and the whole point of -E is to keep that distinction."

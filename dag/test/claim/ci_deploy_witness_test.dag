@@ -10,6 +10,16 @@ import gunbc.ci_spec {
   ci_release_build_line,
 }
 import v2.workflow.ci_release_build_emit { ci_release_build_script }
+import gunbc.live_deploy.revision {
+  Srv1Dashboard,
+  deploy_target_queue_group,
+  deploy_target_queue_group_after_drain,
+}
+import gunbc.ci_workflow {
+  gunbc_ci_deploy_step_timeout_minutes,
+  gunbc_ci_deploy_job_backstop_timeout_minutes,
+  gunbc_ci_artifact_transfer_step_timeout_minutes,
+}
 import gunbc.ci_deploy_access {
   ci_deploy_srv1_access,
   deploy_access_is_local_apply,
@@ -127,9 +137,26 @@ test fn witness_ci_yml_deploy_job_retains_pending_candidates() -> Bool {
   let yaml = expected_ci_yml()
   string_contains(
     s: yaml,
-    pattern: "    concurrency:\n      queue: max\n      group: gunbc-deploy-srv1-dashboard\n      cancel-in-progress: false"
+    pattern: "    concurrency:\n      queue: max\n      group: srv1-dashboard-deploy\n      cancel-in-progress: false"
   )
-    && !string_contains(s: yaml, pattern: "group: srv1-dashboard-deploy")
+}
+
+data group_rename_deferred_witness_note: String = "THE GROUP STRING MUST STILL BE THE LEGACY ONE, and this asserts that deliberately rather than by omission. Renaming the concurrency group in the same landing as the lease would open a window with NO exclusion at all: jobs already in flight sit in the old group and predate the host lease, so they take neither the new group nor the lock, and the merge run would not exclude them through either mechanism (operator review 2026-08-04).\\n\\nThe second clause is what keeps the deferral from silently becoming permanent — it pins that the derived post-drain form is a DIFFERENT string that is not yet emitted, so when the rename lands this witness fails and has to be updated deliberately."
+
+test fn witness_deploy_concurrency_group_rename_is_still_deferred() -> Bool {
+  let emitted = deploy_target_queue_group(target: Srv1Dashboard)
+  let after_drain = deploy_target_queue_group_after_drain(target: Srv1Dashboard)
+  emitted == "srv1-dashboard-deploy"
+    && after_drain != emitted
+    && !string_contains(s: expected_ci_yml(), pattern: after_drain)
+}
+
+data deploy_budget_containment_witness_note: String = "The deploy STEP budget must fit inside the JOB backstop with room for the prelude and artifact transfer, or GitHub cancels the job before flock can report a lock conflict on its distinct exit code — destroying the one signal that separates 'another deploy holds the host' from 'this deploy failed'. Asserted as an inequality over the derivations rather than as two literals, so raising the cutover envelope moves both and cannot silently break containment."
+
+test fn witness_deploy_step_budget_fits_inside_the_job_backstop() -> Bool {
+  let step = gunbc_ci_deploy_step_timeout_minutes()
+  let job = gunbc_ci_deploy_job_backstop_timeout_minutes()
+  step > 0 && job > step && job >= step + gunbc_ci_artifact_transfer_step_timeout_minutes
 }
 
 test fn witness_workflow_deploy_job_matches_enrollment() -> Bool {

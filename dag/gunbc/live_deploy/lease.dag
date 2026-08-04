@@ -26,9 +26,29 @@ data lease_owns_the_critical_section_note: String = "THE DEPLOY ENTRY OWNS THE L
 
 data lease_advisory_obligation_note: String = "flock(2) is ADVISORY, so this excludes only callers that take the same lock on the same path. That makes 'every public mutation entry routes through the leased launcher' a load-bearing obligation rather than a convention — one official entrypoint bypassing it makes the lease advisory in the bad sense. The composition witnesses assert that join rather than trusting it, and a planted direct call to an inner unleased entry is the discriminating RED."
 
-data lease_wait_bound_note: String = "The wait bound is finite and deliberately smaller than the deploy job's own backstop. A lease conflict means another deploy holds the host; the correct behavior is to wait for an ordinary cutover to finish and then proceed, not to queue indefinitely. Waiting past the job cap would convert a conflict into a job-timeout kill — an infrastructure-shaped failure that loses the typed cause, which is exactly what flock's --conflict-exit-code exists to preserve.\\n\\n600s is the bound: the observed blue/green cutover wall is ~3.5-4 minutes end to end (the deploy job windows in srv1-deploy-serialization-and-false-greens.md §9.3 run 3m30s-4m40s), so 10 minutes admits one full cutover ahead of this one with margin, while the job backstop is 10 minutes of its own on top. A conflict that outlives this bound is a stuck holder, which is a defect to diagnose rather than headroom to grant."
+data lease_wait_bound_note: String = "THE WAIT MUST FIT INSIDE THE JOB, AND AN EARLIER REVISION OF THIS ROW DID NOT. It set 600s and claimed 'the job backstop is 10 minutes of its own on top', which is false: the job timeout covers checkout, artifact download, unpack and the deploy together, so by the time flock starts, less than 600s remain. GitHub would cancel the job before the typed lock-conflict outcome could be returned — converting the one signal --conflict-exit-code exists to preserve into an infrastructure-shaped kill (operator review 2026-08-04).\\n\\nSo the two budgets are now ONE derivation instead of two independent literals. The cutover envelope is the measured wall of a complete blue/green attempt; the wait admits at most one such cutover running ahead of this one; and gunbc.ci_workflow's deploy step and job backstop are computed FROM these, so the containment holds by construction rather than by a comment claiming it. Changing the envelope moves the caps with it; a wait that no longer fits is unwritable rather than merely wrong.\\n\\nENVELOPE BASIS: observed deploy job windows run 3m30s-4m40s end to end (srv1-deploy-serialization-and-false-greens.md §9.3), so 5 minutes is a real ceiling rather than a target. A conflict outliving the wait is a stuck holder — a defect to diagnose, not headroom to grant."
 
-data live_deploy_lease_wait_seconds: Duration = 600
+data live_deploy_cutover_envelope_seconds: Duration = 300
+
+data live_deploy_lease_wait_seconds: Duration = live_deploy_cutover_envelope_seconds
+
+fn live_deploy_seconds_to_minutes_ceiling(seconds: Duration) -> Int {
+  (seconds + 59) / 60
+}
+
+fn live_deploy_lease_wait_minutes() -> Int {
+  live_deploy_seconds_to_minutes_ceiling(seconds: live_deploy_lease_wait_seconds)
+}
+
+fn live_deploy_cutover_envelope_minutes() -> Int {
+  live_deploy_seconds_to_minutes_ceiling(seconds: live_deploy_cutover_envelope_seconds)
+}
+
+data live_deploy_step_budget_note: String = "The deploy STEP must contain a full wait followed by a full cutover, because the worst admissible case is arriving behind one holder and then doing the whole job: wait out their cutover, then run yours. Anything smaller makes the step cap, not the lease, decide the outcome."
+
+fn live_deploy_step_budget_minutes() -> Int {
+  live_deploy_lease_wait_minutes() + live_deploy_cutover_envelope_minutes()
+}
 
 type LiveDeployExclusiveInvocation {
   target: DeploymentTarget
