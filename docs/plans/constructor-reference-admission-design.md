@@ -67,14 +67,23 @@ Construction admission is **one authority**. Record-literal refusal and call-edg
 
 **This note explicitly rejects a post-infer dedicated pass** as the tempting shape that avoids touching a load-bearing file. Avoiding a load-bearing file is not a design argument; it is the unmarked-workaround class (DESIGN §5). Whatever compiler hosts the wall, record-literal and call-edge checks live in the **same infer construction-admission authority**, beside the existing record-literal `sole_constructor` arm in v1.
 
-### 4.2 Operator hold — two horns (program sequencing, not design)
+### 4.2 Operator hold — three horns (program sequencing, not design)
 
-**Do not pick in this session.** Both horns and their costs are named here; the operator picks.
+**Do not pick in this session.** Three horns and their costs are named here; the operator picks. still-bat-561 is **recommending the third row** to the operator but has not picked it — this note presents all three.
 
 | Horn | What it costs | Execution today |
 |---|---|---|
 | **Land in v1 seed infer** | Grows the thing the v1-deletion program is shrinking: new capability surface + Rust realization lines in hand-maintained `v1_compiler_infer.rs` (and `.dag` infer model). Same class as operator pushback today on adding hundreds of lines to seed files under correct modeling. **But:** wall **executes immediately** on the live corpus path — same as existing `sole_constructor` record-literal refusal. |
 | **Land in v2 infer only** | Aligns with self-host direction; does not expand v1 seed. **But:** v2 infer has **no `sole_constructor` today** — the wall does not execute until v2 infer implements construction admission (record literals + call edges) and that stage is what runs for acceptance. A wall that does not execute is specification-without-execution — the failure this lane proved matters. |
+| **Land in v1 seed infer WITH declared dissolution trigger** (operator-ruling shape, gunbc#7804, same day — **not proposed fresh**) | Same seed growth as row 1 (infer `.dag` arms + `v1_compiler_infer.rs` realization for record-literal + call-edge admission). **Plus:** one more **counted** seed-retained obligation that must actually dissolve — not absorbed growth. | **Executes immediately** on the live corpus path (same as row 1). Forge RED flips **by execution**, not in principle. |
+
+**Third row — what it buys:** the wall runs on today's acceptance path; `fully_matching_derived_seal_forgery_advance_succeeds_red` can flip when the mechanism lands, not when v2 self-host completes in the abstract.
+
+**Third row — what it costs:** the enumerated v1 infer additions below, **and** a declared `SeedRetained` row with reason + migration trigger that the program must track until dissolution (DESIGN §7 — countable, prioritizable, never a silent escape hatch).
+
+**Third row — what it owes (named exactly, not reinvented):** dissolution trigger is the **same** frontier row item 3 already points at — `compiler_frontier_row_04_infer` in `src/v2/compiler/self_host/frontier.dag`, `migration_trigger: ^migrate_when_closure_self_emits_cargo_green`. That symbol is the v2 infer self-host frontier row: when `src/v2/compiler/04_infer.dag` closure self-emits cargo-green **and** v2 infer is what runs for production typecheck (not merely modeled), the v1 seed construction-admission block deletes. Disposition text should follow the gunbc#7804 pattern handed back the same afternoon: **not** "do not add Rust to the seed," but **this Rust block carries explicit disposition** — seed realization now, then emitted or native `.dag` realization, then **this block deletes** on the named trigger.
+
+**Operator ruling source (gunbc#7804, 2026-08-04):** seed growth is not forbidden; it is required to be **counted** — explicit disposition + dissolution trigger, never silent seed expansion. This third row applies that ruling consistently to constructor-reference admission; it is the operator's own rule carried across PRs, not a middle path invented to avoid the fork.
 
 **What v2 would need for the wall to actually execute there (named, not assumed):**
 
@@ -90,7 +99,7 @@ Construction admission is **one authority**. Record-literal refusal and call-edg
 - New diagnostic variant with constructor, offender caller, permitted-set coordinates.
 - Enrollment witnesses proving execute on the **v1** path (already how `sole_constructor` is proven today).
 
-**Session disposition:** carrier shape, refusal coordinates, composition, first_slice bar, alias stance, and no-separate-pass rule are all decidable without picking the horn. **Implementation waits on operator horn choice.**
+**Session disposition:** carrier shape, refusal coordinates, composition, first_slice bar, alias stance, and no-separate-pass rule are all decidable without picking the horn. **Implementation waits on operator choice among the three rows in §4.2.**
 
 ## 5. Design questions (decided or answered in this note)
 
@@ -135,7 +144,7 @@ Together they close the two routes measured on `BehavioralComparisonObservation`
 
 ## 7. Phases (no code until note signed + operator picks compiler horn)
 
-1. **P0 — this note:** operator sign-off on shape; **operator pick v1-seed vs v2 infer horn** (§4.2).
+1. **P0 — this note:** operator sign-off on shape; **operator pick among §4.2 three horns** (still-bat-561 recommends third row with `^migrate_when_closure_self_emits_cargo_green` dissolution).
 2. **P1 — model carrier** in `std` with nonempty permitted callers; import `decl_ref` from `std.decl_ref`.
 3. **P2 — compiler refusal** in the **chosen** infer authority (record literal + call edge, one mechanism — no separate pass).
 4. **P3 — first slice wiring** on `BehavioralComparisonObservation` + forge RED flip.
