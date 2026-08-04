@@ -354,6 +354,12 @@ data gunbc_floor_evidence_required_env_name: String = "GUNBC_FLOOR_EVIDENCE_REQU
 
 data gunbc_floor_evidence_required_env_value: String = "1"
 
+data gunbc_source_head_commit_env_note: String = "The BRANCH head the run was requested for (#7785 commit 4B). On a pull_request event GITHUB_SHA names the ephemeral merge commit GitHub synthesised, which exists in no contributor branch, so evidence stamped only with it cannot be addressed from the source it describes. The expression prefers the pull request's own head sha and falls back to github.sha on push/schedule, where the two coincide by construction. The executor can also recover this from the event payload; passing it explicitly means the coordinate is present even where the payload is not readable."
+
+data gunbc_source_head_commit_env_name: String = "GUNBC_SOURCE_HEAD_COMMIT"
+
+data gunbc_source_head_commit_env_value: String = "${{ github.event.pull_request.head.sha || github.sha }}"
+
 fn ci_floor_step() -> Step {
   RunStep {
     name: Present { value: "gunbc ci (.dag witnesses + gates)" },
@@ -363,7 +369,8 @@ fn ci_floor_step() -> Step {
     env: Present {
       value: [
         kv(key: ci_floor_phase_journal_env_name, value: yaml_string(s: ci_floor_phase_journal_path)),
-        kv(key: gunbc_floor_evidence_required_env_name, value: yaml_string(s: gunbc_floor_evidence_required_env_value))
+        kv(key: gunbc_floor_evidence_required_env_name, value: yaml_string(s: gunbc_floor_evidence_required_env_value)),
+        kv(key: gunbc_source_head_commit_env_name, value: yaml_string(s: gunbc_source_head_commit_env_value))
       ]
     },
     working_directory: none,

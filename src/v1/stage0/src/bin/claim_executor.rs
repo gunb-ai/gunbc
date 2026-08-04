@@ -3786,16 +3786,40 @@ fn run_pre_walk_execution(
     };
     let started = Instant::now();
     let memory_before = stage_memory_snapshot();
+    trace_floor_phase(
+        "pre-walk-capture",
+        "started",
+        &format!("plan_site={plan_site} transport={transport_entry}::{transport_function}"),
+    );
     eprintln!(
         "claim_executor: pre-walk typed claim subprocess — transport={transport_entry}::{transport_function} claim={claim_entry}::{claim_function}"
     );
-    let (graph, indices) = resolve_entry_graph(executor_source_roots, transport_entry).map_err(
-        |msg| {
-            format!(
-                "PRE-WALK-REFUSED plan_site={plan_site} transport={transport_entry}::{transport_function} claim={claim_entry}::{claim_function}: transport resolve failed: {msg}"
-            )
-        },
-    )?;
+    let resolved = resolve_entry_graph(executor_source_roots, transport_entry).map_err(|msg| {
+        format!(
+            "PRE-WALK-REFUSED plan_site={plan_site} transport={transport_entry}::{transport_function} claim={claim_entry}::{claim_function}: transport resolve failed: {msg}"
+        )
+    });
+    let (graph, indices) = match resolved {
+        Ok(pair) => pair,
+        Err(msg) => {
+            // The refusal is captured BEFORE it propagates: a pre-walk that never
+            // reached its transport is exactly the case the evidence has to explain,
+            // and an attempt root that carries no PreWalkCapture row cannot say
+            // whether the phase refused or was never entered.
+            publish_pre_walk_capture_receipt(
+                plan_site,
+                transport_entry,
+                transport_function,
+                claim_entry,
+                claim_function,
+                "refused",
+                started.elapsed().as_millis(),
+                &memory_before,
+                Some(&msg),
+            );
+            return Err(msg);
+        }
+    };
     let ctx = make_eval_context(&graph, indices, ExecutionMode::Wet);
     let result = run_in_context_with_args(
         &ctx,
@@ -3828,7 +3852,7 @@ fn run_pre_walk_execution(
         receipt_optional_u64(memory_after.swap_bytes),
         receipt_optional_u64(memory_after.high_events),
     );
-    match result {
+    let outcome: Result<(), String> = match result {
         Ok(Value::Bool(true)) => Ok(()),
         Ok(Value::Bool(false)) => {
             // The claim channel is a Bool, so the typed cause crosses as the durable
@@ -3850,6 +3874,110 @@ fn run_pre_walk_execution(
         Err(msg) => Err(format!(
             "PRE-WALK-REFUSED plan_site={plan_site} transport={transport_entry}::{transport_function} claim={claim_entry}::{claim_function}: transport evaluation failed: {msg}"
         )),
+    };
+    let captured = publish_pre_walk_capture_receipt(
+        plan_site,
+        transport_entry,
+        transport_function,
+        claim_entry,
+        claim_function,
+        if outcome.is_ok() {
+            "completed"
+        } else {
+            "refused"
+        },
+        wall_ms,
+        &memory_before,
+        outcome.as_ref().err().map(|s| s.as_str()),
+    )
+    .is_some();
+    match outcome {
+        // A refusal already carries its own cause; the capture write is reported beside
+        // it but never replaces it.
+        Err(msg) => Err(msg),
+        Ok(()) if !captured => Err(format!(
+            "PRE-WALK-REFUSED plan_site={plan_site} transport={transport_entry}::{transport_function} claim={claim_entry}::{claim_function}: pre-walk capture receipt write refused"
+        )),
+        Ok(()) => Ok(()),
+    }
+}
+
+/// The pre-walk's own receipt (#7785 commit 4B). The pre-walk is the first thing the
+/// floor executes and the only phase whose outcome had no durable row: a failure here
+/// returned an error string and left the attempt root with nothing to read. Written on
+/// BOTH arms — a refused capture is the row a reader most needs.
+#[allow(clippy::too_many_arguments)]
+fn publish_pre_walk_capture_receipt(
+    plan_site: &str,
+    transport_entry: &str,
+    transport_function: &str,
+    claim_entry: &str,
+    claim_function: &str,
+    outcome: &str,
+    wall_ms: u128,
+    memory_before: &StageMemorySnapshot,
+    refusal_cause: Option<&str>,
+) -> Option<()> {
+    let attempt = observe_walk_attempt_id().unwrap_or_default();
+    let memory_after = stage_memory_snapshot();
+    let clean = |s: &str| s.replace(['\t', '\r', '\n'], " ");
+    let mut body = String::new();
+    body.push_str(&format!("attempt\t{}\n", clean(&attempt)));
+    body.push_str(&format!("plan_site\t{}\n", clean(plan_site)));
+    body.push_str(&format!(
+        "transport\t{}::{}\n",
+        clean(transport_entry),
+        clean(transport_function)
+    ));
+    body.push_str(&format!(
+        "claim\t{}::{}\n",
+        clean(claim_entry),
+        clean(claim_function)
+    ));
+    body.push_str(&format!("outcome\t{outcome}\n"));
+    body.push_str(&format!("wall_ms\t{wall_ms}\n"));
+    body.push_str(&format!(
+        "memory_current_before\t{}\n",
+        receipt_optional_u64(memory_before.current_bytes)
+    ));
+    body.push_str(&format!(
+        "memory_current_after\t{}\n",
+        receipt_optional_u64(memory_after.current_bytes)
+    ));
+    body.push_str(&format!(
+        "memory_peak_after\t{}\n",
+        receipt_optional_u64(memory_after.peak_bytes)
+    ));
+    body.push_str(&format!(
+        "memory_swap_after\t{}\n",
+        receipt_optional_u64(memory_after.swap_bytes)
+    ));
+    body.push_str(&format!(
+        "memory_high_events_after\t{}\n",
+        receipt_optional_u64(memory_after.high_events)
+    ));
+    if let Some(cause) = refusal_cause {
+        body.push_str(&format!("refusal_cause\t{}\n", clean(cause)));
+    }
+    let written = publish_settlement_floor_receipt(
+        "PreWalkCapture",
+        "receipts/pre-walk-capture.tsv",
+        body.as_bytes(),
+        "BeforeFloor",
+    );
+    trace_floor_phase(
+        "pre-walk-capture",
+        if outcome == "completed" && written {
+            "completed"
+        } else {
+            "refused"
+        },
+        &format!("plan_site={plan_site} outcome={outcome} receipt_written={written}"),
+    );
+    if written {
+        Some(())
+    } else {
+        None
     }
 }
 
@@ -7883,6 +8011,13 @@ fn run_perturb_check(
 
 const FLOOR_WORKER_TERMINAL_ENV: &str = "GUNBC_FLOOR_WORKER_TERMINAL_RECEIPT";
 const FLOOR_PHASE_JOURNAL_ENV: &str = "GUNBC_FLOOR_PHASE_JOURNAL";
+/// Executor invocation identity (#7785 commit 4B). The floor journal is ONE append log
+/// written by a coordinator and every worker it spawns; without these three coordinates
+/// a reader can only reduce it to `phase -> standing`, which lets any process's row
+/// answer for any other's phase.
+const EXECUTOR_INVOCATION_ID_ENV: &str = "GUNBC_EXECUTOR_INVOCATION_ID";
+const PARENT_EXECUTOR_INVOCATION_ID_ENV: &str = "GUNBC_PARENT_EXECUTOR_INVOCATION_ID";
+const PLAN_SITE_ENV: &str = "GUNBC_PLAN_SITE";
 const SCOPED_WITNESS_BATCH_MANIFEST_PATH: &str = "target/scoped-witness-batch-manifest.tsv";
 const FLOOR_WORKER_OBSERVATION_RECEIPT_PATH: &str = "target/floor-worker-observation-receipt.tsv";
 const FLOOR_WET_WITNESS_ROW_OUTCOME_RECEIPT_PATH: &str =
@@ -7959,6 +8094,19 @@ fn replay_ordinary_floor_wet_witness_row_outcomes() {
     }
 }
 
+/// One tab-separated journal column: separators are stripped so a column can never split
+/// a row, and an empty column reads as `-` so absence is a value rather than a gap the
+/// parser has to guess at.
+fn journal_column(raw: &str) -> String {
+    let cleaned = raw.replace(['\t', '\r', '\n'], " ");
+    let trimmed = cleaned.trim();
+    if trimmed.is_empty() {
+        "-".to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
 fn append_floor_phase_journal(phase: &str, state: &str, detail: &str) {
     let Some(path) = std::env::var_os(FLOOR_PHASE_JOURNAL_ENV) else {
         return;
@@ -7988,8 +8136,19 @@ fn append_floor_phase_journal(phase: &str, state: &str, detail: &str) {
         .unwrap_or_default()
         .as_millis();
     let clean_detail = detail.replace(['\t', '\r', '\n'], " ");
+    let walk = journal_column(&std::env::var("GUNBC_WALK_ATTEMPT_ID").unwrap_or_default());
+    let invocation = match std::env::var(EXECUTOR_INVOCATION_ID_ENV) {
+        Ok(id) if !id.trim().is_empty() => journal_column(&id),
+        // No installed identity (a bare local invocation with no evidence root): the pid
+        // names this process honestly rather than borrowing another invocation's id.
+        _ => format!("pid-{}", std::process::id()),
+    };
+    let parent = journal_column(
+        &std::env::var(PARENT_EXECUTOR_INVOCATION_ID_ENV).unwrap_or_else(|_| "-".to_string()),
+    );
+    let plan_site = journal_column(&std::env::var(PLAN_SITE_ENV).unwrap_or_default());
     let row = format!(
-        "{unix_millis}\t{}\t{phase}\t{state}\t{clean_detail}\n",
+        "{unix_millis}\t{walk}\t{invocation}\t{parent}\t{plan_site}\t{}\t{phase}\t{state}\t{clean_detail}\n",
         std::process::id()
     );
     use std::io::Write as _;
@@ -8323,6 +8482,25 @@ fn spawn_floor_worker(
         command.arg("--scoped-batch-id").arg(id);
     }
     command.env(FLOOR_WORKER_TERMINAL_ENV, &terminal_path);
+    // Name the child's invocation and its parent BEFORE it can journal anything, so
+    // every row it appends to the shared journal is attributable to it alone.
+    let walk = std::env::var("GUNBC_WALK_ATTEMPT_ID").unwrap_or_default();
+    let walk = if walk.trim().is_empty() {
+        "unattributed".to_string()
+    } else {
+        walk.trim().to_string()
+    };
+    let child_invocation = match batch_id {
+        Some(id) => format!("{walk}-scoped-{}", id.replace(['\t', '\r', '\n'], "-")),
+        None => format!("{walk}-{role}"),
+    };
+    let parent_invocation = match std::env::var(EXECUTOR_INVOCATION_ID_ENV) {
+        Ok(id) if !id.trim().is_empty() => id.trim().to_string(),
+        _ => format!("pid-{}", std::process::id()),
+    };
+    command.env(EXECUTOR_INVOCATION_ID_ENV, &child_invocation);
+    command.env(PARENT_EXECUTOR_INVOCATION_ID_ENV, &parent_invocation);
+    command.env(PLAN_SITE_ENV, format!("floor-worker-{role}"));
     // The worker's post-walk ledger harvest can spend minutes dropping its memo
     // contexts after the final discovery line.  A blocking `Command::status`
     // made that whole interval silent: the worker's own heartbeat shares its
@@ -8402,6 +8580,21 @@ fn maybe_run_floor_coordinator(args: &[String]) -> Option<ExitCode> {
         || floor_plan_function_arg(args) != Some("gunbc_ci_floor_plan")
     {
         return None;
+    }
+    // The coordinator names itself before it journals anything: its rows are the ROOT
+    // invocation's rows, and the workers it is about to spawn carry it as their parent.
+    // Without this the coordinator would journal under a bare pid and its worker-
+    // observation rows would be indistinguishable from a worker's own.
+    if let Ok(id) = observe_walk_attempt_id() {
+        if std::env::var(EXECUTOR_INVOCATION_ID_ENV)
+            .map(|v| v.trim().is_empty())
+            .unwrap_or(true)
+        {
+            std::env::set_var("GUNBC_WALK_ATTEMPT_ID", &id);
+            std::env::set_var(EXECUTOR_INVOCATION_ID_ENV, format!("{id}-root"));
+            std::env::set_var(PARENT_EXECUTOR_INVOCATION_ID_ENV, "-");
+            std::env::set_var(PLAN_SITE_ENV, "floor-root");
+        }
     }
     if let Some(parent) = Path::new(FLOOR_WORKER_OBSERVATION_RECEIPT_PATH).parent() {
         if let Err(e) = fs::create_dir_all(parent) {
@@ -8799,6 +8992,17 @@ fn run() -> Result<ExitCode, ExitCode> {
             }
             // Ensure child workers inherit the same attempt id.
             std::env::set_var("GUNBC_WALK_ATTEMPT_ID", &id);
+            // The invocation identity is installed only if no parent already supplied
+            // one: a spawned worker keeps the id its coordinator gave it, so the
+            // parent edge survives instead of every process renaming itself root.
+            if std::env::var(EXECUTOR_INVOCATION_ID_ENV)
+                .map(|v| v.trim().is_empty())
+                .unwrap_or(true)
+            {
+                std::env::set_var(EXECUTOR_INVOCATION_ID_ENV, format!("{id}-root"));
+                std::env::set_var(PARENT_EXECUTOR_INVOCATION_ID_ENV, "-");
+                std::env::set_var(PLAN_SITE_ENV, "floor-root");
+            }
             Some(id)
         }
         Err(msg) => {

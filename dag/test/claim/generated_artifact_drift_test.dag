@@ -2,7 +2,7 @@
 module test.claim.generated_artifact_drift
 
 import gunbc.generated_artifact {
-  GeneratedArtifact, CiYamlArtifact, FalsifierYamlArtifact, GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, Stage0EmitPlanGeneratedDagArtifact, V1InterpreterDispatchGeneratedRsArtifact, LiveDeployApplyScriptArtifact, LiveDeployRetractScriptArtifact, AutoinstallUserDataArtifact, ProxyDhcpDnsmasqArtifact, PlanArtifact,
+  GeneratedArtifact, CiYamlArtifact, FalsifierYamlArtifact, GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, Stage0EmitPlanGeneratedDagArtifact, V1InterpreterDispatchGeneratedRsArtifact, FloorPopulationReceiptRegistryFingerprintArtifact, LiveDeployApplyScriptArtifact, LiveDeployRetractScriptArtifact, AutoinstallUserDataArtifact, ProxyDhcpDnsmasqArtifact, PlanArtifact,
   RepoConsumer, GitProtocol, GithubActionsWorkflow, ProjectDocumentation, HostReconciler,
   CommitPolicy, CommitRequired, NotCommitted,
   HealPolicy, AutoPushEligible, AuthorCommitRequired,
@@ -148,6 +148,7 @@ test fn witness_all_known_committed() -> Bool {
     && !path_is_ignored(path: "dag/gunbc/stage0_emit_plan_generated.dag")
     && !path_is_ignored(path: "src/v1/stage0/src/v1_interpreter_dispatch_generated.rs")
     && !path_is_ignored(path: "src/v1/stage0/src/bootstrap_stage0_crate_layout_generated.rs")
+    && !path_is_ignored(path: "dag/gunbc/ci_floor_population_receipt_registry.fingerprint")
     && !path_is_ignored(path: "docs/plans/idea-machine.md")
     && !path_is_ignored(path: ".github/live-deploy-srv1-apply.sh")
     && !path_is_ignored(path: ".github/live-deploy-srv1-retract.sh")
@@ -164,7 +165,7 @@ test fn witness_ignored_paths_excluded() -> Bool {
 }
 
 test fn witness_registry_complete() -> Bool {
-  count(generated_artifact_registry) == (16 + count(fleet_autoinstall_specs) + count(fleet_install_server_specs) + count(all_plans))
+  count(generated_artifact_registry) == (17 + count(fleet_autoinstall_specs) + count(fleet_install_server_specs) + count(all_plans))
     && registry_contains(a: CiYamlArtifact)
     && registry_contains(a: FalsifierYamlArtifact)
     && registry_contains(a: GitignoreArtifact)
@@ -179,6 +180,7 @@ test fn witness_registry_complete() -> Bool {
     && registry_contains(a: Stage0CratePartitionGeneratedDagArtifact)
     && registry_contains(a: Stage0EmitPlanGeneratedDagArtifact)
     && registry_contains(a: V1InterpreterDispatchGeneratedRsArtifact)
+    && registry_contains(a: FloorPopulationReceiptRegistryFingerprintArtifact)
     && registry_contains(a: LiveDeployApplyScriptArtifact)
     && registry_contains(a: LiveDeployRetractScriptArtifact)
     && registry_contains(a: AutoinstallUserDataArtifact { spec: srv3_autoinstall_spec })
@@ -198,6 +200,7 @@ test fn witness_registry_complete() -> Bool {
     && artifact_is_committed(a: Stage0CratePartitionGeneratedDagArtifact)
     && artifact_is_committed(a: Stage0EmitPlanGeneratedDagArtifact)
     && artifact_is_committed(a: V1InterpreterDispatchGeneratedRsArtifact)
+    && artifact_is_committed(a: FloorPopulationReceiptRegistryFingerprintArtifact)
     && artifact_is_committed(a: LiveDeployApplyScriptArtifact)
     && artifact_is_committed(a: LiveDeployRetractScriptArtifact)
     && !artifact_is_committed(a: RunnerDeployArtifact)
@@ -232,6 +235,7 @@ test fn witness_commit_policy_reasons() -> Bool {
     && consumer_is(a: Stage0CratePartitionGeneratedDagArtifact, expected: GitProtocol)
     && consumer_is(a: Stage0EmitPlanGeneratedDagArtifact, expected: GitProtocol)
     && consumer_is(a: V1InterpreterDispatchGeneratedRsArtifact, expected: GitProtocol)
+    && consumer_is(a: FloorPopulationReceiptRegistryFingerprintArtifact, expected: GitProtocol)
     && consumer_is(a: LiveDeployApplyScriptArtifact, expected: HostReconciler)
     && consumer_is(a: LiveDeployRetractScriptArtifact, expected: HostReconciler)
     && match artifact_commit_policy(a: RunnerDeployArtifact) { NotCommitted => true  _ => false }

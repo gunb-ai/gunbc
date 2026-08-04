@@ -1,15 +1,13 @@
-//! Attempt-scoped floor-evidence sink (operator ruling on #7785; commit 4A closes the
-//! evidence boundary: exact-attempt artifact upload, no broken legacy symlink, a
-//! cross-language fingerprint file, fail-closed required writes, atomic per-receipt
-//! observation fragments, and an honest manifest body digest).
+//! Attempt-scoped floor-evidence sink (operator ruling on #7785; commit 4A closed the
+//! evidence boundary, commit 4B closes evidence INTEGRITY: the registry is parsed from
+//! its one generated authority instead of mirrored, every receipt write and every
+//! observation load must satisfy the `(kind, path, phase)` its registry row declares, a
+//! singleton receipt cannot be silently replaced, and phase standing is read at
+//! invocation grain so one process's journal row cannot answer for another's phase).
 //!
-//! Seed-retained scaffold: registry rows mirror `gunbc.ci_floor_population_receipt_registry`
-//! and MUST stay fingerprint-paired with `ci_floor_population_receipt_registry_fingerprint`
-//! (the pairing now runs against the canonical bytes at
-//! `dag/gunbc/ci_floor_population_receipt_registry.fingerprint`, included at compile time —
-//! not a second hand-copied literal).
-//! Dissolve-on: generated registry projection + write_floor_receipt observation fragments
-//! replace this hand mirror (`finalize_floor_evidence_seed_deferral`).
+//! Seed-retained scaffold only in its HOST role (writing files, hashing bytes): the row
+//! set itself is no longer hand-authored here. Dissolve-on: `finalize_floor_evidence`
+//! becomes a `.dag` consumer of the same rows (`finalize_floor_evidence_seed_deferral`).
 
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
@@ -17,136 +15,130 @@ use std::fs;
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
+use std::sync::OnceLock;
 
-pub const SCHEMA: &str = "gunbc.ci_floor_population_receipt_manifest.v4";
+pub const SCHEMA: &str = "gunbc.ci_floor_population_receipt_manifest.v5";
 pub const EVIDENCE_ROOT_PREFIX: &str = "target/floor-evidence";
 pub const OBSERVATIONS_DIR: &str = "observations";
 pub const MANIFEST_REL: &str = "manifest.tsv";
 pub const PHASE_JOURNAL_REL: &str = "phase-journal.tsv";
 
-/// Cross-language registry binding (#7785 commit 4A). The canonical fingerprint bytes
-/// are generated from `gunbc.ci_floor_population_receipt_registry`'s
-/// `ci_floor_population_receipt_registry_fingerprint()` and committed at this path —
-/// ONE authority both languages read, rather than a Rust literal that can drift from a
-/// `.dag` edit unnoticed. A `.dag` registry edit that does not update the file reds
-/// `registry_fingerprint_pairs_const` (this module) and the `.dag`-side pin witness.
+/// Cross-language registry binding (#7785). The canonical bytes are GENERATED from
+/// `gunbc.ci_floor_population_receipt_registry`'s
+/// `expected_ci_floor_population_receipt_registry_fingerprint_file()` and committed at
+/// this path as a registered generated artifact. Commit 4B stops mirroring them: this
+/// module PARSES these bytes into its row set, so a `.dag` registry edit that survives
+/// the drift gate is automatically this seed's registry too — there is no second copy
+/// left to disagree.
 pub const FLOOR_EVIDENCE_REGISTRY_FINGERPRINT: &str =
     include_str!("../../../../../dag/gunbc/ci_floor_population_receipt_registry.fingerprint");
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 enum Locator {
-    Exact(&'static str),
+    Exact(String),
     Family {
-        dir: &'static str,
-        prefix: &'static str,
-        suffix: &'static str,
+        dir: String,
+        prefix: String,
+        suffix: String,
     },
 }
 
+#[derive(Clone, Debug)]
 struct RegistryRow {
-    kind: &'static str,
+    kind: String,
     locator: Locator,
-    phase: &'static str,
-    journal_phase: &'static str,
+    phase: String,
+    journal_phase: String,
+    #[allow(dead_code)]
     required_for_settlement: bool,
     optional_worker: bool,
 }
 
-/// Mirrors `ci_floor_population_receipt_registry()` — fingerprint-paired, not rediscovery authority.
-const ROWS: &[RegistryRow] = &[
-    RegistryRow {
-        kind: "PopulationReceiptManifest",
-        locator: Locator::Exact("manifest.tsv"),
-        phase: "AfterFloorAlways",
-        journal_phase: "AfterFloorAlways",
-        required_for_settlement: true,
-        optional_worker: false,
-    },
-    RegistryRow {
-        kind: "PhaseJournal",
-        locator: Locator::Exact("phase-journal.tsv"),
-        phase: "DuringFloor",
-        journal_phase: "DuringFloor",
-        required_for_settlement: true,
-        optional_worker: false,
-    },
-    RegistryRow {
-        kind: "BatchWall",
-        locator: Locator::Exact("receipts/batch-wall.txt"),
-        phase: "DuringFloor",
-        journal_phase: "batch-wall-receipt",
-        required_for_settlement: true,
-        optional_worker: false,
-    },
-    RegistryRow {
-        kind: "CompileCleanWall",
-        locator: Locator::Exact("receipts/compile-clean-wall.txt"),
-        phase: "DuringFloor",
-        journal_phase: "compile-clean-wall-receipt",
-        required_for_settlement: true,
-        optional_worker: false,
-    },
-    RegistryRow {
-        kind: "Component",
-        locator: Locator::Exact("receipts/component.json"),
-        phase: "DuringFloor",
-        journal_phase: "floor-component-receipt",
-        required_for_settlement: true,
-        optional_worker: false,
-    },
-    RegistryRow {
-        kind: "NativeTransition",
-        locator: Locator::Exact("receipts/native-transition.tsv"),
-        phase: "DuringFloor",
-        journal_phase: "native-transition-receipt",
-        required_for_settlement: true,
-        optional_worker: false,
-    },
-    RegistryRow {
-        kind: "OnSuccessStage1",
-        locator: Locator::Exact("stages/1/receipt.tsv"),
-        phase: "OnSuccessStage",
-        journal_phase: "on-success-stage-1",
-        required_for_settlement: true,
-        optional_worker: false,
-    },
-    RegistryRow {
-        kind: "OnSuccessStage2",
-        locator: Locator::Exact("stages/2/receipt.tsv"),
-        phase: "OnSuccessStage",
-        journal_phase: "on-success-stage-2",
-        required_for_settlement: true,
-        optional_worker: false,
-    },
-    RegistryRow {
-        kind: "OnSuccessMaterialization",
-        locator: Locator::Exact("receipts/on-success-materialization.txt"),
-        phase: "OnSuccessStage",
-        journal_phase: "on-success-materialization",
-        required_for_settlement: true,
-        optional_worker: false,
-    },
-    RegistryRow {
-        kind: "WorkerObservation",
-        locator: Locator::Exact("workers/observation.tsv"),
-        phase: "OptionalWorker",
-        journal_phase: "coordinator-observation",
-        required_for_settlement: false,
-        optional_worker: true,
-    },
-    RegistryRow {
-        kind: "WorkerTerminal",
-        locator: Locator::Family {
-            dir: "workers",
-            prefix: "terminal-",
-            suffix: ".tsv",
-        },
-        phase: "OptionalWorker",
-        journal_phase: "OptionalWorker",
-        required_for_settlement: false,
-        optional_worker: true,
-    },
-];
+fn parse_locator(pattern: &str) -> Result<Locator, String> {
+    if !pattern.contains('*') {
+        if pattern.is_empty() {
+            return Err("empty locator pattern".to_string());
+        }
+        return Ok(Locator::Exact(pattern.to_string()));
+    }
+    let (dir, filename) = pattern
+        .rsplit_once('/')
+        .ok_or_else(|| format!("family locator {pattern:?} has no directory component"))?;
+    let (prefix, suffix) = filename
+        .split_once('*')
+        .ok_or_else(|| format!("family locator {pattern:?} has no wildcard in its filename"))?;
+    if suffix.contains('*') || dir.contains('*') {
+        return Err(format!(
+            "family locator {pattern:?} carries more than one wildcard"
+        ));
+    }
+    Ok(Locator::Family {
+        dir: dir.to_string(),
+        prefix: prefix.to_string(),
+        suffix: suffix.to_string(),
+    })
+}
+
+fn parse_registry_rows(text: &str) -> Result<Vec<RegistryRow>, String> {
+    let mut rows: Vec<RegistryRow> = Vec::new();
+    for (index, raw) in text.lines().enumerate() {
+        let line = raw.trim_end_matches('\r');
+        if line.trim().is_empty() {
+            continue;
+        }
+        let parts: Vec<&str> = line.split('|').collect();
+        if parts.len() != 5 {
+            return Err(format!(
+                "registry line {} has {} fields, expected 5: {line:?}",
+                index + 1,
+                parts.len()
+            ));
+        }
+        let required_for_settlement = match parts[4] {
+            "1" => true,
+            "0" => false,
+            other => {
+                return Err(format!(
+                    "registry line {} has required_for_settlement={other:?}, expected 0 or 1",
+                    index + 1
+                ))
+            }
+        };
+        let phase = parts[2].to_string();
+        rows.push(RegistryRow {
+            kind: parts[0].to_string(),
+            locator: parse_locator(parts[1])
+                .map_err(|e| format!("registry line {}: {e}", index + 1))?,
+            optional_worker: phase == "OptionalWorker",
+            phase,
+            journal_phase: parts[3].to_string(),
+            required_for_settlement,
+        });
+    }
+    if rows.is_empty() {
+        return Err("registry fingerprint carries zero rows".to_string());
+    }
+    for i in 0..rows.len() {
+        for j in (i + 1)..rows.len() {
+            if rows[i].kind == rows[j].kind {
+                return Err(format!("registry carries duplicate kind {}", rows[i].kind));
+            }
+        }
+    }
+    Ok(rows)
+}
+
+/// The registry, parsed once from the generated bytes. A malformed generated file is a
+/// build-artifact defect with no honest degraded reading — the process stops rather than
+/// running against a partial row set it would then report as complete.
+fn rows() -> &'static [RegistryRow] {
+    static ROWS: OnceLock<Vec<RegistryRow>> = OnceLock::new();
+    ROWS.get_or_init(|| {
+        parse_registry_rows(FLOOR_EVIDENCE_REGISTRY_FINGERPRINT).unwrap_or_else(|e| {
+            panic!("dag/gunbc/ci_floor_population_receipt_registry.fingerprint is unparseable: {e}")
+        })
+    })
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PhaseStandingExact {
@@ -158,9 +150,9 @@ pub enum PhaseStandingExact {
     PhaseStandingUnknown,
 }
 
-fn pattern_of(locator: Locator) -> String {
+fn pattern_of(locator: &Locator) -> String {
     match locator {
-        Locator::Exact(p) => p.to_string(),
+        Locator::Exact(p) => p.clone(),
         Locator::Family {
             dir,
             prefix,
@@ -169,13 +161,39 @@ fn pattern_of(locator: Locator) -> String {
     }
 }
 
+/// Port of `.dag` `registry_locator_matches_relpath`, in the strict reading the
+/// observation join already used: a family path must sit directly under the declared
+/// directory with the declared prefix/suffix, not merely contain those substrings.
+fn locator_matches_relpath(locator: &Locator, path: &str) -> bool {
+    if path.contains('*') {
+        return false;
+    }
+    match locator {
+        Locator::Exact(p) => path == p,
+        Locator::Family {
+            dir,
+            prefix,
+            suffix,
+        } => {
+            let dir_prefix = format!("{dir}/");
+            let Some(filename) = path.strip_prefix(&dir_prefix) else {
+                return false;
+            };
+            filename.starts_with(prefix.as_str())
+                && filename.ends_with(suffix.as_str())
+                && filename.len() >= prefix.len() + suffix.len()
+        }
+    }
+}
+
 fn fingerprint_from_rows() -> String {
-    ROWS.iter()
+    rows()
+        .iter()
         .map(|r| {
             format!(
                 "{}|{}|{}|{}|{}",
                 r.kind,
-                pattern_of(r.locator),
+                pattern_of(&r.locator),
                 r.phase,
                 r.journal_phase,
                 if r.required_for_settlement { "1" } else { "0" }
@@ -186,12 +204,12 @@ fn fingerprint_from_rows() -> String {
 }
 
 fn find_row(kind: &str) -> Option<&'static RegistryRow> {
-    ROWS.iter().find(|r| r.kind == kind)
+    rows().iter().find(|r| r.kind == kind)
 }
 
 fn is_family_kind(kind: &str) -> bool {
     matches!(
-        find_row(kind).map(|r| r.locator),
+        find_row(kind).map(|r| &r.locator),
         Some(Locator::Family { .. })
     )
 }
@@ -267,17 +285,66 @@ pub fn write_floor_receipt(
             "write_floor_receipt refused unsafe relative path {relative_path:?}"
         ));
     }
+    // The write side is held to the SAME registry contract as the load side (#7785
+    // commit 4B). Validating only on load meant a producer could publish a receipt at a
+    // path its kind does not own and learn about it, at best, one finalize later.
+    let row = find_row(kind).ok_or_else(|| {
+        format!("write_floor_receipt refused unknown kind {kind:?} — not a row in the floor-evidence registry")
+    })?;
+    if producer_phase != row.phase {
+        return Err(format!(
+            "write_floor_receipt refused {kind} declaring producer_phase={producer_phase:?}; registry row expects {:?}",
+            row.phase
+        ));
+    }
+    if !locator_matches_relpath(&row.locator, relative_path) {
+        return Err(format!(
+            "write_floor_receipt refused UnknownObservedPath: {kind} owns {} but was asked to write {relative_path:?}",
+            pattern_of(&row.locator)
+        ));
+    }
+    let singleton = matches!(row.locator, Locator::Exact(_));
+
     let root = floor_evidence_root(attempt);
     let path = root.join(relative_path);
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| format!("mkdir {}: {e}", parent.display()))?;
     }
-    let receipt_tmp = path.with_extension(format!("tmp-{}", std::process::id()));
-    fs::write(&receipt_tmp, body).map_err(|e| format!("write {}: {e}", receipt_tmp.display()))?;
-
     let digest = sha256_bytes(body);
     let obs_rel = observation_fragment_relpath(kind, relative_path);
     let obs_path = root.join(&obs_rel);
+
+    // A singleton kind is published exactly once per attempt. Renaming over an existing
+    // receipt destroyed the earlier bytes AND left the observation fragment describing
+    // whichever write happened to land last — an attempt's evidence silently rewritten
+    // rather than a second producer refused.
+    if singleton {
+        if path.exists() {
+            return Err(format!(
+                "write_floor_receipt refused replacement of singleton {kind} receipt already published at {}",
+                path.display()
+            ));
+        }
+        if obs_path.exists() {
+            return Err(format!(
+                "write_floor_receipt refused replacement of singleton {kind} observation fragment already published at {}",
+                obs_path.display()
+            ));
+        }
+    }
+
+    let receipt_tmp = path.with_extension(format!("tmp-{}", std::process::id()));
+    let _ = fs::remove_file(&receipt_tmp);
+    {
+        let mut f = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&receipt_tmp)
+            .map_err(|e| format!("write {}: {e}", receipt_tmp.display()))?;
+        f.write_all(body)
+            .map_err(|e| format!("write {}: {e}", receipt_tmp.display()))?;
+    }
+
     if let Some(parent) = obs_path.parent() {
         if let Err(e) = fs::create_dir_all(parent) {
             let _ = fs::remove_file(&receipt_tmp);
@@ -355,26 +422,169 @@ fn merge_standing(cur: PhaseStandingExact, next: PhaseStandingExact) -> PhaseSta
     }
 }
 
-pub fn parse_phase_journal(body: &str) -> HashMap<String, PhaseStandingExact> {
-    let mut map = HashMap::new();
+/// Which invocations may answer for a phase (#7785 commit 4B). The floor journal is one
+/// append log written by SEVERAL processes: a coordinator plus the workers it spawns.
+/// Reducing it to `phase -> standing` let any writer answer for any phase, so a child's
+/// `completed` could stand in for a coordinator-owned phase the coordinator never
+/// entered — a false claim about who did what, in the file whose only job is saying so.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StandingScope {
+    /// Invocations with no parent — the process the CI step actually launched.
+    Root,
+    /// Invocations spawned by another executor invocation (floor workers).
+    NonRoot,
+}
+
+/// Phase standing keyed by `(invocation, phase)`. Standings merge only WITHIN one
+/// invocation (a phase legitimately moves started -> completed inside one process);
+/// across invocations they are kept apart and read through a declared scope.
+#[derive(Clone, Debug, Default)]
+pub struct PhaseJournalIndex {
+    standing: HashMap<(String, String), PhaseStandingExact>,
+    parent_of: HashMap<String, String>,
+    conflicting_parent: Vec<String>,
+}
+
+fn normalize_parent(raw: &str) -> String {
+    let trimmed = raw.trim();
+    if trimmed == "-" {
+        String::new()
+    } else {
+        trimmed.to_string()
+    }
+}
+
+pub fn parse_phase_journal(body: &str) -> PhaseJournalIndex {
+    let mut index = PhaseJournalIndex::default();
     for line in body.lines() {
-        let line = line.trim();
-        if line.is_empty() {
+        let line = line.trim_end_matches(['\r', '\n']);
+        if line.trim().is_empty() {
             continue;
         }
         let parts: Vec<&str> = line.split('\t').collect();
-        // unix_millis pid phase state detail
-        if parts.len() < 4 {
+        // unix_millis walk_attempt invocation parent plan_site pid phase state detail
+        let (invocation, parent, phase, state) = if parts.len() >= 9 {
+            (
+                parts[2].trim().to_string(),
+                normalize_parent(parts[3]),
+                parts[6].to_string(),
+                parts[7],
+            )
+        } else if parts.len() >= 4 {
+            // Backward compatibility with the pre-4B five-column shape
+            // (`millis pid phase state detail`): a writer that predates invocation
+            // identity is read as an unparented invocation named after its pid, never
+            // silently folded into whichever invocation happens to be first.
+            (
+                format!("legacy-{}", parts[1].trim()),
+                String::new(),
+                parts[2].to_string(),
+                parts[3],
+            )
+        } else {
+            continue;
+        };
+        if invocation.is_empty() {
             continue;
         }
-        let phase = parts[2].to_string();
-        let standing = parse_state(parts[3]);
-        let entry = map
-            .entry(phase)
+        match index.parent_of.get(&invocation) {
+            Some(existing) if *existing != parent => {
+                if !index.conflicting_parent.contains(&invocation) {
+                    index.conflicting_parent.push(invocation.clone());
+                }
+            }
+            Some(_) => {}
+            None => {
+                index.parent_of.insert(invocation.clone(), parent);
+            }
+        }
+        let standing = parse_state(state);
+        let entry = index
+            .standing
+            .entry((invocation, phase))
             .or_insert(PhaseStandingExact::PhaseNotReached);
         *entry = merge_standing(*entry, standing);
     }
-    map
+    index
+}
+
+impl PhaseJournalIndex {
+    fn invocation_in_scope(&self, invocation: &str, scope: StandingScope) -> bool {
+        let is_root = self
+            .parent_of
+            .get(invocation)
+            .map(|p| p.is_empty())
+            .unwrap_or(false);
+        match scope {
+            StandingScope::Root => is_root,
+            StandingScope::NonRoot => !is_root,
+        }
+    }
+
+    /// Standing for `phase` as written by invocations in `scope`. Invocations that never
+    /// wrote the phase contribute nothing (`PhaseNotReached` when none did). Two
+    /// invocations in the same scope that DISAGREE about a phase refuse: merging them
+    /// would fabricate one standing out of two genuinely different observations.
+    pub fn standing_in_scope(
+        &self,
+        phase: &str,
+        scope: StandingScope,
+    ) -> Result<PhaseStandingExact, String> {
+        if !self.conflicting_parent.is_empty() {
+            return Err(format!(
+                "phase journal declares conflicting parents for invocation(s) {:?}",
+                self.conflicting_parent
+            ));
+        }
+        let mut found: Vec<(&str, PhaseStandingExact)> = self
+            .standing
+            .iter()
+            .filter(|((inv, ph), _)| ph == phase && self.invocation_in_scope(inv, scope))
+            .map(|((inv, _), standing)| (inv.as_str(), *standing))
+            .collect();
+        found.sort_by(|a, b| a.0.cmp(b.0));
+        match found.split_first() {
+            None => Ok(PhaseStandingExact::PhaseNotReached),
+            Some((&(_, first), rest)) => {
+                if let Some((inv, other)) = rest.iter().find(|(_, s)| *s != first) {
+                    return Err(format!(
+                        "phase {phase:?} has divergent standings across {scope:?} invocations: {}={:?} vs {inv}={other:?}",
+                        found[0].0, first
+                    ));
+                }
+                Ok(first)
+            }
+        }
+    }
+
+    fn standing_for_row(&self, row: &RegistryRow) -> Result<PhaseStandingExact, String> {
+        for scope in producer_phase_scopes(&row.phase) {
+            let standing = self.standing_in_scope(&row.journal_phase, *scope)?;
+            if standing != PhaseStandingExact::PhaseNotReached {
+                return Ok(standing);
+            }
+        }
+        Ok(PhaseStandingExact::PhaseNotReached)
+    }
+}
+
+/// Which invocations own a producer phase, in the order they may answer for it.
+///
+/// `OptionalWorker` and `AfterFloorAlways` are coordinator facts: the coordinator
+/// observes its workers and finalizes the attempt, so ONLY a root invocation may answer
+/// for them — this is what stops a worker's own row from standing in for the
+/// coordinator's observation.
+///
+/// The remaining phases belong to whichever process runs the walk. Under the CI floor
+/// coordinator that is a spawned worker; a plan with no coordinator (the falsifier, a
+/// local run) runs the walk in the root process itself. Both are named, worker first, so
+/// the answer comes from the walk process in either topology rather than being reported
+/// as never-reached in one of them.
+fn producer_phase_scopes(producer_phase: &str) -> &'static [StandingScope] {
+    match producer_phase {
+        "OptionalWorker" | "AfterFloorAlways" => &[StandingScope::Root],
+        _ => &[StandingScope::NonRoot, StandingScope::Root],
+    }
 }
 
 fn standing_label_missing(optional_worker: bool, phase: PhaseStandingExact) -> &'static str {
@@ -479,6 +689,14 @@ fn load_observation_fragments(root: &Path) -> Result<Vec<Observation>, String> {
             ));
         }
 
+        if !locator_matches_relpath(&row.locator, &rel) {
+            return Err(format!(
+                "observation fragment {} claims kind {kind} at UnknownObservedPath {rel:?}; registry row owns {}",
+                frag_path.display(),
+                pattern_of(&row.locator)
+            ));
+        }
+
         out.push(Observation {
             kind,
             relative_path: rel,
@@ -488,7 +706,7 @@ fn load_observation_fragments(root: &Path) -> Result<Vec<Observation>, String> {
         });
     }
 
-    for row in ROWS {
+    for row in rows() {
         if matches!(row.locator, Locator::Family { .. }) {
             continue;
         }
@@ -539,7 +757,8 @@ enum SubjectOutcome {
         run_id: String,
         run_attempt: String,
         job_key: String,
-        head: String,
+        tested_commit: String,
+        source_head_commit: String,
         tree: String,
         walk: String,
     },
@@ -548,25 +767,52 @@ enum SubjectOutcome {
         run_id: String,
         run_attempt: String,
         job_key: String,
-        head: String,
+        tested_commit: String,
+        source_head_commit: String,
         tree: String,
         walk: String,
     },
+}
+
+/// The commit whose branch head the run was requested for, read from the event payload
+/// GitHub itself wrote. On a `pull_request` event `GITHUB_SHA` is the ephemeral MERGE
+/// commit, which exists nowhere in the contributor's history — reporting it as the
+/// subject's head made the evidence unaddressable from the branch it describes. Parsed
+/// with the real JSON reader rather than a substring scan, so a nested `head` object
+/// elsewhere in the payload cannot be mistaken for the pull request's own.
+fn pull_request_head_sha_from_event() -> Option<String> {
+    let path = std::env::var("GITHUB_EVENT_PATH").ok()?;
+    if path.is_empty() {
+        return None;
+    }
+    let body = fs::read_to_string(&path).ok()?;
+    let value: serde_json::Value = serde_json::from_str(&body).ok()?;
+    let sha = value
+        .get("pull_request")?
+        .get("head")?
+        .get("sha")?
+        .as_str()?;
+    if sha.is_empty() {
+        None
+    } else {
+        Some(sha.to_string())
+    }
 }
 
 fn observe_local_subject() -> SubjectOutcome {
     let run_id = env_or_empty("GITHUB_RUN_ID");
     let run_attempt = env_or_empty("GITHUB_RUN_ATTEMPT");
     let job_key = env_or_empty("GITHUB_JOB");
-    let head = env_or_empty("GITHUB_SHA");
+    let tested_commit = env_or_empty("GITHUB_SHA");
+    let event_name = env_or_empty("GITHUB_EVENT_NAME");
     let mut walk = env_or_empty("GUNBC_WALK_ATTEMPT_ID");
     if walk.is_empty() && !run_id.is_empty() && !run_attempt.is_empty() && !job_key.is_empty() {
         walk = format!("{run_id}-{run_attempt}-{job_key}");
     }
     let mut tree = env_or_empty("GUNBC_TESTED_TREE");
-    if tree.is_empty() && !head.is_empty() {
+    if tree.is_empty() && !tested_commit.is_empty() {
         if let Ok(out) = Command::new("git")
-            .args(["log", "-1", "--format=%T", &head])
+            .args(["log", "-1", "--format=%T", &tested_commit])
             .output()
         {
             if out.status.success() {
@@ -574,13 +820,29 @@ fn observe_local_subject() -> SubjectOutcome {
             }
         }
     }
+    let mut source_head_commit = env_or_empty("GUNBC_SOURCE_HEAD_COMMIT");
+    if source_head_commit.is_empty() && event_name == "pull_request" {
+        source_head_commit = pull_request_head_sha_from_event().unwrap_or_default();
+    }
+    if source_head_commit.is_empty()
+        && matches!(
+            event_name.as_str(),
+            "push" | "schedule" | "workflow_dispatch"
+        )
+    {
+        // On these events the tested ref IS the source ref: GitHub checks out the pushed
+        // commit itself, so the two coordinates coincide by construction rather than by
+        // assumption.
+        source_head_commit = tested_commit.clone();
+    }
 
     let refuse = |cause: &str| SubjectOutcome::Refused {
         cause: cause.to_string(),
         run_id: run_id.clone(),
         run_attempt: run_attempt.clone(),
         job_key: job_key.clone(),
-        head: head.clone(),
+        tested_commit: tested_commit.clone(),
+        source_head_commit: source_head_commit.clone(),
         tree: tree.clone(),
         walk: walk.clone(),
     };
@@ -594,11 +856,17 @@ fn observe_local_subject() -> SubjectOutcome {
     if job_key.is_empty() {
         return refuse("missing-github_job_key");
     }
-    if head.is_empty() {
-        return refuse("missing-head_commit");
+    if tested_commit.is_empty() {
+        return refuse("missing-tested_commit");
     }
-    if !is_git_object_hex(&head) {
-        return refuse("invalid-head_commit");
+    if !is_git_object_hex(&tested_commit) {
+        return refuse("invalid-tested_commit");
+    }
+    if source_head_commit.is_empty() {
+        return refuse("missing-source_head_commit");
+    }
+    if !is_git_object_hex(&source_head_commit) {
+        return refuse("invalid-source_head_commit");
     }
     if tree.is_empty() {
         return refuse("missing-tested_tree");
@@ -616,7 +884,8 @@ fn observe_local_subject() -> SubjectOutcome {
         run_id,
         run_attempt,
         job_key,
-        head,
+        tested_commit,
+        source_head_commit,
         tree,
         walk,
     }
@@ -626,28 +895,10 @@ fn observations_for_row<'a>(
     row: &RegistryRow,
     observations: &'a [Observation],
 ) -> Vec<&'a Observation> {
-    match row.locator {
-        Locator::Exact(p) => observations
-            .iter()
-            .filter(|o| o.kind == row.kind && o.relative_path == p)
-            .collect(),
-        Locator::Family {
-            dir,
-            prefix,
-            suffix,
-        } => {
-            let dir_prefix = format!("{dir}/");
-            observations
-                .iter()
-                .filter(|o| {
-                    o.kind == row.kind
-                        && o.relative_path.starts_with(&dir_prefix)
-                        && o.relative_path[dir_prefix.len()..].starts_with(prefix)
-                        && o.relative_path.ends_with(suffix)
-                })
-                .collect()
-        }
-    }
+    observations
+        .iter()
+        .filter(|o| o.kind == row.kind && locator_matches_relpath(&row.locator, &o.relative_path))
+        .collect()
 }
 
 /// Writes `floor_evidence_root` and `walk_attempt` to `$GITHUB_OUTPUT` (blocker 1, #7785
@@ -692,14 +943,15 @@ pub fn finalize_floor_evidence() -> Result<ExitCode, ExitCode> {
             run_id,
             run_attempt,
             job_key,
-            head,
+            tested_commit,
+            source_head_commit,
             tree,
             walk,
         } => (
             walk.clone(),
             true,
             format!(
-                "subject_status=Observed\nrun_id={run_id}\nrun_attempt={run_attempt}\njob_key={job_key}\nhead_commit={head}\ntested_tree={tree}\nwalk_attempt={walk}\n"
+                "subject_status=Observed\nrun_id={run_id}\nrun_attempt={run_attempt}\njob_key={job_key}\ntested_commit={tested_commit}\nsource_head_commit={source_head_commit}\ntested_tree={tree}\nwalk_attempt={walk}\n"
             ),
             None,
         ),
@@ -708,14 +960,15 @@ pub fn finalize_floor_evidence() -> Result<ExitCode, ExitCode> {
             run_id,
             run_attempt,
             job_key,
-            head,
+            tested_commit,
+            source_head_commit,
             tree,
             walk,
         } => (
             walk.clone(),
             false,
             format!(
-                "subject_status=Refused\nsubject_refuse_cause={cause}\nrun_id={run_id}\nrun_attempt={run_attempt}\njob_key={job_key}\nhead_commit={head}\ntested_tree={tree}\nwalk_attempt={walk}\n"
+                "subject_status=Refused\nsubject_refuse_cause={cause}\nrun_id={run_id}\nrun_attempt={run_attempt}\njob_key={job_key}\ntested_commit={tested_commit}\nsource_head_commit={source_head_commit}\ntested_tree={tree}\nwalk_attempt={walk}\n"
             ),
             Some(cause.clone()),
         ),
@@ -758,9 +1011,9 @@ pub fn finalize_floor_evidence() -> Result<ExitCode, ExitCode> {
     };
 
     let journal_path = root.join(PHASE_JOURNAL_REL);
-    let journal_map = match fs::read_to_string(&journal_path) {
+    let journal = match fs::read_to_string(&journal_path) {
         Ok(body) => parse_phase_journal(&body),
-        Err(_) => HashMap::new(),
+        Err(_) => PhaseJournalIndex::default(),
     };
 
     // PhaseJournal itself is present when the journal file exists (even if empty).
@@ -782,19 +1035,15 @@ pub fn finalize_floor_evidence() -> Result<ExitCode, ExitCode> {
     );
 
     let mut row_count = 0usize;
-    for row in ROWS {
-        if row.kind == "PopulationReceiptManifest" {
-            // The manifest cannot honestly claim a content_digest of itself as a data
-            // row (blocker 6): its presence is the file existing at all, and its
-            // integrity is `manifest_body_digest` below, computed over the exact bytes
-            // that precede it — never a row inside the body it describes.
-            continue;
-        }
-        let pattern = pattern_of(row.locator);
-        let phase_standing = journal_map
-            .get(row.journal_phase)
-            .copied()
-            .unwrap_or(PhaseStandingExact::PhaseNotReached);
+    for row in rows() {
+        let pattern = pattern_of(&row.locator);
+        let phase_standing = match journal.standing_for_row(row) {
+            Ok(standing) => standing,
+            Err(e) => {
+                eprintln!("::error::finalize-floor-evidence: {e}");
+                return Err(ExitCode::from(1));
+            }
+        };
 
         if row.kind == "PhaseJournal" {
             if journal_file_present {
@@ -953,8 +1202,11 @@ mod tests {
             "GITHUB_RUN_ATTEMPT",
             "GITHUB_JOB",
             "GITHUB_SHA",
+            "GITHUB_EVENT_NAME",
+            "GITHUB_EVENT_PATH",
             "GUNBC_WALK_ATTEMPT_ID",
             "GUNBC_TESTED_TREE",
+            "GUNBC_SOURCE_HEAD_COMMIT",
             "GITHUB_OUTPUT",
         ] {
             std::env::remove_var(k);
@@ -967,10 +1219,19 @@ mod tests {
         std::env::set_var("GITHUB_JOB", "ci");
         std::env::set_var("GITHUB_SHA", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
         std::env::set_var(
+            "GUNBC_SOURCE_HEAD_COMMIT",
+            "cccccccccccccccccccccccccccccccccccccccc",
+        );
+        std::env::set_var(
             "GUNBC_TESTED_TREE",
             "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
         );
         std::env::set_var("GUNBC_WALK_ATTEMPT_ID", walk);
+    }
+
+    /// A journal row in the invocation-grain shape.
+    fn journal_row(invocation: &str, parent: &str, phase: &str, state: &str) -> String {
+        format!("1\twalk\t{invocation}\t{parent}\tsite\t99\t{phase}\t{state}\t\n")
     }
 
     #[test]
@@ -982,18 +1243,165 @@ mod tests {
     }
 
     #[test]
+    fn registry_rows_parse_from_generated_bytes() {
+        let parsed = parse_registry_rows(FLOOR_EVIDENCE_REGISTRY_FINGERPRINT).unwrap();
+        assert!(parsed.len() >= 2);
+        let pre_walk = parsed
+            .iter()
+            .find(|r| r.kind == "PreWalkCapture")
+            .expect("PreWalkCapture is a registry row");
+        assert_eq!(pre_walk.phase, "BeforeFloor");
+        assert_eq!(pre_walk.journal_phase, "pre-walk-capture");
+        assert!(pre_walk.required_for_settlement);
+        assert!(!pre_walk.optional_worker);
+        let terminal = parsed
+            .iter()
+            .find(|r| r.kind == "WorkerTerminal")
+            .expect("WorkerTerminal is a registry row");
+        assert!(terminal.optional_worker);
+        assert!(matches!(terminal.locator, Locator::Family { .. }));
+        assert!(
+            parsed.iter().all(|r| r.kind != "PopulationReceiptManifest"),
+            "the manifest is the join over the registry, not a row inside it"
+        );
+    }
+
+    #[test]
+    fn malformed_registry_line_refuses() {
+        let err =
+            parse_registry_rows("BatchWall|receipts/batch-wall.txt|DuringFloor|x").unwrap_err();
+        assert!(err.contains("expected 5"), "got: {err}");
+        let err = parse_registry_rows("BatchWall|receipts/batch-wall.txt|DuringFloor|x|maybe")
+            .unwrap_err();
+        assert!(err.contains("expected 0 or 1"), "got: {err}");
+    }
+
+    #[test]
     fn phase_journal_exact_states() {
-        let body = "1\t2\ton-success-stage-2\tstarted\t\n3\t2\ton-success-stage-2\tcompleted\t\n4\t2\tbatch-wall-receipt\tinterrupted\tkilled\n";
-        let map = parse_phase_journal(body);
+        let body = format!(
+            "{}{}{}",
+            journal_row("inv-a", "-", "on-success-stage-2", "started"),
+            journal_row("inv-a", "-", "on-success-stage-2", "completed"),
+            journal_row("inv-a", "-", "batch-wall-receipt", "interrupted"),
+        );
+        let index = parse_phase_journal(&body);
         assert_eq!(
-            map.get("on-success-stage-2"),
-            Some(&PhaseStandingExact::PhaseCompleted)
+            index
+                .standing_in_scope("on-success-stage-2", StandingScope::Root)
+                .unwrap(),
+            PhaseStandingExact::PhaseCompleted
         );
         assert_eq!(
-            map.get("batch-wall-receipt"),
-            Some(&PhaseStandingExact::PhaseInterrupted)
+            index
+                .standing_in_scope("batch-wall-receipt", StandingScope::Root)
+                .unwrap(),
+            PhaseStandingExact::PhaseInterrupted
         );
-        assert_eq!(map.get("missing"), None);
+        assert_eq!(
+            index
+                .standing_in_scope("missing", StandingScope::Root)
+                .unwrap(),
+            PhaseStandingExact::PhaseNotReached
+        );
+    }
+
+    #[test]
+    fn legacy_five_column_rows_read_as_unparented_invocations() {
+        let body = "1\t2\ton-success-stage-2\tcompleted\t\n";
+        let index = parse_phase_journal(body);
+        assert_eq!(
+            index
+                .standing_in_scope("on-success-stage-2", StandingScope::Root)
+                .unwrap(),
+            PhaseStandingExact::PhaseCompleted
+        );
+    }
+
+    #[test]
+    fn child_completion_does_not_answer_for_a_root_scoped_phase() {
+        // Two invocations complete the SAME phase. The root scope must report only what
+        // the root itself wrote — a coordinator-owned phase is not satisfied by a worker
+        // saying it finished its own copy of that phase.
+        let body = format!(
+            "{}{}",
+            journal_row("walk-root", "-", "batch-wall-receipt", "completed"),
+            journal_row(
+                "walk-ordinary",
+                "walk-root",
+                "coordinator-observation",
+                "completed"
+            ),
+        );
+        let index = parse_phase_journal(&body);
+        assert_eq!(
+            index
+                .standing_in_scope("coordinator-observation", StandingScope::Root)
+                .unwrap(),
+            PhaseStandingExact::PhaseNotReached,
+            "a child's row must not stand in for the coordinator's own phase"
+        );
+        assert_eq!(
+            index
+                .standing_in_scope("coordinator-observation", StandingScope::NonRoot)
+                .unwrap(),
+            PhaseStandingExact::PhaseCompleted
+        );
+        assert_eq!(
+            index
+                .standing_in_scope("batch-wall-receipt", StandingScope::NonRoot)
+                .unwrap(),
+            PhaseStandingExact::PhaseNotReached
+        );
+    }
+
+    #[test]
+    fn divergent_standings_across_invocations_refuse() {
+        let body = format!(
+            "{}{}",
+            journal_row(
+                "walk-ordinary",
+                "walk-root",
+                "batch-wall-receipt",
+                "completed"
+            ),
+            journal_row(
+                "walk-scoped-b",
+                "walk-root",
+                "batch-wall-receipt",
+                "interrupted"
+            ),
+        );
+        let index = parse_phase_journal(&body);
+        let err = index
+            .standing_in_scope("batch-wall-receipt", StandingScope::NonRoot)
+            .unwrap_err();
+        assert!(err.contains("divergent standings"), "got: {err}");
+    }
+
+    #[test]
+    fn agreeing_standings_across_invocations_are_not_merged_away() {
+        let body = format!(
+            "{}{}",
+            journal_row(
+                "walk-ordinary",
+                "walk-root",
+                "batch-wall-receipt",
+                "completed"
+            ),
+            journal_row(
+                "walk-scoped-b",
+                "walk-root",
+                "batch-wall-receipt",
+                "completed"
+            ),
+        );
+        let index = parse_phase_journal(&body);
+        assert_eq!(
+            index
+                .standing_in_scope("batch-wall-receipt", StandingScope::NonRoot)
+                .unwrap(),
+            PhaseStandingExact::PhaseCompleted
+        );
     }
 
     #[test]
@@ -1108,11 +1516,110 @@ mod tests {
             .unwrap();
             fs::write(
                 dir.join("BatchWall-2.obs.tsv"),
-                "BatchWall\treceipts/batch-wall-2.txt\t3\tdef\tDuringFloor\n",
+                "BatchWall\treceipts/batch-wall.txt\t3\tdef\tDuringFloor\n",
             )
             .unwrap();
             let err = load_observation_fragments(&root).unwrap_err();
             assert!(err.contains("duplicate"), "got: {err}");
+        });
+    }
+
+    #[test]
+    fn known_kind_at_wrong_path_refuses_on_load() {
+        with_temp_cwd(|_| {
+            let root = floor_evidence_root("wrong-path");
+            let dir = root.join(OBSERVATIONS_DIR);
+            fs::create_dir_all(&dir).unwrap();
+            // BatchWall's registry locator is receipts/batch-wall.txt exactly.
+            fs::write(
+                dir.join("BatchWall.obs.tsv"),
+                "BatchWall\treceipts/component.json\t3\tabc\tDuringFloor\n",
+            )
+            .unwrap();
+            let err = load_observation_fragments(&root).unwrap_err();
+            assert!(err.contains("UnknownObservedPath"), "got: {err}");
+        });
+    }
+
+    #[test]
+    fn known_kind_at_wrong_path_refuses_on_write() {
+        with_temp_cwd(|_| {
+            let err = write_floor_receipt(
+                "wrong-write",
+                "BatchWall",
+                "receipts/component.json",
+                b"nope",
+                "DuringFloor",
+            )
+            .unwrap_err();
+            assert!(err.contains("UnknownObservedPath"), "got: {err}");
+            assert!(
+                !floor_evidence_root("wrong-write")
+                    .join("receipts/component.json")
+                    .exists(),
+                "a refused write must publish nothing"
+            );
+        });
+    }
+
+    #[test]
+    fn unknown_kind_refuses_on_write() {
+        with_temp_cwd(|_| {
+            let err = write_floor_receipt(
+                "unknown-write",
+                "TotallyUnknownKind",
+                "receipts/batch-wall.txt",
+                b"nope",
+                "DuringFloor",
+            )
+            .unwrap_err();
+            assert!(err.contains("unknown kind"), "got: {err}");
+        });
+    }
+
+    #[test]
+    fn wrong_producer_phase_refuses_on_write() {
+        with_temp_cwd(|_| {
+            let err = write_floor_receipt(
+                "wrong-phase",
+                "BatchWall",
+                "receipts/batch-wall.txt",
+                b"nope",
+                "AfterFloorAlways",
+            )
+            .unwrap_err();
+            assert!(err.contains("producer_phase"), "got: {err}");
+        });
+    }
+
+    #[test]
+    fn second_singleton_write_refuses() {
+        with_temp_cwd(|_| {
+            write_floor_receipt(
+                "singleton",
+                "BatchWall",
+                "receipts/batch-wall.txt",
+                b"first",
+                "DuringFloor",
+            )
+            .unwrap();
+            let err = write_floor_receipt(
+                "singleton",
+                "BatchWall",
+                "receipts/batch-wall.txt",
+                b"second",
+                "DuringFloor",
+            )
+            .unwrap_err();
+            assert!(err.contains("refused replacement"), "got: {err}");
+            let body = fs::read_to_string(
+                floor_evidence_root("singleton").join("receipts/batch-wall.txt"),
+            )
+            .unwrap();
+            assert_eq!(
+                body, "first",
+                "the published bytes must survive a refused second write"
+            );
         });
     }
 
@@ -1166,9 +1673,15 @@ mod tests {
         });
     }
 
+    /// The digest is over the bytes on disk, so a receipt mutated UNDER the published
+    /// path (the tampering case, and the crash-torn-write case) no longer matches the
+    /// observation fragment that describes it. Proven by mutating the file directly:
+    /// a second `write_floor_receipt` is now refused outright, so it cannot be the
+    /// vehicle for this property.
     #[test]
-    fn receipt_byte_mutation_changes_sha256() {
+    fn receipt_byte_mutation_changes_sha256_and_fails_finalize() {
         with_temp_cwd(|_| {
+            clear_subject_env();
             write_floor_receipt(
                 "m",
                 "BatchWall",
@@ -1177,19 +1690,23 @@ mod tests {
                 "DuringFloor",
             )
             .unwrap();
-            let (_, d1) =
-                sha256_file(&floor_evidence_root("m").join("receipts/batch-wall.txt")).unwrap();
-            write_floor_receipt(
-                "m",
-                "BatchWall",
-                "receipts/batch-wall.txt",
-                b"v2",
-                "DuringFloor",
+            let receipt = floor_evidence_root("m").join("receipts/batch-wall.txt");
+            let (_, d1) = sha256_file(&receipt).unwrap();
+            fs::write(&receipt, b"v2-tampered").unwrap();
+            let (_, d2) = sha256_file(&receipt).unwrap();
+            assert_ne!(d1, d2);
+
+            fs::write(
+                floor_evidence_root("m").join(PHASE_JOURNAL_REL),
+                journal_row("m-root", "-", "batch-wall-receipt", "completed"),
             )
             .unwrap();
-            let (_, d2) =
-                sha256_file(&floor_evidence_root("m").join("receipts/batch-wall.txt")).unwrap();
-            assert_ne!(d1, d2);
+            set_full_subject("m");
+            assert!(
+                finalize_floor_evidence().is_err(),
+                "finalize must refuse a receipt whose bytes no longer match its observation digest"
+            );
+            clear_subject_env();
         });
     }
 
@@ -1236,7 +1753,7 @@ mod tests {
             .unwrap();
             fs::write(
                 floor_evidence_root("attempt-b").join(PHASE_JOURNAL_REL),
-                "1\t1\tbatch-wall-receipt\tcompleted\t\n",
+                journal_row("attempt-b-root", "-", "batch-wall-receipt", "completed"),
             )
             .unwrap();
             set_full_subject("attempt-b");
@@ -1249,7 +1766,10 @@ mod tests {
             assert!(manifest.contains("BatchWall"));
             assert!(manifest.contains("registry_fingerprint_sha256="));
             assert!(manifest.contains("manifest_body_digest="));
-            assert!(!manifest.contains("PopulationReceiptManifest\tmanifest.tsv"));
+            assert!(!manifest.contains("PopulationReceiptManifest"));
+            assert!(manifest.contains("tested_commit="));
+            assert!(manifest.contains("source_head_commit="));
+            assert!(!manifest.contains("head_commit=a"));
             clear_subject_env();
         });
     }
@@ -1268,7 +1788,7 @@ mod tests {
             .unwrap();
             fs::write(
                 floor_evidence_root("digest-check").join(PHASE_JOURNAL_REL),
-                "1\t1\tbatch-wall-receipt\tcompleted\t\n",
+                journal_row("digest-check-root", "-", "batch-wall-receipt", "completed"),
             )
             .unwrap();
             set_full_subject("digest-check");
@@ -1323,7 +1843,11 @@ mod tests {
             fs::create_dir_all(floor_evidence_root("ph")).unwrap();
             fs::write(
                 floor_evidence_root("ph").join(PHASE_JOURNAL_REL),
-                "1\t1\ton-success-stage-2\tstarted\t\n1\t1\tbatch-wall-receipt\tcompleted\t\n",
+                format!(
+                    "{}{}",
+                    journal_row("ph-root", "-", "on-success-stage-2", "started"),
+                    journal_row("ph-root", "-", "batch-wall-receipt", "completed"),
+                ),
             )
             .unwrap();
             write_floor_receipt(

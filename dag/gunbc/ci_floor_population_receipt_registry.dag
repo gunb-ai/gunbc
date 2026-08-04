@@ -199,9 +199,11 @@ fn ci_floor_population_receipt_registry() -> List<FloorPopulationReceiptRegistry
   ]
 }
 
+data settlement_manifest_is_not_a_registry_row_note: String = "The manifest is the JOIN over the registry, not a row inside it (#7785 commit 4B): a row claiming manifest.tsv would make the manifest describe itself, and the finalizer had to special-case-skip exactly that row to avoid claiming a content_digest it cannot honestly compute. Its integrity is manifest_body_digest, computed over the bytes that precede the trailer. PopulationReceiptManifest survives as a kind label for non-registry consumers, but it is not a registered receipt identity and is not settlement-required."
+
 fn settlement_required_kind_labels() -> List<String> {
   [
-    "PopulationReceiptManifest",
+    "PreWalkCapture",
     "PhaseJournal",
     "BatchWall",
     "CompileCleanWall",
@@ -249,9 +251,11 @@ fn ci_floor_population_receipt_registry_row_count() -> Nat {
   length(xs: ci_floor_population_receipt_registry())
 }
 
-data ci_floor_population_receipt_registry_fingerprint_pin_note: String = "Cross-language pin (#7785 commit 4A, blocker 3): byte-equal (mod the file's single trailing newline) to the committed dag/gunbc/ci_floor_population_receipt_registry.fingerprint file, which claim_executor_floor_evidence.rs also reads verbatim via include_str! and asserts against its own fingerprint_from_rows(). A .dag registry edit that does not update BOTH this literal and the committed file reds witness_registry_fingerprint_pinned_to_committed_file here and registry_fingerprint_pairs_const on the Rust side, from two independent directions."
+data ci_floor_population_receipt_registry_fingerprint_generated_note: String = "The hand-authored fingerprint pin is DELETED (#7785 commit 4B). A literal copy of a derivable projection is a second representation of the registry, and it is satisfiable by editing the copy — the failure mode DESIGN §5 names as validation standing where construction was available. The committed file dag/gunbc/ci_floor_population_receipt_registry.fingerprint is now a registered generated artifact emitted from expected_ci_floor_population_receipt_registry_fingerprint_file, so a registry edit that does not regenerate it reds the drift gate, and claim_executor_floor_evidence.rs PARSES those same bytes as its registry rather than mirroring them."
 
-data ci_floor_population_receipt_registry_fingerprint_pin: String = "PopulationReceiptManifest|manifest.tsv|AfterFloorAlways|AfterFloorAlways|1\nPhaseJournal|phase-journal.tsv|DuringFloor|DuringFloor|1\nBatchWall|receipts/batch-wall.txt|DuringFloor|batch-wall-receipt|1\nCompileCleanWall|receipts/compile-clean-wall.txt|DuringFloor|compile-clean-wall-receipt|1\nComponent|receipts/component.json|DuringFloor|floor-component-receipt|1\nNativeTransition|receipts/native-transition.tsv|DuringFloor|native-transition-receipt|1\nOnSuccessStage1|stages/1/receipt.tsv|OnSuccessStage|on-success-stage-1|1\nOnSuccessStage2|stages/2/receipt.tsv|OnSuccessStage|on-success-stage-2|1\nOnSuccessMaterialization|receipts/on-success-materialization.txt|OnSuccessStage|on-success-materialization|1\nWorkerObservation|workers/observation.tsv|OptionalWorker|coordinator-observation|0\nWorkerTerminal|workers/terminal-*.tsv|OptionalWorker|OptionalWorker|0"
+fn expected_ci_floor_population_receipt_registry_fingerprint_file() -> String {
+  concat(ci_floor_population_receipt_registry_fingerprint(), "\n")
+}
 
 fn ci_floor_population_receipt_registry_fingerprint() -> String {
   ci_floor_population_receipt_registry()

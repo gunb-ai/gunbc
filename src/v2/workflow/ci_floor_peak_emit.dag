@@ -120,7 +120,7 @@ data ci_floor_phase_journal_path: String = "target/floor-evidence/${{ github.run
 
 data ci_floor_phase_journal_present_command: String = "[ -f \"$GUNBC_FLOOR_PHASE_JOURNAL\" ]"
 
-data ci_floor_phase_journal_header_command: String = "echo \"[floor-phase-journal] unix_millis pid phase state detail\""
+data ci_floor_phase_journal_header_command: String = "echo \"[floor-phase-journal] unix_millis walk_attempt executor_invocation parent_invocation plan_site pid phase state detail\""
 
 data ci_floor_phase_journal_read_command: String = "sed 's/^/[floor-phase-journal] /' \"$GUNBC_FLOOR_PHASE_JOURNAL\""
 

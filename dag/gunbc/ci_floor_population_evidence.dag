@@ -22,11 +22,14 @@ fn floor_evidence_root(attempt: WalkAttemptId) -> String {
   concat(concat(floor_evidence_root_prefix, "/"), attempt as String)
 }
 
+data subject_commit_coordinates_note: String = "TWO commits, because on a pull_request event they are two different objects (#7785 commit 4B). GITHUB_SHA is the ephemeral MERGE commit GitHub synthesised to test the proposal; it exists in no contributor branch, so evidence stamped with it alone cannot be addressed from the source it describes. tested_commit is what ran; source_head_commit is the branch head the run was requested for. On push/schedule/workflow_dispatch the two coincide by construction, and they are still recorded separately rather than collapsed, because a single field would make the pull_request case unrepresentable rather than merely absent."
+
 type LocalCiEvidenceSubjectWire {
   github_run_id: String?,
   github_run_attempt: String?,
   github_job_key: String?,
-  head_commit: String?,
+  tested_commit: String?,
+  source_head_commit: String?,
   tested_tree: String?,
   walk_attempt_id: String?,
 }
@@ -35,7 +38,8 @@ type LocalCiEvidenceSubject {
   github_run_id: NonEmptyStr,
   github_run_attempt: NonEmptyStr,
   github_job_key: NonEmptyStr,
-  head_commit: GitObjectId,
+  tested_commit: GitObjectId,
+  source_head_commit: GitObjectId,
   tested_tree: GitObjectId,
   walk_attempt_id: WalkAttemptId,
 }
@@ -92,7 +96,7 @@ type FloorEvidenceManifest {
   registry_fingerprint: NonEmptyStr,
 }
 
-data floor_evidence_manifest_schema: String = "gunbc.ci_floor_population_receipt_manifest.v4"
+data floor_evidence_manifest_schema: String = "gunbc.ci_floor_population_receipt_manifest.v5"
 
 fn floor_evidence_manifest_relpath(attempt: WalkAttemptId) -> String {
   concat(floor_evidence_root(attempt: attempt), "/manifest.tsv")
@@ -103,7 +107,8 @@ fn local_subject_wire_incomplete() -> LocalCiEvidenceSubjectWire {
     github_run_id: none,
     github_run_attempt: none,
     github_job_key: none,
-    head_commit: none,
+    tested_commit: none,
+    source_head_commit: none,
     tested_tree: none,
     walk_attempt_id: none,
   }
@@ -123,15 +128,19 @@ fn local_subject_from_wire(w: LocalCiEvidenceSubjectWire) -> LocalSubjectObserva
       Absent => LocalSubjectRefused { wire: w, cause: "missing-github_run_attempt" as NonEmptyStr }
       Present { value: run_attempt } => match nonempty_opt(raw: w.github_job_key) {
         Absent => LocalSubjectRefused { wire: w, cause: "missing-github_job_key" as NonEmptyStr }
-        Present { value: job } => match nonempty_opt(raw: w.head_commit) {
-          Absent => LocalSubjectRefused { wire: w, cause: "missing-head_commit" as NonEmptyStr }
-          Present { value: head_raw } => match nonempty_opt(raw: w.tested_tree) {
+        Present { value: job } => match nonempty_opt(raw: w.tested_commit) {
+          Absent => LocalSubjectRefused { wire: w, cause: "missing-tested_commit" as NonEmptyStr }
+          Present { value: tested_raw } => match nonempty_opt(raw: w.source_head_commit) {
+            Absent => LocalSubjectRefused { wire: w, cause: "missing-source_head_commit" as NonEmptyStr }
+            Present { value: source_head_raw } => match nonempty_opt(raw: w.tested_tree) {
             Absent => LocalSubjectRefused { wire: w, cause: "missing-tested_tree" as NonEmptyStr }
             Present { value: tree_raw } => match nonempty_opt(raw: w.walk_attempt_id) {
               Absent => LocalSubjectRefused { wire: w, cause: "missing-walk_attempt_id" as NonEmptyStr }
-              Present { value: walk_raw } => match git_object_id_from_untagged_hex(hex: head_raw as String) {
-                Absent => LocalSubjectRefused { wire: w, cause: "invalid-head_commit" as NonEmptyStr }
-                Present { value: head } => match git_object_id_from_untagged_hex(hex: tree_raw as String) {
+              Present { value: walk_raw } => match git_object_id_from_untagged_hex(hex: tested_raw as String) {
+                Absent => LocalSubjectRefused { wire: w, cause: "invalid-tested_commit" as NonEmptyStr }
+                Present { value: tested } => match git_object_id_from_untagged_hex(hex: source_head_raw as String) {
+                  Absent => LocalSubjectRefused { wire: w, cause: "invalid-source_head_commit" as NonEmptyStr }
+                  Present { value: source_head } => match git_object_id_from_untagged_hex(hex: tree_raw as String) {
                   Absent => LocalSubjectRefused { wire: w, cause: "invalid-tested_tree" as NonEmptyStr }
                   Present { value: tree } => match walk_attempt_id(raw: walk_raw as String) {
                     Absent => LocalSubjectRefused { wire: w, cause: "invalid-walk_attempt_id" as NonEmptyStr }
@@ -140,15 +149,18 @@ fn local_subject_from_wire(w: LocalCiEvidenceSubjectWire) -> LocalSubjectObserva
                         github_run_id: run_id,
                         github_run_attempt: run_attempt,
                         github_job_key: job,
-                        head_commit: head,
+                        tested_commit: tested,
+                        source_head_commit: source_head,
                         tested_tree: tree,
                         walk_attempt_id: walk,
                       }
                     }
                   }
                 }
+                }
               }
             }
+          }
           }
         }
       }

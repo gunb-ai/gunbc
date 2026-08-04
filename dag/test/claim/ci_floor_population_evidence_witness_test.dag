@@ -58,8 +58,8 @@ test fn witness_phase_entered_missing_is_after() -> Bool {
   }
 }
 
-test fn witness_manifest_schema_is_v4() -> Bool {
-  floor_evidence_manifest_schema == "gunbc.ci_floor_population_receipt_manifest.v4"
+test fn witness_manifest_schema_is_v5() -> Bool {
+  floor_evidence_manifest_schema == "gunbc.ci_floor_population_receipt_manifest.v5"
 }
 
 test fn witness_evidence_root_attempt_scoped() -> Bool {

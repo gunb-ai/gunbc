@@ -11,7 +11,7 @@ import gunbc.ci_floor_population_receipt_registry {
   ci_floor_population_receipt_registry_paths,
   ci_floor_population_receipt_registry_well_formed,
   ci_floor_population_receipt_registry_fingerprint,
-  ci_floor_population_receipt_registry_fingerprint_pin,
+  expected_ci_floor_population_receipt_registry_fingerprint_file,
   ci_floor_population_receipts_upload_glob,
   ci_floor_population_receipts_upload_path_exact_expression,
   ci_floor_population_receipts_walk_attempt_exact_expression,
@@ -25,7 +25,7 @@ import gunbc.ci_floor_population_receipt_registry {
 
 fn expected_registry_kind_labels() -> List<String> {
   [
-    "PopulationReceiptManifest",
+    "PreWalkCapture",
     "PhaseJournal",
     "BatchWall",
     "CompileCleanWall",
@@ -41,7 +41,7 @@ fn expected_registry_kind_labels() -> List<String> {
 
 fn expected_registry_paths() -> List<String> {
   [
-    "manifest.tsv",
+    "receipts/pre-walk-capture.tsv",
     "phase-journal.tsv",
     "receipts/batch-wall.txt",
     "receipts/compile-clean-wall.txt",
@@ -101,14 +101,33 @@ test fn witness_walk_attempt_expression_names_finalize_step() -> Bool {
   string_contains(s: wa, pattern: "steps.finalize_floor_evidence.outputs.walk_attempt")
 }
 
-test fn witness_registry_fingerprint_pinned_to_committed_file() -> Bool {
-  ci_floor_population_receipt_registry_fingerprint() == ci_floor_population_receipt_registry_fingerprint_pin
+test fn witness_registry_fingerprint_file_is_fingerprint_plus_newline() -> Bool {
+  let fp = ci_floor_population_receipt_registry_fingerprint()
+  let file = expected_ci_floor_population_receipt_registry_fingerprint_file()
+  file == concat(fp, "\n")
+    && string_contains(s: file, pattern: "PreWalkCapture|receipts/pre-walk-capture.tsv|BeforeFloor|pre-walk-capture|1")
+    && !string_contains(s: file, pattern: "PopulationReceiptManifest")
+}
+
+test fn witness_manifest_is_not_a_registry_row() -> Bool {
+  !string_list_contains_exact(
+    xs: ci_floor_population_receipt_registry_kind_labels(),
+    needle: "PopulationReceiptManifest"
+  )
+    && !string_list_contains_exact(
+      xs: ci_floor_population_receipt_registry_paths(),
+      needle: "manifest.tsv"
+    )
+    && !string_list_contains_exact(
+      xs: settlement_required_kind_labels(),
+      needle: "PopulationReceiptManifest"
+    )
 }
 
 test fn witness_required_kinds_pinned() -> Bool {
   let required = settlement_required_kind_labels()
   length(xs: required) == 9
-    && string_list_contains_exact(xs: required, needle: "PopulationReceiptManifest")
+    && string_list_contains_exact(xs: required, needle: "PreWalkCapture")
     && string_list_contains_exact(xs: required, needle: "OnSuccessStage1")
     && string_list_contains_exact(xs: required, needle: "OnSuccessMaterialization")
     && string_list_contains_exact(xs: required, needle: "NativeTransition")
@@ -157,11 +176,11 @@ test fn witness_registered_path_and_wildcard_accept() -> Bool {
   }
 }
 
-test fn red_registry_must_not_omit_manifest() -> Bool {
-  string_list_contains_exact(
-    xs: ci_floor_population_receipt_registry_kind_labels(),
-    needle: "PopulationReceiptManifest"
-  )
+test fn red_manifest_row_must_not_reappear() -> Bool {
+  match observe_path_against_registry(path: "manifest.tsv" as NonEmptyStr) {
+    UnknownObservedPath { path } => (path as String) == "manifest.tsv"
+    _ => false
+  }
 }
 
 test fn red_duplicate_kind_must_not_well_form() -> Bool {

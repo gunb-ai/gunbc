@@ -1,4 +1,4 @@
-PopulationReceiptManifest|manifest.tsv|AfterFloorAlways|AfterFloorAlways|1
+PreWalkCapture|receipts/pre-walk-capture.tsv|BeforeFloor|pre-walk-capture|1
 PhaseJournal|phase-journal.tsv|DuringFloor|DuringFloor|1
 BatchWall|receipts/batch-wall.txt|DuringFloor|batch-wall-receipt|1
 CompileCleanWall|receipts/compile-clean-wall.txt|DuringFloor|compile-clean-wall-receipt|1

@@ -23,7 +23,9 @@ import gunbc.ci_workflow {
   gunbc_ci_selection_control_step_timeout_minutes,
   gunbc_ci_artifact_transfer_step_timeout_minutes,
   gunbc_floor_evidence_required_env_name,
-  gunbc_floor_evidence_required_env_value
+  gunbc_floor_evidence_required_env_value,
+  gunbc_source_head_commit_env_name,
+  gunbc_source_head_commit_env_value
 }
 import v2.workflow.ci_floor_peak_emit {
   ci_floor_phase_journal_env_name,
@@ -115,7 +117,8 @@ fn falsifier_step() -> Step {
         kv(key: "GUNBC_CI_DIFF_BASE", value: yaml_string(s: "HEAD~20")),
         kv(key: "GUNBC_CI_DIFF_HEAD", value: yaml_string(s: "HEAD")),
         kv(key: ci_floor_phase_journal_env_name, value: yaml_string(s: ci_floor_phase_journal_path)),
-        kv(key: gunbc_floor_evidence_required_env_name, value: yaml_string(s: gunbc_floor_evidence_required_env_value))
+        kv(key: gunbc_floor_evidence_required_env_name, value: yaml_string(s: gunbc_floor_evidence_required_env_value)),
+        kv(key: gunbc_source_head_commit_env_name, value: yaml_string(s: gunbc_source_head_commit_env_value))
       ]
     },
     working_directory: none,
