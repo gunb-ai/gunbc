@@ -42,7 +42,7 @@ import v2.std.node {
 }
 import v2.std.text { String }
 
-data production_qualification_origin_probe_law: String = "Production-qualification origin PROBE (session keen-lark-681, wise-ram-22 recut): NOT a repository-wide census. fn_arrow_decl_facts_live() scope is entry-closure today; repository-wide frequency is unknown. This carrier reports fixture-origin mint surfaces discovered by STRUCTURAL skeleton rules (mint/advance callee atoms + fixture marker atoms) only — never declaration-name recognition. Known direct-door fixture-origin mint surfaces detected in live scope: see known_fixture_origin_mint_surface_count_in_scope() (honest live-read; today matches production_qualification_live_scope_fixture_origin_oracle_count). Classifier proof uses planted_fixture_origin_mint_site_count() against production_qualification_planted_fixture_origin_oracle_count. Repository-wide frequency: unknown. Dissolve-on: derive every resolved call occurrence capable of constructing or advancing a production qualification (effect_reach / call-occurrence substrate), classify CompilerDerived | FixtureDerived | ExecutionMeasured | UnknownOrigin with UnknownOrigin failing admission, include BehavioralEquivalent, and retire name/closure pins."
+data production_qualification_origin_probe_law: String = "Production-qualification origin PROBE (session keen-lark-681, wise-ram-22 recut): NOT a repository-wide census. fn_arrow_decl_facts_live() scope is entry-closure today; repository-wide frequency is unknown. This carrier reports fixture-origin mint surfaces discovered by STRUCTURAL skeleton rules (mint/advance callee atoms + direct_rust_door_inferred_tree fixture-tree marker only — never target-model proxy, never declaration-name recognition). Origin vocabulary: ProductionQualificationOrigin = CompilerDerived | FixtureDerived | UnknownOrigin only — ExecutionMeasured is ProductionEvidenceGrounding, not an origin (a fixture-derived artifact may also be execution-measured). Known direct-door fixture-origin mint surfaces detected in live scope: see known_fixture_origin_mint_surface_count_in_scope() (honest live-read; today matches production_qualification_live_scope_fixture_origin_oracle_count). Classifier proof uses planted_fixture_origin_mint_site_count() against production_qualification_planted_fixture_origin_oracle_count. Repository-wide frequency: unknown. Dissolve-on: derive every resolved call occurrence capable of constructing or advancing a production qualification (effect_reach / call-occurrence substrate), classify origins with call/dataflow evidence, attach ProductionEvidenceGrounding orthogonally, and retire name/closure pins."
 
 data production_qualification_origin_call_occurrence_frontier_note: String = "SCAFFOLD frontier (wise-ram-22 required recut): population is NOT derived from resolved call occurrences yet — only fn-arrow skeleton callee/marker projection inside the witness entry's import closure. Ingest-inline surfaces whose mint callee is pruned by G2 marshal, indirect consumer reachability, and repository-wide mint sites outside the closure are invisible. Dissolve-on when call-reachable production-qualification classification shares the effect_reach skeleton authority."
 
@@ -50,7 +50,9 @@ data construction_justification: ConstructionJustification = ConstructionJustifi
   class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }
 
-data production_qualification_counted_qualifications_note: String = "Axes derived_sites_for_decl can construct today at fn-arrow skeleton grain — SourceProduced and CargoGreen only. ProductionRouted, BehavioralEquivalent, and ExecutionMeasured remain reserved for call-occurrence / dataflow grounding."
+data production_qualification_counted_qualifications_note: String = "Axes derived_sites_for_decl can construct today at fn-arrow skeleton grain — SourceProduced and CargoGreen only. ProductionRouted and BehavioralEquivalent remain reserved for call-occurrence / dataflow grounding. Execution evidence is ProductionEvidenceGrounding, not an EmissionQualification axis."
+
+data production_evidence_grounding_vocabulary_note: String = "B0-aligned vocabulary (wise-ram-22): ProductionQualificationOrigin = CompilerDerived | FixtureDerived | UnknownOrigin. ProductionEvidenceGrounding = StructurallyGrounded | ExecutionMeasured | Unmeasured — measurement carries an origin, never replaces one. Rows do not populate grounding at skeleton grain yet; the carrier declares the split so probe and B0 share one epistemology."
 
 data production_qualification_counted_qualifications: List<EmissionQualification> = [
   SourceProduced,
@@ -60,8 +62,12 @@ data production_qualification_counted_qualifications: List<EmissionQualification
 type ProductionQualificationOrigin
   = CompilerDerived
   | FixtureDerived
-  | ExecutionMeasured
   | UnknownOrigin
+
+type ProductionEvidenceGrounding
+  = StructurallyGrounded
+  | ExecutionMeasured
+  | Unmeasured
 
 type DerivedProductionQualificationMintSiteRow {
   qualified_name: String
@@ -101,28 +107,18 @@ fn production_qualification_origin_eq(
       match right {
         CompilerDerived => true
         FixtureDerived => false
-        ExecutionMeasured => false
         UnknownOrigin => false
       }
     FixtureDerived =>
       match right {
         CompilerDerived => false
         FixtureDerived => true
-        ExecutionMeasured => false
-        UnknownOrigin => false
-      }
-    ExecutionMeasured =>
-      match right {
-        CompilerDerived => false
-        FixtureDerived => false
-        ExecutionMeasured => true
         UnknownOrigin => false
       }
     UnknownOrigin =>
       match right {
         CompilerDerived => false
         FixtureDerived => false
-        ExecutionMeasured => false
         UnknownOrigin => true
       }
   }
@@ -311,12 +307,10 @@ fn decl_has_source_produced_mint_callee(decl: FnArrowDecl) -> Bool {
 
 data direct_rust_door_target_model_callee: String = "direct_rust_door_target_model"
 
+data fixture_marker_classifier_note: String = "FixtureDerived requires the direct_rust_door_inferred_tree fixture-tree marker atom in the fn-arrow skeleton. Target-model choice (direct_rust_door_target_model) is NOT an origin proxy — mint_written + target without the fixture-tree marker classifies UnknownOrigin."
+
 fn decl_has_fixture_marker(decl: FnArrowDecl) -> Bool {
   decl_contains_atom(decl: decl, atom: direct_rust_door_inferred_tree_atom)
-    || (
-      decl_contains_callee(decl: decl, callee: mint_written_callee)
-        && decl_contains_callee(decl: decl, callee: direct_rust_door_target_model_callee)
-    )
 }
 
 fn decl_origin_from_structure(decl: FnArrowDecl) -> ProductionQualificationOrigin {
@@ -419,14 +413,6 @@ fn known_fixture_origin_mint_surface_count_in_scope() -> Int {
   count_derived_fixture_origin_mint_sites(
     sites: derived_production_qualification_mint_sites_live()
   )
-}
-
-data production_qualification_call_occurrence_derivation_landed: Bool = false
-
-data production_qualification_call_occurrence_derivation_landed_dissolve_trigger: String = "Flip production_qualification_call_occurrence_derivation_landed when call-reachable production-qualification classification shares the effect_reach skeleton authority and derived_production_qualification_mint_sites_live() derives from resolved call occurrences corpus-wide — not fn_arrow_decl_substrate_is_whole_tree alone."
-
-fn production_qualification_repository_wide_origin_probe_closed() -> Bool {
-  production_qualification_call_occurrence_derivation_landed
 }
 
 fn ingest_mint_surface_discovered_in_live_scope() -> Bool {
