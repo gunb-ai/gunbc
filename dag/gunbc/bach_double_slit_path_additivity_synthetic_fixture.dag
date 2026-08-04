@@ -150,6 +150,42 @@ fn bach_double_slit_path_additivity_refutation_holds() -> Bool {
   }
 }
 
+fn synthetic_path_additivity_receipt_matches_fold_kernel(
+  receipt: PathAdditivityRefutationReceipt,
+  band: ScreenBand,
+  exposure: SyntheticMatchedExposureSession,
+) -> Bool {
+  match resolve_additivity_inputs(
+    rows: synthetic_fixture_arrival_count_observations,
+    fixture: synthetic_double_slit_fixture,
+    band: band,
+    exposure: exposure,
+  ) {
+    AdditivityInputsResolved {
+      left: resolved_left,
+      right: resolved_right,
+      both: resolved_both,
+      left_contributing_rows: resolved_left_rows,
+      right_contributing_rows: resolved_right_rows,
+      both_contributing_rows: resolved_both_rows,
+    } =>
+      receipt.witness.left_alternative_count == resolved_left
+        && receipt.witness.right_alternative_count == resolved_right
+        && receipt.witness.both_open_observed_count == resolved_both
+    AdditivityInputsIncomplete {
+      missing_arrangement: missing_arrangement,
+      band: incomplete_band,
+      exposure: incomplete_exposure,
+    } => false
+    AdditivityInputsAmbiguous {
+      arrangement: ambiguous_arrangement,
+      band: ambiguous_band,
+      exposure: ambiguous_exposure,
+      matching_rows: ambiguous_matching_rows,
+    } => false
+  }
+}
+
 fn synthetic_central_band_verdict() -> PathAdditivityBandVerdict {
   derive_path_additivity_refutation_at_band(
     rows: synthetic_fixture_arrival_count_observations,
@@ -266,9 +302,10 @@ fn synthetic_fold_receipt_resolution_matches_kernel_counts() -> Bool {
           kernel.witness.left_alternative_count == folded.witness.left_alternative_count
             && kernel.witness.right_alternative_count == folded.witness.right_alternative_count
             && kernel.witness.both_open_observed_count == folded.witness.both_open_observed_count
-            && kernel.witness.classical_additive_prediction == folded.witness.classical_additive_prediction
         RefutationNotEstablished { reason: AdditivityUndecided { failure: not_established_failure } } => false
+        RefutationNotEstablished { reason: AdditivityHeld { band: held_band, exposure: held_exposure } } => false
       }
-    RefutationNotEstablished { reason: not_established_reason } => false
+    RefutationNotEstablished { reason: AdditivityUndecided { failure: not_established_failure } } => false
+    RefutationNotEstablished { reason: AdditivityHeld { band: held_band, exposure: held_exposure } } => false
   }
 }

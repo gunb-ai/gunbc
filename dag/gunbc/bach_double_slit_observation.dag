@@ -2,14 +2,21 @@ module gunbc.bach_double_slit_observation
 
 import std.types { Bool, Int, List }
 import std.integer { NonNegativeInt }
-import v2.std.algebra { list_map, list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
 import extdeps.physics.bach_et_al_2013_double_slit {
   BachEtAl2013DoubleSlitExperiment,
   bach_et_al_2013_double_slit,
+  figures_one_and_two_normalized_distributions_note,
+  slit_mask_control_not_which_path_readout_note,
   BachDistributionObservation,
   bach_distribution_observations,
   BachBuildupObservationRow,
   bach_buildup_observations,
+  Figure3BuildupPanel,
+  Figure3PanelA,
+  Figure3PanelB,
+  Figure3PanelC,
+  Figure3PanelD,
+  Figure3PanelE,
   PatternStatus,
   PatternNotYetDiscernible,
   PatternDiscernible,
@@ -21,11 +28,15 @@ import extdeps.physics.bach_et_al_2013_double_slit {
 
 data bach_observation_layer_note: String = "Observing-layer receipts for Bach et al. 2013. Buildup progression derives structural properties from extdeps.physics.bach_et_al_2013_double_slit.bach_buildup_observations — sole population authority, no parallel copy."
 
+data bach_raw_count_additivity_not_evaluable_note: String = "Derived from cited Bach figures 1–2 (normalized distributions only): raw matched-exposure per-band arrival triplet N_both = N_slit_one + N_slit_two is not evaluable from this source."
+
+data bach_which_path_evidence_requirement_unsatisfied_note: String = "Derived from cited Bach slit-mask control (not a which-path readout): which-path distinguishability evidence requirement is unsatisfied for this source."
+
 data which_path_coverage_obligation_note: String = "Which-path distinguishability evidence is absent from cited Bach et al. 2013; obligation recorded here per DESIGN section 3."
 
-data bach_quantitative_path_additivity_gap_note: String = "Authored coverage gap (explicit gap rung, not a derived readiness verdict): cited Bach et al. 2013 does not supply a raw matched-exposure per-band arrival triplet for N_both = N_slit_one + N_slit_two."
+data bach_quantitative_path_additivity_gap_note: String = "Authored coverage gap (explicit gap rung, not a derived readiness verdict): bach_raw_count_additivity_not_evaluable_note grounds why no raw triplet exists to evaluate."
 
-data bach_which_path_evidence_gap_note: String = "Authored coverage gap (explicit gap rung, not a derived readiness verdict): cited Bach et al. 2013 controlled which slits were open, not whether which-path information existed."
+data bach_which_path_evidence_gap_note: String = "Authored coverage gap (explicit gap rung, not a derived readiness verdict): bach_which_path_evidence_requirement_unsatisfied_note grounds why which-path evidence is absent."
 
 data bach_raw_count_triplet_coverage_dissolve_on: String = "DISSOLVE-ON: extdeps carries raw matched-exposure arrival rows at a grain that supports left, right, and both counts under one exposure identity; then bach_quantitative_path_additivity_gap may gain a positive cited counterpart."
 
@@ -45,31 +56,26 @@ fn bach_which_path_evidence_gap() -> BachWhichPathEvidenceGap {
   BachWhichPathAuthorityAbsent {}
 }
 
-type BachObservedApparatus
-  = BachCitedDoubleSlitApparatus { subject: BachEtAl2013DoubleSlitExperiment }
-  | BachNonCitedApparatus {}
-
-type BachBuildupProgressionRow {
-  apparatus: BachObservedApparatus
-  detected_electrons: NonNegativeInt
-  pattern_status: PatternStatus
+fn bach_upstream_facts_reference_normalized_figures() -> Bool {
+  figures_one_and_two_normalized_distributions_note != ""
 }
 
-fn bach_cited_buildup_row_from_extdeps(row: BachBuildupObservationRow) -> BachBuildupProgressionRow {
-  BachBuildupProgressionRow {
-    apparatus: BachCitedDoubleSlitApparatus { subject: row.apparatus },
-    detected_electrons: row.detected_electrons,
-    pattern_status: row.pattern_status,
+fn bach_upstream_facts_reference_slit_mask_control() -> Bool {
+  slit_mask_control_not_which_path_readout_note != ""
+}
+
+fn bach_buildup_row_is_cited_apparatus(row: BachBuildupObservationRow) -> Bool {
+  row.apparatus == bach_et_al_2013_double_slit
+}
+
+fn figure_3_panel_rank(panel: Figure3BuildupPanel) -> Int {
+  match panel {
+    Figure3PanelA => 0
+    Figure3PanelB => 1
+    Figure3PanelC => 2
+    Figure3PanelD => 3
+    Figure3PanelE => 4
   }
-}
-
-fn bach_cited_buildup_progression_rows() -> List<BachBuildupProgressionRow> {
-  list_map(
-    xs: bach_buildup_observations,
-    f: fn(row) {
-      bach_cited_buildup_row_from_extdeps(row: row)
-    },
-  )
 }
 
 fn bach_pattern_status_rank(status: PatternStatus) -> Int {
@@ -277,10 +283,67 @@ fn bach_buildup_final_row_clearly_visible(
   }
 }
 
+fn bach_buildup_all_rows_cited_apparatus(
+  rows: List<BachBuildupObservationRow>,
+) -> Bool {
+  rows |> all(row => bach_buildup_row_is_cited_apparatus(row: row))
+}
+
+type PanelSequenceFoldAcc {
+  expected_rank: Int
+  valid: Bool
+}
+
+fn fold_panel_sequence(
+  acc: PanelSequenceFoldAcc,
+  row: BachBuildupObservationRow,
+) -> PanelSequenceFoldAcc {
+  if !acc.valid {
+    acc
+  } else {
+    let rank = figure_3_panel_rank(panel: row.figure_3_panel)
+    if rank == acc.expected_rank {
+      PanelSequenceFoldAcc {
+        expected_rank: acc.expected_rank + 1,
+        valid: true,
+      }
+    } else {
+      PanelSequenceFoldAcc {
+        expected_rank: acc.expected_rank,
+        valid: false,
+      }
+    }
+  }
+}
+
+fn bach_buildup_panels_are_figure_3_a_through_e_once(
+  rows: List<BachBuildupObservationRow>,
+) -> Bool {
+  let folded = fold(
+    rows,
+    init: PanelSequenceFoldAcc {
+      expected_rank: 0,
+      valid: true,
+    },
+    f: fn(acc, row) {
+      fold_panel_sequence(acc: acc, row: row)
+    },
+  )
+  folded.valid && folded.expected_rank == 5 && (rows |> count) == 5
+}
+
+fn bach_buildup_source_shape_holds_for(
+  rows: List<BachBuildupObservationRow>,
+) -> Bool {
+  bach_buildup_all_rows_cited_apparatus(rows: rows)
+    && bach_buildup_panels_are_figure_3_a_through_e_once(rows: rows)
+}
+
 fn bach_buildup_progression_holds_for(
   rows: List<BachBuildupObservationRow>,
 ) -> Bool {
-  bach_buildup_counts_strictly_increase(rows: rows)
+  bach_buildup_source_shape_holds_for(rows: rows)
+    && bach_buildup_counts_strictly_increase(rows: rows)
     && bach_buildup_pattern_status_never_regresses(rows: rows)
     && bach_buildup_discernible_precedes_clearly_visible(rows: rows)
     && bach_buildup_final_row_clearly_visible(rows: rows)
@@ -337,4 +400,10 @@ fn bach_buildup_progression_rejects_final_not_clearly_visible(
   rows: List<BachBuildupObservationRow>,
 ) -> Bool {
   !bach_buildup_final_row_clearly_visible(rows: rows)
+}
+
+fn bach_buildup_progression_rejects_wrong_panel_order(
+  rows: List<BachBuildupObservationRow>,
+) -> Bool {
+  !bach_buildup_panels_are_figure_3_a_through_e_once(rows: rows)
 }

@@ -9,6 +9,7 @@ import gunbc.bach_double_slit_observation {
   bach_buildup_progression_rejects_status_regression,
   bach_buildup_progression_rejects_missing_discernible_before_clearly_visible,
   bach_buildup_progression_rejects_final_not_clearly_visible,
+  bach_buildup_progression_rejects_wrong_panel_order,
   bach_double_slit_interference_evidence_rejects_for_distribution,
 }
 import extdeps.physics.bach_et_al_2013_double_slit {
@@ -103,6 +104,17 @@ test fn w_bach_buildup_rejects_final_not_clearly_visible() -> Bool {
     },
   ]
   bach_buildup_progression_rejects_final_not_clearly_visible(rows: bad_final)
+}
+
+test fn w_bach_buildup_rejects_wrong_panel_order() -> Bool {
+  let wrong_panel_order = [
+    bach_buildup_6235_electrons,
+    bach_buildup_1004_electrons,
+    bach_buildup_209_electrons,
+    bach_buildup_7_electrons,
+    bach_buildup_2_electrons,
+  ]
+  bach_buildup_progression_rejects_wrong_panel_order(rows: wrong_panel_order)
 }
 
 test fn w_bach_interference_rejects_missing_both_open_diffraction_observation() -> Bool {

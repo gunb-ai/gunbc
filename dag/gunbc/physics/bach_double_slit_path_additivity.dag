@@ -94,7 +94,6 @@ type PathAdditivityCounterexampleWitness {
   left_alternative_count: NonNegativeInt
   right_alternative_count: NonNegativeInt
   both_open_observed_count: NonNegativeInt
-  classical_additive_prediction: NonNegativeInt
 }
 
 type PathAdditivitySubject
@@ -332,26 +331,38 @@ fn path_additivity_compare_observed_to_prediction(
   }
 }
 
+fn path_additivity_witness_classical_additive_prediction(
+  witness: PathAdditivityCounterexampleWitness,
+) -> NonNegativeInt {
+  classical_exclusive_alternative_arrival_prediction(
+    left_only_count: witness.left_alternative_count,
+    right_only_count: witness.right_alternative_count,
+  )
+}
+
 fn path_additivity_witness_observed_vs_prediction(
   witness: PathAdditivityCounterexampleWitness,
 ) -> Ordering {
   path_additivity_compare_observed_to_prediction(
     observed_both: witness.both_open_observed_count,
-    prediction: witness.classical_additive_prediction,
+    prediction: path_additivity_witness_classical_additive_prediction(witness: witness),
   )
 }
 
 fn path_additivity_witness_matches_additive_prediction(
   witness: PathAdditivityCounterexampleWitness,
 ) -> Bool {
-  witness.classical_additive_prediction == (witness.left_alternative_count + witness.right_alternative_count)
+  let prediction = path_additivity_witness_classical_additive_prediction(witness: witness)
+  let additive = witness.left_alternative_count + witness.right_alternative_count
+  prediction == additive
 }
 
 fn path_additivity_witness_is_counterexample(
   witness: PathAdditivityCounterexampleWitness,
 ) -> Bool {
+  let prediction = path_additivity_witness_classical_additive_prediction(witness: witness)
   path_additivity_witness_matches_additive_prediction(witness: witness)
-    && (witness.both_open_observed_count != witness.classical_additive_prediction)
+    && (witness.both_open_observed_count != prediction)
     && (path_additivity_witness_observed_vs_prediction(witness: witness) != Equal)
 }
 
@@ -395,7 +406,6 @@ fn path_additivity_refutation_receipt_resolution_from_resolved_counts(
             left_alternative_count: left,
             right_alternative_count: right,
             both_open_observed_count: both,
-            classical_additive_prediction: prediction,
           },
           location: PathAdditivityLocationKey {
             exposure: exposure,
@@ -411,7 +421,6 @@ fn path_additivity_refutation_receipt_resolution_from_resolved_counts(
             left_alternative_count: left,
             right_alternative_count: right,
             both_open_observed_count: both,
-            classical_additive_prediction: prediction,
           },
           location: PathAdditivityLocationKey {
             exposure: exposure,
