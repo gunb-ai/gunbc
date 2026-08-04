@@ -32,12 +32,15 @@ import v2.compiler.source_authority {
   SourceRootManifestAbsent,
   SourceRootManifestElided,
   SourceRootRowsMissing,
+  source_ref_content_hash_mismatch,
+  dag_source_observed_content_hash_for_ref,
   source_root_ingest_from_source_refs
 }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.extdeps.languages.rust { rust_target_model }
 import v2.lens.reference_deps { reference_deps_ingest_source_text }
 import std.algebra { Cons, Empty }
+import std.content_hash { ContentHash }
 import v2.std.algebra { fold_list, length }
 import v2.std.collection { List }
 import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
@@ -113,7 +116,8 @@ fn frontier_probe_source_ref_for_read_diagnostic(
 fn frontier_probe_receipt_from_source_read_refused(
   module_path: String,
   source_ref: SourceRef,
-  cause: Symbol
+  cause: Symbol,
+  observed_content_hash: Optional<ContentHash>
 ) -> FrontierProbeReceipt {
   FrontierProbeReceipt {
     module_path: module_path,
@@ -122,8 +126,20 @@ fn frontier_probe_receipt_from_source_read_refused(
     located_reason: cause,
     detail: FrontierProbeSourceReadRefused {
       source_ref: source_ref,
-      cause: cause
+      cause: cause,
+      observed_content_hash: observed_content_hash
     }
+  }
+}
+
+fn frontier_probe_observed_content_hash_for_cause(
+  ref: SourceRef,
+  cause: Symbol
+) -> Optional<ContentHash> {
+  if cause == source_ref_content_hash_mismatch {
+    dag_source_observed_content_hash_for_ref(ref: ref)
+  } else {
+    optional_absent()
   }
 }
 
@@ -137,7 +153,11 @@ fn frontier_probe_receipt_from_ingest_read_rejected(
       frontier_probe_receipt_from_source_read_refused(
         module_path: module_path,
         source_ref: ref,
-        cause: d.head.reason
+        cause: d.head.reason,
+        observed_content_hash: frontier_probe_observed_content_hash_for_cause(
+          ref: ref,
+          cause: d.head.reason
+        )
       )
     Absent =>
       frontier_probe_receipt_from_reason_only(
@@ -342,10 +362,10 @@ fn frontier_probe_receipt_for_subject(
           } else {
             match source_root_ingest_from_source_refs(refs: refs) {
               Rejected { diagnostics: d } =>
-                frontier_probe_receipt_manifest_elided(
+                frontier_probe_receipt_from_ingest_read_rejected(
                   module_path: module_path,
-                  read_count: read_count,
-                  cap: 0
+                  refs: refs,
+                  d: d
                 )
               Accepted { value: ingest, diagnostics: _ } =>
                 match frontier_probe_admission_from_ingest(

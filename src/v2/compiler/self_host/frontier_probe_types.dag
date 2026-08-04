@@ -1,6 +1,8 @@
 module v2.compiler.self_host.frontier_probe_types
 
 import v2.compiler.source_authority { SourceRef }
+import std.content_hash { ContentHash }
+import v2.std.optional { Optional }
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol }
@@ -36,9 +38,13 @@ type FrontierProbeDetail
   = FrontierProbeDetailAbsent
   | MissingModule { requested: QualifiedName }
   | SourceRootManifestElidedProbe { read_count: Int, cap: Int }
-  | FrontierProbeSourceReadRefused { source_ref: SourceRef, cause: Symbol }
+  | FrontierProbeSourceReadRefused {
+      source_ref: SourceRef,
+      cause: Symbol,
+      observed_content_hash: Optional<ContentHash>
+    }
 
-data frontier_probe_detail_note: String = "Survey receipts carry structural probe detail beside the reason symbol. MissingModule holds the QualifiedName sought (not only its dotted projection). SourceRootManifestElidedProbe records inline-manifest elision when the live closure cannot be consumed through SourceRef rows. FrontierProbeSourceReadRefused preserves read-through failures separately from parse or module-not-found misclassification."
+data frontier_probe_detail_note: String = "Survey receipts carry structural probe detail beside the reason symbol. MissingModule holds the QualifiedName sought (not only its dotted projection). SourceRootManifestElidedProbe records inline-manifest elision when the live closure cannot be consumed through SourceRef rows. FrontierProbeSourceReadRefused preserves read-through failures separately from parse or module-not-found misclassification; on content-hash mismatch observed_content_hash carries the read-through digest beside source_ref.content_hash (expected)."
 
 type FrontierProbeReceipt {
   module_path: String

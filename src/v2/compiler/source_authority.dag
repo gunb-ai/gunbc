@@ -64,7 +64,8 @@ import std.content_hash {
   ContentHashComparison,
   ContentHashEqual,
   compare_content_hash,
-  content_hash_of_value
+  content_hash_of_value,
+  serialize_content_hash
 }
 import v2.compiler.translate { target_serialize_source_from_model }
 import v2.std.text { String, string_is_empty }
@@ -202,6 +203,49 @@ fn source_ref_read_refused_diagnostic(ref: SourceRef, reason: Symbol) -> NonEmpt
   )
 }
 
+fn source_ref_content_hash_mismatch_diagnostic(
+  ref: SourceRef,
+  observed: ContentHash
+) -> NonEmptyDiagnostics {
+  let detail =
+    concat(
+      concat(
+        concat(
+          "expected=",
+          serialize_content_hash(hash: ref.content_hash) as String
+        ),
+        " observed="
+      ),
+      serialize_content_hash(hash: observed) as String
+    )
+  NonEmptyDiagnostics {
+    head: Diagnostic {
+      reason: source_ref_content_hash_mismatch,
+      at: textual_whole_file_locus(file: symbol_intern_lexeme(lexeme: ref.path)),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    },
+    tail: [
+      NonEmptyDiagnostics {
+        head: Diagnostic {
+          reason: source_ref_content_hash_mismatch,
+          at: port_locus(port: symbol_intern_lexeme(lexeme: detail)),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        },
+        tail: []
+      }
+    ]
+  }
+}
+
+fn dag_source_observed_content_hash_for_ref(ref: SourceRef) -> Optional<ContentHash> {
+  let read = Filesystem.Read(path: ref.path)
+  if read.success {
+    optional_present(value: dag_source_content_hash_for_text(text: read.content))
+  } else {
+    optional_absent()
+  }
+}
+
 fn dag_source_content_hash_for_text(text: String) -> ContentHash {
   content_hash_of_value(value: text)
 }
@@ -236,9 +280,9 @@ fn dag_source_read_witness_from_source_ref(ref: SourceRef) -> Outcome<DagSourceR
         )
       _ =>
         outcome_rejected(
-          d: source_ref_read_refused_diagnostic(
+          d: source_ref_content_hash_mismatch_diagnostic(
             ref: ref,
-            reason: source_ref_content_hash_mismatch
+            observed: actual
           )
         )
     }
