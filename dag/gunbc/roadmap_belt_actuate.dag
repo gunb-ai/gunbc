@@ -2721,23 +2721,33 @@ fn belt_verification_subject_for(
   }
 }
 
+fn belt_verification_receipt_line_matches(line: String, prefix: String) -> Bool {
+  line != ""
+    && starts_with(s: line, prefix: prefix)
+    && ends_with(s: line, suffix: ".json")
+    && !string_contains(s: line, pattern: ".diff-window.json")
+}
+
 fn belt_verification_receipt_filename_for_head(
   listing: String,
   head_sha: String,
 ) -> String? {
   let prefix = join([head_sha, "."], "")
-  let candidates = filter(
+  fold(
     split(s: listing, delimiter: "\n"),
-    line =>
-      line != ""
-        && starts_with(s: line, prefix: prefix)
-        && ends_with(s: line, suffix: ".json")
-        && !string_contains(s: line, pattern: ".diff-window.json"),
+    init: none,
+    f: fn(acc, line) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          if belt_verification_receipt_line_matches(line: line, prefix: prefix) {
+            Present { value: line }
+          } else {
+            none
+          }
+      }
+    },
   )
-  match first(candidates) {
-    Absent => none
-    Present { value: name } => Present { value: name }
-  }
 }
 
 fn belt_verification_receipt_source(
@@ -3193,14 +3203,52 @@ fn belt_prepare_diff_window_for_verification(
                   },
                 }
               }
-            observation =>
+            GitMergeBaseProgramUnavailable { program: program, reason: reason } =>
               GitDiffWindowPrepareRefused {
-                cause: ChangeWindowMergeBaseRefused { observation: observation },
+                cause: ChangeWindowMergeBaseRefused {
+                  observation: GitMergeBaseProgramUnavailable { program: program, reason: reason },
+                },
+              }
+            GitMergeBaseExecutionFailed { program: program, exit_code: exit_code, stdout: stdout, stderr: stderr } =>
+              GitDiffWindowPrepareRefused {
+                cause: ChangeWindowMergeBaseRefused {
+                  observation: GitMergeBaseExecutionFailed {
+                    program: program,
+                    exit_code: exit_code,
+                    stdout: stdout,
+                    stderr: stderr,
+                  },
+                },
+              }
+            GitMergeBaseOutputMalformed { stdout: stdout } =>
+              GitDiffWindowPrepareRefused {
+                cause: ChangeWindowMergeBaseRefused {
+                  observation: GitMergeBaseOutputMalformed { stdout: stdout },
+                },
               }
           }
-        observation =>
+        GitTargetGenerationProgramUnavailable { program: program, reason: reason } =>
           GitDiffWindowPrepareRefused {
-            cause: ChangeWindowTargetGenerationRefused { observation: observation },
+            cause: ChangeWindowTargetGenerationRefused {
+              observation: GitTargetGenerationProgramUnavailable { program: program, reason: reason },
+            },
+          }
+        GitTargetGenerationExecutionFailed { program: program, exit_code: exit_code, stdout: stdout, stderr: stderr } =>
+          GitDiffWindowPrepareRefused {
+            cause: ChangeWindowTargetGenerationRefused {
+              observation: GitTargetGenerationExecutionFailed {
+                program: program,
+                exit_code: exit_code,
+                stdout: stdout,
+                stderr: stderr,
+              },
+            },
+          }
+        GitTargetGenerationOutputMalformed { stdout: stdout } =>
+          GitDiffWindowPrepareRefused {
+            cause: ChangeWindowTargetGenerationRefused {
+              observation: GitTargetGenerationOutputMalformed { stdout: stdout },
+            },
           }
       }
   }
@@ -3233,7 +3281,7 @@ fn belt_exec_with_diff_window_env(
         cap: EnvironmentBindingCapability,
       ),
       args: concat(
-        [diff_window_env_assignment(path: diff_window_path)],
+        [git_diff_window_env_assignment(path: diff_window_path)],
         concat([cmd.program], cmd.args),
       ),
     ),
