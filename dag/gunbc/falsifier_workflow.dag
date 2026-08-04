@@ -122,87 +122,9 @@ fn falsifier_step() -> Step {
   }
 }
 
-<<<<<<< HEAD
 data falsifier_native_cache_cold_plan_target_note: String = "THE STEP WHOSE PLAN TARGET ESCAPED THE #7470 MIGRATION, kept as the receipt for why the target is now a typed variant instead of an argv token. Every other consumer derived its plan name from a constant, so the 2026-07-30 WalkPlan rename reached all four automatically; this step alone passed the inline literal \"gunbc_falsifier_native_cache_cold_batches\", derived from nothing, and was left behind returning a bare List<List<Runnable>>. The executor's strict parser then refused it on every one of the 8 falsifier runs that armed this step (0 successes), and it read as intermittent only because the step is skipped whenever the falsifier step fails first.\n\nThe first repair here added a naming constant beside the other four. That was still validation — it made the rename reach this site but left the next author free to type a fresh literal. The constant was therefore DELETED in the same change that introduced gunbc.cli_invoke PlanFunction: an inline literal at this argument is now a type error, so the roster is closed by construction and a String projection with no consumer would be exactly the inert carrier §2 forbids. Dissolution-on-climb (§4b): the wall replaces the lower-rung machinery rather than accumulating beside it."
 
 data floor_component_receipt_upload_note: String = "Uploads the floor's per-component receipt so the alert workflow can READ which component failed instead of inferring one hardcoded story from the overall run conclusion (gunbc.floor_component_receipt carries the priced defect). if: always() is load-bearing and is the whole point: the receipt matters MOST on a red run, and a red floor step would otherwise skip the upload and leave the alert blind — which is the state that produced the false 'affected-set cold control is dark' claim on run 30509024051. It sits immediately after falsifier_step so it captures that step's receipt. F0 (2026-08-04): compile-clean and native-cache cold controls now use falsifier_control_prerequisite_if (always + release_build success) in gunbc.falsifier_run_control — they execute after the floor concludes, not only when it succeeds. Main-floor population artifact uploads before those cold controls (#7785). if-no-files-found: error, because a silently absent receipt is the same blindness one layer down; the alert's own missing-artifact arm reports an explicit unknown rather than re-widening. Its transfer term joins gunbc_falsifier_job_backstop_timeout_minutes so the backstop stays the exact step-sum + prelude (the invariant falsifier_workflow_witness_test asserts)."
-=======
-data gunbc_falsifier_compile_clean_cold_control_timeout_minutes: Int = 30
-
-data gunbc_falsifier_compile_clean_cold_control_note: String = "Compile-clean whole-tree cold control (2026-07-16): deterministic whole-tree compile-clean on the falsifier cadence. GUNBC_CI_COMPILE_CLEAN_COLD_CONTROL=1 forces WholeTree. Per #7785: distinct GUNBC_WALK_ATTEMPT_ID routes writers into target/floor-evidence/<attempt>/ — no snapshot shell, no cross-attempt copy. Main-floor population artifact is uploaded BEFORE this step; this control does not upload a population artifact (not on the current settlement path)."
-
-fn compile_clean_cold_control_invoke() -> String {
-  concat(
-    concat("ROOT=", concat(ci_repo_root_shell(), "\n")),
-    concat(
-      "export GUNBC_WALK_ATTEMPT_ID=falsifier-compile-clean-cold\n",
-      claim_executor_run_plan_shell(
-        source_roots: witness_layer_roots,
-        plan_entry: "src/v2/workflow/ci_floor_plan.dag",
-        plan_function: CiPlanArtifactPlan,
-        notice_title: Absent,
-        rooted: false
-      )
-    )
-  )
-}
-
-fn compile_clean_cold_control_step() -> Step {
-  RunStep {
-    name: Present { value: "compile-clean whole-tree cold control (scoped-PR admission counterpart)" },
-    id: none,
-    run: compile_clean_cold_control_invoke(),
-    shell: none,
-    env: Present {
-      value: [kv(key: "GUNBC_CI_COMPILE_CLEAN_COLD_CONTROL", value: yaml_string(s: "1"))]
-    },
-    working_directory: none,
-    if_condition: none,
-    continue_on_error: none,
-    timeout_minutes: Present { value: gunbc_falsifier_compile_clean_cold_control_timeout_minutes }
-  }
-}
-
-data falsifier_native_cache_cold_plan_target_note: String = "THE STEP WHOSE PLAN TARGET ESCAPED THE #7470 MIGRATION, kept as the receipt for why the target is now a typed variant instead of an argv token. Every other consumer derived its plan name from a constant, so the 2026-07-30 WalkPlan rename reached all four automatically; this step alone passed the inline literal \"gunbc_falsifier_native_cache_cold_batches\", derived from nothing, and was left behind returning a bare List<List<Runnable>>. The executor's strict parser then refused it on every one of the 8 falsifier runs that armed this step (0 successes), and it read as intermittent only because the step is skipped whenever the falsifier step fails first.\n\nThe first repair here added a naming constant beside the other four. That was still validation — it made the rename reach this site but left the next author free to type a fresh literal. The constant was therefore DELETED in the same change that introduced gunbc.cli_invoke PlanFunction: an inline literal at this argument is now a type error, so the roster is closed by construction and a String projection with no consumer would be exactly the inert carrier §2 forbids. Dissolution-on-climb (§4b): the wall replaces the lower-rung machinery rather than accumulating beside it."
-
-data gunbc_falsifier_native_cache_cold_control_timeout_minutes: Int = 30
-
-data gunbc_falsifier_native_cache_cold_control_note: String = "Native-cache cold control (P6 durable-cache rail, 2026-07-21): nightly Wet emit-on-demand/self-host receipt batch re-executed with GUNBC_CI_NATIVE_CACHE_COLD_CONTROL=1. Distinct GUNBC_WALK_ATTEMPT_ID=falsifier-native-cache-cold for attempt-scoped evidence root; no snapshot shell. Main-floor population artifact already uploaded before this step."
-
-fn native_cache_cold_control_invoke() -> String {
-  concat(
-    concat("ROOT=", concat(ci_repo_root_shell(), "\n")),
-    concat(
-      "export GUNBC_WALK_ATTEMPT_ID=falsifier-native-cache-cold\n",
-      claim_executor_run_plan_shell(
-        source_roots: witness_layer_roots,
-        plan_entry: "src/v2/workflow/ci_floor_plan.dag",
-        plan_function: FalsifierNativeCacheColdPlan,
-        notice_title: Absent,
-        rooted: false
-      )
-    )
-  )
-}
-
-fn native_cache_cold_control_step() -> Step {
-  RunStep {
-    name: Present { value: "native-cache cold control (warm-tier admission counterpart)" },
-    id: none,
-    run: native_cache_cold_control_invoke(),
-    shell: none,
-    env: Present {
-      value: [kv(key: "GUNBC_CI_NATIVE_CACHE_COLD_CONTROL", value: yaml_string(s: "1"))]
-    },
-    working_directory: none,
-    if_condition: none,
-    continue_on_error: none,
-    timeout_minutes: Present { value: gunbc_falsifier_native_cache_cold_control_timeout_minutes }
-  }
-}
-
-data floor_component_receipt_upload_note: String = "Uploads the floor's per-component receipt so the alert workflow can READ which component failed instead of inferring one hardcoded story from the overall run conclusion (gunbc.floor_component_receipt carries the priced defect). if: always() is load-bearing and is the whole point: the receipt matters MOST on a red run, and a red floor step would otherwise skip the upload and leave the alert blind — which is the state that produced the false 'affected-set cold control is dark' claim on run 30509024051. It sits immediately after falsifier_step so it captures that step's receipt before the two cold controls, which a red floor skips. if-no-files-found: error, because a silently absent receipt is the same blindness one layer down; the alert's own missing-artifact arm reports an explicit unknown rather than re-widening. Its transfer term joins gunbc_falsifier_job_backstop_timeout_minutes so the backstop stays the exact step-sum + prelude (the invariant falsifier_workflow_witness_test asserts)."
->>>>>>> 018a4ff10da (WIP: CI perf)
 
 fn floor_component_receipt_upload_step() -> Step {
   UsesStep {
