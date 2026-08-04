@@ -69,6 +69,8 @@ type SelectorRefusalCause
 type CitationAccessRefusalCause
   = HttpAccessRefused { status: HttpStatus }
 
+data citation_unreachable_cause_note: String = "CitationUnreachableCause arms are class-countable transport failures. DnsResolutionFailed, TlsHandshakeFailed, ConnectionRefused, and RequestTimedOut name specific deficits. TransportUnreachable is NOT an unclassifiable catch-all — observation-could-not-be-classified and transport-failure-outside-the-named-four are different states whose remedies differ, and collapsing them would zero the classifier deficit's frequency (DESIGN section 5 absorbing-arm class). TransportUnreachable means specifically: a transport-layer failure was observed and it is not DNS resolution, TLS handshake, connection refused, or request timeout. Unclassifiable observations must land on a separate explicit arm when the transport observation layer lands; until then producers must refuse rather than widen here."
+
 type CitationUnreachableCause
   = DnsResolutionFailed
   | TlsHandshakeFailed
