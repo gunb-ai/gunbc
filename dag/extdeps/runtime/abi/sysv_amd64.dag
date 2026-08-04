@@ -59,12 +59,14 @@ import std.claim_evidence {
 }
 import gunbc.readback_independence { ReadBackProbe, ProbeMayEstablish }
 
-data x86_64_abi_pdf_authority: ExternalAuthority = ExternalAuthority {
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "refspecs.linuxfoundation.org/elf/x86_64-abi-0.99.pdf"
   }
 }
+
+data x86_64_abi_pdf_authority: ExternalAuthority = extdeps_external_authority_anchor
 
 data x86_64_abi_pdf_draft_edition_note: String = "Document cover: Draft Version 0.99.6, dated July 2 2012 — NOT the filename 0.99. VersionIdentity carries the edition string 0.99.6."
 
