@@ -11,6 +11,8 @@ import gunbc.scaffold_retirement {
   scaffold_site_lookup,
   proposed_binding_for_site,
   dissolves_to_from_exact_scaffold_body,
+  site_disposition_for_redundancy,
+  corpus_present_declaration_refs_for_pool,
   ScaffoldSiteLookupUnique,
   ScaffoldSiteDecoded,
   ScaffoldCandidateDecodeRefused,
@@ -18,11 +20,14 @@ import gunbc.scaffold_retirement {
   DeclaredTypeNotDisposition,
 }
 import std.disposition { SingleAuthority }
+import std.decl_ref { NamedField, WholeDeclaration }
+import v2.lens.disposition_redundancy { disposition_redundancy_violation_count }
 import test.fixture.scaffold_retirement.specimens {
   scaffold_retirement_fixture_pool_roots,
   planted_exact_scaffold_specimen_qn,
   planted_nullary_disposition_specimen_qn,
   planted_non_disposition_specimen_qn,
+  planted_named_field_dissolution_specimen_qn,
 }
 import v2.std.decl_index { decl_facts }
 import v2.std.algebra { length, count_where }
@@ -120,6 +125,27 @@ test fn fixture_population_partition_is_exact_on_fixture_pool() -> Bool {
     xs: derived_scaffold_disposition_refused_for_pool(pool_roots: scaffold_retirement_fixture_pool_roots)
   )
   candidates == decoded + refused && decoded >= 1
+}
+
+test fn fixture_named_field_bind_dissolution_fires_when_successor_present() -> Bool {
+  match scaffold_site_lookup(
+    qn: planted_named_field_dissolution_specimen_qn,
+    sites: derived_scaffold_disposition_sites_for_pool(pool_roots: scaffold_retirement_fixture_pool_roots)
+  ) {
+    ScaffoldSiteLookupUnique { site: site } =>
+      match site.bind.field {
+        NamedField { field_name: field_name } =>
+          field_name == "dissolves_to"
+            && disposition_redundancy_violation_count(
+              dispositions: [site_disposition_for_redundancy(site: site)],
+              present: corpus_present_declaration_refs_for_pool(
+                pool_roots: scaffold_retirement_fixture_pool_roots
+              )
+            ) == 1
+        WholeDeclaration => false
+      }
+    _ => false
+  }
 }
 
 test fn fixture_proposed_binding_is_empty_without_roadmap_anchor() -> Bool {

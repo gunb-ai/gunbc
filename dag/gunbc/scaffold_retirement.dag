@@ -23,14 +23,24 @@ import v2.std.decl_index {
   decl_facts,
   export_signature_facts,
 }
-import v2.std.algebra { length, count_where, list_tail, TailFound, TailAbsent, list_snoc_item }
+import v2.std.algebra {
+  length,
+  count_where,
+  list_tail,
+  TailFound,
+  TailAbsent,
+  list_snoc_item,
+  list_append,
+}
 import v2.std.collection { Absent, Present, list_at_optional }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.compilers.lexing { symbol_lexeme }
 import v2.std.node {
   Node,
+  Edge,
+  named_edge_sort_key,
 }
-import v2.std.node_query { node_positional_child_targets }
+import v2.std.node_query { node_positional_child_targets, node_labeled_child_edges }
 import v2.lens.disposition_redundancy {
   decl_ref_eq,
   disposition_redundancy_violation_count,
@@ -537,6 +547,8 @@ fn is_fixture_scaffold_pool(pool_roots: List<String>) -> Bool {
 fn disposition_fixture_decl_name(name: String) -> Bool {
   name == "planted_exact_scaffold_specimen"
     || name == "planted_nullary_disposition_specimen"
+    || name == "planted_named_field_successor_target"
+    || name == "planted_named_field_dissolution_specimen"
 }
 
 fn export_signature_type_lexeme_optional(sig_node: Node) -> String? {
@@ -805,12 +817,43 @@ fn decl_fact_presence_ref(fact: DeclFact) -> DeclarationRef {
   }
 }
 
-fn corpus_present_declaration_refs() -> List<DeclarationRef> {
+fn decl_fact_named_field_presence_refs(fact: DeclFact) -> List<DeclarationRef> {
   fold(
-    decl_facts(pool_roots: witness_layer_roots),
+    node_labeled_child_edges(node: fact.node),
     init: [],
-    f: fn(acc, fact) { list_snoc_item(xs: acc, item: decl_fact_presence_ref(fact: fact)) }
+    f: fn(acc, e) {
+      let field_name = symbol_lexeme(sym: named_edge_sort_key(e: e))
+      list_snoc_item(
+        xs: acc,
+        item: DeclarationRef {
+          module_path: decl_fact_carrier_module(fact: fact),
+          decl_name: fact.name,
+          field: NamedField { field_name: field_name },
+        }
+      )
+    }
   )
+}
+
+fn decl_fact_presence_refs(fact: DeclFact) -> List<DeclarationRef> {
+  list_append(
+    left: [decl_fact_presence_ref(fact: fact)],
+    right: decl_fact_named_field_presence_refs(fact: fact)
+  )
+}
+
+fn corpus_present_declaration_refs_for_pool(pool_roots: List<String>) -> List<DeclarationRef> {
+  fold(
+    decl_facts(pool_roots: pool_roots),
+    init: [],
+    f: fn(acc, fact) {
+      list_append(left: acc, right: decl_fact_presence_refs(fact: fact))
+    }
+  )
+}
+
+fn corpus_present_declaration_refs() -> List<DeclarationRef> {
+  corpus_present_declaration_refs_for_pool(pool_roots: witness_layer_roots)
 }
 
 fn site_disposition_for_redundancy(site: ScaffoldDispositionSite) -> Disposition {

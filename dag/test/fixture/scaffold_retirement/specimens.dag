@@ -2,7 +2,7 @@ module test.fixture.scaffold_retirement.specimens
 
 import std.types { String, Int, List }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField }
 
 data planted_exact_scaffold_specimen: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
@@ -13,6 +13,24 @@ data planted_exact_scaffold_specimen: Disposition = Scaffold {
   }
 }
 
+data planted_named_field_successor_target: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "test.fixture.scaffold_retirement.specimens",
+    decl_name: "planted_named_field_successor_target",
+    field: WholeDeclaration
+  }
+}
+
+data planted_named_field_dissolution_specimen: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "test.fixture.scaffold_retirement.specimens",
+    decl_name: "planted_named_field_successor_target",
+    field: NamedField { field_name: "dissolves_to" }
+  }
+}
+
 data planted_nullary_disposition_specimen: Disposition = SingleAuthority
 
 data planted_non_disposition_specimen: Int = 42
@@ -20,6 +38,8 @@ data planted_non_disposition_specimen: Int = 42
 data planted_exact_scaffold_specimen_qn: String = "test.fixture.scaffold_retirement.specimens.planted_exact_scaffold_specimen"
 
 data planted_nullary_disposition_specimen_qn: String = "test.fixture.scaffold_retirement.specimens.planted_nullary_disposition_specimen"
+
+data planted_named_field_dissolution_specimen_qn: String = "test.fixture.scaffold_retirement.specimens.planted_named_field_dissolution_specimen"
 
 data planted_non_disposition_specimen_qn: String = "test.fixture.scaffold_retirement.specimens.planted_non_disposition_specimen"
 
