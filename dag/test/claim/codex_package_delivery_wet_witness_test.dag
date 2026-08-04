@@ -1,0 +1,69 @@
+module test.claim.codex_package_delivery_wet_witness_test
+
+import extdeps.filesystem.filesystem_io
+import extdeps.shell
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.types { Bool, String, NonEmptyStr, FilePath }
+import gunbc.package_delivery {
+  codex_runtime_lock_path,
+  codex_runtime_manifest_path,
+  admit_codex_package_lock_text,
+  CodexPackageLockAdmitted,
+  codex_artifact_named,
+  codex_required_package_name,
+  acquire_and_admit_registry_artifact,
+  RegistryArtifactAdmitted,
+  materialize_codex_runtime_bundle,
+  CodexRuntimeMaterialized,
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data witness_note: String = "WET: acquire+SHA-512-admit the required @openai/codex tarball, then npm ci --ignore-scripts materialization with bin read-back. Excluded from hermetic discovery."
+
+data openai_codex_integrity_hex: String = "c86dec3d635d6bfd980084080eaf4caeb8e8093210eebc5833921ab2b1b754172e8422d39207a0fc9cea989ab557df11138309e630b10d75d094e8eb762b4547"
+
+fn committed_codex_lock_text() -> String {
+  filesystem_read(path: codex_runtime_lock_path as String).content
+}
+
+test fn acquire_required_codex_tarball_sha512_matches_lock() -> Bool {
+  match admit_codex_package_lock_text(text: committed_codex_lock_text()) {
+    CodexPackageLockAdmitted { graph: _, registry_artifacts } =>
+      match codex_artifact_named(
+        artifacts: registry_artifacts,
+        name: codex_required_package_name,
+      ) {
+        Present { value: artifact } => {
+          let staging = shell.Mktemp.Dir()
+          if staging.success == false {
+            false
+          } else {
+            match acquire_and_admit_registry_artifact(
+              artifact: artifact,
+              dest_dir: staging.path,
+            ) {
+              RegistryArtifactAdmitted { artifact: _, path: _, digest } =>
+                (digest.hex as String) == openai_codex_integrity_hex
+              _ => false
+            }
+          }
+        }
+        Absent => false
+      }
+    _ => false
+  }
+}
+
+test fn materialize_codex_runtime_bundle_produces_executable() -> Bool {
+  match materialize_codex_runtime_bundle(
+    lock_text: committed_codex_lock_text(),
+    manifest_src: codex_runtime_manifest_path as FilePath,
+    lock_src: codex_runtime_lock_path as FilePath,
+  ) {
+    CodexRuntimeMaterialized { bundle } =>
+      (bundle.executable_rel as String) == "node_modules/@openai/codex/bin/codex.js"
+        && (bundle.required_digest.hex as String) == openai_codex_integrity_hex
+    _ => false
+  }
+}
