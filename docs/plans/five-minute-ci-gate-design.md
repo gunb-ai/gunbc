@@ -43,14 +43,14 @@ Registered as roadmap edges where noted; order is binding for dispatch.
 
 | step | work | disposition |
 |---|---|---|
-| 1 | Finish **#7522** (`warm-merge-admission`) with real net wall receipt and stage profile | **MERGED** — `admission_settle=CaptureMeasuredNetOpen` (`gunbc.ci_cost_arc_closeout_receipt`) |
+| 1 | Finish **#7522** (`warm-merge-admission`) with real net wall receipt and stage profile | **MERGED** — `admission_settle=CaptureMeasuredNetOpen`; reconcile `current_admission_settle=MissingArtifactOpen` until uploaded stage walls |
 | 2 | Merge **#7599** once controls and reviews clear | **MERGED** — typed receipt `native_at_small_scale_transition_receipt` |
-| 3 | **Immediately** cut over a bounded production witness population to the native execution kind | **MERGED enrollment (#7671)** — `native_fleet_settle=EnrollmentLandedFleetRateOpen`. Not a completed native wall-clock speedup |
-| 4 | Continue **#7534** as shared materialization substrate — no default CI savings credited until ordinary invocations consume it | **MERGED opt-in** — `warm_hit_settle=PartiallyDeliveredSkipProofOpen` |
+| 3 | **Immediately** cut over a bounded production witness population to the native execution kind | **MERGED enrollment (#7671)** — `native_fleet_settle=EnrollmentLandedFleetRateOpen`; reconcile `current_native_fleet_settle=MissingArtifactOpen` until uploaded transition TSV. Not a completed native wall-clock speedup |
+| 4 | Continue **#7534** as shared materialization substrate — no default CI savings credited until ordinary invocations consume it | **MERGED opt-in** — `warm_hit_settle=DeliveredSkipProven` |
 | 5 | Union program **closed** per #7533; assembly observation remains a compiler candidate only | **CLOSED** / `compiler_next_measured_target=PerEntryAssembly` (not end-to-end dominant) |
-| 6 | This program (`five-minute-ci-gate`) makes the bare-minimum-computation contract and this graph explicit; five minutes stays the distress checkpoint (Stage C bound), never the completion criterion | this registration · `gunbc.ci_cost_arc_closeout_receipt` |
+| 6 | This program (`five-minute-ci-gate`) makes the bare-minimum-computation contract and this graph explicit; five minutes stays the distress checkpoint (Stage C bound), never the completion criterion | this registration · `gunbc.ci_cost_arc_closeout_receipt` · `gunbc.ci_floor_population_reconcile` |
 
-**Terminal sequence (operator 2026-08-04):** #7760 banks the typed affected-CI audit and exposes `unattributed_ci_wall`. **PR2** persists/reconciles floor population receipts and settles OPEN mechanisms to Delivered|NotDelivered (≥95% of `ci_job_wall` assigned). **PR3** attacks the largest reconciled preparation term (shared entry-view only if PR2 confirms assembly). **PR4** streams that term or commits to module-grain persistent materialization. **Freeze** entry-view / width-2 / broad native / retention / union / exact-tree consumers until PR2 answers the denominator.
+**Terminal sequence (operator 2026-08-04):** #7760 banks the typed affected-CI audit and exposes `unattributed_ci_wall`. **PR2** persists/reconciles floor population receipts (`ci_floor_population_receipts_upload_step` + `gunbc.ci_floor_population_reconcile`); warm-hit → Delivered; admission+native stay MissingArtifactOpen until uploaded bytes bank; ≥95% of `ci_job_wall` still owed. **PR3** attacks the largest reconciled preparation term (shared entry-view only if PR2 confirms assembly). **PR4** streams that term or commits to module-grain persistent materialization. **Freeze** entry-view / width-2 / broad native / retention / union / exact-tree consumers until PR2 answers the denominator.
 
 **Materialization hierarchy** (step 4 feeds step 3, not a parallel fork):
 
@@ -69,7 +69,7 @@ Roadmap edges encoding sequence: `native-selected-witness-bundle` →
 |---|---|
 | `warm-merge-admission` | Stamp and admit merges from warm receipts — fold resolve/materialization receipt gates into merge admission. **#7522 MERGED**; net stamp+gate join still OPEN (receipt). |
 | `native-selected-witness-bundle` | **#7599 MERGED** (substrate). **#7671 MERGED** (bounded production enrollment). Fleet native rate OPEN — do not credit Stage B wall from enrollment alone. |
-| `module-grain-materialization` | Shared materialization substrate (#7534 MERGED, opt-in). Hierarchy above; no default CI savings until ordinary invocations consume hits. Warm-hit skip proof OPEN after #7728. |
+| `module-grain-materialization` | Shared materialization substrate (#7534 MERGED, opt-in). Hierarchy above; no default CI savings until ordinary invocations consume hits. Warm-hit skip proof **Delivered** (`cross_process_hit_skips_semantic_recompute`). |
 | `pre-index-materialization-lookup` | Warm manifest lookup before corpus-scale index construction — serve/dashboard path. |
 | `phased-single-process-ci` | Regen, floor, and admission share one initialized substrate with separate verdict stamps. |
 | `per-entry-assembly-decomposition` | Narrow measured lane after #7533 closed union — assembly/reconcile attribution only. |
@@ -82,7 +82,7 @@ Roadmap edges encoding sequence: `native-selected-witness-bundle` →
 |---|---|
 | `entry-graph-union-construction` | **CLOSED** — #7533: `decision_ratio = 0` repeated typecheck misses. Redirect to `per-entry-assembly-decomposition`. Slice 1 banked as #7483. |
 | retention / floor prep-tax (D1) | **P1 REJECT banked (#7725)** — schedule-retention eviction is not the ~2s/entry tax; redirect = assembly / materialization reuse. M2 width-1 memory thesis still stands (#7581). Width-2 / broad native HOLD until shared preparation. |
-| exact-tree materialization (#7534) | Substrate under `module-grain-materialization`; opt-in; no default CI activation credited; `warm_hit_settle=PartiallyDeliveredSkipProofOpen`. |
+| exact-tree materialization (#7534) | Substrate under `module-grain-materialization`; opt-in; no default CI activation credited; `warm_hit_settle=DeliveredSkipProven`. |
 | end-to-end residual | **`end_to_end_residual=UnattributedCiJobWall`** — `unattributed_ci_wall` on the harvested affected subject (`ci_job_wall` − classified capture/resolve/eval). |
 | compiler next measured target | **`compiler_next_measured_target=PerEntryAssembly`** — next measured compiler candidate inside `discovery_resolve_wall`; not proven to dominate end-to-end wall. |
 
@@ -130,10 +130,10 @@ at full altitude. Claimed-not-verified figures are typed separately.
 
 | claim | status | trigger |
 |---|---|---|
-| #7522 net admission vs 197.13s | `admission_settle=CaptureMeasuredNetOpen` | PR2 join on-success stage-1/2 `wall_ms` from uploaded floor-attempt receipts |
-| #7671 fleet native_count/fallback_count | `native_fleet_settle=EnrollmentLandedFleetRateOpen` | PR2 upload `target/native-selected-witness-transition-receipt.tsv` every enrolled floor |
-| #7534 warm-hit skips semantic recompute | `warm_hit_settle=PartiallyDeliveredSkipProofOpen` | PR2 land `cross_process_hit_skips_semantic_recompute` against TYPECHECK_COMPUTE_COUNT |
-| CI-job unattributed remainder | `unattributed_ci_wall=1902042` ms on subject A | PR2 assign ≥95% of `ci_job_wall` to non-overlapping populations |
+| #7522 net admission vs 197.13s | `admission_settle=CaptureMeasuredNetOpen` / reconcile `MissingArtifactOpen` | Join on-success stage-1/2 `wall_ms` from uploaded floor-attempt receipts after `ci_floor_population_receipts_upload_step` |
+| #7671 fleet native_count/fallback_count | `native_fleet_settle=EnrollmentLandedFleetRateOpen` / reconcile `MissingArtifactOpen` | Bank `target/native-selected-witness-transition-receipt.tsv` from uploaded `ci-floor-population-receipts` artifact |
+| #7534 warm-hit skips semantic recompute | `warm_hit_settle=DeliveredSkipProven` | Landed: `cross_process_hit_skips_semantic_recompute` against TYPECHECK_COMPUTE_COUNT |
+| CI-job unattributed remainder | `unattributed_ci_wall=1902042` ms on subject A (~24% attributed) | Assign ≥95% of `ci_job_wall` via uploaded populations (`gunbc.ci_floor_population_reconcile`) |
 | native bundle timing ratios | claimed-not-verified (#7599 body) | committed receipt artifact or fleet rerun |
 
 **Not verified in tree (omitted from authority):** #6663 158.2s→61.6s, #7029

@@ -1,0 +1,125 @@
+module test.claim.ci_floor_population_reconcile_witness
+
+import std.types { Bool }
+import std.measure { millisecond_count }
+import gunbc.ci_floor_population_reconcile {
+  Delivered,
+  NotDelivered,
+  MissingArtifactOpen,
+  MissingArtifact,
+  ObservedWall,
+  harvested_subject_a_partial_partition,
+  harvested_subject_a_assigned_ms,
+  harvested_subject_a_ci_job_wall,
+  harvested_subject_a_meets_ninety_five_percent,
+  partition_attribution_basis_points,
+  admission_settle_from_stage_walls,
+  native_fleet_settle_from_transition_counts,
+  warm_hit_settle_from_skip_counter,
+  current_admission_settle,
+  current_native_fleet_settle,
+  current_warm_hit_settle,
+}
+
+test fn witness_subject_a_assigned_is_classified_only() -> Bool {
+  let assigned = harvested_subject_a_assigned_ms()
+  assigned == 606958
+}
+
+test fn witness_subject_a_below_ninety_five_until_uploads() -> Bool {
+  !harvested_subject_a_meets_ninety_five_percent()
+}
+
+test fn witness_subject_a_attribution_basis_points() -> Bool {
+  let bp = partition_attribution_basis_points(
+    assigned_ms: harvested_subject_a_assigned_ms(),
+    ci_job_ms: millisecond_count(m: harvested_subject_a_ci_job_wall())
+  )
+  bp == 2419
+}
+
+test fn witness_on_success_still_missing_artifact() -> Bool {
+  let p = harvested_subject_a_partial_partition()
+  match p.on_success_stages {
+    MissingArtifact { kind: _ } => true
+    _ => false
+  }
+}
+
+test fn witness_admission_missing_stages_is_open() -> Bool {
+  match current_admission_settle() {
+    MissingArtifactOpen { owed: _ } => true
+    _ => false
+  }
+}
+
+test fn witness_admission_delivered_when_stages_join_under_baseline() -> Bool {
+  match admission_settle_from_stage_walls(
+    capture_ms: 110820,
+    stage1_ms: Present { value: 40000 },
+    stage2_ms: Present { value: 40000 },
+    cold_baseline_ms: 197130
+  ) {
+    Delivered {} => true
+    _ => false
+  }
+}
+
+test fn witness_admission_not_delivered_when_net_exceeds_baseline() -> Bool {
+  match admission_settle_from_stage_walls(
+    capture_ms: 110820,
+    stage1_ms: Present { value: 100000 },
+    stage2_ms: Present { value: 100000 },
+    cold_baseline_ms: 197130
+  ) {
+    NotDelivered { reason: _ } => true
+    _ => false
+  }
+}
+
+test fn witness_native_missing_tsv_is_open() -> Bool {
+  match current_native_fleet_settle() {
+    MissingArtifactOpen { owed: _ } => true
+    _ => false
+  }
+}
+
+test fn witness_native_delivered_when_native_equals_selected() -> Bool {
+  match native_fleet_settle_from_transition_counts(
+    native_count: Present { value: 3 },
+    fallback_count: Present { value: 0 },
+    selected_count: Present { value: 3 }
+  ) {
+    Delivered {} => true
+    _ => false
+  }
+}
+
+test fn witness_native_not_delivered_on_fallback() -> Bool {
+  match native_fleet_settle_from_transition_counts(
+    native_count: Present { value: 0 },
+    fallback_count: Present { value: 3 },
+    selected_count: Present { value: 3 }
+  ) {
+    NotDelivered { reason: _ } => true
+    _ => false
+  }
+}
+
+test fn witness_warm_hit_current_is_delivered() -> Bool {
+  match current_warm_hit_settle() {
+    Delivered {} => true
+    _ => false
+  }
+}
+
+test fn witness_warm_hit_delivered_when_skip_proven() -> Bool {
+  match warm_hit_settle_from_skip_counter(skip_proven: Present { value: true }) {
+    Delivered {} => true
+    _ => false
+  }
+}
+
+test fn red_ninety_five_must_not_silently_pass_on_classified_only() -> Bool {
+  !(harvested_subject_a_meets_ninety_five_percent())
+}

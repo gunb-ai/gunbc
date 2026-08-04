@@ -1,0 +1,166 @@
+module gunbc.ci_floor_population_reconcile
+
+import std.types { Bool, NonEmptyStr }
+import std.nat { Nat }
+import std.measure { Millisecond, millisecond, millisecond_count, basis_point, basis_point_count }
+
+type PopulationReceiptKind
+  = PhaseJournal {}
+  | BatchWall {}
+  | Component {}
+  | Resolve {}
+  | Selection {}
+  | Materialization {}
+  | OnSuccessStage {}
+  | NativeTransition {}
+  | PopulationBudgetRefusal {}
+  | PreWalkCapture {}
+
+type PopulationObservation
+  = ObservedWall { kind: PopulationReceiptKind, wall: Millisecond }
+  | MissingArtifact { kind: PopulationReceiptKind }
+  | NotApplicable { kind: PopulationReceiptKind }
+
+type MechanismEvidenceSettle
+  = Delivered {}
+  | NotDelivered { reason: NonEmptyStr }
+  | MissingArtifactOpen { owed: NonEmptyStr }
+
+type CiJobPopulationPartition {
+  pre_walk_capture: PopulationObservation,
+  discovery_resolve: PopulationObservation,
+  discovery_eval: PopulationObservation,
+  on_success_stages: PopulationObservation,
+  named_remainder: PopulationObservation,
+}
+
+fn observed_wall_ms(o: PopulationObservation) -> Nat {
+  match o {
+    ObservedWall { kind: _, wall } => millisecond_count(m: wall)
+    MissingArtifact { kind: _ } => 0
+    NotApplicable { kind: _ } => 0
+  }
+}
+
+fn partition_assigned_wall_ms(p: CiJobPopulationPartition) -> Nat {
+  let a = observed_wall_ms(o: p.pre_walk_capture)
+  let b = observed_wall_ms(o: p.discovery_resolve)
+  let c = observed_wall_ms(o: p.discovery_eval)
+  let d = observed_wall_ms(o: p.on_success_stages)
+  let e = observed_wall_ms(o: p.named_remainder)
+  a + b + c + d + e
+}
+
+fn partition_attribution_basis_points(assigned_ms: Nat, ci_job_ms: Nat) -> Nat {
+  if ci_job_ms == 0 {
+    basis_point_count(bp: basis_point(count: 0))
+  } else {
+    basis_point_count(bp: basis_point(count: (assigned_ms * 10000) / ci_job_ms))
+  }
+}
+
+fn partition_meets_ninety_five_percent(assigned_ms: Nat, ci_job_ms: Nat) -> Bool {
+  let bp = partition_attribution_basis_points(assigned_ms: assigned_ms, ci_job_ms: ci_job_ms)
+  bp >= 9500
+}
+
+fn harvested_subject_a_partial_partition() -> CiJobPopulationPartition {
+  CiJobPopulationPartition {
+    pre_walk_capture: ObservedWall { kind: PreWalkCapture {}, wall: millisecond(count: 110820) },
+    discovery_resolve: ObservedWall { kind: Resolve {}, wall: millisecond(count: 431122) },
+    discovery_eval: ObservedWall { kind: BatchWall {}, wall: millisecond(count: 65016) },
+    on_success_stages: MissingArtifact { kind: OnSuccessStage {} },
+    named_remainder: MissingArtifact { kind: PhaseJournal {} },
+  }
+}
+
+fn harvested_subject_a_ci_job_wall() -> Millisecond {
+  millisecond(count: 2509000)
+}
+
+fn harvested_subject_a_assigned_ms() -> Nat {
+  partition_assigned_wall_ms(p: harvested_subject_a_partial_partition())
+}
+
+fn harvested_subject_a_meets_ninety_five_percent() -> Bool {
+  partition_meets_ninety_five_percent(
+    assigned_ms: harvested_subject_a_assigned_ms(),
+    ci_job_ms: millisecond_count(m: harvested_subject_a_ci_job_wall())
+  )
+}
+
+fn admission_settle_from_stage_walls(
+  capture_ms: Nat,
+  stage1_ms: Nat?,
+  stage2_ms: Nat?,
+  cold_baseline_ms: Nat
+) -> MechanismEvidenceSettle {
+  match stage1_ms {
+    Absent => MissingArtifactOpen { owed: "on-success-stage-1-receipt.tsv wall_ms" as NonEmptyStr }
+    Present { value: s1 } => match stage2_ms {
+      Absent => MissingArtifactOpen { owed: "on-success-stage-2-receipt.tsv wall_ms" as NonEmptyStr }
+      Present { value: s2 } => {
+        let net = capture_ms + s1 + s2
+        if net <= cold_baseline_ms {
+          Delivered {}
+        } else {
+          NotDelivered { reason: "capture+stamp+gate exceeds cold_admission_baseline_wall" as NonEmptyStr }
+        }
+      }
+    }
+  }
+}
+
+fn native_fleet_settle_from_transition_counts(
+  native_count: Nat?,
+  fallback_count: Nat?,
+  selected_count: Nat?
+) -> MechanismEvidenceSettle {
+  match native_count {
+    Absent => MissingArtifactOpen { owed: "native-selected-witness-transition-receipt.tsv native_count" as NonEmptyStr }
+    Present { value: native } => match fallback_count {
+      Absent => MissingArtifactOpen { owed: "native-selected-witness-transition-receipt.tsv fallback_count" as NonEmptyStr }
+      Present { value: fallback } => match selected_count {
+        Absent => MissingArtifactOpen { owed: "native-selected-witness-transition-receipt.tsv selected_count" as NonEmptyStr }
+        Present { value: selected } => {
+          if selected == 0 {
+            NotDelivered { reason: "selected_count is zero" as NonEmptyStr }
+          } else if native == selected && fallback == 0 {
+            Delivered {}
+          } else {
+            NotDelivered { reason: "native_count != selected_count or fallback_count != 0" as NonEmptyStr }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn warm_hit_settle_from_skip_counter(skip_proven: Bool?) -> MechanismEvidenceSettle {
+  match skip_proven {
+    Absent => MissingArtifactOpen { owed: "cross_process_hit_skips_semantic_recompute TYPECHECK_COMPUTE_COUNT receipt" as NonEmptyStr }
+    Present { value: true } => Delivered {}
+    Present { value: false } => NotDelivered { reason: "warm Hit recomputed typecheck" as NonEmptyStr }
+  }
+}
+
+fn current_admission_settle() -> MechanismEvidenceSettle {
+  admission_settle_from_stage_walls(
+    capture_ms: 110820,
+    stage1_ms: none,
+    stage2_ms: none,
+    cold_baseline_ms: 197130
+  )
+}
+
+fn current_native_fleet_settle() -> MechanismEvidenceSettle {
+  native_fleet_settle_from_transition_counts(
+    native_count: none,
+    fallback_count: none,
+    selected_count: none
+  )
+}
+
+fn current_warm_hit_settle() -> MechanismEvidenceSettle {
+  warm_hit_settle_from_skip_counter(skip_proven: Present { value: true })
+}

@@ -510,7 +510,7 @@ fn gunbc_ci_build_job_backstop_timeout_minutes() -> Int {
 data gunbc_ci_receipt_gate_steps_moved_in_executor_note: String = "The resolve-receipt and materialization-receipt gate STEPS are deleted (ruling 2026-07-30): their laws — resolves_total equals the declared count, and the materialization receipt exists/parses/keyed nonzero — now run INSIDE claim_executor as ordinary-floor finalization (run_walk, FloorFinalization), so a receipt-law violation blocks every on-success stage instead of redding a step AFTER admission had already stamped. The two aux terms leave the backstop sum in the same motion, keeping it the exact step-sum + prelude the witness pins. The receipt FILES keep writing — they are observability the falsifier and operators read — only the shell re-validation of them is gone, because keeping it would be a second representation of the floor-completion rule."
 
 fn gunbc_ci_job_backstop_timeout_minutes() -> Int {
-  gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_workflow_wrapper_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
+  gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_workflow_wrapper_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
 }
 
 fn gunbc_ci_regen_job_backstop_timeout_minutes() -> Int {
@@ -683,12 +683,39 @@ fn ci_build_job() -> Job {
   }
 }
 
+data ci_floor_population_receipts_artifact_name: String = "ci-floor-population-receipts"
+
+data ci_floor_population_receipts_upload_paths: String = "target/floor-phase-journal.tsv\ntarget/floor-batch-wall-receipt.txt\ntarget/floor-compile-clean-wall-receipt.txt\ntarget/floor-component-receipt.json\ntarget/floor-resolve-receipt.txt\ntarget/floor-selection-degradation-receipt.txt\ntarget/floor-materialization-receipt.txt\ntarget/floor-population-budget-refusal.txt\ntarget/native-selected-witness-transition-receipt.tsv\ntarget/floor-attempt-*/"
+
+data ci_floor_population_receipts_upload_note: String = "PR2 persistence seam (operator 2026-08-04): every ordinary ci floor population receipt that claim_executor already writes is uploaded with if: always(), including red runs. Writers already exist; the gap was durable observability — settle #7522/#7671/#7534 and ci_job wall reconciliation cannot leave 'OPEN because the log disappeared'. if-no-files-found: warn — early refusal before a receipt is owed must not fabricate a hard upload error; typed MissingArtifactOpen on the reconcile/settle carriers is the honest absence. Dissolve-on: gunbc.ci_floor_population_reconcile banks Delivered|NotDelivered from uploaded bytes and the hand-harvest remainder dissolves."
+
+fn ci_floor_population_receipts_upload_step() -> Step {
+  UsesStep {
+    name: Present { value: "Upload CI floor population receipts (always)" },
+    id: none,
+    uses: upload_artifact_action,
+    with: Present {
+      value: [
+        kv(key: "name", value: yaml_string(s: ci_floor_population_receipts_artifact_name)),
+        kv(key: "path", value: yaml_string(s: ci_floor_population_receipts_upload_paths)),
+        kv(key: "if-no-files-found", value: yaml_string(s: "warn")),
+        kv(key: "retention-days", value: yaml_int(n: 30)),
+        kv(key: "compression-level", value: yaml_int(n: 0))
+      ]
+    },
+    env: none,
+    if_condition: Present { value: "always()" },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
+  }
+}
+
 fn ci_job() -> Job {
   Job {
     id: "ci",
     name: none,
     runner: gunbc_ci_selected_runner_spec(),
-    steps: concat(ci_floor_job_prelude_steps(), [ci_release_bins_download_step(), ci_release_bins_unpack_verify_step(), ci_floor_peak_pre_step(), ci_floor_step(), ci_floor_peak_post_step()]),
+    steps: concat(ci_floor_job_prelude_steps(), [ci_release_bins_download_step(), ci_release_bins_unpack_verify_step(), ci_floor_peak_pre_step(), ci_floor_step(), ci_floor_peak_post_step(), ci_floor_population_receipts_upload_step()]),
     needs: ["build", "regen"],
     env: none,
     outputs: none,
