@@ -1,5 +1,18 @@
 module v2.compiler.self_host.frontier_probe_types
 
+import extdeps.git.object_store { GitObjectId }
+import std.content_hash {
+  ContentHash,
+  Fnv1a64Structural,
+  Sha256Digest,
+  as_content_hash_structural,
+  content_hash_atom,
+  content_hash_combine_structural,
+  content_hash_validate_lower_hex_length
+}
+import std.types { CommitSha }
+import v2.std.algebra { fold_list }
+import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.text { String }
@@ -34,6 +47,45 @@ type FrontierProbeReceipt {
   blocker_class: FrontierBlockerClass
   located_stage: FrontierProbeStage
   located_reason: Symbol
+}
+
+data frontier_survey_subject_grounding_note: String = "FrontierSurveySubject pins one execution-measured survey: source_commit + source_tree (GitObjectId authority — operator GitTreeObjectId names the same tree-object fact), survey_executable Sha256Digest (binary built from that tree), ordered source_roots_digest Fnv1a64Structural, and probe_policy_revision ContentHash (structural family only). Receipts from different subjects cannot be combined into one exact-head survey."
+
+type FrontierSurveySubject {
+  source_commit: CommitSha
+  source_tree: GitObjectId
+  survey_executable: Sha256Digest
+  source_roots_digest: Fnv1a64Structural
+  probe_policy_revision: ContentHash
+}
+
+type FrontierSurveyManifest {
+  subject: FrontierSurveySubject
+  receipts: List<FrontierProbeReceipt>
+}
+
+data frontier_probe_policy_revision_atom: Fnv1a64Structural = content_hash_atom(value: "frontier-probe-survey-policy-v1")
+
+fn frontier_probe_policy_revision() -> ContentHash {
+  as_content_hash_structural(structural: frontier_probe_policy_revision_atom)
+}
+
+fn frontier_probe_source_roots_digest(source_roots: List<String>) -> Fnv1a64Structural {
+  fold_list(
+    xs: source_roots,
+    empty: content_hash_atom(value: "frontier-probe-source-roots"),
+    cons: fn(acc, root) {
+      content_hash_combine_structural(left: acc, right: content_hash_atom(value: root))
+    }
+  )
+}
+
+fn frontier_survey_executable_sha256_holds(digest: Sha256Digest) -> Bool {
+  content_hash_validate_lower_hex_length(text: digest.hex, expected_hex_digits: 64)
+}
+
+fn frontier_survey_source_roots_digest_holds(digest: Fnv1a64Structural) -> Bool {
+  content_hash_validate_lower_hex_length(text: digest.digest, expected_hex_digits: 16)
 }
 
 fn frontier_blocker_is_name_resolution_reason(reason: Symbol) -> Bool {
