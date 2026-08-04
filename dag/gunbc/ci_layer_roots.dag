@@ -517,6 +517,12 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     dissolve_on: "measured eval for below_cap and second_root lands under bin_witness_wet_per_row_wall_budget_seconds on a measured run — then re-enroll per-PR discovery consciously, or delete when emit-stage positives are no longer full-pipeline priced"
   },
   WitnessExclusionRow {
+    pattern: "frontier_probe_closure_readthrough_test.dag",
+    classification: OfflineLocalRecipe,
+    reason: "PR #7762 wet read-through controls (ReadsLiveTree + frontier_probe_receipt_for_subject Filesystem.Read): hermetic discovery refuses without mock_response. Scheduled per-PR wet on GithubActionsCiJob execution corpus via commit_gate_roster SpanEnrolled rows (read_failure ~3ms, hash_mismatch ~2ms, elision boundary ~3ms measured eval on claim_batch --wet). Local recipe: claim_batch --wet --source-root dag --source-root src/v2 --entry src/v2/test/claim/workflow/frontier_probe_closure_readthrough_test.dag --functions <fn>",
+    dissolve_on: "filesystem_read mock_response covers probe read paths and witnesses re-enroll as hermetic discovery rows, or per-witness exact admission subsumes path exclusion"
+  },
+  WitnessExclusionRow {
     pattern: "test/claim/long/",
     classification: OfflineLocalRecipe,
     reason: "the LONG-test home at dir grain (operator 5-second rule). It removes these entries from per-PR discovery and NOTHING MORE: since 2026-08-04 it no longer answers the admission question, because the eval-deadline backstop it was blessed on is disarmed by the very relocation it was supposed to govern (long_lane_exclusion_note carries the retraction and the gunbc#7762 receipt). Admission is decided at identity grain by gunbc.witness_deferral_freeze plus gunbc.explicit_witness_admission",
