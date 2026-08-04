@@ -2000,20 +2000,6 @@ fn accepted_roadmap_node_ids_projection() -> AcceptedRoadmapNodeIdsProjection {
   }
 }
 
-fn accepted_roadmap_nodes() -> List<RoadmapNode> {
-  match accepted_roadmap_nodes_projection() {
-    AcceptedRoadmapNodesProjected { nodes: nodes } => nodes
-    AcceptedRoadmapNodesProjectionRefused { detail: _ } => []
-  }
-}
-
-fn accepted_roadmap_node_ids() -> List<RoadmapNodeId> {
-  match accepted_roadmap_node_ids_projection() {
-    AcceptedRoadmapNodeIdsProjected { ids: ids } => ids
-    AcceptedRoadmapNodeIdsProjectionRefused { detail: _ } => []
-  }
-}
-
 fn active_roadmap_nodes() -> List<RoadmapNode> {
   match accepted_roadmap_node_ids_projection() {
     AcceptedRoadmapNodeIdsProjected { ids: accepted } =>

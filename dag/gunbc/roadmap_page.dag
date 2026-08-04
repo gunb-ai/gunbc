@@ -16,7 +16,7 @@ import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.roadmap_altitude { section_counts, section_counts_wire, statuses_all_routine, SectionCounts }
 import gunbc.roadmap_authority {
   roadmap_authority, authored_merged_prs,
-  accepted_roadmap_node_ids, accepted_roadmap_node_ids_projection,
+  accepted_roadmap_node_ids_projection,
   AcceptedRoadmapNodeIdsProjected, AcceptedRoadmapNodeIdsProjectionRefused,
   declared_roadmap_nodes,
   ClosingContractTaskPair, closing_contract_task_pairs, closing_contract_family_claim,
