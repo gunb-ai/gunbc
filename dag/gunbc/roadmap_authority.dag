@@ -2138,9 +2138,12 @@ fn closing_contract_task_edges() -> List<RoadmapEdge> {
 }
 
 fn active_roadmap_edges() -> List<RoadmapEdge> {
-  let accepted = accepted_roadmap_node_ids()
-  declared_roadmap_edges() |> filter(e =>
-    !(accepted |> any(a => a == e.child)) && !(accepted |> any(a => a == e.parent)))
+  match accepted_roadmap_node_ids_projection() {
+    AcceptedRoadmapNodeIdsProjectionRefused { detail: _ } => []
+    AcceptedRoadmapNodeIdsProjected { ids: accepted } =>
+      declared_roadmap_edges() |> filter(e =>
+        !(accepted |> any(a => a == e.child)) && !(accepted |> any(a => a == e.parent)))
+  }
 }
 
 fn preamble() -> List<MarkdownBlock> {
