@@ -20,14 +20,27 @@ type ArmEnumeration
   | AuthoredInRoster
   | DeclaredHere { dissolve_on: NonEmptyStr }
 
+type InterpreterDispatchEmitSite
+  = EvalBuiltinInnerSite
+  | EvalAlgebraMethodInnerSite
+  | EvalCallBridgeFamilySite { module: NonEmptyStr }
+  | EvalCallNativeInterceptSite
+  | TryV2StdCollectionMapPrimitiveGroundingSite
+  | TryParseTableMemoDispatchSite
+  | EvalMethodCallShortCircuitSite
+  | EvalServiceCallCarveOutSite
+
 type InterpreterPrimitiveDispatchArm {
   arm: InterpreterPrimitiveArmId
   form: InterpreterDispatchForm
   authored_spelling: NonEmptyStr
   realization_module: NonEmptyStr
   dispatch_symbol: NonEmptyStr
+  dispatch_emit_site: InterpreterDispatchEmitSite
   enumeration: ArmEnumeration
 }
+
+data dispatch_emit_site_authority_note: String = "dispatch_emit_site REPLACES prefix-convention site routing. Each row names its own emit site directly, closed over InterpreterDispatchEmitSite; EvalCallBridgeFamilySite carries the bridge family's own module so gunbc.v1_interpreter_dispatch_emit can key one generated enum per family instead of one shared enum spanning all v4 bridge families. This is the dissolve-on the prior dispatch_emit_site_routing_scaffold_note named: the field now exists, so starts_with(v4_bridge.)/starts_with(native_intercept.) string-prefix parsing and the parallel known_dispatch_emit_site_keys validator delete in favor of reading this field directly."
 
 type ShapeDerivability
   = ShapeNotDerivableFromDispatch
