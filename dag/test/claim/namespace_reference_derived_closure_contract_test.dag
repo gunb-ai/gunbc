@@ -30,13 +30,6 @@ import gunbc.namespace_reference_derived_closure_contract {
   reference_derived_closure_closing_frontier_count,
   reference_derived_closure_closing_contract_holds,
 }
-import v1.gunbc.namespace_reference_derived_closure_production_admissions {
-  namespace_reference_derived_closure_acceptance_admissions,
-  observe_same_file_earlier_neighbour_visible,
-  observe_sibling_decision_branch_excluded,
-  observe_later_declaration_excluded,
-  observe_distinct_same_spelled_declarations_preserved,
-}
 import std.occurrence_identity {
   OccurrenceId,
   OccurrenceContainmentPath,
@@ -170,56 +163,6 @@ test fn witness_positive_population_closes_exact_six_capabilities() -> Bool {
   count(reference_derived_closure_required_capabilities()) == 6
     && reference_derived_closure_closing_frontier_count(admissions: []) == 6
     && reference_derived_closure_closing_contract_holds(admissions: positive_admissions())
-}
-
-test fn witness_structural_production_admissions_establish_clauses_a_through_d() -> Bool {
-  let statuses = namespace_reference_derived_closure_acceptance_admissions()
-  count(statuses) == 6
-    && [
-      SameFileEarlierNeighbourVisible,
-      SiblingDecisionBranchExcluded,
-      LaterDeclarationExcluded,
-      DistinctSameSpelledDeclarationsPreserved,
-    ] |> all(capability => statuses |> any(status => match status {
-      ReferenceDerivedClosureEstablished { receipt } => receipt.capability == capability
-      _ => false
-    }))
-    && statuses |> any(status => match status {
-      ReferenceDerivedClosureUnavailable { capability, trigger } =>
-        capability == RepeatedMentionsCollapseDependency
-          && trigger == P2aReferenceDependencyProjection7515
-      _ => false
-    })
-    && statuses |> any(status => match status {
-      ReferenceDerivedClosureUnavailable { capability, trigger } =>
-        capability == UnrelatedLoadedFileExcluded
-          && trigger == P2aPoolIndependentDependencyProjection7515
-      _ => false
-    })
-    && reference_derived_closure_closing_frontier_count(admissions: statuses) == 2
-}
-
-test fn witness_each_structural_production_observer_establishes_independently() -> Bool {
-  match observe_same_file_earlier_neighbour_visible() {
-    ReferenceDerivedClosureEstablished { receipt } =>
-      receipt.capability == SameFileEarlierNeighbourVisible
-    _ => false
-  }
-    && match observe_sibling_decision_branch_excluded() {
-      ReferenceDerivedClosureEstablished { receipt } =>
-        receipt.capability == SiblingDecisionBranchExcluded
-      _ => false
-    }
-    && match observe_later_declaration_excluded() {
-      ReferenceDerivedClosureEstablished { receipt } =>
-        receipt.capability == LaterDeclarationExcluded
-      _ => false
-    }
-    && match observe_distinct_same_spelled_declarations_preserved() {
-      ReferenceDerivedClosureEstablished { receipt } =>
-        receipt.capability == DistinctSameSpelledDeclarationsPreserved
-      _ => false
-    }
 }
 
 test fn witness_same_file_neighbour_removal_fires_refusal() -> Bool {

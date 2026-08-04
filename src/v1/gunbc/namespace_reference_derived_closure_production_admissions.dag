@@ -14,7 +14,6 @@ import gunbc.namespace_reference_derived_closure_contract {
   SiblingBranchLeaked,
   LaterDeclarationLeaked,
   DistinctDeclarationCollapsed,
-  P2aStructuralCandidateProducer7515,
   P2aReferenceDependencyProjection7515,
   P2aPoolIndependentDependencyProjection7515,
   SameFileNeighbourObservation,
