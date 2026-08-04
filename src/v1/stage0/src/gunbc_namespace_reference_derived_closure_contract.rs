@@ -6,11 +6,11 @@ use self::ReferenceDerivedClosureCapability::*;
 use self::ReferenceDerivedClosureObservation::*;
 use self::ReferenceDerivedClosureScenarioFailure::*;
 use self::ReferenceDerivedClosureTrigger::*;
-pub use crate::std_algebra::FreeMonoid;
+pub use crate::std_occurrence_binding::ambiguous_binding_candidates_rest_is_empty;
+pub use crate::std_occurrence_binding::OccurrenceBindingResult;
 use crate::std_occurrence_binding::OccurrenceBindingResult::{
     OccurrenceAmbiguous, OccurrenceBound, OccurrenceUnbound,
 };
-pub use crate::std_occurrence_binding::{AmbiguousBindingCandidates, OccurrenceBindingResult};
 pub use crate::std_occurrence_binding_resolve::OccurrenceReferenceBindingOutcome;
 use crate::std_occurrence_binding_resolve::OccurrenceReferenceBindingOutcome::OccurrenceReferenceBindingDecided;
 pub use crate::std_occurrence_identity::OccurrenceId;
@@ -291,22 +291,33 @@ pub fn assess_reference_derived_closure_observation(
                     ..
                 } => {
                     let OccurrenceBindingResult::OccurrenceAmbiguous {
-                        candidates:
-                            AmbiguousBindingCandidates {
-                                first,
-                                second,
-                                rest: FreeMonoid::Empty,
-                                ..
-                            },
+                        candidates: candidates,
                         ..
                     } = result.as_ref()
                     else {
                         unreachable!()
                     };
-                    if (((first_declaration.value.clone() != second_declaration.value.clone())
-                        && (first.containment.clone().terminal.clone().value.clone()
+                    if (((ambiguous_binding_candidates_rest_is_empty(candidates.clone())
+                        && (first_declaration.value.clone() != second_declaration.value.clone()))
+                        && (candidates
+                            .first
+                            .clone()
+                            .containment
+                            .clone()
+                            .terminal
+                            .clone()
+                            .value
+                            .clone()
                             == first_declaration.value.clone()))
-                        && (second.containment.clone().terminal.clone().value.clone()
+                        && (candidates
+                            .second
+                            .clone()
+                            .containment
+                            .clone()
+                            .terminal
+                            .clone()
+                            .value
+                            .clone()
                             == second_declaration.value.clone()))
                     {
                         established(ReferenceDerivedClosureCapability::DistinctSameSpelledDeclarationsPreserved)

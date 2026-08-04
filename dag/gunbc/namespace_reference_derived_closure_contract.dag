@@ -5,13 +5,12 @@ import std.occurrence_binding {
   OccurrenceBound,
   OccurrenceUnbound,
   OccurrenceAmbiguous,
-  AmbiguousBindingCandidates,
+  ambiguous_binding_candidates_rest_is_empty,
 }
 import std.occurrence_binding_resolve {
   OccurrenceReferenceBindingOutcome,
   OccurrenceReferenceBindingDecided,
 }
-import std.algebra { Empty }
 import std.types { Bool, FilePath, Int, List, String }
 
 data namespace_reference_derived_closure_contract_note: String = "THE CLOSING CONDITION for roadmap node namespace-reference-derived-closure, transcribed at the node's own six-clause grain. Each clause is a closed capability and is established only by assessing the corresponding typed production observation: an earlier same-file neighbour is visible; a sibling decision branch is excluded; a later declaration is excluded; two distinct same-spelled declaration identities both survive for the canonical ambiguity fold; repeated mentions project one provider-file dependency; and an unrelated loaded file never enters that projection. The first four observations carry the result of the MERGED P1 resolve_reference_occurrence_binding kernel, so the check cannot substitute a second none/one/many decision. Missing, refused, and explicitly unavailable evidence all remain in the derived frontier; duplicate admissions cannot erase a missing capability, and zero progress is red.\n\nThis module deliberately does NOT derive visibility or dependencies. v1.gunbc.namespace_reference_derived_closure_production_admissions.namespace_reference_derived_closure_acceptance_admissions is the production admission seam: N3-A establishes structural clauses (a-d) via independent parse→resolve_reference_binding_outcome_via_structural_candidates→assess_reference_derived_closure_observation paths; clauses (e) dependency projection and (f) pool-independent closure remain ReferenceDerivedClosureUnavailable (derived frontier 2). The fixture witnesses in test.claim.namespace_reference_derived_closure_contract_test prove this fold discriminates; the quarantined closing witness consumes only the production-admission function — copying fixture observations into it would be specification-without-execution."
@@ -149,18 +148,12 @@ fn assess_reference_derived_closure_observation(
     } =>
       match binding_outcome {
         OccurrenceReferenceBindingDecided {
-          result: OccurrenceAmbiguous {
-            occurrence: _,
-            candidates: AmbiguousBindingCandidates {
-              first,
-              second,
-              rest: Empty,
-            },
-          },
+          result: OccurrenceAmbiguous { candidates },
         } =>
-          if first_declaration.value != second_declaration.value
-            && first.containment.terminal.value == first_declaration.value
-            && second.containment.terminal.value == second_declaration.value {
+          if ambiguous_binding_candidates_rest_is_empty(candidates: candidates)
+            && first_declaration.value != second_declaration.value
+            && candidates.first.containment.terminal.value == first_declaration.value
+            && candidates.second.containment.terminal.value == second_declaration.value {
             established(capability: DistinctSameSpelledDeclarationsPreserved)
           } else {
             refused(capability: DistinctSameSpelledDeclarationsPreserved, failure: DistinctDeclarationCollapsed)

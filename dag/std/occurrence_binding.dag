@@ -31,6 +31,13 @@ type AmbiguousBindingCandidates<N> {
   rest: FreeMonoid<BindingCandidate<N>>
 }
 
+fn ambiguous_binding_candidates_rest_is_empty<N>(candidates: AmbiguousBindingCandidates<N>) -> Bool {
+  match candidates.rest {
+    Empty => true
+    Cons { head: _, tail: _ } => false
+  }
+}
+
 type OccurrenceBindingResult<N>
   = OccurrenceBound { binding: OccurrenceBinding<N> }
   | OccurrenceUnbound { occurrence: BindingOccurrence<N> }

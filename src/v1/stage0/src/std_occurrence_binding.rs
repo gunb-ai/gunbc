@@ -63,6 +63,19 @@ pub struct AmbiguousBindingCandidates<N: Clone> {
     pub _phantom: std::marker::PhantomData<N>,
 }
 
+pub fn ambiguous_binding_candidates_rest_is_empty<N: Clone>(
+    candidates: Rc<AmbiguousBindingCandidates<N>>,
+) -> bool {
+    {
+        let __fm = candidates.rest.clone();
+        if __fm.is_empty() {
+            true
+        } else {
+            false
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum OccurrenceBindingResult<N: Clone> {
