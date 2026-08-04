@@ -138,6 +138,19 @@ data gunbai_bot_enrollment: GitHubAppEnrollment = GitHubAppEnrollment {
         perm(wire_name: "metadata", access: AppAccessRead),
         perm(wire_name: "actions", access: AppAccessWrite),
       ]
+    },
+    {
+      consumer: DeclarationRef {
+        module_path: "gunbc.generated_artifact",
+        decl_name: "artifact_heal_policy",
+        field: WholeDeclaration
+      },
+      purpose: "push regenerated .github/workflows/** projections so the auto-heal can repair the self-hosted workflow definitions CI runs under",
+      required_permissions: [
+        perm(wire_name: "metadata", access: AppAccessRead),
+        perm(wire_name: "contents", access: AppAccessWrite),
+        perm(wire_name: "workflows", access: AppAccessWrite),
+      ]
     }
   ]
 }
@@ -190,6 +203,51 @@ fn app_required_permissions(enrollment: GitHubAppEnrollment) -> List<GitHubAppPe
 data gunbai_bot_required_permissions: List<GitHubAppPermission> = app_required_permissions(enrollment: gunbai_bot_enrollment)
 
 data gunbai_ci_required_permissions: List<GitHubAppPermission> = app_required_permissions(enrollment: gunbai_ci_enrollment)
+
+data installation_granted_permissions_note: String = "WHAT THE INSTALLATION ACTUALLY GRANTS — an operator-signed record of GitHub's state, deliberately NOT derived from the consumers' required set. The two are separate facts and the whole point of this module is that their difference is countable: app_required_permissions says what the code needs, this row says what GitHub currently hands out, and ungranted_required_permissions is the gap. Deriving one from the other would make the gap unrepresentable and the requirement self-satisfying.\n\nWHY IT IS A DECLARED ROW RATHER THAN AN OBSERVATION: reading an installation's permissions requires App-JWT authentication against the private key in gunbai_ci_app_pem_secret, and no JWT-mint producer runs in this tree (the same reason every GitHubAppObservation here is AppUnobserved). Until one exists this is a declaration, and its honest failure mode is stated rather than hidden: if this row claims a grant GitHub has not made, the heal's push is rejected at the remote with GH013 — loud, located, attributable to this row — never a silent wrong answer. The conservative direction (claiming less than is granted) costs only an author commit. Dissolve-on: an App-JWT observation producer lands, at which point this row becomes the declared side of an ordinary Converged/Drifted verdict like every other row in this module.\n\nTHE workflows GRANT IS THE LIVE GAP. gunbc.generated_artifact artifact_heal_policy derives .github/workflows/** heal eligibility from whether this row holds workflows:write. It does not, so those paths stay AuthorCommitRequired and the auto-heal cannot repair the self-hosted workflow definitions it runs under — a PR whose ci.yml drifts blocks on a human commit. Granting workflows:write to the gunbai app installation on gunb-ai/gunbc and adding that one permission here flips the policy by data; no heal shell, path list, or job definition is edited, because auto_push_eligible_committed_artifact_paths already derives from the same fold."
+
+data gunbai_bot_installation_granted_permissions: List<GitHubAppPermission> = [
+  perm(wire_name: "metadata", access: AppAccessRead),
+  perm(wire_name: "contents", access: AppAccessWrite),
+  perm(wire_name: "actions", access: AppAccessWrite),
+]
+
+fn app_holds_permission(
+  granted: List<GitHubAppPermission>,
+  required: GitHubAppPermission
+) -> Bool {
+  permission_name_in_list(name: required.name, names: permission_names(perms: granted))
+    && permission_access_at_least(
+         held: permission_max_access(perms: granted, name: required.name),
+         requested: required.access
+       )
+}
+
+fn ungranted_required_permissions(
+  enrollment: GitHubAppEnrollment,
+  granted: List<GitHubAppPermission>
+) -> List<GitHubAppPermission> {
+  filter(
+    app_required_permissions(enrollment: enrollment),
+    r => !app_holds_permission(granted: granted, required: r)
+  )
+}
+
+data gunbai_bot_ungranted_permissions: List<GitHubAppPermission> =
+  ungranted_required_permissions(
+    enrollment: gunbai_bot_enrollment,
+    granted: gunbai_bot_installation_granted_permissions
+  )
+
+data heal_workflow_projection_permission: GitHubAppPermission =
+  perm(wire_name: "workflows", access: AppAccessWrite)
+
+fn heal_app_can_push_workflow_paths() -> Bool {
+  app_holds_permission(
+    granted: gunbai_bot_installation_granted_permissions,
+    required: heal_workflow_projection_permission
+  )
+}
 
 fn permissions_subsumed(held: List<GitHubAppPermission>, required: List<GitHubAppPermission>) -> Bool {
   fold_list(
