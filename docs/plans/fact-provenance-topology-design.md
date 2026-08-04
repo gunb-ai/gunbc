@@ -161,19 +161,24 @@ Measured on `main`, 2026-08-04, unless noted.
 | `src/v1/` only | **5** | **4** |
 | **whole repo** | **117** | **59** |
 
-**Looser** `concat(acc,` (any rhs): **276** sites / **133** files on `main` (prior agent count 274 — **2-site delta is `src/v1` only**, confirmed: `src/v1` contributes 5 strict-pattern sites and 2 of the extra loose-pattern sites beyond the prior whole-repo loose count).
+Operator reconciliation: prior `src/v1` count of **3** used `src/v1/**/*.dag`, missing `src/v1/04_resolve.dag` and `src/v1/coercion.dag` at the tree root — same scoping-artifact class as the Readiness prefix-match inflation. **92 + 20 + 5 = 117** reconciles exactly.
 
-**Fold context (derived):** **104 / 117** strict-pattern sites occur within ~20 lines of a `fold(` or `f: (acc` binder — i.e. accumulator growth in folds, not one-off list construction.
+**Looser** `concat(acc,` (any rhs): **276** sites / **133** files on `main` (prior agent count 274 — **2-site delta is `src/v1` only**).
 
-**Accumulator copy semantics — verified (was operator-flagged candidate, now measured):**
+**Fold context (derived):** **104 / 117** strict-pattern sites occur within ~20 lines of a `fold(` or `f: (acc` binder.
 
-- Native list `concat` in seed (`src/v1/stage0/src/v1_rt.rs` `list_concat`): `a.extend(b); a` — **moves** prior accumulator, allocates new vector, copies all elements each call.
-- Interpreter `BinOp` concat arm (`v1_interpreter.rs` ~2420–2428): same `a.extend(b)` on materialized `Vec` — **copies accumulator elements each invocation**.
-- `Rc<Vec>` `v1_concat` uses `rc_list_concat` (structural sharing path) — **not** the dominant pattern at `concat(acc, [` sites (list folds use plain `List`).
+**Cost-shape mechanism (corrected — not fact-provenance):** the population count is step-2; pricing belongs elsewhere.
 
-**Conclusion for step 3:** fold-body `concat(acc, [x])` on `List` carriers is a **proven cost-shape defect** per DESIGN §6 bare-minimum-cost — independent of realized `n`. Remediation class (prepend+reverse, `append`, map-keyed collect) is step 3; `v2.lens.complexity_accumulator_copy.roster_gate` already tracks enrolled `dag/std/` debt (`accumulator_copy_roster_gate_std_test.dag`).
+| realization | `Vec` carrier | fold `concat(acc, [x])` cost shape |
+|---|---|---|
+| **Emitted Rust** (`v1_rt.rs`) | `im::Vector` aliased as `Vec` (`Cargo.toml`: RRB tree, O(log n) concatenation) | `list_concat` / `append` use structural sharing — **not** linear accumulator copy per step |
+| **Interpreter** (`v1_interpreter.rs`) | `std::vec::Vec` — imports `im::HashMap` / `im::OrdSet` only, **not** `im::Vector` | `free_monoid_to_vec` materializes both operands; `BinOp` concat arm extends `a` with `b` — **linear copy of accumulator per fold step** → quadratic in fold length |
 
-**Not a fact-provenance class** — included as operator-flagged census candidate only.
+Prior claim that “concat copies” full-stop was wrong: it conflated the two realizations. The CI floor runs **interpreted**, so the bite is on the interpreter path — where corpus-denominated timeouts live — not because emitted Rust is broken.
+
+**Instrument (already in tree, not yet run on this population):** `v1_interpreter.rs` `MutationCounters.list_concat_items_copied` (incremented at the `BinOp` concat arm, summed in the mutation report ~line 1130); `interp_stats_test.rs` asserts counter behavior. A corpus run yields a **number**, not an adjective — step 3 for this class.
+
+**AUTH-0 pointer only:** DESIGN §6 cost-shape lane; enrolled debt via `v2.lens.complexity_accumulator_copy.roster_gate` (`accumulator_copy_roster_gate_std_test.dag`). No further concat analysis in this note.
 
 ---
 
@@ -183,6 +188,7 @@ Measured on `main`, 2026-08-04, unless noted.
 - Fix the four specimens — closed in their lanes
 - Step 3 construction, `std/` hub, lens enrollment, no-growth frontier
 - Route step-3 decisions to the operator
+- **`concat(acc, [` cost-shape pricing** — population in §5.3 only; mechanism and `list_concat_items_copied` instrument cited out to DESIGN §6 / `complexity_accumulator_copy` lane
 
 ---
 
