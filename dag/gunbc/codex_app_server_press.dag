@@ -15,11 +15,12 @@ import extdeps.llm.codex_app_server {
   CodexAppServerMethod,
   CodexAppServerInitialize,
   CodexAppServerAccountRead,
-  CodexAppServerRateLimitsRead,
-  CodexAppServerThreadTurn,
+  CodexAppServerAccountRateLimitsRead,
+  CodexAppServerThreadStart,
+  CodexAppServerTurnStart,
 }
 
-data codex_press_note: String = "ONE press → one attributable attempt/turn. Sequence: Start → initialize → account/read → rateLimits/read → thread/turn → terminal receipt. Live JSON-RPC execution and credential lease land next; this module owns the subjectful Start carrier and the method itinerary so the UI cannot treat dispatch-accepted as work observed."
+data codex_press_note: String = "ONE press → one attributable attempt/turn. Sequence: Start → initialize → account/read → account/rateLimits/read → thread/start → turn/start → terminal receipt (method strings cited from app-server schema). Live JSON-RPC execution and credential lease land next; this module owns the subjectful Start carrier and the method itinerary so the UI cannot treat dispatch-accepted as work observed."
 
 type CodexPressAttemptId = NonEmptyStr where brand("CodexPressAttemptId")
 type CodexPressTurnId = NonEmptyStr where brand("CodexPressTurnId")
@@ -36,8 +37,9 @@ fn codex_press_method_itinerary() -> CodexPressItinerary {
   [
     CodexAppServerInitialize,
     CodexAppServerAccountRead,
-    CodexAppServerRateLimitsRead,
-    CodexAppServerThreadTurn,
+    CodexAppServerAccountRateLimitsRead,
+    CodexAppServerThreadStart,
+    CodexAppServerTurnStart,
   ]
 }
 
