@@ -9,11 +9,11 @@ import gunbc.stage0_rust_host_observation {
 }
 import gunbc.stage0_rust_source_lifecycle_scaffold {
   derived_generated_stage0_repo_paths,
+  disposition_authority_rows,
   lifecycle_row_well_formed,
   list_concat_unique,
   path_in_list,
   rust_maintenance_disposition_well_formed,
-  rust_source_lifecycle_residue_rows,
   RustSourceLifecycleRow
 }
 import std.keyed_roster { path_occurrence_count }
@@ -53,7 +53,7 @@ type LifecycleTotalityReceipt
   | LifecycleTotalityObservationRefused
 
 fn raw_disposition_authority_paths() -> List<String> {
-  list_map(xs: rust_source_lifecycle_residue_rows, f: fn(row) { row.path })
+  list_map(xs: disposition_authority_rows(), f: fn(row) { row.path })
 }
 
 fn exact_duplicate_paths_within_authority(paths: List<String>) -> List<String> {
@@ -84,7 +84,7 @@ fn exact_cross_axis_overlap_paths(
 fn well_formed_maintenance_disposition_paths() -> List<String> {
   list_map(
     xs: filter(
-      xs: rust_source_lifecycle_residue_rows,
+      xs: disposition_authority_rows(),
       predicate: fn(row) { lifecycle_row_well_formed(row: row) }
     ),
     f: fn(row) { row.path }
@@ -140,7 +140,7 @@ fn row_has_ill_formed_maintenance_disposition(row: RustSourceLifecycleRow) -> Bo
 fn exact_ill_formed_maintenance_disposition_paths() -> List<String> {
   list_map(
     xs: filter(
-      xs: rust_source_lifecycle_residue_rows,
+      xs: disposition_authority_rows(),
       predicate: fn(row) { row_has_ill_formed_maintenance_disposition(row: row) }
     ),
     f: fn(row) { row.path }
