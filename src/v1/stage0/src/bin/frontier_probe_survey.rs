@@ -89,6 +89,7 @@ struct ProbeReceiptRow {
     located_stage: String,
     located_reason: String,
     probe_error: Option<String>,
+    subject: SurveySubjectPin,
 }
 
 struct HostFailureReasons {
@@ -236,16 +237,27 @@ fn extract_probe_receipt(value: &Value, ctx: &InterpContext) -> Result<ProbeRece
         located_stage: variant_name(ctx, stage)?,
         located_reason: value_symbol_name(reason)?,
         probe_error: None,
+        subject: SurveySubjectPin {
+            source_commit: String::new(),
+            source_tree: String::new(),
+            survey_executable: String::new(),
+            source_roots_digest: String::new(),
+        },
     })
 }
 
-fn unknown_probe_row(module_path: &str, cause: &str) -> ProbeReceiptRow {
+fn unknown_probe_row(
+    module_path: &str,
+    cause: &str,
+    subject: &SurveySubjectPin,
+) -> ProbeReceiptRow {
     ProbeReceiptRow {
         module_path: module_path.replace('\\', "/"),
         blocker_variant: format!("UnknownProbeCause {{ reason: ^{cause} }}"),
         located_stage: "ProbeStageAssemble".to_string(),
         located_reason: format!("^{cause}"),
         probe_error: Some(cause.to_string()),
+        subject: subject.clone(),
     }
 }
 
@@ -366,7 +378,7 @@ fn emit_tsv(path: &Path, rows: &[ProbeReceiptRow]) -> Result<(), String> {
     let mut out = fs::File::create(path).map_err(|e| format!("create tsv: {e}"))?;
     writeln!(
         out,
-        "module\tself_emit_ready\tblocker_class\tlocated_stage\tlocated_reason\tprobe_error"
+        "module\tsource_commit\tsource_tree\tsurvey_executable\tsource_roots_digest\tself_emit_ready\tblocker_class\tlocated_stage\tlocated_reason\tprobe_error"
     )
     .map_err(|e| format!("write tsv header: {e}"))?;
     for row in rows {
@@ -377,8 +389,12 @@ fn emit_tsv(path: &Path, rows: &[ProbeReceiptRow]) -> Result<(), String> {
         };
         writeln!(
             out,
-            "{}\t{}\t{}\t{}\t{}\t{}",
+            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
             row.module_path,
+            row.subject.source_commit,
+            row.subject.source_tree,
+            row.subject.survey_executable,
+            row.subject.source_roots_digest,
             self_emit,
             row.blocker_variant,
             row.located_stage,
@@ -427,6 +443,31 @@ struct SurveySubjectPin {
     source_tree: String,
     survey_executable: String,
     source_roots_digest: String,
+}
+
+impl Clone for SurveySubjectPin {
+    fn clone(&self) -> Self {
+        Self {
+            source_commit: self.source_commit.clone(),
+            source_tree: self.source_tree.clone(),
+            survey_executable: self.survey_executable.clone(),
+            source_roots_digest: self.source_roots_digest.clone(),
+        }
+    }
+}
+
+fn subjects_equal(left: &SurveySubjectPin, right: &SurveySubjectPin) -> bool {
+    left.source_commit == right.source_commit
+        && left.source_tree == right.source_tree
+        && left.survey_executable == right.survey_executable
+        && left.source_roots_digest == right.source_roots_digest
+}
+
+fn attach_subject(row: ProbeReceiptRow, subject: &SurveySubjectPin) -> ProbeReceiptRow {
+    ProbeReceiptRow {
+        subject: subject.clone(),
+        ..row
+    }
 }
 
 fn validate_lowercase_hex(label: &str, value: &str, expected_len: usize) -> Result<(), String> {
@@ -482,6 +523,34 @@ fn frontier_probe_source_roots_digest_rust(source_roots: &[String]) -> String {
         .clone()
 }
 
+fn verify_build_provenance(subject: &SurveySubjectPin) -> Result<(), String> {
+    const BUILD_COMMIT: Option<&str> = option_env!("FRONTIER_PROBE_SURVEY_BUILD_COMMIT");
+    const BUILD_TREE: Option<&str> = option_env!("FRONTIER_PROBE_SURVEY_BUILD_TREE");
+    match (BUILD_COMMIT, BUILD_TREE) {
+        (Some(build_commit), Some(build_tree))
+            if !build_commit.is_empty() && !build_tree.is_empty() =>
+        {
+            if subject.source_commit != build_commit {
+                return Err(format!(
+                    "SurveyPinRefused: binary built at commit {build_commit} but survey subject is {}",
+                    subject.source_commit
+                ));
+            }
+            if subject.source_tree != build_tree {
+                return Err(format!(
+                    "SurveyPinRefused: binary built at tree {build_tree} but survey subject tree is {}",
+                    subject.source_tree
+                ));
+            }
+            Ok(())
+        }
+        _ => Err(
+            "SurveyPinRefused: frontier_probe_survey missing embedded build provenance — rebuild with cargo build"
+                .to_string(),
+        ),
+    }
+}
+
 fn resolve_survey_subject(source_roots: &[String]) -> Result<SurveySubjectPin, String> {
     ensure_clean_tree()?;
     let source_commit = git_output(&["rev-parse", "HEAD"])?;
@@ -509,6 +578,12 @@ fn resolve_survey_subject(source_roots: &[String]) -> Result<SurveySubjectPin, S
     })
 }
 
+fn resolve_and_verify_survey_subject(source_roots: &[String]) -> Result<SurveySubjectPin, String> {
+    let subject = resolve_survey_subject(source_roots)?;
+    verify_build_provenance(&subject)?;
+    Ok(subject)
+}
+
 fn load_probe_rows_from_tsv(path: &Path) -> Result<Vec<ProbeReceiptRow>, String> {
     let body = fs::read_to_string(path).map_err(|e| format!("read tsv {:?}: {e}", path))?;
     let mut rows = Vec::new();
@@ -520,16 +595,26 @@ fn load_probe_rows_from_tsv(path: &Path) -> Result<Vec<ProbeReceiptRow>, String>
             continue;
         }
         let parts: Vec<&str> = line.split('\t').collect();
-        if parts.len() < 5 {
-            return Err(format!("malformed tsv line {}: {line}", lineno + 1));
+        if parts.len() < 9 {
+            return Err(format!(
+                "malformed tsv line {}: expected subject columns, got {line}",
+                lineno + 1
+            ));
         }
+        let subject = SurveySubjectPin {
+            source_commit: parts[1].to_string(),
+            source_tree: parts[2].to_string(),
+            survey_executable: parts[3].to_string(),
+            source_roots_digest: parts[4].to_string(),
+        };
         rows.push(ProbeReceiptRow {
             module_path: parts[0].to_string(),
-            blocker_variant: parts[2].to_string(),
-            located_stage: parts[3].to_string(),
-            located_reason: parts[4].to_string(),
-            probe_error: if parts.len() > 5 && !parts[5].is_empty() {
-                Some(parts[5].to_string())
+            subject,
+            blocker_variant: parts[6].to_string(),
+            located_stage: parts[7].to_string(),
+            located_reason: parts[8].to_string(),
+            probe_error: if parts.len() > 9 && !parts[9].is_empty() {
+                Some(parts[9].to_string())
             } else {
                 None
             },
@@ -537,6 +622,17 @@ fn load_probe_rows_from_tsv(path: &Path) -> Result<Vec<ProbeReceiptRow>, String>
     }
     if rows.is_empty() {
         return Err("receipt tsv has zero data rows".to_string());
+    }
+    let first = &rows[0].subject;
+    for (idx, row) in rows.iter().enumerate().skip(1) {
+        if !subjects_equal(first, &row.subject) {
+            return Err(format!(
+                "SurveySubjectMismatch: row {} subject {} != row 1 subject {}",
+                idx + 1,
+                row.subject.source_commit,
+                first.source_commit
+            ));
+        }
     }
     Ok(rows)
 }
@@ -599,7 +695,7 @@ fn run() -> Result<ExitCode, ExitCode> {
         eprintln!("frontier_probe_survey: provide at least one --source-root");
         return Err(ExitCode::from(2));
     }
-    let subject = resolve_survey_subject(&source_roots).map_err(|msg| {
+    let subject = resolve_and_verify_survey_subject(&source_roots).map_err(|msg| {
         eprintln!("frontier_probe_survey: {msg}");
         ExitCode::from(1)
     })?;
@@ -617,7 +713,14 @@ fn run() -> Result<ExitCode, ExitCode> {
             eprintln!("frontier_probe_survey: {msg}");
             ExitCode::from(1)
         })?;
-        emit_survey_manifest(&survey_manifest, &rows, &subject).map_err(|msg| {
+        if !subjects_equal(&rows[0].subject, &subject) {
+            eprintln!(
+                "frontier_probe_survey: SurveySubjectMismatch: receipt tsv subject {} != current subject {}",
+                rows[0].subject.source_commit, subject.source_commit
+            );
+            return Err(ExitCode::from(1));
+        }
+        emit_survey_manifest(&survey_manifest, &rows, &rows[0].subject).map_err(|msg| {
             eprintln!("frontier_probe_survey: {msg}");
             ExitCode::from(1)
         })?;
@@ -677,7 +780,7 @@ fn run() -> Result<ExitCode, ExitCode> {
                     "  blocker={} stage={} reason={}",
                     row.blocker_variant, row.located_stage, row.located_reason
                 );
-                rows.push(row);
+                rows.push(attach_subject(row, &subject));
             }
             Err(msg) => {
                 let cause = if msg.contains("EvalBudgetExceeded") || msg.contains("OOM") {
@@ -686,7 +789,7 @@ fn run() -> Result<ExitCode, ExitCode> {
                     host_failure_reasons.runtime_error.as_str()
                 };
                 eprintln!("frontier_probe_survey: {module_path}: {msg} -> Unknown({cause})");
-                rows.push(unknown_probe_row(module_path, cause));
+                rows.push(unknown_probe_row(module_path, cause, &subject));
             }
         }
     }

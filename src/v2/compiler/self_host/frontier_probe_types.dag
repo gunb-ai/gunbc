@@ -1,21 +1,30 @@
 module v2.compiler.self_host.frontier_probe_types
 
-import extdeps.git.object_store { GitObjectId }
+import extdeps.git.inspect
+import extdeps.git.object_store {
+  GitObjectId,
+  git_object_id_eq,
+  git_object_id_from_untagged_hex
+}
 import std.content_hash {
   ContentHash,
+  ContentHashComparison,
+  ContentHashEqual,
   Fnv1a64Structural,
   Sha256Digest,
   as_content_hash_structural,
+  compare_content_hash,
   content_hash_atom,
   content_hash_combine_structural,
   content_hash_validate_lower_hex_length
 }
-import std.types { CommitSha }
+import std.types { CommitSha, GitRef }
 import v2.std.algebra { fold_list }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol }
-import v2.std.text { String }
+import v2.std.optional { Absent, Present }
+import v2.std.text { String, trim }
 
 data frontier_fixture_cemented_producer_note: String = "FixtureCemented is forward-declared for the fixture-free self-host bar; inhabited by the behavioral-equivalence probe when it detects injected fixtures cementing greens (e.g. add_arrow_eval_allocate_literal, pick-lit hardcoding) — not by frontier_classify_rejection_reason (assemble/emit stage only)."
 
@@ -87,6 +96,42 @@ fn frontier_survey_executable_sha256_holds(digest: Sha256Digest) -> Bool {
 fn frontier_survey_source_roots_digest_holds(digest: Fnv1a64Structural) -> Bool {
   content_hash_validate_lower_hex_length(text: digest.digest, expected_hex_digits: 16)
 }
+
+fn frontier_survey_git_stdout_line(raw: String) -> String {
+  trim(raw)
+}
+
+fn frontier_survey_commit_tree_binding_holds(
+  commit: CommitSha,
+  tree: GitObjectId
+) -> Bool {
+  let result = git.Inspect.ShowTree(ref: commit as GitRef)
+  if !result.success {
+    false
+  } else {
+    let hash = frontier_survey_git_stdout_line(raw: result.tree)
+    match git_object_id_from_untagged_hex(hex: hash) {
+      Present { value: observed } => git_object_id_eq(left: observed, right: tree)
+      Absent => false
+    }
+  }
+}
+
+fn frontier_survey_subject_eq(
+  left: FrontierSurveySubject,
+  right: FrontierSurveySubject
+) -> Bool {
+  (left.source_commit == right.source_commit)
+    && git_object_id_eq(left: left.source_tree, right: right.source_tree)
+    && (left.survey_executable.hex == right.survey_executable.hex)
+    && (left.source_roots_digest.digest == right.source_roots_digest.digest)
+    && match compare_content_hash(left: left.probe_policy_revision, right: right.probe_policy_revision) {
+      ContentHashEqual => true
+      _ => false
+    }
+}
+
+data frontier_survey_build_provenance_note: String = "survey_executable SHA-256 alone does not prove the binary was built from source_tree — a clean worktree can still run a stale target/release/frontier_probe_survey. The seed bin embeds FRONTIER_PROBE_SURVEY_BUILD_COMMIT and BUILD_TREE at compile time (build.rs) and refuses resolve_survey_subject when runtime HEAD/tree or current_exe hash disagrees. Manifest rows must carry the complete FrontierSurveySubject per shard; aggregation refuses subject mismatch (never relabel mixed-head TSV rows at emit time)."
 
 fn frontier_blocker_is_name_resolution_reason(reason: Symbol) -> Bool {
   reason == ^resolve_reason_unbound_symbol

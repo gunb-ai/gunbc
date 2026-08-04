@@ -58,7 +58,7 @@ MODULES=(
   "src/v2/compiler/02_parse.dag"
 )
 
-echo "module	self_emit_ready	blocker_class	located_stage	located_reason	probe_error" > "$TSV"
+echo "module	source_commit	source_tree	survey_executable	source_roots_digest	self_emit_ready	blocker_class	located_stage	located_reason	probe_error" > "$TSV"
 failures=0
 for mod in "${MODULES[@]}"; do
   echo "=== probing $mod ===" >&2
