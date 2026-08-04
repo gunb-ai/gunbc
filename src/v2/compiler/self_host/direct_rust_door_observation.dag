@@ -73,13 +73,13 @@ fn observe_direct_rust_door_provenance() -> DirectRustDoorObservation {
               if !source_matches {
                 EmittedSourceMismatch
               } else {
-                if !provenanced_rust_artifact_seed_independent(artifact: artifact) {
-                  SeedEmitterReachable
+                let producer_ok =
+                  (artifact.producer_receipt.producer == V2EmitterInterpreted)
+                if !producer_ok {
+                  WrongProducer
                 } else {
-                  let producer_ok =
-                    (artifact.producer_receipt.producer == V2EmitterInterpreted)
-                  if !producer_ok {
-                    WrongProducer
+                  if !provenanced_rust_artifact_seed_independent(artifact: artifact) {
+                    SeedEmitterReachable
                   } else {
                     if !emission_qualifications_list_contains(
                       xs: artifact.producer_receipt.qualifications,
@@ -96,6 +96,8 @@ fn observe_direct_rust_door_provenance() -> DirectRustDoorObservation {
       }
   }
 }
+
+data direct_rust_door_observation_arm_order_note: String = "ARM ORDER IS LOAD-BEARING (operator review 2026-08-04). provenanced_rust_artifact_seed_independent is a CONJUNCTION - it requires producer == V2EmitterInterpreted AND the seed emitter absent from the realized closure. Testing it first made WrongProducer unreachable by construction: a wrong producer fails the conjunction and was reported as SeedEmitterReachable, naming the wrong cause. The producer check therefore runs FIRST, so each arm names the fact that actually failed. Residual: the seed-independence predicate still fuses two facts, so SeedEmitterReachable is only precise once the producer is known correct. Dissolve-on: seed independence exposes its two conjuncts separately and each arm consumes its own predicate."
 
 data direct_rust_door_observation_totality_note: String = "Total over DirectRustDoorObservation with no wildcard arm (DESIGN 6 non-fold residue). A `_ => false` arm here would make the coproduct grow in silence: a ninth observation variant would land as false and read as an honest negative rather than an unhandled case. With no wildcard the match is non-exhaustive the moment a variant is added, which is a hard diagnostic from the compile-clean gate."
 

@@ -984,13 +984,7 @@ data falsifier_substrate_long_lane_rows: List<SubstrateLongLaneRow> = [
     entry: "src/v2/test/claim/long/direct_rust_door_observation_test.dag",
     function: "direct_rust_door_observation_is_candidate_rejected",
     reason: "12.7-15.1s measured eval per witness (wise-ram-22, 2026-08-04, four runs at --eval-budget-ms 900000): observe_direct_rust_door_provenance runs the real ingest-assemble-infer-mint path. The cost is fixture-shaped pipeline depth, not corpus breadth — the cost partition attributes ~79 percent to load_bare_edge_index, a corpus-wide index memoized per MultiEntryIndex that a single-entry harness pays in full and that amortizes across a real batch, so the witness's own work is roughly the 5s typecheck plus eval remainder",
-    dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery — or the witness-evidence-lifecycle program lands per-witness declared execution requirements and route derives from those rather than from this file's directory (docs/plans/witness-evidence-lifecycle-design.md), at which point this row and the test/claim/long dir grain dissolve together"
-  },
-  SubstrateLongLaneRow {
-    entry: "src/v2/test/claim/long/direct_rust_door_observation_test.dag",
-    function: "direct_rust_door_observation_establishes_source_produced",
-    reason: "same ingest-path closure cost as its sibling above. RED BY EXECUTION and quarantined on explicit_witness_admission: this is the containment lane's discriminating control for the direct v2 Rust door, and it asserts the terminal green that production inference cannot yet reach. Long-lane enrollment here is eval-budget routing; the verdict obligation is carried by the known-red admission row, not by this enrollment",
-    dissolve_on: "direct_rust_door_observation_establishes_source_produced greens by execution once the grounding derivations land (containment lane PR D) — the known_red_probe row deletes in that same change and this row re-enrolls per-PR if the eval also lands under budget"
+    dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery — or this witness becomes stale because DirectRustDoorSourceProduced becomes reachable (containment lane PR D) - it asserts a CURRENT state, so it must be deleted or re-aimed in the change that fixes the source path, not left asserting a false negative; or the witness-evidence-lifecycle program lands per-witness declared execution requirements and route derives from those rather than from this file's directory (docs/plans/witness-evidence-lifecycle-design.md), at which point this row and the test/claim/long dir grain dissolve together"
   },
   SubstrateLongLaneRow {
     entry: "src/v2/test/claim/long/wave1_gate1_d_mvp_subsumption_witness_test.dag",
