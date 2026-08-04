@@ -229,32 +229,3 @@ fn reference_derived_closure_closing_contract_holds(
 ) -> Bool {
   reference_derived_closure_closing_frontier_count(admissions: admissions) == 0
 }
-
-fn namespace_reference_derived_closure_acceptance_admissions() -> List<ReferenceDerivedClosureAdmission> {
-  [
-    ReferenceDerivedClosureUnavailable {
-      capability: SameFileEarlierNeighbourVisible,
-      trigger: P2aStructuralCandidateProducer7515,
-    },
-    ReferenceDerivedClosureUnavailable {
-      capability: SiblingDecisionBranchExcluded,
-      trigger: P2aStructuralCandidateProducer7515,
-    },
-    ReferenceDerivedClosureUnavailable {
-      capability: LaterDeclarationExcluded,
-      trigger: P2aStructuralCandidateProducer7515,
-    },
-    ReferenceDerivedClosureUnavailable {
-      capability: DistinctSameSpelledDeclarationsPreserved,
-      trigger: P2aStructuralCandidateProducer7515,
-    },
-    ReferenceDerivedClosureUnavailable {
-      capability: RepeatedMentionsCollapseDependency,
-      trigger: P2aReferenceDependencyProjection7515,
-    },
-    ReferenceDerivedClosureUnavailable {
-      capability: UnrelatedLoadedFileExcluded,
-      trigger: P2aPoolIndependentDependencyProjection7515,
-    },
-  ]
-}

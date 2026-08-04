@@ -1,0 +1,279 @@
+module v1.gunbc.namespace_reference_derived_closure_production_admissions
+
+import gunbc.namespace_reference_derived_closure_contract {
+  ReferenceDerivedClosureAdmission,
+  ReferenceDerivedClosureRefused,
+  ReferenceDerivedClosureUnavailable,
+  SameFileEarlierNeighbourVisible,
+  SiblingDecisionBranchExcluded,
+  LaterDeclarationExcluded,
+  DistinctSameSpelledDeclarationsPreserved,
+  RepeatedMentionsCollapseDependency,
+  UnrelatedLoadedFileExcluded,
+  SameFileNeighbourMissing,
+  SiblingBranchLeaked,
+  LaterDeclarationLeaked,
+  DistinctDeclarationCollapsed,
+  P2aStructuralCandidateProducer7515,
+  P2aReferenceDependencyProjection7515,
+  P2aPoolIndependentDependencyProjection7515,
+  SameFileNeighbourObservation,
+  SiblingBranchObservation,
+  LaterDeclarationObservation,
+  DistinctHomonymObservation,
+  assess_reference_derived_closure_observation,
+}
+import std.occurrence_identity { OccurrenceTransport }
+import std.occurrence_binding_candidates {
+  OccurrenceBindingCandidateInputs,
+  resolve_reference_binding_outcome_via_structural_candidates,
+}
+import std.types { List, String }
+import v1.gunbc.occurrence_binding_parser_walk {
+  ParsedOccurrenceBindingSourceReady,
+  ParsedOccurrenceBindingSourceRefused,
+  parse_authored_occurrence_binding_source,
+  occurrence_binding_inputs_from_transport,
+  reference_named,
+  declarations_named,
+  references_named,
+}
+
+data namespace_reference_derived_closure_production_admissions_note: String = "N3-A production admission seam for namespace-reference-derived-closure clauses (a-d). Each observe_* fn parses one authored fixture through v1.compiler.parse.parse_with_table (via parse_authored_occurrence_binding_source), projects OccurrenceBindingCandidateInputs from parser facts only, runs resolve_reference_binding_outcome_via_structural_candidates (P2a+P1), and feeds the typed observation through assess_reference_derived_closure_observation unchanged. Clauses (e-f) remain ReferenceDerivedClosureUnavailable for parallel N3-B/N3-C work."
+
+data namespace_reference_derived_closure_production_fixture_note: String = "Four independent fixtures — one per structural clause — never one incidental file counted four times. Same-file neighbour and source-order/ambiguity fixtures mirror occurrence_binding_parser_walk_witness_test shapes; sibling decision-branch uses if/else let arms (parse_block nesting) because match-arm bodies remain siblings of pattern binders in v1.parse containment."
+
+type NrdfcParsed
+  = NrdfcParsedReady {
+      transport: OccurrenceTransport,
+      inputs: OccurrenceBindingCandidateInputs,
+    }
+  | NrdfcParsedRefused
+
+fn nrdfc_parse(file: String, source: String) -> NrdfcParsed {
+  match parse_authored_occurrence_binding_source(file: file, source: source) {
+    ParsedOccurrenceBindingSourceRefused => NrdfcParsedRefused
+    ParsedOccurrenceBindingSourceReady { transport: transport, module_path: module_path } =>
+      NrdfcParsedReady {
+        transport: transport,
+        inputs: occurrence_binding_inputs_from_transport(
+          module_path: module_path,
+          transport: transport,
+        ),
+      }
+  }
+}
+
+fn nrdfc_same_file_neighbour_source() -> String {
+  "module gunbc.closure_fixture.same_file_neighbour\n\nfn fn_a() -> Int {\n  10\n}\n\nfn fn_b() -> Int {\n  fn_a()\n}\n"
+}
+
+fn nrdfc_sibling_branch_source() -> String {
+  "module gunbc.closure_fixture.sibling_branch\n\nfn demo(b: Bool) -> Int {\n  if b {\n    let x = 1\n    x\n  } else {\n    let x = 2\n    x\n  }\n}\n"
+}
+
+fn nrdfc_later_declaration_source() -> String {
+  "module gunbc.closure_fixture.later_declaration\n\nfn demo() -> Int {\n  fn_later()\n}\n\nfn fn_later() -> Int {\n  0\n}\n"
+}
+
+fn nrdfc_distinct_homonym_source() -> String {
+  "module gunbc.closure_fixture.distinct_homonym\n\nfn helper() -> Int {\n  0\n}\n\nfn helper() -> Int {\n  1\n}\n\nfn demo() -> Int {\n  helper()\n}\n"
+}
+
+fn observe_same_file_earlier_neighbour_visible() -> ReferenceDerivedClosureAdmission {
+  match nrdfc_parse(
+    file: "gunbc/closure_fixture/same_file_neighbour.dag",
+    source: nrdfc_same_file_neighbour_source(),
+  ) {
+    NrdfcParsedRefused =>
+      ReferenceDerivedClosureRefused {
+        capability: SameFileEarlierNeighbourVisible,
+        failure: SameFileNeighbourMissing,
+      }
+    NrdfcParsedReady { transport: transport, inputs: inputs } =>
+      match reference_named(transport: transport, name: "fn_a") {
+        Absent =>
+          ReferenceDerivedClosureRefused {
+            capability: SameFileEarlierNeighbourVisible,
+            failure: SameFileNeighbourMissing,
+          }
+        Present { value: reference } =>
+          match declarations_named(transport: transport, name: "fn_a") |> first {
+            Absent =>
+              ReferenceDerivedClosureRefused {
+                capability: SameFileEarlierNeighbourVisible,
+                failure: SameFileNeighbourMissing,
+              }
+            Present { value: neighbour } =>
+              assess_reference_derived_closure_observation(
+                observation: SameFileNeighbourObservation {
+                  neighbour: neighbour.occurrence,
+                  binding_outcome: resolve_reference_binding_outcome_via_structural_candidates(
+                    transport: transport,
+                    inputs: inputs,
+                    reference: reference,
+                  ),
+                },
+              )
+          }
+      }
+  }
+}
+
+fn observe_sibling_decision_branch_excluded() -> ReferenceDerivedClosureAdmission {
+  match nrdfc_parse(
+    file: "gunbc/closure_fixture/sibling_branch.dag",
+    source: nrdfc_sibling_branch_source(),
+  ) {
+    NrdfcParsedRefused =>
+      ReferenceDerivedClosureRefused {
+        capability: SiblingDecisionBranchExcluded,
+        failure: SiblingBranchLeaked,
+      }
+    NrdfcParsedReady { transport: transport, inputs: inputs } =>
+      let x_declarations = declarations_named(transport: transport, name: "x")
+      let x_references = references_named(transport: transport, name: "x")
+      match x_declarations |> first {
+        Absent =>
+          ReferenceDerivedClosureRefused {
+            capability: SiblingDecisionBranchExcluded,
+            failure: SiblingBranchLeaked,
+          }
+        Present { value: then_branch_x } =>
+          match x_declarations |> reverse |> first {
+            Absent =>
+              ReferenceDerivedClosureRefused {
+                capability: SiblingDecisionBranchExcluded,
+                failure: SiblingBranchLeaked,
+              }
+            Present { value: else_branch_x } =>
+              match x_references |> reverse |> first {
+                Absent =>
+                  ReferenceDerivedClosureRefused {
+                    capability: SiblingDecisionBranchExcluded,
+                    failure: SiblingBranchLeaked,
+                  }
+                Present { value: else_branch_ref } =>
+                  assess_reference_derived_closure_observation(
+                    observation: SiblingBranchObservation {
+                      own_branch_declaration: else_branch_x.occurrence,
+                      sibling_branch_declaration: then_branch_x.occurrence,
+                      binding_outcome: resolve_reference_binding_outcome_via_structural_candidates(
+                        transport: transport,
+                        inputs: inputs,
+                        reference: else_branch_ref,
+                      ),
+                    },
+                  )
+              }
+          }
+      }
+  }
+}
+
+fn observe_later_declaration_excluded() -> ReferenceDerivedClosureAdmission {
+  match nrdfc_parse(
+    file: "gunbc/closure_fixture/later_declaration.dag",
+    source: nrdfc_later_declaration_source(),
+  ) {
+    NrdfcParsedRefused =>
+      ReferenceDerivedClosureRefused {
+        capability: LaterDeclarationExcluded,
+        failure: LaterDeclarationLeaked,
+      }
+    NrdfcParsedReady { transport: transport, inputs: inputs } =>
+      match reference_named(transport: transport, name: "fn_later") {
+        Absent =>
+          ReferenceDerivedClosureRefused {
+            capability: LaterDeclarationExcluded,
+            failure: LaterDeclarationLeaked,
+          }
+        Present { value: reference } =>
+          match declarations_named(transport: transport, name: "fn_later") |> first {
+            Absent =>
+              ReferenceDerivedClosureRefused {
+                capability: LaterDeclarationExcluded,
+                failure: LaterDeclarationLeaked,
+              }
+            Present { value: later_declaration } =>
+              assess_reference_derived_closure_observation(
+                observation: LaterDeclarationObservation {
+                  later_declaration: later_declaration.occurrence,
+                  binding_outcome: resolve_reference_binding_outcome_via_structural_candidates(
+                    transport: transport,
+                    inputs: inputs,
+                    reference: reference,
+                  ),
+                },
+              )
+          }
+      }
+  }
+}
+
+fn observe_distinct_same_spelled_declarations_preserved() -> ReferenceDerivedClosureAdmission {
+  match nrdfc_parse(
+    file: "gunbc/closure_fixture/distinct_homonym.dag",
+    source: nrdfc_distinct_homonym_source(),
+  ) {
+    NrdfcParsedRefused =>
+      ReferenceDerivedClosureRefused {
+        capability: DistinctSameSpelledDeclarationsPreserved,
+        failure: DistinctDeclarationCollapsed,
+      }
+    NrdfcParsedReady { transport: transport, inputs: inputs } =>
+      match reference_named(transport: transport, name: "helper") {
+        Absent =>
+          ReferenceDerivedClosureRefused {
+            capability: DistinctSameSpelledDeclarationsPreserved,
+            failure: DistinctDeclarationCollapsed,
+          }
+        Present { value: reference } =>
+          let helpers = declarations_named(transport: transport, name: "helper")
+          match helpers |> first {
+            Absent =>
+              ReferenceDerivedClosureRefused {
+                capability: DistinctSameSpelledDeclarationsPreserved,
+                failure: DistinctDeclarationCollapsed,
+              }
+            Present { value: first_helper } =>
+              match helpers |> reverse |> first {
+                Absent =>
+                  ReferenceDerivedClosureRefused {
+                    capability: DistinctSameSpelledDeclarationsPreserved,
+                    failure: DistinctDeclarationCollapsed,
+                  }
+                Present { value: second_helper } =>
+                  assess_reference_derived_closure_observation(
+                    observation: DistinctHomonymObservation {
+                      first_declaration: first_helper.occurrence,
+                      second_declaration: second_helper.occurrence,
+                      binding_outcome: resolve_reference_binding_outcome_via_structural_candidates(
+                        transport: transport,
+                        inputs: inputs,
+                        reference: reference,
+                      ),
+                    },
+                  )
+              }
+          }
+      }
+  }
+}
+
+fn namespace_reference_derived_closure_acceptance_admissions() -> List<ReferenceDerivedClosureAdmission> {
+  [
+    observe_same_file_earlier_neighbour_visible(),
+    observe_sibling_decision_branch_excluded(),
+    observe_later_declaration_excluded(),
+    observe_distinct_same_spelled_declarations_preserved(),
+    ReferenceDerivedClosureUnavailable {
+      capability: RepeatedMentionsCollapseDependency,
+      trigger: P2aReferenceDependencyProjection7515,
+    },
+    ReferenceDerivedClosureUnavailable {
+      capability: UnrelatedLoadedFileExcluded,
+      trigger: P2aPoolIndependentDependencyProjection7515,
+    },
+  ]
+}

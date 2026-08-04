@@ -2,6 +2,7 @@ module test.claim.namespace_reference_derived_closure_contract
 
 import gunbc.namespace_reference_derived_closure_contract {
   ReferenceDerivedClosureAdmission,
+  ReferenceDerivedClosureEstablished,
   ReferenceDerivedClosureRefused,
   ReferenceDerivedClosureUnavailable,
   SameFileEarlierNeighbourVisible,
@@ -16,7 +17,6 @@ import gunbc.namespace_reference_derived_closure_contract {
   DistinctDeclarationCollapsed,
   RepeatedMentionDuplicatedDependency,
   UnrelatedLoadedFileDependencyLeaked,
-  P2aStructuralCandidateProducer7515,
   P2aReferenceDependencyProjection7515,
   P2aPoolIndependentDependencyProjection7515,
   SameFileNeighbourObservation,
@@ -29,7 +29,13 @@ import gunbc.namespace_reference_derived_closure_contract {
   reference_derived_closure_required_capabilities,
   reference_derived_closure_closing_frontier_count,
   reference_derived_closure_closing_contract_holds,
+}
+import v1.gunbc.namespace_reference_derived_closure_production_admissions {
   namespace_reference_derived_closure_acceptance_admissions,
+  observe_same_file_earlier_neighbour_visible,
+  observe_sibling_decision_branch_excluded,
+  observe_later_declaration_excluded,
+  observe_distinct_same_spelled_declarations_preserved,
 }
 import std.occurrence_identity {
   OccurrenceId,
@@ -166,7 +172,7 @@ test fn witness_positive_population_closes_exact_six_capabilities() -> Bool {
     && reference_derived_closure_closing_contract_holds(admissions: positive_admissions())
 }
 
-test fn witness_each_production_clause_is_red_with_its_named_trigger() -> Bool {
+test fn witness_structural_production_admissions_establish_clauses_a_through_d() -> Bool {
   let statuses = namespace_reference_derived_closure_acceptance_admissions()
   count(statuses) == 6
     && [
@@ -175,8 +181,7 @@ test fn witness_each_production_clause_is_red_with_its_named_trigger() -> Bool {
       LaterDeclarationExcluded,
       DistinctSameSpelledDeclarationsPreserved,
     ] |> all(capability => statuses |> any(status => match status {
-      ReferenceDerivedClosureUnavailable { capability: observed, trigger } =>
-        observed == capability && trigger == P2aStructuralCandidateProducer7515
+      ReferenceDerivedClosureEstablished { receipt } => receipt.capability == capability
       _ => false
     }))
     && statuses |> any(status => match status {
@@ -191,7 +196,30 @@ test fn witness_each_production_clause_is_red_with_its_named_trigger() -> Bool {
           && trigger == P2aPoolIndependentDependencyProjection7515
       _ => false
     })
-    && reference_derived_closure_closing_frontier_count(admissions: statuses) == 6
+    && reference_derived_closure_closing_frontier_count(admissions: statuses) == 2
+}
+
+test fn witness_each_structural_production_observer_establishes_independently() -> Bool {
+  match observe_same_file_earlier_neighbour_visible() {
+    ReferenceDerivedClosureEstablished { receipt } =>
+      receipt.capability == SameFileEarlierNeighbourVisible
+    _ => false
+  }
+    && match observe_sibling_decision_branch_excluded() {
+      ReferenceDerivedClosureEstablished { receipt } =>
+        receipt.capability == SiblingDecisionBranchExcluded
+      _ => false
+    }
+    && match observe_later_declaration_excluded() {
+      ReferenceDerivedClosureEstablished { receipt } =>
+        receipt.capability == LaterDeclarationExcluded
+      _ => false
+    }
+    && match observe_distinct_same_spelled_declarations_preserved() {
+      ReferenceDerivedClosureEstablished { receipt } =>
+        receipt.capability == DistinctSameSpelledDeclarationsPreserved
+      _ => false
+    }
 }
 
 test fn witness_same_file_neighbour_removal_fires_refusal() -> Bool {

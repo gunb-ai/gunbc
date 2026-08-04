@@ -1,8 +1,10 @@
 module test.claim.namespace_reference_derived_closure_acceptance
 
 import gunbc.namespace_reference_derived_closure_contract {
-  namespace_reference_derived_closure_acceptance_admissions,
   reference_derived_closure_closing_contract_holds,
+}
+import v1.gunbc.namespace_reference_derived_closure_production_admissions {
+  namespace_reference_derived_closure_acceptance_admissions,
 }
 import std.types { Bool }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
