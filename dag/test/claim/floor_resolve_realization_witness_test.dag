@@ -1,0 +1,74 @@
+module test.claim.floor_resolve_realization_witness
+
+import gunbc.floor_resolve_realization {
+  ResolveObligationReceipt,
+  CompileAnchorWholeTree,
+  NativeBundleEscapingEntry,
+  ci_floor_resolve_obligation_count,
+  resolve_obligation_finalization_holds,
+  resolve_obligation_receipt,
+  cold_resolves_performed,
+  resolve_obligation_receipts_match_roster,
+}
+import gunbc.ci_materialization { ci_floor_declared_resolve_count }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+
+data floor_resolve_realization_witness_note: String = "Discriminating witnesses for the obligation-vs-cold split (shared CI floor item 0). Green controls: both obligations accounted on cold main (2 cold) and on warm PR shape (1 cold + 1 shared-pool). RED controls: missing obligation row, duplicate identity, roster/obligations_total mismatch. The production gate consumes the same predicates through claim_executor's obligation receipt parser — these rows execute the model without a tree-copied cold-count oracle."
+
+fn cold_main_receipts() -> List<ResolveObligationReceipt> {
+  [
+    resolve_obligation_receipt(id: CompileAnchorWholeTree, cold: true),
+    resolve_obligation_receipt(id: NativeBundleEscapingEntry, cold: true),
+  ]
+}
+
+fn warm_pr_receipts() -> List<ResolveObligationReceipt> {
+  [
+    resolve_obligation_receipt(id: CompileAnchorWholeTree, cold: true),
+    resolve_obligation_receipt(id: NativeBundleEscapingEntry, cold: false),
+  ]
+}
+
+fn missing_native_receipts() -> List<ResolveObligationReceipt> {
+  [resolve_obligation_receipt(id: CompileAnchorWholeTree, cold: true)]
+}
+
+fn duplicate_anchor_receipts() -> List<ResolveObligationReceipt> {
+  [
+    resolve_obligation_receipt(id: CompileAnchorWholeTree, cold: true),
+    resolve_obligation_receipt(id: CompileAnchorWholeTree, cold: false),
+  ]
+}
+
+test fn witness_cold_main_obligations_hold() -> Bool {
+  resolve_obligation_finalization_holds(
+    receipts: cold_main_receipts(),
+    declared_obligation_count: ci_floor_declared_resolve_count,
+  )
+    && cold_resolves_performed(receipts: cold_main_receipts()) == 2
+}
+
+test fn witness_warm_pr_obligations_hold_with_one_cold() -> Bool {
+  resolve_obligation_finalization_holds(
+    receipts: warm_pr_receipts(),
+    declared_obligation_count: ci_floor_declared_resolve_count,
+  )
+    && cold_resolves_performed(receipts: warm_pr_receipts()) == 1
+}
+
+test fn witness_declared_count_is_obligation_count_authority() -> Bool {
+  ci_floor_resolve_obligation_count() == ci_floor_declared_resolve_count
+    && ci_floor_declared_resolve_count == 2
+}
+
+test fn witness_missing_obligation_reds() -> Bool {
+  !resolve_obligation_finalization_holds(
+    receipts: missing_native_receipts(),
+    declared_obligation_count: ci_floor_declared_resolve_count,
+  )
+}
+
+test fn witness_duplicate_obligation_identity_reds() -> Bool {
+  !resolve_obligation_receipts_match_roster(receipts: duplicate_anchor_receipts())
+}

@@ -1,0 +1,35 @@
+module test.claim.long.generated_artifact_drift_red_receipt_witness
+
+import gunbc.generated_artifact {
+  GeneratedArtifact,
+  committed_generated_artifacts,
+}
+import gunbc.generated_artifact_emit { ArtifactGenerated, ArtifactGenerationRefused, artifact_generate }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data generated_artifact_drift_red_receipt_long_note: String = "Rehomed from dag/test/claim/generated_artifact_drift_test.dag (operator 5-second rule, shared CI floor item 0, 2026-08-04): witness_per_artifact_red_receipts regenerates every committed artifact twice (generate-to-generate perturb RED). Measured 4350ms then 4776ms across consecutive green main runs (95.5 percent of the 5000ms per-PR budget) — a live main-stability flake risk with no PR involved. The fast registry/policy witnesses stay per-PR discovered in the parent file; the drift gate still runs artifact_red_receipt_ok inline via tools.generated_artifact_gate. Enrolled on falsifier_substrate_long_lane_entries (nightly falsifier batch 6, 180s eval budget). Local recipe: claim_batch --source-root dag --entry dag/test/claim/long/generated_artifact_drift_red_receipt_witness_test.dag --function witness_per_artifact_red_receipts. Dissolve-on: eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured cold run and re-enrolls per-PR discovery."
+
+data perturb: String = "\n# gunbc-generated-artifact-drift-receipt-perturb"
+
+fn artifact_drifted(a: GeneratedArtifact, committed: String) -> Bool {
+  match artifact_generate(a: a) {
+    ArtifactGenerationRefused { reason: _ } => true
+    ArtifactGenerated { content } => !(committed == content)
+  }
+}
+
+fn artifact_red_receipt(a: GeneratedArtifact) -> Bool {
+  match artifact_generate(a: a) {
+    ArtifactGenerationRefused { reason: _ } => false
+    ArtifactGenerated { content } =>
+      !artifact_drifted(a: a, committed: content)
+        && artifact_drifted(a: a, committed: concat(content, perturb))
+  }
+}
+
+test fn witness_per_artifact_red_receipts() -> Bool {
+  count(committed_generated_artifacts()) > 0
+    && all(committed_generated_artifacts(), a => artifact_red_receipt(a: a))
+}

@@ -1,0 +1,104 @@
+module gunbc.floor_resolve_realization
+
+import std.nat { Nat }
+import v2.std.text { String }
+import v2.std.logic { Bool }
+import v2.std.collection { List }
+import gunbc.ci_materialization { ci_floor_declared_resolve_count }
+
+data floor_resolve_realization_note: String = "Cold-vs-warm resolve REALIZATION model (shared CI floor item 0, 2026-08-04): ci_floor_declared_resolve_count names a CLOSED UNIVERSE of semantic resolve OBLIGATIONS — obligations the floor roster structurally owes each run — not the count of physical cold resolves performed (resolve_nanos > 0). Those diverge when an escaping entry pools warm against the shared index: native escape remains structurally present and the obligation is SatisfiedFromSharedPool, not absent. Operator ruling: lowering the declaration when warm PRs measured fewer cold resolves conflated the two facts. THE GATE checks obligation accounting (roster complete, disposition per row); cold_resolves_total stays observational in the receipt only. Precedent: ci_floor_materialization_receipt_note's unkeyed == 0 relation over a tree-copied count pin. Dissolve-on: persistent content-keyed store makes the escape set empty by construction and obligations collapse to one anchor — declared count lowers consciously in that PR, per ci_floor_resolve_receipt_note discipline."
+
+data compile_anchor_obligation_entry: String = "dag/tools/floor_effect_gate_witness.dag"
+
+data compile_anchor_obligation_function: String = "dag_compile_clean_gate_passes"
+
+data native_bundle_obligation_entry: String = "src/v2/test/claim/execution/native_selected_witness_bundle_production.dag"
+
+data native_bundle_obligation_function: String = "native_selected_logic_production_spec"
+
+type ResolveObligationIdentity
+  = CompileAnchorWholeTree
+  | NativeBundleEscapingEntry
+
+type ResolveRealizationDisposition
+  = ColdResolvePerformed
+  | SatisfiedFromSharedPool
+
+type ResolveObligationReceipt {
+  identity: ResolveObligationIdentity
+  disposition: ResolveRealizationDisposition
+}
+
+fn resolve_realization_disposition_from_cold(cold: Bool) -> ResolveRealizationDisposition {
+  if cold {
+    ColdResolvePerformed
+  } else {
+    SatisfiedFromSharedPool
+  }
+}
+
+fn ci_floor_resolve_obligation_roster() -> List<ResolveObligationIdentity> {
+  [CompileAnchorWholeTree, NativeBundleEscapingEntry]
+}
+
+fn ci_floor_resolve_obligation_count() -> Nat {
+  ci_floor_declared_resolve_count
+}
+
+fn resolve_obligation_identity_label(id: ResolveObligationIdentity) -> String {
+  match id {
+    CompileAnchorWholeTree => "compile-anchor-whole-tree"
+    NativeBundleEscapingEntry => "native-bundle-escaping-entry"
+  }
+}
+
+fn resolve_realization_disposition_label(d: ResolveRealizationDisposition) -> String {
+  match d {
+    ColdResolvePerformed => "cold_resolve_performed"
+    SatisfiedFromSharedPool => "satisfied_from_shared_pool"
+  }
+}
+
+fn resolve_obligation_receipt_count(receipts: List<ResolveObligationReceipt>) -> Nat {
+  receipts |> count
+}
+
+fn resolve_obligation_receipt_has_identity(
+  receipts: List<ResolveObligationReceipt>,
+  id: ResolveObligationIdentity,
+) -> Bool {
+  any(receipts, r => r.identity == id)
+}
+
+fn resolve_obligation_receipts_match_roster(receipts: List<ResolveObligationReceipt>) -> Bool {
+  let roster = ci_floor_resolve_obligation_roster()
+  (resolve_obligation_receipt_count(receipts: receipts) == ci_floor_resolve_obligation_count())
+    && all(roster, id => resolve_obligation_receipt_has_identity(receipts: receipts, id: id))
+}
+
+fn cold_resolves_performed(receipts: List<ResolveObligationReceipt>) -> Nat {
+  fold(receipts, init: 0, f: fn(acc, r) {
+    match r.disposition {
+      ColdResolvePerformed => acc + 1
+      SatisfiedFromSharedPool => acc
+    }
+  })
+}
+
+fn resolve_obligation_finalization_holds(
+  receipts: List<ResolveObligationReceipt>,
+  declared_obligation_count: Nat,
+) -> Bool {
+  (resolve_obligation_receipt_count(receipts: receipts) == declared_obligation_count)
+    && resolve_obligation_receipts_match_roster(receipts: receipts)
+}
+
+fn resolve_obligation_receipt(
+  id: ResolveObligationIdentity,
+  cold: Bool,
+) -> ResolveObligationReceipt {
+  ResolveObligationReceipt {
+    identity: id,
+    disposition: resolve_realization_disposition_from_cold(cold: cold)
+  }
+}

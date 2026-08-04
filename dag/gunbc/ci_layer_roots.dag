@@ -1132,6 +1132,12 @@ data falsifier_substrate_long_lane_rows: List<SubstrateLongLaneRow> = [
     dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured cold run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt"
   },
   SubstrateLongLaneRow {
+    entry: "dag/test/claim/long/generated_artifact_drift_red_receipt_witness_test.dag",
+    function: "witness_per_artifact_red_receipts",
+    reason: "Generate-to-generate perturb RED over every committed artifact (shared CI floor item 0, 2026-08-04): measured 4350ms then 4776ms on consecutive green main runs — 95.5 percent of the 5s per-PR budget, main-stability flake risk",
+    dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured cold run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt"
+  },
+  SubstrateLongLaneRow {
     entry: "src/v2/test/claim/long/direct_rust_door_emission_witness_test.dag",
     function: "witness_direct_rust_door_provenanced_artifact_holds",
     reason: "Lane B ingest-assemble-infer-emit provenance witness exceeded 5000ms fast-lane budget on PR CI (c80605a): generate_provenanced_rust_candidate_from_ingest runs full parse/normalize/resolve/infer/emit closure — eval-budget routing only",

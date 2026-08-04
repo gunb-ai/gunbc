@@ -5216,6 +5216,100 @@ fn write_selection_degradation_receipt_at(
     true
 }
 
+/// Semantic resolve obligations the floor roster owes each run — a closed universe,
+/// distinct from physical cold resolves performed (`resolve_nanos > 0`). Authority:
+/// `gunbc.floor_resolve_realization` (shared CI floor item 0, 2026-08-04).
+const COMPILE_ANCHOR_OBLIGATION_ENTRY: &str = "dag/tools/floor_effect_gate_witness.dag";
+const COMPILE_ANCHOR_OBLIGATION_FUNCTION: &str = "dag_compile_clean_gate_passes";
+const NATIVE_BUNDLE_OBLIGATION_ENTRY: &str =
+    "src/v2/test/claim/execution/native_selected_witness_bundle_production.dag";
+const NATIVE_BUNDLE_OBLIGATION_FUNCTION: &str = "native_selected_logic_production_spec";
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ResolveObligationLine {
+    identity: &'static str,
+    disposition: &'static str,
+    resolve_nanos: u128,
+}
+
+fn resolve_obligation_disposition(resolve_nanos: u128) -> &'static str {
+    if resolve_nanos > 0 {
+        "cold_resolve_performed"
+    } else {
+        "satisfied_from_shared_pool"
+    }
+}
+
+fn find_result_resolve_nanos(
+    batch_records: &[BatchRecord],
+    entry: &str,
+    function: &str,
+) -> Option<u128> {
+    for rec in batch_records {
+        for result in &rec.results {
+            if result.entry == entry && result.function == function {
+                return Some(result.resolve_nanos);
+            }
+        }
+    }
+    None
+}
+
+fn derive_resolve_obligation_receipts(
+    batch_records: &[BatchRecord],
+) -> Result<Vec<ResolveObligationLine>, String> {
+    let anchor_nanos = find_result_resolve_nanos(
+        batch_records,
+        COMPILE_ANCHOR_OBLIGATION_ENTRY,
+        COMPILE_ANCHOR_OBLIGATION_FUNCTION,
+    )
+    .ok_or_else(|| {
+        "floor resolve obligation missing: compile-anchor-whole-tree (dag_compile_clean_gate_passes)"
+            .to_string()
+    })?;
+    let native_nanos = find_result_resolve_nanos(
+        batch_records,
+        NATIVE_BUNDLE_OBLIGATION_ENTRY,
+        NATIVE_BUNDLE_OBLIGATION_FUNCTION,
+    )
+    .ok_or_else(|| {
+        "floor resolve obligation missing: native-bundle-escaping-entry (native_selected_logic_production_spec)"
+            .to_string()
+    })?;
+    Ok(vec![
+        ResolveObligationLine {
+            identity: "compile-anchor-whole-tree",
+            disposition: resolve_obligation_disposition(anchor_nanos),
+            resolve_nanos: anchor_nanos,
+        },
+        ResolveObligationLine {
+            identity: "native-bundle-escaping-entry",
+            disposition: resolve_obligation_disposition(native_nanos),
+            resolve_nanos: native_nanos,
+        },
+    ])
+}
+
+fn append_resolve_obligation_receipt_body(
+    body: &mut String,
+    batch_records: &[BatchRecord],
+) -> Result<(), String> {
+    let obligations = derive_resolve_obligation_receipts(batch_records)?;
+    let cold_resolves_total = obligations
+        .iter()
+        .filter(|o| o.disposition == "cold_resolve_performed")
+        .count();
+    body.push_str(&format!("obligations_total={}\n", obligations.len()));
+    body.push_str(&format!("cold_resolves_total={cold_resolves_total}\n"));
+    for line in &obligations {
+        body.push_str(&format!(
+            "obligation={} disposition={} resolve_nanos={}\n",
+            line.identity, line.disposition, line.resolve_nanos
+        ));
+    }
+    Ok(())
+}
+
 fn write_resolve_receipt_at(
     base: &std::path::Path,
     source_roots: &[String],
@@ -5239,6 +5333,10 @@ fn write_resolve_receipt_at(
     let mut body = format!(
         "resolves_total={resolves_total}\nresolve_ms_total={resolve_ms_total}\ndiscovery_corpus_resolve_ms={discovery_corpus_resolve_ms}\ndiscovery_corpus_eval_ms={discovery_corpus_eval_ms}\n{discovery_phases}"
     );
+    if let Err(msg) = append_resolve_obligation_receipt_body(&mut body, batch_records) {
+        eprintln!("claim_executor: resolve obligation receipt refused: {msg}");
+        return false;
+    }
     if let Some(snapshot) = selection_degradation_from_batch_records(batch_records) {
         match render_selection_degradation_receipt_body(source_roots, &snapshot) {
             Ok(selection_body) => {
@@ -5695,26 +5793,34 @@ fn validate_floor_finalization(
     batch_records: &[BatchRecord],
 ) -> Vec<String> {
     let mut refusals = Vec::new();
-    // Law 1 — the declared cold-resolve count (gunbc.ci_materialization
-    // ci_floor_resolve_receipt_note): resolves_total is recomputed from the SAME rule
-    // write_resolve_receipt_at uses, never re-parsed from the file we just wrote.
-    let mut resolves_total: u64 = 0;
-    for rec in batch_records {
-        for result in &rec.results {
-            if result.resolve_nanos > 0 {
-                resolves_total += 1;
+    // Law 1 — semantic resolve OBLIGATIONS (gunbc.floor_resolve_realization /
+    // ci_floor_declared_resolve_count): every rostered obligation must be accounted
+    // with a disposition; warm shared-pool satisfaction is not absence. Physical
+    // cold_resolves_total remains observational in the receipt only.
+    match derive_resolve_obligation_receipts(batch_records) {
+        Ok(obligations) => {
+            if obligations.len() as i64 != fin.declared_resolve_count {
+                refusals.push(format!(
+                    "floor resolve obligation count {} differs from declared {}: roster debt \
+                     changed - update the count this plan declared, at \
+                     {plan_site} WalkPlan.finalization.declared_resolve_count \
+                     (the production floor projects it from gunbc.ci_materialization \
+                     ci_floor_declared_resolve_count; a fixture or another plan declares its own)",
+                    obligations.len(),
+                    fin.declared_resolve_count
+                ));
+            }
+            let mut seen = std::collections::HashSet::new();
+            for line in &obligations {
+                if !seen.insert(line.identity) {
+                    refusals.push(format!(
+                        "floor resolve obligation duplicate identity: {}",
+                        line.identity
+                    ));
+                }
             }
         }
-    }
-    if resolves_total as i64 != fin.declared_resolve_count {
-        refusals.push(format!(
-            "floor resolve count {} differs from declared {}: duplicate-computation debt \
-             changed - update the count this plan declared, at \
-             {plan_site} WalkPlan.finalization.declared_resolve_count \
-             (the production floor projects it from gunbc.ci_materialization \
-             ci_floor_declared_resolve_count; a fixture or another plan declares its own)",
-            resolves_total, fin.declared_resolve_count
-        ));
+        Err(msg) => refusals.push(msg),
     }
     // Law 2 — materialization disclosure (ci_floor_materialization_receipt_note):
     // receipt exists, keyed/unkeyed/duplicated parse, keyed nonzero. Read from the
@@ -8684,27 +8790,66 @@ mod tests {
         }
     }
 
+    fn obligation_finalization_records(anchor_nanos: u64, native_nanos: u64) -> Vec<BatchRecord> {
+        vec![BatchRecord {
+            batch_index: 0,
+            wall_nanos: 0,
+            clamp_ms: None,
+            unit_count: 0,
+            label: "obligation-fixture".to_string(),
+            selection_tag: "fixture",
+            is_wet: false,
+            results: vec![
+                ClaimResult {
+                    function: COMPILE_ANCHOR_OBLIGATION_FUNCTION.to_string(),
+                    entry: COMPILE_ANCHOR_OBLIGATION_ENTRY.to_string(),
+                    ok: true,
+                    detail: String::new(),
+                    wall_nanos: 0,
+                    resolve_nanos: anchor_nanos as u128,
+                    corpus_resolve_nanos: 0,
+                    corpus_eval_nanos: 0,
+                    corpus_witnesses: 0,
+                    witness_row_costs: Vec::new(),
+                    budget_refusal: None,
+                    selection_degradation: None,
+                },
+                ClaimResult {
+                    function: NATIVE_BUNDLE_OBLIGATION_FUNCTION.to_string(),
+                    entry: NATIVE_BUNDLE_OBLIGATION_ENTRY.to_string(),
+                    ok: true,
+                    detail: String::new(),
+                    wall_nanos: 0,
+                    resolve_nanos: native_nanos as u128,
+                    corpus_resolve_nanos: 0,
+                    corpus_eval_nanos: 0,
+                    corpus_witnesses: 0,
+                    witness_row_costs: Vec::new(),
+                    budget_refusal: None,
+                    selection_degradation: None,
+                },
+            ],
+        }]
+    }
+
     /// The `<entry>::<function>` a refusal locates itself at — the same shape the
     /// production caller passes.
     const TEST_PLAN_SITE: &str = "src/v2/workflow/ci_floor_plan.dag::gunbc_ci_floor_plan";
 
     // Floor finalization law 1 (in-executor form of the deleted resolve-receipt gate
-    // step): the count is recomputed from batch records by the same nonzero-
-    // resolve_nanos rule the receipt writer uses. Declared-vs-actual mismatch refuses
-    // in BOTH directions; match passes. The materialization arm is exercised through
-    // the missing-file refusal (no target/ receipt exists under cargo test), which
-    // also pins that law 2 cannot silently pass when the receipt is absent.
+    // step): obligation accounting must match the declared closed-universe count.
+    // Warm shared-pool satisfaction (resolve_nanos == 0) still counts as an obligation.
     #[test]
-    fn floor_finalization_refuses_on_resolve_count_mismatch_both_directions() {
+    fn floor_finalization_refuses_on_obligation_mismatch_both_directions() {
         let fin = FloorFinalization {
             declared_resolve_count: 1,
         };
-        let over = [finalization_record(&[5, 7])];
+        let over = obligation_finalization_records(5, 7);
         let refusals = validate_floor_finalization(&fin, TEST_PLAN_SITE, &over);
         assert!(
             refusals
                 .iter()
-                .any(|m| m.contains("floor resolve count 2 differs from declared 1")),
+                .any(|m| m.contains("floor resolve obligation count 2 differs from declared 1")),
             "over-count must refuse: {refusals:?}"
         );
         let under = [finalization_record(&[])];
@@ -8712,24 +8857,39 @@ mod tests {
         assert!(
             refusals
                 .iter()
-                .any(|m| m.contains("floor resolve count 0 differs from declared 1")),
-            "under-count must refuse: {refusals:?}"
+                .any(|m| m.contains("floor resolve obligation missing")),
+            "missing obligations must refuse: {refusals:?}"
         );
     }
 
     #[test]
-    fn floor_finalization_matching_count_leaves_only_the_materialization_arm() {
+    fn floor_finalization_warm_native_satisfies_obligations_with_one_cold() {
         let fin = FloorFinalization {
             declared_resolve_count: 2,
         };
-        let records = [finalization_record(&[3, 0, 9])];
+        let records = obligation_finalization_records(3, 0);
         let refusals = validate_floor_finalization(&fin, TEST_PLAN_SITE, &records);
-        // resolve law satisfied (two nonzero-resolve results); under cargo test no
+        assert!(
+            !refusals
+                .iter()
+                .any(|m| m.contains("differs from declared") || m.contains("missing")),
+            "warm native + cold anchor must satisfy obligations: {refusals:?}"
+        );
+    }
+
+    #[test]
+    fn floor_finalization_matching_obligations_leaves_only_the_materialization_arm() {
+        let fin = FloorFinalization {
+            declared_resolve_count: 2,
+        };
+        let records = obligation_finalization_records(3, 9);
+        let refusals = validate_floor_finalization(&fin, TEST_PLAN_SITE, &records);
+        // obligation law satisfied (two rostered rows, two cold); under cargo test no
         // materialization receipt file exists, so exactly the missing-receipt refusal
         // remains — proving law 2 fails closed on absence rather than passing.
         assert!(
             !refusals.iter().any(|m| m.contains("differs from declared")),
-            "resolve law must be satisfied: {refusals:?}"
+            "obligation law must be satisfied: {refusals:?}"
         );
         assert!(
             refusals
