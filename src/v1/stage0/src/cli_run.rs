@@ -15252,8 +15252,10 @@ pub struct DeferredDiscoveryRow {
     pub reads_live_tree: bool,
 }
 
-/// Why an excluded witness row failed admission. The variants mirror the `WitnessAdmissionRefusal`
-/// arms in `std.witness_admission` one-for-one; they are separate because their remedies differ.
+/// Why an excluded witness row failed admission. These are the two REFUSING arms of
+/// `std.witness_admission`'s `WitnessExecutionStanding`; they are separate because their remedies
+/// differ. The other two arms are absent because neither refuses: one has an executing consumer,
+/// the other is frozen legacy debt the migration ratchet tolerates without ever counting as covered.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DeferredAdmissionCause {
     /// Nothing claims the row — no roster, no path policy. Remedy: name a cadence or delete it.

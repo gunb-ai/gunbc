@@ -53,7 +53,6 @@ import gunbc.witness_deferral_freeze {
   frozen_path_deferrals,
   frozen_path_deferral_covers_in
 }
-import std.types { Int }
 import std.witness_admission {
   WitnessConsumerCadence,
   WitnessExecutionStanding,
