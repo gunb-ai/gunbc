@@ -36,7 +36,7 @@ import v2.test.workflow.host_source_root_ingest_manifest {
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-data frontier_probe_closure_matrix_integration_cadence_note: String = "PR #7762 boundary/integration matrix (operator ruling msg_fca587a5, 2026-08-04): scheduled wet witnesses enrolled on FalsifierCadenceJob (4h cadence, max staleness one cadence window). Per-PR fast mechanism controls live in src/v2/test/claim/workflow/frontier_probe_closure_matrix_test.dag (SubstrateInputsOnly synthetic fixtures). frontier_probe_below_cap_complete_population_gates_pass_holds and frontier_probe_second_source_root_population_gates_pass_holds are population-totality / full-pipeline integration legs re-homed to falsifier_rehomed_bin_wet_rows (measured claim_batch --wet 2026-08-04: below_cap 784772ms, second_root pending same class). frontier_probe_ninety_one_read_compiler_closure_elision_integrates_holds is boundary-class population-totality: requires ingest overlay with ingest_read_count=91 and SourceRootManifestElided { read_count: 91, cap: 64 } — generate overlay via discover_source_root_ingest before cadence run. frontier_probe_read_failure_detail_refused_holds and frontier_probe_hash_mismatch_detail_carries_observed_holds are external-effect read-through controls (measured ~523ms and ~181ms). CADENCE RECEIPT: target/frontier-probe-survey/matrix_integration_claim_batch_receipt.log"
+data frontier_probe_closure_matrix_integration_cadence_note: String = "PR #7762 boundary/integration matrix (operator ruling msg_fca587a5, 2026-08-04): scheduled wet witnesses enrolled on FalsifierCadenceJob (4h cadence, max staleness one cadence window). Per-PR fast mechanism controls live in src/v2/test/claim/workflow/frontier_probe_closure_matrix_test.dag (SubstrateInputsOnly synthetic fixtures). frontier_probe_below_cap_complete_population_gates_pass_holds and frontier_probe_second_source_root_population_gates_pass_holds are population-totality / full-pipeline integration legs re-homed to falsifier_rehomed_bin_wet_rows (measured claim_batch --wet 2026-08-04: below_cap 784772ms). frontier_probe_ninety_one_read_compiler_closure_elision_integrates_holds is boundary-class population-totality: requires ingest overlay with ingest_read_count>64 and SourceRootManifestElided — generate overlay via discover_source_root_ingest --entry src/v2/compiler/00_compile.dag then claim_batch with --source-root target/frontier-probe-survey/overlay (measured 165 reads at cap 64 on HEAD). frontier_probe_read_failure_detail_refused_holds and frontier_probe_hash_mismatch_detail_carries_observed_holds are external-effect read-through controls (measured ~3ms and ~2ms). CADENCE RECEIPT: target/frontier-probe-survey/matrix_integration_claim_batch_receipt.log"
 
 fn fp_matrix_ref_a() -> SourceRef {
   source_ref_for_observed_storage_path(path: "dag/std/algebra.dag")
@@ -154,16 +154,17 @@ test fn frontier_probe_second_source_root_population_gates_pass_holds() -> Bool 
 }
 
 test fn frontier_probe_ninety_one_read_compiler_closure_elision_integrates_holds() -> Bool {
-  if host_source_root_ingest_coverage_receipt.ingest_read_count < 91 {
+  let ingest_count = host_source_root_ingest_coverage_receipt.ingest_read_count
+  if ingest_count <= 64 {
     false
   } else {
     match host_source_root_ingest_coverage_receipt.coverage {
       SourceRootManifestElided { read_count: elided_reads, cap: cap } =>
-        if elided_reads > cap && elided_reads == 91 {
+        if elided_reads > cap && elided_reads == ingest_count {
           match frontier_probe_coverage_gate(
             coverage: host_source_root_ingest_coverage_receipt.coverage,
             refs: host_source_root_closure_refs,
-            ingest_read_count: host_source_root_ingest_coverage_receipt.ingest_read_count
+            ingest_read_count: ingest_count
           ) {
             FrontierProbeCoveragePermitted =>
               length(xs: host_source_root_closure_refs) == elided_reads
