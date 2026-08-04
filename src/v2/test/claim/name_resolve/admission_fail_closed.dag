@@ -53,9 +53,11 @@ fn resolve_module_not_found_preserves_missing_module_identity() -> Bool {
     Rejected { diagnostics: d } =>
       match d.head.at {
         Textual { file: module_file, extent: _ } =>
-          d.head.reason == ^resolve_module_not_found
-            && symbol_lexeme(sym: module_file)
-              == qualified_name_to_dotted_string(qn: missing)
+          match d.head.reason {
+            ^resolve_module_not_found =>
+              (symbol_lexeme(sym: module_file) == qualified_name_to_dotted_string(qn: missing))
+            _ => false
+          }
         _ => false
       }
   }
