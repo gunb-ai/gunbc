@@ -1,0 +1,43 @@
+module extdeps.languages.typescript.subject
+
+import std.types { String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "www.typescriptlang.org/docs/handbook/intro.html"
+  }
+}
+
+data typescript_language_further_authority_1: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "github.com/microsoft/TypeScript"
+  }
+}
+
+data typescript_language_subject_note: String = "TYPESCRIPT, AND THE FINDING THAT IT HAS NO FORMAL SPECIFICATION (verified live 2026-08-04 by fetching the cited locator and confirming its title and publisher from the response, per the D0 verify-or-refuse rule). The cited handbook states in its own text that it 'isn't intended to be a replacement for a language specification', and no separate normative TypeScript specification is published today — the formal spec was retired upstream. So the honest citation is Microsoft's handbook plus the implementation repository, and the authority for TypeScript's semantics is the compiler. This matters to the P0 product-browser profile: a bar-c support claim for TypeScript can be checked against tsc acceptance but NOT against a normative document, so 'conforms to the spec' is not a claim this repository can make about TypeScript. Recording that here keeps the profile honest rather than discovering it during a completion review."
+
+type TypeScript
+  = | TypeScriptTarget
+
+data typescript_language: TypeScript = TypeScriptTarget
+
+data typescript_language_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.languages.typescript.subject",
+      decl_name: "typescript_language",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [typescript_language_further_authority_1]
+}
+
+data typescript_language_mandated_scope_name_scaffold_note: String = "DECLARED SCAFFOLD, with its dissolution triggers — why the scope is authored under a unique name and the mandated name is bound to it. The authored value is the one above; 'extdeps_model_scope' is a BINDING to that same value, not a second authority, and it cannot drift from its source because it IS its source. It exists because two independent mechanisms collide. (1) gunbc.extdeps_scope_frontier's carrier_content_declares_scope text-scans every scope carrier for the literal 'data extdeps_model_scope:', so the name is mandatory. (2) The resolver offers no way to name two same-named imports apart: MEASURED 2026-08-04 against the real binary, a qualified reference (extdeps.languages.rust.subject.rust_language_model_scope) fails with 'undefined variable', module projection after an import fails the same way, no import aliasing exists in the grammar, and — the reason this is not merely inconvenient — importing one name from two modules does NOT refuse, it SILENTLY BINDS THE LAST ONE with exit 0. So a registry importing the mandated name from every carrier would ground 22 of 23 targets in the WRONG upstream scope and, because registration_subject derives the subject from the grounding, report the wrong subject for each — green and materially false. The unique name is what keeps that unwritable. DISSOLVE-ON, either trigger suffices: the resolver gains import aliasing or module projection (then the registry imports the mandated name directly and this binding deletes), OR the v2.lens.mandatory_tag region promotion retires the carrier_content_declares_scope text scan (then the mandated name is no longer required and the unique name stands alone). This is a scaffold pinned to a scaffold — carrier_content_declares_scope calls itself a declared scaffold in its own note — and they retire together. The resolver defect itself is corpus-wide and is being raised as its own lane; it is not a language-support fact."
+
+data extdeps_model_scope: ExternalModelScope = typescript_language_model_scope

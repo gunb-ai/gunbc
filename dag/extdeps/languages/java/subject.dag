@@ -1,0 +1,36 @@
+module extdeps.languages.java.subject
+
+import std.types { String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "docs.oracle.com/javase/specs/"
+  }
+}
+
+data java_language_subject_note: String = "JAVA, cited to The Java Language Specification (verified live 2026-08-04 by fetching the cited locator and confirming its title and publisher from the response, per the D0 verify-or-refuse rule): the fetched index publishes 'The Java Language Specification' per Java SE edition, alongside the separately titled Java Virtual Machine Specification, under Oracle copyright and released through the Java Community Process. THE LANGUAGE AND THE VM ARE TWO DOCUMENTS AND POTENTIALLY TWO SUBJECTS: this declaration is the LANGUAGE. If this repository ever targets JVM bytecode directly rather than Java source, that is the JVM specification's subject and takes its own declaration — it is not an arm added here."
+
+type Java
+  = | JavaTarget
+
+data java_language: Java = JavaTarget
+
+data java_language_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.languages.java.subject",
+      decl_name: "java_language",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data java_language_mandated_scope_name_scaffold_note: String = "DECLARED SCAFFOLD, with its dissolution triggers — why the scope is authored under a unique name and the mandated name is bound to it. The authored value is the one above; 'extdeps_model_scope' is a BINDING to that same value, not a second authority, and it cannot drift from its source because it IS its source. It exists because two independent mechanisms collide. (1) gunbc.extdeps_scope_frontier's carrier_content_declares_scope text-scans every scope carrier for the literal 'data extdeps_model_scope:', so the name is mandatory. (2) The resolver offers no way to name two same-named imports apart: MEASURED 2026-08-04 against the real binary, a qualified reference (extdeps.languages.rust.subject.rust_language_model_scope) fails with 'undefined variable', module projection after an import fails the same way, no import aliasing exists in the grammar, and — the reason this is not merely inconvenient — importing one name from two modules does NOT refuse, it SILENTLY BINDS THE LAST ONE with exit 0. So a registry importing the mandated name from every carrier would ground 22 of 23 targets in the WRONG upstream scope and, because registration_subject derives the subject from the grounding, report the wrong subject for each — green and materially false. The unique name is what keeps that unwritable. DISSOLVE-ON, either trigger suffices: the resolver gains import aliasing or module projection (then the registry imports the mandated name directly and this binding deletes), OR the v2.lens.mandatory_tag region promotion retires the carrier_content_declares_scope text scan (then the mandated name is no longer required and the unique name stands alone). This is a scaffold pinned to a scaffold — carrier_content_declares_scope calls itself a declared scaffold in its own note — and they retire together. The resolver defect itself is corpus-wide and is being raised as its own lane; it is not a language-support fact."
+
+data extdeps_model_scope: ExternalModelScope = java_language_model_scope

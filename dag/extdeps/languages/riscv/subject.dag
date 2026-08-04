@@ -1,0 +1,43 @@
+module extdeps.languages.riscv.subject
+
+import std.types { String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "riscv.org/technical/specifications/"
+  }
+}
+
+data riscv_isa_further_authority_1: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "docs.riscv.org/"
+  }
+}
+
+data riscv_isa_subject_note: String = "THE RISC-V ISA, cited to RISC-V International (verified live 2026-08-04 by fetching the cited locator and confirming its title and publisher from the response, per the D0 verify-or-refuse rule): the fetched page states the specifications are 'collaboratively developed, ratified, and maintained by contributing members of RISC-V International' and lists 'The RISC-V Instruction Set Manual, Volume I' (unprivileged/user-level ISA) and 'Volume II: Privileged Architecture', available through the ratified specification library at docs.riscv.org. WHY THIS SUBJECT EXISTS ALONE AMONG THE THREE ISAs: v2.extdeps.languages.machine_code carries one Isa coproduct with three arms — X86_64Isa, Aarch64Isa, RiscV64Isa — which are three independently governed upstreams fused into one surface, the exact shape DESIGN section 3 forbids a generic hub from taking. RISC-V is registered because its specification authority verified; x86-64 and Aarch64 are NOT registered because their authorities refused this fetch, and that refusal is recorded rather than papered over with a plausible locator."
+
+type RiscV
+  = | RiscVTarget
+
+data riscv_isa: RiscV = RiscVTarget
+
+data riscv_isa_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.languages.riscv.subject",
+      decl_name: "riscv_isa",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [riscv_isa_further_authority_1]
+}
+
+data riscv_isa_mandated_scope_name_scaffold_note: String = "DECLARED SCAFFOLD, with its dissolution triggers — why the scope is authored under a unique name and the mandated name is bound to it. The authored value is the one above; 'extdeps_model_scope' is a BINDING to that same value, not a second authority, and it cannot drift from its source because it IS its source. It exists because two independent mechanisms collide. (1) gunbc.extdeps_scope_frontier's carrier_content_declares_scope text-scans every scope carrier for the literal 'data extdeps_model_scope:', so the name is mandatory. (2) The resolver offers no way to name two same-named imports apart: MEASURED 2026-08-04 against the real binary, a qualified reference (extdeps.languages.rust.subject.rust_language_model_scope) fails with 'undefined variable', module projection after an import fails the same way, no import aliasing exists in the grammar, and — the reason this is not merely inconvenient — importing one name from two modules does NOT refuse, it SILENTLY BINDS THE LAST ONE with exit 0. So a registry importing the mandated name from every carrier would ground 22 of 23 targets in the WRONG upstream scope and, because registration_subject derives the subject from the grounding, report the wrong subject for each — green and materially false. The unique name is what keeps that unwritable. DISSOLVE-ON, either trigger suffices: the resolver gains import aliasing or module projection (then the registry imports the mandated name directly and this binding deletes), OR the v2.lens.mandatory_tag region promotion retires the carrier_content_declares_scope text scan (then the mandated name is no longer required and the unique name stands alone). This is a scaffold pinned to a scaffold — carrier_content_declares_scope calls itself a declared scaffold in its own note — and they retire together. The resolver defect itself is corpus-wide and is being raised as its own lane; it is not a language-support fact."
+
+data extdeps_model_scope: ExternalModelScope = riscv_isa_model_scope
