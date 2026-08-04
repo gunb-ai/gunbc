@@ -42,7 +42,7 @@ fn bach_which_path_evidence_gap() -> BachWhichPathEvidenceGap {
 
 type BachObservedApparatus
   = BachCitedDoubleSlitApparatus { subject: BachEtAl2013DoubleSlitExperiment }
-  | BachPerturbationForeignApparatus {}
+  | BachNonCitedApparatus {}
 
 type BachBuildupProgressionRow {
   apparatus: BachObservedApparatus
@@ -110,7 +110,7 @@ fn bach_buildup_row_is_canonical_apparatus(row: BachBuildupProgressionRow) -> Bo
   match row.apparatus {
     BachCitedDoubleSlitApparatus { subject: cited_subject } =>
       cited_subject == bach_et_al_2013_double_slit
-    BachPerturbationForeignApparatus {} => false
+    BachNonCitedApparatus {} => false
   }
 }
 

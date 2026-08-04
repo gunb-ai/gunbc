@@ -4,7 +4,7 @@ import std.types { Bool, List }
 import gunbc.bach_double_slit_observation {
   BachBuildupProgressionRow,
   BachCitedDoubleSlitApparatus,
-  BachPerturbationForeignApparatus,
+  BachNonCitedApparatus,
   bach_cited_buildup_row_from_extdeps,
   bach_distribution_observations_complete,
   bach_buildup_fold_derives_ensemble_interference,
@@ -83,7 +83,7 @@ test fn w_bach_buildup_rejects_reversed_electron_order() -> Bool {
 
 test fn w_bach_buildup_rejects_foreign_apparatus() -> Bool {
   let foreign_row = BachBuildupProgressionRow {
-    apparatus: BachPerturbationForeignApparatus {},
+    apparatus: BachNonCitedApparatus {},
     detected_electrons: 1004,
     pattern_status: PatternClearlyVisible,
   }
