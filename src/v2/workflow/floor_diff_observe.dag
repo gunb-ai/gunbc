@@ -18,8 +18,13 @@ import gunbc.diff_baseline {
   PushBeforeSha,
   PushBeforeZeroShaInput,
   PushBeforeInputRefused,
+  ExactReplayBoundary,
+  MergeTarget,
   resolve_diff_baseline,
-  diff_baseline_ref
+  diff_baseline_ref,
+  diff_baseline_diff_base,
+  diff_baseline_diff_head,
+  diff_baseline_is_exact_replay
 }
 import std.types { String, NonEmptyStr, GitRef }
 import std.logic { Bool }
@@ -48,6 +53,11 @@ import extdeps.github.push_event {
   PushBeforeMalformed,
   PushEventPayloadReadRefused
 }
+import extdeps.session_dashboard.change_window {
+  gunbc_ci_change_window_path_env,
+  dashboard_replay_from_path,
+  DashboardReplayObservation
+}
 import extdeps.shell
 
 type FloorUnifiedDiffResult
@@ -70,7 +80,7 @@ fn floor_env_optional(env_name: NonEmptyStr) -> String? {
   shell.Env.Get(name: env_name).value
 }
 
-data floor_diff_baseline_law: String = "The affected-set base is RESOLVED from the CI event, not a constant (gunbc.diff_baseline; the de-fork of the origin/main policy-as-literal, DESIGN §3(c)). floor_observe_ci_diff_event reads the env facts — GUNBC_CI_DIFF_BASE (the gunbc OperatorOverride channel, e.g. the falsifier's HEAD~20 cold control), GITHUB_EVENT_NAME, GITHUB_BASE_REF (the GitHub surface extdeps.github.actions owns), GITHUB_SHA (head, for self-compare refusal), and for push events the before member from GITHUB_EVENT_PATH (extdeps.github.push_event) — and resolve_diff_baseline (pure) maps them: pull_request → MergeTarget against the PR's ACTUAL base (was silently origin/main — the stacked-PR over-selection defect #7129 hit); push → PushBefore from the event payload's before SHA (absent/zero/self-compare refuses); workflow_dispatch / merge_group / schedule / local-bootstrap → PushParent (today's DiffPolicy.base, origin/main). GUNBC_CI_DIFF_BASE → OperatorOverride. A genuinely-unrecognized event yields BaselineRefused → UnifiedDiffFail / NameStatusDiffFail → the executor HALTS the floor with a typed AFFECTED-SET REFUSAL (refuses every enrolled row, never widens to a full-corpus run; operator ruling 2026-07-05). PushBefore diffs use TwoDot (before..head); all other arms use the policy's merge-base mode."
+data floor_diff_baseline_law: String = "The affected-set base is RESOLVED from the CI event and optional dashboard replay wire, not a constant (gunbc.diff_baseline; the de-fork of the origin/main policy-as-literal, DESIGN section 3(c)). floor_observe_ci_diff_event reads GUNBC_CI_DIFF_BASE (operator override), GITHUB_EVENT_NAME, GITHUB_BASE_REF (GitHub pull-request TARGET BRANCH name only), GITHUB_SHA (push self-compare refusal), push before from GITHUB_EVENT_PATH (extdeps.github.push_event), and dashboard exact replay from GUNBC_CI_CHANGE_WINDOW_PATH (extdeps.session_dashboard.change_window). pull_request with branch base → MergeTarget (triple-dot); dashboard wire → ExactReplayBoundary (two-dot, typed GitObjectIds); push → PushBefore; other CI events → PushParent. Unrecognized events and malformed dashboard wire REFUSE — never widen."
 
 fn floor_push_before_refusal(prefix: String, detail: String) -> PushBeforeInput {
   PushBeforeInputRefused { reason: concat(concat(prefix, detail), "; halting the floor (AFFECTED-SET REFUSAL)") }
@@ -132,6 +142,18 @@ fn floor_observe_push_before_input(event_name: String) -> PushBeforeInput? {
   }
 }
 
+fn floor_observe_dashboard_replay() -> DashboardReplayObservation? {
+  match floor_env_optional(env_name: gunbc_ci_change_window_path_env) {
+    Absent => none
+    Present { value: path } =>
+      if path == "" {
+        none
+      } else {
+        Present { value: dashboard_replay_from_path(path: path) }
+      }
+  }
+}
+
 fn floor_observe_ci_diff_event() -> CiDiffEvent {
   let event_name = floor_env_override_or(env_name: github_event_name_env, default: "")
   CiDiffEvent {
@@ -139,7 +161,8 @@ fn floor_observe_ci_diff_event() -> CiDiffEvent {
     event_name: event_name,
     base_ref: floor_env_optional(env_name: github_base_ref_env),
     push_before: floor_observe_push_before_input(event_name: event_name),
-    head_sha: floor_env_optional(env_name: github_sha_variable_name as NonEmptyStr)
+    head_sha: floor_env_optional(env_name: github_sha_variable_name as NonEmptyStr),
+    dashboard_replay: floor_observe_dashboard_replay()
   }
 }
 
@@ -159,10 +182,19 @@ fn floor_resolved_head(policy: DiffPolicy) -> String {
 fn floor_diff_mode_for_baseline(baseline: DiffBaseline, policy: DiffPolicy) -> DiffMode {
   match baseline {
     PushBefore { ref: _ } => DiffTwoDot
+    ExactReplayBoundary { base: _, head: _, claimed_relation: _ } => DiffTwoDot
     MergeTarget { ref: _ } => policy.mode
     PushParent { ref: _ } => policy.mode
     OperatorOverride { ref: _ } => policy.mode
   }
+}
+
+fn floor_diff_endpoints_for_baseline(baseline: DiffBaseline, policy: DiffPolicy) -> (String, String) {
+  let default_head = floor_resolved_head(policy: policy)
+  (
+    diff_baseline_diff_base(b: baseline),
+    diff_baseline_diff_head(b: baseline, default_head: default_head)
+  )
 }
 
 fn floor_git_diff_range_of_mode(mode: DiffMode) -> GitDiffRange {
@@ -189,9 +221,10 @@ fn floor_observe_git_diff_unified(policy: DiffPolicy) -> FloorUnifiedDiffResult 
       match floor_resolve_baseline(policy: policy) {
         BaselineRefused { reason: reason } => UnifiedDiffFail { reason: reason }
         BaselineSelected { baseline: baseline } =>
+          let endpoints = floor_diff_endpoints_for_baseline(baseline: baseline, policy: policy)
           floor_run_git_diff_unified(
-            base: diff_baseline_ref(b: baseline) as String,
-            head: floor_resolved_head(policy: policy),
+            base: endpoints.0,
+            head: endpoints.1,
             mode: floor_diff_mode_for_baseline(baseline: baseline, policy: policy)
           )
       }
@@ -265,9 +298,10 @@ fn floor_observe_git_diff_name_status(policy: DiffPolicy) -> FloorNameStatusDiff
       match floor_resolve_baseline(policy: policy) {
         BaselineRefused { reason: reason } => NameStatusDiffFail { reason: reason }
         BaselineSelected { baseline: baseline } =>
+          let endpoints = floor_diff_endpoints_for_baseline(baseline: baseline, policy: policy)
           floor_run_git_diff_name_status(
-            base: diff_baseline_ref(b: baseline) as String,
-            head: floor_resolved_head(policy: policy),
+            base: endpoints.0,
+            head: endpoints.1,
             mode: floor_diff_mode_for_baseline(baseline: baseline, policy: policy)
           )
       }

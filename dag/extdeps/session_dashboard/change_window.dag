@@ -1,0 +1,166 @@
+module extdeps.session_dashboard.change_window
+
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.git.object_store {
+  GitObjectId,
+  git_object_id_from_untagged_hex,
+  git_object_id_wire_hex
+}
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.languages.json.emit { JsonValue, JsonString }
+import extdeps.languages.json.parse {
+  parse_json,
+  json_object_unique_member,
+  JsonMemberFound,
+  JsonMemberAbsent,
+  JsonMemberDuplicated,
+  JsonMemberNotAnObject
+}
+import std.types { String, NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/gunb-ai/ctrl/blob/main/scripts/session-dashboard/lib/gunbc_run.mjs"
+  }
+}
+
+data change_window_note: String = "Dashboard-owned exact replay wire for affected-PR runs. GitHub's GITHUB_BASE_REF names a pull-request TARGET BRANCH (extdeps.github.actions github_ci_event_surface_note); it is not a merge-base object id. Session-dashboard replay instead writes this structured request to the path named by GUNBC_CI_CHANGE_WINDOW_PATH so gunbc.diff_baseline can select ExactReplayBoundary without impersonating GitHub's branch field or inferring object identity from branch-name spelling."
+
+data gunbc_ci_change_window_path_env: NonEmptyStr = "GUNBC_CI_CHANGE_WINDOW_PATH"
+
+data change_window_producer_member: String = "producer"
+data change_window_realization_member: String = "realization"
+data change_window_base_object_id_member: String = "base_object_id"
+data change_window_head_object_id_member: String = "head_object_id"
+data change_window_claimed_relation_member: String = "claimed_relation"
+
+data change_window_realization_git: String = "git"
+data change_window_claimed_merge_base: String = "merge_base"
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.session_dashboard.change_window",
+      decl_name: "change_window_note",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps.session_dashboard.change_window.extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+type GitClaimedMergeBaseRelation
+  = ClaimedMergeBase
+
+type DashboardReplayObservation
+  = DashboardExactReplayObserved {
+      base: GitObjectId,
+      head: GitObjectId,
+      claimed_relation: GitClaimedMergeBaseRelation,
+      producer: String,
+    }
+  | DashboardReplayMalformed { detail: String }
+  | DashboardReplayReadRefused { path: String, cause: String }
+
+fn change_window_required_string(doc: JsonValue, key: String) -> String? {
+  match json_object_unique_member(v: doc, key: key) {
+    JsonMemberFound { value: JsonString { value: raw } } =>
+      let line = trim(raw)
+      if line == "" { none } else { Present { value: line } }
+    JsonMemberAbsent => none
+    JsonMemberDuplicated { count: _ } => none
+    JsonMemberNotAnObject => none
+    JsonMemberFound { value: _ } => none
+  }
+}
+
+fn change_window_git_object_id_from_member(doc: JsonValue, key: String) -> GitObjectId? {
+  match change_window_required_string(doc: doc, key: key) {
+    Absent => none
+    Present { value: hex } => git_object_id_from_untagged_hex(hex: hex)
+  }
+}
+
+fn change_window_claimed_relation_from_member(doc: JsonValue) -> GitClaimedMergeBaseRelation? {
+  match change_window_required_string(doc: doc, key: change_window_claimed_relation_member) {
+    Absent => none
+    Present { value: relation } =>
+      if relation == change_window_claimed_merge_base {
+        Present { value: ClaimedMergeBase }
+      } else {
+        none
+      }
+  }
+}
+
+fn dashboard_replay_from_event_json(text: String) -> DashboardReplayObservation {
+  match parse_json(s: text) {
+    Absent =>
+      DashboardReplayMalformed { detail: "change window payload is not valid JSON" }
+    Present { value: doc } =>
+      match change_window_required_string(doc: doc, key: change_window_producer_member) {
+        Absent =>
+          DashboardReplayMalformed { detail: "change window payload missing producer member" }
+        Present { value: producer } =>
+          match change_window_required_string(doc: doc, key: change_window_realization_member) {
+            Absent =>
+              DashboardReplayMalformed { detail: "change window payload missing realization member" }
+            Present { value: realization } =>
+              if realization != change_window_realization_git {
+                DashboardReplayMalformed {
+                  detail: concat("change window realization must be git, got '", realization)
+                }
+              } else {
+                match change_window_git_object_id_from_member(doc: doc, key: change_window_base_object_id_member) {
+                  Absent =>
+                    DashboardReplayMalformed {
+                      detail: "change window base_object_id is missing or not a valid git object id"
+                    }
+                  Present { value: base } =>
+                    match change_window_git_object_id_from_member(doc: doc, key: change_window_head_object_id_member) {
+                      Absent =>
+                        DashboardReplayMalformed {
+                          detail: "change window head_object_id is missing or not a valid git object id"
+                        }
+                      Present { value: head } =>
+                        match change_window_claimed_relation_from_member(doc: doc) {
+                          Absent =>
+                            DashboardReplayMalformed {
+                              detail: "change window claimed_relation must be merge_base"
+                            }
+                          Present { value: claimed_relation } =>
+                            if git_object_id_wire_hex(oid: base) == git_object_id_wire_hex(oid: head) {
+                              DashboardReplayMalformed {
+                                detail: "change window base_object_id equals head_object_id — self-compare refused"
+                              }
+                            } else {
+                              DashboardExactReplayObserved {
+                                base: base,
+                                head: head,
+                                claimed_relation: claimed_relation,
+                                producer: producer
+                              }
+                            }
+                        }
+                    }
+                }
+              }
+          }
+      }
+  }
+}
+
+fn dashboard_replay_from_path(path: String) -> DashboardReplayObservation {
+  let read = Filesystem.Read(path: path)
+  if read.success {
+    dashboard_replay_from_event_json(text: read.content)
+  } else {
+    DashboardReplayReadRefused {
+      path: path,
+      cause: read.error
+    }
+  }
+}
