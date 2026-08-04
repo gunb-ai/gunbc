@@ -62,7 +62,7 @@ import std.language_target_identity {
   language_target_join_violations,
 }
 
-data language_target_registry_totality_law: String = "NO INVISIBLE REMAINDER (operator requirement C, 2026-08-04). This registry may not read as complete because two specimen rows exist. Every target-bearing surface this repository currently carries is EITHER joined to a registered subject OR appears here as an exact row with no identity, which the join kernel then reports as SurfaceMissingTargetIdentity. A surface that is simply absent from these lists is the one state the wall cannot see, which is why the population definition below is declared rather than implied, and why the TargetVocabulary rows carry an explicit scaffold note rather than a silent transcription. The registry now registers 26 subjects, so most rows below ARE identified; the ones that are not — machine_code, the two runtime checkers, the legacy frontier table — each carry a note stating why joining them to a subject would be wrong rather than merely undone. Read those notes before treating an unidentified row as outstanding work: two of the four are deliberate and correct."
+data language_target_registry_totality_law: String = "NO INVISIBLE REMAINDER (operator requirement C, 2026-08-04). This registry may not read as complete because two specimen rows exist. Every target-bearing surface this repository currently carries is EITHER joined to a registered subject OR appears here as an exact row with no identity, which the join kernel then reports as SurfaceMissingTargetIdentity. A surface that is simply absent from these lists is the one state the wall cannot see, which is why the population definition below is declared rather than implied, and why the TargetVocabulary rows carry an explicit scaffold note rather than a silent transcription. The registry now registers 26 subjects, so most rows below ARE identified; the ones that are not — machine_code and the legacy frontier prose table — each carry a note stating why joining them to a subject would be WRONG rather than merely undone, and both are deliberate. CORRECTED 2026-08-04 (review 48151): this sentence previously also listed the two runtime checkers as unidentified, which stopped being true in this same change when cargo was bound to Rust and the interpreter to Python. The authority describing the census contradicted the census two hundred lines below it — the stale-prose class this registry has now hit four times in a day, and the reason every correction here quotes what it replaced."
 
 data language_target_registry_vocabulary_scaffold_note: String = "DECLARED SCAFFOLD, with its dissolution trigger — the TargetVocabulary rows below are HAND-DECLARED, and they were meant to be derived. The intent was to read v2.lens.realization_vocabulary_containment's target_ast_vocab_modules and target_ast_vocab_module_prefixes directly, so a module added to the lens would appear here automatically as an unidentified surface and the second-hardcoded-roster fork would close by construction. THAT IMPORT DOES NOT COMPILE TODAY, and the blocker is not in this module: the lens fails to resolve fold_list and list_snoc_item from v2.std.algebra even when compiled from its OWN source root as the entry — measured 2026-08-04. That is the Class B pool-membership defect DESIGN's import-strip open thread describes: a module's bare cross-module references resolve only when some unrelated import elsewhere in the assembled closure has already dragged the target into the pool, so the lens resolves inside the whole-corpus compile and not in a narrow closure. Transcribing the two lists here would be the workaround DESIGN section 5 forbids — an unmarked second representation of the very roster this registry exists to unfork — so they are declared as a counted scaffold instead. DISSOLVE-ON: the lens resolves under a narrow closure (Class B fix), at which point these rows become the fold over its lists; and ultimately the reverse direction, the lens deriving its confined set FROM this registry, which is the obl-lang-support-registry to obl-lang-no-new-debt-gate prerequisite edge and is not done here."
 
@@ -74,7 +74,7 @@ data registry_revision_note: String = "WHY THERE IS NO PINNED REVISION STAMP HER
 
 data subject_ref_derivation_note: String = "EVERY SUBJECT REF BELOW IS A PROJECTION OF ITS SCOPE, never re-authored beside it. An earlier revision declared gnu_bash_subject_ref as a hand-written DeclarationRef repeating the module path and decl name the scope already carries — two writable representations of one identity, which can disagree exactly the way target_grounding_law describes. Reading scope.subject instead makes the disagreeing state unrepresentable: there is only one place the subject is stated, and it is the carrier that also holds the citations. Verified by execution 2026-08-04 that a top-level data declaration may project a field of an imported scope, so this costs nothing."
 
-data gnu_bash_subject_ref: ExternalSubjectRef = gnu_bash_model_scope.subject
+data gnu_bash_subject_ref: DeclarationRef = gnu_bash_model_scope.subject.declaration
 
 data d0_subject_registration_note: String = "D0 IS THE ROWS, AND THIS IS WHAT REPLACED THE BLOCKER NOTE THAT STOOD HERE. The previous revision recorded that registering TypeScript, C, C++, Verilog, SPICE, Python, Go, Java, Kotlin, Swift, LLVM IR, WebAssembly, PTX, machine code, Lean, SQL, HTML, CSS, ECMAScript, JSON, YAML and Markdown was impossible because the construction wall requires a TargetGrounding and NONE of them had a cited subject declaration — Bash was the only one, and it had only just been authored. Twenty-three cited subject carriers now exist under dag/extdeps/languages/*/subject.dag, each enrolled in scope_carrier_paths, and the registry registers 26 targets: 24 external plus the two project-grounded ones. THE CITATION RULE THIS BATCH FOLLOWED, because it is the whole value of the rows: every locator was FETCHED LIVE on 2026-08-04 and its title and publisher confirmed from the response before it was written down. None was recalled. Where an upstream could not be read, the target was NOT registered and the cause was recorded in unregistered_target_findings — three of them — because a plausible URL for an unverified authority would make the wall green while grounding it in nothing, which is worse than the honest absence the blocker note described."
 
@@ -279,34 +279,34 @@ data english_formal_sentence_authority: DeclarationRef = DeclarationRef {
   field: WholeDeclaration
 }
 
-data dag_subject_ref: ExternalSubjectRef = ExternalSubjectRef { declaration: dag_syntax_authority }
+data dag_subject_ref: DeclarationRef = dag_syntax_authority
 
-data c_language_subject_ref: ExternalSubjectRef = c_language_model_scope.subject
-data cpp_language_subject_ref: ExternalSubjectRef = cpp_language_model_scope.subject
-data css_language_subject_ref: ExternalSubjectRef = css_language_model_scope.subject
-data ecmascript_language_subject_ref: ExternalSubjectRef = ecmascript_language_model_scope.subject
-data go_language_subject_ref: ExternalSubjectRef = go_language_model_scope.subject
-data html_language_subject_ref: ExternalSubjectRef = html_language_model_scope.subject
-data java_language_subject_ref: ExternalSubjectRef = java_language_model_scope.subject
-data json_format_subject_ref: ExternalSubjectRef = json_format_model_scope.subject
-data jsx_language_subject_ref: ExternalSubjectRef = jsx_language_model_scope.subject
-data kotlin_language_subject_ref: ExternalSubjectRef = kotlin_language_model_scope.subject
-data lean_language_subject_ref: ExternalSubjectRef = lean_language_model_scope.subject
-data llvm_ir_language_subject_ref: ExternalSubjectRef = llvm_ir_language_model_scope.subject
-data commonmark_format_subject_ref: ExternalSubjectRef = commonmark_format_model_scope.subject
-data ptx_language_subject_ref: ExternalSubjectRef = ptx_language_model_scope.subject
-data python_language_subject_ref: ExternalSubjectRef = python_language_model_scope.subject
-data riscv_isa_subject_ref: ExternalSubjectRef = riscv_isa_model_scope.subject
-data rust_language_subject_ref: ExternalSubjectRef = rust_language_model_scope.subject
-data spice_netlist_language_subject_ref: ExternalSubjectRef = spice_netlist_language_model_scope.subject
+data c_language_subject_ref: DeclarationRef = c_language_model_scope.subject.declaration
+data cpp_language_subject_ref: DeclarationRef = cpp_language_model_scope.subject.declaration
+data css_language_subject_ref: DeclarationRef = css_language_model_scope.subject.declaration
+data ecmascript_language_subject_ref: DeclarationRef = ecmascript_language_model_scope.subject.declaration
+data go_language_subject_ref: DeclarationRef = go_language_model_scope.subject.declaration
+data html_language_subject_ref: DeclarationRef = html_language_model_scope.subject.declaration
+data java_language_subject_ref: DeclarationRef = java_language_model_scope.subject.declaration
+data json_format_subject_ref: DeclarationRef = json_format_model_scope.subject.declaration
+data jsx_language_subject_ref: DeclarationRef = jsx_language_model_scope.subject.declaration
+data kotlin_language_subject_ref: DeclarationRef = kotlin_language_model_scope.subject.declaration
+data lean_language_subject_ref: DeclarationRef = lean_language_model_scope.subject.declaration
+data llvm_ir_language_subject_ref: DeclarationRef = llvm_ir_language_model_scope.subject.declaration
+data commonmark_format_subject_ref: DeclarationRef = commonmark_format_model_scope.subject.declaration
+data ptx_language_subject_ref: DeclarationRef = ptx_language_model_scope.subject.declaration
+data python_language_subject_ref: DeclarationRef = python_language_model_scope.subject.declaration
+data riscv_isa_subject_ref: DeclarationRef = riscv_isa_model_scope.subject.declaration
+data rust_language_subject_ref: DeclarationRef = rust_language_model_scope.subject.declaration
+data spice_netlist_language_subject_ref: DeclarationRef = spice_netlist_language_model_scope.subject.declaration
 
-data ngspice_simulator_subject_ref: ExternalSubjectRef = ngspice_simulator_model_scope.subject
+data ngspice_simulator_subject_ref: DeclarationRef = ngspice_simulator_model_scope.subject.declaration
 
 data target_runtime_binding_note: String = "WHICH RUNTIME EXECUTES A TARGET IS A SEPARATE FACT FROM WHAT THE TARGET IS (cursor review 48122, P0). Fusing them is what made ngspice look like a language: the registry registered the simulator, gave it the netlist's file extensions, and joined it to a surface that models a generic SpiceNetlist. Split here into two subjects plus this binding, so the medium can gain a second runtime without either subject changing — which is the whole test of whether the split was real. A binding is NOT a support claim: it says which tool WOULD execute this target, not that any execution receipt exists. SPICE's frontier row is bar-b, meaning the witness compares emitted text to a golden file and never runs ngspice at all, so this binding is precisely the thing an execution receipt would later discharge."
 
 type TargetRuntimeBinding {
-  target: ExternalSubjectRef
-  runtime: ExternalSubjectRef
+  target: DeclarationRef
+  runtime: DeclarationRef
 }
 
 data target_runtime_bindings: List<TargetRuntimeBinding> = [
@@ -319,13 +319,13 @@ data target_runtime_bindings: List<TargetRuntimeBinding> = [
 fn target_runtime_binding_count() -> Int {
   fold(target_runtime_bindings, init: 0, f: fn(acc, b) { acc + 1 })
 }
-data swift_language_subject_ref: ExternalSubjectRef = swift_language_model_scope.subject
-data typescript_language_subject_ref: ExternalSubjectRef = typescript_language_model_scope.subject
-data verilog_language_subject_ref: ExternalSubjectRef = verilog_language_model_scope.subject
-data webassembly_language_subject_ref: ExternalSubjectRef = webassembly_language_model_scope.subject
-data yaml_format_subject_ref: ExternalSubjectRef = yaml_format_model_scope.subject
+data swift_language_subject_ref: DeclarationRef = swift_language_model_scope.subject.declaration
+data typescript_language_subject_ref: DeclarationRef = typescript_language_model_scope.subject.declaration
+data verilog_language_subject_ref: DeclarationRef = verilog_language_model_scope.subject.declaration
+data webassembly_language_subject_ref: DeclarationRef = webassembly_language_model_scope.subject.declaration
+data yaml_format_subject_ref: DeclarationRef = yaml_format_model_scope.subject.declaration
 
-data english_subject_ref: ExternalSubjectRef = ExternalSubjectRef { declaration: english_formal_sentence_authority }
+data english_subject_ref: DeclarationRef = english_formal_sentence_authority
 
 fn registered_target_count() -> Int {
   fold(registered_language_targets, init: 0, f: fn(a, _r) { a + 1 })
@@ -429,7 +429,7 @@ fn identified_decl_row(
   authority: LanguageTargetSurfaceAuthority,
   module_path: String,
   decl_name: String,
-  subject: ExternalSubjectRef
+  subject: DeclarationRef
 ) -> LanguageTargetSurfaceRow {
   LanguageTargetSurfaceRow {
     authority: authority,
@@ -447,7 +447,7 @@ fn identified_decl_row(
 fn identified_module_row(
   authority: LanguageTargetSurfaceAuthority,
   module_path: String,
-  subject: ExternalSubjectRef
+  subject: DeclarationRef
 ) -> LanguageTargetSurfaceRow {
   LanguageTargetSurfaceRow {
     authority: authority,

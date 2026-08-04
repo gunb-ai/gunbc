@@ -9,7 +9,7 @@ import std.language_target_identity {
   TargetResolved,
   TargetSurfaceUnregistered,
   TargetSurfaceAmbiguous,
-  TargetSubjectUnresolvable,
+  TargetNotRegistered,
   resolve_target_for_surface,
 }
 import std.language_target_identity {
@@ -19,6 +19,7 @@ import std.language_target_identity {
   LanguageIdLookup,
   LanguageIdResolved,
   LanguageIdUnregistered,
+  LanguageIdAmbiguous,
 }
 import std.roster_frontier { declaration_ref_eq }
 import std.language_target_identity {
@@ -54,10 +55,10 @@ test fn bash_vocabulary_surface_joins_the_bash_subject() -> Bool {
     rows: language_target_surface_census,
     registry: registered_language_targets
   ) {
-    TargetResolved { target: t } => external_subject_ref_eq(a: t, b: gnu_bash_subject_ref)
+    TargetResolved { target: t } => declaration_ref_eq(a: t, b: gnu_bash_subject_ref)
     TargetSurfaceUnregistered { surface: _ } => false
     TargetSurfaceAmbiguous { surface: _, candidates: _ } => false
-    TargetSubjectUnresolvable { subject: _ } => false
+    TargetNotRegistered { target: _ } => false
   }
 }
 
@@ -69,10 +70,10 @@ test fn typescript_vocabulary_surface_resolves_to_the_typescript_subject() -> Bo
     rows: language_target_surface_census,
     registry: registered_language_targets
   ) {
-    TargetResolved { target: t } => external_subject_ref_eq(a: t, b: typescript_language_subject_ref)
+    TargetResolved { target: t } => declaration_ref_eq(a: t, b: typescript_language_subject_ref)
     TargetSurfaceUnregistered { surface: _ } => false
     TargetSurfaceAmbiguous { surface: _, candidates: _ } => false
-    TargetSubjectUnresolvable { subject: _ } => false
+    TargetNotRegistered { target: _ } => false
   }
 }
 
@@ -85,7 +86,7 @@ test fn machine_code_surface_is_visibly_unidentified() -> Bool {
     TargetSurfaceUnregistered { surface: _ } => true
     TargetResolved { target: _ } => false
     TargetSurfaceAmbiguous { surface: _, candidates: _ } => false
-    TargetSubjectUnresolvable { subject: _ } => false
+    TargetNotRegistered { target: _ } => false
   }
 }
 
@@ -103,7 +104,7 @@ test fn a_surface_absent_from_the_registry_does_not_resolve() -> Bool {
     TargetSurfaceUnregistered { surface: _ } => true
     TargetResolved { target: _ } => false
     TargetSurfaceAmbiguous { surface: _, candidates: _ } => false
-    TargetSubjectUnresolvable { subject: _ } => false
+    TargetNotRegistered { target: _ } => false
   }
 }
 
@@ -132,8 +133,9 @@ data legacy_id_direction_note: String = "THE SHARPEST AVAILABLE STATEMENT OF 'A 
 
 test fn claimed_legacy_language_id_projects_to_its_subject() -> Bool {
   match lookup_language_id(language_id: "rust") {
-    LanguageIdResolved { target: t } => external_subject_ref_eq(a: t, b: rust_language_subject_ref)
+    LanguageIdResolved { target: t } => declaration_ref_eq(a: t, b: rust_language_subject_ref)
     LanguageIdUnregistered { language_id: _ } => false
+    LanguageIdAmbiguous { language_id: _, first: _, second: _ } => false
   }
 }
 
@@ -141,6 +143,7 @@ test fn red_registered_subject_with_no_legacy_id_still_refuses_lookup() -> Bool 
   match lookup_language_id(language_id: "bash") {
     LanguageIdUnregistered { language_id: l } => l == "bash"
     LanguageIdResolved { target: _ } => false
+    LanguageIdAmbiguous { language_id: _, first: _, second: _ } => false
   }
 }
 
@@ -148,6 +151,7 @@ test fn red_unknown_legacy_id_refuses_rather_than_defaulting() -> Bool {
   match lookup_language_id(language_id: "not_a_language") {
     LanguageIdUnregistered { language_id: _ } => true
     LanguageIdResolved { target: _ } => false
+    LanguageIdAmbiguous { language_id: _, first: _, second: _ } => false
   }
 }
 
@@ -155,7 +159,7 @@ data project_grounding_note: String = "Controls for the ProjectGrounding arm, wh
 
 test fn project_grounded_target_derives_its_own_authority_as_subject() -> Bool {
   fold(registered_language_targets, init: false, f: fn(acc, r) {
-    acc || declaration_ref_eq(a: registration_subject(registration: r), b: dag_subject_ref.declaration)
+    acc || declaration_ref_eq(a: registration_subject(registration: r), b: dag_subject_ref)
   })
 }
 

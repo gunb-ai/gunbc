@@ -1,5 +1,6 @@
 module test.claim.language_target_identity_witness
 
+import std.roster_frontier { declaration_ref_eq }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.types { Bool, List, String }
 import extdeps.external_authority { ExternalSubjectRef, external_subject_ref_eq }
@@ -28,11 +29,12 @@ import std.language_target_identity {
   SurfaceMissingTargetIdentity,
   SurfaceNamesUnknownTarget,
   DuplicateRegistryTarget,
+  DuplicateSurfaceLocus,
   LanguageTargetResolution,
   TargetResolved,
   TargetSurfaceUnregistered,
   TargetSurfaceAmbiguous,
-  TargetSubjectUnresolvable,
+  TargetNotRegistered,
   resolve_target_for_surface,
   language_target_join_violations,
   language_target_join_clean,
@@ -48,22 +50,18 @@ fn ref_of(module_path: String, decl_name: String) -> DeclarationRef {
   }
 }
 
-fn bash_subject() -> ExternalSubjectRef {
-  ExternalSubjectRef {
-    declaration: ref_of(
-      module_path: "extdeps.languages.bash.subject",
-      decl_name: "gnu_bash"
-    )
-  }
+fn bash_subject() -> DeclarationRef {
+  ref_of(
+    module_path: "extdeps.languages.bash.subject",
+    decl_name: "gnu_bash"
+  )
 }
 
-fn unregistered_subject() -> ExternalSubjectRef {
-  ExternalSubjectRef {
-    declaration: ref_of(
-      module_path: "extdeps.languages.verilog.subject",
-      decl_name: "verilog"
-    )
-  }
+fn unregistered_subject() -> DeclarationRef {
+  ref_of(
+    module_path: "extdeps.languages.verilog.subject",
+    decl_name: "verilog"
+  )
 }
 
 fn bash_registration() -> LanguageTargetRegistration {
@@ -91,10 +89,10 @@ test fn green_registered_bash_surface_resolves_to_the_bash_subject() -> Bool {
     rows: [bash_grammar_row()],
     registry: [bash_registration()]
   ) {
-    TargetResolved { target: t } => external_subject_ref_eq(a: t, b: bash_subject())
+    TargetResolved { target: t } => declaration_ref_eq(a: t, b: bash_subject())
     TargetSurfaceUnregistered { surface: _ } => false
     TargetSurfaceAmbiguous { surface: _, candidates: _ } => false
-    TargetSubjectUnresolvable { subject: _ } => false
+    TargetNotRegistered { target: _ } => false
   }
 }
 
@@ -120,8 +118,10 @@ test fn red_surface_without_identity_refuses() -> Bool {
         SurfaceMissingTargetIdentity { authority: _, surface: s } => surface_locus_eq(a: s, b: SurfaceDeclaration { ref: ref_of(module_path: "std.languages", decl_name: "rust_language") })
         SurfaceNamesUnknownTarget { authority: _, surface: _, named: _ } => false
         DuplicateRegistryTarget { target: _ } => false
+        DuplicateSurfaceLocus { surface: _ } => false
         SurfaceJoinsMultipleTargets { authority: _, surface: _, first: _, second: _ } => false
         TargetVocabularyHasNoRegistryTarget { surface: _ } => false
+        DuplicateSurfaceLocus { surface: _ } => false
       }
     })
 }
@@ -139,11 +139,13 @@ test fn red_surface_naming_unregistered_subject_refuses() -> Bool {
     f: fn(acc, v) {
       acc || match v {
         SurfaceNamesUnknownTarget { authority: _, surface: _, named: n } =>
-          external_subject_ref_eq(a: n, b: unregistered_subject())
+          declaration_ref_eq(a: n, b: unregistered_subject())
         SurfaceMissingTargetIdentity { authority: _, surface: _ } => false
         DuplicateRegistryTarget { target: _ } => false
+        DuplicateSurfaceLocus { surface: _ } => false
         SurfaceJoinsMultipleTargets { authority: _, surface: _, first: _, second: _ } => false
         TargetVocabularyHasNoRegistryTarget { surface: _ } => false
+        DuplicateSurfaceLocus { surface: _ } => false
       }
     })
 }
@@ -155,11 +157,12 @@ test fn red_duplicate_registration_refuses() -> Bool {
   )
   fold(violations, init: false, f: fn(acc, v) {
     acc || match v {
-      DuplicateRegistryTarget { target: t } => external_subject_ref_eq(a: t, b: bash_subject())
+      DuplicateRegistryTarget { target: t } => declaration_ref_eq(a: t, b: bash_subject())
       SurfaceMissingTargetIdentity { authority: _, surface: _ } => false
       SurfaceNamesUnknownTarget { authority: _, surface: _, named: _ } => false
       SurfaceJoinsMultipleTargets { authority: _, surface: _, first: _, second: _ } => false
       TargetVocabularyHasNoRegistryTarget { surface: _ } => false
+      DuplicateSurfaceLocus { surface: _ } => false
     }
   })
 }
@@ -174,7 +177,7 @@ test fn red_unregistered_surface_reports_located_refusal_not_silence() -> Bool {
     TargetSurfaceUnregistered { surface: s } => surface_locus_eq(a: s, b: unknown)
     TargetResolved { target: _ } => false
     TargetSurfaceAmbiguous { surface: _, candidates: _ } => false
-    TargetSubjectUnresolvable { subject: _ } => false
+    TargetNotRegistered { target: _ } => false
   }
 }
 
@@ -195,7 +198,7 @@ test fn red_two_rows_disagreeing_about_one_surface_refuse_as_ambiguous() -> Bool
     TargetSurfaceAmbiguous { surface: _, candidates: c } => fold(c, init: 0, f: fn(a, _x) { a + 1 }) == 2
     TargetResolved { target: _ } => false
     TargetSurfaceUnregistered { surface: _ } => false
-    TargetSubjectUnresolvable { subject: _ } => false
+    TargetNotRegistered { target: _ } => false
   }
 }
 
@@ -212,8 +215,8 @@ test fn red_surface_naming_subject_absent_from_registry_is_unresolvable() -> Boo
     rows: rows,
     registry: [bash_registration()]
   ) {
-    TargetSubjectUnresolvable { subject: s } =>
-      external_subject_ref_eq(a: s, b: unregistered_subject())
+    TargetNotRegistered { target: t } =>
+      declaration_ref_eq(a: t, b: unregistered_subject())
     TargetResolved { target: _ } => false
     TargetSurfaceUnregistered { surface: _ } => false
     TargetSurfaceAmbiguous { surface: _, candidates: _ } => false
@@ -240,7 +243,9 @@ test fn red_surface_named_by_two_targets_emits_joins_multiple() -> Bool {
         SurfaceMissingTargetIdentity { authority: _, surface: _ } => false
         SurfaceNamesUnknownTarget { authority: _, surface: _, named: _ } => false
         TargetVocabularyHasNoRegistryTarget { surface: _ } => false
+        DuplicateSurfaceLocus { surface: _ } => false
         DuplicateRegistryTarget { target: _ } => false
+        DuplicateSurfaceLocus { surface: _ } => false
       }
     })
 }
@@ -263,6 +268,7 @@ test fn red_unidentified_vocabulary_surface_emits_its_own_class() -> Bool {
         SurfaceMissingTargetIdentity { authority: _, surface: _ } => false
         SurfaceNamesUnknownTarget { authority: _, surface: _, named: _ } => false
         DuplicateRegistryTarget { target: _ } => false
+        DuplicateSurfaceLocus { surface: _ } => false
       }
     })
 }
@@ -282,6 +288,7 @@ test fn multi_target_surface_reported_once_not_per_row() -> Bool {
         SurfaceNamesUnknownTarget { authority: _, surface: _, named: _ } => 0
         TargetVocabularyHasNoRegistryTarget { surface: _ } => 0
         DuplicateRegistryTarget { target: _ } => 0
+        DuplicateSurfaceLocus { surface: _ } => 0
       }
     }) == 1
 }
