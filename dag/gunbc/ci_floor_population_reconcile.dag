@@ -3,76 +3,183 @@ module gunbc.ci_floor_population_reconcile
 import std.types { Bool, NonEmptyStr }
 import std.nat { Nat }
 import std.measure { Millisecond, millisecond, millisecond_count, measure_add, basis_point, basis_point_count }
-
-type PopulationReceiptKind
-  = PhaseJournal {}
-  | BatchWall {}
-  | Component {}
-  | Resolve {}
-  | Selection {}
-  | Materialization {}
-  | OnSuccessStage {}
-  | NativeTransition {}
-  | PopulationBudgetRefusal {}
-  | PreWalkCapture {}
-
-type PopulationObservation
-  = ObservedWall { kind: PopulationReceiptKind, wall: Millisecond }
-  | MissingArtifact { kind: PopulationReceiptKind }
-  | NotApplicable { kind: PopulationReceiptKind }
+import gunbc.ci_floor_population_receipt_registry { CiEvidenceSubject, ci_evidence_subject_incomplete }
 
 type MechanismEvidenceSettle
   = Delivered {}
   | NotDelivered { reason: NonEmptyStr }
   | MissingArtifactOpen { owed: NonEmptyStr }
 
-type CiJobPopulationPartition {
-  pre_walk_capture: PopulationObservation,
-  discovery_resolve: PopulationObservation,
-  discovery_eval: PopulationObservation,
-  on_success_stages: PopulationObservation,
-  named_remainder: PopulationObservation,
+type ExclusiveElapsedObservation
+  = ObservedExclusiveWall { wall: Millisecond }
+  | MissingExclusiveObservation { owed: NonEmptyStr }
+  | NotApplicableExclusive { reason: NonEmptyStr }
+
+type NestedBatchDiagnostic
+  = NestedObserved { label: NonEmptyStr, wall: Millisecond }
+  | NestedMissing { label: NonEmptyStr }
+
+type CiJobExclusivePopulations {
+  subject: CiEvidenceSubject,
+  checkout_setup: ExclusiveElapsedObservation,
+  release_bin_transfer: ExclusiveElapsedObservation,
+  floor_wrapper_elapsed: ExclusiveElapsedObservation,
+  post_floor_observation: ExclusiveElapsedObservation,
+  receipt_upload: ExclusiveElapsedObservation,
 }
 
-fn observed_wall_ms(o: PopulationObservation) -> Nat {
+type NestedFloorDiagnostics {
+  pre_walk: NestedBatchDiagnostic,
+  resolve_sum: NestedBatchDiagnostic,
+  evaluation_sum: NestedBatchDiagnostic,
+  assembly_spans: NestedBatchDiagnostic,
+}
+
+type PopulationReconciliation
+  = Reconciled {
+      classified_wall: Millisecond,
+      unattributed_wall: Millisecond,
+      attribution_ratio_basis_points: Nat
+    }
+  | InsufficientAttribution {
+      classified_wall: Millisecond,
+      unattributed_wall: Millisecond,
+      attribution_ratio_basis_points: Nat
+    }
+  | MissingRequiredObservation { owed: NonEmptyStr }
+  | MixedSubjects { detail: NonEmptyStr }
+  | DuplicatePopulation { kind: NonEmptyStr }
+  | OverAttributed {
+      classified_wall: Millisecond,
+      ci_job_wall: Millisecond
+    }
+
+fn exclusive_observed_ms(o: ExclusiveElapsedObservation) -> Nat {
   match o {
-    ObservedWall { kind: _, wall } => millisecond_count(m: wall)
-    MissingArtifact { kind: _ } => 0
-    NotApplicable { kind: _ } => 0
+    ObservedExclusiveWall { wall } => millisecond_count(m: wall)
+    MissingExclusiveObservation { owed: _ } => 0
+    NotApplicableExclusive { reason: _ } => 0
   }
 }
 
-fn partition_assigned_wall(p: CiJobPopulationPartition) -> Millisecond {
-  let a = observed_wall_ms(o: p.pre_walk_capture)
-  let b = observed_wall_ms(o: p.discovery_resolve)
-  let c = observed_wall_ms(o: p.discovery_eval)
-  let d = observed_wall_ms(o: p.on_success_stages)
-  let e = observed_wall_ms(o: p.named_remainder)
+fn exclusive_classified_wall(p: CiJobExclusivePopulations) -> Millisecond {
+  let a = exclusive_observed_ms(o: p.checkout_setup)
+  let b = exclusive_observed_ms(o: p.release_bin_transfer)
+  let c = exclusive_observed_ms(o: p.floor_wrapper_elapsed)
+  let d = exclusive_observed_ms(o: p.post_floor_observation)
+  let e = exclusive_observed_ms(o: p.receipt_upload)
   millisecond(count: a + b + c + d + e)
 }
 
-fn partition_attribution_basis_points(assigned: Millisecond, ci_job: Millisecond) -> Nat {
-  let assigned_ms = millisecond_count(m: assigned)
+fn any_exclusive_missing(p: CiJobExclusivePopulations) -> Bool {
+  match p.checkout_setup {
+    MissingExclusiveObservation { owed: _ } => true
+    _ => match p.release_bin_transfer {
+      MissingExclusiveObservation { owed: _ } => true
+      _ => match p.floor_wrapper_elapsed {
+        MissingExclusiveObservation { owed: _ } => true
+        _ => match p.post_floor_observation {
+          MissingExclusiveObservation { owed: _ } => true
+          _ => match p.receipt_upload {
+            MissingExclusiveObservation { owed: _ } => true
+            _ => false
+          }
+        }
+      }
+    }
+  }
+}
+
+fn first_exclusive_missing_owed(p: CiJobExclusivePopulations) -> NonEmptyStr {
+  match p.checkout_setup {
+    MissingExclusiveObservation { owed } => owed
+    _ => match p.release_bin_transfer {
+      MissingExclusiveObservation { owed } => owed
+      _ => match p.floor_wrapper_elapsed {
+        MissingExclusiveObservation { owed } => owed
+        _ => match p.post_floor_observation {
+          MissingExclusiveObservation { owed } => owed
+          _ => match p.receipt_upload {
+            MissingExclusiveObservation { owed } => owed
+            _ => "no-missing-exclusive" as NonEmptyStr
+          }
+        }
+      }
+    }
+  }
+}
+
+fn attribution_ratio_basis_points(classified: Millisecond, ci_job: Millisecond) -> Nat {
+  let classified_ms = millisecond_count(m: classified)
   let ci_job_ms = millisecond_count(m: ci_job)
   if ci_job_ms == 0 {
     basis_point_count(bp: basis_point(count: 0))
   } else {
-    basis_point_count(bp: basis_point(count: (assigned_ms * 10000) / ci_job_ms))
+    basis_point_count(bp: basis_point(count: (classified_ms * 10000) / ci_job_ms))
   }
 }
 
-fn partition_meets_ninety_five_percent(assigned: Millisecond, ci_job: Millisecond) -> Bool {
-  let bp = partition_attribution_basis_points(assigned: assigned, ci_job: ci_job)
-  bp >= 9500
+fn reconcile_exclusive_against_job_wall(
+  classified: Millisecond,
+  ci_job: Millisecond
+) -> PopulationReconciliation {
+  let classified_ms = millisecond_count(m: classified)
+  let ci_job_ms = millisecond_count(m: ci_job)
+  if classified_ms > ci_job_ms {
+    OverAttributed { classified_wall: classified, ci_job_wall: ci_job }
+  } else {
+    let unattributed = millisecond(count: ci_job_ms - classified_ms)
+    let ratio = attribution_ratio_basis_points(classified: classified, ci_job: ci_job)
+    let unattributed_bp = basis_point_count(bp: basis_point(count: ((ci_job_ms - classified_ms) * 10000) / ci_job_ms))
+    if unattributed_bp <= 500 {
+      Reconciled {
+        classified_wall: classified,
+        unattributed_wall: unattributed,
+        attribution_ratio_basis_points: ratio
+      }
+    } else {
+      InsufficientAttribution {
+        classified_wall: classified,
+        unattributed_wall: unattributed,
+        attribution_ratio_basis_points: ratio
+      }
+    }
+  }
 }
 
-fn harvested_subject_a_partial_partition() -> CiJobPopulationPartition {
-  CiJobPopulationPartition {
-    pre_walk_capture: ObservedWall { kind: PreWalkCapture {}, wall: millisecond(count: 110820) },
-    discovery_resolve: ObservedWall { kind: Resolve {}, wall: millisecond(count: 431122) },
-    discovery_eval: ObservedWall { kind: BatchWall {}, wall: millisecond(count: 65016) },
-    on_success_stages: MissingArtifact { kind: OnSuccessStage {} },
-    named_remainder: MissingArtifact { kind: PhaseJournal {} },
+fn reconcile_ci_job_populations(
+  populations: CiJobExclusivePopulations,
+  ci_job: Millisecond
+) -> PopulationReconciliation {
+  if any_exclusive_missing(p: populations) {
+    MissingRequiredObservation { owed: first_exclusive_missing_owed(p: populations) }
+  } else {
+    reconcile_exclusive_against_job_wall(
+      classified: exclusive_classified_wall(p: populations),
+      ci_job: ci_job
+    )
+  }
+}
+
+fn remainder_inflate_would_false_green(
+  exclusive_classified: Millisecond,
+  remainder: Millisecond,
+  ci_job: Millisecond
+) -> Bool {
+  let with_remainder = measure_add(a: exclusive_classified, b: remainder)
+  match reconcile_exclusive_against_job_wall(classified: with_remainder, ci_job: ci_job) {
+    Reconciled { classified_wall: _, unattributed_wall: _, attribution_ratio_basis_points: _ } => true
+    _ => false
+  }
+}
+
+fn exclusive_classified_stays_insufficient_without_remainder(
+  exclusive_classified: Millisecond,
+  ci_job: Millisecond
+) -> Bool {
+  match reconcile_exclusive_against_job_wall(classified: exclusive_classified, ci_job: ci_job) {
+    InsufficientAttribution { classified_wall: _, unattributed_wall: _, attribution_ratio_basis_points: _ } => true
+    _ => false
   }
 }
 
@@ -80,15 +187,60 @@ fn harvested_subject_a_ci_job_wall() -> Millisecond {
   millisecond(count: 2509000)
 }
 
-fn harvested_subject_a_assigned_wall() -> Millisecond {
-  partition_assigned_wall(p: harvested_subject_a_partial_partition())
+fn harvested_subject_a_nested_diagnostics() -> NestedFloorDiagnostics {
+  NestedFloorDiagnostics {
+    pre_walk: NestedObserved { label: "pre_walk_capture" as NonEmptyStr, wall: millisecond(count: 110820) },
+    resolve_sum: NestedObserved { label: "discovery_resolve" as NonEmptyStr, wall: millisecond(count: 431122) },
+    evaluation_sum: NestedObserved { label: "discovery_eval" as NonEmptyStr, wall: millisecond(count: 65016) },
+    assembly_spans: NestedMissing { label: "assembly_spans" as NonEmptyStr },
+  }
 }
 
-fn harvested_subject_a_meets_ninety_five_percent() -> Bool {
-  partition_meets_ninety_five_percent(
-    assigned: harvested_subject_a_assigned_wall(),
+fn harvested_subject_a_exclusive_populations() -> CiJobExclusivePopulations {
+  CiJobExclusivePopulations {
+    subject: ci_evidence_subject_incomplete(),
+    checkout_setup: MissingExclusiveObservation { owed: "github step elapsed: checkout/setup/toolchain" as NonEmptyStr },
+    release_bin_transfer: MissingExclusiveObservation { owed: "github step elapsed: release-bin download+verify" as NonEmptyStr },
+    floor_wrapper_elapsed: MissingExclusiveObservation { owed: "floor-batch-wall-receipt.txt exclusive floor wrapper elapsed" as NonEmptyStr },
+    post_floor_observation: MissingExclusiveObservation { owed: "github step elapsed: peak post / observation" as NonEmptyStr },
+    receipt_upload: MissingExclusiveObservation { owed: "github step elapsed: population receipt upload" as NonEmptyStr },
+  }
+}
+
+fn harvested_subject_a_reconciliation() -> PopulationReconciliation {
+  reconcile_ci_job_populations(
+    populations: harvested_subject_a_exclusive_populations(),
     ci_job: harvested_subject_a_ci_job_wall()
   )
+}
+
+fn harvested_subject_a_nested_diagnostic_sum() -> Millisecond {
+  millisecond(count: 110820 + 431122 + 65016)
+}
+
+fn nested_diagnostics_are_not_exclusive_classified() -> Bool {
+  let nested = millisecond_count(m: harvested_subject_a_nested_diagnostic_sum())
+  let classified = millisecond_count(m: exclusive_classified_wall(p: harvested_subject_a_exclusive_populations()))
+  nested > 0 && classified == 0
+}
+
+fn over_attributed_specimen() -> PopulationReconciliation {
+  reconcile_exclusive_against_job_wall(
+    classified: millisecond(count: 2510000),
+    ci_job: millisecond(count: 2509000)
+  )
+}
+
+fn remainder_false_green_specimen_refused() -> Bool {
+  exclusive_classified_stays_insufficient_without_remainder(
+    exclusive_classified: millisecond(count: 606958),
+    ci_job: millisecond(count: 2509000)
+  )
+    && remainder_inflate_would_false_green(
+      exclusive_classified: millisecond(count: 606958),
+      remainder: millisecond(count: 1902042),
+      ci_job: millisecond(count: 2509000)
+    )
 }
 
 fn admission_settle_from_stage_walls(

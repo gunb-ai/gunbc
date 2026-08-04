@@ -6,13 +6,16 @@ import gunbc.ci_floor_population_reconcile {
   Delivered,
   NotDelivered,
   MissingArtifactOpen,
-  MissingArtifact,
-  ObservedWall,
-  harvested_subject_a_partial_partition,
-  harvested_subject_a_assigned_wall,
-  harvested_subject_a_ci_job_wall,
-  harvested_subject_a_meets_ninety_five_percent,
-  partition_attribution_basis_points,
+  MissingRequiredObservation,
+  InsufficientAttribution,
+  OverAttributed,
+  Reconciled,
+  harvested_subject_a_reconciliation,
+  harvested_subject_a_nested_diagnostic_sum,
+  nested_diagnostics_are_not_exclusive_classified,
+  over_attributed_specimen,
+  remainder_false_green_specimen_refused,
+  reconcile_exclusive_against_job_wall,
   admission_settle_from_stage_walls,
   native_fleet_settle_from_transition_counts,
   warm_hit_settle_from_skip_counter,
@@ -21,28 +24,51 @@ import gunbc.ci_floor_population_reconcile {
   current_warm_hit_settle,
 }
 
-test fn witness_subject_a_assigned_is_classified_only() -> Bool {
-  millisecond_count(m: harvested_subject_a_assigned_wall()) == 606958
-}
-
-test fn witness_subject_a_below_ninety_five_until_uploads() -> Bool {
-  !harvested_subject_a_meets_ninety_five_percent()
-}
-
-test fn witness_subject_a_attribution_basis_points() -> Bool {
-  let bp = partition_attribution_basis_points(
-    assigned: harvested_subject_a_assigned_wall(),
-    ci_job: harvested_subject_a_ci_job_wall()
-  )
-  bp == 2419
-}
-
-test fn witness_on_success_still_missing_artifact() -> Bool {
-  let p = harvested_subject_a_partial_partition()
-  match p.on_success_stages {
-    MissingArtifact { kind: _ } => true
+test fn witness_subject_a_missing_exclusive_observations() -> Bool {
+  match harvested_subject_a_reconciliation() {
+    MissingRequiredObservation { owed: _ } => true
     _ => false
   }
+}
+
+test fn witness_nested_diagnostics_not_in_classified() -> Bool {
+  nested_diagnostics_are_not_exclusive_classified()
+    && millisecond_count(m: harvested_subject_a_nested_diagnostic_sum()) == 606958
+}
+
+test fn witness_over_attribution_refuses() -> Bool {
+  match over_attributed_specimen() {
+    OverAttributed { classified_wall: _, ci_job_wall: _ } => true
+    _ => false
+  }
+}
+
+test fn witness_remainder_cannot_satisfy_ninety_five() -> Bool {
+  remainder_false_green_specimen_refused()
+}
+
+test fn witness_honest_classified_plus_remainder_is_insufficient() -> Bool {
+  match reconcile_exclusive_against_job_wall(
+    classified: millisecond(count: 606958),
+    ci_job: millisecond(count: 2509000)
+  ) {
+    InsufficientAttribution { classified_wall: c, unattributed_wall: u, attribution_ratio_basis_points: bp } =>
+      millisecond_count(m: c) == 606958
+        && millisecond_count(m: u) == 1902042
+        && bp == 2419
+    _ => false
+  }
+}
+
+test fn red_over_attribution_must_not_reconcile() -> Bool {
+  match over_attributed_specimen() {
+    Reconciled { classified_wall: _, unattributed_wall: _, attribution_ratio_basis_points: _ } => false
+    _ => true
+  }
+}
+
+test fn red_remainder_inflate_must_not_pass_bar() -> Bool {
+  remainder_false_green_specimen_refused()
 }
 
 test fn witness_admission_missing_stages_is_open() -> Bool {
@@ -117,8 +143,4 @@ test fn witness_warm_hit_delivered_when_skip_proven() -> Bool {
     Delivered {} => true
     _ => false
   }
-}
-
-test fn red_ninety_five_must_not_silently_pass_on_classified_only() -> Bool {
-  !(harvested_subject_a_meets_ninety_five_percent())
 }
