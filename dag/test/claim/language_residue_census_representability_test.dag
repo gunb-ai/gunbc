@@ -1,0 +1,256 @@
+module test.claim.language_residue_census_representability
+
+import std.types { String, NonEmptyStr, Bool, Int, List }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.content_hash {
+  Fnv1a64Structural,
+  content_hash_atom,
+  content_hash_tagged_structural,
+  content_hash_combine_structural,
+  content_hash_eq_structural,
+}
+import std.language_target_identity {
+  LanguageTargetSurfaceRow,
+  LanguageTargetSurfaceLocus,
+  SurfaceDeclaration,
+  SurfaceModule,
+  LanguageTargetSurfaceAuthority,
+  StdLanguageCatalogue,
+  TargetModelDeclaration,
+  EmitHostExecution,
+  TargetVocabulary,
+  RuntimeChecker,
+  LegacyFrontier,
+}
+import gunbc.language_target_registry {
+  language_target_surface_census,
+  surface_census_row_count,
+}
+import gunbc.repository_census_observation {
+  RepositoryIdentity,
+  SourceRootIdentity,
+  CensusSubjectKey,
+  RepositoryPopulation,
+  CensusMethodRunIdentity,
+  CensusObservedRow,
+  RepositoryCensusObservation,
+  census_observed_row,
+  census_declaration_ref_identity,
+  repository_census_observation,
+  repository_census_row_count,
+  repository_census_subject_keys,
+  repository_census_observation_identity,
+  repository_census_observation_identity_eq,
+}
+import gunbc.guarantee_measurement { MeasurementRevision, GitRevision }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data representability_receipt_note: String = "CENSUS-0A REPRESENTABILITY RECEIPT, blocker 8 first half (operator ruling 2026-08-04: a synthetic witness suite discharges neither half, and 0A must prove that the carrier can faithfully hold a REAL repository census before it is ready). SUBJECT: gunbc.repository_census_observation at 0A head ca75137ee3a5b0796cc89e8de1f0c195fde80cca. CONSUMER: the language-residue census, gunbc.language_target_registry language_target_surface_census, stacked over that head — scaffold retirement is still blocked on the reflection surface and is deliberately not used. This file is NOT part of the 0A pull request; it executes on the stacked branch and its receipt names the exact 0A head above, which is what makes it evidence about that head rather than about whatever the branch later becomes. WHAT IT PROVES: the actual residue rows, at their real two grains, map into CensusObservedRow with intrinsic identities; the actual repository population is expressible; the row count DERIVES from those rows and agrees with the consumer's own independent count; and the observation identity is stable and moves when any measured part moves. WHAT IT DOES NOT PROVE, stated so nobody reads more from a green run: nothing here establishes how much of the target-bearing population the residue census COVERS. The consumer's own maximum-conclusion note is explicit that its population is hand-declared and that three of its rows were recently found to name modules that do not exist. That is exactly the class CENSUS-0B's denominator join must close, and until it does this receipt is representability alone."
+
+data residue_repository_population: RepositoryPopulation = RepositoryPopulation {
+  repository: "gunbc" as RepositoryIdentity,
+  first_source_root: "dag" as SourceRootIdentity,
+  additional_source_roots: ["src/v2" as SourceRootIdentity],
+  inclusion_rule: decl_ref(
+    module_path: "gunbc.language_target_registry",
+    decl_name: "language_target_surface_census",
+  ),
+  exclusion_rule: Absent,
+}
+
+data residue_subject_revision: MeasurementRevision = GitRevision {
+  commit: "ca75137ee3a5b0796cc89e8de1f0c195fde80cca",
+}
+
+data residue_method_run: CensusMethodRunIdentity = CensusMethodRunIdentity {
+  classifier: decl_ref(
+    module_path: "test.claim.language_residue_census_representability",
+    decl_name: "residue_row_to_census_row",
+  ),
+  classifier_revision: residue_subject_revision,
+  invocation_identity: content_hash_atom(
+    value: "language-target-surface-census-full-roster" as NonEmptyStr,
+  ),
+}
+
+fn residue_surface_subject_key(locus: LanguageTargetSurfaceLocus) -> CensusSubjectKey {
+  match locus {
+    SurfaceDeclaration { ref: reference } =>
+      concat(
+        concat(reference.module_path, "::"),
+        reference.decl_name,
+      ) as CensusSubjectKey
+    SurfaceModule { module_path: path } => path as CensusSubjectKey
+  }
+}
+
+fn residue_authority_tag(authority: LanguageTargetSurfaceAuthority) -> NonEmptyStr {
+  match authority {
+    StdLanguageCatalogue => "std-language-catalogue" as NonEmptyStr
+    TargetModelDeclaration => "target-model-declaration" as NonEmptyStr
+    EmitHostExecution => "emit-host-execution" as NonEmptyStr
+    TargetVocabulary => "target-vocabulary" as NonEmptyStr
+    RuntimeChecker => "runtime-checker" as NonEmptyStr
+    LegacyFrontier => "legacy-frontier" as NonEmptyStr
+  }
+}
+
+data residue_fact_identity_note: String = "THE DOMAIN-FACT IDENTITY IS DERIVED STRUCTURALLY, WHICH IS THE CHOICE CENSUS-0A DEFERRED TO THIS CONSUMER. The measured fact about a residue surface is which authority declared it and which target it was identified as, or that it was identified as none. Both parts are already declaration references or closed variants with canonical addresses, so this derives an identity by tagged structural combination and never renders anything to text — the concrete reason 0A carries an opaque fact identity rather than a generic value plus a caller-supplied rendering. The identified and unidentified arms are tagged DIFFERENTLY rather than the unidentified case being an absent field, so a surface joined to no target is a measured fact with its own address, not a hole."
+
+fn residue_fact_identity(row: LanguageTargetSurfaceRow) -> Fnv1a64Structural {
+  let authority_part = content_hash_tagged_structural(
+    tag: "residue-fact-authority",
+    payload: content_hash_atom(value: residue_authority_tag(authority: row.authority)),
+  )
+  let target_part = match row.target {
+    Present { value: target } =>
+      content_hash_tagged_structural(
+        tag: "residue-fact-identified-target",
+        payload: census_declaration_ref_identity(reference: target),
+      )
+    Absent =>
+      content_hash_tagged_structural(
+        tag: "residue-fact-unidentified",
+        payload: content_hash_atom(value: "no-registered-target" as NonEmptyStr),
+      )
+  }
+  content_hash_combine_structural(left: authority_part, right: target_part)
+}
+
+fn residue_row_to_census_row(row: LanguageTargetSurfaceRow) -> CensusObservedRow {
+  census_observed_row(
+    subject: residue_surface_subject_key(locus: row.surface),
+    fact: residue_fact_identity(row: row),
+  )
+}
+
+fn residue_census_observation() -> RepositoryCensusObservation {
+  repository_census_observation(
+    population: residue_repository_population,
+    observed_at_revision: residue_subject_revision,
+    method_run: residue_method_run,
+    rows: language_target_surface_census |> map(row => residue_row_to_census_row(row: row)),
+  )
+}
+
+test fn witness_the_real_residue_census_is_representable_as_an_observation() -> Bool {
+  let observation = residue_census_observation()
+  let carried = repository_census_row_count(observation: observation)
+  let consumer_own_count = surface_census_row_count()
+  carried > 0
+    && carried == consumer_own_count
+    && count(repository_census_subject_keys(observation: observation)) == carried
+}
+
+test fn witness_the_real_observation_identity_is_stable_across_reads() -> Bool {
+  let first = residue_census_observation()
+  let second = residue_census_observation()
+  content_hash_eq_structural(
+    left: repository_census_observation_identity(observation: first),
+    right: repository_census_observation_identity(observation: second),
+  )
+    && repository_census_observation_identity_eq(left: first, right: second)
+}
+
+test fn witness_both_real_surface_grains_carry_distinct_subject_keys() -> Bool {
+  let declaration_subject = residue_surface_subject_key(
+    locus: SurfaceDeclaration {
+      ref: decl_ref(module_path: "std.languages", decl_name: "rust_language"),
+    },
+  )
+  let module_subject = residue_surface_subject_key(
+    locus: SurfaceModule { module_path: "std.languages" },
+  )
+  (declaration_subject as String) == "std.languages::rust_language"
+    && (module_subject as String) == "std.languages"
+    && (declaration_subject as String) != (module_subject as String)
+}
+
+test fn witness_an_identified_surface_is_a_different_fact_than_an_unidentified_one() -> Bool {
+  let unidentified = residue_fact_identity(
+    row: LanguageTargetSurfaceRow {
+      authority: StdLanguageCatalogue,
+      surface: SurfaceDeclaration {
+        ref: decl_ref(module_path: "std.languages", decl_name: "rust_language"),
+      },
+      target: Absent,
+    },
+  )
+  let identified = residue_fact_identity(
+    row: LanguageTargetSurfaceRow {
+      authority: StdLanguageCatalogue,
+      surface: SurfaceDeclaration {
+        ref: decl_ref(module_path: "std.languages", decl_name: "rust_language"),
+      },
+      target: Present {
+        value: decl_ref(module_path: "extdeps.languages.bash.subject", decl_name: "gnu_bash"),
+      },
+    },
+  )
+  let other_authority = residue_fact_identity(
+    row: LanguageTargetSurfaceRow {
+      authority: LegacyFrontier,
+      surface: SurfaceDeclaration {
+        ref: decl_ref(module_path: "std.languages", decl_name: "rust_language"),
+      },
+      target: Absent,
+    },
+  )
+  !content_hash_eq_structural(left: unidentified, right: identified)
+    && !content_hash_eq_structural(left: unidentified, right: other_authority)
+}
+
+test fn witness_reclassifying_one_real_surface_moves_the_whole_observation_identity() -> Bool {
+  let observed = residue_census_observation()
+  let reclassified = repository_census_observation(
+    population: residue_repository_population,
+    observed_at_revision: residue_subject_revision,
+    method_run: residue_method_run,
+    rows: language_target_surface_census |> map(row =>
+      census_observed_row(
+        subject: residue_surface_subject_key(locus: row.surface),
+        fact: residue_fact_identity(
+          row: LanguageTargetSurfaceRow {
+            authority: row.authority,
+            surface: row.surface,
+            target: Present {
+              value: decl_ref(
+                module_path: "extdeps.languages.bash.subject",
+                decl_name: "gnu_bash",
+              ),
+            },
+          },
+        ),
+      )
+    ),
+  )
+  let observed_rows = repository_census_row_count(observation: observed)
+  let reclassified_rows = repository_census_row_count(observation: reclassified)
+  observed_rows == reclassified_rows
+    && !repository_census_observation_identity_eq(left: observed, right: reclassified)
+}
+
+test fn witness_the_same_residue_rows_under_a_narrower_population_are_a_new_observation() -> Bool {
+  let repo_wide = residue_census_observation()
+  let dag_only = repository_census_observation(
+    population: RepositoryPopulation {
+      repository: "gunbc" as RepositoryIdentity,
+      first_source_root: "dag" as SourceRootIdentity,
+      additional_source_roots: [],
+      inclusion_rule: decl_ref(
+        module_path: "gunbc.language_target_registry",
+        decl_name: "language_target_surface_census",
+      ),
+      exclusion_rule: Absent,
+    },
+    observed_at_revision: residue_subject_revision,
+    method_run: residue_method_run,
+    rows: language_target_surface_census |> map(row => residue_row_to_census_row(row: row)),
+  )
+  let repo_wide_rows = repository_census_row_count(observation: repo_wide)
+  let dag_only_rows = repository_census_row_count(observation: dag_only)
+  repo_wide_rows == dag_only_rows
+    && !repository_census_observation_identity_eq(left: repo_wide, right: dag_only)
+}
