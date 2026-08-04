@@ -6,9 +6,10 @@ import v2.std.algebra {
   HeadAbsent,
   HeadFound,
   count_where,
+  fold_list_right,
   length,
   list_head,
-  list_snoc_item,
+  list_reverse,
 }
 import v2.std.collection { Absent, Present }
 import v2.std.compilers.lexing { symbol_lexeme }
@@ -30,13 +31,13 @@ type DeclFactQualifiedNameResolution
   | DeclFactResolvedAmbiguous { qualified_name: String, match_count: Int }
 
 fn decl_facts_matching_qualified_name(qn: String, facts: List<DeclFact>) -> List<DeclFact> {
-  fold(facts, init: Empty, f: fn(acc, fact) {
+  list_reverse(xs: fold(facts, init: Empty, f: fn(acc, fact) {
     if fact.qualified_name == qn {
-      list_snoc_item(xs: acc, item: fact)
+      Cons { head: fact, tail: acc }
     } else {
       acc
     }
-  })
+  }))
 }
 
 fn resolve_decl_fact_by_qualified_name(
@@ -77,27 +78,30 @@ fn skeleton_marshal_atom_lexeme_optional(node: Node) -> SkeletonMarshalAtomLexem
 }
 
 fn node_skeleton_edge_targets(node: Node) -> List<Node> {
-  fold(node.children, init: Empty, f: fn(acc, e) {
-    list_snoc_item(xs: acc, item: e.target)
-  })
+  fold_list_right(
+    xs: node.children,
+    empty: Empty,
+    snoc: fn(acc, e) { Cons { head: e.target, tail: acc } }
+  )
 }
 
 fn node_skeleton_marshal_atom_lexemes(node: Node) -> List<SkeletonMarshalAtomLexeme> {
-  let here = match node.kind {
-    TypeNode { connective: Atom { identity: sym } } => [symbol_lexeme(sym: sym)]
-    _ => []
-  }
-  fold(
-    node_skeleton_edge_targets(node: node),
-    init: here,
-    f: fn(acc, child) {
-      fold(
-        node_skeleton_marshal_atom_lexemes(node: child),
-        init: acc,
-        f: fn(inner_acc, lex) { list_snoc_item(xs: inner_acc, item: lex) }
+  let child_lexemes = fold_list_right(
+    xs: node_skeleton_edge_targets(node: node),
+    empty: Empty,
+    snoc: fn(acc, child) {
+      fold_list_right(
+        xs: node_skeleton_marshal_atom_lexemes(node: child),
+        empty: acc,
+        snoc: fn(inner_acc, lex) { Cons { head: lex, tail: inner_acc } }
       )
     }
   )
+  match node.kind {
+    TypeNode { connective: Atom { identity: sym } } =>
+      Cons { head: symbol_lexeme(sym: sym), tail: child_lexemes }
+    _ => child_lexemes
+  }
 }
 
 fn skeleton_contains_marshal_atom_lexeme(node: Node, lexeme: SkeletonMarshalAtomLexeme) -> Bool {
