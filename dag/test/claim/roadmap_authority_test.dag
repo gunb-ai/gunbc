@@ -608,7 +608,7 @@ test fn witness_namespace_reference_derived_closure_has_discriminating_contract(
         && count(extra_capabilities) == 0
         && validations |> any(validation => match validation {
           GunbcClaimValidation { entry, function } =>
-            (entry as String) == "dag/test/claim/namespace_reference_derived_closure_acceptance_test.dag"
+            (entry as String) == "src/v1/tests/claim/namespace_reference_derived_closure_acceptance_test.dag"
               && function == "witness_namespace_reference_derived_closure_closing_contract_holds"
           CargoTestValidation { filter: _ } => false
           CargoFmtValidation => false

@@ -250,7 +250,7 @@ data namespace_reference_derived_closure_execution_contract_note: String = "THE 
 
 fn namespace_reference_derived_closure_execution_contract() -> WorkItemExecutionContract {
   gunbc_claim_execution_contract(
-    entry: "dag/test/claim/namespace_reference_derived_closure_acceptance_test.dag" as FilePath,
+    entry: "src/v1/tests/claim/namespace_reference_derived_closure_acceptance_test.dag" as FilePath,
     function: "witness_namespace_reference_derived_closure_closing_contract_holds" as NonEmptyStr,
   )
 }
