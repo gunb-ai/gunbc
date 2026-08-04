@@ -1,0 +1,18 @@
+module test.claim.bach_double_slit_observation_witness_test
+
+import std.types { Bool }
+import gunbc.bach_double_slit_observation {
+  bach_quantitative_path_additivity_fold_is_refused,
+  bach_which_path_outcome_is_uncited,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn w_bach_quantitative_path_additivity_fold_refused() -> Bool {
+  bach_quantitative_path_additivity_fold_is_refused()
+}
+
+test fn w_bach_which_path_coverage_obligation_uncited() -> Bool {
+  bach_which_path_outcome_is_uncited()
+}

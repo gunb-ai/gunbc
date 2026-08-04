@@ -1,0 +1,39 @@
+module gunbc.bach_double_slit_observation
+
+import std.types { Bool, NonEmptyStr, String }
+import extdeps.physics.double_slit {
+  BachEtAl2013DoubleSlitExperiment,
+  bach_et_al_2013_double_slit,
+}
+
+data bach_observation_layer_note: String = "Observing-layer receipts for Bach et al. 2013. extdeps.physics.double_slit owns apparatus vocabulary and abstract-level cited facts only — no per-band counts. This module records coverage obligations and quantitative-fold refusal rather than inventing measurement rows."
+
+data which_path_coverage_obligation_note: String = "DESIGN section 3: missing observations are coverage obligations downstream, never Unobserved properties inside the upstream module. Which-path detection under illumination was NOT part of Bach et al. 2013."
+
+type WhichPathOutcomeUncited {
+  missing_authority: NonEmptyStr
+}
+
+data bach_which_path_outcome_uncited: WhichPathOutcomeUncited = WhichPathOutcomeUncited {
+  missing_authority: "a cited which-path or quantum-eraser experiment; Bach et al. 2013 controlled slit transmission only" as NonEmptyStr,
+}
+
+data bach_quantitative_fold_refusal_note: String = "QUANTITATIVE FOLD REFUSED. Per-band arrival totals are not extractable from the cited source in this change. The classical path-additivity fold over Bach rows is blocked until figure extraction with a declared method lands extractable per-band data in extdeps or a sibling cited module. Mechanism tests use gunbc.classical_path_additivity_synthetic_fixture — honestly labeled synthetic population, not Bach provenance."
+
+type BachQuantitativePathAdditivityFoldRefused {
+  cited_experiment: BachEtAl2013DoubleSlitExperiment
+  cause: NonEmptyStr
+}
+
+data bach_quantitative_path_additivity_fold_refused: BachQuantitativePathAdditivityFoldRefused = BachQuantitativePathAdditivityFoldRefused {
+  cited_experiment: bach_et_al_2013_double_slit,
+  cause: "per-band arrival_count rows absent from extdeps.physics.double_slit pending declared figure extraction from Bach et al. 2013" as NonEmptyStr,
+}
+
+fn bach_quantitative_path_additivity_fold_is_refused() -> Bool {
+  true
+}
+
+fn bach_which_path_outcome_is_uncited() -> Bool {
+  true
+}

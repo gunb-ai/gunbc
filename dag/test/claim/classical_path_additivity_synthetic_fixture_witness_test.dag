@@ -1,30 +1,30 @@
-module test.claim.bach_double_slit_path_additivity_law_witness_test
+module test.claim.classical_path_additivity_synthetic_fixture_witness_test
 
 import std.types { Bool, NonEmptyStr }
 import std.algebra_law {
   ClassicalPathAdditivityCounterexampleWitness,
   ClassicalPathAdditivityRefutationReceipt,
-  ClassicalPathAdditivityBach2013,
-  classical_path_additivity_refutation_holds_for_bach_2013,
+  ClassicalPathAdditivitySyntheticFixture,
+  classical_path_additivity_refutation_holds_for_synthetic_fixture,
 }
-import gunbc.bach_double_slit_path_additivity_observation {
+import gunbc.classical_path_additivity_synthetic_fixture {
   classical_path_additivity_refutation_holds,
   classical_path_additivity_refuted,
   path_additivity_subject,
   classical_path_additivity_no_refutation_at_blocked_zero_counts,
   naive_normalized_probability_sum_trap_would_misfire_at_first_minimum,
-  correctly_normalized_additive_matches_at_central_band,
+  correctly_normalized_additive_underpredicts_at_central_band,
   central_band_additive_witness_is_not_counterexample,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-test fn w_bach_classical_path_additivity_refuted_by_fold_derivation() -> Bool {
+test fn w_synthetic_classical_path_additivity_refuted_by_fold_derivation() -> Bool {
   classical_path_additivity_refutation_holds()
 }
 
-test fn w_bach_classical_path_additivity_rejects_fabricated_both_open_count() -> Bool {
+test fn w_synthetic_classical_path_additivity_rejects_fabricated_both_open_count() -> Bool {
   let witness = classical_path_additivity_refuted.witness
   let fabricated = ClassicalPathAdditivityCounterexampleWitness {
     left_alternative_count: witness.left_alternative_count,
@@ -37,10 +37,10 @@ test fn w_bach_classical_path_additivity_rejects_fabricated_both_open_count() ->
     witness: fabricated,
     location_label: classical_path_additivity_refuted.location_label,
   }
-  !classical_path_additivity_refutation_holds_for_bach_2013(receipt: bad_receipt)
+  !classical_path_additivity_refutation_holds_for_synthetic_fixture(receipt: bad_receipt)
 }
 
-test fn w_bach_classical_path_additivity_rejects_corrupted_left_count() -> Bool {
+test fn w_synthetic_classical_path_additivity_rejects_corrupted_left_count() -> Bool {
   let witness = classical_path_additivity_refuted.witness
   let fabricated = ClassicalPathAdditivityCounterexampleWitness {
     left_alternative_count: witness.left_alternative_count + 1,
@@ -53,32 +53,32 @@ test fn w_bach_classical_path_additivity_rejects_corrupted_left_count() -> Bool 
     witness: fabricated,
     location_label: classical_path_additivity_refuted.location_label,
   }
-  !classical_path_additivity_refutation_holds_for_bach_2013(receipt: bad_receipt)
+  !classical_path_additivity_refutation_holds_for_synthetic_fixture(receipt: bad_receipt)
 }
 
-test fn w_bach_no_refutation_at_blocked_zero_counts() -> Bool {
+test fn w_synthetic_no_refutation_at_blocked_zero_counts() -> Bool {
   classical_path_additivity_no_refutation_at_blocked_zero_counts()
 }
 
-test fn w_bach_normalized_probability_trap_is_not_the_witness() -> Bool {
+test fn w_synthetic_normalized_probability_trap_is_not_the_witness() -> Bool {
   naive_normalized_probability_sum_trap_would_misfire_at_first_minimum()
     && classical_path_additivity_refuted.witness.both_open_observed_count < classical_path_additivity_refuted.witness.classical_additive_prediction
 }
 
-test fn w_bach_central_band_additive_underpredicts_observed_both_open() -> Bool {
-  correctly_normalized_additive_matches_at_central_band()
+test fn w_synthetic_central_band_additive_underpredicts_observed_both_open() -> Bool {
+  correctly_normalized_additive_underpredicts_at_central_band()
 }
 
-test fn w_bach_central_band_is_not_counterexample_witness() -> Bool {
+test fn w_synthetic_central_band_is_not_counterexample_witness() -> Bool {
   central_band_additive_witness_is_not_counterexample()
 }
 
-test fn w_bach_path_additivity_subject_is_bach_2013_coproduct() -> Bool {
-  path_additivity_subject == ClassicalPathAdditivityBach2013 {}
+test fn w_synthetic_path_additivity_subject_is_synthetic_fixture_coproduct() -> Bool {
+  path_additivity_subject == ClassicalPathAdditivitySyntheticFixture {}
 }
 
-test fn w_bach_path_additivity_witness_names_first_minimum_band() -> Bool {
-  classical_path_additivity_refuted.location_label == ("Bach2013MatchedExposureOne:FirstMinimumBand:BothSlitsOpen" as NonEmptyStr)
-    && classical_path_additivity_refuted.witness.both_open_observed_count == 22
-    && classical_path_additivity_refuted.witness.classical_additive_prediction == 98
+test fn w_synthetic_path_additivity_witness_names_first_minimum_band() -> Bool {
+  classical_path_additivity_refuted.location_label == ("SyntheticMatchedExposureOne:FirstMinimumBand:BothSlitsOpen" as NonEmptyStr)
+    && classical_path_additivity_refuted.witness.both_open_observed_count == 5
+    && classical_path_additivity_refuted.witness.classical_additive_prediction == 20
 }

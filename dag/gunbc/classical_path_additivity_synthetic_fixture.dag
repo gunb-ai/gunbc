@@ -1,0 +1,279 @@
+module gunbc.classical_path_additivity_synthetic_fixture
+
+import std.types { Bool, Int, String, List, NonEmptyStr }
+import std.algebra_law {
+  ClassicalPathAdditivityCounterexampleWitness,
+  ClassicalPathAdditivityOperationSubject,
+  ClassicalPathAdditivityRefutationReceipt,
+  ClassicalPathAdditivitySyntheticFixture,
+  classical_path_additivity_refutation_holds_for_synthetic_fixture,
+  classical_path_additivity_witness_is_counterexample,
+}
+import extdeps.physics.double_slit {
+  SlitArrangement,
+  ScreenBand,
+  BothSlitsOpen,
+  OnlyLeftSlitOpen,
+  OnlyRightSlitOpen,
+  BothSlitsBlocked,
+  CentralBand,
+  FirstMinimumBand,
+  FirstSideMaximumBand,
+}
+
+data synthetic_fixture_note: String = "SYNTHETIC MECHANISM FIXTURE — NOT Bach et al. 2013 provenance. Rows are invented to exercise the path-additivity fold and refutation receipt shape. Bach quantitative fold refusal lives in gunbc.bach_double_slit_observation."
+
+type SyntheticDoubleSlitFixture
+  = SyntheticDoubleSlitFixtureOne {}
+
+data synthetic_double_slit_fixture: SyntheticDoubleSlitFixture = SyntheticDoubleSlitFixtureOne {}
+
+type SyntheticMatchedExposureSession
+  = SyntheticMatchedExposureOne {}
+
+type SyntheticArrivalCountObservationRow {
+  fixture: SyntheticDoubleSlitFixture
+  arrangement: SlitArrangement
+  band: ScreenBand
+  exposure: SyntheticMatchedExposureSession
+  arrival_count: Int
+}
+
+data synthetic_first_minimum_both_open: SyntheticArrivalCountObservationRow = SyntheticArrivalCountObservationRow {
+  fixture: synthetic_double_slit_fixture,
+  arrangement: BothSlitsOpen,
+  band: FirstMinimumBand,
+  exposure: SyntheticMatchedExposureOne {},
+  arrival_count: 5,
+}
+
+data synthetic_first_minimum_left_only: SyntheticArrivalCountObservationRow = SyntheticArrivalCountObservationRow {
+  fixture: synthetic_double_slit_fixture,
+  arrangement: OnlyLeftSlitOpen,
+  band: FirstMinimumBand,
+  exposure: SyntheticMatchedExposureOne {},
+  arrival_count: 10,
+}
+
+data synthetic_first_minimum_right_only: SyntheticArrivalCountObservationRow = SyntheticArrivalCountObservationRow {
+  fixture: synthetic_double_slit_fixture,
+  arrangement: OnlyRightSlitOpen,
+  band: FirstMinimumBand,
+  exposure: SyntheticMatchedExposureOne {},
+  arrival_count: 10,
+}
+
+data synthetic_central_both_open: SyntheticArrivalCountObservationRow = SyntheticArrivalCountObservationRow {
+  fixture: synthetic_double_slit_fixture,
+  arrangement: BothSlitsOpen,
+  band: CentralBand,
+  exposure: SyntheticMatchedExposureOne {},
+  arrival_count: 95,
+}
+
+data synthetic_central_left_only: SyntheticArrivalCountObservationRow = SyntheticArrivalCountObservationRow {
+  fixture: synthetic_double_slit_fixture,
+  arrangement: OnlyLeftSlitOpen,
+  band: CentralBand,
+  exposure: SyntheticMatchedExposureOne {},
+  arrival_count: 40,
+}
+
+data synthetic_central_right_only: SyntheticArrivalCountObservationRow = SyntheticArrivalCountObservationRow {
+  fixture: synthetic_double_slit_fixture,
+  arrangement: OnlyRightSlitOpen,
+  band: CentralBand,
+  exposure: SyntheticMatchedExposureOne {},
+  arrival_count: 38,
+}
+
+data synthetic_blocked_central: SyntheticArrivalCountObservationRow = SyntheticArrivalCountObservationRow {
+  fixture: synthetic_double_slit_fixture,
+  arrangement: BothSlitsBlocked,
+  band: CentralBand,
+  exposure: SyntheticMatchedExposureOne {},
+  arrival_count: 0,
+}
+
+data synthetic_fixture_arrival_count_observations: List<SyntheticArrivalCountObservationRow> = [
+  synthetic_first_minimum_both_open,
+  synthetic_first_minimum_left_only,
+  synthetic_first_minimum_right_only,
+  synthetic_central_both_open,
+  synthetic_central_left_only,
+  synthetic_central_right_only,
+  synthetic_blocked_central,
+]
+
+data path_additivity_normalization_note: String = "Classical prediction uses raw matched-exposure arrival totals: prediction = left_only_count + right_only_count. We do NOT compare normalized P_both against normalized P_left + normalized P_right."
+
+fn classical_exclusive_alternative_arrival_prediction(
+  left_only_count: Int,
+  right_only_count: Int,
+) -> Int {
+  left_only_count + right_only_count
+}
+
+fn arrival_count_row_matches(
+  row: SyntheticArrivalCountObservationRow,
+  fixture: SyntheticDoubleSlitFixture,
+  arrangement: SlitArrangement,
+  band: ScreenBand,
+  exposure: SyntheticMatchedExposureSession,
+) -> Bool {
+  row.fixture == fixture
+    && row.arrangement == arrangement
+    && row.band == band
+    && row.exposure == exposure
+}
+
+fn fold_arrival_count_at(
+  rows: List<SyntheticArrivalCountObservationRow>,
+  fixture: SyntheticDoubleSlitFixture,
+  arrangement: SlitArrangement,
+  band: ScreenBand,
+  exposure: SyntheticMatchedExposureSession,
+) -> Int {
+  fold(
+    rows,
+    init: 0,
+    f: fn(acc, row) {
+      if arrival_count_row_matches(
+        row: row,
+        fixture: fixture,
+        arrangement: arrangement,
+        band: band,
+        exposure: exposure,
+      ) {
+        acc + row.arrival_count
+      } else {
+        acc
+      }
+    },
+  )
+}
+
+fn derive_classical_path_additivity_witness_at_band(
+  rows: List<SyntheticArrivalCountObservationRow>,
+  fixture: SyntheticDoubleSlitFixture,
+  band: ScreenBand,
+  exposure: SyntheticMatchedExposureSession,
+  location_label: NonEmptyStr,
+) -> ClassicalPathAdditivityRefutationReceipt {
+  let left_count = fold_arrival_count_at(
+    rows: rows,
+    fixture: fixture,
+    arrangement: OnlyLeftSlitOpen,
+    band: band,
+    exposure: exposure,
+  )
+  let right_count = fold_arrival_count_at(
+    rows: rows,
+    fixture: fixture,
+    arrangement: OnlyRightSlitOpen,
+    band: band,
+    exposure: exposure,
+  )
+  let both_count = fold_arrival_count_at(
+    rows: rows,
+    fixture: fixture,
+    arrangement: BothSlitsOpen,
+    band: band,
+    exposure: exposure,
+  )
+  let prediction = classical_exclusive_alternative_arrival_prediction(
+    left_only_count: left_count,
+    right_only_count: right_count,
+  )
+  ClassicalPathAdditivityRefutationReceipt {
+    subject: ClassicalPathAdditivitySyntheticFixture {},
+    witness: ClassicalPathAdditivityCounterexampleWitness {
+      left_alternative_count: left_count,
+      right_alternative_count: right_count,
+      both_open_observed_count: both_count,
+      classical_additive_prediction: prediction,
+    },
+    location_label: location_label,
+  }
+}
+
+data path_additivity_subject: ClassicalPathAdditivityOperationSubject = ClassicalPathAdditivitySyntheticFixture {}
+
+data classical_path_additivity_refuted: ClassicalPathAdditivityRefutationReceipt = derive_classical_path_additivity_witness_at_band(
+  rows: synthetic_fixture_arrival_count_observations,
+  fixture: synthetic_double_slit_fixture,
+  band: FirstMinimumBand,
+  exposure: SyntheticMatchedExposureOne {},
+  location_label: "SyntheticMatchedExposureOne:FirstMinimumBand:BothSlitsOpen" as NonEmptyStr,
+)
+
+fn classical_path_additivity_refutation_holds() -> Bool {
+  classical_path_additivity_refutation_holds_for_synthetic_fixture(receipt: classical_path_additivity_refuted)
+}
+
+fn classical_path_additivity_no_refutation_at_blocked_zero_counts() -> Bool {
+  let blocked = fold_arrival_count_at(
+    rows: synthetic_fixture_arrival_count_observations,
+    fixture: synthetic_double_slit_fixture,
+    arrangement: BothSlitsBlocked,
+    band: CentralBand,
+    exposure: SyntheticMatchedExposureOne {},
+  )
+  blocked == 0
+    && !classical_path_additivity_witness_is_counterexample(
+      witness: ClassicalPathAdditivityCounterexampleWitness {
+        left_alternative_count: 0,
+        right_alternative_count: 0,
+        both_open_observed_count: 0,
+        classical_additive_prediction: 0,
+      },
+    )
+}
+
+fn naive_normalized_probability_sum_trap_would_misfire_at_first_minimum() -> Bool {
+  let left = classical_path_additivity_refuted.witness.left_alternative_count
+  let right = classical_path_additivity_refuted.witness.right_alternative_count
+  let both = classical_path_additivity_refuted.witness.both_open_observed_count
+  (left + right) != both
+    && (left + right) > both
+}
+
+fn central_band_additive_witness_is_not_counterexample() -> Bool {
+  let receipt = derive_classical_path_additivity_witness_at_band(
+    rows: synthetic_fixture_arrival_count_observations,
+    fixture: synthetic_double_slit_fixture,
+    band: CentralBand,
+    exposure: SyntheticMatchedExposureOne {},
+    location_label: "SyntheticMatchedExposureOne:CentralBand:BothSlitsOpen" as NonEmptyStr,
+  )
+  !classical_path_additivity_witness_is_counterexample(witness: receipt.witness)
+}
+
+fn correctly_normalized_additive_underpredicts_at_central_band() -> Bool {
+  let left = fold_arrival_count_at(
+    rows: synthetic_fixture_arrival_count_observations,
+    fixture: synthetic_double_slit_fixture,
+    arrangement: OnlyLeftSlitOpen,
+    band: CentralBand,
+    exposure: SyntheticMatchedExposureOne {},
+  )
+  let right = fold_arrival_count_at(
+    rows: synthetic_fixture_arrival_count_observations,
+    fixture: synthetic_double_slit_fixture,
+    arrangement: OnlyRightSlitOpen,
+    band: CentralBand,
+    exposure: SyntheticMatchedExposureOne {},
+  )
+  let both = fold_arrival_count_at(
+    rows: synthetic_fixture_arrival_count_observations,
+    fixture: synthetic_double_slit_fixture,
+    arrangement: BothSlitsOpen,
+    band: CentralBand,
+    exposure: SyntheticMatchedExposureOne {},
+  )
+  let prediction = classical_exclusive_alternative_arrival_prediction(
+    left_only_count: left,
+    right_only_count: right,
+  )
+  both > prediction
+}
