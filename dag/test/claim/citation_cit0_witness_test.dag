@@ -62,9 +62,9 @@ data witness_cited_resource: WitnessCitedResource = CitedResource {
   selector: witness_text_quote,
 }
 
-data witness_observed_at_midnight_utc: EpochMs = 1785801600000 as EpochMs
+data witness_observed_at_midnight_utc: EpochMs = 1785801600000
 
-data witness_observed_at_noon_utc: EpochMs = 1785844800000 as EpochMs
+data witness_observed_at_noon_utc: EpochMs = 1785844800000
 
 data witness_upstream_unreachable_observation: CitationRetrievalObservation = CitationUnreachable {
   request: CitationRetrievalRequest {
