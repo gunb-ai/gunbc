@@ -58,7 +58,7 @@ fn registration_subject(registration: LanguageTargetRegistration) -> Declaration
   }
 }
 
-data target_disposition_note: String = "A registered target with no live surface is legitimate ONLY with an explicit disposition, so a strategy promise cannot vanish merely because implementation has not begun, and Parked never renders as a vacuous zero-of-zero complete. GovernedByContracts is the Rust arrangement: this registry REFERENCES the governing verdicts and never recomputes them, so no second status authority for one subject exists. IT CARRIES A LIST, NOT ONE ID (corrected 2026-08-04, review relayed through the operator): the strategy authority governs Rust under BOTH contract-v2-self-host-fixed-point AND contract-v2-production-cutover, and a singular field forced a row to pick one and silently drop the other — a target's governance is not single-valued, so the carrier is not either. A registration governed by no contract simply does not take this arm."
+data target_disposition_note: String = "A registered target with no live surface is legitimate ONLY with an explicit disposition, so a strategy promise cannot vanish merely because implementation has not begun, and Parked never renders as a vacuous zero-of-zero complete. GovernedByContracts is the Rust arrangement: this registry REFERENCES the governing verdicts and never recomputes them, so no second status authority for one subject exists. IT CARRIES A LIST, NOT ONE ID (corrected 2026-08-04, review relayed through the operator): the governing strategy authority places Rust under TWO distinct contracts — a self-host fixed-point contract and a production-cutover contract — and a singular field forced a row to pick one and silently drop the other, which is a state-space conflation rather than a shape preference: a target's governance is not single-valued, so the carrier is not either. A registration governed by no contract simply does not take this arm. THE CONTRACT IDENTIFIERS THEMSELVES ARE DELIBERATELY NOT SPELLED HERE: the authority that defines them is not this repository, it is a private strategy overlay whose publication model defaults new content to private, so copying its identifiers into a public row is a publication decision rather than a citation repair and has not been made. The carrier's SHAPE is settled and correct; the keys that populate it are pending that ruling, which is the honest state and is why this row describes the two contracts rather than naming them."
 
 type TargetDisposition
   = TargetActive
@@ -485,15 +485,18 @@ fn integrity_violation_count(vs: List<LanguageTargetJoinViolation>) -> Int {
   })
 }
 
+data accounting_arithmetic_shape_note: String = "The sum below is bound through named lets rather than written as a multi-line infix expression, and that is a PARSER LIMITATION recorded rather than dodged (measured 2026-08-04, reported by fierce-heron-301). A continuation line beginning with + is rejected — 'expected expression, found Plus' — while a continuation line beginning with && parses fine, so the operator-leading continuation form is accepted for some operators and not others. The named bindings are better code here regardless, which is why this is a rewrite and not a workaround; the asymmetry is the defect and it is filed, not papered over. WHAT MADE IT EXPENSIVE was not the parse error but its blast radius: the kernel failed to load, so every downstream consumer reported 'unresolved import' plus a cascade of unbound names rather than a located syntax error, which is indistinguishable from the Class B pool-membership failure and from a brace-interpolation typo. Three distinct root causes, one error signature, all in one day — the same context-free-diagnostic defect DESIGN's dollar-brace receipt records."
+
 fn declared_population_accounting_exact(
   rows: List<LanguageTargetSurfaceRow>,
   registry: List<LanguageTargetRegistration>
 ) -> Bool {
-  identified_row_count(rows: rows, registry: registry)
-    + missing_identity_violation_count(
-        vs: language_target_join_violations(rows: rows, registry: registry)
-      )
-    == count_rows(rows: rows)
+  let identified = identified_row_count(rows: rows, registry: registry)
+  let reported = missing_identity_violation_count(
+    vs: language_target_join_violations(rows: rows, registry: registry)
+  )
+  let declared = count_rows(rows: rows)
+  identified + reported == declared
 }
 
 fn registry_integrity_clean(

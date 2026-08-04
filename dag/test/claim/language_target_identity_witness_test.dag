@@ -1,14 +1,16 @@
 module test.claim.language_target_identity_witness
 
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.types { Bool, List, String }
-import extdeps.external_authority { ExternalSubjectRef, external_subject_ref_eq }
-import extdeps.languages.bash.subject { extdeps_model_scope }
+import std.types { Bool, Int, List, String }
+import std.roster_frontier { declaration_ref_eq }
+import extdeps.languages.bash.subject { gnu_bash_model_scope }
 import std.language_target_identity {
   SurfaceJoinsMultipleTargets,
   TargetVocabularyHasNoRegistryTarget,
+  DuplicateSurfaceLocus,
   TargetGrounding,
   ExternalGrounding,
+  ProjectGrounding,
   TargetDisposition,
   TargetActive,
   LanguageTargetSurfaceLocus,
@@ -32,10 +34,29 @@ import std.language_target_identity {
   TargetResolved,
   TargetSurfaceUnregistered,
   TargetSurfaceAmbiguous,
-  TargetSubjectUnresolvable,
+  TargetNotRegistered,
   resolve_target_for_surface,
   language_target_join_violations,
   language_target_join_clean,
+  registration_subject,
+}
+import std.language_target_identity {
+  LanguageTargetProjection,
+  LanguageIdLookup,
+  LanguageIdResolved,
+  LanguageIdUnregistered,
+  LanguageIdAmbiguous,
+  language_id_to_subject,
+  ProjectionLookup,
+  ProjectionResolved,
+  ProjectionAbsent,
+  ProjectionAmbiguous,
+  projection_for_subject,
+  declared_population_accounting_exact,
+  registry_integrity_clean,
+  identified_row_count,
+  missing_identity_violation_count,
+  integrity_violation_count,
 }
 
 data language_target_identity_witness_note: String = "GREEN and discriminating RED controls for the language-target join kernel (operator verdict 2026-08-04). Every RED here is a state the census would otherwise report as a resolved target, which is the failure this join exists to make unwritable: a surface with no identity, a surface naming a subject nobody registered, two registrations of one subject, and a surface two rows disagree about. The Bash subject is the live specimen and is referenced SYMBOLICALLY through extdeps.languages.bash.subject rather than by spelling its module path in a string, so a rename of that declaration breaks this witness rather than silently passing (DESIGN section 3 cite-the-symbol). WHAT THIS WITNESS DOES NOT COVER, stated rather than implied: these fns are pure in the rows handed to them, so nothing here proves the surface census is COMPLETE — a target-bearing surface nobody authored a row for is invisible to every assertion below. Population completeness is the registry totality wall's job and is not established here."
@@ -48,27 +69,28 @@ fn ref_of(module_path: String, decl_name: String) -> DeclarationRef {
   }
 }
 
-fn bash_subject() -> ExternalSubjectRef {
-  ExternalSubjectRef {
-    declaration: ref_of(
-      module_path: "extdeps.languages.bash.subject",
-      decl_name: "gnu_bash"
-    )
-  }
+fn bash_subject() -> DeclarationRef {
+  ref_of(module_path: "extdeps.languages.bash.subject", decl_name: "gnu_bash")
 }
 
-fn unregistered_subject() -> ExternalSubjectRef {
-  ExternalSubjectRef {
-    declaration: ref_of(
-      module_path: "extdeps.languages.verilog.subject",
-      decl_name: "verilog"
-    )
-  }
+fn unregistered_subject() -> DeclarationRef {
+  ref_of(module_path: "extdeps.languages.verilog.subject", decl_name: "verilog")
+}
+
+fn project_subject() -> DeclarationRef {
+  ref_of(module_path: "extdeps.languages.dag.syntax", decl_name: "dag_item_forms")
 }
 
 fn bash_registration() -> LanguageTargetRegistration {
   LanguageTargetRegistration {
-    grounding: ExternalGrounding { scope: extdeps_model_scope },
+    grounding: ExternalGrounding { scope: gnu_bash_model_scope },
+    disposition: TargetActive
+  }
+}
+
+fn project_registration() -> LanguageTargetRegistration {
+  LanguageTargetRegistration {
+    grounding: ProjectGrounding { authority: project_subject() },
     disposition: TargetActive
   }
 }
@@ -91,10 +113,10 @@ test fn green_registered_bash_surface_resolves_to_the_bash_subject() -> Bool {
     rows: [bash_grammar_row()],
     registry: [bash_registration()]
   ) {
-    TargetResolved { target: t } => external_subject_ref_eq(a: t, b: bash_subject())
+    TargetResolved { target: t } => declaration_ref_eq(a: t, b: bash_subject())
     TargetSurfaceUnregistered { surface: _ } => false
     TargetSurfaceAmbiguous { surface: _, candidates: _ } => false
-    TargetSubjectUnresolvable { subject: _ } => false
+    TargetNotRegistered { target: _ } => false
   }
 }
 
@@ -103,6 +125,31 @@ test fn green_clean_join_reports_no_violations() -> Bool {
     rows: [bash_grammar_row()],
     registry: [bash_registration()]
   )
+}
+
+data neutral_key_note: String = "THE NEUTRAL-KEY CONTROL, and it is the discriminating one for the P0 the review relayed on 2026-08-04. The kernel previously keyed every surface row, resolution outcome, tally and projection on an EXTERNAL subject reference while its own target_grounding_law concluded canonical identity is a DeclarationRef — so a project-grounded target had to be wrapped in a carrier documented as pointing at an independently governed upstream subject, asserting a governance it does not have. The observable consequence was that project targets could not be projected at all. This control joins a PROJECT-grounded registration through the same fold as the external one, so the two arms are proven to share one key by execution rather than by the types merely lining up."
+
+test fn green_project_grounded_target_joins_through_the_same_key() -> Bool {
+  let row = LanguageTargetSurfaceRow {
+    authority: TargetModelDeclaration,
+    surface: SurfaceModule { module_path: "extdeps.languages.dag.syntax" },
+    target: Present { value: project_subject() }
+  }
+  match resolve_target_for_surface(
+    surface: SurfaceModule { module_path: "extdeps.languages.dag.syntax" },
+    rows: [row],
+    registry: [bash_registration(), project_registration()]
+  ) {
+    TargetResolved { target: t } => declaration_ref_eq(a: t, b: project_subject())
+    TargetSurfaceUnregistered { surface: _ } => false
+    TargetSurfaceAmbiguous { surface: _, candidates: _ } => false
+    TargetNotRegistered { target: _ } => false
+  }
+}
+
+test fn green_both_grounding_arms_derive_their_declared_subject() -> Bool {
+  declaration_ref_eq(a: registration_subject(registration: bash_registration()), b: bash_subject())
+    && declaration_ref_eq(a: registration_subject(registration: project_registration()), b: project_subject())
 }
 
 test fn red_surface_without_identity_refuses() -> Bool {
@@ -122,6 +169,7 @@ test fn red_surface_without_identity_refuses() -> Bool {
         DuplicateRegistryTarget { target: _ } => false
         SurfaceJoinsMultipleTargets { authority: _, surface: _, first: _, second: _ } => false
         TargetVocabularyHasNoRegistryTarget { surface: _ } => false
+        DuplicateSurfaceLocus { surface: _ } => false
       }
     })
 }
@@ -139,11 +187,12 @@ test fn red_surface_naming_unregistered_subject_refuses() -> Bool {
     f: fn(acc, v) {
       acc || match v {
         SurfaceNamesUnknownTarget { authority: _, surface: _, named: n } =>
-          external_subject_ref_eq(a: n, b: unregistered_subject())
+          declaration_ref_eq(a: n, b: unregistered_subject())
         SurfaceMissingTargetIdentity { authority: _, surface: _ } => false
         DuplicateRegistryTarget { target: _ } => false
         SurfaceJoinsMultipleTargets { authority: _, surface: _, first: _, second: _ } => false
         TargetVocabularyHasNoRegistryTarget { surface: _ } => false
+        DuplicateSurfaceLocus { surface: _ } => false
       }
     })
 }
@@ -155,11 +204,12 @@ test fn red_duplicate_registration_refuses() -> Bool {
   )
   fold(violations, init: false, f: fn(acc, v) {
     acc || match v {
-      DuplicateRegistryTarget { target: t } => external_subject_ref_eq(a: t, b: bash_subject())
+      DuplicateRegistryTarget { target: t } => declaration_ref_eq(a: t, b: bash_subject())
       SurfaceMissingTargetIdentity { authority: _, surface: _ } => false
       SurfaceNamesUnknownTarget { authority: _, surface: _, named: _ } => false
       SurfaceJoinsMultipleTargets { authority: _, surface: _, first: _, second: _ } => false
       TargetVocabularyHasNoRegistryTarget { surface: _ } => false
+      DuplicateSurfaceLocus { surface: _ } => false
     }
   })
 }
@@ -174,7 +224,7 @@ test fn red_unregistered_surface_reports_located_refusal_not_silence() -> Bool {
     TargetSurfaceUnregistered { surface: s } => surface_locus_eq(a: s, b: unknown)
     TargetResolved { target: _ } => false
     TargetSurfaceAmbiguous { surface: _, candidates: _ } => false
-    TargetSubjectUnresolvable { subject: _ } => false
+    TargetNotRegistered { target: _ } => false
   }
 }
 
@@ -195,11 +245,13 @@ test fn red_two_rows_disagreeing_about_one_surface_refuse_as_ambiguous() -> Bool
     TargetSurfaceAmbiguous { surface: _, candidates: c } => fold(c, init: 0, f: fn(a, _x) { a + 1 }) == 2
     TargetResolved { target: _ } => false
     TargetSurfaceUnregistered { surface: _ } => false
-    TargetSubjectUnresolvable { subject: _ } => false
+    TargetNotRegistered { target: _ } => false
   }
 }
 
-test fn red_surface_naming_subject_absent_from_registry_is_unresolvable() -> Bool {
+data outcome_naming_note: String = "This arm was called TargetSubjectUnresolvable while the fold that produces it performs NO declaration resolution — it tests registry membership. So 'names a valid subject nobody registered' and 'names a DeclarationRef that resolves nowhere on disk' were one arm wearing the second's name, and the law claimed the second reached it. Renamed to TargetNotRegistered, which is what is actually decided. The on-disk resolution outcome is deliberately NOT minted as an empty variant beside it: a typed arm with no producer is the inert-carrier defect this same PR already had to close once, and disk resolution belongs to the extdeps roster machinery."
+
+test fn red_surface_naming_subject_absent_from_registry_is_not_registered() -> Bool {
   let rows = [
     LanguageTargetSurfaceRow {
       authority: RuntimeChecker,
@@ -212,8 +264,7 @@ test fn red_surface_naming_subject_absent_from_registry_is_unresolvable() -> Boo
     rows: rows,
     registry: [bash_registration()]
   ) {
-    TargetSubjectUnresolvable { subject: s } =>
-      external_subject_ref_eq(a: s, b: unregistered_subject())
+    TargetNotRegistered { target: t } => declaration_ref_eq(a: t, b: unregistered_subject())
     TargetResolved { target: _ } => false
     TargetSurfaceUnregistered { surface: _ } => false
     TargetSurfaceAmbiguous { surface: _, candidates: _ } => false
@@ -241,6 +292,7 @@ test fn red_surface_named_by_two_targets_emits_joins_multiple() -> Bool {
         SurfaceNamesUnknownTarget { authority: _, surface: _, named: _ } => false
         TargetVocabularyHasNoRegistryTarget { surface: _ } => false
         DuplicateRegistryTarget { target: _ } => false
+        DuplicateSurfaceLocus { surface: _ } => false
       }
     })
 }
@@ -263,6 +315,7 @@ test fn red_unidentified_vocabulary_surface_emits_its_own_class() -> Bool {
         SurfaceMissingTargetIdentity { authority: _, surface: _ } => false
         SurfaceNamesUnknownTarget { authority: _, surface: _, named: _ } => false
         DuplicateRegistryTarget { target: _ } => false
+        DuplicateSurfaceLocus { surface: _ } => false
       }
     })
 }
@@ -271,7 +324,7 @@ test fn multi_target_surface_reported_once_not_per_row() -> Bool {
   let three_way = [
     bash_grammar_row(),
     LanguageTargetSurfaceRow { authority: EmitHostExecution, surface: bash_grammar_surface(), target: Present { value: unregistered_subject() } },
-    LanguageTargetSurfaceRow { authority: RuntimeChecker, surface: bash_grammar_surface(), target: Present { value: unregistered_subject() } }
+    LanguageTargetSurfaceRow { authority: RuntimeChecker, surface: bash_grammar_surface(), target: Present { value: project_subject() } }
   ]
   fold(language_target_join_violations(rows: three_way, registry: [bash_registration()]),
     init: 0,
@@ -282,6 +335,178 @@ test fn multi_target_surface_reported_once_not_per_row() -> Bool {
         SurfaceNamesUnknownTarget { authority: _, surface: _, named: _ } => 0
         TargetVocabularyHasNoRegistryTarget { surface: _ } => 0
         DuplicateRegistryTarget { target: _ } => 0
+        DuplicateSurfaceLocus { surface: _ } => 0
       }
     }) == 1
+}
+
+data distinct_target_dedup_note: String = "THE CONTROL THE SUITE WAS MISSING (review relayed 2026-08-04). surface_named_targets pushed every occurrence with no deduplication, so two rows naming the SAME target reached TallyMany and were reported as a surface joining multiple targets — false, because that surface has one target and a duplicated row. The old suite covered two genuinely different targets and a three-row case, both of which pass either way, so nothing distinguished 'two identities' from 'two rows'. These two controls pin both halves: same locus plus same subject twice must NOT be ambiguity, and must instead be reported as the duplication it is."
+
+fn duplicated_same_target_rows() -> List<LanguageTargetSurfaceRow> {
+  [
+    bash_grammar_row(),
+    LanguageTargetSurfaceRow {
+      authority: EmitHostExecution,
+      surface: bash_grammar_surface(),
+      target: Present { value: bash_subject() }
+    }
+  ]
+}
+
+test fn red_same_surface_named_twice_by_one_target_is_not_ambiguous() -> Bool {
+  match resolve_target_for_surface(
+    surface: bash_grammar_surface(),
+    rows: duplicated_same_target_rows(),
+    registry: [bash_registration()]
+  ) {
+    TargetResolved { target: t } => declaration_ref_eq(a: t, b: bash_subject())
+    TargetSurfaceAmbiguous { surface: _, candidates: _ } => false
+    TargetSurfaceUnregistered { surface: _ } => false
+    TargetNotRegistered { target: _ } => false
+  }
+}
+
+test fn red_duplicated_surface_row_emits_duplicate_locus_not_multi_target() -> Bool {
+  let violations = language_target_join_violations(
+    rows: duplicated_same_target_rows(),
+    registry: [bash_registration()]
+  )
+  let dup = fold(violations, init: false, f: fn(acc, v) {
+    acc || match v {
+      DuplicateSurfaceLocus { surface: s } => surface_locus_eq(a: s, b: bash_grammar_surface())
+      SurfaceJoinsMultipleTargets { authority: _, surface: _, first: _, second: _ } => false
+      SurfaceMissingTargetIdentity { authority: _, surface: _ } => false
+      SurfaceNamesUnknownTarget { authority: _, surface: _, named: _ } => false
+      TargetVocabularyHasNoRegistryTarget { surface: _ } => false
+      DuplicateRegistryTarget { target: _ } => false
+    }
+  })
+  let multi = fold(violations, init: false, f: fn(acc, v) {
+    acc || match v {
+      SurfaceJoinsMultipleTargets { authority: _, surface: _, first: _, second: _ } => true
+      DuplicateSurfaceLocus { surface: _ } => false
+      SurfaceMissingTargetIdentity { authority: _, surface: _ } => false
+      SurfaceNamesUnknownTarget { authority: _, surface: _, named: _ } => false
+      TargetVocabularyHasNoRegistryTarget { surface: _ } => false
+      DuplicateRegistryTarget { target: _ } => false
+    }
+  })
+  dup && !multi
+}
+
+data accounting_discrimination_note: String = "THE CONTROLS THAT MAKE THE ACCOUNTING PREDICATE MEAN SOMETHING. Its predecessor compared TOTAL violations to census rows with a <=, so it held for any census and would have held against an empty violation list. The replacement is an exact equality between identified rows plus reported missing-identity rows and the census, and these controls plant each way it can break: a row naming an unregistered subject is in NEITHER class, so the sum falls short; and the integrity wall is asserted separately so the two cannot mask each other. The second control is the one that would have caught the original defect — under the old predicate it passes, under this one it fails."
+
+fn clean_population() -> List<LanguageTargetSurfaceRow> {
+  [
+    bash_grammar_row(),
+    LanguageTargetSurfaceRow {
+      authority: StdLanguageCatalogue,
+      surface: SurfaceDeclaration { ref: ref_of(module_path: "std.languages", decl_name: "rust_language") },
+      target: none
+    }
+  ]
+}
+
+fn population_with_unknown_target() -> List<LanguageTargetSurfaceRow> {
+  [
+    bash_grammar_row(),
+    LanguageTargetSurfaceRow {
+      authority: StdLanguageCatalogue,
+      surface: SurfaceDeclaration { ref: ref_of(module_path: "std.languages", decl_name: "rust_language") },
+      target: Present { value: unregistered_subject() }
+    }
+  ]
+}
+
+test fn green_clean_population_accounts_exactly() -> Bool {
+  declared_population_accounting_exact(rows: clean_population(), registry: [bash_registration()])
+    && identified_row_count(rows: clean_population(), registry: [bash_registration()]) == 1
+}
+
+test fn red_row_naming_unregistered_subject_breaks_the_accounting_sum() -> Bool {
+  !declared_population_accounting_exact(
+    rows: population_with_unknown_target(),
+    registry: [bash_registration()]
+  )
+}
+
+test fn red_unknown_target_row_fails_the_integrity_wall_separately() -> Bool {
+  registry_integrity_clean(rows: clean_population(), registry: [bash_registration()], projections: [])
+    && !registry_integrity_clean(rows: population_with_unknown_target(), registry: [bash_registration()], projections: [])
+}
+
+test fn red_duplicate_registration_fails_integrity_but_not_accounting() -> Bool {
+  let dup_registry = [bash_registration(), bash_registration()]
+  declared_population_accounting_exact(rows: clean_population(), registry: dup_registry)
+    && !registry_integrity_clean(rows: clean_population(), registry: dup_registry, projections: [])
+}
+
+data projection_uniqueness_note: String = "Both projection directions previously resolved by ORDER — a later row silently overwrote an earlier one, so two projections claiming one legacy id returned whichever came last, and a subject with two projections returned whichever came last. That is the same silent last-wins shape as the resolver's double-bound import defect, reproduced inside the module built to remove parallel identities. These controls pin the refusals."
+
+fn bash_projection() -> LanguageTargetProjection {
+  LanguageTargetProjection {
+    subject: bash_subject(),
+    display_name: "GNU Bash",
+    file_extensions: [".sh"],
+    legacy_language_id: Present { value: "shell" },
+    legacy_frontier_label: none
+  }
+}
+
+fn colliding_projection() -> LanguageTargetProjection {
+  LanguageTargetProjection {
+    subject: project_subject(),
+    display_name: "dag",
+    file_extensions: [".dag"],
+    legacy_language_id: Present { value: "shell" },
+    legacy_frontier_label: none
+  }
+}
+
+test fn green_unique_legacy_id_resolves() -> Bool {
+  match language_id_to_subject(language_id: "shell", projections: [bash_projection()]) {
+    LanguageIdResolved { target: t } => declaration_ref_eq(a: t, b: bash_subject())
+    LanguageIdUnregistered { language_id: _ } => false
+    LanguageIdAmbiguous { language_id: _, first: _, second: _ } => false
+  }
+}
+
+test fn red_two_projections_claiming_one_legacy_id_refuse_rather_than_last_wins() -> Bool {
+  match language_id_to_subject(
+    language_id: "shell",
+    projections: [bash_projection(), colliding_projection()]
+  ) {
+    LanguageIdAmbiguous { language_id: l, first: f, second: s } =>
+      l == "shell"
+        && declaration_ref_eq(a: f, b: bash_subject())
+        && declaration_ref_eq(a: s, b: project_subject())
+    LanguageIdResolved { target: _ } => false
+    LanguageIdUnregistered { language_id: _ } => false
+  }
+}
+
+test fn red_two_projections_for_one_subject_refuse_rather_than_last_wins() -> Bool {
+  let doubled = [bash_projection(), bash_projection()]
+  match projection_for_subject(subject: bash_subject(), projections: doubled) {
+    ProjectionAmbiguous { subject: s } => declaration_ref_eq(a: s, b: bash_subject())
+    ProjectionResolved { projection: _ } => false
+    ProjectionAbsent { subject: _ } => false
+  }
+}
+
+test fn red_duplicate_projection_fails_the_integrity_wall() -> Bool {
+  registry_integrity_clean(rows: clean_population(), registry: [bash_registration()], projections: [bash_projection()])
+    && !registry_integrity_clean(
+      rows: clean_population(),
+      registry: [bash_registration()],
+      projections: [bash_projection(), bash_projection()]
+    )
+}
+
+test fn green_absent_projection_reports_its_subject() -> Bool {
+  match projection_for_subject(subject: unregistered_subject(), projections: [bash_projection()]) {
+    ProjectionAbsent { subject: s } => declaration_ref_eq(a: s, b: unregistered_subject())
+    ProjectionResolved { projection: _ } => false
+    ProjectionAmbiguous { subject: _ } => false
+  }
 }

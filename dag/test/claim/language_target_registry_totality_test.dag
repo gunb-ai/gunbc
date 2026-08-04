@@ -1,7 +1,7 @@
 module test.claim.language_target_registry_totality
 
 import std.types { Bool, Int }
-import extdeps.external_authority { external_subject_ref_eq }
+import std.roster_frontier { declaration_ref_eq }
 import std.language_target_identity {
   LanguageTargetSurfaceLocus,
   SurfaceModule,
@@ -9,7 +9,7 @@ import std.language_target_identity {
   TargetResolved,
   TargetSurfaceUnregistered,
   TargetSurfaceAmbiguous,
-  TargetSubjectUnresolvable,
+  TargetNotRegistered,
   resolve_target_for_surface,
 }
 import std.language_target_identity {
@@ -17,8 +17,8 @@ import std.language_target_identity {
   LanguageIdLookup,
   LanguageIdResolved,
   LanguageIdUnregistered,
+  LanguageIdAmbiguous,
 }
-import std.roster_frontier { declaration_ref_eq }
 import std.language_target_identity {
   ExternalGrounding,
   ProjectGrounding,
@@ -26,22 +26,39 @@ import std.language_target_identity {
 import gunbc.language_target_registry {
   registered_language_targets,
   dag_subject_ref,
+  english_subject_ref,
   registered_target_count,
   bash_display_name,
+  dag_display_name,
+  english_display_name,
   lookup_language_id,
   every_projection_subject_is_registered,
   bash_subject_ref,
-  registered_language_targets,
   language_target_surface_census,
   surface_census_row_count,
+  identified_surface_count,
   unidentified_surface_count,
+  registry_integrity_violation_count,
   registry_accounting_total,
+  registry_integrity_holds,
 }
 
-data registry_totality_witness_note: String = "Controls for the registry TOTALITY wall — the no-invisible-remainder property, not a completion claim. The wall's whole content is that every declared surface is either joined to a registered subject or reported as an exact unidentified row, so the assertions below pin BOTH directions on live registry rows: the Bash vocabulary modules resolve to the Bash subject (a real join, not a fixture), and the unidentified population is strictly positive and strictly smaller than the census (so neither arm is empty and the count is not trivially saturated). WHAT NO ASSERTION HERE ESTABLISHES, restated from the registry's own maximum-conclusion row because a witness is exactly where that gets forgotten: the DECLARED population is not proven complete against the repository. All six authorities are hand-declared, so a target-bearing surface nobody wrote a row for is invisible here. These are ratchet controls; none of them is completion evidence for any target."
+data registry_totality_witness_note: String = "Controls for the registry ACCOUNTING ratchet and the separate INTEGRITY wall — the no-invisible-remainder property, not a completion claim. The ratchet's whole content is that every declared surface is either joined to a registered subject or reported as an exact unidentified row, as an EXACT equality; the wall's is that malformed join input is exactly zero. They are asserted separately because summing them is precisely what made the predecessor undiscriminating: it compared total violations to census rows with a <=, which held for any census and would have held against an empty violation list. WHAT NO ASSERTION HERE ESTABLISHES, restated from the registry's own maximum-conclusion row because a witness is exactly where that gets forgotten: the DECLARED population is not proven complete against the repository, and a declared row is not proven to name a real surface — three census rows were found on 2026-08-04 to be file paths transcribed as module paths. All six authorities are hand-declared, so a target-bearing surface nobody wrote a row for is invisible here. These are ratchet controls; none of them is completion evidence for any target."
 
-test fn registry_census_is_nonempty_and_accounting_is_total() -> Bool {
+test fn registry_census_is_nonempty_and_accounting_is_exact() -> Bool {
   registry_accounting_total() && surface_census_row_count() > 0
+}
+
+test fn registry_integrity_wall_holds_with_zero_malformed_rows() -> Bool {
+  registry_integrity_holds() && registry_integrity_violation_count() == 0
+}
+
+data accounting_partition_note: String = "The exact equality restated on the live registry: identified plus unidentified equals the census, with both parts strictly positive. Strict positivity on BOTH sides is what stops either arm from being vacuously satisfied — an all-unidentified census would make the join look total while joining nothing, and an all-identified one would hide the remainder the ratchet exists to display."
+
+test fn identified_and_unidentified_partition_the_census_exactly() -> Bool {
+  identified_surface_count() + unidentified_surface_count() == surface_census_row_count()
+    && identified_surface_count() > 0
+    && unidentified_surface_count() > 0
 }
 
 test fn bash_vocabulary_surface_joins_the_bash_subject() -> Bool {
@@ -50,10 +67,10 @@ test fn bash_vocabulary_surface_joins_the_bash_subject() -> Bool {
     rows: language_target_surface_census,
     registry: registered_language_targets
   ) {
-    TargetResolved { target: t } => external_subject_ref_eq(a: t, b: bash_subject_ref)
+    TargetResolved { target: t } => declaration_ref_eq(a: t, b: bash_subject_ref)
     TargetSurfaceUnregistered { surface: _ } => false
     TargetSurfaceAmbiguous { surface: _, candidates: _ } => false
-    TargetSubjectUnresolvable { subject: _ } => false
+    TargetNotRegistered { target: _ } => false
   }
 }
 
@@ -66,7 +83,7 @@ test fn typescript_vocabulary_surface_is_visibly_unidentified() -> Bool {
     TargetSurfaceUnregistered { surface: _ } => true
     TargetResolved { target: _ } => false
     TargetSurfaceAmbiguous { surface: _, candidates: _ } => false
-    TargetSubjectUnresolvable { subject: _ } => false
+    TargetNotRegistered { target: _ } => false
   }
 }
 
@@ -84,7 +101,7 @@ test fn a_surface_absent_from_the_registry_does_not_resolve() -> Bool {
     TargetSurfaceUnregistered { surface: _ } => true
     TargetResolved { target: _ } => false
     TargetSurfaceAmbiguous { surface: _, candidates: _ } => false
-    TargetSubjectUnresolvable { subject: _ } => false
+    TargetNotRegistered { target: _ } => false
   }
 }
 
@@ -104,6 +121,22 @@ test fn projection_from_registered_subject_is_total() -> Bool {
   }
 }
 
+data project_projection_note: String = "THE LIVE DISCRIMINATOR FOR THE NEUTRAL JOIN KEY. While the key was an external subject reference, a project-grounded target could not be projected at all — the stacked D0 branch produced projections for every external target and NEITHER project one, which is how the defect surfaced. This asserts a project-grounded subject projects through the same roster as Bash, on live registry rows rather than fixtures. The English row is the paired negative: it is REGISTERED but deliberately unprojected, so an absent projection is proven to report Absent rather than being confused with an unregistered subject."
+
+test fn project_grounded_subject_projects_through_the_same_roster() -> Bool {
+  match dag_display_name() {
+    Present { value: n } => n == "dag"
+    Absent => false
+  }
+}
+
+test fn registered_but_unprojected_subject_reports_absent() -> Bool {
+  match english_display_name() {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
 test fn every_projection_hangs_off_a_registered_subject() -> Bool {
   every_projection_subject_is_registered()
 }
@@ -112,6 +145,7 @@ test fn red_legacy_language_id_is_not_an_identity_and_refuses() -> Bool {
   match lookup_language_id(language_id: "rust") {
     LanguageIdUnregistered { language_id: l } => l == "rust"
     LanguageIdResolved { target: _ } => false
+    LanguageIdAmbiguous { language_id: _, first: _, second: _ } => false
   }
 }
 
@@ -119,14 +153,15 @@ test fn red_unknown_legacy_id_refuses_rather_than_defaulting() -> Bool {
   match lookup_language_id(language_id: "not_a_language") {
     LanguageIdUnregistered { language_id: _ } => true
     LanguageIdResolved { target: _ } => false
+    LanguageIdAmbiguous { language_id: _, first: _, second: _ } => false
   }
 }
 
-data project_grounding_note: String = "Controls for the ProjectGrounding arm, which had zero inhabitants until the .dag and controlled-English rows landed — an unexercised coproduct arm is untested code, and this is the arm that exists precisely because a universal ExternalSubjectRef would have forced this project's own targets to claim an upstream governance they do not have. The discriminating property is that a project-grounded subject derives from its OWN authority declaration rather than from any external scope, so the derived subject equals the declared authority exactly."
+data project_grounding_note: String = "Controls for the ProjectGrounding arm, which had zero inhabitants until the .dag and controlled-English rows landed — an unexercised coproduct arm is untested code, and this is the arm that exists precisely because a universal external subject reference would have forced this project's own targets to claim an upstream governance they do not have. The discriminating property is that a project-grounded subject derives from its OWN authority declaration rather than from any external scope, so the derived subject equals the declared authority exactly."
 
 test fn project_grounded_target_derives_its_own_authority_as_subject() -> Bool {
   fold(registered_language_targets, init: false, f: fn(acc, r) {
-    acc || declaration_ref_eq(a: registration_subject(registration: r), b: dag_subject_ref.declaration)
+    acc || declaration_ref_eq(a: registration_subject(registration: r), b: dag_subject_ref)
   })
 }
 
