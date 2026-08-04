@@ -277,20 +277,7 @@ fn v1_declared_type_app_mentions_param_non_phantom_loop(
           )
           let here =
             if slot_is_phantom {
-              if v1_type_expr_is_bare_param(
-                param_name: slot_name,
-                type_expr: arg_expr,
-                source_indices: source_indices
-              ) {
-                false
-              } else {
-                v1_type_expr_mentions_param_non_phantom(
-                  param_name: param_name,
-                  type_expr: arg_expr,
-                  type_decl_items: type_decl_items,
-                  source_indices: source_indices
-                )
-              }
+              false
             } else {
               v1_type_expr_mentions_param_non_phantom(
                 param_name: param_name,
@@ -542,30 +529,33 @@ fn v1_generic_params_needing_clone_bound(
     source_indices: source_indices
   )
   generic_param_names |> filter(g =>
-  !v1_phantom_only_param_names_contains(names: phantom_only, param_name: g)
-    && (
-      v1_type_param_needs_clone_bound(
-        param_name: g,
-        return_is_bare_generic: return_is_bare_generic,
-        ret_name: ret_name,
-        body_is_param_ref: body_is_param_ref,
-        value_params: value_params,
-        source_indices: source_indices
-      ) || v1_fn_param_wf_needs_clone(
-        param_name: g,
-        value_params: value_params,
-        ret: ret,
-        bounds: bounds,
-        type_decl_items: type_decl_items,
-        source_indices: source_indices
-      )
-      || v1_fn_param_type_needs_clone_bound(
-        param_name: g,
-        value_params: value_params,
-        bounds: bounds,
-        type_decl_items: type_decl_items,
-        source_indices: source_indices
-      )
+    v1_fn_param_wf_needs_clone(
+      param_name: g,
+      value_params: value_params,
+      ret: ret,
+      bounds: bounds,
+      type_decl_items: type_decl_items,
+      source_indices: source_indices
+    )
+    || (
+      !v1_phantom_only_param_names_contains(names: phantom_only, param_name: g)
+        && (
+          v1_type_param_needs_clone_bound(
+            param_name: g,
+            return_is_bare_generic: return_is_bare_generic,
+            ret_name: ret_name,
+            body_is_param_ref: body_is_param_ref,
+            value_params: value_params,
+            source_indices: source_indices
+          )
+          || v1_fn_param_type_needs_clone_bound(
+            param_name: g,
+            value_params: value_params,
+            bounds: bounds,
+            type_decl_items: type_decl_items,
+            source_indices: source_indices
+          )
+        )
     )
   )
 }
