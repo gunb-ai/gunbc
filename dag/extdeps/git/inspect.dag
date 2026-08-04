@@ -13,6 +13,8 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 data git_inspect_service_note: String = "Read-only repository-root, revision, and tree inspection operations are de-fused from the broad git.Core service so consumers pay only the upstream facts they inspect. Toplevel, HeadCommit, and ShowTree move here with their existing shapes; MergeBase and ListTreePathsAtRevision extend this same inspection authority for revision-addressed Rust-source observation. No second Git inspection surface remains in extdeps.git."
 
+data merge_base_is_ancestor_exit_is_the_answer_note: String = "EXIT 1 IS AN ANSWER, NOT AN ERROR, and modelling it that way is the whole reason this is a separate operation from MergeBase. `git merge-base --is-ancestor A B` documents exit 0 for 'yes, A is an ancestor of B' and exit 1 for 'no' — both are successful determinations — while 128 means the probe itself could not run (a bad object, a missing repository).\\n\\nSo the output carries the raw exit_code rather than a `success: Bool` projected from exit_success. A Bool would fuse 'no' with 'could not tell': exit_success is false for both 1 and 128, and those have opposite safety meanings. 'This candidate is not a descendant' is a fact a deploy acts on; 'I could not determine the relation' must refuse, because treating it as 'not an ancestor' silently reclassifies an ordinary advance as a superseded no-op, and treating it as 'is an ancestor' deploys on an unverified relation. Keeping the code lets the caller fold three states into three, which is what makes RelationUnverifiable a real variant rather than a comment.\\n\\nTwo probes in opposite directions are what distinguish 'candidate is older' from 'unrelated history' — a single direction cannot, since both answer 'no'."
+
 service git.Inspect {
   operation Toplevel {
     input {}
@@ -55,6 +57,21 @@ service git.Inspect {
       0 => Unit
       1 => String "No merge base"
       128 => String "Invalid ref or not a git repository"
+    }
+  }
+
+  operation MergeBaseIsAncestor {
+    input { ancestor: GitRef, descendant: GitRef }
+    output {
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", "merge-base", "--is-ancestor", "{ancestor}", "{descendant}"] }
+    exit {
+      0 => Unit
+      1 => Unit
+      128 => String "Invalid object or not a git repository"
     }
   }
 
