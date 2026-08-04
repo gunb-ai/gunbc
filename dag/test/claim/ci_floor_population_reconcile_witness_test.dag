@@ -1,7 +1,7 @@
 module test.claim.ci_floor_population_reconcile_witness
 
 import std.types { Bool }
-import std.measure { millisecond_count }
+import std.measure { millisecond, millisecond_count }
 import gunbc.ci_floor_population_reconcile {
   Delivered,
   NotDelivered,
@@ -55,10 +55,10 @@ test fn witness_admission_missing_stages_is_open() -> Bool {
 
 test fn witness_admission_delivered_when_stages_join_under_baseline() -> Bool {
   match admission_settle_from_stage_walls(
-    capture_ms: 110820,
-    stage1_ms: Present { value: 40000 },
-    stage2_ms: Present { value: 40000 },
-    cold_baseline_ms: 197130
+    capture: millisecond(count: 110820),
+    stage1: Present { value: millisecond(count: 40000) },
+    stage2: Present { value: millisecond(count: 40000) },
+    cold_baseline: millisecond(count: 197130)
   ) {
     Delivered {} => true
     _ => false
@@ -67,10 +67,10 @@ test fn witness_admission_delivered_when_stages_join_under_baseline() -> Bool {
 
 test fn witness_admission_not_delivered_when_net_exceeds_baseline() -> Bool {
   match admission_settle_from_stage_walls(
-    capture_ms: 110820,
-    stage1_ms: Present { value: 100000 },
-    stage2_ms: Present { value: 100000 },
-    cold_baseline_ms: 197130
+    capture: millisecond(count: 110820),
+    stage1: Present { value: millisecond(count: 100000) },
+    stage2: Present { value: millisecond(count: 100000) },
+    cold_baseline: millisecond(count: 197130)
   ) {
     NotDelivered { reason: _ } => true
     _ => false

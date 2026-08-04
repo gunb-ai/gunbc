@@ -2,7 +2,7 @@ module gunbc.ci_floor_population_reconcile
 
 import std.types { Bool, NonEmptyStr }
 import std.nat { Nat }
-import std.measure { Millisecond, millisecond, millisecond_count, basis_point, basis_point_count }
+import std.measure { Millisecond, millisecond, millisecond_count, measure_add, basis_point, basis_point_count }
 
 type PopulationReceiptKind
   = PhaseJournal {}
@@ -90,18 +90,18 @@ fn harvested_subject_a_meets_ninety_five_percent() -> Bool {
 }
 
 fn admission_settle_from_stage_walls(
-  capture_ms: Nat,
-  stage1_ms: Nat?,
-  stage2_ms: Nat?,
-  cold_baseline_ms: Nat
+  capture: Millisecond,
+  stage1: Millisecond?,
+  stage2: Millisecond?,
+  cold_baseline: Millisecond
 ) -> MechanismEvidenceSettle {
-  match stage1_ms {
+  match stage1 {
     Absent => MissingArtifactOpen { owed: "on-success-stage-1-receipt.tsv wall_ms" as NonEmptyStr }
-    Present { value: s1 } => match stage2_ms {
+    Present { value: s1 } => match stage2 {
       Absent => MissingArtifactOpen { owed: "on-success-stage-2-receipt.tsv wall_ms" as NonEmptyStr }
       Present { value: s2 } => {
-        let net = capture_ms + s1 + s2
-        if net <= cold_baseline_ms {
+        let net = measure_add(a: measure_add(a: capture, b: s1), b: s2)
+        if millisecond_count(m: net) <= millisecond_count(m: cold_baseline) {
           Delivered {}
         } else {
           NotDelivered { reason: "capture+stamp+gate exceeds cold_admission_baseline_wall" as NonEmptyStr }
@@ -146,10 +146,10 @@ fn warm_hit_settle_from_skip_counter(skip_proven: Bool?) -> MechanismEvidenceSet
 
 fn current_admission_settle() -> MechanismEvidenceSettle {
   admission_settle_from_stage_walls(
-    capture_ms: 110820,
-    stage1_ms: none,
-    stage2_ms: none,
-    cold_baseline_ms: 197130
+    capture: millisecond(count: 110820),
+    stage1: none,
+    stage2: none,
+    cold_baseline: millisecond(count: 197130)
   )
 }
 
