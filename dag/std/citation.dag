@@ -15,7 +15,7 @@ import std.claim_evidence { RecordedFact, RecordedFactId }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, RealizationDispatch }
 import extdeps.external_authority { ExternalAuthority, ExternalSubjectRef, external_subject_ref_eq }
-import extdeps.uri { Uri }
+import extdeps.uri { Uri, uri_eq }
 import extdeps.pin { Pin, ExactPin }
 import extdeps.version { VersionIdentity }
 import extdeps.http.server { MediaType }
@@ -68,10 +68,25 @@ type CitationRepresentationReconciliation
 
 type CitationVerificationRefusalCause
   = RequestLocatorMismatch { expected: Uri, observed: Uri }
-  | ObservationNotRetrieved
+  | HttpStatusNotSuccessful { status: HttpStatus }
+  | ResponseObservedWithoutRepresentationObservation {
+      observation: CitationRetrievalObservation,
+    }
+  | CitationAccessRefusedObservation { observation: CitationRetrievalObservation }
+  | CitationUnreachableObservation { observation: CitationRetrievalObservation }
+  | CitationRateLimitedObservation { observation: CitationRetrievalObservation }
 
 type CitationVerificationOutcome<Selector>
-  = CitationVerified {
+  = CitationRepresentationVerified {
+      receipt: CitationVerificationReceipt<Selector>,
+    }
+  | CitationRepresentationMismatch {
+      receipt: CitationVerificationReceipt<Selector>,
+    }
+  | CitationRepresentationIdentityIncomparable {
+      receipt: CitationVerificationReceipt<Selector>,
+    }
+  | CitationRepresentationObservationMissing {
       receipt: CitationVerificationReceipt<Selector>,
     }
   | CitationVerificationRefused {
@@ -97,7 +112,7 @@ type TextQuoteSelector {
 
 data citation_refusal_cause_note: String = "Every refusal cause is a typed coproduct arm carrying modeled values, not prose — the PinRefusalCause precedent in extdeps.pin. Causes are countable by class so migration frontiers burn down visibly."
 
-data text_position_selector_cross_field_note: String = "W3C Web Annotation TextPositionSelector start and end are non-negative character indices (std.integer.NonNegativeInt = Nat). end < start is refused by text_position_selector returning SelectorRefused { cause: TextPositionEndBeforeStart } — VALIDATION at the constructor today, not a construction wall. dissolve-on: cross-field refinement or sole-constructor wall makes inverted ranges unwritable."
+data text_position_selector_cross_field_note: String = "W3C Web Annotation TextPositionSelector start and end are non-negative character indices (std.integer.NonNegativeInt = Nat). end < start is refused by text_position_selector returning CitationSelectorRefused { cause: TextPositionEndBeforeStart } — VALIDATION at the constructor today, not a construction wall. dissolve-on: cross-field refinement or sole-constructor wall makes inverted ranges unwritable."
 
 data citation_fragment_selector_conforms_to_note: String = "W3C FragmentSelector conformsTo names the specification defining the SELECTOR VALUE syntax — for PDF open parameters that is RFC 8118 (extdeps.standards.rfc_8118), never Web Annotation itself. A missing governing fragment specification must refuse; there is no default_fragment_selector."
 
@@ -125,7 +140,10 @@ type CitationSelector
   = FragmentSelectorVariant(FragmentSelector)
   | TextQuoteSelectorVariant(TextQuoteSelector)
   | TextPositionSelectorVariant(TextPositionSelector)
-  | SelectorRefused { cause: SelectorRefusalCause }
+
+type CitationSelectorConstruction
+  = CitationSelectorConstructed(CitationSelector)
+  | CitationSelectorRefused { cause: SelectorRefusalCause }
 
 fn cited_representation_identity(
   source: ExternalSubjectRef,
@@ -144,8 +162,12 @@ fn cited_representation_identity_eq(
   right: CitedRepresentationIdentity,
 ) -> Bool {
   external_subject_ref_eq(a: left.source, b: right.source)
-    && left.access_route.locator == right.access_route.locator
+    && uri_eq(left: left.access_route, right: right.access_route)
     && left.byte_domain == right.byte_domain
+}
+
+fn http_status_is_success(status: HttpStatus) -> Bool {
+  status >= 200 && status <= 299
 }
 
 fn citation_exact_pin(
@@ -219,41 +241,41 @@ fn reconcile_citation_representation(
   }
 }
 
-fn fragment_selector(conforms_to: ExternalAuthority, value: NonEmptyStr) -> CitationSelector {
-  FragmentSelectorVariant(FragmentSelector {
+fn fragment_selector(conforms_to: ExternalAuthority, value: NonEmptyStr) -> CitationSelectorConstruction {
+  CitationSelectorConstructed(FragmentSelectorVariant(FragmentSelector {
     conforms_to: conforms_to,
     value: value,
-  })
+  }))
 }
 
 fn text_quote_selector(
   exact: NonEmptyStr,
   prefix: NonEmptyStr?,
   suffix: NonEmptyStr?,
-) -> CitationSelector {
-  TextQuoteSelectorVariant(TextQuoteSelector {
+) -> CitationSelectorConstruction {
+  CitationSelectorConstructed(TextQuoteSelectorVariant(TextQuoteSelector {
     exact: exact,
     prefix: prefix,
     suffix: suffix,
-  })
+  }))
 }
 
-fn text_position_selector(start: NonNegativeInt, end: NonNegativeInt) -> CitationSelector {
+fn text_position_selector(start: NonNegativeInt, end: NonNegativeInt) -> CitationSelectorConstruction {
   match nat_compare(a: end, b: start) {
     Less =>
-      SelectorRefused {
+      CitationSelectorRefused {
         cause: TextPositionEndBeforeStart { start: start, end: end },
       }
     Equal =>
-      TextPositionSelectorVariant(TextPositionSelector {
+      CitationSelectorConstructed(TextPositionSelectorVariant(TextPositionSelector {
         start: start,
         end: end,
-      })
+      }))
     Greater =>
-      TextPositionSelectorVariant(TextPositionSelector {
+      CitationSelectorConstructed(TextPositionSelectorVariant(TextPositionSelector {
         start: start,
         end: end,
-      })
+      }))
   }
 }
 
@@ -299,6 +321,26 @@ type CitationRetrievalObservation
       retry_after: Second?,
     }
 
+fn citation_verification_outcome_from_reconciliation<Selector>(
+  target: CitationTarget<Selector>,
+  observation: CitationRetrievalObservation,
+  reconciliation: CitationRepresentationReconciliation,
+) -> CitationVerificationOutcome<Selector> {
+  let receipt = CitationVerificationReceipt {
+    target: target,
+    observation: observation,
+    reconciliation: reconciliation,
+  }
+  match reconciliation {
+    RepresentationMatch => CitationRepresentationVerified { receipt: receipt }
+    RepresentationMismatch { expected: _, observed: _ } =>
+      CitationRepresentationMismatch { receipt: receipt }
+    RepresentationIdentityIncomparable { expected: _, observed: _ } =>
+      CitationRepresentationIdentityIncomparable { receipt: receipt }
+    ObservationMissing => CitationRepresentationObservationMissing { receipt: receipt }
+  }
+}
+
 fn verify_citation_representation<Selector>(
   target: CitationTarget<Selector>,
   observation: CitationRetrievalObservation,
@@ -308,30 +350,32 @@ fn verify_citation_representation<Selector>(
     RepresentationRetrieved {
       request: r,
       observed_at: _,
-      http_status: _,
+      http_status: s,
       observed: o,
     } =>
-      if r.locator.locator != expected_route.locator {
+      if !uri_eq(left: r.locator, right: expected_route) {
         CitationVerificationRefused {
           cause: RequestLocatorMismatch {
             expected: expected_route,
             observed: r.locator,
           },
         }
-      } else {
-        CitationVerified {
-          receipt: CitationVerificationReceipt {
-            target: target,
-            observation: observation,
-            reconciliation: reconcile_citation_representation(
-              expected_pin: target.expected_pin,
-              observed: Present { value: o },
-            ),
-          },
+      } else if !http_status_is_success(status: s) {
+        CitationVerificationRefused {
+          cause: HttpStatusNotSuccessful { status: s },
         }
+      } else {
+        citation_verification_outcome_from_reconciliation(
+          target: target,
+          observation: observation,
+          reconciliation: reconcile_citation_representation(
+            expected_pin: target.expected_pin,
+            observed: Present { value: o },
+          ),
+        )
       }
     ResponseObservedWithoutRepresentation { request: r, observed_at: _, http_status: _ } =>
-      if r.locator.locator != expected_route.locator {
+      if !uri_eq(left: r.locator, right: expected_route) {
         CitationVerificationRefused {
           cause: RequestLocatorMismatch {
             expected: expected_route,
@@ -339,10 +383,14 @@ fn verify_citation_representation<Selector>(
           },
         }
       } else {
-        CitationVerificationRefused { cause: ObservationNotRetrieved }
+        CitationVerificationRefused {
+          cause: ResponseObservedWithoutRepresentationObservation {
+            observation: observation,
+          },
+        }
       }
     CitationAccessRefused { request: r, observed_at: _, cause: _ } =>
-      if r.locator.locator != expected_route.locator {
+      if !uri_eq(left: r.locator, right: expected_route) {
         CitationVerificationRefused {
           cause: RequestLocatorMismatch {
             expected: expected_route,
@@ -350,10 +398,12 @@ fn verify_citation_representation<Selector>(
           },
         }
       } else {
-        CitationVerificationRefused { cause: ObservationNotRetrieved }
+        CitationVerificationRefused {
+          cause: CitationAccessRefusedObservation { observation: observation },
+        }
       }
     CitationUnreachable { request: r, observed_at: _, cause: _ } =>
-      if r.locator.locator != expected_route.locator {
+      if !uri_eq(left: r.locator, right: expected_route) {
         CitationVerificationRefused {
           cause: RequestLocatorMismatch {
             expected: expected_route,
@@ -361,10 +411,12 @@ fn verify_citation_representation<Selector>(
           },
         }
       } else {
-        CitationVerificationRefused { cause: ObservationNotRetrieved }
+        CitationVerificationRefused {
+          cause: CitationUnreachableObservation { observation: observation },
+        }
       }
     CitationRateLimited { request: r, observed_at: _, retry_after: _ } =>
-      if r.locator.locator != expected_route.locator {
+      if !uri_eq(left: r.locator, right: expected_route) {
         CitationVerificationRefused {
           cause: RequestLocatorMismatch {
             expected: expected_route,
@@ -372,7 +424,9 @@ fn verify_citation_representation<Selector>(
           },
         }
       } else {
-        CitationVerificationRefused { cause: ObservationNotRetrieved }
+        CitationVerificationRefused {
+          cause: CitationRateLimitedObservation { observation: observation },
+        }
       }
   }
 }

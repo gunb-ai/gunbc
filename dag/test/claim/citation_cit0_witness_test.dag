@@ -23,11 +23,19 @@ import std.citation {
   RepresentationIdentityIncomparable,
   ObservationMissing,
   ObservedCitedRepresentation,
-  CitationVerified,
+  CitationRepresentationVerified,
+  CitationRepresentationMismatch,
+  CitationRepresentationIdentityIncomparable,
+  CitationRepresentationObservationMissing,
   CitationVerificationRefused,
   RequestLocatorMismatch,
-  ObservationNotRetrieved,
+  HttpStatusNotSuccessful,
+  CitationUnreachableObservation,
+  CitationAccessRefusedObservation,
   CitationRecordedFact,
+  CitationSelectorConstruction,
+  CitationSelectorConstructed,
+  CitationSelectorRefused,
   text_quote_selector,
   text_position_selector,
   fragment_selector,
@@ -35,7 +43,6 @@ import std.citation {
   TextPositionSelectorVariant,
   FragmentSelectorVariant,
   TextPositionEndBeforeStart,
-  SelectorRefused,
   CitationAccessRefused,
   HttpAccessRefused,
   DnsResolutionFailed,
@@ -49,7 +56,7 @@ import std.content_hash {
   Fnv1a64,
 }
 import extdeps.external_authority { ExternalAuthority, ExternalSubjectRef, external_subject_ref_eq }
-import extdeps.uri { Uri, Https }
+import extdeps.uri { Uri, Https, Http, uri_eq }
 import extdeps.version { VersionIdentity }
 import extdeps.http.server { MediaType, TopLevelApplication }
 import extdeps.standards.web_annotation { web_annotation_authority, extdeps_external_authority_anchor }
@@ -172,11 +179,16 @@ data witness_observed_wrong_source: ObservedCitedRepresentation = observed_cited
   observed_identity: witness_synthetic_sha256_digest,
 )
 
-data witness_text_quote: CitationSelector = text_quote_selector(
+data witness_http_access_route: Uri = Uri {
+  scheme: Http,
+  locator: "example.test/cit0-fixture",
+}
+
+data witness_text_quote: CitationSelector = TextQuoteSelectorVariant(TextQuoteSelector {
   exact: "grounded selector text" as NonEmptyStr,
   prefix: none,
   suffix: none,
-)
+})
 
 data witness_citation_target: CitationTarget<CitationSelector> = citation_target(
   expected_pin: witness_citation_pin,
@@ -185,15 +197,15 @@ data witness_citation_target: CitationTarget<CitationSelector> = citation_target
 
 data witness_pdf_fragment_wire: NonEmptyStr = "page=1" as NonEmptyStr
 
-data witness_pdf_fragment_selector: CitationSelector = fragment_selector(
+data witness_pdf_fragment_selector: CitationSelector = FragmentSelectorVariant(FragmentSelector {
   conforms_to: witness_fragment_spec_authority,
   value: witness_pdf_fragment_wire,
-)
+})
 
-data witness_false_web_annotation_fragment_selector: CitationSelector = fragment_selector(
+data witness_false_web_annotation_fragment_selector: CitationSelector = FragmentSelectorVariant(FragmentSelector {
   conforms_to: web_annotation_authority,
   value: witness_pdf_fragment_wire,
-)
+})
 
 data witness_citation_recorded_fact: RecordedFact<CitationRecordedFact<CitationSelector>> = citation_recorded_fact(
   id: "cit0-fixture-fact" as RecordedFactId,
@@ -238,7 +250,6 @@ test fn citation_target_carries_pin_and_selector_not_observation() -> Bool {
       TextQuoteSelectorVariant(_) => true
       FragmentSelectorVariant(_) => false
       TextPositionSelectorVariant(_) => false
-      SelectorRefused { cause: _ } => false
     }
 }
 
@@ -277,12 +288,12 @@ test fn verification_receipt_binds_request_locator_to_target_access_route() -> B
     target: witness_citation_target,
     observation: witness_representation_retrieved_observation,
   ) {
-    CitationVerified { receipt: r } =>
+    CitationRepresentationVerified { receipt: r } =>
       match r.reconciliation {
         RepresentationMatch =>
           match r.observation {
             RepresentationRetrieved { request: req, observed_at: _, http_status: _, observed: _ } =>
-              r.target.expected_pin.subject.access_route.locator == req.locator.locator
+              uri_eq(left: r.target.expected_pin.subject.access_route, right: req.locator)
             _ => false
           }
         _ => false
@@ -313,12 +324,71 @@ test fn verification_refuses_request_locator_mismatch() -> Bool {
   }
 }
 
-test fn verification_refuses_non_retrieved_observation() -> Bool {
+test fn verification_refuses_scheme_mismatch_on_same_locator() -> Bool {
+  let http_observation = RepresentationRetrieved {
+    request: CitationRetrievalRequest {
+      locator: witness_http_access_route,
+    },
+    observed_at: witness_observed_at_noon_utc,
+    http_status: 200,
+    observed: witness_observed_matching,
+  }
+  match verify_citation_representation(
+    target: witness_citation_target,
+    observation: http_observation,
+  ) {
+    CitationVerificationRefused {
+      cause: RequestLocatorMismatch { expected: e, observed: o },
+    } =>
+      e.scheme == Https && o.scheme == Http
+    _ => false
+  }
+}
+
+test fn verification_refuses_non_success_http_status() -> Bool {
+  let not_found_observation = RepresentationRetrieved {
+    request: CitationRetrievalRequest {
+      locator: witness_authority.uri,
+    },
+    observed_at: witness_observed_at_noon_utc,
+    http_status: 404,
+    observed: witness_observed_matching,
+  }
+  match verify_citation_representation(
+    target: witness_citation_target,
+    observation: not_found_observation,
+  ) {
+    CitationVerificationRefused { cause: HttpStatusNotSuccessful { status: 404 } } => true
+    _ => false
+  }
+}
+
+test fn verification_mismatch_is_not_named_verified() -> Bool {
+  match verify_citation_representation(
+    target: witness_citation_target,
+    observation: RepresentationRetrieved {
+      request: CitationRetrievalRequest { locator: witness_authority.uri },
+      observed_at: witness_observed_at_noon_utc,
+      http_status: 200,
+      observed: witness_observed_mismatching,
+    },
+  ) {
+    CitationRepresentationMismatch { receipt: r } =>
+      match r.reconciliation {
+        RepresentationMismatch { expected: _, observed: _ } => true
+        _ => false
+      }
+    CitationRepresentationVerified { receipt: _ } => false
+    _ => false
+  }
+}
+
+test fn verification_refuses_unreachable_observation_with_typed_cause() -> Bool {
   match verify_citation_representation(
     target: witness_citation_target,
     observation: witness_upstream_unreachable_observation,
   ) {
-    CitationVerificationRefused { cause: ObservationNotRetrieved } => true
+    CitationVerificationRefused { cause: CitationUnreachableObservation { observation: _ } } => true
     _ => false
   }
 }
@@ -356,7 +426,7 @@ test fn web_annotation_authority_is_cited_for_selectors() -> Bool {
 
 test fn text_position_selector_refuses_end_before_start() -> Bool {
   match text_position_selector(start: 10, end: 2) {
-    SelectorRefused { cause: TextPositionEndBeforeStart { start: s, end: e } } =>
+    CitationSelectorRefused { cause: TextPositionEndBeforeStart { start: s, end: e } } =>
       s == 10 && e == 2
     _ => false
   }
@@ -364,7 +434,7 @@ test fn text_position_selector_refuses_end_before_start() -> Bool {
 
 test fn text_position_selector_admits_non_negative_range() -> Bool {
   match text_position_selector(start: 0, end: 12) {
-    TextPositionSelectorVariant(_) => true
+    CitationSelectorConstructed(TextPositionSelectorVariant(_)) => true
     _ => false
   }
 }
