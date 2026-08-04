@@ -1,4 +1,4 @@
-module test.claim.namespace_reference_derived_closure_acceptance
+module v1.tests.claim.namespace_reference_derived_closure_acceptance
 
 import gunbc.namespace_reference_derived_closure_admission {
   ReferenceDerivedClosureUnavailable,
@@ -21,7 +21,7 @@ import std.types { Bool, List }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data namespace_reference_derived_closure_acceptance_note: String = "THE DISCRIMINATING CLOSING VALIDATION for roadmap node namespace-reference-derived-closure. RED ON PURPOSE while clauses (e-f) remain unavailable. Composition lives inline in the witness test (operator ruling loyal-ram-550): the contract predicate is unchanged and takes admissions as a parameter; each lane owns ONE observe/supplier function for its clause(s); this witness imports both dag contract/admission types and v1 production observers. N3-A supplies structural clauses (a-d); clauses (e-f) remain literal Unavailable rows until N3-B/N3-C land their suppliers. Executes under the dag plus src/v1 envelope (known_red_probe_v1_envelope_roster) because the witness imports v1.*."
+data namespace_reference_derived_closure_acceptance_note: String = "THE DISCRIMINATING CLOSING VALIDATION for roadmap node namespace-reference-derived-closure. RED ON PURPOSE while clauses (e-f) remain unavailable. Governed placement: src/v1/tests/claim because this witness imports v1.gunbc.* and must compile under compile_clean_source_roots without widening the witness_layer_roots pool (dag/test/claim would force a cross-tree pool that reds json_emit/rust_test_fixtures). Composition lives inline in this witness (operator ruling loyal-ram-550): the contract predicate is unchanged and takes admissions as a parameter; each lane owns ONE observe_* supplier; clauses (e-f) remain literal Unavailable until N3-B/N3-C land. Executes on v1_claim_scoped_known_red_probe_batch under the dag plus src/v1 envelope."
 
 test fn witness_namespace_reference_derived_closure_closing_contract_holds() -> Bool {
   reference_derived_closure_closing_contract_holds(
