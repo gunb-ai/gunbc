@@ -1,36 +1,16 @@
 module test.claim.namespace_structural_observations_acceptance
 
-import gunbc.namespace_reference_derived_closure_admission {
-  assess_reference_binding_observation,
-  ReferenceDerivedClosureAdmission,
-  ReferenceDerivedClosureEstablished,
-  SameFileEarlierNeighbourVisible,
-  SiblingDecisionBranchExcluded,
-  LaterDeclarationExcluded,
-  DistinctSameSpelledDeclarationsPreserved,
-}
-import v1.gunbc.namespace_reference_derived_closure_production_observations {
-  namespace_structural_binding_observations_a_through_d,
-}
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.types { Bool, List }
+import std.types { Bool }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data namespace_structural_observations_acceptance_note: String = "THE CLOSING VALIDATION for roadmap node namespace-structural-observations (N3-A). Assesses the four neutral ReferenceBindingObservation carriers from v1.gunbc.namespace_reference_derived_closure_production_observations at the dag seam and requires all four structural capabilities to establish. Does not touch the parent namespace-reference-derived-closure witness or contract; clauses (e-f) belong to N3-B/N3-C/N3-D."
+data namespace_structural_observations_acceptance_note: String = "THE CLOSING VALIDATION for roadmap node namespace-structural-observations (N3-A). RED BY DESIGN until ONE ORDINARY COMPILED FILE produces all four ReferenceBindingObservation carriers through the compile path — hand-built inline fixtures in v1.gunbc.namespace_reference_derived_closure_production_observations are exercised separately by dag/test/claim/namespace_reference_derived_closure_production_admissions_witness_test.dag and do not satisfy this contract. The row's first_slice sequencing is write the closing check first, then make an ordinary compiled file produce through it; this witness is the first half. Enrolled QuarantineProbeExpectRed until the ordinary-compile transition greens it. Does not touch the parent namespace-reference-derived-closure witness; clauses (e-f) belong to N3-B/N3-C/N3-D."
 
 test fn witness_namespace_structural_observations_closing_contract_holds() -> Bool {
-  let admissions =
-    namespace_structural_binding_observations_a_through_d()
-      |> map(observation => assess_reference_binding_observation(observation: observation))
-  count(admissions) == 4
-    && [
-      SameFileEarlierNeighbourVisible,
-      SiblingDecisionBranchExcluded,
-      LaterDeclarationExcluded,
-      DistinctSameSpelledDeclarationsPreserved,
-    ] |> all(capability => admissions |> any(status => match status {
-      ReferenceDerivedClosureEstablished { receipt } => receipt.capability == capability
-      _ => false
-    }))
+  namespace_structural_observations_ordinary_compile_closing_contract_holds()
+}
+
+fn namespace_structural_observations_ordinary_compile_closing_contract_holds() -> Bool {
+  false
 }

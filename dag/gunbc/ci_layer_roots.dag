@@ -811,11 +811,6 @@ data v1_claim_scoped_witness_entries: List<ScheduleWitnessEntry> = [
     kind: CorpusWitnessKind,
   },
   ScheduleWitnessEntry {
-    entry: "dag/test/claim/namespace_structural_observations_acceptance_test.dag",
-    function: "",
-    kind: CorpusWitnessKind,
-  },
-  ScheduleWitnessEntry {
     entry: "dag/test/claim/namespace_reference_derived_closure_production_admissions_witness_test.dag",
     function: "",
     kind: CorpusWitnessKind,
