@@ -405,6 +405,7 @@ fn target_lex_rule_literal_step(
             acc
           }
         TriviaRule { pattern: _ } => acc
+        AnnotationRule { annotation_class: _, pattern: _ } => acc
       }
   }
 }

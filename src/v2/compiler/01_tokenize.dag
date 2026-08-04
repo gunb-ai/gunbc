@@ -132,6 +132,7 @@ fn lex_rule_pattern(rule: LexRule) -> LexPattern {
   match rule {
     TokenRule { token_class: _, pattern: p } => p
     TriviaRule { pattern: p } => p
+    AnnotationRule { annotation_class: _, pattern: p } => p
   }
 }
 

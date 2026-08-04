@@ -45,9 +45,12 @@ type LexPattern
   | OneOrMorePattern { element: LexPattern }
   | DelimitedPattern { open: LexPattern, body: LexPattern, close: LexPattern }
 
+data lex_rule_third_channel_note: String = "A lexeme reaches exactly one of three destinations, and the third exists because the other two are both wrong for a comment. TriviaRule consumes text and emits nothing, so a comment routed through it is invisible to every parser, lens, census, migration, and SCM operation — readable to humans and absent from the model. TokenRule emits into the SEMANTIC token stream, so a comment routed through it becomes something every parser must filter, perturbs token order, and sits in the path of occurrence allocation. AnnotationRule captures the lexeme as authored-source data that is real, addressable by authoring machinery, and absent from the semantic stream. See DESIGN 4c: source annotations are captured authored-source data, not semantic program data and not discarded trivia."
+
 type LexRule
   = TokenRule { token_class: Symbol, pattern: LexPattern }
   | TriviaRule { pattern: LexPattern }
+  | AnnotationRule { annotation_class: Symbol, pattern: LexPattern }
 
 type LexRuleSet {
   rules: List<LexRule>
@@ -153,10 +156,47 @@ fn token_stream_advance(stream: TokenStream, n: Int) -> TokenStream {
   TokenStream { all: stream.all, pos: stream.pos + n }
 }
 
+data annotation_placement_note: String = "Placement is observed at capture, not reconstructed later, because it CANNOT be reconstructed later. Whitespace and newlines are consumed as trivia, so once they are gone `fn a() -> Int { 1 } // text` followed by `fn b()` is indistinguishable from a leading annotation on b — the two carry opposite meanings and identical residue. LeadingAfterLineIndent means the annotation began a line (only indentation preceded it); TrailingAfterSemanticToken means a semantic token preceded it on the same line. Only the leading form enters pending attachment; trailing refuses until its attachment rule is separately modeled."
+
+type AnnotationPlacement
+  = LeadingAfterLineIndent
+  | TrailingAfterSemanticToken
+
+data unbound_source_annotation_note: String = "Captured at the lexical boundary, before any structural subject is known — hence UNBOUND. It carries no identity of its own: binding it to a subject is the parser's job, and minting an identity for it would draw from the semantic occurrence allocator, which is exactly what DESIGN 4c forbids (adding a comment could then shift declaration identities in the same source and in later-parsed modules). Consecutive leading captures group into one ordered block at attachment; this row is one physical line."
+
+type UnboundSourceAnnotation {
+  annotation_class: Symbol
+  lexeme: Lexeme
+  placement: AnnotationPlacement
+  file: Symbol
+  start: Int
+  end: Int
+}
+
+data lex_artifact_note: String = "The authored lexical result: the semantic token stream PLUS what the annotation channel captured. Semantic consumers project out `tokens` and see exactly what they saw before this channel existed; annotation-aware consumers take the whole artifact. The projection is the erasure boundary at the lexical layer, mirroring AuthoredParseArtifact at the parse layer."
+
+type LexArtifact {
+  tokens: TokenStream
+  annotations: List<UnboundSourceAnnotation>
+}
+
+fn lex_artifact_semantic_tokens(artifact: LexArtifact) -> TokenStream {
+  artifact.tokens
+}
+
+fn lex_artifact_annotations(artifact: LexArtifact) -> List<UnboundSourceAnnotation> {
+  artifact.annotations
+}
+
+fn lex_artifact_new(tokens: TokenStream, annotations: List<UnboundSourceAnnotation>) -> LexArtifact {
+  LexArtifact { tokens: tokens, annotations: annotations }
+}
+
 fn lex_rule_token_class_member(rule: LexRule, token_class: Symbol) -> Bool {
   match rule {
     TokenRule { token_class: c, pattern: _ } => c == token_class
     TriviaRule { pattern: _ } => false
+    AnnotationRule { annotation_class: _, pattern: _ } => false
   }
 }
 
