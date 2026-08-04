@@ -1633,22 +1633,6 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
-      arm: InterpreterPrimitiveArmId { identity: "v4_bridge.scaffold_disposition_site_count_live" },
-      form: FreeCall,
-      authored_spelling: "scaffold_disposition_site_count_live",
-      realization_module: "v1_interpreter",
-      dispatch_symbol: "eval_call",
-      enumeration: AuthoredInRoster,
-    },
-    InterpreterPrimitiveDispatchArm {
-      arm: InterpreterPrimitiveArmId { identity: "v4_bridge.scaffold_disposition_sites_live" },
-      form: FreeCall,
-      authored_spelling: "scaffold_disposition_sites_live",
-      realization_module: "v1_interpreter",
-      dispatch_symbol: "eval_call",
-      enumeration: AuthoredInRoster,
-    },
-    InterpreterPrimitiveDispatchArm {
       arm: InterpreterPrimitiveArmId { identity: "v4_bridge.inert_lens_unreached_module_count" },
       form: FreeCall,
       authored_spelling: "inert_lens_unreached_module_count",

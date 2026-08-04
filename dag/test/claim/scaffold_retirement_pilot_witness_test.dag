@@ -1,17 +1,20 @@
 module test.claim.scaffold_retirement_pilot_witness_test
 
 import std.types { String, Bool, Int, List }
-import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.scaffold_retirement {
   ScaffoldDispositionSite,
   ScaffoldRetirementBinding,
   ScaffoldRetirementExclusion,
   derived_scaffold_disposition_sites,
   scaffold_disposition_site_count_live,
+  scaffold_site_by_qualified_name,
   pilot_scaffold_sites,
   pilot_domain_limit,
   pilot_scaffold_retirement_bindings,
   pilot_scaffold_retirement_exclusions,
+  pilot_exclusion_count_no_honest_obligation_owner,
+  pilot_exclusion_count_ambiguous_obligation_owners,
   pilot_population_fully_accounted,
   pilot_bindings_have_unique_obligation_join,
   pilot_tombstoned_obligations_admit_or_refuse,
@@ -41,12 +44,38 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data scaffold_retirement_witness_scope_note: String = "Shape proof for gunbc.scaffold_retirement: population from structural scaffold_disposition_sites_live (not grep, not a hand roster); pilot = first fifteen dag/gunbc sites; bindings and exclusions derived by roadmap carrier-path join. Property 4 (obligation acceptance vs present scaffolds) is OUT OF SCOPE for this pilot. Property 6 (staffing) is OUT OF SCOPE by operator mandate."
+data scaffold_retirement_witness_scope_note: String = "Shape proof for gunbc.scaffold_retirement: population from a pure .dag fold over decl_facts body nodes joined to export_signature_facts type nodes (not grep, not a hand roster); pilot = first fifteen dag/gunbc sites from that derived walk — a convenience sample whose exclusion rate is not representative of the full corpus. Property 4 (obligation acceptance vs present scaffolds) is OUT OF SCOPE for this pilot. Property 6 (staffing) is OUT OF SCOPE by operator mandate."
 
-test fn derived_population_count_matches_operator_sizing_band() -> Bool {
-  let n = scaffold_disposition_site_count_live()
-  n >= 180 && n <= 195
-    && length(xs: derived_scaffold_disposition_sites()) == n
+data population_positive_specimen_qualified_name: String = "std.bytes.bytes_seam_host_realization_marker"
+
+data population_positive_specimen_bind_module: String = "std.bytes"
+
+data population_positive_specimen_bind_decl: String = "builtin_function_registry"
+
+data fired_dissolution_specimen_qualified_name: String = "gunbc.stage0_rust_host_observation.stage0_cargo_manifest_parser_seed_scaffold"
+
+test fn derived_population_includes_known_specimen_by_identity() -> Bool {
+  match scaffold_site_by_qualified_name(
+    qn: population_positive_specimen_qualified_name,
+    sites: derived_scaffold_disposition_sites()
+  ) {
+    Present { value: site } =>
+      site.bind.module_path == population_positive_specimen_bind_module
+        && site.bind.decl_name == population_positive_specimen_bind_decl
+        && site.dissolves_to == "SingleAuthority"
+    Absent => false
+  }
+}
+
+test fn derived_population_excludes_unrelated_scaffold_types() -> Bool {
+  !any(
+    derived_scaffold_disposition_sites(),
+    s => string_contains(s: s.carrier_decl, pattern: "TargetBodiedArrowStatementScaffold")
+  )
+}
+
+test fn derived_population_count_matches_list_length() -> Bool {
+  scaffold_disposition_site_count_live() == length(xs: derived_scaffold_disposition_sites())
 }
 
 test fn pilot_population_is_derived_domain_gate_not_hand_roster() -> Bool {
@@ -61,6 +90,17 @@ test fn pilot_every_site_has_binding_or_exclusion() -> Bool {
   pilot_population_fully_accounted()
 }
 
+test fn pilot_partition_is_exact() -> Bool {
+  let pilot_n = length(xs: pilot_scaffold_sites())
+  let bindings = length(xs: pilot_scaffold_retirement_bindings())
+  let exclusions = length(xs: pilot_scaffold_retirement_exclusions())
+  pilot_n == pilot_domain_limit()
+    && bindings + exclusions == pilot_n
+    && pilot_exclusion_count_no_honest_obligation_owner() == 15
+    && pilot_exclusion_count_ambiguous_obligation_owners() == 0
+    && bindings == 0
+}
+
 test fn pilot_bindings_join_obligations_uniquely() -> Bool {
   pilot_bindings_have_unique_obligation_join()
 }
@@ -69,32 +109,32 @@ test fn pilot_tombstoned_obligations_never_silently_pass() -> Bool {
   pilot_tombstoned_obligations_admit_or_refuse()
 }
 
-data fired_dissolution_red_fixture_locator: DeclarationRef = DeclarationRef {
-  module_path: "std.disposition",
-  decl_name: "Disposition",
-  field: NamedField { field_name: "marker" },
-}
-
-data fired_dissolution_red_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: fired_dissolution_red_fixture_locator,
-}
-
-data fired_dissolution_red_present: List<DeclarationRef> = [fired_dissolution_red_fixture_locator]
-data fired_dissolution_red_absent_present: List<DeclarationRef> = []
-
 test fn fired_dissolution_red_control_fires_when_successor_present() -> Bool {
-  disposition_redundancy_violation_count(
-    dispositions: [fired_dissolution_red_scaffold],
-    present: fired_dissolution_red_present
-  ) == 1
+  match scaffold_site_by_qualified_name(
+    qn: fired_dissolution_specimen_qualified_name,
+    sites: derived_scaffold_disposition_sites()
+  ) {
+    Present { value: site } =>
+      disposition_redundancy_violation_count(
+        dispositions: [site_disposition_for_redundancy(site: site)],
+        present: corpus_present_declaration_refs()
+      ) == 1
+    Absent => false
+  }
 }
 
 test fn fired_dissolution_red_control_is_quiet_when_successor_absent() -> Bool {
-  disposition_redundancy_violation_count(
-    dispositions: [fired_dissolution_red_scaffold],
-    present: fired_dissolution_red_absent_present
-  ) == 0
+  match scaffold_site_by_qualified_name(
+    qn: population_positive_specimen_qualified_name,
+    sites: derived_scaffold_disposition_sites()
+  ) {
+    Present { value: site } =>
+      disposition_redundancy_violation_count(
+        dispositions: [site_disposition_for_redundancy(site: site)],
+        present: []
+      ) == 0
+    Absent => false
+  }
 }
 
 test fn pilot_fired_dissolution_count_is_reported_not_hidden() -> Bool {
@@ -116,8 +156,4 @@ test fn tombstone_without_successor_is_a_refusal_not_a_pass() -> Bool {
       }
     Absent => true
   }
-}
-
-test fn unbindable_pilot_debt_is_counted_not_zeroed() -> Bool {
-  length(xs: pilot_scaffold_retirement_exclusions()) > 0
 }

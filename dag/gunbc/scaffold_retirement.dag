@@ -1,7 +1,7 @@
 module gunbc.scaffold_retirement
 
 import std.types { String, Bool, Int, List }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField, DeclField }
 import gunbc.roadmap_model { RoadmapNode, RoadmapNodeIdentity }
 import gunbc.roadmap_authority { declared_roadmap_nodes }
 import gunbc.roadmap_identity {
@@ -12,16 +12,32 @@ import gunbc.roadmap_identity {
   record_identity,
 }
 import gunbc.ci_layer_roots { witness_layer_roots }
-import v2.std.decl_index { DeclFact, decl_facts }
-import v2.std.algebra { length }
-import v2.std.collection { Absent, Present }
+import v2.std.decl_index {
+  DeclFact,
+  DataItem,
+  decl_facts,
+  export_signature_facts,
+}
+import v2.std.algebra { length, count_where }
+import v2.std.collection { Absent, Present, list_at_optional }
+import v2.std.grammar { node_atom_identity_optional }
+import v2.std.compilers.lexing { symbol_lexeme }
+import v2.std.node {
+  Atom,
+  Node,
+  NodeFold,
+  Symbol,
+  TypeNode,
+  fold_node,
+}
+import v2.std.node_query { node_positional_child_targets }
 import v2.lens.disposition_redundancy {
   decl_ref_eq,
   disposition_redundancy_violation_count,
 }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 
-data scaffold_retirement_pilot_derivation_note: String = "POPULATION IS DERIVED, NEVER AUTHORED. scaffold_disposition_sites_live() is a structural Node-tree walk over witness_layer_roots (dag + src/v2): every data declaration whose type annotation names Disposition and whose initializer variant is Scaffold. Regex census is sizing input only; this builtin is the population authority. The pilot takes the first fifteen rows, lexicographically stable in the host walk, whose rel_path is under dag/gunbc/ — a derived domain gate, not a hand-picked roster. Obligation bindings are derived by identity join against declared_roadmap_nodes(); zero or plural matches become typed exclusions, never fabricated owners."
+data scaffold_retirement_pilot_derivation_note: String = "POPULATION IS DERIVED, NEVER AUTHORED. derived_scaffold_disposition_sites() folds decl_facts(pool_roots) body nodes joined to export_signature_facts type nodes over witness_layer_roots (dag + src/v2): every DataItem whose type annotation names Disposition and whose initializer variant is Scaffold. Structural Node-tree selection only — not regex, not a hand roster. The pilot takes the first fifteen rows, lexicographically stable in the decl_facts corpus walk (rel_path, name), whose rel_path is under dag/gunbc/ — a reproducible convenience sample, not a representative census of the full derived population; exclusion rates measured on the pilot must not be read as corpus-wide rates. Obligation bindings are derived by identity join against declared_roadmap_nodes(); zero or plural matches become typed exclusions, never fabricated owners."
 
 type ScaffoldDispositionSite {
   qualified_name: String
@@ -60,16 +76,296 @@ type ObligationIdentityAdmission
   | ObligationIdentityUnknown { identity: RoadmapNodeIdentity }
   | ObligationIdentityAmbiguous { identity: RoadmapNodeIdentity, matches: Int }
 
-fn scaffold_disposition_sites_live() -> List<ScaffoldDispositionSite> {
-  scaffold_disposition_sites_live()
+fn scaffold_subtree_atoms(n: Node) -> List<Symbol> {
+  fold_node(
+    n: n,
+    algebra: NodeFold {
+      init: fn(n0) {
+        match n0.kind {
+          TypeNode { connective: Atom { identity: s } } => [s]
+          _ => []
+        }
+      },
+      step: fn(acc, _edge, child) { concat(acc, child) }
+    }
+  )
 }
 
-fn scaffold_disposition_site_count_live() -> Int {
-  scaffold_disposition_site_count_live()
+fn node_atom_lexeme_optional(node: Node) -> String? {
+  match node_atom_identity_optional(node: node) {
+    Present { value: sym } => Present { value: symbol_lexeme(sym: sym) }
+    Absent => Absent
+  }
+}
+
+fn atom_lexeme_list_contains(atoms: List<Symbol>, lexeme: String) -> Bool {
+  any(
+    xs: atoms,
+    predicate: fn(sym) { symbol_lexeme(sym: sym) == lexeme }
+  )
+}
+
+fn type_annotation_names_disposition(type_node: Node) -> Bool {
+  match node_atom_lexeme_optional(node: type_node) {
+    Present { value: lex } => lex == "Disposition"
+    Absent =>
+      atom_lexeme_list_contains(
+        atoms: scaffold_subtree_atoms(n: type_node),
+        lexeme: "Disposition"
+      )
+  }
+}
+
+fn export_signature_node_for_fact(
+  fact: DeclFact,
+  sig_facts: List<DeclFact>
+) -> Node? {
+  fold(
+    sig_facts,
+    init: Absent,
+    f: fn(acc, sig) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          if sig.qualified_name == fact.qualified_name {
+            Present { value: sig.node }
+          } else {
+            Absent
+          }
+      }
+    }
+  )
+}
+
+fn node_is_scaffold_initializer(body: Node) -> Bool {
+  match list_at_optional(xs: node_positional_child_targets(node: body), index: 0) {
+    Present { value: head } =>
+      match node_atom_lexeme_optional(node: head) {
+        Present { value: lex } => lex == "Scaffold"
+        Absent => false
+      }
+    Absent =>
+      match node_atom_lexeme_optional(node: body) {
+        Present { value: lex } => lex == "Scaffold"
+        Absent => false
+      }
+  }
+}
+
+fn construction_mechanism_lexeme(sym: Symbol) -> Bool {
+  let lex = symbol_lexeme(sym: sym)
+  lex == "SingleAuthority"
+    || lex == "RealizationDispatch"
+    || lex == "SubstrateMandatoryTag"
+}
+
+fn first_construction_mechanism_lexeme(node: Node) -> String? {
+  fold(
+    scaffold_subtree_atoms(n: node),
+    init: Absent,
+    f: fn(acc, sym) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          if construction_mechanism_lexeme(sym: sym) {
+            Present { value: symbol_lexeme(sym: sym) }
+          } else {
+            Absent
+          }
+      }
+    }
+  )
+}
+
+fn dissolves_to_from_scaffold_body(body: Node) -> String? {
+  match list_at_optional(xs: node_positional_child_targets(node: body), index: 1) {
+    Present { value: dissolves_to_init } => first_construction_mechanism_lexeme(node: dissolves_to_init)
+    Absent => first_construction_mechanism_lexeme(node: body)
+  }
+}
+
+fn named_field_from_declaration_ref_conj(node: Node, field_node: Node) -> DeclField? {
+  match list_at_optional(xs: node_positional_child_targets(node: node), index: 4) {
+    Present { value: name_node } =>
+      match node_atom_lexeme_optional(node: name_node) {
+        Present { value: field_name } =>
+          Present { value: NamedField { field_name: field_name } }
+        Absent => Absent
+      }
+    Absent =>
+      match list_at_optional(xs: node_positional_child_targets(node: field_node), index: 0) {
+        Present { value: name_node } =>
+          match node_atom_lexeme_optional(node: name_node) {
+            Present { value: field_name } =>
+              Present { value: NamedField { field_name: field_name } }
+            Absent => Absent
+          }
+        Absent => Absent
+      }
+  }
+}
+
+fn decl_field_lexeme_from_field_node(node: Node, field_node: Node, lex: String) -> DeclField? {
+  if lex == "WholeDeclaration" {
+    Present { value: WholeDeclaration }
+  } else {
+    if lex == "NamedField" {
+      named_field_from_declaration_ref_conj(node: node, field_node: field_node)
+    } else {
+      Absent
+    }
+  }
+}
+
+fn decl_field_from_declaration_ref_conj(node: Node) -> DeclField? {
+  match list_at_optional(xs: node_positional_child_targets(node: node), index: 3) {
+    Present { value: field_node } =>
+      match node_atom_lexeme_optional(node: field_node) {
+        Present { value: lex } => decl_field_lexeme_from_field_node(node: node, field_node: field_node, lex: lex)
+        Absent => Absent
+      }
+    Absent => Absent
+  }
+}
+
+fn declaration_ref_from_declaration_ref_conj(node: Node) -> DeclarationRef? {
+  match node_atom_lexeme_optional(node: node) {
+    Present { value: lex } =>
+      if lex == "DeclarationRef" {
+        match list_at_optional(xs: node_positional_child_targets(node: node), index: 1) {
+          Present { value: module_node } =>
+            match list_at_optional(xs: node_positional_child_targets(node: node), index: 2) {
+              Present { value: decl_node } =>
+                match node_atom_lexeme_optional(node: module_node) {
+                  Present { value: module_path } =>
+                    match node_atom_lexeme_optional(node: decl_node) {
+                      Present { value: decl_name } =>
+                        match decl_field_from_declaration_ref_conj(node: node) {
+                          Present { value: field } =>
+                            Present {
+                              value: DeclarationRef {
+                                module_path: module_path,
+                                decl_name: decl_name,
+                                field: field,
+                              }
+                            }
+                          Absent => Absent
+                        }
+                      Absent => Absent
+                    }
+                  Absent => Absent
+                }
+              Absent => Absent
+            }
+          Absent => Absent
+        }
+      } else {
+        Absent
+      }
+    Absent =>
+      match list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
+        Present { value: child } => declaration_ref_from_declaration_ref_conj(node: child)
+        Absent => Absent
+      }
+  }
+}
+
+fn declaration_ref_from_bind_init(bind_init: Node) -> DeclarationRef? {
+  match declaration_ref_from_declaration_ref_conj(node: bind_init) {
+    Present { value: bind } => Present { value: bind }
+    Absent =>
+      match list_at_optional(xs: node_positional_child_targets(node: bind_init), index: 0) {
+        Present { value: child } => declaration_ref_from_bind_init(bind_init: child)
+        Absent => Absent
+      }
+  }
+}
+
+fn bind_from_scaffold_body(body: Node) -> DeclarationRef? {
+  match list_at_optional(xs: node_positional_child_targets(node: body), index: 2) {
+    Present { value: bind_init } => declaration_ref_from_bind_init(bind_init: bind_init)
+    Absent => Absent
+  }
+}
+
+fn scaffold_site_from_body_fact(
+  body_fact: DeclFact,
+  sig_facts: List<DeclFact>
+) -> ScaffoldDispositionSite? {
+  if body_fact.kind != DataItem {
+    Absent
+  } else {
+    match export_signature_node_for_fact(fact: body_fact, sig_facts: sig_facts) {
+      Present { value: sig_node } =>
+        if !type_annotation_names_disposition(type_node: sig_node) {
+          Absent
+        } else {
+          if !node_is_scaffold_initializer(body: body_fact.node) {
+            Absent
+          } else {
+            match dissolves_to_from_scaffold_body(body: body_fact.node) {
+              Present { value: dissolves_to } =>
+                match bind_from_scaffold_body(body: body_fact.node) {
+                  Present { value: bind } =>
+                    Present {
+                      value: ScaffoldDispositionSite {
+                        qualified_name: body_fact.qualified_name,
+                        carrier_module: decl_fact_carrier_module(fact: body_fact),
+                        carrier_decl: body_fact.name,
+                        rel_path: body_fact.rel_path,
+                        bind: bind,
+                        dissolves_to: dissolves_to,
+                      }
+                    }
+                  Absent => Absent
+                }
+              Absent => Absent
+            }
+          }
+        }
+      Absent => Absent
+    }
+  }
 }
 
 fn derived_scaffold_disposition_sites() -> List<ScaffoldDispositionSite> {
-  scaffold_disposition_sites_live()
+  let roots = witness_layer_roots
+  let sig_facts = export_signature_facts(pool_roots: roots)
+  fold(
+    decl_facts(pool_roots: roots),
+    init: [],
+    f: fn(acc, fact) {
+      match scaffold_site_from_body_fact(body_fact: fact, sig_facts: sig_facts) {
+        Present { value: site } => append(acc, [site])
+        Absent => acc
+      }
+    }
+  )
+}
+
+fn scaffold_disposition_site_count_live() -> Int {
+  length(xs: derived_scaffold_disposition_sites())
+}
+
+fn scaffold_site_by_qualified_name(
+  qn: String,
+  sites: List<ScaffoldDispositionSite>
+) -> ScaffoldDispositionSite? {
+  fold(
+    sites,
+    init: Absent,
+    f: fn(acc, site) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          if site.qualified_name == qn {
+            Present { value: site }
+          } else {
+            Absent
+          }
+      }
+    }
+  )
 }
 
 fn pilot_domain_limit() -> Int { 15 }
@@ -204,6 +500,30 @@ fn pilot_scaffold_retirement_exclusions() -> List<ScaffoldRetirementExclusion> {
     xs: pilot_scaffold_sites(),
     init: [],
     f: fn(acc, site) { concat(acc, derived_exclusion_for_site(site: site)) }
+  )
+}
+
+fn pilot_exclusion_count_no_honest_obligation_owner() -> Int {
+  count_where(
+    xs: pilot_scaffold_retirement_exclusions(),
+    predicate: fn(e) {
+      match e.reason {
+        NoHonestObligationOwner { bind: _, candidate_count: _ } => true
+        _ => false
+      }
+    }
+  )
+}
+
+fn pilot_exclusion_count_ambiguous_obligation_owners() -> Int {
+  count_where(
+    xs: pilot_scaffold_retirement_exclusions(),
+    predicate: fn(e) {
+      match e.reason {
+        AmbiguousObligationOwners { bind: _, candidate_count: _ } => true
+        _ => false
+      }
+    }
   )
 }
 
