@@ -1,0 +1,32 @@
+module gunbc.package_delivery
+
+import std.types { String }
+import std.content_hash { Sha512Digest, Sha1Digest }
+import extdeps.npm {
+  NpmIntegrityDecode,
+  NpmSingleSha512Integrity,
+  NpmSingleSha1Integrity,
+}
+
+data package_delivery_placement_note: String = "FIRST CONSUMED package materializer for gunbc. Lives here — not in std — until a second real consumer proves a shared abstraction. Owns Codex (and later other) product policy over upstream package facts from extdeps.npm / extdeps.package. Decoding lock SRI text is NOT artifact verification; acquire → observe digest → compare → refuse-before-unpack lands in this module."
+
+data package_delivery_codex_integrity_note: String = "PRODUCTION PROFILE ≠ FORMAT CLAIM. extdeps.npm preserves npm-native integrity (SHA-1 and SHA-512). Codex runtime policy admits only SHA-512 for selected registry artifacts; SHA-1 and other decode outcomes are typed unsupported-profile refusals here."
+
+type CodexNpmIntegrityAdmission
+  = CodexNpmIntegrityAdmitted {
+      digest: Sha512Digest
+    }
+  | CodexNpmIntegritySha1Unsupported {
+      digest: Sha1Digest
+    }
+  | CodexNpmIntegrityNotAdmitted {
+      cause: NpmIntegrityDecode
+    }
+
+fn codex_admit_npm_integrity(decoded: NpmIntegrityDecode) -> CodexNpmIntegrityAdmission {
+  match decoded {
+    NpmSingleSha512Integrity { digest } => CodexNpmIntegrityAdmitted { digest: digest }
+    NpmSingleSha1Integrity { digest } => CodexNpmIntegritySha1Unsupported { digest: digest }
+    other => CodexNpmIntegrityNotAdmitted { cause: other }
+  }
+}

@@ -9,7 +9,7 @@ import extdeps.pin { Pin }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
-    locator: "en.wikipedia.org/wiki/Package_format"
+    locator: "reproducible-builds.org/docs/definition/"
   }
 }
 
@@ -25,7 +25,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: []
 }
 
-data package_scope_subject_note: String = "THE SUBJECT IS THE PACKAGE — an archive plus the metadata a package manager needs (en.wikipedia.org/wiki/Package_format). A PackageLockGraph is the exact closed set of those packages a resolver admitted: nodes are package selections, edges are dependency relations at the manager's node grain.\\n\\nWHY NOT REPRODUCIBLE BUILDS HERE (operator, 2026-08-04): that definition already anchors extdeps.pin for a single subject's exact version + content identity. Re-citing it for the package hub would nickname one authority across two modules and blur what this citation may carry. Package_format grounds what a package *is*; pin grounds how one subject is pinned.\\n\\nTHE CITATION BOUNDS WHAT MAY LIVE HERE. Package_format does NOT ground JavaScript module formats, npm lifecycle-script policy, artifact-admission outcomes, or gunbc's chosen materialization receipt — those live in extdeps.npm (upstream manager facts) and gunbc.package_delivery (product policy and mechanism)."
+data package_scope_subject_note: String = "THE SUBJECT IS THE EXACT DEPENDENCY / LOCK-GRAPH RELATION — PackageLockGraph: nodes are package selections at the manager's node grain; edges are consumer→dependency relations at that same grain. Grounded on the Reproducible Builds definition (dependencies and their versions as build-environment attributes), the same external citation extdeps.pin spells for Pin — two DISTINCT CITATIONS of one upstream page, not duplicated semantic authority (extdeps.pin pin_citation_note: the structural authority lens reads each module's anchor locally, so neither module may alias the other's anchor declaration).\\n\\nNOT Package_format: an archive-plus-metadata subject is a different external fact. Defer a generic package-artifact module until a second ecosystem needs it; do not leave PackageLockGraph cited as a package archive.\\n\\nTHE CITATION BOUNDS WHAT MAY LIVE HERE. It does NOT ground JavaScript module formats, npm lifecycle-script policy, artifact-admission outcomes, or gunbc materialization — those live in extdeps.npm (upstream manager facts) and gunbc.package_delivery (product policy and mechanism)."
 
 data package_hub_agnostic_note: String = "THE AGNOSTIC SHAPE OF A DEPENDENCY GRAPH. The hub parameterizes Selection — ecosystems define their own selection shapes. The hub never enumerates package managers."
 
