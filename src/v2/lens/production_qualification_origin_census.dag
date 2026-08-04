@@ -1,0 +1,455 @@
+module v2.lens.production_qualification_origin_census
+
+import v2.compiler.self_host.emitter_producer_provenance {
+  CargoGreen,
+  EmissionQualification,
+  ProductionRouted,
+  SourceProduced,
+  emission_qualification_eq,
+  emission_qualifications_list_contains
+}
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { SingleAuthority }
+import v2.std.algebra {
+  any,
+  contains,
+  fold_list,
+  length,
+  list_snoc_item
+}
+import v2.std.collection { Absent, List, Optional, Present, optional_absent, optional_present }
+import v2.std.compilers.lexing { symbol_lexeme }
+import v2.std.fn_index { FnArrowDecl, fn_arrow_decl_facts_live }
+import v2.std.grammar { node_atom_identity_optional }
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
+import v2.std.node {
+  Atom,
+  Conj,
+  Edge,
+  Node,
+  NodeFold,
+  Positional,
+  Symbol,
+  SyntheticOccurrence,
+  TypeNode,
+  fold_node
+}
+import v2.std.text { String }
+
+data production_qualification_origin_census_law: String = "Fixture-origin production qualification census (session keen-lark-681, parent wise-ram-22 witness-evidence-lifecycle): derived population over fn_arrow_decl_facts_live skeletons — every external mint/advance surface that grants SourceProduced/CargoGreen/ProductionRouted with fixture evidence-origin is discovered from callee atoms and fixture markers, not a hand registry. Consumer-reachability to production-significant sites beyond direct mint callees remains a named frontier (assess_written_source_independent_of_seed_emitter and similar indirect callers are not yet folded in). Dissolve-on: origin becomes a construction field on ProducerEmissionReceipt mint and mint refuses fixture-origin production qualifications without execution-measured evidence; this lens promotes to a compile refusal when the reachability frontier closes."
+
+data production_qualification_origin_reachability_frontier_note: String = "SCAFFOLD frontier: derived rows cover direct mint_written / advance_written / generate_provenanced entry surfaces only. Indirect consumer reachability (callers of generate_provenanced_rust_candidate_from_ingest that do not themselves contain mint callees) is not yet derived — dissolve-on when call-reachable production-significant classification shares the effect_reach skeleton authority."
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
+}
+
+data production_qualification_count_axis_note: String = "Canonical query surface for production-qualification mint census (review 47976 predicate-dissolution): classify once via production_qualification_count_axis_for_emission_qualification and fixture grouping via fixture_evidence_origin_of — not hand-rolled is_production_axis / is_fixture Bool predicates."
+
+data production_qualification_counted_qualifications: List<EmissionQualification> = [
+  SourceProduced,
+  CargoGreen,
+  ProductionRouted
+]
+
+type ProductionQualificationEvidenceOrigin
+  = FixtureInferredTreeOrigin
+  | FixtureIngestInlineOrigin
+  | ExecutionMeasuredOrigin
+
+type FixtureEvidenceOrigin
+  = FixtureInferredTreeEvidence
+  | FixtureIngestInlineEvidence
+
+type ProductionQualificationCountAxis
+  = QualificationSourceProduced
+  | QualificationCargoGreen
+  | QualificationProductionRouted
+
+type DerivedProductionQualificationMintSiteRow {
+  qualified_name: String
+  qualification_axis: ProductionQualificationCountAxis
+  evidence_origin: ProductionQualificationEvidenceOrigin
+}
+
+data empty_decl_list: List<FnArrowDecl> = []
+data empty_string_list: List<String> = []
+data empty_symbol_list: List<Symbol> = []
+data empty_site_list: List<DerivedProductionQualificationMintSiteRow> = []
+
+data mint_written_callee: String = "mint_written_provenanced_rust_artifact"
+data advance_cargo_green_callee: String = "advance_written_provenanced_rust_artifact_cargo_green"
+data mint_producer_callee: String = "mint_producer_emission_receipt"
+data direct_rust_door_inferred_tree_atom: String = "direct_rust_door_inferred_tree"
+data generate_provenanced_entry_name: String = "generate_provenanced_rust_candidate_from_ingest"
+
+data ingest_mint_entry_qualified_name: String = "v2.compiler.self_host.candidate_generation.generate_provenanced_rust_candidate_from_ingest"
+data direct_door_smoke_qualified_name: String = "tools.direct_rust_door_transport.run_direct_rust_door_emit_write_compile_smoke"
+
+fn string_eq(a: String, b: String) -> Bool {
+  a == b
+}
+
+fn symbol_eq(a: Symbol, b: Symbol) -> Bool {
+  a == b
+}
+
+fn production_qualification_evidence_origin_eq(
+  left: ProductionQualificationEvidenceOrigin,
+  right: ProductionQualificationEvidenceOrigin
+) -> Bool {
+  match left {
+    FixtureInferredTreeOrigin =>
+      match right {
+        FixtureInferredTreeOrigin => true
+        FixtureIngestInlineOrigin => false
+        ExecutionMeasuredOrigin => false
+      }
+    FixtureIngestInlineOrigin =>
+      match right {
+        FixtureInferredTreeOrigin => false
+        FixtureIngestInlineOrigin => true
+        ExecutionMeasuredOrigin => false
+      }
+    ExecutionMeasuredOrigin =>
+      match right {
+        FixtureInferredTreeOrigin => false
+        FixtureIngestInlineOrigin => false
+        ExecutionMeasuredOrigin => true
+      }
+  }
+}
+
+fn production_qualification_count_axis_eq(
+  left: ProductionQualificationCountAxis,
+  right: ProductionQualificationCountAxis
+) -> Bool {
+  match left {
+    QualificationSourceProduced =>
+      match right {
+        QualificationSourceProduced => true
+        QualificationCargoGreen => false
+        QualificationProductionRouted => false
+      }
+    QualificationCargoGreen =>
+      match right {
+        QualificationSourceProduced => false
+        QualificationCargoGreen => true
+        QualificationProductionRouted => false
+      }
+    QualificationProductionRouted =>
+      match right {
+        QualificationSourceProduced => false
+        QualificationCargoGreen => false
+        QualificationProductionRouted => true
+      }
+  }
+}
+
+fn production_qualification_count_axis_for_emission_qualification(
+  qualification: EmissionQualification
+) -> Optional<ProductionQualificationCountAxis> {
+  if emission_qualifications_list_contains(
+    xs: production_qualification_counted_qualifications,
+    wanted: qualification
+  ) {
+    match qualification {
+      SourceProduced => optional_present(value: QualificationSourceProduced)
+      CargoGreen => optional_present(value: QualificationCargoGreen)
+      ProductionRouted => optional_present(value: QualificationProductionRouted)
+      BehavioralEquivalent => optional_absent()
+    }
+  } else {
+    optional_absent()
+  }
+}
+
+fn fixture_evidence_origin_of(
+  origin: ProductionQualificationEvidenceOrigin
+) -> Optional<FixtureEvidenceOrigin> {
+  match origin {
+    FixtureInferredTreeOrigin =>
+      optional_present(value: FixtureInferredTreeEvidence)
+    FixtureIngestInlineOrigin =>
+      optional_present(value: FixtureIngestInlineEvidence)
+    ExecutionMeasuredOrigin => optional_absent()
+  }
+}
+
+type AtomCollectState {
+  node: Node
+  atoms: List<Symbol>
+}
+
+fn atom_collect_init(n: Node) -> AtomCollectState {
+  AtomCollectState { node: n, atoms: empty_symbol_list }
+}
+
+fn atom_collect_step(acc: AtomCollectState, _edge: Edge, child: AtomCollectState) -> AtomCollectState {
+  let atoms = match node_atom_identity_optional(node: child.node) {
+    Present { value: sym } =>
+      if contains(xs: acc.atoms, item: sym, eq: symbol_eq) {
+        acc.atoms
+      } else {
+        list_snoc_item(xs: acc.atoms, item: sym)
+      }
+    Absent => acc.atoms
+  }
+  AtomCollectState { node: acc.node, atoms: atoms }
+}
+
+fn atom_collect_algebra() -> NodeFold<AtomCollectState> {
+  NodeFold { init: atom_collect_init, step: atom_collect_step }
+}
+
+fn atom_identities_in_node(node: Node) -> List<Symbol> {
+  let from_descendants = fold_node(n: node, algebra: atom_collect_algebra()).atoms
+  match node_atom_identity_optional(node: node) {
+    Present { value: sym } =>
+      if contains(xs: from_descendants, item: sym, eq: symbol_eq) {
+        from_descendants
+      } else {
+        list_snoc_item(xs: from_descendants, item: sym)
+      }
+    Absent => from_descendants
+  }
+}
+
+fn node_contains_atom_text(node: Node, wanted: String) -> Bool {
+  any(
+    xs: atom_identities_in_node(node: node),
+    predicate: fn(sym) { string_eq(a: symbol_lexeme(sym: sym), b: wanted) }
+  )
+}
+
+fn callees_from_node(node: Node) -> List<String> {
+  fold_list(
+    xs: atom_identities_in_node(node: node),
+    empty: empty_string_list,
+    cons: fn(acc, sym) {
+      let text = symbol_lexeme(sym: sym)
+      if contains(xs: acc, item: text, eq: string_eq) {
+        acc
+      } else {
+        list_snoc_item(xs: acc, item: text)
+      }
+    }
+  )
+}
+
+fn decl_contains_callee(decl: FnArrowDecl, callee: String) -> Bool {
+  contains(xs: callees_from_node(node: decl.output), item: callee, eq: string_eq)
+}
+
+fn decl_contains_atom(decl: FnArrowDecl, atom: String) -> Bool {
+  node_contains_atom_text(node: decl.output, wanted: atom)
+}
+
+fn decl_evidence_origin(decl: FnArrowDecl) -> Optional<ProductionQualificationEvidenceOrigin> {
+  if string_eq(a: decl.name, b: generate_provenanced_entry_name) {
+    optional_present(value: FixtureIngestInlineOrigin)
+  } else if decl_contains_atom(decl: decl, atom: direct_rust_door_inferred_tree_atom) {
+    optional_present(value: FixtureInferredTreeOrigin)
+  } else {
+    optional_absent()
+  }
+}
+
+fn decl_is_derived_ingest_source_produced_site(decl: FnArrowDecl) -> Bool {
+  string_eq(a: decl.name, b: generate_provenanced_entry_name)
+    && decl_contains_callee(decl: decl, callee: mint_producer_callee)
+}
+
+fn decl_is_derived_external_source_produced_fixture_site(decl: FnArrowDecl) -> Bool {
+  decl_contains_callee(decl: decl, callee: mint_written_callee)
+    && decl_contains_atom(decl: decl, atom: direct_rust_door_inferred_tree_atom)
+}
+
+fn decl_is_derived_cargo_green_fixture_site(decl: FnArrowDecl) -> Bool {
+  decl_contains_callee(decl: decl, callee: advance_cargo_green_callee)
+    && decl_contains_atom(decl: decl, atom: direct_rust_door_inferred_tree_atom)
+}
+
+fn site_row_already_present(
+  sites: List<DerivedProductionQualificationMintSiteRow>,
+  qualified_name: String,
+  axis: ProductionQualificationCountAxis
+) -> Bool {
+  any(
+    xs: sites,
+    predicate: fn(row) {
+      string_eq(a: row.qualified_name, b: qualified_name)
+        && production_qualification_count_axis_eq(
+          left: row.qualification_axis,
+          right: axis
+        )
+    }
+  )
+}
+
+fn maybe_snoc_site_row(
+  sites: List<DerivedProductionQualificationMintSiteRow>,
+  qualified_name: String,
+  axis: ProductionQualificationCountAxis,
+  origin: ProductionQualificationEvidenceOrigin
+) -> List<DerivedProductionQualificationMintSiteRow> {
+  if site_row_already_present(sites: sites, qualified_name: qualified_name, axis: axis) {
+    sites
+  } else {
+    list_snoc_item(
+      xs: sites,
+      item: DerivedProductionQualificationMintSiteRow {
+        qualified_name: qualified_name,
+        qualification_axis: axis,
+        evidence_origin: origin
+      }
+    )
+  }
+}
+
+fn derived_sites_for_decl(
+  sites: List<DerivedProductionQualificationMintSiteRow>,
+  decl: FnArrowDecl
+) -> List<DerivedProductionQualificationMintSiteRow> {
+  match decl_evidence_origin(decl: decl) {
+    Absent => sites
+    Present { value: origin } =>
+      let with_ingest =
+        if decl_is_derived_ingest_source_produced_site(decl: decl) {
+          maybe_snoc_site_row(
+            sites: sites,
+            qualified_name: decl.qualified_name,
+            axis: QualificationSourceProduced,
+            origin: origin
+          )
+        } else {
+          sites
+        }
+      let with_source_produced =
+        if decl_is_derived_external_source_produced_fixture_site(decl: decl) {
+          maybe_snoc_site_row(
+            sites: with_ingest,
+            qualified_name: decl.qualified_name,
+            axis: QualificationSourceProduced,
+            origin: origin
+          )
+        } else {
+          with_ingest
+        }
+      if decl_is_derived_cargo_green_fixture_site(decl: decl) {
+        maybe_snoc_site_row(
+          sites: with_source_produced,
+          qualified_name: decl.qualified_name,
+          axis: QualificationCargoGreen,
+          origin: origin
+        )
+      } else {
+        with_source_produced
+      }
+  }
+}
+
+fn derived_production_qualification_mint_sites_from_facts(
+  decls: List<FnArrowDecl>
+) -> List<DerivedProductionQualificationMintSiteRow> {
+  fold_list(
+    xs: decls,
+    empty: empty_site_list,
+    cons: fn(acc, decl) { derived_sites_for_decl(sites: acc, decl: decl) }
+  )
+}
+
+fn derived_production_qualification_mint_sites_live() -> List<DerivedProductionQualificationMintSiteRow> {
+  derived_production_qualification_mint_sites_from_facts(
+    decls: fn_arrow_decl_facts_live()
+  )
+}
+
+fn derived_mint_site_for_qualified_name(
+  sites: List<DerivedProductionQualificationMintSiteRow>,
+  qualified_name: String,
+  axis: ProductionQualificationCountAxis
+) -> Optional<DerivedProductionQualificationMintSiteRow> {
+  fold_list(
+    xs: sites,
+    empty: optional_absent(),
+    cons: fn(found, row) {
+      match found {
+        Present { value: _ } => found
+        Absent =>
+          if string_eq(a: row.qualified_name, b: qualified_name)
+            && production_qualification_count_axis_eq(
+              left: row.qualification_axis,
+              right: axis
+            )
+          {
+            optional_present(value: row)
+          } else {
+            optional_absent()
+          }
+      }
+    }
+  )
+}
+
+fn count_derived_mint_sites_with_origin(
+  sites: List<DerivedProductionQualificationMintSiteRow>,
+  origin: ProductionQualificationEvidenceOrigin
+) -> Int {
+  fold_list(
+    xs: sites,
+    empty: 0,
+    cons: fn(count, row) {
+      if production_qualification_evidence_origin_eq(
+        left: row.evidence_origin,
+        right: origin
+      ) {
+        count + 1
+      } else {
+        count
+      }
+    }
+  )
+}
+
+fn count_derived_fixture_origin_mint_sites(
+  sites: List<DerivedProductionQualificationMintSiteRow>
+) -> Int {
+  fold_list(
+    xs: sites,
+    empty: 0,
+    cons: fn(count, row) {
+      match fixture_evidence_origin_of(origin: row.evidence_origin) {
+        Present { value: _ } => count + 1
+        Absent => count
+      }
+    }
+  )
+}
+
+fn count_derived_mint_sites_with_axis(
+  sites: List<DerivedProductionQualificationMintSiteRow>,
+  axis: ProductionQualificationCountAxis
+) -> Int {
+  fold_list(
+    xs: sites,
+    empty: 0,
+    cons: fn(count, row) {
+      if production_qualification_count_axis_eq(left: row.qualification_axis, right: axis) {
+        count + 1
+      } else {
+        count
+      }
+    }
+  )
+}
+
+fn derived_production_qualification_origin_census_holds() -> Bool {
+  let sites = derived_production_qualification_mint_sites_live()
+  (count_derived_fixture_origin_mint_sites(sites: sites) > 0)
+    && (count_derived_mint_sites_with_origin(
+      sites: sites,
+      origin: ExecutionMeasuredOrigin
+    ) == 0)
+}
