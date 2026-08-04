@@ -333,6 +333,7 @@ pub fn v1_type_expr_contains_param_name(
 pub fn v1_generic_param_used_as_collection_element(
     param_name: String,
     value_params: Rc<Vec<Rc<Node>>>,
+    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
@@ -343,9 +344,10 @@ pub fn v1_generic_param_used_as_collection_element(
                 (is_container_type(authored_name_at(source_indices.clone(), te.clone())) && {
                     let mut __found = false;
                     for c in te.children.clone().iter().cloned() {
-                        if v1_type_expr_contains_param_name(
+                        if v1_type_expr_mentions_param_non_phantom(
                             param_name.clone(),
-                            c.clone(),
+                            v1_wf_child_type_node(c.clone(), source_indices.clone()),
+                            type_decl_items.clone(),
                             source_indices.clone(),
                         ) {
                             __found = true;
@@ -388,14 +390,16 @@ pub fn v1_generic_param_used_as_bare_value_param_type(
 pub fn v1_generic_param_used_in_value_param_type_surface(
     param_name: String,
     value_params: Rc<Vec<Rc<Node>>>,
+    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
         let mut __found = false;
         for vp in value_params.clone().iter().cloned() {
-            if v1_type_expr_contains_param_name(
+            if v1_type_expr_mentions_param_non_phantom(
                 param_name.clone(),
                 param_node_type_expr(vp.clone()),
+                type_decl_items.clone(),
                 source_indices.clone(),
             ) {
                 __found = true;
@@ -788,6 +792,7 @@ pub fn v1_type_param_needs_clone_bound(
     ret_name: String,
     body_is_param_ref: bool,
     value_params: Rc<Vec<Rc<Node>>>,
+    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
@@ -796,6 +801,7 @@ pub fn v1_type_param_needs_clone_bound(
             || v1_generic_param_used_as_collection_element(
                 param_name.clone(),
                 value_params.clone(),
+                type_decl_items.clone(),
                 source_indices.clone(),
             ))
             || v1_generic_param_used_as_bare_value_param_type(
@@ -806,6 +812,7 @@ pub fn v1_type_param_needs_clone_bound(
             || v1_generic_param_used_in_value_param_type_surface(
                 param_name.clone(),
                 value_params.clone(),
+                type_decl_items.clone(),
                 source_indices.clone(),
             ));
         structural
@@ -896,6 +903,7 @@ pub fn v1_generic_params_needing_clone_bound(
                         ret_name.clone(),
                         body_is_param_ref.clone(),
                         value_params.clone(),
+                        type_decl_items.clone(),
                         source_indices.clone(),
                     ) || v1_fn_param_type_needs_clone_bound(
                         g.clone(),
@@ -1046,8 +1054,15 @@ pub fn v1_type_expr_clone_impl_needs_param(
             if ((type_expr.children.clone().len() as i64) == 0) {
                 false
             } else {
-                if ((type_expr.children.clone().len() as i64) > 0) {
-                    {
+                match v1_rt::map_get(&type_decl_items, name.clone()) {
+                    Some(decl) => v1_declared_type_app_clone_impl_needs_param(
+                        param_name.clone(),
+                        decl.clone(),
+                        type_expr.children.clone(),
+                        type_decl_items.clone(),
+                        source_indices.clone(),
+                    ),
+                    None => {
                         let mut __found = false;
                         for c in type_expr.children.clone().iter().cloned() {
                             if v1_type_expr_clone_impl_needs_param(
@@ -1062,12 +1077,87 @@ pub fn v1_type_expr_clone_impl_needs_param(
                         }
                         __found
                     }
-                } else {
-                    false
                 }
             }
         }
     })
+}
+
+pub fn v1_declared_type_app_clone_impl_needs_param_loop(
+    param_name: String,
+    decl_params: Rc<Vec<Rc<Node>>>,
+    type_args: Rc<Vec<Rc<Node>>>,
+    phantom_slot_names: Rc<Vec<String>>,
+    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        match decl_params.clone().first().cloned() {
+            None => false,
+            Some(decl_param) => match type_args.clone().first().cloned() {
+                None => false,
+                Some(type_arg) => {
+                    let slot_name =
+                        generic_param_name_at(decl_param.clone(), source_indices.clone());
+                    let arg_expr = v1_wf_child_type_node(type_arg.clone(), source_indices.clone());
+                    let slot_is_phantom = v1_phantom_only_param_names_contains(
+                        phantom_slot_names.clone(),
+                        slot_name.clone(),
+                    );
+                    let here = if slot_is_phantom.clone() {
+                        false
+                    } else {
+                        v1_type_expr_clone_impl_needs_param(
+                            param_name.clone(),
+                            arg_expr.clone(),
+                            type_decl_items.clone(),
+                            source_indices.clone(),
+                        )
+                    };
+                    (here.clone()
+                        || v1_declared_type_app_clone_impl_needs_param_loop(
+                            param_name.clone(),
+                            Rc::new(
+                                decl_params
+                                    .clone()
+                                    .iter()
+                                    .cloned()
+                                    .skip(1 as usize)
+                                    .collect::<Vec<_>>(),
+                            ),
+                            Rc::new(
+                                type_args
+                                    .clone()
+                                    .iter()
+                                    .cloned()
+                                    .skip(1 as usize)
+                                    .collect::<Vec<_>>(),
+                            ),
+                            phantom_slot_names.clone(),
+                            type_decl_items.clone(),
+                            source_indices.clone(),
+                        ))
+                }
+            },
+        }
+    })
+}
+
+pub fn v1_declared_type_app_clone_impl_needs_param(
+    param_name: String,
+    decl: Rc<Node>,
+    type_args: Rc<Vec<Rc<Node>>>,
+    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    v1_declared_type_app_clone_impl_needs_param_loop(
+        param_name.clone(),
+        decl.params.clone(),
+        type_args.clone(),
+        v1_item_phantom_only_param_names(decl.clone(), source_indices.clone()),
+        type_decl_items.clone(),
+        source_indices.clone(),
+    )
 }
 
 pub fn v1_declared_arg_positions_need_clone_param(
