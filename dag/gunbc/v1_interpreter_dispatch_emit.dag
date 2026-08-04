@@ -11,6 +11,7 @@ import gunbc.v1_interpreter_primitive_surface {
 }
 import v2.std.algebra { fold_list }
 import v2.std.collection { List }
+import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
 import v2.std.text { String }
 
 fn escape_rust_string_literal_body(s: String) -> String {
@@ -66,16 +67,16 @@ fn drop_first_segment(segments: List<String>) -> List<String> {
     |> map(pair => pair.second)
 }
 
-fn module_pascal_after_domain_prefix(module: String) -> String {
-  module
+fn module_pascal_after_domain_prefix(module: QualifiedName) -> String {
+  qualified_name_to_dotted_string(qn: module)
     |> split(delimiter: ".")
     |> drop_first_segment
     |> map(segment => to_pascal_segment(segment: segment))
     |> join(separator: "")
 }
 
-fn module_slug_after_domain_prefix(module: String) -> String {
-  module
+fn module_slug_after_domain_prefix(module: QualifiedName) -> String {
+  qualified_name_to_dotted_string(qn: module)
     |> split(delimiter: ".")
     |> drop_first_segment
     |> join(separator: "_")
@@ -85,7 +86,7 @@ fn dispatch_emit_site_key(site: InterpreterDispatchEmitSite) -> String {
   match site {
     EvalBuiltinInnerSite => "eval_builtin_inner"
     EvalAlgebraMethodInnerSite => "eval_algebra_method_inner"
-    EvalCallBridgeFamilySite { module } => concat("eval_call_bridge::", concat(module, ""))
+    EvalCallBridgeFamilySite { module } => concat("eval_call_bridge::", qualified_name_to_dotted_string(qn: module))
     EvalCallNativeInterceptSite => "eval_call_native_intercept"
     TryV2StdCollectionMapPrimitiveGroundingSite => "try_v2_std_collection_map_primitive_grounding"
     TryParseTableMemoDispatchSite => "try_parse_table_memo_dispatch"

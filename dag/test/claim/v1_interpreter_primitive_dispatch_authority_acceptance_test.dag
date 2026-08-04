@@ -1,6 +1,7 @@
 module test.claim.v1_interpreter_primitive_dispatch_authority_acceptance
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.qualified_name { qualified_name_from_dotted_string }
 import gunbc.v1_interpreter_dispatch_emit {
   any_roster_site_has_rust_variant_collision,
   any_roster_site_has_spelling_collision,
@@ -76,8 +77,8 @@ fn distinct_bridge_family_site_count() -> Int {
 
 fn bridge_family_sites_are_split_per_family_red_control() -> Bool {
   distinct_bridge_family_site_count() == 9
-    && dispatch_emit_site_key(site: EvalCallBridgeFamilySite { module: "v2.std.node" })
-      != dispatch_emit_site_key(site: EvalCallBridgeFamilySite { module: "v2.std.compilers.lexing" })
+    && dispatch_emit_site_key(site: EvalCallBridgeFamilySite { module: qualified_name_from_dotted_string(dotted: "v2.std.node") })
+      != dispatch_emit_site_key(site: EvalCallBridgeFamilySite { module: qualified_name_from_dotted_string(dotted: "v2.std.compilers.lexing") })
 }
 
 fn live_roster_has_no_rust_variant_collisions() -> Bool {
