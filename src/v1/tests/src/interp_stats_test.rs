@@ -101,6 +101,39 @@ fn build() -> Int {
 }
 
 #[test]
+fn uri_percent_encode_code_points_accumulates_with_map_then_join() {
+    let src = r#"module test.stats_uri_encode
+import extdeps.uri {
+  uri_percent_encode_code_points,
+  UriPercentComponentEncoded,
+  UriPercentComponentRefused,
+}
+
+fn build() -> Bool {
+  match uri_percent_encode_code_points(code_points: [33, 64, 35, 36, 37]) {
+    UriPercentComponentEncoded(wire) => wire == "%21%40%23%24%25"
+    UriPercentComponentRefused { cause: _ } => false
+  }
+}
+"#;
+    let resolved = resolve(src);
+    let graph = resolved.graph.as_ref().expect("graph");
+    let ctx =
+        cli_run::make_eval_context(graph, resolved.source_indices.clone(), ExecutionMode::Wet);
+
+    match v1_interpreter::run_in_context(&ctx, "build", false) {
+        Ok(Value::Bool(true)) => {}
+        other => panic!("expected Bool(true), got {other:?}"),
+    }
+    let counters = ctx.mutation_counters_snapshot();
+    assert_eq!(
+        counters.list_concat_calls, 0,
+        "map-then-join must not fold-grow via list_concat"
+    );
+    assert_eq!(counters.list_concat_items_copied, 0);
+}
+
+#[test]
 fn retained_accounting_counts_shared_structure_once() {
     let src = r#"module test.stats_shared
 data xs: List<Int> = [1, 2, 3]

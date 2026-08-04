@@ -402,36 +402,46 @@ fn uri_percent_encode_scalar_fragment(cp: Int) -> UriPercentEncodeFoldState {
   }
 }
 
-type UriPercentEncodeFragmentsState
-  = UriPercentEncodeFragmentsBuilding { fragments: List<String> }
-  | UriPercentEncodeFragmentsRefused { cause: UriPercentEncodeRefusalCause }
+type UriPercentEncodeScan
+  = UriPercentEncodeScanClear
+  | UriPercentEncodeScanRefused { cause: UriPercentEncodeRefusalCause }
+
+fn uri_percent_encode_scan_refusal(code_points: List<Int>) -> UriPercentEncodeScan {
+  fold(
+    code_points,
+    init: UriPercentEncodeScanClear,
+    f: fn(acc, cp) {
+      match acc {
+        UriPercentEncodeScanRefused { cause: _ } => acc
+        UriPercentEncodeScanClear =>
+          match uri_percent_encode_scalar_fragment(cp: cp) {
+            UriPercentEncodeRefused { cause: cause } =>
+              UriPercentEncodeScanRefused { cause: cause }
+            UriPercentEncodeBuilding { wire: _ } => UriPercentEncodeScanClear
+          }
+      }
+    },
+  )
+}
+
+fn uri_percent_encode_scalar_wire(cp: Int) -> String {
+  match uri_percent_encode_scalar_fragment(cp: cp) {
+    UriPercentEncodeBuilding { wire: wire } => wire
+    UriPercentEncodeRefused { cause: _ } => ""
+  }
+}
 
 fn uri_percent_encode_code_points(code_points: List<Int>) -> UriPercentEncodeComponent {
   if code_points |> length == 0 {
     UriPercentComponentRefused { cause: UriPercentEncodeEmptyInputRefused }
   } else {
-    match fold(
-      code_points,
-      init: UriPercentEncodeFragmentsBuilding { fragments: [] },
-      f: fn(acc, cp) {
-        match acc {
-          UriPercentEncodeFragmentsRefused { cause: _ } => acc
-          UriPercentEncodeFragmentsBuilding { fragments: fragments } =>
-            match uri_percent_encode_scalar_fragment(cp: cp) {
-              UriPercentEncodeRefused { cause: cause } =>
-                UriPercentEncodeFragmentsRefused { cause: cause }
-              UriPercentEncodeBuilding { wire: wire } =>
-                UriPercentEncodeFragmentsBuilding {
-                  fragments: fragments |> list_push(wire),
-                }
-            }
-        }
-      },
-    ) {
-      UriPercentEncodeFragmentsRefused { cause: cause } =>
+    match uri_percent_encode_scan_refusal(code_points: code_points) {
+      UriPercentEncodeScanRefused { cause: cause } =>
         UriPercentComponentRefused { cause: cause }
-      UriPercentEncodeFragmentsBuilding { fragments: fragments } =>
-        UriPercentComponentEncoded(join(fragments, "") as NonEmptyStr)
+      UriPercentEncodeScanClear =>
+        UriPercentComponentEncoded(
+          join(code_points |> map(cp => uri_percent_encode_scalar_wire(cp: cp)), "") as NonEmptyStr,
+        )
     }
   }
 }
