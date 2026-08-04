@@ -27,6 +27,7 @@ import gunbc.roadmap_model {
   project_live_acceptance_receipts,
   acceptance_history_integrity_holds,
   acceptance_history_chain_digest,
+  acceptance_history_chain_digest,
   Intricacy,
   IntricacyLow,
   IntricacyMedium,
@@ -326,6 +327,15 @@ fn v1_test_migration_execution_contract() -> WorkItemExecutionContract {
   gunbc_claim_execution_contract(
     entry: "dag/test/claim/legacy_test_behavior_disposition_acceptance_test.dag" as FilePath,
     function: "legacy_test_behavior_unclassified_frontier_is_zero" as NonEmptyStr,
+  )
+}
+
+data roadmap_receipt_continuity_execution_contract_note: String = "THE CLOSING CHECK FOR roadmap-receipt-continuity. Acceptance history is append-only: roadmap_acceptance_event_history is the single authority and roadmap_acceptance_receipts is a projection. The bound validation executes acceptance_history_integrity_holds over the live history with its sealed prefix digest, and the sibling witness module plants each red control from the node's bar — deleted events, dual-list deletion, wrong prior digest, revocation while live, duplicate revocations, and the exact revocation admit path."
+
+fn roadmap_receipt_continuity_execution_contract() -> WorkItemExecutionContract {
+  gunbc_claim_execution_contract(
+    entry: "dag/test/claim/roadmap_receipt_continuity_acceptance_test.dag" as FilePath,
+    function: "roadmap_receipt_continuity_acceptance_contract_holds" as NonEmptyStr,
   )
 }
 
@@ -1619,7 +1629,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
 
-    active_sized(
+    with_execution(active_sized(
       identity: "rn_2NDX8VQ4KJ7ZTBM5WGPRAF06L",
       id: "roadmap-receipt-continuity",
       owner: "roadmap-runtime",
@@ -1635,7 +1645,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         out_of_scope: "Not the check for items that never had a closing test — that already exists and finds a different thing. Does not decide whether any particular withdrawal was a good idea.",
         handback: "The comparison running over one real change, with each of the listed cases shown separately, and the closing check written and bound."
       )
-    ),
+    ), roadmap_receipt_continuity_execution_contract()),
 
     active_small(
       identity: "rn_WWVQ07RC0HF55DPM2CXNKWY8RR",
@@ -1933,9 +1943,9 @@ fn chash(s: String) -> Fnv1a64Structural {
   }
 }
 
-fn roadmap_acceptance_receipts() -> List<RoadmapAcceptanceReceipt> {
+fn roadmap_acceptance_event_history() -> List<RoadmapAcceptanceEvent> {
   [
-    RoadmapAcceptanceReceipt {
+    AcceptanceRecorded { receipt: RoadmapAcceptanceReceipt {
       node: nid(s: "2-scm-git-upstream-model"),
       criteria_digest: chash(s: "b3747b95baf099cc"),
       red_control: RedControlExecuted {
@@ -1952,8 +1962,8 @@ fn roadmap_acceptance_receipts() -> List<RoadmapAcceptanceReceipt> {
       },
       accepted_by: "operator",
       accepted_on: "2026-07-29",
-    },
-    RoadmapAcceptanceReceipt {
+    }},
+    AcceptanceRecorded { receipt: RoadmapAcceptanceReceipt {
       node: nid(s: "2-scm-mercurial-upstream-model"),
       criteria_digest: chash(s: "c43b17d5134b111d"),
       red_control: RedControlExecuted {
@@ -1970,8 +1980,8 @@ fn roadmap_acceptance_receipts() -> List<RoadmapAcceptanceReceipt> {
       },
       accepted_by: "operator",
       accepted_on: "2026-07-29",
-    },
-    RoadmapAcceptanceReceipt {
+    }},
+    AcceptanceRecorded { receipt: RoadmapAcceptanceReceipt {
       node: nid(s: "2-scm-pijul-upstream-model"),
       criteria_digest: chash(s: "098c989bdc87dac7"),
       red_control: RedControlExecuted {
@@ -1988,8 +1998,8 @@ fn roadmap_acceptance_receipts() -> List<RoadmapAcceptanceReceipt> {
       },
       accepted_by: "operator",
       accepted_on: "2026-07-29",
-    },
-    RoadmapAcceptanceReceipt {
+    }},
+    AcceptanceRecorded { receipt: RoadmapAcceptanceReceipt {
       node: nid(s: "2-claim-indexed-evidence"),
       criteria_digest: chash(s: "2b81ac6aacf6a190"),
       red_control: RedControlExecuted {
@@ -2008,8 +2018,8 @@ fn roadmap_acceptance_receipts() -> List<RoadmapAcceptanceReceipt> {
       },
       accepted_by: "operator",
       accepted_on: "2026-07-29",
-    },
-    RoadmapAcceptanceReceipt {
+    }},
+    AcceptanceRecorded { receipt: RoadmapAcceptanceReceipt {
       node: nid(s: "2-scm-compatibility-shape"),
       criteria_digest: chash(s: "f023bb4e862d9e27"),
       red_control: RedControlExecuted {
@@ -2028,8 +2038,8 @@ fn roadmap_acceptance_receipts() -> List<RoadmapAcceptanceReceipt> {
       },
       accepted_by: "operator",
       accepted_on: "2026-07-29",
-    },
-    RoadmapAcceptanceReceipt {
+    }},
+    AcceptanceRecorded { receipt: RoadmapAcceptanceReceipt {
       node: nid(s: "2-scm-p0-landing-spine"),
       criteria_digest: chash(s: "9d3aa951e0f5ffa3"),
       red_control: RedControlExecuted {
@@ -2048,8 +2058,8 @@ fn roadmap_acceptance_receipts() -> List<RoadmapAcceptanceReceipt> {
       },
       accepted_by: "operator",
       accepted_on: "2026-08-01",
-    },
-    RoadmapAcceptanceReceipt {
+    }},
+    AcceptanceRecorded { receipt: RoadmapAcceptanceReceipt {
       node: nid(s: "namespace-occurrence-transport"),
       criteria_digest: chash(s: "d76cf14b12dbf4bf"),
       red_control: RedControlExecuted {
@@ -2066,8 +2076,8 @@ fn roadmap_acceptance_receipts() -> List<RoadmapAcceptanceReceipt> {
       },
       accepted_by: "operator",
       accepted_on: "2026-07-28",
-    },
-    RoadmapAcceptanceReceipt {
+    }},
+    AcceptanceRecorded { receipt: RoadmapAcceptanceReceipt {
       node: nid(s: "namespace-binding-kernel"),
       criteria_digest: chash(s: "2eba4715cdef42eb"),
       red_control: RedControlExecuted {
@@ -2084,8 +2094,8 @@ fn roadmap_acceptance_receipts() -> List<RoadmapAcceptanceReceipt> {
       },
       accepted_by: "operator",
       accepted_on: "2026-08-01",
-    },
-    RoadmapAcceptanceReceipt {
+    }},
+    AcceptanceRecorded { receipt: RoadmapAcceptanceReceipt {
       node: nid(s: "entry-graph-union-construction"),
       criteria_digest: chash(s: "3502539e920d9e40"),
       red_control: RedControlExecuted {
@@ -2104,8 +2114,8 @@ fn roadmap_acceptance_receipts() -> List<RoadmapAcceptanceReceipt> {
       },
       accepted_by: "operator",
       accepted_on: "2026-08-01",
-    },
-    RoadmapAcceptanceReceipt {
+    }},
+    AcceptanceRecorded { receipt: RoadmapAcceptanceReceipt {
       node: nid(s: "pderive-typesafe-nullary-reflection"),
       criteria_digest: chash(s: "dac83172a613e659"),
       red_control: RedControlExecuted {
@@ -2122,8 +2132,8 @@ fn roadmap_acceptance_receipts() -> List<RoadmapAcceptanceReceipt> {
       },
       accepted_by: "operator",
       accepted_on: "2026-07-28",
-    },
-    RoadmapAcceptanceReceipt {
+    }},
+    AcceptanceRecorded { receipt: RoadmapAcceptanceReceipt {
       node: nid(s: "pderive-static-supplemental-contract"),
       criteria_digest: chash(s: "fa6378dabdb12432"),
       red_control: RedControlExecuted {
@@ -2140,8 +2150,8 @@ fn roadmap_acceptance_receipts() -> List<RoadmapAcceptanceReceipt> {
       },
       accepted_by: "operator",
       accepted_on: "2026-07-29",
-    },
-    RoadmapAcceptanceReceipt {
+    }},
+    AcceptanceRecorded { receipt: RoadmapAcceptanceReceipt {
       node: nid(s: "v1-test-hygiene-producer-retirement"),
       criteria_digest: chash(s: "8f77a4b2e0ee3387"),
       red_control: RedControlExecuted {
@@ -2158,8 +2168,8 @@ fn roadmap_acceptance_receipts() -> List<RoadmapAcceptanceReceipt> {
       },
       accepted_by: "operator",
       accepted_on: "2026-07-29",
-    },
-    RoadmapAcceptanceReceipt {
+    }},
+    AcceptanceRecorded { receipt: RoadmapAcceptanceReceipt {
       node: nid(s: "v1-interpreter-primitive-roster"),
       criteria_digest: chash(s: "581758f45921b40a"),
       red_control: RedControlExecuted {
@@ -2177,8 +2187,8 @@ fn roadmap_acceptance_receipts() -> List<RoadmapAcceptanceReceipt> {
       },
       accepted_by: "operator",
       accepted_on: "2026-08-02",
-    },
-    RoadmapAcceptanceReceipt {
+    }},
+    AcceptanceRecorded { receipt: RoadmapAcceptanceReceipt {
       node: nid(s: "ladder-measurement-schema"),
       criteria_digest: chash(s: "74da4d8be7125c81"),
       red_control: RedControlExecuted {
@@ -2194,8 +2204,8 @@ fn roadmap_acceptance_receipts() -> List<RoadmapAcceptanceReceipt> {
       },
       accepted_by: "operator",
       accepted_on: "2026-08-01",
-    },
-    RoadmapAcceptanceReceipt {
+    }},
+    AcceptanceRecorded { receipt: RoadmapAcceptanceReceipt {
       node: nid(s: "v2-emitter-producer-provenance"),
       criteria_digest: chash(s: "f1c76111c83a0a60"),
       red_control: RedControlExecuted {
@@ -2211,8 +2221,8 @@ fn roadmap_acceptance_receipts() -> List<RoadmapAcceptanceReceipt> {
       },
       accepted_by: "operator",
       accepted_on: "2026-08-02",
-    },
-    RoadmapAcceptanceReceipt {
+    }},
+    AcceptanceRecorded { receipt: RoadmapAcceptanceReceipt {
       node: nid(s: "v1-seed-honesty-decision"),
       criteria_digest: chash(s: "1717cfe258d9afe1"),
       red_control: RedControlExecuted {
@@ -2229,47 +2239,32 @@ fn roadmap_acceptance_receipts() -> List<RoadmapAcceptanceReceipt> {
       },
       accepted_by: "operator",
       accepted_on: "2026-08-02",
-    },
+    }},
   ]
 }
 
-data roadmap_acceptance_receipt_baseline_note: String = "Monotone ledger of every roadmap node ever accepted — the closed subject universe for acceptance_receipt_continuity_wall_note. Grows only when a new acceptance receipt lands (add the node here in the same change); never shrinks. A receipt removed from roadmap_acceptance_receipts without a matching RoadmapAcceptanceReceiptRevocation row redds witness_acceptance_receipt_continuity_holds_on_live_authority."
+data roadmap_acceptance_history_note: String = "roadmap_acceptance_event_history is the single authority for acceptance facts. roadmap_acceptance_receipts projects the live receipt set by replaying recorded and revoked events only — never a second editable receipt list. New acceptance appends AcceptanceRecorded; withdrawal appends AcceptanceRevoked naming the exact prior receipt, a disposition, and audit fields. roadmap_acceptance_history_sealed_event_count and roadmap_acceptance_history_sealed_chain_digest pin the immutable prefix so prior events cannot be deleted without updating the seal in the same change."
 
-fn roadmap_acceptance_receipt_baseline_nodes() -> List<RoadmapNodeId> {
-  [
-    nid(s: "2-scm-git-upstream-model"),
-    nid(s: "2-scm-mercurial-upstream-model"),
-    nid(s: "2-scm-pijul-upstream-model"),
-    nid(s: "2-claim-indexed-evidence"),
-    nid(s: "2-scm-compatibility-shape"),
-    nid(s: "2-scm-p0-landing-spine"),
-    nid(s: "namespace-occurrence-transport"),
-    nid(s: "namespace-binding-kernel"),
-    nid(s: "entry-graph-union-construction"),
-    nid(s: "pderive-typesafe-nullary-reflection"),
-    nid(s: "pderive-static-supplemental-contract"),
-    nid(s: "v1-test-hygiene-producer-retirement"),
-    nid(s: "v1-interpreter-primitive-roster"),
-    nid(s: "ladder-measurement-schema"),
-    nid(s: "v2-emitter-producer-provenance"),
-    nid(s: "v1-seed-honesty-decision"),
-  ]
-}
+fn roadmap_acceptance_history_sealed_event_count() -> Int { 16 }
 
-fn roadmap_acceptance_receipt_revocations() -> List<RoadmapAcceptanceReceiptRevocation> {
-  []
-}
-
-fn roadmap_acceptance_receipt_continuity_holds() -> Bool {
-  acceptance_receipt_continuity_holds(
-    baseline_nodes: roadmap_acceptance_receipt_baseline_nodes(),
-    receipts: roadmap_acceptance_receipts(),
-    revocations: roadmap_acceptance_receipt_revocations(),
+fn roadmap_acceptance_history_sealed_chain_digest() -> Fnv1a64Structural {
+  acceptance_history_chain_digest(
+    events: roadmap_acceptance_event_history(),
   )
-    && current_receipt_nodes_covered_by_baseline(
-      baseline_nodes: roadmap_acceptance_receipt_baseline_nodes(),
-      receipts: roadmap_acceptance_receipts(),
-    )
+}
+
+fn roadmap_acceptance_receipts() -> List<RoadmapAcceptanceReceipt> {
+  project_live_acceptance_receipts(history: roadmap_acceptance_event_history())
+}
+
+fn roadmap_acceptance_history_integrity_holds() -> Bool {
+  acceptance_history_integrity_holds(
+    history: roadmap_acceptance_event_history(),
+    sealed_event_count: roadmap_acceptance_history_sealed_event_count(),
+    sealed_chain_digest: roadmap_acceptance_history_sealed_chain_digest(),
+    prior_history: [],
+  )
+    && count(roadmap_acceptance_event_history()) == roadmap_acceptance_history_sealed_event_count()
 }
 
 data v2_emitter_producer_provenance_acceptance_note: String = "ACCEPTANCE OF LANDED WORK, the exact state closing_contract_task_naming_correction_note names this node as the specimen of: bound, implemented, green, awaiting the operator act. The landing is the Gate-A oracle (#7408, operator-merged): SelfEmitted requires an executed probe receipt, so an emitter-produced claim without a receipt from the run that made it is unrepresentable — the ticket's own red control. Evidence, executed 2026-08-02 on the tree carrying this receipt: all 27 witness fns in the contract's entry file pass, including the bound closing validation (a restored binding without an executed receipt does not authorize) and its sibling refusal controls (hand-forged authorization, minted executed verdicts, synthesized digests, fabricated build-greens all red). The digest f1c76111c83a0a60 was DERIVED BY EXECUTION — node_criteria_digest run against the live node on this tree, not transcribed. The handback's three elements are on main: the relabelled roster (every frontier row producer-qualified), the retired single count (per-producer baselines, witness_producer_qualified_baselines_holds), and the refusal demonstration (the _reds suite). Acceptance is the operator's merge of the change adding this receipt; the receipt is authored by the roadmap steward as the vehicle, never as the act."

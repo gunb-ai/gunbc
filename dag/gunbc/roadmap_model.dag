@@ -323,7 +323,13 @@ fn acceptance_event_digest(event: RoadmapAcceptanceEvent) -> Fnv1a64Structural {
     AcceptanceRecorded { receipt } =>
       content_hash_tagged_structural(
         tag: "roadmap-acceptance-recorded-v1",
-        payload: content_hash_atom(value: receipt.node as NonEmptyStr),
+        payload: content_hash_combine_structural(
+          left: content_hash_atom(value: receipt.node as NonEmptyStr),
+          right: content_hash_combine_structural(
+            left: content_hash_atom(value: receipt.accepted_by),
+            right: content_hash_atom(value: receipt.accepted_on),
+          ),
+        ),
       )
     AcceptanceRevoked { exact_prior_receipt, disposition, reason, revoked_by, revoked_on } =>
       content_hash_tagged_structural(
