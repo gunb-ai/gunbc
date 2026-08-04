@@ -18,6 +18,7 @@ use self::ScopedWitnessExecutionAuthority::*;
 use self::ScopedWitnessExecutionOutcome::*;
 use self::ScopedWitnessExecutionReceiptDecode::*;
 use self::ScopedWitnessProcessIsolation::*;
+use self::WitnessCostBasis::*;
 use self::WitnessKind::*;
 use self::WitnessSpan::*;
 pub use crate::std_algebra::FreeMonoid;
@@ -110,15 +111,43 @@ pub struct WitnessSeam {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
+pub enum WitnessCostBasis {
+    MeasuredAtExactSubject {
+        wall_ms: i64,
+        receipt: String,
+    },
+    EstimatedFromSiblingClass {
+        source_witness: String,
+        basis: String,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ScheduledWitnessEnvelope {
+    pub cadence: String,
+    pub wall_budget_ms: i64,
+    pub max_staleness: String,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
 pub enum WitnessSpan {
     SpanUndeclared,
-    SpanSeams { seams: Rc<Vec<Rc<WitnessSeam>>> },
+    SpanSeams {
+        seams: Rc<Vec<Rc<WitnessSeam>>>,
+    },
+    SpanEnrolled {
+        seams: Rc<Vec<Rc<WitnessSeam>>>,
+        cost_basis: Rc<WitnessCostBasis>,
+        envelope: Rc<ScheduledWitnessEnvelope>,
+    },
 }
 impl WitnessSpan {
     pub fn seams(&self) -> Rc<Vec<Rc<WitnessSeam>>> {
         match self {
             WitnessSpan::SpanUndeclared => panic!("no seams on unit variant"),
             WitnessSpan::SpanSeams { seams: __val, .. } => __val.clone(),
+            WitnessSpan::SpanEnrolled { seams: __val, .. } => __val.clone(),
         }
     }
 }
