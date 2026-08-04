@@ -4,7 +4,15 @@ import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
-import extdeps.github.app { GitHubAppPermissionName, GitHubAppPermissionAccess, AppAccessRead, AppAccessWrite, permission_name_eq }
+import extdeps.github.actions { WorkflowPermissions, PermissionLevel, PermRead, PermWrite, PermNone }
+import extdeps.github.app {
+  GitHubAppPermissionName,
+  GitHubAppPermissionAccess,
+  AppAccessRead,
+  AppAccessWrite,
+  AppAccessAdmin,
+  permission_access_at_least
+}
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -16,86 +24,136 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 data automatic_token_citation: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
-    locator: "docs.github.com/en/actions/security-for-github-actions/security-guides/automatic-token-authentication"
+    locator: "docs.github.com/en/actions/concepts/security/github_token"
   }
 }
 
-data actions_token_scope_closure_note: String = "THE CLOSED SCOPE VOCABULARY OF GITHUB_TOKEN, MODELLED AS A COPRODUCT SO THE ABSENT SCOPE IS UNWRITABLE. Every arm below is a key GitHub accepts under a workflow or job `permissions:` mapping. `workflows` is NOT an arm because GitHub's vocabulary has no such key — the Actions token cannot be granted authority over .github/workflows/** by any configuration, which is a different state from a GitHub App permission that merely has not been granted yet. Representing the two the same way is the state-space conflation that lets an unobtainable capability be modelled as a pending one; here `actions_token_scope_for_permission_name` returns Absent for `workflows` and there is no arm a caller could construct to make it Present."
-
-type ActionsTokenScope
-  = ActionsScope
-  | ArtifactMetadataScope
-  | AttestationsScope
-  | ChecksScope
-  | CodeQualityScope
-  | ContentsScope
-  | DeploymentsScope
-  | DiscussionsScope
-  | IdTokenScope
-  | IssuesScope
-  | PackagesScope
-  | PagesScope
-  | PullRequestsScope
-  | SecurityEventsScope
-  | StatusesScope
-  | VulnerabilityAlertsScope
-
-fn actions_token_scope_wire_name(scope: ActionsTokenScope) -> NonEmptyStr {
-  match scope {
-    ActionsScope => "actions"
-    ArtifactMetadataScope => "artifact-metadata"
-    AttestationsScope => "attestations"
-    ChecksScope => "checks"
-    CodeQualityScope => "code-quality"
-    ContentsScope => "contents"
-    DeploymentsScope => "deployments"
-    DiscussionsScope => "discussions"
-    IdTokenScope => "id-token"
-    IssuesScope => "issues"
-    PackagesScope => "packages"
-    PagesScope => "pages"
-    PullRequestsScope => "pull-requests"
-    SecurityEventsScope => "security-events"
-    StatusesScope => "statuses"
-    VulnerabilityAlertsScope => "vulnerability-alerts"
+data app_permissions_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/rest/authentication/permissions-required-for-github-apps"
   }
 }
 
-data all_actions_token_scopes: List<ActionsTokenScope> = [
-  ActionsScope, ArtifactMetadataScope, AttestationsScope, ChecksScope, CodeQualityScope,
-  ContentsScope, DeploymentsScope, DiscussionsScope, IdTokenScope, IssuesScope,
-  PackagesScope, PagesScope, PullRequestsScope, SecurityEventsScope, StatusesScope,
-  VulnerabilityAlertsScope
+type GitHubPermissionAxis
+  = ActionsAxis
+  | ArtifactMetadataAxis
+  | AttestationsAxis
+  | ChecksAxis
+  | CodeQualityAxis
+  | ContentsAxis
+  | DeploymentsAxis
+  | DiscussionsAxis
+  | IdTokenAxis
+  | IssuesAxis
+  | MetadataAxis
+  | ModelsAxis
+  | PackagesAxis
+  | PagesAxis
+  | PullRequestsAxis
+  | RepositoryProjectsAxis
+  | SecurityEventsAxis
+  | StatusesAxis
+  | VulnerabilityAlertsAxis
+  | WorkflowsAxis
+  | AdministrationAxis
+  | OrganizationSelfHostedRunnersAxis
+
+data all_permission_axes: List<GitHubPermissionAxis> = [
+  ActionsAxis, ArtifactMetadataAxis, AttestationsAxis, ChecksAxis, CodeQualityAxis,
+  ContentsAxis, DeploymentsAxis, DiscussionsAxis, IdTokenAxis, IssuesAxis,
+  MetadataAxis, ModelsAxis, PackagesAxis, PagesAxis, PullRequestsAxis,
+  RepositoryProjectsAxis, SecurityEventsAxis, StatusesAxis, VulnerabilityAlertsAxis,
+  WorkflowsAxis, AdministrationAxis, OrganizationSelfHostedRunnersAxis
 ]
 
-data app_permission_wire_name_divergence_note: String = "GitHub App permission names and Actions `permissions:` keys are two spellings of one underlying authority axis and they DIVERGE on separator: the App REST surface names `pull_requests` and `security_events` with underscores, the workflow `permissions:` mapping spells the same keys `pull-requests` and `security-events`. The projection below is therefore a real translation, not an identity — writing it as string equality would silently classify `pull_requests` as unavailable to GITHUB_TOKEN and refuse a push the Actions token can in fact perform."
+fn axis_app_wire_name(axis: GitHubPermissionAxis) -> NonEmptyStr {
+  match axis {
+    ActionsAxis => "actions"
+    ArtifactMetadataAxis => "artifact_metadata"
+    AttestationsAxis => "attestations"
+    ChecksAxis => "checks"
+    CodeQualityAxis => "code_quality"
+    ContentsAxis => "contents"
+    DeploymentsAxis => "deployments"
+    DiscussionsAxis => "discussions"
+    IdTokenAxis => "id_token"
+    IssuesAxis => "issues"
+    MetadataAxis => "metadata"
+    ModelsAxis => "models"
+    PackagesAxis => "packages"
+    PagesAxis => "pages"
+    PullRequestsAxis => "pull_requests"
+    RepositoryProjectsAxis => "repository_projects"
+    SecurityEventsAxis => "security_events"
+    StatusesAxis => "statuses"
+    VulnerabilityAlertsAxis => "vulnerability_alerts"
+    WorkflowsAxis => "workflows"
+    AdministrationAxis => "administration"
+    OrganizationSelfHostedRunnersAxis => "organization_self_hosted_runners"
+  }
+}
 
-fn actions_token_scope_for_permission_name(name: GitHubAppPermissionName) -> ActionsTokenScope? {
+fn axis_actions_scope_name(axis: GitHubPermissionAxis) -> NonEmptyStr? {
+  match axis {
+    ActionsAxis => Present { value: "actions" }
+    ArtifactMetadataAxis => Present { value: "artifact-metadata" }
+    AttestationsAxis => Present { value: "attestations" }
+    ChecksAxis => Present { value: "checks" }
+    CodeQualityAxis => Present { value: "code-quality" }
+    ContentsAxis => Present { value: "contents" }
+    DeploymentsAxis => Present { value: "deployments" }
+    DiscussionsAxis => Present { value: "discussions" }
+    IdTokenAxis => Present { value: "id-token" }
+    IssuesAxis => Present { value: "issues" }
+    MetadataAxis => none
+    ModelsAxis => Present { value: "models" }
+    PackagesAxis => Present { value: "packages" }
+    PagesAxis => Present { value: "pages" }
+    PullRequestsAxis => Present { value: "pull-requests" }
+    RepositoryProjectsAxis => Present { value: "repository-projects" }
+    SecurityEventsAxis => Present { value: "security-events" }
+    StatusesAxis => Present { value: "statuses" }
+    VulnerabilityAlertsAxis => Present { value: "vulnerability-alerts" }
+    WorkflowsAxis => none
+    AdministrationAxis => none
+    OrganizationSelfHostedRunnersAxis => none
+  }
+}
+
+fn axis_max_actions_access(axis: GitHubPermissionAxis) -> GitHubAppPermissionAccess? {
+  match axis {
+    IdTokenAxis => Present { value: AppAccessWrite }
+    ModelsAxis => Present { value: AppAccessRead }
+    VulnerabilityAlertsAxis => Present { value: AppAccessRead }
+    MetadataAxis => none
+    WorkflowsAxis => none
+    AdministrationAxis => none
+    OrganizationSelfHostedRunnersAxis => none
+    _ => Present { value: AppAccessWrite }
+  }
+}
+
+fn axis_for_app_wire_name(name: GitHubAppPermissionName) -> GitHubPermissionAxis? {
   fold_list(
-    xs: all_actions_token_scopes,
+    xs: all_permission_axes,
     empty: none,
-    cons: fn(found, scope) {
+    cons: fn(found, axis) {
       match found {
         Present { value: v } => Present { value: v }
-        Absent =>
-          if name.wire_name == actions_token_scope_wire_name(scope: scope) {
-            Present { value: scope }
-          } else if name.wire_name == "pull_requests" && permission_name_eq(a: GitHubAppPermissionName { wire_name: "pull-requests" }, b: GitHubAppPermissionName { wire_name: actions_token_scope_wire_name(scope: scope) }) {
-            Present { value: scope }
-          } else if name.wire_name == "security_events" && actions_token_scope_wire_name(scope: scope) == "security-events" {
-            Present { value: scope }
-          } else {
-            none
-          }
+        Absent => if name.wire_name == axis_app_wire_name(axis: axis) { Present { value: axis } } else { none }
       }
     }
   )
 }
 
 fn actions_token_can_carry(name: GitHubAppPermissionName) -> Bool {
-  match actions_token_scope_for_permission_name(name: name) {
-    Present { value: _ } => true
+  match axis_for_app_wire_name(name: name) {
     Absent => false
+    Present { value: axis } => match axis_actions_scope_name(axis: axis) {
+      Absent => false
+      Present { value: _ } => true
+    }
   }
 }
 
@@ -105,16 +163,108 @@ fn actions_token_may_write_workflow_files() -> Bool {
   actions_token_can_carry(name: workflows_permission_name)
 }
 
+type GitHubWorkflowEvent
+  = PullRequestEvent
+  | PushEvent
+  | WorkflowDispatchEvent
+  | MergeGroupEvent
+  | ScheduleEvent
+
+type PullRequestOrigin
+  = SameRepositoryOrigin
+  | ForkedRepositoryOrigin
+  | OriginNotApplicable
+
+type ActionsRepositoryPolicyObservation
+  = ActionsRepositoryPolicyUnobserved
+  | ActionsRepositoryPolicyObserved { send_write_tokens_to_fork_pull_requests: Bool }
+
+type EffectiveActionsJobGrant {
+  workflow: DeclarationRef
+  job: DeclarationRef
+  event: GitHubWorkflowEvent
+  origin: PullRequestOrigin
+  repository_policy: ActionsRepositoryPolicyObservation
+  permissions: WorkflowPermissions
+}
+
+fn permission_level_access(level: PermissionLevel) -> GitHubAppPermissionAccess? {
+  match level {
+    PermRead => Present { value: AppAccessRead }
+    PermWrite => Present { value: AppAccessWrite }
+    PermNone => none
+  }
+}
+
+fn declared_level_for_axis(perms: WorkflowPermissions, axis: GitHubPermissionAxis) -> PermissionLevel? {
+  match axis {
+    ContentsAxis => perms.contents
+    PullRequestsAxis => perms.pull_requests
+    IssuesAxis => perms.issues
+    ActionsAxis => perms.actions
+    IdTokenAxis => perms.id_token
+    _ => none
+  }
+}
+
+type ActionsGrantResolution
+  = ActionsGrantResolved { access: GitHubAppPermissionAccess }
+  | ActionsGrantNone
+  | ActionsGrantScopeUnavailable
+  | ActionsGrantForkPolicyUnobserved
+
+fn fork_write_downgrade(grant: EffectiveActionsJobGrant) -> ActionsGrantResolution {
+  match grant.origin {
+    SameRepositoryOrigin => ActionsGrantNone
+    OriginNotApplicable => ActionsGrantNone
+    ForkedRepositoryOrigin => match grant.repository_policy {
+      ActionsRepositoryPolicyUnobserved => ActionsGrantForkPolicyUnobserved
+      ActionsRepositoryPolicyObserved { send_write_tokens_to_fork_pull_requests: allowed } =>
+        if allowed { ActionsGrantNone } else { ActionsGrantResolved { access: AppAccessRead } }
+    }
+  }
+}
+
+fn effective_actions_grant(
+  grant: EffectiveActionsJobGrant,
+  name: GitHubAppPermissionName
+) -> ActionsGrantResolution {
+  match axis_for_app_wire_name(name: name) {
+    Absent => ActionsGrantScopeUnavailable
+    Present { value: axis } => match axis_actions_scope_name(axis: axis) {
+      Absent => ActionsGrantScopeUnavailable
+      Present { value: _ } => match declared_level_for_axis(perms: grant.permissions, axis: axis) {
+        Absent => ActionsGrantNone
+        Present { value: level } => match permission_level_access(level: level) {
+          Absent => ActionsGrantNone
+          Present { value: declared } => match fork_write_downgrade(grant: grant) {
+            ActionsGrantForkPolicyUnobserved => ActionsGrantForkPolicyUnobserved
+            ActionsGrantResolved { access: ceiling } =>
+              if permission_access_at_least(held: ceiling, requested: declared) {
+                ActionsGrantResolved { access: declared }
+              } else {
+                ActionsGrantResolved { access: ceiling }
+              }
+            ActionsGrantNone => ActionsGrantResolved { access: declared }
+            ActionsGrantScopeUnavailable => ActionsGrantScopeUnavailable
+          }
+        }
+      }
+    }
+  }
+}
+
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.github.actions_token",
-      decl_name: "ActionsTokenScope",
+      decl_name: "GitHubPermissionAxis",
       field: WholeDeclaration
     }
   },
   first_citation: extdeps.github.actions_token.extdeps_external_authority_anchor,
   further_citations: [
-    extdeps.github.actions_token.automatic_token_citation
+    extdeps.github.actions_token.automatic_token_citation,
+    extdeps.github.actions_token.app_permissions_citation
   ]
 }

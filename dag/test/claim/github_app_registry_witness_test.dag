@@ -227,7 +227,7 @@ test fn witness_absent_permission_is_absent_not_read() -> Bool {
     Absent => true
     Present { value: _ } => false
   } && match permission_access_in(perms: [contents_write_perm], name: wire(name: "contents")) {
-    Present { value: a } => match a { AppAccessWrite => true  AppAccessRead => false }
+    Present { value: a } => match a { AppAccessWrite => true  _ => false }
     Absent => false
   }
 }

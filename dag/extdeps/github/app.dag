@@ -47,6 +47,7 @@ type GitHubAppPermissionName { wire_name: NonEmptyStr }
 type GitHubAppPermissionAccess
   = AppAccessRead
   | AppAccessWrite
+  | AppAccessAdmin
 
 type GitHubAppPermission {
   name: GitHubAppPermissionName
@@ -57,6 +58,7 @@ fn permission_access_rank(access: GitHubAppPermissionAccess) -> Int {
   match access {
     AppAccessRead => 1
     AppAccessWrite => 2
+    AppAccessAdmin => 3
   }
 }
 
