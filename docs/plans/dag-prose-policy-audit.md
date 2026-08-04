@@ -1,9 +1,9 @@
 # `.dag` annotation prose — the representation defect
 
-**Status:** audit open, measured at `64aed6007e`, 2026-08-04. **Nothing deleted, migrated, or reconciled.**
-**This document deliberately stops at the audit.** It does not answer its own decisions and does not begin
-a corpus pass; both wait on the source-annotation destination and the non-trivia parser model being
-designed (operator instruction, 2026-08-04).
+**Status: audit complete; source-annotation policy ruled; implementation and reconciliation unstarted.**
+Measured at `64aed6007e`, 2026-08-04. **Nothing deleted, migrated, or reconciled.** The canonical policy
+landed in DESIGN.md §4c through `gunbc.design_document` (operator ruling, 2026-08-04); §5 records the
+D-A–D-D rulings and the four structural corrections that shaped them. No slice below is started.
 
 **Instrument:** a scratchpad Python extractor (three tiers, ≥200 B decoded string values, matching
 [dag-note-prose-census.md](dag-note-prose-census.md) §6's grain). **Not committed** — see §8. Verified
@@ -57,31 +57,93 @@ every parser, lens, census, migration, and SCM operation — the same semantic b
 Nor should `//` lower to a binding (`let` or `data`): that puts prose in the namespace, makes it
 referenceable, and re-classifies it as program data — the very move #6262 was forced into.
 
-The intended reading, with provisional names and load-bearing laws:
+### 2a. A third lexical channel — not a `TokenRule`
+
+Rejecting `TriviaRule` is necessary but not sufficient. Making a comment an ordinary `TokenRule` still
+classifies it as part of the **semantic** token stream, which buys avoidable parser filtering, token-order
+effects, and occurrence-allocation risk. `v2.std.compilers.lexing` `LexRule` today is exactly two variants;
+the model needs a third:
 
 ```
-type SourceAnnotationPurpose = SourceAnnotationModelingDebt | SourceAnnotationRationale
+type LexRule
+  = TokenRule      { token_class: Symbol, pattern: LexPattern }
+  | TriviaRule     { pattern: LexPattern }
+  | AnnotationRule { annotation_class: Symbol, pattern: LexPattern }
 
-type SourceAnnotation {
-  occurrence: OccurrenceId      // the annotation's own identity
-  subject:    OccurrenceId      // the structural occurrence it annotates
-  purpose:    SourceAnnotationPurpose
-  text:       String
-}
+type LexArtifact { tokens: TokenStream, annotations: List<UnboundSourceAnnotation> }
 ```
 
-**Real data, but not program data.** The object program cannot bind, import, reference, call, evaluate, or
-inspect an annotation. Compiler, lens, formatter, and SCM machinery *can* enumerate it through an
-annotation-specific projection — that exception is necessary, since without it neither the census nor the
-migration below could exist. **Quarantine, not erasure.**
+| source material | result |
+|---|---|
+| program syntax | semantic token |
+| whitespace | discarded trivia |
+| `//` annotation | **captured authored-source data** |
 
-**Sidecar, not `Node`.** v1's `Node` carries a `properties: List<Node>` field (`v1.00_core`) and attaching
-there looks attractive. It should not be the first cut: `properties` participates in the semantic carrier,
-so annotations there risk moving structural equality, content hashes, resolver and inference walks,
-affected-set computation, emitted bytes, and cache keys. `v2.compiler.02_parse` already returns
-`ParseArtifact { tree, span_index }`; an annotation graph belongs **beside** the tree and provenance, not
-inside the semantic tree. v2 already mints occurrence identity (`v2.std.node` `NodeOccurrenceId` /
-`MintedOccurrence`), which is the seam for naming annotation subjects without inventing file identity.
+That is the actual quarantine: it neither pretends annotation text is syntax nor erases it. Semantic
+consumers keep receiving `TokenStream` through a projection; annotation-aware parsing takes the whole
+`LexArtifact`.
+
+### 2b. Wrap the semantic artifact — do not widen it
+
+"Sidecar on `ParseArtifact`" is directionally right but structurally weak as a new *field*, because every
+semantic consumer would then receive a carrier that can hold annotations. The construction is a wrapper:
+
+```
+type AuthoredParseArtifact { semantic: ParseArtifact, annotations: SourceAnnotationGraph }
+
+fn authored_parse_semantic(artifact: AuthoredParseArtifact) -> ParseArtifact { artifact.semantic }
+```
+
+Ordinary compilation then receives a type that **cannot** contain annotations, so semantic hashing cannot
+begin hashing annotation text, and inference, resolution, affected-set, and emission cannot inspect the
+sidecar even accidentally. Erasure becomes structural rather than convention-plus-witness. Not
+`Node.properties` (v1 `00_core`): that field participates in the semantic carrier, so annotations there
+would move structural equality, content hashes, resolver walks, affected-set computation, emitted bytes,
+and cache keys.
+
+**A nuance the earlier draft got wrong.** `ParseArtifact` carries `tree` *and* `span_index`, and inserting a
+comment necessarily moves the following declaration's byte range — so the whole artifact cannot be identical
+with and without the comment. The law must be stated over the **semantic graph projection**, excluding
+textual provenance:
+
+| | with vs without a comment |
+|---|---|
+| semantic structure and identities | **unchanged** |
+| source provenance | **may move, must remain correct** |
+| annotation graph | **changes** |
+
+### 2c. An annotation must not consume `OccurrenceId` — the blocking correction
+
+The earlier sketch gave the annotation its own `occurrence: OccurrenceId`. **That is unsafe.** Production
+parsing threads a graph-scoped occurrence allocator across parsed sources, so if annotations draw from it,
+inserting a comment can shift the semantic identities of declarations later in the same source — or in later
+modules in the graph. `SpanIndex` cannot absorb this transparently either: it is keyed by `OccurrenceId`, so
+reusing it either shares the semantic identity domain or needs an unsafe partitioning convention.
+
+The first carrier therefore has **no independently addressable annotation identity**:
+
+```
+type SourceAnnotationDebt { subject: OccurrenceId, text: String, origin: Locus }
+type SourceAnnotationGraph = FreeMonoid<SourceAnnotationDebt>
+```
+
+The ordered graph preserves multiplicity and source order; `origin` is provenance, **not** identity. A
+dedicated `SourceAnnotationId` arrives only when a real consumer must address one annotation independently.
+
+> **The load-bearing law: adding, deleting, or reordering annotations never consumes, advances, resets, or
+> otherwise influences the semantic occurrence allocator.**
+
+Two controls are required, and **target-byte equality cannot substitute for either** — the emitter may
+ignore occurrence ids and stay byte-identical while the identity graph silently moves:
+
+1. a comment before the first declaration preserves every semantic occurrence identity in that module;
+2. a comment in the first parsed module preserves identities in **every subsequently parsed module**.
+
+### 2d. Real data, not program data
+
+The object program cannot bind, import, reference, call, evaluate, or inspect an annotation. Compiler, lens,
+formatter, and SCM machinery *can* enumerate it through an annotation-specific projection — necessary, since
+without it neither the census nor the migration could exist. **Quarantine, not erasure.**
 
 **There are no file comments.** A comment annotates a structural occurrence — a module, an import, a
 declaration, eventually an expression or field — never "this file". The normalized row carries no path and
@@ -99,17 +161,48 @@ identity.
 That pair buys an exact distinction later: a comment-only change alters authored source while leaving
 semantic IR unchanged — much stronger than classifying a whole file as docs-like by path.
 
-**First cut is deliberately narrow:** standalone leading `//` lines, attached to the next structural
-occurrence in the same containment scope; comments before `module` attach to the module occurrence;
-pending comments at scope end or EOF are a typed `UnattachedSourceAnnotation` refusal; **trailing
-end-of-line and block comments stay fail-closed** until their attachment rules are separately modeled.
-That defers the genuinely ambiguous case (`fn a() -> Int { 1 } // …` — function, return expression, or next
-item?) instead of guessing at it.
+### 2e. Attachment grain: module-item only
 
-**Default purpose is `SourceAnnotationModelingDebt`.** Plain `//` should say *this prose was quarantined
-because it is not currently represented in the executable model*. A `why:` rationale escape hatch should
-**not** ship in the first cut — offered early, every unmodeled invariant acquires a `why:` prefix and
-declares itself permanent.
+"Next structural occurrence in the same containment scope" still promises too much — it reaches expressions,
+fields, arms, and parameters whose annotation meaning is undecided. The first realization admits only **a
+maximal block of standalone leading `//` lines attached to the following module-scope declaration or
+import**:
+
+| position | result |
+|---|---|
+| before `module` | module subject |
+| before an import | import subject |
+| before a top-level declaration | that declaration's subject |
+| inside function/type bodies | **refuse** |
+| after code on the same line | **refuse** |
+| at scope end or EOF | `UnattachedSourceAnnotation` |
+| block-comment form | **refuse** |
+
+That covers the dominant migration form — top-level `data …_note` rows sitting above their subject —
+without claiming expression-level semantics.
+
+**A lexical requirement this needs.** Because whitespace and newlines are consumed as trivia,
+`fn a() -> Int { 1 } // text` followed by `fn b() …` becomes indistinguishable from a leading annotation on
+`b` once whitespace is gone. The channel must therefore carry an explicit line-placement observation:
+
+```
+type AnnotationPlacement = LeadingAfterLineIndent | TrailingAfterSemanticToken
+```
+
+Only `LeadingAfterLineIndent` enters the pending-attachment graph; trailing placement refuses. Consecutive
+leading lines group as **one ordered annotation block**, never one annotation per physical line.
+
+### 2f. Debt-only, by construction
+
+The first carrier means modeling debt **by construction** — the type's standing law is that all inhabitants
+are debt. `SourceAnnotationRationale` is **not** declared in the first cut: a variant with no authoring
+path, no distinct consumer, and no lifecycle is speculative vocabulary, and offered early every unmodeled
+invariant acquires a `why:` prefix and declares itself permanent. A permanent rationale category arrives
+only when migration produces a real second population *and* its consumer is modeled. Until then even
+genuinely irreducible rationale is retained safely but classified honestly as unresolved debt.
+
+Every first-cut annotation has exactly two fixed consumers — **annotation-aware source rendering** and the
+**annotation-debt census** — so no per-comment "consumer" string is needed.
 
 ---
 
@@ -199,44 +292,56 @@ commentary.
 
 ---
 
-## 5. Decisions this audit needs
+## 5. Rulings (operator, 2026-08-04)
 
-Superseding an earlier D1–D4 that asked about deletion rates and ceilings — the wrong questions, because
-they presumed the current representation:
+D1–D4 (delete rate, ceilings) were withdrawn as the wrong questions — they presumed the current
+representation. D-A–D-D are now **ruled**, each with the correction that shaped it:
 
-- **D-A — carrier.** Confirm `SourceAnnotation` as a **sidecar on the parse artifact**, not `Node.properties`,
-  not a binding, not restored trivia. Confirm the home after a concept DFS (candidate:
-  `dag/std/source_annotation.dag`, language-agnostic, naming no `.dag` syntax).
-- **D-B — attachment.** Confirm the narrow first cut: standalone-leading only; next structural occurrence
-  in the same containment scope; pre-`module` attaches to the module; `UnattachedSourceAnnotation` refusal
-  at scope end/EOF; trailing and block comments stay `FailClosed`.
-- **D-C — erasure.** Confirm the two-projection law, and that the semantic projection must be proven
-  byte-identical (emitted target bytes with and without the comment) rather than argued.
-- **D-D — migration.** Confirm the §4 partition and that `SourceAnnotationModelingDebt` is the default
-  purpose, with `SourceAnnotationRationale` withheld from the first cut.
+- **D-A — carrier: approved with correction.** An annotation-specific **lexical channel** (§2a) returning an
+  **authored wrapper around an unchanged semantic artifact** (§2b). Never `Node.properties`, never an
+  ordinary token, never a binding, never restored trivia, and **never a semantic `OccurrenceId`** (§2c). The
+  module home still owes a concept DFS whose first dependency is the generic lexing artifact — so it must
+  include `v2.std.compilers.lexing`, `v2.std.provenance`, and the source-artifact family before
+  `dag/std/source_annotation.dag` is chosen.
+- **D-B — attachment: approved, narrowed.** Leading annotation blocks at **module-item grain only** (§2e).
+  Body, field, expression, trailing, unattached, and block forms refuse. Do not generalize to "next
+  structural occurrence" until a second subject grain actually needs it.
+- **D-C — erasure: approved, strengthened.** Seven required proofs: (1) semantic structure equal;
+  (2) **semantic occurrence identities equal, including across later modules**; (3) semantic IR/content hash
+  equal; (4) emitted target bytes equal; (5) annotation graph different; (6) source provenance still correct
+  after shifted byte ranges; (7) **annotation-aware round trip** — parse → render → parse preserves the
+  block. (7) matters because a comment the formatter silently deletes is not a durable carrier.
+- **D-D — migration: approved, debt-only.** Keep the §4 partition; **do not declare
+  `SourceAnnotationRationale` in Slice 1** (§2f).
 
-**Not asked, deliberately:** the delete rate, the size ceilings, and the instrument's home. The first two
-are downstream of representation; the third dissolves if the annotation census replaces the lexical one.
+**Canonical policy landed:** DESIGN.md §4c, via `gunbc.design_document` `section_4c_blocks`, regenerated —
+not hand-edited. The rule it states: **prose is not forbidden; unclassified prose is.**
 
 ---
 
 ## 6. Sequence after sign-off (nothing here is started)
 
-1. **Slice 1 — authority + pure laws.** Annotation occurrence, structural subject, purpose, graph,
-   attachment refusals, erasure projection, same-scope attachment law. Names no `.dag` syntax.
-2. **Slice 2 — `.dag` syntax realization.** A line-comment **`TokenRule`, never `TriviaRule`**, reusing the
-   existing `LineCommentTextChar` lexical class; split comment fidelity out of
+1. **Slice 1 — authority + pure laws.** Structural subject, annotation block, ordered graph, attachment
+   refusals, erasure projection, module-item attachment law, and the **allocator-disjointness law** (§2c).
+   No annotation identity, no `SourceAnnotationRationale`, and no `.dag` syntax named. Home chosen by the
+   DFS D-A requires, not assumed.
+2. **Slice 2 — `.dag` syntax realization.** A line-comment **`AnnotationRule` — never `TriviaRule`, never
+   `TokenRule`** (§2a) — reusing the existing `LineCommentTextChar` lexical class, carrying
+   `AnnotationPlacement` so trailing is distinguishable after whitespace removal (§2e); split comment
+   fidelity out of
    `v2.extdeps.languages.dag` `DagTriviaNormalization` (a preserved comment is no longer trivia) so
    `dag_line_comment_fidelity` becomes `Modeled` while `dag_block_comment_fidelity` stays
    `FailClosed { feature: DagBlockCommentFailClosed }`. The v1 bridge needs a new `TokenShape` variant
    (`v1.00_core` — the `Sh*` convention has no comment variant today), tokenize-rather-than-skip in
    `01_tokenize`, pending-annotation attachment in `02_parse`, and a **regenerated** stage0 mirror.
 3. **Slice 3 — discriminating execution.** Recut `v2.test.round_trip.dag_comment_wall_test` rather than
-   invert it. Controls: annotation appears exactly once with the right subject; semantic IR equal with and
-   without; census differs with and without; a `TriviaRule` treatment reds the visibility witness; a
+   invert it, covering all seven D-C proofs. Controls: annotation block appears exactly once with the right
+   subject (consecutive lines grouped, not one per line); semantic structure and **occurrence identities**
+   equal with and without, **including in later-parsed modules**; semantic hash equal; emitted Rust bytes
+   identical; annotation census differs; provenance still correct after the byte-range shift;
+   **parse → render → parse preserves the block**; a `TriviaRule` treatment reds the visibility witness; a
    binding treatment reds the non-binding witness; `//` inside a string yields zero annotations; block and
-   trailing still refuse; pending-at-EOF refuses; **emitted Rust bytes identical**; authored-source
-   identity differs.
+   trailing still refuse; pending-at-EOF refuses.
 4. **Slice 4 — make recurrence unwritable.** Extend an existing liveness kernel (`v2.lens.inert_carrier`
    covers type carriers, not this `data`-declaration class) rather than minting a fresh prose lens. The
    decidable class: *a declaration with zero real program/document/typed-carrier consumers cannot survive
@@ -247,22 +352,19 @@ are downstream of representation; the third dissolves if the annotation census r
 
 ---
 
-## 7. Proposed DESIGN.md paragraph (NOT landed here)
+## 7. Canonical policy — LANDED in DESIGN.md §4c
 
-Authored by the operator, 2026-08-04; carried here for review. It would land through
-`gunbc.design_document` with DESIGN.md regenerated — **deliberately not done in this PR**, because
-DESIGN.md is the canonical authority and this document stops at the audit.
+Landed through `gunbc.design_document` `section_4c_blocks` with DESIGN.md **regenerated** (never
+hand-edited), per the operator ruling of 2026-08-04. The authority text is DESIGN.md §4c itself; it is not
+restated here, because a second hand-maintained copy of one rule is exactly the dual representation this
+lane exists to remove. The section states the rule and the measured reason it exists (the
+#5579 → #6262 → #6424 chain), and it names the two author-binding consequences: an annotation may preserve
+irreducible *why* and must not restate what the declaration structurally says; and an annotation is never
+evidence that a machine claim holds, because no `Accepted` program can read one.
 
-> Source annotations are data, but not program data. `.dag` line-comment syntax lowers to a typed source
-> annotation attached to a graph-local structural occurrence; it is never discarded lexer trivia, never a
-> namespace binding, and never a fact about a file. The object program cannot reference, evaluate, or emit
-> annotation text. Authoring, formatting, SCM, and lens consumers may enumerate the annotation graph.
-> Ordinary compilation derives from an annotation-erased semantic projection, while authored-source
-> identity retains annotations. Plain comments are modeling debt by default. A comment may preserve
-> irreducible human rationale about why a construction exists; any fact needed by a machine
-> consumer—including invariants, receipts, events, rulings, citations, status, counts, and dissolution
-> conditions—belongs in a typed carrier. An ordinary String declaration used solely to simulate commentary
-> is misplaced or dead data.
+**The long-term rule, in one line: prose is not forbidden; unclassified prose is.** `//` becomes the
+explicit quarantine boundary, and the compiler retains enough structure to migrate the text later without
+ever having pretended it was program data.
 
 ---
 
@@ -276,8 +378,19 @@ DESIGN.md is the canonical authority and this document stops at the audit.
 - **48 sites** — §3's shares carry roughly ±14pp at 95%; ≤6% is a *site* bound, not a byte bound.
 - **The extractor over-counts by ~3%** (payload leakage) and ~1% against an independent count.
 - **§3b's markers are lexical.** Whether a note's core is irreducible is a judgment, stated as one.
-- **§2's type names are provisional**; the laws beside them are the substance.
-- **Nothing was deleted, split, migrated, or reconciled**, and no decision in §5 is answered here.
+- **§2's type names are provisional**; the laws beside them are the substance. `LexArtifact`,
+  `AuthoredParseArtifact`, `SourceAnnotationDebt`, `AnnotationPlacement`, and `UnboundSourceAnnotation` do
+  **not** exist in tree — they are the shapes Slices 1–2 would author. Everything §2 cites as *existing*
+  was grep-verified (`LexRule` with exactly two variants today, `ParseArtifact { tree, span_index }`, v1
+  `Node.properties`, `LineCommentTextChar`, `DagTriviaNormalization`, `dag_line_comment_fidelity`,
+  `inert_carrier`, the executing wall). One correction: **`ShLineComment` does not exist** — `TokenShape`
+  in `v1.00_core` has no comment variant, so Slice 2 adds one rather than reusing it.
+- **The §2c allocator hazard is reasoned, not executed.** That annotations drawing from the occurrence
+  allocator *would* shift later semantic identities follows from the allocator being graph-scoped; no
+  probe has demonstrated the shift, because the unsafe carrier was never built. The D-C controls are
+  written to prove the disjointness law directly rather than to rely on this reasoning.
+- **Nothing was deleted, split, migrated, or reconciled**; no slice is started. The only change outside
+  this document is DESIGN.md §4c and its authority, plus the doc-graph bind.
 
 **Scaffold, with a dissolution trigger:** this document deletes when the source-annotation carrier lands
 with its executed controls and the §4 partition is complete — at which point a lexical audit over prose is

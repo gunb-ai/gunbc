@@ -403,8 +403,12 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
   HandAuthoredDocBind {
     home: PlanDoc,
     slug: "dag-prose-policy-audit",
-    primary_work: DeclarationRef { module_path: "v2.lens.enforcement.standing_intent", decl_name: "StandingIntent", field: WholeDeclaration },
-    additional_works: [],
+    primary_work: DeclarationRef { module_path: "v2.std.compilers.lexing", decl_name: "LexRule", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "v2.compiler.parse", decl_name: "ParseArtifact", field: WholeDeclaration },
+      DeclarationRef { module_path: "v2.extdeps.languages.dag", decl_name: "dag_line_comment_fidelity", field: WholeDeclaration },
+      DeclarationRef { module_path: "v2.test.round_trip.dag_comment_wall_test", decl_name: "dag_comment_wall_line_comment_refused", field: WholeDeclaration },
+    ],
     dissolution: HasTrigger { text: "the source-annotation carrier lands with its executed controls (line comments modeled as a TokenRule attached to a structural occurrence, semantic-erasure proven by identical emitted bytes, block and trailing comments still fail-closed) and the representation partition over the measured prose population completes — at which point a lexical audit over prose is superseded by a fold over the annotation graph and the typed populations beside it, and this doc plus its uncommitted instrument delete together (same trigger family as dag-note-prose-census)" },
   },
   HandAuthoredDocBind {
