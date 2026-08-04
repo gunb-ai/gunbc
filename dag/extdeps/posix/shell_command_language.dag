@@ -1,0 +1,34 @@
+module extdeps.posix.shell_command_language
+
+import std.types { String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "pubs.opengroup.org/onlinepubs/9699919799/utilities/V3_chap02.html"
+  }
+}
+
+data posix_shell_subject_note: String = "THE POSIX SHELL COMMAND LANGUAGE, as its own subject rather than as a citation of GNU Bash (review relayed through the operator, 2026-08-04). It was previously stored as a further_citation on the GNU Bash ExternalModelScope, while the Bash carrier's own prose said the two were independently governed entities — so the file asserted the decomposition and then violated it one declaration later. DESIGN section 3's external-upstream decomposition rules on exactly this: multiple citations may ground ONE subject, but a second INDEPENDENTLY GOVERNED subject is not a citation of the first. The Open Group governs this specification; the GNU project governs Bash; neither versions with the other, and a change to one must not require editing the other's module — the Chromium/Safari test from that section. WHAT THIS SUBJECT IS: the Shell Command Language chapter of IEEE Std 1003.1-2017 (POSIX.1-2017), the shell syntax and semantics an implementation may conform to. It is NOT registered as a language target today and this module makes no such claim; it exists so that Bash's conformance can be stated as a relation between two named subjects instead of being smuggled into one scope. If a POSIX-shell target is ever claimed in its own right — a real possibility, since extdeps.shell.exec already routes shell.Exec.Check through 'sh -c' rather than through bash — it registers against THIS declaration and needs no new grounding."
+
+type PosixShellCommandLanguage
+  = | PosixShellCommandLanguageSpecification
+
+data posix_shell_command_language: PosixShellCommandLanguage = PosixShellCommandLanguageSpecification
+
+data posix_shell_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.posix.shell_command_language",
+      decl_name: "posix_shell_command_language",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data extdeps_model_scope: ExternalModelScope = posix_shell_model_scope
