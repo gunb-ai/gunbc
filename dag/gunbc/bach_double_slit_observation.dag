@@ -2,7 +2,7 @@ module gunbc.bach_double_slit_observation
 
 import std.types { Bool, Int, List }
 import std.integer { NonNegativeInt }
-import v2.std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
+import v2.std.algebra { list_map, list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
 import extdeps.physics.bach_et_al_2013_double_slit {
   BachEtAl2013DoubleSlitExperiment,
   bach_et_al_2013_double_slit,
@@ -19,7 +19,7 @@ import extdeps.physics.bach_et_al_2013_double_slit {
   BothSlitsDoubleSlitDiffractionObserved,
 }
 
-data bach_observation_layer_note: String = "Observing-layer receipts for Bach et al. 2013. Buildup progression consumes extdeps.physics.bach_et_al_2013_double_slit.bach_buildup_observations as the sole population authority — not a parallel copy."
+data bach_observation_layer_note: String = "Observing-layer receipts for Bach et al. 2013. Buildup progression derives structural properties from extdeps.physics.bach_et_al_2013_double_slit.bach_buildup_observations — sole population authority, no parallel copy."
 
 data which_path_coverage_obligation_note: String = "Which-path distinguishability evidence is absent from cited Bach et al. 2013; obligation recorded here per DESIGN section 3."
 
@@ -64,13 +64,230 @@ fn bach_cited_buildup_row_from_extdeps(row: BachBuildupObservationRow) -> BachBu
 }
 
 fn bach_cited_buildup_progression_rows() -> List<BachBuildupProgressionRow> {
-  fold(
-    bach_buildup_observations,
-    init: [],
-    f: fn(acc, row) {
-      acc |> append(bach_cited_buildup_row_from_extdeps(row: row))
+  list_map(
+    xs: bach_buildup_observations,
+    f: fn(row) {
+      bach_cited_buildup_row_from_extdeps(row: row)
     },
   )
+}
+
+fn bach_pattern_status_rank(status: PatternStatus) -> Int {
+  match status {
+    PatternNotYetDiscernible => 0
+    PatternDiscernible => 1
+    PatternClearlyVisible => 2
+  }
+}
+
+fn bach_pattern_status_never_regresses_from(
+  previous: PatternStatus,
+  next: PatternStatus,
+) -> Bool {
+  bach_pattern_status_rank(status: next) >= bach_pattern_status_rank(status: previous)
+}
+
+type StrictIncreaseFoldAcc {
+  previous_count: NonNegativeInt
+  has_previous: Bool
+  valid: Bool
+}
+
+fn fold_strict_increase_count(
+  acc: StrictIncreaseFoldAcc,
+  row: BachBuildupObservationRow,
+) -> StrictIncreaseFoldAcc {
+  if !acc.valid {
+    acc
+  } else {
+    if acc.has_previous {
+      if row.detected_electrons > acc.previous_count {
+        StrictIncreaseFoldAcc {
+          previous_count: row.detected_electrons,
+          has_previous: true,
+          valid: true,
+        }
+      } else {
+        StrictIncreaseFoldAcc {
+          previous_count: row.detected_electrons,
+          has_previous: true,
+          valid: false,
+        }
+      }
+    } else {
+      StrictIncreaseFoldAcc {
+        previous_count: row.detected_electrons,
+        has_previous: true,
+        valid: true,
+      }
+    }
+  }
+}
+
+fn bach_buildup_counts_strictly_increase(
+  rows: List<BachBuildupObservationRow>,
+) -> Bool {
+  let folded = fold(
+    rows,
+    init: StrictIncreaseFoldAcc {
+      previous_count: 0,
+      has_previous: false,
+      valid: true,
+    },
+    f: fn(acc, row) {
+      fold_strict_increase_count(acc: acc, row: row)
+    },
+  )
+  folded.valid && folded.has_previous
+}
+
+type PatternStatusMonotonicFoldAcc {
+  previous_status: PatternStatus
+  has_previous: Bool
+  valid: Bool
+}
+
+fn fold_pattern_status_monotonic(
+  acc: PatternStatusMonotonicFoldAcc,
+  row: BachBuildupObservationRow,
+) -> PatternStatusMonotonicFoldAcc {
+  if !acc.valid {
+    acc
+  } else {
+    if acc.has_previous {
+      if bach_pattern_status_never_regresses_from(
+        previous: acc.previous_status,
+        next: row.pattern_status,
+      ) {
+        PatternStatusMonotonicFoldAcc {
+          previous_status: row.pattern_status,
+          has_previous: true,
+          valid: true,
+        }
+      } else {
+        PatternStatusMonotonicFoldAcc {
+          previous_status: row.pattern_status,
+          has_previous: true,
+          valid: false,
+        }
+      }
+    } else {
+      PatternStatusMonotonicFoldAcc {
+        previous_status: row.pattern_status,
+        has_previous: true,
+        valid: true,
+      }
+    }
+  }
+}
+
+fn bach_buildup_pattern_status_never_regresses(
+  rows: List<BachBuildupObservationRow>,
+) -> Bool {
+  let folded = fold(
+    rows,
+    init: PatternStatusMonotonicFoldAcc {
+      previous_status: PatternNotYetDiscernible,
+      has_previous: false,
+      valid: true,
+    },
+    f: fn(acc, row) {
+      fold_pattern_status_monotonic(acc: acc, row: row)
+    },
+  )
+  folded.valid && folded.has_previous
+}
+
+type DiscernibleBeforeClearlyVisibleAcc {
+  seen_discernible: Bool
+  valid: Bool
+}
+
+fn fold_discernible_before_clearly_visible(
+  acc: DiscernibleBeforeClearlyVisibleAcc,
+  row: BachBuildupObservationRow,
+) -> DiscernibleBeforeClearlyVisibleAcc {
+  if !acc.valid {
+    acc
+  } else {
+    match row.pattern_status {
+      PatternClearlyVisible =>
+        if acc.seen_discernible {
+          DiscernibleBeforeClearlyVisibleAcc {
+            seen_discernible: acc.seen_discernible,
+            valid: true,
+          }
+        } else {
+          DiscernibleBeforeClearlyVisibleAcc {
+            seen_discernible: acc.seen_discernible,
+            valid: false,
+          }
+        }
+      PatternDiscernible =>
+        DiscernibleBeforeClearlyVisibleAcc {
+          seen_discernible: true,
+          valid: true,
+        }
+      PatternNotYetDiscernible =>
+        acc
+    }
+  }
+}
+
+fn bach_buildup_discernible_precedes_clearly_visible(
+  rows: List<BachBuildupObservationRow>,
+) -> Bool {
+  let folded = fold(
+    rows,
+    init: DiscernibleBeforeClearlyVisibleAcc {
+      seen_discernible: false,
+      valid: true,
+    },
+    f: fn(acc, row) {
+      fold_discernible_before_clearly_visible(acc: acc, row: row)
+    },
+  )
+  folded.valid
+}
+
+type LastBuildupRowAcc
+  = LastBuildupRowAbsent
+  | LastBuildupRowPresent { row: BachBuildupObservationRow }
+
+fn fold_track_last_buildup_row(
+  acc: LastBuildupRowAcc,
+  row: BachBuildupObservationRow,
+) -> LastBuildupRowAcc {
+  LastBuildupRowPresent { row: row }
+}
+
+fn bach_buildup_final_row_clearly_visible(
+  rows: List<BachBuildupObservationRow>,
+) -> Bool {
+  match fold(
+    rows,
+    init: LastBuildupRowAbsent,
+    f: fn(acc, row) {
+      fold_track_last_buildup_row(acc: acc, row: row)
+    },
+  ) {
+    LastBuildupRowPresent { row: final_row } =>
+      final_row.pattern_status == PatternClearlyVisible
+    LastBuildupRowAbsent => false
+  }
+}
+
+fn bach_buildup_progression_holds_for(
+  rows: List<BachBuildupObservationRow>,
+) -> Bool {
+  bach_buildup_counts_strictly_increase(rows: rows)
+    && bach_buildup_pattern_status_never_regresses(rows: rows)
+    && bach_buildup_discernible_precedes_clearly_visible(rows: rows)
+    && bach_buildup_final_row_clearly_visible(rows: rows)
+}
+
+fn bach_cited_buildup_progression_holds() -> Bool {
+  bach_buildup_progression_holds_for(rows: bach_buildup_observations)
 }
 
 fn bach_distribution_observations_complete_for(
@@ -86,142 +303,38 @@ fn bach_distribution_observations_complete() -> Bool {
   bach_distribution_observations_complete_for(observations: bach_distribution_observations)
 }
 
-fn bach_ensemble_interference_holds_for_distribution(
+fn bach_double_slit_interference_evidence_holds() -> Bool {
+  bach_cited_buildup_progression_holds()
+    && bach_distribution_observations_complete()
+}
+
+fn bach_double_slit_interference_evidence_rejects_for_distribution(
   observations: List<BachDistributionObservation>,
 ) -> Bool {
-  bach_cited_buildup_matches_extdeps_source_population()
-    && bach_distribution_observations_complete_for(observations: observations)
+  !bach_cited_buildup_progression_holds()
+    || !bach_distribution_observations_complete_for(observations: observations)
 }
 
-fn bach_buildup_fold_derives_ensemble_interference() -> Bool {
-  bach_ensemble_interference_holds_for_distribution(observations: bach_distribution_observations)
-}
-
-fn bach_ensemble_interference_rejects_missing_both_open(
-  observations: List<BachDistributionObservation>,
+fn bach_buildup_progression_rejects_non_increasing_counts(
+  rows: List<BachBuildupObservationRow>,
 ) -> Bool {
-  !bach_ensemble_interference_holds_for_distribution(observations: observations)
+  !bach_buildup_counts_strictly_increase(rows: rows)
 }
 
-fn bach_buildup_row_is_canonical_apparatus(row: BachBuildupProgressionRow) -> Bool {
-  match row.apparatus {
-    BachCitedDoubleSlitApparatus { subject: cited_subject } =>
-      cited_subject == bach_et_al_2013_double_slit
-    BachNonCitedApparatus {} => false
-  }
-}
-
-fn bach_buildup_row_matches_extdeps_source_row(
-  row: BachBuildupProgressionRow,
-  source_row: BachBuildupObservationRow,
+fn bach_buildup_progression_rejects_status_regression(
+  rows: List<BachBuildupObservationRow>,
 ) -> Bool {
-  bach_buildup_row_is_canonical_apparatus(row: row)
-    && row.detected_electrons == source_row.detected_electrons
-    && row.pattern_status == source_row.pattern_status
+  !bach_buildup_pattern_status_never_regresses(rows: rows)
 }
 
-type OrderedPopulationMatchAcc {
-  remaining_rows: List<BachBuildupProgressionRow>
-  valid: Bool
-}
-
-fn fold_ordered_extdeps_source_row(
-  acc: OrderedPopulationMatchAcc,
-  source_row: BachBuildupObservationRow,
-) -> OrderedPopulationMatchAcc {
-  if !acc.valid {
-    acc
-  } else {
-    match list_head(xs: acc.remaining_rows) {
-      HeadFound { value: head_row } =>
-        match list_tail(xs: acc.remaining_rows) {
-          TailFound { tail: tail_rows } =>
-            if bach_buildup_row_matches_extdeps_source_row(row: head_row, source_row: source_row) {
-              OrderedPopulationMatchAcc {
-                remaining_rows: tail_rows,
-                valid: true,
-              }
-            } else {
-              OrderedPopulationMatchAcc {
-                remaining_rows: tail_rows,
-                valid: false,
-              }
-            }
-          TailAbsent =>
-            if bach_buildup_row_matches_extdeps_source_row(row: head_row, source_row: source_row) {
-              OrderedPopulationMatchAcc {
-                remaining_rows: [],
-                valid: true,
-              }
-            } else {
-              OrderedPopulationMatchAcc {
-                remaining_rows: [],
-                valid: false,
-              }
-            }
-        }
-      HeadAbsent =>
-        OrderedPopulationMatchAcc {
-          remaining_rows: [],
-          valid: false,
-        }
-    }
-  }
-}
-
-fn bach_buildup_matches_ordered_extdeps_population(
-  rows: List<BachBuildupProgressionRow>,
-  source: List<BachBuildupObservationRow>,
+fn bach_buildup_progression_rejects_missing_discernible_before_clearly_visible(
+  rows: List<BachBuildupObservationRow>,
 ) -> Bool {
-  let acc = fold(
-    source,
-    init: OrderedPopulationMatchAcc {
-      remaining_rows: rows,
-      valid: true,
-    },
-    f: fn(a, source_row) {
-      fold_ordered_extdeps_source_row(acc: a, source_row: source_row)
-    },
-  )
-  acc.valid && (acc.remaining_rows |> count) == 0
+  !bach_buildup_discernible_precedes_clearly_visible(rows: rows)
 }
 
-fn bach_cited_buildup_matches_extdeps_source_population() -> Bool {
-  bach_buildup_matches_ordered_extdeps_population(
-    rows: bach_cited_buildup_progression_rows(),
-    source: bach_buildup_observations,
-  )
-}
-
-fn bach_buildup_population_rejects_planted_rows(
-  rows: List<BachBuildupProgressionRow>,
+fn bach_buildup_progression_rejects_final_not_clearly_visible(
+  rows: List<BachBuildupObservationRow>,
 ) -> Bool {
-  !bach_buildup_matches_ordered_extdeps_population(
-    rows: rows,
-    source: bach_buildup_observations,
-  )
-}
-
-fn bach_buildup_progression_rejects_clearly_visible_at_low_count(
-  rows: List<BachBuildupProgressionRow>,
-) -> Bool {
-  bach_buildup_population_rejects_planted_rows(rows: rows)
-}
-
-fn bach_buildup_progression_rejects_not_yet_at_max_count(
-  rows: List<BachBuildupProgressionRow>,
-) -> Bool {
-  bach_buildup_population_rejects_planted_rows(rows: rows)
-}
-
-fn bach_buildup_progression_rejects_foreign_apparatus(
-  rows: List<BachBuildupProgressionRow>,
-) -> Bool {
-  bach_buildup_population_rejects_planted_rows(rows: rows)
-}
-
-fn bach_buildup_progression_rejects_reversed_order(
-  rows: List<BachBuildupProgressionRow>,
-) -> Bool {
-  bach_buildup_population_rejects_planted_rows(rows: rows)
+  !bach_buildup_final_row_clearly_visible(rows: rows)
 }
