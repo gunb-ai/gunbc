@@ -1,4 +1,4 @@
-module test.claim.classical_path_additivity_synthetic_fixture_witness_test
+module test.claim.bach_double_slit_path_additivity_synthetic_fixture_witness_test
 
 import std.types { Bool }
 import std.algebra { Less, Greater, Equal }
@@ -9,6 +9,7 @@ import gunbc.physics.bach_double_slit_path_additivity {
   path_additivity_refutation_holds_for_synthetic_fixture,
   path_additivity_compare_observed_to_prediction,
   path_additivity_witness_observed_vs_prediction,
+  path_additivity_refutation_receipt_resolution_from_resolved_counts,
   PathAdditivityRefutationAtBand,
   PathAdditivityHeldAtBand,
   PathAdditivityUndecidedAtBand,
@@ -20,18 +21,17 @@ import gunbc.physics.bach_double_slit_path_additivity {
   SyntheticMatchedExposureOne,
   FirstMinimumBand,
 }
-import gunbc.classical_path_additivity_synthetic_fixture {
-  classical_path_additivity_refutation_holds,
-  classical_path_additivity_first_minimum_verdict,
+import gunbc.bach_double_slit_path_additivity_synthetic_fixture {
+  bach_double_slit_path_additivity_refutation_holds,
+  bach_double_slit_path_additivity_first_minimum_verdict,
   path_additivity_subject,
-  classical_path_additivity_central_band_refutation_holds,
+  bach_double_slit_path_additivity_central_band_refutation_holds,
   synthetic_blocked_count_is_resolved_zero_not_missing,
   synthetic_missing_row_yields_incomplete_inputs,
   synthetic_derive_first_minimum_verdict_from_partial_rows,
   synthetic_central_band_verdict,
   synthetic_first_minimum_verdict,
-  synthetic_first_minimum_refutation_receipt_direct,
-  synthetic_direct_kernel_receipt_matches_fold,
+  synthetic_fold_receipt_resolution_matches_kernel_counts,
 }
 import extdeps.physics.bach_et_al_2013_double_slit { SlitTwoOpen }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -47,8 +47,21 @@ test fn w_synthetic_path_additivity_refuted_by_fold_derivation() -> Bool {
   }
 }
 
-test fn w_synthetic_direct_kernel_receipt_matches_fold_derivation() -> Bool {
-  synthetic_direct_kernel_receipt_matches_fold()
+test fn w_synthetic_fold_receipt_resolution_matches_kernel_counts() -> Bool {
+  synthetic_fold_receipt_resolution_matches_kernel_counts()
+}
+
+test fn w_synthetic_equal_counts_do_not_resolve_refutation_receipt() -> Bool {
+  match path_additivity_refutation_receipt_resolution_from_resolved_counts(
+    left: 10,
+    right: 10,
+    both: 20,
+    band: FirstMinimumBand,
+    exposure: SyntheticMatchedExposureOne {},
+  ) {
+    RefutationReceiptResolved { receipt: fabricated_receipt } => false
+    RefutationNotEstablished { verdict: not_established_verdict } => true
+  }
 }
 
 test fn w_synthetic_held_verdict_does_not_resolve_refutation_receipt() -> Bool {
@@ -73,7 +86,7 @@ test fn w_synthetic_undecided_verdict_does_not_resolve_refutation_receipt() -> B
 }
 
 test fn w_synthetic_path_additivity_rejects_fabricated_both_open_count() -> Bool {
-  match classical_path_additivity_first_minimum_verdict {
+  match bach_double_slit_path_additivity_first_minimum_verdict {
     PathAdditivityRefutationAtBand { receipt: canonical_receipt } => {
       let witness = canonical_receipt.witness
       let fabricated = PathAdditivityCounterexampleWitness {
@@ -95,7 +108,7 @@ test fn w_synthetic_path_additivity_rejects_fabricated_both_open_count() -> Bool
 }
 
 test fn w_synthetic_path_additivity_rejects_corrupted_left_count() -> Bool {
-  match classical_path_additivity_first_minimum_verdict {
+  match bach_double_slit_path_additivity_first_minimum_verdict {
     PathAdditivityRefutationAtBand { receipt: canonical_receipt } => {
       let witness = canonical_receipt.witness
       let fabricated = PathAdditivityCounterexampleWitness {
@@ -117,7 +130,7 @@ test fn w_synthetic_path_additivity_rejects_corrupted_left_count() -> Bool {
 }
 
 test fn w_synthetic_path_additivity_rejects_inconsistent_stored_prediction() -> Bool {
-  match classical_path_additivity_first_minimum_verdict {
+  match bach_double_slit_path_additivity_first_minimum_verdict {
     PathAdditivityRefutationAtBand { receipt: canonical_receipt } => {
       let witness = canonical_receipt.witness
       let fabricated = PathAdditivityCounterexampleWitness {
@@ -161,7 +174,7 @@ test fn w_synthetic_central_band_verdict_is_refutation_not_held_or_undecided() -
 }
 
 test fn w_synthetic_central_band_refutes_with_observed_above_prediction() -> Bool {
-  classical_path_additivity_central_band_refutation_holds()
+  bach_double_slit_path_additivity_central_band_refutation_holds()
 }
 
 test fn w_synthetic_blocked_count_is_resolved_zero_not_missing() -> Bool {
@@ -182,7 +195,7 @@ test fn w_synthetic_compare_orientation_first_arg_is_observed() -> Bool {
 }
 
 test fn w_synthetic_first_minimum_witness_less_than_prediction() -> Bool {
-  match classical_path_additivity_first_minimum_verdict {
+  match bach_double_slit_path_additivity_first_minimum_verdict {
     PathAdditivityRefutationAtBand { receipt: canonical_receipt } =>
       canonical_receipt.witness.both_open_observed_count == 5
         && canonical_receipt.witness.classical_additive_prediction == 20
