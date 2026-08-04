@@ -1,8 +1,8 @@
 # Falsifier memory root-cause diagnosis
 
-**Status:** diagnosis complete (2026-08-04, session bold-eagle-790). Locate-only — no fix
-landed. Authority: `docs/plans/v1-run-stability-throughline.md`,
-`docs/plans/m2-floor-retention-measurement-receipt.md`,
+**Status:** diagnosis complete + P0 fix in PR #7813 (2026-08-04, session bold-eagle-790).
+Width check and bisect executed per still-bat-561 mandate (2026-08-04). Authority:
+`docs/plans/v1-run-stability-throughline.md`, `docs/plans/m2-floor-retention-measurement-receipt.md`,
 `docs/plans/compile-clean-whole-tree-time-diagnosis.md`.
 
 **One-line verdict:** Post-M2 (#7129), the falsifier no longer OOM-kills on fleet slots —
@@ -13,18 +13,23 @@ the kernel before the floor step starts) plus (b) a **~11.8 GiB discovery-corpus
 steady-state plateau** during batch 1 whose dominant terms are **whole-pool heads**
 (non-evictable by design) and **~779 concurrently retained typed modules** under schedule
 retention. M2 schedule eviction **is working** (`schedule_evictions=2264`,
-`retention_unknown=0` in batch 1). **Current falsifier redness is witness failure, not
-memory.**
+`retention_unknown=0` in batch 1). **Width is 1 throughout** (`forced_serial=0`) — this is
+**not** the plural-worker outer-ring class. **Current falsifier redness is witness failure
+(application-level), not memory or cgroup OOM** — wise-ram-22 owns witness content.
 
 ---
 
-## 1. Evidence runs (fleet, srv2-03, 16 GiB slot / 15 GiB `memory.high`)
+## 1. Evidence runs (fleet, 16 GiB slot / 15 GiB `memory.high`)
 
-| Run | Outcome | Floor wall | `floor_peak_post` | Governor distress | Primary failure |
-|---|---|---:|---:|---|---|
-| [30935833427](https://github.com/gunb-ai/gunbc/actions/runs/30935833427) | failure | ~116 min | 16,106,897,408 B | `forced_serial=0`, `hard_backoffs=0` | batch 1 + 6 witness reds |
-| [30901753664](https://github.com/gunb-ai/gunbc/actions/runs/30901753664) | failure | ~109 min | (same class) | same | same pattern |
-| [30884219236](https://github.com/gunb-ai/gunbc/actions/runs/30884219236) | failure | ~110 min | (same class) | same | same pattern |
+**Runner attribution rule:** there is no healthy reference host — read `actions-runner@srvN-NN`
+from cgroup paths before comparing runs.
+
+| Run | Host | SHA | Outcome | `floor_peak_pre` | `floor_peak_post` | Width | Governor | Primary failure |
+|---|---|---|---|---:|---:|---|---|---|
+| [30793942277](https://github.com/gunb-ai/gunbc/actions/runs/30793942277) | **srv3-01** | `19cc776d` | **success** | 9,748,836,352 | (success; post step not in retained log) | **1** | `forced_serial=0` | — |
+| [30809682025](https://github.com/gunb-ai/gunbc/actions/runs/30809682025) | **srv4-05** | `19cc776d` | failure | 9,750,724,608 | 16,106,680,320 | **1** | `forced_serial=0` | witness redness (same SHA as last green) |
+| [30824310833](https://github.com/gunb-ai/gunbc/actions/runs/30824310833) | srv2-05 | `76ef121ec4` | failure | 10,192,011,264 | (same class) | **1** | `forced_serial=0` | witness redness |
+| [30935833427](https://github.com/gunb-ai/gunbc/actions/runs/30935833427) | srv2-03 | `64aed6007e` | failure | 10,219,753,472 | 16,106,897,408 | **1** | `forced_serial=0` | witness redness |
 
 Contrast with pre-M2 baseline (`v1-run-stability-throughline.md` §1): step-cap TIME death,
 `forced_serial=1`, `hard_backoffs=474`, cgroup peak censored at `memory.high` **with swap
@@ -138,9 +143,9 @@ Memory investigation does **not** unblock falsifier green — witness fixes do.
 
 ## 6. Fix lanes (ranked by displaced cost)
 
-| Priority | Lane | Trigger | Expected effect |
-|---|---|---|---|
-| **P0** | **Process split** — run selection-control + floor in separate processes (or exec fresh `claim_executor` after build) so pre-floor 9.5 GiB does not carry into floor cgroup | operator | Recover ~9.5 GiB headroom → falsifier fits 16 GiB slot with margin |
+| Priority | Lane | Trigger | Expected effect | Status |
+|---|---|---|---|---|
+| **P0** | **Process split** — falsifier-build (compile + selection control + pack/upload) then falsifier floor job (download + verify + peak-bracketed floor) | falsifier-memory diagnosis 2026-08-04 | Recover ~9.5 GiB cgroup headroom — build carry-in no longer shares cgroup with floor | **LANDED (this PR)** |
 | **P1** | **Closure-scoped `pool_parse`** (namespace §PR-5b / #6848 follow-on) | compile-clean diagnosis §5 | Shrink heads + reconcile baseline (~3.1 GiB compile-clean step; partial floor benefit) |
 | **P2** | **Close `retention_unknown` provenance gaps** (25 modules, batch 5) | counted debt | Minor; fail-open retain is honest but bounded |
 | **P3** | **Outer-ring `SpacePacked` eviction** | M2 width-1 banked, width>1 open | Host-budget eviction when schedule retention insufficient |
@@ -155,3 +160,57 @@ Memory investigation does **not** unblock falsifier green — witness fixes do.
 This receipt dissolves when a fleet falsifier run records `floor_peak_post` **< 12 GiB**
 with `floor_outcome=success` **and** batch 1 `peak_rss` receipt **< 8 GiB**, on the
 standard 16 GiB slot without process-split scaffolding.
+
+---
+
+## 8. Width check (Lead One — executed 2026-08-04)
+
+**Question:** Is the ~15 GiB pin the v1 run-stability lane's unfinished plural-worker outer
+ring (width > 1)?
+
+**Answer: NO.** Every examined falsifier cold-floor run logs:
+
+```
+claim_executor: batch N — … governor target_width=1
+run_discovery_corpus: … (governor target_width=1)
+run_discovery_corpus: width=1 inline drain — reusing process_shared_index
+run_discovery_corpus: cross_worker_store withheld (governor target_width=1)
+governor receipt — … forced_serial=0 hard_backoffs=0 …
+```
+
+This is the **same width=1 machinery** measured in the v1 run-stability lane (9.24 GiB
+executor RSS / 10.7 GiB cgroup peak at width 1, #7129). The ~15 GiB pin is **not** a novel
+width>1 defect — it is width=1 same-process accumulation (§3 mechanisms A–C) plus
+pre-floor carry-in. Remedies for the plural-worker outer ring (M2 width>1 banked work) do
+**not** apply here.
+
+---
+
+## 9. Bisect (Lead Two — executed 2026-08-04)
+
+**Anchor:** last CompleteGreen = `19cc776d`, run [30793942277](https://github.com/gunb-ai/gunbc/actions/runs/30793942277), 2026-08-03T07:31:05Z, **srv3-01**.
+
+**First failure after anchor:**
+
+| Run | When | SHA | Host | vs anchor |
+|---|---|---|---|---|
+| [30809682025](https://github.com/gunb-ai/gunbc/actions/runs/30809682025) | +4h | **`19cc776d` (same)** | srv4-05 | **not a commit regression** |
+
+The first post-green failure is on the **same commit** on a **different host**. Exit 1 is
+**witness redness** (application-level fail-closed arms), not cgroup OOM or oomd kill:
+
+- `falsifier_red_control_holds` divergence (expected-red control)
+- `witness_committed_is_fixed_point` — eval budget exceeded (5 s fast-lane rule)
+- batch-2 self-host behavioral witness timeouts (`self_host_*_behavioral_receipt_holds`)
+
+**Reported upstream (wise-ram-22):** these are witness-content failures, not infrastructure
+memory kills. The ~15 GiB cgroup pin co-occurs but is **not** the exit cause (`floor_outcome=failure` from witness batch failure, `forced_serial=0`).
+
+**Commit-bound interval** (`19cc776d` → first failing *new* HEAD `76ef121ec4`, run
+30824310833): subsequent failures remain witness-content class; no measured memory-regression
+commit isolated in this interval. Corpus grew modestly (6507→6550→6630 discovery rows) but
+pre-floor baseline and width=1 plateau class are stable across hosts.
+
+**Bisect conclusion for F2 (infrastructure):** the memory envelope hypothesis (§3) **holds**
+at width=1; redness is **orthogonal** (wise-ram-22). P0 process-split remains the
+infrastructure fix for mechanism A (pre-floor carry-in).

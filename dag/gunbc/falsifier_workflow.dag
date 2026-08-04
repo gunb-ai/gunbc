@@ -207,23 +207,50 @@ fn floor_component_receipt_upload_step() -> Step {
   }
 }
 
-fn gunbc_falsifier_job_backstop_timeout_minutes() -> Int {
-  gunbc_ci_release_build_step_timeout_minutes + gunbc_ci_selection_control_step_timeout_minutes + gunbc_falsifier_step_timeout_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_falsifier_compile_clean_cold_control_timeout_minutes + gunbc_falsifier_native_cache_cold_control_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
+fn gunbc_falsifier_build_job_backstop_timeout_minutes() -> Int {
+  gunbc_ci_release_build_step_timeout_minutes + gunbc_ci_selection_control_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
 }
 
-data gunbc_falsifier_selection_control_relocation_note: String = "The affected-set selection control (ci_selection_control_step, authority gunbc.ci_workflow) rides this cadence as of 2026-07-29, demoted from the per-PR ci job — full rationale, measurement, and return trigger in gunbc_ci_selection_control_step_note. Placement is load-bearing on two counts. (1) BEFORE ci_floor_peak_pre_step: the peak pre/post pair brackets the floor's cgroup measurement, so a step inside it would attribute its own residency to the falsifier's peak receipt — the control sits outside the bracket and the measurement stays the floor's. (2) BEFORE falsifier_step: the control is hermetic and ~10m, the falsifier step is up to 170m, so a broken selector reds in minutes instead of after the corpus walk. This is the third control on this job and the same shape as the other two (compile_clean_cold_control_step, native_cache_cold_control_step): a deterministic whole-corpus arm whose per-PR counterpart is scoped or skipped. Its 15m term joins gunbc_falsifier_job_backstop_timeout_minutes so the backstop stays the exact step-sum + prelude; the ci job's backstop drops the same term in the same motion, which is why the two edits are one change and not two."
+fn gunbc_falsifier_floor_job_backstop_timeout_minutes() -> Int {
+  gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_falsifier_step_timeout_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_falsifier_compile_clean_cold_control_timeout_minutes + gunbc_falsifier_native_cache_cold_control_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
+}
 
-fn falsifier_job() -> Job {
+fn gunbc_falsifier_job_backstop_timeout_minutes() -> Int {
+  gunbc_falsifier_build_job_backstop_timeout_minutes() + gunbc_falsifier_floor_job_backstop_timeout_minutes()
+}
+
+data gunbc_falsifier_job_split_note: String = "Two-job split (2026-08-04, falsifier-memory-root-cause diagnosis): the monolith job pinned cgroup peak at the 15 GiB memory.high line because ~9.5 GiB from release build + selection control stayed resident in the job cgroup before claim_executor started (floor_peak_pre reset=unsupported pre_peak=10219753472, run 30935833427). Mirrors the 2026-07-11 ci build→ci serial split (gunbc_ci_job_backstop_timeout_disposition): falsifier-build compiles, runs the selection control, packs, and uploads release-bins; falsifier downloads + verifies in a fresh job cgroup so peak pre/post bracket ONLY the floor path. Dissolve-on: persistent content-keyed node store removes the per-entry cold resolve class and makes the double whole-pool index payment optional — not a substitute for job-grain cgroup isolation."
+
+data gunbc_falsifier_selection_control_relocation_note: String = "The affected-set selection control (ci_selection_control_step, authority gunbc.ci_workflow) rides this cadence as of 2026-07-29, demoted from the per-PR ci job — full rationale, measurement, and return trigger in gunbc_ci_selection_control_step_note. Placement is load-bearing on three counts. (1) AFTER ci_release_build_step in falsifier-build: the control executes the release-built floor_skip_discovery_witness binary. (2) BEFORE ci_floor_peak_pre_step in falsifier (floor job): the peak pre/post pair brackets the floor's cgroup measurement — with the 2026-08-04 job split the control's ~9.5 GiB carry-in lives in falsifier-build's cgroup, not the floor job's. (3) BEFORE falsifier_step: the control is hermetic and ~10m, the falsifier step is up to 170m, so a broken selector reds in minutes instead of after the corpus walk. Its 15m term is in gunbc_falsifier_build_job_backstop_timeout_minutes; the floor job backstop carries only the floor path."
+
+fn falsifier_build_job() -> Job {
   Job {
-    id: "falsifier",
+    id: "falsifier-build",
     name: none,
     runner: gunbc_ci_selected_runner_spec(),
-    steps: concat(ci_prelude_steps(), [ci_release_build_step(), ci_selection_control_step(), ci_floor_peak_pre_step(), falsifier_step(), floor_component_receipt_upload_step(), compile_clean_cold_control_step(), native_cache_cold_control_step(), ci_floor_peak_post_step()]),
+    steps: concat(ci_prelude_steps(), [ci_release_build_step(), ci_selection_control_step(), ci_release_bins_pack_step(), ci_release_bins_upload_step()]),
     needs: [],
     env: none,
     outputs: none,
     if_condition: none,
-    timeout_minutes: Present { value: gunbc_falsifier_job_backstop_timeout_minutes() },
+    timeout_minutes: Present { value: gunbc_falsifier_build_job_backstop_timeout_minutes() },
+    continue_on_error: none,
+    concurrency: none,
+    permissions: none
+  }
+}
+
+fn falsifier_floor_job() -> Job {
+  Job {
+    id: "falsifier",
+    name: none,
+    runner: gunbc_ci_selected_runner_spec(),
+    steps: concat(ci_floor_job_prelude_steps(), [ci_release_bins_download_step(), ci_release_bins_unpack_verify_step(), ci_floor_peak_pre_step(), falsifier_step(), floor_component_receipt_upload_step(), compile_clean_cold_control_step(), native_cache_cold_control_step(), ci_floor_peak_post_step()]),
+    needs: ["falsifier-build"],
+    env: none,
+    outputs: none,
+    if_condition: none,
+    timeout_minutes: Present { value: gunbc_falsifier_floor_job_backstop_timeout_minutes() },
     continue_on_error: none,
     concurrency: none,
     permissions: none
@@ -265,7 +292,7 @@ data falsifier_workflow: Workflow = {
       id_token: none
     }
   },
-  jobs: [falsifier_job()]
+  jobs: [falsifier_build_job(), falsifier_floor_job()]
 }
 
 fn expected_falsifier_yml() -> String {

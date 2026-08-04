@@ -6,6 +6,8 @@ import gunbc.falsifier_workflow {
   falsifier_cadence_cron,
   falsifier_workflow,
   gunbc_falsifier_job_backstop_timeout_minutes,
+  gunbc_falsifier_build_job_backstop_timeout_minutes,
+  gunbc_falsifier_floor_job_backstop_timeout_minutes,
   gunbc_falsifier_step_timeout_minutes,
   gunbc_falsifier_step_timeout_basis_is_measured_not_composed,
   gunbc_falsifier_compile_clean_cold_control_timeout_minutes,
@@ -60,7 +62,8 @@ test fn falsifier_step_timeout_basis_is_measured_not_composed() -> Bool {
 }
 
 test fn falsifier_backstop_is_step_sum_plus_prelude() -> Bool {
-  gunbc_falsifier_job_backstop_timeout_minutes() == (gunbc_ci_release_build_step_timeout_minutes + gunbc_ci_selection_control_step_timeout_minutes + gunbc_falsifier_step_timeout_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_falsifier_compile_clean_cold_control_timeout_minutes + gunbc_falsifier_native_cache_cold_control_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes)
+  gunbc_falsifier_job_backstop_timeout_minutes() == (gunbc_ci_release_build_step_timeout_minutes + gunbc_ci_selection_control_step_timeout_minutes + gunbc_falsifier_step_timeout_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_falsifier_compile_clean_cold_control_timeout_minutes + gunbc_falsifier_native_cache_cold_control_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes + gunbc_ci_prelude_allowance_minutes)
+    && gunbc_falsifier_job_backstop_timeout_minutes() == (gunbc_falsifier_build_job_backstop_timeout_minutes() + gunbc_falsifier_floor_job_backstop_timeout_minutes())
     && !(gunbc_falsifier_job_backstop_timeout_minutes() == gunbc_falsifier_step_timeout_minutes)
 }
 
@@ -71,7 +74,7 @@ test fn selection_control_rides_falsifier_not_per_pr_ci() -> Bool {
     && !string_contains(s: expected_ci_yml(), pattern: selection_control_step_name)
 }
 
-data selection_control_order_witness_note: String = "STRUCTURAL order pin over the Step LIST, not a yaml substring search (review correction 2026-07-30: the presence test above proves the control moved cadence, but placement is load-bearing on two counts that presence cannot express — it must sit AFTER the release build, because the control executes the release-built floor_skip_discovery_witness binary and would have nothing to run before it, and BEFORE the cgroup peak pre-read, because the peak pre/post pair brackets the floor's memory measurement and a step inside the bracket would attribute its own residency to the floor's peak receipt. A substring test passes for every permutation of the same steps, so it cannot catch either regression). Reuses step_display_name, the same accessor gunbc.ci_materialization already reads steps through, rather than re-matching the Step coproduct here. Indices are resolved by name over falsifier_job's assembled step list, so a reordering edit reds this witness with the offending positions in hand. EXACTLY-ONE is asserted in both directions: one occurrence on the falsifier, ZERO on the per-PR ci job — a duplicate enrollment on either side is the failure mode a presence check reads as success."
+data selection_control_order_witness_note: String = "STRUCTURAL order pin over the Step LIST, not a yaml substring search (review correction 2026-07-30; job-split correction 2026-08-04): the presence test above proves the control moved cadence, but placement is load-bearing on counts that presence cannot express — it must sit AFTER the release build in falsifier-build, and the floor cgroup peak pre-read must bracket only the floor job steps. The 2026-08-04 falsifier-build/falsifier split enforces this by cgroup: build+control in falsifier-build, peak bracket+falsifier_step in falsifier with needs: [falsifier-build]. Reuses step_display_name. EXACTLY-ONE on falsifier-build, ZERO on falsifier floor job and per-PR ci."
 
 fn step_index_of(steps: List<Step>, name: String) -> Int {
   let seen = fold(steps, init: { idx: 0, hit: 0 - 1 }, f: fn(acc, s) {
@@ -90,10 +93,18 @@ fn step_count_named(steps: List<Step>, name: String) -> Int {
   })
 }
 
-fn falsifier_job_steps() -> List<Step> {
+fn falsifier_job_steps(job_id: String) -> List<Step> {
   fold(falsifier_workflow.jobs, init: [], f: fn(acc, j) {
-    if j.id == "falsifier" { j.steps } else { acc }
+    if j.id == job_id { j.steps } else { acc }
   })
+}
+
+fn falsifier_build_job_steps() -> List<Step> {
+  falsifier_job_steps(job_id: "falsifier-build")
+}
+
+fn falsifier_floor_job_steps() -> List<Step> {
+  falsifier_job_steps(job_id: "falsifier")
 }
 
 fn ci_job_steps() -> List<Step> {
@@ -103,26 +114,40 @@ fn ci_job_steps() -> List<Step> {
 }
 
 test fn selection_control_sits_after_release_build_before_peak_bracket() -> Bool {
-  let steps = falsifier_job_steps()
-  let build = step_index_of(steps: steps, name: "Build release bins (claim_executor + gunbc)")
-  let control = step_index_of(steps: steps, name: selection_control_step_name)
-  let peak_pre = step_index_of(steps: steps, name: "Floor cgroup peak pre-read (calibration; reset if permitted)")
-  (build >= 0) && (control >= 0) && (peak_pre >= 0)
+  let build_steps = falsifier_build_job_steps()
+  let floor_steps = falsifier_floor_job_steps()
+  let build = step_index_of(steps: build_steps, name: "Build release bins (claim_executor + gunbc)")
+  let control = step_index_of(steps: build_steps, name: selection_control_step_name)
+  let peak_pre = step_index_of(steps: floor_steps, name: "Floor cgroup peak pre-read (calibration; reset if permitted)")
+  let falsifier = step_index_of(steps: floor_steps, name: "affected-set falsifier (predict-only cold run)")
+  (build >= 0) && (control >= 0) && (peak_pre >= 0) && (falsifier >= 0)
     && (build < control)
-    && (control < peak_pre)
+    && (peak_pre < falsifier)
+}
+
+test fn falsifier_floor_job_needs_build_job() -> Bool {
+  fold(falsifier_workflow.jobs, init: false, f: fn(acc, j) {
+    if j.id == "falsifier" {
+      any(j.needs, n => n == "falsifier-build")
+    } else {
+      acc
+    }
+  })
 }
 
 test fn selection_control_enrolled_exactly_once_on_falsifier_and_never_on_ci() -> Bool {
-  step_count_named(steps: falsifier_job_steps(), name: selection_control_step_name) == 1
+  step_count_named(steps: falsifier_build_job_steps(), name: selection_control_step_name) == 1
+    && step_count_named(steps: falsifier_floor_job_steps(), name: selection_control_step_name) == 0
     && step_count_named(steps: ci_job_steps(), name: selection_control_step_name) == 0
 }
 
 test fn selection_control_order_witness_discriminates() -> Bool {
-  let steps = falsifier_job_steps()
-  let control = step_index_of(steps: steps, name: selection_control_step_name)
-  let peak_pre = step_index_of(steps: steps, name: "Floor cgroup peak pre-read (calibration; reset if permitted)")
+  let build_steps = falsifier_build_job_steps()
+  let floor_steps = falsifier_floor_job_steps()
+  let control = step_index_of(steps: build_steps, name: selection_control_step_name)
+  let peak_pre = step_index_of(steps: floor_steps, name: "Floor cgroup peak pre-read (calibration; reset if permitted)")
   !(peak_pre < control)
-    && !(step_index_of(steps: steps, name: "Affected-set selection control (this step does not exist)") >= 0)
+    && !(step_index_of(steps: build_steps, name: "Affected-set selection control (this step does not exist)") >= 0)
 }
 
 test fn falsifier_artifact_path_is_workflow_file() -> Bool {
