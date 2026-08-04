@@ -87,14 +87,20 @@ fn diff_baseline_diff_head(b: DiffBaseline, default_head: String) -> String {
   match b {
     ExactReplayBoundary { base: _, head: oid, claimed_relation: _ } =>
       git_object_id_wire_hex(oid: oid) as String
-    _ => default_head
+    MergeTarget { ref: _ } => default_head
+    PushBefore { ref: _ } => default_head
+    PushParent { ref: _ } => default_head
+    OperatorOverride { ref: _ } => default_head
   }
 }
 
 fn diff_baseline_is_exact_replay(b: DiffBaseline) -> Bool {
   match b {
     ExactReplayBoundary { base: _, head: _, claimed_relation: _ } => true
-    _ => false
+    MergeTarget { ref: _ } => false
+    PushBefore { ref: _ } => false
+    PushParent { ref: _ } => false
+    OperatorOverride { ref: _ } => false
   }
 }
 
