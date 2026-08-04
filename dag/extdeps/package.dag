@@ -4,7 +4,6 @@ import std.types { NonEmptyStr, String, Bool, List, Int }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
-import extdeps.pin { Pin }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -25,9 +24,9 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: []
 }
 
-data package_scope_subject_note: String = "THE SUBJECT IS THE EXACT DEPENDENCY / LOCK-GRAPH RELATION — PackageLockGraph: nodes are package selections at the manager's node grain; edges are consumer→dependency relations at that same grain. Grounded on the Reproducible Builds definition (dependencies and their versions as build-environment attributes), the same external citation extdeps.pin spells for Pin — two DISTINCT CITATIONS of one upstream page, not duplicated semantic authority (extdeps.pin pin_citation_note: the structural authority lens reads each module's anchor locally, so neither module may alias the other's anchor declaration).\\n\\nNOT Package_format: an archive-plus-metadata subject is a different external fact. Defer a generic package-artifact module until a second ecosystem needs it; do not leave PackageLockGraph cited as a package archive.\\n\\nTHE CITATION BOUNDS WHAT MAY LIVE HERE. It does NOT ground JavaScript module formats, npm lifecycle-script policy, artifact-admission outcomes, or gunbc materialization — those live in extdeps.npm (upstream manager facts) and gunbc.package_delivery (product policy and mechanism)."
+data package_scope_subject_note: String = "THE SUBJECT IS THE EXACT DEPENDENCY / LOCK-GRAPH RELATION — PackageLockGraph: nodes are package selections at the manager's node grain; edges are consumer→dependency relations at that same grain. Grounded on the Reproducible Builds definition (dependencies and their versions as build-environment attributes), the same external citation extdeps.pin spells for Pin — two DISTINCT CITATIONS of one upstream page, not duplicated semantic authority (extdeps.pin pin_citation_note: the structural authority lens reads each module's anchor locally, so neither module may alias the other's anchor declaration).\\n\\nNOT Package_format: an archive-plus-metadata subject is a different external fact. Defer a generic package-artifact module until a second ecosystem needs it; do not leave PackageLockGraph cited as a package archive.\\n\\nTHE CITATION BOUNDS WHAT MAY LIVE HERE. It does NOT ground JavaScript module formats, npm lifecycle-script policy, artifact-admission outcomes, or gunbc materialization — those live in extdeps.npm (upstream manager facts) and gunbc.package_delivery (product policy and mechanism). Exact package/version/content identity for a downloaded release is Pin<PackageCoordinate<Ecosystem>> (extdeps.pin); ecosystems derive that pin from native observations — they do not mint a parallel selection carrier beside it."
 
-data package_hub_agnostic_note: String = "THE AGNOSTIC SHAPE OF A DEPENDENCY GRAPH. The hub parameterizes Selection — ecosystems define their own selection shapes. The hub never enumerates package managers."
+data package_hub_agnostic_note: String = "THE AGNOSTIC SHAPE OF A DEPENDENCY GRAPH. The hub parameterizes Selection — ecosystems define their own selection shapes. The hub never enumerates package managers. No synthetic PinnedPackageArtifactSelection convenience: the first real consumer (npm) derives Pin from native lock observations."
 
 data package_lock_node_grain_note: String = "THE LOCK NODE, NOT name@version, IS THE IDENTITY. NodeKey is a type parameter from the ecosystem. Edges name keys; selections live on nodes."
 
@@ -41,24 +40,7 @@ type PackageRequirement<Ecosystem, RequirementSpec> {
   spec: RequirementSpec
 }
 
-data package_artifact_source_note: String = "WHERE THE BYTES CAME FROM IS EVIDENCE, NOT A FALLBACK LADDER. One locator, never an ordered mirror list."
-
-type PackageArtifactSource {
-  locator: NonEmptyStr
-}
-
-data pinned_package_artifact_selection_note: String = "PINNED RELEASE ARTIFACT SELECTION — optional hub convenience for ecosystems whose lock nodes are downloaded name@version releases with one content identity and one locator. It is NOT required of every PackageLockNode: Selection is a type parameter. npm roots, links, and git artifacts use npm-local selection arms instead (operator portfolio 2026-08-04). Formerly named PackageSelection; renamed so the hub does not pretend every lock node is a pinned registry artifact."
-
-type PinnedPackageArtifactSelection<Ecosystem> {
-  pin: Pin<PackageCoordinate<Ecosystem>>
-  source: PackageArtifactSource
-}
-
-fn pinned_package_artifact_name<Ecosystem>(
-  selection: PinnedPackageArtifactSelection<Ecosystem>
-) -> NonEmptyStr {
-  selection.pin.subject.name
-}
+data package_artifact_source_note: String = "WHERE THE BYTES CAME FROM IS EVIDENCE, NOT A FALLBACK LADDER. One locator, never an ordered mirror list. Ecosystem modules own typed source identities; this hub does not mint a parallel selection record."
 
 type PackageLockNode<NodeKey, Selection, Metadata> {
   key: NodeKey
@@ -123,8 +105,9 @@ type PackageLockGraphAdmission<ManagerIdentity, NodeKey, Selection, Metadata, Ed
   | PackageLockGraphMissingRoot { key: NodeKey }
   | PackageLockGraphMissingEdgeConsumer { key: NodeKey }
   | PackageLockGraphMissingEdgeDependency { key: NodeKey }
+  | PackageLockGraphLookupInconsistency { key: NodeKey }
 
-data package_lock_admission_note: String = "PRODUCTION CONSUMERS TAKE THE ADMITTED CARRIER, NEVER THE RAW GRAPH. Admission is exact-cardinality: duplicate keys refuse before roots or edges are trusted; missing roots and missing edge endpoints refuse with typed causes. Boolean membership is not an admission path."
+data package_lock_admission_note: String = "EVERY PRODUCTION EFFECT BOUNDARY RE-ADJUDICATES the raw/parser-derived graph and proceeds only through the admitted arm — do not persist an independently supplied PackageLockGraphAdmitted as proof (the admitted arm is publicly constructible today; constructor confinement is the dissolve-on). Admission is exact-cardinality: duplicate keys refuse before roots or edges are trusted; missing roots and missing edge endpoints refuse with typed causes. Looking up a key while iterating graph.nodes cannot honestly be Absent — that is PackageLockGraphLookupInconsistency, not MissingRoot. Boolean membership is not an admission path."
 
 fn package_lock_admit_graph<ManagerIdentity, NodeKey, Selection, Metadata, EdgeKind>(
   graph: PackageLockGraph<ManagerIdentity, NodeKey, Selection, Metadata, EdgeKind>,
@@ -138,7 +121,8 @@ fn package_lock_admit_graph<ManagerIdentity, NodeKey, Selection, Metadata, EdgeK
           PackageLockNodeUnique { node: _ } => PackageLockGraphAdmitted { graph: g }
           PackageLockNodeDuplicate { key, count } =>
             PackageLockGraphDuplicateNode { key: key, count: count }
-          PackageLockNodeAbsent { key } => PackageLockGraphMissingRoot { key: key }
+          PackageLockNodeAbsent { key } =>
+            PackageLockGraphLookupInconsistency { key: key }
         }
       other => other
     },
@@ -190,4 +174,4 @@ fn package_lock_admit_graph<ManagerIdentity, NodeKey, Selection, Metadata, EdgeK
   }
 }
 
-data package_delivery_placement_note: String = "First delivery mechanism lands as a CONSUMED handler in gunbc.package_delivery (product policy + materialization); promote to std only after a second real consumer. Codex integrity admission already lives there — not in extdeps.npm."
+data package_delivery_placement_note: String = "First delivery mechanism lands as a CONSUMED handler in gunbc.package_delivery (product policy + materialization); promote to std only after a second real consumer. That boundary re-calls package_lock_admit_graph on raw graphs."

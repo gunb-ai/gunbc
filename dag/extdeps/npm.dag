@@ -9,12 +9,15 @@ import std.content_hash {
   Sha1Digest,
   sha512_hex_digest,
   sha1_hex_digest,
+  as_content_hash_sha512,
+  as_content_hash_sha1,
 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.numeric.base16 { byte_hex_lower }
 import extdeps.version { VersionIdentity }
+import extdeps.pin { Pin, ExactPin }
 import extdeps.package { PackageCoordinate }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -43,11 +46,11 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: [npm_sri_w3c_authority]
 }
 
-data npm_scope_subject_note: String = "THE SUBJECT IS the npm package-lock format — path keys, node metadata, declared dependency maps, and integrity wire — not the npm registry HTTP API and not gunbc Codex product policy. Citation pins the v10 package-lock docs matching the measured Codex npm 10.x line; lockfileVersion is observed as an integer and closed to NpmPackageLockV3 by typed decode."
+data npm_scope_subject_note: String = "THE SUBJECT IS the npm package-lock format — path keys, node metadata, declared dependency maps, and integrity wire — not the npm registry HTTP API and not gunbc Codex product policy. Citation pins the v10 package-lock docs matching the measured Codex npm 10.x line; lockfileVersion is observed as an integer and closed to NpmPackageLockV3 by typed decode. SRI decode is a BOUNDED first profile (single expression, no options, sha512|sha1 only) — not a claim to implement the full W3C SRI grammar."
 
-data npm_integrity_decode_note: String = "W3C SRI permits one or more hash expressions, SHA-256/384/512, and per-expression options. npm package-lock integrity may be SHA-512 or SHA-1 SRI. This decoder is honest about that grammar: typed outcomes, never Option that erases the refusal cause. A narrow first cut admits single sha512 and single sha1 expressions without options; multiple expressions and options refuse with typed causes. After decode, the base64 payload must re-encode to the admitted canonical form — shared base64_decode accepts arbitrary trailing '=', so overpadding is an npm-local canonicality refusal (operator portfolio 2026-08-04). Decoding the lock's EXPECTED digest is not artifact verification — observed digest over acquired archive bytes is gunbc.package_delivery."
+data npm_integrity_decode_note: String = "THREE STAGES, DO NOT FUSE. (1) npm_decode_integrity: raw SRI wire → NpmIntegrityDecode (typed wire outcomes). (2) npm_registry_integrity_from_decode: successful decode → NpmRegistryIntegrity; wire refusals stay typed, never Option. (3) gunbc.package_delivery.codex_admit_npm_integrity: product policy over NpmRegistryIntegrity only. Decoding EXPECTED digest is not artifact verification."
 
-data npm_resolved_graph_boundary_note: String = "TWO npm-owned facts, do not fuse. NpmParsedPackageRoster carries path-keyed nodes and declared dependency maps from the lock JSON. Exact consumer→dependency PackageLockGraph edges require an npm-owned realization receipt (resolver / Arborist / post-npm-ci read-back) — never name→first-matching-node inventing inside gunbc. npm remains the resolver; gunbc models and verifies its result."
+data npm_resolved_graph_boundary_note: String = "TWO npm-owned facts, do not fuse. A parsed roster carries path-keyed nodes and declared dependency maps from the lock JSON. Exact consumer→dependency PackageLockGraph edges require an npm-owned realization receipt (resolver / Arborist / post-npm-ci read-back) — never name→first-matching-node inventing inside gunbc. npm remains the resolver; gunbc models and verifies its result."
 
 type NpmPackageLockFormat
   = | NpmPackageLockV3
@@ -115,9 +118,7 @@ type NpmResolvedRegistryArtifact {
   locator: NonEmptyStr
 }
 
-type NpmResolvedGitArtifact {
-  locator: NonEmptyStr
-}
+data npm_resolved_registry_source_note: String = "FIRST SLICE: locator remains NonEmptyStr until acquisition types a registry tarball URL vs configured-registry marker vs file: source. Do not treat those as interchangeable forever — typed source identity lands with archive acquisition."
 
 type NpmRegistryIntegrity
   = NpmRegistrySha512Integrity {
@@ -127,26 +128,51 @@ type NpmRegistryIntegrity
       digest: Sha1Digest
     }
 
+type NpmRegistryArtifact {
+  package: PackageCoordinate<NpmRegistry>
+  version: VersionIdentity
+  resolved: NpmResolvedRegistryArtifact
+  expected_integrity: NpmRegistryIntegrity
+}
+
 type NpmLockNodeSelection
   = NpmRootProject {
       manifest_identity: ContentHash
     }
-  | NpmRegistryArtifact {
-      package: PackageCoordinate<NpmRegistry>
-      version: VersionIdentity
-      resolved: NpmResolvedRegistryArtifact
-      expected_integrity: NpmRegistryIntegrity
-    }
-  | NpmGitArtifact {
-      package: PackageCoordinate<NpmRegistry>
-      revision: NonEmptyStr
-      resolved: NpmResolvedGitArtifact
-    }
-  | NpmLink {
-      target: NpmLockPathKey
+  | NpmRegistrySelected {
+      artifact: NpmRegistryArtifact
     }
 
-data npm_lock_node_selection_note: String = "Selection is an npm-local coproduct. Root, link, git, and registry nodes are different shapes. Registry expected_integrity is npm-native (SHA-1 or SHA-512) — Codex product narrowing lives in gunbc.package_delivery, not here. The first production Codex lock may support only root + registry-artifact nodes and refuse other forms — it must not pretend those forms cannot exist."
+type NpmLockNodeDecode
+  = NpmLockNodeDecoded {
+      selection: NpmLockNodeSelection
+    }
+  | NpmLockNodeFormUnsupported {
+      key: NpmLockPathKey
+      native_form: NonEmptyStr
+    }
+
+data npm_lock_node_selection_note: String = "FIRST CODEX PROFILE supports only root + registry-artifact nodes. Git, link, and local forms decode as NpmLockNodeFormUnsupported — add typed arms only when a real supported consumer needs them. NpmRegistryArtifact is the native selection record; Pin<PackageCoordinate<NpmRegistry>> is DERIVED (npm_registry_artifact_pin), never stored beside native integrity."
+
+fn npm_registry_integrity_content_hash(integrity: NpmRegistryIntegrity) -> ContentHash {
+  match integrity {
+    NpmRegistrySha512Integrity { digest } => as_content_hash_sha512(digest: digest)
+    NpmRegistrySha1Integrity { digest } => as_content_hash_sha1(digest: digest)
+  }
+}
+
+fn npm_registry_artifact_pin(
+  artifact: NpmRegistryArtifact,
+) -> Pin<PackageCoordinate<NpmRegistry>> {
+  Pin {
+    subject: artifact.package,
+    version: artifact.version,
+    expected_identity: npm_registry_integrity_content_hash(
+      integrity: artifact.expected_integrity,
+    ),
+    selection: ExactPin,
+  }
+}
 
 type NpmIntegrityDecode
   = NpmSingleSha512Integrity {
@@ -165,6 +191,30 @@ type NpmIntegrityDecode
   | NpmIntegrityMalformed {
       reason: NonEmptyStr
     }
+
+type NpmRegistryIntegrityFromDecode
+  = NpmRegistryIntegrityAdmitted {
+      integrity: NpmRegistryIntegrity
+    }
+  | NpmRegistryIntegrityWireRefused {
+      cause: NpmIntegrityDecode
+    }
+
+fn npm_registry_integrity_from_decode(
+  decoded: NpmIntegrityDecode,
+) -> NpmRegistryIntegrityFromDecode {
+  match decoded {
+    NpmSingleSha512Integrity { digest } =>
+      NpmRegistryIntegrityAdmitted {
+        integrity: NpmRegistrySha512Integrity { digest: digest },
+      }
+    NpmSingleSha1Integrity { digest } =>
+      NpmRegistryIntegrityAdmitted {
+        integrity: NpmRegistrySha1Integrity { digest: digest },
+      }
+    other => NpmRegistryIntegrityWireRefused { cause: other }
+  }
+}
 
 fn npm_octets_to_lower_hex(octets: List<UInt8>) -> String {
   map(octets, octet => byte_hex_lower(v: octet)) |> join(separator: "")
@@ -261,15 +311,5 @@ fn npm_decode_integrity(wire: String) -> NpmIntegrityDecode {
     }
   } else {
     NpmIntegrityMultipleExpressionsUnsupported { count: n }
-  }
-}
-
-fn npm_registry_integrity_from_decode(decoded: NpmIntegrityDecode) -> NpmRegistryIntegrity? {
-  match decoded {
-    NpmSingleSha512Integrity { digest } =>
-      Present { value: NpmRegistrySha512Integrity { digest: digest } }
-    NpmSingleSha1Integrity { digest } =>
-      Present { value: NpmRegistrySha1Integrity { digest: digest } }
-    _ => none
   }
 }

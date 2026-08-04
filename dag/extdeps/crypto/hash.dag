@@ -40,10 +40,13 @@ fn sha512_digest(hex: NonEmptyStr) -> Digest {
   Digest { algorithm: Sha512, hex: hex }
 }
 
+data digest_shell_verify_line_legacy_note: NonEmptyStr = "LEGACY SHA-256-only shell-string verifier for the existing sccache consumer. Not a package-delivery realization. SHA-512 intentionally has no production shell arm here — gunbc.package_delivery uses PackageArchiveDigestObservation. dissolve-on: sccache migrates off this helper and the function deletes."
+
 fn digest_shell_verify_line(digest: Digest, file_path: NonEmptyStr) -> String {
   match digest.algorithm {
     Sha256 => join(["echo '", digest.hex as String, "  ", file_path as String, "' | sha256sum -c -"], "")
-    Sha512 => join(["echo '", digest.hex as String, "  ", file_path as String, "' | sha512sum -c -"], "")
+    Sha512 =>
+      "digest_shell_verify_line refuses SHA-512 — use PackageArchiveDigestObservation"
   }
 }
 
