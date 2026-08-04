@@ -83,7 +83,7 @@ pub fn cost_account_measured<S>(time: Rc<Measure<(), S, i64>>) -> Rc<CostAccount
     })
 }
 
-pub fn cost_account_time_count<S: Clone>(account: Rc<CostAccount<S>>) -> Nat {
+pub fn cost_account_time_count<S>(account: Rc<CostAccount<S>>) -> Nat {
     measure_count(account.time.clone())
 }
 
@@ -1384,7 +1384,7 @@ pub fn schedule_batch_contains_label(batch: Rc<Vec<Rc<Runnable>>>, target: Strin
         })
 }
 
-pub fn schedule_generates_same_batch_count<S: Clone>(
+pub fn schedule_generates_same_batch_count<S>(
     left: Rc<RealizationPlan<S>>,
     right: Rc<RealizationPlan<S>>,
 ) -> bool {
@@ -1582,7 +1582,7 @@ continue;
     }
 }
 
-pub fn schedule_generates_identical_schedule<S: Clone>(
+pub fn schedule_generates_identical_schedule<S>(
     plan: Rc<RealizationPlan<S>>,
     schedule: Schedule,
 ) -> bool {

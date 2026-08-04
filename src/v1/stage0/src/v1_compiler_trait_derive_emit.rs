@@ -333,6 +333,7 @@ pub fn v1_type_expr_contains_param_name(
 pub fn v1_generic_param_used_as_collection_element(
     param_name: String,
     value_params: Rc<Vec<Rc<Node>>>,
+    bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
     type_decl_items: Rc<HashMap<String, Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
@@ -347,6 +348,7 @@ pub fn v1_generic_param_used_as_collection_element(
                         if v1_type_expr_mentions_param_non_phantom(
                             param_name.clone(),
                             v1_wf_child_type_node(c.clone(), source_indices.clone()),
+                            bounds.clone(),
                             type_decl_items.clone(),
                             source_indices.clone(),
                         ) {
@@ -390,6 +392,7 @@ pub fn v1_generic_param_used_as_bare_value_param_type(
 pub fn v1_generic_param_used_in_value_param_type_surface(
     param_name: String,
     value_params: Rc<Vec<Rc<Node>>>,
+    bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
     type_decl_items: Rc<HashMap<String, Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
@@ -399,6 +402,7 @@ pub fn v1_generic_param_used_in_value_param_type_surface(
             if v1_type_expr_mentions_param_non_phantom(
                 param_name.clone(),
                 param_node_type_expr(vp.clone()),
+                bounds.clone(),
                 type_decl_items.clone(),
                 source_indices.clone(),
             ) {
@@ -410,32 +414,10 @@ pub fn v1_generic_param_used_in_value_param_type_surface(
     }
 }
 
-pub fn v1_type_node_mentions_name(
-    n: Rc<Node>,
-    target: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        if (authored_name_at(source_indices.clone(), n.clone()) == target.clone()) {
-            true
-        } else {
-            {
-                let mut __found = false;
-                for c in n.children.clone().iter().cloned() {
-                    if v1_type_node_mentions_name(c.clone(), target.clone(), source_indices.clone())
-                    {
-                        __found = true;
-                        break;
-                    }
-                }
-                __found
-            }
-        }
-    })
-}
-
 pub fn v1_item_phantom_only_param_names(
+    item_name: String,
     item: Rc<Node>,
+    bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<String>> {
     Rc::new({
@@ -450,15 +432,9 @@ pub fn v1_item_phantom_only_param_names(
         .iter()
         .cloned()
         {
-            if !{
-                let mut __found = false;
-                for te in v1_item_field_type_exprs(item.clone()).iter().cloned() {
-                    if v1_type_node_mentions_name(te.clone(), p.clone(), source_indices.clone()) {
-                        __found = true;
-                        break;
-                    }
-                }
-                __found
+            if match v1_rt::map_get(&bounds, item_name.clone()) {
+                Some(s) => !v1_rt::set_contains(&s, p.clone()),
+                None => true,
             } {
                 __result.push(p);
             }
@@ -485,6 +461,7 @@ pub fn v1_declared_type_app_mentions_param_non_phantom_loop(
     decl_params: Rc<Vec<Rc<Node>>>,
     type_args: Rc<Vec<Rc<Node>>>,
     phantom_slot_names: Rc<Vec<String>>,
+    bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
     type_decl_items: Rc<HashMap<String, Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
@@ -507,6 +484,7 @@ pub fn v1_declared_type_app_mentions_param_non_phantom_loop(
                         v1_type_expr_mentions_param_non_phantom(
                             param_name.clone(),
                             arg_expr.clone(),
+                            bounds.clone(),
                             type_decl_items.clone(),
                             source_indices.clone(),
                         )
@@ -531,6 +509,7 @@ pub fn v1_declared_type_app_mentions_param_non_phantom_loop(
                                     .collect::<Vec<_>>(),
                             ),
                             phantom_slot_names.clone(),
+                            bounds.clone(),
                             type_decl_items.clone(),
                             source_indices.clone(),
                         ))
@@ -542,8 +521,10 @@ pub fn v1_declared_type_app_mentions_param_non_phantom_loop(
 
 pub fn v1_declared_type_app_mentions_param_non_phantom(
     param_name: String,
+    decl_name: String,
     decl: Rc<Node>,
     type_args: Rc<Vec<Rc<Node>>>,
+    bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
     type_decl_items: Rc<HashMap<String, Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
@@ -551,7 +532,13 @@ pub fn v1_declared_type_app_mentions_param_non_phantom(
         param_name.clone(),
         decl.params.clone(),
         type_args.clone(),
-        v1_item_phantom_only_param_names(decl.clone(), source_indices.clone()),
+        v1_item_phantom_only_param_names(
+            decl_name.clone(),
+            decl.clone(),
+            bounds.clone(),
+            source_indices.clone(),
+        ),
+        bounds.clone(),
         type_decl_items.clone(),
         source_indices.clone(),
     )
@@ -560,6 +547,7 @@ pub fn v1_declared_type_app_mentions_param_non_phantom(
 pub fn v1_type_expr_mentions_param_non_phantom(
     param_name: String,
     type_expr: Rc<Node>,
+    bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
     type_decl_items: Rc<HashMap<String, Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
@@ -579,6 +567,7 @@ pub fn v1_type_expr_mentions_param_non_phantom(
                         if v1_type_expr_mentions_param_non_phantom(
                             param_name.clone(),
                             v1_wf_child_type_node(c.clone(), source_indices.clone()),
+                            bounds.clone(),
                             type_decl_items.clone(),
                             source_indices.clone(),
                         ) {
@@ -593,8 +582,10 @@ pub fn v1_type_expr_mentions_param_non_phantom(
                     match v1_rt::map_get(&type_decl_items, name.clone()) {
                         Some(decl) => v1_declared_type_app_mentions_param_non_phantom(
                             param_name.clone(),
+                            name.clone(),
                             decl.clone(),
                             type_expr.children.clone(),
+                            bounds.clone(),
                             type_decl_items.clone(),
                             source_indices.clone(),
                         ),
@@ -604,6 +595,7 @@ pub fn v1_type_expr_mentions_param_non_phantom(
                                 if v1_type_expr_mentions_param_non_phantom(
                                     param_name.clone(),
                                     v1_wf_child_type_node(c.clone(), source_indices.clone()),
+                                    bounds.clone(),
                                     type_decl_items.clone(),
                                     source_indices.clone(),
                                 ) {
@@ -624,6 +616,7 @@ pub fn v1_fn_phantom_only_generic_param_names(
     generic_param_names: Rc<Vec<String>>,
     value_params: Rc<Vec<Rc<Node>>>,
     ret: Rc<Node>,
+    bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
     type_decl_items: Rc<HashMap<String, Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<String>> {
@@ -636,6 +629,7 @@ pub fn v1_fn_phantom_only_generic_param_names(
                     if v1_type_expr_mentions_param_non_phantom(
                         p.clone(),
                         param_node_type_expr(vp.clone()),
+                        bounds.clone(),
                         type_decl_items.clone(),
                         source_indices.clone(),
                     ) {
@@ -647,6 +641,7 @@ pub fn v1_fn_phantom_only_generic_param_names(
             } && !v1_type_expr_mentions_param_non_phantom(
                 p.clone(),
                 ret.clone(),
+                bounds.clone(),
                 type_decl_items.clone(),
                 source_indices.clone(),
             )) {
@@ -792,6 +787,7 @@ pub fn v1_type_param_needs_clone_bound(
     ret_name: String,
     body_is_param_ref: bool,
     value_params: Rc<Vec<Rc<Node>>>,
+    bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
     type_decl_items: Rc<HashMap<String, Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
@@ -801,6 +797,7 @@ pub fn v1_type_param_needs_clone_bound(
             || v1_generic_param_used_as_collection_element(
                 param_name.clone(),
                 value_params.clone(),
+                bounds.clone(),
                 type_decl_items.clone(),
                 source_indices.clone(),
             ))
@@ -812,6 +809,7 @@ pub fn v1_type_param_needs_clone_bound(
             || v1_generic_param_used_in_value_param_type_surface(
                 param_name.clone(),
                 value_params.clone(),
+                bounds.clone(),
                 type_decl_items.clone(),
                 source_indices.clone(),
             ));
@@ -838,6 +836,7 @@ pub fn v1_fn_param_type_needs_clone_bound(
                 ) || v1_type_expr_clone_impl_needs_param(
                     param_name.clone(),
                     te.clone(),
+                    bounds.clone(),
                     type_decl_items.clone(),
                     source_indices.clone(),
                 )) || v1_type_expr_wf_needs_clone_param(
@@ -883,6 +882,7 @@ pub fn v1_generic_params_needing_clone_bound(
             generic_param_names.clone(),
             value_params.clone(),
             ret.clone(),
+            bounds.clone(),
             type_decl_items.clone(),
             source_indices.clone(),
         );
@@ -903,6 +903,7 @@ pub fn v1_generic_params_needing_clone_bound(
                         ret_name.clone(),
                         body_is_param_ref.clone(),
                         value_params.clone(),
+                        bounds.clone(),
                         type_decl_items.clone(),
                         source_indices.clone(),
                     ) || v1_fn_param_type_needs_clone_bound(
@@ -1039,6 +1040,7 @@ pub fn v1_type_expr_clone_undecided_head(
 pub fn v1_type_expr_clone_impl_needs_param(
     param_name: String,
     type_expr: Rc<Node>,
+    bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
     type_decl_items: Rc<HashMap<String, Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
@@ -1057,8 +1059,10 @@ pub fn v1_type_expr_clone_impl_needs_param(
                 match v1_rt::map_get(&type_decl_items, name.clone()) {
                     Some(decl) => v1_declared_type_app_clone_impl_needs_param(
                         param_name.clone(),
+                        name.clone(),
                         decl.clone(),
                         type_expr.children.clone(),
+                        bounds.clone(),
                         type_decl_items.clone(),
                         source_indices.clone(),
                     ),
@@ -1068,6 +1072,7 @@ pub fn v1_type_expr_clone_impl_needs_param(
                             if v1_type_expr_clone_impl_needs_param(
                                 param_name.clone(),
                                 v1_wf_child_type_node(c.clone(), source_indices.clone()),
+                                bounds.clone(),
                                 type_decl_items.clone(),
                                 source_indices.clone(),
                             ) {
@@ -1088,6 +1093,7 @@ pub fn v1_declared_type_app_clone_impl_needs_param_loop(
     decl_params: Rc<Vec<Rc<Node>>>,
     type_args: Rc<Vec<Rc<Node>>>,
     phantom_slot_names: Rc<Vec<String>>,
+    bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
     type_decl_items: Rc<HashMap<String, Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
@@ -1110,6 +1116,7 @@ pub fn v1_declared_type_app_clone_impl_needs_param_loop(
                         v1_type_expr_clone_impl_needs_param(
                             param_name.clone(),
                             arg_expr.clone(),
+                            bounds.clone(),
                             type_decl_items.clone(),
                             source_indices.clone(),
                         )
@@ -1134,6 +1141,7 @@ pub fn v1_declared_type_app_clone_impl_needs_param_loop(
                                     .collect::<Vec<_>>(),
                             ),
                             phantom_slot_names.clone(),
+                            bounds.clone(),
                             type_decl_items.clone(),
                             source_indices.clone(),
                         ))
@@ -1145,8 +1153,10 @@ pub fn v1_declared_type_app_clone_impl_needs_param_loop(
 
 pub fn v1_declared_type_app_clone_impl_needs_param(
     param_name: String,
+    decl_name: String,
     decl: Rc<Node>,
     type_args: Rc<Vec<Rc<Node>>>,
+    bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
     type_decl_items: Rc<HashMap<String, Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
@@ -1154,7 +1164,13 @@ pub fn v1_declared_type_app_clone_impl_needs_param(
         param_name.clone(),
         decl.params.clone(),
         type_args.clone(),
-        v1_item_phantom_only_param_names(decl.clone(), source_indices.clone()),
+        v1_item_phantom_only_param_names(
+            decl_name.clone(),
+            decl.clone(),
+            bounds.clone(),
+            source_indices.clone(),
+        ),
+        bounds.clone(),
         type_decl_items.clone(),
         source_indices.clone(),
     )
@@ -1165,6 +1181,7 @@ pub fn v1_declared_arg_positions_need_clone_param(
     decl_params: Rc<Vec<Rc<Node>>>,
     type_args: Rc<Vec<Rc<Node>>>,
     bound_params: Rc<BTreeSet<String>>,
+    bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
     type_decl_items: Rc<HashMap<String, Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
@@ -1180,6 +1197,7 @@ pub fn v1_declared_arg_positions_need_clone_param(
                     ) && v1_type_expr_clone_impl_needs_param(
                         param_name.clone(),
                         v1_wf_child_type_node(type_arg.clone(), source_indices.clone()),
+                        bounds.clone(),
                         type_decl_items.clone(),
                         source_indices.clone(),
                     ));
@@ -1203,6 +1221,7 @@ pub fn v1_declared_arg_positions_need_clone_param(
                                     .collect::<Vec<_>>(),
                             ),
                             bound_params.clone(),
+                            bounds.clone(),
                             type_decl_items.clone(),
                             source_indices.clone(),
                         ))
@@ -1253,6 +1272,7 @@ pub fn v1_type_expr_wf_needs_clone_param(
                                 decl.params.clone(),
                                 type_expr.children.clone(),
                                 bound_params.clone(),
+                                bounds.clone(),
                                 type_decl_items.clone(),
                                 source_indices.clone(),
                             ))

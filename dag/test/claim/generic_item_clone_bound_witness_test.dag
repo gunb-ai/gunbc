@@ -229,3 +229,29 @@ test fn fn_phantom_alpha_renamed_negative_control() -> Bool {
 test fn fn_value_box_alpha_renamed_positive_control() -> Bool {
   w_fn_value_box_alpha_renamed_gets_clone()
 }
+
+fn w_fn_nested_phantom_wrapper_stays_bare() -> Bool {
+  compile_dag_rust_emit_check(
+    "module fn_clone_bound_witness.nested_phantom\n\ntype PhantomLeaf<U> {\n  tag: Int\n}\n\ntype PhantomWrapper<T> {\n  inner: PhantomLeaf<T>\n}\n\nfn inspect<N>(w: PhantomWrapper<N>) -> String {\n  \"wrapper\"\n}\n",
+    "src/fn_clone_bound_witness_nested_phantom.rs",
+    ["fn inspect<N>"],
+    ["fn inspect<N: Clone>"]
+  )
+}
+
+fn w_fn_nested_value_wrapper_gets_clone() -> Bool {
+  compile_dag_rust_emit_check(
+    "module fn_clone_bound_witness.nested_value\n\ntype ValueBox<T> {\n  value: T\n}\n\ntype ValueWrapper<T> {\n  inner: ValueBox<T>\n}\n\nfn inspect<N>(w: ValueWrapper<N>) -> String {\n  \"wrapper\"\n}\n",
+    "src/fn_clone_bound_witness_nested_value.rs",
+    ["fn inspect<N: Clone>"],
+    ["fn inspect<N>"]
+  )
+}
+
+test fn fn_nested_phantom_wrapper_negative_control() -> Bool {
+  w_fn_nested_phantom_wrapper_stays_bare()
+}
+
+test fn fn_nested_value_wrapper_positive_control() -> Bool {
+  w_fn_nested_value_wrapper_gets_clone()
+}

@@ -702,6 +702,7 @@ fn v1_declared_type_app_clone_impl_needs_param_loop(
   decl_params: List<Node>,
   type_args: List<Node>,
   phantom_slot_names: List<String>,
+  bounds: Map<String, Set<String>>,
   type_decl_items: Map<String, Node>,
   source_indices: Map<String, NewlineIndex>
 ) -> Bool {
@@ -724,6 +725,7 @@ fn v1_declared_type_app_clone_impl_needs_param_loop(
               v1_type_expr_clone_impl_needs_param(
                 param_name: param_name,
                 type_expr: arg_expr,
+                bounds: bounds,
                 type_decl_items: type_decl_items,
                 source_indices: source_indices
               )
@@ -733,6 +735,7 @@ fn v1_declared_type_app_clone_impl_needs_param_loop(
             decl_params: decl_params |> skip(1),
             type_args: type_args |> skip(1),
             phantom_slot_names: phantom_slot_names,
+            bounds: bounds,
             type_decl_items: type_decl_items,
             source_indices: source_indices
           )
@@ -742,8 +745,10 @@ fn v1_declared_type_app_clone_impl_needs_param_loop(
 
 fn v1_declared_type_app_clone_impl_needs_param(
   param_name: String,
+  decl_name: String,
   decl: Node,
   type_args: List<Node>,
+  bounds: Map<String, Set<String>>,
   type_decl_items: Map<String, Node>,
   source_indices: Map<String, NewlineIndex>
 ) -> Bool {
@@ -751,7 +756,13 @@ fn v1_declared_type_app_clone_impl_needs_param(
     param_name: param_name,
     decl_params: decl.params,
     type_args: type_args,
-    phantom_slot_names: v1_item_phantom_only_param_names(item: decl, source_indices: source_indices),
+    phantom_slot_names: v1_item_phantom_only_param_names(
+      item_name: decl_name,
+      item: decl,
+      bounds: bounds,
+      source_indices: source_indices
+    ),
+    bounds: bounds,
     type_decl_items: type_decl_items,
     source_indices: source_indices
   )
@@ -762,6 +773,7 @@ fn v1_declared_arg_positions_need_clone_param(
   decl_params: List<Node>,
   type_args: List<Node>,
   bound_params: Set<String>,
+  bounds: Map<String, Set<String>>,
   type_decl_items: Map<String, Node>,
   source_indices: Map<String, NewlineIndex>
 ) -> Bool {
@@ -775,6 +787,7 @@ fn v1_declared_arg_positions_need_clone_param(
             && v1_type_expr_clone_impl_needs_param(
               param_name: param_name,
               type_expr: v1_wf_child_type_node(ch: type_arg, source_indices: source_indices),
+              bounds: bounds,
               type_decl_items: type_decl_items,
               source_indices: source_indices
             )
@@ -783,6 +796,7 @@ fn v1_declared_arg_positions_need_clone_param(
             decl_params: decl_params |> skip(1),
             type_args: type_args |> skip(1),
             bound_params: bound_params,
+            bounds: bounds,
             type_decl_items: type_decl_items,
             source_indices: source_indices
           )
@@ -821,6 +835,7 @@ fn v1_type_expr_wf_needs_clone_param(
           decl_params: decl.params,
           type_args: type_expr.children,
           bound_params: bound_params,
+          bounds: bounds,
           type_decl_items: type_decl_items,
           source_indices: source_indices
         )
