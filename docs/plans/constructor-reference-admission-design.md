@@ -23,9 +23,26 @@ Specimen: `v2.compiler.self_host.behavioral_comparison_receipt` `BehavioralCompa
 | Opaque host-effect return | **NEGATIVE** | `WitnessBin.Run` returns forgeable `String`/`Bool` fields |
 | Process-output `sole_constructor` carrier (#7794) | **DECORATIVE** | Forge via `from_run_fields` / `hermetic_equivalent` |
 
-**Closing both refused + leaking routes** requires a capability beyond `sole_constructor` alone. **Legitimate wet transport** (`tools.direct_rust_door_transport`) must remain admitted after the wall lands.
+**Closing both refused + leaking routes on the behavioral-comparison specimen** requires capabilities beyond `sole_constructor` alone — call-edge admission plus (for fixture-origin parameter types) the orthogonal carrier wise-ram-22 models. **Legitimate wet transport** (`tools.direct_rust_door_transport`) must remain admitted after the wall lands.
 
-## 2. End shape (carrier)
+### 1.1 Joint with wise-ram-22 — orthogonal mechanisms (msg_e499e35c)
+
+**wise-ram-22** (`FixtureOriginCanMintProductionQualification`, measured on direct-door): hand-authored `InferredTree` **accepted** by `mint_provenanced_rust_artifact`; `infer(assemble(direct_rust_door_ingest()))` **rejected** — production qualification reachable from fixture-origin input while the real pipeline cannot obtain it.
+
+**Clean division (both notes required reading):**
+
+| Mechanism | Question it answers | Authority |
+|---|---|---|
+| **ConstructorReferenceAdmission** (this note) | **WHO may construct** — which callers may invoke a sealed constructor | Call-edge + opt-in roster |
+| **CompilerInferredArtifact + inference receipt** (wise-ram-22 B0 §1) | **WHAT may be constructed from** — parameter types that must carry compiler-derived provenance | Stage-origin carrier |
+
+**Orthogonal and both required:** a production qualification reachable by a **permitted** caller from a **fixture-origin** value is refused by **neither alone**. Call-edge admission does **not** close wise-ram-22's class: the direct-door specimen is a permitted caller supplying a hand-authored `InferredTree` to a mint whose signature legitimately accepts one — the caller is not the problem; the discarded epistemic distinction in the **parameter type** is.
+
+**Stronger adjacent case (wise-ram-22 census):** cargo may compile bytes and a behavioral corpus may **genuinely execute** them while the bytes came from a **substitute subject** — evidence is **real about the wrong subject** (nastier than checksum-derived seals without execution witness in §0).
+
+**Rung correction (wise-ram-22, credited):** `src/v2/compiler/04_infer.dag` has **zero** `sole_constructor` handling — marker modeled in v2 source, refusal executes on **v1 seed path only**. Claiming "mechanically preventable on covered form" without per-path split is **rung inflation** (DESIGN §4b(1): minimum across in-scope paths).
+
+**Origin coproduct warning (wise-ram-22 B0 correction — load-bearing for CargoGreen→BehavioralEquivalent):** do **not** put `ExecutionMeasured` as a sibling of `CompilerDerived` | `FixtureDerived` in a production-origin coproduct. A fixture-derived artifact can **also** be execution-measured — that is exactly the dangerous state. Split axes: `ProductionStageOrigin = CompilerDerived | FixtureDerived | UnknownOrigin` and `ProductionEvidenceGrounding = StructurallyGrounded | ExecutionMeasured{receipt} | Unmeasured`. Measurement **carries** an origin; it does not replace one.
 
 ```dag
 import std.decl_ref { DeclarationRef, decl_ref, decl_field_ref }
@@ -158,6 +175,22 @@ Together they close the two routes measured on `BehavioralComparisonObservation`
 ### 5.4 Compiler-module exemptions
 
 `sole_constructor` carries compiler-module check exemptions (unverified completeness). **ConstructorReferenceAdmission must not inherit exemptions by default.** If an exemption is needed, it is a named row with dissolution trigger — never silent skip inside `v2.compiler` / `v1.compiler` trees.
+
+### 5.5 Census disposition taxonomy (wise-ram-22 / keen-lark-681 exchange)
+
+Classified **specimens** — denominator not closed; keen-lark-681 successor owes full population. Dispositions for operator packet:
+
+| Tag | Meaning | Notes |
+|---|---|---|
+| **A (v1 path)** | Cross-module record literal refused on `sole_constructor` types | **v1 infer only**; narrower than it reads (file-identity scope, fail-open lookup miss on uncovered paths) |
+| **A-prime (v2 path)** | Same construction on **v2 infer path** | **Uncovered** — not A; zero `sole_constructor` handling in `src/v2/compiler/04_infer.dag` today |
+| **B** | Closable after `ConstructorReferenceAdmission` | Opted-in constructor mints; declaration-grain `DeclarationRef` permitted callers; roster enrollment |
+| **C — fixture-origin parameter** | `mint_provenanced_rust_artifact` accepting bare `InferredTree` | **Not** this capability; wise-ram-22 B0 §1 (`CompilerInferredArtifact` + inference receipt) |
+| **C — real execution, wrong subject** | Downstream compile/run succeeds on substitute subject bytes | Adjacent to checksum seals; evidence genuine about wrong subject |
+| **C — other** | `WitnessBin.Run` forgeable strings; decorative process-output `sole_constructor`; checksum-derived seals without execution witness | See §1 table |
+| **D** | Residual after B | Alias/HOF; module-grain over-admission if mis-implemented; **subject discontinuity** (qualification assembled from receipts carrying different subjects — B0 §2 chain property, not visible to either admission mechanism alone) |
+
+**Do not overstate B:** ConstructorReferenceAdmission does not close wise-ram-22's FixtureOrigin class or the direct-door permitted-caller + hand-authored tree specimen.
 
 ## 6. First slice (already written — executable acceptance)
 
