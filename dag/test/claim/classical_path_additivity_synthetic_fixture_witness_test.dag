@@ -1,13 +1,13 @@
 module test.claim.classical_path_additivity_synthetic_fixture_witness_test
 
 import std.types { Bool }
+import std.algebra { Less, Greater }
 import gunbc.physics.classical_path_additivity {
   PathAdditivityRefutationReceipt,
   PathAdditivitySyntheticFixture,
   PathAdditivityCounterexampleWitness,
   path_additivity_refutation_holds_for_synthetic_fixture,
-  ObservedBelowPrediction,
-  ObservedAbovePrediction,
+  path_additivity_compare_observed_to_prediction,
 }
 import gunbc.classical_path_additivity_synthetic_fixture {
   classical_path_additivity_refutation_holds,
@@ -32,7 +32,7 @@ test fn w_synthetic_path_additivity_rejects_fabricated_both_open_count() -> Bool
     right_alternative_count: witness.right_alternative_count,
     both_open_observed_count: witness.classical_additive_prediction,
     classical_additive_prediction: witness.classical_additive_prediction,
-    mismatch_direction: witness.mismatch_direction,
+    observed_vs_prediction: witness.observed_vs_prediction,
   }
   let bad_receipt = PathAdditivityRefutationReceipt {
     subject: path_additivity_subject,
@@ -49,7 +49,7 @@ test fn w_synthetic_path_additivity_rejects_corrupted_left_count() -> Bool {
     right_alternative_count: witness.right_alternative_count,
     both_open_observed_count: witness.both_open_observed_count,
     classical_additive_prediction: witness.classical_additive_prediction,
-    mismatch_direction: witness.mismatch_direction,
+    observed_vs_prediction: witness.observed_vs_prediction,
   }
   let bad_receipt = PathAdditivityRefutationReceipt {
     subject: path_additivity_subject,
@@ -75,8 +75,13 @@ test fn w_synthetic_path_additivity_subject_is_synthetic_fixture_coproduct() -> 
   path_additivity_subject == PathAdditivitySyntheticFixture {}
 }
 
-test fn w_synthetic_first_minimum_witness_below_prediction() -> Bool {
+test fn w_synthetic_compare_orientation_first_arg_is_observed() -> Bool {
+  path_additivity_compare_observed_to_prediction(observed_both: 5, prediction: 20) == Less
+    && path_additivity_compare_observed_to_prediction(observed_both: 95, prediction: 78) == Greater
+}
+
+test fn w_synthetic_first_minimum_witness_less_than_prediction() -> Bool {
   classical_path_additivity_refuted.witness.both_open_observed_count == 5
     && classical_path_additivity_refuted.witness.classical_additive_prediction == 20
-    && classical_path_additivity_refuted.witness.mismatch_direction == ObservedBelowPrediction
+    && classical_path_additivity_refuted.witness.observed_vs_prediction == Less
 }
