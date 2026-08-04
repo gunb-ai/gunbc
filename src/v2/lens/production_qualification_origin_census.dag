@@ -80,9 +80,11 @@ data empty_site_list: List<DerivedProductionQualificationMintSiteRow> = []
 
 data mint_written_callee: String = "mint_written_provenanced_rust_artifact"
 data advance_cargo_green_callee: String = "advance_written_provenanced_rust_artifact_cargo_green"
-data mint_producer_callee: String = "mint_producer_emission_receipt"
+data mint_provenanced_callee: String = "mint_provenanced_rust_artifact"
 data direct_rust_door_inferred_tree_atom: String = "direct_rust_door_inferred_tree"
 data generate_provenanced_entry_name: String = "generate_provenanced_rust_candidate_from_ingest"
+
+data ingest_mint_entry_classifier_note: String = "Ingest SourceProduced site keys on the direct fn-arrow skeleton callee mint_provenanced_rust_artifact (review 47980): generate_provenanced_rust_candidate_from_ingest never calls mint_producer_emission_receipt at the ExprCall site — that mint is one hop inside mint_provenanced_rust_artifact."
 
 data ingest_mint_entry_qualified_name: String = "v2.compiler.self_host.candidate_generation.generate_provenanced_rust_candidate_from_ingest"
 data direct_door_smoke_qualified_name: String = "tools.direct_rust_door_transport.run_direct_rust_door_emit_write_compile_smoke"
@@ -258,7 +260,7 @@ fn decl_evidence_origin(decl: FnArrowDecl) -> Optional<ProductionQualificationEv
 
 fn decl_is_derived_ingest_source_produced_site(decl: FnArrowDecl) -> Bool {
   string_eq(a: decl.name, b: generate_provenanced_entry_name)
-    && decl_contains_callee(decl: decl, callee: mint_producer_callee)
+    && decl_contains_callee(decl: decl, callee: mint_provenanced_callee)
 }
 
 fn decl_is_derived_external_source_produced_fixture_site(decl: FnArrowDecl) -> Bool {
