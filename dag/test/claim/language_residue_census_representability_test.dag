@@ -12,6 +12,7 @@ import std.content_hash {
 import std.language_target_identity {
   LanguageTargetSurfaceRow,
   LanguageTargetSurfaceLocus,
+  surface_locus_eq,
   SurfaceDeclaration,
   SurfaceModule,
   LanguageTargetSurfaceAuthority,
@@ -47,7 +48,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data representability_receipt_note: String = "CENSUS-0A REPRESENTABILITY RECEIPT, blocker 8 first half (operator ruling 2026-08-04: a synthetic witness suite discharges neither half, and 0A must prove that the carrier can faithfully hold a REAL repository census before it is ready). SUBJECT: gunbc.repository_census_observation at 0A head ca75137ee3a5b0796cc89e8de1f0c195fde80cca. CONSUMER: the language-residue census, gunbc.language_target_registry language_target_surface_census, stacked over that head — scaffold retirement is still blocked on the reflection surface and is deliberately not used. This file is NOT part of the 0A pull request; it executes on the stacked branch and its receipt names the exact 0A head above, which is what makes it evidence about that head rather than about whatever the branch later becomes. WHAT IT PROVES: the actual residue rows, at their real two grains, map into CensusObservedRow with intrinsic identities; the actual repository population is expressible; the row count DERIVES from those rows and agrees with the consumer's own independent count; and the observation identity is stable and moves when any measured part moves. WHAT IT DOES NOT PROVE, stated so nobody reads more from a green run: nothing here establishes how much of the target-bearing population the residue census COVERS. The consumer's own maximum-conclusion note is explicit that its population is hand-declared and that three of its rows were recently found to name modules that do not exist. That is exactly the class CENSUS-0B's denominator join must close, and until it does this receipt is representability alone."
+data representability_receipt_note: String = "CENSUS-0A REPRESENTABILITY RECEIPT, blocker 8 first half (operator ruling 2026-08-04: a synthetic witness suite discharges neither half, and 0A must prove that the carrier can faithfully hold a REAL repository census before it is ready). SUBJECT: gunbc.repository_census_observation at 0A head ca75137ee3a5b0796cc89e8de1f0c195fde80cca. CONSUMER: the language-residue census, gunbc.language_target_registry language_target_surface_census, stacked over that head — scaffold retirement is still blocked on the reflection surface and is deliberately not used. This file is NOT part of the 0A pull request; it executes on the stacked branch and its receipt names the exact 0A head above, which is what makes it evidence about that head rather than about whatever the branch later becomes. WHAT IT PROVES, in two separable halves the operator asked for and which must not be blurred. EXPRESSIBILITY: the actual residue rows, at their real two grains, map into CensusObservedRow with intrinsic identities, the actual repository population is expressible, and the observation identity is stable and moves when any measured part moves. POPULATION FAITHFULNESS: the carried population IS the consumer population, established by an IDENTITY JOIN over subject keys — missing, unexpected and duplicate reconciled as sets — never by comparing totals. AN EARLIER REVISION OF THIS RECEIPT SETTLED THE FAITHFULNESS HALF WITH A COUNT EQUALITY AND THAT ASSERTION COULD NOT FAIL: carried was count of the observation rows, which are the census rows mapped, and the consumer figure was count of the census rows, so the claim was count(map(xs)) == count(xs) — true by construction for any total map, and blind to the one defect that matters here. If the subject-key function collided two distinct real surfaces onto one key, every witness still passed, because map preserves length and the identity fold still yields a stable address. A census that silently merges two surfaces is precisely what this carrier exists to prevent, so the receipt was making a population claim with an oracle that could not see the population. DESIGN section 5 names the class exactly: a measurement copied from the same current tree is not an oracle, and completeness is an identity join, not a count equality. THE INDEPENDENT ORACLE now used for distinctness is the CONSUMER OWN EQUALITY: surface_locus_eq decides how many distinct surfaces the residue census has, and that count is compared against the number of distinct subject keys this file derives. Those are two different authorities answering one question, so a collision in the key function shows up as a disagreement rather than being absorbed. WHAT IT DOES NOT PROVE, stated so nobody reads more from a green run: nothing here establishes how much of the target-bearing population the residue census COVERS. The consumer's own maximum-conclusion note is explicit that its population is HAND-DECLARED, so a target-bearing surface nobody wrote a row for is invisible to every assertion over it. STATED PRECISELY, because the imprecise version was corrected in review and the difference is the whole point: three rows naming modules that did not exist were found and FIXED, and under the corrected instrument the census has zero phantoms — the INSTANCES ARE CLOSED. What remains open is the CLASS, and it is uncaught BY CONSTRUCTION rather than by oversight, because the population is the thing being asserted over and no assertion inside a module can validate its own denominator. Citing the closed instances as if they were a live defect would be the same overstatement this receipt was corrected for one paragraph up. The class is what CENSUS-0B's denominator join must close, with a Node-tree observer deriving the population from the real module tree; and that observer must match the containment lens at STRING-PREFIX grain rather than namespace grain, because the lens confines by string prefix and a namespace-shaped instrument manufactures phantoms out of the lens's real rows — v2.workflow.bash covers the siblings v2.workflow.bash_command_fold_serialize and v2.workflow.bash_emit, which share a name stem and are not children of a namespace. Until that observer exists this receipt establishes expressibility and population faithfulness, and says nothing whatever about coverage."
 
 data residue_repository_population: RepositoryPopulation = RepositoryPopulation {
   repository: "gunbc" as RepositoryIdentity,
@@ -135,13 +136,67 @@ fn residue_census_observation() -> RepositoryCensusObservation {
   )
 }
 
-test fn witness_the_real_residue_census_is_representable_as_an_observation() -> Bool {
+fn residue_subject_key_in(key: CensusSubjectKey, keys: List<CensusSubjectKey>) -> Bool {
+  any(keys, k => (k as String) == (key as String))
+}
+
+fn residue_distinct_subject_key_count(keys: List<CensusSubjectKey>) -> Int {
+  count(
+    fold(keys, init: [], f: fn(acc, key) {
+      if residue_subject_key_in(key: key, keys: acc) { acc } else { append(acc, [key]) }
+    })
+  )
+}
+
+fn residue_distinct_locus_count(rows: List<LanguageTargetSurfaceRow>) -> Int {
+  count(
+    fold(rows, init: [], f: fn(acc, row) {
+      if any(acc, seen => surface_locus_eq(a: seen, b: row.surface)) {
+        acc
+      } else {
+        append(acc, [row.surface])
+      }
+    })
+  )
+}
+
+fn residue_expected_subject_keys() -> List<CensusSubjectKey> {
+  language_target_surface_census |> map(row => residue_surface_subject_key(locus: row.surface))
+}
+
+test fn witness_the_carried_population_is_the_consumer_population_by_identity_join() -> Bool {
+  let observation = residue_census_observation()
+  let observed_keys = repository_census_subject_keys(observation: observation)
+  let expected_keys = residue_expected_subject_keys()
+  let missing = expected_keys |> filter(k => !residue_subject_key_in(key: k, keys: observed_keys))
+  let unexpected = observed_keys |> filter(k => !residue_subject_key_in(key: k, keys: expected_keys))
+  let distinct_keys = residue_distinct_subject_key_count(keys: observed_keys)
+  let distinct_loci = residue_distinct_locus_count(rows: language_target_surface_census)
+  count(observed_keys) > 0
+    && count(missing) == 0
+    && count(unexpected) == 0
+    && distinct_keys == distinct_loci
+}
+
+test fn witness_no_two_real_surfaces_collide_onto_one_subject_key() -> Bool {
+  let observation = residue_census_observation()
+  let observed_keys = repository_census_subject_keys(observation: observation)
+  let distinct_keys = residue_distinct_subject_key_count(keys: observed_keys)
+  let distinct_loci = residue_distinct_locus_count(rows: language_target_surface_census)
+  let duplicates = observed_keys |> filter(k =>
+    count(observed_keys |> filter(other => (other as String) == (k as String))) > 1
+  )
+  count(observed_keys) > 0
+    && distinct_keys == distinct_loci
+    && count(duplicates) == 0
+}
+
+test fn witness_the_real_residue_census_is_expressible_as_an_observation() -> Bool {
   let observation = residue_census_observation()
   let carried = repository_census_row_count(observation: observation)
   let consumer_own_count = surface_census_row_count()
   carried > 0
     && carried == consumer_own_count
-    && count(repository_census_subject_keys(observation: observation)) == carried
 }
 
 test fn witness_the_real_observation_identity_is_stable_across_reads() -> Bool {
