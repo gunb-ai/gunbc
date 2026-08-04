@@ -1,12 +1,14 @@
 module extdeps.npm
 
-import std.types { NonEmptyStr, String, Bool, List }
+import std.types { NonEmptyStr, String, Bool, List, Int }
 import std.integer { UInt8 }
 import std.encoding { base64_decode, Standard }
 import std.content_hash {
   ContentHash,
   Sha512Digest,
+  Sha1Digest,
   sha512_hex_digest,
+  sha1_hex_digest,
   as_content_hash_sha512,
 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -18,13 +20,20 @@ import extdeps.pin { Pin, ExactPin }
 import extdeps.package {
   PackageCoordinate,
   PackageArtifactSource,
-  PackageSelection,
+  PinnedPackageArtifactSelection,
 }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
-    locator: "docs.npmjs.com/cli/v10/configuring-npm/package-lock-json"
+    locator: "docs.npmjs.com/cli/v11/configuring-npm/package-lock-json"
+  }
+}
+
+data npm_sri_w3c_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.w3.org/TR/SRI/"
   }
 }
 
@@ -32,71 +41,235 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.npm",
-      decl_name: "NpmRegistry",
+      decl_name: "NpmPackageLockV3",
       field: WholeDeclaration
     }
   },
   first_citation: extdeps_external_authority_anchor,
-  further_citations: []
+  further_citations: [npm_sri_w3c_authority]
 }
 
-data npm_sri_wire_note: String = "npm package integrity uses Subresource Integrity wire form sha512-<base64> on each lock entry (package-lock v3 packages.*.integrity). Canonical ContentHash storage is lowercase hex via std.content_hash.Sha512Digest — the same 128-digit carrier as extdeps.container.oci.digest OciSha512DigestHex. This module owns the npm-specific base64 wire parser; std.content_hash owns the hex family member."
+data npm_scope_subject_note: String = "THE SUBJECT IS package-lock v3 — path keys, node metadata, dependency maps, and integrity wire — not the npm registry HTTP API. Registry API facts, if ever modeled, are a separate module."
+
+data npm_integrity_decode_note: String = "W3C SRI permits one or more hash expressions, SHA-256/384/512, and per-expression options. npm package-lock integrity may be SHA-512 or SHA-1 SRI. This decoder is honest about that grammar: typed outcomes, never Option that erases the refusal cause. A narrow first cut admits single sha512 and single sha1 expressions without options; multiple expressions and options refuse with typed causes. Decoding the lock's EXPECTED digest is not artifact verification — observed SHA-512 over acquired archive bytes is a separate package-delivery step."
+
+data npm_codex_integrity_profile_note: String = "PRODUCTION PROFILE ≠ FORMAT CLAIM. The npm format understands sha1 and sha512 tokens. Codex runtime policy may admit only SHA-512 for selected registry artifacts; another algorithm is a typed unsupported-profile refusal, not a silent drop."
+
+type NpmPackageLockV3 {
+  lockfile_version: Int
+}
 
 type NpmRegistry {
   registry: NonEmptyStr
 }
 
-type NpmLockPathKey = NonEmptyStr
+type NpmLockPathKey
+  = NpmRootLockPath
+  | NpmRelativeLockPath {
+      path: NonEmptyStr
+    }
+
+data npm_lock_path_key_note: String = "npm package-lock packages map uses the empty string \"\" for the root project. NpmRootLockPath is derived only from that exact empty JSON object key; every other key must be a safe relative package path (NpmRelativeLockPath)."
 
 type NpmDependencyKind
   = NpmRuntimeDependency
-  | NpmDevDependency
   | NpmOptionalDependency
+  | NpmPeerDependency
+
+data npm_dependency_kind_note: String = "Edge kinds come from the lock's dependency maps. A node marked dev/optional is NODE METADATA, not a second edge category invented as NpmDevDependency."
+
+type NpmLockNodeFlags {
+  dev: Bool
+  optional: Bool
+  dev_optional: Bool
+  in_bundle: Bool
+  has_install_script: Bool
+  has_shrinkwrap: Bool
+}
+
+type NpmPlatformConstraint {
+  os: List<NonEmptyStr>
+  cpu: List<NonEmptyStr>
+}
 
 type NpmLockNodeMetadata {
-  has_install_script: Bool
-  optional: Bool
+  flags: NpmLockNodeFlags
+  platform: NpmPlatformConstraint
 }
 
 type NpmManagerIdentity {
-  lockfile_version: NonEmptyStr
+  lockfile_version: Int
   npm_version: NonEmptyStr
 }
+
+type NpmResolvedRegistryArtifact {
+  locator: NonEmptyStr
+}
+
+type NpmResolvedGitArtifact {
+  locator: NonEmptyStr
+}
+
+type NpmLockNodeSelection
+  = NpmRootProject {
+      manifest_identity: ContentHash
+    }
+  | NpmRegistryArtifact {
+      package: PackageCoordinate<NpmRegistry>
+      version: VersionIdentity
+      resolved: NpmResolvedRegistryArtifact
+      expected_integrity: Sha512Digest
+    }
+  | NpmGitArtifact {
+      package: PackageCoordinate<NpmRegistry>
+      revision: NonEmptyStr
+      resolved: NpmResolvedGitArtifact
+    }
+  | NpmLink {
+      target: NpmLockPathKey
+    }
+
+data npm_lock_node_selection_note: String = "Selection is an npm-local coproduct. Root, link, git, and registry nodes are different shapes. The first production Codex lock may support only root + registry-artifact nodes and refuse other forms — it must not pretend those forms cannot exist. expected_integrity on registry artifacts is the lock's expected digest after profile admission, not proof that archive bytes were hashed."
+
+type NpmIntegrityDecode
+  = NpmSingleSha512Integrity {
+      digest: Sha512Digest
+    }
+  | NpmSingleSha1Integrity {
+      digest: Sha1Digest
+    }
+  | NpmIntegrityUnsupportedAlgorithm {
+      algorithm: NonEmptyStr
+    }
+  | NpmIntegrityMultipleExpressionsUnsupported {
+      count: Int
+    }
+  | NpmIntegrityOptionsUnsupported
+  | NpmIntegrityMalformed {
+      reason: NonEmptyStr
+    }
+
+type CodexNpmIntegrityAdmission
+  = CodexNpmIntegrityAdmitted {
+      digest: Sha512Digest
+    }
+  | CodexNpmIntegritySha1Unsupported {
+      digest: Sha1Digest
+    }
+  | CodexNpmIntegrityNotAdmitted {
+      cause: NpmIntegrityDecode
+    }
 
 fn npm_octets_to_lower_hex(octets: List<UInt8>) -> String {
   map(octets, octet => byte_hex_lower(v: octet)) |> join(separator: "")
 }
 
-fn npm_subresource_integrity_sha512_base64(wire: String) -> ContentHash? {
-  if !wire.starts_with(prefix: "sha512-") {
-    none
-  } else {
-    let encoded = wire.substring(start: 7, end: wire.length())
+fn npm_decode_integrity_expression(expression: String) -> NpmIntegrityDecode {
+  if expression |> contains("?") {
+    NpmIntegrityOptionsUnsupported
+  } else if expression.starts_with(prefix: "sha512-") {
+    let encoded = expression.substring(start: 7, end: expression.length())
     match base64_decode(s: encoded, variant: Standard) {
       Present { value: octets } =>
         if count(octets) == 64 {
           match sha512_hex_digest(hex: npm_octets_to_lower_hex(octets: octets)) {
-            Present { value: digest } =>
-              Present { value: as_content_hash_sha512(digest: digest) }
-            Absent => none
+            Present { value: digest } => NpmSingleSha512Integrity { digest: digest }
+            Absent =>
+              NpmIntegrityMalformed {
+                reason: "sha512 hex refinement refused" as NonEmptyStr,
+              }
           }
         } else {
-          none
+          NpmIntegrityMalformed {
+            reason: "sha512 decoded length is not 64 octets" as NonEmptyStr,
+          }
         }
-      Absent => none
+      Absent =>
+        NpmIntegrityMalformed {
+          reason: "sha512 base64 decode refused" as NonEmptyStr,
+        }
+    }
+  } else if expression.starts_with(prefix: "sha1-") {
+    let encoded = expression.substring(start: 5, end: expression.length())
+    match base64_decode(s: encoded, variant: Standard) {
+      Present { value: octets } =>
+        if count(octets) == 20 {
+          match sha1_hex_digest(hex: npm_octets_to_lower_hex(octets: octets)) {
+            Present { value: digest } => NpmSingleSha1Integrity { digest: digest }
+            Absent =>
+              NpmIntegrityMalformed {
+                reason: "sha1 hex refinement refused" as NonEmptyStr,
+              }
+          }
+        } else {
+          NpmIntegrityMalformed {
+            reason: "sha1 decoded length is not 20 octets" as NonEmptyStr,
+          }
+        }
+      Absent =>
+        NpmIntegrityMalformed {
+          reason: "sha1 base64 decode refused" as NonEmptyStr,
+        }
+    }
+  } else if expression.starts_with(prefix: "sha256-") {
+    NpmIntegrityUnsupportedAlgorithm { algorithm: "sha256" as NonEmptyStr }
+  } else if expression.starts_with(prefix: "sha384-") {
+    NpmIntegrityUnsupportedAlgorithm { algorithm: "sha384" as NonEmptyStr }
+  } else {
+    NpmIntegrityMalformed {
+      reason: "missing or unknown SRI algorithm prefix" as NonEmptyStr,
     }
   }
 }
 
-fn npm_selection(
+fn npm_decode_integrity(wire: String) -> NpmIntegrityDecode {
+  let expressions = split(s: wire, delimiter: " ") |> filter(part => part != "")
+  let n = count(expressions)
+  if n == 0 {
+    NpmIntegrityMalformed {
+      reason: "empty integrity wire" as NonEmptyStr,
+    }
+  } else if n == 1 {
+    match expressions |> first {
+      Present { value: expression } => npm_decode_integrity_expression(expression: expression)
+      Absent =>
+        NpmIntegrityMalformed {
+          reason: "empty integrity wire" as NonEmptyStr,
+        }
+    }
+  } else {
+    NpmIntegrityMultipleExpressionsUnsupported { count: n }
+  }
+}
+
+fn codex_admit_npm_integrity(decoded: NpmIntegrityDecode) -> CodexNpmIntegrityAdmission {
+  match decoded {
+    NpmSingleSha512Integrity { digest } => CodexNpmIntegrityAdmitted { digest: digest }
+    NpmSingleSha1Integrity { digest } => CodexNpmIntegritySha1Unsupported { digest: digest }
+    other => CodexNpmIntegrityNotAdmitted { cause: other }
+  }
+}
+
+fn npm_integrity_as_sha512_content_hash(decoded: NpmIntegrityDecode) -> ContentHash? {
+  match decoded {
+    NpmSingleSha512Integrity { digest } =>
+      Present { value: as_content_hash_sha512(digest: digest) }
+    _ => none
+  }
+}
+
+fn npm_pinned_registry_selection(
   name: NonEmptyStr,
   version: NonEmptyStr,
   identity: ContentHash,
   locator: NonEmptyStr,
-) -> PackageSelection<NpmRegistry> {
-  PackageSelection {
+) -> PinnedPackageArtifactSelection<NpmRegistry> {
+  PinnedPackageArtifactSelection {
     pin: Pin {
-      subject: PackageCoordinate { ecosystem: NpmRegistry { registry: "npmjs" as NonEmptyStr }, name: name },
+      subject: PackageCoordinate {
+        ecosystem: NpmRegistry { registry: "npmjs" as NonEmptyStr },
+        name: name,
+      },
       version: version as VersionIdentity,
       expected_identity: identity,
       selection: ExactPin,

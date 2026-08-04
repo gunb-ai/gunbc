@@ -3,65 +3,111 @@ module test.claim.npm_sri_witness_test
 import std.types { NonEmptyStr, Bool, String }
 import std.content_hash {
   ContentHash,
+  Sha512Digest,
   compare_content_hash,
   ContentHashEqual,
   ContentHashDifferent,
   ContentHashCrossFamilyIncomparable,
   content_hash_of_value,
+  as_content_hash_sha512,
 }
-import extdeps.npm { npm_subresource_integrity_sha512_base64 }
 
-data witness_note: String = "Measured npm SRI from docs/probes/provider_interface_acquisition_2026-08-03.json @anthropic-ai/claude-agent-sdk — not a tree-copied oracle."
+import extdeps.npm {
+  npm_decode_integrity,
+  codex_admit_npm_integrity,
+  NpmSingleSha512Integrity,
+  NpmSingleSha1Integrity,
+  NpmIntegrityUnsupportedAlgorithm,
+  NpmIntegrityMultipleExpressionsUnsupported,
+  NpmIntegrityOptionsUnsupported,
+  NpmIntegrityMalformed,
+  CodexNpmIntegrityAdmitted,
+  CodexNpmIntegritySha1Unsupported,
+  CodexNpmIntegrityNotAdmitted,
+}
+
+data witness_note: String = "Measured npm SRI from docs/probes/provider_interface_acquisition_2026-08-03.json @anthropic-ai/claude-agent-sdk — not a tree-copied oracle. Exact hex is the discriminating oracle for the decoder; same-input roundtrip alone is not."
 
 data claude_agent_sdk_integrity: String = "sha512-glc7SdwPkOkLw8oxwLo9PKTdLJGqW/PIR4urWXFoRtX9YllwozsEVc5Tc1+EvLSkfrsxPJqQWqOgpjUOQXf1oA=="
 
-test fn npm_sri_parses_measured_claude_agent_sdk_integrity() -> Bool {
-  match npm_subresource_integrity_sha512_base64(wire: claude_agent_sdk_integrity) {
-    Present { value: hash } =>
-      match hash {
-        Sha512Hash(_) => true
-        Fnv1a64(_) => false
-        Sha256Hash(_) => false
-        Sha1Hash(_) => false
-      }
-    Absent => false
+data claude_agent_sdk_integrity_hex: String = "82573b49dc0f90e90bc3ca31c0ba3d3ca4dd2c91aa5bf3c8478bab59716846d5fd625970a33b0455ce53735f84bcb4a47ebb313c9a905aa3a0a6350e4177f5a0"
+
+test fn npm_sri_parses_measured_claude_agent_sdk_integrity_exact_hex() -> Bool {
+  match npm_decode_integrity(wire: claude_agent_sdk_integrity) {
+    NpmSingleSha512Integrity { digest } =>
+      (digest.hex as String) == claude_agent_sdk_integrity_hex
+        && match codex_admit_npm_integrity(decoded: NpmSingleSha512Integrity { digest: digest }) {
+          CodexNpmIntegrityAdmitted { digest: admitted } =>
+            (admitted.hex as String) == claude_agent_sdk_integrity_hex
+          _ => false
+        }
+    _ => false
   }
 }
 
 test fn npm_sri_refuses_structural_expectation() -> Bool {
-  match npm_subresource_integrity_sha512_base64(wire: claude_agent_sdk_integrity) {
-    Present { value: parsed } =>
+  match npm_decode_integrity(wire: claude_agent_sdk_integrity) {
+    NpmSingleSha512Integrity { digest } =>
       match compare_content_hash(
-        left: parsed,
+        left: as_content_hash_sha512(digest: digest),
         right: content_hash_of_value(value: "not-a-digest" as NonEmptyStr),
       ) {
         ContentHashCrossFamilyIncomparable => true
         ContentHashEqual => false
         ContentHashDifferent => false
       }
-    Absent => false
+    _ => false
   }
 }
 
-test fn npm_sri_refuses_wrong_prefix() -> Bool {
-  match npm_subresource_integrity_sha512_base64(wire: "sha256-deadbeef") {
-    Present { value: _ } => false
-    Absent => true
+test fn npm_sri_refuses_sha256_prefix_as_unsupported_algorithm() -> Bool {
+  match npm_decode_integrity(wire: "sha256-deadbeef") {
+    NpmIntegrityUnsupportedAlgorithm { algorithm } =>
+      algorithm == ("sha256" as NonEmptyStr)
+    _ => false
   }
 }
 
-test fn npm_sri_roundtrip_is_stable() -> Bool {
-  match npm_subresource_integrity_sha512_base64(wire: claude_agent_sdk_integrity) {
-    Present { value: a } =>
-      match npm_subresource_integrity_sha512_base64(wire: claude_agent_sdk_integrity) {
-        Present { value: b } =>
-          match compare_content_hash(left: a, right: b) {
-            ContentHashEqual => true
-            ContentHashDifferent => false
-            ContentHashCrossFamilyIncomparable => false
-          }
-        Absent => false
+test fn npm_sri_refuses_malformed_base64() -> Bool {
+  match npm_decode_integrity(wire: "sha512-!!!") {
+    NpmIntegrityMalformed { reason: _ } => true
+    _ => false
+  }
+}
+
+test fn npm_sri_refuses_wrong_decoded_length() -> Bool {
+  match npm_decode_integrity(wire: "sha512-YQ==") {
+    NpmIntegrityMalformed { reason } =>
+      (reason as String) == "sha512 decoded length is not 64 octets"
+    _ => false
+  }
+}
+
+test fn npm_sri_refuses_options() -> Bool {
+  match npm_decode_integrity(
+    wire: "sha512-glc7SdwPkOkLw8oxwLo9PKTdLJGqW/PIR4urWXFoRtX9YllwozsEVc5Tc1+EvLSkfrsxPJqQWqOgpjUOQXf1oA==?ct=application/javascript",
+  ) {
+    NpmIntegrityOptionsUnsupported => true
+    _ => false
+  }
+}
+
+test fn npm_sri_refuses_multiple_expressions() -> Bool {
+  match npm_decode_integrity(
+    wire: "sha512-glc7SdwPkOkLw8oxwLo9PKTdLJGqW/PIR4urWXFoRtX9YllwozsEVc5Tc1+EvLSkfrsxPJqQWqOgpjUOQXf1oA== sha256-abc",
+  ) {
+    NpmIntegrityMultipleExpressionsUnsupported { count } => count == 2
+    _ => false
+  }
+}
+
+test fn codex_profile_refuses_sha1_integrity() -> Bool {
+  match npm_decode_integrity(wire: "sha1-AAECAwQFBgcICQoLDA0ODxAREhM=") {
+    NpmSingleSha1Integrity { digest } =>
+      match codex_admit_npm_integrity(decoded: NpmSingleSha1Integrity { digest: digest }) {
+        CodexNpmIntegritySha1Unsupported { digest: _ } => true
+        _ => false
       }
-    Absent => false
+    _ => false
   }
 }

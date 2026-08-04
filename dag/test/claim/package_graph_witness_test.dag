@@ -5,10 +5,13 @@ import std.content_hash { ContentHash, structural_content_hash, as_content_hash_
 import extdeps.version { VersionIdentity }
 import extdeps.pin { Pin, ExactPin }
 import extdeps.package {
-  PackageCoordinate, PackageArtifactSource, PackageSelection,
+  PackageCoordinate, PackageArtifactSource, PinnedPackageArtifactSelection,
   PackageLockNode, PackageDependencyEdge, PackageLockGraph,
-  package_lock_contains_key, package_graph_edges_all_resolve,
-  package_graph_roots_all_resolve, package_selection_name,
+  package_lock_lookup_node, package_lock_admit_graph,
+  PackageLockNodeUnique, PackageLockNodeAbsent, PackageLockNodeDuplicate,
+  PackageLockGraphAdmitted, PackageLockGraphDuplicateNode,
+  PackageLockGraphMissingEdgeDependency,
+  pinned_package_artifact_name,
 }
 
 type ProbeEcosystem { registry: NonEmptyStr }
@@ -18,8 +21,8 @@ fn d() -> ContentHash {
   as_content_hash_structural(structural: structural_content_hash(digest: "0123456789abcdef"))
 }
 
-fn sel(name: NonEmptyStr, v: NonEmptyStr) -> PackageSelection<ProbeEcosystem> {
-  PackageSelection {
+fn sel(name: NonEmptyStr, v: NonEmptyStr) -> PinnedPackageArtifactSelection<ProbeEcosystem> {
+  PinnedPackageArtifactSelection {
     pin: Pin {
       subject: PackageCoordinate { ecosystem: ProbeEcosystem { registry: "probe" as NonEmptyStr }, name: name },
       version: v as VersionIdentity,
@@ -30,11 +33,11 @@ fn sel(name: NonEmptyStr, v: NonEmptyStr) -> PackageSelection<ProbeEcosystem> {
   }
 }
 
-fn node(key: NonEmptyStr, name: NonEmptyStr, v: NonEmptyStr) -> PackageLockNode<NonEmptyStr, PackageSelection<ProbeEcosystem>, String> {
+fn node(key: NonEmptyStr, name: NonEmptyStr, v: NonEmptyStr) -> PackageLockNode<NonEmptyStr, PinnedPackageArtifactSelection<ProbeEcosystem>, String> {
   PackageLockNode { key: key, selection: sel(name: name, v: v), metadata: "" }
 }
 
-fn graph() -> PackageLockGraph<NonEmptyStr, NonEmptyStr, PackageSelection<ProbeEcosystem>, String, ProbeKind> {
+fn graph() -> PackageLockGraph<NonEmptyStr, NonEmptyStr, PinnedPackageArtifactSelection<ProbeEcosystem>, String, ProbeKind> {
   PackageLockGraph {
     manager: "probe-pm" as NonEmptyStr,
     roots: ["node_modules/a" as NonEmptyStr],
@@ -51,13 +54,28 @@ fn graph() -> PackageLockGraph<NonEmptyStr, NonEmptyStr, PackageSelection<ProbeE
 }
 
 test fn same_name_version_different_paths_stay_distinct() -> Bool {
-  package_lock_contains_key(graph: graph(), key: "node_modules/a" as NonEmptyStr)
-    && package_lock_contains_key(graph: graph(), key: "node_modules/b/node_modules/a" as NonEmptyStr)
-    && !package_lock_contains_key(graph: graph(), key: "node_modules/c" as NonEmptyStr)
+  match package_lock_lookup_node(graph: graph(), key: "node_modules/a" as NonEmptyStr) {
+    PackageLockNodeUnique { node: _ } =>
+      match package_lock_lookup_node(graph: graph(), key: "node_modules/b/node_modules/a" as NonEmptyStr) {
+        PackageLockNodeUnique { node: _ } =>
+          match package_lock_lookup_node(graph: graph(), key: "node_modules/c" as NonEmptyStr) {
+            PackageLockNodeAbsent { key: _ } => true
+            PackageLockNodeUnique { node: _ } => false
+            PackageLockNodeDuplicate { key: _, count: _ } => false
+          }
+        PackageLockNodeAbsent { key: _ } => false
+        PackageLockNodeDuplicate { key: _, count: _ } => false
+      }
+    PackageLockNodeAbsent { key: _ } => false
+    PackageLockNodeDuplicate { key: _, count: _ } => false
+  }
 }
 
-test fn edges_and_roots_resolve() -> Bool {
-  package_graph_edges_all_resolve(graph: graph()) && package_graph_roots_all_resolve(graph: graph())
+test fn admitted_graph_accepts_unique_keys() -> Bool {
+  match package_lock_admit_graph(graph: graph()) {
+    PackageLockGraphAdmitted { graph: _ } => true
+    _ => false
+  }
 }
 
 test fn edge_to_missing_node_refuses() -> Bool {
@@ -71,5 +89,42 @@ test fn edge_to_missing_node_refuses() -> Bool {
       kind: ProbeRuntime,
     }],
   }
-  !package_graph_edges_all_resolve(graph: g)
+  match package_lock_admit_graph(graph: g) {
+    PackageLockGraphMissingEdgeDependency { key } =>
+      key == ("node_modules/missing" as NonEmptyStr)
+    _ => false
+  }
+}
+
+test fn duplicate_identical_node_keys_refuse_admission() -> Bool {
+  let g = PackageLockGraph {
+    manager: "probe-pm" as NonEmptyStr,
+    roots: ["dup" as NonEmptyStr],
+    nodes: [
+      node(key: "dup" as NonEmptyStr, name: "a" as NonEmptyStr, v: "1.0.0" as NonEmptyStr),
+      node(key: "dup" as NonEmptyStr, name: "a" as NonEmptyStr, v: "2.0.0" as NonEmptyStr),
+    ],
+    edges: [PackageDependencyEdge {
+      consumer: "dup" as NonEmptyStr,
+      dependency: "dup" as NonEmptyStr,
+      kind: ProbeRuntime,
+    }],
+  }
+  match package_lock_lookup_node(graph: g, key: "dup" as NonEmptyStr) {
+    PackageLockNodeDuplicate { key, count } =>
+      key == ("dup" as NonEmptyStr)
+        && count == 2
+        && match package_lock_admit_graph(graph: g) {
+          PackageLockGraphDuplicateNode { key: k2, count: c2 } =>
+            k2 == ("dup" as NonEmptyStr) && c2 == 2
+          _ => false
+        }
+    PackageLockNodeUnique { node: _ } => false
+    PackageLockNodeAbsent { key: _ } => false
+  }
+}
+
+test fn pinned_selection_name_projects() -> Bool {
+  let name = pinned_package_artifact_name(selection: sel(name: "a" as NonEmptyStr, v: "1.0.0" as NonEmptyStr))
+  name == ("a" as NonEmptyStr)
 }

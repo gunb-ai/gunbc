@@ -308,9 +308,12 @@ import std.content_hash {
   ContentHash,
   Sha256Digest,
   Sha256DigestHex,
+  Sha512Digest,
+  Sha512DigestHex,
   content_hash_of_value,
   content_hash_atom,
   as_content_hash_cryptographic,
+  as_content_hash_sha512,
   content_hash_eq_structural,
 }
 import std.types { Bool }
@@ -337,8 +340,19 @@ data sha256_row: ContentHash = as_content_hash_cryptographic(
   }
 )
 
+data sha512_row: ContentHash = as_content_hash_sha512(
+  digest: Sha512Digest {
+    hex: "cf83e1357eefb8bdf1542850d66d8007d620e4050b5715dc83f4a921d36ce5ce47d0d13c5d85f2b0ff8318d2877eec2f63b931bd47417a81a538327af927da3e" as Sha512DigestHex,
+  }
+)
+
 fn cross_family_eq() -> Bool { structural == sha256_row }
 fn cross_family_ne() -> Bool { structural != sha256_row }
+
+fn cross_family_sha512_vs_fnv_eq() -> Bool { structural == sha512_row }
+fn cross_family_sha512_vs_fnv_ne() -> Bool { structural != sha512_row }
+fn cross_family_sha512_vs_sha256_eq() -> Bool { sha512_row == sha256_row }
+fn cross_family_sha512_vs_sha256_ne() -> Bool { sha512_row != sha256_row }
 
 fn same_family_eq() -> Bool {
   match structural {
@@ -394,7 +408,14 @@ fn with_content_hash_ctx<R>(body: impl FnOnce(&v1_interpreter::InterpContext) ->
 #[test]
 fn cross_family_content_hash_bare_eq_refuses() {
     with_content_hash_ctx(|ctx| {
-        for f in ["cross_family_eq", "cross_family_ne"] {
+        for f in [
+            "cross_family_eq",
+            "cross_family_ne",
+            "cross_family_sha512_vs_fnv_eq",
+            "cross_family_sha512_vs_fnv_ne",
+            "cross_family_sha512_vs_sha256_eq",
+            "cross_family_sha512_vs_sha256_ne",
+        ] {
             match v1_interpreter::run_in_context(ctx, f, false) {
                 Err(InterpError::CrossRepresentationEquality { .. }) => {}
                 other => panic!(
