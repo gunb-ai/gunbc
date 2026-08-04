@@ -177,6 +177,15 @@ fn census_method_key(method: CensusMethod) -> String {
   }
 }
 
+data census_identity_covers_every_measured_field_note: String = "Every field the carrier MEASURES reaches the content address, and this row records the audit rather than the intention (review 48109). The defect it closes was exactly the class this module exists to prevent, one level down: census_coverage_key hashed a CoverageRequirement's requirement and silently dropped its unmet_because, so two censuses that failed for DIFFERENT reasons shared one identity — a content address that was not addressing all of the content, contradicting census_identity_is_content_note in the same file. The audit over the five measured fields: population contributes repository, both source-root carriers, inclusion_rule and exclusion_rule; observed_at_revision contributes both arms; method contributes every arm and every field of each; coverage now contributes every arm and both fields of every requirement; rows contribute through the caller's row_key. One omission existed and it is the one fixed here. The distinction from TextPatternScan, which legitimately omits its pattern text, is that the pattern is NOT CARRIED AT ALL — the scanner declaration is its authority — whereas unmet_because is carried, required, and measured, so omitting it drops a fact the observation states about itself. The rule that follows for any future field: a field a consumer can set is a field the identity must read, or the field does not belong on this carrier."
+
+fn census_coverage_requirement_key(requirement: CoverageRequirement) -> String {
+  concat(
+    declaration_ref_display_key(ref: requirement.requirement),
+    concat("~", requirement.unmet_because as String),
+  )
+}
+
 fn census_coverage_key(coverage: CensusCoverage) -> String {
   match coverage {
     CompleteForDeclaredPopulation => "complete"
@@ -186,7 +195,7 @@ fn census_coverage_key(coverage: CensusCoverage) -> String {
         "unestablished:",
         join(
           append([f], items: rest)
-            |> map(r => declaration_ref_display_key(ref: r.requirement)),
+            |> map(r => census_coverage_requirement_key(requirement: r)),
           ",",
         ),
       )

@@ -433,6 +433,42 @@ test fn witness_the_same_measurement_at_a_later_revision_is_a_new_observation() 
     )
 }
 
+test fn witness_two_censuses_that_failed_for_different_reasons_are_different_observations() -> Bool {
+  let unreadable_root = coverage_unestablished_census(rows: [])
+  let refused_walk = CensusObservation {
+    population: fixture_repo_wide_population,
+    observed_at_revision: fixture_revision,
+    method: StructuralClassifier { classifier: fixture_classifier() },
+    rows: [],
+    coverage: CoverageUnestablished {
+      first_missing: CoverageRequirement {
+        requirement: fixture_inclusion_rule(),
+        unmet_because: "the inclusion rule refused a path it could not classify",
+      },
+      additional_missing: [],
+    },
+  }
+  let unreadable_identity = census_observation_identity(
+    observation: unreadable_root,
+    row_key: census_fixture_row_key,
+  )
+  let refused_identity = census_observation_identity(
+    observation: refused_walk,
+    row_key: census_fixture_row_key,
+  )
+  let unreadable_requirements = count(
+    census_coverage_missing_requirements(coverage: unreadable_root.coverage),
+  )
+  let refused_requirements = count(
+    census_coverage_missing_requirements(coverage: refused_walk.coverage),
+  )
+  let unreadable_rows = census_row_count(observation: unreadable_root)
+  let refused_rows = census_row_count(observation: refused_walk)
+  unreadable_requirements == refused_requirements
+    && unreadable_rows == refused_rows
+    && !content_hash_eq_structural(left: unreadable_identity, right: refused_identity)
+}
+
 test fn witness_editing_rows_or_method_yields_a_different_observation_identity() -> Bool {
   let original = structural_complete_census(rows: semantic_rows)
   let edited_rows = structural_complete_census(rows: binder_name_rows)
