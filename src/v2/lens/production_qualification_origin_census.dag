@@ -488,11 +488,10 @@ fn structural_red_control_live_body_skeleton_visible() -> Bool {
     xs: fn_arrow_decl_facts_live(),
     empty: false,
     cons: fn(found, decl) {
-      if string_eq(a: decl.name, b: "structural_red_control_mint_site_probe") {
-        length(xs: atom_identities_in_node(node: decl.output)) > 0
-      } else {
-        found
-      }
+      found || (
+        string_eq(a: decl.name, b: "structural_red_control_mint_site_probe")
+          && length(xs: atom_identities_in_node(node: decl.output)) > 0
+      )
     }
   )
 }
