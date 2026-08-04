@@ -17,7 +17,7 @@ import gunbc.namespace_reference_derived_closure_admission {
 import gunbc.namespace_reference_derived_closure_contract {
   reference_derived_closure_closing_frontier_count,
 }
-import v1.gunbc.namespace_reference_derived_closure_production_admissions {
+import v1.gunbc.namespace_reference_derived_closure_production_observations {
   namespace_structural_binding_observations_a_through_d,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }

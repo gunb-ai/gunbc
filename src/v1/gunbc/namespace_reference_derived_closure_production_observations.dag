@@ -1,4 +1,4 @@
-module v1.gunbc.namespace_reference_derived_closure_production_admissions
+module v1.gunbc.namespace_reference_derived_closure_production_observations
 
 import std.occurrence_identity { OccurrenceTransport, OccurrenceId }
 import std.occurrence_binding_candidates {
@@ -27,7 +27,7 @@ import v1.gunbc.occurrence_binding_parser_walk {
   references_named,
 }
 
-data namespace_reference_derived_closure_production_admissions_note: String = "N3-A production observers for namespace-reference-derived-closure clauses (a-d). Returns neutral std.reference_binding_observation.ReferenceBindingObservation carriers only — no ReferenceDerivedClosureAdmission, no assess_*, no roadmap vocabulary. namespace_structural_binding_observations_a_through_d is the sole export for this row; assessment lives at the witness seam."
+data namespace_reference_derived_closure_production_observations_note: String = "N3-A production observers for namespace-reference-derived-closure clauses (a-d). Returns neutral std.reference_binding_observation.ReferenceBindingObservation carriers only — no roadmap capability vocabulary and no assessment at this seam. namespace_structural_binding_observations_a_through_d is the sole export; capability projection lives in dag witnesses."
 
 data namespace_reference_derived_closure_production_fixture_note: String = "Four independent fixtures — one per structural clause — never one incidental file counted four times. Same-file neighbour and source-order/ambiguity fixtures mirror occurrence_binding_parser_walk_witness_test shapes; sibling decision-branch uses if/else let arms (parse_block nesting) because match-arm bodies remain siblings of pattern binders in v1.parse containment."
 
