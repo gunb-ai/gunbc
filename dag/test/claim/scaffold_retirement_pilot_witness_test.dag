@@ -137,3 +137,7 @@ test fn fixture_proposed_binding_is_empty_without_roadmap_anchor() -> Bool {
     _ => false
   }
 }
+
+test fn fixture_decl_facts_pool_is_nonempty() -> Bool {
+  length(xs: decl_facts(pool_roots: scaffold_retirement_fixture_pool_roots)) > 0
+}
