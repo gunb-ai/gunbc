@@ -8,15 +8,20 @@ import std.content_hash {
   Sha256DigestHex,
   Sha1Digest,
   Sha1DigestHex,
+  Sha512Digest,
+  Sha512DigestHex,
   content_hash_of_value,
   content_hash_from_structural_digest,
   content_hash_eq_structural,
   content_hash_eq_cryptographic,
+  content_hash_eq_sha512,
   content_hash_eq_sha1,
   sha256_hex_digest,
   sha1_hex_digest,
+  sha512_hex_digest,
   as_content_hash_cryptographic,
   as_content_hash_sha1,
+  as_content_hash_sha512,
   content_hash_family,
   compare_content_hash,
   ContentHashEqual,
@@ -25,6 +30,7 @@ import std.content_hash {
   Fnv1a64StructuralFamily,
   Sha256Family,
   Sha1Family,
+  Sha512Family,
   serialize_content_hash,
 }
 import extdeps.git.object_store { git_sha1_object_id, git_object_id_content_hash, GitSha1ObjectId }
@@ -118,6 +124,7 @@ test fn structural_family_eq_is_writable() -> Bool {
     Fnv1a64(a) => content_hash_eq_structural(left: a, right: a)
     Sha256Hash(_) => false
     Sha1Hash(_) => false
+    Sha512Hash(_) => false
   }
 }
 
@@ -128,9 +135,51 @@ test fn structural_family_eq_distinguishes() -> Bool {
         Fnv1a64(b) => !content_hash_eq_structural(left: a, right: b)
         Sha256Hash(_) => false
         Sha1Hash(_) => false
+        Sha512Hash(_) => false
       }
     Sha256Hash(_) => false
     Sha1Hash(_) => false
+    Sha512Hash(_) => false
+  }
+}
+
+test fn sha512_hex_digest_refuses_invalid_hex() -> Bool {
+  match sha512_hex_digest(hex: "x") {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+test fn sha512_family_eq_is_writable() -> Bool {
+  let hex = "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+  match sha512_hex_digest(hex: hex) {
+    Present { value: row } => content_hash_eq_sha512(left: row, right: row)
+    Absent => false
+  }
+}
+
+test fn serialize_sha512_prefix_is_wire_form_not_discriminant() -> Bool {
+  let hex = "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+  match sha512_hex_digest(hex: hex) {
+    Present { value: row } => {
+      let wire = serialize_content_hash(hash: as_content_hash_sha512(digest: row)) as String
+      wire == concat("sha512:", hex)
+    }
+    Absent => false
+  }
+}
+
+test fn content_hash_family_tags_sha512() -> Bool {
+  let hex = "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+  match sha512_hex_digest(hex: hex) {
+    Present { value: row } =>
+      match content_hash_family(hash: as_content_hash_sha512(digest: row)) {
+        Sha512Family => true
+        Fnv1a64StructuralFamily => false
+        Sha256Family => false
+        Sha1Family => false
+      }
+    Absent => false
   }
 }
 
@@ -161,9 +210,11 @@ test fn digest_to_content_hash_bridge_accepts_valid_sha256() -> Bool {
             Sha256Hash(d2) => content_hash_eq_cryptographic(left: d1, right: d2)
             Fnv1a64(_) => false
             Sha1Hash(_) => false
+            Sha512Hash(_) => false
           }
         Fnv1a64(_) => false
         Sha1Hash(_) => false
+        Sha512Hash(_) => false
       }
     Absent => false
   }
@@ -321,6 +372,7 @@ test fn git_sha1_object_id_maps_to_sha1_family() -> Bool {
         )
         Fnv1a64(_) => false
         Sha256Hash(_) => false
+        Sha512Hash(_) => false
       }
     Absent => false
   }

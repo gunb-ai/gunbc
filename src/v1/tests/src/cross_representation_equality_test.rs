@@ -347,9 +347,11 @@ fn same_family_eq() -> Bool {
         Fnv1a64(b) => content_hash_eq_structural(left: a, right: b)
         Sha256Hash(_) => false
         Sha1Hash(_) => false
+        Sha512Hash(_) => false
       }
     Sha256Hash(_) => false
     Sha1Hash(_) => false
+    Sha512Hash(_) => false
   }
 }
 "#;

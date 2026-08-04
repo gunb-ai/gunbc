@@ -48,11 +48,14 @@ pub enum HashFamily {
     Fnv1a64StructuralFamily,
     Sha256Family,
     Sha1Family,
+    Sha512Family,
 }
 
 pub type Sha256DigestHex = String;
 
 pub type Sha1DigestHex = String;
+
+pub type Sha512DigestHex = String;
 
 pub type Fnv1a64StructuralDigestHex = String;
 
@@ -72,11 +75,17 @@ pub struct Sha1Digest {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct Sha512Digest {
+    pub hex: Sha512DigestHex,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum ContentHash {
     Fnv1a64(Rc<Fnv1a64Structural>),
     Sha256Hash(Rc<Sha256Digest>),
     Sha1Hash(Rc<Sha1Digest>),
+    Sha512Hash(Rc<Sha512Digest>),
 }
 
 pub fn content_hash_family(hash: Rc<ContentHash>) -> HashFamily {
@@ -84,6 +93,7 @@ pub fn content_hash_family(hash: Rc<ContentHash>) -> HashFamily {
         ContentHash::Fnv1a64(_) => HashFamily::Fnv1a64StructuralFamily,
         ContentHash::Sha256Hash(_) => HashFamily::Sha256Family,
         ContentHash::Sha1Hash(_) => HashFamily::Sha1Family,
+        ContentHash::Sha512Hash(_) => HashFamily::Sha512Family,
     }
 }
 
@@ -134,6 +144,14 @@ pub fn sha1_hex_digest(hex: String) -> Option<Rc<Sha1Digest>> {
     }
 }
 
+pub fn sha512_hex_digest(hex: String) -> Option<Rc<Sha512Digest>> {
+    if content_hash_validate_lower_hex_length(hex.clone(), 128) {
+        Some(Rc::new(Sha512Digest { hex: hex.clone() }))
+    } else {
+        None
+    }
+}
+
 pub fn fnv1a64_structural_hex_digest(hex: String) -> Option<Rc<Fnv1a64Structural>> {
     if content_hash_validate_lower_hex_length(hex.clone(), 16) {
         Some(structural_content_hash(hex.clone()))
@@ -152,6 +170,10 @@ pub fn as_content_hash_cryptographic(digest: Rc<Sha256Digest>) -> Rc<ContentHash
 
 pub fn as_content_hash_sha1(digest: Rc<Sha1Digest>) -> Rc<ContentHash> {
     Rc::new(ContentHash::Sha1Hash(digest.clone()))
+}
+
+pub fn as_content_hash_sha512(digest: Rc<Sha512Digest>) -> Rc<ContentHash> {
+    Rc::new(ContentHash::Sha512Hash(digest.clone()))
 }
 
 pub fn content_hash_of_value(value: String) -> Rc<ContentHash> {
@@ -205,6 +227,10 @@ pub fn content_hash_eq_sha1(left: Rc<Sha1Digest>, right: Rc<Sha1Digest>) -> bool
     (left.hex.clone() == right.hex.clone())
 }
 
+pub fn content_hash_eq_sha512(left: Rc<Sha512Digest>, right: Rc<Sha512Digest>) -> bool {
+    (left.hex.clone() == right.hex.clone())
+}
+
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
@@ -239,6 +265,7 @@ pub fn compare_content_hash(
             }
             ContentHash::Sha256Hash(_) => ContentHashComparison::ContentHashCrossFamilyIncomparable,
             ContentHash::Sha1Hash(_) => ContentHashComparison::ContentHashCrossFamilyIncomparable,
+            ContentHash::Sha512Hash(_) => ContentHashComparison::ContentHashCrossFamilyIncomparable,
         },
         ContentHash::Sha256Hash(left_digest) => match (*right.clone()).clone() {
             ContentHash::Sha256Hash(right_digest) => {
@@ -250,6 +277,7 @@ pub fn compare_content_hash(
             }
             ContentHash::Fnv1a64(_) => ContentHashComparison::ContentHashCrossFamilyIncomparable,
             ContentHash::Sha1Hash(_) => ContentHashComparison::ContentHashCrossFamilyIncomparable,
+            ContentHash::Sha512Hash(_) => ContentHashComparison::ContentHashCrossFamilyIncomparable,
         },
         ContentHash::Sha1Hash(left_digest) => match (*right.clone()).clone() {
             ContentHash::Sha1Hash(right_digest) => {
@@ -261,6 +289,19 @@ pub fn compare_content_hash(
             }
             ContentHash::Fnv1a64(_) => ContentHashComparison::ContentHashCrossFamilyIncomparable,
             ContentHash::Sha256Hash(_) => ContentHashComparison::ContentHashCrossFamilyIncomparable,
+            ContentHash::Sha512Hash(_) => ContentHashComparison::ContentHashCrossFamilyIncomparable,
+        },
+        ContentHash::Sha512Hash(left_digest) => match (*right.clone()).clone() {
+            ContentHash::Sha512Hash(right_digest) => {
+                if content_hash_eq_sha512(left_digest.clone(), right_digest.clone()) {
+                    ContentHashComparison::ContentHashEqual
+                } else {
+                    ContentHashComparison::ContentHashDifferent
+                }
+            }
+            ContentHash::Fnv1a64(_) => ContentHashComparison::ContentHashCrossFamilyIncomparable,
+            ContentHash::Sha256Hash(_) => ContentHashComparison::ContentHashCrossFamilyIncomparable,
+            ContentHash::Sha1Hash(_) => ContentHashComparison::ContentHashCrossFamilyIncomparable,
         },
     }
 }
@@ -270,11 +311,16 @@ pub fn serialize_content_hash(hash: Rc<ContentHash>) -> String {
         ContentHash::Fnv1a64(s) => s.digest.clone(),
         ContentHash::Sha256Hash(d) => sha256_digest_wire_form(d.clone()),
         ContentHash::Sha1Hash(d) => d.hex.clone(),
+        ContentHash::Sha512Hash(d) => sha512_digest_wire_form(d.clone()),
     }
 }
 
 pub fn sha256_digest_wire_form(digest: Rc<Sha256Digest>) -> String {
     Rc::new(vec!["sha256:".to_string(), digest.hex.clone()]).join(&"".to_string())
+}
+
+pub fn sha512_digest_wire_form(digest: Rc<Sha512Digest>) -> String {
+    Rc::new(vec!["sha512:".to_string(), digest.hex.clone()]).join(&"".to_string())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -283,6 +329,10 @@ pub struct Fnv1a64StructuralFamily;
 pub struct Sha256Family;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Sha1Family;
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+pub struct Sha512Family;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ContentHashEqual;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
