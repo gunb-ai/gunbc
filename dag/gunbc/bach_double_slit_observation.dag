@@ -22,30 +22,50 @@ data bach_observation_layer_note: String = "Observing-layer receipts for Bach et
 
 data which_path_coverage_obligation_note: String = "Which-path distinguishability evidence is absent from cited Bach et al. 2013; obligation recorded here per DESIGN section 3."
 
-type BachWhichPathEvidenceRefusalCause
-  = BachWhichPathAuthorityAbsent {}
+data bach_raw_count_triplet_coverage_dissolve_on: String = "DISSOLVE-ON: extdeps carries raw matched-exposure arrival rows at a grain that supports left, right, and both counts under one exposure identity; then bach_quantitative_path_additivity_gap may gain a positive readiness counterpart derived from triplet coverage."
 
-type BachRawCountPathAdditivityRefusalCause
+data bach_which_path_evidence_dissolve_on: String = "DISSOLVE-ON: a cited upstream authority for which-path distinguishability evidence lands; then bach_which_path_evidence_gap may gain a positive cited counterpart."
+
+type BachRawCountPathAdditivityGap
   = BachRawCountTripletCoverageAbsent {}
 
-type BachRawCountPathAdditivityReadiness
-  = BachRawCountPathAdditivityNotEvaluable { cause: BachRawCountPathAdditivityRefusalCause }
-  | BachRawCountPathAdditivityReady {}
+type BachWhichPathEvidenceGap
+  = BachWhichPathAuthorityAbsent {}
 
-type BachWhichPathEvidenceReadiness
-  = BachWhichPathEvidenceUncited { cause: BachWhichPathEvidenceRefusalCause }
-  | BachWhichPathEvidenceCited {}
+fn bach_quantitative_path_additivity_gap() -> BachRawCountPathAdditivityGap {
+  BachRawCountTripletCoverageAbsent {}
+}
 
-fn bach_quantitative_path_additivity_readiness_derived() -> BachRawCountPathAdditivityReadiness {
-  BachRawCountPathAdditivityNotEvaluable {
-    cause: BachRawCountTripletCoverageAbsent {},
+fn bach_which_path_evidence_gap() -> BachWhichPathEvidenceGap {
+  BachWhichPathAuthorityAbsent {}
+}
+
+type BachObservedApparatus
+  = BachCitedDoubleSlitApparatus { subject: BachEtAl2013DoubleSlitExperiment }
+  | BachPerturbationForeignApparatus {}
+
+type BachBuildupProgressionRow {
+  apparatus: BachObservedApparatus
+  detected_electrons: NonNegativeInt
+  pattern_status: PatternStatus
+}
+
+fn bach_cited_buildup_row_from_extdeps(row: BachBuildupObservationRow) -> BachBuildupProgressionRow {
+  BachBuildupProgressionRow {
+    apparatus: BachCitedDoubleSlitApparatus { subject: row.apparatus },
+    detected_electrons: row.detected_electrons,
+    pattern_status: row.pattern_status,
   }
 }
 
-fn bach_which_path_evidence_readiness_derived() -> BachWhichPathEvidenceReadiness {
-  BachWhichPathEvidenceUncited {
-    cause: BachWhichPathAuthorityAbsent {},
-  }
+fn bach_cited_buildup_progression_rows() -> List<BachBuildupProgressionRow> {
+  fold(
+    bach_buildup_observations,
+    init: [],
+    f: fn(acc, row) {
+      acc |> append(bach_cited_buildup_row_from_extdeps(row: row))
+    },
+  )
 }
 
 fn bach_distribution_observations_complete_for(
@@ -64,7 +84,7 @@ fn bach_distribution_observations_complete() -> Bool {
 fn bach_ensemble_interference_holds_for_distribution(
   observations: List<BachDistributionObservation>,
 ) -> Bool {
-  bach_buildup_progression_is_source_ordered(rows: bach_buildup_observations)
+  bach_buildup_progression_is_source_ordered(rows: bach_cited_buildup_progression_rows())
     && bach_distribution_observations_complete_for(observations: observations)
 }
 
@@ -86,8 +106,12 @@ fn pattern_status_rank(status: PatternStatus) -> Int {
   }
 }
 
-fn bach_buildup_row_is_canonical_apparatus(row: BachBuildupObservationRow) -> Bool {
-  row.apparatus == bach_et_al_2013_double_slit
+fn bach_buildup_row_is_canonical_apparatus(row: BachBuildupProgressionRow) -> Bool {
+  match row.apparatus {
+    BachCitedDoubleSlitApparatus { subject: cited_subject } =>
+      cited_subject == bach_et_al_2013_double_slit
+    BachPerturbationForeignApparatus {} => false
+  }
 }
 
 type BuildupProgressionAcc {
@@ -100,7 +124,7 @@ type BuildupProgressionAcc {
 
 fn fold_buildup_progression_acc(
   acc: BuildupProgressionAcc,
-  row: BachBuildupObservationRow,
+  row: BachBuildupProgressionRow,
 ) -> BuildupProgressionAcc {
   if !acc.valid {
     acc
@@ -144,7 +168,7 @@ fn fold_buildup_progression_acc(
   }
 }
 
-fn bach_buildup_progression_is_source_ordered(rows: List<BachBuildupObservationRow>) -> Bool {
+fn bach_buildup_progression_is_source_ordered(rows: List<BachBuildupProgressionRow>) -> Bool {
   let acc = fold(
     rows,
     init: BuildupProgressionAcc {
@@ -167,25 +191,25 @@ fn bach_buildup_progression_is_source_ordered(rows: List<BachBuildupObservationR
 }
 
 fn bach_buildup_progression_rejects_clearly_visible_at_low_count(
-  rows: List<BachBuildupObservationRow>,
+  rows: List<BachBuildupProgressionRow>,
 ) -> Bool {
   !bach_buildup_progression_is_source_ordered(rows: rows)
 }
 
 fn bach_buildup_progression_rejects_not_yet_at_max_count(
-  rows: List<BachBuildupObservationRow>,
+  rows: List<BachBuildupProgressionRow>,
 ) -> Bool {
   !bach_buildup_progression_is_source_ordered(rows: rows)
 }
 
 fn bach_buildup_progression_rejects_foreign_apparatus(
-  rows: List<BachBuildupObservationRow>,
+  rows: List<BachBuildupProgressionRow>,
 ) -> Bool {
   !bach_buildup_progression_is_source_ordered(rows: rows)
 }
 
 fn bach_buildup_progression_rejects_reversed_order(
-  rows: List<BachBuildupObservationRow>,
+  rows: List<BachBuildupProgressionRow>,
 ) -> Bool {
   !bach_buildup_progression_is_source_ordered(rows: rows)
 }

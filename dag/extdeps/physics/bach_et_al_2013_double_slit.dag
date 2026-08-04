@@ -15,11 +15,6 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 type BachEtAl2013DoubleSlitExperiment
   = BachEtAl2013DoubleSlit {}
-  | BachEtAl2013ForeignApparatusStub {}
-
-data bach_foreign_apparatus_stub: BachEtAl2013DoubleSlitExperiment = BachEtAl2013ForeignApparatusStub {}
-
-data foreign_apparatus_stub_note: String = "Discriminator variant for perturbation witnesses only — not a cited Bach apparatus row."
 
 data bach_et_al_2013_double_slit: BachEtAl2013DoubleSlitExperiment = BachEtAl2013DoubleSlit {}
 

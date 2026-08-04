@@ -2,17 +2,12 @@ module test.claim.bach_double_slit_observation_witness_test
 
 import std.types { Bool, List }
 import gunbc.bach_double_slit_observation {
-  BachRawCountPathAdditivityNotEvaluable,
-  BachRawCountPathAdditivityReady,
-  BachRawCountTripletCoverageAbsent,
-  BachWhichPathEvidenceUncited,
-  BachWhichPathEvidenceCited,
-  BachWhichPathAuthorityAbsent,
-  bach_quantitative_path_additivity_readiness_derived,
-  bach_which_path_evidence_readiness_derived,
+  BachBuildupProgressionRow,
+  BachCitedDoubleSlitApparatus,
+  BachPerturbationForeignApparatus,
+  bach_cited_buildup_row_from_extdeps,
   bach_distribution_observations_complete,
   bach_buildup_fold_derives_ensemble_interference,
-  bach_buildup_progression_is_source_ordered,
   bach_buildup_progression_rejects_clearly_visible_at_low_count,
   bach_buildup_progression_rejects_not_yet_at_max_count,
   bach_buildup_progression_rejects_foreign_apparatus,
@@ -20,17 +15,12 @@ import gunbc.bach_double_slit_observation {
   bach_ensemble_interference_rejects_missing_both_open,
 }
 import extdeps.physics.bach_et_al_2013_double_slit {
-  BachEtAl2013DoubleSlitExperiment,
   bach_et_al_2013_double_slit,
-  bach_foreign_apparatus_stub,
-  BachBuildupObservationRow,
   bach_buildup_2_electrons,
   bach_buildup_7_electrons,
   bach_buildup_209_electrons,
   bach_buildup_1004_electrons,
   bach_buildup_6235_electrons,
-  bach_buildup_observations,
-  bach_distribution_observations,
   PatternClearlyVisible,
   PatternNotYetDiscernible,
   SlitOneSingleSlitDiffractionObserved,
@@ -39,20 +29,6 @@ import extdeps.physics.bach_et_al_2013_double_slit {
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
-
-test fn w_bach_raw_count_path_additivity_not_evaluable_derived() -> Bool {
-  match bach_quantitative_path_additivity_readiness_derived() {
-    BachRawCountPathAdditivityNotEvaluable { cause: BachRawCountTripletCoverageAbsent {} } => true
-    BachRawCountPathAdditivityReady {} => false
-  }
-}
-
-test fn w_bach_which_path_evidence_uncited_derived() -> Bool {
-  match bach_which_path_evidence_readiness_derived() {
-    BachWhichPathEvidenceUncited { cause: BachWhichPathAuthorityAbsent {} } => true
-    BachWhichPathEvidenceCited {} => false
-  }
-}
 
 test fn w_bach_categorical_distribution_observations_complete() -> Bool {
   bach_distribution_observations_complete()
@@ -63,32 +39,32 @@ test fn w_bach_buildup_fold_derives_ensemble_interference() -> Bool {
 }
 
 test fn w_bach_buildup_rejects_clearly_visible_at_seven_electrons() -> Bool {
-  let bad_row = BachBuildupObservationRow {
-    apparatus: bach_et_al_2013_double_slit,
+  let bad_row = BachBuildupProgressionRow {
+    apparatus: BachCitedDoubleSlitApparatus { subject: bach_et_al_2013_double_slit },
     detected_electrons: 7,
     pattern_status: PatternClearlyVisible,
   }
   let rows = [
-    bach_buildup_2_electrons,
+    bach_cited_buildup_row_from_extdeps(row: bach_buildup_2_electrons),
     bad_row,
-    bach_buildup_209_electrons,
-    bach_buildup_1004_electrons,
-    bach_buildup_6235_electrons,
+    bach_cited_buildup_row_from_extdeps(row: bach_buildup_209_electrons),
+    bach_cited_buildup_row_from_extdeps(row: bach_buildup_1004_electrons),
+    bach_cited_buildup_row_from_extdeps(row: bach_buildup_6235_electrons),
   ]
   bach_buildup_progression_rejects_clearly_visible_at_low_count(rows: rows)
 }
 
 test fn w_bach_buildup_rejects_not_yet_at_max_count() -> Bool {
-  let bad_max = BachBuildupObservationRow {
-    apparatus: bach_et_al_2013_double_slit,
+  let bad_max = BachBuildupProgressionRow {
+    apparatus: BachCitedDoubleSlitApparatus { subject: bach_et_al_2013_double_slit },
     detected_electrons: 6235,
     pattern_status: PatternNotYetDiscernible,
   }
   let rows = [
-    bach_buildup_2_electrons,
-    bach_buildup_7_electrons,
-    bach_buildup_209_electrons,
-    bach_buildup_1004_electrons,
+    bach_cited_buildup_row_from_extdeps(row: bach_buildup_2_electrons),
+    bach_cited_buildup_row_from_extdeps(row: bach_buildup_7_electrons),
+    bach_cited_buildup_row_from_extdeps(row: bach_buildup_209_electrons),
+    bach_cited_buildup_row_from_extdeps(row: bach_buildup_1004_electrons),
     bad_max,
   ]
   bach_buildup_progression_rejects_not_yet_at_max_count(rows: rows)
@@ -96,27 +72,27 @@ test fn w_bach_buildup_rejects_not_yet_at_max_count() -> Bool {
 
 test fn w_bach_buildup_rejects_reversed_electron_order() -> Bool {
   let rows = [
-    bach_buildup_6235_electrons,
-    bach_buildup_1004_electrons,
-    bach_buildup_209_electrons,
-    bach_buildup_7_electrons,
-    bach_buildup_2_electrons,
+    bach_cited_buildup_row_from_extdeps(row: bach_buildup_6235_electrons),
+    bach_cited_buildup_row_from_extdeps(row: bach_buildup_1004_electrons),
+    bach_cited_buildup_row_from_extdeps(row: bach_buildup_209_electrons),
+    bach_cited_buildup_row_from_extdeps(row: bach_buildup_7_electrons),
+    bach_cited_buildup_row_from_extdeps(row: bach_buildup_2_electrons),
   ]
   bach_buildup_progression_rejects_reversed_order(rows: rows)
 }
 
 test fn w_bach_buildup_rejects_foreign_apparatus() -> Bool {
-  let foreign_row = BachBuildupObservationRow {
-    apparatus: bach_foreign_apparatus_stub,
+  let foreign_row = BachBuildupProgressionRow {
+    apparatus: BachPerturbationForeignApparatus {},
     detected_electrons: 1004,
     pattern_status: PatternClearlyVisible,
   }
   let rows = [
-    bach_buildup_2_electrons,
-    bach_buildup_7_electrons,
-    bach_buildup_209_electrons,
+    bach_cited_buildup_row_from_extdeps(row: bach_buildup_2_electrons),
+    bach_cited_buildup_row_from_extdeps(row: bach_buildup_7_electrons),
+    bach_cited_buildup_row_from_extdeps(row: bach_buildup_209_electrons),
     foreign_row,
-    bach_buildup_6235_electrons,
+    bach_cited_buildup_row_from_extdeps(row: bach_buildup_6235_electrons),
   ]
   bach_buildup_progression_rejects_foreign_apparatus(rows: rows)
 }
