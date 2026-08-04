@@ -172,3 +172,33 @@ test fn fn_wf_no_trigger_negative_control() -> Bool {
 test fn impl_accessor_inherits_item_bound_once() -> Bool {
   w_impl_accessor_inherits_item_bound_once()
 }
+
+fn w_fn_phantom_type_param_stays_bare() -> Bool {
+  compile_dag_rust_emit_check(
+    "module fn_clone_bound_witness.phantom_rate\n\ntype PerMinute\n\ntype MoneyRate<P> {\n  amount: Int\n  currency: String\n}\n\nfn money_rate_micros<P>(q: MoneyRate<P>) -> Nat {\n  q.amount\n}\n",
+    "src/fn_clone_bound_witness_phantom_rate.rs",
+    ["fn money_rate_micros<P>"],
+    ["fn money_rate_micros<P: Clone>"]
+  )
+}
+
+fn w_fn_measure_phantom_qty_scale_stay_bare() -> Bool {
+  compile_dag_rust_emit_check(
+    "module fn_clone_bound_witness.phantom_measure\n\ntype Measure<Q, S, M> {\n  count: M\n}\n\nfn measure_count<Q, S, M>(m: Measure<Q, S, M>) -> M {\n  m.count\n}\n",
+    "src/fn_clone_bound_witness_phantom_measure.rs",
+    ["fn measure_count<Q, S, M>"],
+    [
+      "fn measure_count<Q: Clone, S, M>",
+      "fn measure_count<Q, S: Clone, M>",
+      "fn measure_count<Q: Clone, S: Clone, M>"
+    ]
+  )
+}
+
+test fn fn_phantom_type_param_negative_control() -> Bool {
+  w_fn_phantom_type_param_stays_bare()
+}
+
+test fn fn_measure_phantom_qty_scale_negative_control() -> Bool {
+  w_fn_measure_phantom_qty_scale_stay_bare()
+}
