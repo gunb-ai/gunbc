@@ -27,9 +27,11 @@ import gunbc.ci_spec {
 }
 import std.disposition { Scaffold }
 import gunbc.generated_artifact {
-  auto_push_eligible_committed_artifact_paths,
-  author_commit_required_committed_artifact_paths,
   CiYamlArtifact, FalsifierYamlArtifact, GitignoreArtifact, artifact_path
+}
+import gunbc.heal_push_plan {
+  auto_push_eligible_committed_artifact_paths,
+  author_commit_required_committed_artifact_paths
 }
 import gunbc.ci_workflow_expressions { ci_regen_heal_if }
 import extdeps.github.actions {
