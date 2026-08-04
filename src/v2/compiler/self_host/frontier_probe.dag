@@ -455,15 +455,15 @@ fn frontier_probe_receipt_from_discovered_closure(
       module_path: module_path,
       cause: frontier_probe_entry_binding_refused_reason
     )
-  } else if source_storage_list_has_duplicate_storage(refs: refs) {
-    frontier_probe_receipt_from_population_refused(
-      module_path: module_path,
-      cause: frontier_probe_closure_storage_duplicate_reason
-    )
   } else if source_storage_hash_conflict_in_list(refs: refs) {
     frontier_probe_receipt_from_population_refused(
       module_path: module_path,
       cause: frontier_probe_closure_storage_hash_conflict_reason
+    )
+  } else if source_storage_list_has_duplicate_storage(refs: refs) {
+    frontier_probe_receipt_from_population_refused(
+      module_path: module_path,
+      cause: frontier_probe_closure_storage_duplicate_reason
     )
   } else if length(xs: refs) != ingest_read_count {
     frontier_probe_receipt_from_population_refused(
