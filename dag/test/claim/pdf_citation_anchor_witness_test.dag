@@ -6,7 +6,7 @@ import extdeps.pdf_citation {
   DocumentContentPin, Verified, Unpinned, Unreachable,
   PaywalledSource, FetchRefused,
   pdf_open_page, pdf_citation_detail, document_content_pin_verified,
-  pdf_open_parameters_include_page, document_content_pin_is_verified,
+  pdf_open_parameters_include_page,
   document_content_pin_digest_eq, pdf_page_number_is_valid,
 }
 import extdeps.external_authority { ExternalAuthority, external_authority_for_cited_pdf }
@@ -21,6 +21,8 @@ import std.types { Bool, List }
 data drifted_pdf_sha256_hex: Sha256DigestHex = "0000000000000000000000000000000000000000000000000000000000000000" as Sha256DigestHex
 
 data witness_verified_pin: DocumentContentPin = x86_64_abi_cited_pdf_document.content_pin
+
+data witness_unpinned_pin: DocumentContentPin = Unpinned
 
 data witness_pdf_citation: PdfCitationDetail = pdf_citation_detail(
   open_parameters: [pdf_open_page(page: 1)],
@@ -71,22 +73,29 @@ test fn document_content_pin_digest_eq_refuses_drifted_hex() -> Bool {
 }
 
 test fn unreachable_pin_is_not_verified() -> Bool {
-  !document_content_pin_is_verified(
-    pin: Unreachable { cause: PaywalledSource },
-  )
+  match Unreachable { cause: PaywalledSource } {
+    Verified { digest: _ } => false
+    _ => true
+  }
 }
 
 test fn unpinned_pin_is_not_verified() -> Bool {
-  !document_content_pin_is_verified(pin: Unpinned)
+  match witness_unpinned_pin {
+    Verified { digest: _ } => false
+    _ => true
+  }
 }
 
 test fn external_authority_pdf_sidecar_present_when_migrated() -> Bool {
   let detail = witness_pdf_authority.pdf
-  document_content_pin_is_verified(pin: detail.content_pin)
-    && pdf_open_parameters_include_page(
-      sequence: detail.open_parameters,
-      page: 1,
-    )
+  match detail.content_pin {
+    Verified { digest: _ } =>
+      pdf_open_parameters_include_page(
+        sequence: detail.open_parameters,
+        page: 1,
+      )
+    _ => false
+  }
 }
 
 test fn fetch_refused_unreachable_carries_status() -> Bool {

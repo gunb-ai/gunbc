@@ -148,14 +148,6 @@ fn pdf_open_parameters_include_page(
   )
 }
 
-fn document_content_pin_is_verified(pin: DocumentContentPin) -> Bool {
-  match pin {
-    Verified { digest: _ } => true
-    Unpinned => false
-    Unreachable { cause: _ } => false
-  }
-}
-
 fn document_content_pin_digest_eq(left: DocumentContentPin, right: DocumentContentPin) -> Bool {
   match left {
     Verified { digest: l } =>
