@@ -1,0 +1,178 @@
+module gunbc.namespace_reference_derived_closure_admission
+
+import std.occurrence_identity { OccurrenceId }
+import std.occurrence_binding {
+  OccurrenceBound,
+  OccurrenceUnbound,
+  OccurrenceAmbiguous,
+}
+import std.occurrence_binding_resolve {
+  OccurrenceReferenceBindingOutcome,
+  OccurrenceReferenceBindingDecided,
+}
+import std.types { Bool, FilePath, Int, List, String }
+
+type ReferenceDerivedClosureCapability
+  = SameFileEarlierNeighbourVisible
+  | SiblingDecisionBranchExcluded
+  | LaterDeclarationExcluded
+  | DistinctSameSpelledDeclarationsPreserved
+  | RepeatedMentionsCollapseDependency
+  | UnrelatedLoadedFileExcluded
+
+type ReferenceDerivedClosureObservation
+  = SameFileNeighbourObservation {
+      neighbour: OccurrenceId,
+      binding_outcome: OccurrenceReferenceBindingOutcome,
+    }
+  | SiblingBranchObservation {
+      own_branch_declaration: OccurrenceId,
+      sibling_branch_declaration: OccurrenceId,
+      binding_outcome: OccurrenceReferenceBindingOutcome,
+    }
+  | LaterDeclarationObservation {
+      later_declaration: OccurrenceId,
+      binding_outcome: OccurrenceReferenceBindingOutcome,
+    }
+  | DistinctHomonymObservation {
+      first_declaration: OccurrenceId,
+      second_declaration: OccurrenceId,
+      binding_outcome: OccurrenceReferenceBindingOutcome,
+    }
+  | RepeatedMentionDependencyObservation {
+      provider_file: FilePath,
+      projected_dependencies: List<FilePath>,
+    }
+  | UnrelatedLoadedFileObservation {
+      provider_file: FilePath,
+      unrelated_loaded_file: FilePath,
+      projected_dependencies: List<FilePath>,
+    }
+
+type ReferenceDerivedClosureScenarioFailure
+  = SameFileNeighbourMissing
+  | SiblingBranchLeaked
+  | LaterDeclarationLeaked
+  | DistinctDeclarationCollapsed
+  | RepeatedMentionDuplicatedDependency
+  | UnrelatedLoadedFileDependencyLeaked
+
+type ReferenceDerivedClosureAcceptanceReceipt sole_constructor {
+  capability: ReferenceDerivedClosureCapability
+}
+
+type ReferenceDerivedClosureAdmission
+  = ReferenceDerivedClosureEstablished {
+      receipt: ReferenceDerivedClosureAcceptanceReceipt,
+    }
+  | ReferenceDerivedClosureRefused {
+      capability: ReferenceDerivedClosureCapability,
+      failure: ReferenceDerivedClosureScenarioFailure,
+    }
+  | ReferenceDerivedClosureUnavailable {
+      capability: ReferenceDerivedClosureCapability,
+      trigger: ReferenceDerivedClosureTrigger,
+    }
+
+type ReferenceDerivedClosureTrigger
+  = P2aStructuralCandidateProducer7515
+  | P2aReferenceDependencyProjection7515
+  | P2aPoolIndependentDependencyProjection7515
+
+fn file_present(xs: List<FilePath>, wanted: FilePath) -> Bool {
+  xs |> any(x => (x as String) == (wanted as String))
+}
+
+fn established(capability: ReferenceDerivedClosureCapability) -> ReferenceDerivedClosureAdmission {
+  ReferenceDerivedClosureEstablished {
+    receipt: ReferenceDerivedClosureAcceptanceReceipt { capability: capability },
+  }
+}
+
+fn refused(
+  capability: ReferenceDerivedClosureCapability,
+  failure: ReferenceDerivedClosureScenarioFailure,
+) -> ReferenceDerivedClosureAdmission {
+  ReferenceDerivedClosureRefused { capability: capability, failure: failure }
+}
+
+fn assess_reference_derived_closure_observation(
+  observation: ReferenceDerivedClosureObservation,
+) -> ReferenceDerivedClosureAdmission {
+  match observation {
+    SameFileNeighbourObservation { neighbour, binding_outcome } =>
+      match binding_outcome {
+        OccurrenceReferenceBindingDecided {
+          result: OccurrenceBound { binding },
+        } =>
+          if binding.candidate.containment.terminal.value == neighbour.value {
+            established(capability: SameFileEarlierNeighbourVisible)
+          } else {
+            refused(capability: SameFileEarlierNeighbourVisible, failure: SameFileNeighbourMissing)
+          }
+        _ => refused(capability: SameFileEarlierNeighbourVisible, failure: SameFileNeighbourMissing)
+      }
+    SiblingBranchObservation {
+      own_branch_declaration,
+      sibling_branch_declaration,
+      binding_outcome,
+    } =>
+      match binding_outcome {
+        OccurrenceReferenceBindingDecided {
+          result: OccurrenceBound { binding },
+        } =>
+          if binding.candidate.containment.terminal.value == own_branch_declaration.value
+            && binding.candidate.containment.terminal.value != sibling_branch_declaration.value {
+            established(capability: SiblingDecisionBranchExcluded)
+          } else {
+            refused(capability: SiblingDecisionBranchExcluded, failure: SiblingBranchLeaked)
+          }
+        _ => refused(capability: SiblingDecisionBranchExcluded, failure: SiblingBranchLeaked)
+      }
+    LaterDeclarationObservation { later_declaration: _, binding_outcome } =>
+      match binding_outcome {
+        OccurrenceReferenceBindingDecided {
+          result: OccurrenceUnbound { occurrence: _ },
+        } => established(capability: LaterDeclarationExcluded)
+        _ => refused(capability: LaterDeclarationExcluded, failure: LaterDeclarationLeaked)
+      }
+    DistinctHomonymObservation {
+      first_declaration,
+      second_declaration,
+      binding_outcome,
+    } =>
+      match binding_outcome {
+        OccurrenceReferenceBindingDecided {
+          result: OccurrenceAmbiguous { candidates },
+        } =>
+          if candidates.rest.is_empty()
+            && first_declaration.value != second_declaration.value
+            && candidates.first.containment.terminal.value == first_declaration.value
+            && candidates.second.containment.terminal.value == second_declaration.value {
+            established(capability: DistinctSameSpelledDeclarationsPreserved)
+          } else {
+            refused(capability: DistinctSameSpelledDeclarationsPreserved, failure: DistinctDeclarationCollapsed)
+          }
+        _ => refused(capability: DistinctSameSpelledDeclarationsPreserved, failure: DistinctDeclarationCollapsed)
+      }
+    RepeatedMentionDependencyObservation { provider_file, projected_dependencies } =>
+      if count(projected_dependencies) == 1
+        && file_present(xs: projected_dependencies, wanted: provider_file) {
+        established(capability: RepeatedMentionsCollapseDependency)
+      } else {
+        refused(capability: RepeatedMentionsCollapseDependency, failure: RepeatedMentionDuplicatedDependency)
+      }
+    UnrelatedLoadedFileObservation {
+      provider_file,
+      unrelated_loaded_file,
+      projected_dependencies,
+    } =>
+      if count(projected_dependencies) == 1
+        && file_present(xs: projected_dependencies, wanted: provider_file)
+        && !file_present(xs: projected_dependencies, wanted: unrelated_loaded_file) {
+        established(capability: UnrelatedLoadedFileExcluded)
+      } else {
+        refused(capability: UnrelatedLoadedFileExcluded, failure: UnrelatedLoadedFileDependencyLeaked)
+      }
+  }
+}

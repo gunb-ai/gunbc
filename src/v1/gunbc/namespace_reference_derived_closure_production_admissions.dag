@@ -1,21 +1,16 @@
 module v1.gunbc.namespace_reference_derived_closure_production_admissions
 
-import gunbc.namespace_reference_derived_closure_contract {
+import gunbc.namespace_reference_derived_closure_admission {
   ReferenceDerivedClosureAdmission,
   ReferenceDerivedClosureRefused,
-  ReferenceDerivedClosureUnavailable,
   SameFileEarlierNeighbourVisible,
   SiblingDecisionBranchExcluded,
   LaterDeclarationExcluded,
   DistinctSameSpelledDeclarationsPreserved,
-  RepeatedMentionsCollapseDependency,
-  UnrelatedLoadedFileExcluded,
   SameFileNeighbourMissing,
   SiblingBranchLeaked,
   LaterDeclarationLeaked,
   DistinctDeclarationCollapsed,
-  P2aReferenceDependencyProjection7515,
-  P2aPoolIndependentDependencyProjection7515,
   SameFileNeighbourObservation,
   SiblingBranchObservation,
   LaterDeclarationObservation,
@@ -38,7 +33,7 @@ import v1.gunbc.occurrence_binding_parser_walk {
   references_named,
 }
 
-data namespace_reference_derived_closure_production_admissions_note: String = "N3-A production admission seam for namespace-reference-derived-closure clauses (a-d). Each observe_* fn parses one authored fixture through v1.compiler.parse.parse_with_table (via parse_authored_occurrence_binding_source), projects OccurrenceBindingCandidateInputs from parser facts only, runs resolve_reference_binding_outcome_via_structural_candidates (P2a+P1), and feeds the typed observation through assess_reference_derived_closure_observation unchanged. Clauses (e-f) remain ReferenceDerivedClosureUnavailable for parallel N3-B/N3-C work."
+data namespace_reference_derived_closure_production_admissions_note: String = "N3-A production observers for namespace-reference-derived-closure clauses (a-d). Each observe_* fn parses one authored fixture through v1.compiler.parse.parse_with_table (via parse_authored_occurrence_binding_source), projects OccurrenceBindingCandidateInputs from parser facts only, runs resolve_reference_binding_outcome_via_structural_candidates (P2a+P1), and feeds the typed observation through assess_reference_derived_closure_observation unchanged. The contract-owned namespace_reference_derived_closure_acceptance_admissions seam wires these in when production integration lands."
 
 data namespace_reference_derived_closure_production_fixture_note: String = "Four independent fixtures — one per structural clause — never one incidental file counted four times. Same-file neighbour and source-order/ambiguity fixtures mirror occurrence_binding_parser_walk_witness_test shapes; sibling decision-branch uses if/else let arms (parse_block nesting) because match-arm bodies remain siblings of pattern binders in v1.parse containment."
 
@@ -258,21 +253,4 @@ fn observe_distinct_same_spelled_declarations_preserved() -> ReferenceDerivedClo
           }
       }
   }
-}
-
-fn namespace_reference_derived_closure_acceptance_admissions() -> List<ReferenceDerivedClosureAdmission> {
-  [
-    observe_same_file_earlier_neighbour_visible(),
-    observe_sibling_decision_branch_excluded(),
-    observe_later_declaration_excluded(),
-    observe_distinct_same_spelled_declarations_preserved(),
-    ReferenceDerivedClosureUnavailable {
-      capability: RepeatedMentionsCollapseDependency,
-      trigger: P2aReferenceDependencyProjection7515,
-    },
-    ReferenceDerivedClosureUnavailable {
-      capability: UnrelatedLoadedFileExcluded,
-      trigger: P2aPoolIndependentDependencyProjection7515,
-    },
-  ]
 }

@@ -38,6 +38,7 @@ pub mod extdeps_uri;
 pub mod extdeps_uri_path;
 pub mod extdeps_version;
 pub mod extdeps_version_semver;
+pub mod gunbc_namespace_reference_derived_closure_admission;
 pub mod gunbc_namespace_reference_derived_closure_contract;
 pub mod gunbc_rust_decl_type_overlay;
 pub mod gunbc_stage0_crate_layout_generated;

@@ -1,6 +1,6 @@
 module test.claim.namespace_reference_derived_closure_contract
 
-import gunbc.namespace_reference_derived_closure_contract {
+import gunbc.namespace_reference_derived_closure_admission {
   ReferenceDerivedClosureAdmission,
   ReferenceDerivedClosureEstablished,
   ReferenceDerivedClosureRefused,
@@ -26,6 +26,8 @@ import gunbc.namespace_reference_derived_closure_contract {
   RepeatedMentionDependencyObservation,
   UnrelatedLoadedFileObservation,
   assess_reference_derived_closure_observation,
+}
+import gunbc.namespace_reference_derived_closure_contract {
   reference_derived_closure_required_capabilities,
   reference_derived_closure_closing_frontier_count,
   reference_derived_closure_closing_contract_holds,

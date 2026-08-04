@@ -1,6 +1,6 @@
 module v1.tests.claim.namespace_reference_derived_closure_production_admissions_witness_test
 
-import gunbc.namespace_reference_derived_closure_contract {
+import gunbc.namespace_reference_derived_closure_admission {
   ReferenceDerivedClosureEstablished,
   ReferenceDerivedClosureUnavailable,
   SameFileEarlierNeighbourVisible,
@@ -11,10 +11,12 @@ import gunbc.namespace_reference_derived_closure_contract {
   UnrelatedLoadedFileExcluded,
   P2aReferenceDependencyProjection7515,
   P2aPoolIndependentDependencyProjection7515,
+}
+import gunbc.namespace_reference_derived_closure_contract {
+  namespace_reference_derived_closure_acceptance_admissions,
   reference_derived_closure_closing_frontier_count,
 }
 import v1.gunbc.namespace_reference_derived_closure_production_admissions {
-  namespace_reference_derived_closure_acceptance_admissions,
   observe_same_file_earlier_neighbour_visible,
   observe_sibling_decision_branch_excluded,
   observe_later_declaration_excluded,
@@ -22,7 +24,7 @@ import v1.gunbc.namespace_reference_derived_closure_production_admissions {
 }
 import std.types { Bool, Int }
 
-data namespace_reference_derived_closure_production_admissions_witness_note: String = "N3-A executing witnesses: each structural clause (a-d) is established by an independent production parse→P2a→assess path. The aggregate admissions seam leaves clauses (e-f) unavailable (frontier 2). Discriminating RED: witness_closing_contract_still_reds_until_dependency_clauses_land — the acceptance predicate is unchanged and must not green until all six capabilities establish."
+data namespace_reference_derived_closure_production_admissions_witness_note: String = "N3-A executing witnesses: each structural clause (a-d) is established by an independent production parse→P2a→assess path. The contract-owned aggregate leaves clauses (e-f) unavailable (frontier 2). Discriminating RED: witness_closing_contract_still_reds_until_dependency_clauses_land — the acceptance predicate is unchanged and must not green until all six capabilities establish."
 
 test fn witness_structural_production_admissions_establish_clauses_a_through_d() -> Bool {
   let statuses = namespace_reference_derived_closure_acceptance_admissions()

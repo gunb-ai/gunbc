@@ -7,19 +7,19 @@ use std::rc::Rc;
 use crate::v1_rt;
 use crate::NonEmptyVec;
 use crate::NonEmptyBTreeSet;
-pub use crate::gunbc_namespace_reference_derived_closure_contract::{ReferenceDerivedClosureAdmission, ReferenceDerivedClosureCapability, ReferenceDerivedClosureTrigger};
-pub use crate::gunbc_namespace_reference_derived_closure_contract::{reference_derived_closure_closing_frontier_count};
-use crate::gunbc_namespace_reference_derived_closure_contract::ReferenceDerivedClosureAdmission::{ReferenceDerivedClosureEstablished, ReferenceDerivedClosureUnavailable};
-use crate::gunbc_namespace_reference_derived_closure_contract::ReferenceDerivedClosureCapability::{SameFileEarlierNeighbourVisible, SiblingDecisionBranchExcluded, LaterDeclarationExcluded, DistinctSameSpelledDeclarationsPreserved, RepeatedMentionsCollapseDependency, UnrelatedLoadedFileExcluded};
-use crate::gunbc_namespace_reference_derived_closure_contract::ReferenceDerivedClosureTrigger::{P2aReferenceDependencyProjection7515, P2aPoolIndependentDependencyProjection7515};
-pub use crate::v1_gunbc_namespace_reference_derived_closure_production_admissions::{namespace_reference_derived_closure_acceptance_admissions, observe_same_file_earlier_neighbour_visible, observe_sibling_decision_branch_excluded, observe_later_declaration_excluded, observe_distinct_same_spelled_declarations_preserved};
+pub use crate::gunbc_namespace_reference_derived_closure_admission::{ReferenceDerivedClosureAdmission, ReferenceDerivedClosureCapability, ReferenceDerivedClosureTrigger};
+use crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerivedClosureAdmission::{ReferenceDerivedClosureEstablished, ReferenceDerivedClosureUnavailable};
+use crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerivedClosureCapability::{SameFileEarlierNeighbourVisible, SiblingDecisionBranchExcluded, LaterDeclarationExcluded, DistinctSameSpelledDeclarationsPreserved, RepeatedMentionsCollapseDependency, UnrelatedLoadedFileExcluded};
+use crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerivedClosureTrigger::{P2aReferenceDependencyProjection7515, P2aPoolIndependentDependencyProjection7515};
+pub use crate::gunbc_namespace_reference_derived_closure_contract::{namespace_reference_derived_closure_acceptance_admissions, reference_derived_closure_closing_frontier_count};
+pub use crate::v1_gunbc_namespace_reference_derived_closure_production_admissions::{observe_same_file_earlier_neighbour_visible, observe_sibling_decision_branch_excluded, observe_later_declaration_excluded, observe_distinct_same_spelled_declarations_preserved};
 pub use crate::std_types::{Bool};
 use crate::std_types::Bool::*;
 
 pub fn namespace_reference_derived_closure_production_admissions_witness_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "N3-A executing witnesses: each structural clause (a-d) is established by an independent production parse→P2a→assess path. The aggregate admissions seam leaves clauses (e-f) unavailable (frontier 2). Discriminating RED: witness_closing_contract_still_reds_until_dependency_clauses_land — the acceptance predicate is unchanged and must not green until all six capabilities establish.".to_string()
+            "N3-A executing witnesses: each structural clause (a-d) is established by an independent production parse→P2a→assess path. The contract-owned aggregate leaves clauses (e-f) unavailable (frontier 2). Discriminating RED: witness_closing_contract_still_reds_until_dependency_clauses_land — the acceptance predicate is unchanged and must not green until all six capabilities establish.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
