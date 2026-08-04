@@ -30,7 +30,7 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.version { VersionIdentity }
 import extdeps.http.server { MediaType, TopLevelApplication }
-import extdeps.standards.web_annotation { web_annotation_authority }
+import extdeps.standards.web_annotation { web_annotation_authority, extdeps_external_authority_anchor }
 import std.types { Bool, NonEmptyStr, EpochMs, HttpStatus }
 
 data witness_authority: ExternalAuthority = ExternalAuthority {
@@ -153,7 +153,7 @@ test fn citation_recorded_fact_feeds_claim_evidence_interface() -> Bool {
 }
 
 test fn web_annotation_authority_is_cited_for_selectors() -> Bool {
-  web_annotation_authority.uri.locator == "www.w3.org/TR/annotation-model/"
+  web_annotation_authority.uri.locator == extdeps_external_authority_anchor.uri.locator
 }
 
 test fn text_position_selector_refuses_end_before_start() -> Bool {
