@@ -89,11 +89,23 @@ type ObservedGitHubAppSigner {
 }
 
 type SignerCustody
-  = SignerCustodyAbsent { reason: NonEmptyStr }
-  | SignerCustodyObserved { signer: ObservedGitHubAppSigner }
+  = SignerCustodyObserved { signer: ObservedGitHubAppSigner }
+  | SignerMaterialAvailableForImport { source: SecretRef }
+  | SignerKeyGenerationRequired { app: DeclaredGitHubApp }
+  | SignerReadbackFailed { detail: NonEmptyStr }
 
-data gunbai_bot_signer_custody: SignerCustody = SignerCustodyAbsent {
-  reason: "no private key for the gunbai app (3909950) is modeled in this repository; gunbai_ci_app_pem_secret is the gunbai-ci (2653532) signing key and is not interchangeable"
+fn app_key_settings_locator(app: DeclaredGitHubApp) -> Uri {
+  Uri {
+    scheme: Https
+    locator: concat(
+      concat(concat("github.com/organizations/", app.owner_login), "/settings/apps/"),
+      app.slug
+    )
+  }
+}
+
+data gunbai_bot_signer_custody: SignerCustody = SignerKeyGenerationRequired {
+  app: gunbai_bot_declared
 }
 
 fn signer_seals_app(signer: ObservedGitHubAppSigner, app: DeclaredGitHubApp) -> Bool {
@@ -122,7 +134,7 @@ type InstallationReadbackCause
 
 type GitHubAppControlPlaneState
   = PermissionObservationRefused { app: DeclaredGitHubApp, duplicate: GitHubPermissionAxis }
-  | SignerCustodyMissing { app: DeclaredGitHubApp, reason: NonEmptyStr }
+  | SignerCustodyUnresolved { app: DeclaredGitHubApp, custody: SignerCustody }
   | AppRegistrationUnobserved { app: DeclaredGitHubApp }
   | InstallationUnobserved { app: DeclaredGitHubApp, reason: InstallationReadbackCause }
   | AppRegistrationPermissionMissing { request: GitHubAppPermissionChangeRequest }
@@ -238,13 +250,19 @@ fn sealed_control_plane_state(
   reason: NonEmptyStr
 ) -> GitHubAppControlPlaneState {
   match custody {
-    SignerCustodyAbsent { reason: custody_reason } =>
-      SignerCustodyMissing { app: app, reason: custody_reason }
+    SignerMaterialAvailableForImport { source: _ } =>
+      SignerCustodyUnresolved { app: app, custody: custody }
+    SignerKeyGenerationRequired { app: _ } =>
+      SignerCustodyUnresolved { app: app, custody: custody }
+    SignerReadbackFailed { detail: _ } =>
+      SignerCustodyUnresolved { app: app, custody: custody }
     SignerCustodyObserved { signer } =>
       if !signer_seals_app(signer: signer, app: app) {
-        SignerCustodyMissing {
+        SignerCustodyUnresolved {
           app: app,
-          reason: "observed signer does not seal to this app: app id or registered fingerprint disagrees"
+          custody: SignerReadbackFailed {
+            detail: "observed signer does not seal to this app: app id or registered fingerprint disagrees"
+          }
         }
       } else {
         match registration {
@@ -307,7 +325,8 @@ type ActionOwner
   | OperatorOwner
 
 type GitHubAppMachineAction
-  = ImportSignerKeyVersion { app: DeclaredGitHubApp }
+  = ImportSignerKeyVersion { app: DeclaredGitHubApp, source: SecretRef }
+  | ReReadSignerCustody { app: DeclaredGitHubApp }
   | ReadBackAppRegistration { app: DeclaredGitHubApp }
   | ReadBackInstallation { app: DeclaredGitHubApp }
   | RepairPermissionObservation { app: DeclaredGitHubApp, duplicate: GitHubPermissionAxis }
@@ -315,6 +334,7 @@ type GitHubAppMachineAction
 type GitHubAppOperatorAction
   = ApplyAppPermissionChange
   | AcceptInstallationPermissions
+  | GenerateAppSigningKey
 
 type GitHubAppNextAction
   = NoActionRequired
@@ -337,8 +357,21 @@ fn control_plane_next_action(state: GitHubAppControlPlaneState) -> GitHubAppNext
     InstallationGrantObserved { installation: _ } => NoActionRequired
     PermissionObservationRefused { app, duplicate } =>
       MachineActionRequired { action: RepairPermissionObservation { app: app, duplicate: duplicate } }
-    SignerCustodyMissing { app, reason: _ } =>
-      MachineActionRequired { action: ImportSignerKeyVersion { app: app } }
+    SignerCustodyUnresolved { app, custody } => match custody {
+      SignerMaterialAvailableForImport { source } =>
+        MachineActionRequired { action: ImportSignerKeyVersion { app: app, source: source } }
+      SignerReadbackFailed { detail: _ } =>
+        MachineActionRequired { action: ReReadSignerCustody { app: app } }
+      SignerCustodyObserved { signer: _ } =>
+        MachineActionRequired { action: ReReadSignerCustody { app: app } }
+      SignerKeyGenerationRequired { app: key_app } =>
+        OperatorActionRequired {
+          action: GenerateAppSigningKey,
+          locator: app_key_settings_locator(app: key_app),
+          permission_delta: [],
+          readback: control_plane_readback_ref
+        }
+    }
     AppRegistrationUnobserved { app } =>
       MachineActionRequired { action: ReadBackAppRegistration { app: app } }
     InstallationUnobserved { app, reason: _ } =>

@@ -21,8 +21,14 @@ import gunbc.ci_spec {
 import v2.workflow.ci_heal_revalidation_preflight_emit {
   ci_heal_revalidation_preflight_script,
 }
-import gunbc.ci_workflow_expressions { ci_deploy_push_to_main_if, ci_regen_heal_if }
-import gunbc.ci_heal_credential { ci_heal_job_permissions }
+import gunbc.ci_workflow_expressions { ci_deploy_push_to_main_if }
+import gunbc.ci_heal_credential {
+  ci_heal_job_permissions,
+  ci_heal_branch_head_checkout_step,
+  ci_regen_heal_if
+}
+import gunbc.heal_push_plan { author_commit_required_committed_artifact_paths }
+import extdeps.github.effect { path_is_hidden }
 import gunbc.commit_workflow { commit_gate_roster, project_ci_floor_gates, project_ci_floor_witness_entries }
 import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec, ci_runner_target_ram_speed_budget, selected_ci_runner_target }
 import gunbc.ci_compile_jobs { ci_compile_jobs, compile_jobs_count_or_serial }
@@ -98,28 +104,6 @@ fn ci_heal_revalidation_preflight_step() -> Step {
     shell: none,
     env: none,
     working_directory: none,
-    if_condition: none,
-    continue_on_error: none,
-    timeout_minutes: none
-  }
-}
-
-data ci_heal_branch_ref_expr: String = "${{ github.head_ref || github.ref_name }}"
-
-data ci_heal_branch_checkout_note: String = "The generated-artifact heal checks out the PR SOURCE branch head (github.head_ref) rather than the default detached PR-merge ref, because the heal pushes a regeneration commit BACK to that branch. The heal runs on pull_request only (ci_regen_heal_if), so github.head_ref is always the PR source branch; the `|| github.ref_name` fallback is retained as a defensive no-op for that expression. push (main), merge_group, and workflow_dispatch are excluded by ci_regen_heal_if — main is not auto-healed (its ci drift gate reds instead) and a queue ref (gh-readonly-queue/*) is not a pushable branch."
-
-fn ci_heal_branch_head_checkout_step() -> Step {
-  UsesStep {
-    name: Present { value: "Checkout triggering branch head (heal pushes the regeneration back to this branch)" },
-    id: none,
-    uses: checkout_action,
-    with: Present {
-      value: [
-        kv(key: "fetch-depth", value: yaml_int(n: 0)),
-        kv(key: "ref", value: yaml_string(s: ci_heal_branch_ref_expr))
-      ]
-    },
-    env: none,
     if_condition: none,
     continue_on_error: none,
     timeout_minutes: none
@@ -612,6 +596,14 @@ fn ci_heal_commit_push_step() -> Step {
   }
 }
 
+fn any_author_commit_path_is_hidden() -> Bool {
+  fold_list(
+    xs: author_commit_required_committed_artifact_paths(),
+    empty: false,
+    cons: fn(found, p) { found || path_is_hidden(path: p) }
+  )
+}
+
 fn ci_heal_author_commit_upload_step() -> Step {
   UsesStep {
     name: Present { value: "Upload author-commit-required workflow repairs (the selected push credential cannot update .github/workflows/**)" },
@@ -622,6 +614,10 @@ fn ci_heal_author_commit_upload_step() -> Step {
         kv(key: "name", value: yaml_string(s: ci_heal_author_commit_artifact_name)),
         kv(key: "path", value: yaml_string(s: ci_heal_author_commit_artifact_dir)),
         kv(key: "if-no-files-found", value: yaml_string(s: "ignore")),
+        kv(
+          key: "include-hidden-files",
+          value: yaml_bool(b: any_author_commit_path_is_hidden())
+        ),
         kv(key: "retention-days", value: yaml_int(n: 7)),
         kv(key: "compression-level", value: yaml_int(n: 0))
       ]

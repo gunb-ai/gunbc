@@ -66,37 +66,69 @@ fn axis_actions_scope_name(axis: GitHubPermissionAxis) -> NonEmptyStr? {
   }
 }
 
-fn axis_max_actions_access(axis: GitHubPermissionAxis) -> GitHubAppPermissionAccess? {
+type ActionsAccessSet
+  = ActionsAccessReadOrWrite
+  | ActionsAccessWriteOnly
+  | ActionsAccessReadOnly
+  | ActionsAccessNotAvailable
+
+fn axis_allowed_actions_access(axis: GitHubPermissionAxis) -> ActionsAccessSet {
   match axis {
-    ActionsAxis => Present { value: AppAccessWrite }
-    ArtifactMetadataAxis => Present { value: AppAccessWrite }
-    AttestationsAxis => Present { value: AppAccessWrite }
-    ChecksAxis => Present { value: AppAccessWrite }
-    CodeQualityAxis => Present { value: AppAccessWrite }
-    ContentsAxis => Present { value: AppAccessWrite }
-    DeploymentsAxis => Present { value: AppAccessWrite }
-    DiscussionsAxis => Present { value: AppAccessWrite }
-    IdTokenAxis => Present { value: AppAccessWrite }
-    IssuesAxis => Present { value: AppAccessWrite }
-    MetadataAxis => none
-    ModelsAxis => Present { value: AppAccessRead }
-    PackagesAxis => Present { value: AppAccessWrite }
-    PagesAxis => Present { value: AppAccessWrite }
-    PullRequestsAxis => Present { value: AppAccessWrite }
-    RepositoryProjectsAxis => Present { value: AppAccessWrite }
-    SecurityEventsAxis => Present { value: AppAccessWrite }
-    StatusesAxis => Present { value: AppAccessWrite }
-    VulnerabilityAlertsAxis => Present { value: AppAccessRead }
-    WorkflowsAxis => none
-    AdministrationAxis => none
-    OrganizationSelfHostedRunnersAxis => none
+    ActionsAxis => ActionsAccessReadOrWrite
+    ArtifactMetadataAxis => ActionsAccessReadOrWrite
+    AttestationsAxis => ActionsAccessReadOrWrite
+    ChecksAxis => ActionsAccessReadOrWrite
+    CodeQualityAxis => ActionsAccessReadOrWrite
+    ContentsAxis => ActionsAccessReadOrWrite
+    DeploymentsAxis => ActionsAccessReadOrWrite
+    DiscussionsAxis => ActionsAccessReadOrWrite
+    IdTokenAxis => ActionsAccessWriteOnly
+    IssuesAxis => ActionsAccessReadOrWrite
+    MetadataAxis => ActionsAccessNotAvailable
+    ModelsAxis => ActionsAccessReadOnly
+    PackagesAxis => ActionsAccessReadOrWrite
+    PagesAxis => ActionsAccessReadOrWrite
+    PullRequestsAxis => ActionsAccessReadOrWrite
+    RepositoryProjectsAxis => ActionsAccessReadOrWrite
+    SecurityEventsAxis => ActionsAccessReadOrWrite
+    StatusesAxis => ActionsAccessReadOrWrite
+    VulnerabilityAlertsAxis => ActionsAccessReadOnly
+    WorkflowsAxis => ActionsAccessNotAvailable
+    AdministrationAxis => ActionsAccessNotAvailable
+    OrganizationSelfHostedRunnersAxis => ActionsAccessNotAvailable
+  }
+}
+
+fn actions_access_set_admits(set: ActionsAccessSet, access: GitHubAppPermissionAccess) -> Bool {
+  match set {
+    ActionsAccessNotAvailable => false
+    ActionsAccessReadOrWrite => match access {
+      AppAccessRead => true
+      AppAccessWrite => true
+      AppAccessAdmin => false
+    }
+    ActionsAccessWriteOnly => match access {
+      AppAccessRead => false
+      AppAccessWrite => true
+      AppAccessAdmin => false
+    }
+    ActionsAccessReadOnly => match access {
+      AppAccessRead => true
+      AppAccessWrite => false
+      AppAccessAdmin => false
+    }
   }
 }
 
 fn actions_token_can_carry(name: GitHubPermissionAxis) -> Bool {
   match axis_actions_scope_name(axis: name) {
     Absent => false
-    Present { value: _ } => true
+    Present { value: _ } => match axis_allowed_actions_access(axis: name) {
+      ActionsAccessNotAvailable => false
+      ActionsAccessReadOrWrite => true
+      ActionsAccessWriteOnly => true
+      ActionsAccessReadOnly => true
+    }
   }
 }
 
@@ -139,6 +171,33 @@ fn permission_level_access(level: PermissionLevel) -> GitHubAppPermissionAccess?
   }
 }
 
+fn axis_modeled_by_workflow_permissions(axis: GitHubPermissionAxis) -> Bool {
+  match axis {
+    ActionsAxis => true
+    ContentsAxis => true
+    IdTokenAxis => true
+    IssuesAxis => true
+    PullRequestsAxis => true
+    ArtifactMetadataAxis => false
+    AttestationsAxis => false
+    ChecksAxis => false
+    CodeQualityAxis => false
+    DeploymentsAxis => false
+    DiscussionsAxis => false
+    MetadataAxis => false
+    ModelsAxis => false
+    PackagesAxis => false
+    PagesAxis => false
+    RepositoryProjectsAxis => false
+    SecurityEventsAxis => false
+    StatusesAxis => false
+    VulnerabilityAlertsAxis => false
+    WorkflowsAxis => false
+    AdministrationAxis => false
+    OrganizationSelfHostedRunnersAxis => false
+  }
+}
+
 fn declared_level_for_axis(perms: WorkflowPermissions, axis: GitHubPermissionAxis) -> PermissionLevel? {
   match axis {
     ActionsAxis => perms.actions
@@ -170,31 +229,62 @@ type ActionsGrantResolution
   = ActionsGrantResolved { access: GitHubAppPermissionAccess }
   | ActionsGrantNone
   | ActionsGrantScopeUnavailable
+  | ActionsGrantAxisNotModeled
+  | ActionsGrantDeclaredAccessInvalid {
+      axis: GitHubPermissionAxis
+      declared: GitHubAppPermissionAccess
+      allowed: ActionsAccessSet
+    }
   | ActionsGrantForkPolicyUnobserved
 
-fn fork_write_downgrade(grant: EffectiveActionsJobGrant) -> ActionsGrantResolution {
+type ForkWriteVerdict
+  = ForkWriteNotApplicable
+  | ForkWriteAllowed
+  | ForkWriteDowngradedToRead
+  | ForkWritePolicyUnobserved
+
+fn fork_write_verdict(grant: EffectiveActionsJobGrant) -> ForkWriteVerdict {
   match grant.origin {
-    SameRepositoryOrigin => ActionsGrantNone
-    OriginNotApplicable => ActionsGrantNone
+    SameRepositoryOrigin => ForkWriteNotApplicable
+    OriginNotApplicable => ForkWriteNotApplicable
     ForkedRepositoryOrigin => match grant.repository_policy {
-      ActionsRepositoryPolicyUnobserved => ActionsGrantForkPolicyUnobserved
+      ActionsRepositoryPolicyUnobserved => ForkWritePolicyUnobserved
       ActionsRepositoryPolicyObserved { send_write_tokens_to_fork_pull_requests: allowed } =>
-        if allowed { ActionsGrantNone } else { ActionsGrantResolved { access: AppAccessRead } }
+        if allowed { ForkWriteAllowed } else { ForkWriteDowngradedToRead }
     }
   }
 }
 
-fn capped_by(access: GitHubAppPermissionAccess, ceiling: GitHubAppPermissionAccess) -> GitHubAppPermissionAccess {
-  if permission_access_at_least(held: ceiling, requested: access) { access } else { ceiling }
+fn resolve_declared_write(grant: EffectiveActionsJobGrant) -> ActionsGrantResolution {
+  match fork_write_verdict(grant: grant) {
+    ForkWriteNotApplicable => ActionsGrantResolved { access: AppAccessWrite }
+    ForkWriteAllowed => ActionsGrantResolved { access: AppAccessWrite }
+    ForkWriteDowngradedToRead => ActionsGrantResolved { access: AppAccessRead }
+    ForkWritePolicyUnobserved => ActionsGrantForkPolicyUnobserved
+  }
 }
 
-fn axis_capped_access(
+fn resolve_declared_access(
+  grant: EffectiveActionsJobGrant,
   axis: GitHubPermissionAxis,
   declared: GitHubAppPermissionAccess
-) -> GitHubAppPermissionAccess? {
-  match axis_max_actions_access(axis: axis) {
-    Absent => none
-    Present { value: axis_ceiling } => Present { value: capped_by(access: declared, ceiling: axis_ceiling) }
+) -> ActionsGrantResolution {
+  if !actions_access_set_admits(set: axis_allowed_actions_access(axis: axis), access: declared) {
+    ActionsGrantDeclaredAccessInvalid {
+      axis: axis,
+      declared: declared,
+      allowed: axis_allowed_actions_access(axis: axis)
+    }
+  } else {
+    match declared {
+      AppAccessRead => ActionsGrantResolved { access: AppAccessRead }
+      AppAccessWrite => resolve_declared_write(grant: grant)
+      AppAccessAdmin => ActionsGrantDeclaredAccessInvalid {
+        axis: axis,
+        declared: declared,
+        allowed: axis_allowed_actions_access(axis: axis)
+      }
+    }
   }
 }
 
@@ -204,22 +294,19 @@ fn effective_actions_grant(
 ) -> ActionsGrantResolution {
   match axis_actions_scope_name(axis: name) {
     Absent => ActionsGrantScopeUnavailable
-    Present { value: _ } => match declared_level_for_axis(perms: grant.permissions, axis: name) {
-      Absent => ActionsGrantNone
-      Present { value: level } => match permission_level_access(level: level) {
-        Absent => ActionsGrantNone
-        Present { value: declared } => match axis_capped_access(axis: name, declared: declared) {
-          Absent => ActionsGrantScopeUnavailable
-          Present { value: within_axis } => match fork_write_downgrade(grant: grant) {
-            ActionsGrantForkPolicyUnobserved => ActionsGrantForkPolicyUnobserved
-            ActionsGrantResolved { access: fork_ceiling } =>
-              ActionsGrantResolved { access: capped_by(access: within_axis, ceiling: fork_ceiling) }
-            ActionsGrantNone => ActionsGrantResolved { access: within_axis }
-            ActionsGrantScopeUnavailable => ActionsGrantScopeUnavailable
+    Present { value: _ } =>
+      if !axis_modeled_by_workflow_permissions(axis: name) {
+        ActionsGrantAxisNotModeled
+      } else {
+        match declared_level_for_axis(perms: grant.permissions, axis: name) {
+          Absent => ActionsGrantNone
+          Present { value: level } => match permission_level_access(level: level) {
+            Absent => ActionsGrantNone
+            Present { value: declared } =>
+              resolve_declared_access(grant: grant, axis: name, declared: declared)
           }
         }
       }
-    }
   }
 }
 

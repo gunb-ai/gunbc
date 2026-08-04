@@ -79,6 +79,10 @@ fn path_has_prefix(path: NonEmptyStr, prefix: NonEmptyStr) -> Bool {
   }
 }
 
+fn path_is_hidden(path: NonEmptyStr) -> Bool {
+  path_has_prefix(path: path, prefix: ".")
+}
+
 fn is_workflow_projection_path(path: RepositoryPath) -> Bool {
   path_has_prefix(path: path.value, prefix: workflow_directory_prefix)
 }

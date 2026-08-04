@@ -12,6 +12,8 @@ import extdeps.github.app {
   OrganizationSelfHostedRunnersAxis,
   IssuesAxis,
   IdTokenAxis,
+  ChecksAxis,
+  ModelsAxis,
   GitHubAppPermissionAccess,
   AppAccessRead,
   AppAccessWrite
@@ -32,7 +34,15 @@ import extdeps.github.actions_token {
   ActionsGrantResolved,
   ActionsGrantNone,
   ActionsGrantScopeUnavailable,
+  ActionsGrantAxisNotModeled,
+  ActionsGrantDeclaredAccessInvalid,
   ActionsGrantForkPolicyUnobserved,
+  ActionsAccessSet,
+  ActionsAccessReadOrWrite,
+  ActionsAccessWriteOnly,
+  ActionsAccessReadOnly,
+  ActionsAccessNotAvailable,
+  axis_allowed_actions_access,
   effective_actions_grant
 }
 import extdeps.github.effect {
@@ -47,22 +57,43 @@ import gunbc.auth.github_credential {
   ActionsJobCredential,
   GitPushCredentialBinding,
   CheckoutPersistedActionsCredential,
-  ExplicitCredentialLease,
-  credential_from_push_binding,
+  PushBindingResolution,
+  PushBindingResolved,
+  PushCredentialBindingMissing,
+  PushCredentialLeaseUnresolved,
   credential_authorizes
 }
 import gunbc.ci_heal_credential {
   ci_heal_job_permissions,
   ci_heal_effective_grant,
-  ci_heal_checkout_step_ref,
-  ci_heal_push_binding,
-  live_heal_push_credential,
+  ci_heal_origin_guard,
+  ci_regen_heal_if,
+  ci_heal_pull_request_origin,
+  heal_origin_guard_condition,
+  heal_guard_origin,
+  HealOriginGuard,
+  ci_heal_branch_head_checkout_step,
+  resolve_push_binding,
+  push_binding_authority,
+  live_heal_push_binding_resolution,
   live_heal_control_plane,
   fork_origin_grant
 }
+import extdeps.languages.yaml.types {
+  YamlKeyValue, YamlValue, YamlString, YamlBool,
+  kv, yaml_string, yaml_int, yaml_bool
+}
+import extdeps.github.actions { Step, UsesStep, checkout_action }
 import gunbc.repository { gunbc_repository }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn live_heal_push_authority() -> GitHubCredentialAuthority {
+  match push_binding_authority(resolution: live_heal_push_binding_resolution) {
+    Present { value: a } => a
+    Absent => ActionsJobCredential { grant: fork_origin_grant() }
+  }
+}
 
 fn grant_with(
   contents: PermissionLevel?,
@@ -122,6 +153,10 @@ fn is_scope_unavailable(r: ActionsGrantResolution) -> Bool {
   match r { ActionsGrantScopeUnavailable => true  _ => false }
 }
 
+fn is_axis_not_modeled(r: ActionsGrantResolution) -> Bool {
+  match r { ActionsGrantAxisNotModeled => true  _ => false }
+}
+
 data same_repo_policy: ActionsRepositoryPolicyObservation = ActionsRepositoryPolicyUnobserved
 data fork_policy_denies: ActionsRepositoryPolicyObservation = ActionsRepositoryPolicyObserved {
   send_write_tokens_to_fork_pull_requests: false
@@ -161,6 +196,7 @@ test fn witness_scope_unavailable_is_not_scope_none() -> Bool {
     && is_scope_unavailable(r: effective_actions_grant(grant: g, name: OrganizationSelfHostedRunnersAxis))
     && is_none(r: effective_actions_grant(grant: g, name: IssuesAxis))
     && is_none(r: effective_actions_grant(grant: g, name: IdTokenAxis))
+    && is_axis_not_modeled(r: effective_actions_grant(grant: g, name: ChecksAxis))
 }
 
 data workflow_effect: GitHubEffect = AdvanceRepositoryBranch {
@@ -189,20 +225,135 @@ test fn witness_fork_pull_request_cannot_advance_any_branch() -> Bool {
     control_plane: live_heal_control_plane,
     effect: workflow_effect
   ) && credential_authorizes(
-    authority: live_heal_push_credential,
+    authority: live_heal_push_authority(),
     control_plane: live_heal_control_plane,
     effect: ordinary_effect
   )
 }
 
-test fn witness_push_binding_is_the_checkout_persisted_credential() -> Bool {
-  match ci_heal_push_binding {
-    CheckoutPersistedActionsCredential { checkout_step } =>
-      checkout_step.decl_name == "ci_heal_branch_head_checkout_step"
-        && checkout_step.module_path == "gunbc.ci_workflow"
-    ExplicitCredentialLease { lease: _ } => false
-  } && match live_heal_push_credential {
-    ActionsJobCredential { grant } => grant.permissions == ci_heal_job_permissions
+fn checkout_variant(rows: List<YamlKeyValue>) -> Step {
+  UsesStep {
+    name: Present { value: "Checkout" },
+    id: none,
+    uses: checkout_action,
+    with: Present { value: rows },
+    env: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+test fn witness_push_binding_is_projected_from_the_actual_checkout_step() -> Bool {
+  match resolve_push_binding(step: ci_heal_branch_head_checkout_step(), grant: ci_heal_effective_grant) {
+    PushBindingResolved { binding, authority } =>
+      match binding {
+        CheckoutPersistedActionsCredential { checkout_step } =>
+          checkout_step.decl_name == "ci_heal_branch_head_checkout_step"
+      } && match authority {
+        ActionsJobCredential { grant } => grant.permissions == ci_heal_job_permissions
+        _ => false
+      }
     _ => false
   }
+}
+
+test fn witness_persist_credentials_false_unbinds_the_push_credential() -> Bool {
+  let disabled = checkout_variant(rows: [
+    kv(key: "fetch-depth", value: yaml_int(n: 0)),
+    kv(key: "persist-credentials", value: yaml_bool(b: false))
+  ])
+  let disabled_string = checkout_variant(rows: [
+    kv(key: "persist-credentials", value: yaml_string(s: "false"))
+  ])
+  let leased = checkout_variant(rows: [
+    kv(key: "token", value: yaml_string(s: "${{ steps.app_token.outputs.token }}"))
+  ])
+  match resolve_push_binding(step: disabled, grant: ci_heal_effective_grant) {
+    PushCredentialBindingMissing { checkout_step: _ } => true
+    _ => false
+  } && match resolve_push_binding(step: disabled_string, grant: ci_heal_effective_grant) {
+    PushCredentialBindingMissing { checkout_step: _ } => true
+    _ => false
+  } && match resolve_push_binding(step: leased, grant: ci_heal_effective_grant) {
+    PushCredentialLeaseUnresolved { checkout_step: _ } => true
+    _ => false
+  } && match push_binding_authority(
+    resolution: resolve_push_binding(step: disabled, grant: ci_heal_effective_grant)
+  ) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+test fn witness_heal_condition_and_origin_share_one_guard() -> Bool {
+  string_contains(s: ci_regen_heal_if, pattern: "github.event_name == 'pull_request'")
+    && string_contains(s: ci_regen_heal_if, pattern: "github.event.pull_request.head.repo.full_name == github.repository")
+    && string_contains(s: ci_regen_heal_if, pattern: "github.actor != 'dependabot[bot]'")
+    && match ci_heal_pull_request_origin { SameRepositoryOrigin => true  _ => false }
+    && match heal_guard_origin(
+         guard: HealOriginGuard {
+           event: PullRequestEvent,
+           require_same_repository: false,
+           exclude_dependabot: false
+         }
+       ) { ForkedRepositoryOrigin => true  _ => false }
+    && !string_contains(
+         s: heal_origin_guard_condition(
+           guard: HealOriginGuard {
+             event: PullRequestEvent,
+             require_same_repository: false,
+             exclude_dependabot: false
+           }
+         ),
+         pattern: "head.repo.full_name"
+       )
+}
+
+test fn witness_invalid_declared_access_refuses_rather_than_capping() -> Bool {
+  let id_token_read = EffectiveActionsJobGrant {
+    workflow: ci_heal_effective_grant.workflow,
+    job: ci_heal_effective_grant.job,
+    event: PullRequestEvent,
+    origin: SameRepositoryOrigin,
+    repository_policy: ActionsRepositoryPolicyUnobserved,
+    permissions: WorkflowPermissions {
+      contents: none,
+      pull_requests: none,
+      issues: none,
+      actions: none,
+      id_token: Present { value: PermRead }
+    }
+  }
+  match effective_actions_grant(grant: id_token_read, name: IdTokenAxis) {
+    ActionsGrantDeclaredAccessInvalid { axis: _, declared, allowed } =>
+      match declared { AppAccessRead => true  _ => false }
+        && match allowed { ActionsAccessWriteOnly => true  _ => false }
+    _ => false
+  } && match axis_allowed_actions_access(axis: ModelsAxis) {
+    ActionsAccessReadOnly => true
+    _ => false
+  } && match axis_allowed_actions_access(axis: ContentsAxis) {
+    ActionsAccessReadOrWrite => true
+    _ => false
+  }
+}
+
+test fn witness_unmodeled_axis_is_not_reported_as_scope_none() -> Bool {
+  let g = grant_with(contents: Present { value: PermWrite }, origin: SameRepositoryOrigin, policy: same_repo_policy)
+  match effective_actions_grant(grant: g, name: ChecksAxis) {
+    ActionsGrantAxisNotModeled => true
+    _ => false
+  } && match effective_actions_grant(grant: g, name: IssuesAxis) {
+    ActionsGrantNone => true
+    _ => false
+  }
+}
+
+test fn witness_fork_policy_is_required_only_for_a_declared_write() -> Bool {
+  is_read(r: contents_resolution(contents: Present { value: PermRead }, origin: ForkedRepositoryOrigin, policy: ActionsRepositoryPolicyUnobserved))
+    && is_fork_policy_unobserved(
+         r: contents_resolution(contents: Present { value: PermWrite }, origin: ForkedRepositoryOrigin, policy: ActionsRepositoryPolicyUnobserved)
+       )
+    && is_none(r: contents_resolution(contents: Present { value: PermNone }, origin: ForkedRepositoryOrigin, policy: ActionsRepositoryPolicyUnobserved))
 }

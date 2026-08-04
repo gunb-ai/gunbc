@@ -9,7 +9,7 @@ import gunbc.generated_artifact {
   committed_generated_artifacts, artifact_path, artifact_commit_policy, artifact_is_committed,
   registry_contains
 }
-import gunbc.ci_heal_credential { live_heal_push_credential, live_heal_control_plane }
+import gunbc.ci_heal_credential { live_heal_push_binding_resolution, live_heal_control_plane }
 import gunbc.heal_push_plan {
   HealRepairDisposition, HealRepairNoDrift, HealRepairAutoPushEligibleOnly,
   HealRepairAuthorCommitRequired, HealRepairMixed,
@@ -17,7 +17,8 @@ import gunbc.heal_push_plan {
   HealPushRefusal, HealPushRefusalCause,
   ActionsJobCredentialScopeUnavailable, ActionsJobCredentialScopeNotGranted,
   ActionsJobCredentialForkPolicyUnobserved, ManagedInstallationGrantUnobserved,
-  ManagedCredentialSubjectMismatch,
+  ManagedCredentialSubjectMismatch, PushBindingMissingOnCheckoutStep, PushBindingLeaseUnresolved,
+  plan_heal_push_from_binding,
   heal_push_refusal_cause_token, live_heal_push_refusal_cause_token,
   plan_heal_push, live_heal_push_plan,
   auto_push_eligible_committed_artifacts, author_commit_required_committed_artifacts,
@@ -186,7 +187,10 @@ fn plan_refuses_workflow_paths(plan: HealPushPlan) -> Bool {
 }
 
 fn refusal_is_actions_scope_unavailable(cause: HealPushRefusal) -> Bool {
-  cause.missing.wire_name == "workflows" && match cause.cause {
+  match cause.missing {
+    Absent => false
+    Present { value: axis } => permission_axis_wire_name(axis: axis) == "workflows"
+  } && match cause.cause {
     ActionsJobCredentialScopeUnavailable => true
     _ => false
   }
@@ -215,9 +219,9 @@ test fn witness_live_refusal_cause_token_is_derived_from_the_plan() -> Bool {
 }
 
 test fn witness_heal_plan_empty_input_is_nothing_to_do() -> Bool {
-  match plan_heal_push(
+  match plan_heal_push_from_binding(
     artifacts: [],
-    authority: live_heal_push_credential,
+    resolution: live_heal_push_binding_resolution,
     control_plane: live_heal_control_plane
   ) {
     HealPushNothingToDo => true
@@ -228,9 +232,9 @@ test fn witness_heal_plan_empty_input_is_nothing_to_do() -> Bool {
 }
 
 test fn witness_heal_plan_non_workflow_artifacts_are_ready() -> Bool {
-  match plan_heal_push(
+  match plan_heal_push_from_binding(
     artifacts: [GitignoreArtifact, DesignArtifact],
-    authority: live_heal_push_credential,
+    resolution: live_heal_push_binding_resolution,
     control_plane: live_heal_control_plane
   ) {
     HealPushReady { artifacts } => count(artifacts) == 2
@@ -241,9 +245,9 @@ test fn witness_heal_plan_non_workflow_artifacts_are_ready() -> Bool {
 }
 
 test fn witness_heal_plan_workflow_only_refuses_wholesale() -> Bool {
-  match plan_heal_push(
+  match plan_heal_push_from_binding(
     artifacts: [CiYamlArtifact, FalsifierYamlArtifact],
-    authority: live_heal_push_credential,
+    resolution: live_heal_push_binding_resolution,
     control_plane: live_heal_control_plane
   ) {
     HealPushRefused { refused, cause: _ } => count(refused) == 2

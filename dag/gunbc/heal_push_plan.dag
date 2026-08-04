@@ -18,12 +18,18 @@ import gunbc.auth.github_credential {
   CredentialKindCannotSatisfy,
   CredentialScopeNotGranted,
   CredentialForkPolicyUnobserved,
+  CredentialAxisNotModeled,
+  CredentialDeclaredAccessInvalid,
   CredentialGrantNotObserved,
   CredentialSubjectMismatch,
   credential_authorizes,
-  unsatisfied_capabilities
+  unsatisfied_capabilities,
+  PushBindingResolution,
+  PushBindingResolved,
+  PushCredentialBindingMissing,
+  PushCredentialLeaseUnresolved
 }
-import gunbc.ci_heal_credential { live_heal_push_credential, live_heal_control_plane }
+import gunbc.ci_heal_credential { live_heal_push_binding_resolution, live_heal_control_plane }
 import gunbc.generated_artifact {
   GeneratedArtifact,
   artifact_path,
@@ -61,13 +67,16 @@ type HealPushRefusalCause
   = ActionsJobCredentialScopeUnavailable
   | ActionsJobCredentialScopeNotGranted
   | ActionsJobCredentialForkPolicyUnobserved
+  | ActionsJobCredentialAxisNotModeled
+  | ActionsJobCredentialDeclaredAccessInvalid
+  | PushBindingMissingOnCheckoutStep
+  | PushBindingLeaseUnresolved
   | ManagedInstallationGrantUnobserved
   | ManagedCredentialSubjectMismatch
 
 type HealPushRefusal {
-  authority: GitHubCredentialAuthority
   paths: List<RepositoryPath>
-  missing: GitHubPermissionAxis
+  missing: GitHubPermissionAxis?
   cause: HealPushRefusalCause
 }
 
@@ -76,6 +85,10 @@ fn heal_push_refusal_cause_token(cause: HealPushRefusalCause) -> String {
     ActionsJobCredentialScopeUnavailable => "ActionsJobCredentialScopeUnavailable"
     ActionsJobCredentialScopeNotGranted => "ActionsJobCredentialScopeNotGranted"
     ActionsJobCredentialForkPolicyUnobserved => "ActionsJobCredentialForkPolicyUnobserved"
+    ActionsJobCredentialAxisNotModeled => "ActionsJobCredentialAxisNotModeled"
+    ActionsJobCredentialDeclaredAccessInvalid => "ActionsJobCredentialDeclaredAccessInvalid"
+    PushBindingMissingOnCheckoutStep => "PushBindingMissingOnCheckoutStep"
+    PushBindingLeaseUnresolved => "PushBindingLeaseUnresolved"
     ManagedInstallationGrantUnobserved => "ManagedInstallationGrantUnobserved"
     ManagedCredentialSubjectMismatch => "ManagedCredentialSubjectMismatch"
   }
@@ -108,23 +121,26 @@ fn first_refusal_cause(
   fold_list(
     xs: unsatisfied,
     empty: HealPushRefusal {
-      authority: authority,
       paths: paths,
-      missing: workflows_permission_name,
+      missing: Present { value: workflows_permission_name },
       cause: ManagedInstallationGrantUnobserved
     },
     cons: fn(acc, c) {
       match c {
         CredentialKindCannotSatisfy { missing } =>
-          HealPushRefusal { authority: authority, paths: paths, missing: missing, cause: ActionsJobCredentialScopeUnavailable }
+          HealPushRefusal { paths: paths, missing: Present { value: missing }, cause: ActionsJobCredentialScopeUnavailable }
         CredentialScopeNotGranted { missing } =>
-          HealPushRefusal { authority: authority, paths: paths, missing: missing, cause: ActionsJobCredentialScopeNotGranted }
+          HealPushRefusal { paths: paths, missing: Present { value: missing }, cause: ActionsJobCredentialScopeNotGranted }
         CredentialForkPolicyUnobserved { missing } =>
-          HealPushRefusal { authority: authority, paths: paths, missing: missing, cause: ActionsJobCredentialForkPolicyUnobserved }
+          HealPushRefusal { paths: paths, missing: Present { value: missing }, cause: ActionsJobCredentialForkPolicyUnobserved }
+        CredentialAxisNotModeled { missing } =>
+          HealPushRefusal { paths: paths, missing: Present { value: missing }, cause: ActionsJobCredentialAxisNotModeled }
+        CredentialDeclaredAccessInvalid { missing } =>
+          HealPushRefusal { paths: paths, missing: Present { value: missing }, cause: ActionsJobCredentialDeclaredAccessInvalid }
         CredentialSubjectMismatch { missing } =>
-          HealPushRefusal { authority: authority, paths: paths, missing: missing, cause: ManagedCredentialSubjectMismatch }
+          HealPushRefusal { paths: paths, missing: Present { value: missing }, cause: ManagedCredentialSubjectMismatch }
         CredentialGrantNotObserved { missing } =>
-          HealPushRefusal { authority: authority, paths: paths, missing: missing, cause: ManagedInstallationGrantUnobserved }
+          HealPushRefusal { paths: paths, missing: Present { value: missing }, cause: ManagedInstallationGrantUnobserved }
         CredentialGrants => acc
       }
     }
@@ -156,9 +172,42 @@ fn plan_heal_push(
   }
 }
 
-data live_heal_push_plan: HealPushPlan = plan_heal_push(
+fn plan_heal_push_from_binding(
+  artifacts: List<GeneratedArtifact>,
+  resolution: PushBindingResolution,
+  control_plane: GitHubAppControlPlaneState
+) -> HealPushPlan {
+  match resolution {
+    PushBindingResolved { binding: _, authority } =>
+      plan_heal_push(artifacts: artifacts, authority: authority, control_plane: control_plane)
+    PushCredentialBindingMissing { checkout_step: _ } =>
+      binding_refused_plan(artifacts: artifacts, cause: PushBindingMissingOnCheckoutStep)
+    PushCredentialLeaseUnresolved { checkout_step: _ } =>
+      binding_refused_plan(artifacts: artifacts, cause: PushBindingLeaseUnresolved)
+  }
+}
+
+fn binding_refused_plan(
+  artifacts: List<GeneratedArtifact>,
+  cause: HealPushRefusalCause
+) -> HealPushPlan {
+  if count(artifacts) == 0 {
+    HealPushNothingToDo
+  } else {
+    HealPushRefused {
+      refused: artifacts,
+      cause: HealPushRefusal {
+        paths: map(artifacts, a => artifact_repository_path(a: a)),
+        missing: none,
+        cause: cause
+      }
+    }
+  }
+}
+
+data live_heal_push_plan: HealPushPlan = plan_heal_push_from_binding(
   artifacts: committed_generated_artifacts(),
-  authority: live_heal_push_credential,
+  resolution: live_heal_push_binding_resolution,
   control_plane: live_heal_control_plane
 )
 
