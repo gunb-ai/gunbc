@@ -5,12 +5,14 @@ import std.logic { Bool }
 import extdeps.git { GitRemoteRefParts, git_remote_ref }
 import extdeps.git.hooks { zero_sha }
 import extdeps.git.object_store { GitObjectId, git_object_id_wire_hex }
-import extdeps.session_dashboard.change_window {
-  DashboardReplayObservation,
-  DashboardExactReplayObserved,
-  DashboardReplayMalformed,
-  DashboardReplayReadRefused,
-  GitClaimedMergeBaseRelation
+import gunbc.diff_change_window {
+  DiffWindowObservation,
+  DiffWindowObserved,
+  DiffWindowMalformed,
+  DiffWindowReadRefused,
+  DiffWindowRelation,
+  ClaimedMergeBase,
+  VerifiedMergeBase
 }
 import extdeps.github.actions {
   github_event_name_pull_request,
@@ -20,7 +22,7 @@ import extdeps.github.actions {
   github_event_name_schedule
 }
 
-data diff_baseline_law: String = "DiffBaseline is the typed answer to 'what does the affected-set diff observe HEAD against?' — the de-fork of the origin/main policy-as-literal (DESIGN §3(c)). Arms: MergeTarget (pull_request GITHUB_BASE_REF branch name only → origin/<branch>, merge-base/triple-dot), ExactReplayBoundary (dashboard GUNBC_CI_CHANGE_WINDOW_PATH exact base/head GitObjectIds, direct/two-dot), PushBefore (push payload before SHA), PushParent (default branch for non-PR CI events), OperatorOverride (GUNBC_CI_DIFF_BASE). resolve_diff_baseline is PURE over CiDiffEvent; env reads live in v2.workflow.floor_diff_observe.floor_observe_ci_diff_event."
+data diff_baseline_law: String = "DiffBaseline is the typed answer to 'what does the affected-set diff observe HEAD against?' — the de-fork of the origin/main policy-as-literal (DESIGN §3(c)). Arms: MergeTarget (pull_request GITHUB_BASE_REF branch name only → origin/<branch>, merge-base/triple-dot), ExactReplayBoundary (GUNBC_DIFF_WINDOW_PATH exact base/head GitObjectIds, direct/two-dot), PushBefore (push payload before SHA), PushParent (default branch for non-PR CI events), OperatorOverride (GUNBC_CI_DIFF_BASE). resolve_diff_baseline is PURE over CiDiffEvent; env reads live in v2.workflow.floor_diff_observe.floor_observe_ci_diff_event."
 
 data diff_baseline_fail_closed_law: String = "A CI event this resolver cannot map to a base REFUSES (BaselineRefused) — it never substitutes a constant. The refusal propagates through floor_diff_observe's UnifiedDiffFail / NameStatusDiffFail into the executor's diff observation (cli_run.rs floor_git_diff_range), which HALTS the floor with a typed AFFECTED-SET REFUSAL (cause=DiffObservationRefusal): 'refuses every enrolled row rather than widening to a full-corpus run' (operator ruling 2026-07-05). The ignorance state is a loud, located, HARD STOP — NOT a run-everything widen (an earlier draft of this note misdescribed it as widen-to-whole-tree; the executor refuses, it does not widen — DESIGN §5, the exact absorbing-fallback shape being avoided). Only a genuinely-unrecognized event name lands here: the five live workflow triggers (push / pull_request / workflow_dispatch / merge_group from ci_workflow, schedule from falsifier_workflow) all map to a base arm, so a future-added trigger halts loudly until it is modeled, rather than silently defaulting to origin/main — the exact defect being deleted, now typed."
 
@@ -28,16 +30,16 @@ data diff_baseline_bootstrap_arm_note: String = "The empty-event-name arm ('' �
 
 data diff_baseline_push_before_law: String = "Push events resolve PushBefore from the webhook payload's before member (extdeps.github.push_event), NOT PushParent. Absent, empty, zero (0000000000000000000000000000000000000000 — new-branch creation per cited payload semantics, not observed in-repo), equal-to-head, or head-unknown before SHAs REFUSE: a push with no prior commit has no honest affected-set window; a before SHA equal to head is a self-compare; and head unknown cannot rule out self-compare. Observation-layer refusals (unreadable event payload, malformed JSON) arrive as PushBeforeInputRefused and propagate with their computed cause — they never collapse to a generic absent. These refusals halt the floor; they never widen to origin/main. The baseline SOURCE (payload before SHA) stays separable from these policy arms so a future last-green source swap does not rewrite refusal logic."
 
-data diff_baseline_merge_target_law: String = "pull_request MergeTarget reads GITHUB_BASE_REF as a GitHub TARGET BRANCH NAME only (extdeps.github.actions github_ci_event_surface_note). It always becomes origin/<branch> via git_remote_ref — even when the branch name is lexically 40 lowercase hex characters, because Git ref names are not reserved against object-id spellings and semantic kind cannot be recovered from text alone. Exact merge-base object identities belong in extdeps.session_dashboard.change_window (GUNBC_CI_CHANGE_WINDOW_PATH), never in GITHUB_BASE_REF."
+data diff_baseline_merge_target_law: String = "pull_request MergeTarget reads GITHUB_BASE_REF as a GitHub TARGET BRANCH NAME only (extdeps.github.actions github_ci_event_surface_note). It always becomes origin/<branch> via git_remote_ref — even when the branch name is lexically 40 lowercase hex characters, because Git ref names are not reserved against object-id spellings and semantic kind cannot be recovered from text alone. Exact merge-base object identities belong in gunbc.diff_change_window (GUNBC_DIFF_WINDOW_PATH), never in GITHUB_BASE_REF."
 
-data diff_baseline_exact_replay_law: String = "Dashboard exact replay selects ExactReplayBoundary with typed GitObjectId base/head from extdeps.session_dashboard.change_window. Git CLI operands are rendered only at the realization boundary via diff_baseline_diff_base/diff_baseline_diff_head (git_object_id_wire_hex). Comparison is direct/two-dot — not triple-dot — because the dashboard already claims the merge-base boundary. Repository availability, object kind, ancestry verification, and checkout/head pinning are PR-2 Git endpoint repairs; this arm still refuses malformed wire input and self-compare at parse time."
+data diff_baseline_exact_replay_law: String = "Exact replay selects ExactReplayBoundary with typed GitObjectId base/head from gunbc.diff_change_window. Git CLI operands are rendered only at the realization boundary via diff_baseline_diff_base/diff_baseline_diff_head (git_object_id_wire_hex). Comparison is direct/two-dot — not triple-dot — because the producer already claims the merge-base boundary. Repository availability, object kind, ancestry verification, and checkout/head pinning are PR-2 Git endpoint repairs; this arm still refuses malformed wire input and self-compare at parse time."
 
 type DiffBaseline
   = MergeTarget { ref: GitRef }
   | ExactReplayBoundary {
       base: GitObjectId,
       head: GitObjectId,
-      claimed_relation: GitClaimedMergeBaseRelation
+      claimed_relation: DiffWindowRelation
     }
   | PushBefore { ref: GitRef }
   | PushParent { ref: GitRef }
@@ -54,7 +56,7 @@ type CiDiffEvent {
   base_ref: String?
   push_before: PushBeforeInput?
   head_sha: String?
-  dashboard_replay: DashboardReplayObservation?
+  diff_window: DiffWindowObservation?
 }
 
 type DiffBaselineResolution
@@ -104,30 +106,30 @@ fn diff_baseline_is_exact_replay(b: DiffBaseline) -> Bool {
   }
 }
 
-fn resolve_dashboard_replay(observation: DashboardReplayObservation?) -> DiffBaselineResolution? {
+fn resolve_diff_window(observation: DiffWindowObservation?) -> DiffBaselineResolution? {
   match observation {
     Absent => none
-    Present { value: DashboardExactReplayObserved { base: base, head: head, claimed_relation: relation, producer: _ } } =>
+    Present { value: DiffWindowObserved { window: window } } =>
       Present {
         value: BaselineSelected {
           baseline: ExactReplayBoundary {
-            base: base,
-            head: head,
-            claimed_relation: relation
+            base: window.base,
+            head: window.head,
+            claimed_relation: window.relation
           }
         }
       }
-    Present { value: DashboardReplayMalformed { detail: detail } } =>
+    Present { value: DiffWindowMalformed { detail: detail } } =>
       Present {
         value: BaselineRefused {
-          reason: concat("dashboard exact replay malformed — ", concat(detail, "; halting the floor (AFFECTED-SET REFUSAL)"))
+          reason: concat("exact diff window malformed — ", concat(detail, "; halting the floor (AFFECTED-SET REFUSAL)"))
         }
       }
-    Present { value: DashboardReplayReadRefused { path: path, cause: cause } } =>
+    Present { value: DiffWindowReadRefused { path: path, cause: cause } } =>
       Present {
         value: BaselineRefused {
           reason: concat(
-            concat("dashboard exact replay unreadable at ", concat(path, " — ")),
+            concat("exact diff window unreadable at ", concat(path, " — ")),
             concat(cause, "; halting the floor (AFFECTED-SET REFUSAL)")
           )
         }
@@ -222,7 +224,7 @@ fn resolve_diff_baseline(
   push_parent_ref: GitRef,
   default_remote_name: String
 ) -> DiffBaselineResolution {
-  match resolve_dashboard_replay(observation: event.dashboard_replay) {
+  match resolve_diff_window(observation: event.diff_window) {
     Present { value: dashboard_res } => dashboard_res
     Absent =>
       match event.override_ref {

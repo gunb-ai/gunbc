@@ -1,0 +1,241 @@
+module gunbc.diff_change_window
+
+import extdeps.git.object_store {
+  GitObjectId,
+  git_object_id_from_untagged_hex,
+  git_object_id_wire_hex
+}
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.languages.json.emit {
+  JsonValue,
+  JsonString,
+  JsonNull,
+  JsonBool,
+  JsonNumber,
+  JsonArray,
+  JsonObject,
+  serialize_json,
+  json_string,
+  json_kv,
+  json_object
+}
+import extdeps.languages.json.parse {
+  parse_json,
+  json_object_unique_member,
+  JsonMemberFound,
+  JsonMemberAbsent,
+  JsonMemberDuplicated,
+  JsonMemberNotAnObject
+}
+import std.types { String, NonEmptyStr }
+
+data diff_change_window_note: String = "Neutral first-party exact diff-window carrier. Producers (roadmap verification, GitHub Actions, local floor) write a head-addressed ExactDiffWindow document; consumers (gunbc.diff_baseline, floor_diff_observe) read the path named by GUNBC_DIFF_WINDOW_PATH. The carrier knows nothing about dashboard UI or provider event shapes."
+
+data gunbc_diff_window_path_env: NonEmptyStr = "GUNBC_DIFF_WINDOW_PATH"
+
+data diff_window_schema: String = "gunbc-diff-window/v1"
+
+data diff_window_base_member: String = "base_object_id"
+data diff_window_head_member: String = "head_object_id"
+data diff_window_subject_head_member: String = "subject_head"
+data diff_window_relation_member: String = "relation"
+
+data diff_window_relation_claimed: String = "claimed_merge_base"
+data diff_window_relation_verified: String = "verified_merge_base"
+
+type DiffWindowRelation
+  = ClaimedMergeBase {}
+  | VerifiedMergeBase {}
+
+type ExactDiffWindow {
+  base: GitObjectId,
+  head: GitObjectId,
+  subject_head: GitObjectId,
+  relation: DiffWindowRelation,
+}
+
+type DiffWindowObservation
+  = DiffWindowObserved { window: ExactDiffWindow }
+  | DiffWindowMalformed { detail: String }
+  | DiffWindowReadRefused { path: String, cause: String }
+
+type DiffWindowPrepareOutcome
+  = DiffWindowPrepared { path: String, window: ExactDiffWindow }
+  | DiffWindowPrepareRefused { reason: String }
+
+fn diff_window_required_string(doc: JsonValue, key: String) -> String? {
+  match json_object_unique_member(v: doc, key: key) {
+    JsonMemberAbsent => none
+    JsonMemberDuplicated { count: _ } => none
+    JsonMemberNotAnObject => none
+    JsonMemberFound { value: v } =>
+      match v {
+        JsonString { value: raw } =>
+          let line = trim(raw)
+          if line == "" { none } else { Present { value: line } }
+        JsonNull => none
+        JsonBool { value: _ } => none
+        JsonNumber { lexeme: _ } => none
+        JsonArray { elements: _ } => none
+        JsonObject { members: _ } => none
+      }
+  }
+}
+
+fn diff_window_git_object_id_from_member(doc: JsonValue, key: String) -> GitObjectId? {
+  match diff_window_required_string(doc: doc, key: key) {
+    Absent => none
+    Present { value: hex } => git_object_id_from_untagged_hex(hex: hex)
+  }
+}
+
+fn diff_window_relation_from_member(doc: JsonValue) -> DiffWindowRelation? {
+  match diff_window_required_string(doc: doc, key: diff_window_relation_member) {
+    Absent => none
+    Present { value: relation } =>
+      if relation == diff_window_relation_claimed {
+        Present { value: ClaimedMergeBase {} }
+      } else if relation == diff_window_relation_verified {
+        Present { value: VerifiedMergeBase {} }
+      } else {
+        none
+      }
+  }
+}
+
+fn diff_window_relation_wire(relation: DiffWindowRelation) -> String {
+  match relation {
+    ClaimedMergeBase {} => diff_window_relation_claimed
+    VerifiedMergeBase {} => diff_window_relation_verified
+  }
+}
+
+fn diff_window_json(window: ExactDiffWindow) -> String {
+  serialize_json(
+    value: json_object(
+      members: [
+        json_kv(key: "schema", value: json_string(s: diff_window_schema)),
+        json_kv(
+          key: diff_window_base_member,
+          value: json_string(s: git_object_id_wire_hex(oid: window.base) as String)
+        ),
+        json_kv(
+          key: diff_window_head_member,
+          value: json_string(s: git_object_id_wire_hex(oid: window.head) as String)
+        ),
+        json_kv(
+          key: diff_window_subject_head_member,
+          value: json_string(s: git_object_id_wire_hex(oid: window.subject_head) as String)
+        ),
+        json_kv(
+          key: diff_window_relation_member,
+          value: json_string(s: diff_window_relation_wire(relation: window.relation))
+        ),
+      ]
+    )
+  )
+}
+
+fn diff_window_from_json(text: String) -> DiffWindowObservation {
+  match parse_json(s: text) {
+    Absent =>
+      DiffWindowMalformed { detail: "diff window payload is not valid JSON" }
+    Present { value: doc } =>
+      match diff_window_required_string(doc: doc, key: "schema") {
+        Absent =>
+          DiffWindowMalformed { detail: "diff window payload missing schema member" }
+        Present { value: schema } =>
+          if schema != diff_window_schema {
+            DiffWindowMalformed {
+              detail: concat("diff window schema must be ", diff_window_schema)
+            }
+          } else {
+            match diff_window_git_object_id_from_member(doc: doc, key: diff_window_base_member) {
+              Absent =>
+                DiffWindowMalformed {
+                  detail: "diff window base_object_id is missing or not a valid git object id"
+                }
+              Present { value: base } =>
+                match diff_window_git_object_id_from_member(doc: doc, key: diff_window_head_member) {
+                  Absent =>
+                    DiffWindowMalformed {
+                      detail: "diff window head_object_id is missing or not a valid git object id"
+                    }
+                  Present { value: head } =>
+                    match diff_window_git_object_id_from_member(doc: doc, key: diff_window_subject_head_member) {
+                      Absent =>
+                        DiffWindowMalformed {
+                          detail: "diff window subject_head is missing or not a valid git object id"
+                        }
+                      Present { value: subject_head } =>
+                        match diff_window_relation_from_member(doc: doc) {
+                          Absent =>
+                            DiffWindowMalformed {
+                              detail: "diff window relation must be claimed_merge_base or verified_merge_base"
+                            }
+                          Present { value: relation } =>
+                            if git_object_id_wire_hex(oid: base) == git_object_id_wire_hex(oid: head) {
+                              DiffWindowMalformed {
+                                detail: "diff window base_object_id equals head_object_id — self-compare refused"
+                              }
+                            } else if git_object_id_wire_hex(oid: head) != git_object_id_wire_hex(oid: subject_head) {
+                              DiffWindowMalformed {
+                                detail: "diff window head_object_id must equal subject_head"
+                              }
+                            } else {
+                              DiffWindowObserved {
+                                window: ExactDiffWindow {
+                                  base: base,
+                                  head: head,
+                                  subject_head: subject_head,
+                                  relation: relation,
+                                }
+                              }
+                            }
+                        }
+                    }
+                }
+            }
+          }
+      }
+  }
+}
+
+fn diff_window_from_path(path: String) -> DiffWindowObservation {
+  let read = Filesystem.Read(path: path)
+  if read.success {
+    diff_window_from_json(text: read.content)
+  } else {
+    DiffWindowReadRefused {
+      path: path,
+      cause: read.error
+    }
+  }
+}
+
+fn diff_window_env_assignment(path: String) -> String {
+  concat(
+    concat(gunbc_diff_window_path_env as String, "="),
+    path
+  )
+}
+
+fn exact_diff_window_for_verification(
+  base: GitObjectId,
+  head: GitObjectId,
+  relation: DiffWindowRelation,
+) -> ExactDiffWindow {
+  ExactDiffWindow {
+    base: base,
+    head: head,
+    subject_head: head,
+    relation: relation,
+  }
+}
+
+fn diff_window_matches_subject_head(
+  window: ExactDiffWindow,
+  expected_head_hex: String,
+) -> Bool {
+  git_object_id_wire_hex(oid: window.subject_head) as String == expected_head_hex
+}

@@ -52,10 +52,10 @@ import extdeps.github.push_event {
   PushBeforeMalformed,
   PushEventPayloadReadRefused
 }
-import extdeps.session_dashboard.change_window {
-  gunbc_ci_change_window_path_env,
-  dashboard_replay_from_path,
-  DashboardReplayObservation
+import gunbc.diff_change_window {
+  gunbc_diff_window_path_env,
+  diff_window_from_path,
+  DiffWindowObservation
 }
 import extdeps.shell
 
@@ -79,7 +79,7 @@ fn floor_env_optional(env_name: NonEmptyStr) -> String? {
   shell.Env.Get(name: env_name).value
 }
 
-data floor_diff_baseline_law: String = "The affected-set base is RESOLVED from the CI event and optional dashboard replay wire, not a constant (gunbc.diff_baseline; the de-fork of the origin/main policy-as-literal, DESIGN section 3(c)). floor_observe_ci_diff_event reads GUNBC_CI_DIFF_BASE (operator override), GITHUB_EVENT_NAME, GITHUB_BASE_REF (GitHub pull-request TARGET BRANCH name only), GITHUB_SHA (push self-compare refusal), push before from GITHUB_EVENT_PATH (extdeps.github.push_event), and dashboard exact replay from GUNBC_CI_CHANGE_WINDOW_PATH (extdeps.session_dashboard.change_window). pull_request with branch base → MergeTarget (triple-dot); dashboard wire → ExactReplayBoundary (two-dot, typed GitObjectIds); push → PushBefore; other CI events → PushParent. Unrecognized events and malformed dashboard wire REFUSE — never widen."
+data floor_diff_baseline_law: String = "The affected-set base is RESOLVED from the CI event and optional exact diff-window wire, not a constant (gunbc.diff_baseline; the de-fork of the origin/main policy-as-literal, DESIGN section 3(c)). floor_observe_ci_diff_event reads GUNBC_CI_DIFF_BASE (operator override), GITHUB_EVENT_NAME, GITHUB_BASE_REF (GitHub pull-request TARGET BRANCH name only), GITHUB_SHA (push self-compare refusal), push before from GITHUB_EVENT_PATH (extdeps.github.push_event), and exact replay from GUNBC_DIFF_WINDOW_PATH (gunbc.diff_change_window). pull_request with branch base → MergeTarget (triple-dot); diff window → ExactReplayBoundary (two-dot, typed GitObjectIds); push → PushBefore; other CI events → PushParent. Unrecognized events and malformed diff-window wire REFUSE — never widen."
 
 fn floor_push_before_refusal(prefix: String, detail: String) -> PushBeforeInput {
   PushBeforeInputRefused { reason: concat(concat(prefix, detail), "; halting the floor (AFFECTED-SET REFUSAL)") }
@@ -141,14 +141,14 @@ fn floor_observe_push_before_input(event_name: String) -> PushBeforeInput? {
   }
 }
 
-fn floor_observe_dashboard_replay() -> DashboardReplayObservation? {
-  match floor_env_optional(env_name: gunbc_ci_change_window_path_env) {
+fn floor_observe_diff_window() -> DiffWindowObservation? {
+  match floor_env_optional(env_name: gunbc_diff_window_path_env) {
     Absent => none
     Present { value: path } =>
       if path == "" {
         none
       } else {
-        Present { value: dashboard_replay_from_path(path: path) }
+        Present { value: diff_window_from_path(path: path) }
       }
   }
 }
@@ -161,7 +161,7 @@ fn floor_observe_ci_diff_event() -> CiDiffEvent {
     base_ref: floor_env_optional(env_name: github_base_ref_env),
     push_before: floor_observe_push_before_input(event_name: event_name),
     head_sha: floor_env_optional(env_name: github_sha_variable_name as NonEmptyStr),
-    dashboard_replay: floor_observe_dashboard_replay()
+    diff_window: floor_observe_diff_window()
   }
 }
 

@@ -62,6 +62,7 @@ import gunbc.roadmap_dispatch_actuator {
   dispatch_attempt_validation_receipt_path_for_instance,
   dispatch_attempt_verification_receipt_path_for_instance,
   dispatch_attempt_verification_dir_for_instance,
+  dispatch_attempt_diff_window_path_for_instance,
   verification_receipt_directory_segment,
   dispatch_attempt_publication_receipt_path_for_instance,
   dispatch_attempt_publication_dir_for_instance,
@@ -156,6 +157,7 @@ import gunbc.roadmap_dispatch_environment {
 }
 import gunbc.roadmap_execution_contract {
   EnvironmentBindingCapability,
+  GitWorkspaceCapability,
   GunbcClaimRunnerCapability,
   WorkItemExecutionContract,
   ExecutionContract,
@@ -243,7 +245,18 @@ import gunbc.roadmap_validation_oracle {
   validation_verdict_detail,
   validation_receipt_json,
 }
+import gunbc.diff_change_window {
+  DiffWindowPrepareOutcome,
+  DiffWindowPrepared,
+  DiffWindowPrepareRefused,
+  exact_diff_window_for_verification,
+  diff_window_json,
+  diff_window_env_assignment,
+  ClaimedMergeBase,
+}
+import extdeps.git.object_store { git_object_id_from_untagged_hex }
 import extdeps.git { shape_git_rev_parse_head_args }
+import gunbc.roadmap_dispatch_actuator { host_exec_argv }
 import gunbc.roadmap_provider_events { ProviderCompleted, provider_execution_activity }
 import extdeps.version { VersionIdentity }
 import std.content_hash {
