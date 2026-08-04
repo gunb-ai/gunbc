@@ -48,104 +48,108 @@ fn behaviour_axis_eq(a: InstrumentBehaviourAxis, b: InstrumentBehaviourAxis) -> 
   behaviour_axis_key(a: a) == behaviour_axis_key(a: b)
 }
 
-data evidence_join_note: String = "ATTRIBUTION IS DERIVED FROM EVIDENCE, NOT AUTHORED BESIDE IT (review finding, 2026-08-04). An earlier revision authored which products realized which axes as its own rows, importing the product settings only to count them — so correcting a setting in a product module did not correct the axis attribution, and the two representations could disagree silently. That is the parallel-representation failure the corpus already knows, and it is what let the whole attribution invert while ten witnesses stayed green. Every citation now carries a DeclarationRef to the FACT that grounds it, inside the cited subject's own module, so an axis cannot be attached to a product without naming a declaration in that product."
+data evidence_join_note: String = "ATTRIBUTION IS DERIVED FROM EVIDENCE, NOT AUTHORED BESIDE IT (review finding, 2026-08-04). An earlier revision authored which products realized which axes as its own rows, importing the product settings only to count them — so correcting a setting in a product module did not correct the axis attribution, and the two representations could disagree silently. That is the parallel-representation failure the corpus already knows, and it is what let the whole attribution invert while ten witnesses stayed green. Every citation carries a DeclarationRef to the FACT that grounds it, inside the cited subject's own module, so an axis cannot be attached to a product without naming a declaration in that product."
 
-type ReferenceInstrumentEvidence {
-  instrument: ExternalSubjectRef
-  axis: InstrumentBehaviourAxis
+type InstrumentCitation {
+  subject: ExternalSubjectRef
   fact: DeclarationRef
 }
 
-fn pip_boy_3000_fact(decl_name: String) -> DeclarationRef {
-  decl_ref(module_path: "extdeps.instrument.pip_boy_3000", decl_name: decl_name)
+data provenance_by_construction_note: String = "ONE TOTAL FUNCTION, NOT TWO LISTS AND A CHECK (review finding 48240, 2026-08-04, and the correct reading of DESIGN section 5). An earlier revision carried reference_instrument_evidence and originated_axes as INDEPENDENT lists with axis_provenance_is_total asserting the XOR over them — an axis with both kinds of provenance, or with none, was writable and merely detected. Because InstrumentBehaviourAxis is a CLOSED coproduct, an exhaustive match gives the same guarantee by construction: every axis has exactly one provenance because the match must answer for every variant and can answer only once, so both bad states lose their constructor and the XOR check is deleted rather than kept beside the shape that makes it unnecessary (section 4b(4): a climb dissolves the production machinery it obsoletes, never accumulates beside it). CitedOn is nonempty by the same first/rest split ExternalModelScope uses for citations, so a cited axis with zero citations is likewise unwritable. WHAT STAYS VALIDATION, honestly: an InstrumentCitation can still name a subject and a fact in different modules, and making THAT unwritable needs the citation constructors to be the only way to build one — a sole_constructor guarantee the corpus does not yet verify for generic carriers. The per-subject constructors below are the safe path and evidence_containment is the residue check over it."
+
+fn pip_boy_3000_citation(decl_name: String) -> InstrumentCitation {
+  InstrumentCitation {
+    subject: pip_boy_3000_subject,
+    fact: decl_ref(
+      module_path: "extdeps.instrument.pip_boy_3000",
+      decl_name: decl_name),
+  }
 }
 
-data optical_instability_evidence: ReferenceInstrumentEvidence = ReferenceInstrumentEvidence {
-  instrument: pip_boy_3000_subject,
-  axis: OpticalInstability,
-  fact: pip_boy_3000_fact(decl_name: "crt_jitter_row"),
-}
-
-data resting_offset_evidence: ReferenceInstrumentEvidence = ReferenceInstrumentEvidence {
-  instrument: pip_boy_3000_subject,
-  axis: RestingOffsetCalibration,
-  fact: pip_boy_3000_fact(decl_name: "vertical_shift_row"),
-}
-
-data impulse_glitch_evidence: ReferenceInstrumentEvidence = ReferenceInstrumentEvidence {
-  instrument: pip_boy_3000_subject,
-  axis: ImpulseGlitch,
-  fact: pip_boy_3000_fact(decl_name: "glitch_on_tap_row"),
-}
-
-data impulse_threshold_evidence: ReferenceInstrumentEvidence = ReferenceInstrumentEvidence {
-  instrument: pip_boy_3000_subject,
-  axis: ImpulseThreshold,
-  fact: pip_boy_3000_fact(decl_name: "tap_threshold_row"),
-}
-
-data tilt_readout_evidence: ReferenceInstrumentEvidence = ReferenceInstrumentEvidence {
-  instrument: pip_boy_3000_subject,
-  axis: TiltDerivedReadout,
-  fact: pip_boy_3000_fact(decl_name: "tilt_geiger_wording"),
-}
-
-data reference_instrument_evidence: List<ReferenceInstrumentEvidence> = [
-  optical_instability_evidence,
-  resting_offset_evidence,
-  impulse_glitch_evidence,
-  impulse_threshold_evidence,
-  tilt_readout_evidence
-]
-
-data mk_v_has_no_evidence_rows_note: String = "The Mk V holds zero evidence rows, and that is the corrected reading rather than an omission. Its manual grounds display colour, brightness, demo mode, clock, alarm and radio — none of which inhabits an axis this join names. Whether it realizes any display-effect axis is UNOBSERVED, held below as a typed coverage obligation, never as an absence authored inside its upstream module."
-
-data evidence_containment_note: String = "THE LAW THAT WOULD HAVE CAUGHT THE INVERSION: an evidence row's fact must live in the cited subject's OWN module. The first revision attributed this product's glitch settings to its sibling; under this law that attribution is unwritable without also pointing at a declaration inside the sibling's module, where no such declaration exists. Checked over the rows rather than assumed, because the ref is built from strings here. NEXT TRIGGER: v2.std.decl_ref_resolution.resolve_declaration_ref over decl_facts decides whether the named declaration EXISTS, which this predicate cannot — it decides only that the row is internally coherent. Wiring it needs live pool roots and belongs with the G1 enrollment widening its own dissolve-on already names."
-
-fn evidence_fact_is_inside_subject_module(row: ReferenceInstrumentEvidence) -> Bool {
-  row.fact.module_path as String == row.instrument.declaration.module_path as String
-}
-
-fn all_evidence_is_contained() -> Bool {
-  fold(reference_instrument_evidence, init: true, f: (acc, row) =>
-    acc && evidence_fact_is_inside_subject_module(row: row))
-}
-
-fn axis_is_cited_on(axis: InstrumentBehaviourAxis, subject: ExternalSubjectRef) -> Bool {
-  fold(reference_instrument_evidence, init: false, f: (acc, row) =>
-    acc || (behaviour_axis_eq(a: row.axis, b: axis)
-      && external_subject_ref_eq(a: row.instrument, b: subject)))
-}
+type AxisProvenance
+  = CitedOn { first: InstrumentCitation, rest: List<InstrumentCitation> }
+  | OriginatedHere { rationale: NonEmptyStr }
 
 data originated_axis_note: String = "OriginatedHere is a first-class arm, not a gap. An axis the design lane wants that no cited instrument realizes has no upstream provenance to claim, and saying so is the point of the join: it separates what we cite from what we invent. BuoyantDrift is ours — no reference product realizes a continuous buoyant drift of the display, the axis entered this repository from the operator's fishing-hook-bobber description, and the InstrumentDrift register amendment it motivates must therefore stand on its own laws rather than borrow a Pip-Boy citation."
 
-type OriginatedAxis {
-  axis: InstrumentBehaviourAxis
-  rationale: NonEmptyStr
+fn axis_provenance(a: InstrumentBehaviourAxis) -> AxisProvenance {
+  match a {
+    OpticalInstability => CitedOn {
+      first: pip_boy_3000_citation(decl_name: "crt_jitter_row"),
+      rest: [],
+    }
+    RestingOffsetCalibration => CitedOn {
+      first: pip_boy_3000_citation(decl_name: "vertical_shift_row"),
+      rest: [],
+    }
+    ImpulseGlitch => CitedOn {
+      first: pip_boy_3000_citation(decl_name: "glitch_on_tap_row"),
+      rest: [],
+    }
+    ImpulseThreshold => CitedOn {
+      first: pip_boy_3000_citation(decl_name: "tap_threshold_row"),
+      rest: [],
+    }
+    TiltDerivedReadout => CitedOn {
+      first: pip_boy_3000_citation(decl_name: "tilt_geiger_wording"),
+      rest: [],
+    }
+    BuoyantDrift => OriginatedHere {
+      rationale: "No cited reference instrument realizes a continuous buoyant drift of the display; the axis originates in this repository's own design register and carries no external citation.",
+    }
+  }
 }
 
-data buoyant_drift_origin: OriginatedAxis = OriginatedAxis {
-  axis: BuoyantDrift,
-  rationale: "No cited reference instrument realizes a continuous buoyant drift of the display; the axis originates in this repository's own design register and carries no external citation.",
+data mk_v_has_no_citations_note: String = "No axis names the Mk V, and that is the corrected reading rather than an omission. Its manual grounds display colour, brightness, demo mode, clock, alarm and radio — none of which inhabits an axis this join names. Whether it realizes any display-effect axis is UNOBSERVED, held below as a typed coverage obligation, never as an absence authored inside its upstream module. When a Mk V citation is grounded it joins the relevant axis's rest list; it does not need a new arm."
+
+fn axis_citations(a: InstrumentBehaviourAxis) -> List<InstrumentCitation> {
+  match axis_provenance(a: a) {
+    CitedOn { first, rest } => concat([first], rest)
+    OriginatedHere { rationale } => []
+  }
 }
 
-data originated_axes: List<OriginatedAxis> = [buoyant_drift_origin]
+fn axis_is_cited_on(axis: InstrumentBehaviourAxis, subject: ExternalSubjectRef) -> Bool {
+  fold(axis_citations(a: axis), init: false, f: (acc, c) =>
+    acc || external_subject_ref_eq(a: c.subject, b: subject))
+}
 
 fn axis_is_originated(axis: InstrumentBehaviourAxis) -> Bool {
-  fold(originated_axes, init: false, f: (acc, o) =>
-    acc || behaviour_axis_eq(a: o.axis, b: axis))
+  match axis_provenance(a: axis) {
+    CitedOn { first, rest } => false
+    OriginatedHere { rationale } => true
+  }
 }
 
 fn axis_has_any_evidence(axis: InstrumentBehaviourAxis) -> Bool {
-  fold(reference_instrument_evidence, init: false, f: (acc, row) =>
-    acc || behaviour_axis_eq(a: row.axis, b: axis))
+  !axis_is_originated(axis: axis)
 }
 
-data axis_totality_note: String = "Every axis this join names is EITHER evidenced on some subject OR declared originated — never both, and never neither. Both halves matter: neither would be an axis with no provenance story at all, and both would be an originated behaviour quietly borrowing a citation."
+data axis_iteration_roster_note: String = "The one place a roster can still lag the coproduct: this list is what corpus-wide folds iterate. Adding an axis variant without adding it here does NOT silently weaken a provenance guarantee — axis_provenance is an exhaustive match, so a new variant fails to compile until it is answered — it only narrows what the containment fold below walks. Dissolve-on: a derived variant enumeration over the closed coproduct."
 
-fn axis_provenance_is_total(axis: InstrumentBehaviourAxis) -> Bool {
-  (axis_has_any_evidence(axis: axis) || axis_is_originated(axis: axis))
-    && !(axis_has_any_evidence(axis: axis) && axis_is_originated(axis: axis))
+data all_behaviour_axes: List<InstrumentBehaviourAxis> = [
+  OpticalInstability,
+  RestingOffsetCalibration,
+  ImpulseGlitch,
+  ImpulseThreshold,
+  TiltDerivedReadout,
+  BuoyantDrift
+]
+
+data evidence_containment_note: String = "THE LAW THAT WOULD HAVE CAUGHT THE INVERSION: a citation's fact must live in the cited subject's OWN module. The first revision attributed this product's glitch settings to its sibling; under this law that attribution requires pointing at a declaration inside the sibling's module, where no such declaration exists. This one remains a CHECK rather than a construction wall — see provenance_by_construction_note — because a hand-built InstrumentCitation can still cross modules; the per-subject constructors are the path that cannot. NEXT TRIGGER: v2.std.decl_ref_resolution.resolve_declaration_ref over decl_facts decides whether the named declaration EXISTS, which this predicate cannot — it decides only that the citation is internally coherent."
+
+fn citation_is_contained(c: InstrumentCitation) -> Bool {
+  c.fact.module_path as String == c.subject.declaration.module_path as String
+}
+
+fn axis_citations_are_contained(a: InstrumentBehaviourAxis) -> Bool {
+  fold(axis_citations(a: a), init: true, f: (acc, c) =>
+    acc && citation_is_contained(c: c))
+}
+
+fn all_evidence_is_contained() -> Bool {
+  fold(all_behaviour_axes, init: true, f: (acc, a) =>
+    acc && axis_citations_are_contained(a: a))
 }
 
 data named_referent: ExternalSubjectRef = pip_boy_3000_subject
