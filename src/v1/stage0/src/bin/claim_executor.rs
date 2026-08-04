@@ -8872,7 +8872,7 @@ mod tests {
         assert!(
             !refusals
                 .iter()
-                .any(|m| m.contains("differs from declared") || m.contains("missing")),
+                .any(|m| m.contains("floor resolve obligation")),
             "warm native + cold anchor must satisfy obligations: {refusals:?}"
         );
     }
