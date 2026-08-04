@@ -1,5 +1,21 @@
 module v2.extdeps.languages.rust_test
 
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node {
+  Arrow,
+  Atom,
+  Conj,
+  Disj,
+  Edge,
+  Named,
+  Node,
+  Positional,
+  Symbol,
+  TypeNode,
+  Instantiation,
+  SyntheticOccurrence,
+}
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data rust_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra

@@ -249,7 +249,16 @@ fn v1_rust_source_observation_execution_contract() -> WorkItemExecutionContract 
   )
 }
 
-data namespace_reference_derived_closure_execution_contract_note: String = "THE SIX-ARM CLOSING DISCRIMINATOR for namespace-reference-derived-closure. The validation is deliberately RED while the derived frontier remains open (two capabilities): the closed capability population is the node's own red control, and missing capabilities are a derived set difference, so duplicate evidence cannot hide an unexecuted clause and zero work cannot verify as complete. Clauses (a-d) establish via v1.gunbc.namespace_reference_derived_closure_production_observations (N3-A: production parse→P2a on #7515 substrate, neutral ReferenceBindingObservation carriers assessed at the acceptance witness seam); (e) waits on reference-derived dependency projection (N3-B); (f) waits on the projection's pool-membership-independence wall (N3-C). The paired fixture suite executes the merged P1 kernel for all six clauses and proves every clause rejects its planted wrong output, but the bound acceptance witness imports none of those fixtures; it can green only when the production admission seam establishes every capability. It is enrolled QuarantineProbeExpectRed until that transition."
+data namespace_structural_observations_execution_contract_note: String = "THE CLOSING VALIDATION for namespace-structural-observations (N3-A). The bound witness assesses four neutral ReferenceBindingObservation carriers from v1.gunbc.namespace_reference_derived_closure_production_observations at the dag seam and requires all four structural capabilities (same-file neighbour, sibling-branch exclusion, later-declaration exclusion, distinct-homonym preservation) to establish. It does not compose the parent six-row namespace-reference-derived-closure witness; that handback belongs to N3-D."
+
+fn namespace_structural_observations_execution_contract() -> WorkItemExecutionContract {
+  gunbc_claim_execution_contract(
+    entry: "dag/test/claim/namespace_structural_observations_acceptance_test.dag" as FilePath,
+    function: "witness_namespace_structural_observations_closing_contract_holds" as NonEmptyStr,
+  )
+}
+
+data namespace_reference_derived_closure_execution_contract_note: String = "THE SIX-ARM CLOSING DISCRIMINATOR for namespace-reference-derived-closure. The validation is deliberately RED while its production admission seam carries a typed unavailable row for every clause: the closed capability population is the node's own red control, and missing capabilities are a derived set difference, so duplicate evidence cannot hide an unexecuted clause and zero work cannot verify as complete. Clauses (a-d) wait on #7515's structural candidate producer, (e) waits on its reference-derived dependency projection, and (f) waits on the projection's pool-membership-independence wall. The paired fixture suite executes the merged P1 kernel for the first four clauses and proves every clause rejects its planted wrong output, but the bound acceptance witness imports none of those fixtures; it can green only when the gated node supplies production observations. It is enrolled QuarantineProbeExpectRed until that transition."
 
 fn namespace_reference_derived_closure_execution_contract() -> WorkItemExecutionContract {
   gunbc_claim_execution_contract(
@@ -650,7 +659,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The decision function plus worked none/one/many examples actually run, with the malformed-population and wrong-role refusals executing."
       )
     ),
-    active_sized(
+    with_execution(active_sized(
       identity: "rn_7QF3M2KDX8VNAT6JWZR0PC5HY",
       id: "namespace-structural-observations",
       owner: "namespace",
@@ -666,7 +675,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         out_of_scope: "Names answered by another file, and working out what a file depends on — both belong to the next row. Does not change the check that closes the parent row, and does not stand in for the cases it does not cover.",
         handback: "One ordinary compiled file producing all four observations, each case shown failing on its own, and the closing check written and bound."
       )
-    ),
+    ), namespace_structural_observations_execution_contract()),
     active_sized(
       identity: "rn_4LT9SBW1EGKM3XQPZ7DVNC02J",
       id: "namespace-cross-file-provenance",
