@@ -14,8 +14,11 @@ type WitnessConsumerCadence
   | FixtureExplicitRoster
   | NoConsumer
 
+data witness_admission_refusal_cause_split_note: String = "TWO CAUSES, NOT ONE, because their remedies differ and collapsing them would hide the larger population behind the rarer one. UnexecutedDeferredWitness is a row excluded from discovery that matches NO policy at all — nothing, not even a directory, claims it — and the remedy is to name a cadence or delete the witness. UnclassifiedPathDeferral is a row a broad OfflineLocalRecipe path policy DID claim, which until 2026-08-04 was accepted as an answer: a directory deciding an admission question, answering yes unconditionally, so relocating a file under such a path removed it from per-PR discovery AND satisfied admission in one move. Its remedy is different — an exact function-grain admission naming an executing cadence, or freeze membership while the legacy population migrates (gunbc.witness_deferral_freeze). One arm would have made the second class read as the first, and the first is nearly empty while the second was 732 identities."
+
 type WitnessAdmissionRefusal
   = WitnessAdmissionHolds
   | UnexecutedDeferredWitness { entry: String, function: String }
+  | UnclassifiedPathDeferral { entry: String, function: String }
 
 data witness_admission_predicate_dissolution_note: String = "witness_consumer_cadence_is_live / witness_admission_refusal_is_holds dissolved per review 39760 — workflow and tests match the coproducts directly (integration 39758 scaffold superseded on this branch)."
