@@ -1,0 +1,33 @@
+module test.claim.ci_floor_population_receipt_registry_witness
+
+import std.types { Bool }
+import gunbc.ci_floor_population_receipt_registry {
+  ci_floor_population_receipt_registry_row_count,
+  ci_floor_population_receipt_registry_includes_manifest,
+  ci_floor_population_receipt_registry_includes_gate_warm_cost,
+  ci_floor_population_receipts_upload_paths,
+  ci_evidence_subject_incomplete,
+  ci_evidence_subject_fields_present,
+}
+
+test fn witness_registry_includes_manifest_and_gate_warm() -> Bool {
+  ci_floor_population_receipt_registry_includes_manifest()
+    && ci_floor_population_receipt_registry_includes_gate_warm_cost()
+    && ci_floor_population_receipt_registry_row_count() >= 18
+}
+
+test fn witness_upload_paths_derived_from_registry() -> Bool {
+  let paths = ci_floor_population_receipts_upload_paths()
+  string_contains(s: paths, pattern: "target/floor-population-receipt-manifest.tsv")
+    && string_contains(s: paths, pattern: "target/floor-gate-warm-cost-receipt.tsv")
+    && string_contains(s: paths, pattern: "target/floor-worker-observation-receipt.tsv")
+    && string_contains(s: paths, pattern: "target/scoped-witness-execution-receipt.tsv")
+}
+
+test fn witness_incomplete_subject_refuses_fields_present() -> Bool {
+  !ci_evidence_subject_fields_present(s: ci_evidence_subject_incomplete())
+}
+
+test fn red_registry_must_not_omit_manifest() -> Bool {
+  ci_floor_population_receipt_registry_includes_manifest()
+}
