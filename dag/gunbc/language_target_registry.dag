@@ -2,7 +2,6 @@ module gunbc.language_target_registry
 
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.types { Bool, Int, List, String }
-<<<<<<< HEAD
 import extdeps.external_authority { ExternalSubjectRef }
 import extdeps.languages.bash.subject { gnu_bash_model_scope }
 import extdeps.languages.c.subject { c_language_model_scope }
@@ -29,9 +28,6 @@ import extdeps.languages.typescript.subject { typescript_language_model_scope }
 import extdeps.languages.verilog.subject { verilog_language_model_scope }
 import extdeps.languages.wasm.subject { webassembly_language_model_scope }
 import extdeps.languages.yaml.subject { yaml_format_model_scope }
-=======
-import extdeps.languages.bash.subject { gnu_bash_model_scope }
->>>>>>> origin/session/keen-ibex-349
 import std.language_target_identity {
   TargetGrounding,
   ExternalGrounding,
@@ -73,11 +69,7 @@ import std.language_target_identity {
   count_rows,
 }
 
-<<<<<<< HEAD
 data language_target_registry_totality_law: String = "NO INVISIBLE REMAINDER (operator requirement C, 2026-08-04). This registry may not read as complete because two specimen rows exist. Every target-bearing surface this repository currently carries is EITHER joined to a registered subject OR appears here as an exact row with no identity, which the join kernel then reports as SurfaceMissingTargetIdentity. A surface that is simply absent from these lists is the one state the wall cannot see, which is why the population definition below is declared rather than implied, and why the TargetVocabulary rows carry an explicit scaffold note rather than a silent transcription. The registry now registers 26 subjects, so most rows below ARE identified; the ones that are not — machine_code and the legacy frontier prose table — each carry a note stating why joining them to a subject would be WRONG rather than merely undone, and both are deliberate. CORRECTED 2026-08-04 (review 48151): this sentence previously also listed the two runtime checkers as unidentified, which stopped being true in this same change when cargo was bound to Rust and the interpreter to Python. The authority describing the census contradicted the census two hundred lines below it — the stale-prose class this registry has now hit four times in a day, and the reason every correction here quotes what it replaced."
-=======
-data language_target_registry_totality_law: String = "NO INVISIBLE REMAINDER (operator requirement C, 2026-08-04). This registry may not read as complete because a few specimen rows exist. Every target-bearing surface this repository currently carries is EITHER joined to a registered subject OR appears here as an exact row with no identity, which the join kernel then reports in the missing-identity class. A surface that is simply absent from these lists is the one state the wall cannot see, which is why the population definition below is declared rather than implied, and why the TargetVocabulary rows carry an explicit scaffold note rather than a silent transcription. The registry today registers THREE subjects — Bash, externally grounded, plus the .dag language and the controlled-English medium, project-grounded — while the census carries forty surfaces, so most rows below are deliberately unidentified. That is the honest starting state, not a defect in the wall. WHAT 'ACCOUNTED FOR' NOW MEANS PRECISELY (corrected 2026-08-04, review relayed through the operator): the accounting is an EXACT equality, identified rows plus reported missing-identity rows equals the census, and it is separate from the integrity wall that requires zero unknown-target, ambiguous, duplicate-subject and duplicate-locus violations. The single predicate these replace summed both classes and compared them with a <=, which stayed green with malformed input present and would have stayed green against an empty violation list."
->>>>>>> origin/session/keen-ibex-349
 
 data language_target_registry_vocabulary_scaffold_note: String = "DECLARED SCAFFOLD, with its dissolution trigger — the TargetVocabulary rows below are HAND-DECLARED, and they were meant to be derived. The intent was to read v2.lens.realization_vocabulary_containment's target_ast_vocab_modules and target_ast_vocab_module_prefixes directly, so a module added to the lens would appear here automatically as an unidentified surface and the second-hardcoded-roster fork would close by construction. THAT IMPORT DOES NOT COMPILE TODAY, and the blocker is not in this module: the lens fails to resolve fold_list and list_snoc_item from v2.std.algebra even when compiled from its OWN source root as the entry — measured 2026-08-04. That is the Class B pool-membership defect DESIGN's import-strip open thread describes: a module's bare cross-module references resolve only when some unrelated import elsewhere in the assembled closure has already dragged the target into the pool, so the lens resolves inside the whole-corpus compile and not in a narrow closure. Transcribing the two lists here would be the workaround DESIGN section 5 forbids — an unmarked second representation of the very roster this registry exists to unfork — so they are declared as a counted scaffold instead. DISSOLVE-ON: the lens resolves under a narrow closure (Class B fix), at which point these rows become the fold over its lists; and ultimately the reverse direction, the lens deriving its confined set FROM this registry, which is the prerequisite edge from the support-registry obligation to the no-new-debt-gate obligation in the governing strategy contract, and is not done here. Those obligations are identified in a private strategy overlay rather than in this repository, so they are described by role and not named — publishing an overlay identifier is an explicit act under that repository's opt-in-public model, and it has not been authorised."
 
@@ -87,7 +79,6 @@ data language_target_registry_maximum_conclusion: String = "MAXIMUM CONCLUSION �
 
 data registry_revision_note: String = "WHY THERE IS NO PINNED REVISION STAMP HERE, removed rather than corrected (2026-08-04). An earlier revision of this module carried language_target_registry_subject_revision as a hand-written commit SHA, on the reasoning that a row set without its revision is a measurement pretending to be a standing fact. The reasoning was right and the mechanism was self-defeating in two ways. FIRST, IT WAS ALREADY FALSE: the stamp named the commit current when it was typed, and the row set then changed in four subsequent commits — including the one taking the registry from one target to three — so the declaration asserted an enumeration that had not held for some time. A review approved it as anchored honestly, which is the tell that a stale stamp reads as provenance rather than as the claim it actually is. SECOND, AND DECISIVELY, IT CANNOT BE FIXED BY UPDATING: pinning the SHA of the commit that contains the pin is self-referential, so any such stamp is stale by at least one commit BY CONSTRUCTION, and each update re-copies a number from the tree — the measure() == measure() collapse DESIGN section 5 names. The rows ARE anchored, by the thing that already anchors them: git records exactly which revision this file held which rows, at line grain, without anyone maintaining it. A second hand-kept representation of that fact is the section 3 duplication this registry exists to remove, applied to the registry itself."
 
-<<<<<<< HEAD
 data subject_ref_derivation_note: String = "EVERY SUBJECT REF BELOW IS A PROJECTION OF ITS SCOPE, never re-authored beside it. An earlier revision declared gnu_bash_subject_ref as a hand-written DeclarationRef repeating the module path and decl name the scope already carries — two writable representations of one identity, which can disagree exactly the way target_grounding_law describes. Reading scope.subject instead makes the disagreeing state unrepresentable: there is only one place the subject is stated, and it is the carrier that also holds the citations. Verified by execution 2026-08-04 that a top-level data declaration may project a field of an imported scope, so this costs nothing."
 
 data gnu_bash_subject_ref: DeclarationRef = gnu_bash_model_scope.subject.declaration
@@ -164,15 +155,6 @@ fn legacy_frontier_label_finding_count() -> Int {
 fn unregistered_target_finding_count() -> Int {
   fold(unregistered_target_findings, init: 0, f: fn(acc, r) { acc + 1 })
 }
-=======
-data bash_subject_ref: DeclarationRef = DeclarationRef {
-  module_path: "extdeps.languages.bash.subject",
-  decl_name: "gnu_bash",
-  field: WholeDeclaration
-}
-
-data d0_population_blocker_note: String = "D0 — THE COMPLETE TARGET UNIVERSE — IS NOT REGISTERED HERE, AND THE REASON IS THE CONSTRUCTION WALL ITSELF. A registration derives its subject from a REQUIRED TargetGrounding, so an ungrounded target is unwritable (target_grounding_law). External grounding is an ExternalModelScope, and a scope carries at least one real upstream citation by construction. Therefore registering TypeScript, C, C++, Verilog, SPICE, Python, Go, Java, Kotlin, Swift, LLVM IR, WebAssembly, PTX, machine code, Lean, SQL, HTML, CSS, ECMAScript, JSON, YAML and Markdown requires FIRST authoring one cited subject declaration each — the same file this branch created for Bash — because NONE of them has one today. That is the measured state, not an obstacle invented here: Bash was uncited until this branch, and the same sweep that found it found no subject declaration for any other target. Registering them without grounding would mean either fabricating citations or reopening the wall, and both are refused. The .dag language and controlled English take ProjectGrounding instead and need no external citation; both are ALREADY REGISTERED in this module, so what remains for D0 is exactly the external population. SIZING, so the remaining work is countable rather than vague: roughly twenty external subject declarations, each a new dag/extdeps scope carrier requiring its own roster enrollment, each needing a citation verified against the real upstream rather than recalled. That population is in flight on the stacked D0 branch. DISSOLVE-ON: those subjects land and this note deletes with the rows it explains."
->>>>>>> origin/session/keen-ibex-349
 
 data project_grounded_targets_note: String = "The two PROJECT-grounded targets, and they are here for a reason beyond being cheap: ProjectGrounding had zero inhabitants, so an entire arm of the grounding coproduct was unexercised. These are also the two rows that could not have existed under a universal external subject carrier — the .dag language and the controlled-English medium are this project's OWN targets, with no independently governed upstream to cite, and forcing them through an external scope would have made them claim a governance they do not have. Their authority declarations are real and symbolic: dag_item_forms is the .dag surface-form authority, FormalSentence the controlled-English one. Neither carries an extdeps_model_scope and neither should. They are also now PROJECTABLE, which they were not while the join key was an external subject reference — the neutral DeclarationRef key is what lets one projection roster span both grounding arms instead of silently serving only external targets."
 
@@ -292,23 +274,10 @@ data registered_language_targets: List<LanguageTargetRegistration> = [
   }
 ]
 
-<<<<<<< HEAD
 data dag_syntax_authority: DeclarationRef = DeclarationRef {
   module_path: "extdeps.languages.dag.syntax",
   decl_name: "dag_item_forms",
   field: WholeDeclaration
-=======
-data dag_subject_ref: DeclarationRef = DeclarationRef {
-  module_path: "extdeps.languages.dag.syntax",
-  decl_name: "dag_item_forms",
-  field: WholeDeclaration
-}
-
-data english_subject_ref: DeclarationRef = DeclarationRef {
-  module_path: "v2.extdeps.languages.english",
-  decl_name: "FormalSentence",
-  field: WholeDeclaration
->>>>>>> origin/session/keen-ibex-349
 }
 
 data english_formal_sentence_authority: DeclarationRef = DeclarationRef {
@@ -445,7 +414,6 @@ data target_model_declaration_rows: List<LanguageTargetSurfaceRow> = [
   identified_module_row(authority: TargetModelDeclaration, module_path: "v2.extdeps.languages.english", subject: english_subject_ref),
   identified_module_row(authority: TargetModelDeclaration, module_path: "v2.extdeps.formats.spice", subject: spice_netlist_language_subject_ref),
   unidentified_module_row(authority: TargetModelDeclaration, module_path: "v2.extdeps.languages.machine_code"),
-<<<<<<< HEAD
 ]
 
 data census_path_resolution_note: String = "EVERY module_path IN THIS CENSUS WAS VERIFIED AGAINST THE REAL MODULE TREE, after review 48122 caught one that named nothing. The reviewer found the SPICE row pointing at extdeps.formats.spice, which is not a module — the surface is v2.extdeps.formats.spice, as this registry's own SPICE subject carrier already said. Identifying that row made a phantom worse: an unidentified phantom is merely a surface nobody can find, while an IDENTIFIED one asserts a join that can never be exercised, and it hid the real SPICE surface's absence from the census behind an apparently-accounted-for row. SWEEPING THE WHOLE CENSUS RATHER THAN THE ONE CITED ROW FOUND TWO MORE, both older and both the same root cause: extdeps.rust.cargo and extdeps.python.interpreter are FILE PATHS transcribed as module paths (dag/extdeps/rust/cargo.dag and dag/extdeps/python/python.dag), but the modules those files declare are extdeps.cargo and extdeps.python. That is DESIGN section 3's 'paths are discriminators, not gospel' violated in the direction that is hardest to see — a module path that LOOKS derived from a real file. They are corrected to the real modules and, per surface_locus_grain_note, moved to MODULE grain rather than being given invented decl_names: 'cargo' and 'python_interpreter' are not declarations either, and inventing one would be a nickname for a module. THE NINE REMAINING NON-EXACT PATHS ARE LEGITIMATE AND WERE CHECKED INDIVIDUALLY: the nine extdeps.languages family paths (rust, typescript, python, go, c, css, json, yaml, lean) each name a FAMILY of two to six real modules, and v2.workflow.bash is a string prefix covering v2.workflow.bash_command_fold_serialize and v2.workflow.bash_emit — the same prefix grain the containment lens uses. WHAT THIS DOES NOT ESTABLISH, and it is the honest limit: the sweep was done ONCE, by hand, at this revision. Nothing prevents the next phantom, because the census is hand-declared. The construction-side fix is the census being DERIVED from the module tree — already named as the residue-census obligation in language_target_registry_maximum_conclusion — at which point a path that names no module becomes unwritable rather than reviewable."
@@ -456,18 +424,6 @@ data runtime_checker_subject_note: String = "THE CHECKER ROWS BIND TO THE TARGET
 data runtime_checker_rows: List<LanguageTargetSurfaceRow> = [
   identified_module_row(authority: RuntimeChecker, module_path: "extdeps.cargo", subject: rust_language_subject_ref),
   identified_module_row(authority: RuntimeChecker, module_path: "extdeps.python", subject: python_language_subject_ref),
-=======
-  unidentified_module_row(authority: TargetModelDeclaration, module_path: "v2.extdeps.languages.ecmascript"),
-  unidentified_module_row(authority: TargetModelDeclaration, module_path: "v2.extdeps.languages.english"),
-  unidentified_module_row(authority: TargetModelDeclaration, module_path: "v2.extdeps.formats.spice"),
-]
-
-data runtime_checker_rows_note: String = "PHANTOM PATHS, CORRECTED (fierce-heron-301, 2026-08-04). These two rows previously read extdeps.rust.cargo and extdeps.python.interpreter with invented decl_names 'cargo' and 'python_interpreter'. Both were FILE PATHS transcribed as module paths: the files are dag/extdeps/rust/cargo.dag and dag/extdeps/python/python.dag, and the modules they declare are extdeps.cargo and extdeps.python. The decl_names named nothing either, so the rows are now at MODULE grain rather than carrying a fabricated declaration. This is the same class as the deleted revision stamp and the DESIGN ts_* count that opened this session — a hand-carried string that looks derived from something real, sitting in an authority, wrong and unfalsifiable by reading it. THE ROWS STAY UNIDENTIFIED, AND THAT IS PENDING RATHER THAN PRINCIPLED: the review's ruling is correct that a checker row's target answers which target the surface REALIZES, not whether the tool IS the language — so cargo belongs to Rust and the interpreter to Python, exactly as run_rust_smoke does. Neither Rust nor Python has a registered subject yet, so binding them here would name an unregistered target and the integrity wall would refuse it, correctly. DISSOLVE-ON: the D0 external subject population lands and these two rows bind."
-
-data runtime_checker_rows: List<LanguageTargetSurfaceRow> = [
-  unidentified_module_row(authority: RuntimeChecker, module_path: "extdeps.cargo"),
-  unidentified_module_row(authority: RuntimeChecker, module_path: "extdeps.python"),
->>>>>>> origin/session/keen-ibex-349
 ]
 
 data legacy_frontier_row_note: String = "The legacy frontier surface stays unidentified because it is a MULTI-TARGET prose table, not a surface belonging to one subject: gunbc.plans.language_target_self_host_frontier carries a row per target for a dozen targets at once. It cannot join a single subject, and the join kernel is right to report it. Its dissolution is the migration of those prose rows onto per-subject carriers — now possible for the first time, because until this change there were no subjects to migrate them ONTO. That migration is not done here; what this change removes is the reason it was blocked. The projections below carry legacy_frontier_label so each prose row can be matched to its canonical subject by name rather than by eye when that work happens."
@@ -507,11 +463,7 @@ fn identified_module_row(
   }
 }
 
-<<<<<<< HEAD
 data bash_vocabulary_join_note: String = "The two Bash vocabulary rows below are identified, and their significance CHANGED when the other subjects landed (this note previously said Bash was 'the registry's only live join today' and that 'everything else is unidentified because Bash is the only subject that exists yet' — both true when written, both false the moment D0 registered 26 subjects, and left standing they made this module assert its own emptiness while listing a full registry; corrected after review 48113). What these rows demonstrate now is narrower and still worth stating: they are the join for a target whose surfaces are confined by MODULE PREFIX rather than by a target-model declaration, so they exercise the SurfaceModule locus grain against a real registered subject rather than a fixture. The interesting Bash fact today is not that it is the only join — it is the projection two rows down, where GNU Bash is a fully registered, cited subject with NO legacy language id at all, because std.languages carries rust, go, python and typescript rows and no bash row."
-=======
-data bash_join_demonstration_note: String = "The two Bash vocabulary rows below are IDENTIFIED, and they are the registry's only live join today. They matter more than the count: they show the wall distinguishing an accounted-for surface from an unidentified one on REAL rows rather than on fixtures, so a green here is not the vacuous green of a census in which nothing is registered at all. Everything else is unidentified because Bash is the only registered subject any census SURFACE currently names — three subjects are registered, and the other two are targets whose surfaces this census does not yet enumerate at joinable grain, which is a gap in the population rather than in the mechanism."
->>>>>>> origin/session/keen-ibex-349
 
 data target_vocabulary_rows: List<LanguageTargetSurfaceRow> = [
   identified_module_row(authority: TargetVocabulary, module_path: "extdeps.languages.typescript.program", subject: typescript_language_subject_ref),
@@ -527,13 +479,16 @@ data language_target_surface_census: List<LanguageTargetSurfaceRow> = concat(
   concat(legacy_frontier_rows, target_vocabulary_rows)
 )
 
-<<<<<<< HEAD
-data language_target_projection_note: String = "Requirement D. Twenty-four projections, one per external subject, each a set of ATTRIBUTES hanging off the canonical subject rather than a second identity — the direction rule in language_target_projection_law is what makes them safe: projecting a subject to its LanguageId is total, while looking a LanguageId up REFUSES when no registered subject claims it. THE ABSENCES ARE THE FINDINGS AND THEY ARE LOAD-BEARING. legacy_language_id is Present on exactly four rows — rust, go, python, typescript — because std.languages contains exactly those four Language rows; every other registered subject, INCLUDING BASH, has no legacy id at all, which is why a LanguageId could never have served as the identity key for this registry. legacy_frontier_label is absent for html, css, json, yaml, commonmark and jsx because the prose self-host frontier table never carried rows for them: it is a table about compilation targets, and the structured media were outside its scope. Where a label IS carried it is the frontier's exact spelling, including the two rows whose spelling is itself a finding — C and C++ appear there as 'cpp — Phase-0-C' and 'cpp — full C target', two rows of one prose table for what are two DIFFERENT languages under one fused label, and PTX and RISC-V both map to the single label 'machine_code / ptx'. Those fused labels are precisely what per-subject carriers replace."
-=======
-data language_target_projection_note: String = "Requirement D, and the rows it makes concrete. Projections are authored only where a compatibility surface actually needs one, so projection count trailing registration count is expected rather than a gap. Bash carries: GNU Bash, .sh/.bash, and legacy_language_id ABSENT — because std.languages has rust, go, python and typescript rows and NO bash row. That absence is the finding, not an omission in this file: the target this repository emits most has never had an entry in the catalogue that was the closest thing to a language key in the tree, which is precisely why a LanguageId could never have served as the identity. legacy_frontier_label carries the name the prose self-host frontier used, so the superseded table's rows can be joined to canonical subjects as they migrate rather than being matched by eye. THE .dag PROJECTION IS THE DISCRIMINATING ONE: a project-grounded target could not be projected at all while the join key was an external subject reference, so its presence here is the executable evidence that the neutral key actually spans both grounding arms rather than the change merely typechecking."
->>>>>>> origin/session/keen-ibex-349
+data language_target_projection_note: String = "Requirement D. Twenty-five projections — one per external subject, PLUS the .dag language, which only became projectable when the neutral DeclarationRef join key landed: under the old ExternalSubjectRef key the .dag language and the controlled-English medium would have had to be wrapped in a carrier documented as a reference to an independently governed upstream subject, which is exactly what it is not. The controlled-English medium is deliberately left UNPROJECTED: a registered subject with no projection is a real state the registry must report as Absent rather than fabricate a name for, and it is the live row that keeps that control exercised instead of hypothetical. Each projection is a set of ATTRIBUTES each a set of ATTRIBUTES hanging off the canonical subject rather than a second identity — the direction rule in language_target_projection_law is what makes them safe: projecting a subject to its LanguageId is total, while looking a LanguageId up REFUSES when no registered subject claims it. THE ABSENCES ARE THE FINDINGS AND THEY ARE LOAD-BEARING. legacy_language_id is Present on exactly four rows — rust, go, python, typescript — because std.languages contains exactly those four Language rows; every other registered subject, INCLUDING BASH, has no legacy id at all, which is why a LanguageId could never have served as the identity key for this registry. legacy_frontier_label is absent for html, css, json, yaml, commonmark and jsx because the prose self-host frontier table never carried rows for them: it is a table about compilation targets, and the structured media were outside its scope. Where a label IS carried it is the frontier's exact spelling, including the two rows whose spelling is itself a finding — C and C++ appear there as 'cpp — Phase-0-C' and 'cpp — full C target', two rows of one prose table for what are two DIFFERENT languages under one fused label, and PTX and RISC-V both map to the single label 'machine_code / ptx'. Those fused labels are precisely what per-subject carriers replace."
 
 data language_target_projections: List<LanguageTargetProjection> = [
+  LanguageTargetProjection {
+    subject: dag_subject_ref,
+    display_name: "dag",
+    file_extensions: [".dag"],
+    legacy_language_id: none,
+    legacy_frontier_label: none
+  },
   LanguageTargetProjection {
     subject: gnu_bash_subject_ref,
     display_name: "GNU Bash",
@@ -542,7 +497,6 @@ data language_target_projections: List<LanguageTargetProjection> = [
     legacy_frontier_label: Present { value: "bash" }
   },
   LanguageTargetProjection {
-<<<<<<< HEAD
     subject: rust_language_subject_ref,
     display_name: "Rust",
     file_extensions: [".rs"],
@@ -702,13 +656,6 @@ data language_target_projections: List<LanguageTargetProjection> = [
     file_extensions: [".s"],
     legacy_language_id: none,
     legacy_frontier_label: Present { value: "machine_code / ptx" }
-=======
-    subject: dag_subject_ref,
-    display_name: "dag",
-    file_extensions: [".dag"],
-    legacy_language_id: none,
-    legacy_frontier_label: Present { value: "dag" }
->>>>>>> origin/session/keen-ibex-349
   }
 ]
 

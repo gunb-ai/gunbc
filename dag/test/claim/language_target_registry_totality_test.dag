@@ -28,24 +28,17 @@ import std.language_target_identity {
 import gunbc.language_target_registry {
   registered_language_targets,
   dag_subject_ref,
-<<<<<<< HEAD
   typescript_language_subject_ref,
   rust_language_subject_ref,
-=======
   english_subject_ref,
->>>>>>> origin/session/keen-ibex-349
   registered_target_count,
   bash_display_name,
   dag_display_name,
   english_display_name,
   lookup_language_id,
   every_projection_subject_is_registered,
-<<<<<<< HEAD
   gnu_bash_subject_ref,
   registered_language_targets,
-=======
-  bash_subject_ref,
->>>>>>> origin/session/keen-ibex-349
   language_target_surface_census,
   surface_census_row_count,
   identified_surface_count,
@@ -79,11 +72,7 @@ test fn bash_vocabulary_surface_joins_the_bash_subject() -> Bool {
     rows: language_target_surface_census,
     registry: registered_language_targets
   ) {
-<<<<<<< HEAD
     TargetResolved { target: t } => declaration_ref_eq(a: t, b: gnu_bash_subject_ref)
-=======
-    TargetResolved { target: t } => declaration_ref_eq(a: t, b: bash_subject_ref)
->>>>>>> origin/session/keen-ibex-349
     TargetSurfaceUnregistered { surface: _ } => false
     TargetSurfaceAmbiguous { surface: _, candidates: _ } => false
     TargetNotRegistered { target: _ } => false
