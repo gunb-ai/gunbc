@@ -472,7 +472,7 @@ fn v1_fn_generic_clone_bound_via_bounded_container_element(
   )
 }
 
-data surface_trigger_removed_from_fn_structural_note: String = "v1_generic_param_used_in_value_param_type_surface was removed from v1_type_param_needs_clone_bound (2026-08-04): any-mention of N in a value-param type forced N: Clone on every fn naming Holder<N>, collapsing fn_wf_no_trigger_negative_control. Keyed-roster Clone remains on the module allowlist + WF/container triggers; dissolve-on for that allowlist is unchanged."
+data surface_trigger_removed_from_fn_structural_note: String = "Two over-broad Clone arms were removed from fn generic binding (2026-08-04), both collapsing fn_wf_no_trigger_negative_control: (1) v1_generic_param_used_in_value_param_type_surface from v1_type_param_needs_clone_bound; (2) v1_type_expr_clone_impl_needs_param from v1_fn_param_type_needs_clone_bound — occurrence-in-tau answers whether tau: Clone needs P, not whether a fn taking tau needs P: Clone. Bare param, WF naming of an already-bounded declared type, referenced-decl, and bounded container element remain. Keyed-roster Clone stays on the module allowlist; dissolve-on for that allowlist is unchanged."
 
 fn v1_type_param_needs_clone_bound(
   param_name: String,
@@ -500,13 +500,6 @@ fn v1_fn_param_type_needs_clone_bound(
   value_params |> any(vp =>
     let te = param_node_type_expr(n: vp)
     v1_type_expr_is_bare_param(param_name: param_name, type_expr: te, source_indices: source_indices)
-      || v1_type_expr_clone_impl_needs_param(
-        param_name: param_name,
-        type_expr: te,
-        bounds: bounds,
-        type_decl_items: type_decl_items,
-        source_indices: source_indices
-      )
       || v1_type_expr_wf_needs_clone_param(
         param_name: param_name,
         type_expr: te,
