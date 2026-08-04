@@ -1,0 +1,422 @@
+module std.census_observation
+
+import std.types { String, NonEmptyStr, Bool, Int, List }
+import std.decl_ref { DeclarationRef }
+import std.roster_frontier { declaration_ref_display_key }
+import std.content_hash {
+  Fnv1a64Structural,
+  content_hash_atom,
+  content_hash_tagged_structural,
+  content_hash_combine_structural,
+  content_hash_eq_structural,
+}
+import std.claim_evidence {
+  RecordedFactId,
+  RecordedFact,
+  InferenceRuleId,
+  EvidenceProvenance,
+  EvidenceFreshness,
+  EvidenceFidelity,
+  EvidenceDirection,
+  EvidenceLink,
+}
+import gunbc.guarantee_measurement { MeasurementRevision, GitRevision, ContentFingerprint }
+
+data census_observation_authority_note: String = "CENSUS-0, the NEUTRAL revision-scoped observation carrier (operator-directed 2026-08-04). It exists because five measurement errors landed across four sessions in a single day, every one of them producing a number that LOOKED precise: a readiness census keyed on a name suffix (17 claimed, 10 real); a concat census keyed on a binder name (117 against a real 204, because the acc spelling was 57 percent of the population, and a PR body was honestly wrong as a result); a corpus count reported dag-only as if repo-wide; a per-root count whose glob missed the files at the root; and a PR reported open that was closed. The shared shape is not carelessness, it is a missing carrier: each number was constructible WITHOUT its population, its revision, its method, and the maximum conclusion it could support, so nothing could refuse it. The structural answer is that a number without those four must not be constructible as a corpus claim. This module carries the fact and its laws and nothing else: it is a NEUTRAL carrier, not an analysis program. It owns no census kinds, no hub, and no enumeration of what may be censused — the language-residue census and the scaffold-retirement census CONSUME it, and a future namespace or hand-Rust or target-support census consumes it the same way without editing anything here."
+
+data census_observation_homonym_note: String = "Naming diligence (DESIGN section 3). The word observation is already carried by three DIFFERENT concepts in this tree and none of the four is a nickname for another, so none are to be consolidated. std.observation observes a PROCESS advancing through time (run, batch, entry, dwell, attention). std.upsert_decision.ObservationVerdict classifies a desired-versus-observed STATE for reconcile and upsert (Converged, Drifted, Conflict). gunbc.observation_emit_census is an INSTANCE of a census — the emit-site roster — and is a candidate consumer of this module, not a peer authority. This module carries a MEASUREMENT OF A POPULATION AT A REVISION. The distinguishing question, following the form std.observation already uses: upsert asks what is true of the world, std.observation asks how far the work has got, and this module asks what was counted, over what, at which revision, by what method, and what that permits anyone to conclude."
+
+data census_observation_inhabits_claim_evidence_note: String = "A CensusObservation is deliberately NOT a self-contained evidence system. It is the F in std.claim_evidence RecordedFact of F — that module already carries the scoped claim relation (direction, inference rule, authority, provenance, freshness, fidelity, probe independence, admission policy, and a nine-arm EvidenceAdmissionRefusal), grounded on cited SACM, W3C PROV-DM and Belnap authorities. Re-minting any of that here would be the failed decomposition DESIGN section 2 names: minting a fresh authority for a concept that already exists. What this module adds is the one thing claim_evidence is generic over and cannot supply — the fact whose SHAPE forces population, revision and method to be present, and whose maximum conclusion is DERIVED from that shape rather than authored beside it. The AUTH-0 relationship is one sentence and needs no machinery: every census-based authority claim must be supported by an admitted EvidenceLink whose fact is a CensusObservation."
+
+data census_observation_concrete_parameter_note: String = "The carrier is generic over ROW ONLY, and that is a deliberate narrowing of the sketch this was cut from, which parameterized population, revision, method and conclusion as well. A type parameter is a hole a consumer fills, so a generic Method would let a census pass the String regex search where a classifier declaration belongs, and a generic Population would let it pass a bare corpus name where source roots and inclusion rules belong — which is precisely the field whose absence caused two of the five errors this module exists to prevent. Mandatory means the shape supplies it, not that a consumer is asked to. Population, revision, method and conclusion are therefore concrete authorities here; Row stays generic because the SUBJECT of a census genuinely varies and nothing about it is load-bearing to these laws."
+
+type RepositoryIdentity = NonEmptyStr where brand("RepositoryIdentity")
+type SourceRootIdentity = NonEmptyStr where brand("SourceRootIdentity")
+type CensusSubjectKey = NonEmptyStr where brand("CensusSubjectKey")
+
+data census_population_nonempty_roots_note: String = "Source roots are carried as a required FIRST root plus the remainder, never as one list that could be empty. This is construction where a check was available (DESIGN section 5): a census over zero source roots is not a census with a defect to be caught, it is a shape with no meaning, and the two errors this field exists to prevent — a dag-only count reported as repo-wide, and a glob that missed the files at the root — are both a source-root fact that nobody was required to state. No list refinement exists in the corpus today, so the non-empty carrier is the first-plus-rest idiom std.claim_evidence already uses for ClaimReadinessPolicy first_required and remaining_required, rather than a new mechanism. Dissolve-on: when a list where-refinement lands, this pair collapses to one refined list field and this note deletes."
+
+type RepositoryPopulation {
+  repository: RepositoryIdentity
+  first_source_root: SourceRootIdentity
+  additional_source_roots: List<SourceRootIdentity>
+  inclusion_rule: DeclarationRef
+  exclusion_rule: DeclarationRef?
+}
+
+fn census_population_source_roots(population: RepositoryPopulation) -> List<SourceRootIdentity> {
+  append([population.first_source_root], items: population.additional_source_roots)
+}
+
+fn census_population_source_root_count(population: RepositoryPopulation) -> Int {
+  count(census_population_source_roots(population: population))
+}
+
+data census_method_identity_note: String = "The method is an exact DECLARATION, EXECUTABLE, or ARTIFACT IDENTITY, and every arm carries one, so prose is unwritable rather than discouraged. Regex search is not a method; the DeclarationRef of the scanner that ran the pattern is. Note what is deliberately ABSENT from TextPatternScan: the pattern text itself. Carrying it would re-open the exact hole the arm closes — a row could then read plausibly while naming a pattern the scanner never ran — so the scanner declaration is the single authority and the pattern lives inside it. The three arms are not decorative: they are the discriminant the maximum conclusion is derived from, which is why a fourth arm may only land WITH its conclusion strength decided."
+
+type CensusMethod
+  = StructuralClassifier { classifier: DeclarationRef }
+  | TextPatternScan { scanner: DeclarationRef }
+  | ArtifactIdentityRead { producer: DeclarationRef, artifact: MeasurementRevision }
+
+type MethodSubjectFidelity
+  = SemanticSubjects
+  | TextualMatchesOnly
+
+data census_method_fidelity_note: String = "The one fact the conclusion derivation reads off the method: does this method see the SUBJECT, or only TEXT that correlates with it. A structural classifier reads the declared structure, so its rows are semantic subjects. A generated-artifact read is semantic about the artifact it read. A text-pattern scan sees matches and nothing else — the binder-name census that reported 117 against a real 204 was structurally incapable of seeing the other spelling, and no amount of care at the authoring site could have changed that. This is why the fidelity is a property of the METHOD and not a judgement the census author makes: the author is exactly the person who cannot tell."
+
+fn census_method_subject_fidelity(method: CensusMethod) -> MethodSubjectFidelity {
+  match method {
+    StructuralClassifier { classifier: _ } => SemanticSubjects
+    TextPatternScan { scanner: _ } => TextualMatchesOnly
+    ArtifactIdentityRead { producer: _, artifact: _ } => SemanticSubjects
+  }
+}
+
+fn census_method_declaration(method: CensusMethod) -> DeclarationRef {
+  match method {
+    StructuralClassifier { classifier: c } => c
+    TextPatternScan { scanner: s } => s
+    ArtifactIdentityRead { producer: p, artifact: _ } => p
+  }
+}
+
+type CoverageRequirement {
+  requirement: DeclarationRef
+  unmet_because: NonEmptyStr
+}
+
+data census_coverage_note: String = "Coverage answers whether the rows exhaust the declared population, and its third arm is the one that keeps ignorance from being read as an answer. CompleteForDeclaredPopulation says the method ran over every member of the population the row declares. Sampled carries the SELECTION as a declaration, for the same reason the method does — a sample described in prose is a sample nobody can re-run. CoverageUnestablished is neither of those and is emphatically not a zero: it is the state where the census cannot say what it covered, and it carries at least one named requirement it could not meet, because an unestablished coverage with an empty reason list would be the bare nothing that the closed sums in this house exist to prevent. The requirement list is first-plus-rest for the same construction reason the source roots are."
+
+type CensusCoverage
+  = CompleteForDeclaredPopulation
+  | Sampled { selection: DeclarationRef }
+  | CoverageUnestablished {
+      first_missing: CoverageRequirement,
+      additional_missing: List<CoverageRequirement>,
+    }
+
+fn census_coverage_missing_requirements(coverage: CensusCoverage) -> List<CoverageRequirement> {
+  match coverage {
+    CompleteForDeclaredPopulation => []
+    Sampled { selection: _ } => []
+    CoverageUnestablished { first_missing: f, additional_missing: rest } =>
+      append([f], items: rest)
+  }
+}
+
+data census_observation_no_stored_count_note: String = "THERE IS NO COUNT FIELD, and its absence is the whole mechanism. A stored count is the defect this carrier exists to prevent: it is a second representation of a fact the rows already determine (DESIGN section 2), and being a second representation it can disagree with them — which is exactly what a census claiming 17 while its rows held 10 was. Because the field does not exist, the disagreement is not caught, it is UNWRITABLE (DESIGN section 4b, top rung: validation is unnecessary when the bad state has no representation). census_row_count is a projection over rows and there is no other path to a number. The same reasoning removes a stored observation id: identity is the content address below, so an observation cannot be edited while keeping its name."
+
+type CensusObservation<Row> {
+  population: RepositoryPopulation
+  observed_at_revision: MeasurementRevision
+  method: CensusMethod
+  rows: List<Row>
+  coverage: CensusCoverage
+}
+
+fn census_row_count<Row>(observation: CensusObservation<Row>) -> Int {
+  count(observation.rows)
+}
+
+data census_conclusion_derivation_note: String = "The maximum conclusion is DERIVED from (method fidelity, coverage) and is stored nowhere. This is the counts-derive-from-rows argument one level up, and it is load-bearing rather than tidy: if the conclusion were an authored field, a regex census could author these semantic defects exist, which is the single failure this carrier exists to prevent. Two of the operator's laws then fall out as ARMS OF ONE TOTAL FOLD rather than as three separate checks someone must remember to extend when a method or coverage arm is added — Sampled cannot support a whole-corpus absence claim because it derives a floor, and CoverageUnestablished cannot support Empty because it derives no conclusion at all. A new method arm or coverage arm cannot be added without deciding its conclusion, because the fold is total."
+
+type CensusConclusionStrength
+  = ExhaustiveSemanticPopulation
+  | SemanticPopulationFloor
+  | ExhaustiveTextualMatches
+  | TextualMatchFloor
+  | NoConclusionSupported
+
+data census_conclusion_sole_constructor_note: String = "CensusConclusion is sole_constructor so the derivation below is the ONLY way to obtain one anywhere outside this module — a cross-module record literal is refused with SoleConstructorViolation, and no mint function is exported beside the derivation, because an exported mint would re-open exactly the forgery the wall closes. It carries derived_from, the content address of the observation it was derived from, which makes the conclusion a function of the measured content rather than a label that travels: pairing a conclusion with a DIFFERENT observation is then an exact identity mismatch rather than an indistinguishable one. Honest rung, measured not assumed: the sole_constructor capability is a real cross-module construction refusal with its own diagnostic, but DESIGN section 4b records its completeness for generic carriers and every construction form as UNVERIFIED, and this module's own residual bypass is stated in census_evidence_link_residual_gap_note rather than papered over."
+
+type CensusConclusion sole_constructor {
+  strength: CensusConclusionStrength
+  derived_from: Fnv1a64Structural
+}
+
+fn census_conclusion_strength_for(
+  fidelity: MethodSubjectFidelity,
+  coverage: CensusCoverage,
+) -> CensusConclusionStrength {
+  match coverage {
+    CoverageUnestablished { first_missing: _, additional_missing: _ } => NoConclusionSupported
+    Sampled { selection: _ } =>
+      match fidelity {
+        SemanticSubjects => SemanticPopulationFloor
+        TextualMatchesOnly => TextualMatchFloor
+      }
+    CompleteForDeclaredPopulation =>
+      match fidelity {
+        SemanticSubjects => ExhaustiveSemanticPopulation
+        TextualMatchesOnly => ExhaustiveTextualMatches
+      }
+  }
+}
+
+data census_identity_is_content_note: String = "CURRENT STATE IS ALWAYS A NEW OBSERVATION, made structural rather than asked for. The observation's identity is the content address of what was measured — population, revision, method, coverage and the row subject keys — so there is no stored id that could survive an edit, and updating an observation in place is not forbidden, it is meaningless: change any measured field and the identity is a different one. An older observation therefore stays true about its pinned revision by construction, because nothing can overwrite it and keep its name. Row order is the CALLER's canonical enumeration and this fold is deterministic exactly when that order is, stated rather than silently sorted, following the same honesty probe_set_digest keeps for the probe roster: sorting here would need an order authority this module does not own, and a host-order sort would be the determinism leak std.determinism refuses."
+
+fn census_revision_key(revision: MeasurementRevision) -> String {
+  match revision {
+    GitRevision { commit: c } => concat("git:", c)
+    ContentFingerprint { digest: d } => concat("fingerprint:", d.digest)
+  }
+}
+
+fn census_method_key(method: CensusMethod) -> String {
+  match method {
+    StructuralClassifier { classifier: c } =>
+      concat("structural:", declaration_ref_display_key(ref: c))
+    TextPatternScan { scanner: s } =>
+      concat("text-pattern:", declaration_ref_display_key(ref: s))
+    ArtifactIdentityRead { producer: p, artifact: a } =>
+      concat(
+        "artifact:",
+        concat(declaration_ref_display_key(ref: p), concat("@", census_revision_key(revision: a))),
+      )
+  }
+}
+
+fn census_coverage_key(coverage: CensusCoverage) -> String {
+  match coverage {
+    CompleteForDeclaredPopulation => "complete"
+    Sampled { selection: s } => concat("sampled:", declaration_ref_display_key(ref: s))
+    CoverageUnestablished { first_missing: f, additional_missing: rest } =>
+      concat(
+        "unestablished:",
+        join(
+          append([f], items: rest)
+            |> map(r => declaration_ref_display_key(ref: r.requirement)),
+          ",",
+        ),
+      )
+  }
+}
+
+fn census_population_key(population: RepositoryPopulation) -> String {
+  concat(
+    concat(population.repository as String, "|"),
+    concat(
+      concat(
+        join(
+          census_population_source_roots(population: population) |> map(r => r as String),
+          ",",
+        ),
+        "|",
+      ),
+      concat(
+        declaration_ref_display_key(ref: population.inclusion_rule),
+        match population.exclusion_rule {
+          Present { value: e } => concat("|", declaration_ref_display_key(ref: e))
+          Absent => "|none"
+        },
+      ),
+    ),
+  )
+}
+
+fn census_observation_identity<Row>(
+  observation: CensusObservation<Row>,
+  row_key: fn(Row) -> CensusSubjectKey,
+) -> Fnv1a64Structural {
+  let header = content_hash_combine_structural(
+    left: content_hash_tagged_structural(
+      tag: "census-population" as NonEmptyStr,
+      payload: content_hash_atom(value: census_population_key(population: observation.population) as NonEmptyStr),
+    ),
+    right: content_hash_combine_structural(
+      left: content_hash_tagged_structural(
+        tag: "census-revision" as NonEmptyStr,
+        payload: content_hash_atom(value: census_revision_key(revision: observation.observed_at_revision) as NonEmptyStr),
+      ),
+      right: content_hash_combine_structural(
+        left: content_hash_tagged_structural(
+          tag: "census-method" as NonEmptyStr,
+          payload: content_hash_atom(value: census_method_key(method: observation.method) as NonEmptyStr),
+        ),
+        right: content_hash_tagged_structural(
+          tag: "census-coverage" as NonEmptyStr,
+          payload: content_hash_atom(value: census_coverage_key(coverage: observation.coverage) as NonEmptyStr),
+        ),
+      ),
+    ),
+  )
+  fold(observation.rows, init: header, f: fn(acc, row) {
+    content_hash_combine_structural(
+      left: acc,
+      right: content_hash_tagged_structural(
+        tag: "census-row" as NonEmptyStr,
+        payload: content_hash_atom(value: row_key(row) as NonEmptyStr),
+      ),
+    )
+  })
+}
+
+fn census_maximum_conclusion<Row>(
+  observation: CensusObservation<Row>,
+  row_key: fn(Row) -> CensusSubjectKey,
+) -> CensusConclusion {
+  CensusConclusion {
+    strength: census_conclusion_strength_for(
+      fidelity: census_method_subject_fidelity(method: observation.method),
+      coverage: observation.coverage,
+    ),
+    derived_from: census_observation_identity(observation: observation, row_key: row_key),
+  }
+}
+
+data census_conclusion_projection_note: String = "The named laws as total projections over the derived strength, so a consumer asks the conclusion rather than re-deriving the rule. A TEXT-PATTERN CENSUS MAXIMUM CONCLUSION IS ONLY that these textual matches exist: both textual arms answer false to the semantic-subject question no matter how exhaustive the scan was, which is what makes the honest 204 a count of matches and the 117 a floor. Absence is split in two because the two are genuinely different claims and conflating them is how a complete text scan gets read as proving a defect class empty: an exhaustive text scan CAN support no further textual match exists, and cannot support no semantic defect exists. Every floor arm answers false to both, and NoConclusionSupported answers false to everything — the coverage-unestablished census supports nothing at all, which is the point of it being a state rather than a zero."
+
+fn census_conclusion_supports_semantic_subject_claim(conclusion: CensusConclusion) -> Bool {
+  match conclusion.strength {
+    ExhaustiveSemanticPopulation => true
+    SemanticPopulationFloor => true
+    ExhaustiveTextualMatches => false
+    TextualMatchFloor => false
+    NoConclusionSupported => false
+  }
+}
+
+fn census_conclusion_supports_textual_absence(conclusion: CensusConclusion) -> Bool {
+  match conclusion.strength {
+    ExhaustiveSemanticPopulation => true
+    SemanticPopulationFloor => false
+    ExhaustiveTextualMatches => true
+    TextualMatchFloor => false
+    NoConclusionSupported => false
+  }
+}
+
+fn census_conclusion_supports_semantic_absence(conclusion: CensusConclusion) -> Bool {
+  match conclusion.strength {
+    ExhaustiveSemanticPopulation => true
+    SemanticPopulationFloor => false
+    ExhaustiveTextualMatches => false
+    TextualMatchFloor => false
+    NoConclusionSupported => false
+  }
+}
+
+fn census_conclusion_is_floor_only(conclusion: CensusConclusion) -> Bool {
+  match conclusion.strength {
+    ExhaustiveSemanticPopulation => false
+    SemanticPopulationFloor => true
+    ExhaustiveTextualMatches => false
+    TextualMatchFloor => true
+    NoConclusionSupported => false
+  }
+}
+
+fn census_conclusion_strength_key(strength: CensusConclusionStrength) -> String {
+  match strength {
+    ExhaustiveSemanticPopulation => "exhaustive-semantic-population"
+    SemanticPopulationFloor => "semantic-population-floor"
+    ExhaustiveTextualMatches => "exhaustive-textual-matches"
+    TextualMatchFloor => "textual-match-floor"
+    NoConclusionSupported => "no-conclusion-supported"
+  }
+}
+
+fn census_conclusion_eq(left: CensusConclusion, right: CensusConclusion) -> Bool {
+  census_conclusion_strength_key(strength: left.strength)
+    == census_conclusion_strength_key(strength: right.strength)
+    && content_hash_eq_structural(left: left.derived_from, right: right.derived_from)
+}
+
+data census_completeness_identity_join_note: String = "COMPLETENESS IS AN IDENTITY JOIN, NOT A COUNT EQUALITY (operator ruling 2026-08-01). Comparing two totals answers the wrong question, because two sets of the same size can disagree entirely, and the census that claimed 17 over a real 10 would have passed any check that compared its own number to itself. This fold compares SUBJECT KEYS and reports what is missing and what is unexpected as located lists, so a divergence names the rows rather than a delta. The verdict is a closed sum with a distinct diverged arm rather than a pair of optional lists, because missing-only, unexpected-only and both-at-once have genuinely different remedies: the first is an under-observing method, the second is a population rule that does not say what the author thought, and the third is a key that does not mean what either of them assumed."
+
+type CensusCompleteness
+  = CensusRowsMatchPopulation
+  | CensusRowsIncomplete { missing: List<CensusSubjectKey> }
+  | CensusRowsUnexpected { unexpected: List<CensusSubjectKey> }
+  | CensusRowsDiverged {
+      missing: List<CensusSubjectKey>,
+      unexpected: List<CensusSubjectKey>,
+    }
+
+fn census_subject_key_in(key: CensusSubjectKey, keys: List<CensusSubjectKey>) -> Bool {
+  any(keys, k => (k as String) == (key as String))
+}
+
+fn census_observation_subject_keys<Row>(
+  observation: CensusObservation<Row>,
+  row_key: fn(Row) -> CensusSubjectKey,
+) -> List<CensusSubjectKey> {
+  observation.rows |> map(row => row_key(row))
+}
+
+fn census_completeness_by_identity<Row>(
+  observation: CensusObservation<Row>,
+  row_key: fn(Row) -> CensusSubjectKey,
+  expected: List<CensusSubjectKey>,
+) -> CensusCompleteness {
+  let observed = census_observation_subject_keys(observation: observation, row_key: row_key)
+  let missing = expected |> filter(k => !census_subject_key_in(key: k, keys: observed))
+  let unexpected = observed |> filter(k => !census_subject_key_in(key: k, keys: expected))
+  if count(missing) == 0 && count(unexpected) == 0 {
+    CensusRowsMatchPopulation
+  } else if count(unexpected) == 0 {
+    CensusRowsIncomplete { missing: missing }
+  } else if count(missing) == 0 {
+    CensusRowsUnexpected { unexpected: unexpected }
+  } else {
+    CensusRowsDiverged { missing: missing, unexpected: unexpected }
+  }
+}
+
+fn census_duplicate_subject_keys<Row>(
+  observation: CensusObservation<Row>,
+  row_key: fn(Row) -> CensusSubjectKey,
+) -> List<CensusSubjectKey> {
+  let observed = census_observation_subject_keys(observation: observation, row_key: row_key)
+  fold(observed, init: [], f: fn(acc, key) {
+    if census_subject_key_in(key: key, keys: acc) {
+      acc
+    } else if count(observed |> filter(k => (k as String) == (key as String))) > 1 {
+      append(acc, [key])
+    } else {
+      acc
+    }
+  })
+}
+
+data census_evidence_link_note: String = "The ONLY exported path from a census observation to an admitted claim, and it takes no maximum_conclusion parameter. std.claim_evidence already stores maximum_conclusion on EvidenceFreshness and already refuses a link whose conclusion does not match the claim being assessed, so a census that ALSO derived a conclusion of its own would have created the parallel-authority defect wearing this carrier's name: a derived value here and an authored one on the link, with nothing forcing them to agree (operator ruling 2026-08-04). Instead the derivation FEEDS the field. Construction feeding validation rather than sitting beside it: the existing refusal in claim_evidence becomes a genuine backstop over a derived value rather than one authored string checked against another."
+
+fn census_evidence_link<Row, A, FidelityBoundary, Independence>(
+  fact_id: RecordedFactId,
+  observation: CensusObservation<Row>,
+  row_key: fn(Row) -> CensusSubjectKey,
+  direction: EvidenceDirection,
+  inference_rule: InferenceRuleId,
+  authority: A,
+  provenance: EvidenceProvenance,
+  fidelity: EvidenceFidelity<FidelityBoundary>,
+  probe_independence: Independence,
+  basis: NonEmptyStr,
+) -> EvidenceLink<CensusObservation<Row>, CensusConclusion, A, FidelityBoundary, Independence> {
+  EvidenceLink {
+    fact: RecordedFact { id: fact_id, value: observation },
+    direction: direction,
+    inference_rule: inference_rule,
+    authority: authority,
+    provenance: provenance,
+    freshness: EvidenceFreshness {
+      maximum_conclusion: census_maximum_conclusion(observation: observation, row_key: row_key),
+      basis: basis,
+    },
+    fidelity: fidelity,
+    probe_independence: probe_independence,
+  }
+}
+
+data census_evidence_link_residual_gap_note: String = "TYPED GAP, reported rather than worked around (operator instruction 2026-08-04: a documented inability to close the path is worth more than a closed-looking path with a writable bypass). std.claim_evidence EvidenceLink is an ordinary record and is NOT sole_constructor — it cannot be made so without changing another module's load-bearing type under every existing consumer — so a caller in another module can still hand-write an EvidenceLink literal over a CensusObservation instead of calling census_evidence_link. What that caller CANNOT do is invent a stronger conclusion: CensusConclusion is sole_constructor and this module exports no mint beside the derivation, so the only obtainable conclusion values are derived ones. The residue is therefore narrow and exactly nameable — a link that pairs observation B with a conclusion derived from observation A — and because the conclusion carries derived_from, that pairing is an exact content-address mismatch rather than an indistinguishable one. census_evidence_link_conclusion_is_derived below detects it. That is VALIDATION, not construction, and it is named as such: this class sits at mechanically preventable on the DESIGN section 4b ladder, not at structurally impossible, and the witness corpus carries the executing red that proves the bypass is real rather than hypothetical. NEXT-RUNG TRIGGER: sole_constructor on EvidenceLink once its completeness for generic carriers is audited (the sole-constructor completeness audit named in DESIGN section 4b), or a census-specific link carrier if that audit finds the generic case does not hold; either makes the mismatched pairing unwritable and deletes the detector below with this note."
+
+fn census_evidence_link_conclusion_is_derived<Row, A, FidelityBoundary, Independence>(
+  link: EvidenceLink<CensusObservation<Row>, CensusConclusion, A, FidelityBoundary, Independence>,
+  row_key: fn(Row) -> CensusSubjectKey,
+) -> Bool {
+  census_conclusion_eq(
+    left: link.freshness.maximum_conclusion,
+    right: census_maximum_conclusion(observation: link.fact.value, row_key: row_key),
+  )
+}
