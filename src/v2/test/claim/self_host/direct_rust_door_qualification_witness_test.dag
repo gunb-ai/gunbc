@@ -10,7 +10,8 @@ import v2.compiler.self_host.behavioral_comparison_receipt {
   behavioral_admission_seal_unminted,
   behavioral_comparison_execution_identity,
   behavioral_comparison_receipt_from_observation,
-  behavioral_comparison_subject_for_observation
+  behavioral_comparison_subject_for_observation,
+  mint_behavioral_comparison_observation
 }
 import v2.compiler.self_host.direct_rust_door_behavioral_stdout {
   direct_rust_door_equivalent_stdout_text,
@@ -42,7 +43,7 @@ import v2.std.logic { Bool }
 import v2.std.optional { Absent, Present, Optional, optional_absent, optional_present }
 import v2.std.text { String }
 
-data direct_rust_door_qualification_witness_note: String = "Lane 4 fast per-PR construction witnesses (still-bat-561): fixture ladder only. Sentinel RED: unminted admission_seal refuses. Derived-seal RED (ceiling): behavioral_admission_seal_for_observation on a matching authored observation forges a valid seal and advance succeeds — the seal is a checksum, not execution proof. Honest ceiling documented in behavioral_admission_seal_ceiling_note."
+data direct_rust_door_qualification_witness_note: String = "Lane 4 fast per-PR construction witnesses (still-bat-561): fixture ladder only. sole_constructor on BehavioralComparisonObservation blocks cross-module record literals (SoleConstructorViolation); witnesses route through mint_behavioral_comparison_observation. Sentinel RED: unminted admission_seal refuses. Derived-seal RED (ceiling): mint + behavioral_admission_seal_for_observation forges advance — checksum not witness. Ceiling + next trigger in behavioral_admission_seal_ceiling_note."
 
 data direct_rust_door_qualification_fixture_workspace: String = "hermetic_fixture/direct_rust_door_qualification"
 
@@ -77,7 +78,7 @@ fn direct_rust_door_fully_matching_observation(
   let stdout = direct_rust_door_equivalent_stdout_text
   match direct_rust_door_parse_pass_rows_from_stdout(stdout: stdout) {
     Present { value: comparison_rows } =>
-      BehavioralComparisonObservation {
+      mint_behavioral_comparison_observation(
         module_path: written.artifact.fixture_receipt.module_path,
         emitted_source: written.artifact.source,
         subject_binding_identity: fixture_behavior_receipt_identity_for(
@@ -92,9 +93,9 @@ fn direct_rust_door_fully_matching_observation(
         comparison_rows: comparison_rows,
         behavioral_probe_entry: direct_rust_door_behavioral_probe_entry,
         behavioral_probe_function: direct_rust_door_behavioral_probe_function
-      }
+      )
     Absent =>
-      BehavioralComparisonObservation {
+      mint_behavioral_comparison_observation(
         module_path: written.artifact.fixture_receipt.module_path,
         emitted_source: written.artifact.source,
         subject_binding_identity: fixture_behavior_receipt_identity_for(
@@ -109,7 +110,7 @@ fn direct_rust_door_fully_matching_observation(
         comparison_rows: Empty,
         behavioral_probe_entry: direct_rust_door_behavioral_probe_entry,
         behavioral_probe_function: direct_rust_door_behavioral_probe_function
-      }
+      )
   }
 }
 
@@ -299,7 +300,7 @@ test fn witness_behavioral_advance_refuses_diverged_observation_reds() -> Bool {
         cargo_green: true
       ) {
         Present { value: cargo_written } =>
-          let diverged_observation = BehavioralComparisonObservation {
+          let diverged_observation = mint_behavioral_comparison_observation(
             module_path: cargo_written.artifact.fixture_receipt.module_path,
             emitted_source: cargo_written.artifact.source,
             subject_binding_identity: fixture_behavior_receipt_identity_for(
@@ -314,7 +315,7 @@ test fn witness_behavioral_advance_refuses_diverged_observation_reds() -> Bool {
             comparison_rows: direct_rust_door_subtract_comparison_rows(),
             behavioral_probe_entry: direct_rust_door_behavioral_probe_entry,
             behavioral_probe_function: direct_rust_door_behavioral_probe_function
-          }
+          )
           match admit_behavioral_comparison_equivalent(
             observation: diverged_observation
           ) {

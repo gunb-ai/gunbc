@@ -12,7 +12,7 @@ import std.types { CommitSha, Int }
 
 data behavioral_comparison_receipt_note: String = "Executed behavioral comparison receipt carrier (still-bat-561 ceiling audit): rows and verdict are derived from stdout at observation construction. advance checks field binding against the written artifact — NOT that stdout came from a real process."
 
-data behavioral_admission_seal_ceiling_note: String = "CEILING (still-bat-561): admission_seal is a pure digest of caller-supplied observation fields — behavioral_admission_seal_for_observation(observation) is reachable from any module and authenticates nothing. behavioral_admission_seal_is_minted is a not-equal-to-sentinel test only. A matching counterfeit with derived seal passes advance; witness fully_matching_derived_seal_forgery_advance_succeeds_red records that gap. Unforgeable execution witness requires observation construction walled to the wet transport host-effect path (sole_constructor on BehavioralComparisonObservation with mint reachable only from process output, or equivalent) — not expressible as a derived post-hoc seal today; sole_constructor completeness on AdmittedBehaviorEquivalentReceipt alone does not close observation forgery because admit_behavioral_comparison_equivalent(observation) accepts caller-authored observations."
+data behavioral_admission_seal_ceiling_note: String = "CEILING probe (still-bat-561 msg_63187749, EXECUTED): admission_seal is a caller-derivable checksum — not execution proof. BehavioralComparisonObservation sole_constructor landed; cross-module record-literal construction is REFUSED (SoleConstructorViolation on probe.behavioral_observation_sole_constructor_probe, construction form: record literal outside v2.compiler.self_host.behavioral_comparison_receipt). LEAK: exported mint_behavioral_comparison_observation — construction form: cross-module function call with caller-supplied stdout/stderr/exit_success/comparison_rows; fully_matching_derived_seal_forgery_advance_succeeds_red still greens via mint + derived seal. Next trigger (reference-edge admission thread): wall mint INPUT with a host-effect-only process-output carrier at the wet transport boundary so witness cannot fabricate stdout. fully_matching_derived_seal_forgery_advance_succeeds_red stays enrolled; flips to refuse when input wall lands, does not retire (DESIGN 4b(4))."
 
 type BehavioralComparisonSubject {
   module_path: String
@@ -54,7 +54,7 @@ type BehavioralComparisonReceipt {
   admission_seal: Hash
 }
 
-type BehavioralComparisonObservation {
+type BehavioralComparisonObservation sole_constructor {
   module_path: String
   emitted_source: Medium<String>
   subject_binding_identity: Hash
@@ -67,6 +67,36 @@ type BehavioralComparisonObservation {
   comparison_rows: List<BehavioralComparisonRow>
   behavioral_probe_entry: String
   behavioral_probe_function: String
+}
+
+fn mint_behavioral_comparison_observation(
+  module_path: String,
+  emitted_source: Medium<String>,
+  subject_binding_identity: Hash,
+  executable_content: String,
+  stdout: String,
+  stderr: String,
+  exit_success: Bool,
+  head_sha: CommitSha,
+  corpus_identity: Hash,
+  comparison_rows: List<BehavioralComparisonRow>,
+  behavioral_probe_entry: String,
+  behavioral_probe_function: String
+) -> BehavioralComparisonObservation {
+  BehavioralComparisonObservation {
+    module_path: module_path,
+    emitted_source: emitted_source,
+    subject_binding_identity: subject_binding_identity,
+    executable_content: executable_content,
+    stdout: stdout,
+    stderr: stderr,
+    exit_success: exit_success,
+    head_sha: head_sha,
+    corpus_identity: corpus_identity,
+    comparison_rows: comparison_rows,
+    behavioral_probe_entry: behavioral_probe_entry,
+    behavioral_probe_function: behavioral_probe_function
+  }
 }
 
 type AdmittedBehaviorEquivalentReceipt {

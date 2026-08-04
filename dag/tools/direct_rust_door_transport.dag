@@ -14,7 +14,8 @@ import v2.compiler.self_host.behavioral_comparison_receipt {
   BehavioralComparisonRow,
   BehaviorDiverged,
   admit_behavioral_comparison,
-  admit_behavioral_comparison_equivalent
+  admit_behavioral_comparison_equivalent,
+  mint_behavioral_comparison_observation
 }
 import v2.compiler.self_host.direct_rust_door_behavioral_stdout {
   direct_rust_door_inject_fault_stdout_holds,
@@ -67,7 +68,7 @@ fn direct_rust_door_behavioral_observation_from_run(
   comparison_rows: List<BehavioralComparisonRow>,
   executable_content: String
 ) -> BehavioralComparisonObservation {
-  BehavioralComparisonObservation {
+  mint_behavioral_comparison_observation(
     module_path: written.artifact.fixture_receipt.module_path,
     emitted_source: written.artifact.source,
     subject_binding_identity: fixture_behavior_receipt_identity_for(
@@ -82,7 +83,7 @@ fn direct_rust_door_behavioral_observation_from_run(
     comparison_rows: comparison_rows,
     behavioral_probe_entry: direct_rust_door_behavioral_probe_entry,
     behavioral_probe_function: direct_rust_door_behavioral_probe_function
-  }
+  )
 }
 
 fn direct_rust_door_prepare_behavioral_witness_workspace(workspace_dir: String) -> Bool {
