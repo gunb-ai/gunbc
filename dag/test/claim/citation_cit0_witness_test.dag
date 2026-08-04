@@ -2,26 +2,29 @@ module test.claim.citation_cit0_witness
 
 import std.citation {
   CitedResource, RetrievedRepresentation, CitationSelector,
-  RepresentationPin, RepresentationByteDomain, RawResponseBody,
-  Pinned, Unpinned,
+  CitedRepresentation, RepresentationByteDomain, RawResponseBody,
+  ExactPin,
   CitationRetrievalRequest, CitationRetrievalObservation,
   CitationUnreachable, CitationRetrieved, CitationRetrievalResponse,
   ObservingProductLayer, UpstreamModuleLayer,
   CitationLayerAdmitted, CitationLayerRefusedUpstreamObservation,
   admit_citation_retrieval_observation,
   citation_recorded_fact,
+  citation_exact_pin,
   text_quote_selector,
   TextQuoteSelectorVariant,
   retrieved_representation,
-  representation_pin_pinned,
   cited_resource,
 }
+import extdeps.pin { Pin, pin_currency_gap, AuthoredPinHasNoReviewDate }
 import std.claim_evidence { RecordedFactId }
 import std.content_hash { Sha256Digest, as_content_hash_cryptographic }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.version { VersionIdentity }
+import extdeps.http.server { MediaType, TopLevelApplication }
 import extdeps.standards.web_annotation { web_annotation_authority }
-import std.types { Bool, NonEmptyStr, EpochMs }
+import std.types { Bool, NonEmptyStr, EpochMs, HttpStatus }
 
 data witness_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -30,16 +33,31 @@ data witness_authority: ExternalAuthority = ExternalAuthority {
   },
 }
 
+data witness_application_pdf: MediaType = MediaType {
+  top_level: TopLevelApplication,
+  subtype: "pdf",
+  parameters: [],
+}
+
 data witness_sha256_hex: NonEmptyStr = "69e117a13b560b1b957c15f05a61b130ca56828f05dca951e27cb8e2ada14283" as NonEmptyStr
 
 data witness_sha256_digest: Sha256Digest = Sha256Digest { hex: witness_sha256_hex }
 
+data witness_citation_pin: Pin<CitedRepresentation> = citation_exact_pin(
+  authority: witness_authority,
+  byte_domain: RawResponseBody,
+  version: "witness-fixture-v1" as VersionIdentity,
+  expected_identity: as_content_hash_cryptographic(digest: witness_sha256_digest),
+)
+
 data witness_pinned_representation: RetrievedRepresentation = retrieved_representation(
-  media_type: "application/pdf" as NonEmptyStr,
-  pin: representation_pin_pinned(
-    digest: as_content_hash_cryptographic(digest: witness_sha256_digest),
-    domain: RawResponseBody,
-  ),
+  media_type: witness_application_pdf,
+  pin: witness_citation_pin,
+)
+
+data witness_unpinned_representation: RetrievedRepresentation = retrieved_representation(
+  media_type: witness_application_pdf,
+  pin: none,
 )
 
 data witness_text_quote: CitationSelector = text_quote_selector(
@@ -48,11 +66,10 @@ data witness_text_quote: CitationSelector = text_quote_selector(
   suffix: none,
 )
 
-type WitnessCitedResource = CitedResource<NonEmptyStr, RetrievedRepresentation, CitationSelector>
+type WitnessCitedResource = CitedResource<RetrievedRepresentation, CitationSelector>
 
 data witness_cited_resource: WitnessCitedResource = CitedResource {
   authority: witness_authority,
-  revision: none,
   representation: witness_pinned_representation,
   selector: witness_text_quote,
 }
@@ -76,19 +93,16 @@ test fn cited_resource_constructs_with_text_quote_selector() -> Bool {
   }
 }
 
-test fn representation_pin_pairs_digest_and_domain_at_construction() -> Bool {
-  match witness_pinned_representation.pin {
-    Pinned { digest: _, domain: RawResponseBody } => true
-    Unpinned => false
-  }
+test fn citation_pin_pairs_byte_domain_and_expected_identity() -> Bool {
+  witness_citation_pin.subject.byte_domain == RawResponseBody
+    && witness_citation_pin.selection == ExactPin
+    && witness_citation_pin.version == ("witness-fixture-v1" as VersionIdentity)
 }
 
-data witness_unpinned: RepresentationPin = Unpinned
-
-test fn representation_pin_unpinned_carries_no_digest() -> Bool {
-  match witness_unpinned {
-    Pinned { digest: _, domain: _ } => false
-    Unpinned => true
+test fn absent_representation_pin_is_optional_not_a_constructor() -> Bool {
+  match witness_unpinned_representation.pin {
+    Present { value: _ } => false
+    Absent => true
   }
 }
 
@@ -127,14 +141,21 @@ test fn web_annotation_authority_is_cited_for_selectors() -> Bool {
   web_annotation_authority.uri.locator == "www.w3.org/TR/annotation-model/"
 }
 
+test fn exact_citation_pin_currency_is_an_unfilled_gap() -> Bool {
+  match pin_currency_gap(pin: witness_citation_pin) {
+    AuthoredPinHasNoReviewDate => true
+    _ => false
+  }
+}
+
 test fn retrieved_observation_carries_observed_at_and_request() -> Bool {
   match CitationRetrieved {
     request: CitationRetrievalRequest { locator: witness_authority.uri },
     observed_at: witness_observed_at_noon_utc,
     response: CitationRetrievalResponse {
       http_status: 200,
-      media_type: "application/pdf" as NonEmptyStr,
-      representation_pin: witness_pinned_representation.pin,
+      media_type: witness_application_pdf,
+      representation_pin: witness_citation_pin,
     },
   } {
     CitationRetrieved { request: r, observed_at: t, response: _ } =>
