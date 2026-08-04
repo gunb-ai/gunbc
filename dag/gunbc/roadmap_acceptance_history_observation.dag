@@ -4,10 +4,11 @@ import extdeps.git.inspect
 import extdeps.git
 import gunbc.output_policy { ExpectSuccess }
 import gunbc.repo_identity { gunbc_merge_target_ref }
-import gunbc.roadmap_acceptance_history_projection {
-  RoadmapAcceptanceHistoryProjection,
-  RoadmapAcceptanceHistoryProjected,
-  RoadmapAcceptanceHistoryProjectionRefused,
+import gunbc.roadmap_acceptance_history_carrier {
+  roadmap_acceptance_event_history_carrier_repo_path,
+  parse_roadmap_acceptance_event_history_carrier,
+  RoadmapAcceptanceEventHistoryParsed,
+  RoadmapAcceptanceEventHistoryParseRefused,
 }
 import gunbc.roadmap_model {
   RoadmapAcceptanceEvent,
@@ -15,18 +16,15 @@ import gunbc.roadmap_model {
   AcceptanceHistoryIntegrityHolds,
   AcceptanceHistoryIntegrityRefusedReplay,
   AcceptanceHistoryIntegrityRefusedVanishedWithoutRevocation,
-  AcceptanceHistoryIntegrityRefusedSealedPrefixDigest,
   AcceptanceHistoryIntegrityRefusedPriorPrefix,
   AcceptanceHistoryIntegrityRefusedPriorHistoryObservation,
   acceptance_history_integrity_verdict,
 }
-import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_eq_structural }
+import std.content_hash { content_hash_atom, content_hash_eq_structural }
 import std.types { CommitSha, GitRef, String }
 import v2.std.collection { List }
 
-data roadmap_acceptance_history_authority_repo_path: String = "dag/gunbc/roadmap_authority.dag"
-
-data roadmap_acceptance_history_prior_history_next_rung_trigger: String = "DISSOLVED: merge-base revision evaluation now projects roadmap_acceptance_event_history from git.Core.Show authority text via gunbc.roadmap_acceptance_history_projection (seed bridge project_roadmap_acceptance_event_history_from_authority_text). PriorHistoryRevisionEvaluationRequired deleted — a changed authority file no longer bypasses acceptance_history_extends_prior with prior_history = []. Remaining dissolve-on: delete the seed bridge when a modeled revision-addressed module evaluator lands."
+data roadmap_acceptance_history_prior_history_next_rung_trigger: String = "DISSOLVED: merge-base prior_history now parses dag/gunbc/roadmap_acceptance_event_history.jsonl via gunbc.roadmap_acceptance_history_carrier (seed bridge parse_roadmap_acceptance_event_history_jsonl). A changed carrier without a valid merge-base parse refuses AcceptanceHistoryIntegrityRefusedPriorHistoryObservation — never prior_history = []. Remaining dissolve-on: delete the seed JSONL parser when a modeled carrier ingest lands."
 
 type RoadmapAcceptanceHistoryPriorObservation
   = PriorHistoryObserved { prior: List<RoadmapAcceptanceEvent> }
@@ -41,18 +39,20 @@ fn git_refusal_detail(operation: String, stderr: String) -> String {
   }
 }
 
-fn prior_history_from_authority_text(authority_text: String) -> RoadmapAcceptanceHistoryPriorObservation {
-  match project_roadmap_acceptance_event_history_from_authority_text(authority_text: authority_text) {
-    RoadmapAcceptanceHistoryProjected { events: events } =>
+fn prior_history_from_carrier_text(carrier_text: String) -> RoadmapAcceptanceHistoryPriorObservation {
+  match parse_roadmap_acceptance_event_history_carrier(text: carrier_text) {
+    RoadmapAcceptanceEventHistoryParsed { events: events } =>
       PriorHistoryObserved { prior: events }
-    RoadmapAcceptanceHistoryProjectionRefused { detail: detail } =>
-      PriorHistoryGitObservationRefused { detail: detail }
+    RoadmapAcceptanceEventHistoryParseRefused { detail: detail } =>
+      PriorHistoryGitObservationRefused {
+        detail: concat("merge-base carrier parse refused: ", detail),
+      }
   }
 }
 
 fn observe_roadmap_acceptance_history_prior(
   current_history: List<RoadmapAcceptanceEvent>,
-  authority_repo_path: String,
+  carrier_repo_path: String,
   base_ref: String,
 ) -> RoadmapAcceptanceHistoryPriorObservation {
   let head = git.Inspect.HeadCommit(expect: ExpectSuccess)
@@ -74,23 +74,23 @@ fn observe_roadmap_acceptance_history_prior(
     } else {
       let head_manifest = git.Core.Show(
         ref: revision as GitRef,
-        path: authority_repo_path,
+        path: carrier_repo_path,
         expect: ExpectSuccess,
       )
       if !head_manifest.success {
         PriorHistoryGitObservationRefused {
-          detail: git_refusal_detail(operation: "git.Core.Show(HEAD authority)", stderr: head_manifest.stderr),
+          detail: git_refusal_detail(operation: "git.Core.Show(HEAD carrier)", stderr: head_manifest.stderr),
         }
       } else {
         let base_manifest = git.Core.Show(
           ref: baseline.sha as GitRef,
-          path: authority_repo_path,
+          path: carrier_repo_path,
           expect: ExpectSuccess,
         )
         if !base_manifest.success {
           PriorHistoryGitObservationRefused {
             detail: git_refusal_detail(
-              operation: "git.Core.Show(merge-base authority)",
+              operation: "git.Core.Show(merge-base carrier)",
               stderr: base_manifest.stderr,
             ),
           }
@@ -100,7 +100,7 @@ fn observe_roadmap_acceptance_history_prior(
           if content_hash_eq_structural(left: head_identity, right: base_identity) {
             PriorHistoryObserved { prior: current_history }
           } else {
-            prior_history_from_authority_text(authority_text: base_manifest.content)
+            prior_history_from_carrier_text(carrier_text: base_manifest.content)
           }
         }
       }
@@ -115,7 +115,7 @@ fn current_roadmap_acceptance_history_prior_observation(
 ) -> RoadmapAcceptanceHistoryPriorObservation {
   observe_roadmap_acceptance_history_prior(
     current_history: current_history,
-    authority_repo_path: roadmap_acceptance_history_authority_repo_path,
+    carrier_repo_path: roadmap_acceptance_event_history_carrier_repo_path,
     base_ref: gunbc_merge_target_ref as String,
   )
 }
@@ -123,8 +123,6 @@ fn current_roadmap_acceptance_history_prior_observation(
 fn acceptance_history_integrity_verdict_from_prior_observation(
   observation: RoadmapAcceptanceHistoryPriorObservation,
   history: List<RoadmapAcceptanceEvent>,
-  sealed_event_count: Int,
-  sealed_chain_digest: Fnv1a64Structural,
 ) -> AcceptanceHistoryIntegrityVerdict {
   match observation {
     PriorHistoryGitObservationRefused { detail: detail } =>
@@ -132,8 +130,6 @@ fn acceptance_history_integrity_verdict_from_prior_observation(
     PriorHistoryObserved { prior: prior } =>
       acceptance_history_integrity_verdict(
         history: history,
-        sealed_event_count: sealed_event_count,
-        sealed_chain_digest: sealed_chain_digest,
         prior_history: prior,
       )
   }
@@ -142,19 +138,14 @@ fn acceptance_history_integrity_verdict_from_prior_observation(
 fn acceptance_history_integrity_holds_from_prior_observation(
   observation: RoadmapAcceptanceHistoryPriorObservation,
   history: List<RoadmapAcceptanceEvent>,
-  sealed_event_count: Int,
-  sealed_chain_digest: Fnv1a64Structural,
 ) -> Bool {
   match acceptance_history_integrity_verdict_from_prior_observation(
     observation: observation,
     history: history,
-    sealed_event_count: sealed_event_count,
-    sealed_chain_digest: sealed_chain_digest,
   ) {
     AcceptanceHistoryIntegrityHolds => true
     AcceptanceHistoryIntegrityRefusedReplay => false
     AcceptanceHistoryIntegrityRefusedVanishedWithoutRevocation { receipt: _ } => false
-    AcceptanceHistoryIntegrityRefusedSealedPrefixDigest => false
     AcceptanceHistoryIntegrityRefusedPriorPrefix => false
     AcceptanceHistoryIntegrityRefusedPriorHistoryObservation { detail: _ } => false
   }

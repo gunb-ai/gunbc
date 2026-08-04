@@ -5,11 +5,6 @@ import gunbc.roadmap_document {
   RoadmapSection,
   project_roadmap_to_markdown,
 }
-import std.content_hash {
-  fnv1a64_structural_hex_digest,
-  Fnv1a64Structural,
-  structural_content_hash,
-}
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.seed_growth { SeedGrowthJustification }
 import gunbc.roadmap_model {
@@ -26,7 +21,6 @@ import gunbc.roadmap_model {
   node_accepted,
   project_live_acceptance_receipts,
   acceptance_history_integrity_holds,
-  acceptance_history_chain_digest,
   Intricacy,
   IntricacyLow,
   IntricacyMedium,
@@ -41,6 +35,12 @@ import gunbc.roadmap_model {
   ManualAcceptance,
   section_group,
   section_prose,
+}
+import gunbc.roadmap_acceptance_history_carrier {
+  roadmap_acceptance_event_history_carrier_repo_path,
+  load_roadmap_acceptance_event_history,
+  RoadmapAcceptanceEventHistoryLoaded,
+  RoadmapAcceptanceEventHistoryLoadRefused,
 }
 import gunbc.roadmap_acceptance_history_observation {
   current_roadmap_acceptance_history_prior_observation,
@@ -1936,336 +1936,28 @@ data scm_p0_acceptance_evidence_note: String = "P0 acceptance maps the roadmap c
 
 data v1_interpreter_primitive_roster_acceptance_note: String = "ACCEPTED AT THE NARROWED BAR, WITH ONE HANDBACK CLAUSE GENUINELY AMENDED RATHER THAN REWORDED -- read the digest move as a real change to the bar, which is exactly the check criteria_digest_reword_note asks a reviewer to perform. The clause as #7558 landed it demanded 'witnesses asserting exact values rather than lower bounds'. Those witnesses no longer exist on main: #7615 deleted the five that pinned live-population counts (7 dispatch sites, 183 derived rows, 2 declared rows, 174 arm identities, 161 authored spellings) because DESIGN.md 5 rules that a measurement copied from the same current tree is not an oracle -- and those five had already behaved exactly as that rule predicts, as a change detector that redded main twice (#7575 landed one derived arm short, #7614 repaired, #7615 removed the class). Accepting against the original wording would have required either restoring a forbidden oracle or calling a clause satisfied that plainly was not.\n\nWHAT REPLACED IT IS STRONGER, WHICH IS WHY THIS IS NOT A LOWERED BAR. The deleted clause existed so that a silently dropped arm stays detectable, which a lower-bound witness cannot do. Every exact assertion grounded in a NAMED identity or a controlled fixture survived #7615 untouched: free_call_shadowing_is_exactly_the_two_inert_lens_bridges and method_call_shadowing_is_exactly_the_known_lookup_case assert exact shadow sets by member name; the_two_shadowed_arm_identities_under_lookup_are_exactly_the_expected_pair pins both identities; the_declared_residue_is_exactly_the_two_non_match_arm_sites is a two-directional set equality by name rather than a count. Only the tree-copied census literals went, which is precisely the line DESIGN.md 5 draws when it says the rule rejects tree-copied census pins while preserving exact-count fixture tests. The three denominators were NOT deleted: dispatch_site_count, distinct_arm_identity_count and authored_spelling_count all remain derived from the roster rather than pinned as literals, which is what this node's handback asks for. AN EARLIER DRAFT OF THIS NOTE OVERCLAIMED WHAT CONSUMES THEM, and the correction is recorded here rather than quietly edited because it is the same failure this repository keeps paying for -- a sentence that reads well while the evidence it cites does not establish it (caught in review 46995). That draft said all three 'gained a live consumer at D1' which 'joins census to roster by identity'. Neither half was true. What test.claim.primitive_identity_join_witness w_interpreter_census_consumes_roster_authority actually executes is distinct_arm_identity_count, authored_spelling_count and v1_interpreter_row_count: it asserts the ordering relation the deleted witness used to pin, plus primitive_d0_interpreter_census_matches_roster, which is primitive_d0_interpreter_surface_row_count() == v1_interpreter_row_count() -- a COUNT EQUALITY between two independent derivations of the same population, not an identity join. That is a legitimate cross-derivation reconciliation and it is not a tree-copied census literal, but DESIGN.md 5 is explicit that completeness is an identity join rather than a count equality, so it must not be described as one. And dispatch_site_count has NO external consumer at all: the only mention outside its own carrier is this note. That is named here as residue rather than counted as delivered. DISSOLVE-ON: the D0 identity join reaching arm grain, at which point the census and the roster reconcile by row identity and the count equality is replaced rather than supplemented.\n\nEVIDENCE, DERIVED BY EXECUTION. Digest 581758f45921b40a was produced by running node_criteria_digest against the live amended node on this tree, not transcribed or hand-computed; the discriminating control for the pin itself is that two earlier wordings of the same row yield different values -- d2e455ab49e472e2 before any amendment, f0f450f4ddc82fe9 before the review-46995 correction to the denominator clause -- so the stored digest demonstrably tracks the criteria text rather than merely existing, and each correction to the bar has been re-derived rather than carried forward. All 19 witnesses in test.claim.v1_interpreter_primitive_surface_witness_test executed green on a binary REBUILT AT THIS HEAD, which matters more here than in most acceptances: the roster derives from macro token lists compiled INTO the binary, so a stale target answers about a tree that no longer exists, and that is exactly how #7575's shortfall stayed invisible to local runs. The named red_control is shadow_detector_catches_a_planted_duplicate, the planted-defect RED discharging this row's second red_control arm, paired with shadow_detector_admits_a_real_alias_pair so that a detector refusing legitimate aliases would fail too.\n\nWHAT THIS RECEIPT DOES NOT CLAIM. The first red_control arm -- an arm without a row and a row without an arm are both unwritable -- is discharged BY CONSTRUCTION, one macro token list expanding both, and therefore has no executing witness by design; the node's own first_slice already states it is mechanically preventive for the sites it covers and explicitly not structural, because a whole new dispatch site can still be added in Rust unnoticed. Closing that is v1-interpreter-primitive-dispatch-authority, which is NOT implemented and NOT accepted here -- and the record needs one correction, because a rollup briefly read it as landed: PR #7624 carried the title 'Lane B: interpreter roster R1 -- invert dispatch authority from Rust to the .dag roster', but its entire merged diff is two lines adding `import std.types { NonEmptyStr }` to this carrier. It inverted no authority, generated no dispatch, and deleted no Rust-side denominator; it is a harmless missing-import repair whose title described work that was never written (operator correction, 2026-08-02). R1 is unstarted, so accepting R0 here advances the frontier to an unimplemented successor rather than past it. The third arm -- a roster able to represent an arm carrying no semantic primitive identity -- holds STRUCTURALLY, because InterpreterPrimitiveDispatchArm carries an interpreter-local arm identity and no semantic-primitive-identity field at all, so every row already is such an arm and the closing contract shows the roster's operations are total over one. An earlier cut of that clause discharged it with D1's primitive_d0_derived_rows_missing_identity_count() > 0, which measures how far the semantic identity join has got rather than what the roster can carry, and would have gone red exactly when the join succeeded for every derived row -- legitimate downstream progress reddening an upstream node's acceptance check, the same defect class #7615 removed from the census witnesses relocated onto join state (caught in review 46974, corrected before merge). The seed-file reconciliation clause is delivered as a construction plus a named residue (every primitive arm now carries the token form arm \"identity\" { \"spelling\" } =>, so the residue is whatever stays bare) and is NOT asserted by an executing witness; that is a real limit of this handback, stated rather than implied."
 
-fn chash(s: String) -> Fnv1a64Structural {
-  match fnv1a64_structural_hex_digest(hex: s) {
-    Present { value: digest } => digest
-    Absent =>
-      structural_content_hash(
-        digest: s as Fnv1a64StructuralDigestHex,
-      )
+fn roadmap_acceptance_event_history() -> List<RoadmapAcceptanceEvent> {
+  match load_roadmap_acceptance_event_history(path: roadmap_acceptance_event_history_carrier_repo_path) {
+    RoadmapAcceptanceEventHistoryLoaded { events: events } => events
+    RoadmapAcceptanceEventHistoryLoadRefused { detail: _ } => []
   }
 }
 
-fn roadmap_acceptance_event_history() -> List<RoadmapAcceptanceEvent> {
-  [
-    AcceptanceRecorded { receipt: RoadmapAcceptanceReceipt {
-      node: nid(s: "2-scm-git-upstream-model"),
-      criteria_digest: chash(s: "b3747b95baf099cc"),
-      red_control: RedControlExecuted {
-        witness_module: "test.manual.git_upstream_model_execution",
-        witness_fn: "witness_git_cli_fixture_hashes_projects_and_independently_reads_back",
-        executed_on: "2026-07-29",
-      },
-      handback: HandbackDelivered {
-        first_artifact: "dag/extdeps/git/object_store.dag",
-        further_artifacts: [
-          "dag/test/claim/git_upstream_model_witness_test.dag",
-          "dag/test/manual/git_upstream_model_execution_test.dag",
-        ],
-      },
-      accepted_by: "operator",
-      accepted_on: "2026-07-29",
-    }},
-    AcceptanceRecorded { receipt: RoadmapAcceptanceReceipt {
-      node: nid(s: "2-scm-mercurial-upstream-model"),
-      criteria_digest: chash(s: "c43b17d5134b111d"),
-      red_control: RedControlExecuted {
-        witness_module: "test.manual.mercurial_upstream_model_execution",
-        witness_fn: "witness_mercurial_cli_fixture_projects_and_independently_reads_back",
-        executed_on: "2026-07-29",
-      },
-      handback: HandbackDelivered {
-        first_artifact: "dag/extdeps/mercurial.dag",
-        further_artifacts: [
-          "dag/test/claim/mercurial_upstream_model_witness_test.dag",
-          "dag/test/manual/mercurial_upstream_model_execution_test.dag",
-        ],
-      },
-      accepted_by: "operator",
-      accepted_on: "2026-07-29",
-    }},
-    AcceptanceRecorded { receipt: RoadmapAcceptanceReceipt {
-      node: nid(s: "2-scm-pijul-upstream-model"),
-      criteria_digest: chash(s: "098c989bdc87dac7"),
-      red_control: RedControlExecuted {
-        witness_module: "test.manual.pijul_upstream_model_execution",
-        witness_fn: "witness_pijul_cli_fixture_reads_channel_sets_and_retained_conflict",
-        executed_on: "2026-07-29",
-      },
-      handback: HandbackDelivered {
-        first_artifact: "dag/extdeps/pijul.dag",
-        further_artifacts: [
-          "dag/test/claim/pijul_upstream_model_witness_test.dag",
-          "dag/test/manual/pijul_upstream_model_execution_test.dag",
-        ],
-      },
-      accepted_by: "operator",
-      accepted_on: "2026-07-29",
-    }},
-    AcceptanceRecorded { receipt: RoadmapAcceptanceReceipt {
-      node: nid(s: "2-claim-indexed-evidence"),
-      criteria_digest: chash(s: "2b81ac6aacf6a190"),
-      red_control: RedControlExecuted {
-        witness_module: "test.claim.claim_indexed_evidence_witness",
-        witness_fn: "witness_claim_evidence_roles_are_externally_grounded",
-        executed_on: "2026-07-29",
-      },
-      handback: HandbackDelivered {
-        first_artifact: "dag/std/claim_evidence.dag",
-        further_artifacts: [
-          "dag/gunbc/provider_readiness_claim_evidence.dag",
-          "dag/gunbc/os_install_claim_evidence.dag",
-          "dag/gunbc/source_integration_claim_evidence.dag",
-          "dag/test/claim/claim_indexed_evidence_witness_test.dag",
-        ],
-      },
-      accepted_by: "operator",
-      accepted_on: "2026-07-29",
-    }},
-    AcceptanceRecorded { receipt: RoadmapAcceptanceReceipt {
-      node: nid(s: "2-scm-compatibility-shape"),
-      criteria_digest: chash(s: "f023bb4e862d9e27"),
-      red_control: RedControlExecuted {
-        witness_module: "test.claim.scm_compatibility_shape_witness",
-        witness_fn: "witness_r1_acceptance_contract_holds",
-        executed_on: "2026-07-29",
-      },
-      handback: HandbackDelivered {
-        first_artifact: "dag/gunbc/scm_compatibility_shape.dag",
-        further_artifacts: [
-          "dag/gunbc/scm_compatibility/git.dag",
-          "dag/gunbc/scm_compatibility/mercurial.dag",
-          "dag/gunbc/scm_compatibility/pijul.dag",
-          "dag/test/claim/scm_compatibility_shape_witness_test.dag",
-        ],
-      },
-      accepted_by: "operator",
-      accepted_on: "2026-07-29",
-    }},
-    AcceptanceRecorded { receipt: RoadmapAcceptanceReceipt {
-      node: nid(s: "2-scm-p0-landing-spine"),
-      criteria_digest: chash(s: "9d3aa951e0f5ffa3"),
-      red_control: RedControlExecuted {
-        witness_module: "test.claim.source_integration_landing_spine_witness",
-        witness_fn: "witness_p0_roadmap_acceptance_contract_holds",
-        executed_on: "2026-08-01",
-      },
-      handback: HandbackDelivered {
-        first_artifact: "dag/gunbc/source_integration_landing_spine.dag",
-        further_artifacts: [
-          "dag/gunbc/native_scm_interaction_contract.dag",
-          "dag/test/claim/source_integration_landing_spine_witness_test.dag",
-          "dag/test/claim/native_scm_interaction_contract_witness_test.dag",
-          "dag/gunbc/scm_compatibility_shape.dag",
-        ],
-      },
-      accepted_by: "operator",
-      accepted_on: "2026-08-01",
-    }},
-    AcceptanceRecorded { receipt: RoadmapAcceptanceReceipt {
-      node: nid(s: "namespace-occurrence-transport"),
-      criteria_digest: chash(s: "d76cf14b12dbf4bf"),
-      red_control: RedControlExecuted {
-        witness_module: "test.claim.namespace_occurrence_transport_test",
-        witness_fn: "namespace_occurrence_equal_text_mints_distinct_ids_holds",
-        executed_on: "2026-07-28",
-      },
-      handback: HandbackDelivered {
-        first_artifact: "dag/std/occurrence_identity.dag",
-        further_artifacts: [
-          "dag/test/claim/namespace_occurrence_transport_test.dag",
-          "src/v1/tests/claim/pattern_binder_declaration_node_test.dag",
-        ],
-      },
-      accepted_by: "operator",
-      accepted_on: "2026-07-28",
-    }},
-    AcceptanceRecorded { receipt: RoadmapAcceptanceReceipt {
-      node: nid(s: "namespace-binding-kernel"),
-      criteria_digest: chash(s: "2eba4715cdef42eb"),
-      red_control: RedControlExecuted {
-        witness_module: "test.claim.occurrence_binding_resolve_witness_test",
-        witness_fn: "occurrence_binding_resolve_malformed_transport_refuses_holds",
-        executed_on: "2026-08-01",
-      },
-      handback: HandbackDelivered {
-        first_artifact: "dag/std/occurrence_binding_resolve.dag",
-        further_artifacts: [
-          "dag/test/claim/occurrence_binding_resolve_witness_test.dag",
-          "src/v1/04_occurrence_binding.dag",
-        ],
-      },
-      accepted_by: "operator",
-      accepted_on: "2026-08-01",
-    }},
-    AcceptanceRecorded { receipt: RoadmapAcceptanceReceipt {
-      node: nid(s: "entry-graph-union-construction"),
-      criteria_digest: chash(s: "3502539e920d9e40"),
-      red_control: RedControlExecuted {
-        witness_module: "v1-compiler-tests.union_resolve_receipts_test",
-        witness_fn: "shared_typecheck_distinct_compute_count_is_order_invariant",
-        executed_on: "2026-08-01",
-      },
-      handback: HandbackDelivered {
-        first_artifact: "docs/plans/entry-graph-union-slice2-typecheck-attribution.md",
-        further_artifacts: [
-          "docs/plans/receipts/entry-graph-union-slice2/receipt-broad-disjoint.json",
-          "docs/plans/receipts/entry-graph-union-slice2/receipt-post-merge-representative-50.json",
-          "docs/plans/per-entry-assembly-decomposition-measurement.md",
-          "src/v1/tests/src/union_resolve_receipts_test.rs",
-        ],
-      },
-      accepted_by: "operator",
-      accepted_on: "2026-08-01",
-    }},
-    AcceptanceRecorded { receipt: RoadmapAcceptanceReceipt {
-      node: nid(s: "pderive-typesafe-nullary-reflection"),
-      criteria_digest: chash(s: "dac83172a613e659"),
-      red_control: RedControlExecuted {
-        witness_module: "v2.test.manual.coproduct_reflection_conformance",
-        witness_fn: "witness_nullary_reflection_rejects_requested_a_with_context_b",
-        executed_on: "2026-07-28",
-      },
-      handback: HandbackDelivered {
-        first_artifact: "src/v2/std/node_query.dag",
-        further_artifacts: [
-          "src/v2/test/claim/manual/coproduct_reflection_conformance_test.dag",
-          "src/v1/stage0/src/coproduct_reflection.rs",
-        ],
-      },
-      accepted_by: "operator",
-      accepted_on: "2026-07-28",
-    }},
-    AcceptanceRecorded { receipt: RoadmapAcceptanceReceipt {
-      node: nid(s: "pderive-static-supplemental-contract"),
-      criteria_digest: chash(s: "fa6378dabdb12432"),
-      red_control: RedControlExecuted {
-        witness_module: "v2.test.claim.emit.trait_derive_supplemental_generic_bound_contract",
-        witness_fn: "nested_generic_swap_red_rejects_swapped_slot_requirements",
-        executed_on: "2026-07-29",
-      },
-      handback: HandbackDelivered {
-        first_artifact: "dag/std/trait_derive_shape.dag",
-        further_artifacts: [
-          "dag/extdeps/languages/rust/derive_contracts.dag",
-          "src/v2/test/claim/emit/trait_derive_supplemental_generic_bound_contract_test.dag",
-        ],
-      },
-      accepted_by: "operator",
-      accepted_on: "2026-07-29",
-    }},
-    AcceptanceRecorded { receipt: RoadmapAcceptanceReceipt {
-      node: nid(s: "v1-test-hygiene-producer-retirement"),
-      criteria_digest: chash(s: "8f77a4b2e0ee3387"),
-      red_control: RedControlExecuted {
-        witness_module: "test.claim.test_module_hygiene_hand_rust_equivalence_witness",
-        witness_fn: "test_module_hygiene_equivalence_unparsable_refuse_discriminator_holds",
-        executed_on: "2026-07-29",
-      },
-      handback: HandbackDelivered {
-        first_artifact: "dag/gunbc/test_module_hygiene.dag",
-        further_artifacts: [
-          "dag/test/claim/test_module_hygiene_hand_rust_equivalence_witness_test.dag",
-          "src/v1/stage0/src/cli_run/test_module_hygiene_bridge.rs",
-        ],
-      },
-      accepted_by: "operator",
-      accepted_on: "2026-07-29",
-    }},
-    AcceptanceRecorded { receipt: RoadmapAcceptanceReceipt {
-      node: nid(s: "v1-interpreter-primitive-roster"),
-      criteria_digest: chash(s: "581758f45921b40a"),
-      red_control: RedControlExecuted {
-        witness_module: "test.claim.v1_interpreter_primitive_surface_witness_test",
-        witness_fn: "shadow_detector_catches_a_planted_duplicate",
-        executed_on: "2026-08-02",
-      },
-      handback: HandbackDelivered {
-        first_artifact: "dag/gunbc/v1_interpreter_primitive_surface.dag",
-        further_artifacts: [
-          "dag/test/claim/v1_interpreter_primitive_surface_witness_test.dag",
-          "dag/test/claim/primitive_identity_join_witness_test.dag",
-          "src/v1/stage0/src/v1_interpreter.rs",
-        ],
-      },
-      accepted_by: "operator",
-      accepted_on: "2026-08-02",
-    }},
-    AcceptanceRecorded { receipt: RoadmapAcceptanceReceipt {
-      node: nid(s: "ladder-measurement-schema"),
-      criteria_digest: chash(s: "74da4d8be7125c81"),
-      red_control: RedControlExecuted {
-        witness_module: "test.claim.guarantee_measurement_witness_test",
-        witness_fn: "duplicate_class_id_reds_uniqueness",
-        executed_on: "2026-08-01",
-      },
-      handback: HandbackDelivered {
-        first_artifact: "dag/gunbc/guarantee_measurement.dag",
-        further_artifacts: [
-          "dag/test/claim/guarantee_measurement_witness_test.dag",
-        ],
-      },
-      accepted_by: "operator",
-      accepted_on: "2026-08-01",
-    }},
-    AcceptanceRecorded { receipt: RoadmapAcceptanceReceipt {
-      node: nid(s: "v2-emitter-producer-provenance"),
-      criteria_digest: chash(s: "f1c76111c83a0a60"),
-      red_control: RedControlExecuted {
-        witness_module: "v2.test.claim.self_host.emitter_producer_provenance_witness_test",
-        witness_fn: "witness_restored_binding_without_executed_receipt_does_not_authorize_reds",
-        executed_on: "2026-08-02",
-      },
-      handback: HandbackDelivered {
-        first_artifact: "src/v2/compiler/self_host/frontier.dag",
-        further_artifacts: [
-          "src/v2/test/claim/self_host/emitter_producer_provenance_witness_test.dag",
-        ],
-      },
-      accepted_by: "operator",
-      accepted_on: "2026-08-02",
-    }},
-    AcceptanceRecorded { receipt: RoadmapAcceptanceReceipt {
-      node: nid(s: "v1-seed-honesty-decision"),
-      criteria_digest: chash(s: "1717cfe258d9afe1"),
-      red_control: RedControlExecuted {
-        witness_module: "test.claim.seed_honesty_discharge_unavailable_test",
-        witness_fn: "seed_honesty_undecided_would_keep_closing_contract_red",
-        executed_on: "2026-08-02",
-      },
-      handback: HandbackDelivered {
-        first_artifact: "src/v2/workflow/bootstrap.dag",
-        further_artifacts: [
-          "dag/test/claim/seed_honesty_discharge_unavailable_test.dag",
-          "dag/gunbc/ci_layer_roots.dag",
-        ],
-      },
-      accepted_by: "operator",
-      accepted_on: "2026-08-02",
-    }},
-  ]
-}
-
-data roadmap_acceptance_history_note: String = "roadmap_acceptance_event_history is the single authority for acceptance facts. roadmap_acceptance_receipts projects the live receipt set by replaying recorded and revoked events only — never a second editable receipt list. New acceptance appends AcceptanceRecorded; withdrawal appends AcceptanceRevoked naming the exact prior receipt, a disposition, and audit fields. roadmap_acceptance_history_sealed_event_count and roadmap_acceptance_history_sealed_chain_digest pin the immutable prefix so prior events cannot be deleted without updating the seal in the same change. LIVE prior_history wiring is partial: gunbc.roadmap_acceptance_history_observation compares merge-base versus HEAD authority file content identity and admits prior_history = current only when that file is unchanged; a changed authority file without merge-base revision evaluation keeps prior_history empty on the production path; git observation refusal returns AcceptanceHistoryIntegrityRefusedPriorHistoryObservation — never fabricated prior_history — see roadmap_acceptance_history_prior_history_next_rung_trigger. The sealed prefix digest remains load-bearing defense in depth against prefix edits."
-
-fn roadmap_acceptance_history_sealed_event_count() -> Int { 16 }
-
-fn roadmap_acceptance_history_sealed_chain_digest() -> Fnv1a64Structural {
-  chash(s: "4d935ab20742e0e7")
-}
+data roadmap_acceptance_history_note: String = "roadmap_acceptance_event_history is the single authority for acceptance facts, loaded from dag/gunbc/roadmap_acceptance_event_history.jsonl (append-only JSONL carrier). roadmap_acceptance_receipts projects the live receipt set by replaying recorded and revoked events only — never a second editable receipt list. New acceptance appends AcceptanceRecorded to the carrier; withdrawal appends AcceptanceRevoked naming the exact prior receipt, a disposition, and audit fields. Authored seal count/digest are deleted: prefix law is enforced by gunbc.roadmap_acceptance_history_observation parsing merge-base carrier content via git.Core.Show — a changed carrier without valid merge-base parse refuses AcceptanceHistoryIntegrityRefusedPriorHistoryObservation, never prior_history = []."
 
 fn roadmap_acceptance_receipts() -> List<RoadmapAcceptanceReceipt> {
   project_live_acceptance_receipts(history: roadmap_acceptance_event_history())
 }
 
 fn roadmap_acceptance_history_integrity_holds() -> Bool {
-  let current = roadmap_acceptance_event_history()
-  acceptance_history_integrity_holds_from_prior_observation(
-    observation: current_roadmap_acceptance_history_prior_observation(current_history: current),
-    history: current,
-    sealed_event_count: roadmap_acceptance_history_sealed_event_count(),
-    sealed_chain_digest: roadmap_acceptance_history_sealed_chain_digest(),
-  )
+  match load_roadmap_acceptance_event_history(path: roadmap_acceptance_event_history_carrier_repo_path) {
+    RoadmapAcceptanceEventHistoryLoadRefused { detail: _ } => false
+    RoadmapAcceptanceEventHistoryLoaded { events: current } =>
+      acceptance_history_integrity_holds_from_prior_observation(
+        observation: current_roadmap_acceptance_history_prior_observation(current_history: current),
+        history: current,
+      )
+  }
 }
 
 data v2_emitter_producer_provenance_acceptance_note: String = "ACCEPTANCE OF LANDED WORK, the exact state closing_contract_task_naming_correction_note names this node as the specimen of: bound, implemented, green, awaiting the operator act. The landing is the Gate-A oracle (#7408, operator-merged): SelfEmitted requires an executed probe receipt, so an emitter-produced claim without a receipt from the run that made it is unrepresentable — the ticket's own red control. Evidence, executed 2026-08-02 on the tree carrying this receipt: all 27 witness fns in the contract's entry file pass, including the bound closing validation (a restored binding without an executed receipt does not authorize) and its sibling refusal controls (hand-forged authorization, minted executed verdicts, synthesized digests, fabricated build-greens all red). The digest f1c76111c83a0a60 was DERIVED BY EXECUTION — node_criteria_digest run against the live node on this tree, not transcribed. The handback's three elements are on main: the relabelled roster (every frontier row producer-qualified), the retired single count (per-producer baselines, witness_producer_qualified_baselines_holds), and the refusal demonstration (the _reds suite). Acceptance is the operator's merge of the change adding this receipt; the receipt is authored by the roadmap steward as the vehicle, never as the act."

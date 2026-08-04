@@ -196,7 +196,6 @@ type AcceptanceHistoryIntegrityVerdict
   | AcceptanceHistoryIntegrityRefusedVanishedWithoutRevocation {
       receipt: RoadmapAcceptanceReceipt,
     }
-  | AcceptanceHistoryIntegrityRefusedSealedPrefixDigest
   | AcceptanceHistoryIntegrityRefusedPriorPrefix
   | AcceptanceHistoryIntegrityRefusedPriorHistoryObservation { detail: String }
 
@@ -439,31 +438,6 @@ fn acceptance_history_chain_digest(events: List<RoadmapAcceptanceEvent>) -> Fnv1
   )
 }
 
-type TakeAcceptanceEventsState {
-  remaining: Int
-  taken: List<RoadmapAcceptanceEvent>
-}
-
-fn take_acceptance_events(
-  events: List<RoadmapAcceptanceEvent>,
-  n: Int,
-) -> List<RoadmapAcceptanceEvent> {
-  fold(
-    events,
-    init: TakeAcceptanceEventsState { remaining: n, taken: [] },
-    f: fn(state, event) {
-      if state.remaining <= 0 {
-        state
-      } else {
-        TakeAcceptanceEventsState {
-          remaining: state.remaining - 1,
-          taken: concat(state.taken, [event]),
-        }
-      }
-    },
-  ).taken
-}
-
 fn drop_first_acceptance_event(events: List<RoadmapAcceptanceEvent>) -> List<RoadmapAcceptanceEvent> {
   fold(
     events,
@@ -564,21 +538,10 @@ fn project_live_acceptance_receipts(history: List<RoadmapAcceptanceEvent>) -> Li
 
 fn acceptance_history_integrity_verdict(
   history: List<RoadmapAcceptanceEvent>,
-  sealed_event_count: Int,
-  sealed_chain_digest: Fnv1a64Structural,
   prior_history: List<RoadmapAcceptanceEvent>,
 ) -> AcceptanceHistoryIntegrityVerdict {
   if count(prior_history) > 0 && !acceptance_history_extends_prior(prior: prior_history, current: history) {
     AcceptanceHistoryIntegrityRefusedPriorPrefix
-  } else if count(history) < sealed_event_count {
-    AcceptanceHistoryIntegrityRefusedSealedPrefixDigest
-  } else if !content_hash_eq_structural(
-    left: acceptance_history_chain_digest(
-      events: take_acceptance_events(events: history, n: sealed_event_count),
-    ),
-    right: sealed_chain_digest,
-  ) {
-    AcceptanceHistoryIntegrityRefusedSealedPrefixDigest
   } else {
     match replay_acceptance_history(events: history) {
       Absent => AcceptanceHistoryIntegrityRefusedReplay
@@ -611,20 +574,15 @@ fn acceptance_history_integrity_verdict(
 
 fn acceptance_history_integrity_holds(
   history: List<RoadmapAcceptanceEvent>,
-  sealed_event_count: Int,
-  sealed_chain_digest: Fnv1a64Structural,
   prior_history: List<RoadmapAcceptanceEvent>,
 ) -> Bool {
   match acceptance_history_integrity_verdict(
     history: history,
-    sealed_event_count: sealed_event_count,
-    sealed_chain_digest: sealed_chain_digest,
     prior_history: prior_history,
   ) {
     AcceptanceHistoryIntegrityHolds => true
     AcceptanceHistoryIntegrityRefusedReplay => false
     AcceptanceHistoryIntegrityRefusedVanishedWithoutRevocation { receipt: _ } => false
-    AcceptanceHistoryIntegrityRefusedSealedPrefixDigest => false
     AcceptanceHistoryIntegrityRefusedPriorPrefix => false
     AcceptanceHistoryIntegrityRefusedPriorHistoryObservation { detail: _ } => false
   }

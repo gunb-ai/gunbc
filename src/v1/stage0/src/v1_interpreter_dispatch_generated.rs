@@ -5,6 +5,7 @@
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum EvalBuiltinArm {
     FreeCallParseStage0CargoManifestBins,
+    FreeCallParseRoadmapAcceptanceEventHistoryJsonl,
     FreeCallStage0EmissionSourceIdentitiesHost,
     FreeCallToString,
     FreeCallUtf8DecodeBytes,
@@ -130,6 +131,7 @@ pub enum EvalBuiltinArm {
 pub fn lookup_eval_builtin_inner(spelling: &str) -> Option<EvalBuiltinArm> {
     match spelling {
         "parse_stage0_cargo_manifest_bins" => Some(EvalBuiltinArm::FreeCallParseStage0CargoManifestBins),
+        "parse_roadmap_acceptance_event_history_jsonl" => Some(EvalBuiltinArm::FreeCallParseRoadmapAcceptanceEventHistoryJsonl),
         "stage0_emission_source_identities_host" => Some(EvalBuiltinArm::FreeCallStage0EmissionSourceIdentitiesHost),
         "to_string" => Some(EvalBuiltinArm::FreeCallToString),
         "utf8_decode_bytes" => Some(EvalBuiltinArm::FreeCallUtf8DecodeBytes),
@@ -259,6 +261,7 @@ pub fn lookup_eval_builtin_inner(spelling: &str) -> Option<EvalBuiltinArm> {
 #[rustfmt::skip]
 macro_rules! eval_builtin_inner_arm {
     ("free_call.parse_stage0_cargo_manifest_bins") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallParseStage0CargoManifestBins };
+    ("free_call.parse_roadmap_acceptance_event_history_jsonl") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallParseRoadmapAcceptanceEventHistoryJsonl };
     ("free_call.stage0_emission_source_identities_host") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallStage0EmissionSourceIdentitiesHost };
     ("free_call.to_string") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallToString };
     ("free_call.utf8_decode_bytes") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallUtf8DecodeBytes };

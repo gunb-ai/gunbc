@@ -1,0 +1,43 @@
+module gunbc.roadmap_acceptance_history_carrier
+
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.roadmap_model { RoadmapAcceptanceEvent }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.disposition { Disposition, RealizationDispatch, Scaffold }
+import v2.std.collection { List }
+import v2.std.text { String }
+
+data roadmap_acceptance_event_history_carrier_note: String = "Append-only JSONL carrier for roadmap acceptance events. gunbc.roadmap_authority loads current history from this file; gunbc.roadmap_acceptance_history_observation git.Core.Shows the same path at HEAD and merge-base and parses each revision independently — no merge-base .dag evaluation. Authored seal count/digest in roadmap_authority.dag are deleted; prefix law is enforced by observed prior_history from the carrier at merge-base."
+
+data roadmap_acceptance_event_history_carrier_repo_path: String = "dag/gunbc/roadmap_acceptance_event_history.jsonl"
+
+type RoadmapAcceptanceEventHistoryParse
+  = RoadmapAcceptanceEventHistoryParsed { events: List<RoadmapAcceptanceEvent> }
+  | RoadmapAcceptanceEventHistoryParseRefused { detail: String }
+
+type RoadmapAcceptanceEventHistoryLoad
+  = RoadmapAcceptanceEventHistoryLoaded { events: List<RoadmapAcceptanceEvent> }
+  | RoadmapAcceptanceEventHistoryLoadRefused { detail: String }
+
+fn parse_roadmap_acceptance_event_history_carrier(text: String) -> RoadmapAcceptanceEventHistoryParse {
+  parse_roadmap_acceptance_event_history_jsonl(text: text)
+}
+
+fn load_roadmap_acceptance_event_history(path: String) -> RoadmapAcceptanceEventHistoryLoad {
+  let read = filesystem_read(path: path)
+  match parse_roadmap_acceptance_event_history_carrier(text: read.content) {
+    RoadmapAcceptanceEventHistoryParsed { events: events } =>
+      RoadmapAcceptanceEventHistoryLoaded { events: events }
+    RoadmapAcceptanceEventHistoryParseRefused { detail: detail } =>
+      RoadmapAcceptanceEventHistoryLoadRefused { detail: detail }
+  }
+}
+
+data roadmap_acceptance_event_history_jsonl_parser_seed_scaffold: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "v1_compiler.cli_run.roadmap_acceptance_history_carrier",
+    decl_name: "parse_roadmap_acceptance_event_history_jsonl_builtin",
+    field: WholeDeclaration,
+  }
+}

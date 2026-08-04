@@ -374,8 +374,6 @@ test fn witness_explicit_revocation_authorizes_vanished_receipt() -> Bool {
   acceptance_history_extends_prior(prior: prior, current: current)
     && acceptance_history_integrity_holds(
       history: current,
-      sealed_event_count: count(current),
-      sealed_chain_digest: acceptance_history_chain_digest(events: current),
       prior_history: prior,
     )
 }
