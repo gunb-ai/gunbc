@@ -364,6 +364,27 @@ fn path_additivity_refutation_holds_for_synthetic_fixture(
   }
 }
 
+fn path_additivity_refutation_receipt_from_resolved_counts(
+  left: NonNegativeInt,
+  right: NonNegativeInt,
+  both: NonNegativeInt,
+  band: ScreenBand,
+  exposure: SyntheticMatchedExposureSession,
+) -> PathAdditivityRefutationReceipt {
+  PathAdditivityRefutationReceipt {
+    subject: PathAdditivitySyntheticFixture {},
+    witness: PathAdditivityCounterexampleWitness {
+      left_alternative_count: left,
+      right_alternative_count: right,
+      both_open_observed_count: both,
+    },
+    location: PathAdditivityLocationKey {
+      exposure: exposure,
+      band: band,
+    },
+  }
+}
+
 fn path_additivity_refutation_receipt_resolution_from_resolved_counts(
   left: NonNegativeInt,
   right: NonNegativeInt,
@@ -387,20 +408,25 @@ fn path_additivity_refutation_receipt_resolution_from_resolved_counts(
           exposure: exposure,
         },
       }
-    _ =>
+    Less =>
       RefutationReceiptResolved {
-        receipt: PathAdditivityRefutationReceipt {
-          subject: PathAdditivitySyntheticFixture {},
-          witness: PathAdditivityCounterexampleWitness {
-            left_alternative_count: left,
-            right_alternative_count: right,
-            both_open_observed_count: both,
-          },
-          location: PathAdditivityLocationKey {
-            exposure: exposure,
-            band: band,
-          },
-        },
+        receipt: path_additivity_refutation_receipt_from_resolved_counts(
+          left: left,
+          right: right,
+          both: both,
+          band: band,
+          exposure: exposure,
+        ),
+      }
+    Greater =>
+      RefutationReceiptResolved {
+        receipt: path_additivity_refutation_receipt_from_resolved_counts(
+          left: left,
+          right: right,
+          both: both,
+          band: band,
+          exposure: exposure,
+        ),
       }
   }
 }
