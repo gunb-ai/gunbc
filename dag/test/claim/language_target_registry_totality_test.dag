@@ -21,7 +21,12 @@ import std.language_target_identity {
   LanguageIdUnregistered,
 }
 import std.roster_frontier { declaration_ref_eq }
+import std.language_target_identity {
+  ExternalGrounding,
+  ProjectGrounding,
+}
 import gunbc.language_target_registry {
+  registered_language_targets,
   dag_subject_ref,
   typescript_language_subject_ref,
   rust_language_subject_ref,
@@ -102,6 +107,13 @@ test fn a_surface_absent_from_the_registry_does_not_resolve() -> Bool {
   }
 }
 
+type GroundingArmsSeen {
+  external: Bool
+  project: Bool
+}
+
+data both_arms_oracle_note: String = "This asserts what the test's NAME claims — that both grounding arms are inhabited — and is true at 3 targets or 300. It previously asserted registered_target_count() == 3, a literal copied from the tree standing in for the property, which DESIGN section 5 names directly: automating that literal collapses it to measure() == measure(), so the manual update was the test's entire content, and it would have gone red the moment the registry grew rather than when the property broke. Caught by fierce-heron-301 on the stacked PR and by cursor review 48132 here."
+
 data projection_direction_note: String = "Requirement D's controls, and the property they pin is DIRECTION rather than content: a projection FROM a registered subject is total, while a lookup INTO the registry by a legacy key REFUSES when nothing claims it. That asymmetry is what demotes LanguageId from an identity to an attribute. THIS NOTE PREVIOUSLY SAID 'rust, go, python and typescript all resolve nowhere, because none of them has a canonical subject yet' — true when written, false as of the D0 registrations, and it contradicted the rewritten assertions a few lines below in this same file (caught by review 48113). All four now resolve, because all four are registered subjects carrying a legacy id. The refusal arm is NOT weakened by that: it is now exercised by two live cases instead of a vacuous one — an id no projection claims at all, and the sharper case of 'bash', which refuses even though GNU Bash is a fully registered, cited subject, because std.languages has no bash row. A key that cannot name a registered subject is definitionally not that subject's identity, and that is now demonstrated on the corpus rather than asserted from an empty table."
 
 
@@ -150,17 +162,11 @@ test fn project_grounded_target_derives_its_own_authority_as_subject() -> Bool {
 data grounding_arm_coverage_oracle_note: String = "This test asserted registered_target_count() == 3 until the D0 subject rows landed. That literal was a MEASUREMENT COPIED FROM THE TREE standing in for the property the test is named after — DESIGN section 5's oracle rule names exactly this shape, and its review tell applies: automating the literal's update would collapse the assertion to measure() == measure(), so the manual update WAS the test's entire content. It also failed the moment the registry grew, which is a change detector reporting, not a wall refusing. Rewritten to assert the property directly: BOTH grounding arms are inhabited. That is what makes the coproduct exercised rather than half-dead, it is what the name claims, and it stays true at 3 targets or 300 without anyone editing a number."
 
 test fn registry_carries_both_grounding_arms() -> Bool {
-  let has_external = fold(registered_language_targets, init: false, f: fn(acc, r) {
+  let arms = fold(registered_language_targets, init: GroundingArmsSeen { external: false, project: false }, f: fn(acc, r) {
     match r.grounding {
-      ExternalGrounding { scope: _ } => true
-      ProjectGrounding { authority: _ } => acc
+      ExternalGrounding { scope: _ } => GroundingArmsSeen { external: true, project: acc.project }
+      ProjectGrounding { authority: _ } => GroundingArmsSeen { external: acc.external, project: true }
     }
   })
-  let has_project = fold(registered_language_targets, init: false, f: fn(acc, r) {
-    match r.grounding {
-      ProjectGrounding { authority: _ } => true
-      ExternalGrounding { scope: _ } => acc
-    }
-  })
-  has_external && has_project
+  arms.external && arms.project
 }
