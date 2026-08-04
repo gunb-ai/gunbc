@@ -1,6 +1,6 @@
 # Floor prep-tax program — stop paying ~2s per entry to re-arrange work
 
-**Status:** **parked for operator pause** (session `still-moth-459`, wind-down 2026-08-03 ~04:10Z). Measurement-first; no further dispatch until resume. **P1 gates width expansion and broad native enrollment only** — it does **not** defer five-minute step 3’s already-landed bounded production native cutover (#7599 → #7671’s live 3-member cohort), which remains NEXT under `gunbc.roadmap_authority` / [five-minute-ci-gate-design](five-minute-ci-gate-design.md).
+**Status:** **typed affected-CI audit banked** (`gunbc.ci_cost_arc_closeout_receipt`). P1 REJECT (#7725); selection honesty landed (#7722/#7729). `retention_settle=ClosedReject`. **End-to-end residual:** `end_to_end_residual=UnattributedCiJobWall`. **Compiler next measured target:** `compiler_next_measured_target=PerEntryAssembly` — frozen until PR2 assigns the CI-job remainder. Not softer eviction.
 
 **Parent authorities (do not fork):** [five-minute-ci-gate-design](five-minute-ci-gate-design.md) · [v1-run-stability-throughline](v1-run-stability-throughline.md) · [m2-floor-retention-measurement-receipt](m2-floor-retention-measurement-receipt.md) · [per-entry-assembly-decomposition-measurement](per-entry-assembly-decomposition-measurement.md) · [cross-worker-typecheck-share-design](cross-worker-typecheck-share-design.md) · [witness-realization-plan](witness-realization-plan.md) · `dag/gunbc/executor_schedule_retention.dag` · `dag/gunbc/plans/ci_selection_vs_scheduling.dag`
 
