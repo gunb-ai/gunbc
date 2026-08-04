@@ -292,11 +292,9 @@ fn known_red_entry_is_v1_scoped(entry: String) -> Bool {
   starts_with(s: entry, prefix: "src/v1/")
 }
 
-data known_red_v1_envelope_dag_entries: List<String> = [
-  "dag/test/claim/namespace_reference_derived_closure_production_admissions_witness_test.dag",
-]
+data known_red_v1_envelope_dag_entries: List<String> = []
 
-data known_red_v1_envelope_dag_entries_note: String = "dag/test/claim witnesses that import v1.* and therefore require the dag plus src/v1 scoped envelope — same routing rule as src/v1/ paths in v1_claim_scoped_known_red_probe_batch. Kept as an explicit list because path prefix alone cannot detect v1 imports; dissolve-on when closure-independent binding makes the envelope unnecessary."
+data known_red_v1_envelope_dag_entries_note: String = "dag/test/claim witnesses that import v1.* AND are enrolled QuarantineProbeExpectRed in explicit_witness_admissions — both are required for known_red_probe_v1_envelope_roster. Path prefix alone cannot detect v1 imports; this list names dag witnesses that need the dag plus src/v1 envelope beside v1_claim_scoped_witness_batch. Empty while no known-red row needs that envelope; enrolling a row here without the companion clamp row in gunbc_ci_floor_batch_clamp_params fails the ENROLLMENT COUPLING clause in v1_claim_scoped_known_red_probe_batch_note. Dissolve-on when closure-independent binding makes the envelope unnecessary."
 
 fn known_red_entry_is_v1_envelope_dag_entry(entry: String) -> Bool {
   fold(
