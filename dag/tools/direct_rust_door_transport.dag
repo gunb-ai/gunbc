@@ -6,6 +6,10 @@ import extdeps.git.inspect
 import extdeps.gunbc
 import extdeps.shell
 import gunbc.output_policy { ExpectFailure }
+import tools.direct_rust_door_witness_process_output {
+  DirectRustDoorWitnessBinProcessOutput,
+  direct_rust_door_witness_bin_process_output_from_run_fields
+}
 import v2.compiler.self_host.behavioral_comparison_receipt {
   AdmittedBehaviorEquivalent,
   AdmittedBehaviorEquivalentReceipt,
@@ -16,7 +20,7 @@ import v2.compiler.self_host.behavioral_comparison_receipt {
   BehaviorDiverged,
   admit_behavioral_comparison,
   admit_behavioral_comparison_equivalent,
-  mint_behavioral_comparison_observation
+  behavioral_comparison_observation_from_wet_process_output
 }
 import v2.compiler.self_host.direct_rust_door_behavioral_stdout {
   direct_rust_door_inject_fault_stdout_holds,
@@ -29,7 +33,6 @@ import v2.compiler.self_host.fixture_synthetic_emission {
   advance_written_synthetic_emitted_artifact_cargo_green,
   advance_written_synthetic_emitted_artifact_fixture_behaviorally_equivalent,
   fixture_behavior_receipt_identity_for,
-  mint_written_synthetic_emitted_artifact_from_fixture_inferred,
   mint_written_synthetic_emitted_artifact_from_fixture_inferred_for_behavioral_qualification,
   WrittenSyntheticEmittedArtifact,
   written_synthetic_emitted_artifact_has_fixture_behaviorally_equivalent_qualification,
@@ -55,7 +58,7 @@ import v2.std.optional { Absent, Present, optional_absent, optional_present }
 import v2.std.text { String }
 import std.types { CommitSha }
 
-data direct_rust_door_transport_note: String = "Lane B wet transport realization (disposition 2): mint_written_synthetic_emitted_artifact_from_fixture_inferred is the sole fixture write authority; FixtureCargoGreen only after cargo.Build.BuildManifest executes. Behavioral comparison_rows are parsed FROM executed stdout; advance binds head_sha from git.Inspect.HeadCommit independently of the receipt."
+data direct_rust_door_transport_note: String = "Lane B wet transport realization (disposition 2): mint_written_synthetic_emitted_artifact_from_fixture_inferred is the sole fixture write authority; FixtureCargoGreen only after cargo.Build.BuildManifest executes. Behavioral comparison_rows are parsed FROM executed stdout; advance binds head_sha from git.Inspect.HeadCommit independently of the receipt. DirectRustDoorWitnessBinProcessOutput is sole_constructor in tools.direct_rust_door_witness_process_output; observation mint requires walled process output."
 
 data direct_rust_door_witness_driver_scaffold_note: String = "SCAFFOLD — tracked debt: direct_rust_door_witness_main_source and direct_rust_door_witness_cargo_appendix are hand-authored Rust witness-driver carriers for the Lane 4 behavioral comparison harness (include! of unmodified emitted lib.rs + seed_add oracle + discriminating corpus + --inject-fault). dissolve-on: modeled self-host behavioral-equivalence harness producer emits the comparison driver; these string carriers delete with it."
 
@@ -65,23 +68,19 @@ data direct_rust_door_witness_main_source: String = "mod emitted_lib {\n    incl
 
 fn direct_rust_door_behavioral_observation_from_run(
   written: WrittenSyntheticEmittedArtifact,
-  stdout: String,
-  stderr: String,
-  exit_success: Bool,
+  process_output: DirectRustDoorWitnessBinProcessOutput,
   head_sha: CommitSha,
   comparison_rows: List<BehavioralComparisonRow>,
   executable_content: String
 ) -> BehavioralComparisonObservation {
-  mint_behavioral_comparison_observation(
+  behavioral_comparison_observation_from_wet_process_output(
     module_path: written.artifact.fixture_receipt.module_path,
     emitted_source: written.artifact.source,
     subject_binding_identity: fixture_behavior_receipt_identity_for(
       receipt: written.artifact.fixture_receipt
     ),
     executable_content: executable_content,
-    stdout: stdout,
-    stderr: stderr,
-    exit_success: exit_success,
+    process_output: process_output,
     head_sha: head_sha,
     corpus_identity: direct_rust_door_behavioral_corpus_identity(),
     comparison_rows: comparison_rows,
@@ -141,11 +140,14 @@ fn direct_rust_door_admitted_equivalent_for_workspace(
       && direct_rust_door_inject_fault_stdout_holds(stdout: fault_run.stdout) {
       match parsed_rows {
         Present { value: comparison_rows } =>
-          let observation = direct_rust_door_behavioral_observation_from_run(
-            written: written,
+          let process_output = direct_rust_door_witness_bin_process_output_from_run_fields(
             stdout: pass_run.stdout,
             stderr: pass_run.stderr,
-            exit_success: pass_run.success,
+            exit_success: pass_run.success
+          )
+          let observation = direct_rust_door_behavioral_observation_from_run(
+            written: written,
+            process_output: process_output,
             head_sha: head.sha,
             comparison_rows: comparison_rows,
             executable_content: executable_read.content
@@ -184,11 +186,14 @@ fn direct_rust_door_subtract_admission_for_workspace(
       && direct_rust_door_subtract_stdout_holds(stdout: pass_run.stdout) {
       match parsed_rows {
         Present { value: comparison_rows } =>
-          let observation = direct_rust_door_behavioral_observation_from_run(
-            written: written,
+          let process_output = direct_rust_door_witness_bin_process_output_from_run_fields(
             stdout: pass_run.stdout,
             stderr: pass_run.stderr,
-            exit_success: pass_run.success,
+            exit_success: pass_run.success
+          )
+          let observation = direct_rust_door_behavioral_observation_from_run(
+            written: written,
+            process_output: process_output,
             head_sha: head.sha,
             comparison_rows: comparison_rows,
             executable_content: executable_read.content

@@ -2,6 +2,12 @@ module v2.compiler.self_host.behavioral_comparison_receipt
 
 import std.content_hash { content_hash_atom }
 import extdeps.communication.medium { Medium }
+import tools.direct_rust_door_witness_process_output {
+  DirectRustDoorWitnessBinProcessOutput,
+  direct_rust_door_witness_bin_process_output_exit_success,
+  direct_rust_door_witness_bin_process_output_stderr,
+  direct_rust_door_witness_bin_process_output_stdout
+}
 import v2.std.algebra { Cons, Empty, fold_list, length }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
@@ -12,7 +18,7 @@ import std.types { CommitSha, Int }
 
 data behavioral_comparison_receipt_note: String = "Executed behavioral comparison receipt carrier (still-bat-561 ceiling audit): rows and verdict are derived from stdout at observation construction. advance checks field binding against the written artifact — NOT that stdout came from a real process."
 
-data behavioral_admission_seal_ceiling_note: String = "CEILING probe (still-bat-561 msg_63187749, EXECUTED): admission_seal is a caller-derivable checksum — not execution proof. BehavioralComparisonObservation sole_constructor landed; cross-module record-literal construction REFUSED (SoleConstructorViolation). LEAK: exported mint_behavioral_comparison_observation — cross-module function call with caller-supplied stdout/stderr/exit_success/comparison_rows; fully_matching_derived_seal_forgery_advance_succeeds_red greens via real forge (mint + derived seal), never optional_absent() — permanent enrolled control (msg_00cc6fd9). BOUNDED PROBE (msg_00cc6fd9, EXECUTED): opaque host-effect process-result is NOT expressible at the current substrate — extdeps.gunbc.WitnessBin.Run returns plain stdout/stderr/exit_success Strings; sole_constructor blocks record literals but NOT exported mint functions; .dag has no function visibility. Transport-filled sole_constructor records are forgeable via mint export — not opaque execution evidence. Real fix: opaque effect return at service boundary OR export control / reference-edge admission (gunbc.roadmap_authority unforgeable-construction-capability, trigger can-climb-after-one-capability). PR2 (#7792) stays draft until capability lands; mechanically preventive ceiling unless operator caps at option 3."
+data behavioral_admission_seal_ceiling_note: String = "CEILING (operator ruling msg_6701c04d): can-climb-after-one-capability. EXECUTED probes on BehavioralComparisonObservation: record literal → SoleConstructorViolation (refused); exported mint with caller stdout → leak; legitimate wet transport requires that constructor. PROCESS-OUTPUT PROBE (msg_4e0dab5d): DirectRustDoorWitnessBinProcessOutput sole_constructor decorative — forge open via from_run_fields and behavioral_comparison_observation_hermetic_equivalent. Process-output reshuffle and opaque WitnessBin.Run do NOT close the hole. Do NOT merge claiming FixtureBehaviorallyEquivalent until ConstructorReferenceAdmission lands or terminal recuts to CallerSuppliedBehaviorObservation. fully_matching_derived_seal_forgery_advance_succeeds_red greens via real forge while hole open — permanent enrolled control, never optional_absent(). NEXT TRIGGER: ConstructorReferenceAdmission."
 
 data opaque_host_effect_process_result_probe_note: String = "Bounded capability probe (royal-crab-235, msg_00cc6fd9): can host-effect return an opaque process-result carrier ordinary .dag code cannot construct? VERDICT: NO at current substrate. WitnessBin.Run output is stdout/stderr/exit_success as plain Strings — caller-forgeable primitives. sole_constructor + internal transport fill does not equal unforgeable evidence because mint_behavioral_comparison_observation is exported and constructs the sole_constructor type from those same fields. LeanAdmittedBitWidth precedent is admission validation (lean_admit_bit_width), not opacity. No third decorative carrier closes the hole; export control or a genuinely opaque effect-bound type is required."
 
@@ -71,14 +77,12 @@ type BehavioralComparisonObservation sole_constructor {
   behavioral_probe_function: String
 }
 
-fn mint_behavioral_comparison_observation(
+fn behavioral_comparison_observation_from_wet_process_output(
   module_path: String,
   emitted_source: Medium<String>,
   subject_binding_identity: Hash,
   executable_content: String,
-  stdout: String,
-  stderr: String,
-  exit_success: Bool,
+  process_output: DirectRustDoorWitnessBinProcessOutput,
   head_sha: CommitSha,
   corpus_identity: Hash,
   comparison_rows: List<BehavioralComparisonRow>,
@@ -90,15 +94,100 @@ fn mint_behavioral_comparison_observation(
     emitted_source: emitted_source,
     subject_binding_identity: subject_binding_identity,
     executable_content: executable_content,
-    stdout: stdout,
-    stderr: stderr,
-    exit_success: exit_success,
+    stdout: direct_rust_door_witness_bin_process_output_stdout(output: process_output),
+    stderr: direct_rust_door_witness_bin_process_output_stderr(output: process_output),
+    exit_success: direct_rust_door_witness_bin_process_output_exit_success(
+      output: process_output
+    ),
     head_sha: head_sha,
     corpus_identity: corpus_identity,
     comparison_rows: comparison_rows,
     behavioral_probe_entry: behavioral_probe_entry,
     behavioral_probe_function: behavioral_probe_function
   }
+}
+
+fn behavioral_comparison_observation_hermetic_diverged(
+  module_path: String,
+  emitted_source: Medium<String>,
+  subject_binding_identity: Hash,
+  executable_content: String,
+  head_sha: CommitSha,
+  corpus_identity: Hash,
+  comparison_rows: List<BehavioralComparisonRow>,
+  behavioral_probe_entry: String,
+  behavioral_probe_function: String
+) -> BehavioralComparisonObservation {
+  BehavioralComparisonObservation {
+    module_path: module_path,
+    emitted_source: emitted_source,
+    subject_binding_identity: subject_binding_identity,
+    executable_content: executable_content,
+    stdout: "BEHAVIORAL_VERDICT: DIVERGED",
+    stderr: "",
+    exit_success: false,
+    head_sha: head_sha,
+    corpus_identity: corpus_identity,
+    comparison_rows: comparison_rows,
+    behavioral_probe_entry: behavioral_probe_entry,
+    behavioral_probe_function: behavioral_probe_function
+  }
+}
+
+fn behavioral_comparison_observation_hermetic_equivalent(
+  module_path: String,
+  emitted_source: Medium<String>,
+  subject_binding_identity: Hash,
+  executable_content: String,
+  head_sha: CommitSha,
+  corpus_identity: Hash,
+  comparison_rows: List<BehavioralComparisonRow>,
+  behavioral_probe_entry: String,
+  behavioral_probe_function: String,
+  stdout: String
+) -> BehavioralComparisonObservation {
+  BehavioralComparisonObservation {
+    module_path: module_path,
+    emitted_source: emitted_source,
+    subject_binding_identity: subject_binding_identity,
+    executable_content: executable_content,
+    stdout: stdout,
+    stderr: "",
+    exit_success: true,
+    head_sha: head_sha,
+    corpus_identity: corpus_identity,
+    comparison_rows: comparison_rows,
+    behavioral_probe_entry: behavioral_probe_entry,
+    behavioral_probe_function: behavioral_probe_function
+  }
+}
+
+fn behavioral_comparison_hermetic_admitted_equivalent_for_fixture(
+  module_path: String,
+  emitted_source: Medium<String>,
+  subject_binding_identity: Hash,
+  executable_content: String,
+  head_sha: CommitSha,
+  corpus_identity: Hash,
+  comparison_rows: List<BehavioralComparisonRow>,
+  behavioral_probe_entry: String,
+  behavioral_probe_function: String,
+  stdout: String
+) -> Optional<AdmittedBehaviorEquivalentReceipt> {
+  admit_behavioral_comparison_equivalent(
+    observation: behavioral_comparison_observation_hermetic_equivalent(
+      module_path: module_path,
+      emitted_source: emitted_source,
+      subject_binding_identity: subject_binding_identity,
+      executable_content: executable_content,
+      head_sha: head_sha,
+      corpus_identity: corpus_identity,
+      comparison_rows: comparison_rows,
+      behavioral_probe_entry: behavioral_probe_entry,
+      behavioral_probe_function: behavioral_probe_function,
+      stdout: stdout
+    )
+  )
 }
 
 type AdmittedBehaviorEquivalentReceipt {

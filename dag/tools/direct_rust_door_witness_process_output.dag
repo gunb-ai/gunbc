@@ -1,0 +1,42 @@
+module tools.direct_rust_door_witness_process_output
+
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+data direct_rust_door_witness_process_output_note: String = "sole_constructor process-output carrier (royal-crab-235): DirectRustDoorWitnessBinProcessOutput via direct_rust_door_witness_bin_process_output_from_run_fields in this module. Wet transport intended consumer. Does NOT close witness forge — exported from_run_fields and receipt-module hermetic_equivalent bypass carrier (.dag has no function visibility; still-bat-561 msg_4e0dab5d)."
+
+type DirectRustDoorWitnessBinProcessOutput sole_constructor {
+  stdout: String
+  stderr: String
+  exit_success: Bool
+}
+
+fn direct_rust_door_witness_bin_process_output_stdout(
+  output: DirectRustDoorWitnessBinProcessOutput
+) -> String {
+  output.stdout
+}
+
+fn direct_rust_door_witness_bin_process_output_stderr(
+  output: DirectRustDoorWitnessBinProcessOutput
+) -> String {
+  output.stderr
+}
+
+fn direct_rust_door_witness_bin_process_output_exit_success(
+  output: DirectRustDoorWitnessBinProcessOutput
+) -> Bool {
+  output.exit_success
+}
+
+fn direct_rust_door_witness_bin_process_output_from_run_fields(
+  stdout: String,
+  stderr: String,
+  exit_success: Bool
+) -> DirectRustDoorWitnessBinProcessOutput {
+  DirectRustDoorWitnessBinProcessOutput {
+    stdout: stdout,
+    stderr: stderr,
+    exit_success: exit_success
+  }
+}
