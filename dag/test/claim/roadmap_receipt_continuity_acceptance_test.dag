@@ -17,6 +17,7 @@ import gunbc.roadmap_authority {
 }
 import gunbc.roadmap_acceptance_history_observation {
   PriorHistoryGitObservationRefused,
+  PriorHistoryObserved,
   acceptance_history_integrity_holds_from_prior_observation,
 }
 import gunbc.roadmap_model {
@@ -109,6 +110,7 @@ test fn roadmap_receipt_continuity_acceptance_contract_holds() -> Bool {
     && witness_criteria_rewrite_with_receipt_retained_refuses_node_acceptance()
     && witness_git_refusal_observation_refuses_integrity()
     && witness_non_empty_prior_prefix_law_catches_deletion_without_seal_coedit()
+    && witness_changed_history_empty_prior_bypass_admits_deletion_observed_prior_refuses()
     && witness_digest_field_mutation_without_revocation_refuses_prefix()
     && witness_accepted_node_ids_projection_refuses_when_receipts_projection_refuses()
     && witness_receipts_projection_refuses_when_history_load_refuses()
@@ -239,6 +241,18 @@ test fn witness_non_empty_prior_prefix_law_catches_deletion_without_seal_coedit(
   let current = drop_first_acceptance_event(events: prior)
   count(prior) > 0
     && !acceptance_history_integrity_holds(history: current, prior_history: prior)
+}
+
+test fn witness_changed_history_empty_prior_bypass_admits_deletion_observed_prior_refuses() -> Bool {
+  let prior = live_history()
+  let current = drop_first_acceptance_event(events: prior)
+  count(prior) > count(current)
+    && acceptance_history_integrity_holds(history: current, prior_history: [])
+    && !acceptance_history_integrity_holds(history: current, prior_history: prior)
+    && !acceptance_history_integrity_holds_from_prior_observation(
+      observation: PriorHistoryObserved { prior: prior },
+      history: current,
+    )
 }
 
 test fn witness_digest_field_mutation_without_revocation_refuses_prefix() -> Bool {

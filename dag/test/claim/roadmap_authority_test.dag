@@ -357,7 +357,7 @@ test fn witness_receipt_for_unknown_node_accepts_nothing() -> Bool {
   all(nodes(), n => !node_accepted(receipts: [ghost], rn: n))
 }
 
-data acceptance_receipt_continuity_witness_note: String = "THE WALL AGAINST SILENT RECEIPT DELETION (acceptance_receipt_continuity_wall_note). roadmap_acceptance_event_history is the single authority; roadmap_acceptance_receipts projects live receipts only. Live git-observed integrity executes in test.claim.roadmap_receipt_continuity_live_witness (ReadsLiveTree, bin_witness_wet_entries). RED controls in test.claim.roadmap_receipt_continuity_acceptance plant deleted history events, dual-deletion via prior-prefix refusal, wrong prior digest, revocation while live, duplicate revocations, exact revocation admit, criteria rewrite on the digest path, and planted git-refusal observation."
+data acceptance_receipt_continuity_witness_note: String = "THE WALL AGAINST SILENT RECEIPT DELETION (acceptance_receipt_continuity_wall_note). roadmap_acceptance_event_history loads from dag/gunbc/roadmap_acceptance_event_history.jsonl; roadmap_acceptance_receipts projects live receipts only. Live git-observed integrity executes in test.claim.roadmap_receipt_continuity_live_witness (ReadsLiveTree, bin_witness_wet_entries). RED controls in test.claim.roadmap_receipt_continuity_acceptance plant deleted events, prefix law, empty-prior bypass discriminant, digest-field mutation, wrong prior digest, revocation while live, duplicate revocations, exact revocation admit, criteria rewrite, git-refusal observation, and typed projection refusal chain."
 
 fn live_acceptance_event_history() -> List<RoadmapAcceptanceEvent> {
   match roadmap_acceptance_event_history_load() {
