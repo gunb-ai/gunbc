@@ -10,6 +10,11 @@ import gunbc.roadmap_acceptance_history_carrier {
   RoadmapAcceptanceEventHistoryParsed,
   RoadmapAcceptanceEventHistoryParseRefused,
 }
+import gunbc.roadmap_acceptance_history_projection {
+  project_roadmap_acceptance_event_history_from_authority_text,
+  RoadmapAcceptanceHistoryProjected,
+  RoadmapAcceptanceHistoryProjectionRefused,
+}
 import gunbc.roadmap_model {
   RoadmapAcceptanceEvent,
   AcceptanceHistoryIntegrityVerdict,
@@ -24,7 +29,9 @@ import std.content_hash { content_hash_atom, content_hash_eq_structural }
 import std.types { CommitSha, GitRef, String }
 import v2.std.collection { List }
 
-data roadmap_acceptance_history_prior_history_next_rung_trigger: String = "DISSOLVED: merge-base prior_history now parses dag/gunbc/roadmap_acceptance_event_history.jsonl via gunbc.roadmap_acceptance_history_carrier (seed bridge parse_roadmap_acceptance_event_history_jsonl). A changed carrier without a valid merge-base parse refuses AcceptanceHistoryIntegrityRefusedPriorHistoryObservation — never prior_history = []. Remaining dissolve-on: delete the seed JSONL parser when a modeled carrier ingest lands."
+data roadmap_acceptance_history_authority_repo_path: String = "dag/gunbc/roadmap_authority.dag"
+
+data roadmap_acceptance_history_prior_history_next_rung_trigger: String = "DISSOLVED: merge-base prior_history parses dag/gunbc/roadmap_acceptance_event_history.jsonl via gunbc.roadmap_acceptance_history_carrier when the carrier exists at merge-base; when absent (carrier introduction on main) the typed bootstrap projects inline authority history via gunbc.roadmap_acceptance_history_projection. A changed carrier without a valid merge-base observation refuses AcceptanceHistoryIntegrityRefusedPriorHistoryObservation — never prior_history = []. Remaining dissolve-on: delete both seed bridges when a modeled revision-addressed carrier ingest lands."
 
 type RoadmapAcceptanceHistoryPriorObservation
   = PriorHistoryObserved { prior: List<RoadmapAcceptanceEvent> }
@@ -50,9 +57,43 @@ fn prior_history_from_carrier_text(carrier_text: String) -> RoadmapAcceptanceHis
   }
 }
 
+fn prior_history_from_authority_text(authority_text: String) -> RoadmapAcceptanceHistoryPriorObservation {
+  match project_roadmap_acceptance_event_history_from_authority_text(authority_text: authority_text) {
+    RoadmapAcceptanceHistoryProjected { events: events } =>
+      PriorHistoryObserved { prior: events }
+    RoadmapAcceptanceHistoryProjectionRefused { detail: detail } =>
+      PriorHistoryGitObservationRefused {
+        detail: concat("merge-base authority projection refused: ", detail),
+      }
+  }
+}
+
+fn prior_history_from_merge_base_carrier_or_authority_bootstrap(
+  authority_repo_path: String,
+  baseline_sha: String,
+  carrier_stderr: String,
+) -> RoadmapAcceptanceHistoryPriorObservation {
+  let base_authority = git.Core.Show(
+    ref: baseline_sha as GitRef,
+    path: authority_repo_path,
+    expect: ExpectSuccess,
+  )
+  if !base_authority.success {
+    PriorHistoryGitObservationRefused {
+      detail: git_refusal_detail(
+        operation: "git.Core.Show(merge-base carrier and authority)",
+        stderr: concat(carrier_stderr, concat("; ", base_authority.stderr)),
+      ),
+    }
+  } else {
+    prior_history_from_authority_text(authority_text: base_authority.content)
+  }
+}
+
 fn observe_roadmap_acceptance_history_prior(
   current_history: List<RoadmapAcceptanceEvent>,
   carrier_repo_path: String,
+  authority_repo_path: String,
   base_ref: String,
 ) -> RoadmapAcceptanceHistoryPriorObservation {
   let head = git.Inspect.HeadCommit(expect: ExpectSuccess)
@@ -88,12 +129,11 @@ fn observe_roadmap_acceptance_history_prior(
           expect: ExpectSuccess,
         )
         if !base_manifest.success {
-          PriorHistoryGitObservationRefused {
-            detail: git_refusal_detail(
-              operation: "git.Core.Show(merge-base carrier)",
-              stderr: base_manifest.stderr,
-            ),
-          }
+          prior_history_from_merge_base_carrier_or_authority_bootstrap(
+            authority_repo_path: authority_repo_path,
+            baseline_sha: baseline.sha as String,
+            carrier_stderr: base_manifest.stderr,
+          )
         } else {
           let head_identity = content_hash_atom(value: head_manifest.content)
           let base_identity = content_hash_atom(value: base_manifest.content)
@@ -116,6 +156,7 @@ fn current_roadmap_acceptance_history_prior_observation(
   observe_roadmap_acceptance_history_prior(
     current_history: current_history,
     carrier_repo_path: roadmap_acceptance_event_history_carrier_repo_path,
+    authority_repo_path: roadmap_acceptance_history_authority_repo_path,
     base_ref: gunbc_merge_target_ref as String,
   )
 }

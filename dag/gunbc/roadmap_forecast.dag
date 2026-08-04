@@ -44,6 +44,8 @@ import gunbc.roadmap_authority {
   active_roadmap_nodes,
   active_roadmap_edges,
   roadmap_acceptance_receipts,
+  RoadmapAcceptanceReceiptsProjected,
+  RoadmapAcceptanceReceiptsProjectionRefused,
 }
 
 data forecast_is_projection_not_observation_note: String = "A forecast projects what may happen; a CycleTimeObservation records what did happen. They are separate nominal record types with no conversion in either direction. ScheduleForecast exposes ForecastInstant and ForecastLowerBoundInterval; its epoch value is sealed inside ForecastInstant and never appears as a bare Timestamp/EpochMs observation, RoadmapAcceptanceReceipt, Signoff, or done/accepted stage. schedule_forecast derives only ScheduleForecastResult, and its refusal arm is exhaustive. Therefore a date can neither accept a roadmap node nor inhabit the observation input used to calibrate later forecasts. Estimates project; only evidence promotes."
@@ -131,6 +133,7 @@ type CycleTimeHistoryRefusal
   | HistoryPullMissing { node: RoadmapNodeId, pull_number: Int }
   | HistoryPullDuplicate { node: RoadmapNodeId, pull_number: Int }
   | HistoryPullNotMergedAfterOpen { node: RoadmapNodeId, pull_number: Int }
+  | HistoryAcceptanceCarrierLoadRefused { detail: String }
 
 type CycleTimePopulationExclusion
   = BundledPullDelivery { pull_number: Int, nodes: List<RoadmapNodeId> }
@@ -208,17 +211,24 @@ fn observation_for_link(
 }
 
 fn roadmap_cycle_time_observation_builds() -> List<CycleTimeObservationBuild> {
-  let nodes = declared_roadmap_nodes()
-  let receipts = roadmap_acceptance_receipts()
-  let pulls = cited_pull_timings()
-  let links = accepted_node_pull_links()
-  links |> map(link => observation_for_link(
-    link: link,
-    nodes: nodes,
-    receipts: receipts,
-    pulls: pulls,
-    links: links,
-  ))
+  match roadmap_acceptance_receipts() {
+    RoadmapAcceptanceReceiptsProjectionRefused { detail: detail } =>
+      [CycleTimeHistoryRefused {
+        refusal: HistoryAcceptanceCarrierLoadRefused { detail: detail },
+      }]
+    RoadmapAcceptanceReceiptsProjected { receipts: receipts } => {
+      let nodes = declared_roadmap_nodes()
+      let pulls = cited_pull_timings()
+      let links = accepted_node_pull_links()
+      links |> map(link => observation_for_link(
+        link: link,
+        nodes: nodes,
+        receipts: receipts,
+        pulls: pulls,
+        links: links,
+      ))
+    }
+  }
 }
 
 fn accepted_cycle_time_observations(builds: List<CycleTimeObservationBuild>) -> List<CycleTimeObservation> {

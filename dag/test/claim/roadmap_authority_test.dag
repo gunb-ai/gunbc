@@ -10,7 +10,11 @@ import gunbc.roadmap_authority {
   active_roadmap_nodes,
   active_roadmap_edges,
   roadmap_acceptance_receipts,
-  roadmap_acceptance_event_history,
+  roadmap_acceptance_event_history_load,
+  RoadmapAcceptanceEventHistoryLoaded,
+  RoadmapAcceptanceEventHistoryLoadRefused,
+  RoadmapAcceptanceReceiptsProjected,
+  RoadmapAcceptanceReceiptsProjectionRefused,
   accepted_roadmap_node_ids,
   roadmap_authority,
   authored_merged_prs,
@@ -300,11 +304,14 @@ test fn witness_active_set_is_declared_minus_accepted() -> Bool {
 }
 
 test fn witness_acceptance_receipts_are_valid_and_unique() -> Bool {
-  let receipts = roadmap_acceptance_receipts()
-  count(receipts) > 0
-    && all(receipts, r => count(receipts |> filter(x => x.node == r.node)) == 1)
-    && all(receipts, r => id_exists(id: r.node))
-    && all(receipts, r => all(declared_node(id: r.node as String), n => receipt_matches_node(r: r, rn: n)))
+  match roadmap_acceptance_receipts() {
+    RoadmapAcceptanceReceiptsProjectionRefused { detail: _ } => false
+    RoadmapAcceptanceReceiptsProjected { receipts: receipts } =>
+      count(receipts) > 0
+        && all(receipts, r => count(receipts |> filter(x => x.node == r.node)) == 1)
+        && all(receipts, r => id_exists(id: r.node))
+        && all(receipts, r => all(declared_node(id: r.node as String), n => receipt_matches_node(r: r, rn: n)))
+  }
 }
 
 test fn witness_accepted_parents_precede_dependents() -> Bool {
@@ -322,12 +329,17 @@ test fn witness_stale_criteria_digest_refuses_acceptance() -> Bool {
 }
 
 test fn witness_duplicate_receipts_refuse_acceptance() -> Bool {
-  let rs = roadmap_acceptance_receipts() |> filter(r => r.node == "namespace-occurrence-transport")
-  let victims = declared_node(id: "namespace-occurrence-transport")
-  count(rs) == 1
-    && count(victims) == 1
-    && all(victims, n => node_accepted(receipts: rs, rn: n))
-    && all(victims, n => !node_accepted(receipts: concat(rs, rs), rn: n))
+  match roadmap_acceptance_receipts() {
+    RoadmapAcceptanceReceiptsProjectionRefused { detail: _ } => false
+    RoadmapAcceptanceReceiptsProjected { receipts: all_receipts } => {
+      let rs = all_receipts |> filter(r => r.node == "namespace-occurrence-transport")
+      let victims = declared_node(id: "namespace-occurrence-transport")
+      count(rs) == 1
+        && count(victims) == 1
+        && all(victims, n => node_accepted(receipts: rs, rn: n))
+        && all(victims, n => !node_accepted(receipts: concat(rs, rs), rn: n))
+    }
+  }
 }
 
 test fn witness_unexecuted_or_undelivered_evidence_refuses_acceptance() -> Bool {
@@ -344,8 +356,15 @@ test fn witness_receipt_for_unknown_node_accepts_nothing() -> Bool {
 
 data acceptance_receipt_continuity_witness_note: String = "THE WALL AGAINST SILENT RECEIPT DELETION (acceptance_receipt_continuity_wall_note). roadmap_acceptance_event_history is the single authority; roadmap_acceptance_receipts projects live receipts only. Live git-observed integrity executes in test.claim.roadmap_receipt_continuity_live_witness (ReadsLiveTree, bin_witness_wet_entries). RED controls in test.claim.roadmap_receipt_continuity_acceptance plant deleted history events, dual-deletion via prior-prefix refusal, wrong prior digest, revocation while live, duplicate revocations, exact revocation admit, criteria rewrite on the digest path, and planted git-refusal observation."
 
+fn live_acceptance_event_history() -> List<RoadmapAcceptanceEvent> {
+  match roadmap_acceptance_event_history_load() {
+    RoadmapAcceptanceEventHistoryLoaded { events: events } => events
+    RoadmapAcceptanceEventHistoryLoadRefused { detail: _ } => []
+  }
+}
+
 test fn witness_vanished_receipt_without_revocation_refuses() -> Bool {
-  let prior = roadmap_acceptance_event_history()
+  let prior = live_acceptance_event_history()
   let current = prior
     |> filter(e =>
       match e {
@@ -357,7 +376,7 @@ test fn witness_vanished_receipt_without_revocation_refuses() -> Bool {
 }
 
 test fn witness_explicit_revocation_authorizes_vanished_receipt() -> Bool {
-  let prior = roadmap_acceptance_event_history()
+  let prior = live_acceptance_event_history()
   let receipt = first(
     project_live_acceptance_receipts(history: prior)
       |> filter(r => r.node == tnid(s: "namespace-occurrence-transport")),

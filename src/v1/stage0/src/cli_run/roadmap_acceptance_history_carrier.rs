@@ -59,11 +59,12 @@ enum JsonHandback {
 }
 
 fn validate_hex16(digest: &str, field: &str) -> Result<(), String> {
-    if digest.len() != 16 || !digest.chars().all(|c| c.is_ascii_hexdigit()) {
+    if digest.len() != 16
+        || !digest
+            .chars()
+            .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase())
+    {
         return Err(format!("{field} must be 16 lowercase hex digits"));
-    }
-    if digest.chars().any(|c| c.is_ascii_uppercase()) {
-        return Err(format!("{field} must be lowercase hex"));
     }
     Ok(())
 }

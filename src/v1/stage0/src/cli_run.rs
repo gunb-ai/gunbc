@@ -265,6 +265,127 @@ pub fn parse_stage0_cargo_manifest_bin_paths(content: &str) -> Stage0CargoManife
     }
 }
 
+/// Temporary seed bridge for `gunbc.roadmap_acceptance_history_projection`.
+/// Evaluates `roadmap_acceptance_event_history` from revision-addressed authority
+/// source text using a first-root overlay; used only when the JSONL carrier is
+/// absent at merge-base (one-time migration bootstrap).
+#[derive(Debug, Clone, PartialEq)]
+pub enum RoadmapAcceptanceHistoryProjection {
+    Projected { events: Vec<v1_interpreter::Value> },
+    Refused { detail: String },
+}
+
+pub fn project_roadmap_acceptance_event_history_from_authority_text(
+    authority_text: &str,
+) -> RoadmapAcceptanceHistoryProjection {
+    let workspace = workspace_root();
+    let temp_dir = workspace
+        .join("target")
+        .join(format!("gunbc-roadmap-auth-proj-{}", std::process::id()));
+    if let Err(error) = std::fs::remove_dir_all(&temp_dir) {
+        if error.kind() != std::io::ErrorKind::NotFound {
+            return RoadmapAcceptanceHistoryProjection::Refused {
+                detail: format!("failed to reset authority overlay directory: {error}"),
+            };
+        }
+    }
+    let overlay_path = temp_dir.join("dag/gunbc/roadmap_authority.dag");
+    if let Err(error) = std::fs::create_dir_all(overlay_path.parent().unwrap())
+        .and_then(|_| std::fs::write(&overlay_path, authority_text))
+    {
+        return RoadmapAcceptanceHistoryProjection::Refused {
+            detail: format!("failed to stage authority overlay: {error}"),
+        };
+    }
+
+    let source_roots = vec![
+        temp_dir.to_string_lossy().into_owned(),
+        workspace.join("dag").to_string_lossy().into_owned(),
+        workspace.join("src/v2").to_string_lossy().into_owned(),
+    ];
+    let entry_file = "dag/gunbc/roadmap_authority.dag";
+    let index = build_multi_entry_index(&source_roots);
+    let sources = match load_sources_for_entry_with_pool(&index, entry_file) {
+        Ok(sources) => sources,
+        Err(detail) => {
+            let _ = std::fs::remove_dir_all(&temp_dir);
+            return RoadmapAcceptanceHistoryProjection::Refused { detail };
+        }
+    };
+    let (graph, source_indices, compile_clean_diags) = match resolved_graph_from_sources_with_index(
+        &index,
+        sources,
+        ResolveTypecheckGate::Strict,
+        entry_file,
+        ResolvedGraphMemoShare::Ephemeral,
+    ) {
+        Ok(parts) => parts,
+        Err(detail) => {
+            let _ = std::fs::remove_dir_all(&temp_dir);
+            return RoadmapAcceptanceHistoryProjection::Refused { detail };
+        }
+    };
+    if compile_clean_diags
+        .iter()
+        .any(compile_clean_diagnostic_is_hard)
+    {
+        let detail = compile_clean_diags
+            .iter()
+            .filter(|diag| compile_clean_diagnostic_is_hard(diag))
+            .map(|diag| format_error_node(diag, &source_indices))
+            .collect::<Vec<_>>()
+            .join("; ");
+        let _ = std::fs::remove_dir_all(&temp_dir);
+        return RoadmapAcceptanceHistoryProjection::Refused { detail };
+    }
+
+    let ctx = v1_interpreter::InterpContext::new(
+        graph.as_ref(),
+        source_indices,
+        v1_interpreter::ExecutionMode::Wet,
+    );
+    let result = v1_interpreter::run_in_context(&ctx, "roadmap_acceptance_event_history", true);
+    let _ = std::fs::remove_dir_all(&temp_dir);
+
+    match result {
+        Ok(v1_interpreter::Value::List(events)) => RoadmapAcceptanceHistoryProjection::Projected {
+            events: events.iter().cloned().collect(),
+        },
+        Ok(other) => RoadmapAcceptanceHistoryProjection::Refused {
+            detail: format!(
+                "roadmap_acceptance_event_history returned {}, expected List",
+                other.type_label_public()
+            ),
+        },
+        Err(error) => RoadmapAcceptanceHistoryProjection::Refused {
+            detail: error.to_string(),
+        },
+    }
+}
+
+pub fn project_roadmap_acceptance_event_history_from_authority_text_builtin(
+    authority_text: &str,
+    ctx: &v1_interpreter::InterpContext,
+) -> v1_interpreter::InterpResult<v1_interpreter::Value> {
+    use std::rc::Rc;
+
+    use v1_interpreter::{list_value, sorted_fields, Value};
+
+    let projected = project_roadmap_acceptance_event_history_from_authority_text(authority_text);
+    Ok(match projected {
+        RoadmapAcceptanceHistoryProjection::Projected { events } => Value::Variant {
+            type_name: ctx.sym("RoadmapAcceptanceHistoryProjection"),
+            variant_name: ctx.sym("RoadmapAcceptanceHistoryProjected"),
+            fields: Rc::new(sorted_fields(vec![(ctx.sym("events"), list_value(events))])),
+        },
+        RoadmapAcceptanceHistoryProjection::Refused { detail } => Value::Variant {
+            type_name: ctx.sym("RoadmapAcceptanceHistoryProjection"),
+            variant_name: ctx.sym("RoadmapAcceptanceHistoryProjectionRefused"),
+            fields: Rc::new(sorted_fields(vec![(ctx.sym("detail"), Value::Str(detail))])),
+        },
+    })
+}
+
 pub mod roadmap_acceptance_history_carrier;
 
 #[cfg(test)]

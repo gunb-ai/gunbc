@@ -1,0 +1,26 @@
+module gunbc.roadmap_acceptance_history_projection
+
+import gunbc.roadmap_model { RoadmapAcceptanceEvent }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.disposition { Disposition, RealizationDispatch, Scaffold }
+import v2.std.collection { List }
+import v2.std.text { String }
+
+data roadmap_acceptance_history_projection_note: String = "One-time migration bootstrap: evaluate roadmap_acceptance_event_history from revision-addressed authority source text when dag/gunbc/roadmap_acceptance_event_history.jsonl is absent at merge-base. Steady-state prior_history parses the carrier via gunbc.roadmap_acceptance_history_carrier; this projection is the typed bridge only for carrier introduction on main."
+
+type RoadmapAcceptanceHistoryProjection
+  = RoadmapAcceptanceHistoryProjected { events: List<RoadmapAcceptanceEvent> }
+  | RoadmapAcceptanceHistoryProjectionRefused { detail: String }
+
+fn project_roadmap_acceptance_event_history_from_authority_text(authority_text: String) -> RoadmapAcceptanceHistoryProjection {
+  project_roadmap_acceptance_event_history_from_authority_text_host(authority_text: authority_text)
+}
+
+data roadmap_acceptance_history_projection_seed_scaffold: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "v1_compiler.cli_run",
+    decl_name: "project_roadmap_acceptance_event_history_from_authority_text_builtin",
+    field: WholeDeclaration,
+  }
+}

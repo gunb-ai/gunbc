@@ -158,6 +158,7 @@ fn builtin_function_registry() -> Map<String, Node> {
   let m = map_insert(m, "non_fold_residue_coproduct_universe_count", int_type)
   let m = map_insert(m, "parse_stage0_cargo_manifest_bins", type_variable_node(id: "cargo_manifest_bin_parse"))
   let m = map_insert(m, "parse_roadmap_acceptance_event_history_jsonl", type_variable_node(id: "roadmap_acceptance_event_history_parse"))
+  let m = map_insert(m, "project_roadmap_acceptance_event_history_from_authority_text_host", type_variable_node(id: "roadmap_acceptance_history_projection"))
   let m = map_insert(m, "commit_witness_claim_roster_unresolvable_count", int_type)
   let m = map_insert(m, "commit_witness_claim_pair_resolvable", bool_type)
   let m = map_insert(m, "non_fold_residue_wildcard_red_fixture_holds", bool_type)
