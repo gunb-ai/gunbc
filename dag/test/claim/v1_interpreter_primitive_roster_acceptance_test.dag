@@ -3,6 +3,7 @@ module test.claim.v1_interpreter_primitive_roster_acceptance
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.v1_interpreter_primitive_surface {
   DerivedFromDispatch,
+  EvalBuiltinInnerSite,
   FreeCall,
   InterpreterPrimitiveArmId,
   InterpreterPrimitiveDispatchArm,
@@ -30,6 +31,7 @@ fn planted_row(identity: String, spelling: String, symbol: String) -> Interprete
     authored_spelling: spelling,
     realization_module: "planted",
     dispatch_symbol: symbol,
+    dispatch_emit_site: EvalBuiltinInnerSite,
     enumeration: DerivedFromDispatch,
   }
 }
