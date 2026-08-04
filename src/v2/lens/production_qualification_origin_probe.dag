@@ -1,10 +1,8 @@
-module v2.lens.production_qualification_origin_census
+module v2.lens.production_qualification_origin_probe
 
 import v2.compiler.self_host.emitter_producer_provenance {
-  BehavioralEquivalent,
   CargoGreen,
   EmissionQualification,
-  ProductionRouted,
   SourceProduced,
   emission_qualification_eq
 }
@@ -14,7 +12,6 @@ import v2.std.algebra {
   any,
   contains,
   fold_list,
-  length,
   list_snoc_item
 }
 import v2.std.collection {
@@ -53,13 +50,11 @@ data construction_justification: ConstructionJustification = ConstructionJustifi
   class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }
 
-data production_qualification_counted_qualifications_note: String = "Counted EmissionQualification axes for mint-site rows — single authority from v2.compiler.self_host.emitter_producer_provenance, including BehavioralEquivalent (7761 origin-accounting rung)."
+data production_qualification_counted_qualifications_note: String = "Axes derived_sites_for_decl can construct today at fn-arrow skeleton grain — SourceProduced and CargoGreen only. ProductionRouted, BehavioralEquivalent, and ExecutionMeasured remain reserved for call-occurrence / dataflow grounding."
 
 data production_qualification_counted_qualifications: List<EmissionQualification> = [
   SourceProduced,
-  CargoGreen,
-  ProductionRouted,
-  BehavioralEquivalent
+  CargoGreen
 ]
 
 type ProductionQualificationOrigin
@@ -83,7 +78,9 @@ data mint_provenanced_callee: String = "mint_provenanced_rust_artifact"
 data advance_cargo_green_callee: String = "advance_written_provenanced_rust_artifact_cargo_green"
 data direct_rust_door_inferred_tree_atom: String = "direct_rust_door_inferred_tree"
 
-data ingest_mint_skeleton_classifier_note: String = "Ingest entry skeleton grain (review 47980): generate_provenanced_rust_candidate_from_ingest calls mint_provenanced_rust_artifact directly; mint_written_provenanced_rust_artifact wraps the same callee one hop out. Structural census qualifies mint_provenanced_rust_artifact at fn-arrow skeleton depth so ingest-inline surfaces can flip witness_ingest_mint_surface_requires_call_occurrence_frontier_reds when G2 marshal exposes the ExprCall — not mint_producer_emission_receipt one hop deeper."
+data ingest_mint_skeleton_classifier_note: String = "Ingest entry skeleton grain (review 47980): generate_provenanced_rust_candidate_from_ingest calls mint_provenanced_rust_artifact directly. Callee identity alone does not prove compiler origin — mint_provenanced accepts raw InferredTree — so skeleton discovery without fixture marker or call/dataflow evidence stays UnknownOrigin until call-occurrence derivation lands."
+
+data production_qualification_origin_compiler_derived_frontier_note: String = "CompilerDerived is declared but UNWRITABLE at skeleton grain: callee identity proves a qualification boundary was called, not that the InferredTree argument came from production infer(assemble(...)). Until call/dataflow evidence connects arguments, non-fixture mint surfaces classify UnknownOrigin and fail admission."
 
 data ingest_mint_entry_name_suffix: String = "generate_provenanced_rust_candidate_from_ingest"
 
@@ -322,13 +319,9 @@ fn decl_has_fixture_marker(decl: FnArrowDecl) -> Bool {
     )
 }
 
-data production_qualification_origin_compiler_derived_note: String = "Non-fixture mint surfaces whose fn-arrow skeleton exposes mint_provenanced_rust_artifact (ingest grain) classify CompilerDerived — production compiler pipeline, not fixture evidence and not unknown. mint_written-only without fixture stays UnknownOrigin so synthetic unknown-origin RED controls and unclassified written paths remain fail-closed."
-
 fn decl_origin_from_structure(decl: FnArrowDecl) -> ProductionQualificationOrigin {
   if decl_has_fixture_marker(decl: decl) {
     FixtureDerived
-  } else if decl_contains_callee(decl: decl, callee: mint_provenanced_callee) {
-    CompilerDerived
   } else {
     UnknownOrigin
   }
@@ -432,7 +425,7 @@ data production_qualification_call_occurrence_derivation_landed: Bool = false
 
 data production_qualification_call_occurrence_derivation_landed_dissolve_trigger: String = "Flip production_qualification_call_occurrence_derivation_landed when call-reachable production-qualification classification shares the effect_reach skeleton authority and derived_production_qualification_mint_sites_live() derives from resolved call occurrences corpus-wide — not fn_arrow_decl_substrate_is_whole_tree alone."
 
-fn production_qualification_repository_wide_origin_census_closed() -> Bool {
+fn production_qualification_repository_wide_origin_probe_closed() -> Bool {
   production_qualification_call_occurrence_derivation_landed
 }
 
@@ -468,7 +461,7 @@ fn probe_mint_callee_atom_node() -> Node {
 
 fn unknown_origin_red_control_planted_decl() -> FnArrowDecl {
   FnArrowDecl {
-    qualified_name: "synthetic.production_qualification_origin_census.unknown_origin_red_control",
+    qualified_name: "synthetic.production_qualification_origin_probe.unknown_origin_red_control",
     name: "unknown_origin_red_control_planted_decl",
     output: Node {
       kind: TypeNode { connective: Conj },
@@ -481,7 +474,30 @@ fn unknown_origin_red_control_planted_decl() -> FnArrowDecl {
   }
 }
 
-data structural_red_control_planted_qualified_name: String = "synthetic.production_qualification_origin_census.structural_red_control_planted"
+data structural_red_control_planted_qualified_name: String = "synthetic.production_qualification_origin_probe.structural_red_control_planted"
+
+fn probe_mint_provenanced_callee_atom_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: symbol_intern_lexeme(lexeme: mint_provenanced_callee) } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn parameter_borne_fixture_mint_planted_decl() -> FnArrowDecl {
+  FnArrowDecl {
+    qualified_name: "synthetic.production_qualification_origin_probe.parameter_borne_fixture_mint_red_control",
+    name: "parameter_borne_fixture_mint_red_control_planted_decl",
+    output: Node {
+      kind: TypeNode { connective: Conj },
+      children: [
+        Edge { label: Positional, target: probe_mint_provenanced_callee_atom_node() }
+      ],
+      occurrence_id: SyntheticOccurrence
+    },
+    params: []
+  }
+}
 
 fn probe_target_model_callee_atom_node() -> Node {
   Node {
@@ -511,15 +527,21 @@ fn structural_red_control_planted_decl() -> FnArrowDecl {
   }
 }
 
-fn structural_red_control_live_body_skeleton_visible() -> Bool {
-  fold_list(
-    xs: fn_arrow_decl_facts_live(),
-    empty: false,
-    cons: fn(found, decl) {
-      found || (
-        string_eq(a: decl.name, b: "structural_red_control_mint_site_probe")
-          && length(xs: atom_identities_in_node(node: decl.output)) > 0
-      )
+fn structural_red_control_live_fixture_mint_site_discovered(
+  live_qualified_name: String
+) -> Bool {
+  any(
+    xs: derived_production_qualification_mint_sites_live(),
+    predicate: fn(row) {
+      string_eq(a: row.qualified_name, b: live_qualified_name)
+        && production_qualification_origin_eq(
+          left: row.evidence_origin,
+          right: FixtureDerived
+        )
+        && emission_qualification_eq(
+          left: row.qualification_axis,
+          right: SourceProduced
+        )
     }
   )
 }
