@@ -3,11 +3,11 @@ module std.language_target_identity
 import std.decl_ref { DeclarationRef }
 import std.roster_frontier { declaration_ref_eq }
 import std.types { Bool, Int, List, String }
-import extdeps.external_authority { ExternalSubjectRef, external_subject_ref_eq }
+import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef, external_subject_ref_eq }
 
 data language_target_identity_law: String = "ONE JOIN KEY ACROSS EVERY TARGET-BEARING SURFACE (operator verdict, 2026-08-04). A language or medium target is identified by its UPSTREAM SUBJECT — extdeps.external_authority's ExternalSubjectRef, whose declaration is symbolic per external_subject_symbolic_identity_note — never by a name string, a target-model value, an emit function, or a module path. The surfaces this repository writes are joined TO that subject; they are not candidate identities for it. Modelled on std.primitive_identity, which already performs exactly this join for five independently-writable primitive surfaces with typed join violations; the two modules are siblings in shape and deliberately share no rows, because a primitive and a target are different subjects. WHY NOT THE FIVE OBVIOUS CANDIDATES, each rejected for a stated reason: std.languages Language.id is a LanguageId string inside a syntax-template catalogue whose live population is rust/go/python/typescript only — Bash is absent — so it is at most a presentation key; v2.std.compilers.target_model TargetModel carries bundle, lexing, spellings, authority text and runtime configuration but NO identity field, which is correct because one target may have several target-model revisions without changing identity; tools.emit_host_gate's per-language smoke fns are evidence producers, not subjects; std.primitive_identity RealizationTarget is deliberately a three-arm primitive-realization DISPATCH surface (InterpreterHost | EmitRust | EmitTypeScript), not a general language identity, and widening it would fuse two unrelated join keys; gunbc.plans.language_target_self_host_frontier is a markdown prose table that says in its own text that its typed carrier does not yet exist."
 
-data language_target_uncited_refusal_note: String = "AN UNCITED TARGET IS UNWRITABLE, not admitted-then-flagged (DESIGN section 5 construction over validation; the specific direction is loyal-ant-382's, 2026-08-04). LanguageTargetRegistration requires a scope DeclarationRef naming the subject module's extdeps_model_scope declaration, so a target whose upstream is uncited cannot be constructed at all — there is no Absent arm to fall into and therefore no admitted-with-no-citation state to detect later. The citation itself is NOT copied here: ExternalModelScope already makes citations nonempty by construction (external_model_scope_citations_shape_note), so restating one on the registration row would be a second representation of the same fact (DESIGN section 3). This row references the scope; it never duplicates it. The residual honesty boundary is deliberate and named: that the referenced declaration RESOLVES on disk is the existing roster machinery's job (gunbc.extdeps_scope_frontier's roster_paths_resolve_on_disk and its live-cover witness), not a second check minted here."
+data language_target_uncited_refusal_note: String = "AN UNGROUNDED TARGET IS UNWRITABLE, not admitted-then-flagged (DESIGN section 5 construction over validation; direction from loyal-ant-382 and the grounding correction from the operator, 2026-08-04). A registration carries TargetGrounding as a required field and derives its subject from it, so a target with no authority behind it cannot be constructed and there is no Absent arm to fall into. For an external target the grounding IS the ExternalModelScope, whose citations are nonempty by construction (external_model_scope_citations_shape_note), so an uncited external target is unwritable for the same structural reason. Nothing is copied: the scope is held, never restated (DESIGN section 3). CORRECTED 2026-08-04 — an earlier revision of this row described a two-field subject-plus-scope shape that has been retired precisely because it let the two disagree; see target_grounding_law. The residual honesty boundary is unchanged and named: that a referenced declaration RESOLVES on disk is the existing roster machinery's job (gunbc.extdeps_scope_frontier), not a second check minted here."
 
 data language_target_scope_boundary_note: String = "WHAT THIS MODULE IS NOT (operator ruling relayed 2026-08-04). It carries target IDENTITY and the surface join only. It carries NO profile, NO capability set, NO residue row, and NO completion predicate, because those are governed by rules this module deliberately does not encode: profile relevance is an OBLIGATION JOIN rather than an authored label (a candidate is relevant when its target matches the profile's target, its violated obligation is in the profile's required obligations, and it lies inside that obligation's declared applicability scope), residue is separated from capability gaps so one incompleteness never gets two representations, and a profile-relevant-residue verdict is three-state with only its Empty arm — carrying a completeness receipt — admissible as completion evidence. Fusing any of that into the identity kernel would make one carrier serve as both the completion WALL and the migration RATCHET, which the same ruling forbids at different grains. Those rows land on the census and profile carriers when the relevance rule is registered."
 
@@ -40,10 +40,32 @@ fn surface_locus_eq(a: LanguageTargetSurfaceLocus, b: LanguageTargetSurfaceLocus
   }
 }
 
+data target_grounding_law: String = "IDENTITY IS DERIVED FROM GROUNDING, NEVER AUTHORED BESIDE IT (operator ruling, 2026-08-04). An earlier shape carried subject and scope as two fields, which still permitted them to DISAGREE — a registration could name one subject while grounding it in another's authority. Here the subject is a projection of the grounding carrier, so the disagreeing state has no representation and RegisteredTargetHasNoAuthoritySubject dissolves into construction rather than surviving as a validation class. WHY GROUNDING IS TWO ARMS: ExternalSubjectRef is documented as a symbolic reference to an INDEPENDENTLY GOVERNED upstream subject, which is true of Bash, TypeScript, C++, Verilog and SPICE but false of this project's own targets — the .dag language itself and the controlled-English medium are real target surfaces that are not external products, and forcing them through an external scope would make them pretend to an upstream governance they do not have. So canonical identity is the subject DeclarationRef; external targets derive it from ExternalModelScope.subject.declaration and project targets from their own declared authority. A dangling reference is not a construction failure but a resolution one, and surfaces as TargetSubjectUnresolvable."
+
+type TargetGrounding
+  = ExternalGrounding { scope: ExternalModelScope }
+  | ProjectGrounding { authority: DeclarationRef }
+
 type LanguageTargetRegistration {
-  subject: ExternalSubjectRef
-  scope: DeclarationRef
+  grounding: TargetGrounding
+  disposition: TargetDisposition
 }
+
+fn registration_subject(registration: LanguageTargetRegistration) -> DeclarationRef {
+  match registration.grounding {
+    ExternalGrounding { scope: s } => s.subject.declaration
+    ProjectGrounding { authority: a } => a
+  }
+}
+
+data target_disposition_note: String = "A registered target with no live surface is legitimate ONLY with an explicit disposition, so a strategy promise cannot vanish merely because implementation has not begun, and Parked never renders as a vacuous zero-of-zero complete. GovernedByContract is the Rust arrangement: this registry REFERENCES the self-host and production-cutover verdicts and never recomputes them, so no second status authority for one subject exists."
+
+type TargetDisposition
+  = TargetActive
+  | TargetParked { reason: String }
+  | TargetDecisionPending { decision_id: String }
+  | TargetMaintenanceOnly
+  | TargetGovernedByContract { contract_id: String }
 
 type LanguageTargetSurfaceRow {
   authority: LanguageTargetSurfaceAuthority
@@ -61,6 +83,13 @@ type LanguageTargetJoinViolation
       surface: LanguageTargetSurfaceLocus
       named: ExternalSubjectRef
     }
+  | SurfaceJoinsMultipleTargets {
+      authority: LanguageTargetSurfaceAuthority
+      surface: LanguageTargetSurfaceLocus
+      first: ExternalSubjectRef
+      second: ExternalSubjectRef
+    }
+  | TargetVocabularyHasNoRegistryTarget { surface: LanguageTargetSurfaceLocus }
   | DuplicateRegistryTarget { target: ExternalSubjectRef }
 
 data language_target_resolution_note: String = "THE RESIDUE CENSUS DERIVES ITS TARGET THROUGH THIS JOIN; it never carries an independently authored target field (operator verdict, 2026-08-04). An authored target beside an observed sink is a second writable representation of one fact, and the two can disagree — a row reading sink = extdeps.languages.typescript.program alongside target = Bash is well-formed under an authored field and unwritable under a derived one. The observed sink, imported vocabulary, target-model declaration, source artifact, or runtime binding is the input; this is the function. Every non-resolving outcome is a TYPED, LOCATED result rather than an inability to report the site: a Bash sink whose subject is unregistered still reports as a Bash sink observation carrying TargetSurfaceUnregistered, which is what keeps a missing registry entry a registry refusal instead of a census blind spot (DESIGN section 5 — a failure arm must refuse, never widen, and never narrow to nothing)."
@@ -138,7 +167,9 @@ fn projection_subject_is_registered(
 }
 
 fn registration_subjects(registry: List<LanguageTargetRegistration>) -> List<ExternalSubjectRef> {
-  fold(registry, init: [], f: fn(acc, r) { concat(acc, [r.subject]) })
+  fold(registry, init: [], f: fn(acc, r) {
+    concat(acc, [ExternalSubjectRef { declaration: registration_subject(registration: r) }])
+  })
 }
 
 fn subject_in_list(target: ExternalSubjectRef, subjects: List<ExternalSubjectRef>) -> Bool {
@@ -219,8 +250,9 @@ fn duplicate_registration_violations(
 ) -> List<LanguageTargetJoinViolation> {
   let subjects = registration_subjects(registry: registry)
   fold(registry, init: [], f: fn(acc, r) {
-    if subject_occurrence_count(target: r.subject, subjects: subjects) > 1 {
-      concat(acc, [DuplicateRegistryTarget { target: r.subject }])
+    let subj = ExternalSubjectRef { declaration: registration_subject(registration: r) }
+    if subject_occurrence_count(target: subj, subjects: subjects) > 1 {
+      concat(acc, [DuplicateRegistryTarget { target: subj }])
     } else {
       acc
     }

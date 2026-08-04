@@ -3,8 +3,18 @@ module gunbc.language_target_registry
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.types { Bool, Int, List, String }
 import extdeps.external_authority { ExternalSubjectRef }
-import extdeps.languages.bash.subject
+import extdeps.languages.bash.subject { extdeps_model_scope }
 import std.language_target_identity {
+  TargetGrounding,
+  ExternalGrounding,
+  ProjectGrounding,
+  TargetDisposition,
+  TargetActive,
+  TargetParked,
+  TargetDecisionPending,
+  TargetMaintenanceOnly,
+  TargetGovernedByContract,
+  registration_subject,
   LanguageTargetProjection,
   LanguageIdLookup,
   LanguageIdResolved,
@@ -48,14 +58,12 @@ data bash_subject_ref: ExternalSubjectRef = ExternalSubjectRef {
   }
 }
 
+data d0_population_blocker_note: String = "D0 — THE COMPLETE TARGET UNIVERSE — IS NOT REGISTERED HERE, AND THE REASON IS THE CONSTRUCTION WALL ITSELF. A registration derives its subject from a REQUIRED TargetGrounding, so an ungrounded target is unwritable (target_grounding_law). External grounding is an ExternalModelScope, and a scope carries at least one real upstream citation by construction. Therefore registering TypeScript, C, C++, Verilog, SPICE, Python, Go, Java, Kotlin, Swift, LLVM IR, WebAssembly, PTX, machine code, Lean, SQL, HTML, CSS, ECMAScript, JSON, YAML and Markdown requires FIRST authoring one cited subject declaration each — the same file this branch created for Bash — because NONE of them has one today. That is the measured state, not an obstacle invented here: Bash was uncited until this branch, and the same sweep that found it found no subject declaration for any other target. Registering them without grounding would mean either fabricating citations or reopening the wall, and both are refused. The .dag language and controlled English take ProjectGrounding instead and need no external citation, so they are the cheapest rows to add next. SIZING, so the remaining work is countable rather than vague: roughly twenty external subject declarations, each a new dag/extdeps scope carrier requiring its own roster enrollment, each needing a citation verified against the real upstream rather than recalled. DISSOLVE-ON: those subjects land and this note deletes with the rows it explains."
+
 data registered_language_targets: List<LanguageTargetRegistration> = [
   LanguageTargetRegistration {
-    subject: bash_subject_ref,
-    scope: DeclarationRef {
-      module_path: "extdeps.languages.bash.subject",
-      decl_name: "extdeps_model_scope",
-      field: WholeDeclaration
-    }
+    grounding: ExternalGrounding { scope: extdeps_model_scope },
+    disposition: TargetActive
   }
 ]
 
