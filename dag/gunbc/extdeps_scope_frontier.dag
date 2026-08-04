@@ -125,6 +125,7 @@ fn scope_placement_refused_paths(added: List<String>, carriers: List<String>, ma
 
 data scope_carrier_paths: List<String> = [
   "dag/extdeps/automation/playwright.dag",
+  "dag/extdeps/package.dag",
   "dag/extdeps/browser/chromium.dag",
   "dag/extdeps/container/oci/digest.dag",
   "dag/extdeps/git/publication_transport.dag",
