@@ -20,9 +20,9 @@ import extdeps.pin { Pin, ExactPin }
 import extdeps.version { VersionIdentity }
 import extdeps.http.server { MediaType }
 
-data citation_cit0_note: String = "CIT-0 neutral citation target (operator mandate 2026-08-04). CitedResource.authority is the sole source identity — never duplicated on Pin.subject or ObservedCitedRepresentation. CitedRepresentation names only which bytes are hashed (RepresentationByteDomain); version and expected Sha256Digest live on Pin. ObservedCitedRepresentation carries independently observed media_type, byte_domain, and observed_identity minted by the wet adapter — never the expected pin echoed back. reconcile_citation_representation compares expected against observed into Match | Mismatch | Incomparable | ObservationMissing. Retrieval observations are dated downstream receipts; RepresentationRetrieved requires HttpStatus and ObservedCitedRepresentation; ResponseObservedWithoutRepresentation is a separate arm — partial success cannot inhabit the representation arm. citation_exact_pin accepts Sha256Digest only, not structural FNV or the ContentHash union. Evidence payloads feed std.claim_evidence via CitationRecordedFact."
+data citation_cit0_note: String = "CIT-0 neutral citation target (operator mandate 2026-08-04). Pin.subject is CitedRepresentationIdentity { source, access_route, byte_domain } — the pin names WHOSE representation is pinned, not merely which bytes are hashed. CitedResource.authority remains the cited source on the target; access_route is the retrieval locator that produced the representation bytes (may equal source.uri when they coincide). ObservedCitedRepresentation carries the same identity axes plus independently wet-minted observed_identity. reconcile_citation_representation compares source, access_route, and byte_domain before digest equality. Retrieval observations are dated downstream receipts; RepresentationRetrieved requires HttpStatus and ObservedCitedRepresentation; ResponseObservedWithoutRepresentation is a separate arm. citation_exact_pin accepts Sha256Digest only. Evidence payloads feed std.claim_evidence via CitationRecordedFact."
 
-data citation_pin_subject_note: String = "pin_subject_must_not_be_self_identifying_note case (1): a cited web representation does NOT determine its own digest — expected_identity is new information from observation — so Pin<CitedRepresentation>, not SubjectProjectedPin. RepresentationByteDomain names WHICH bytes are hashed; a digest without that axis is meaningless. ExactPin versus TrackedChannel is authored-permalink versus resolved-from-a-live-URL; pin_currency_gap names citation rot when review evidence is absent."
+data citation_pin_subject_note: String = "CitedRepresentationIdentity grounds pin.subject: source (ExternalAuthority) joins representation identity to the cited upstream; access_route (Uri) is the retrieval path whose bytes are hashed at byte_domain. Two citations sharing only RawResponseBody but citing different sources are distinct pin subjects. ExactPin versus TrackedChannel is authored-permalink versus resolved-from-a-live-URL; pin_currency_gap names citation rot when review evidence is absent."
 
 data citation_observed_at_note: String = "observed_at on CitationRetrievalObservation is EpochMs — UTC milliseconds since the Unix epoch (std.types EpochMs refuses negatives via where range). ISO-8601 wire form is a CIT-3 transport serialization concern, not the observation fact."
 
@@ -30,7 +30,9 @@ data citation_verifier_scope_note: String = "A citation verifier is not a truth 
 
 data citation_expected_observed_separation_note: String = "Expected identity (Pin.expected_identity, authored) and observed identity (ObservedCitedRepresentation.observed_identity, wet-adapter minted) are independent facts reconciled by reconcile_citation_representation. A mock that echoes the expected pin into the observation arm passes only when bytes genuinely match — the echo itself is not verification."
 
-type CitedRepresentation {
+type CitedRepresentationIdentity {
+  source: ExternalAuthority
+  access_route: Uri
   byte_domain: RepresentationByteDomain
 }
 
@@ -49,23 +51,33 @@ type RepresentationByteDomain
 data representation_byte_domain_note: String = "Names WHICH BYTES are hashed — not which algorithm. RawResponseBody is the exact octet sequence received after transfer decoding and before interpretation. Later domains (DecodedContent, RenderedText, ExtractedPageContent) are reserved for CIT-1+ profiles; CIT-0 admits the type names only."
 
 type ObservedCitedRepresentation {
+  source: ExternalAuthority
+  access_route: Uri
   media_type: MediaType
   byte_domain: RepresentationByteDomain
   observed_identity: Sha256Digest
-}
-
-type RetrievedRepresentation {
-  observed: ObservedCitedRepresentation?
 }
 
 type CitationRepresentationReconciliation
   = RepresentationMatch
   | RepresentationMismatch { expected: Sha256Digest, observed: Sha256Digest }
   | RepresentationIncomparable {
+      expected_source: ExternalAuthority,
+      observed_source: ExternalAuthority,
+    }
+  | RepresentationIncomparableByteDomain {
       expected_domain: RepresentationByteDomain,
       observed_domain: RepresentationByteDomain,
     }
+  | RepresentationIncomparableAccessRoute {
+      expected_route: Uri,
+      observed_route: Uri,
+    }
   | ObservationMissing
+
+type RetrievedRepresentation {
+  observed: ObservedCitedRepresentation?
+}
 
 type FragmentSelector {
   conforms_to: ExternalAuthority
@@ -110,26 +122,38 @@ type CitationSelector
   | TextPositionSelectorVariant(TextPositionSelector)
   | SelectorRefused { cause: SelectorRefusalCause }
 
-fn cited_representation(byte_domain: RepresentationByteDomain) -> CitedRepresentation {
-  CitedRepresentation {
+fn cited_representation_identity(
+  source: ExternalAuthority,
+  access_route: Uri,
+  byte_domain: RepresentationByteDomain,
+) -> CitedRepresentationIdentity {
+  CitedRepresentationIdentity {
+    source: source,
+    access_route: access_route,
     byte_domain: byte_domain,
   }
 }
 
 fn citation_exact_pin(
+  source: ExternalAuthority,
+  access_route: Uri,
   byte_domain: RepresentationByteDomain,
   version: VersionIdentity,
   expected_identity: Sha256Digest,
-) -> Pin<CitedRepresentation> {
+) -> Pin<CitedRepresentationIdentity> {
   Pin {
-    subject: cited_representation(byte_domain: byte_domain),
+    subject: cited_representation_identity(
+      source: source,
+      access_route: access_route,
+      byte_domain: byte_domain,
+    ),
     version: version,
     expected_identity: as_content_hash_cryptographic(digest: expected_identity),
     selection: ExactPin,
   }
 }
 
-fn citation_pin_expected_sha256(pin: Pin<CitedRepresentation>) -> Sha256Digest? {
+fn citation_pin_expected_sha256(pin: Pin<CitedRepresentationIdentity>) -> Sha256Digest? {
   match pin.expected_identity {
     Sha256Hash(digest) => Present { value: digest }
     _ => none
@@ -137,11 +161,15 @@ fn citation_pin_expected_sha256(pin: Pin<CitedRepresentation>) -> Sha256Digest? 
 }
 
 fn observed_cited_representation(
+  source: ExternalAuthority,
+  access_route: Uri,
   media_type: MediaType,
   byte_domain: RepresentationByteDomain,
   observed_identity: Sha256Digest,
 ) -> ObservedCitedRepresentation {
   ObservedCitedRepresentation {
+    source: source,
+    access_route: access_route,
     media_type: media_type,
     byte_domain: byte_domain,
     observed_identity: observed_identity,
@@ -149,20 +177,30 @@ fn observed_cited_representation(
 }
 
 fn reconcile_citation_representation(
-  expected_pin: Pin<CitedRepresentation>,
+  expected_pin: Pin<CitedRepresentationIdentity>,
   observed: ObservedCitedRepresentation?,
 ) -> CitationRepresentationReconciliation {
   match observed {
     Absent => ObservationMissing
     Present { value: o } =>
-      if expected_pin.subject.byte_domain != o.byte_domain {
+      if expected_pin.subject.source.uri.locator != o.source.uri.locator {
         RepresentationIncomparable {
+          expected_source: expected_pin.subject.source,
+          observed_source: o.source,
+        }
+      } else if expected_pin.subject.access_route.locator != o.access_route.locator {
+        RepresentationIncomparableAccessRoute {
+          expected_route: expected_pin.subject.access_route,
+          observed_route: o.access_route,
+        }
+      } else if expected_pin.subject.byte_domain != o.byte_domain {
+        RepresentationIncomparableByteDomain {
           expected_domain: expected_pin.subject.byte_domain,
           observed_domain: o.byte_domain,
         }
       } else {
         match citation_pin_expected_sha256(pin: expected_pin) {
-          Absent => RepresentationIncomparable {
+          Absent => RepresentationIncomparableByteDomain {
             expected_domain: expected_pin.subject.byte_domain,
             observed_domain: o.byte_domain,
           }
