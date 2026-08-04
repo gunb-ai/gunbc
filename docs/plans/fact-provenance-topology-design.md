@@ -1,8 +1,8 @@
 # Fact provenance topology — AUTH-0 design note
 
-Status: **DRAFT for operator review (AUTH-0, session cool-ram-632, 2026-08-04).** Design-note first — **no code lands without operator sign-off.** Does not fix the four closed specimens; each has its own green PR awaiting merge.
+Status: **DRAFT — operator sign-off on direction (loyal-ant-382, 2026-08-04).** Local to session `cool-ram-632`; no PR open. Design-note only — **no hub, no construction, no frontier** without further sign-off.
 
-**Homonym rule (operator, 2026-08-04):** In this repository *authority* names two unrelated concepts. This note uses explicit qualifiers only:
+**Homonym rule (operator, 2026-08-04):** *Authority* names two unrelated concepts. This note uses explicit qualifiers only:
 
 | term | meaning | lives in |
 |---|---|---|
@@ -11,7 +11,16 @@ Status: **DRAFT for operator review (AUTH-0, session cool-ram-632, 2026-08-04).*
 
 Bare *authority* does not appear below.
 
-Frames: DESIGN §2 (derive-global / decompose), §3 (fact-home, external upstream decomposition, cite-the-symbol), §5 (construction before validation; wall-now / wall-after-grounding / ratchet).
+Frames: DESIGN §2, §3 (fact-home, external upstream decomposition, cite-the-symbol), §5 (construction before validation), §6 (bare-minimum cost — cited only where copy semantics are now verified).
+
+**Sequence (operator, 2026-08-04):**
+
+1. Refuse new instances in the four specimen lanes — **done**
+2. **Exact live censuses** — this note (§5)
+3. Decide whether shared construction replaces each class — **deferred** (not in scope)
+4. No-growth frontier — **deferred**
+
+Step-3 decisions (Readiness axis, digest partition vs `ContentHash` wall, hub vs notes) are **not** routed to the operator here — they are what the census is for. Standing answers that hold regardless: **second-consumer discipline** → notes and lenses until two unrelated consumers exist (four specimens are not hub consumers); **pinning** → `pin_dimension_note` — `Pin<CitedRepresentation>` is an instantiation like `Pin<CliTool>`, not a sibling `extdeps.citation.pin` type.
 
 ---
 
@@ -19,212 +28,164 @@ Frames: DESIGN §2 (derive-global / decompose), §3 (fact-home, external upstrea
 
 Over one day, four independent PRs each invented a **second fact-home** for the same proposition. No author was careless — each had a defensible local reason. That is the signal: diligence cannot be the defence; the relation **kind** must be typed.
 
-| label | relation kind | specimen symbol (grep-verifiable) |
-|---|---|---|
-| **CIT-0** | one fact at two writable positions | `CitedResource.authority` vs `Pin.subject` / `expected_identity` |
-| **CIT-1** | authored where observed was required | same 64-hex digest as `example.test` fixture and cited evidence, no bytes→digest edge |
-| **QM** | stored where derived was available | `observed_vs_prediction: Ordering` beside the three counts that determine it |
-| **SCAFFOLD** | inferred where identity was required | unique substring match between scaffold `rel_path` and roadmap carrier path |
-
 A topology that collapses these into “do not duplicate” is useless. One that names each relation, states what evidence discharges it, and says which §5 rung applies is the product.
 
 ### 0.1 Fifth specimen — homonym at the mandate layer
 
-This mandate was titled *Authority relation topology*. That primed a design note about **permission-to-act** (`std.access`: who is acting, what may this actor touch, may this request proceed) — a competent map of the wrong subject.
-
-The corrected subject is **fact provenance** (DESIGN §3: the one place a fact lives). Producing a whole note against the homonym is itself a §3 violation: one word, two concepts, a second representation at the documentation layer. If a fifth relation kind is needed in the topology, **lexical collision** is it: discharge = explicit qualifier or distinct coinage at every boundary where both senses appear (`fact-home` vs `permission-to-act`).
+The work item was titled *Authority relation topology*, priming a note about **permission-to-act** (`std.access`). The corrected subject is **fact provenance** (DESIGN §3: the one place a fact lives). Producing a whole note against the homonym is itself a §3 violation at the documentation layer. Discharge: explicit qualifier (`fact-home` vs `permission-to-act`) or distinct coinage at every boundary. PR #7789 closed; access-kernel map **not** extracted (would carry the mis-priming).
 
 ---
 
-## 1. What fact provenance means
+## 1. Specimen record (closed lanes — do not touch)
 
-For a given modeled fact, fact provenance answers:
+Four relation kinds, four specimens. Each PR is green in its own lane.
 
-1. **What is the atomic proposition?** (digest, ordering, binding, identity)
-2. **Where is its sole fact-home?** (one writable field, derived-only fn, or observation receipt arm)
-3. **What evidence discharges membership?** (structural projection, bytes→digest pipeline, total derivation, identity join)
-
-Every specimen is a **wrong answer** to one of those three — not a missing permission check.
-
-**Adjacent, not fact-provenance:**
-
-- **Permission-to-act** — deontic; belongs under the authorization-kernel thread
-- **Disposition / scaffold registry** — lifecycle metadata beside a fact, not the fact
-- **Containment / naming** (`QualifiedName`, `SymbolIndex`) — feeds identity joins; not duplicate fact-home by itself
+| label | relation kind | specimen (grep-verifiable) | discharge (landed on specimen branch) |
+|---|---|---|---|
+| **CIT-0** | duplicate fact-home | `CitedResource.authority` vs `Pin.expected_identity` / `RepresentationPin` fork — `resource-says-A` while `pin-says-B` writable | `std.citation` `citation_cit0_note`: authority sole on `CitedResource`; `Pin<CitedRepresentation>` per `pin_subject_must_not_be_self_identifying_note` case (1) |
+| **CIT-1** | observation-required | real PDF digest hand-typed; same 64-hex as `example.test` fixture and cited evidence; no bytes→digest edge | fixture locator separated from cited URI; `Pin<CitedRepresentation>` + observation coproduct (`origin/session/cit-1`) |
+| **QM** | derivation-only | `observed_vs_prediction: Ordering` on `PathAdditivityRefutationReceipt` beside counts; `observed: 5`, `prediction: 20`, `observed_vs_prediction: Greater` writable and passed | field deleted; `path_additivity_witness_observed_vs_prediction()` derived (`c200375c0c6`) |
+| **SCAFFOLD** | identity join | unique substring match between scaffold `rel_path` and roadmap path → durable binding | `RoadmapNodeIdentity` join; 0 → `NoHonestObligationOwner`; plural → `AmbiguousObligationOwners`; `scaffold_disposition_sites_live()` derived population (`ec85b225782`) |
 
 ---
 
-## 2. Four relation kinds
+## 2. Relation kinds (topology)
 
-### 2.1 Duplicate fact-home — one fact, two writable positions
+### 2.1 Duplicate fact-home
 
-**Question:** Is this one fact duplicated, or two facts whose relationship was never modeled?
+**Question:** one fact duplicated, or two facts whose relationship was never modeled?
 
-**Specimen CIT-0.** `CitedResource.authority: ExternalAuthority` and pin-side identity (`Pin<CitedRepresentation>` with `expected_identity`, or authority duplicated on `Pin.subject` via `RepresentationPin`) were independently writable. `resource-says-A` while `pin-says-B` was a legal substrate state.
+**Discharge:** `pin_subject_must_not_be_self_identifying_note` — does the subject already determine its own digest at this grain?
 
-**Harm:** silent fork at the meaning layer; reconcile compares the wrong end; grep passes both symbols.
+| answer | carrier | fact-home for identity |
+|---|---|---|
+| no | `Pin<Subject>` | `expected_identity` on pin |
+| yes | `SubjectProjectedPin<Subject>` | projected at bridge only (`subject_projected_pin_as_pin`) |
 
-**Discharge evidence:**
+`Pin<OciDescriptor>` copying `descriptor.digest` into `expected_identity` was “yes” modeled as “no”.
 
-- **Relation typing** (`extdeps.pin` `pin_subject_must_not_be_self_identifying_note`): does the subject **already determine its own digest** at the declared grain?
-  - **No** (`CliTool`, `ActionRef`, cited web representation): `Pin<Subject>` — `expected_identity` is *new* information; fact-home is the pin carrier.
-  - **Yes** (`SccacheBinaryArtifact` at release×arch grain; wrongly modeled `Pin<OciDescriptor>`): `SubjectProjectedPin<Subject>` — subject + selection only; identity and version **projected at the bridge** (`subject_projected_pin_as_pin`), never stored twice.
-- **CIT-0 fix pattern** (`std.citation` on `origin/session/cit-0`, not on main): `citation_cit0_note` — `CitedResource.authority` is the **sole** source identity; never duplicated on `Pin.subject` or `ObservedCitedRepresentation`. `CitedRepresentation` names only `RepresentationByteDomain` (which bytes are hashed); `expected Sha256Digest` lives on `Pin`.
+### 2.2 Observation-required
 
-**§5 ladder:** wall-now when “subject self-identifies?” is structurally decidable; wall-after-grounding for carriers not yet split (`OciDescriptor` dissolve-on); not a ratchet once grain is named.
+**Question:** what makes a value admissible as evidence rather than assertion?
 
-**Review tell:** two fields (or carrier + subject) independently editable for digest, `ExternalAuthority`, version, or revision.
+**Discharge:** observation receipt (`CitationRetrievalObservation`); bytes→digest pipeline; fixture vs cited namespace separation; §5 oracle rule (2026-08-01).
 
----
+### 2.3 Derivation-only
 
-### 2.2 Observation-required — authored where observed was required
+**Question:** when may a computable fact be stored?
 
-**Question:** What makes a value admissible as evidence rather than assertion?
+**Discharge:** delete stored summary; total `fn` over inputs; algebraic refusal of inconsistent triples.
 
-**Specimen CIT-1.** A real PDF digest was typed by hand with no retrieval or extraction edge from bytes to value. The same 64-hex string was simultaneously an `example.test` fixture locator value and cited evidence — nothing distinguished fabricated example from cited evidence.
+### 2.4 Identity join
 
-**Harm:** specification-without-execution (§5); tests green while the digest is a second definition, not a receipt.
+**Question:** what distinguishes a proposal from a binding?
 
-**Discharge evidence:**
-
-- **Observation receipt** with dated downstream fact (`CitationRetrievalObservation`; `RepresentationRetrieved` requires `HttpStatus` + `ObservedCitedRepresentation` — partial success cannot inhabit the representation arm).
-- **Bytes→digest pipeline** — digest is output of verify/extract, not an independent authorable string (`sha256_digest_content_hash`, wet adapter minting `observed_identity`).
-- **Namespace separation** — fixture locator (`example.test/fixture.pdf`) vs cited URI (`extdeps.standards.rfc_8118` anchor) are different fact-homes for different propositions.
-- **§5 oracle rule (2026-08-01):** merge-blocking population compare cannot use tree-copied literals as oracle.
-
-**§5 ladder:** wall-now for digest literal without observation arm; wall-after-grounding where `ContentHash` family typing is incomplete; external bytes always boundary-observed.
-
-**Review tell:** same hex in a `data` row and an evidence path with no `RecordedFact` / retrieval / verify arm between them.
-
-**Misclassification flag:** weak `expected_hash: NonEmptyStr` sites (census §4.1) may be **typing** failure (need `Sha256Digest`) rather than observation-class — per-site read required.
-
----
-
-### 2.3 Derivation-only — stored where derived was available
-
-**Question:** When may a computable fact be stored at all?
-
-**Specimen QM.** `observed_vs_prediction: Ordering` was stored on `PathAdditivityRefutationReceipt` (and related witness records) alongside `observed`, `prediction`, and the comparison inputs. The constructor accepted the triple independently; `observed: 5`, `prediction: 20`, `observed_vs_prediction: Greater` was **writable and passed**.
-
-**Harm:** redundant field becomes an independent fact-home; editors satisfy checks by editing the derived field while inputs stay wrong (§5 “edit the declaration while the realization lies”).
-
-**Discharge evidence:**
-
-- **Delete stored field**; expose total fn e.g. `path_additivity_witness_observed_vs_prediction()` derived from `path_additivity_compare_observed_to_prediction` (QM branch `c200375c0c6`).
-- **Algebraic refusal** — inconsistent triple unwritable when ordering is `fn(observed, prediction)`, not a field.
-
-**§5 ladder:** wall-now for closed total fn over modeled fields; wall-after-grounding when operands are observation receipts; ratchet only if the summary is genuinely undecidable (not the case for numeric ordering).
-
-**Review tell:** field names `*_vs_*`, `*_ordering`, `*_comparison` beside operands they summarize.
-
-**Misclassification flag:** if the stored value were an **operator policy choice** (preference, not a function of counts), storing it would be honest — QM is derivation-class because the field *claimed* to summarize numeric comparison.
-
----
-
-### 2.4 Identity join — inferred where identity was required
-
-**Question:** What distinguishes a proposal from a binding?
-
-**Specimen SCAFFOLD.** A unique substring match between a scaffold disposition site’s `rel_path` and a roadmap carrier path became a durable obligation binding. Uniqueness is not identity.
-
-**Harm:** heuristic promoted to fact-home; binding survives renames that break the accidental substring; zero/plural matches silent or fabricated.
-
-**Discharge evidence:**
-
-- **Identity join** on declared key (`RoadmapNodeIdentity`, `record_identity`, `roadmap_identity_registry`) — not path substring.
-- **Count discipline** (`gunbc.scaffold_retirement` `ec85b225782`): exactly one → binding; zero → `NoHonestObligationOwner`; plural → `AmbiguousObligationOwners`.
-- **Derived population** — `scaffold_disposition_sites_live()` structural walk, not hand roster (`scaffold_retirement_pilot_derivation_note`).
-
-**§5 ladder:** wall-now for closed registered join keys; wall-after-grounding for incomplete registry; ratchet forever for undeclared path similarity.
-
-**Review tell:** `string_contains`, substring match, “unique match” without `DeclarationRef` / `RoadmapNodeIdentity`.
-
-**Misclassification flag:** `scaffold_digest_for_module_path` in emitter provenance may be honest interim scaffold (dissolve trigger), not identity-class — it does not claim obligation ownership.
+**Discharge:** join on declared key (`RoadmapNodeIdentity`); 0/plural → typed exclusion; derived population walk — never substring uniqueness.
 
 ---
 
 ## 3. Worked precedent — `pin_subject_must_not_be_self_identifying_note`
 
-This is the corpus’s closest **relation-typing** procedure — the pattern AUTH-0 generalizes.
-
-It does not ask “is this a pin?” It asks: **does the subject already determine its own digest at this grain?**
-
-| answer | carrier | fact-home for identity |
-|---|---|---|
-| no | `Pin<Subject>` | `expected_identity` on pin (new information) |
-| yes | `SubjectProjectedPin<Subject>` | projected at bridge only — duplication unwritable |
-
-`Pin<OciDescriptor>` copying `descriptor.digest` into `expected_identity` was case “yes” wrongly modeled as case “no” — the CIT-0 class at pin grain.
-
-Generalization: before adding a field, name the relation kind (§2.1–§2.4) and apply the matching discharge. “Do not duplicate” is not a procedure; “does the subject self-identify?” **is**.
+Relation-typing procedure AUTH-0 generalizes. Before adding a field: name the relation kind (§2), then apply discharge. “Do not duplicate” is not a procedure; “does the subject self-identify?” is.
 
 ---
 
-## 4. Census methodology (operator ruling, 2026-08-04)
+## 4. Census methodology
 
-1. Refuse new instances in active lanes — **done** for four specimens.
-2. **Exact live censuses** from corpus (structural walks / measured grep — inputs, not conclusions).
-3. Decide whether one shared construction replaces each class (per §5 decidability).
-4. No-growth frontier — derived enrollment only.
+**Derived population only** — no hand roster. A census closes step 2 when:
 
-AUTH-0 stops at 2–3 as candidates.
+- population is mechanically reproducible (query + count documented), and
+- each row carries enough to decide step 3 (kind, arms, interchangeability, claimed proposition, copy semantics — not counts alone).
+
+Measured on `main`, 2026-08-04, unless noted.
 
 ---
 
-## 5. Candidate census populations (measured on `main`, 2026-08-04)
-
-Operator surfaced three candidates while reviewing other work. **Not proven single classes.**
+## 5. Live censuses (step 2)
 
 ### 5.1 Weak digest parameters
 
-**Pattern:** `expected_hash: NonEmptyStr` (and similar) where `std.content_hash` exists.
+**Derivation query:** `rg 'expected_hash: NonEmptyStr|expected_digest: NonEmptyStr|kernel_digest: NonEmptyStr|digest: NonEmptyStr|content_hash: NonEmptyStr' --glob '*.dag'`
 
-**Measured:** **12** sites across **7** modules (e.g. `ubuntu_install_media_fetch.observe_install_media_fetch`, `ubuntu_seeded_install_media_remaster.install_media_remaster_sidecar_matches`).
+**Population:** **10** writable sites across **5** modules (operator prior “12 sites / 7 modules” superseded by this query on current `main`).
 
-**Open:** partition into observation-required vs serialization-boundary vs scaffold-placeholder before construction.
+| module | site | kind | what the digest claims to prove | step-3 partition |
+|---|---|---|---|---|
+| `extdeps.tools.sha256sum` | `sha256sum_verify_via_shell(..., expected_digest: NonEmptyStr)` | fn param | external SHA-256 match of file bytes (NIST FIPS 180-4 via `sha256_algorithm_authority`) | **observation boundary** — param is wire hex into verify fn; candidate `Sha256Digest` typing, not second fact-home |
+| `extdeps.provisioning.ubuntu_install_media_fetch` | `observe_install_media_fetch`, `install_media_fetch_try_mirror`, `install_media_fetch_try_mirrors` params | fn param | Canonical published SHA-256 for install media (`install_media_fetch_hash_convergence_note` — cryptographic authority digest, **not** `std.content_hash` FNV structural) | **observation-required at verify arm** — digest originates from `UbuntuInstallMediaArtifactRow.content_sha256` cited row, verified via `sha256sum_verify_via_shell` |
+| `extdeps.provisioning.ubuntu_seeded_install_media_remaster` | `install_media_remaster_sidecar_matches(..., expected_hash)` | fn param | sidecar matches remastered artifact | same family as ubuntu_fetch |
+| `extdeps.provisioning.ubuntu_seeded_install_media_remaster` | `content_hash: NonEmptyStr` field | record field | stored sidecar digest | **duplicate fact-home candidate** if row also carries bytes path without derivation edge — needs row read |
+| `extdeps.boot.linux_x86_boot` | `LinuxX86BootImage.kernel_digest: NonEmptyStr` | record field | kernel image identity for boot bundle | **scaffold / placeholder** until emit proof wires bytes→digest |
+| `extdeps.boot.freestanding_payload` | `EmittedPayload` / `PrebuiltPayload` / `HollowPrebuiltInit` `.digest` | variant fields | payload ELF identity | **scaffold** — `HollowPrebuiltInit` explicitly refused at `accept_linux_x86_boot_image`; digest is authorable placeholder pending emit |
+
+**Operator correction recorded:** weak-digest class is **unpartitioned** — step 3 must not assume one `ContentHash` wall covers cryptographic authority digests (`install_media_fetch_hash_convergence_note` explicitly separates them).
+
+---
 
 ### 5.2 `*Readiness` type surface
 
-**Operator candidate:** ~17 coproducts, N-types-one-axis shape (like pin dimension correction).
+**Derivation query:** `rg '^type [A-Za-z]*Readiness' --glob '*.dag'` then drop prefix-match false positives (`ReadinessLayer`, `ReadinessFoldState`, `ClaimReadinessPolicy`, `ToolReadinessRefusal`, …).
 
-**Measured:** **10** distinct top-level type names ending in `Readiness` (`ToolReadiness`, `ProviderReadiness`, `WitnessBinReadiness`, …); many are records/claim specializations, not coproducts.
+**Population:** **10** distinct top-level type names ending in `Readiness`.
 
-**Open:** structural coproduct census — name suffix insufficient; may be legitimately distinct upstream shapes per §3 decomposition.
+**Operator correction recorded:** prior “~17 coproducts” was prefix-match artifact (`ReadinessLayer` matches `*Readiness`). The “N types on one axis” claim is **unverified** — needs kind + arms + interchangeability per name (below).
 
-### 5.3 `concat(acc, …)` accumulator sites
+| type | module | kind | arms (summary) | interchangeability |
+|---|---|---|---|---|
+| `ToolReadiness` | `gunbc.tool_readiness` | coproduct (3) | `PinnedAdmitted`, `PinnedRefused`, `UnpinnedFrontier` | **none** — pin membership + `admit_pin_integrity` conjunction; domain = `CliTool` |
+| `ProviderReadiness` | `extdeps.llm.cli_lifecycle` | coproduct (12) | auth/setup/quota/rate-limit/… verdicts over `ProviderInstance` | **none** — upstream CLI lifecycle facts per `cli_lifecycle_fact_separation_note` |
+| `ToolExecutionReadiness` | `extdeps.llm.cli_lifecycle` | coproduct (5) | sandbox probe verdicts | **none** — orthogonal axis to `ProviderReadiness` (same module, explicit separation note) |
+| `WitnessBinReadiness` | `tools.host_prelude` | coproduct (2) | `WitnessBinReady`, `WitnessBinRefused` | **none** — witness-binary artifact probe |
+| `CompilePoolReadiness` | `gunbc.host_compile_pool` | coproduct (2) | `CompilePoolReady`, `CompilePoolNotReady` | **none** — cgroup slice vs derived pool size |
+| `DashboardProviderReadiness` | `gunbc.roadmap_dashboard_instance_apply` | coproduct (5) | `ProviderReady`, path/runtime/auth/refused arms | **none** — dashboard SSH observation fold; distinct from `extdeps.llm` `ProviderReadiness` (homonym, different module) |
+| `LandingEvidenceReadiness` | `gunbc.source_integration_landing_spine` | coproduct (2) | `LandingEvidenceReady`, `LandingEvidenceBlocking` | **none** — landing claim-evidence specialization |
+| `MergeReadinessVerdict` | `gunbc.pr_digests` | coproduct (2) | `Ready`, `NotReady` | **none** — PR merge digest gate |
+| `DigestReadinessProjection` | `gunbc.digest_render` | coproduct (2) | `DigestOpenForReview`, `DigestNotReady` | **none** — digest render projection |
 
-**Operator candidate:** ~92 sites; quadratic cost if list `concat` copies — **copy behavior not verified**.
+**Interchangeability check:** no function accepts a generic `Readiness` parameter; no shared fold across these types. `ProviderReadiness` name is shared between `extdeps.llm.cli_lifecycle` (type) and `gunbc.provider_readiness_claim_evidence` (claim value parameter referencing the extdeps type) — **same type, not two axes**.
 
-**Measured:** **274** `concat(acc,` across **119** files; **117** `concat(acc, [`.
-
-**Open:** narrow pattern to match operator’s ~92; measure cost shape before rewrite (`accumulator_copy_roster_gate` machinery exists).
+**Step-3 verdict (census output):** ten unrelated domain verdict types sharing a naming suffix — **no evidence of one `Readiness<Domain>` axis**. Generic machinery already exists at `std.claim_evidence` (`ClaimReadinessReceipt`, `ClaimRequirementReadiness`) for claim-indexed evidence; these 10 are domain instantiations, not duplicates of that axis.
 
 ---
 
-## 6. Relation kind → construction sketch (AUTH-1+, unsigned)
+### 5.3 `concat(acc, [x])` accumulator sites
 
-| kind | construction direction | residue |
+**Derivation query:** `rg 'concat\(acc, \[' --glob '*.dag'`
+
+**Population (operator reconciliation recorded):**
+
+| scope | sites | files |
 |---|---|---|
-| Duplicate fact-home | single writable home + projection bridge | cross-family compare until `ContentHash` wall complete |
-| Observation-required | typed observation coproduct + layer gate | host census until witness realization |
-| Derivation-only | delete field; `fn *_derived(...)` | honest `Unknown` for undecidable summaries |
-| Identity join | join on `RoadmapNodeIdentity`; 0/plural → exclusion | path similarity never auto-binds |
-| Lexical collision | qualify or rename at every boundary | until cited-symbol lens retires positional homonyms in prose |
+| `dag/` only | **92** | **44** |
+| `src/v2/` only | **20** | **11** |
+| `src/v1/` only | **5** | **4** |
+| **whole repo** | **117** | **59** |
 
-**Non-goals:** no new `std/` module, no lens enrollment, no edits to four specimen PRs.
+**Looser** `concat(acc,` (any rhs): **276** sites / **133** files on `main` (prior agent count 274 — **2-site delta is `src/v1` only**, confirmed: `src/v1` contributes 5 strict-pattern sites and 2 of the extra loose-pattern sites beyond the prior whole-repo loose count).
+
+**Fold context (derived):** **104 / 117** strict-pattern sites occur within ~20 lines of a `fold(` or `f: (acc` binder — i.e. accumulator growth in folds, not one-off list construction.
+
+**Accumulator copy semantics — verified (was operator-flagged candidate, now measured):**
+
+- Native list `concat` in seed (`src/v1/stage0/src/v1_rt.rs` `list_concat`): `a.extend(b); a` — **moves** prior accumulator, allocates new vector, copies all elements each call.
+- Interpreter `BinOp` concat arm (`v1_interpreter.rs` ~2420–2428): same `a.extend(b)` on materialized `Vec` — **copies accumulator elements each invocation**.
+- `Rc<Vec>` `v1_concat` uses `rc_list_concat` (structural sharing path) — **not** the dominant pattern at `concat(acc, [` sites (list folds use plain `List`).
+
+**Conclusion for step 3:** fold-body `concat(acc, [x])` on `List` carriers is a **proven cost-shape defect** per DESIGN §6 bare-minimum-cost — independent of realized `n`. Remediation class (prepend+reverse, `append`, map-keyed collect) is step 3; `v2.lens.complexity_accumulator_copy.roster_gate` already tracks enrolled `dag/std/` debt (`accumulator_copy_roster_gate_std_test.dag`).
+
+**Not a fact-provenance class** — included as operator-flagged census candidate only.
 
 ---
 
-## 7. What this note does not do
+## 6. What this note does not do
 
-- **Permission-to-act map** (`std.access`, `AuthScope`, publication ontology) — competent subject, wrong mandate; if preserved, belongs under the existing authorization-kernel open thread as a **separate** proposal, not AUTH-0.
-- **Fix the four specimens** — closed in their lanes.
-- **Hand-authored instance roster** — censuses are derived only.
+- Permission-to-act map — wrong mandate; not extracted from #7789
+- Fix the four specimens — closed in their lanes
+- Step 3 construction, `std/` hub, lens enrollment, no-growth frontier
+- Route step-3 decisions to the operator
 
 ---
 
-## 8. Dissolution
+## 7. Dissolution
 
-Dissolves when each relation kind has a named construction wall or honest ratchet in the guarantee recovery ledger, and §5 candidate censuses are promoted to enrolled derived populations with RED controls or refuted with measured negative receipts.
-
-Until then, AUTH-0 is the reference for **which fact-provenance relation**, not **which module**.
+Dissolves when: (a) each relation kind has a construction wall or honest ratchet row; (b) censuses in §5 are enrolled as derived populations with RED controls or refuted by measured negative receipts. Until then, AUTH-0 is the reference for **which fact-provenance relation**, not **which module**.
