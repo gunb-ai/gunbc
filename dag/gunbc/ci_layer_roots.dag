@@ -21,6 +21,7 @@ import gunbc.explicit_witness_admission {
   explicit_witness_admissions_well_formed,
   explicit_witness_admission_duplicate_count,
   known_red_probe_corpus_roster,
+  known_red_probe_v1_envelope_roster,
   known_red_probe_v1_scoped_roster,
   known_red_probe_execution_roster
 }

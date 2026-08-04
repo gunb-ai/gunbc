@@ -1,7 +1,6 @@
 module test.claim.namespace_reference_derived_closure_acceptance
 
 import gunbc.namespace_reference_derived_closure_admission {
-  ReferenceDerivedClosureAdmission,
   ReferenceDerivedClosureUnavailable,
   RepeatedMentionsCollapseDependency,
   UnrelatedLoadedFileExcluded,

@@ -1,7 +1,7 @@
 module v2.workflow.ci_floor_plan
 
 import std.execution_mode { Hermetic, Wet }
-import gunbc.explicit_witness_admission { known_red_probe_corpus_roster, known_red_probe_v1_scoped_roster }
+import gunbc.explicit_witness_admission { known_red_probe_corpus_roster, known_red_probe_v1_envelope_roster, known_red_probe_v1_scoped_roster }
 import gunbc.ci_layer_roots { witness_layer_roots, witness_exclusion_substrings, witness_discovery_scan_dirs, bin_witness_wet_entries, scoped_witness_batches, known_red_probe_roster, falsifier_silent_pick_gate_entries, falsifier_silent_pick_gate_roster, falsifier_rehomed_bin_wet_entries, falsifier_substrate_long_lane_entries }
 import v2.compiler.self_host.wet_receipt_enrollment {
   falsifier_self_host_wet_entries,
@@ -1251,7 +1251,7 @@ fn gunbc_ci_floor_ordinary_batches() -> List<List<Runnable>> {
 data v1_claim_scoped_known_red_probe_batch_note: String = "Per-PR Hermetic expect_red lane for known-red CorpusWitnessKind rows whose subject needs the dag plus src/v1 envelope (gunbc.explicit_witness_admission known_red_probe_v1_envelope_roster: src/v1 paths plus dag witnesses that import v1.*). The falsifier's corpus-root probe batch cannot resolve these entries; running them there would treat resolve-refuse as expect-red success without executing the predicate (DESIGN section 5 specification-without-execution). This batch mirrors v1_claim_scoped_witness_batch's dag plus src/v1 source-root envelope and runs SelectionApplied on the ordinary floor."
 
 fn v1_claim_scoped_known_red_probe_batch_enrolled() -> Bool {
-  length(xs: known_red_probe_v1_scoped_roster()) > 0
+  length(xs: known_red_probe_v1_envelope_roster()) > 0
 }
 
 fn gunbc_v1_claim_scoped_known_red_probe_batch() -> Runnable {

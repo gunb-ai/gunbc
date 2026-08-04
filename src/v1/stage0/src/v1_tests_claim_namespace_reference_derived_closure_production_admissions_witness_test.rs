@@ -12,8 +12,8 @@ use crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerived
 use crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerivedClosureCapability::{SameFileEarlierNeighbourVisible, SiblingDecisionBranchExcluded, LaterDeclarationExcluded, DistinctSameSpelledDeclarationsPreserved, RepeatedMentionsCollapseDependency, UnrelatedLoadedFileExcluded};
 use crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerivedClosureTrigger::{P2aReferenceDependencyProjection7515, P2aPoolIndependentDependencyProjection7515};
 pub use crate::gunbc_namespace_reference_derived_closure_contract::{reference_derived_closure_closing_frontier_count};
-pub use crate::v1_gunbc_namespace_reference_derived_closure_production_admissions::{namespace_reference_derived_closure_acceptance_admissions, observe_same_file_earlier_neighbour_visible, observe_sibling_decision_branch_excluded, observe_later_declaration_excluded, observe_distinct_same_spelled_declarations_preserved};
-pub use crate::std_types::{Bool};
+pub use crate::v1_gunbc_namespace_reference_derived_closure_production_admissions::{observe_same_file_earlier_neighbour_visible, observe_sibling_decision_branch_excluded, observe_later_declaration_excluded, observe_distinct_same_spelled_declarations_preserved};
+pub use crate::std_types::{Bool, List};
 use crate::std_types::Bool::*;
 
 pub fn namespace_reference_derived_closure_production_admissions_witness_note() -> String {
@@ -27,7 +27,26 @@ pub fn namespace_reference_derived_closure_production_admissions_witness_note() 
 
 pub fn witness_structural_production_admissions_establish_clauses_a_through_d() -> bool {
     {
-        let statuses = namespace_reference_derived_closure_acceptance_admissions();
+        let statuses = Rc::new(vec![
+            observe_same_file_earlier_neighbour_visible(),
+            observe_sibling_decision_branch_excluded(),
+            observe_later_declaration_excluded(),
+            observe_distinct_same_spelled_declarations_preserved(),
+            Rc::new(
+                ReferenceDerivedClosureAdmission::ReferenceDerivedClosureUnavailable {
+                    capability:
+                        ReferenceDerivedClosureCapability::RepeatedMentionsCollapseDependency,
+                    trigger: ReferenceDerivedClosureTrigger::P2aReferenceDependencyProjection7515,
+                },
+            ),
+            Rc::new(
+                ReferenceDerivedClosureAdmission::ReferenceDerivedClosureUnavailable {
+                    capability: ReferenceDerivedClosureCapability::UnrelatedLoadedFileExcluded,
+                    trigger:
+                        ReferenceDerivedClosureTrigger::P2aPoolIndependentDependencyProjection7515,
+                },
+            ),
+        ]);
         ((((((statuses.clone().len() as i64) == 6)
             && {
                 let mut __all = true;
@@ -121,7 +140,22 @@ pub fn witness_each_structural_production_observer_establishes_independently() -
 }
 
 pub fn witness_closing_contract_still_reds_until_dependency_clauses_land() -> bool {
-    (reference_derived_closure_closing_frontier_count(
-        namespace_reference_derived_closure_acceptance_admissions(),
-    ) == 2)
+    (reference_derived_closure_closing_frontier_count(Rc::new(vec![
+        observe_same_file_earlier_neighbour_visible(),
+        observe_sibling_decision_branch_excluded(),
+        observe_later_declaration_excluded(),
+        observe_distinct_same_spelled_declarations_preserved(),
+        Rc::new(
+            ReferenceDerivedClosureAdmission::ReferenceDerivedClosureUnavailable {
+                capability: ReferenceDerivedClosureCapability::RepeatedMentionsCollapseDependency,
+                trigger: ReferenceDerivedClosureTrigger::P2aReferenceDependencyProjection7515,
+            },
+        ),
+        Rc::new(
+            ReferenceDerivedClosureAdmission::ReferenceDerivedClosureUnavailable {
+                capability: ReferenceDerivedClosureCapability::UnrelatedLoadedFileExcluded,
+                trigger: ReferenceDerivedClosureTrigger::P2aPoolIndependentDependencyProjection7515,
+            },
+        ),
+    ])) == 2)
 }
