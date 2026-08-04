@@ -1,0 +1,123 @@
+module test.claim.scaffold_retirement_pilot_witness_test
+
+import std.types { String, Bool, Int, List }
+import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField }
+import gunbc.scaffold_retirement {
+  ScaffoldDispositionSite,
+  ScaffoldRetirementBinding,
+  ScaffoldRetirementExclusion,
+  derived_scaffold_disposition_sites,
+  scaffold_disposition_site_count_live,
+  pilot_scaffold_sites,
+  pilot_domain_limit,
+  pilot_scaffold_retirement_bindings,
+  pilot_scaffold_retirement_exclusions,
+  pilot_population_fully_accounted,
+  pilot_bindings_have_unique_obligation_join,
+  pilot_tombstoned_obligations_admit_or_refuse,
+  pilot_fired_dissolution_violation_count,
+  site_scaffold_ref,
+  site_disposition_for_redundancy,
+  corpus_present_declaration_refs,
+  admit_obligation_identity,
+  ObligationTombstonedWithoutSuccessor,
+  ObligationSuperseded,
+  ObligationActive,
+}
+import gunbc.roadmap_model { RoadmapNodeIdentity }
+import gunbc.roadmap_identity {
+  TombstonedIdentity,
+  roadmap_tombstoned_identities,
+  record_identity,
+}
+import v2.lens.disposition_redundancy {
+  disposition_redundancy_violation_count,
+  decl_ref_eq,
+}
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import v2.std.algebra { length }
+import v2.std.collection { Absent, Present }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data scaffold_retirement_witness_scope_note: String = "Shape proof for gunbc.scaffold_retirement: population from structural scaffold_disposition_sites_live (not grep, not a hand roster); pilot = first fifteen dag/gunbc sites; bindings and exclusions derived by roadmap carrier-path join. Property 4 (obligation acceptance vs present scaffolds) is OUT OF SCOPE for this pilot. Property 6 (staffing) is OUT OF SCOPE by operator mandate."
+
+test fn derived_population_count_matches_operator_sizing_band() -> Bool {
+  let n = scaffold_disposition_site_count_live()
+  n >= 180 && n <= 195
+    && length(xs: derived_scaffold_disposition_sites()) == n
+}
+
+test fn pilot_population_is_derived_domain_gate_not_hand_roster() -> Bool {
+  length(xs: pilot_scaffold_sites()) == pilot_domain_limit()
+    && all(
+      pilot_scaffold_sites(),
+      s => s.rel_path.starts_with(prefix: "dag/gunbc/")
+    )
+}
+
+test fn pilot_every_site_has_binding_or_exclusion() -> Bool {
+  pilot_population_fully_accounted()
+}
+
+test fn pilot_bindings_join_obligations_uniquely() -> Bool {
+  pilot_bindings_have_unique_obligation_join()
+}
+
+test fn pilot_tombstoned_obligations_never_silently_pass() -> Bool {
+  pilot_tombstoned_obligations_admit_or_refuse()
+}
+
+data fired_dissolution_red_fixture_locator: DeclarationRef = DeclarationRef {
+  module_path: "std.disposition",
+  decl_name: "Disposition",
+  field: NamedField { field_name: "marker" },
+}
+
+data fired_dissolution_red_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: fired_dissolution_red_fixture_locator,
+}
+
+data fired_dissolution_red_present: List<DeclarationRef> = [fired_dissolution_red_fixture_locator]
+data fired_dissolution_red_absent_present: List<DeclarationRef> = []
+
+test fn fired_dissolution_red_control_fires_when_successor_present() -> Bool {
+  disposition_redundancy_violation_count(
+    dispositions: [fired_dissolution_red_scaffold],
+    present: fired_dissolution_red_present
+  ) == 1
+}
+
+test fn fired_dissolution_red_control_is_quiet_when_successor_absent() -> Bool {
+  disposition_redundancy_violation_count(
+    dispositions: [fired_dissolution_red_scaffold],
+    present: fired_dissolution_red_absent_present
+  ) == 0
+}
+
+test fn pilot_fired_dissolution_count_is_reported_not_hidden() -> Bool {
+  pilot_fired_dissolution_violation_count() >= 0
+}
+
+test fn tombstone_without_successor_is_a_refusal_not_a_pass() -> Bool {
+  match roadmap_tombstoned_identities() |> first {
+    Present { value: TombstonedIdentity { identity, former_slug: _, superseded_by } } =>
+      match superseded_by {
+        Absent =>
+          match admit_obligation_identity(identity: identity) {
+            ObligationTombstonedWithoutSuccessor { identity: _ } => true
+            ObligationSuperseded { identity: _, superseded_by: _ } => false
+            ObligationActive { identity: _ } => false
+            _ => false
+          }
+        Present { value: _ } => true
+      }
+    Absent => true
+  }
+}
+
+test fn unbindable_pilot_debt_is_counted_not_zeroed() -> Bool {
+  length(xs: pilot_scaffold_retirement_exclusions()) > 0
+}

@@ -3339,6 +3339,12 @@ macro_rules! v1_bridge_family_arms {
                 arm "v4_bridge.data_init_decl_facts_live" { "data_init_decl_facts_live" } =>
                     crate::coproduct_reflection::eval_data_init_decl_facts_live($ctx, &$args),
             }
+            family SCAFFOLD_RETIREMENT_BRIDGE_FNS "gunbc.scaffold_retirement" {
+                arm "v4_bridge.scaffold_disposition_sites_live" { "scaffold_disposition_sites_live" } =>
+                    crate::coproduct_reflection::eval_scaffold_disposition_sites_live($ctx, &$args),
+                arm "v4_bridge.scaffold_disposition_site_count_live" { "scaffold_disposition_site_count_live" } =>
+                    crate::coproduct_reflection::eval_scaffold_disposition_site_count_live($ctx, &$args),
+            }
             family INERT_LENS_BRIDGE_FNS "v2.lens.inert_lens" {
                 arm "v4_bridge.inert_lens_unreached_module_count" { "inert_lens_unreached_module_count" } =>
                     Ok(Value::Int(crate::cli_run::inert_lens_unreached_module_count())),

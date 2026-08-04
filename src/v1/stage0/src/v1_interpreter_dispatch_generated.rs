@@ -531,6 +531,8 @@ pub enum EvalCallBridgeArm {
     V4BridgeFnArrowDeclSubstrateIsWholeTree,
     V4BridgeCorpusDependencyViewPerPrSubstrateRefuse,
     V4BridgeDataInitDeclFactsLive,
+    V4BridgeScaffoldDispositionSiteCountLive,
+    V4BridgeScaffoldDispositionSitesLive,
     V4BridgeInertLensUnreachedModuleCount,
     V4BridgeInertLensTopLevelModuleCount,
 }
@@ -548,6 +550,8 @@ pub fn lookup_eval_call_bridge(spelling: &str) -> Option<EvalCallBridgeArm> {
         "fn_arrow_decl_substrate_is_whole_tree" => Some(EvalCallBridgeArm::V4BridgeFnArrowDeclSubstrateIsWholeTree),
         "corpus_dependency_view_per_pr_substrate_refuse" => Some(EvalCallBridgeArm::V4BridgeCorpusDependencyViewPerPrSubstrateRefuse),
         "data_init_decl_facts_live" => Some(EvalCallBridgeArm::V4BridgeDataInitDeclFactsLive),
+        "scaffold_disposition_site_count_live" => Some(EvalCallBridgeArm::V4BridgeScaffoldDispositionSiteCountLive),
+        "scaffold_disposition_sites_live" => Some(EvalCallBridgeArm::V4BridgeScaffoldDispositionSitesLive),
         "inert_lens_unreached_module_count" => Some(EvalCallBridgeArm::V4BridgeInertLensUnreachedModuleCount),
         "inert_lens_top_level_module_count" => Some(EvalCallBridgeArm::V4BridgeInertLensTopLevelModuleCount),
         _ => None,
@@ -566,6 +570,8 @@ macro_rules! eval_call_bridge_arm {
     ("v4_bridge.fn_arrow_decl_substrate_is_whole_tree") => { $crate::v1_interpreter_dispatch_generated::EvalCallBridgeArm::V4BridgeFnArrowDeclSubstrateIsWholeTree };
     ("v4_bridge.corpus_dependency_view_per_pr_substrate_refuse") => { $crate::v1_interpreter_dispatch_generated::EvalCallBridgeArm::V4BridgeCorpusDependencyViewPerPrSubstrateRefuse };
     ("v4_bridge.data_init_decl_facts_live") => { $crate::v1_interpreter_dispatch_generated::EvalCallBridgeArm::V4BridgeDataInitDeclFactsLive };
+    ("v4_bridge.scaffold_disposition_site_count_live") => { $crate::v1_interpreter_dispatch_generated::EvalCallBridgeArm::V4BridgeScaffoldDispositionSiteCountLive };
+    ("v4_bridge.scaffold_disposition_sites_live") => { $crate::v1_interpreter_dispatch_generated::EvalCallBridgeArm::V4BridgeScaffoldDispositionSitesLive };
     ("v4_bridge.inert_lens_unreached_module_count") => { $crate::v1_interpreter_dispatch_generated::EvalCallBridgeArm::V4BridgeInertLensUnreachedModuleCount };
     ("v4_bridge.inert_lens_top_level_module_count") => { $crate::v1_interpreter_dispatch_generated::EvalCallBridgeArm::V4BridgeInertLensTopLevelModuleCount };
 }

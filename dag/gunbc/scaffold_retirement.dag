@@ -1,0 +1,297 @@
+module gunbc.scaffold_retirement
+
+import std.types { String, Bool, Int, List }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.roadmap_model { RoadmapNode, RoadmapNodeIdentity }
+import gunbc.roadmap_authority { declared_roadmap_nodes }
+import gunbc.roadmap_identity {
+  RoadmapIdentityRecord,
+  ActiveIdentity,
+  TombstonedIdentity,
+  roadmap_identity_registry,
+  record_identity,
+}
+import gunbc.ci_layer_roots { witness_layer_roots }
+import v2.std.decl_index { DeclFact, decl_facts }
+import v2.std.algebra { length }
+import v2.std.collection { Absent, Present }
+import v2.lens.disposition_redundancy {
+  decl_ref_eq,
+  disposition_redundancy_violation_count,
+}
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+
+data scaffold_retirement_pilot_derivation_note: String = "POPULATION IS DERIVED, NEVER AUTHORED. scaffold_disposition_sites_live() is a structural Node-tree walk over witness_layer_roots (dag + src/v2): every data declaration whose type annotation names Disposition and whose initializer variant is Scaffold. Regex census is sizing input only; this builtin is the population authority. The pilot takes the first fifteen rows, lexicographically stable in the host walk, whose rel_path is under dag/gunbc/ — a derived domain gate, not a hand-picked roster. Obligation bindings are derived by identity join against declared_roadmap_nodes(); zero or plural matches become typed exclusions, never fabricated owners."
+
+type ScaffoldDispositionSite {
+  qualified_name: String
+  carrier_module: String
+  carrier_decl: String
+  rel_path: String
+  bind: DeclarationRef
+  dissolves_to: String
+}
+
+type ScaffoldRetirementBinding {
+  scaffold: DeclarationRef
+  obligation: RoadmapNodeIdentity
+}
+
+type ScaffoldRetirementExclusionReason
+  = NoHonestObligationOwner {
+      bind: DeclarationRef,
+      candidate_count: Int,
+    }
+  | AmbiguousObligationOwners {
+      bind: DeclarationRef,
+      candidate_count: Int,
+    }
+  | OutsidePilotDomain { rel_path: String }
+
+type ScaffoldRetirementExclusion {
+  scaffold: DeclarationRef
+  reason: ScaffoldRetirementExclusionReason
+}
+
+type ObligationIdentityAdmission
+  = ObligationActive { identity: RoadmapNodeIdentity }
+  | ObligationSuperseded { identity: RoadmapNodeIdentity, superseded_by: RoadmapNodeIdentity }
+  | ObligationTombstonedWithoutSuccessor { identity: RoadmapNodeIdentity }
+  | ObligationIdentityUnknown { identity: RoadmapNodeIdentity }
+  | ObligationIdentityAmbiguous { identity: RoadmapNodeIdentity, matches: Int }
+
+fn scaffold_disposition_sites_live() -> List<ScaffoldDispositionSite> {
+  scaffold_disposition_sites_live()
+}
+
+fn scaffold_disposition_site_count_live() -> Int {
+  scaffold_disposition_site_count_live()
+}
+
+fn derived_scaffold_disposition_sites() -> List<ScaffoldDispositionSite> {
+  scaffold_disposition_sites_live()
+}
+
+fn pilot_domain_limit() -> Int { 15 }
+
+fn site_scaffold_ref(site: ScaffoldDispositionSite) -> DeclarationRef {
+  DeclarationRef {
+    module_path: site.carrier_module,
+    decl_name: site.carrier_decl,
+    field: WholeDeclaration,
+  }
+}
+
+fn is_pilot_domain_site(site: ScaffoldDispositionSite) -> Bool {
+  site.rel_path.starts_with(prefix: "dag/gunbc/")
+}
+
+fn list_prefix_sites(
+  sites: List<ScaffoldDispositionSite>,
+  limit: Int
+) -> List<ScaffoldDispositionSite> {
+  fold(sites, init: [], f: fn(acc, site) {
+    if length(xs: acc) < limit {
+      append(acc, [site])
+    } else {
+      acc
+    }
+  })
+}
+
+fn pilot_scaffold_sites() -> List<ScaffoldDispositionSite> {
+  list_prefix_sites(
+    sites: derived_scaffold_disposition_sites() |> filter(s => is_pilot_domain_site(site: s)),
+    limit: pilot_domain_limit()
+  )
+}
+
+fn carrier_path_matches_obligation_hints(
+  carrier_path: String,
+  site: ScaffoldDispositionSite
+) -> Bool {
+  (carrier_path == site.rel_path)
+    || string_contains(s: carrier_path, pattern: site.bind.module_path)
+    || string_contains(s: carrier_path, pattern: site.bind.decl_name)
+    || string_contains(s: carrier_path, pattern: site.carrier_module)
+}
+
+fn obligation_candidates_for_site(site: ScaffoldDispositionSite) -> List<RoadmapNode> {
+  declared_roadmap_nodes()
+    |> filter(n => any(
+      xs: n.carriers,
+      predicate: fn(p) { carrier_path_matches_obligation_hints(carrier_path: p.path, site: site) }
+    ))
+}
+
+fn admit_obligation_identity(identity: RoadmapNodeIdentity) -> ObligationIdentityAdmission {
+  let id = identity as String
+  let hits = roadmap_identity_registry() |> filter(r => record_identity(r: r) == id)
+  if count(hits) == 0 {
+    ObligationIdentityUnknown { identity: identity }
+  } else if count(hits) > 1 {
+    ObligationIdentityAmbiguous { identity: identity, matches: count(hits) }
+  } else {
+    match hits |> first {
+      Present { value: ActiveIdentity { identity: active_id, slug: _ } } =>
+        ObligationActive { identity: active_id },
+      Present { value: TombstonedIdentity { identity: tomb_id, former_slug: _, superseded_by } } =>
+        match superseded_by {
+          Present { value: succ } => ObligationSuperseded { identity: tomb_id, superseded_by: succ },
+          Absent => ObligationTombstonedWithoutSuccessor { identity: tomb_id },
+        },
+      Absent => ObligationIdentityUnknown { identity: identity },
+    }
+  }
+}
+
+fn derived_binding_for_site(site: ScaffoldDispositionSite) -> List<ScaffoldRetirementBinding> {
+  let candidates = obligation_candidates_for_site(site: site)
+  if count(candidates) == 1 {
+    match candidates |> first {
+      Present { value: node } =>
+        [ScaffoldRetirementBinding {
+          scaffold: site_scaffold_ref(site: site),
+          obligation: node.identity,
+        }]
+      Absent => []
+    }
+  } else {
+    []
+  }
+}
+
+fn derived_exclusion_for_site(site: ScaffoldDispositionSite) -> List<ScaffoldRetirementExclusion> {
+  if !is_pilot_domain_site(site: site) {
+    [ScaffoldRetirementExclusion {
+      scaffold: site_scaffold_ref(site: site),
+      reason: OutsidePilotDomain { rel_path: site.rel_path },
+    }]
+  } else {
+    let candidates = obligation_candidates_for_site(site: site)
+    if count(candidates) == 0 {
+      [ScaffoldRetirementExclusion {
+        scaffold: site_scaffold_ref(site: site),
+        reason: NoHonestObligationOwner {
+          bind: site.bind,
+          candidate_count: 0,
+        },
+      }]
+    } else if count(candidates) > 1 {
+      [ScaffoldRetirementExclusion {
+        scaffold: site_scaffold_ref(site: site),
+        reason: AmbiguousObligationOwners {
+          bind: site.bind,
+          candidate_count: count(candidates),
+        },
+      }]
+    } else {
+      []
+    }
+  }
+}
+
+fn pilot_scaffold_retirement_bindings() -> List<ScaffoldRetirementBinding> {
+  fold(
+    xs: pilot_scaffold_sites(),
+    init: [],
+    f: fn(acc, site) { concat(acc, derived_binding_for_site(site: site)) }
+  )
+}
+
+fn pilot_scaffold_retirement_exclusions() -> List<ScaffoldRetirementExclusion> {
+  fold(
+    xs: pilot_scaffold_sites(),
+    init: [],
+    f: fn(acc, site) { concat(acc, derived_exclusion_for_site(site: site)) }
+  )
+}
+
+fn decl_fact_carrier_module(fact: DeclFact) -> String {
+  let suffix = concat(".", fact.name)
+  if fact.qualified_name.ends_with(suffix: suffix) {
+    fact.qualified_name.substring(
+      start: 0,
+      end: fact.qualified_name.length() - suffix.length()
+    )
+  } else {
+    fact.qualified_name
+  }
+}
+
+fn decl_fact_whole_declaration_ref(fact: DeclFact) -> DeclarationRef {
+  DeclarationRef {
+    module_path: decl_fact_carrier_module(fact: fact),
+    decl_name: fact.name,
+    field: WholeDeclaration,
+  }
+}
+
+fn corpus_present_declaration_refs() -> List<DeclarationRef> {
+  decl_facts(pool_roots: witness_layer_roots)
+    |> map(f => decl_fact_whole_declaration_ref(fact: f))
+}
+
+fn site_disposition_for_redundancy(site: ScaffoldDispositionSite) -> Disposition {
+  Scaffold {
+    dissolves_to: SingleAuthority,
+    bind: site.bind,
+  }
+}
+
+fn pilot_fired_dissolution_violation_count() -> Int {
+  let dispositions = pilot_scaffold_sites() |> map(s => site_disposition_for_redundancy(site: s))
+  disposition_redundancy_violation_count(
+    dispositions: dispositions,
+    present: corpus_present_declaration_refs()
+  )
+}
+
+fn roadmap_nodes_for_identity(identity: RoadmapNodeIdentity) -> List<RoadmapNode> {
+  declared_roadmap_nodes() |> filter(n => (n.identity as String) == (identity as String))
+}
+
+fn binding_obligation_join_is_unique(binding: ScaffoldRetirementBinding) -> Bool {
+  count(roadmap_nodes_for_identity(identity: binding.obligation)) == 1
+}
+
+fn pilot_bindings_have_unique_obligation_join() -> Bool {
+  all(
+    pilot_scaffold_retirement_bindings(),
+    b => binding_obligation_join_is_unique(binding: b)
+  )
+}
+
+fn pilot_site_has_binding_or_exclusion(site: ScaffoldDispositionSite) -> Bool {
+  let scaffold = site_scaffold_ref(site: site)
+  let bound = any(
+    pilot_scaffold_retirement_bindings(),
+    b => decl_ref_eq(a: b.scaffold, b: scaffold)
+  )
+  let excluded = any(
+    pilot_scaffold_retirement_exclusions(),
+    e => decl_ref_eq(a: e.scaffold, b: scaffold)
+  )
+  (bound && !excluded) || (!bound && excluded)
+}
+
+fn pilot_population_fully_accounted() -> Bool {
+  all(pilot_scaffold_sites(), s => pilot_site_has_binding_or_exclusion(site: s))
+}
+
+fn tombstoned_binding_refuses_without_successor(binding: ScaffoldRetirementBinding) -> Bool {
+  match admit_obligation_identity(identity: binding.obligation) {
+    ObligationTombstonedWithoutSuccessor { identity: _ } => false
+    ObligationSuperseded { identity: _, superseded_by: _ } => true
+    ObligationActive { identity: _ } => true
+    ObligationIdentityUnknown { identity: _ } => false
+    ObligationIdentityAmbiguous { identity: _, matches: _ } => false
+  }
+}
+
+fn pilot_tombstoned_obligations_admit_or_refuse() -> Bool {
+  all(
+    pilot_scaffold_retirement_bindings(),
+    b => tombstoned_binding_refuses_without_successor(binding: b)
+  )
+}

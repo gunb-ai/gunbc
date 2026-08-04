@@ -13,8 +13,9 @@ use crate::v1_interpreter::{
     fields_get, sorted_fields, InterpContext, InterpError, InterpResult, Value,
 };
 use crate::v1_std_core::{
-    authored_name_at, expr_var_name_at, field_node_type_expr, inferred_to_node, param_node_name_at,
-    param_node_type_expr, source_text_at, Connective, ExprData, NewlineIndex, Node, VarBindingKind,
+    authored_name_at, expr_var_name_at, field_node_type_expr, find_child_named, inferred_to_node,
+    param_node_name_at, param_node_type_expr, source_text_at, Connective, ExprData, NewlineIndex,
+    Node, VarBindingKind,
 };
 
 type SourceIndices = Rc<HashMap<String, Rc<NewlineIndex>>>;
@@ -1453,5 +1454,321 @@ fn outcome_rejected_value(ctx: &InterpContext, reason: &str) -> Value {
                 fields: Rc::new(vec![(ctx.sym("reason"), Value::Str(reason.to_string()))]),
             }]),
         )]),
+    }
+}
+
+/// One `data <name>: Disposition = Scaffold { .. }` site discovered by structural parse.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct ScaffoldDispositionSiteRaw {
+    pub qualified_name: String,
+    pub carrier_module: String,
+    pub carrier_decl: String,
+    pub rel_path: String,
+    pub bind_module_path: String,
+    pub bind_decl_name: String,
+    pub bind_field: String,
+    pub dissolves_to: String,
+}
+
+fn type_annotation_is_named(ty: &Rc<Node>, target: &str, si: &SourceIndices) -> bool {
+    if ty.name == target || authored_name_at(si.clone(), ty.clone()) == target {
+        return true;
+    }
+    ty.children
+        .iter()
+        .any(|c| type_annotation_is_named(c, target, si))
+        || ty
+            .params
+            .iter()
+            .any(|c| type_annotation_is_named(c, target, si))
+}
+
+fn extract_string_literal_field(
+    node: &Rc<Node>,
+    field: &str,
+    si: &SourceIndices,
+) -> Option<String> {
+    let child = find_child_named(node.clone(), field.to_string(), si.clone())?;
+    let value_node = variant_or_field_value_node(&child);
+    match value_node.expr_data.as_ref() {
+        ExprData::ExprLiteral { value, .. } => match value.as_ref() {
+            crate::std_syntax::LiteralValue::LitStr { value: s, .. } => Some(s.clone()),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+fn extract_decl_field_label(node: &Rc<Node>, si: &SourceIndices) -> Option<String> {
+    let field_init = find_child_named(node.clone(), "field".to_string(), si.clone())?;
+    let value_node = variant_or_field_value_node(&field_init);
+    let name = node_authored_name(&value_node, si);
+    if name == "WholeDeclaration" {
+        return Some("WholeDeclaration".to_string());
+    }
+    if name == "NamedField" {
+        return extract_string_literal_field(&value_node, "field_name", si)
+            .map(|f| format!("NamedField:{f}"));
+    }
+    None
+}
+
+fn extract_declaration_ref_fields(
+    node: &Rc<Node>,
+    si: &SourceIndices,
+) -> Option<(String, String, String)> {
+    let module_path = extract_string_literal_field(node, "module_path", si)?;
+    let decl_name = extract_string_literal_field(node, "decl_name", si)?;
+    let field = extract_decl_field_label(node, si)?;
+    Some((module_path, decl_name, field))
+}
+
+fn module_from_qualified(qualified: &str, decl_name: &str) -> String {
+    qualified
+        .strip_suffix(&format!(".{decl_name}"))
+        .unwrap_or(qualified)
+        .to_string()
+}
+
+fn variant_or_field_value_node(node: &Rc<Node>) -> Rc<Node> {
+    if node.children.len() == 1 {
+        node.children
+            .first()
+            .cloned()
+            .unwrap_or_else(|| node.clone())
+    } else {
+        node.clone()
+    }
+}
+
+fn extract_scaffold_disposition_site(fact: &DeclFactRaw) -> Option<ScaffoldDispositionSiteRaw> {
+    if fact.kind != ItemKind::DataItem {
+        return None;
+    }
+    let ty = fact.node.type_annotation.as_ref()?;
+    if !type_annotation_is_named(ty, "Disposition", &fact.source_indices) {
+        return None;
+    }
+    let body = fact.node.body.as_ref()?;
+    if node_authored_name(body, &fact.source_indices) != "Scaffold" {
+        return None;
+    }
+    let dissolves_to_node = find_child_named(
+        body.clone(),
+        "dissolves_to".to_string(),
+        fact.source_indices.clone(),
+    )?;
+    let dissolves_to_value = variant_or_field_value_node(&dissolves_to_node);
+    let dissolves_to = node_authored_name(&dissolves_to_value, &fact.source_indices);
+    let bind_field_init = find_child_named(
+        body.clone(),
+        "bind".to_string(),
+        fact.source_indices.clone(),
+    )?;
+    let bind_node = variant_or_field_value_node(&bind_field_init);
+    let (bind_module_path, bind_decl_name, bind_field) =
+        extract_declaration_ref_fields(&bind_node, &fact.source_indices)?;
+    Some(ScaffoldDispositionSiteRaw {
+        qualified_name: fact.qualified_name.clone(),
+        carrier_module: module_from_qualified(&fact.qualified_name, &fact.name),
+        carrier_decl: fact.name.clone(),
+        rel_path: fact.rel_path.clone(),
+        bind_module_path,
+        bind_decl_name,
+        bind_field,
+        dissolves_to,
+    })
+}
+
+/// Structural walk over `witness_layer_roots` for `Disposition = Scaffold` data declarations.
+pub fn scaffold_disposition_sites_for_roots(
+    pool_roots: &[String],
+) -> Vec<ScaffoldDispositionSiteRaw> {
+    let mut out = Vec::new();
+    for fact in decl_facts_for_roots(pool_roots) {
+        if let Some(site) = extract_scaffold_disposition_site(&fact) {
+            out.push(site);
+        }
+    }
+    out.sort();
+    out.dedup();
+    out
+}
+
+fn marshal_decl_field_value(ctx: &InterpContext, field: &str) -> InterpResult<Value> {
+    if field == "WholeDeclaration" {
+        return Ok(Value::Variant {
+            type_name: ctx.sym("DeclField"),
+            variant_name: ctx.sym("WholeDeclaration"),
+            fields: Rc::new(vec![]),
+        });
+    }
+    if let Some(name) = field.strip_prefix("NamedField:") {
+        return Ok(Value::Variant {
+            type_name: ctx.sym("DeclField"),
+            variant_name: ctx.sym("NamedField"),
+            fields: Rc::new(vec![(ctx.sym("field_name"), Value::Str(name.to_string()))]),
+        });
+    }
+    Err(InterpError::TypeError {
+        msg: format!("scaffold_disposition_sites: unknown DeclField encoding `{field}`"),
+    })
+}
+
+fn marshal_scaffold_disposition_site(
+    ctx: &InterpContext,
+    site: &ScaffoldDispositionSiteRaw,
+) -> InterpResult<Value> {
+    let bind = Value::Record {
+        type_name: ctx.sym("DeclarationRef"),
+        fields: Rc::new(sorted_fields(vec![
+            (
+                ctx.sym("module_path"),
+                Value::Str(site.bind_module_path.clone()),
+            ),
+            (
+                ctx.sym("decl_name"),
+                Value::Str(site.bind_decl_name.clone()),
+            ),
+            (
+                ctx.sym("field"),
+                marshal_decl_field_value(ctx, &site.bind_field)?,
+            ),
+        ])),
+    };
+    Ok(Value::Record {
+        type_name: ctx.sym("ScaffoldDispositionSite"),
+        fields: Rc::new(sorted_fields(vec![
+            (
+                ctx.sym("qualified_name"),
+                Value::Str(site.qualified_name.clone()),
+            ),
+            (
+                ctx.sym("carrier_module"),
+                Value::Str(site.carrier_module.clone()),
+            ),
+            (
+                ctx.sym("carrier_decl"),
+                Value::Str(site.carrier_decl.clone()),
+            ),
+            (ctx.sym("rel_path"), Value::Str(site.rel_path.clone())),
+            (ctx.sym("bind"), bind),
+            (
+                ctx.sym("dissolves_to"),
+                Value::Str(site.dissolves_to.clone()),
+            ),
+        ])),
+    })
+}
+
+pub fn eval_scaffold_disposition_sites_live(
+    ctx: &InterpContext,
+    _args: &[(Option<String>, Value)],
+) -> InterpResult<Value> {
+    let roots = crate::cli_run::witness_layer_roots();
+    let sites = scaffold_disposition_sites_for_roots(&roots);
+    let mut rows = Vec::with_capacity(sites.len());
+    for site in sites {
+        rows.push(marshal_scaffold_disposition_site(ctx, &site)?);
+    }
+    Ok(crate::v1_interpreter::list_value(rows))
+}
+
+pub fn eval_scaffold_disposition_site_count_live(
+    ctx: &InterpContext,
+    _args: &[(Option<String>, Value)],
+) -> InterpResult<Value> {
+    let roots = crate::cli_run::witness_layer_roots();
+    let count = scaffold_disposition_sites_for_roots(&roots).len() as i64;
+    Ok(Value::Int(count))
+}
+
+#[cfg(test)]
+mod scaffold_disposition_corpus_tests {
+    use super::*;
+
+    #[test]
+    fn scaffold_disposition_site_count_matches_operator_sizing_band() {
+        let roots = crate::cli_run::witness_layer_roots();
+        let sites = scaffold_disposition_sites_for_roots(&roots);
+        assert!(
+            sites.len() >= 180 && sites.len() <= 195,
+            "expected ~186 scaffold disposition sites on witness_layer_roots, got {}",
+            sites.len()
+        );
+    }
+
+    #[test]
+    fn scaffold_disposition_sites_exclude_unrelated_scaffold_types() {
+        let roots = crate::cli_run::witness_layer_roots();
+        let sites = scaffold_disposition_sites_for_roots(&roots);
+        assert!(
+            sites.iter().all(|s| !s
+                .carrier_decl
+                .contains("TargetBodiedArrowStatementScaffold")),
+            "structural filter must not absorb unrelated *Scaffold types"
+        );
+    }
+
+    #[test]
+    fn debug_scaffold_extraction_shape_on_bytes_marker() {
+        let roots = vec!["dag".to_string()];
+        let facts: Vec<_> = decl_facts_for_roots(&roots)
+            .into_iter()
+            .filter(|f| f.name == "bytes_seam_host_realization_marker")
+            .collect();
+        assert_eq!(
+            facts.len(),
+            1,
+            "expected exactly one bytes seam marker fact"
+        );
+        let fact = &facts[0];
+        assert_eq!(fact.kind, ItemKind::DataItem);
+        let ty = fact
+            .node
+            .type_annotation
+            .as_ref()
+            .expect("data item must carry type annotation");
+        assert!(
+            type_annotation_is_named(ty, "Disposition", &fact.source_indices),
+            "type annotation must name Disposition"
+        );
+        let body = fact.node.body.as_ref().expect("data item must carry body");
+        assert_eq!(
+            node_authored_name(body, &fact.source_indices),
+            "Scaffold",
+            "initializer variant must be Scaffold"
+        );
+        let dissolves_to_node = find_child_named(
+            body.clone(),
+            "dissolves_to".to_string(),
+            fact.source_indices.clone(),
+        )
+        .expect("Scaffold must carry dissolves_to field");
+        let bind_field_init = find_child_named(
+            body.clone(),
+            "bind".to_string(),
+            fact.source_indices.clone(),
+        )
+        .expect("Scaffold must carry bind field");
+        let bind_node = variant_or_field_value_node(&bind_field_init);
+        assert_eq!(
+            node_authored_name(&bind_node, &fact.source_indices),
+            "DeclarationRef"
+        );
+        let module_path =
+            extract_string_literal_field(&bind_node, "module_path", &fact.source_indices)
+                .expect("module_path literal");
+        let decl_name = extract_string_literal_field(&bind_node, "decl_name", &fact.source_indices)
+            .expect("decl_name literal");
+        let field =
+            extract_decl_field_label(&bind_node, &fact.source_indices).expect("field label");
+        assert_eq!(module_path, "std.bytes");
+        assert_eq!(decl_name, "builtin_function_registry");
+        assert_eq!(field, "WholeDeclaration");
+        assert!(
+            extract_scaffold_disposition_site(fact).is_some(),
+            "extract_scaffold_disposition_site must succeed on a known specimen"
+        );
     }
 }
