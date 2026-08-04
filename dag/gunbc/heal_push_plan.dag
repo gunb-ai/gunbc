@@ -5,7 +5,6 @@ import extdeps.github.app { GitHubAppPermissionName }
 import extdeps.github.effect {
   GitHubEffect,
   AdvanceRepositoryBranch,
-  GitHubRepositoryRef,
   GitBranchRef,
   RepositoryPath,
   is_workflow_projection_path
@@ -34,18 +33,13 @@ data heal_push_plan_authority_note: String = "WHETHER A GENERATED ARTIFACT CAN B
 
 data heal_branch_placeholder: GitBranchRef = GitBranchRef { name: "refs/heads/attempt" }
 
-data heal_repository: GitHubRepositoryRef = GitHubRepositoryRef {
-  owner: gunbc_repository.owner,
-  name: gunbc_repository.name
-}
-
 fn artifact_repository_path(a: GeneratedArtifact) -> RepositoryPath {
   RepositoryPath { value: artifact_path(a: a) }
 }
 
 fn advance_branch_effect(paths: List<RepositoryPath>) -> GitHubEffect {
   AdvanceRepositoryBranch {
-    repository: heal_repository,
+    repository: gunbc_repository,
     branch: heal_branch_placeholder,
     changed_paths: paths
   }

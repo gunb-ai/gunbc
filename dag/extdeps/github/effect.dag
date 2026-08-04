@@ -1,10 +1,11 @@
 module extdeps.github.effect
 
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, CommitSha }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.github.app { GitHubAppPermission, GitHubAppPermissionName, AppAccessRead, AppAccessWrite }
+import extdeps.github.github { Repository }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -38,12 +39,9 @@ data metadata_baseline_note: String = "metadata:read IS NOT AN EFFECT REQUIREMEN
 
 data effect_to_permission_derivation_note: String = "PERMISSIONS ARE DERIVED FROM THE EFFECT, NOT AUTHORED BESIDE IT. A consumer row carrying a free-text purpose and a hand-written permission list is two restatements of one fact, and the second one drifts: the runner consumer in the first cut of gunbc.auth.github_apps read 'register ephemeral self-hosted runners on a fleet host' while asserting repository `administration: write`, when organization-level runner registration takes the ORGANIZATION permission `organization_self_hosted_runners: write`. The prose and the list disagreed and nothing could tell, because neither was derived from the other.\n\nHere the effect is the single authored fact and the permission set is a projection of it. The projection is where GitHub's rules live — including the one this repository needs: advancing a branch costs `contents: write`, and costs `workflows: write` IN ADDITION exactly when the advanced tree touches .github/workflows/**. A second SCM provider supplies its own projection over the same effect vocabulary; the effect rows do not move."
 
-type RepositoryPath { value: NonEmptyStr }
+data reused_identity_types_note: String = "IDENTITY TYPES ARE REUSED, NOT RE-COINED. An earlier draft of this module minted GitHubRepositoryRef \{owner, name} and CommitSha \{value} beside extdeps.github.github Repository and std.types CommitSha — two nicknames for concepts that already had single authorities, and the CommitSha one collided outright, breaking extdeps.git.git's resolution. The repository target is Repository; a commit subject is std.types CommitSha. Only GitBranchRef and GitHubWorkflowRef are declared here, because neither names an entity an existing authority owns: extdeps.git.object_store's GitRefName brands a full ref string and GitRefRecord binds a ref to an object, while what an effect target needs is just which branch is being advanced."
 
-type GitHubRepositoryRef {
-  owner: NonEmptyStr
-  name: NonEmptyStr
-}
+type RepositoryPath { value: NonEmptyStr }
 
 type GitHubOrganizationRef { login: NonEmptyStr }
 
@@ -51,16 +49,14 @@ type GitBranchRef { name: NonEmptyStr }
 
 type GitHubWorkflowRef { file_name: NonEmptyStr }
 
-type CommitSha { value: NonEmptyStr }
-
 type GitHubEffect
   = AdvanceRepositoryBranch {
-      repository: GitHubRepositoryRef
+      repository: Repository
       branch: GitBranchRef
       changed_paths: List<RepositoryPath>
     }
   | DispatchWorkflow {
-      repository: GitHubRepositoryRef
+      repository: Repository
       workflow: GitHubWorkflowRef
       subject: CommitSha
     }

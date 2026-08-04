@@ -108,6 +108,35 @@ type ObservedInstallation
   = InstallationReadback { installation: GitHubAppInstallation }
   | InstallationReadbackUnavailable
 
+type ObservedAppRegistration
+  = AppRegistrationReadback { requested_permissions: List<GitHubAppPermission> }
+  | AppRegistrationReadbackUnavailable
+
+data two_transitions_note: String = "GITHUB EXPOSES TWO CONTROL-PLANE TRANSITIONS AND THEY ARE NOT INTERCHANGEABLE. Expanding a GitHub App's permissions is a change to the APP REGISTRATION, made on the app's settings page; every installed account must then separately ACCEPT the updated permissions before they take effect. Modelling these as one state would leave the operator unable to tell which of the two actions is owed, and would make an accepted-but-never-requested permission indistinguishable from a requested-but-never-accepted one.\\n\\nSo AppRegistrationPermissionMissing carries a change request against the registration and names the settings locator, while InstallationPermissionApprovalPending carries an approval request against a specific installation. When the registration already requests the permission and only acceptance is pending, the operator's work collapses to the single approval — which is the one-action case, not the general one."
+
+fn registration_missing_permissions(
+  requested: List<GitHubAppPermission>,
+  required: List<GitHubAppPermission>
+) -> List<GitHubAppPermission> {
+  filter(required, r => match permission_access_in(perms: requested, name: r.name) {
+    Absent => true
+    Present { value: held } => !permission_access_at_least(held: held, requested: r.access)
+  })
+}
+
+fn app_registration_change_request(
+  app: DeclaredGitHubApp,
+  missing: List<GitHubAppPermission>,
+  reason: NonEmptyStr
+) -> GitHubAppPermissionChangeRequest {
+  GitHubAppPermissionChangeRequest {
+    app: app,
+    add: missing,
+    settings_locator: app_settings_permissions_locator(app: app),
+    reason: reason
+  }
+}
+
 fn installation_holds(installation: GitHubAppInstallation, required: GitHubAppPermission) -> Bool {
   match permission_access_in(perms: installation.permissions, name: required.name) {
     Absent => false
@@ -125,6 +154,7 @@ fn installation_missing_permissions(
 fn app_control_plane_state(
   app: DeclaredGitHubApp,
   custody: SignerCustody,
+  registration: ObservedAppRegistration,
   observed: ObservedInstallation,
   required: List<GitHubAppPermission>,
   reason: NonEmptyStr
@@ -133,19 +163,34 @@ fn app_control_plane_state(
     SignerCustodyAbsent { reason: custody_reason } =>
       SignerCustodyMissing { app: app, reason: custody_reason }
     SignerCustodyDeclared { pem: _, fingerprint: _ } =>
-      match observed {
-        InstallationReadbackUnavailable => AppRegistrationUnobserved { app: app }
-        InstallationReadback { installation } => {
-          let missing = installation_missing_permissions(installation: installation, required: required)
-          if count(missing) == 0 {
-            InstallationGrantObserved { installation: installation }
+      match registration {
+        AppRegistrationReadbackUnavailable => AppRegistrationUnobserved { app: app }
+        AppRegistrationReadback { requested_permissions } => {
+          let registration_gap = registration_missing_permissions(
+            requested: requested_permissions,
+            required: required
+          )
+          if count(registration_gap) > 0 {
+            AppRegistrationPermissionMissing {
+              request: app_registration_change_request(app: app, missing: registration_gap, reason: reason)
+            }
           } else {
-            InstallationPermissionApprovalPending {
-              request: GitHubInstallationApprovalRequest {
-                app: app,
-                installation: installation.installation_id,
-                accept: missing,
-                reason: reason
+            match observed {
+              InstallationReadbackUnavailable => AppRegistrationUnobserved { app: app }
+              InstallationReadback { installation } => {
+                let missing = installation_missing_permissions(installation: installation, required: required)
+                if count(missing) == 0 {
+                  InstallationGrantObserved { installation: installation }
+                } else {
+                  InstallationPermissionApprovalPending {
+                    request: GitHubInstallationApprovalRequest {
+                      app: app,
+                      installation: installation.installation_id,
+                      accept: missing,
+                      reason: reason
+                    }
+                  }
+                }
               }
             }
           }

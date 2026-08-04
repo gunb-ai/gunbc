@@ -13,13 +13,13 @@ fn perm(name: NonEmptyStr, access: GitHubAppPermissionAccess) -> GitHubAppPermis
 }
 
 data workflow_advance_effect: GitHubEffect = AdvanceRepositoryBranch {
-  repository: GitHubRepositoryRef { owner: "gunb-ai", name: "gunbc" },
+  repository: gunbc_repository,
   branch: GitBranchRef { name: "refs/heads/attempt" },
   changed_paths: [RepositoryPath { value: ".github/workflows/ci.yml" }]
 }
 
 data ordinary_advance_effect: GitHubEffect = AdvanceRepositoryBranch {
-  repository: GitHubRepositoryRef { owner: "gunb-ai", name: "gunbc" },
+  repository: gunbc_repository,
   branch: GitBranchRef { name: "refs/heads/attempt" },
   changed_paths: [RepositoryPath { value: "DESIGN.md" }]
 }
@@ -55,6 +55,7 @@ fn observed_grant(perms: List<GitHubAppPermission>) -> GitHubAppControlPlaneStat
   app_control_plane_state(
     app: gunbai_bot_declared,
     custody: live_signer,
+    registration: AppRegistrationReadback { requested_permissions: full_workflow_grant },
     observed: InstallationReadback { installation: installation_holding(perms: perms) },
     required: full_workflow_grant,
     reason: "heal branch advance over .github/workflows/**"
@@ -140,6 +141,7 @@ test fn witness_signer_custody_missing_precedes_every_readback() -> Bool {
   match app_control_plane_state(
     app: gunbai_bot_declared,
     custody: gunbai_bot_signer_custody,
+    registration: AppRegistrationReadback { requested_permissions: full_workflow_grant },
     observed: InstallationReadback { installation: installation_holding(perms: full_workflow_grant) },
     required: full_workflow_grant,
     reason: "heal branch advance"
@@ -156,6 +158,7 @@ test fn witness_unobserved_readback_never_authorizes() -> Bool {
   let unobserved = app_control_plane_state(
     app: gunbai_bot_declared,
     custody: live_signer,
+    registration: AppRegistrationReadback { requested_permissions: full_workflow_grant },
     observed: InstallationReadbackUnavailable,
     required: full_workflow_grant,
     reason: "heal branch advance"
@@ -269,4 +272,41 @@ test fn witness_narrowing_may_only_narrow() -> Bool {
     narrowing: SelectedPermissions { permissions: [perm(name: "actions", access: AppAccessRead)] },
     installation: inst
   ) && permission_narrowing_is_within(narrowing: PermissionNarrowingOmitted, installation: inst)
+}
+
+test fn witness_registration_gap_precedes_installation_approval() -> Bool {
+  match app_control_plane_state(
+    app: gunbai_bot_declared,
+    custody: live_signer,
+    registration: AppRegistrationReadback { requested_permissions: [metadata_read_perm, contents_write_perm] },
+    observed: InstallationReadback { installation: installation_holding(perms: full_workflow_grant) },
+    required: full_workflow_grant,
+    reason: "heal branch advance over .github/workflows/**"
+  ) {
+    AppRegistrationPermissionMissing { request } =>
+      count(request.add) == 1
+        && request.settings_locator.locator == "github.com/organizations/gunb-ai/settings/apps/gunbai/permissions"
+        && fold_list(xs: request.add, empty: false, cons: fn(_a, p) { p.name.wire_name == "workflows" })
+    InstallationPermissionApprovalPending { request: _ } => false
+    InstallationGrantObserved { installation: _ } => false
+    SignerCustodyMissing { app: _, reason: _ } => false
+    AppRegistrationUnobserved { app: _ } => false
+  }
+}
+
+test fn witness_registration_unobserved_is_not_a_gap() -> Bool {
+  match app_control_plane_state(
+    app: gunbai_bot_declared,
+    custody: live_signer,
+    registration: AppRegistrationReadbackUnavailable,
+    observed: InstallationReadback { installation: installation_holding(perms: full_workflow_grant) },
+    required: full_workflow_grant,
+    reason: "heal branch advance"
+  ) {
+    AppRegistrationUnobserved { app } => app.app_id.value == 3909950
+    AppRegistrationPermissionMissing { request: _ } => false
+    InstallationPermissionApprovalPending { request: _ } => false
+    InstallationGrantObserved { installation: _ } => false
+    SignerCustodyMissing { app: _, reason: _ } => false
+  }
 }
