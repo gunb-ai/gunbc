@@ -1,6 +1,6 @@
 module gunbc.bach_double_slit_observation
 
-import std.types { Bool, List }
+import std.types { Bool, Int, List }
 import std.integer { NonNegativeInt }
 import extdeps.physics.bach_et_al_2013_double_slit {
   BachEtAl2013DoubleSlitExperiment,
@@ -9,7 +9,6 @@ import extdeps.physics.bach_et_al_2013_double_slit {
   bach_distribution_observations,
   BachBuildupObservationRow,
   bach_buildup_observations,
-  bach_et_al_2013_raw_count_observations,
   PatternStatus,
   PatternNotYetDiscernible,
   PatternDiscernible,
@@ -23,15 +22,11 @@ data bach_observation_layer_note: String = "Observing-layer receipts for Bach et
 
 data which_path_coverage_obligation_note: String = "Which-path distinguishability evidence is absent from cited Bach et al. 2013; obligation recorded here per DESIGN section 3."
 
-type BachObservationCapability
-  = RawMatchedExposureCountRowsPresent
-  | WhichPathAuthorityCited
-
-type BachRawCountPathAdditivityRefusalCause
-  = BachRawCountObservationRowsAbsent {}
-
 type BachWhichPathEvidenceRefusalCause
   = BachWhichPathAuthorityAbsent {}
+
+type BachRawCountPathAdditivityRefusalCause
+  = BachRawCountTripletCoverageAbsent {}
 
 type BachRawCountPathAdditivityReadiness
   = BachRawCountPathAdditivityNotEvaluable { cause: BachRawCountPathAdditivityRefusalCause }
@@ -41,106 +36,156 @@ type BachWhichPathEvidenceReadiness
   = BachWhichPathEvidenceUncited { cause: BachWhichPathEvidenceRefusalCause }
   | BachWhichPathEvidenceCited {}
 
-fn bach_observation_capabilities_from_extdeps() -> List<BachObservationCapability> {
-  if (bach_et_al_2013_raw_count_observations |> count) > 0 {
-    [RawMatchedExposureCountRowsPresent]
-  } else {
-    []
-  }
-}
-
-fn bach_quantitative_evidence_readiness(
-  capabilities: List<BachObservationCapability>,
-) -> BachRawCountPathAdditivityReadiness {
-  let has_raw_rows = capabilities |> any(c =>
-    match c {
-      RawMatchedExposureCountRowsPresent => true
-      WhichPathAuthorityCited => false
-    },
-  )
-  if has_raw_rows {
-    BachRawCountPathAdditivityReady {}
-  } else {
-    BachRawCountPathAdditivityNotEvaluable {
-      cause: BachRawCountObservationRowsAbsent {},
-    }
-  }
-}
-
 fn bach_quantitative_path_additivity_readiness_derived() -> BachRawCountPathAdditivityReadiness {
-  bach_quantitative_evidence_readiness(
-    capabilities: bach_observation_capabilities_from_extdeps(),
-  )
-}
-
-fn bach_which_path_evidence_readiness(
-  capabilities: List<BachObservationCapability>,
-) -> BachWhichPathEvidenceReadiness {
-  let cited = capabilities |> any(c =>
-    match c {
-      WhichPathAuthorityCited => true
-      RawMatchedExposureCountRowsPresent => false
-    },
-  )
-  if cited {
-    BachWhichPathEvidenceCited {}
-  } else {
-    BachWhichPathEvidenceUncited {
-      cause: BachWhichPathAuthorityAbsent {},
-    }
+  BachRawCountPathAdditivityNotEvaluable {
+    cause: BachRawCountTripletCoverageAbsent {},
   }
 }
 
 fn bach_which_path_evidence_readiness_derived() -> BachWhichPathEvidenceReadiness {
-  bach_which_path_evidence_readiness(
-    capabilities: bach_observation_capabilities_from_extdeps(),
-  )
+  BachWhichPathEvidenceUncited {
+    cause: BachWhichPathAuthorityAbsent {},
+  }
+}
+
+fn bach_distribution_observations_complete_for(
+  observations: List<BachDistributionObservation>,
+) -> Bool {
+  (observations |> count) == 3
+    && observations |> any(o => o == SlitOneSingleSlitDiffractionObserved)
+    && observations |> any(o => o == SlitTwoSingleSlitDiffractionObserved)
+    && observations |> any(o => o == BothSlitsDoubleSlitDiffractionObserved)
 }
 
 fn bach_distribution_observations_complete() -> Bool {
-  (bach_distribution_observations |> count) == 3
-    && bach_distribution_observations |> any(o => o == SlitOneSingleSlitDiffractionObserved)
-    && bach_distribution_observations |> any(o => o == SlitTwoSingleSlitDiffractionObserved)
-    && bach_distribution_observations |> any(o => o == BothSlitsDoubleSlitDiffractionObserved)
+  bach_distribution_observations_complete_for(observations: bach_distribution_observations)
 }
 
-type BuildupFoldAcc {
-  max_electrons: NonNegativeInt
-  saw_not_yet: Bool
-  saw_discernible: Bool
-  saw_clearly_visible: Bool
-}
-
-fn fold_buildup_acc(acc: BuildupFoldAcc, row: BachBuildupObservationRow) -> BuildupFoldAcc {
-  let max_electrons = if row.detected_electrons > acc.max_electrons {
-    row.detected_electrons
-  } else {
-    acc.max_electrons
-  }
-  let saw_not_yet = acc.saw_not_yet || (row.pattern_status == PatternNotYetDiscernible)
-  let saw_discernible = acc.saw_discernible || (row.pattern_status == PatternDiscernible)
-  let saw_clearly_visible = acc.saw_clearly_visible || (row.pattern_status == PatternClearlyVisible)
-  BuildupFoldAcc {
-    max_electrons: max_electrons,
-    saw_not_yet: saw_not_yet,
-    saw_discernible: saw_discernible,
-    saw_clearly_visible: saw_clearly_visible,
-  }
+fn bach_ensemble_interference_holds_for_distribution(
+  observations: List<BachDistributionObservation>,
+) -> Bool {
+  bach_buildup_progression_is_source_ordered(rows: bach_buildup_observations)
+    && bach_distribution_observations_complete_for(observations: observations)
 }
 
 fn bach_buildup_fold_derives_ensemble_interference() -> Bool {
+  bach_ensemble_interference_holds_for_distribution(observations: bach_distribution_observations)
+}
+
+fn bach_ensemble_interference_rejects_missing_both_open(
+  observations: List<BachDistributionObservation>,
+) -> Bool {
+  !bach_ensemble_interference_holds_for_distribution(observations: observations)
+}
+
+fn pattern_status_rank(status: PatternStatus) -> Int {
+  match status {
+    PatternNotYetDiscernible => 0
+    PatternDiscernible => 1
+    PatternClearlyVisible => 2
+  }
+}
+
+fn bach_buildup_row_is_canonical_apparatus(row: BachBuildupObservationRow) -> Bool {
+  row.apparatus == bach_et_al_2013_double_slit
+}
+
+type BuildupProgressionAcc {
+  valid: Bool
+  prev_electrons: NonNegativeInt?
+  prev_status_rank: Int?
+  max_electrons: NonNegativeInt
+  status_at_max: PatternStatus?
+}
+
+fn fold_buildup_progression_acc(
+  acc: BuildupProgressionAcc,
+  row: BachBuildupObservationRow,
+) -> BuildupProgressionAcc {
+  if !acc.valid {
+    acc
+  } else {
+    if !bach_buildup_row_is_canonical_apparatus(row: row) {
+      BuildupProgressionAcc {
+        valid: false,
+        prev_electrons: acc.prev_electrons,
+        prev_status_rank: acc.prev_status_rank,
+        max_electrons: acc.max_electrons,
+        status_at_max: acc.status_at_max,
+      }
+    } else {
+      let rank = pattern_status_rank(status: row.pattern_status)
+      let electrons_increase = match acc.prev_electrons {
+        Absent => true
+        Present { value: prev_electrons } => row.detected_electrons > prev_electrons
+      }
+      let status_monotone = match acc.prev_status_rank {
+        Absent => true
+        Present { value: prev_rank } => rank >= prev_rank
+      }
+      let max_electrons = if row.detected_electrons > acc.max_electrons {
+        row.detected_electrons
+      } else {
+        acc.max_electrons
+      }
+      let status_at_max = if row.detected_electrons > acc.max_electrons {
+        Present { value: row.pattern_status }
+      } else {
+        acc.status_at_max
+      }
+      BuildupProgressionAcc {
+        valid: electrons_increase && status_monotone,
+        prev_electrons: Present { value: row.detected_electrons },
+        prev_status_rank: Present { value: rank },
+        max_electrons: max_electrons,
+        status_at_max: status_at_max,
+      }
+    }
+  }
+}
+
+fn bach_buildup_progression_is_source_ordered(rows: List<BachBuildupObservationRow>) -> Bool {
   let acc = fold(
-    bach_buildup_observations,
-    init: BuildupFoldAcc {
+    rows,
+    init: BuildupProgressionAcc {
+      valid: true,
+      prev_electrons: Absent,
+      prev_status_rank: Absent,
       max_electrons: 0,
-      saw_not_yet: false,
-      saw_discernible: false,
-      saw_clearly_visible: false,
+      status_at_max: Absent,
     },
-    f: fn(a, row) { fold_buildup_acc(acc: a, row: row) },
+    f: fn(a, row) { fold_buildup_progression_acc(acc: a, row: row) },
   )
-  acc.saw_not_yet
-    && acc.saw_discernible
-    && acc.saw_clearly_visible
+  acc.valid
     && acc.max_electrons == 6235
+    && match acc.status_at_max {
+      Present { value: PatternClearlyVisible } => true
+      Present { value: PatternNotYetDiscernible } => false
+      Present { value: PatternDiscernible } => false
+      Absent => false
+    }
+}
+
+fn bach_buildup_progression_rejects_clearly_visible_at_low_count(
+  rows: List<BachBuildupObservationRow>,
+) -> Bool {
+  !bach_buildup_progression_is_source_ordered(rows: rows)
+}
+
+fn bach_buildup_progression_rejects_not_yet_at_max_count(
+  rows: List<BachBuildupObservationRow>,
+) -> Bool {
+  !bach_buildup_progression_is_source_ordered(rows: rows)
+}
+
+fn bach_buildup_progression_rejects_foreign_apparatus(
+  rows: List<BachBuildupObservationRow>,
+) -> Bool {
+  !bach_buildup_progression_is_source_ordered(rows: rows)
+}
+
+fn bach_buildup_progression_rejects_reversed_order(
+  rows: List<BachBuildupObservationRow>,
+) -> Bool {
+  !bach_buildup_progression_is_source_ordered(rows: rows)
 }

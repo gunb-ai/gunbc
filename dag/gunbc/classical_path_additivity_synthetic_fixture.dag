@@ -43,6 +43,7 @@ import gunbc.physics.classical_path_additivity {
   PathAdditivityHeldAtBand,
   PathAdditivityUndecidedAtBand,
 }
+import std.algebra { Greater }
 
 data synthetic_fixture_note: String = "SYNTHETIC MECHANISM FIXTURE — NOT Bach et al. 2013 provenance. Rows exercise gunbc.physics.classical_path_additivity with equal declared exposure identity; classical mechanism adds raw counts."
 
@@ -131,10 +132,26 @@ fn synthetic_first_minimum_refutation_receipt_from_fold() -> PathAdditivityRefut
     PathAdditivityHeldAtBand {
       band: held_band,
       exposure: held_exposure,
-    } => synthetic_first_minimum_refutation_receipt_direct()
+    } => path_additivity_refutation_from_resolved(
+      left: 10,
+      right: 10,
+      both: 20,
+      band: held_band,
+      exposure: held_exposure,
+    )
     PathAdditivityUndecidedAtBand { failure: undecided_failure } =>
-      synthetic_first_minimum_refutation_receipt_direct()
+      path_additivity_refutation_from_resolved(
+        left: 0,
+        right: 0,
+        both: 0,
+        band: FirstMinimumBand,
+        exposure: SyntheticMatchedExposureOne {},
+      )
   }
+}
+
+fn classical_path_additivity_refuted_receipt() -> PathAdditivityRefutationReceipt {
+  synthetic_first_minimum_refutation_receipt_from_fold()
 }
 
 fn synthetic_first_minimum_refutation_receipt_direct() -> PathAdditivityRefutationReceipt {
@@ -147,7 +164,7 @@ fn synthetic_first_minimum_refutation_receipt_direct() -> PathAdditivityRefutati
   )
 }
 
-data classical_path_additivity_refuted: PathAdditivityRefutationReceipt = synthetic_first_minimum_refutation_receipt_from_fold()
+data classical_path_additivity_refuted: PathAdditivityRefutationReceipt = classical_path_additivity_refuted_receipt()
 
 fn classical_path_additivity_refutation_holds() -> Bool {
   path_additivity_refutation_holds_for_synthetic_fixture(receipt: classical_path_additivity_refuted)

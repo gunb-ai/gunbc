@@ -15,6 +15,11 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 type BachEtAl2013DoubleSlitExperiment
   = BachEtAl2013DoubleSlit {}
+  | BachEtAl2013ForeignApparatusStub {}
+
+data bach_foreign_apparatus_stub: BachEtAl2013DoubleSlitExperiment = BachEtAl2013ForeignApparatusStub {}
+
+data foreign_apparatus_stub_note: String = "Discriminator variant for perturbation witnesses only — not a cited Bach apparatus row."
 
 data bach_et_al_2013_double_slit: BachEtAl2013DoubleSlitExperiment = BachEtAl2013DoubleSlit {}
 
@@ -34,7 +39,7 @@ data bach_et_al_2013_citation_note: String = "Cited upstream: Bach, R., Pope, D.
 
 data abstract_observed_distributions_note: String = "Abstract verbatim: By placing a movable mask in front of a double-slit to control the transmission through the individual slits, probability distributions for single- and double-slit arrangements were observed."
 
-data raw_count_not_evaluable_note: String = "RAW COUNT PATH ADDITIVITY NOT EVALUABLE. Figures 1 and 2 present normalized probability distributions; the paper sums frames then normalizes. It does not supply a raw matched-exposure per-band arrival triplet for N_both = N_slit_one + N_slit_two. bach_et_al_2013_raw_count_observations is intentionally empty."
+data raw_count_not_evaluable_note: String = "RAW COUNT PATH ADDITIVITY NOT EVALUABLE. Figures 1 and 2 present normalized probability distributions; the paper sums frames then normalizes. It does not supply a raw matched-exposure per-band arrival triplet for N_both = N_slit_one + N_slit_two. No raw-count observation rows are authored until that grain is grounded."
 
 data which_path_upstream_gap_note: String = "Bach et al. controlled which slits were open, not whether which-path information existed. Missing which-path evidence is a downstream coverage obligation in gunbc."
 
