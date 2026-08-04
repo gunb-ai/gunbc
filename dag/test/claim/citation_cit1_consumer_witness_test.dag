@@ -17,6 +17,7 @@ import std.citation {
   RepresentationRetrieved,
   FragmentSelectorVariant,
   CitationRecordedFact,
+  RetrievedRepresentation,
 }
 import std.claim_evidence { EvidenceSupports }
 import std.content_hash { sha256_hex_digest, content_hash_eq_cryptographic }
@@ -64,21 +65,20 @@ test fn x86_64_abi_syscall_citation_selector_conforms_to_rfc_8118() -> Bool {
 test fn x86_64_abi_syscall_citation_bound_to_evidence_link() -> Bool {
   x86_64_abi_syscall_evidence_link().fact.id == x86_64_abi_syscall_convention_citation_fact.id
     && x86_64_abi_syscall_evidence_link().direction == EvidenceSupports
-    && match x86_64_abi_pdf_byte_extraction {
-      RepresentationRetrieved { observed: o, request: _, observed_at: _, http_status: _ } =>
-        match x86_64_abi_syscall_evidence_link().fact.value {
-          CitationRecordedFact { cited: c } =>
-            match c.representation {
-              Present { value: repr } =>
-                match repr.observed {
-                  Present { value: obs } => obs.observed_identity == o.observed_identity
-                  none => false
-                }
-              none => false
-            }
-        }
-      _ => false
-    }
+}
+
+test fn x86_64_abi_syscall_citation_fact_binds_extraction_observation() -> Bool {
+  match x86_64_abi_pdf_byte_extraction {
+    RepresentationRetrieved { observed: o, request: _, observed_at: _, http_status: _ } =>
+      match x86_64_abi_syscall_convention_citation_fact.value {
+        CitationRecordedFact { cited: c } =>
+          match c.representation {
+            RetrievedRepresentation { observed: obs } => obs.observed_identity == o.observed_identity
+            none => false
+          }
+      }
+    _ => false
+  }
 }
 
 test fn pin_currency_gap_is_total_not_citation_current() -> Bool {

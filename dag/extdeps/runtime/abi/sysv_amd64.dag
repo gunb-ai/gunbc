@@ -197,7 +197,7 @@ data x86_64_abi_syscall_convention_citation_fact: RecordedFact<CitationRecordedF
   ),
 )
 
-fn x86_64_abi_syscall_evidence_link() -> AbiCitationEvidenceLink {
+fn x86_64_abi_syscall_evidence_link() -> EvidenceLink<CitationRecordedFact<RetrievedRepresentation, CitationSelector>, ClaimId, ExternalAuthority, NonEmptyStr, ReadBackProbe> {
   EvidenceLink {
     fact: x86_64_abi_syscall_convention_citation_fact,
     direction: EvidenceSupports,
