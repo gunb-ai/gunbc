@@ -38,9 +38,17 @@ fn deploy_target_green_slot(target: DeploymentTarget) -> DeploymentSpec {
   }
 }
 
-data deploy_target_queue_group_note: String = "The GitHub concurrency group derives from the target key rather than being a hand-spelled job-shaped literal (`srv1-dashboard-deploy`). The rename is deliberate and its only live effect is that jobs in flight across the change occupy two groups for one cutover window; the group is a mutex namespace with no persisted state, so nothing migrates. The scheduler group remains PRESSURE SHAPING and is explicitly not the mutual-exclusion authority — deploy_target_lease_path carries that, because a GitHub group constrains only jobs routed through it and this repository exposes a second operator entrypoint into the same actuator."
+data deploy_target_queue_group_note: String = "THE GROUP STRING IS DERIVED FROM THE TARGET BUT DELIBERATELY STILL SPELLS THE LEGACY NAME, and the rename is deferred rather than dropped.\\n\\nAn earlier revision returned `gunbc-deploy-<key>` and argued the rename was safe because a concurrency group is a mutex namespace with no persisted state, so nothing migrates. That reasoning is beside the point (operator review 2026-08-04): what changes at a rename is the MUTUAL-EXCLUSION IDENTITY itself. Across the merge window, jobs already in flight occupy `srv1-dashboard-deploy` while the merge run occupies the new name — two groups that do not exclude each other — and those older jobs also predate the host lease, so they take no lock either. For exactly that window the deploy would have had NO exclusion from either mechanism, which is worse than the state this change exists to repair.\\n\\nSo the first lease-and-monotonicity landing keeps the legacy string. It is a projection of the target rather than a literal at the call site, so 'same target' still means 'same lock and same group', and renaming later is a one-line change here.\\n\\nDISSOLVE-ON: old unleased deploy jobs have drained (no run started before this change is still in flight), after which this returns the derived `gunbc-deploy-<key>` form. The rename must not ride the same merge as the lease.\\n\\nThe scheduler group remains PRESSURE SHAPING and is explicitly not the mutual-exclusion authority — deploy_target_lease_path carries that, because a GitHub group constrains only jobs routed through it and this repository exposes a second operator entrypoint into the same actuator."
 
 fn deploy_target_queue_group(target: DeploymentTarget) -> String {
+  match target {
+    Srv1Dashboard => "srv1-dashboard-deploy"
+  }
+}
+
+data deploy_target_queue_group_renamed_form_note: String = "The form the group takes once the drain completes, kept beside its current value so the dissolve-on is a one-line swap rather than a re-derivation. It is not referenced by the emitted workflow today; the witness asserts both that the emitted group is the legacy string AND that this derived form differs from it, so the deferral stays visible rather than quietly becoming permanent."
+
+fn deploy_target_queue_group_after_drain(target: DeploymentTarget) -> String {
   concat("gunbc-deploy-", deploy_target_key(target: target))
 }
 

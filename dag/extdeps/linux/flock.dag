@@ -40,9 +40,24 @@ data flock_two_citations_note: String = "TWO citations because the model rests o
 
 data flock_upstream_note: String = "util-linux flock(1), the command form: `flock [options] file|directory command [arguments]`. The upstream names are kept (DESIGN §3 — cite the source, keep its real names, model what the API actually does) rather than being re-coined as a generic 'lock' vocabulary, because the semantics that make this usable as a deployment lease are flock(2)'s specific ones and a nickname would hide them.\\n\\nTHE TWO PROPERTIES THIS IS SELECTED FOR, both upstream facts rather than conveniences: an exclusive lock is held across `exec` and is released when the holding process EXITS — including on crash or kill, because the kernel drops the open file description — so the critical section is exactly the lifetime of the wrapped process and there is no stale-lock cleanup policy to invent. That is why the lease needs no expiry, and why inventing one would have been the §4 heuristic the closed system does not need.\\n\\nTHE PROPERTY THIS DOES NOT HAVE, named because a deployment lease depends on it: flock(2) is ADVISORY. It excludes only callers that also take the lock on the same file. A mutation path that does not route through this wrapper is not excluded by it, so 'every entrypoint enters through the leased launcher' is a real obligation and not a formality."
 
-data flock_conflict_exit_code_note: String = "-E IS LOAD-BEARING, NOT A NICETY. Without it flock exits 1 when the lock cannot be acquired, which is indistinguishable from the wrapped command exiting 1 — two states with different remedies collapsed onto one number, the state-space conflation DESIGN's failure-mode list names. `--conflict-exit-code` moves the lock-conflict signal onto a code the wrapped program does not produce, so 'another deploy holds the lease' and 'this deploy failed' stay separable at the process boundary.\\n\\n75 is chosen because it is outside the range this deployment path produces: the wrapped `gunbc run` exits 0 or 1 through std.process ProcessExit, and 75 sits in the sysexits.h EX_TEMPFAIL slot, whose documented meaning — a temporary failure, the caller may retry — is exactly what a lease conflict is. It is a cited convention rather than an arbitrary pick, and it is asserted by witness rather than trusted."
+data flock_conflict_exit_code_note: String = "-E IS LOAD-BEARING, NOT A NICETY. Without it flock exits 1 when the lock cannot be acquired, which is indistinguishable from the wrapped command exiting 1 — two states with different remedies collapsed onto one number, the state-space conflation DESIGN's failure-mode list names. `--conflict-exit-code` moves the lock-conflict signal onto a code the wrapped program does not produce, so 'another deploy holds the lease' and 'this deploy failed' stay separable at the process boundary.\\n\\nTHE CODE MUST AVOID THREE OCCUPIED RANGES, and an earlier revision of this row got it wrong in a way that defeated the whole point. It chose 75 on the reasoning that EX_TEMPFAIL's documented meaning matches a lease conflict — but flock(1) states that it uses sysexits.h codes for ITS OWN errors, and 75 IS EX_TEMPFAIL. So an internal flock temporary failure would have been classified as LeaseConflict: the exact conflation the flag was added to remove, reintroduced by picking a code from the range the tool reserves for itself (operator review 2026-08-04). Semantic aptness of the name was the wrong selection criterion; disjointness from the occupied sets is the right one.\\n\\nThe occupied sets: {0,1} is the wrapped `gunbc run` through std.process ProcessExit; 64..78 is sysexits.h (EX__BASE..EX__MAX), which flock uses for its own failures; 126 and 127 are the shell's cannot-execute and not-found; 128+N is death by signal N. 111 sits in the free band 79..125 and is asserted disjoint from every one of those sets by witness rather than trusted."
 
-data flock_conflict_exit_code: Int = 75
+data flock_sysexits_lowest: Int = 64
+
+data flock_sysexits_highest: Int = 78
+
+data flock_conflict_exit_code: Int = 111
+
+fn flock_conflict_exit_code_is_disjoint_from_reserved_ranges() -> Bool {
+  let c = flock_conflict_exit_code
+  c != 0
+    && c != 1
+    && !(c >= flock_sysexits_lowest && c <= flock_sysexits_highest)
+    && c != 126
+    && c != 127
+    && c < 128
+    && c >= 0
+}
 
 data flock_wait_bound_note: String = "The wait bound is a coproduct rather than an optional number because 'wait forever' and 'wait zero' are different intents and neither is the absence of a bound. FlockWaitSeconds carries a real Duration; FlockFailImmediately is -n (--nonblock), which is a decision to refuse rather than queue. There is no unbounded arm: an unbounded wait inside a CI job converts a lease conflict into a job-timeout kill, which reports as an infrastructure failure instead of a typed refusal, and the whole point of -E is to keep that distinction."
 
