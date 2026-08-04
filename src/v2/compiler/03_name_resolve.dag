@@ -135,18 +135,29 @@ fn resolve_diagnostics(reason: Symbol) -> NonEmptyDiagnostics {
   diagnostics_singleton(d: resolve_diagnostic(reason: reason))
 }
 
-data resolve_module_not_found_identity_note: String = "module_root_find refuses with the exact QualifiedName sought — rendered as a dotted string on the Textual diagnostic file locus (§3: structural QN is identity; dotted form is projection for display). A generic ^resolve_module_not_found port locus erased which module was missing and made the three frontier NameResolutionGap rows indistinguishable at receipt grain."
+data resolve_module_not_found_identity_note: String = "module_root_find refuses with the exact QualifiedName sought — rendered as a dotted string on the Textual diagnostic file locus (§3: structural QN is identity; dotted form is projection for display). ModuleRootLookup is the structural authority; diagnostics project from ModuleRootMissing rather than parsing display text back."
 
-fn resolve_module_not_found_diagnostic(name: QualifiedName) -> NonEmptyDiagnostics {
+type ModuleRootLookup
+  = ModuleRootFound { root: Node }
+  | ModuleRootMissing { requested: QualifiedName }
+  | ModuleRootAmbiguous { requested: QualifiedName }
+
+fn resolve_module_not_found_diagnostic_from_missing(
+  requested: QualifiedName
+) -> NonEmptyDiagnostics {
   diagnostics_singleton(
     d: textual_whole_file_diagnostic(
       reason: ^resolve_module_not_found,
       module_file: symbol_intern_lexeme(
-        lexeme: qualified_name_to_dotted_string(qn: name)
+        lexeme: qualified_name_to_dotted_string(qn: requested)
       ),
       correction: Unavailable { reason: ExternalContractUnknown }
     )
   )
+}
+
+fn resolve_module_not_found_diagnostic(name: QualifiedName) -> NonEmptyDiagnostics {
+  resolve_module_not_found_diagnostic_from_missing(requested: name)
 }
 
 fn collect_import_decl_nodes(n: Node, acc: FreeMonoid<Node>) -> FreeMonoid<Node> {
@@ -330,10 +341,12 @@ fn validate_module_roots(roots: FreeMonoid<Node>) -> Outcome<FreeMonoid<Node>> {
   }
 }
 
-fn module_root_find(
+data module_root_lookup_note: String = "Typed lookup result beside module_root_find diagnostics. ModuleRootMissing and ModuleRootAmbiguous preserve the exact QualifiedName sought; diagnostics are projections of these results for consumers that still read Outcome<Node>."
+
+fn module_root_lookup(
   roots: FreeMonoid<Node>,
   name: QualifiedName
-) -> Outcome<Node> {
+) -> ModuleRootLookup {
   match fold_list(
     xs: roots,
     empty: Accepted { value: NoPassingCandidate, diagnostics: v2.std.diagnostic.None },
@@ -366,39 +379,35 @@ fn module_root_find(
       }
     }
   ) {
-    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Rejected { diagnostics: _ } =>
+      ModuleRootMissing { requested: name }
     Accepted { value: fold_state, diagnostics: _ } =>
       match fold_state {
         NoPassingCandidate =>
-          Rejected { diagnostics: resolve_module_not_found_diagnostic(name: name) }
+          ModuleRootMissing { requested: name }
         OnePassingCandidate { candidate: root } =>
-          Accepted { value: root, diagnostics: v2.std.diagnostic.None }
+          ModuleRootFound { root: root }
         ManyPassingCandidates =>
-          Rejected { diagnostics: resolve_diagnostics(reason: ^resolve_duplicate_module_name) }
+          ModuleRootAmbiguous { requested: name }
       }
   }
 }
 
-type ModuleRootLookup
-  = ModuleRootFound { root: Node }
-  | ModuleRootMissing { requested: QualifiedName }
-  | ModuleRootAmbiguous { requested: QualifiedName }
-
-data module_root_lookup_note: String = "Typed lookup result beside module_root_find diagnostics. ModuleRootMissing and ModuleRootAmbiguous preserve the exact QualifiedName sought; diagnostics are projections of these results for consumers that still read Outcome<Node>."
-
-fn module_root_lookup(
+fn module_root_find(
   roots: FreeMonoid<Node>,
   name: QualifiedName
-) -> ModuleRootLookup {
-  match module_root_find(roots: roots, name: name) {
-    Accepted { value: root, diagnostics: _ } =>
-      ModuleRootFound { root: root }
-    Rejected { diagnostics: d } =>
-      if d.head.reason == ^resolve_duplicate_module_name {
-        ModuleRootAmbiguous { requested: name }
-      } else {
-        ModuleRootMissing { requested: name }
+) -> Outcome<Node> {
+  match module_root_lookup(roots: roots, name: name) {
+    ModuleRootFound { root: root } =>
+      Accepted { value: root, diagnostics: v2.std.diagnostic.None }
+    ModuleRootMissing { requested: requested } =>
+      Rejected {
+        diagnostics: resolve_module_not_found_diagnostic_from_missing(
+          requested: requested
+        )
       }
+    ModuleRootAmbiguous { requested: _ } =>
+      Rejected { diagnostics: resolve_diagnostics(reason: ^resolve_duplicate_module_name) }
   }
 }
 

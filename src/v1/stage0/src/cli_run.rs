@@ -24733,6 +24733,23 @@ fn emit_source_ref_list_dag(records: &[SourceRootReadRecord]) -> Result<String, 
     Ok(out)
 }
 
+fn source_ref_identity_digest_hex(rec: &SourceRootReadRecord) -> String {
+    let path_hash = crate::v1_rt::atom_identity_hash(rec.file_path.clone());
+    let root_hash = crate::v1_rt::atom_identity_hash(rec.source_root.clone());
+    let storage = crate::v1_rt::hash_combine(path_hash, root_hash);
+    let content_hash = crate::v1_rt::atom_identity_hash(rec.source.clone());
+    crate::v1_rt::hash_combine(storage, content_hash)
+}
+
+fn source_ref_list_structural_digest_hex(records: &[SourceRootReadRecord]) -> String {
+    let mut acc = crate::v1_rt::atom_identity_hash("source-ref-closure-list".to_string());
+    for rec in records {
+        let ref_digest = source_ref_identity_digest_hex(rec);
+        acc = crate::v1_rt::hash_combine(acc, ref_digest);
+    }
+    acc
+}
+
 pub fn emit_source_ref_dag_for_path(
     records: &[SourceRootReadRecord],
     file_path: &str,
@@ -24993,6 +25010,10 @@ pub fn emit_source_root_ingest_manifest(
     let produced_row_count = inline_records.len();
     out.push_str(&format!("  ingest_read_count: {read_count},\n"));
     out.push_str(&format!("  produced_row_count: {produced_row_count},\n"));
+    out.push_str(&format!(
+        "  discovered_source_refs_digest: Fnv1a64Structural {{ digest: \"{}\" }},\n",
+        source_ref_list_structural_digest_hex(records)
+    ));
     if produced_row_count == read_count {
         out.push_str("  coverage: SourceRootCoverageComplete\n");
     } else {

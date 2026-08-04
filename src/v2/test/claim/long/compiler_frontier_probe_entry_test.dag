@@ -30,6 +30,7 @@ fn frontier_probe_entry_subject() -> FrontierProbeIngestSubject {
       refs: host_source_root_closure_refs,
       coverage: host_source_root_ingest_coverage_receipt.coverage,
       ingest_read_count: host_source_root_ingest_coverage_receipt.ingest_read_count,
+      discovered_source_refs_digest: host_source_root_ingest_coverage_receipt.discovered_source_refs_digest,
       entry: frontier_probe_entry_source_ref
     }
   } else {

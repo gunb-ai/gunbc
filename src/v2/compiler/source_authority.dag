@@ -163,10 +163,141 @@ The seed's use is itself the nickname violation (a ref that carries everything r
 
 dissolve-on: the v1 tokenizer being next touched or deleted, at which point the seed's type is renamed to SourceBuffer — the honest name for a thing holding bytes. The v1_delete milestone discharges this naturally. The note is homed HERE rather than in src/v1/01_tokenize.dag so that an inert marker costs zero touches on a load-bearing v1 pipeline stage, and anyone about to collide with the name finds it by grepping the name itself."
 
+type SourceStorageIdentity {
+  path: String
+  source_root: SourceRootRef
+}
+
+data source_storage_identity_note: String = "Storage realization identity for a manifest SourceRef row: path plus source_root only. Content hash is a separate observation layered on SourceRef. Closure population uniqueness is enforced at storage identity; two rows sharing storage but disagreeing on content_hash is a typed storage-hash conflict, not two valid refs."
+
 type SourceRef {
   path: String
   source_root: SourceRootRef
   content_hash: ContentHash
+}
+
+fn source_storage_identity_from_ref(ref: SourceRef) -> SourceStorageIdentity {
+  SourceStorageIdentity {
+    path: ref.path,
+    source_root: ref.source_root
+  }
+}
+
+fn source_storage_identity_eq(left: SourceStorageIdentity, right: SourceStorageIdentity) -> Bool {
+  (left.path == right.path) && (left.source_root == right.source_root)
+}
+
+fn source_root_ref_identity_digest(root: SourceRootRef) -> Fnv1a64Structural {
+  match root {
+    V2Tree => content_hash_atom(value: "V2Tree")
+    DagTree => content_hash_atom(value: "DagTree")
+  }
+}
+
+fn source_storage_identity_digest(storage: SourceStorageIdentity) -> Fnv1a64Structural {
+  content_hash_combine_structural(
+    left: content_hash_atom(value: storage.path as NonEmptyStr),
+    right: source_root_ref_identity_digest(root: storage.source_root)
+  )
+}
+
+fn source_ref_content_hash_structural(hash: ContentHash) -> Fnv1a64Structural {
+  match hash {
+    Fnv1a64(structural) => structural
+    _ => content_hash_atom(value: "non-fnv1a64-content-hash")
+  }
+}
+
+fn source_ref_identity_digest(ref: SourceRef) -> Fnv1a64Structural {
+  content_hash_combine_structural(
+    left: source_storage_identity_digest(
+      storage: source_storage_identity_from_ref(ref: ref)
+    ),
+    right: source_ref_content_hash_structural(hash: ref.content_hash)
+  )
+}
+
+data source_ref_list_digest_seed: String = "source-ref-closure-list"
+
+fn source_ref_list_digest(refs: List<SourceRef>) -> Fnv1a64Structural {
+  fold_list(
+    xs: refs,
+    empty: content_hash_atom(value: source_ref_list_digest_seed),
+    cons: fn(acc, ref) {
+      content_hash_combine_structural(
+        left: acc,
+        right: source_ref_identity_digest(ref: ref)
+      )
+    }
+  )
+}
+
+fn source_storage_count_in_list(
+  refs: List<SourceRef>,
+  target: SourceStorageIdentity
+) -> Int {
+  fold_list(
+    xs: refs,
+    empty: 0,
+    cons: fn(count, ref) {
+      if source_storage_identity_eq(
+        left: source_storage_identity_from_ref(ref: ref),
+        right: target
+      ) {
+        count + 1
+      } else {
+        count
+      }
+    }
+  )
+}
+
+fn source_storage_list_has_duplicate_storage(refs: List<SourceRef>) -> Bool {
+  fold_list(
+    xs: refs,
+    empty: false,
+    cons: fn(found, ref) {
+      if found {
+        true
+      } else {
+        source_storage_count_in_list(
+          refs: refs,
+          target: source_storage_identity_from_ref(ref: ref)
+        ) > 1
+      }
+    }
+  )
+}
+
+fn source_storage_hash_conflict_in_list(refs: List<SourceRef>) -> Bool {
+  fold_list(
+    xs: refs,
+    empty: false,
+    cons: fn(found, ref) {
+      if found {
+        true
+      } else {
+        let storage = source_storage_identity_from_ref(ref: ref)
+        fold_list(
+          xs: refs,
+          empty: false,
+          cons: fn(inner_found, other) {
+            if inner_found {
+              true
+            } else {
+              let other_storage = source_storage_identity_from_ref(ref: other)
+              if source_storage_identity_eq(left: storage, right: other_storage)
+                && !source_ref_eq(left: ref, right: other) {
+                true
+              } else {
+                false
+              }
+            }
+          }
+        )
+      }
+    }
+  )
 }
 
 data source_ref_selection_unpinned_note: String = "Selection-grain placeholder hash for declared SourceRef rows (docs/plans/declared-source-ref-selection-design.md §7): content-hash-as-selection-key belongs to the resolve-cost lane, not this task. Rows carry the field for shape compatibility with the eventual pinned authority; selection today keys on storage path resolved through ModuleStorageIndex only."
@@ -284,6 +415,69 @@ fn source_ref_content_hash_mismatch_diagnostic(
   }
 }
 
+type SourceRefReadResult
+  = SourceRefReadAccepted {
+      witness: DagSourceReadWitness,
+      observed_hash: ContentHash
+    }
+  | SourceRefFilesystemReadRefused { ref: SourceRef, error: String }
+  | SourceRefReadHashMismatch {
+      ref: SourceRef,
+      expected: ContentHash,
+      observed: ContentHash
+    }
+
+data source_ref_read_result_note: String = "Single filesystem observation for a SourceRef read-through. Accepted carries the witness and the observed hash from the SAME read. Refused and HashMismatch never perform a second read to reconstruct failure detail."
+
+fn dag_source_read_result_from_ref(ref: SourceRef) -> SourceRefReadResult {
+  let read = Filesystem.Read(path: ref.path)
+  if !read.success {
+    SourceRefFilesystemReadRefused { ref: ref, error: read.error }
+  } else {
+    let observed = dag_source_content_hash_for_text(text: read.content)
+    match compare_content_hash(left: ref.content_hash, right: observed) {
+      ContentHashEqual =>
+        SourceRefReadAccepted {
+          witness: DagSourceReadWitness {
+            source: Medium { carried: read.content, fidelity: Lossless },
+            artifact: Artifact {
+              kind: SourceFile,
+              id: symbol_intern_lexeme(lexeme: ref.path),
+              file_path: ref.path
+            },
+            compilation_unit: symbol_intern_lexeme(lexeme: ref.path),
+            source_root: ref.source_root
+          },
+          observed_hash: observed
+        }
+      _ =>
+        SourceRefReadHashMismatch {
+          ref: ref,
+          expected: ref.content_hash,
+          observed: observed
+        }
+    }
+  }
+}
+
+fn source_ref_read_result_to_outcome(result: SourceRefReadResult) -> Outcome<DagSourceReadWitness> {
+  match result {
+    SourceRefReadAccepted { witness: witness, observed_hash: _ } =>
+      outcome_accepted(value: witness)
+    SourceRefFilesystemReadRefused { ref: ref, error: error } =>
+      outcome_rejected(
+        d: source_ref_read_failed_diagnostic(ref: ref, error: error)
+      )
+    SourceRefReadHashMismatch { ref: ref, expected: _, observed: observed } =>
+      outcome_rejected(
+        d: source_ref_content_hash_mismatch_diagnostic(
+          ref: ref,
+          observed: observed
+        )
+      )
+  }
+}
+
 fn dag_source_observed_content_hash_for_ref(ref: SourceRef) -> Optional<ContentHash> {
   let read = Filesystem.Read(path: ref.path)
   if read.success {
@@ -298,58 +492,56 @@ fn dag_source_content_hash_for_text(text: String) -> ContentHash {
 }
 
 fn dag_source_read_witness_from_source_ref(ref: SourceRef) -> Outcome<DagSourceReadWitness> {
-  let read = Filesystem.Read(path: ref.path)
-  if !read.success {
-    outcome_rejected(
-      d: source_ref_read_failed_diagnostic(ref: ref, error: read.error)
-    )
-  } else {
-    let actual = dag_source_content_hash_for_text(text: read.content)
-    match compare_content_hash(left: ref.content_hash, right: actual) {
-      ContentHashEqual =>
-        outcome_accepted(
-          value: DagSourceReadWitness {
-            source: Medium { carried: read.content, fidelity: Lossless },
-            artifact: Artifact {
-              kind: SourceFile,
-              id: symbol_intern_lexeme(lexeme: ref.path),
-              file_path: ref.path
-            },
-            compilation_unit: symbol_intern_lexeme(lexeme: ref.path),
-            source_root: ref.source_root
-          }
-        )
-      _ =>
-        outcome_rejected(
-          d: source_ref_content_hash_mismatch_diagnostic(
-            ref: ref,
-            observed: actual
-          )
-        )
-    }
-  }
+  source_ref_read_result_to_outcome(result: dag_source_read_result_from_ref(ref: ref))
 }
 
-fn source_root_ingest_from_source_refs(refs: List<SourceRef>) -> Outcome<SourceRootIngest> {
+type SourceRootIngestBuild
+  = SourceRootIngestBuildOk { ingest: SourceRootIngest }
+  | SourceRootIngestBuildReadFailed { result: SourceRefReadResult }
+
+fn source_root_ingest_build_from_source_refs(
+  refs: List<SourceRef>
+) -> SourceRootIngestBuild {
   match fold_list(
     xs: refs,
-    empty: outcome_accepted(value: Empty),
+    empty: SourceRootIngestBuildOk { ingest: Empty },
     cons: fn(acc, ref) {
       match acc {
-        Rejected { diagnostics: d } => Rejected { diagnostics: d }
-        Accepted { value: prior, diagnostics: _ } =>
-          match dag_source_read_witness_from_source_ref(ref: ref) {
-            Rejected { diagnostics: d } => Rejected { diagnostics: d }
-            Accepted { value: witness, diagnostics: _ } =>
-              outcome_accepted(
-                value: list_snoc_item(xs: prior, item: witness)
-              )
+        SourceRootIngestBuildReadFailed { result: _ } => acc
+        SourceRootIngestBuildOk { ingest: prior } =>
+          match dag_source_read_result_from_ref(ref: ref) {
+            SourceRefReadAccepted { witness: witness, observed_hash: _ } =>
+              SourceRootIngestBuildOk {
+                ingest: list_snoc_item(xs: prior, item: witness)
+              }
+            failed =>
+              SourceRootIngestBuildReadFailed { result: failed }
           }
       }
     }
   ) {
-    Rejected { diagnostics: d } => Rejected { diagnostics: d }
-    Accepted { value: ingest, diagnostics: _ } => outcome_accepted(value: ingest)
+    SourceRootIngestBuildReadFailed { result: r } =>
+      SourceRootIngestBuildReadFailed { result: r }
+    SourceRootIngestBuildOk { ingest: ingest } =>
+      SourceRootIngestBuildOk { ingest: ingest }
+  }
+}
+
+fn source_root_ingest_from_source_refs(refs: List<SourceRef>) -> Outcome<SourceRootIngest> {
+  match source_root_ingest_build_from_source_refs(refs: refs) {
+    SourceRootIngestBuildReadFailed { result: r } =>
+      match source_ref_read_result_to_outcome(result: r) {
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+        Accepted { value: _, diagnostics: _ } =>
+          outcome_rejected(
+            d: source_ref_read_failed_diagnostic(
+              ref: source_ref_for_storage_path(path: "source-root-ingest-build-impossible"),
+              error: "internal: read-through accepted without ingest row"
+            )
+          )
+      }
+    SourceRootIngestBuildOk { ingest: ingest } =>
+      outcome_accepted(value: ingest)
   }
 }
 
@@ -1000,6 +1192,7 @@ fn source_root_provenance_coverage_receipt(
   SourceRootProvenanceCoverageReceipt {
     ingest_read_count: length(xs: ingest),
     produced_row_count: length(xs: produced),
+    discovered_source_refs_digest: content_hash_atom(value: "source-root-provenance-no-ref-list"),
     coverage: if length(xs: ingest) == length(xs: produced) {
       SourceRootCoverageComplete
     } else {

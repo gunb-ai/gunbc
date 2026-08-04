@@ -21,6 +21,7 @@ data host_source_root_ingest_content_hash: String = ""
 data host_source_root_ingest_coverage_receipt: SourceRootProvenanceCoverageReceipt = SourceRootProvenanceCoverageReceipt {
   ingest_read_count: 0,
   produced_row_count: 0,
+  discovered_source_refs_digest: Fnv1a64Structural { digest: "0000000000000000" },
   coverage: SourceRootManifestAbsent
 }
 
