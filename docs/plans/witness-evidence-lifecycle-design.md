@@ -62,6 +62,40 @@ a trailing slash, so `test/claim/longish/` happens not to match — a property o
 string was typed, not a guarantee. This is the DESIGN section 3 class: a positional path
 policy standing where the containment tree already names the structure.
 
+### The state-space defect, located in the seed
+
+The typed fact already exists and is destroyed in transit. `v1_interpreter.rs` declares
+`InterpError::EvalBudgetExceeded { elapsed_ms, budget_ms }` — a proper variant carrying
+both numbers. It is rendered to a string, surfaces at the claim boundary as an ordinary
+runtime error, and is then reconstituted downstream by substring match:
+
+```
+falsifier_failure_mode  (claim_executor.rs)
+    d.contains("eval budget exceeded")  ->  "BudgetExceeded"
+```
+
+The same function's own comment reads: *"THIS LIST IS A FORK, and that is the defect —
+not the individual substrings."* A second consumer repeats the match in `cli_run.rs`.
+
+Meanwhile a *typed* `ClaimOutcome::TimedOut { elapsed_ms, budget_ms, kind }` exists and is
+used by the wall-clock kill path, and `claim_batch.rs` already carries the exact insight
+this note formalizes:
+
+> "Named as a kill, not a duration: the row stopped AT the budget, so elapsed is a
+> ceiling. The clock is named because a cpu-budget kill and a wall-budget kill have
+> different remedies."
+
+So there are two representations of one concept — one typed, one stringly — and the
+fast-lane eval deadline uses the stringly one. The interruption/verdict distinction is
+recovered by grepping prose. That is simultaneously the DESIGN section 3 fork and the
+section 5 conflation, and it is the mechanism that made the incident possible: a
+`RuntimeError { message }` carrier cannot represent "no verdict was obtained", so nothing
+downstream could preserve the pending obligation even in principle.
+
+This is load-bearing for the program below. Step 4 is not introducing a distinction the
+system lacks; it is promoting one the seed already makes, and deleting the substring
+reconstruction that stands in for it.
+
 ## The modeling decision (step 1 — what this note asks to be signed)
 
 | Fact | Kind |
