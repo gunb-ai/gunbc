@@ -387,6 +387,14 @@ fn generated_artifact_stage0_src_disposition_rows() -> List<RustSourceLifecycleR
   )
 }
 
+fn disposition_authority_rows() -> List<RustSourceLifecycleRow> {
+  fold_list(
+    xs: generated_artifact_stage0_src_disposition_rows(),
+    empty: rust_source_lifecycle_residue_rows,
+    cons: fn(acc, row) { list_snoc_item(xs: acc, item: row) }
+  )
+}
+
 fn derived_hand_maintained_disposition_repo_paths() -> List<String> {
   filter(
     xs: derived_hand_maintained_stage0_repo_paths(),
