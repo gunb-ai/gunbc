@@ -174,6 +174,7 @@ type CompilerDiagnostic
   | OwnershipViolation   { binding: String, fn_name: String, consumers: Int, span: SourceSpan }
   | VariantCollision { variant: String, enum1: String, enum2: String, span: SourceSpan }
   | SoleConstructorViolation { type_name: String, span: SourceSpan }
+  | ConstructorReferenceAdmissionViolation { function_name: String, caller_module: String, owner_module_path: String, admitted: List<String>, span: SourceSpan }
   | UnlistedImportUse { name: String, span: SourceSpan }
   | AmbiguousReference { name: String, candidates: List<String>, span: SourceSpan }
   | CallArgumentNameUnknown { callee: String, argument: String, declared: List<String>, span: SourceSpan }
@@ -288,6 +289,7 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     OwnershipViolation   { binding: _, fn_name: _, consumers: _, span: s } => s
     VariantCollision { variant: _, enum1: _, enum2: _, span: s } => s
     SoleConstructorViolation { type_name: _, span: s } => s
+    ConstructorReferenceAdmissionViolation { function_name: _, caller_module: _, owner_module_path: _, admitted: _, span: s } => s
     UnlistedImportUse { name: _, span: s } => s
     AmbiguousReference { name: _, candidates: _, span: s } => s
     CallArgumentNameUnknown { callee: _, argument: _, declared: _, span: s } => s
@@ -328,6 +330,8 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
     OwnershipViolation   { binding: b, fn_name: f, consumers: c, span: _ } => concat("ownership: binding '", b, "' in '", f, "' has ", to_string(value: c), " consumers")
     VariantCollision { variant: v, enum1: e1, enum2: e2, span: _ } => concat("variant '", v, "' appears in both '", e1, "' and '", e2, "'")
     SoleConstructorViolation { type_name: t, span: _ } => concat("sole_constructor type '", t, "' cannot be constructed outside its defining module")
+    ConstructorReferenceAdmissionViolation { function_name: fname, caller_module: cm, owner_module_path: om, admitted: adm, span: _ } =>
+      concat("function '", fname, "' (declared in '", om, "') declares admit_callers and refuses this call from module '", cm, "' — admitted callers: [", join(adm, separator: ", "), "]")
     UnlistedImportUse { name: n, span: _ } => concat("unlisted import use '", n, "' (referenced but not in any import's name list)")
     AmbiguousReference { name: n, candidates: cs, span: _ } => concat("ambiguous reference '", n, "': ", to_string(value: cs |> count), " candidates: ", join(cs, separator: ", "), " — qualify by containment path, alias, or rename")
     CallArgumentNameUnknown { callee: c, argument: a, declared: ds, span: _ } =>
@@ -928,6 +932,16 @@ fn field_init_node_value(n: Node) -> Node {
   match n.children |> first {
     Present { value: v } => v
     Absent => make_expr_error_node(kind: InternalExprError, message: "malformed field-init: missing value", span: n.span)
+  }
+}
+
+fn fn_admit_callers(n: Node) -> List<String>? {
+  match n.properties |> filter(p => p.name == "admit_callers") |> first {
+    Present { value: p } =>
+      Present { value: field_init_node_value(n: p).children
+        |> map(c => match expr_literal_string_optional(expr: c) { Present { value: v } => v  Absent => "" })
+        |> filter(s => s != "") }
+    Absent => Absent
   }
 }
 
