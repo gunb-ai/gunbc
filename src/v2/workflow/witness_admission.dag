@@ -43,6 +43,12 @@ import v2.std.algebra { any, contains, fold_list, length, list_snoc_item, Empty 
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
+import gunbc.witness_deferral_freeze {
+  FrozenPathDeferral,
+  frozen_path_deferrals,
+  frozen_path_deferral_covers_in,
+  frozen_path_deferrals_well_formed
+}
 import std.witness_admission {
   WitnessConsumerCadence,
   WitnessAdmissionRefusal,
@@ -56,7 +62,8 @@ import std.witness_admission {
   FixtureExplicitRoster,
   NoConsumer,
   WitnessAdmissionHolds,
-  UnexecutedDeferredWitness
+  UnexecutedDeferredWitness,
+  UnclassifiedPathDeferral
 }
 
 fn schedule_row_matches(
@@ -165,20 +172,88 @@ fn witness_consumer_cadence_for_row(
   }
 }
 
+data witness_path_policy_admission_wall_note: String = "THE ARM THIS WALL CLOSED, and why it needed a wall rather than a stronger reconciliation. witness_consumer_cadence_for_row answers WHICH policy claims a row; this function answers whether that policy is an admissible answer, and until 2026-08-04 it conflated the two by refusing only NoConsumer. So OfflineLocalRecipe — the verdict a broad directory pattern produces — was accepted unconditionally, and moving a file under such a directory both removed it from per-PR discovery and satisfied admission. The exact-admission authority already forbids exactly this shape: explicit_witness_admission_cadence_executes refuses OfflineLocalRecipe on an admission row so that an admission cannot execute nowhere. The path side now meets the same bar, with the frozen legacy population (gunbc.witness_deferral_freeze) as the only exemption and that exemption itself joined by identity in both directions.
+
+READING ORDER IS LOAD-BEARING. The explicit rosters are consulted FIRST and are total for the rows they cover, so this path-policy fold decides only rows no roster claims — the same precedence witness_row_excluded_two_kinds_note states for exclusion. One consequence is deliberate and is NOT closed here: consumer_for_explicit_rosters maps a falsifier_self_host_wet row to OfflineLocalRecipe while falsifier_self_host_wet_cadence_active is false, and that reaches WitnessAdmissionHolds through the explicit arm. That is the same shape one layer in — a declared cadence that currently executes nothing — but it is a counted roster with a named owner and a dated trigger (falsifier_self_host_wet_build_verification_cadence_note) rather than a directory admitting silently, so it is adjacent scope, named here so it is not mistaken for covered."
+
+fn witness_path_policy_admission_refusal_in(
+  entry: String,
+  function: String,
+  excluded_from_discovery: Bool,
+  offline: List<String>,
+  fixture: List<String>,
+  frozen: List<FrozenPathDeferral>
+) -> WitnessAdmissionRefusal {
+  if !excluded_from_discovery {
+    WitnessAdmissionHolds
+  } else if path_matches_any_substring(path: entry, subs: offline) {
+    if frozen_path_deferral_covers_in(rows: frozen, entry: entry, function: function) {
+      WitnessAdmissionHolds
+    } else {
+      UnclassifiedPathDeferral { entry: entry, function: function }
+    }
+  } else if path_matches_any_substring(path: entry, subs: fixture) {
+    WitnessAdmissionHolds
+  } else {
+    UnexecutedDeferredWitness { entry: entry, function: function }
+  }
+}
+
+fn witness_path_policy_admission_refusal(
+  entry: String,
+  function: String,
+  excluded_from_discovery: Bool
+) -> WitnessAdmissionRefusal {
+  witness_path_policy_admission_refusal_in(
+    entry: entry,
+    function: function,
+    excluded_from_discovery: excluded_from_discovery,
+    offline: witness_admission_offline_exclusion_substrings(),
+    fixture: witness_admission_fixture_exclusion_substrings(),
+    frozen: frozen_path_deferrals
+  )
+}
+
 fn witness_admission_refusal_for_row(
   entry: String,
   function: String,
   excluded_from_discovery: Bool
 ) -> WitnessAdmissionRefusal {
-  match witness_consumer_cadence_for_row(
-    entry: entry,
-    function: function,
-    excluded_from_discovery: excluded_from_discovery
-  ) {
+  match consumer_for_explicit_rosters(entry: entry, function: function) {
     NoConsumer =>
-      UnexecutedDeferredWitness { entry: entry, function: function }
+      witness_path_policy_admission_refusal(
+        entry: entry,
+        function: function,
+        excluded_from_discovery: excluded_from_discovery
+      )
     _ => WitnessAdmissionHolds
   }
+}
+
+data frozen_path_deferral_staleness_note: String = "THE SECOND DIRECTION OF THE JOIN, without which the freeze rots into a permission slip. A frozen row records that one exact (entry, function) was already path-deferred when the wall landed; if that witness leaves the tree — file deleted, test decl renamed, or its path no longer matching any OfflineLocalRecipe pattern — the row survives as a standing exemption for an identity nothing checks, and the next witness to take that name inherits it. So a frozen identity absent from the discovered path-deferred population REFUSES. The discovered population is supplied by the caller rather than read here, because the live walk is the host's (its source roots decide what exists) and this fold is the mechanism the fixture witnesses exercise: identity join, not count equality — a size comparison would go green on any pair of compensating edits."
+
+fn frozen_path_deferral_row_functions_all_discovered(
+  row: FrozenPathDeferral,
+  discovered: List<ScheduleWitnessEntry>
+) -> Bool {
+  !any(
+    xs: row.functions,
+    predicate: fn(name) {
+      !schedule_contains_entry(xs: discovered, entry: row.entry, function: name)
+    }
+  )
+}
+
+fn frozen_path_deferrals_all_discovered(
+  rows: List<FrozenPathDeferral>,
+  discovered: List<ScheduleWitnessEntry>
+) -> Bool {
+  !any(
+    xs: rows,
+    predicate: fn(row) {
+      !frozen_path_deferral_row_functions_all_discovered(row: row, discovered: discovered)
+    }
+  )
 }
 
 data witness_row_excluded_two_kinds_note: String = "A witness row leaves per-PR discovery for one of exactly two reasons, and they are different kinds of fact. EXACT ADMISSION: this (entry, function) has its own row on gunbc.explicit_witness_admission naming the cadence that executes it — decided at function grain, so a sibling is untouched. PATH POLICY: the entry sits under a directory- or file-wide substring rule in witness_exclusion_frontier — decided at path grain, and deliberately so, because `test/claim/long/ is the long-test home` is a statement about a place rather than about any one function. Exact admission is checked FIRST and is total for the functions it covers; path policy applies only to functions with no admission. That ordering is what lets a path-offline file legitimately contain an exact-admitted function without either fact restating the other, and it is why the two must not share a representation."
@@ -199,6 +274,7 @@ fn witness_admission_holds_for_row(entry: String, function: String) -> Bool {
   ) {
     WitnessAdmissionHolds => true
     UnexecutedDeferredWitness { entry: _, function: _ } => false
+    UnclassifiedPathDeferral { entry: _, function: _ } => false
   }
 }
 

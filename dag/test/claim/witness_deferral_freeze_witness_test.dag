@@ -1,0 +1,204 @@
+module dag.test.claim.witness_deferral_freeze_witness
+
+import v2.workflow.witness_admission {
+  witness_path_policy_admission_refusal_in,
+  frozen_path_deferrals_all_discovered
+}
+import gunbc.witness_deferral_freeze {
+  FrozenPathDeferral,
+  frozen_path_deferrals,
+  frozen_path_deferral_covers_in,
+  frozen_path_deferral_row_well_formed,
+  frozen_path_deferrals_well_formed
+}
+import std.witness_admission {
+  WitnessAdmissionRefusal,
+  WitnessAdmissionHolds,
+  UnexecutedDeferredWitness,
+  UnclassifiedPathDeferral
+}
+import std.realization_schedule { ScheduleWitnessEntry, CorpusWitnessKind }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { String, List, Bool }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data witness_deferral_freeze_witness_note: String = "MECHANISM ON FIXTURES, per the decomposition rule this lane's own wall enforces: a corpus census may be irreducible but a mechanism never is, so every claim here plants its own tiny rosters and the live-population join runs where it is already paid for — the host admission step the floor executes per PR (cli_run collect_unexecuted_deferred_witnesses / collect_stale_frozen_path_deferrals, pinned by unfrozen_offline_path_row_refuses_as_unclassified_path_deferral and frozen_path_deferral_roster_carries_no_stale_rows). Folding the real 732-identity roster through the live refusal here would be quadratic and would put this file over the very budget whose evasion it exists to close.
+
+THE DISCRIMINATOR every positive claim holds fixed: the row, the offline pattern and the exclusion verdict are identical across the refusing and admitting halves, and only FREEZE MEMBERSHIP moves. That is the fact the wall added — before 2026-08-04 an OfflineLocalRecipe path admitted unconditionally, so the refusing half could not have been written at all."
+
+fn probe_offline_patterns() -> List<String> {
+  ["test/claim/long/"]
+}
+
+fn probe_fixture_patterns() -> List<String> {
+  ["test/fixture/floor_skip/"]
+}
+
+fn probe_entry() -> String {
+  "src/v2/test/claim/long/synthetic_freeze_probe_test.dag"
+}
+
+fn probe_frozen_roster() -> List<FrozenPathDeferral> {
+  [
+    FrozenPathDeferral {
+      entry: "src/v2/test/claim/long/synthetic_freeze_probe_test.dag",
+      functions: ["already_frozen_holds"]
+    }
+  ]
+}
+
+fn probe_refusal(entry: String, function: String, frozen: List<FrozenPathDeferral>) -> WitnessAdmissionRefusal {
+  witness_path_policy_admission_refusal_in(
+    entry: entry,
+    function: function,
+    excluded_from_discovery: true,
+    offline: probe_offline_patterns(),
+    fixture: probe_fixture_patterns(),
+    frozen: frozen
+  )
+}
+
+fn refusal_is_unclassified_path_deferral(r: WitnessAdmissionRefusal) -> Bool {
+  match r {
+    UnclassifiedPathDeferral { entry: _, function: _ } => true
+    UnexecutedDeferredWitness { entry: _, function: _ } => false
+    WitnessAdmissionHolds => false
+  }
+}
+
+fn refusal_is_unexecuted_deferred(r: WitnessAdmissionRefusal) -> Bool {
+  match r {
+    UnexecutedDeferredWitness { entry: _, function: _ } => true
+    UnclassifiedPathDeferral { entry: _, function: _ } => false
+    WitnessAdmissionHolds => false
+  }
+}
+
+fn refusal_holds(r: WitnessAdmissionRefusal) -> Bool {
+  match r {
+    WitnessAdmissionHolds => true
+    UnexecutedDeferredWitness { entry: _, function: _ } => false
+    UnclassifiedPathDeferral { entry: _, function: _ } => false
+  }
+}
+
+test fn witness_deferral_freeze_unfrozen_offline_row_refuses() -> Bool {
+  refusal_is_unclassified_path_deferral(
+    r: probe_refusal(
+      entry: probe_entry(),
+      function: "relocated_matrix_holds",
+      frozen: probe_frozen_roster()
+    )
+  )
+}
+
+test fn witness_deferral_freeze_frozen_row_holds() -> Bool {
+  refusal_holds(
+    r: probe_refusal(
+      entry: probe_entry(),
+      function: "already_frozen_holds",
+      frozen: probe_frozen_roster()
+    )
+  )
+}
+
+test fn witness_deferral_freeze_empty_roster_refuses_the_same_row() -> Bool {
+  refusal_is_unclassified_path_deferral(
+    r: probe_refusal(entry: probe_entry(), function: "already_frozen_holds", frozen: [])
+  )
+}
+
+test fn witness_deferral_freeze_fixture_path_is_unaffected() -> Bool {
+  refusal_holds(
+    r: probe_refusal(
+      entry: "dag/test/fixture/floor_skip/synthetic_control_test.dag",
+      function: "floor_skip_control_holds",
+      frozen: []
+    )
+  )
+}
+
+test fn witness_deferral_freeze_unclaimed_path_stays_unexecuted_deferred() -> Bool {
+  refusal_is_unexecuted_deferred(
+    r: probe_refusal(
+      entry: "dag/test/claim/synthetic_orphan_admission_witness_test.dag",
+      function: "synthetic_orphan_no_consumer_holds",
+      frozen: []
+    )
+  )
+}
+
+test fn witness_deferral_freeze_included_row_is_never_refused() -> Bool {
+  refusal_holds(
+    r: witness_path_policy_admission_refusal_in(
+      entry: probe_entry(),
+      function: "relocated_matrix_holds",
+      excluded_from_discovery: false,
+      offline: probe_offline_patterns(),
+      fixture: probe_fixture_patterns(),
+      frozen: []
+    )
+  )
+}
+
+test fn witness_deferral_freeze_join_is_by_identity_not_by_entry() -> Bool {
+  !frozen_path_deferral_covers_in(
+    rows: probe_frozen_roster(),
+    entry: probe_entry(),
+    function: "added_after_the_freeze_holds"
+  )
+    && frozen_path_deferral_covers_in(
+      rows: probe_frozen_roster(),
+      entry: probe_entry(),
+      function: "already_frozen_holds"
+    )
+}
+
+fn probe_discovered_population() -> List<ScheduleWitnessEntry> {
+  [
+    ScheduleWitnessEntry {
+      entry: "src/v2/test/claim/long/synthetic_freeze_probe_test.dag",
+      function: "already_frozen_holds",
+      kind: CorpusWitnessKind
+    }
+  ]
+}
+
+test fn witness_deferral_freeze_live_rows_join_the_discovered_population() -> Bool {
+  frozen_path_deferrals_all_discovered(
+    rows: probe_frozen_roster(),
+    discovered: probe_discovered_population()
+  )
+}
+
+test fn witness_deferral_freeze_departed_row_fails_the_join() -> Bool {
+  !frozen_path_deferrals_all_discovered(
+    rows: [
+      FrozenPathDeferral {
+        entry: "src/v2/test/claim/long/departed_test.dag",
+        functions: ["departed_holds"]
+      }
+    ],
+    discovered: probe_discovered_population()
+  )
+}
+
+test fn witness_deferral_freeze_empty_function_list_is_malformed() -> Bool {
+  !frozen_path_deferral_row_well_formed(
+    row: FrozenPathDeferral {
+      entry: "src/v2/test/claim/long/synthetic_freeze_probe_test.dag",
+      functions: []
+    }
+  )
+    && frozen_path_deferral_row_well_formed(
+      row: FrozenPathDeferral {
+        entry: "src/v2/test/claim/long/synthetic_freeze_probe_test.dag",
+        functions: ["x_holds"]
+      }
+    )
+}
+
+test fn witness_deferral_freeze_live_roster_is_well_formed() -> Bool {
+  frozen_path_deferrals_well_formed()
+}
