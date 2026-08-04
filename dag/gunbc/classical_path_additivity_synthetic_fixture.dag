@@ -18,9 +18,8 @@ import gunbc.physics.classical_path_additivity {
   PathAdditivitySubject,
   PathAdditivitySyntheticFixture,
   PathAdditivityRefutationReceipt,
-  AdditivityMismatchDirection,
-  ObservedBelowPrediction,
-  ObservedAbovePrediction,
+  Less,
+  Greater,
   ArrivalCountResolution,
   ArrivalCountResolved,
   ArrivalCountMissing,
@@ -114,7 +113,7 @@ fn synthetic_first_minimum_refutation_receipt() -> PathAdditivityRefutationRecei
     both: 5,
     band: FirstMinimumBand,
     exposure: SyntheticMatchedExposureOne {},
-    mismatch_direction: ObservedBelowPrediction,
+    observed_vs_prediction: Less,
   )
 }
 
@@ -139,7 +138,7 @@ fn classical_path_additivity_central_band_refutation_holds() -> Bool {
       },
     } =>
       path_additivity_witness_is_counterexample(witness: w)
-        && w.mismatch_direction == ObservedAbovePrediction
+        && w.observed_vs_prediction == Greater
     Absent => false
   }
 }

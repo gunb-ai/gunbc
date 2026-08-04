@@ -1,6 +1,7 @@
 module gunbc.physics.classical_path_additivity
 
 import std.types { Bool, Int, List, NonEmptyStr }
+import std.algebra { Ordering, Less, Equal, Greater }
 
 data classical_path_additivity_note: String = "Downstream physics model-debugging layer for exclusive-alternative raw-count additivity: N_both = N_left + N_right. Not std.algebra_law — experiment-specific count equality lives here until a generic distributivity substrate lands in Slice B."
 
@@ -71,16 +72,12 @@ type AdditivityInputResolution
       matching_rows: Int
     }
 
-type AdditivityMismatchDirection
-  = ObservedBelowPrediction
-  | ObservedAbovePrediction
-
 type PathAdditivityCounterexampleWitness {
   left_alternative_count: Int
   right_alternative_count: Int
   both_open_observed_count: Int
   classical_additive_prediction: Int
-  mismatch_direction: AdditivityMismatchDirection
+  observed_vs_prediction: Ordering
 }
 
 type PathAdditivitySubject
@@ -252,29 +249,17 @@ fn resolve_additivity_inputs(
   }
 }
 
-fn additivity_mismatch_direction_when_different(
+fn path_additivity_compare_observed_to_prediction(
   observed_both: Int,
   prediction: Int,
-) -> AdditivityMismatchDirection {
+) -> Ordering {
   if observed_both < prediction {
-    ObservedBelowPrediction
+    Less
   } else {
-    ObservedAbovePrediction
-  }
-}
-
-fn path_additivity_mismatch_direction(
-  observed_both: Int,
-  prediction: Int,
-) -> AdditivityMismatchDirection? {
-  if observed_both == prediction {
-    none
-  } else {
-    Present {
-      value: additivity_mismatch_direction_when_different(
-        observed_both: observed_both,
-        prediction: prediction,
-      ),
+    if observed_both > prediction {
+      Greater
+    } else {
+      Equal
     }
   }
 }
@@ -307,7 +292,7 @@ fn path_additivity_refutation_from_resolved(
   both: Int,
   band: ScreenBand,
   exposure: SyntheticMatchedExposureSession,
-  mismatch_direction: AdditivityMismatchDirection,
+  observed_vs_prediction: Ordering,
 ) -> PathAdditivityRefutationReceipt {
   let prediction = classical_exclusive_alternative_arrival_prediction(
     left_only_count: left,
@@ -320,7 +305,7 @@ fn path_additivity_refutation_from_resolved(
       right_alternative_count: right,
       both_open_observed_count: both,
       classical_additive_prediction: prediction,
-      mismatch_direction: mismatch_direction,
+      observed_vs_prediction: observed_vs_prediction,
     },
     location: PathAdditivityLocationKey {
       exposure: exposure,
@@ -353,8 +338,13 @@ fn derive_path_additivity_refutation_at_band(
         left_only_count: left,
         right_only_count: right,
       )
-      match path_additivity_mismatch_direction(observed_both: both, prediction: prediction) {
-        Present { value: ObservedBelowPrediction } =>
+      let ordering = path_additivity_compare_observed_to_prediction(
+        observed_both: both,
+        prediction: prediction,
+      )
+      match ordering {
+        Equal => none
+        Less =>
           Present {
             value: path_additivity_refutation_from_resolved(
               left: left,
@@ -362,10 +352,10 @@ fn derive_path_additivity_refutation_at_band(
               both: both,
               band: band,
               exposure: exposure,
-              mismatch_direction: ObservedBelowPrediction,
+              observed_vs_prediction: Less,
             ),
           }
-        Present { value: ObservedAbovePrediction } =>
+        Greater =>
           Present {
             value: path_additivity_refutation_from_resolved(
               left: left,
@@ -373,10 +363,9 @@ fn derive_path_additivity_refutation_at_band(
               both: both,
               band: band,
               exposure: exposure,
-              mismatch_direction: ObservedAbovePrediction,
+              observed_vs_prediction: Greater,
             ),
           }
-        Absent => none
       }
     }
     AdditivityInputsIncomplete {
