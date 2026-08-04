@@ -30,14 +30,14 @@ test fn uri_percent_encode_scalar_musical_symbol_holds() -> Bool {
 
 test fn uri_percent_encode_refuses_surrogate_scalar_holds() -> Bool {
   match uri_percent_encode_code_point(cp: 55296) {
-    UriPercentComponentRefused { cause: UriHexNibbleOutOfRange { digit: 55296 } } => true
+    UriPercentComponentRefused { cause: UriUnicodeScalarSurrogateRefused { cp: 55296 } } => true
     UriPercentComponentEncoded(_) => false
   }
 }
 
 test fn uri_percent_encode_refuses_code_point_beyond_unicode_max_holds() -> Bool {
   match uri_percent_encode_code_point(cp: 1114112) {
-    UriPercentComponentRefused { cause: UriHexNibbleOutOfRange { digit: 1114112 } } => true
+    UriPercentComponentRefused { cause: UriUnicodeScalarOutOfRangeRefused { cp: 1114112 } } => true
     UriPercentComponentEncoded(_) => false
   }
 }
