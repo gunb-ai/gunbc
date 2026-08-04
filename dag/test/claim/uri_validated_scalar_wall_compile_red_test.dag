@@ -1,0 +1,37 @@
+module test.claim.uri_validated_scalar_wall_compile_red
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data uri_validated_scalar_wall_note: String = "D1 construction wall (loyal-ant-382, #7790): uri_percent_encode_unicode_scalar_validated accepts UriValidatedScalar only — minted by uri_unicode_scalar_construction, not a hand-built UriUnicodeScalar record and not a surrogate literal cast. Each fake below must FAIL TO COMPILE via compile_dag_rust_emit_check; if the validated entry widens back to UriUnicodeScalar or bare Int, the RED goes red."
+
+data red_raw_scalar_note: String = "RED A — bypass via hand-built UriUnicodeScalar { cp: 55296 } at the validated entry. Before D1 this compiled and encoded without re-validation; after UriValidatedScalar the parameter type refuses the raw record."
+
+fn w_red_raw_unicode_scalar_at_validated_entry() -> Bool {
+  compile_dag_rust_emit_check(
+    "module urivalreda\n\nimport extdeps.uri {\n  UriUnicodeScalar,\n  UriPercentEncodeBuilding,\n  UriPercentEncodeRefused,\n  uri_percent_encode_unicode_scalar_validated,\n}\n\nfn bypass() -> String {\n  match uri_percent_encode_unicode_scalar_validated(scalar: UriUnicodeScalar { cp: 55296 }) {\n    UriPercentEncodeBuilding { wire: w } => w\n    UriPercentEncodeRefused { cause: _ } => \"refused\"\n  }\n}\n",
+    "src/urivalreda.rs",
+    [],
+    []
+  )
+}
+
+data red_surrogate_cast_note: String = "RED B — bypass via 55296 as UriValidatedScalar without construction. The where unicode_scalar refinement must refuse the surrogate literal at the cast site."
+
+fn w_red_surrogate_literal_cast_to_validated_scalar() -> Bool {
+  compile_dag_rust_emit_check(
+    "module urivalredb\n\nimport extdeps.uri {\n  UriValidatedScalar,\n  UriPercentEncodeBuilding,\n  UriPercentEncodeRefused,\n  uri_percent_encode_unicode_scalar_validated,\n}\n\nfn bypass() -> String {\n  match uri_percent_encode_unicode_scalar_validated(scalar: 55296 as UriValidatedScalar) {\n    UriPercentEncodeBuilding { wire: w } => w\n    UriPercentEncodeRefused { cause: _ } => \"refused\"\n  }\n}\n",
+    "src/urivalredb.rs",
+    [],
+    []
+  )
+}
+
+test fn uri_validated_scalar_wall_red_raw_unicode_scalar_refuses() -> Bool {
+  !w_red_raw_unicode_scalar_at_validated_entry()
+}
+
+test fn uri_validated_scalar_wall_red_surrogate_literal_cast_refuses() -> Bool {
+  !w_red_surrogate_literal_cast_to_validated_scalar()
+}

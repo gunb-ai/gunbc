@@ -6,8 +6,8 @@ data witness_negative_scalar: Int = 0 - 1
 
 test fn uri_percent_encode_scalar_e_acute_holds() -> Bool {
   match uri_unicode_scalar_construction(cp: 233) {
-    UriUnicodeScalarConstructed(scalar) =>
-      match uri_percent_encode_unicode_scalar(scalar: scalar) {
+    UriUnicodeScalarConstructed(validated) =>
+      match uri_percent_encode_unicode_scalar_validated(scalar: validated) {
         UriPercentEncodeBuilding { wire: w } => w == "%C3%A9"
         UriPercentEncodeRefused { cause: _ } => false
       }
