@@ -192,7 +192,22 @@ Classified **specimens** — denominator not closed; keen-lark-681 successor owe
 
 **Do not overstate B:** ConstructorReferenceAdmission does not close wise-ram-22's FixtureOrigin class or the direct-door permitted-caller + hand-authored tree specimen.
 
-## 6. First slice (already written — executable acceptance)
+**keen-lark-681 draft rows tagged (msg_2eaf0857, probe @ `27e516ce` — entry-closure scoped, NOT closed population):**
+
+| # | Surface | §5.5 tag(s) | Notes |
+|---|---|---|---|
+| 1 | `candidate_generation.mint_provenanced_rust_artifact` | **C — fixture-origin parameter** | B may roster call edges on this mint but **does not close C** |
+| 2 | `candidate_generation.mint_written_provenanced_rust_artifact` | **C — fixture-origin parameter** | Same as (1) via wrapper |
+| 3 | `candidate_generation.generate_provenanced_rust_candidate_from_ingest` | **—** (not C at caller) | Real-pipeline caller; fixture risk is parameter type at (1). **A-prime: N/A** (call, not record literal) — agreed |
+| 4 | `candidate_generation.advance_written_provenanced_rust_artifact_cargo_green` | **C — fixture-origin parameter** (derivative); **C — real execution, wrong subject** when cargo greens on substitute-subject bytes | Inherits upstream origin |
+| 5 | `tools.direct_rust_door_transport.run_direct_rust_door_emit_write_compile_smoke` | **C — fixture-origin parameter**; **C — real execution, wrong subject** (when cargo greens) | Primary measured direct-door specimen |
+| 6 | `production_qualification_origin_probe_structural_fixture.structural_red_control_mint_site_probe` | Same as (5) | Test scaffold; probe control until G2 marshal exposes callees |
+| 7–10 | Synthetic classifier controls | **Probe enrollment** (not live census) | Oracle rows for classifier proof only |
+| 11 | `behavioral_comparison_receipt` `BehavioralComparisonObservation` + `mint_behavioral_comparison_observation` | **A (v1)** record literal; **A-prime (v2)** uncovered; **B** exported mint call leak | §1 specimen; first_slice target |
+| 12 | `WitnessBin.Run` opaque returns | **C — other** | Forgeable strings |
+| 13 | Process-output `sole_constructor` (#7794) | **C — other** | Decorative reshuffle |
+
+**A/A-prime denominator:** origin probe does **not** discover `sole_constructor` record-literal sites today — correct scope split. **Recommend parallel census** (or dedicated v2-path discovery witness) for A/A-prime population; do not fold into origin probe unless one closure scan is explicitly scoped for both axes.
 
 **Subject:** `mint_behavioral_comparison_observation` → `BehavioralComparisonObservation`.
 
