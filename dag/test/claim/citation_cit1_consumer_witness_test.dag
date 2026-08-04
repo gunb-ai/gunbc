@@ -10,7 +10,7 @@ import extdeps.pin { pin_currency_gap, AuthoredPinHasNoReviewDate, ExactPin }
 import std.types { Bool }
 
 test fn x86_64_abi_pdf_consumer_carries_exact_pin_and_page_fragment() -> Bool {
-  pdf_open_parameters_include_page(sequence: x86_64_abi_pdf_fragment, page: 1)
+  pdf_open_parameters_include_page(x86_64_abi_pdf_fragment, 1)
     && match x86_64_abi_pdf_navigable_projection {
       NavigableUriProjected { uri: u } =>
         string_contains(s: u.locator, pattern: "x86_64-abi-0.99.pdf")

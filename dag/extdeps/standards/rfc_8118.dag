@@ -160,11 +160,9 @@ fn pdf_open_parameter_sequence(constructions: List<PdfProfileParameterConstructi
   match pdf_open_parameter_sequence_first_refusal(constructions: constructions) {
     Present { value: cause } => SequenceConstructionRefused { cause: cause }
     Absent =>
-      SequenceConstructed {
-        sequence: PdfOpenParameterSequence {
-          parameters: pdf_open_parameter_sequence_collect_admitted(constructions: constructions),
-        },
-      }
+      SequenceConstructed(PdfOpenParameterSequence {
+        parameters: pdf_open_parameter_sequence_collect_admitted(constructions: constructions),
+      })
   }
 }
 

@@ -18,9 +18,8 @@ import extdeps.http.server { MediaType, TopLevelApplication }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.standards.rfc_8118 {
-  PdfOpenParameterSequence,
+  PdfOpenParameterSequenceConstruction,
   NavigableUriProjection,
-  NavigableUriProjected,
   pdf_open_page,
   pdf_open_parameter_sequence,
   project_navigable_uri,
@@ -50,16 +49,16 @@ data x86_64_abi_pdf_pin: Pin<CitedRepresentation> = citation_exact_pin(
   ),
 )
 
-data x86_64_abi_pdf_fragment: PdfOpenParameterSequence = pdf_open_parameter_sequence(
-  parameters: [pdf_open_page(page: 1)],
+data x86_64_abi_pdf_fragment: PdfOpenParameterSequenceConstruction = pdf_open_parameter_sequence(
+  constructions: [pdf_open_page(page: 1)],
 )
 
 data x86_64_abi_pdf_navigable_projection: NavigableUriProjection = project_navigable_uri(
   base: extdeps_external_authority_anchor.uri,
-  sequence: x86_64_abi_pdf_fragment,
+  sequence_construction: x86_64_abi_pdf_fragment,
 )
 
-data x86_64_abi_pdf_cited_resource: CitedResource<RetrievedRepresentation, PdfOpenParameterSequence> = cited_resource(authority: extdeps_external_authority_anchor, representation: retrieved_representation(media_type: x86_64_abi_application_pdf, pin: x86_64_abi_pdf_pin), selector: x86_64_abi_pdf_fragment)
+data x86_64_abi_pdf_cited_resource: CitedResource<RetrievedRepresentation, PdfOpenParameterSequenceConstruction> = cited_resource(authority: extdeps_external_authority_anchor, representation: retrieved_representation(media_type: x86_64_abi_application_pdf, pin: x86_64_abi_pdf_pin), selector: x86_64_abi_pdf_fragment)
 
 type Amd64Gpr = Rdi | Rsi | Rdx | R10 | R8 | R9 | Rax | Rcx
 

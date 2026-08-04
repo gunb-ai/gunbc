@@ -9,13 +9,17 @@ import extdeps.standards.rfc_8118 {
   extdeps_model_scope,
   PdfOpenPage,
   OpenPage,
-  ProfileRefused,
+  ParameterConstructed,
+  ParameterConstructionRefused,
   ParameterOutsideCit1SafeProfile,
   PdfParameterZoom,
   PdfParameterComment,
+  SequenceConstructionRefused,
+  SequenceConstructed,
   NavigableUriProjected,
   NavigableUriRefused,
   BaseLocatorAlreadyCarriesFragment,
+  ParameterConstructionRefusedInSequence,
   pdf_open_page,
   pdf_open_zoom,
   pdf_open_comment,
@@ -42,35 +46,42 @@ test fn iso_32000_2_is_further_citation() -> Bool {
 
 test fn pdf_open_page_admits_positive_one() -> Bool {
   match pdf_open_page(page: 1) {
-    OpenPage(PdfOpenPage { page: p }) => p == 1
+    ParameterConstructed(OpenPage(PdfOpenPage { page: p })) => p == 1
     _ => false
   }
 }
 
-test fn pdf_open_page_refuses_zoom_outside_safe_profile() -> Bool {
+test fn pdf_open_zoom_refuses_outside_safe_profile() -> Bool {
   match pdf_open_zoom(scale_percent: 100) {
-    ProfileRefused { cause: ParameterOutsideCit1SafeProfile { parameter: PdfParameterZoom } } => true
+    ParameterConstructionRefused { cause: ParameterOutsideCit1SafeProfile { parameter: PdfParameterZoom } } => true
     _ => false
   }
 }
 
 test fn pdf_open_comment_refuses_with_typed_parameter_kind() -> Bool {
   match pdf_open_comment(comment_id: "note-1" as NonEmptyStr) {
-    ProfileRefused { cause: ParameterOutsideCit1SafeProfile { parameter: PdfParameterComment } } => true
+    ParameterConstructionRefused { cause: ParameterOutsideCit1SafeProfile { parameter: PdfParameterComment } } => true
+    _ => false
+  }
+}
+
+test fn pdf_open_parameter_sequence_refuses_only_refused_parameters() -> Bool {
+  match pdf_open_parameter_sequence(constructions: [pdf_open_zoom(scale_percent: 100)]) {
+    SequenceConstructionRefused { cause: ParameterOutsideCit1SafeProfile { parameter: PdfParameterZoom } } => true
     _ => false
   }
 }
 
 test fn pdf_open_parameters_include_page_holds_for_authored_page() -> Bool {
   pdf_open_parameters_include_page(
-    sequence: pdf_open_parameter_sequence(parameters: [pdf_open_page(page: 1)]),
+    construction: pdf_open_parameter_sequence(constructions: [pdf_open_page(page: 1)]),
     page: 1,
   )
 }
 
 test fn pdf_open_parameters_include_page_red_wrong_page() -> Bool {
   !pdf_open_parameters_include_page(
-    sequence: pdf_open_parameter_sequence(parameters: [pdf_open_page(page: 1)]),
+    construction: pdf_open_parameter_sequence(constructions: [pdf_open_page(page: 1)]),
     page: 99,
   )
 }
@@ -78,7 +89,7 @@ test fn pdf_open_parameters_include_page_red_wrong_page() -> Bool {
 test fn project_navigable_uri_appends_ordered_fragment() -> Bool {
   match project_navigable_uri(
     base: witness_pdf_base_uri,
-    sequence: pdf_open_parameter_sequence(parameters: [pdf_open_page(page: 1)]),
+    sequence_construction: pdf_open_parameter_sequence(constructions: [pdf_open_page(page: 1)]),
   ) {
     NavigableUriProjected { uri: u } => u.locator == "example.test/fixture.pdf#page=1"
     _ => false
@@ -88,7 +99,7 @@ test fn project_navigable_uri_appends_ordered_fragment() -> Bool {
 test fn project_navigable_uri_refuses_when_base_carries_fragment() -> Bool {
   match project_navigable_uri(
     base: extdeps_external_authority_anchor.uri,
-    sequence: pdf_open_parameter_sequence(parameters: [pdf_open_page(page: 1)]),
+    sequence_construction: pdf_open_parameter_sequence(constructions: [pdf_open_page(page: 1)]),
   ) {
     NavigableUriRefused { cause: BaseLocatorAlreadyCarriesFragment { locator: l } } =>
       l == rfc_8118_section_3_locator
@@ -96,8 +107,21 @@ test fn project_navigable_uri_refuses_when_base_carries_fragment() -> Bool {
   }
 }
 
+test fn project_navigable_uri_refuses_mixed_admitted_and_refused_parameters() -> Bool {
+  match project_navigable_uri(
+    base: witness_pdf_base_uri,
+    sequence_construction: pdf_open_parameter_sequence(constructions: [pdf_open_page(page: 1), pdf_open_zoom(scale_percent: 100)]),
+  ) {
+    NavigableUriRefused { cause: ParameterConstructionRefusedInSequence { cause: ParameterOutsideCit1SafeProfile { parameter: PdfParameterZoom } } } => true
+    _ => false
+  }
+}
+
 test fn pdf_profile_parameter_wire_names_page() -> Bool {
-  pdf_profile_parameter_wire(parameter: pdf_open_page(page: 3)) == "page=3"
+  match pdf_open_page(page: 3) {
+    ParameterConstructed(parameter) => pdf_profile_parameter_wire(parameter: parameter) == "page=3"
+    _ => false
+  }
 }
 
 test fn citation_cit1_witness_split_names_homonym_accommodation() -> Bool {
