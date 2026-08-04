@@ -3,7 +3,10 @@ module v2.compiler.self_host.frontier_probe
 import v2.compiler.self_host.compiler_closure_emit {
   emit_compiler_import_closure_from_ingest
 }
-import v2.compiler.name_resolve { Admission }
+import v2.compiler.name_resolve {
+  Admission,
+  admission_from_module_root
+}
 import v2.compiler.program_assembly { assemble_program_from_ingest }
 import v2.compiler.self_host.frontier_probe_types {
   FrontierProbeReceipt,
@@ -13,13 +16,151 @@ import v2.compiler.self_host.frontier_probe_types {
   frontier_probe_located_stage_for_assemble_outcome,
   frontier_probe_located_stage_for_emit_outcome
 }
-import v2.compiler.source_authority { SourceRootIngest }
+import v2.compiler.source_authority {
+  DagSourceReadWitness,
+  SourceRootIngest
+}
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.extdeps.languages.rust { rust_target_model }
-import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
+import v2.lens.reference_deps { reference_deps_ingest_source_text }
+import extdeps.communication.medium { Lossless, Medium }
+import extdeps.filesystem.filesystem_io
+import std.algebra { Cons, Empty, FreeMonoid }
+import v2.std.algebra { fold_list, length, list_reverse }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.collection { List }
+import v2.std.compilers.lexing { symbol_intern_lexeme }
+import v2.std.cross_tree.import_model { DagTree, SourceRootRef, V2Tree }
+import v2.std.diagnostic {
+  Accepted,
+  ExternalContractUnknown,
+  None,
+  Outcome,
+  Rejected,
+  Unavailable,
+  diagnostics_singleton,
+  outcome_accepted,
+  outcome_rejected,
+  textual_whole_file_diagnostic
+}
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
+import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }
 
 data frontier_probe_emit_from_ingest_consumer_dissolution_trigger: String = "migrate_when_frontier_per_module_probe_receipt_binds — frontier_probe_emit_from_ingest is staged kernel with no substrate consumer yet; roster rows bind via execution_measured_seed_retained_row_from_probe_receipt when per-module survey lands."
+
+data frontier_probe_closure_ingest_note: String = "Frontier probe ingest must not depend on inline Lossless rows past MANIFEST_INLINE_LIST_MAX — 00_compile's closure is 91 reads against cap 64 (source_authority::source_root_coverage_note), so elided inline manifests carry Empty ingest and assemble refuses ^resolve_module_not_found for the subject. Path-only closure rows dissolve the cap: ingest is built at probe time via filesystem_read over every closure path, matching compile_door_ledger's ledger_read_witness transport without inlining corpus text."
+
+fn frontier_probe_source_root_for_path(path: String) -> SourceRootRef {
+  if starts_with(s: path, prefix: "src/v2") {
+    V2Tree
+  } else {
+    DagTree
+  }
+}
+
+fn frontier_probe_read_witness(path: String) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium {
+      carried: filesystem_read(path: path).content,
+      fidelity: Lossless
+    },
+    artifact: Artifact {
+      kind: SourceFile,
+      id: symbol_intern_lexeme(lexeme: path),
+      file_path: path
+    },
+    compilation_unit: symbol_intern_lexeme(lexeme: path),
+    source_root: frontier_probe_source_root_for_path(path: path)
+  }
+}
+
+fn frontier_probe_ingest_from_closure_paths(paths: List<String>) -> SourceRootIngest {
+  list_reverse(
+    xs: fold_list(
+      xs: paths,
+      empty: Empty,
+      cons: fn(acc, p) {
+        Cons {
+          head: frontier_probe_read_witness(path: p),
+          tail: acc
+        }
+      }
+    )
+  )
+}
+
+fn frontier_probe_ingest_for_entry(
+  closure_paths: List<String>,
+  fallback_ingest: SourceRootIngest
+) -> SourceRootIngest {
+  if length(xs: closure_paths) > 0 {
+    frontier_probe_ingest_from_closure_paths(paths: closure_paths)
+  } else {
+    fallback_ingest
+  }
+}
+
+fn frontier_probe_entry_read_witness(
+  ingest: SourceRootIngest,
+  module_path: String
+) -> Optional<DagSourceReadWitness> {
+  fold_list(
+    xs: ingest,
+    empty: optional_absent(),
+    cons: fn(acc, read) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          if read.artifact.file_path == module_path {
+            optional_present(value: read)
+          } else {
+            optional_absent()
+          }
+      }
+    }
+  )
+}
+
+fn frontier_probe_admission_from_ingest_entry(
+  ingest: SourceRootIngest,
+  module_path: String
+) -> Outcome<Admission> {
+  match frontier_probe_entry_read_witness(ingest: ingest, module_path: module_path) {
+    Present { value: read } =>
+      match reference_deps_ingest_source_text(
+        source_text: read.source.carried,
+        file: symbol_intern_lexeme(lexeme: module_path)
+      ) {
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+        Accepted { value: parse_root, diagnostics: _ } =>
+          admission_from_module_root(root: parse_root)
+      }
+    Absent =>
+      outcome_rejected(
+        d: diagnostics_singleton(
+          d: textual_whole_file_diagnostic(
+            reason: ^resolve_module_not_found,
+            module_file: symbol_intern_lexeme(lexeme: module_path),
+            correction: Unavailable { reason: ExternalContractUnknown }
+          )
+        )
+      )
+  }
+}
+
+fn frontier_probe_admission_for_entry(
+  ingest: SourceRootIngest,
+  module_path: String,
+  fallback_admission: Admission
+) -> Outcome<Admission> {
+  if module_path != "" {
+    frontier_probe_admission_from_ingest_entry(ingest: ingest, module_path: module_path)
+  } else {
+    outcome_accepted(value: fallback_admission)
+  }
+}
 
 fn frontier_probe_emit_from_ingest(
   module_path: String,
