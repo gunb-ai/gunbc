@@ -165,3 +165,99 @@ fn node_accepted(receipts: List<RoadmapAcceptanceReceipt>, rn: RoadmapNode) -> B
   let rs = receipts_for_node(receipts: receipts, id: rn.node)
   count(rs) == 1 && all(rs, r => receipt_matches_node(r: r, rn: rn))
 }
+
+data acceptance_receipt_continuity_wall_note: String = "THE FAIL-OPEN roadmap_acceptance_receipt_note DECLARES BUT DID NOT CLOSE. Acceptance is a durable typed fact, never row deletion — yet removing a RoadmapAcceptanceReceipt row from the authority silently returned the node to the active set with no refusal. This wall closes that gap: baseline_nodes is the monotone ledger of every node ever accepted (closed subject universe — it grows only when a new acceptance lands, never shrinks). A baseline node must still carry a current receipt OR an explicit RoadmapAcceptanceReceiptRevocation witness; absence from current without revocation is VanishedReceiptWithoutRevocationWitness. Revocation is the only sanctioned path off the live receipt list — editing the row away is not revocation."
+
+type RoadmapAcceptanceReceiptRevocation {
+  node: RoadmapNodeId
+  criteria_digest: Fnv1a64Structural
+  reason: NonEmptyStr
+  revoked_by: NonEmptyStr
+  revoked_on: NonEmptyStr
+}
+
+type AcceptanceReceiptContinuityRefusalCause
+  = VanishedReceiptWithoutRevocationWitness
+
+type AcceptanceReceiptContinuityVerdict
+  = AcceptanceReceiptContinuityHolds
+  | AcceptanceReceiptContinuityRefused {
+      node: RoadmapNodeId,
+      cause: AcceptanceReceiptContinuityRefusalCause,
+    }
+
+fn receipt_present_for_node(receipts: List<RoadmapAcceptanceReceipt>, id: RoadmapNodeId) -> Bool {
+  count(receipts_for_node(receipts: receipts, id: id)) > 0
+}
+
+fn revocation_covers_node(revocations: List<RoadmapAcceptanceReceiptRevocation>, id: RoadmapNodeId) -> Bool {
+  revocations |> any(r => r.node == id)
+}
+
+fn baseline_node_has_receipt_or_revocation(
+  id: RoadmapNodeId,
+  receipts: List<RoadmapAcceptanceReceipt>,
+  revocations: List<RoadmapAcceptanceReceiptRevocation>,
+) -> Bool {
+  receipt_present_for_node(receipts: receipts, id: id)
+    || revocation_covers_node(revocations: revocations, id: id)
+}
+
+fn first_vanished_receipt_without_revocation(
+  baseline_nodes: List<RoadmapNodeId>,
+  receipts: List<RoadmapAcceptanceReceipt>,
+  revocations: List<RoadmapAcceptanceReceiptRevocation>,
+) -> RoadmapNodeId? {
+  let vanished = baseline_nodes |> filter(id =>
+    !baseline_node_has_receipt_or_revocation(
+      id: id,
+      receipts: receipts,
+      revocations: revocations,
+    )
+  )
+  if count(vanished) == 0 {
+    Absent
+  } else {
+    Present { value: first(vanished) }
+  }
+}
+
+fn acceptance_receipt_continuity_verdict(
+  baseline_nodes: List<RoadmapNodeId>,
+  receipts: List<RoadmapAcceptanceReceipt>,
+  revocations: List<RoadmapAcceptanceReceiptRevocation>,
+) -> AcceptanceReceiptContinuityVerdict {
+  match first_vanished_receipt_without_revocation(
+    baseline_nodes: baseline_nodes,
+    receipts: receipts,
+    revocations: revocations,
+  ) {
+    Absent => AcceptanceReceiptContinuityHolds
+    Present { value: node } => AcceptanceReceiptContinuityRefused {
+      node: node,
+      cause: VanishedReceiptWithoutRevocationWitness,
+    }
+  }
+}
+
+fn acceptance_receipt_continuity_holds(
+  baseline_nodes: List<RoadmapNodeId>,
+  receipts: List<RoadmapAcceptanceReceipt>,
+  revocations: List<RoadmapAcceptanceReceiptRevocation>,
+) -> Bool {
+  match acceptance_receipt_continuity_verdict(
+    baseline_nodes: baseline_nodes,
+    receipts: receipts,
+    revocations: revocations,
+  ) {
+    AcceptanceReceiptContinuityHolds => true
+    AcceptanceReceiptContinuityRefused { node: _, cause: _ } => false
+  }
+}
+
+fn current_receipt_nodes_covered_by_baseline(
+  baseline_nodes: List<RoadmapNodeId>,
+  receipts: List<RoadmapAcceptanceReceipt>,
+) -> Bool {
+  all(receipts, r => baseline_nodes |> any(b => b == r.node))
+}

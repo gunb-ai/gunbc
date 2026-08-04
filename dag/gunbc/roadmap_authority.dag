@@ -19,7 +19,10 @@ import gunbc.roadmap_model {
   Pointer,
   RoadmapNodeId,
   RoadmapAcceptanceReceipt,
+  RoadmapAcceptanceReceiptRevocation,
   node_accepted,
+  acceptance_receipt_continuity_holds,
+  current_receipt_nodes_covered_by_baseline,
   Intricacy,
   IntricacyLow,
   IntricacyMedium,
@@ -2148,6 +2151,45 @@ fn roadmap_acceptance_receipts() -> List<RoadmapAcceptanceReceipt> {
       accepted_on: "2026-08-02",
     },
   ]
+}
+
+data roadmap_acceptance_receipt_baseline_note: String = "Monotone ledger of every roadmap node ever accepted — the closed subject universe for acceptance_receipt_continuity_wall_note. Grows only when a new acceptance receipt lands (add the node here in the same change); never shrinks. A receipt removed from roadmap_acceptance_receipts without a matching RoadmapAcceptanceReceiptRevocation row redds witness_acceptance_receipt_continuity_holds_on_live_authority."
+
+fn roadmap_acceptance_receipt_baseline_nodes() -> List<RoadmapNodeId> {
+  [
+    nid(s: "2-scm-git-upstream-model"),
+    nid(s: "2-scm-mercurial-upstream-model"),
+    nid(s: "2-scm-pijul-upstream-model"),
+    nid(s: "2-claim-indexed-evidence"),
+    nid(s: "2-scm-compatibility-shape"),
+    nid(s: "2-scm-p0-landing-spine"),
+    nid(s: "namespace-occurrence-transport"),
+    nid(s: "namespace-binding-kernel"),
+    nid(s: "entry-graph-union-construction"),
+    nid(s: "pderive-typesafe-nullary-reflection"),
+    nid(s: "pderive-static-supplemental-contract"),
+    nid(s: "v1-test-hygiene-producer-retirement"),
+    nid(s: "v1-interpreter-primitive-roster"),
+    nid(s: "ladder-measurement-schema"),
+    nid(s: "v2-emitter-producer-provenance"),
+    nid(s: "v1-seed-honesty-decision"),
+  ]
+}
+
+fn roadmap_acceptance_receipt_revocations() -> List<RoadmapAcceptanceReceiptRevocation> {
+  []
+}
+
+fn roadmap_acceptance_receipt_continuity_holds() -> Bool {
+  acceptance_receipt_continuity_holds(
+    baseline_nodes: roadmap_acceptance_receipt_baseline_nodes(),
+    receipts: roadmap_acceptance_receipts(),
+    revocations: roadmap_acceptance_receipt_revocations(),
+  )
+    && current_receipt_nodes_covered_by_baseline(
+      baseline_nodes: roadmap_acceptance_receipt_baseline_nodes(),
+      receipts: roadmap_acceptance_receipts(),
+    )
 }
 
 data v2_emitter_producer_provenance_acceptance_note: String = "ACCEPTANCE OF LANDED WORK, the exact state closing_contract_task_naming_correction_note names this node as the specimen of: bound, implemented, green, awaiting the operator act. The landing is the Gate-A oracle (#7408, operator-merged): SelfEmitted requires an executed probe receipt, so an emitter-produced claim without a receipt from the run that made it is unrepresentable — the ticket's own red control. Evidence, executed 2026-08-02 on the tree carrying this receipt: all 27 witness fns in the contract's entry file pass, including the bound closing validation (a restored binding without an executed receipt does not authorize) and its sibling refusal controls (hand-forged authorization, minted executed verdicts, synthesized digests, fabricated build-greens all red). The digest f1c76111c83a0a60 was DERIVED BY EXECUTION — node_criteria_digest run against the live node on this tree, not transcribed. The handback's three elements are on main: the relabelled roster (every frontier row producer-qualified), the retired single count (per-producer baselines, witness_producer_qualified_baselines_holds), and the refusal demonstration (the _reds suite). Acceptance is the operator's merge of the change adding this receipt; the receipt is authored by the roadmap steward as the vehicle, never as the act."
