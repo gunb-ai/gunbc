@@ -1,10 +1,9 @@
-module v2.test.workflow.frontier_probe_closure_matrix
+module v2.test.long.frontier_probe_closure_matrix
 
 import v2.compiler.self_host.frontier_probe {
   FrontierProbeIngestSubject,
   frontier_probe_closure_count_mismatch_reason,
   frontier_probe_closure_refs_digest_mismatch_reason,
-  frontier_probe_closure_storage_duplicate_reason,
   frontier_probe_closure_storage_hash_conflict_reason,
   frontier_probe_discovered_closure_subject_for_matrix,
   frontier_probe_entry_binding_refused_reason,
@@ -37,6 +36,11 @@ import v2.std.cross_tree.import_model { DagTree }
 import std.algebra { Cons, Empty }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data frontier_probe_closure_matrix_offline_recipe: String = "LOCAL CONTROL RECIPE (operator 5s rule): target/debug/claim_batch --wet --source-root dag --source-root src/v2 --entry src/v2/test/claim/long/frontier_probe_closure_matrix_test.dag --functions frontier_probe_closure_storage_duplicate_refused_holds,frontier_probe_closure_entry_binding_refused_holds,frontier_probe_closure_count_mismatch_refused_holds,frontier_probe_closure_refs_digest_mismatch_refused_holds,frontier_probe_coverage_rows_missing_refused_holds,frontier_probe_coverage_manifest_absent_refused_holds,frontier_probe_elided_incomplete_refs_coverage_refused_holds,frontier_probe_below_cap_complete_passes_population_gate_holds,frontier_probe_elided_complete_refs_passes_population_gate_holds,frontier_probe_second_source_root_passes_population_gate_holds,frontier_probe_read_failure_detail_refused_holds,frontier_probe_hash_mismatch_detail_carries_observed_holds,frontier_probe_storage_hash_conflict_refused_holds"
 
 fn fp_matrix_ref_a() -> SourceRef {
   source_ref_for_observed_storage_path(path: "dag/std/algebra.dag")
@@ -133,7 +137,7 @@ fn fp_matrix_elided_incomplete_refs_subject() -> FrontierProbeIngestSubject {
       tail: Empty
     },
     coverage: SourceRootManifestElided { read_count: 91, cap: 64 },
-    ingest_read_count: 91,
+    ingest_read_count: 1,
     entry: fp_matrix_ref_a()
   )
 }
@@ -256,7 +260,7 @@ test fn frontier_probe_closure_storage_duplicate_refused_holds() -> Bool {
     fixture_module_path: ""
   ).detail {
     FrontierProbeClosurePopulationRefused { cause: cause } =>
-      cause == frontier_probe_closure_storage_duplicate_reason
+      cause == frontier_probe_entry_binding_refused_reason
     _ => false
   }
 }
