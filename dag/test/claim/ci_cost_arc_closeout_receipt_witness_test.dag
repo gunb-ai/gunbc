@@ -1,61 +1,152 @@
 module test.claim.ci_cost_arc_closeout_receipt_witness
 
-import std.types { Bool, Int }
-import std.measure { millisecond_count }
+import std.types { Bool }
+import std.measure { millisecond_count, byte_size_count }
+import std.realization_schedule { SelectionApplied }
 import gunbc.ci_cost_arc_closeout_receipt {
-  harvested_capture_wall,
-  harvested_selected_entry_groups,
-  harvested_total_entry_groups,
-  harvested_resolve_wall,
-  harvested_eval_wall,
+  HandHarvestedDatedAudit,
+  NotHarvested,
+  CaptureMeasuredNetOpen,
+  EnrollmentLandedFleetRateOpen,
+  PartiallyDeliveredSkipProofOpen,
+  ClosedReject,
+  ClosedNoRepeatedTypecheck,
+  Landed,
+  UnattributedCiJobWall,
+  PerEntryAssembly,
+  affected_ci_cost_audit_subject,
+  full_corpus_subject_harvest,
+  build_wall,
+  regen_wall,
+  ci_job_wall,
+  pipeline_sum_wall,
+  capture_wall,
+  discovery_resolve_wall,
+  discovery_eval_wall,
+  classified_ci_wall,
+  unattributed_ci_wall,
   cold_admission_baseline_wall,
-  settle_7522_net_wall_note,
-  settle_7671_native_rate_note,
-  settle_7534_warm_hit_note,
-  terminal_lane_dispositions_note,
+  selected_entry_groups,
+  total_entry_groups,
+  discovery_witness_total,
+  discovery_witness_skipped,
+  discovery_witness_deferred,
+  floor_drain_peak_rss,
+  calibration_floor_peak_rss,
+  capture_swap_after,
+  admission_settle,
+  native_fleet_settle,
+  warm_hit_settle,
+  retention_settle,
+  union_settle,
+  selection_honesty_settle,
+  end_to_end_residual,
+  compiler_next_measured_target,
+  ci_job_wall_reconciles,
+  pipeline_sum_reconciles,
+  classified_equals_capture_resolve_eval,
 }
 
-data ci_cost_arc_closeout_witness_note: String = "Pins the harvested numeric identity of the closeout receipt and that the three settle notes refuse to claim net wall, fleet native=3, or warm-hit Delivered. Duration accessors are Millisecond (unit-modeling wall — review 47900). RED controls flip a measured field or strip an OPEN marker."
-
-test fn witness_harvested_capture_is_run_30863019228() -> Bool {
-  millisecond_count(m: harvested_capture_wall()) == 110820
+test fn witness_subject_is_hand_harvested_affected() -> Bool {
+  let s = affected_ci_cost_audit_subject()
+  match s.harvest {
+    HandHarvestedDatedAudit => true
+  }
+    && s.github_actions_run_id == 30863019228
+    && match s.selection {
+      SelectionApplied => true
+      _ => false
+    }
 }
 
-test fn witness_selection_ratio_identity() -> Bool {
-  harvested_selected_entry_groups() == 297
-    && harvested_total_entry_groups() == 916
+test fn witness_full_corpus_not_harvested() -> Bool {
+  match full_corpus_subject_harvest() {
+    NotHarvested => true
+  }
 }
 
-test fn witness_resolve_dominates_eval() -> Bool {
-  millisecond_count(m: harvested_resolve_wall()) > millisecond_count(m: harvested_eval_wall()) * 5
+test fn witness_ci_job_reconciles() -> Bool {
+  ci_job_wall_reconciles()
+    && millisecond_count(m: unattributed_ci_wall()) == 1902042
+    && millisecond_count(m: classified_ci_wall()) == 606958
+    && millisecond_count(m: ci_job_wall()) == 2509000
 }
 
-test fn witness_cold_baseline_is_197130() -> Bool {
+test fn witness_pipeline_reconciles() -> Bool {
+  pipeline_sum_reconciles()
+    && millisecond_count(m: pipeline_sum_wall()) == 3256000
+    && millisecond_count(m: build_wall()) == 237000
+    && millisecond_count(m: regen_wall()) == 510000
+}
+
+test fn witness_classified_is_capture_resolve_eval() -> Bool {
+  classified_equals_capture_resolve_eval()
+    && millisecond_count(m: capture_wall()) == 110820
+    && millisecond_count(m: discovery_resolve_wall()) == 431122
+    && millisecond_count(m: discovery_eval_wall()) == 65016
+}
+
+test fn witness_selection_counts() -> Bool {
+  selected_entry_groups() == 297
+    && total_entry_groups() == 916
+    && discovery_witness_total() == 6610
+    && discovery_witness_skipped() == 4174
+    && discovery_witness_deferred() == 1020
+}
+
+test fn witness_memory_peaks() -> Bool {
+  byte_size_count(b: floor_drain_peak_rss()) == 8513646592
+    && byte_size_count(b: calibration_floor_peak_rss()) == 10821181440
+    && capture_swap_after() == 0
+}
+
+test fn witness_cold_baseline() -> Bool {
   millisecond_count(m: cold_admission_baseline_wall()) == 197130
 }
 
-test fn witness_7522_net_remains_open() -> Bool {
-  let n = settle_7522_net_wall_note
-  string_contains(s: n, pattern: "NET vs 197.13s = OPEN")
-    && string_contains(s: n, pattern: "110820")
-    && !string_contains(s: n, pattern: "probable")
+test fn witness_admission_net_open() -> Bool {
+  match admission_settle() {
+    CaptureMeasuredNetOpen => true
+  }
 }
 
-test fn witness_7671_not_described_as_completed_native_speedup() -> Bool {
-  let n = settle_7671_native_rate_note
-  string_contains(s: n, pattern: "NOT bankable as native=3")
+test fn witness_native_fleet_rate_open() -> Bool {
+  match native_fleet_settle() {
+    EnrollmentLandedFleetRateOpen => true
+  }
 }
 
-test fn witness_7534_warm_hit_still_partial() -> Bool {
-  let n = settle_7534_warm_hit_note
-  string_contains(s: n, pattern: "PartiallyDelivered")
-    && string_contains(s: n, pattern: "#7728")
+test fn witness_warm_hit_partial() -> Bool {
+  match warm_hit_settle() {
+    PartiallyDeliveredSkipProofOpen => true
+  }
 }
 
-test fn witness_terminal_table_names_assembly_as_dominant_open() -> Bool {
-  string_contains(s: terminal_lane_dispositions_note, pattern: "per-entry assembly")
+test fn witness_closed_lanes() -> Bool {
+  match retention_settle() {
+    ClosedReject => true
+  }
+    && match union_settle() {
+      ClosedNoRepeatedTypecheck => true
+    }
+    && match selection_honesty_settle() {
+      Landed => true
+    }
 }
 
-test fn red_capture_wall_must_not_silently_drift() -> Bool {
-  !(millisecond_count(m: harvested_capture_wall()) == 0)
+test fn witness_residual_vs_compiler_next_target() -> Bool {
+  match end_to_end_residual() {
+    UnattributedCiJobWall => true
+  }
+    && match compiler_next_measured_target() {
+      PerEntryAssembly => true
+    }
+}
+
+test fn red_unattributed_must_not_be_zero() -> Bool {
+  !(millisecond_count(m: unattributed_ci_wall()) == 0)
+}
+
+test fn red_ci_job_must_not_silently_equal_classified() -> Bool {
+  !(millisecond_count(m: ci_job_wall()) == millisecond_count(m: classified_ci_wall()))
 }
