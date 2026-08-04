@@ -8,6 +8,7 @@ import std.content_hash {
   HashFamily,
   Sha256Family,
   Sha1Family,
+  Sha512Family,
   content_hash_atom,
   content_hash_combine_structural,
   content_hash_tagged,
@@ -490,6 +491,7 @@ fn admit_fnv1a64_structural(hash: ContentHash) -> Fnv1a64StructuralAdmission {
     Fnv1a64(s) => Fnv1a64StructuralAdmitted { digest: s }
     Sha256Hash(_) => CrossFamilyContentHashRefused { family: Sha256Family }
     Sha1Hash(_) => CrossFamilyContentHashRefused { family: Sha1Family }
+    Sha512Hash(_) => CrossFamilyContentHashRefused { family: Sha512Family }
   }
 }
 
