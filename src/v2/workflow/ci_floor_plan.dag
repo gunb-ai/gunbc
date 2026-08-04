@@ -1,7 +1,7 @@
 module v2.workflow.ci_floor_plan
 
 import std.execution_mode { Hermetic, Wet }
-import gunbc.ci_layer_roots { witness_layer_roots, witness_exclusion_substrings, witness_discovery_scan_dirs, bin_witness_wet_entries, scoped_witness_batches, known_red_probe_roster, known_red_probe_source_roots, falsifier_silent_pick_gate_entries, falsifier_silent_pick_gate_roster, falsifier_rehomed_bin_wet_entries, falsifier_substrate_long_lane_entries }
+import gunbc.ci_layer_roots { witness_layer_roots, witness_exclusion_substrings, witness_discovery_scan_dirs, bin_witness_wet_entries, scoped_witness_batches, known_red_probe_roster, falsifier_silent_pick_gate_entries, falsifier_silent_pick_gate_roster, falsifier_rehomed_bin_wet_entries, falsifier_substrate_long_lane_entries }
 import v2.compiler.self_host.wet_receipt_enrollment {
   falsifier_self_host_wet_entries,
   falsifier_native_cache_cold_roster,
@@ -995,7 +995,7 @@ fn gunbc_falsifier_self_host_wet_known_red_batch() -> Runnable {
 
 fn gunbc_falsifier_known_red_probe_batch() -> Runnable {
   RunnableDiscoveryBatch {
-    source_roots: known_red_probe_source_roots(),
+    source_roots: corpus_source_roots(),
     scan_dirs: [],
     explicit_entries: known_red_probe_roster(),
     node_frontier_selection: SelectionApplied,

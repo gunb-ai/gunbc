@@ -6,7 +6,6 @@ import std.occurrence_binding {
   OccurrenceUnbound,
   OccurrenceAmbiguous,
 }
-import std.algebra { is_empty }
 import std.occurrence_binding_resolve {
   OccurrenceReferenceBindingOutcome,
   OccurrenceReferenceBindingDecided,
@@ -150,7 +149,7 @@ fn assess_reference_derived_closure_observation(
         OccurrenceReferenceBindingDecided {
           result: OccurrenceAmbiguous { candidates },
         } =>
-          if is_empty(xs: candidates.rest)
+          if fold(candidates.rest, init: true, f: (still_empty, _) => false)
             && first_declaration.value != second_declaration.value
             && candidates.first.containment.terminal.value == first_declaration.value
             && candidates.second.containment.terminal.value == second_declaration.value {
