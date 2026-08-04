@@ -20,7 +20,6 @@ import v2.compiler.self_host.frontier_probe_types {
   SourceRefReadRefused
 }
 import v2.compiler.source_authority {
-  DagTree,
   DiscoveredSourceRefsDigest,
   SourceRef,
   SourceRootCoverage,
@@ -32,6 +31,7 @@ import v2.compiler.source_authority {
   discovered_source_refs_digest_for_refs,
   source_ref_for_observed_storage_path
 }
+import v2.std.cross_tree.import_model { DagTree }
 import std.algebra { Cons, Empty }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
