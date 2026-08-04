@@ -56,8 +56,7 @@ import gunbc.roadmap_model {
   acceptance_receipt_continuity_holds,
   acceptance_receipt_continuity_verdict,
   AcceptanceReceiptContinuityHolds,
-  AcceptanceReceiptContinuityRefused,
-  VanishedReceiptWithoutRevocationWitness,
+  AcceptanceReceiptContinuityRefusedVanishedWithoutRevocation,
   roadmap_parent_ids,
   is_top_level,
   Pointer,
@@ -341,11 +340,10 @@ test fn witness_receipt_for_unknown_node_accepts_nothing() -> Bool {
   all(nodes(), n => !node_accepted(receipts: [ghost], rn: n))
 }
 
-data acceptance_receipt_continuity_witness_note: String = "THE WALL AGAINST SILENT RECEIPT DELETION (acceptance_receipt_continuity_wall_note). The live authority witness proves baseline, current receipts, and revocations reconcile today. The RED plants a vanished receipt — a baseline node removed from the current receipt list with no revocation witness — and requires acceptance_receipt_continuity_holds to refuse. The positive control supplies an explicit RoadmapAcceptanceReceiptRevocation for the same vanishing and requires continuity to hold, proving revocation is the only sanctioned erasure path."
+data acceptance_receipt_continuity_witness_note: String = "THE WALL AGAINST SILENT RECEIPT DELETION (acceptance_receipt_continuity_wall_note). The live authority witness executes roadmap_acceptance_receipt_continuity_holds only — identity-grain reconciliation of the monotone baseline ledger against current receipts and revocation witnesses, never a population count (DESIGN section 5 oracle rule; same class as live_state_count_transcription_note). The RED plants a vanished receipt — a baseline node removed from the current receipt list with no revocation witness — and requires acceptance_receipt_continuity_holds to refuse. The positive control supplies an explicit RoadmapAcceptanceReceiptRevocation for the same vanishing and requires continuity to hold, proving revocation is the only sanctioned erasure path."
 
 test fn witness_acceptance_receipt_continuity_holds_on_live_authority() -> Bool {
   roadmap_acceptance_receipt_continuity_holds()
-    && count(roadmap_acceptance_receipt_baseline_nodes()) == count(roadmap_acceptance_receipts())
 }
 
 test fn witness_vanished_receipt_without_revocation_refuses() -> Bool {
@@ -362,10 +360,8 @@ test fn witness_vanished_receipt_without_revocation_refuses() -> Bool {
       receipts: receipts,
       revocations: roadmap_acceptance_receipt_revocations(),
     ) {
-      AcceptanceReceiptContinuityRefused {
-        node: n,
-        cause: VanishedReceiptWithoutRevocationWitness,
-      } => n == tnid(s: "namespace-occurrence-transport")
+      AcceptanceReceiptContinuityRefusedVanishedWithoutRevocation { node: n } =>
+        n == tnid(s: "namespace-occurrence-transport")
       AcceptanceReceiptContinuityHolds => false
     }
 }
