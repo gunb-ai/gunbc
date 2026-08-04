@@ -8,7 +8,8 @@ import std.content_hash {
   ContentHashDifferent,
   ContentHashCrossFamilyIncomparable,
 }
-import extdeps.external_authority { ExternalAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.version { VersionIdentity, VersionConstraint }
 import extdeps.pin { Pin }
@@ -19,6 +20,20 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
     locator: "reproducible-builds.org/docs/definition/"
   }
 }
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.package",
+      decl_name: "PackageLockGraph",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data package_scope_subject_note: String = "THE SUBJECT IS THE LOCK GRAPH, NOT A PACKAGE MANAGER, and that is the whole point of this module's placement. The Reproducible Builds definition names 'dependencies and their versions' as a relevant attribute of a build environment; the exactly-selected dependency graph IS that attribute modeled, which is the same authority extdeps.pin cites for a single pinned subject and this module generalizes to a graph of them.\\n\\nWHY THIS IS A CARRIER AND NOT MACHINERY: the scope gate's two landing states are a cited subject module or genuine citation/mock machinery. This is the former — it models an external concept with a real authority — even though it deliberately names no concrete ecosystem. A hub that owns an agnostic shape still has a subject; what section 3 forbids it to own is the ENUMERATION of products realizing that shape, which is why npm and Cargo are separate modules with their own scopes rather than variants here."
 
 data package_hub_agnostic_note: String = "THE AGNOSTIC SHAPE OF A DEPENDENCY GRAPH, and deliberately NOT a place where ecosystems are enumerated. DESIGN section 3's external-upstream rule is explicit that a generic hub may define agnostic shapes but may not enumerate concrete products or dispatch among their authorities — adding Opera must not widen a browser enum, and by the same reasoning adding pnpm must not widen a PackageEcosystem enum here. So the ecosystem is a TYPE ARGUMENT, following the Vendor<Domain> precedent in dag/extdeps/vendor.dag: PackageCoordinate<NpmRegistry> and PackageCoordinate<CargoRegistry> are instantiations of one concept at every breadth, not siblings, and each ecosystem's marker plus its lock-format facts live in that ecosystem's own module beside its cited authority.\\n\\nWHAT THIS HUB OWNS is the relation every package manager realizes: a REQUIREMENT is what source declares, a SELECTION is what a resolver chose, and the two are different types rather than one record with an optional exact field. That distinction is the construction wall behind acceptance items 1 and 2 of the provider program — a production materialization consumes a PackageLockGraph, which is built from selections, so 'materialize from a range' is not a state that can be written and then rejected.\\n\\nWHAT THIS HUB DOES NOT DO is resolve. Cargo and npm own resolution; modeling them as ecosystem realizations of this lifecycle is the DESIGN section 2 Realization move, and reimplementing either resolver here would be the fork this module exists to prevent."
 
