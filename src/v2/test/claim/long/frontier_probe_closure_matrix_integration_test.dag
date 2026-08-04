@@ -42,10 +42,6 @@ fn fp_matrix_ref_a() -> SourceRef {
   source_ref_for_observed_storage_path(path: "dag/std/algebra.dag")
 }
 
-fn fp_matrix_ref_b() -> SourceRef {
-  source_ref_for_observed_storage_path(path: "dag/std/types.dag")
-}
-
 fn fp_matrix_ref_v2() -> SourceRef {
   source_ref_for_observed_storage_path(path: "src/v2/std/text.dag")
 }
