@@ -4,4 +4,4 @@
 
 AUTH-0 is **fact provenance** (DESIGN §3 fact-home), not permission-to-act (`std.access`). The homonym produced a note against the wrong subject.
 
-**Replacement (local draft, not pushed):** `docs/plans/fact-provenance-topology-design.md`
+**Replacement:** `docs/plans/fact-provenance-topology-design.md` (same branch; not part of this closed PR)
