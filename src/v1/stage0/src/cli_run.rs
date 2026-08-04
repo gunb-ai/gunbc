@@ -4378,9 +4378,10 @@ fn compile_clean_internal_error_histogram_name(message: &str) -> String {
     truncate_histogram_label(message, 80)
 }
 
-/// Resolve/typecheck leg of compile-clean over `witness_layer_roots` (`dag` + `src/v2` only).
-/// Uses `primary-precedence` pool indexing like shell compile, but a narrower root set than
-/// `compile_clean_source_roots()` (which adds `src/v1` for cross-tree perturb receipts).
+/// Resolve/typecheck leg of compile-clean over `witness_layer_roots` entry closure (`dag` + `src/v2`).
+/// Dependency pool uses `compile_clean_source_roots()` (`witness_layer_roots` + `src/v1`) so dag
+/// witnesses that import `v1.*` resolve under the same partition boundary as
+/// `tools.dag_compile_clean_partition.compile_clean_partition_boundary`.
 /// In CI (`GITHUB_ACTIONS=true`) or when `GUNBC_CI_DIFF_BASE` is set, scopes to affected
 /// shard entries from `tools.dag_compile_clean_scope` (lever a) using `gunbc_ci_spec.diff_policy`
 /// defaults via `floor_diff_observe`; diff/disposition failure refuses (never widens).
