@@ -19,9 +19,13 @@ import gunbc.namespace_reference_derived_closure_contract {
 }
 import std.reference_binding_observation {
   DistinctHomonymObservation,
+  DistinctHomonymProductionRefused,
   LaterDeclarationObservation,
+  LaterDeclarationProductionRefused,
   SameFileNeighbourObservation,
+  SameFileNeighbourProductionRefused,
   SiblingBranchObservation,
+  SiblingBranchProductionRefused,
 }
 import v1.gunbc.namespace_reference_derived_closure_production_observations {
   namespace_structural_binding_observations_a_through_d,
@@ -38,6 +42,7 @@ test fn witness_structural_production_variants_match_clauses_a_through_d() -> Bo
   let observations = namespace_structural_binding_observations_a_through_d()
   observations |> any(obs => match obs {
     SameFileNeighbourObservation { neighbour: _, resolution: _ } => true
+    SameFileNeighbourProductionRefused { gap: _ } => true
     _ => false
   })
     && observations |> any(obs => match obs {
@@ -46,10 +51,12 @@ test fn witness_structural_production_variants_match_clauses_a_through_d() -> Bo
         sibling_branch_declaration: _,
         resolution: _,
       } => true
+      SiblingBranchProductionRefused { gap: _ } => true
       _ => false
     })
     && observations |> any(obs => match obs {
       LaterDeclarationObservation { later_declaration: _, resolution: _ } => true
+      LaterDeclarationProductionRefused { gap: _ } => true
       _ => false
     })
     && observations |> any(obs => match obs {
@@ -58,6 +65,7 @@ test fn witness_structural_production_variants_match_clauses_a_through_d() -> Bo
         second_declaration: _,
         resolution: _,
       } => true
+      DistinctHomonymProductionRefused { gap: _ } => true
       _ => false
     })
 }

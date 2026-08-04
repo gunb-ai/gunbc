@@ -11,9 +11,13 @@ import std.reference_binding_observation {
   ReferenceBindingNamedReferenceAbsent,
   ReferenceBindingNamedDeclarationAbsent,
   SameFileNeighbourObservation,
+  SameFileNeighbourProductionRefused,
   SiblingBranchObservation,
+  SiblingBranchProductionRefused,
   LaterDeclarationObservation,
+  LaterDeclarationProductionRefused,
   DistinctHomonymObservation,
+  DistinctHomonymProductionRefused,
   structural_binding_resolution_from_candidates,
 }
 import std.types { List, String }
@@ -74,29 +78,20 @@ fn same_file_neighbour_observation() -> ReferenceBindingObservation {
     source: nrdfc_same_file_neighbour_source(),
   ) {
     NrdfcParsedRefused =>
-      SameFileNeighbourObservation {
-        neighbour: OccurrenceId { value: 0 },
-        resolution: StructuralBindingProductionRefused {
-          gap: ReferenceBindingParserTransportRefused,
-        },
+      SameFileNeighbourProductionRefused {
+        gap: ReferenceBindingParserTransportRefused,
       }
     NrdfcParsedReady { transport: transport, inputs: inputs } =>
       match reference_named(transport: transport, name: "fn_a") {
         Absent =>
-          SameFileNeighbourObservation {
-            neighbour: OccurrenceId { value: 0 },
-            resolution: StructuralBindingProductionRefused {
-              gap: ReferenceBindingNamedReferenceAbsent,
-            },
+          SameFileNeighbourProductionRefused {
+            gap: ReferenceBindingNamedReferenceAbsent,
           }
         Present { value: reference } =>
           match declarations_named(transport: transport, name: "fn_a") |> first {
             Absent =>
-              SameFileNeighbourObservation {
-                neighbour: OccurrenceId { value: 0 },
-                resolution: StructuralBindingProductionRefused {
-                  gap: ReferenceBindingNamedDeclarationAbsent,
-                },
+              SameFileNeighbourProductionRefused {
+                gap: ReferenceBindingNamedDeclarationAbsent,
               }
             Present { value: neighbour } =>
               SameFileNeighbourObservation {
@@ -118,34 +113,22 @@ fn sibling_branch_observation() -> ReferenceBindingObservation {
     source: nrdfc_sibling_branch_source(),
   ) {
     NrdfcParsedRefused =>
-      SiblingBranchObservation {
-        own_branch_declaration: OccurrenceId { value: 0 },
-        sibling_branch_declaration: OccurrenceId { value: 0 },
-        resolution: StructuralBindingProductionRefused {
-          gap: ReferenceBindingParserTransportRefused,
-        },
+      SiblingBranchProductionRefused {
+        gap: ReferenceBindingParserTransportRefused,
       }
     NrdfcParsedReady { transport: transport, inputs: inputs } =>
       let x_declarations = declarations_named(transport: transport, name: "x")
       let x_references = references_named(transport: transport, name: "x")
       match x_declarations |> first {
         Absent =>
-          SiblingBranchObservation {
-            own_branch_declaration: OccurrenceId { value: 0 },
-            sibling_branch_declaration: OccurrenceId { value: 0 },
-            resolution: StructuralBindingProductionRefused {
-              gap: ReferenceBindingNamedDeclarationAbsent,
-            },
+          SiblingBranchProductionRefused {
+            gap: ReferenceBindingNamedDeclarationAbsent,
           }
         Present { value: then_branch_x } =>
           match x_declarations |> reverse |> first {
             Absent =>
-              SiblingBranchObservation {
-                own_branch_declaration: OccurrenceId { value: 0 },
-                sibling_branch_declaration: OccurrenceId { value: 0 },
-                resolution: StructuralBindingProductionRefused {
-                  gap: ReferenceBindingNamedDeclarationAbsent,
-                },
+              SiblingBranchProductionRefused {
+                gap: ReferenceBindingNamedDeclarationAbsent,
               }
             Present { value: else_branch_x } =>
               match x_references |> reverse |> first {
@@ -179,29 +162,20 @@ fn later_declaration_observation() -> ReferenceBindingObservation {
     source: nrdfc_later_declaration_source(),
   ) {
     NrdfcParsedRefused =>
-      LaterDeclarationObservation {
-        later_declaration: OccurrenceId { value: 0 },
-        resolution: StructuralBindingProductionRefused {
-          gap: ReferenceBindingParserTransportRefused,
-        },
+      LaterDeclarationProductionRefused {
+        gap: ReferenceBindingParserTransportRefused,
       }
     NrdfcParsedReady { transport: transport, inputs: inputs } =>
       match reference_named(transport: transport, name: "fn_later") {
         Absent =>
-          LaterDeclarationObservation {
-            later_declaration: OccurrenceId { value: 0 },
-            resolution: StructuralBindingProductionRefused {
-              gap: ReferenceBindingNamedReferenceAbsent,
-            },
+          LaterDeclarationProductionRefused {
+            gap: ReferenceBindingNamedReferenceAbsent,
           }
         Present { value: reference } =>
           match declarations_named(transport: transport, name: "fn_later") |> first {
             Absent =>
-              LaterDeclarationObservation {
-                later_declaration: OccurrenceId { value: 0 },
-                resolution: StructuralBindingProductionRefused {
-                  gap: ReferenceBindingNamedDeclarationAbsent,
-                },
+              LaterDeclarationProductionRefused {
+                gap: ReferenceBindingNamedDeclarationAbsent,
               }
             Present { value: later_declaration } =>
               LaterDeclarationObservation {
@@ -223,43 +197,27 @@ fn distinct_homonym_observation() -> ReferenceBindingObservation {
     source: nrdfc_distinct_homonym_source(),
   ) {
     NrdfcParsedRefused =>
-      DistinctHomonymObservation {
-        first_declaration: OccurrenceId { value: 0 },
-        second_declaration: OccurrenceId { value: 0 },
-        resolution: StructuralBindingProductionRefused {
-          gap: ReferenceBindingParserTransportRefused,
-        },
+      DistinctHomonymProductionRefused {
+        gap: ReferenceBindingParserTransportRefused,
       }
     NrdfcParsedReady { transport: transport, inputs: inputs } =>
       match reference_named(transport: transport, name: "helper") {
         Absent =>
-          DistinctHomonymObservation {
-            first_declaration: OccurrenceId { value: 0 },
-            second_declaration: OccurrenceId { value: 0 },
-            resolution: StructuralBindingProductionRefused {
-              gap: ReferenceBindingNamedReferenceAbsent,
-            },
+          DistinctHomonymProductionRefused {
+            gap: ReferenceBindingNamedReferenceAbsent,
           }
         Present { value: reference } =>
           let helpers = declarations_named(transport: transport, name: "helper")
           match helpers |> first {
             Absent =>
-              DistinctHomonymObservation {
-                first_declaration: OccurrenceId { value: 0 },
-                second_declaration: OccurrenceId { value: 0 },
-                resolution: StructuralBindingProductionRefused {
-                  gap: ReferenceBindingNamedDeclarationAbsent,
-                },
+              DistinctHomonymProductionRefused {
+                gap: ReferenceBindingNamedDeclarationAbsent,
               }
             Present { value: first_helper } =>
               match helpers |> reverse |> first {
                 Absent =>
-                  DistinctHomonymObservation {
-                    first_declaration: first_helper.occurrence,
-                    second_declaration: OccurrenceId { value: 0 },
-                    resolution: StructuralBindingProductionRefused {
-                      gap: ReferenceBindingNamedDeclarationAbsent,
-                    },
+                  DistinctHomonymProductionRefused {
+                    gap: ReferenceBindingNamedDeclarationAbsent,
                   }
                 Present { value: second_helper } =>
                   DistinctHomonymObservation {
