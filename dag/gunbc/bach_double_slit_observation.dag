@@ -5,8 +5,6 @@ import std.integer { NonNegativeInt }
 import extdeps.physics.bach_et_al_2013_double_slit {
   BachEtAl2013DoubleSlitExperiment,
   bach_et_al_2013_double_slit,
-  figures_one_and_two_normalized_distributions_note,
-  slit_mask_control_not_which_path_readout_note,
   BachDistributionObservation,
   bach_distribution_observations,
   BachBuildupObservationRow,
@@ -54,14 +52,6 @@ fn bach_quantitative_path_additivity_gap() -> BachRawCountPathAdditivityGap {
 
 fn bach_which_path_evidence_gap() -> BachWhichPathEvidenceGap {
   BachWhichPathAuthorityAbsent {}
-}
-
-fn bach_upstream_facts_reference_normalized_figures() -> Bool {
-  figures_one_and_two_normalized_distributions_note != ""
-}
-
-fn bach_upstream_facts_reference_slit_mask_control() -> Bool {
-  slit_mask_control_not_which_path_readout_note != ""
 }
 
 fn bach_buildup_row_is_cited_apparatus(row: BachBuildupObservationRow) -> Bool {

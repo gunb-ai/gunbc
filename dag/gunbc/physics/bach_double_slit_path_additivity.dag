@@ -349,21 +349,12 @@ fn path_additivity_witness_observed_vs_prediction(
   )
 }
 
-fn path_additivity_witness_matches_additive_prediction(
-  witness: PathAdditivityCounterexampleWitness,
-) -> Bool {
-  let prediction = path_additivity_witness_classical_additive_prediction(witness: witness)
-  let additive = witness.left_alternative_count + witness.right_alternative_count
-  prediction == additive
-}
-
 fn path_additivity_witness_is_counterexample(
   witness: PathAdditivityCounterexampleWitness,
 ) -> Bool {
   let prediction = path_additivity_witness_classical_additive_prediction(witness: witness)
-  path_additivity_witness_matches_additive_prediction(witness: witness)
-    && (witness.both_open_observed_count != prediction)
-    && (path_additivity_witness_observed_vs_prediction(witness: witness) != Equal)
+  witness.both_open_observed_count != prediction
+    && path_additivity_witness_observed_vs_prediction(witness: witness) != Equal
 }
 
 fn path_additivity_refutation_holds_for_synthetic_fixture(

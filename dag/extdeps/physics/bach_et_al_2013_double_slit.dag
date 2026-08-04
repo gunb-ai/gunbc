@@ -79,16 +79,6 @@ type Figure3BuildupPanel
   | Figure3PanelD
   | Figure3PanelE
 
-data figure_3_panel_a_evidence_locator: String = "Figure3PanelA under extdeps.physics.bach_et_al_2013_double_slit; cited via doi 10.1088/1367-2630/15/3/033018."
-
-data figure_3_panel_b_evidence_locator: String = "Figure3PanelB under extdeps.physics.bach_et_al_2013_double_slit; cited via doi 10.1088/1367-2630/15/3/033018."
-
-data figure_3_panel_c_evidence_locator: String = "Figure3PanelC under extdeps.physics.bach_et_al_2013_double_slit; cited via doi 10.1088/1367-2630/15/3/033018."
-
-data figure_3_panel_d_evidence_locator: String = "Figure3PanelD under extdeps.physics.bach_et_al_2013_double_slit; cited via doi 10.1088/1367-2630/15/3/033018."
-
-data figure_3_panel_e_evidence_locator: String = "Figure3PanelE under extdeps.physics.bach_et_al_2013_double_slit; cited via doi 10.1088/1367-2630/15/3/033018."
-
 type BachBuildupObservationRow {
   apparatus: BachEtAl2013DoubleSlitExperiment
   figure_3_panel: Figure3BuildupPanel
