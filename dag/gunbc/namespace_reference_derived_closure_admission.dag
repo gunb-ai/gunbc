@@ -203,9 +203,3 @@ fn assess_reference_binding_observation(
       }
   }
 }
-
-fn assess_reference_derived_closure_observation(
-  observation: ReferenceBindingObservation,
-) -> ReferenceDerivedClosureAdmission {
-  assess_reference_binding_observation(observation: observation)
-}

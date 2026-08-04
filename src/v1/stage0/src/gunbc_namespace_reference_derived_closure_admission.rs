@@ -388,12 +388,6 @@ pub fn assess_reference_binding_observation(
     }
 }
 
-pub fn assess_reference_derived_closure_observation(
-    observation: Rc<ReferenceBindingObservation>,
-) -> Rc<ReferenceDerivedClosureAdmission> {
-    assess_reference_binding_observation(observation.clone())
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SameFileEarlierNeighbourVisible;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
