@@ -22,6 +22,7 @@ import v2.lens.production_qualification_origin_census {
   production_qualification_origin_probe_admission_holds_for_decls,
   production_qualification_planted_fixture_origin_oracle_count,
   production_qualification_repository_wide_origin_census_closed,
+  ingest_mint_surface_discovered_in_live_scope,
   structural_red_control_live_body_skeleton_visible,
   structural_red_control_planted_decl,
   structural_red_control_planted_qualified_name,
@@ -96,18 +97,10 @@ test fn witness_repository_wide_census_requires_call_occurrence_frontier_reds() 
   production_qualification_repository_wide_origin_census_closed()
 }
 
-data witness_ingest_mint_surface_requires_call_occurrence_frontier_red_note: String = "Admitted RED: generate_provenanced_rust_candidate_from_ingest mint callee is pruned from G2 skeleton marshal — structural probe cannot discover ingest-inline surfaces without call-occurrence derivation."
+data witness_ingest_mint_surface_requires_call_occurrence_frontier_red_note: String = "Admitted RED: generate_provenanced_rust_candidate_from_ingest calls mint_provenanced_rust_artifact at fn-arrow skeleton grain; G2 marshal currently prunes that ExprCall — witness greens when structural census discovers a SourceProduced row on the ingest entry via mint_provenanced_rust_artifact (not mint_written_provenanced_rust_artifact, which ingest does not call)."
 
 test fn witness_ingest_mint_surface_requires_call_occurrence_frontier_reds() -> Bool {
-  any(
-    xs: derived_production_qualification_mint_sites_live(),
-    predicate: fn(row) {
-      string_contains(
-        s: row.qualified_name,
-        pattern: "generate_provenanced_rust_candidate_from_ingest"
-      )
-    }
-  )
+  ingest_mint_surface_discovered_in_live_scope()
 }
 
 data witness_direct_door_smoke_requires_closure_or_call_occurrence_frontier_red_note: String = "Admitted RED: direct-door smoke is not in the witness entry import closure without a roster import — repository-wide discovery requires call-occurrence substrate or whole-tree fn_arrow facts."

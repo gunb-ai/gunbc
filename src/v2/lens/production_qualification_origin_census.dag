@@ -79,8 +79,13 @@ data empty_symbol_list: List<Symbol> = []
 data empty_site_list: List<DerivedProductionQualificationMintSiteRow> = []
 
 data mint_written_callee: String = "mint_written_provenanced_rust_artifact"
+data mint_provenanced_callee: String = "mint_provenanced_rust_artifact"
 data advance_cargo_green_callee: String = "advance_written_provenanced_rust_artifact_cargo_green"
 data direct_rust_door_inferred_tree_atom: String = "direct_rust_door_inferred_tree"
+
+data ingest_mint_skeleton_classifier_note: String = "Ingest entry skeleton grain (review 47980): generate_provenanced_rust_candidate_from_ingest calls mint_provenanced_rust_artifact directly; mint_written_provenanced_rust_artifact wraps the same callee one hop out. Structural census qualifies mint_provenanced_rust_artifact at fn-arrow skeleton depth so ingest-inline surfaces can flip witness_ingest_mint_surface_requires_call_occurrence_frontier_reds when G2 marshal exposes the ExprCall — not mint_producer_emission_receipt one hop deeper."
+
+data ingest_mint_entry_name_suffix: String = "generate_provenanced_rust_candidate_from_ingest"
 
 fn string_eq(a: String, b: String) -> Bool {
   a == b
@@ -298,7 +303,13 @@ fn decl_contains_atom(decl: FnArrowDecl, atom: String) -> Bool {
 
 fn decl_has_qualifying_mint_callee(decl: FnArrowDecl) -> Bool {
   decl_contains_callee(decl: decl, callee: mint_written_callee)
+    || decl_contains_callee(decl: decl, callee: mint_provenanced_callee)
     || decl_contains_callee(decl: decl, callee: advance_cargo_green_callee)
+}
+
+fn decl_has_source_produced_mint_callee(decl: FnArrowDecl) -> Bool {
+  decl_contains_callee(decl: decl, callee: mint_written_callee)
+    || decl_contains_callee(decl: decl, callee: mint_provenanced_callee)
 }
 
 data direct_rust_door_target_model_callee: String = "direct_rust_door_target_model"
@@ -326,7 +337,7 @@ fn derived_sites_for_decl(
   if decl_has_qualifying_mint_callee(decl: decl) {
     let origin = decl_origin_from_structure(decl: decl)
     let with_source_produced =
-      if decl_contains_callee(decl: decl, callee: mint_written_callee) {
+      if decl_has_source_produced_mint_callee(decl: decl) {
         maybe_snoc_site_row(
           sites: sites,
           qualified_name: decl.qualified_name,
@@ -419,6 +430,19 @@ data production_qualification_call_occurrence_derivation_landed_dissolve_trigger
 
 fn production_qualification_repository_wide_origin_census_closed() -> Bool {
   production_qualification_call_occurrence_derivation_landed
+}
+
+fn ingest_mint_surface_discovered_in_live_scope() -> Bool {
+  any(
+    xs: derived_production_qualification_mint_sites_live(),
+    predicate: fn(row) {
+      string_contains(s: row.qualified_name, pattern: ingest_mint_entry_name_suffix)
+        && emission_qualification_eq(
+          left: row.qualification_axis,
+          right: SourceProduced
+        )
+    }
+  )
 }
 
 fn production_qualification_origin_probe_admission_holds_for_decls(

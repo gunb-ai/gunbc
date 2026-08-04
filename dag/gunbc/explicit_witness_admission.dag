@@ -187,8 +187,8 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
     entry: "src/v2/test/claim/self_host/production_qualification_origin_census_witness_test.dag",
     f: "witness_ingest_mint_surface_requires_call_occurrence_frontier_reds",
     kind: CorpusWitnessKind,
-    reason: "Admitted RED: generate_provenanced_rust_candidate_from_ingest mint callee is pruned from G2 skeleton marshal — structural probe cannot discover ingest-inline surfaces without call-occurrence derivation. Owner: witness-evidence-lifecycle lane.",
-    dissolve_on: "call-occurrence derivation discovers ingest-inline mint surfaces structurally, this witness greens, and this row deletes"
+    reason: "Admitted RED: generate_provenanced_rust_candidate_from_ingest calls mint_provenanced_rust_artifact at fn-arrow skeleton grain; G2 marshal prunes that ExprCall today. Owner: witness-evidence-lifecycle lane.",
+    dissolve_on: "G2 fn-arrow marshal exposes mint_provenanced_rust_artifact on generate_provenanced_rust_candidate_from_ingest, ingest_mint_surface_discovered_in_live_scope() is true, witness_ingest_mint_surface_requires_call_occurrence_frontier_reds greens, and this row deletes"
   ),
   known_red_probe(
     entry: "src/v2/test/claim/self_host/production_qualification_origin_census_witness_test.dag",
