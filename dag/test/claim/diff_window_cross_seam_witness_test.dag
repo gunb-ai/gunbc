@@ -56,10 +56,6 @@ fn planted_exact_window() -> ExactDiffWindow {
   )
 }
 
-fn planted_diff_window_observation() -> DiffWindowObservation {
-  Present { value: DiffWindowObserved { window: planted_exact_window() } }
-}
-
 fn resolve_with_diff_window(
   diff_window: DiffWindowObservation?,
   base_ref: String?
