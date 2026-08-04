@@ -30,6 +30,9 @@ import extdeps.standards.rfc_8118 {
   OpenNamedDest,
   pdf_open_nameddest_wire_from_scalar_code_points,
   PdfOpenParameterSequence,
+  PdfOpenParameterSequenceWire,
+  PdfOpenParameterSequenceWireRefused,
+  navigable_uri_projection_from_sequence_wire,
 }
 import std.citation { FragmentSelectorVariant }
 import gunbc.citation.pdf_safe_profile {
@@ -238,10 +241,10 @@ test fn project_navigable_uri_refuses_unencodable_nameddest_value() -> Bool {
     name: "plant" as NonEmptyStr,
     code_points: witness_unencodable_scalar_code_points,
   ) {
-    PdfProfileParameterWireRefused { parameter: p, cause: _ } =>
-      match project_navigable_uri(
+    PdfProfileParameterWireRefused { parameter: p, cause: cause } =>
+      match navigable_uri_projection_from_sequence_wire(
         base: witness_pdf_base_uri,
-        sequence: PdfOpenParameterSequence { parameters: [p] },
+        sequence_wire: PdfOpenParameterSequenceWireRefused { parameter: p, cause: cause },
       ) {
         NavigableUriRefused { cause: PdfOpenParameterPercentEncodeRefused { parameter: _, cause: _ } } => true
         _ => false

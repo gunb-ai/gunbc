@@ -347,8 +347,11 @@ fn uri_locator_carries_fragment(locator: NonEmptyStr) -> Bool {
   string_contains(s: locator, pattern: "#")
 }
 
-fn project_navigable_uri(base: Uri, sequence: PdfOpenParameterSequence) -> NavigableUriProjection {
-  match pdf_open_parameter_sequence_wire(sequence: sequence) {
+fn navigable_uri_projection_from_sequence_wire(
+  base: Uri,
+  sequence_wire: PdfOpenParameterSequenceWire,
+) -> NavigableUriProjection {
+  match sequence_wire {
     PdfOpenParameterSequenceWireRefused { parameter: p, cause: cause } =>
       NavigableUriRefused {
         cause: PdfOpenParameterPercentEncodeRefused { parameter: p, cause: cause },
@@ -371,6 +374,13 @@ fn project_navigable_uri(base: Uri, sequence: PdfOpenParameterSequence) -> Navig
         }
       }
   }
+}
+
+fn project_navigable_uri(base: Uri, sequence: PdfOpenParameterSequence) -> NavigableUriProjection {
+  navigable_uri_projection_from_sequence_wire(
+    base: base,
+    sequence_wire: pdf_open_parameter_sequence_wire(sequence: sequence),
+  )
 }
 
 fn pdf_open_parameters_include_page(sequence: PdfOpenParameterSequence, page: PositiveInt) -> Bool {
