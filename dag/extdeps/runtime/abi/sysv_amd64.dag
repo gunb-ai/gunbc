@@ -186,11 +186,7 @@ fn x86_64_abi_retrieved_representation_from_extraction(
   }
 }
 
-type AbiPdfCitationPayload = CitationRecordedFact<RetrievedRepresentation, CitationSelector>
-
-type AbiCitationEvidenceLink = EvidenceLink<AbiPdfCitationPayload, ClaimId, ExternalAuthority, NonEmptyStr, ReadBackProbe>
-
-data x86_64_abi_syscall_convention_citation_fact: RecordedFact<AbiPdfCitationPayload> = citation_recorded_fact(
+data x86_64_abi_syscall_convention_citation_fact: RecordedFact<CitationRecordedFact<RetrievedRepresentation, CitationSelector>> = citation_recorded_fact(
   id: "x86-64-abi-linux-syscall-arg3-r10-citation" as RecordedFactId,
   cited: cited_resource(
     authority: x86_64_abi_pdf_authority,
@@ -201,7 +197,7 @@ data x86_64_abi_syscall_convention_citation_fact: RecordedFact<AbiPdfCitationPay
   ),
 )
 
-fn x86_64_abi_syscall_evidence_link() -> EvidenceLink<AbiPdfCitationPayload, ClaimId, ExternalAuthority, NonEmptyStr, ReadBackProbe> {
+fn x86_64_abi_syscall_evidence_link() -> AbiCitationEvidenceLink {
   EvidenceLink {
     fact: x86_64_abi_syscall_convention_citation_fact,
     direction: EvidenceSupports,
