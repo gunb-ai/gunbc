@@ -219,3 +219,69 @@ test fn red_surface_naming_subject_absent_from_registry_is_unresolvable() -> Boo
     TargetSurfaceAmbiguous { surface: _, candidates: _ } => false
   }
 }
+
+data inert_variant_closure_note: String = "These two controls exist because the variants they exercise were TYPED BUT INERT when first added — declared in the coproduct with nothing constructing them anywhere, which DESIGN calls out directly: a diagnostic variant establishes nothing. Typing a refusal class is not closing it. Each control below plants the exact malformed input its class describes and asserts the class is EMITTED, so the detectors are proven to fire rather than merely to exist."
+
+test fn red_surface_named_by_two_targets_emits_joins_multiple() -> Bool {
+  let conflicting = [
+    bash_grammar_row(),
+    LanguageTargetSurfaceRow {
+      authority: EmitHostExecution,
+      surface: bash_grammar_surface(),
+      target: Present { value: unregistered_subject() }
+    }
+  ]
+  fold(language_target_join_violations(rows: conflicting, registry: [bash_registration()]),
+    init: false,
+    f: fn(acc, v) {
+      acc || match v {
+        SurfaceJoinsMultipleTargets { authority: _, surface: s, first: _, second: _ } =>
+          surface_locus_eq(a: s, b: bash_grammar_surface())
+        SurfaceMissingTargetIdentity { authority: _, surface: _ } => false
+        SurfaceNamesUnknownTarget { authority: _, surface: _, named: _ } => false
+        TargetVocabularyHasNoRegistryTarget { surface: _ } => false
+        DuplicateRegistryTarget { target: _ } => false
+      }
+    })
+}
+
+test fn red_unidentified_vocabulary_surface_emits_its_own_class() -> Bool {
+  let rows = [
+    LanguageTargetSurfaceRow {
+      authority: TargetVocabulary,
+      surface: SurfaceModule { module_path: "extdeps.languages.typescript.program" },
+      target: none
+    }
+  ]
+  fold(language_target_join_violations(rows: rows, registry: [bash_registration()]),
+    init: false,
+    f: fn(acc, v) {
+      acc || match v {
+        TargetVocabularyHasNoRegistryTarget { surface: s } =>
+          surface_locus_eq(a: s, b: SurfaceModule { module_path: "extdeps.languages.typescript.program" })
+        SurfaceJoinsMultipleTargets { authority: _, surface: _, first: _, second: _ } => false
+        SurfaceMissingTargetIdentity { authority: _, surface: _ } => false
+        SurfaceNamesUnknownTarget { authority: _, surface: _, named: _ } => false
+        DuplicateRegistryTarget { target: _ } => false
+      }
+    })
+}
+
+test fn multi_target_surface_reported_once_not_per_row() -> Bool {
+  let three_way = [
+    bash_grammar_row(),
+    LanguageTargetSurfaceRow { authority: EmitHostExecution, surface: bash_grammar_surface(), target: Present { value: unregistered_subject() } },
+    LanguageTargetSurfaceRow { authority: RuntimeChecker, surface: bash_grammar_surface(), target: Present { value: unregistered_subject() } }
+  ]
+  fold(language_target_join_violations(rows: three_way, registry: [bash_registration()]),
+    init: 0,
+    f: fn(acc, v) {
+      acc + match v {
+        SurfaceJoinsMultipleTargets { authority: _, surface: _, first: _, second: _ } => 1
+        SurfaceMissingTargetIdentity { authority: _, surface: _ } => 0
+        SurfaceNamesUnknownTarget { authority: _, surface: _, named: _ } => 0
+        TargetVocabularyHasNoRegistryTarget { surface: _ } => 0
+        DuplicateRegistryTarget { target: _ } => 0
+      }
+    }) == 1
+}

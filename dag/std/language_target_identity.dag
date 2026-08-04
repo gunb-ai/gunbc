@@ -108,7 +108,15 @@ data named_target_tally_note: String = "The 0 / 1 / more-than-1 distinction is c
 type NamedTargetTally
   = TallyNone
   | TallyOne { target: ExternalSubjectRef }
-  | TallyMany { candidates: List<ExternalSubjectRef> }
+  | TallyMany {
+      first: ExternalSubjectRef
+      second: ExternalSubjectRef
+      rest: List<ExternalSubjectRef>
+    }
+
+fn tally_many_candidates(first: ExternalSubjectRef, second: ExternalSubjectRef, rest: List<ExternalSubjectRef>) -> List<ExternalSubjectRef> {
+  concat([first, second], rest)
+}
 
 data language_target_projection_law: String = "LEGACY KEYS BECOME PROJECTIONS, NEVER PARALLEL IDENTITIES (operator requirement D, 2026-08-04). LanguageId, display name, file extensions, short labels and the old prose-table names are attributes hanging off the canonical subject and are DERIVED from it where needed; none of them may be keyed on. The distinction is enforced by DIRECTION, which is the whole content of this row: asking the registry for a target's LanguageId is a projection and total for a registered subject, while asking which target a LanguageId denotes is a LOOKUP that REFUSES when no registered subject claims it. Before this, std.languages Language.id was the closest thing to a language key in the tree and nothing stopped a consumer from treating it as identity; after this, a legacy id that resolves nowhere is a typed refusal at the lookup rather than a second identity quietly in use. That refusal is not hypothetical today: std.languages carries rust, go, python and typescript rows and NO bash row, so the target this repository emits most has no legacy id at all — which is why the projection carries the legacy id as OPTIONAL rather than pretending every subject has one."
 
@@ -188,8 +196,9 @@ fn subject_occurrence_count(
 fn tally_push(tally: NamedTargetTally, next: ExternalSubjectRef) -> NamedTargetTally {
   match tally {
     TallyNone => TallyOne { target: next }
-    TallyOne { target: first } => TallyMany { candidates: [first, next] }
-    TallyMany { candidates: c } => TallyMany { candidates: concat(c, [next]) }
+    TallyOne { target: only } => TallyMany { first: only, second: next, rest: [] }
+    TallyMany { first: f, second: sec, rest: r } =>
+      TallyMany { first: f, second: sec, rest: concat(r, [next]) }
   }
 }
 
@@ -216,7 +225,11 @@ fn resolve_target_for_surface(
 ) -> LanguageTargetResolution {
   match surface_named_targets(surface: surface, rows: rows) {
     TallyNone => TargetSurfaceUnregistered { surface: surface }
-    TallyMany { candidates: c } => TargetSurfaceAmbiguous { surface: surface, candidates: c }
+    TallyMany { first: f, second: sec, rest: r } =>
+      TargetSurfaceAmbiguous {
+        surface: surface,
+        candidates: tally_many_candidates(first: f, second: sec, rest: r)
+      }
     TallyOne { target: t } =>
       if subject_in_list(target: t, subjects: registration_subjects(registry: registry)) {
         TargetResolved { target: t }
@@ -231,7 +244,15 @@ fn surface_row_violations(
   registry: List<LanguageTargetRegistration>
 ) -> List<LanguageTargetJoinViolation> {
   match row.target {
-    Absent => [SurfaceMissingTargetIdentity { authority: row.authority, surface: row.surface }]
+    Absent =>
+      match row.authority {
+        TargetVocabulary => [TargetVocabularyHasNoRegistryTarget { surface: row.surface }]
+        StdLanguageCatalogue => [SurfaceMissingTargetIdentity { authority: row.authority, surface: row.surface }]
+        TargetModelDeclaration => [SurfaceMissingTargetIdentity { authority: row.authority, surface: row.surface }]
+        EmitHostExecution => [SurfaceMissingTargetIdentity { authority: row.authority, surface: row.surface }]
+        RuntimeChecker => [SurfaceMissingTargetIdentity { authority: row.authority, surface: row.surface }]
+        LegacyFrontier => [SurfaceMissingTargetIdentity { authority: row.authority, surface: row.surface }]
+      }
     Present { value: t } =>
       if subject_in_list(target: t, subjects: registration_subjects(registry: registry)) {
         []
@@ -243,6 +264,43 @@ fn surface_row_violations(
         }]
       }
   }
+}
+
+data multi_target_detector_note: String = "SurfaceJoinsMultipleTargets is emitted ONCE PER SURFACE, not once per row: a surface named by three disagreeing rows is one malformed surface, and emitting three violations would make the count a function of how the disagreement happened to be spread across rows rather than of how many surfaces are malformed. The accumulator therefore carries the loci already reported. This is the registry-INPUT class; TargetSurfaceAmbiguous is the LOOKUP outcome over the same shape, and they are deliberately distinct — one says the rows are wrong, the other says a question cannot be answered."
+
+type MultiTargetScan {
+  reported: List<LanguageTargetSurfaceLocus>
+  violations: List<LanguageTargetJoinViolation>
+}
+
+fn locus_in_list(target: LanguageTargetSurfaceLocus, xs: List<LanguageTargetSurfaceLocus>) -> Bool {
+  fold(xs, init: false, f: fn(acc, l) { acc || surface_locus_eq(a: l, b: target) })
+}
+
+fn multi_target_surface_violations(
+  rows: List<LanguageTargetSurfaceRow>
+) -> List<LanguageTargetJoinViolation> {
+  let scanned = fold(rows, init: MultiTargetScan { reported: [], violations: [] }, f: fn(acc, r) {
+    if locus_in_list(target: r.surface, xs: acc.reported) {
+      acc
+    } else {
+      match surface_named_targets(surface: r.surface, rows: rows) {
+        TallyMany { first: f, second: sec, rest: _ } =>
+          MultiTargetScan {
+            reported: concat(acc.reported, [r.surface]),
+            violations: concat(acc.violations, [SurfaceJoinsMultipleTargets {
+              authority: r.authority,
+              surface: r.surface,
+              first: f,
+              second: sec
+            }])
+          }
+        TallyOne { target: _ } => acc
+        TallyNone => acc
+      }
+    }
+  })
+  scanned.violations
 }
 
 fn duplicate_registration_violations(
@@ -267,7 +325,10 @@ fn language_target_join_violations(
     fold(rows, init: [], f: fn(acc, r) {
       concat(acc, surface_row_violations(row: r, registry: registry))
     }),
-    duplicate_registration_violations(registry: registry)
+    concat(
+      multi_target_surface_violations(rows: rows),
+      duplicate_registration_violations(registry: registry)
+    )
   )
 }
 
