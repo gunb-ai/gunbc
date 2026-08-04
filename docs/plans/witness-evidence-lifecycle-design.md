@@ -236,6 +236,40 @@ consequences:
    a named runner, never as the declared fact. A hand-authored `expected_duration: 30s`
    unbacked by a completed measurement is the directory heuristic at function grain.
 
+### Live receipt: the wall does not separate slow witnesses from fast ones
+
+Measured on this note's own PR, 2026-08-04. `witness_coproduct_arms_parse_only`
+(`src/v2/test/claim/concept_index_enumeration_test.dag`) on main:
+
+```
+3582ms elapsed / 5000ms budget      drift receipt: WithinBasis
+```
+
+28% headroom, formally healthy, no row anywhere marks it at risk. A diff adding one
+module to `src/v2` — touching nothing the witness reads — took it to:
+
+```
+eval budget exceeded: 5314ms elapsed > 5000ms fast-lane budget
+```
+
+The wall therefore does not partition witnesses by their own cost. It partitions them by
+how much unrelated corpus happened to be in the tree on the day they ran. Any PR that
+adds a module can push an unrelated, in-basis witness over, and the remedy the diagnostic
+offers is always relocation into a population nothing enumerates.
+
+Two properties follow, both load-bearing for the program:
+
+1. **A witness's fast-lane admissibility is not a property of the witness.** It is a
+   property of the whole-corpus state at run time. So route cannot be a durable
+   declaration attached to the file; it must be derived per candidate, which is why
+   route is a projection rather than a stored fact.
+2. **The remedy is corpus-coupled, so the population defect is reachable from any PR.**
+   The incident that priced this program is not specific to a slow witness or a
+   particular author; it is one module-add away from any diff in the repository.
+
+Handled correctly on that PR: the added module was removed, nothing was relocated, and
+the obligation was not discharged by a move.
+
 ## Semantic evidence lifecycle (route-independent)
 
 ```
