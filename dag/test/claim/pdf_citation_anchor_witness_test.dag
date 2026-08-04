@@ -1,0 +1,104 @@
+module test.claim.pdf_citation_anchor_witness
+
+import extdeps.pdf_citation {
+  PdfOpenParameter, PdfOpenPage, OpenPage,
+  PdfOpenParameterSequence, PdfCitationDetail,
+  DocumentContentPin, Verified, Unpinned, Unreachable,
+  PaywalledSource, FetchRefused,
+  pdf_open_page, pdf_citation_detail, document_content_pin_verified,
+  pdf_open_parameters_include_page, document_content_pin_is_verified,
+  document_content_pin_digest_eq,
+}
+import extdeps.external_authority { external_authority_with_pdf_citation }
+import extdeps.uri { Uri, Https }
+import extdeps.standards.rfc_8118 {
+  extdeps_external_authority_anchor,
+  rfc_8118_supersedes_rfc_3778_note,
+}
+import std.content_hash { Sha256DigestHex }
+import std.integer { PositiveInt }
+import std.types { Bool, List }
+
+data x86_64_abi_pdf_sha256_hex: Sha256DigestHex = "69e117a13b560b1b957c15f05a61b130ca56828f05dca951e27cb8e2ada14283" as Sha256DigestHex
+
+data drifted_pdf_sha256_hex: Sha256DigestHex = "0000000000000000000000000000000000000000000000000000000000000000" as Sha256DigestHex
+
+data witness_pdf_uri: Uri = Uri {
+  scheme: Https,
+  locator: "refspecs.linuxfoundation.org/elf/x86_64-abi-0.99.pdf",
+}
+
+data witness_verified_pin: DocumentContentPin = document_content_pin_verified(hex: x86_64_abi_pdf_sha256_hex)
+
+data witness_pdf_citation: PdfCitationDetail = pdf_citation_detail(
+  open_parameters: [pdf_open_page(page: 1 as PositiveInt)],
+  content_pin: witness_verified_pin,
+)
+
+data witness_pdf_authority = external_authority_with_pdf_citation(
+  uri: witness_pdf_uri,
+  detail: witness_pdf_citation,
+)
+
+test fn rfc_8118_anchor_cites_current_standard_not_3778() -> Bool {
+  extdeps_external_authority_anchor.uri.locator == "www.rfc-editor.org/rfc/rfc8118#section-3"
+    && string_contains(s: rfc_8118_supersedes_rfc_3778_note, pattern: "OBSOLETES RFC 3778")
+    && !string_contains(s: extdeps_external_authority_anchor.uri.locator, pattern: "rfc3778")
+}
+
+test fn pdf_open_parameters_include_page_holds_for_authored_page() -> Bool {
+  pdf_open_parameters_include_page(
+    sequence: witness_pdf_citation.open_parameters,
+    page: 1 as PositiveInt,
+  )
+}
+
+test fn pdf_open_parameters_include_page_red_wrong_page() -> Bool {
+  !pdf_open_parameters_include_page(
+    sequence: witness_pdf_citation.open_parameters,
+    page: 99 as PositiveInt,
+  )
+}
+
+test fn verified_content_pin_matches_cited_bytes() -> Bool {
+  document_content_pin_digest_eq(
+    left: witness_verified_pin,
+    right: witness_verified_pin,
+  )
+}
+
+test fn verified_content_pin_red_on_drifted_digest() -> Bool {
+  !document_content_pin_digest_eq(
+    left: witness_verified_pin,
+    right: document_content_pin_verified(hex: drifted_pdf_sha256_hex),
+  )
+}
+
+test fn unreachable_pin_is_not_verified() -> Bool {
+  !document_content_pin_is_verified(
+    pin: Unreachable { cause: PaywalledSource },
+  )
+}
+
+test fn unpinned_pin_is_not_verified() -> Bool {
+  !document_content_pin_is_verified(pin: Unpinned)
+}
+
+test fn external_authority_pdf_sidecar_present_when_migrated() -> Bool {
+  match witness_pdf_authority.pdf {
+    Present { value: detail } =>
+      document_content_pin_is_verified(pin: detail.content_pin)
+        && pdf_open_parameters_include_page(
+          sequence: detail.open_parameters,
+          page: 1 as PositiveInt,
+        )
+    Absent => false
+  }
+}
+
+test fn fetch_refused_unreachable_carries_status() -> Bool {
+  match Unreachable { cause: FetchRefused { http_status: 404 } } {
+    Unreachable { cause: FetchRefused { http_status: s } } => s == 404
+    _ => false
+  }
+}

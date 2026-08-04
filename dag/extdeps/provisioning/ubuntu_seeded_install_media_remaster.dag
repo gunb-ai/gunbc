@@ -1,7 +1,9 @@
 module extdeps.provisioning.ubuntu_seeded_install_media_remaster
 
 import gunbc.output_policy { OutcomeIsData }
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, external_authority_with_pdf_citation }
+import extdeps.pdf_citation { pdf_citation_detail, document_content_pin_verified }
+import std.content_hash { Sha256DigestHex }
 import extdeps.uri { Uri, Https }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io
@@ -51,12 +53,18 @@ data install_media_remaster_probe_refusal_shape_doc: String = "DESIGN §5 refusa
 
 data install_media_remaster_boot_fidelity_doc: String = "xorriso -boot_image any replay modifies the stock ISO by mapping in only the NoCloud seed dir and grub.cfg, so the arm64 El Torito/ESP boot structure survives; an -as mkisofs rebuild destroyed it and the media stopped booting (root-caused live on srv4, PR #7027); instance-id derives from the artifact's nocloud dir basename, never a hardcoded host name"
 
-data el_torito_authority: ExternalAuthority = ExternalAuthority {
+data boot_cdrom_pdf_sha256_hex: Sha256DigestHex = "a906b6fa2de740354ab15b4295b57f95caa330c0c7374a2740b388788d7b04be" as Sha256DigestHex
+
+data el_torito_authority: ExternalAuthority = external_authority_with_pdf_citation(
   uri: Uri {
     scheme: Https
     locator: "pdos.csail.mit.edu/6.828/2014/readings/boot-cdrom.pdf"
-  }
-}
+  },
+  detail: pdf_citation_detail(
+    open_parameters: [],
+    content_pin: document_content_pin_verified(hex: boot_cdrom_pdf_sha256_hex),
+  ),
+)
 
 data esp_boot_structure_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {

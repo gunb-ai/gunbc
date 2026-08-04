@@ -2,15 +2,23 @@ module extdeps.firmware.uefi_shell
 
 import std.types { NonEmptyStr, String, Int, Bool, List }
 import extdeps.firmware.kernel_cmdline { KernelCmdlineArg, kernel_cmdline_render }
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, external_authority_with_pdf_citation }
+import extdeps.pdf_citation { pdf_citation_detail, document_content_pin_verified }
+import std.content_hash { Sha256DigestHex }
 import extdeps.uri { Uri, Https }
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+data uefi_shell_pdf_sha256_hex: Sha256DigestHex = "9b73d14ddd2bf93a908d400e2d0ef448087b3772b1b221b1278721ba1799c9a6" as Sha256DigestHex
+
+data extdeps_external_authority_anchor: ExternalAuthority = external_authority_with_pdf_citation(
   uri: Uri {
     scheme: Https
     locator: "uefi.org/sites/default/files/resources/UEFI_Shell_2_2.pdf"
-  }
-}
+  },
+  detail: pdf_citation_detail(
+    open_parameters: [],
+    content_pin: document_content_pin_verified(hex: uefi_shell_pdf_sha256_hex),
+  ),
+)
 
 type UefiResetMode
   = ResetWarm

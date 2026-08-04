@@ -1,0 +1,144 @@
+module extdeps.pdf_citation
+
+import std.types { NonEmptyStr, String, Int, List, Bool }
+import std.integer { PositiveInt }
+import std.content_hash { Sha256Digest, Sha256DigestHex }
+
+data pdf_citation_vocabulary_note: String = "Typed PDF citation anchors per RFC 8118 section 3 (authority: extdeps.standards.rfc_8118). Fragment parameters are a closed coproduct sequence — never a string in Uri.locator. Content pins record verification at citation time: Verified carries a Sha256Digest minted only through the content_hash wall; Unreachable carries an explicit cause rather than silent absence."
+
+type PdfOpenPage {
+  page: PositiveInt
+}
+
+type PdfOpenNamedDest {
+  name: NonEmptyStr
+}
+
+type PdfOpenStructElem {
+  struct_id: NonEmptyStr
+}
+
+type PdfOpenComment {
+  comment_id: NonEmptyStr
+}
+
+type PdfOpenEmbeddedFile {
+  name: NonEmptyStr
+}
+
+type PdfOpenZoom {
+  scale_percent: Int
+  left: Int?
+  top: Int?
+}
+
+type PdfOpenView {
+  keyword: NonEmptyStr
+  position: String
+}
+
+type PdfOpenViewRect {
+  left: Int
+  top: Int
+  width: Int
+  height: Int
+}
+
+type PdfOpenHighlight {
+  left: Int
+  right: Int
+  top: Int
+  bottom: Int
+}
+
+type PdfOpenSearch {
+  words: NonEmptyStr
+}
+
+type PdfOpenFdf {
+  uri: NonEmptyStr
+}
+
+type PdfOpenParameter
+  = OpenPage(PdfOpenPage)
+  | OpenNamedDest(PdfOpenNamedDest)
+  | OpenStructElem(PdfOpenStructElem)
+  | OpenComment(PdfOpenComment)
+  | OpenEmbeddedFile(PdfOpenEmbeddedFile)
+  | OpenZoom(PdfOpenZoom)
+  | OpenView(PdfOpenView)
+  | OpenViewRect(PdfOpenViewRect)
+  | OpenHighlight(PdfOpenHighlight)
+  | OpenSearch(PdfOpenSearch)
+  | OpenFdf(PdfOpenFdf)
+
+type PdfOpenParameterSequence {
+  parameters: List<PdfOpenParameter>
+}
+
+type DocumentPinUnreachableCause
+  = PaywalledSource
+  | FetchRefused { http_status: Int }
+  | SourceUnavailable
+
+type DocumentContentPin
+  = Unpinned
+  | Verified { digest: Sha256Digest }
+  | Unreachable { cause: DocumentPinUnreachableCause }
+
+type PdfCitationDetail {
+  open_parameters: PdfOpenParameterSequence
+  content_pin: DocumentContentPin
+}
+
+fn pdf_open_page(page: PositiveInt) -> PdfOpenParameter {
+  OpenPage(PdfOpenPage { page: page })
+}
+
+fn pdf_citation_detail(
+  open_parameters: List<PdfOpenParameter>,
+  content_pin: DocumentContentPin,
+) -> PdfCitationDetail {
+  PdfCitationDetail {
+    open_parameters: PdfOpenParameterSequence { parameters: open_parameters },
+    content_pin: content_pin,
+  }
+}
+
+fn document_content_pin_verified(hex: Sha256DigestHex) -> DocumentContentPin {
+  Verified {
+    digest: Sha256Digest { hex: hex },
+  }
+}
+
+fn pdf_open_parameters_include_page(
+  sequence: PdfOpenParameterSequence,
+  page: PositiveInt,
+) -> Bool {
+  any(
+    sequence.parameters,
+    p => match p {
+      OpenPage(PdfOpenPage { page: n }) => n == page
+      _ => false
+    },
+  )
+}
+
+fn document_content_pin_is_verified(pin: DocumentContentPin) -> Bool {
+  match pin {
+    Verified { digest: _ } => true
+    Unpinned => false
+    Unreachable { cause: _ } => false
+  }
+}
+
+fn document_content_pin_digest_eq(left: DocumentContentPin, right: DocumentContentPin) -> Bool {
+  match left {
+    Verified { digest: l } =>
+      match right {
+        Verified { digest: r } => l.hex == r.hex
+        _ => false
+      }
+    _ => false
+  }
+}

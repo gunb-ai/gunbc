@@ -4,9 +4,20 @@ import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef }
 import std.roster_frontier { declaration_ref_eq }
 import extdeps.uri { Uri, File }
+import extdeps.pdf_citation { PdfCitationDetail }
+
+fn external_authority_with_pdf_citation(uri: Uri, detail: PdfCitationDetail) -> ExternalAuthority {
+  ExternalAuthority {
+    uri: uri,
+    pdf: detail,
+  }
+}
+
+data external_authority_pdf_citation_carrier_note: String = "Optional pdf: PdfCitationDetail? beside uri (operator mandate 2026-08-04, rich PDF citation anchors). Uri stays the document locator; RFC 8118 open parameters and the optional content pin live in the typed sidecar rather than smuggled into locator. Absent pdf means uri-only citation — the prior shape. Present pdf carries a closed coproduct fragment sequence plus an explicit DocumentContentPin (Unpinned | Verified | Unreachable) so absent never reads as verified and paywalled sources refuse honestly."
 
 type ExternalAuthority {
   uri: Uri
+  pdf: PdfCitationDetail?
 }
 
 data external_model_scope_law: String = "DESIGN §3 'External upstream decomposition' (operator verdicts on gunbc#7556 and gunbc#7571): 'one concept, one authority' unifies a shared interface or formal shape; it does not merge independently governed entities that inhabit that shape. Each independently versioned upstream product, implementation, engine, vendor, or specification has its own extdeps module authority, declared as one ExternalModelScope per module: ONE subject, one-or-more citations. A subject can have several citations; a module cannot silently have several independently governed subjects. A generic hub may define or re-export agnostic shapes but may not enumerate concrete products, dispatch among their authorities, carry product-specific version rows, or store consumer coverage state. Observations produced by this repository are receipts in the observing product/workflow layer (downstream), never 'Unobserved' properties authored inside an upstream module."

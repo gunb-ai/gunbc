@@ -131,6 +131,7 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/github/actions_environment.dag",
   "dag/extdeps/github/push_event.dag",
   "dag/extdeps/standards/ieee_754_2019.dag",
+  "dag/extdeps/standards/rfc_8118.dag",
   "dag/extdeps/os/debian.dag",
   "dag/extdeps/tools/wc.dag",
   "dag/extdeps/vendor/atlassian.dag",
@@ -139,6 +140,7 @@ data scope_carrier_paths: List<String> = [
 
 data scope_machinery_exempt_paths: List<String> = [
   "dag/extdeps/external_authority.dag",
+  "dag/extdeps/pdf_citation.dag",
   "dag/extdeps/uri.dag",
   "dag/extdeps/bmc/mock_corpus.dag",
   "dag/extdeps/cloud/gcp/mock_corpus.dag",
