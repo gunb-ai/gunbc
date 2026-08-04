@@ -402,6 +402,13 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
   },
   HandAuthoredDocBind {
     home: PlanDoc,
+    slug: "dag-prose-policy-audit",
+    primary_work: DeclarationRef { module_path: "v2.lens.enforcement.standing_intent", decl_name: "StandingIntent", field: WholeDeclaration },
+    additional_works: [],
+    dissolution: HasTrigger { text: "P1-P4 land as enforced policy (a Node-tree lens deciding the time-bound marker classes, plus a receipt carrier for the facts it evicts) and the reconciliation pass over the measured population completes — at which point a hand-read value audit over prose is superseded by a fold over typed rows, and this doc plus its uncommitted instrument delete together (same trigger family as dag-note-prose-census)" },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
     slug: "dissolution-census-a-ci-layer-roots",
     primary_work: DeclarationRef { module_path: "gunbc.ci_layer_roots", decl_name: "witness_exclusion_frontier", field: WholeDeclaration },
     additional_works: [DeclarationRef { module_path: "v2.lens.enforcement.standing_intent", decl_name: "StandingIntent", field: WholeDeclaration }],
