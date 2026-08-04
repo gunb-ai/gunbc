@@ -39,7 +39,8 @@ import std.realization_schedule { ScheduleWitnessEntry }
 import gunbc.repo_identity { gunbc_merge_target_ref }
 import gunbc.heal_push_plan {
   auto_push_eligible_committed_artifact_paths,
-  author_commit_required_committed_artifact_paths
+  author_commit_required_committed_artifact_paths,
+  live_heal_push_refusal_cause_token
 }
 import gunbc.ci_failure_class { infra_retry_grep_alternation }
 import gunbc.ci_deploy_access { DeployAccess, ci_deploy_srv1_access }
@@ -616,7 +617,7 @@ fn ci_heal_shell_lines() -> List<String> {
             "PRIOR_HEAD=$(git rev-parse HEAD)",
             "if git diff --cached --quiet; then",
             "  if [ -n \"$AUTHOR_COMMIT_DRIFT\" ]; then",
-            concat("    echo \"::error::HealAuthorCommitRequired head=$PRIOR_HEAD author_commit_paths=$AUTHOR_COMMIT_DRIFT cause=GitHubAppLacksWorkflowsWrite regen_command='", concat(ci_heal_author_commit_regen_command, "'\" >&2")),
+            concat("    echo \"::error::HealAuthorCommitRequired head=$PRIOR_HEAD author_commit_paths=$AUTHOR_COMMIT_DRIFT cause=", concat(live_heal_push_refusal_cause_token(), concat(" regen_command='", concat(ci_heal_author_commit_regen_command, "'\" >&2")))),
             "    exit 1",
             "  fi",
             "  echo \"HealNoChange head=$PRIOR_HEAD\"",
@@ -645,7 +646,7 @@ fn gunbc_ci_heal_commit_push_script() -> String {
         concat(
           "  echo \"SupersededByHealedHead prior_head=$PRIOR_HEAD healed_head=$HEALED_HEAD; revalidation-required\"\n",
           "  if [ -n \"$AUTHOR_COMMIT_DRIFT\" ]; then\n",
-          concat("    echo \"::error::HealAuthorCommitRequired head=$HEALED_HEAD author_commit_paths=$AUTHOR_COMMIT_DRIFT cause=GitHubAppLacksWorkflowsWrite regen_command='", concat(ci_heal_author_commit_regen_command, "'\" >&2\n")),
+          concat("    echo \"::error::HealAuthorCommitRequired head=$HEALED_HEAD author_commit_paths=$AUTHOR_COMMIT_DRIFT cause=", concat(live_heal_push_refusal_cause_token(), concat(" regen_command='", concat(ci_heal_author_commit_regen_command, "'\" >&2\n")))),
           "  fi\n",
           "  exit 1\nfi\n"
         )

@@ -42,15 +42,85 @@ type GitHubAppRegistration {
   homepage: Uri?
 }
 
-type GitHubAppPermissionName { wire_name: NonEmptyStr }
-
 type GitHubAppPermissionAccess
   = AppAccessRead
   | AppAccessWrite
   | AppAccessAdmin
 
+type GitHubPermissionAxis
+  = ActionsAxis
+  | ArtifactMetadataAxis
+  | AttestationsAxis
+  | ChecksAxis
+  | CodeQualityAxis
+  | ContentsAxis
+  | DeploymentsAxis
+  | DiscussionsAxis
+  | IdTokenAxis
+  | IssuesAxis
+  | MetadataAxis
+  | ModelsAxis
+  | PackagesAxis
+  | PagesAxis
+  | PullRequestsAxis
+  | RepositoryProjectsAxis
+  | SecurityEventsAxis
+  | StatusesAxis
+  | VulnerabilityAlertsAxis
+  | WorkflowsAxis
+  | AdministrationAxis
+  | OrganizationSelfHostedRunnersAxis
+
+data all_permission_axes: List<GitHubPermissionAxis> = [
+  ActionsAxis, ArtifactMetadataAxis, AttestationsAxis, ChecksAxis, CodeQualityAxis,
+  ContentsAxis, DeploymentsAxis, DiscussionsAxis, IdTokenAxis, IssuesAxis,
+  MetadataAxis, ModelsAxis, PackagesAxis, PagesAxis, PullRequestsAxis,
+  RepositoryProjectsAxis, SecurityEventsAxis, StatusesAxis, VulnerabilityAlertsAxis,
+  WorkflowsAxis, AdministrationAxis, OrganizationSelfHostedRunnersAxis
+]
+
+fn permission_axis_wire_name(axis: GitHubPermissionAxis) -> NonEmptyStr {
+  match axis {
+    ActionsAxis => "actions"
+    ArtifactMetadataAxis => "artifact_metadata"
+    AttestationsAxis => "attestations"
+    ChecksAxis => "checks"
+    CodeQualityAxis => "code_quality"
+    ContentsAxis => "contents"
+    DeploymentsAxis => "deployments"
+    DiscussionsAxis => "discussions"
+    IdTokenAxis => "id_token"
+    IssuesAxis => "issues"
+    MetadataAxis => "metadata"
+    ModelsAxis => "models"
+    PackagesAxis => "packages"
+    PagesAxis => "pages"
+    PullRequestsAxis => "pull_requests"
+    RepositoryProjectsAxis => "repository_projects"
+    SecurityEventsAxis => "security_events"
+    StatusesAxis => "statuses"
+    VulnerabilityAlertsAxis => "vulnerability_alerts"
+    WorkflowsAxis => "workflows"
+    AdministrationAxis => "administration"
+    OrganizationSelfHostedRunnersAxis => "organization_self_hosted_runners"
+  }
+}
+
+fn permission_axis_from_wire(name: NonEmptyStr) -> GitHubPermissionAxis? {
+  fold_list(
+    xs: all_permission_axes,
+    empty: none,
+    cons: fn(found, axis) {
+      match found {
+        Present { value: v } => Present { value: v }
+        Absent => if name == permission_axis_wire_name(axis: axis) { Present { value: axis } } else { none }
+      }
+    }
+  )
+}
+
 type GitHubAppPermission {
-  name: GitHubAppPermissionName
+  name: GitHubPermissionAxis
   access: GitHubAppPermissionAccess
 }
 
@@ -69,19 +139,19 @@ fn permission_access_at_least(
   permission_access_rank(access: held) >= permission_access_rank(access: requested)
 }
 
-fn permission_name_eq(a: GitHubAppPermissionName, b: GitHubAppPermissionName) -> Bool {
-  a.wire_name == b.wire_name
+fn permission_name_eq(a: GitHubPermissionAxis, b: GitHubPermissionAxis) -> Bool {
+  permission_axis_wire_name(axis: a) == permission_axis_wire_name(axis: b)
 }
 
 type GitHubAppPermissionSetAdmission
   = PermissionSetAdmitted { permissions: List<GitHubAppPermission> }
-  | PermissionSetDuplicateName { name: GitHubAppPermissionName }
+  | PermissionSetDuplicateName { name: GitHubPermissionAxis }
 
 data no_admitted_permissions: List<GitHubAppPermission> = []
 
 fn permission_name_occurrences(
   perms: List<GitHubAppPermission>,
-  name: GitHubAppPermissionName
+  name: GitHubPermissionAxis
 ) -> Int {
   fold_list(
     xs: perms,
@@ -121,6 +191,9 @@ type GitHubAppRepositorySelectionMode
 
 type GitHubAppInstallation {
   installation_id: GitHubAppInstallationId
+  app_id: GitHubAppId
+  app_slug: NonEmptyStr
+  html_url: Uri
   account: GitHubUser
   repository_selection: GitHubAppRepositorySelectionMode
   permissions: List<GitHubAppPermission>
@@ -158,7 +231,7 @@ fn requested_permissions(narrowing: GitHubInstallationPermissionNarrowing, insta
 
 fn permission_access_in(
   perms: List<GitHubAppPermission>,
-  name: GitHubAppPermissionName
+  name: GitHubPermissionAxis
 ) -> GitHubAppPermissionAccess? {
   fold_list(
     xs: perms,

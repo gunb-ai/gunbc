@@ -6,11 +6,15 @@ import extdeps.external_authority { ExternalAuthority, ExternalModelScope, Exter
 import extdeps.uri { Uri, Https }
 import extdeps.github.actions { WorkflowPermissions, PermissionLevel, PermRead, PermWrite, PermNone }
 import extdeps.github.app {
-  GitHubAppPermissionName,
+  GitHubPermissionAxis,
+  ActionsAxis, ArtifactMetadataAxis, AttestationsAxis, ChecksAxis, CodeQualityAxis,
+  ContentsAxis, DeploymentsAxis, DiscussionsAxis, IdTokenAxis, IssuesAxis,
+  MetadataAxis, ModelsAxis, PackagesAxis, PagesAxis, PullRequestsAxis,
+  RepositoryProjectsAxis, SecurityEventsAxis, StatusesAxis, VulnerabilityAlertsAxis,
+  WorkflowsAxis, AdministrationAxis, OrganizationSelfHostedRunnersAxis,
   GitHubAppPermissionAccess,
   AppAccessRead,
   AppAccessWrite,
-  AppAccessAdmin,
   permission_access_at_least
 }
 
@@ -32,65 +36,6 @@ data app_permissions_citation: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "docs.github.com/en/rest/authentication/permissions-required-for-github-apps"
-  }
-}
-
-type GitHubPermissionAxis
-  = ActionsAxis
-  | ArtifactMetadataAxis
-  | AttestationsAxis
-  | ChecksAxis
-  | CodeQualityAxis
-  | ContentsAxis
-  | DeploymentsAxis
-  | DiscussionsAxis
-  | IdTokenAxis
-  | IssuesAxis
-  | MetadataAxis
-  | ModelsAxis
-  | PackagesAxis
-  | PagesAxis
-  | PullRequestsAxis
-  | RepositoryProjectsAxis
-  | SecurityEventsAxis
-  | StatusesAxis
-  | VulnerabilityAlertsAxis
-  | WorkflowsAxis
-  | AdministrationAxis
-  | OrganizationSelfHostedRunnersAxis
-
-data all_permission_axes: List<GitHubPermissionAxis> = [
-  ActionsAxis, ArtifactMetadataAxis, AttestationsAxis, ChecksAxis, CodeQualityAxis,
-  ContentsAxis, DeploymentsAxis, DiscussionsAxis, IdTokenAxis, IssuesAxis,
-  MetadataAxis, ModelsAxis, PackagesAxis, PagesAxis, PullRequestsAxis,
-  RepositoryProjectsAxis, SecurityEventsAxis, StatusesAxis, VulnerabilityAlertsAxis,
-  WorkflowsAxis, AdministrationAxis, OrganizationSelfHostedRunnersAxis
-]
-
-fn axis_app_wire_name(axis: GitHubPermissionAxis) -> NonEmptyStr {
-  match axis {
-    ActionsAxis => "actions"
-    ArtifactMetadataAxis => "artifact_metadata"
-    AttestationsAxis => "attestations"
-    ChecksAxis => "checks"
-    CodeQualityAxis => "code_quality"
-    ContentsAxis => "contents"
-    DeploymentsAxis => "deployments"
-    DiscussionsAxis => "discussions"
-    IdTokenAxis => "id_token"
-    IssuesAxis => "issues"
-    MetadataAxis => "metadata"
-    ModelsAxis => "models"
-    PackagesAxis => "packages"
-    PagesAxis => "pages"
-    PullRequestsAxis => "pull_requests"
-    RepositoryProjectsAxis => "repository_projects"
-    SecurityEventsAxis => "security_events"
-    StatusesAxis => "statuses"
-    VulnerabilityAlertsAxis => "vulnerability_alerts"
-    WorkflowsAxis => "workflows"
-    AdministrationAxis => "administration"
-    OrganizationSelfHostedRunnersAxis => "organization_self_hosted_runners"
   }
 }
 
@@ -134,30 +79,14 @@ fn axis_max_actions_access(axis: GitHubPermissionAxis) -> GitHubAppPermissionAcc
   }
 }
 
-fn axis_for_app_wire_name(name: GitHubAppPermissionName) -> GitHubPermissionAxis? {
-  fold_list(
-    xs: all_permission_axes,
-    empty: none,
-    cons: fn(found, axis) {
-      match found {
-        Present { value: v } => Present { value: v }
-        Absent => if name.wire_name == axis_app_wire_name(axis: axis) { Present { value: axis } } else { none }
-      }
-    }
-  )
-}
-
-fn actions_token_can_carry(name: GitHubAppPermissionName) -> Bool {
-  match axis_for_app_wire_name(name: name) {
+fn actions_token_can_carry(name: GitHubPermissionAxis) -> Bool {
+  match axis_actions_scope_name(axis: name) {
     Absent => false
-    Present { value: axis } => match axis_actions_scope_name(axis: axis) {
-      Absent => false
-      Present { value: _ } => true
-    }
+    Present { value: _ } => true
   }
 }
 
-data workflows_permission_name: GitHubAppPermissionName = GitHubAppPermissionName { wire_name: "workflows" }
+data workflows_permission_name: GitHubPermissionAxis = WorkflowsAxis
 
 fn actions_token_may_write_workflow_files() -> Bool {
   actions_token_can_carry(name: workflows_permission_name)
@@ -225,27 +154,37 @@ fn fork_write_downgrade(grant: EffectiveActionsJobGrant) -> ActionsGrantResoluti
   }
 }
 
+fn capped_by(access: GitHubAppPermissionAccess, ceiling: GitHubAppPermissionAccess) -> GitHubAppPermissionAccess {
+  if permission_access_at_least(held: ceiling, requested: access) { access } else { ceiling }
+}
+
+fn axis_capped_access(
+  axis: GitHubPermissionAxis,
+  declared: GitHubAppPermissionAccess
+) -> GitHubAppPermissionAccess? {
+  match axis_max_actions_access(axis: axis) {
+    Absent => none
+    Present { value: axis_ceiling } => Present { value: capped_by(access: declared, ceiling: axis_ceiling) }
+  }
+}
+
 fn effective_actions_grant(
   grant: EffectiveActionsJobGrant,
-  name: GitHubAppPermissionName
+  name: GitHubPermissionAxis
 ) -> ActionsGrantResolution {
-  match axis_for_app_wire_name(name: name) {
+  match axis_actions_scope_name(axis: name) {
     Absent => ActionsGrantScopeUnavailable
-    Present { value: axis } => match axis_actions_scope_name(axis: axis) {
-      Absent => ActionsGrantScopeUnavailable
-      Present { value: _ } => match declared_level_for_axis(perms: grant.permissions, axis: axis) {
+    Present { value: _ } => match declared_level_for_axis(perms: grant.permissions, axis: name) {
+      Absent => ActionsGrantNone
+      Present { value: level } => match permission_level_access(level: level) {
         Absent => ActionsGrantNone
-        Present { value: level } => match permission_level_access(level: level) {
-          Absent => ActionsGrantNone
-          Present { value: declared } => match fork_write_downgrade(grant: grant) {
+        Present { value: declared } => match axis_capped_access(axis: name, declared: declared) {
+          Absent => ActionsGrantScopeUnavailable
+          Present { value: within_axis } => match fork_write_downgrade(grant: grant) {
             ActionsGrantForkPolicyUnobserved => ActionsGrantForkPolicyUnobserved
-            ActionsGrantResolved { access: ceiling } =>
-              if permission_access_at_least(held: ceiling, requested: declared) {
-                ActionsGrantResolved { access: declared }
-              } else {
-                ActionsGrantResolved { access: ceiling }
-              }
-            ActionsGrantNone => ActionsGrantResolved { access: declared }
+            ActionsGrantResolved { access: fork_ceiling } =>
+              ActionsGrantResolved { access: capped_by(access: within_axis, ceiling: fork_ceiling) }
+            ActionsGrantNone => ActionsGrantResolved { access: within_axis }
             ActionsGrantScopeUnavailable => ActionsGrantScopeUnavailable
           }
         }
@@ -258,7 +197,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.github.actions_token",
-      decl_name: "GitHubPermissionAxis",
+      decl_name: "EffectiveActionsJobGrant",
       field: WholeDeclaration
     }
   },

@@ -21,8 +21,6 @@ data runner_host_deploy_citation: String = "§3 cite-upstream, do-not-re-coin: G
 data runner_host_deploy_upstream_installer: NonEmptyStr = "ctrl:scripts/session-dashboard/host/install-actions-runner.sh"
 data runner_host_deploy_upstream_fanout: NonEmptyStr = "ctrl:scripts/session-dashboard/host/deploy-runner-hosts.sh"
 
-data github_app_runner_config_regrounding_note: String = "RE-GROUNDED onto gunbc.auth.github_apps, which is now the single authority for this organization's GitHub App registrations. This row previously carried app_id 2653532, an installation ID, an owner and a SecretRef inline, which made it a second home for facts about an App — and the cost of that showed up the moment a SECOND App entered the picture: gunbai[bot] (3909950) actors this repository's admitted workflow runs, and nothing here said which App this row was, so 'the gunbc GitHub App' read as though there were only one.\n\nThe fields are now references. What stays here is the only fact that is genuinely about runner-host DEPLOYMENT rather than about the App: which registration and installation this host's runners register against. org is dropped rather than kept as a field because it was always gunbc_repository.owner restated — and after this change it is derivable a second way, from the registration's own owner, so keeping it would be a third representation of one fact."
-
 type GithubAppRunnerConfig {
   app: DeclaredGitHubApp
   installation_id: GitHubAppInstallationId

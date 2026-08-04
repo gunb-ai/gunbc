@@ -2,14 +2,8 @@ module test.claim.github_app_registry
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data github_app_credential_witness_note: String = "THE DISCRIMINATING CONTROLS FOR CREDENTIAL-DEPENDENT AUTHORIZATION. The first one below is the direct falsifier for the cut this file replaced: even if the gunbai app held workflows:write, the live heal pushes with the Actions job credential, and GitHub's permissions vocabulary has no workflows key — so a workflow-path push must refuse regardless of any app grant. A model that consulted the app's permission list would answer AutoPushEligible there and be wrong at the remote.\n\nThe remaining controls walk the control-plane ladder: registration unobserved, approval pending, signer custody missing, grant observed. Each is a different reason a push cannot proceed, and collapsing them into one Boolean is what made the previous cut unable to say whether a human action was owed, and if so which one."
-
-fn wire(name: NonEmptyStr) -> GitHubAppPermissionName {
-  GitHubAppPermissionName { wire_name: name }
-}
-
-fn perm(name: NonEmptyStr, access: GitHubAppPermissionAccess) -> GitHubAppPermission {
-  GitHubAppPermission { name: wire(name: name), access: access }
+fn perm(axis: GitHubPermissionAxis, access: GitHubAppPermissionAccess) -> GitHubAppPermission {
+  GitHubAppPermission { name: axis, access: access }
 }
 
 data workflow_advance_effect: GitHubEffect = AdvanceRepositoryBranch {
@@ -24,9 +18,24 @@ data ordinary_advance_effect: GitHubEffect = AdvanceRepositoryBranch {
   changed_paths: [RepositoryPath { value: "DESIGN.md" }]
 }
 
-fn installation_holding(perms: List<GitHubAppPermission>) -> GitHubAppInstallation {
+data bot_installation_id: GitHubAppInstallationId = GitHubAppInstallationId { value: 999 }
+data other_installation_id: GitHubAppInstallationId = GitHubAppInstallationId { value: 1000 }
+
+data bot_installation_locator: Uri = Uri {
+  scheme: Https
+  locator: "github.com/organizations/gunb-ai/settings/installations/999"
+}
+
+fn installation_of(
+  app: DeclaredGitHubApp,
+  installation_id: GitHubAppInstallationId,
+  perms: List<GitHubAppPermission>
+) -> GitHubAppInstallation {
   GitHubAppInstallation {
-    installation_id: GitHubAppInstallationId { value: 999 },
+    installation_id: installation_id,
+    app_id: app.app_id,
+    app_slug: app.slug,
+    html_url: bot_installation_locator,
     account: GitHubUser { login: "gunb-ai", id: 0, type: Organization },
     repository_selection: SelectionAll,
     permissions: perms,
@@ -34,32 +43,104 @@ fn installation_holding(perms: List<GitHubAppPermission>) -> GitHubAppInstallati
   }
 }
 
-data live_signer: SignerCustody = SignerCustodyDeclared {
-  pem: gunbai_ci_app_pem_secret,
-  fingerprint: gunbai_bot_declared_key.fingerprint
+fn installation_holding(perms: List<GitHubAppPermission>) -> GitHubAppInstallation {
+  installation_of(app: gunbai_bot_declared, installation_id: bot_installation_id, perms: perms)
 }
+
+data bot_key_fingerprint: GitHubAppPublicKeyFingerprint = gunbai_bot_declared_key.fingerprint
+
+data ci_key_fingerprint: GitHubAppPublicKeyFingerprint = sha256_base64_key_fingerprint(
+  digest: "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC="
+)
+
+data hypothetical_bot_pem: SecretRef = SecretRef {
+  project: fleet_secrets_gcp_project,
+  secret: "gunbai-bot-private-key-not-yet-provisioned",
+  version: "latest",
+  hash_state: HashPending,
+}
+
+fn signer_for(
+  app: DeclaredGitHubApp,
+  pem: SecretRef,
+  derived: GitHubAppPublicKeyFingerprint,
+  registered: GitHubAppPublicKeyFingerprint
+) -> SignerCustody {
+  SignerCustodyObserved {
+    signer: ObservedGitHubAppSigner {
+      app_id: app.app_id,
+      secret_version: pem,
+      secret_content_hash: content_hash_of_value(value: pem.secret),
+      derived_public_fingerprint: derived,
+      github_registered_fingerprint: registered,
+    }
+  }
+}
+
+data sealed_bot_signer: SignerCustody = signer_for(
+  app: gunbai_bot_declared,
+  pem: hypothetical_bot_pem,
+  derived: bot_key_fingerprint,
+  registered: bot_key_fingerprint
+)
+
+data cross_app_signer: SignerCustody = signer_for(
+  app: gunbai_ci_declared,
+  pem: gunbai_ci_app_pem_secret,
+  derived: ci_key_fingerprint,
+  registered: ci_key_fingerprint
+)
+
+data unregistered_key_signer: SignerCustody = signer_for(
+  app: gunbai_bot_declared,
+  pem: hypothetical_bot_pem,
+  derived: ci_key_fingerprint,
+  registered: bot_key_fingerprint
+)
 
 data app_credential: GitHubCredentialAuthority = ManagedAppInstallationCredential {
   app: gunbai_bot_declared,
-  installation: GitHubAppInstallationId { value: 999 },
+  installation: bot_installation_id,
   profile: GitHubCredentialProfileRef { name: "heal-branch-advance" }
 }
 
-data workflows_write_perm: GitHubAppPermission = perm(name: "workflows", access: AppAccessWrite)
-data contents_write_perm: GitHubAppPermission = perm(name: "contents", access: AppAccessWrite)
-data metadata_read_perm: GitHubAppPermission = perm(name: "metadata", access: AppAccessRead)
+data other_app_credential: GitHubCredentialAuthority = ManagedAppInstallationCredential {
+  app: gunbai_ci_declared,
+  installation: bot_installation_id,
+  profile: GitHubCredentialProfileRef { name: "heal-branch-advance" }
+}
+
+data other_installation_credential: GitHubCredentialAuthority = ManagedAppInstallationCredential {
+  app: gunbai_bot_declared,
+  installation: other_installation_id,
+  profile: GitHubCredentialProfileRef { name: "heal-branch-advance" }
+}
+
+data workflows_write_perm: GitHubAppPermission = perm(axis: WorkflowsAxis, access: AppAccessWrite)
+data contents_write_perm: GitHubAppPermission = perm(axis: ContentsAxis, access: AppAccessWrite)
+data metadata_read_perm: GitHubAppPermission = perm(axis: MetadataAxis, access: AppAccessRead)
 
 data full_workflow_grant: List<GitHubAppPermission> = [metadata_read_perm, contents_write_perm, workflows_write_perm]
 
-fn observed_grant(perms: List<GitHubAppPermission>) -> GitHubAppControlPlaneState {
+fn observed_grant_with(
+  custody: SignerCustody,
+  perms: List<GitHubAppPermission>
+) -> GitHubAppControlPlaneState {
   app_control_plane_state(
     app: gunbai_bot_declared,
-    custody: live_signer,
-    registration: AppRegistrationReadback { requested_permissions: full_workflow_grant },
+    custody: custody,
+    registration: AppRegistrationReadback {
+      app_id: gunbai_bot_declared.app_id,
+      requested_permissions: full_workflow_grant
+    },
     observed: InstallationReadback { installation: installation_holding(perms: perms) },
     required: full_workflow_grant,
     reason: "heal branch advance over .github/workflows/**"
   )
+}
+
+fn observed_grant(perms: List<GitHubAppPermission>) -> GitHubAppControlPlaneState {
+  observed_grant_with(custody: sealed_bot_signer, perms: perms)
 }
 
 test fn witness_app_grant_cannot_rescue_actions_job_credential() -> Bool {
@@ -92,9 +173,8 @@ test fn witness_actions_token_refusal_is_kind_not_grant() -> Bool {
          empty: false,
          cons: fn(_acc, c) {
            match c {
-             CredentialKindCannotSatisfy { missing } => missing.wire_name == "workflows"
-             CredentialGrantNotObserved { missing: _ } => false
-             CredentialGrants => false
+             CredentialKindCannotSatisfy { missing } => permission_axis_wire_name(axis: missing) == "workflows"
+             _ => false
            }
          }
        )
@@ -102,11 +182,33 @@ test fn witness_actions_token_refusal_is_kind_not_grant() -> Bool {
 
 test fn witness_actions_token_scope_vocabulary_has_no_workflows() -> Bool {
   !actions_token_may_write_workflow_files()
-    && actions_token_can_carry(name: wire(name: "contents"))
-    && actions_token_can_carry(name: wire(name: "actions"))
-    && actions_token_can_carry(name: wire(name: "pull_requests"))
-    && actions_token_can_carry(name: wire(name: "security_events"))
-    && !actions_token_can_carry(name: wire(name: "organization_self_hosted_runners"))
+    && actions_token_can_carry(name: ContentsAxis)
+    && actions_token_can_carry(name: ActionsAxis)
+    && actions_token_can_carry(name: PullRequestsAxis)
+    && actions_token_can_carry(name: SecurityEventsAxis)
+    && actions_token_can_carry(name: ModelsAxis)
+    && !actions_token_can_carry(name: MetadataAxis)
+    && !actions_token_can_carry(name: AdministrationAxis)
+    && !actions_token_can_carry(name: OrganizationSelfHostedRunnersAxis)
+}
+
+test fn witness_axis_wire_names_are_a_bijection() -> Bool {
+  count(all_permission_axes) == 22
+    && fold_list(
+         xs: all_permission_axes,
+         empty: true,
+         cons: fn(ok, axis) {
+           ok && match permission_axis_from_wire(name: permission_axis_wire_name(axis: axis)) {
+             Absent => false
+             Present { value: found } =>
+               permission_axis_wire_name(axis: found) == permission_axis_wire_name(axis: axis)
+           }
+         }
+       )
+    && match permission_axis_from_wire(name: "not_a_github_permission") {
+         Absent => true
+         Present { value: _ } => false
+       }
 }
 
 test fn witness_installation_approval_pending_when_grant_incomplete() -> Bool {
@@ -114,15 +216,13 @@ test fn witness_installation_approval_pending_when_grant_incomplete() -> Bool {
     InstallationPermissionApprovalPending { request } =>
       count(request.accept) == 1
         && request.installation.value == 999
+        && request.installation_locator.locator == "github.com/organizations/gunb-ai/settings/installations/999"
         && fold_list(
              xs: request.accept,
              empty: false,
-             cons: fn(_a, p) { p.name.wire_name == "workflows" }
+             cons: fn(_a, p) { permission_axis_wire_name(axis: p.name) == "workflows" }
            )
-    InstallationGrantObserved { installation: _ } => false
-    SignerCustodyMissing { app: _, reason: _ } => false
-    AppRegistrationUnobserved { app: _ } => false
-    AppRegistrationPermissionMissing { request: _ } => false
+    _ => false
   }
 }
 
@@ -130,10 +230,8 @@ test fn witness_grant_observed_when_installation_holds_everything() -> Bool {
   match observed_grant(perms: full_workflow_grant) {
     InstallationGrantObserved { installation } => count(installation.permissions) == 3
       && installation.installation_id.value == 999
-    InstallationPermissionApprovalPending { request: _ } => false
-    SignerCustodyMissing { app: _, reason: _ } => false
-    AppRegistrationUnobserved { app: _ } => false
-    AppRegistrationPermissionMissing { request: _ } => false
+      && installation.app_id.value == 3909950
+    _ => false
   }
 }
 
@@ -141,25 +239,99 @@ test fn witness_signer_custody_missing_precedes_every_readback() -> Bool {
   match app_control_plane_state(
     app: gunbai_bot_declared,
     custody: gunbai_bot_signer_custody,
-    registration: AppRegistrationReadback { requested_permissions: full_workflow_grant },
+    registration: AppRegistrationReadback {
+      app_id: gunbai_bot_declared.app_id,
+      requested_permissions: full_workflow_grant
+    },
     observed: InstallationReadback { installation: installation_holding(perms: full_workflow_grant) },
     required: full_workflow_grant,
     reason: "heal branch advance"
   ) {
     SignerCustodyMissing { app, reason: _ } => app.app_id.value == 3909950
-    InstallationGrantObserved { installation: _ } => false
-    InstallationPermissionApprovalPending { request: _ } => false
-    AppRegistrationUnobserved { app: _ } => false
-    AppRegistrationPermissionMissing { request: _ } => false
+    _ => false
+  }
+}
+
+test fn witness_cross_app_signer_does_not_seal_the_selected_app() -> Bool {
+  match observed_grant_with(custody: cross_app_signer, perms: full_workflow_grant) {
+    SignerCustodyMissing { app, reason: _ } => app.app_id.value == 3909950
+    _ => false
+  } && match observed_grant_with(custody: unregistered_key_signer, perms: full_workflow_grant) {
+    SignerCustodyMissing { app, reason: _ } => app.app_id.value == 3909950
+    _ => false
+  } && match sealed_bot_signer {
+    SignerCustodyObserved { signer } =>
+      signer_seals_app(signer: signer, app: gunbai_bot_declared)
+        && !signer_seals_app(signer: signer, app: gunbai_ci_declared)
+    SignerCustodyAbsent { reason: _ } => false
+  }
+}
+
+test fn witness_credential_app_must_match_the_observed_subject() -> Bool {
+  let control_plane = observed_grant(perms: full_workflow_grant)
+  credential_authorizes(
+    authority: app_credential,
+    control_plane: control_plane,
+    effect: workflow_advance_effect
+  ) && !credential_authorizes(
+    authority: other_app_credential,
+    control_plane: control_plane,
+    effect: workflow_advance_effect
+  ) && !credential_authorizes(
+    authority: other_installation_credential,
+    control_plane: control_plane,
+    effect: workflow_advance_effect
+  ) && fold_list(
+    xs: unsatisfied_capabilities(
+      authority: other_app_credential,
+      control_plane: control_plane,
+      effect: workflow_advance_effect
+    ),
+    empty: false,
+    cons: fn(_a, c) {
+      match c {
+        CredentialSubjectMismatch { missing: _ } => true
+        _ => false
+      }
+    }
+  )
+}
+
+test fn witness_installation_readback_naming_another_app_is_unobserved() -> Bool {
+  match app_control_plane_state(
+    app: gunbai_bot_declared,
+    custody: sealed_bot_signer,
+    registration: AppRegistrationReadback {
+      app_id: gunbai_bot_declared.app_id,
+      requested_permissions: full_workflow_grant
+    },
+    observed: InstallationReadback {
+      installation: installation_of(
+        app: gunbai_ci_declared,
+        installation_id: bot_installation_id,
+        perms: full_workflow_grant
+      )
+    },
+    required: full_workflow_grant,
+    reason: "heal branch advance"
+  ) {
+    InstallationUnobserved { app, reason } => app.app_id.value == 3909950 && match reason {
+      InstallationReadbackFailed { detail: _ } => true
+      InstallationReadbackNotAttempted => false
+    }
+    _ => false
   }
 }
 
 test fn witness_unobserved_readback_never_authorizes() -> Bool {
   let unobserved = app_control_plane_state(
     app: gunbai_bot_declared,
-    custody: live_signer,
-    registration: AppRegistrationReadback { requested_permissions: full_workflow_grant },
-    observed: InstallationReadbackUnavailable,
+    custody: sealed_bot_signer,
+    registration: AppRegistrationReadback {
+      app_id: gunbai_bot_declared.app_id,
+      requested_permissions: full_workflow_grant
+    },
+    observed: InstallationReadbackUnavailable { cause: InstallationReadbackNotAttempted },
     required: full_workflow_grant,
     reason: "heal branch advance"
   )
@@ -172,8 +344,51 @@ test fn witness_unobserved_readback_never_authorizes() -> Bool {
     control_plane: unobserved,
     effect: ordinary_advance_effect
   ) && match unobserved {
-    AppRegistrationUnobserved { app: _ } => true
+    InstallationUnobserved { app, reason } => app.app_id.value == 3909950 && match reason {
+      InstallationReadbackNotAttempted => true
+      InstallationReadbackFailed { detail: _ } => false
+    }
     _ => false
+  }
+}
+
+test fn witness_operator_action_carries_locator_and_delta() -> Bool {
+  match control_plane_next_action(state: observed_grant(perms: [metadata_read_perm, contents_write_perm])) {
+    OperatorActionRequired { action, locator, permission_delta, readback } =>
+      match action {
+        AcceptInstallationPermissions => true
+        ApplyAppPermissionChange => false
+      }
+        && locator.locator == "github.com/organizations/gunb-ai/settings/installations/999"
+        && count(permission_delta) == 1
+        && readback.decl_name == "app_control_plane_state"
+    _ => false
+  }
+}
+
+test fn witness_unobserved_states_are_machine_owned_not_operator_owned() -> Bool {
+  let unobserved = app_control_plane_state(
+    app: gunbai_bot_declared,
+    custody: sealed_bot_signer,
+    registration: AppRegistrationReadback {
+      app_id: gunbai_bot_declared.app_id,
+      requested_permissions: full_workflow_grant
+    },
+    observed: InstallationReadbackUnavailable { cause: InstallationReadbackNotAttempted },
+    required: full_workflow_grant,
+    reason: "heal branch advance"
+  )
+  match next_action_owner(action: control_plane_next_action(state: unobserved)) {
+    MachineOwner => true
+    OperatorOwner => false
+  } && match next_action_owner(
+    action: control_plane_next_action(state: observed_grant(perms: [metadata_read_perm, contents_write_perm]))
+  ) {
+    OperatorOwner => true
+    MachineOwner => false
+  } && match next_action_owner(action: control_plane_next_action(state: live_heal_control_plane)) {
+    MachineOwner => true
+    OperatorOwner => false
   }
 }
 
@@ -195,7 +410,7 @@ test fn witness_effect_permissions_are_derived_not_authored() -> Bool {
            effect: RegisterOrganizationRunner { organization: GitHubOrganizationRef { login: "gunb-ai" } }
          ),
          empty: false,
-         cons: fn(found, p) { found || p.name.wire_name == "organization_self_hosted_runners" }
+         cons: fn(found, p) { found || permission_axis_wire_name(axis: p.name) == "organization_self_hosted_runners" }
        )
 }
 
@@ -220,30 +435,44 @@ test fn witness_permission_access_order_is_asymmetric() -> Bool {
   permission_access_at_least(held: AppAccessWrite, requested: AppAccessRead)
     && permission_access_at_least(held: AppAccessRead, requested: AppAccessRead)
     && !permission_access_at_least(held: AppAccessRead, requested: AppAccessWrite)
+    && permission_access_at_least(held: AppAccessAdmin, requested: AppAccessWrite)
+    && !permission_access_at_least(held: AppAccessWrite, requested: AppAccessAdmin)
 }
 
 test fn witness_absent_permission_is_absent_not_read() -> Bool {
-  match permission_access_in(perms: [contents_write_perm], name: wire(name: "workflows")) {
+  match permission_access_in(perms: [contents_write_perm], name: WorkflowsAxis) {
     Absent => true
     Present { value: _ } => false
-  } && match permission_access_in(perms: [contents_write_perm], name: wire(name: "contents")) {
+  } && match permission_access_in(perms: [contents_write_perm], name: ContentsAxis) {
     Present { value: a } => match a { AppAccessWrite => true  _ => false }
     Absent => false
   }
 }
 
-test fn witness_duplicate_permission_name_refused() -> Bool {
+test fn witness_duplicate_permission_observation_refuses_in_production() -> Bool {
   let dup = [
-    perm(name: "contents", access: AppAccessRead),
-    perm(name: "contents", access: AppAccessWrite),
+    perm(axis: ContentsAxis, access: AppAccessRead),
+    perm(axis: ContentsAxis, access: AppAccessWrite),
+    metadata_read_perm,
+    workflows_write_perm,
   ]
-  let ok = [contents_write_perm, metadata_read_perm]
-  match admit_permission_set(perms: dup) {
-    PermissionSetDuplicateName { name: n } => n.wire_name == "contents"
-    PermissionSetAdmitted { permissions: _ } => false
-  } && match admit_permission_set(perms: ok) {
-    PermissionSetAdmitted { permissions: p } => count(p) == 2
-    PermissionSetDuplicateName { name: _ } => false
+  match app_control_plane_state(
+    app: gunbai_bot_declared,
+    custody: sealed_bot_signer,
+    registration: AppRegistrationReadback {
+      app_id: gunbai_bot_declared.app_id,
+      requested_permissions: full_workflow_grant
+    },
+    observed: InstallationReadback { installation: installation_holding(perms: dup) },
+    required: full_workflow_grant,
+    reason: "heal branch advance"
+  ) {
+    PermissionObservationRefused { app, duplicate } =>
+      app.app_id.value == 3909950 && permission_axis_wire_name(axis: duplicate) == "contents"
+    _ => false
+  } && match observed_grant(perms: full_workflow_grant) {
+    PermissionObservationRefused { app: _, duplicate: _ } => false
+    _ => true
   }
 }
 
@@ -261,15 +490,15 @@ test fn witness_fingerprint_mismatch_is_detected() -> Bool {
 }
 
 test fn witness_narrowing_may_only_narrow() -> Bool {
-  let inst = installation_holding(perms: [perm(name: "contents", access: AppAccessRead)])
+  let inst = installation_holding(perms: [perm(axis: ContentsAxis, access: AppAccessRead)])
   permission_narrowing_is_within(
-    narrowing: SelectedPermissions { permissions: [perm(name: "contents", access: AppAccessRead)] },
+    narrowing: SelectedPermissions { permissions: [perm(axis: ContentsAxis, access: AppAccessRead)] },
     installation: inst
   ) && !permission_narrowing_is_within(
     narrowing: SelectedPermissions { permissions: [contents_write_perm] },
     installation: inst
   ) && !permission_narrowing_is_within(
-    narrowing: SelectedPermissions { permissions: [perm(name: "actions", access: AppAccessRead)] },
+    narrowing: SelectedPermissions { permissions: [perm(axis: ActionsAxis, access: AppAccessRead)] },
     installation: inst
   ) && permission_narrowing_is_within(narrowing: PermissionNarrowingOmitted, installation: inst)
 }
@@ -277,8 +506,11 @@ test fn witness_narrowing_may_only_narrow() -> Bool {
 test fn witness_registration_gap_precedes_installation_approval() -> Bool {
   match app_control_plane_state(
     app: gunbai_bot_declared,
-    custody: live_signer,
-    registration: AppRegistrationReadback { requested_permissions: [metadata_read_perm, contents_write_perm] },
+    custody: sealed_bot_signer,
+    registration: AppRegistrationReadback {
+      app_id: gunbai_bot_declared.app_id,
+      requested_permissions: [metadata_read_perm, contents_write_perm]
+    },
     observed: InstallationReadback { installation: installation_holding(perms: full_workflow_grant) },
     required: full_workflow_grant,
     reason: "heal branch advance over .github/workflows/**"
@@ -286,28 +518,35 @@ test fn witness_registration_gap_precedes_installation_approval() -> Bool {
     AppRegistrationPermissionMissing { request } =>
       count(request.add) == 1
         && request.settings_locator.locator == "github.com/organizations/gunb-ai/settings/apps/gunbai/permissions"
-        && fold_list(xs: request.add, empty: false, cons: fn(_a, p) { p.name.wire_name == "workflows" })
-    InstallationPermissionApprovalPending { request: _ } => false
-    InstallationGrantObserved { installation: _ } => false
-    SignerCustodyMissing { app: _, reason: _ } => false
-    AppRegistrationUnobserved { app: _ } => false
+        && fold_list(xs: request.add, empty: false, cons: fn(_a, p) { permission_axis_wire_name(axis: p.name) == "workflows" })
+    _ => false
   }
 }
 
 test fn witness_registration_unobserved_is_not_a_gap() -> Bool {
   match app_control_plane_state(
     app: gunbai_bot_declared,
-    custody: live_signer,
+    custody: sealed_bot_signer,
     registration: AppRegistrationReadbackUnavailable,
     observed: InstallationReadback { installation: installation_holding(perms: full_workflow_grant) },
     required: full_workflow_grant,
     reason: "heal branch advance"
   ) {
     AppRegistrationUnobserved { app } => app.app_id.value == 3909950
-    AppRegistrationPermissionMissing { request: _ } => false
-    InstallationPermissionApprovalPending { request: _ } => false
-    InstallationGrantObserved { installation: _ } => false
-    SignerCustodyMissing { app: _, reason: _ } => false
+    _ => false
+  } && match app_control_plane_state(
+    app: gunbai_bot_declared,
+    custody: sealed_bot_signer,
+    registration: AppRegistrationReadback {
+      app_id: gunbai_ci_declared.app_id,
+      requested_permissions: full_workflow_grant
+    },
+    observed: InstallationReadback { installation: installation_holding(perms: full_workflow_grant) },
+    required: full_workflow_grant,
+    reason: "heal branch advance"
+  ) {
+    AppRegistrationUnobserved { app } => app.app_id.value == 3909950
+    _ => false
   }
 }
 
@@ -328,4 +567,36 @@ test fn witness_dispatch_and_push_credentials_differ_in_outcome() -> Bool {
     control_plane: control_plane,
     effect: workflow_advance_effect
   )
+}
+
+test fn witness_unresolved_migration_target_yields_no_credential() -> Bool {
+  match resolved_target_credential(target: heal_push_migration_target) {
+    Absent => true
+    Present { value: _ } => false
+  } && match heal_push_migration_target {
+    AppUndecided { profile, pending_decision: _ } => profile.name == "heal-branch-advance"
+    InstallationUnresolved { app: _, profile: _ } => false
+    InstallationResolved { app: _, installation: _, profile: _ } => false
+  } && match resolved_target_credential(
+    target: InstallationUnresolved {
+      app: gunbai_bot_declared,
+      profile: GitHubCredentialProfileRef { name: "heal-branch-advance" }
+    }
+  ) {
+    Absent => true
+    Present { value: _ } => false
+  } && match resolved_target_credential(
+    target: InstallationResolved {
+      app: gunbai_bot_declared,
+      installation: bot_installation_id,
+      profile: GitHubCredentialProfileRef { name: "heal-branch-advance" }
+    }
+  ) {
+    Present { value: c } => credential_authorizes(
+      authority: c,
+      control_plane: observed_grant(perms: full_workflow_grant),
+      effect: workflow_advance_effect
+    )
+    Absent => false
+  }
 }

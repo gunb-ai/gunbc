@@ -22,6 +22,7 @@ import v2.workflow.ci_heal_revalidation_preflight_emit {
   ci_heal_revalidation_preflight_script,
 }
 import gunbc.ci_workflow_expressions { ci_deploy_push_to_main_if, ci_regen_heal_if }
+import gunbc.ci_heal_credential { ci_heal_job_permissions }
 import gunbc.commit_workflow { commit_gate_roster, project_ci_floor_gates, project_ci_floor_witness_entries }
 import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec, ci_runner_target_ram_speed_budget, selected_ci_runner_target }
 import gunbc.ci_compile_jobs { ci_compile_jobs, compile_jobs_count_or_serial }
@@ -613,7 +614,7 @@ fn ci_heal_commit_push_step() -> Step {
 
 fn ci_heal_author_commit_upload_step() -> Step {
   UsesStep {
-    name: Present { value: "Upload author-commit-required workflow repairs (GitHub App cannot push .github/workflows/**)" },
+    name: Present { value: "Upload author-commit-required workflow repairs (the selected push credential cannot update .github/workflows/**)" },
     id: none,
     uses: upload_artifact_action,
     with: Present {
@@ -650,15 +651,7 @@ fn ci_heal_generated_artifacts_job() -> Job {
     timeout_minutes: Present { value: gunbc_ci_heal_job_backstop_timeout_minutes() },
     continue_on_error: none,
     concurrency: none,
-    permissions: Present {
-      value: WorkflowPermissions {
-        contents: Present { value: PermWrite },
-        pull_requests: none,
-        issues: none,
-        actions: Present { value: PermWrite },
-        id_token: none
-      }
-    }
+    permissions: Present { value: ci_heal_job_permissions }
   }
 }
 

@@ -1,0 +1,208 @@
+module test.claim.actions_job_grant_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.github.actions { WorkflowPermissions, PermissionLevel, PermRead, PermWrite, PermNone }
+import extdeps.github.app {
+  GitHubAppPermission,
+  GitHubPermissionAxis,
+  ContentsAxis,
+  WorkflowsAxis,
+  MetadataAxis,
+  AdministrationAxis,
+  OrganizationSelfHostedRunnersAxis,
+  IssuesAxis,
+  IdTokenAxis,
+  GitHubAppPermissionAccess,
+  AppAccessRead,
+  AppAccessWrite
+}
+import extdeps.github.actions_token {
+  EffectiveActionsJobGrant,
+  GitHubWorkflowEvent,
+  PullRequestEvent,
+  PushEvent,
+  PullRequestOrigin,
+  SameRepositoryOrigin,
+  ForkedRepositoryOrigin,
+  OriginNotApplicable,
+  ActionsRepositoryPolicyObservation,
+  ActionsRepositoryPolicyUnobserved,
+  ActionsRepositoryPolicyObserved,
+  ActionsGrantResolution,
+  ActionsGrantResolved,
+  ActionsGrantNone,
+  ActionsGrantScopeUnavailable,
+  ActionsGrantForkPolicyUnobserved,
+  effective_actions_grant
+}
+import extdeps.github.effect {
+  GitHubEffect,
+  AdvanceRepositoryBranch,
+  GitBranchRef,
+  RepositoryPath
+}
+import gunbc.auth.github_apps { GitHubAppControlPlaneState }
+import gunbc.auth.github_credential {
+  GitHubCredentialAuthority,
+  ActionsJobCredential,
+  GitPushCredentialBinding,
+  CheckoutPersistedActionsCredential,
+  ExplicitCredentialLease,
+  credential_from_push_binding,
+  credential_authorizes
+}
+import gunbc.ci_heal_credential {
+  ci_heal_job_permissions,
+  ci_heal_effective_grant,
+  ci_heal_checkout_step_ref,
+  ci_heal_push_binding,
+  live_heal_push_credential,
+  live_heal_control_plane,
+  fork_origin_grant
+}
+import gunbc.repository { gunbc_repository }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn grant_with(
+  contents: PermissionLevel?,
+  origin: PullRequestOrigin,
+  policy: ActionsRepositoryPolicyObservation
+) -> EffectiveActionsJobGrant {
+  EffectiveActionsJobGrant {
+    workflow: ci_heal_effective_grant.workflow,
+    job: ci_heal_effective_grant.job,
+    event: PullRequestEvent,
+    origin: origin,
+    repository_policy: policy,
+    permissions: WorkflowPermissions {
+      contents: contents,
+      pull_requests: none,
+      issues: none,
+      actions: Present { value: PermWrite },
+      id_token: none
+    }
+  }
+}
+
+fn contents_resolution(
+  contents: PermissionLevel?,
+  origin: PullRequestOrigin,
+  policy: ActionsRepositoryPolicyObservation
+) -> ActionsGrantResolution {
+  effective_actions_grant(
+    grant: grant_with(contents: contents, origin: origin, policy: policy),
+    name: ContentsAxis
+  )
+}
+
+fn is_none(r: ActionsGrantResolution) -> Bool {
+  match r { ActionsGrantNone => true  _ => false }
+}
+
+fn is_write(r: ActionsGrantResolution) -> Bool {
+  match r {
+    ActionsGrantResolved { access } => match access { AppAccessWrite => true  _ => false }
+    _ => false
+  }
+}
+
+fn is_read(r: ActionsGrantResolution) -> Bool {
+  match r {
+    ActionsGrantResolved { access } => match access { AppAccessRead => true  _ => false }
+    _ => false
+  }
+}
+
+fn is_fork_policy_unobserved(r: ActionsGrantResolution) -> Bool {
+  match r { ActionsGrantForkPolicyUnobserved => true  _ => false }
+}
+
+fn is_scope_unavailable(r: ActionsGrantResolution) -> Bool {
+  match r { ActionsGrantScopeUnavailable => true  _ => false }
+}
+
+data same_repo_policy: ActionsRepositoryPolicyObservation = ActionsRepositoryPolicyUnobserved
+data fork_policy_denies: ActionsRepositoryPolicyObservation = ActionsRepositoryPolicyObserved {
+  send_write_tokens_to_fork_pull_requests: false
+}
+data fork_policy_allows: ActionsRepositoryPolicyObservation = ActionsRepositoryPolicyObserved {
+  send_write_tokens_to_fork_pull_requests: true
+}
+
+test fn witness_declared_level_decides_the_grant_not_the_scope_name() -> Bool {
+  is_none(r: contents_resolution(contents: none, origin: SameRepositoryOrigin, policy: same_repo_policy))
+    && is_none(r: contents_resolution(contents: Present { value: PermNone }, origin: SameRepositoryOrigin, policy: same_repo_policy))
+    && is_read(r: contents_resolution(contents: Present { value: PermRead }, origin: SameRepositoryOrigin, policy: same_repo_policy))
+    && is_write(r: contents_resolution(contents: Present { value: PermWrite }, origin: SameRepositoryOrigin, policy: same_repo_policy))
+}
+
+test fn witness_fork_origin_downgrades_write_to_read() -> Bool {
+  is_read(r: contents_resolution(contents: Present { value: PermWrite }, origin: ForkedRepositoryOrigin, policy: fork_policy_denies))
+    && is_read(r: contents_resolution(contents: Present { value: PermRead }, origin: ForkedRepositoryOrigin, policy: fork_policy_denies))
+    && is_write(r: contents_resolution(contents: Present { value: PermWrite }, origin: ForkedRepositoryOrigin, policy: fork_policy_allows))
+}
+
+test fn witness_unobserved_fork_policy_refuses_rather_than_assuming() -> Bool {
+  is_fork_policy_unobserved(
+    r: contents_resolution(contents: Present { value: PermWrite }, origin: ForkedRepositoryOrigin, policy: ActionsRepositoryPolicyUnobserved)
+  ) && is_write(
+    r: contents_resolution(contents: Present { value: PermWrite }, origin: SameRepositoryOrigin, policy: ActionsRepositoryPolicyUnobserved)
+  ) && is_write(
+    r: contents_resolution(contents: Present { value: PermWrite }, origin: OriginNotApplicable, policy: ActionsRepositoryPolicyUnobserved)
+  )
+}
+
+test fn witness_scope_unavailable_is_not_scope_none() -> Bool {
+  let g = grant_with(contents: Present { value: PermWrite }, origin: SameRepositoryOrigin, policy: same_repo_policy)
+  is_scope_unavailable(r: effective_actions_grant(grant: g, name: WorkflowsAxis))
+    && is_scope_unavailable(r: effective_actions_grant(grant: g, name: MetadataAxis))
+    && is_scope_unavailable(r: effective_actions_grant(grant: g, name: AdministrationAxis))
+    && is_scope_unavailable(r: effective_actions_grant(grant: g, name: OrganizationSelfHostedRunnersAxis))
+    && is_none(r: effective_actions_grant(grant: g, name: IssuesAxis))
+    && is_none(r: effective_actions_grant(grant: g, name: IdTokenAxis))
+}
+
+data workflow_effect: GitHubEffect = AdvanceRepositoryBranch {
+  repository: gunbc_repository,
+  branch: GitBranchRef { name: "refs/heads/attempt" },
+  changed_paths: [RepositoryPath { value: ".github/workflows/ci.yml" }]
+}
+
+data ordinary_effect: GitHubEffect = AdvanceRepositoryBranch {
+  repository: gunbc_repository,
+  branch: GitBranchRef { name: "refs/heads/attempt" },
+  changed_paths: [RepositoryPath { value: ".gitignore" }]
+}
+
+test fn witness_fork_pull_request_cannot_advance_any_branch() -> Bool {
+  let fork_credential = credential_from_push_binding(
+    binding: ci_heal_push_binding,
+    grant: fork_origin_grant()
+  )
+  !credential_authorizes(
+    authority: fork_credential,
+    control_plane: live_heal_control_plane,
+    effect: ordinary_effect
+  ) && !credential_authorizes(
+    authority: fork_credential,
+    control_plane: live_heal_control_plane,
+    effect: workflow_effect
+  ) && credential_authorizes(
+    authority: live_heal_push_credential,
+    control_plane: live_heal_control_plane,
+    effect: ordinary_effect
+  )
+}
+
+test fn witness_push_binding_is_the_checkout_persisted_credential() -> Bool {
+  match ci_heal_push_binding {
+    CheckoutPersistedActionsCredential { checkout_step } =>
+      checkout_step.decl_name == "ci_heal_branch_head_checkout_step"
+        && checkout_step.module_path == "gunbc.ci_workflow"
+    ExplicitCredentialLease { lease: _ } => false
+  } && match live_heal_push_credential {
+    ActionsJobCredential { grant } => grant.permissions == ci_heal_job_permissions
+    _ => false
+  }
+}

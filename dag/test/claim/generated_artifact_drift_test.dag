@@ -9,12 +9,16 @@ import gunbc.generated_artifact {
   committed_generated_artifacts, artifact_path, artifact_commit_policy, artifact_is_committed,
   registry_contains
 }
-import gunbc.auth.github_credential { live_heal_push_credential, live_heal_control_plane }
+import gunbc.ci_heal_credential { live_heal_push_credential, live_heal_control_plane }
 import gunbc.heal_push_plan {
   HealRepairDisposition, HealRepairNoDrift, HealRepairAutoPushEligibleOnly,
   HealRepairAuthorCommitRequired, HealRepairMixed,
   HealPushPlan, HealPushNothingToDo, HealPushReady, HealPushPartial, HealPushRefused,
-  HealPushRefusal, PushCredentialKindCannotSatisfy, PushCredentialGrantNotObserved,
+  HealPushRefusal, HealPushRefusalCause,
+  ActionsJobCredentialScopeUnavailable, ActionsJobCredentialScopeNotGranted,
+  ActionsJobCredentialForkPolicyUnobserved, ManagedInstallationGrantUnobserved,
+  ManagedCredentialSubjectMismatch,
+  heal_push_refusal_cause_token, live_heal_push_refusal_cause_token,
   plan_heal_push, live_heal_push_plan,
   auto_push_eligible_committed_artifacts, author_commit_required_committed_artifacts,
   classify_heal_repair_paths, path_requires_author_commit
@@ -170,8 +174,6 @@ test fn witness_commit_policy_reasons() -> Bool {
     && match artifact_commit_policy(a: ProxyDhcpDnsmasqArtifact { spec: srv3_install_server_spec }) { NotCommitted => true  _ => false }
 }
 
-data heal_push_plan_witness_note: String = "ELIGIBILITY IS WITNESSED AS A RELATION OVER THE SELECTED CREDENTIAL. plan_heal_push takes the credential and the observed provider state as arguments, so these controls can hold the artifact set fixed and vary only the writer. The live pair pins today's outcome; the varied pair pins the derivation. A hardcoded author-commit-required answer would satisfy the live control identically, which is why the credential must be an argument rather than a call inside the fold."
-
 fn plan_refuses_workflow_paths(plan: HealPushPlan) -> Bool {
   match plan {
     HealPushPartial { ready: _, refused, cause: _ } =>
@@ -183,16 +185,17 @@ fn plan_refuses_workflow_paths(plan: HealPushPlan) -> Bool {
   }
 }
 
+fn refusal_is_actions_scope_unavailable(cause: HealPushRefusal) -> Bool {
+  cause.missing.wire_name == "workflows" && match cause.cause {
+    ActionsJobCredentialScopeUnavailable => true
+    _ => false
+  }
+}
+
 fn plan_cause_is_kind_cannot_satisfy(plan: HealPushPlan) -> Bool {
   match plan {
-    HealPushPartial { ready: _, refused: _, cause } => match cause {
-      PushCredentialKindCannotSatisfy { paths: _, missing } => missing.wire_name == "workflows"
-      PushCredentialGrantNotObserved { paths: _, missing: _ } => false
-    }
-    HealPushRefused { refused: _, cause } => match cause {
-      PushCredentialKindCannotSatisfy { paths: _, missing } => missing.wire_name == "workflows"
-      PushCredentialGrantNotObserved { paths: _, missing: _ } => false
-    }
+    HealPushPartial { ready: _, refused: _, cause } => refusal_is_actions_scope_unavailable(cause: cause)
+    HealPushRefused { refused: _, cause } => refusal_is_actions_scope_unavailable(cause: cause)
     HealPushReady { artifacts: _ } => false
     HealPushNothingToDo => false
   }
@@ -201,6 +204,14 @@ fn plan_cause_is_kind_cannot_satisfy(plan: HealPushPlan) -> Bool {
 test fn witness_live_heal_plan_refuses_workflow_paths_structurally() -> Bool {
   plan_refuses_workflow_paths(plan: live_heal_push_plan)
     && plan_cause_is_kind_cannot_satisfy(plan: live_heal_push_plan)
+}
+
+test fn witness_live_refusal_cause_token_is_derived_from_the_plan() -> Bool {
+  live_heal_push_refusal_cause_token() == "ActionsJobCredentialScopeUnavailable"
+    && live_heal_push_refusal_cause_token() != "GitHubAppLacksWorkflowsWrite"
+    && heal_push_refusal_cause_token(cause: ManagedInstallationGrantUnobserved) == "ManagedInstallationGrantUnobserved"
+    && heal_push_refusal_cause_token(cause: ManagedCredentialSubjectMismatch) == "ManagedCredentialSubjectMismatch"
+    && heal_push_refusal_cause_token(cause: ActionsJobCredentialForkPolicyUnobserved) == "ActionsJobCredentialForkPolicyUnobserved"
 }
 
 test fn witness_heal_plan_empty_input_is_nothing_to_do() -> Bool {
