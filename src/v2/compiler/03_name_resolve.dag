@@ -379,6 +379,29 @@ fn module_root_find(
   }
 }
 
+type ModuleRootLookup
+  = ModuleRootFound { root: Node }
+  | ModuleRootMissing { requested: QualifiedName }
+  | ModuleRootAmbiguous { requested: QualifiedName }
+
+data module_root_lookup_note: String = "Typed lookup result beside module_root_find diagnostics. ModuleRootMissing and ModuleRootAmbiguous preserve the exact QualifiedName sought; diagnostics are projections of these results for consumers that still read Outcome<Node>."
+
+fn module_root_lookup(
+  roots: FreeMonoid<Node>,
+  name: QualifiedName
+) -> ModuleRootLookup {
+  match module_root_find(roots: roots, name: name) {
+    Accepted { value: root, diagnostics: _ } =>
+      ModuleRootFound { root: root }
+    Rejected { diagnostics: d } =>
+      if d.head.reason == ^resolve_duplicate_module_name {
+        ModuleRootAmbiguous { requested: name }
+      } else {
+        ModuleRootMissing { requested: name }
+      }
+  }
+}
+
 fn try_admitted_export_binding(e: Edge) -> DeclaredBinding? {
   match try_edge_declared_binding(e: e) {
     Present { value: b } =>

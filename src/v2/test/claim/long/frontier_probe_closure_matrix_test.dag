@@ -1,0 +1,183 @@
+module v2.test.long.frontier_probe_closure_matrix
+
+import v2.compiler.self_host.frontier_probe {
+  FrontierProbeIngestSubject,
+  FrontierProbeReferencedClosure,
+  frontier_probe_closure_count_mismatch_reason,
+  frontier_probe_closure_duplicate_ref_reason,
+  frontier_probe_entry_binding_refused_reason,
+  frontier_probe_receipt_for_subject
+}
+import v2.compiler.self_host.frontier_probe_types {
+  FrontierProbeClosurePopulationRefused,
+  FrontierProbeCoverageRefused,
+  FrontierProbeDetailAbsent
+}
+import v2.compiler.source_authority {
+  SourceRef,
+  SourceRootCoverageComplete,
+  SourceRootManifestAbsent,
+  SourceRootManifestElided,
+  SourceRootRowsMissing,
+  source_ref_for_storage_path
+}
+import std.algebra { Cons, Empty }
+import v2.std.logic { Bool }
+
+fn fp_matrix_ref_a() -> SourceRef {
+  source_ref_for_storage_path(path: "dag/std/algebra.dag")
+}
+
+fn fp_matrix_ref_b() -> SourceRef {
+  source_ref_for_storage_path(path: "dag/std/types.dag")
+}
+
+fn fp_matrix_duplicate_closure_subject() -> FrontierProbeIngestSubject {
+  FrontierProbeReferencedClosure {
+    refs: Cons {
+      head: fp_matrix_ref_a(),
+      tail: Cons { head: fp_matrix_ref_a(), tail: Empty }
+    },
+    coverage: SourceRootCoverageComplete,
+    ingest_read_count: 2,
+    entry: fp_matrix_ref_a()
+  }
+}
+
+fn fp_matrix_entry_not_in_refs_subject() -> FrontierProbeIngestSubject {
+  FrontierProbeReferencedClosure {
+    refs: Cons {
+      head: fp_matrix_ref_a(),
+      tail: Empty
+    },
+    coverage: SourceRootCoverageComplete,
+    ingest_read_count: 1,
+    entry: fp_matrix_ref_b()
+  }
+}
+
+fn fp_matrix_count_mismatch_subject() -> FrontierProbeIngestSubject {
+  FrontierProbeReferencedClosure {
+    refs: Cons {
+      head: fp_matrix_ref_a(),
+      tail: Cons { head: fp_matrix_ref_b(), tail: Empty }
+    },
+    coverage: SourceRootCoverageComplete,
+    ingest_read_count: 3,
+    entry: fp_matrix_ref_a()
+  }
+}
+
+fn fp_matrix_rows_missing_coverage_subject() -> FrontierProbeIngestSubject {
+  FrontierProbeReferencedClosure {
+    refs: Cons {
+      head: fp_matrix_ref_a(),
+      tail: Empty
+    },
+    coverage: SourceRootRowsMissing {
+      read_count: 5,
+      produced_row_count: 0
+    },
+    ingest_read_count: 1,
+    entry: fp_matrix_ref_a()
+  }
+}
+
+fn fp_matrix_manifest_absent_subject() -> FrontierProbeIngestSubject {
+  FrontierProbeReferencedClosure {
+    refs: Cons {
+      head: fp_matrix_ref_a(),
+      tail: Empty
+    },
+    coverage: SourceRootManifestAbsent,
+    ingest_read_count: 1,
+    entry: fp_matrix_ref_a()
+  }
+}
+
+fn fp_matrix_elided_incomplete_refs_subject() -> FrontierProbeIngestSubject {
+  FrontierProbeReferencedClosure {
+    refs: Cons {
+      head: fp_matrix_ref_a(),
+      tail: Empty
+    },
+    coverage: SourceRootManifestElided { read_count: 91, cap: 64 },
+    ingest_read_count: 91,
+    entry: fp_matrix_ref_a()
+  }
+}
+
+test fn frontier_probe_closure_duplicate_ref_refused_holds() -> Bool {
+  match frontier_probe_receipt_for_subject(
+    subject: fp_matrix_duplicate_closure_subject(),
+    fixture_module_path: ""
+  ).detail {
+    FrontierProbeClosurePopulationRefused { cause: cause } =>
+      cause == frontier_probe_closure_duplicate_ref_reason
+    _ => false
+  }
+}
+
+test fn frontier_probe_closure_entry_binding_refused_holds() -> Bool {
+  match frontier_probe_receipt_for_subject(
+    subject: fp_matrix_entry_not_in_refs_subject(),
+    fixture_module_path: ""
+  ).detail {
+    FrontierProbeClosurePopulationRefused { cause: cause } =>
+      cause == frontier_probe_entry_binding_refused_reason
+    _ => false
+  }
+}
+
+test fn frontier_probe_closure_count_mismatch_refused_holds() -> Bool {
+  match frontier_probe_receipt_for_subject(
+    subject: fp_matrix_count_mismatch_subject(),
+    fixture_module_path: ""
+  ).detail {
+    FrontierProbeClosurePopulationRefused { cause: cause } =>
+      cause == frontier_probe_closure_count_mismatch_reason
+    _ => false
+  }
+}
+
+test fn frontier_probe_coverage_rows_missing_refused_holds() -> Bool {
+  match frontier_probe_receipt_for_subject(
+    subject: fp_matrix_rows_missing_coverage_subject(),
+    fixture_module_path: ""
+  ).detail {
+    FrontierProbeCoverageRefused { coverage: coverage } =>
+      match coverage {
+        SourceRootRowsMissing { read_count: 5, produced_row_count: 0 } => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn frontier_probe_coverage_manifest_absent_refused_holds() -> Bool {
+  match frontier_probe_receipt_for_subject(
+    subject: fp_matrix_manifest_absent_subject(),
+    fixture_module_path: ""
+  ).detail {
+    FrontierProbeCoverageRefused { coverage: coverage } =>
+      match coverage {
+        SourceRootManifestAbsent => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn frontier_probe_elided_incomplete_refs_coverage_refused_holds() -> Bool {
+  match frontier_probe_receipt_for_subject(
+    subject: fp_matrix_elided_incomplete_refs_subject(),
+    fixture_module_path: ""
+  ).detail {
+    FrontierProbeCoverageRefused { coverage: coverage } =>
+      match coverage {
+        SourceRootManifestElided { read_count: 91, cap: 64 } => true
+        _ => false
+      }
+    _ => false
+  }
+}

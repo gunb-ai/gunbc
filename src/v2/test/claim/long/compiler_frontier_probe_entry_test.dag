@@ -43,7 +43,7 @@ fn frontier_probe_entry_subject() -> FrontierProbeIngestSubject {
 fn frontier_probe_entry_receipt() -> FrontierProbeReceipt {
   frontier_probe_receipt_for_subject(
     subject: frontier_probe_entry_subject(),
-    module_path: frontier_probe_entry_module_path
+    fixture_module_path: frontier_probe_entry_module_path
   )
 }
 

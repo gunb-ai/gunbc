@@ -192,10 +192,14 @@ data source_ref_read_refused: Symbol = ^source_ref_read_refused
 data source_ref_content_hash_mismatch: Symbol = ^source_ref_content_hash_mismatch
 
 fn source_ref_eq(left: SourceRef, right: SourceRef) -> Bool {
-  (left.path == right.path)
-    && (left.source_root == right.source_root)
-    && (compare_content_hash(left: left.content_hash, right: right.content_hash)
-      == ContentHashEqual)
+  let paths_match = left.path == right.path
+  let roots_match = left.source_root == right.source_root
+  let hashes_match =
+    match compare_content_hash(left: left.content_hash, right: right.content_hash) {
+      ContentHashEqual => true
+      _ => false
+    }
+  paths_match && roots_match && hashes_match
 }
 
 fn source_ref_count_in_list(refs: List<SourceRef>, target: SourceRef) -> Int {
@@ -234,13 +238,10 @@ fn source_ref_read_failed_diagnostic(ref: SourceRef, error: String) -> NonEmptyD
       correction: Unavailable { reason: ExternalContractUnknown }
     },
     tail: [
-      NonEmptyDiagnostics {
-        head: Diagnostic {
-          reason: source_ref_read_refused,
-          at: port_locus(port: symbol_intern_lexeme(lexeme: error)),
-          correction: Unavailable { reason: ExternalContractUnknown }
-        },
-        tail: []
+      Diagnostic {
+        reason: source_ref_read_refused,
+        at: port_locus(port: symbol_intern_lexeme(lexeme: error)),
+        correction: Unavailable { reason: ExternalContractUnknown }
       }
     ]
   }
@@ -268,13 +269,10 @@ fn source_ref_content_hash_mismatch_diagnostic(
       correction: Unavailable { reason: ExternalContractUnknown }
     },
     tail: [
-      NonEmptyDiagnostics {
-        head: Diagnostic {
-          reason: source_ref_content_hash_mismatch,
-          at: port_locus(port: symbol_intern_lexeme(lexeme: detail)),
-          correction: Unavailable { reason: ExternalContractUnknown }
-        },
-        tail: []
+      Diagnostic {
+        reason: source_ref_content_hash_mismatch,
+        at: port_locus(port: symbol_intern_lexeme(lexeme: detail)),
+        correction: Unavailable { reason: ExternalContractUnknown }
       }
     ]
   }

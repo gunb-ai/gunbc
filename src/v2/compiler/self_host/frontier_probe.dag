@@ -20,7 +20,6 @@ import v2.compiler.self_host.frontier_probe_types {
   ProbeStageEmit,
   SourceRefContentHashMismatch,
   SourceRefReadRefused,
-  SourceRootManifestElidedProbe,
   UnknownProbeCause,
   frontier_classify_rejection_reason,
   frontier_probe_located_stage_for_assemble_outcome,
@@ -37,7 +36,6 @@ import v2.compiler.source_authority {
   SourceRootRowsMissing,
   source_ref_content_hash_mismatch,
   source_ref_count_in_list,
-  source_ref_eq,
   source_ref_list_has_duplicate,
   source_ref_read_refused,
   dag_source_observed_content_hash_for_ref,
@@ -131,15 +129,21 @@ fn frontier_probe_source_ref_for_read_diagnostic(
 }
 
 fn frontier_probe_diagnostic_tail_port_lexeme(d: NonEmptyDiagnostics) -> String {
-  match d.tail {
-    [] => ""
-    [tail_ne] =>
-      match tail_ne.head.at {
-        PortLocus { anchor: LocusAnchor { at: port } } =>
-          symbol_lexeme(sym: port)
-        _ => ""
+  fold_list(
+    xs: d.tail,
+    empty: "",
+    cons: fn(acc, diag) {
+      if acc != "" {
+        acc
+      } else {
+        match diag.at {
+          PortLocus { anchor: LocusAnchor { at: port } } =>
+            symbol_lexeme(sym: port)
+          _ => ""
+        }
       }
-  }
+    }
+  )
 }
 
 fn frontier_probe_detail_from_diagnostic(
