@@ -1,0 +1,72 @@
+module test.claim.language_target_registry_totality
+
+import std.types { Bool, Int }
+import extdeps.external_authority { external_subject_ref_eq }
+import std.language_target_identity {
+  LanguageTargetSurfaceLocus,
+  SurfaceModule,
+  LanguageTargetResolution,
+  TargetResolved,
+  TargetSurfaceUnregistered,
+  TargetSurfaceAmbiguous,
+  TargetSubjectUnresolvable,
+  resolve_target_for_surface,
+}
+import gunbc.language_target_registry {
+  bash_subject_ref,
+  registered_language_targets,
+  language_target_surface_census,
+  surface_census_row_count,
+  unidentified_surface_count,
+  registry_accounting_total,
+}
+
+data registry_totality_witness_note: String = "Controls for the registry TOTALITY wall — the no-invisible-remainder property, not a completion claim. The wall's whole content is that every declared surface is either joined to a registered subject or reported as an exact unidentified row, so the assertions below pin BOTH directions on live registry rows: the Bash vocabulary modules resolve to the Bash subject (a real join, not a fixture), and the unidentified population is strictly positive and strictly smaller than the census (so neither arm is empty and the count is not trivially saturated). WHAT NO ASSERTION HERE ESTABLISHES, restated from the registry's own maximum-conclusion row because a witness is exactly where that gets forgotten: the DECLARED population is not proven complete against the repository. All six authorities are hand-declared, so a target-bearing surface nobody wrote a row for is invisible here. These are ratchet controls; none of them is completion evidence for any target."
+
+test fn registry_census_is_nonempty_and_accounting_is_total() -> Bool {
+  registry_accounting_total() && surface_census_row_count() > 0
+}
+
+test fn bash_vocabulary_surface_joins_the_bash_subject() -> Bool {
+  match resolve_target_for_surface(
+    surface: SurfaceModule { module_path: "v2.extdeps.languages.bash" },
+    rows: language_target_surface_census,
+    registry: registered_language_targets
+  ) {
+    TargetResolved { target: t } => external_subject_ref_eq(a: t, b: bash_subject_ref)
+    TargetSurfaceUnregistered { surface: _ } => false
+    TargetSurfaceAmbiguous { surface: _, candidates: _ } => false
+    TargetSubjectUnresolvable { subject: _ } => false
+  }
+}
+
+test fn typescript_vocabulary_surface_is_visibly_unidentified() -> Bool {
+  match resolve_target_for_surface(
+    surface: SurfaceModule { module_path: "extdeps.languages.typescript.program" },
+    rows: language_target_surface_census,
+    registry: registered_language_targets
+  ) {
+    TargetSurfaceUnregistered { surface: _ } => true
+    TargetResolved { target: _ } => false
+    TargetSurfaceAmbiguous { surface: _, candidates: _ } => false
+    TargetSubjectUnresolvable { subject: _ } => false
+  }
+}
+
+test fn unidentified_population_is_positive_and_below_the_census() -> Bool {
+  unidentified_surface_count() > 0
+    && unidentified_surface_count() < surface_census_row_count()
+}
+
+test fn a_surface_absent_from_the_registry_does_not_resolve() -> Bool {
+  match resolve_target_for_surface(
+    surface: SurfaceModule { module_path: "v2.extdeps.languages.not_a_real_target" },
+    rows: language_target_surface_census,
+    registry: registered_language_targets
+  ) {
+    TargetSurfaceUnregistered { surface: _ } => true
+    TargetResolved { target: _ } => false
+    TargetSurfaceAmbiguous { surface: _, candidates: _ } => false
+    TargetSubjectUnresolvable { subject: _ } => false
+  }
+}

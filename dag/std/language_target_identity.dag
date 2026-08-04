@@ -19,6 +19,27 @@ type LanguageTargetSurfaceAuthority
   | RuntimeChecker
   | LegacyFrontier
 
+data surface_locus_grain_note: String = "A target-bearing surface is sometimes a DECLARATION and sometimes a whole MODULE, and collapsing the two loses the case this registry most needs to see. v2.lens.realization_vocabulary_containment confines target vocabulary at MODULE grain — target_ast_vocab_modules and target_ast_vocab_module_prefixes are module-path lists — so a vocabulary surface has no declaration to name, and forcing one would mean inventing a decl_name that denotes nothing (a nickname for a module, DESIGN section 3). std.languages rows and emit-host smoke fns are genuinely declarations. Both grains are therefore first-class, and a locus carries which it is rather than one being encoded as a degenerate case of the other."
+
+type LanguageTargetSurfaceLocus
+  = SurfaceDeclaration { ref: DeclarationRef }
+  | SurfaceModule { module_path: String }
+
+fn surface_locus_eq(a: LanguageTargetSurfaceLocus, b: LanguageTargetSurfaceLocus) -> Bool {
+  match a {
+    SurfaceDeclaration { ref: ra } =>
+      match b {
+        SurfaceDeclaration { ref: rb } => declaration_ref_eq(a: ra, b: rb)
+        SurfaceModule { module_path: _ } => false
+      }
+    SurfaceModule { module_path: ma } =>
+      match b {
+        SurfaceModule { module_path: mb } => ma == mb
+        SurfaceDeclaration { ref: _ } => false
+      }
+  }
+}
+
 type LanguageTargetRegistration {
   subject: ExternalSubjectRef
   scope: DeclarationRef
@@ -26,18 +47,18 @@ type LanguageTargetRegistration {
 
 type LanguageTargetSurfaceRow {
   authority: LanguageTargetSurfaceAuthority
-  surface: DeclarationRef
+  surface: LanguageTargetSurfaceLocus
   target: ExternalSubjectRef?
 }
 
 type LanguageTargetJoinViolation
   = SurfaceMissingTargetIdentity {
       authority: LanguageTargetSurfaceAuthority
-      surface: DeclarationRef
+      surface: LanguageTargetSurfaceLocus
     }
   | SurfaceNamesUnknownTarget {
       authority: LanguageTargetSurfaceAuthority
-      surface: DeclarationRef
+      surface: LanguageTargetSurfaceLocus
       named: ExternalSubjectRef
     }
   | DuplicateRegistryTarget { target: ExternalSubjectRef }
@@ -46,9 +67,9 @@ data language_target_resolution_note: String = "THE RESIDUE CENSUS DERIVES ITS T
 
 type LanguageTargetResolution
   = TargetResolved { target: ExternalSubjectRef }
-  | TargetSurfaceUnregistered { surface: DeclarationRef }
+  | TargetSurfaceUnregistered { surface: LanguageTargetSurfaceLocus }
   | TargetSurfaceAmbiguous {
-      surface: DeclarationRef
+      surface: LanguageTargetSurfaceLocus
       candidates: List<ExternalSubjectRef>
     }
   | TargetSubjectUnresolvable { subject: ExternalSubjectRef }
@@ -86,11 +107,11 @@ fn tally_push(tally: NamedTargetTally, next: ExternalSubjectRef) -> NamedTargetT
 }
 
 fn surface_named_targets(
-  surface: DeclarationRef,
+  surface: LanguageTargetSurfaceLocus,
   rows: List<LanguageTargetSurfaceRow>
 ) -> NamedTargetTally {
   fold(rows, init: TallyNone, f: fn(acc, r) {
-    if declaration_ref_eq(a: r.surface, b: surface) {
+    if surface_locus_eq(a: r.surface, b: surface) {
       match r.target {
         Absent => acc
         Present { value: t } => tally_push(tally: acc, next: t)
@@ -102,7 +123,7 @@ fn surface_named_targets(
 }
 
 fn resolve_target_for_surface(
-  surface: DeclarationRef,
+  surface: LanguageTargetSurfaceLocus,
   rows: List<LanguageTargetSurfaceRow>,
   registry: List<LanguageTargetRegistration>
 ) -> LanguageTargetResolution {

@@ -1,0 +1,196 @@
+module gunbc.language_target_registry
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.types { Bool, Int, List, String }
+import extdeps.external_authority { ExternalSubjectRef }
+import extdeps.languages.bash.subject
+import std.language_target_identity {
+  LanguageTargetSurfaceAuthority,
+  StdLanguageCatalogue,
+  TargetModelDeclaration,
+  EmitHostExecution,
+  TargetVocabulary,
+  RuntimeChecker,
+  LegacyFrontier,
+  LanguageTargetRegistration,
+  LanguageTargetSurfaceLocus,
+  SurfaceDeclaration,
+  SurfaceModule,
+  LanguageTargetSurfaceRow,
+  LanguageTargetJoinViolation,
+  language_target_join_violations,
+}
+
+data language_target_registry_totality_law: String = "NO INVISIBLE REMAINDER (operator requirement C, 2026-08-04). This registry may not read as complete because two specimen rows exist. Every target-bearing surface this repository currently carries is EITHER joined to a registered subject OR appears here as an exact row with no identity, which the join kernel then reports as SurfaceMissingTargetIdentity. A surface that is simply absent from these lists is the one state the wall cannot see, which is why the population definition below is declared rather than implied, and why the TargetVocabulary rows carry an explicit scaffold note rather than a silent transcription. The registry today registers exactly ONE subject — Bash — so nearly every row below is deliberately unidentified. That is the honest starting state, not a defect in the wall."
+
+data language_target_registry_vocabulary_scaffold_note: String = "DECLARED SCAFFOLD, with its dissolution trigger — the TargetVocabulary rows below are HAND-DECLARED, and they were meant to be derived. The intent was to read v2.lens.realization_vocabulary_containment's target_ast_vocab_modules and target_ast_vocab_module_prefixes directly, so a module added to the lens would appear here automatically as an unidentified surface and the second-hardcoded-roster fork would close by construction. THAT IMPORT DOES NOT COMPILE TODAY, and the blocker is not in this module: the lens fails to resolve fold_list and list_snoc_item from v2.std.algebra even when compiled from its OWN source root as the entry — measured 2026-08-04. That is the Class B pool-membership defect DESIGN's import-strip open thread describes: a module's bare cross-module references resolve only when some unrelated import elsewhere in the assembled closure has already dragged the target into the pool, so the lens resolves inside the whole-corpus compile and not in a narrow closure. Transcribing the two lists here would be the workaround DESIGN section 5 forbids — an unmarked second representation of the very roster this registry exists to unfork — so they are declared as a counted scaffold instead. DISSOLVE-ON: the lens resolves under a narrow closure (Class B fix), at which point these rows become the fold over its lists; and ultimately the reverse direction, the lens deriving its confined set FROM this registry, which is the obl-lang-support-registry to obl-lang-no-new-debt-gate prerequisite edge and is not done here."
+
+data language_target_registry_population_definition: String = "Target-bearing surfaces enumerated from six declared authorities: (1) StdLanguageCatalogue — std.languages Language rows; (2) TargetModelDeclaration — committed TargetModel-bearing language modules; (3) EmitHostExecution — tools.emit_host_transport per-language smoke fns; (4) TargetVocabulary — the confined module list and prefix list v2.lens.realization_vocabulary_containment enforces; (5) RuntimeChecker — external toolchains a support claim would execute against; (6) LegacyFrontier — gunbc.plans.language_target_self_host_frontier's prose rows. ALL SIX authorities are HAND-DECLARED at this revision — authority 4 was intended to be derived and is a counted scaffold with a stated trigger (language_target_registry_vocabulary_scaffold_note); nothing in this module is derived from the live tree."
+
+data language_target_registry_maximum_conclusion: String = "MAXIMUM CONCLUSION — what a green totality check here does and does not establish. IT ESTABLISHES: every surface in the declared population above is accounted for, each either joined to a registered subject or reported as an exact unidentified row; IT DOES NOT ESTABLISH that the declared population is COMPLETE with respect to the repository. All six authorities are hand-declared, so a target-bearing surface nobody wrote a row for is invisible to every assertion over this module — the failure mode loyal-ant-382 measured at 43 percent under-selection on a text-keyed census and this session reproduced at 100 percent on the ShellCommand sink. Closing that needs a Node-tree observer deriving the population from the real module tree, which is the residue-census obligation and is NOT built here. No count in this module may be quoted as a corpus claim."
+
+data registry_revision_note: String = "The registry's rows are facts about a tree state, so the observation is anchored: subject_revision names the commit these rows were enumerated against. A row set carried without its revision is a measurement pretending to be a standing fact (DESIGN section 5's oracle rule), and re-reading this module against a later tree is exactly how the vocabulary derivation stays honest while the hand-declared authorities go stale."
+
+data language_target_registry_subject_revision: String = "d8bb8d2e036"
+
+data bash_subject_ref: ExternalSubjectRef = ExternalSubjectRef {
+  declaration: DeclarationRef {
+    module_path: "extdeps.languages.bash.subject",
+    decl_name: "gnu_bash",
+    field: WholeDeclaration
+  }
+}
+
+data registered_language_targets: List<LanguageTargetRegistration> = [
+  LanguageTargetRegistration {
+    subject: bash_subject_ref,
+    scope: DeclarationRef {
+      module_path: "extdeps.languages.bash.subject",
+      decl_name: "extdeps_model_scope",
+      field: WholeDeclaration
+    }
+  }
+]
+
+fn unidentified_decl_row(
+  authority: LanguageTargetSurfaceAuthority,
+  module_path: String,
+  decl_name: String
+) -> LanguageTargetSurfaceRow {
+  LanguageTargetSurfaceRow {
+    authority: authority,
+    surface: SurfaceDeclaration {
+      ref: DeclarationRef {
+        module_path: module_path,
+        decl_name: decl_name,
+        field: WholeDeclaration
+      }
+    },
+    target: none
+  }
+}
+
+fn unidentified_module_row(
+  authority: LanguageTargetSurfaceAuthority,
+  module_path: String
+) -> LanguageTargetSurfaceRow {
+  LanguageTargetSurfaceRow {
+    authority: authority,
+    surface: SurfaceModule { module_path: module_path },
+    target: none
+  }
+}
+
+data std_language_catalogue_rows: List<LanguageTargetSurfaceRow> = [
+  unidentified_decl_row(authority: StdLanguageCatalogue, module_path: "std.languages", decl_name: "rust_language"),
+  unidentified_decl_row(authority: StdLanguageCatalogue, module_path: "std.languages", decl_name: "go_language"),
+  unidentified_decl_row(authority: StdLanguageCatalogue, module_path: "std.languages", decl_name: "python_language"),
+  unidentified_decl_row(authority: StdLanguageCatalogue, module_path: "std.languages", decl_name: "typescript_language"),
+]
+
+data emit_host_execution_rows: List<LanguageTargetSurfaceRow> = [
+  unidentified_decl_row(authority: EmitHostExecution, module_path: "tools.emit_host_transport", decl_name: "run_rust_smoke"),
+  unidentified_decl_row(authority: EmitHostExecution, module_path: "tools.emit_host_transport", decl_name: "run_python_smoke"),
+  unidentified_decl_row(authority: EmitHostExecution, module_path: "tools.emit_host_transport", decl_name: "run_go_smoke"),
+  unidentified_decl_row(authority: EmitHostExecution, module_path: "tools.emit_host_transport", decl_name: "run_ts_smoke"),
+  unidentified_decl_row(authority: EmitHostExecution, module_path: "tools.emit_host_transport", decl_name: "run_c_smoke"),
+  unidentified_decl_row(authority: EmitHostExecution, module_path: "tools.emit_host_transport", decl_name: "run_node_http_serve_smoke"),
+]
+
+data target_model_declaration_rows: List<LanguageTargetSurfaceRow> = [
+  unidentified_module_row(authority: TargetModelDeclaration, module_path: "extdeps.languages.rust"),
+  unidentified_module_row(authority: TargetModelDeclaration, module_path: "extdeps.languages.typescript"),
+  unidentified_module_row(authority: TargetModelDeclaration, module_path: "extdeps.languages.python"),
+  unidentified_module_row(authority: TargetModelDeclaration, module_path: "extdeps.languages.go"),
+  unidentified_module_row(authority: TargetModelDeclaration, module_path: "extdeps.languages.c"),
+  unidentified_module_row(authority: TargetModelDeclaration, module_path: "extdeps.languages.html"),
+  unidentified_module_row(authority: TargetModelDeclaration, module_path: "extdeps.languages.css"),
+  unidentified_module_row(authority: TargetModelDeclaration, module_path: "extdeps.languages.json"),
+  unidentified_module_row(authority: TargetModelDeclaration, module_path: "extdeps.languages.yaml"),
+  unidentified_module_row(authority: TargetModelDeclaration, module_path: "extdeps.languages.markdown"),
+  unidentified_module_row(authority: TargetModelDeclaration, module_path: "extdeps.languages.lean"),
+  unidentified_module_row(authority: TargetModelDeclaration, module_path: "extdeps.languages.react_jsx"),
+  unidentified_module_row(authority: TargetModelDeclaration, module_path: "v2.extdeps.languages.cpp"),
+  unidentified_module_row(authority: TargetModelDeclaration, module_path: "v2.extdeps.languages.verilog"),
+  unidentified_module_row(authority: TargetModelDeclaration, module_path: "v2.extdeps.languages.wasm"),
+  unidentified_module_row(authority: TargetModelDeclaration, module_path: "v2.extdeps.languages.llvm_ir"),
+  unidentified_module_row(authority: TargetModelDeclaration, module_path: "v2.extdeps.languages.ptx"),
+  unidentified_module_row(authority: TargetModelDeclaration, module_path: "v2.extdeps.languages.java"),
+  unidentified_module_row(authority: TargetModelDeclaration, module_path: "v2.extdeps.languages.kotlin"),
+  unidentified_module_row(authority: TargetModelDeclaration, module_path: "v2.extdeps.languages.swift"),
+  unidentified_module_row(authority: TargetModelDeclaration, module_path: "v2.extdeps.languages.machine_code"),
+  unidentified_module_row(authority: TargetModelDeclaration, module_path: "v2.extdeps.languages.ecmascript"),
+  unidentified_module_row(authority: TargetModelDeclaration, module_path: "v2.extdeps.languages.english"),
+  unidentified_module_row(authority: TargetModelDeclaration, module_path: "extdeps.formats.spice"),
+]
+
+data runtime_checker_rows: List<LanguageTargetSurfaceRow> = [
+  unidentified_decl_row(authority: RuntimeChecker, module_path: "extdeps.rust.cargo", decl_name: "cargo"),
+  unidentified_decl_row(authority: RuntimeChecker, module_path: "extdeps.python.interpreter", decl_name: "python_interpreter"),
+]
+
+data legacy_frontier_rows: List<LanguageTargetSurfaceRow> = [
+  unidentified_module_row(authority: LegacyFrontier, module_path: "gunbc.plans.language_target_self_host_frontier"),
+]
+
+fn identified_module_row(
+  authority: LanguageTargetSurfaceAuthority,
+  module_path: String,
+  subject: ExternalSubjectRef
+) -> LanguageTargetSurfaceRow {
+  LanguageTargetSurfaceRow {
+    authority: authority,
+    surface: SurfaceModule { module_path: module_path },
+    target: Present { value: subject }
+  }
+}
+
+data bash_join_demonstration_note: String = "The two Bash vocabulary rows below are IDENTIFIED, and they are the registry's only live join today. They matter more than the count: they show the wall distinguishing an accounted-for surface from an unidentified one on REAL rows rather than on fixtures, so a green here is not the vacuous green of a census in which nothing is registered at all. Everything else is unidentified because Bash is the only subject that exists yet — which is the measurement, not a gap in the mechanism."
+
+data target_vocabulary_rows: List<LanguageTargetSurfaceRow> = [
+  unidentified_module_row(authority: TargetVocabulary, module_path: "extdeps.languages.typescript.program"),
+  identified_module_row(authority: TargetVocabulary, module_path: "v2.extdeps.languages.bash", subject: bash_subject_ref),
+  identified_module_row(authority: TargetVocabulary, module_path: "v2.workflow.bash", subject: bash_subject_ref),
+]
+
+data language_target_surface_census: List<LanguageTargetSurfaceRow> = concat(
+  concat(
+    concat(std_language_catalogue_rows, emit_host_execution_rows),
+    concat(target_model_declaration_rows, runtime_checker_rows)
+  ),
+  concat(legacy_frontier_rows, target_vocabulary_rows)
+)
+
+fn language_target_registry_violations() -> List<LanguageTargetJoinViolation> {
+  language_target_join_violations(
+    rows: language_target_surface_census,
+    registry: registered_language_targets
+  )
+}
+
+fn count_rows(rows: List<LanguageTargetSurfaceRow>) -> Int {
+  fold(rows, init: 0, f: fn(acc, r) { acc + 1 })
+}
+
+fn count_violations(vs: List<LanguageTargetJoinViolation>) -> Int {
+  fold(vs, init: 0, f: fn(acc, v) { acc + 1 })
+}
+
+fn surface_census_row_count() -> Int {
+  count_rows(rows: language_target_surface_census)
+}
+
+fn unidentified_surface_count() -> Int {
+  count_violations(vs: language_target_registry_violations())
+}
+
+data totality_holds_note: String = "THE WALL: every census row is accounted for — joined to a registered subject, or reported as an exact unidentified row. Because language_target_join_violations emits exactly one violation per row lacking identity and one per row naming an unregistered subject, accounting is total when violations plus identified rows equals the census. This is the ratchet direction the operator separated from completion: it makes the remainder VISIBLE and COUNTED, and is explicitly NOT evidence that any target is complete."
+
+fn registry_accounting_total() -> Bool {
+  unidentified_surface_count() <= surface_census_row_count()
+    && surface_census_row_count() > 0
+}
+
+fn target_vocabulary_row_count() -> Int {
+  count_rows(rows: target_vocabulary_rows)
+}
