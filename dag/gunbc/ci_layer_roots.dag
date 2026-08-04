@@ -501,10 +501,10 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     dissolve_on: "fixture-home policy changes (witness_admission_fixture_note); row deletes"
   },
   WitnessExclusionRow {
-    pattern: "frontier_probe_closure_matrix_positive_test.dag",
-    classification: OfflineLocalRecipe,
-    reason: "PR #7762 frontier probe closure read-through positives (operator 2026-08-04): five witnesses in src/v2/test/claim/long/frontier_probe_closure_matrix_positive_test.dag execute frontier_probe_receipt_for_subject with observed SourceRef rows (ReadsLiveTree) through full assemble+emit — measured on local claim_batch --wet 2026-08-04: below_cap ~772s, elided_complete ~853s, second_root ~965s eval wall (154-193x the 5s fast-lane budget); read_failure ~523ms; hash_mismatch ~181ms. Cost is full compiler pipeline per entry closure, not matrix fixture row count. Population/coverage refusal matrix stays per-PR in src/v2/test/claim/workflow/frontier_probe_closure_matrix_test.dag (SubstrateInputsOnly synthetic fixtures, sub-second eval).",
-    dissolve_on: "measured eval for all three positive witnesses lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or positives delete when emit receipts go green without full-pipeline cost"
+    pattern: "frontier_probe_closure_matrix_integration_test.dag",
+    classification: FalsifierRehomedBinWet,
+    reason: "PR #7762 frontier probe closure integration matrix (operator msg_fca587a5, 2026-08-04): frontier_probe_below_cap_complete_population_gates_pass_holds and frontier_probe_second_source_root_population_gates_pass_holds execute full receipt_for_subject with observed SourceRef rows through assemble — measured claim_batch --wet 2026-08-04: below_cap 784772ms (130x bin_witness_wet_per_row_wall_budget_seconds). Scheduled consumer: FalsifierCadenceJob enrollment plus falsifier_rehomed_bin_wet_rows for the two full-pipeline legs; sibling read_failure (~523ms) and hash_mismatch (~181ms) legs ride the same cadence entry without re-home.",
+    dissolve_on: "measured eval for below_cap and second_root lands under bin_witness_wet_per_row_wall_budget_seconds on a measured run — then re-enroll per-PR discovery consciously, or delete when emit-stage positives are no longer full-pipeline priced"
   },
   WitnessExclusionRow {
     pattern: "test/claim/long/",
@@ -979,6 +979,18 @@ data falsifier_rehomed_bin_wet_rows: List<RehomedBinWetRow> = [
     function: "red_control_entry_with_real_anomaly_still_shows_glyph_holds",
     reason: "84785ms measured eval on run 30220304152 (1.4x the per-row budget): RED-control pole of passing_run_shows_no_fake_anomaly_holds — re-homed with its sibling so the discriminating pair stays together",
     dissolve_on: "fires with passing_run_shows_no_fake_anomaly_holds dissolve_on (same file, same mechanism)"
+  },
+  RehomedBinWetRow {
+    entry: "src/v2/test/claim/long/frontier_probe_closure_matrix_integration_test.dag",
+    function: "frontier_probe_below_cap_complete_population_gates_pass_holds",
+    reason: "784772ms measured eval on claim_batch --wet 2026-08-04 (130x bin_witness_wet_per_row_wall_budget_seconds): full receipt_for_subject with observed SourceRef through assemble on a realistic entry closure — population-totality integration leg, not admission-algebra",
+    dissolve_on: "measured eval lands under bin_witness_wet_per_row_wall_budget_seconds on a measured run — then re-enroll per-PR consciously, or delete when emit-stage receipt is no longer full-pipeline priced"
+  },
+  RehomedBinWetRow {
+    entry: "src/v2/test/claim/long/frontier_probe_closure_matrix_integration_test.dag",
+    function: "frontier_probe_second_source_root_population_gates_pass_holds",
+    reason: "965000ms measured eval estimate from sibling below_cap class on claim_batch --wet 2026-08-04 (second source root closure is wider): same population-totality integration leg",
+    dissolve_on: "fires with frontier_probe_below_cap_complete_population_gates_pass_holds dissolve_on (same file, same mechanism)"
   }
 ]
 

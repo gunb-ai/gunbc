@@ -1,10 +1,12 @@
 module v2.test.workflow.frontier_probe_closure_matrix
 
 import v2.compiler.self_host.frontier_probe {
+  FrontierProbeCoveragePermitted,
   FrontierProbeIngestSubject,
   frontier_probe_closure_count_mismatch_reason,
   frontier_probe_closure_refs_digest_mismatch_reason,
   frontier_probe_closure_storage_hash_conflict_reason,
+  frontier_probe_coverage_gate,
   frontier_probe_discovered_closure_subject_for_matrix,
   frontier_probe_entry_binding_refused_reason,
   frontier_probe_receipt_for_subject
@@ -28,6 +30,7 @@ import v2.compiler.source_authority {
 }
 import v2.std.cross_tree.import_model { DagTree }
 import std.algebra { Cons, Empty }
+import v2.std.algebra { length, list_map }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -48,6 +51,21 @@ fn fp_matrix_ref_a() -> SourceRef {
 
 fn fp_matrix_ref_b() -> SourceRef {
   fp_matrix_synthetic_ref(path: "dag/std/types.dag", hash_seed: "fp-matrix-ref-b")
+}
+
+data fp_matrix_cap_boundary_paths: List<String> = Cons { head: "dag/fp_matrix/cap/00.dag", tail: Cons { head: "dag/fp_matrix/cap/01.dag", tail: Cons { head: "dag/fp_matrix/cap/02.dag", tail: Cons { head: "dag/fp_matrix/cap/03.dag", tail: Cons { head: "dag/fp_matrix/cap/04.dag", tail: Cons { head: "dag/fp_matrix/cap/05.dag", tail: Cons { head: "dag/fp_matrix/cap/06.dag", tail: Cons { head: "dag/fp_matrix/cap/07.dag", tail: Cons { head: "dag/fp_matrix/cap/08.dag", tail: Cons { head: "dag/fp_matrix/cap/09.dag", tail: Cons { head: "dag/fp_matrix/cap/10.dag", tail: Cons { head: "dag/fp_matrix/cap/11.dag", tail: Cons { head: "dag/fp_matrix/cap/12.dag", tail: Cons { head: "dag/fp_matrix/cap/13.dag", tail: Cons { head: "dag/fp_matrix/cap/14.dag", tail: Cons { head: "dag/fp_matrix/cap/15.dag", tail: Cons { head: "dag/fp_matrix/cap/16.dag", tail: Cons { head: "dag/fp_matrix/cap/17.dag", tail: Cons { head: "dag/fp_matrix/cap/18.dag", tail: Cons { head: "dag/fp_matrix/cap/19.dag", tail: Cons { head: "dag/fp_matrix/cap/20.dag", tail: Cons { head: "dag/fp_matrix/cap/21.dag", tail: Cons { head: "dag/fp_matrix/cap/22.dag", tail: Cons { head: "dag/fp_matrix/cap/23.dag", tail: Cons { head: "dag/fp_matrix/cap/24.dag", tail: Cons { head: "dag/fp_matrix/cap/25.dag", tail: Cons { head: "dag/fp_matrix/cap/26.dag", tail: Cons { head: "dag/fp_matrix/cap/27.dag", tail: Cons { head: "dag/fp_matrix/cap/28.dag", tail: Cons { head: "dag/fp_matrix/cap/29.dag", tail: Cons { head: "dag/fp_matrix/cap/30.dag", tail: Cons { head: "dag/fp_matrix/cap/31.dag", tail: Cons { head: "dag/fp_matrix/cap/32.dag", tail: Cons { head: "dag/fp_matrix/cap/33.dag", tail: Cons { head: "dag/fp_matrix/cap/34.dag", tail: Cons { head: "dag/fp_matrix/cap/35.dag", tail: Cons { head: "dag/fp_matrix/cap/36.dag", tail: Cons { head: "dag/fp_matrix/cap/37.dag", tail: Cons { head: "dag/fp_matrix/cap/38.dag", tail: Cons { head: "dag/fp_matrix/cap/39.dag", tail: Cons { head: "dag/fp_matrix/cap/40.dag", tail: Cons { head: "dag/fp_matrix/cap/41.dag", tail: Cons { head: "dag/fp_matrix/cap/42.dag", tail: Cons { head: "dag/fp_matrix/cap/43.dag", tail: Cons { head: "dag/fp_matrix/cap/44.dag", tail: Cons { head: "dag/fp_matrix/cap/45.dag", tail: Cons { head: "dag/fp_matrix/cap/46.dag", tail: Cons { head: "dag/fp_matrix/cap/47.dag", tail: Cons { head: "dag/fp_matrix/cap/48.dag", tail: Cons { head: "dag/fp_matrix/cap/49.dag", tail: Cons { head: "dag/fp_matrix/cap/50.dag", tail: Cons { head: "dag/fp_matrix/cap/51.dag", tail: Cons { head: "dag/fp_matrix/cap/52.dag", tail: Cons { head: "dag/fp_matrix/cap/53.dag", tail: Cons { head: "dag/fp_matrix/cap/54.dag", tail: Cons { head: "dag/fp_matrix/cap/55.dag", tail: Cons { head: "dag/fp_matrix/cap/56.dag", tail: Cons { head: "dag/fp_matrix/cap/57.dag", tail: Cons { head: "dag/fp_matrix/cap/58.dag", tail: Cons { head: "dag/fp_matrix/cap/59.dag", tail: Cons { head: "dag/fp_matrix/cap/60.dag", tail: Cons { head: "dag/fp_matrix/cap/61.dag", tail: Cons { head: "dag/fp_matrix/cap/62.dag", tail: Cons { head: "dag/fp_matrix/cap/63.dag", tail: Cons { head: "dag/fp_matrix/cap/64.dag", tail: Empty } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } }
+
+fn fp_matrix_refs_from_paths(paths: List<String>) -> List<SourceRef> {
+  list_map(
+    xs: paths,
+    f: fn(path) {
+      fp_matrix_synthetic_ref(path: path, hash_seed: path)
+    }
+  )
+}
+
+fn fp_matrix_cap_boundary_refs() -> List<SourceRef> {
+  fp_matrix_refs_from_paths(paths: fp_matrix_cap_boundary_paths)
 }
 
 fn fp_matrix_closure_subject_matching_digest(
@@ -271,6 +289,19 @@ test fn frontier_probe_storage_hash_conflict_refused_holds() -> Bool {
   ).detail {
     FrontierProbeClosurePopulationRefused { cause: cause } =>
       cause == frontier_probe_closure_storage_hash_conflict_reason
+    _ => false
+  }
+}
+
+test fn frontier_probe_elided_cap_plus_one_coverage_gate_permitted_holds() -> Bool {
+  let refs = fp_matrix_cap_boundary_refs()
+  match frontier_probe_coverage_gate(
+    coverage: SourceRootManifestElided { read_count: 65, cap: 64 },
+    refs: refs,
+    ingest_read_count: 65
+  ) {
+    FrontierProbeCoveragePermitted =>
+      length(xs: refs) == 65
     _ => false
   }
 }

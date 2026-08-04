@@ -1431,6 +1431,21 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
+      entry: "src/v2/test/claim/long/frontier_probe_closure_matrix_integration_test.dag",
+      check_fns: [
+        "frontier_probe_below_cap_complete_population_gates_pass_holds",
+        "frontier_probe_second_source_root_population_gates_pass_holds",
+        "frontier_probe_ninety_one_read_compiler_closure_elision_integrates_holds",
+        "frontier_probe_read_failure_detail_refused_holds",
+        "frontier_probe_hash_mismatch_detail_carries_observed_holds"
+      ],
+      kind: ExecutionWitnessKind,
+      span: SpanUndeclared
+    },
+    surfaces: [FalsifierCadenceJob]
+  },
+  CommitCheckEnrollment {
+    check: CommitWitnessClaim {
       entry: "src/v2/test/claim/long/affected_set_provenance_producer_witness_test.dag",
       check_fns: [
         "lens_affected_set_provenance_producer_single_read_emits_row_holds",
