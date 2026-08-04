@@ -39,10 +39,10 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
       field: WholeDeclaration
     }
   },
-  first_citation: extdeps.instrument.pip_boy_3000_mk_v.extdeps_external_authority_anchor,
+  first_citation: extdeps_external_authority_anchor,
   further_citations: [
-    extdeps.instrument.pip_boy_3000_mk_v.pip_boy_mk_v_manual_authority,
-    extdeps.instrument.pip_boy_3000_mk_v.pip_boy_mk_v_retail_listing_authority
+    pip_boy_mk_v_manual_authority,
+    pip_boy_mk_v_retail_listing_authority
   ]
 }
 
@@ -78,46 +78,40 @@ type PipBoyMkVSettingRow {
 data glitch_on_tap_row: PipBoyMkVSettingRow = PipBoyMkVSettingRow {
   setting: GlitchOnTap,
   manual_wording: "Adds a random amount of glitching effects to the display: a very authentic-looking display wobble, static and both vertical and horizontal hold issues. When activated, glitches can be caused or resolved by tapping on the top of the Pip-Boy.",
-  authority: extdeps.instrument.pip_boy_3000_mk_v.pip_boy_mk_v_manual_authority,
+  authority: pip_boy_mk_v_manual_authority,
 }
 
 data tap_threshold_row: PipBoyMkVSettingRow = PipBoyMkVSettingRow {
   setting: TapThreshold,
   manual_wording: "Set the tap threshold sensitivity, where setting 1 is the most sensitive.",
-  authority: extdeps.instrument.pip_boy_3000_mk_v.pip_boy_mk_v_manual_authority,
+  authority: pip_boy_mk_v_manual_authority,
 }
 
 data crt_jitter_row: PipBoyMkVSettingRow = PipBoyMkVSettingRow {
   setting: CrtJitter,
   manual_wording: "Toggles between on and off, and adds a varying blurriness to the screen graphics similar to the effect seen on a faulty CRT.",
-  authority: extdeps.instrument.pip_boy_3000_mk_v.pip_boy_mk_v_manual_authority,
+  authority: pip_boy_mk_v_manual_authority,
 }
 
 data vertical_shift_row: PipBoyMkVSettingRow = PipBoyMkVSettingRow {
   setting: VerticalShift,
   manual_wording: "Moves the display position up or down by a few pixels. Positive numbers move the screen up and negative move it down.",
-  authority: extdeps.instrument.pip_boy_3000_mk_v.pip_boy_mk_v_manual_authority,
+  authority: pip_boy_mk_v_manual_authority,
 }
 
 data pip_boy_mk_v_settings: List<PipBoyMkVSettingRow> = [
-  extdeps.instrument.pip_boy_3000_mk_v.glitch_on_tap_row,
-  extdeps.instrument.pip_boy_3000_mk_v.tap_threshold_row,
-  extdeps.instrument.pip_boy_3000_mk_v.crt_jitter_row,
-  extdeps.instrument.pip_boy_3000_mk_v.vertical_shift_row
+  glitch_on_tap_row,
+  tap_threshold_row,
+  crt_jitter_row,
+  vertical_shift_row
 ]
 
 data tap_threshold_direction_note: String = "The threshold scale runs INVERTED against the intuition its name invites: the manual states setting 1 is the MOST sensitive, so a rising number raises the impulse a tap must clear, not the responsiveness. Recorded explicitly because a design consumer reading 'sensitivity 1..9' left-to-right will get it backwards, and because the sixth-pass strategy capture did exactly that before this row existed."
 
 data glitch_response_option_values_note: String = "NOT MODELED, DELIBERATELY: an external analysis attributed three option values — Off, Short, Persistent — to this setting. No source this session reached carries them; the only corroboration found is that the glitch can be turned off. The BEHAVIOUR the design lane wants from them is separately grounded and IS modeled, in the glitch_on_tap_row wording: glitches are 'caused or resolved by tapping', which is the tap-to-break and tap-to-fix pair. Authoring the three names anyway would put an uncited enum beside a cited quotation and let a design consumer treat invented option values as upstream fact (DESIGN section 5: no fabricated plausible output). Dissolve-on: a direct manual read confirms or refutes them."
 
-type RetailListingFacts {
-  title: NonEmptyStr
-  licensing_statement: NonEmptyStr
-  authority: ExternalAuthority
-}
+data pip_boy_mk_v_retail_listing_title: NonEmptyStr = "Fallout from The Wand Company: Pip-Boy Life Size Wearable Cosplay die-cast Replica. Memory Foam Cuff, LCD Screen, FM Radio, Alarm Clock and Stand. Officially Licensed Collectible by Amazon Studios."
 
-data pip_boy_mk_v_retail_listing: RetailListingFacts = RetailListingFacts {
-  title: "Fallout from The Wand Company: Pip-Boy Life Size Wearable Cosplay die-cast Replica. Memory Foam Cuff, LCD Screen, FM Radio, Alarm Clock and Stand. Officially Licensed Collectible by Amazon Studios.",
-  licensing_statement: "Officially Licensed Collectible by Amazon Studios.",
-  authority: extdeps.instrument.pip_boy_3000_mk_v.pip_boy_mk_v_retail_listing_authority,
-}
+data pip_boy_mk_v_licensing_statement: NonEmptyStr = "Officially Licensed Collectible by Amazon Studios."
+
+data retail_listing_shape_note: String = "Flat cited leaves rather than a shared record, for the reason stated at the sibling product's retail_listing_shape_note; the dissolve-on is the same."

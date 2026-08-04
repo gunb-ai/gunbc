@@ -1,0 +1,93 @@
+module test.claim.reference_instrument_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.design.reference_instrument {
+  InstrumentBehaviourAxis, OpticalInstability, RestingOffsetCalibration,
+  ImpulseGlitch, ImpulseThreshold, TiltDerivedReadout, BuoyantDrift,
+  CitedInstrument, PipBoy3000FalloutNewVegas, PipBoy3000MkVTvSeries,
+  axis_is_cited_on, instrument_covers_axes, directive_requested_axes,
+  named_referent, named_referent_covers_directive, any_single_instrument_covers_directive,
+  pip_boy_3000_setting_count, pip_boy_mk_v_setting_count,
+  cited_instrument_eq,
+}
+import extdeps.instrument.pip_boy_3000 {
+  pip_boy_3000_settings, pip_boy_3000_setting_label, pip_boy_3000_licensing_statement,
+}
+import extdeps.instrument.pip_boy_3000_mk_v {
+  pip_boy_mk_v_settings, pip_boy_mk_v_setting_label, pip_boy_mk_v_licensing_statement,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data reference_instrument_witness_note: String = "Receipts for the two cited Pip-Boy products and the join over them (sixth CRT-thread pass, operator correction 2026-08-04: there are two products, and the settings the directive wanted are not all on the one it named). The load-bearing claim is the REFERENT CORRECTION — the named referent does not cover the requested axes while the sibling does — because that is the fact an earlier strategy capture got wrong by attributing one manual's settings to the other product. Its RED control is the same predicate asked of the instrument that does cover, so a change that collapsed the two products into one roster would green the claim and red the control."
+
+fn setting_labels_contain_3000(wanted: String) -> Bool {
+  fold(pip_boy_3000_settings, init: false, f: (acc, row) =>
+    acc || pip_boy_3000_setting_label(s: row.setting) == wanted)
+}
+
+fn setting_labels_contain_mk_v(wanted: String) -> Bool {
+  fold(pip_boy_mk_v_settings, init: false, f: (acc, row) =>
+    acc || pip_boy_mk_v_setting_label(s: row.setting) == wanted)
+}
+
+test fn witness_two_products_are_distinct_subjects() -> Bool {
+  return pip_boy_3000_licensing_statement != pip_boy_mk_v_licensing_statement
+    && pip_boy_3000_licensing_statement == "Officially Licensed by Bethesda."
+    && pip_boy_mk_v_licensing_statement == "Officially Licensed Collectible by Amazon Studios."
+}
+
+test fn witness_impulse_settings_are_cited_on_mk_v_only() -> Bool {
+  return setting_labels_contain_mk_v(wanted: "Glitch on tap")
+    && setting_labels_contain_mk_v(wanted: "Tap threshold")
+    && !setting_labels_contain_3000(wanted: "Glitch on tap")
+    && !setting_labels_contain_3000(wanted: "Tap threshold")
+}
+
+test fn witness_shared_display_settings_are_cited_on_both() -> Bool {
+  return setting_labels_contain_3000(wanted: "CRT jitter")
+    && setting_labels_contain_mk_v(wanted: "CRT jitter")
+    && setting_labels_contain_3000(wanted: "Vertical shift")
+    && setting_labels_contain_mk_v(wanted: "Vertical shift")
+}
+
+test fn witness_setting_rosters_are_sized_as_read() -> Bool {
+  return pip_boy_3000_setting_count() == 4
+    && pip_boy_mk_v_setting_count() == 4
+}
+
+test fn witness_named_referent_does_not_cover_the_directive() -> Bool {
+  return !named_referent_covers_directive()
+    && cited_instrument_eq(a: named_referent, b: PipBoy3000FalloutNewVegas)
+}
+
+test fn witness_the_sibling_product_does_cover_the_directive() -> Bool {
+  return any_single_instrument_covers_directive()
+    && instrument_covers_axes(
+      instrument: PipBoy3000MkVTvSeries,
+      axes: directive_requested_axes)
+}
+
+test fn witness_impulse_axes_resolve_to_mk_v() -> Bool {
+  return axis_is_cited_on(axis: ImpulseGlitch, instrument: PipBoy3000MkVTvSeries)
+    && axis_is_cited_on(axis: ImpulseThreshold, instrument: PipBoy3000MkVTvSeries)
+    && !axis_is_cited_on(axis: ImpulseGlitch, instrument: PipBoy3000FalloutNewVegas)
+    && !axis_is_cited_on(axis: ImpulseThreshold, instrument: PipBoy3000FalloutNewVegas)
+}
+
+test fn witness_tilt_readout_is_cited_on_the_fallout_unit_only() -> Bool {
+  return axis_is_cited_on(axis: TiltDerivedReadout, instrument: PipBoy3000FalloutNewVegas)
+    && !axis_is_cited_on(axis: TiltDerivedReadout, instrument: PipBoy3000MkVTvSeries)
+}
+
+test fn witness_shared_axes_resolve_to_both() -> Bool {
+  return axis_is_cited_on(axis: OpticalInstability, instrument: PipBoy3000FalloutNewVegas)
+    && axis_is_cited_on(axis: OpticalInstability, instrument: PipBoy3000MkVTvSeries)
+    && axis_is_cited_on(axis: RestingOffsetCalibration, instrument: PipBoy3000FalloutNewVegas)
+    && axis_is_cited_on(axis: RestingOffsetCalibration, instrument: PipBoy3000MkVTvSeries)
+}
+
+test fn witness_buoyant_drift_has_no_upstream_citation() -> Bool {
+  return !axis_is_cited_on(axis: BuoyantDrift, instrument: PipBoy3000FalloutNewVegas)
+    && !axis_is_cited_on(axis: BuoyantDrift, instrument: PipBoy3000MkVTvSeries)
+}

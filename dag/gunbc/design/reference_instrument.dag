@@ -1,0 +1,223 @@
+module gunbc.design.reference_instrument
+
+import std.types { NonEmptyStr, String, Bool, Int, List }
+import extdeps.instrument.pip_boy_3000 { pip_boy_3000_settings }
+import extdeps.instrument.pip_boy_3000_mk_v { pip_boy_mk_v_settings }
+
+data reference_instrument_note: String = "THE JOIN, NOT A HUB (DESIGN section 3 'External upstream decomposition', whose own worked example puts extdeps.browser.chromium and extdeps.browser.google_chrome under a gunbc join rather than a generic browser hub). The two cited Pip-Boy products are independently governed upstream subjects with their own modules; this module is the DOWNSTREAM layer that names the agnostic behaviour axis both inhabit, records which product each axis is actually cited on, and holds the coverage obligations our own reading created. Nothing here is a fact owned by the observed upstream. Adding a third reference instrument adds rows here and one extdeps module; it must not require editing either existing product."
+
+type InstrumentBehaviourAxis
+  = OpticalInstability
+  | RestingOffsetCalibration
+  | ImpulseGlitch
+  | ImpulseThreshold
+  | TiltDerivedReadout
+  | BuoyantDrift
+
+fn behaviour_axis_key(a: InstrumentBehaviourAxis) -> String {
+  match a {
+    OpticalInstability => "optical-instability"
+    RestingOffsetCalibration => "resting-offset-calibration"
+    ImpulseGlitch => "impulse-glitch"
+    ImpulseThreshold => "impulse-threshold"
+    TiltDerivedReadout => "tilt-derived-readout"
+    BuoyantDrift => "buoyant-drift"
+  }
+}
+
+type CitedInstrument
+  = PipBoy3000FalloutNewVegas
+  | PipBoy3000MkVTvSeries
+
+fn cited_instrument_key(i: CitedInstrument) -> String {
+  match i {
+    PipBoy3000FalloutNewVegas => "pip-boy-3000-fallout-new-vegas"
+    PipBoy3000MkVTvSeries => "pip-boy-3000-mk-v-tv-series"
+  }
+}
+
+data axis_provenance_note: String = "OriginatedHere is a FIRST-CLASS arm, not a gap. An axis the design lane wants that no cited instrument realizes has no upstream provenance to claim, and saying so is the whole value of doing this join: it separates what we are citing from what we are inventing. Collapsing the two would let an originated behaviour borrow a reference product's authority — the design-lane form of a fabricated citation."
+
+type AxisProvenance
+  = CitedOnInstruments { instruments: List<CitedInstrument> }
+  | OriginatedHere { rationale: NonEmptyStr }
+
+type BehaviourAxisRow {
+  axis: InstrumentBehaviourAxis
+  provenance: AxisProvenance
+}
+
+data optical_instability_row: BehaviourAxisRow = BehaviourAxisRow {
+  axis: OpticalInstability,
+  provenance: CitedOnInstruments {
+    instruments: [PipBoy3000FalloutNewVegas, PipBoy3000MkVTvSeries],
+  },
+}
+
+data resting_offset_row: BehaviourAxisRow = BehaviourAxisRow {
+  axis: RestingOffsetCalibration,
+  provenance: CitedOnInstruments {
+    instruments: [PipBoy3000FalloutNewVegas, PipBoy3000MkVTvSeries],
+  },
+}
+
+data impulse_glitch_row: BehaviourAxisRow = BehaviourAxisRow {
+  axis: ImpulseGlitch,
+  provenance: CitedOnInstruments { instruments: [PipBoy3000MkVTvSeries] },
+}
+
+data impulse_threshold_row: BehaviourAxisRow = BehaviourAxisRow {
+  axis: ImpulseThreshold,
+  provenance: CitedOnInstruments { instruments: [PipBoy3000MkVTvSeries] },
+}
+
+data tilt_derived_readout_row: BehaviourAxisRow = BehaviourAxisRow {
+  axis: TiltDerivedReadout,
+  provenance: CitedOnInstruments { instruments: [PipBoy3000FalloutNewVegas] },
+}
+
+data buoyant_drift_row: BehaviourAxisRow = BehaviourAxisRow {
+  axis: BuoyantDrift,
+  provenance: OriginatedHere {
+    rationale: "No cited reference instrument realizes a continuous buoyant drift of the display. The axis entered this repository from the operator's own description — the screen bobbing as a fishing-hook bobber does in water — and the register amendment it motivates (InstrumentDrift) must therefore stand on its own laws rather than on a Pip-Boy citation. Recorded here so the design lane cannot later cite a reference product for it.",
+  },
+}
+
+data reference_instrument_axes: List<BehaviourAxisRow> = [
+  optical_instability_row,
+  resting_offset_row,
+  impulse_glitch_row,
+  impulse_threshold_row,
+  tilt_derived_readout_row,
+  buoyant_drift_row
+]
+
+fn behaviour_axis_eq(a: InstrumentBehaviourAxis, b: InstrumentBehaviourAxis) -> Bool {
+  behaviour_axis_key(a: a) == behaviour_axis_key(a: b)
+}
+
+fn cited_instrument_eq(a: CitedInstrument, b: CitedInstrument) -> Bool {
+  cited_instrument_key(i: a) == cited_instrument_key(i: b)
+}
+
+fn instrument_cites_axis(row: BehaviourAxisRow, instrument: CitedInstrument) -> Bool {
+  match row.provenance {
+    CitedOnInstruments { instruments } =>
+      fold(instruments, init: false, f: (acc, i) =>
+        acc || cited_instrument_eq(a: i, b: instrument))
+    OriginatedHere { rationale } => false
+  }
+}
+
+fn axis_is_cited_on(axis: InstrumentBehaviourAxis, instrument: CitedInstrument) -> Bool {
+  fold(reference_instrument_axes, init: false, f: (acc, row) =>
+    acc || (behaviour_axis_eq(a: row.axis, b: axis)
+      && instrument_cites_axis(row: row, instrument: instrument)))
+}
+
+data single_instrument_coverage_note: String = "THE DERIVED READ THE SIXTH-PASS STRATEGY DIRECTIVE NEEDS, and it is a referent correction rather than a union claim. The directive named CRT jitter and glitch-on-tap together and identified the Fallout 3 / New Vegas unit as the product it was referring to. One cited instrument does cover all three requested axes — but it is the Mk V, not the named referent, because glitch-on-tap and its threshold are cited only there. So the pair below is the finding: any_single_instrument_covers_directive holds, named_referent_covers_directive does not. An earlier revision of this note asserted that NO single instrument covered the set; executing the fold refuted it, which is the whole reason the answer is computed from the rows instead of written down beside them (DESIGN section 5: a claim that only typechecks is unverified). A later direct manual read that moves an attribution moves both answers with it."
+
+fn instrument_covers_axes(instrument: CitedInstrument, axes: List<InstrumentBehaviourAxis>) -> Bool {
+  fold(axes, init: true, f: (acc, axis) =>
+    acc && axis_is_cited_on(axis: axis, instrument: instrument))
+}
+
+data directive_requested_axes: List<InstrumentBehaviourAxis> = [
+  OpticalInstability,
+  ImpulseGlitch,
+  ImpulseThreshold
+]
+
+fn any_single_instrument_covers_directive() -> Bool {
+  instrument_covers_axes(
+    instrument: PipBoy3000FalloutNewVegas,
+    axes: directive_requested_axes)
+  || instrument_covers_axes(
+    instrument: PipBoy3000MkVTvSeries,
+    axes: directive_requested_axes)
+}
+
+data named_referent: CitedInstrument = PipBoy3000FalloutNewVegas
+
+data named_referent_note: String = "The product the sixth-pass directive said it was referring to. Held as its own declaration so the referent correction is a JOIN between two rows — what was named, and what the axes resolve to — rather than a sentence somebody has to keep true by hand."
+
+fn named_referent_covers_directive() -> Bool {
+  instrument_covers_axes(
+    instrument: named_referent,
+    axes: directive_requested_axes)
+}
+
+data source_read_path_note: String = "OUR read path, not the upstream's property (DESIGN section 3: observations this repository produces are receipts in the observing layer). Both product modules cite manuals that this session could not fetch — www.thewandcompany.com returned HTTP 403 on the product page, both manuals, and the WEBPRINT PDF — so their setting wordings are quotations surfaced through a search index. That is strictly weaker than a direct read and it already cost one error: an earlier strategy capture attributed the Mk V's glitch-on-tap and tap-threshold settings to the Fallout 3 / New Vegas product, because a search answer merged two manuals without saying which sentence came from which."
+
+type SourceReadPath
+  = ReadDirectly
+  | ReadViaSearchIndex { obstacle: NonEmptyStr }
+
+type SourceReadReceipt {
+  instrument: CitedInstrument
+  manual_read_path: SourceReadPath
+  listing_read_path: SourceReadPath
+}
+
+data search_index_obstacle: NonEmptyStr = "www.thewandcompany.com returned HTTP 403 to this session's fetcher on every path attempted"
+
+data pip_boy_3000_read_receipt: SourceReadReceipt = SourceReadReceipt {
+  instrument: PipBoy3000FalloutNewVegas,
+  manual_read_path: ReadViaSearchIndex {
+    obstacle: search_index_obstacle,
+  },
+  listing_read_path: ReadDirectly,
+}
+
+data pip_boy_mk_v_read_receipt: SourceReadReceipt = SourceReadReceipt {
+  instrument: PipBoy3000MkVTvSeries,
+  manual_read_path: ReadViaSearchIndex {
+    obstacle: search_index_obstacle,
+  },
+  listing_read_path: ReadDirectly,
+}
+
+data source_read_receipts: List<SourceReadReceipt> = [
+  pip_boy_3000_read_receipt,
+  pip_boy_mk_v_read_receipt
+]
+
+type CoverageObligation {
+  question: NonEmptyStr
+  blocked_by: NonEmptyStr
+  dissolves_when: NonEmptyStr
+}
+
+data glitch_on_tap_attribution_obligation: CoverageObligation = CoverageObligation {
+  question: "Does the Fallout 3 / New Vegas Pip-Boy 3000 expose a glitch-on-tap setting, or is impulse glitching exclusive to the Mk V?",
+  blocked_by: "Its manual lists CRT jitter, Vertical shift, Show Debug info and Sound Effects volume, and no source reached states the roster is complete. Absence from a partial roster does not decide absence from the product.",
+  dissolves_when: "The Fallout 3 / New Vegas manual is read directly and its settings menu enumerated.",
+}
+
+data glitch_response_values_obligation: CoverageObligation = CoverageObligation {
+  question: "Does the Mk V's glitch setting carry the option values Off, Short and Persistent?",
+  blocked_by: "An external analysis asserted the three names; no source reached carries them, and only the fact that the glitch can be turned off is corroborated.",
+  dissolves_when: "The Mk V manual is read directly and its glitch setting's option values enumerated.",
+}
+
+data mk_v_model_number_obligation: CoverageObligation = CoverageObligation {
+  question: "Is the Mk V's model number WRC18423?",
+  blocked_by: "Search-surfaced alongside the settings wording; neither the manual nor the retail listing was read directly for it.",
+  dissolves_when: "A direct read of the manual or the listing confirms or refutes the number.",
+}
+
+data reference_instrument_obligations: List<CoverageObligation> = [
+  glitch_on_tap_attribution_obligation,
+  glitch_response_values_obligation,
+  mk_v_model_number_obligation
+]
+
+data settings_roster_reach_note: String = "The two settings rosters are imported rather than restated so this join reads the upstream rows themselves; a setting added to either product module reaches these counts with no edit here."
+
+fn pip_boy_3000_setting_count() -> Int {
+  fold(pip_boy_3000_settings, init: 0, f: (acc, row) => acc + 1)
+}
+
+fn pip_boy_mk_v_setting_count() -> Int {
+  fold(pip_boy_mk_v_settings, init: 0, f: (acc, row) => acc + 1)
+}
