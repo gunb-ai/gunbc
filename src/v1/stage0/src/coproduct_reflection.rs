@@ -670,6 +670,22 @@ fn marshal_generic(
         // G2 live-read call reachability: callee atoms make cross-fn carrier chains
         // visible in the fn-arrow skeleton (docs/plans/live-read-witness-classification-design.md P1).
         edges.push(edge_positional(ctx, atom_identity_node(ctx, &name)));
+    } else if !name.is_empty() {
+        if let ExprData::ExprVar { binding_kind } = node.expr_data.as_ref() {
+            let emit_variant_atom = match binding_kind {
+                None => true,
+                Some(bk) => matches!(
+                    bk.as_ref(),
+                    VarBindingKind::VariantValueBinding { parent_enum: _ }
+                        | VarBindingKind::FunctionValueBinding
+                ),
+            };
+            if emit_variant_atom && !node_references_param(node, &name, param_names) {
+                // Surface nullary variant/value references (e.g. dissolves_to: SingleAuthority)
+                // as atoms in decl_facts skeletons for pure .dag structural readers.
+                edges.push(edge_positional(ctx, atom_identity_node(ctx, &name)));
+            }
+        }
     }
     if let Some(literal_edge) = marshal_string_literal_atom(ctx, node) {
         edges.push(literal_edge);

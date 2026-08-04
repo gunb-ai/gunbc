@@ -43,7 +43,7 @@ import std.disposition {
   SubstrateMandatoryTag,
 }
 
-data scaffold_retirement_pilot_derivation_note: String = "POPULATION IS DERIVED, NEVER AUTHORED. derived_scaffold_disposition_sites() folds decl_facts(pool_roots) body nodes over witness_layer_roots (dag + src/v2): every DataItem whose initializer is the Disposition Scaffold variant — detected structurally as a two-field conj (dissolves_to + bind) carrying a ConstructionMechanism, because decl_facts ExprRecordLit marshal omits the variant label atom. Not regex, not a hand roster. The pilot takes the first fifteen rows, lexicographically stable in the decl_facts corpus walk (rel_path, name), whose rel_path is under dag/gunbc/ — a reproducible convenience sample, not a representative census of the full derived population; exclusion rates measured on the pilot must not be read as corpus-wide rates. Obligation bindings use the interim carrier-path substring heuristic documented in scaffold_retirement_obligation_join_scaffold_note until roadmap rows carry an explicit DeclarationRef obligation anchor; zero or plural matches become typed exclusions, never fabricated owners."
+data scaffold_retirement_pilot_derivation_note: String = "POPULATION IS DERIVED, NEVER AUTHORED. derived_scaffold_disposition_sites() folds decl_facts(pool_roots) body nodes over witness_layer_roots (dag + src/v2): every DataItem whose initializer is the Disposition Scaffold variant — detected structurally as a two-field conj (dissolves_to + bind); dissolves_to is read from the first positional child because ExprRecordLit marshal omits the variant label atom. Not regex, not a hand roster. The pilot takes the first fifteen rows, lexicographically stable in the decl_facts corpus walk (rel_path, name), whose rel_path is under dag/gunbc/ — a reproducible convenience sample, not a representative census of the full derived population; exclusion rates measured on the pilot must not be read as corpus-wide rates. Obligation bindings use the interim carrier-path substring heuristic documented in scaffold_retirement_obligation_join_scaffold_note until roadmap rows carry an explicit DeclarationRef obligation anchor; zero or plural matches become typed exclusions, never fabricated owners."
 
 data scaffold_retirement_obligation_join_scaffold_note: String = "INTERIM HEURISTIC — NOT an identity join on site.bind. obligation_candidates_for_site selects declared_roadmap_nodes() rows whose carrier paths string_contains site.rel_path, site.bind.module_path, site.bind.decl_name, or site.carrier_module. Unique hit → binding; zero or plural → typed exclusion. Dissolve-on: roadmap obligation rows carry an explicit DeclarationRef anchor and derived_binding_for_site joins site.bind against that anchor via decl_ref_eq, retiring substring carrier-path matching."
 
@@ -145,12 +145,23 @@ fn declaration_ref_from_string_lexemes(lexemes: List<String>) -> DeclarationRef?
   }
 }
 
+fn dissolves_to_child_node(body: Node) -> Node? {
+  list_at_optional(xs: node_positional_child_targets(node: body), index: 0)
+}
+
+fn construction_mechanism_from_dissolves_to_child(body: Node) -> ConstructionMechanism? {
+  match dissolves_to_child_node(body: body) {
+    Present { value: child } =>
+      match node_atom_lexeme_optional(node: child) {
+        Present { value: lex } => construction_mechanism_from_lexeme(lex: lex)
+        Absent => first_construction_mechanism(node: child)
+      }
+    Absent => Absent
+  }
+}
+
 fn node_is_scaffold_initializer(body: Node) -> Bool {
   length(xs: node_positional_child_targets(node: body)) == 2
-    && match first_construction_mechanism(node: body) {
-      Present { value: _ } => true
-      Absent => false
-    }
 }
 
 fn construction_mechanism_from_lexeme(lex: String) -> ConstructionMechanism? {
@@ -176,7 +187,7 @@ fn first_construction_mechanism(node: Node) -> ConstructionMechanism? {
 }
 
 fn dissolves_to_from_scaffold_body(body: Node) -> ConstructionMechanism? {
-  first_construction_mechanism(node: body)
+  construction_mechanism_from_dissolves_to_child(body: body)
 }
 
 fn named_field_from_declaration_ref_conj(node: Node, field_node: Node) -> DeclField? {
@@ -384,6 +395,23 @@ fn scaffold_site_from_body_fact(
     ServiceItem => Absent
     OtherItem => Absent
   }
+}
+
+fn scaffold_dissolves_to_parses_for_qualified_name(qn: String) -> Bool {
+  fold(
+    decl_facts(pool_roots: witness_layer_roots),
+    init: false,
+    f: fn(acc, fact) {
+      if fact.qualified_name == qn {
+        match dissolves_to_from_scaffold_body(body: fact.node) {
+          Present { value: _ } => true
+          Absent => false
+        }
+      } else {
+        acc
+      }
+    }
+  )
 }
 
 fn derived_scaffold_disposition_sites() -> List<ScaffoldDispositionSite> {

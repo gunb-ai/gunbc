@@ -8,7 +8,7 @@ import gunbc.scaffold_retirement {
   ScaffoldRetirementExclusion,
   derived_scaffold_disposition_sites,
   scaffold_disposition_site_count_live,
-  scaffold_site_by_qualified_name,
+  scaffold_dissolves_to_parses_for_qualified_name,
   pilot_scaffold_sites,
   pilot_domain_limit,
   pilot_scaffold_retirement_bindings,
@@ -38,8 +38,9 @@ import v2.lens.disposition_redundancy {
   decl_ref_eq,
 }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
-import v2.std.algebra { length }
-import v2.std.collection { Absent, Present }
+import v2.std.decl_index { decl_facts, DataItem }
+import gunbc.ci_layer_roots { witness_layer_roots }
+import v2.std.node_query { node_positional_child_targets }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -87,10 +88,31 @@ test fn derived_population_excludes_construction_justification_carriers() -> Boo
   )
 }
 
-test fn debug_bytes_marker_in_population() -> Bool {
+test fn debug_bytes_dissolves_to_parses() -> Bool {
+  scaffold_dissolves_to_parses_for_qualified_name(qn: "std.bytes.bytes_seam_host_realization_marker")
+}
+
+test fn debug_fn_index_scaffold_in_population() -> Bool {
   any(
     derived_scaffold_disposition_sites(),
-    s => s.carrier_decl == "bytes_seam_host_realization_marker"
+    s => s.carrier_decl == "fn_arrow_skeleton_g2_marshal_host_scaffold_dissolution_trigger"
+  )
+}
+
+test fn debug_bytes_is_data_item_with_two_field_init() -> Bool {
+  fold(
+    decl_facts(pool_roots: witness_layer_roots),
+    init: false,
+    f: fn(acc, fact) {
+      if fact.qualified_name == "std.bytes.bytes_seam_host_realization_marker" {
+        match fact.kind {
+          DataItem => length(xs: node_positional_child_targets(node: fact.node)) == 2
+          _ => false
+        }
+      } else {
+        acc
+      }
+    }
   )
 }
 
