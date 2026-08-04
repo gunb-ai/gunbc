@@ -122,10 +122,37 @@ Required:
 
 ```
 every production-significant construction occurrence
-  -> CompilerDerived | FixtureDerived | ExecutionMeasured | UnknownOrigin
+  -> CompilerDerived | FixtureDerived | UnknownOrigin
 
-UnknownOrigin -> production admission REFUSED
+UnknownOrigin  -> production admission REFUSED
+FixtureDerived -> production admission REFUSED
 ```
+
+**Origin and measurement are orthogonal axes and must not share a coproduct** (operator
+correction 2026-08-04; an earlier revision of this note listed `ExecutionMeasured` as a
+fourth origin variant, and gunbc#7786 inherited that error from here). A fixture-derived
+artifact can also be execution-measured — that is exactly the dangerous direct-door state,
+where the bytes genuinely compiled and could genuinely run while originating from a
+hand-authored substitute tree. Making measurement a sibling origin forces the model to
+discard one of the two facts: `FixtureDerived -> ExecutionMeasured` would erase fixture
+origin merely because downstream execution occurred, reopening qualification laundering
+under better-typed vocabulary.
+
+```
+ProductionStageOrigin
+  = CompilerDerived { stage_chain: CompilerStageChain }
+  | FixtureDerived  { fixture: FixtureIdentity }
+  | UnknownOrigin   { cause: OriginVerificationFrontier }
+
+ProductionEvidenceGrounding
+  = StructurallyGrounded
+  | ExecutionMeasured { receipt: ExecutionMeasurementReceipt }
+  | Unmeasured
+```
+
+Measurement always **carries** an origin; it never replaces one. Where execution is used
+to bind an otherwise inferred provenance claim, the binding form is
+`ExecutionBound { origin, receipt }` — still origin-bearing.
 
 Admission states, so that lookup failure and unclassified construction forms cannot
 collapse into acceptance:
@@ -254,15 +281,10 @@ obligations**, and B1 alone never establishes the class.
 ## Out of scope
 
 CI evidence lifecycle (route, expectation, semantic-evidence currency) is a separate
-program with its own signed modeling decision, planned under the slug
-`witness-evidence-lifecycle-design` on gunbc#7778.
-
-**That sibling is NOT registered anywhere yet.** Its `HandAuthoredDocBind` row exists only
-on the unmerged #7778 branch — the slug appears in neither `gunbc.doc_graph_roots` nor
-anywhere else under `dag/` on main or on this PR's head. It is named here as a planned
-sibling, not as a resolvable registry entry, and it is deliberately not written as a
-markdown path link because that link would dangle until #7778 merges. When #7778 lands,
-its bind row makes the slug resolvable and this paragraph can cite it as registered.
+program, identified by the slug `witness-evidence-lifecycle-design` and governed by
+gunbc#7778. This design does not depend on whether that bind is present in the current
+merge candidate; the slug is named rather than path-linked so the statement holds under
+either merge order.
 
 That program prevents missing evidence; this one prevents convincing evidence about the
 wrong thing. They join at one invariant:
