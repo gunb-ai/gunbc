@@ -6,6 +6,7 @@ import std.upsert_decision { ObservationVerdict, Converged, Drifted, UnknownRefu
 import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending }
 import extdeps.github.app {
   GitHubAppId,
+  GitHubAppInstallationId,
   GitHubAppRegistration,
   GitHubAppInstallation,
   GitHubAppPermission,
@@ -49,7 +50,7 @@ data gunbai_ci_app_pem_secret: SecretRef = SecretRef {
   hash_state: HashPending,
 }
 
-data gunbai_ci_declared_installation_id: NonEmptyStr = "104134109"
+data gunbai_ci_declared_installation_id: GitHubAppInstallationId = GitHubAppInstallationId { value: 104134109 }
 
 type ManagedGitHubAppKeyRole
   = ActiveSigningKey

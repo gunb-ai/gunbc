@@ -3,6 +3,7 @@ module gunbc.runner_host_deploy
 import std.types { NonEmptyStr, String, Int, List }
 import extdeps.exec.command { ArgvCommand, shell_command_render }
 import extdeps.cloud.gcp.secret_ref { SecretRef }
+import extdeps.github.app { GitHubAppInstallationId }
 import gunbc.auth.github_apps {
   DeclaredGitHubApp,
   gunbai_ci_declared,
@@ -24,7 +25,7 @@ data github_app_runner_config_regrounding_note: String = "RE-GROUNDED onto gunbc
 
 type GithubAppRunnerConfig {
   app: DeclaredGitHubApp
-  installation_id: NonEmptyStr
+  installation_id: GitHubAppInstallationId
   app_pem_secret: SecretRef
 }
 
