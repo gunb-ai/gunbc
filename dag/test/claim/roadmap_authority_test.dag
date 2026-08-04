@@ -10,9 +10,7 @@ import gunbc.roadmap_authority {
   active_roadmap_nodes,
   active_roadmap_edges,
   roadmap_acceptance_receipts,
-  roadmap_acceptance_receipt_baseline_nodes,
-  roadmap_acceptance_receipt_revocations,
-  roadmap_acceptance_receipt_continuity_holds,
+  roadmap_acceptance_event_history,
   accepted_roadmap_node_ids,
   roadmap_authority,
   authored_merged_prs,
@@ -49,14 +47,18 @@ import gunbc.roadmap_model {
   RoadmapEdge,
   RoadmapNodeId,
   RoadmapAcceptanceReceipt,
-  RoadmapAcceptanceReceiptRevocation,
+  RoadmapAcceptanceEvent,
+  AcceptanceRecorded,
+  AcceptanceRevoked,
+  AcceptanceNodeReopensActiveFrontier,
   node_accepted,
   receipt_matches_node,
   node_criteria_digest,
-  acceptance_receipt_continuity_holds,
-  acceptance_receipt_continuity_verdict,
-  AcceptanceReceiptContinuityHolds,
-  AcceptanceReceiptContinuityRefusedVanishedWithoutRevocation,
+  acceptance_history_integrity_holds,
+  acceptance_history_extends_prior,
+  acceptance_history_chain_digest,
+  project_live_acceptance_receipts,
+  drop_first_acceptance_event,
   roadmap_parent_ids,
   is_top_level,
   Pointer,
@@ -340,52 +342,42 @@ test fn witness_receipt_for_unknown_node_accepts_nothing() -> Bool {
   all(nodes(), n => !node_accepted(receipts: [ghost], rn: n))
 }
 
-data acceptance_receipt_continuity_witness_note: String = "THE WALL AGAINST SILENT RECEIPT DELETION (acceptance_receipt_continuity_wall_note). The live authority witness executes roadmap_acceptance_receipt_continuity_holds only — identity-grain reconciliation of the monotone baseline ledger against current receipts and revocation witnesses, never a population count (DESIGN section 5 oracle rule; same class as live_state_count_transcription_note). The RED plants a vanished receipt — a baseline node removed from the current receipt list with no revocation witness — and requires acceptance_receipt_continuity_holds to refuse. The positive control supplies an explicit RoadmapAcceptanceReceiptRevocation for the same vanishing and requires continuity to hold, proving revocation is the only sanctioned erasure path."
-
-test fn witness_acceptance_receipt_continuity_holds_on_live_authority() -> Bool {
-  roadmap_acceptance_receipt_continuity_holds()
-}
+data acceptance_receipt_continuity_witness_note: String = "THE WALL AGAINST SILENT RECEIPT DELETION (acceptance_receipt_continuity_wall_note). roadmap_acceptance_event_history is the single authority; roadmap_acceptance_receipts projects live receipts only. Live git-observed integrity executes in test.claim.roadmap_receipt_continuity_live_witness (ReadsLiveTree, bin_witness_wet_entries). RED controls in test.claim.roadmap_receipt_continuity_acceptance plant deleted history events, dual-deletion via prior-prefix refusal, wrong prior digest, revocation while live, duplicate revocations, exact revocation admit, criteria rewrite on the digest path, and planted git-refusal observation."
 
 test fn witness_vanished_receipt_without_revocation_refuses() -> Bool {
-  let baseline = roadmap_acceptance_receipt_baseline_nodes()
-  let receipts = roadmap_acceptance_receipts()
-    |> filter(r => r.node != tnid(s: "namespace-occurrence-transport"))
-  !acceptance_receipt_continuity_holds(
-    baseline_nodes: baseline,
-    receipts: receipts,
-    revocations: roadmap_acceptance_receipt_revocations(),
-  )
-    && match acceptance_receipt_continuity_verdict(
-      baseline_nodes: baseline,
-      receipts: receipts,
-      revocations: roadmap_acceptance_receipt_revocations(),
-    ) {
-      AcceptanceReceiptContinuityRefusedVanishedWithoutRevocation { node: n } =>
-        n == tnid(s: "namespace-occurrence-transport")
-      AcceptanceReceiptContinuityHolds => false
-    }
+  let prior = roadmap_acceptance_event_history()
+  let current = prior
+    |> filter(e =>
+      match e {
+        AcceptanceRecorded { receipt: r } => r.node != tnid(s: "namespace-occurrence-transport")
+        AcceptanceRevoked { exact_prior_receipt: _, disposition: _, reason: _, revoked_by: _, revoked_on: _ } => true
+      }
+    )
+  !acceptance_history_extends_prior(prior: prior, current: current)
 }
 
 test fn witness_explicit_revocation_authorizes_vanished_receipt() -> Bool {
-  let baseline = roadmap_acceptance_receipt_baseline_nodes()
-  let victims = declared_node(id: "namespace-occurrence-transport")
-  let receipts = roadmap_acceptance_receipts()
-    |> filter(r => r.node != tnid(s: "namespace-occurrence-transport"))
-  count(victims) == 1
-    && all(victims, n => {
-      let revocation = RoadmapAcceptanceReceiptRevocation {
-        node: tnid(s: "namespace-occurrence-transport"),
-        criteria_digest: digest_or_zero(rn: n),
-        reason: "fixture revocation witness" as NonEmptyStr,
-        revoked_by: "operator" as NonEmptyStr,
-        revoked_on: "2026-08-04" as NonEmptyStr,
-      }
-      acceptance_receipt_continuity_holds(
-        baseline_nodes: baseline,
-        receipts: receipts,
-        revocations: [revocation],
-      )
-    })
+  let prior = roadmap_acceptance_event_history()
+  let receipt = first(
+    project_live_acceptance_receipts(history: prior)
+      |> filter(r => r.node == tnid(s: "namespace-occurrence-transport")),
+  )
+  let current = concat(prior, [
+    AcceptanceRevoked {
+      exact_prior_receipt: receipt,
+      disposition: AcceptanceNodeReopensActiveFrontier {},
+      reason: "fixture revocation witness" as NonEmptyStr,
+      revoked_by: "operator" as NonEmptyStr,
+      revoked_on: "2026-08-04" as NonEmptyStr,
+    },
+  ])
+  acceptance_history_extends_prior(prior: prior, current: current)
+    && acceptance_history_integrity_holds(
+      history: current,
+      sealed_event_count: count(current),
+      sealed_chain_digest: acceptance_history_chain_digest(events: current),
+      prior_history: prior,
+    )
 }
 
 test fn witness_accepted_parent_discharges_active_dependency() -> Bool {
