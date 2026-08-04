@@ -156,36 +156,26 @@ fn pdf_open_fdf(_uri: Uri) -> PdfProfileParameterConstruction {
   }
 }
 
-fn pdf_open_parameter_sequence(constructions: List<PdfProfileParameterConstruction>) -> PdfOpenParameterSequenceConstruction {
-  match pdf_open_parameter_sequence_first_refusal(constructions: constructions) {
-    Present { value: cause } => SequenceConstructionRefused { cause: cause }
-    Absent =>
-      SequenceConstructed(PdfOpenParameterSequence {
-        parameters: pdf_open_parameter_sequence_collect_admitted(constructions: constructions),
-      })
-  }
-}
+type PdfOpenParameterSequenceFoldState
+  = SequenceFoldBuilding { parameters: List<PdfProfileParameter> }
+  | SequenceFoldRefused { cause: PdfProfileRefusalCause }
 
-fn pdf_open_parameter_sequence_first_refusal(constructions: List<PdfProfileParameterConstruction>) -> PdfProfileRefusalCause? {
-  fold(constructions, init: Absent, f: fn(acc, construction) {
+fn pdf_open_parameter_sequence(constructions: List<PdfProfileParameterConstruction>) -> PdfOpenParameterSequenceConstruction {
+  match fold(constructions, init: SequenceFoldBuilding { parameters: [] }, f: fn(acc, construction) {
     match acc {
-      Present { value: _ } => acc
-      Absent =>
+      SequenceFoldRefused { cause: _ } => acc
+      SequenceFoldBuilding { parameters: admitted } =>
         match construction {
-          ParameterConstructionRefused { cause: cause } => Present { value: cause }
-          ParameterConstructed(_) => Absent
+          ParameterConstructionRefused { cause: cause } => SequenceFoldRefused { cause: cause }
+          ParameterConstructed(parameter) =>
+            SequenceFoldBuilding { parameters: concat(admitted, [parameter]) }
         }
     }
-  })
-}
-
-fn pdf_open_parameter_sequence_collect_admitted(constructions: List<PdfProfileParameterConstruction>) -> List<PdfProfileParameter> {
-  fold(constructions, init: [], f: fn(acc, construction) {
-    match construction {
-      ParameterConstructed(parameter) => concat(acc, [parameter])
-      ParameterConstructionRefused { cause: _ } => acc
-    }
-  })
+  }) {
+    SequenceFoldRefused { cause: cause } => SequenceConstructionRefused { cause: cause }
+    SequenceFoldBuilding { parameters: parameters } =>
+      SequenceConstructed(PdfOpenParameterSequence { parameters: parameters })
+  }
 }
 
 fn pdf_profile_parameter_wire(parameter: PdfProfileParameter) -> String {
