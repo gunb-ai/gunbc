@@ -18,6 +18,8 @@ import v2.compiler.self_host.production_qualification_origin_census {
   fixture_origin_production_qualification_baseline,
   production_qualification_mint_site_cargo_green_inferred_tree,
   production_qualification_mint_site_for_id,
+  production_qualification_mint_site_has_origin,
+  production_qualification_mint_site_has_qualification,
   production_qualification_mint_site_source_produced_ingest,
   production_qualification_mint_site_source_produced_inferred_tree,
   production_qualification_origin_census_holds,
@@ -34,14 +36,9 @@ test fn witness_production_qualification_origin_census_holds() -> Bool {
 }
 
 test fn witness_fixture_origin_production_qualification_count_is_three() -> Bool {
-  count_fixture_origin_production_qualification_mint_sites()
-    == fixture_origin_production_qualification_baseline
-    && count_production_qualification_mint_sites_with_origin(
-      origin: FixtureIngestInlineOrigin
-    ) == fixture_ingest_inline_origin_mint_site_baseline
-    && count_production_qualification_mint_sites_with_origin(
-      origin: FixtureInferredTreeOrigin
-    ) == fixture_inferred_tree_origin_mint_site_baseline
+  (count_fixture_origin_production_qualification_mint_sites() == fixture_origin_production_qualification_baseline)
+    && (count_production_qualification_mint_sites_with_origin(origin: FixtureIngestInlineOrigin) == fixture_ingest_inline_origin_mint_site_baseline)
+    && (count_production_qualification_mint_sites_with_origin(origin: FixtureInferredTreeOrigin) == fixture_inferred_tree_origin_mint_site_baseline)
 }
 
 test fn witness_registered_mint_sites_match_fixture_origin_axes() -> Bool {
@@ -49,38 +46,43 @@ test fn witness_registered_mint_sites_match_fixture_origin_axes() -> Bool {
     site_id: production_qualification_mint_site_source_produced_ingest.site_id
   ) {
     Present { value: ingest } =>
-      ingest.evidence_origin == FixtureIngestInlineOrigin
-        && ingest.qualification == SourceProduced
+      production_qualification_mint_site_has_origin(row: ingest, origin: FixtureIngestInlineOrigin)
+        && production_qualification_mint_site_has_qualification(
+          row: ingest,
+          qualification: SourceProduced
+        )
     Absent => false
   }
     && match production_qualification_mint_site_for_id(
       site_id: production_qualification_mint_site_source_produced_inferred_tree.site_id
     ) {
       Present { value: inferred } =>
-        inferred.evidence_origin == FixtureInferredTreeOrigin
-          && inferred.qualification == SourceProduced
+        production_qualification_mint_site_has_origin(row: inferred, origin: FixtureInferredTreeOrigin)
+          && production_qualification_mint_site_has_qualification(
+            row: inferred,
+            qualification: SourceProduced
+          )
       Absent => false
     }
     && match production_qualification_mint_site_for_id(
       site_id: production_qualification_mint_site_cargo_green_inferred_tree.site_id
     ) {
       Present { value: cargo } =>
-        cargo.evidence_origin == FixtureInferredTreeOrigin
-          && cargo.qualification == CargoGreen
+        production_qualification_mint_site_has_origin(row: cargo, origin: FixtureInferredTreeOrigin)
+          && production_qualification_mint_site_has_qualification(
+            row: cargo,
+            qualification: CargoGreen
+          )
       Absent => false
     }
 }
 
 test fn witness_no_production_routed_mint_sites_at_baseline() -> Bool {
-  count_production_qualification_mint_sites_with_qualification(
-    qualification: ProductionRouted
-  ) == production_routed_mint_site_baseline
+  count_production_qualification_mint_sites_with_qualification(qualification: ProductionRouted) == production_routed_mint_site_baseline
 }
 
 data witness_execution_measured_origin_absent_at_baseline_red_note: String = "RED control: execution-measured production qualification mint sites stay zero until witness-realization binds wet verdict digests — fixture-origin must not be the only path."
 
 test fn witness_execution_measured_origin_absent_at_baseline_reds() -> Bool {
-  count_production_qualification_mint_sites_with_origin(
-    origin: ExecutionMeasuredOrigin
-  ) == execution_measured_production_qualification_baseline
+  count_production_qualification_mint_sites_with_origin(origin: ExecutionMeasuredOrigin) == execution_measured_production_qualification_baseline
 }

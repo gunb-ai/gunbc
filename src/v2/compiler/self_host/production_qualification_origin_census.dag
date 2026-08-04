@@ -162,7 +162,8 @@ fn count_fixture_origin_production_qualification_mint_sites() -> Int {
     empty: 0,
     cons: fn(count, row) {
       if production_qualification_is_production_axis(qualification: row.qualification)
-        && production_qualification_evidence_origin_is_fixture(origin: row.evidence_origin) {
+        && production_qualification_evidence_origin_is_fixture(origin: row.evidence_origin)
+      {
         count + 1
       } else {
         count
@@ -192,31 +193,23 @@ data execution_measured_production_qualification_baseline: Int = 0
 data production_routed_mint_site_baseline: Int = 0
 
 fn fixture_origin_production_qualification_baseline_holds() -> Bool {
-  count_fixture_origin_production_qualification_mint_sites()
-    == fixture_origin_production_qualification_baseline
+  count_fixture_origin_production_qualification_mint_sites() == fixture_origin_production_qualification_baseline
 }
 
 fn fixture_ingest_inline_origin_mint_site_baseline_holds() -> Bool {
-  count_production_qualification_mint_sites_with_origin(
-    origin: FixtureIngestInlineOrigin
-  ) == fixture_ingest_inline_origin_mint_site_baseline
+  count_production_qualification_mint_sites_with_origin(origin: FixtureIngestInlineOrigin) == fixture_ingest_inline_origin_mint_site_baseline
 }
 
 fn fixture_inferred_tree_origin_mint_site_baseline_holds() -> Bool {
-  count_production_qualification_mint_sites_with_origin(
-    origin: FixtureInferredTreeOrigin
-  ) == fixture_inferred_tree_origin_mint_site_baseline
+  count_production_qualification_mint_sites_with_origin(origin: FixtureInferredTreeOrigin) == fixture_inferred_tree_origin_mint_site_baseline
 }
 
 fn execution_measured_production_qualification_baseline_holds() -> Bool {
-  count_execution_measured_production_qualification_mint_sites()
-    == execution_measured_production_qualification_baseline
+  count_execution_measured_production_qualification_mint_sites() == execution_measured_production_qualification_baseline
 }
 
 fn production_routed_mint_site_baseline_holds() -> Bool {
-  count_production_qualification_mint_sites_with_qualification(
-    qualification: ProductionRouted
-  ) == production_routed_mint_site_baseline
+  count_production_qualification_mint_sites_with_qualification(qualification: ProductionRouted) == production_routed_mint_site_baseline
 }
 
 fn production_qualification_origin_census_holds() -> Bool {
@@ -245,5 +238,22 @@ fn production_qualification_mint_site_for_id(
           }
       }
     }
+  )
+}
+
+fn production_qualification_mint_site_has_origin(
+  row: ProductionQualificationMintSiteRow,
+  origin: ProductionQualificationEvidenceOrigin
+) -> Bool {
+  production_qualification_mint_site_matches_origin(row: row, origin: origin)
+}
+
+fn production_qualification_mint_site_has_qualification(
+  row: ProductionQualificationMintSiteRow,
+  qualification: EmissionQualification
+) -> Bool {
+  production_qualification_mint_site_matches_qualification(
+    row: row,
+    qualification: qualification
   )
 }
