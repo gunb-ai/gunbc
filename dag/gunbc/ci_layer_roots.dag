@@ -657,6 +657,12 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     dissolve_on: excl_install_media_dissolve
   },
   WitnessExclusionRow {
+    pattern: "codex_package_delivery_wet_witness_test.dag",
+    classification: OfflineLocalRecipe,
+    reason: "wet-integration class (wet_integration_offline_note posture): DownloadToFile + sha512sum DigestFile + npm ci --ignore-scripts against the live registry; hermetic discovery refuses. Local recipe: gunbc run --claim-run on acquire_required_codex_tarball_sha512_matches_lock / materialize_codex_runtime_bundle_produces_executable.",
+    dissolve_on: excl_wet_integration_dissolve
+  },
+  WitnessExclusionRow {
     pattern: "resolution_divergence_silent_pick_gate_witness_test.dag",
     classification: BinWitnessWet,
     reason: "nightly falsifier batch 4 bin-execution witness: closure-scoped resolution-divergence census with SILENT-PICK-GATE fail-closed arms (falsifier_silent_pick_gate_note)",
