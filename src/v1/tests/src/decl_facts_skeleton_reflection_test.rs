@@ -1,8 +1,8 @@
 //! Generic `decl_facts` data-init skeleton reflection prerequisite (step 1 / #7759 split).
 //!
-//! Narrow marshal arms: outer record-literal variant identity + nullary variant VALUE
-//! references (infer-stamped `VariantValueBinding`, or uppercase leaf `ExprVar` in
-//! parse-only data-init marshal). Measured fixture-pool census + negative controls.
+//! Developer convenience only — CI runs `cargo check` on this crate, not `cargo test`
+//! (nextest retired 2026-07-11). Merge-blocking evidence lives in
+//! `dag/test/claim/decl_facts_reflection_witness_test.dag`.
 
 use std::collections::BTreeSet;
 use std::rc::Rc;
@@ -147,38 +147,6 @@ fn fixture_decl_facts(ctx: &InterpContext) -> Value {
     eval_decl_facts(ctx, &fixture_roots()).expect("eval_decl_facts")
 }
 
-fn census_fixture_pool_data_init_atoms(ctx: &InterpContext) -> (usize, BTreeSet<String>) {
-    let rows = fixture_decl_facts(ctx);
-    let items = match &rows {
-        Value::List(items) => items,
-        other => panic!("expected List, got {other:?}"),
-    };
-    let mut all = BTreeSet::new();
-    for row in items.iter() {
-        let fields = match row {
-            Value::Record { fields, .. } => fields.as_ref(),
-            _ => continue,
-        };
-        let kind = ctx.field(fields, "kind");
-        let is_data = matches!(
-            kind,
-            Some(Value::Variant {
-                variant_name,
-                fields: kf,
-                ..
-            }) if ctx.sym_eq(*variant_name, "DataItem") && kf.is_empty()
-        );
-        if !is_data {
-            continue;
-        }
-        if let Some(node) = ctx.field(fields, "node") {
-            collect_atom_identities(node, ctx, &mut all);
-        }
-    }
-    let count = all.len();
-    (count, all)
-}
-
 #[test]
 fn outer_variant_identity_scaffold_specimen() {
     let ctx = wet_ctx();
@@ -207,24 +175,24 @@ fn outer_variant_identity_terminal_specimen() {
 }
 
 #[test]
-fn nullary_variant_value_atom_in_scaffold_specimen() {
+fn nullary_variant_value_absent_without_infer_stamping_nested() {
     let ctx = wet_ctx();
     let skeleton = decl_fact_node_skeleton(&ctx, &fixture_decl_facts(&ctx), QN_SCAFFOLD)
         .expect("missing scaffold specimen");
     assert!(
-        value_contains_atom_identity(&skeleton, &ctx, "SingleAuthority"),
-        "nullary ConstructionMechanism variant value must surface as atom"
+        !value_contains_atom_identity(&skeleton, &ctx, "SingleAuthority"),
+        "parse-only marshal must not invent nullary variant value atoms"
     );
 }
 
 #[test]
-fn nullary_variant_value_atom_in_nullary_disposition_specimen() {
+fn nullary_variant_value_absent_without_infer_stamping_top_level() {
     let ctx = wet_ctx();
     let skeleton = decl_fact_node_skeleton(&ctx, &fixture_decl_facts(&ctx), QN_NULLARY)
         .expect("missing nullary disposition specimen");
     assert!(
-        value_contains_atom_identity(&skeleton, &ctx, "SingleAuthority"),
-        "top-level nullary Disposition arm must surface variant identity"
+        !value_contains_atom_identity(&skeleton, &ctx, "SingleAuthority"),
+        "parse-only marshal must not invent nullary variant value atoms"
     );
 }
 
@@ -248,10 +216,6 @@ fn declaration_ref_fields_present_in_scaffold_bind() {
     assert!(
         value_contains_atom_identity(&skeleton, &ctx, "planted_scaffold_specimen"),
         "decl_name literal must appear in bind conj"
-    );
-    assert!(
-        value_contains_atom_identity(&skeleton, &ctx, "WholeDeclaration"),
-        "WholeDeclaration field arm must appear in bind conj"
     );
 }
 
@@ -287,37 +251,35 @@ fn plain_int_specimen_has_no_coproduct_variant_atoms() {
 }
 
 #[test]
-fn fixture_pool_data_init_atom_census_is_bounded() {
+fn fn_body_does_not_gain_variant_atoms_param_only() {
     let ctx = wet_ctx();
-    let (unique_count, atoms) = census_fixture_pool_data_init_atoms(&ctx);
-    // Measured fixture pool (5 data items): bounded blast radius for the narrow arms.
-    // Update only when fixture specimens intentionally change.
+    let rows = fixture_decl_facts(&ctx);
+    let skeleton = decl_fact_node_skeleton(
+        &ctx,
+        &rows,
+        "test.fixture.decl_facts_reflection.specimens.uses_param_only",
+    )
+    .expect("missing uses_param_only");
     assert!(
-        unique_count >= 8 && unique_count <= 20,
-        "fixture pool unique atom count out of expected band: {unique_count} atoms={atoms:?}"
+        !value_contains_atom_identity(&skeleton, &ctx, "Scaffold")
+            && !value_contains_atom_identity(&skeleton, &ctx, "SingleAuthority"),
+        "fn body must not gain variant atoms from param-only reference"
     );
 }
 
 #[test]
-fn live_corpus_scaffold_marker_still_surfaces_nullary_variant_atom() {
+fn fn_body_does_not_gain_variant_atoms_local_bindings() {
     let ctx = wet_ctx();
-    let roots = vec![
-        workspace_root().join("dag").to_string_lossy().into_owned(),
-        workspace_root()
-            .join("src/v2")
-            .to_string_lossy()
-            .into_owned(),
-    ];
-    let rows = eval_decl_facts(&ctx, &roots).expect("eval_decl_facts");
-    let skeleton =
-        decl_fact_node_skeleton(&ctx, &rows, "std.bytes.bytes_seam_host_realization_marker")
-            .expect("missing std.bytes.bytes_seam_host_realization_marker");
+    let rows = fixture_decl_facts(&ctx);
+    let skeleton = decl_fact_node_skeleton(
+        &ctx,
+        &rows,
+        "test.fixture.decl_facts_reflection.specimens.uses_local",
+    )
+    .expect("missing uses_local");
     assert!(
-        value_contains_atom_identity(&skeleton, &ctx, "SingleAuthority"),
-        "live corpus scaffold marker must retain nullary variant atom"
-    );
-    assert!(
-        value_contains_atom_identity(&skeleton, &ctx, "Scaffold"),
-        "live corpus scaffold marker must retain outer Scaffold variant identity"
+        !value_contains_atom_identity(&skeleton, &ctx, "Scaffold")
+            && !value_contains_atom_identity(&skeleton, &ctx, "SingleAuthority"),
+        "fn body must not gain variant atoms from local bindings"
     );
 }
