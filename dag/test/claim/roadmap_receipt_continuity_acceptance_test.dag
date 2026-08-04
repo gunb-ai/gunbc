@@ -67,7 +67,7 @@ fn history_with_exact_revocation_for_namespace_occurrence_transport() -> List<Ro
   concat(live_history(), [exact_revocation_for(receipt: receipt)])
 }
 
-fn roadmap_receipt_continuity_acceptance_contract_holds() -> Bool {
+test fn roadmap_receipt_continuity_acceptance_contract_holds() -> Bool {
   witness_deleted_history_event_refuses()
     && witness_deleted_event_and_prior_prefix_refuses()
     && witness_wrong_prior_digest_in_revocation_refuses()
