@@ -320,6 +320,19 @@ B4  bypass closure                          casts, module identity, fail-open lo
 B1-B4 may be recut later; the point of naming them now is that they are **distinct proof
 obligations**, and B1 alone never establishes the class.
 
+**Measured cost floor for the B2-adjacent capability** (`royal-crab-235`, gunbc#7806, a
+*non-conforming* v1 prototype): 110 changed `.dag` lines across 5 files, amplifying to 424
+Rust lines through `regen_stage0` — roughly 4:1. That is a **strict lower bound**, not an
+estimate: the prototype diverges from its own design on three axes that each add to both
+halves (`DeclarationRef` grain rather than module-path strings, one infer authority rather
+than a separate lookup gate, caller `DeclarationRef` rather than caller module). A
+conforming implementation costs strictly more.
+
+Recorded here because a gate sized in the abstract is priced in elegance rather than in
+displaced cost (DESIGN §6), and because the module-grain shortcut the prototype took
+**over-admits silently** as the permitted module grows — the cheaper shape is the one that
+fails open.
+
 ## Out of scope
 
 CI evidence lifecycle (route, expectation, semantic-evidence currency) is a separate
