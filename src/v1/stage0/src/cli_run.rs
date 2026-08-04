@@ -265,7 +265,6 @@ pub fn parse_stage0_cargo_manifest_bin_paths(content: &str) -> Stage0CargoManife
     }
 }
 
-#[path = "roadmap_acceptance_history_carrier.rs"]
 pub mod roadmap_acceptance_history_carrier;
 
 #[cfg(test)]
