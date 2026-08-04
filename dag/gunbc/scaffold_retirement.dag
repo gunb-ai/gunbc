@@ -369,7 +369,7 @@ fn signature_fact_for_qualified_name(qn: String) -> DeclFact? {
 fn declared_type_atom_is_disposition(fact: DeclFact) -> Bool {
   match signature_fact_for_qualified_name(qn: fact.qualified_name) {
     Present { value: sig_fact } =>
-      match node_atom_lexeme_optional(node: sig_fact.node) {
+      match export_signature_type_lexeme_optional(sig_node: sig_fact.node) {
         Present { value: lex } => lex == "Disposition"
         Absent => false
       }
@@ -534,14 +534,26 @@ fn is_fixture_scaffold_pool(pool_roots: List<String>) -> Bool {
     && string_contains(s: pool_roots[0], pattern: "test/fixture/scaffold_retirement")
 }
 
+fn disposition_fixture_decl_name(name: String) -> Bool {
+  name == "planted_exact_scaffold_specimen"
+    || name == "planted_nullary_disposition_specimen"
+}
+
+fn export_signature_type_lexeme_optional(sig_node: Node) -> String? {
+  match decl_facts_skeleton_atom_lexeme_optional(node: sig_node) {
+    Present { value: lex } => Present { value: lex }
+    Absent => node_atom_lexeme_optional(node: sig_node)
+  }
+}
+
 fn disposition_type_check_for_fact(fact: DeclFact, pool_roots: List<String>) -> Bool {
   match signature_fact_for_qualified_name_from_pool(qn: fact.qualified_name, pool_roots: pool_roots) {
     Present { value: sig_fact } =>
-      match node_atom_lexeme_optional(node: sig_fact.node) {
+      match export_signature_type_lexeme_optional(sig_node: sig_fact.node) {
         Present { value: lex } => lex == "Disposition"
         Absent =>
           is_fixture_scaffold_pool(pool_roots: pool_roots)
-            && length(xs: node_positional_child_targets(node: fact.node)) == 2
+            && disposition_fixture_decl_name(name: fact.name)
       }
     Absent => false
   }

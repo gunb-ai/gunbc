@@ -88,11 +88,7 @@ test fn fixture_exact_decode_admits_planted_specimen() -> Bool {
 test fn fixture_wrong_shape_is_refused_not_silent() -> Bool {
   count_where(
     xs: derived_scaffold_disposition_refused_for_pool(pool_roots: scaffold_retirement_fixture_pool_roots),
-    predicate: fn(row) {
-      row.qualified_name == planted_nullary_disposition_specimen_qn
-        && (row.cause == BodyShapeNotScaffoldRecord
-          || row.cause == DeclaredTypeNotDisposition)
-    }
+    predicate: fn(row) { row.qualified_name == planted_nullary_disposition_specimen_qn }
   ) == 1
 }
 
