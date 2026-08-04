@@ -1,0 +1,162 @@
+module gunbc.ci_floor_population_evidence
+
+import std.types { Bool, NonEmptyStr, String }
+import std.nat { Nat }
+import std.content_hash { Sha256Digest }
+import extdeps.git.object_store { GitObjectId }
+import gunbc.merge_admission_subject { WalkAttemptId }
+import gunbc.ci_floor_population_receipt_registry {
+  FloorPopulationReceiptKind,
+  FloorPopulationReceiptProducerPhase,
+  FloorReceiptLocator,
+  floor_population_receipt_kind_label,
+  floor_population_receipt_producer_phase_label,
+  floor_receipt_locator_upload_pattern,
+}
+
+data ci_floor_population_evidence_note: String = "Attempt-scoped floor-evidence sink/finalizer authority (operator ruling on #7785): LocalCiEvidenceSubject is known before upload (no artifact digest). UploadedEvidenceBinding is a post-upload join. ManifestObservationStanding is derived from registry + phase journal + receipt observations — never from shell category heuristics. Dissolve-on for seed finalize: claim_executor --finalize-floor-evidence is an interim native realization of tools.ci_floor_population_evidence_finalize; producers writing ReceiptWriteObservation at write time retire rediscovery."
+
+type LocalCiEvidenceSubjectWire {
+  github_run_id: String?,
+  github_run_attempt: String?,
+  github_job_key: String?,
+  head_commit: String?,
+  tested_tree: String?,
+  walk_attempt_id: String?,
+}
+
+type LocalCiEvidenceSubject {
+  github_run_id: NonEmptyStr,
+  github_run_attempt: NonEmptyStr,
+  github_job_key: NonEmptyStr,
+  head_commit: GitObjectId,
+  tested_tree: GitObjectId,
+  walk_attempt_id: WalkAttemptId,
+}
+
+type UploadedEvidenceBinding {
+  local_manifest_digest: Sha256Digest,
+  uploaded_artifact_name: NonEmptyStr,
+  uploaded_artifact_digest: Sha256Digest,
+}
+
+type ManifestObservationStanding
+  = ObservedPresent { size_bytes: Nat, content_digest: NonEmptyStr }
+  | MissingBeforeProducerReached {}
+  | MissingAfterProducerReached {}
+  | ProducerInterrupted { detail: NonEmptyStr }
+  | NotApplicable { reason: NonEmptyStr }
+
+type ReceiptWriteObservation {
+  kind: FloorPopulationReceiptKind,
+  locator: FloorReceiptLocator,
+  observed_path: NonEmptyStr,
+  size_bytes: Nat,
+  content_digest: NonEmptyStr,
+  producer_phase: FloorPopulationReceiptProducerPhase,
+}
+
+type FloorPhaseJournalSummary
+  = JournalAbsent {}
+  | JournalEmpty {}
+  | JournalPresent { row_count: Nat, saw_during_floor: Bool, saw_interrupted: Bool }
+
+type FloorEvidenceManifestRow {
+  kind: FloorPopulationReceiptKind,
+  expected_pattern: NonEmptyStr,
+  observed_path: NonEmptyStr?,
+  standing: ManifestObservationStanding,
+  producer_phase: FloorPopulationReceiptProducerPhase,
+}
+
+type FloorEvidenceManifest {
+  schema: NonEmptyStr,
+  subject: LocalCiEvidenceSubjectWire,
+  rows: List<FloorEvidenceManifestRow>,
+  local_manifest_path: NonEmptyStr,
+}
+
+data floor_evidence_manifest_schema: String = "gunbc.ci_floor_population_receipt_manifest.v3"
+
+data floor_evidence_manifest_path: String = "target/floor-population-receipt-manifest.tsv"
+
+fn local_subject_wire_incomplete() -> LocalCiEvidenceSubjectWire {
+  LocalCiEvidenceSubjectWire {
+    github_run_id: none,
+    github_run_attempt: none,
+    github_job_key: none,
+    head_commit: none,
+    tested_tree: none,
+    walk_attempt_id: none,
+  }
+}
+
+fn local_subject_wire_fields_present(w: LocalCiEvidenceSubjectWire) -> Bool {
+  match w.github_run_id {
+    Absent => false
+    Present { value: run } => !(run == "") && match w.github_run_attempt {
+      Absent => false
+      Present { value: attempt } => !(attempt == "") && match w.github_job_key {
+        Absent => false
+        Present { value: job } => !(job == "") && match w.head_commit {
+          Absent => false
+          Present { value: head } => !(head == "") && match w.tested_tree {
+            Absent => false
+            Present { value: tree } => !(tree == "") && match w.walk_attempt_id {
+              Absent => false
+              Present { value: walk } => !(walk == "")
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn standing_from_journal_and_presence(
+  present: Bool,
+  optional_worker: Bool,
+  journal: FloorPhaseJournalSummary
+) -> ManifestObservationStanding {
+  if present {
+    ObservedPresent { size_bytes: 0, content_digest: "pending" as NonEmptyStr }
+  } else if optional_worker {
+    NotApplicable { reason: "optional-worker-receipt-absent" as NonEmptyStr }
+  } else {
+    match journal {
+      JournalAbsent {} => MissingBeforeProducerReached {}
+      JournalEmpty {} => MissingBeforeProducerReached {}
+      JournalPresent { row_count: _, saw_during_floor: true, saw_interrupted: true } =>
+        ProducerInterrupted { detail: "phase-journal-interrupted" as NonEmptyStr }
+      JournalPresent { row_count: _, saw_during_floor: true, saw_interrupted: false } =>
+        MissingAfterProducerReached {}
+      JournalPresent { row_count: _, saw_during_floor: false, saw_interrupted: _ } =>
+        MissingBeforeProducerReached {}
+    }
+  }
+}
+
+fn standing_label(standing: ManifestObservationStanding) -> String {
+  match standing {
+    ObservedPresent { size_bytes: _, content_digest: _ } => "ObservedPresent"
+    MissingBeforeProducerReached {} => "MissingBeforeProducerReached"
+    MissingAfterProducerReached {} => "MissingAfterProducerReached"
+    ProducerInterrupted { detail: _ } => "ProducerInterrupted"
+    NotApplicable { reason: _ } => "NotApplicable"
+  }
+}
+
+fn red_blank_artifact_digest_forbidden_on_local_subject() -> Bool {
+  true
+}
+
+fn red_shell_category_heuristic_forbidden() -> Bool {
+  match standing_from_journal_and_presence(
+    present: false,
+    optional_worker: false,
+    journal: JournalPresent { row_count: 3, saw_during_floor: true, saw_interrupted: false }
+  ) {
+    MissingAfterProducerReached {} => true
+    _ => false
+  }
+}
