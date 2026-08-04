@@ -2,9 +2,9 @@ module test.claim.ci_cost_arc_closeout_receipt_witness
 
 import std.types { Bool }
 import std.measure { millisecond_count, byte_size_count }
-import std.realization_schedule { SelectionApplied }
 import gunbc.ci_cost_arc_closeout_receipt {
   HandHarvestedDatedAudit,
+  SelectionApplied,
   NotHarvested,
   CaptureMeasuredNetOpen,
   EnrollmentLandedFleetRateOpen,
@@ -50,7 +50,7 @@ import gunbc.ci_cost_arc_closeout_receipt {
 test fn witness_subject_is_hand_harvested_affected() -> Bool {
   let s = affected_ci_cost_audit_subject()
   match s.harvest {
-    HandHarvestedDatedAudit => true
+    HandHarvestedDatedAudit {} => true
   }
     && s.github_actions_run_id == 30863019228
     && match s.selection {
@@ -61,7 +61,7 @@ test fn witness_subject_is_hand_harvested_affected() -> Bool {
 
 test fn witness_full_corpus_not_harvested() -> Bool {
   match full_corpus_subject_harvest() {
-    NotHarvested => true
+    NotHarvested {} => true
   }
 }
 
@@ -106,40 +106,40 @@ test fn witness_cold_baseline() -> Bool {
 
 test fn witness_admission_net_open() -> Bool {
   match admission_settle() {
-    CaptureMeasuredNetOpen => true
+    CaptureMeasuredNetOpen {} => true
   }
 }
 
 test fn witness_native_fleet_rate_open() -> Bool {
   match native_fleet_settle() {
-    EnrollmentLandedFleetRateOpen => true
+    EnrollmentLandedFleetRateOpen {} => true
   }
 }
 
 test fn witness_warm_hit_partial() -> Bool {
   match warm_hit_settle() {
-    PartiallyDeliveredSkipProofOpen => true
+    PartiallyDeliveredSkipProofOpen {} => true
   }
 }
 
 test fn witness_closed_lanes() -> Bool {
   match retention_settle() {
-    ClosedReject => true
+    ClosedReject {} => true
   }
     && match union_settle() {
-      ClosedNoRepeatedTypecheck => true
+      ClosedNoRepeatedTypecheck {} => true
     }
     && match selection_honesty_settle() {
-      Landed => true
+      Landed {} => true
     }
 }
 
 test fn witness_residual_vs_compiler_next_target() -> Bool {
   match end_to_end_residual() {
-    UnattributedCiJobWall => true
+    UnattributedCiJobWall {} => true
   }
     && match compiler_next_measured_target() {
-      PerEntryAssembly => true
+      PerEntryAssembly {} => true
     }
 }
 

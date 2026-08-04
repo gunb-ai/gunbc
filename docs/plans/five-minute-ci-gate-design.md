@@ -43,12 +43,14 @@ Registered as roadmap edges where noted; order is binding for dispatch.
 
 | step | work | disposition |
 |---|---|---|
-| 1 | Finish **#7522** (`warm-merge-admission`) with real net wall receipt and stage profile | **MERGED** — capture MEASURED 110820 ms on main run [30863019228](https://github.com/gunb-ai/gunbc/actions/runs/30863019228); **NET vs 197.13s OPEN** (stamp+gate stage walls absent from recoverable `gh run --log`; see `gunbc.ci_cost_arc_closeout_receipt`) |
+| 1 | Finish **#7522** (`warm-merge-admission`) with real net wall receipt and stage profile | **MERGED** — `admission_settle=CaptureMeasuredNetOpen` (`gunbc.ci_cost_arc_closeout_receipt`) |
 | 2 | Merge **#7599** once controls and reviews clear | **MERGED** — typed receipt `native_at_small_scale_transition_receipt` |
-| 3 | **Immediately** cut over a bounded production witness population to the native execution kind | **MERGED enrollment (#7671)** — 3-member cohort enrolled; **fleet native rate OPEN** (known `fallback:native_realization_refused` on run 30767841790; no `native_count` line in 30863019228 recoverable log). Not a completed native wall-clock speedup |
-| 4 | Continue **#7534** as shared materialization substrate — no default CI savings credited until ordinary invocations consume it | **MERGED opt-in** — warm-hit skip still **PartiallyDelivered** after #7728 (OOM fixed; skip counter proof OPEN) |
-| 5 | Union program **closed** per #7533; remaining assembly observation → `per-entry-assembly-decomposition` (narrow measured lane) | **CLOSED** / assembly surface MEASURED; mechanism NEXT under shared entry-view (operator 4-PR sequence) |
-| 6 | This program (`five-minute-ci-gate`) makes the bare-minimum-computation contract and this graph explicit; five minutes stays the distress checkpoint (Stage C bound), never the completion criterion | this registration · closeout receipt `gunbc.ci_cost_arc_closeout_receipt` |
+| 3 | **Immediately** cut over a bounded production witness population to the native execution kind | **MERGED enrollment (#7671)** — `native_fleet_settle=EnrollmentLandedFleetRateOpen`. Not a completed native wall-clock speedup |
+| 4 | Continue **#7534** as shared materialization substrate — no default CI savings credited until ordinary invocations consume it | **MERGED opt-in** — `warm_hit_settle=PartiallyDeliveredSkipProofOpen` |
+| 5 | Union program **closed** per #7533; assembly observation remains a compiler candidate only | **CLOSED** / `compiler_next_measured_target=PerEntryAssembly` (not end-to-end dominant) |
+| 6 | This program (`five-minute-ci-gate`) makes the bare-minimum-computation contract and this graph explicit; five minutes stays the distress checkpoint (Stage C bound), never the completion criterion | this registration · `gunbc.ci_cost_arc_closeout_receipt` |
+
+**Terminal sequence (operator 2026-08-04):** #7760 banks the typed affected-CI audit and exposes `unattributed_ci_wall`. **PR2** persists/reconciles floor population receipts and settles OPEN mechanisms to Delivered|NotDelivered (≥95% of `ci_job_wall` assigned). **PR3** attacks the largest reconciled preparation term (shared entry-view only if PR2 confirms assembly). **PR4** streams that term or commits to module-grain persistent materialization. **Freeze** entry-view / width-2 / broad native / retention / union / exact-tree consumers until PR2 answers the denominator.
 
 **Materialization hierarchy** (step 4 feeds step 3, not a parallel fork):
 
@@ -80,8 +82,9 @@ Roadmap edges encoding sequence: `native-selected-witness-bundle` →
 |---|---|
 | `entry-graph-union-construction` | **CLOSED** — #7533: `decision_ratio = 0` repeated typecheck misses. Redirect to `per-entry-assembly-decomposition`. Slice 1 banked as #7483. |
 | retention / floor prep-tax (D1) | **P1 REJECT banked (#7725)** — schedule-retention eviction is not the ~2s/entry tax; redirect = assembly / materialization reuse. M2 width-1 memory thesis still stands (#7581). Width-2 / broad native HOLD until shared preparation. |
-| exact-tree materialization (#7534) | Substrate under `module-grain-materialization`; opt-in; no default CI activation credited; warm-hit skip PartiallyDelivered post-#7728. |
-| dominant open cost | **per-entry assembly / execution-world construction** (harvested assembly-split on run 30863019228; see closeout receipt). |
+| exact-tree materialization (#7534) | Substrate under `module-grain-materialization`; opt-in; no default CI activation credited; `warm_hit_settle=PartiallyDeliveredSkipProofOpen`. |
+| end-to-end residual | **`end_to_end_residual=UnattributedCiJobWall`** — `unattributed_ci_wall` on the harvested affected subject (`ci_job_wall` − classified capture/resolve/eval). |
+| compiler next measured target | **`compiler_next_measured_target=PerEntryAssembly`** — next measured compiler candidate inside `discovery_resolve_wall`; not proven to dominate end-to-end wall. |
 
 ---
 
@@ -120,16 +123,17 @@ at full altitude. Claimed-not-verified figures are typed separately.
 | slice 2 zero-repeat | #7533 MERGED | `decision_ratio = 0` across three disjoint 50-entry windows |
 | M2 retention width-1 | #7581 PR body | peak 6.27 GiB, `schedule_evictions=2094`, 842 entries PASS |
 | P1 retention-vs-drain | #7725 MERGED · [p1 receipt](p1-retention-vs-drain-cohort-receipt.md) | **REJECT** — eviction ≠ tax |
-| CI-cost arc closeout harvest | run [30863019228](https://github.com/gunb-ai/gunbc/actions/runs/30863019228) · `gunbc.ci_cost_arc_closeout_receipt` | capture 110820 ms; selection 297/916; resolve 431s; eval 65s; peak_rss ~8.5 GiB; cgroup peak ~10.8 GiB |
+| CI-cost arc closeout harvest | run [30863019228](https://github.com/gunb-ai/gunbc/actions/runs/30863019228) · `gunbc.ci_cost_arc_closeout_receipt` | HandHarvestedDatedAudit; pipeline_sum 3256000 ms; ci_job 2509000 ms; classified 606958 ms; **unattributed 1902042 ms**; selection 297/916; peaks typed as ByteSize |
 | native bundle witness suite | **executed** at #7599 head `2f9e780e6` · `native_selected_witness_bundle_test.dag` | **25/25 PASS** (`claim_batch --wet`, srv remote ctrl-build, 2026-08-01); cold/warm wet witnesses log `compile_skipped=false` then `compile_skipped=true` |
 
 **Open with typed trigger (not claimed-not-verified):**
 
 | claim | status | trigger |
 |---|---|---|
-| #7522 net admission vs 197.13s | capture MEASURED; NET OPEN | join on-success stage-1/2 `wall_ms` from uploaded floor-attempt receipts |
-| #7671 fleet native_count/fallback_count | enrollment MERGED; rate OPEN | upload `target/native-selected-witness-transition-receipt.tsv` every enrolled floor |
-| #7534 warm-hit skips semantic recompute | PartiallyDelivered post-#7728 | land `cross_process_hit_skips_semantic_recompute` against TYPECHECK_COMPUTE_COUNT |
+| #7522 net admission vs 197.13s | `admission_settle=CaptureMeasuredNetOpen` | PR2 join on-success stage-1/2 `wall_ms` from uploaded floor-attempt receipts |
+| #7671 fleet native_count/fallback_count | `native_fleet_settle=EnrollmentLandedFleetRateOpen` | PR2 upload `target/native-selected-witness-transition-receipt.tsv` every enrolled floor |
+| #7534 warm-hit skips semantic recompute | `warm_hit_settle=PartiallyDeliveredSkipProofOpen` | PR2 land `cross_process_hit_skips_semantic_recompute` against TYPECHECK_COMPUTE_COUNT |
+| CI-job unattributed remainder | `unattributed_ci_wall=1902042` ms on subject A | PR2 assign ≥95% of `ci_job_wall` to non-overlapping populations |
 | native bundle timing ratios | claimed-not-verified (#7599 body) | committed receipt artifact or fleet rerun |
 
 **Not verified in tree (omitted from authority):** #6663 158.2s→61.6s, #7029
