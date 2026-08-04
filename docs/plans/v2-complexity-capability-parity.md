@@ -12,7 +12,7 @@ This note and [`discrete-cost-derivation.md`](discrete-cost-derivation.md) are t
 | What can the engine *express and derive*? (cost algebra, work/span, output size, peak space, interprocedural summaries, recursion) | **this note** |
 | What does a derivation *mean and get used for*? (subject binding, valuation at a declared input, honesty states, cost justification, witness admission) | [`discrete-cost-derivation.md`](discrete-cost-derivation.md) |
 
-**Consequence, stated so neither note quietly grows into the other:** the expression-algebra promotion and the work/span/space summary — which the sibling note listed under its C0 and C2 — are **this note's C1 and C2** and are removed from that note's scope. The valuation environment and the admission consumer remain **its** C1 and C5 and are absent here. The C0 authority ruling is shared and is stated **once, here**, because it is a ruling about the engine.
+**Consequence, stated so neither note quietly grows into the other:** the expression-algebra promotion and the work/span/space summary — which the sibling note originally listed under its C0 and C2 — are **this note's C1 and C2** and have been removed from that note's scope. The valuation environment and the admission consumer remain **its** C1 and C5 and are absent here. **The authority ruling has exactly one home: §5 of this note**, signed as C0 deliverable (a) in §7. The sibling note's C0 is now purely a dependency edge on that signature — it states no ruling of its own, so there is no second place for the two to drift apart.
 
 ## 2. The verdict, and its exact boundary
 
@@ -68,9 +68,9 @@ fn complexity_variables_admits(xs: List<SizeVariable>) -> Bool {
 
 Applied here the claim does not survive contact with its own contents. **Optimality is undecidable by Rice — but most of what is missing is not optimality.** Work and span composition over a closed kernel is decidable. Summation over a *bounded* collection is decidable — that is what the modeled loop bound exists to provide. Output size and peak space over the same bounded fragment are decidable. Interprocedural summaries over an acyclic declaration graph are decidable, and the cyclic case is exactly what SCC plus `DescentEvidence` already decides fail-closed. So `RatchetForever` on the whole contract is a single permanence verdict standing over a **mixed** population, and its effect is to make the anemia unrankable: a class declared permanently undecidable never appears on anyone's list of things to climb.
 
-**C0's first deliverable is therefore to re-classify this contract**, splitting the genuinely-undecidable residue (optimality; arbitrary predicate refinement) from the decidable capability that should carry `WallAfterGrounding` with a named trigger. Until that split lands, every phase below is arguing against a declared 'never'.
+**Re-classifying this contract is therefore C0 deliverable (c) (§7)**, splitting the genuinely-undecidable residue (optimality; arbitrary predicate refinement) from the decidable capability that should carry `WallAfterGrounding` with a named trigger. Until that split lands, every phase below is arguing against a declared 'never'.
 
-## 5. Authority ruling (C0 — to sign)
+## 5. The authority ruling (content; signed as C0's first deliverable — §7)
 
 Do **not** port `src/v1/complexity.dag` wholesale. It is powerful but coupled to the v1 AST, to parser implementation details, and to string-keyed identity throughout — porting it would cement the seed into the new architecture, which is the one move the project spirit forbids. The split:
 
@@ -103,7 +103,7 @@ v1's identities are string-keyed in five places, verified: `SizeVar { name: Stri
 
 ## 7. Phases
 
-1. **C0 — capability census + boundary re-classification.** One typed inventory row per v1 capability with disposition `AlreadyInV2 | AvailableInSharedSubstrate | NeedsMigration | SupersededByBetterModel | DeliberatelyRetired`; plus the §4 `RatchetForever` split. **Accept:** no capability is unclassified, and the permanence claim covers only genuinely undecidable rows.
+1. **C0 — sign the ruling, census the capabilities, re-classify the boundary.** Exactly three deliverables, in order: **(a)** sign §5's authority ruling — this is the single home for it, and the sibling note depends on it rather than restating it; **(b)** one typed inventory row per v1 capability with disposition `AlreadyInV2 | AvailableInSharedSubstrate | NeedsMigration | SupersededByBetterModel | DeliberatelyRetired`; **(c)** the §4 `RatchetForever` split. **Accept:** the ruling is signed, no capability is unclassified, and the permanence claim covers only genuinely undecidable rows.
 2. **C1 — one richer expression authority.** Promote `SizeExpr` / `CostExpr` into `v2.lens.cost` with grounded identities per §6; `SymbolicCost` becomes their normalized projection. **Accept:** every existing cost witness stays green (the `Blocking` wall does not regress), and a bounded summation is representable where it currently is not.
 3. **C2 — `ComplexitySummary` restored.** `work`, `span`, `output_sizes`, `peak_space`, `certainty`, `effect_demand`, with sequential and parallel composition laws matching `std.realization_measurement`'s measured side (sequential: work adds, span adds, space maxes; parallel: work adds, span maxes, space adds). **Accept:** two graphs of equal work and different shape derive different span.
 4. **C3 — bounded-input evaluation.** *Owned by the sibling note's C1;* listed here only so the dependency is visible. C4 must not begin before it.
