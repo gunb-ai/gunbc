@@ -330,6 +330,7 @@ test fn content_hash_family_tags_cryptographic() -> Bool {
     Sha256Family => true
     Fnv1a64StructuralFamily => false
     Sha1Family => false
+    Sha512Family => false
   }
 }
 
@@ -338,6 +339,7 @@ test fn content_hash_family_tags_structural() -> Bool {
     Fnv1a64StructuralFamily => true
     Sha256Family => false
     Sha1Family => false
+    Sha512Family => false
   }
 }
 
