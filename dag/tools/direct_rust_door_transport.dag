@@ -29,6 +29,7 @@ import v2.compiler.self_host.fixture_synthetic_emission {
   advance_written_synthetic_emitted_artifact_fixture_behaviorally_equivalent,
   fixture_behavior_receipt_identity_for,
   mint_written_synthetic_emitted_artifact_from_fixture_inferred,
+  mint_written_synthetic_emitted_artifact_from_fixture_inferred_for_behavioral_qualification,
   WrittenSyntheticEmittedArtifact,
   written_synthetic_emitted_artifact_has_fixture_behaviorally_equivalent_qualification,
   written_synthetic_emitted_artifact_has_fixture_cargo_green_qualification,
@@ -40,6 +41,7 @@ import v2.compiler.self_host.direct_rust_door_fixture {
   direct_rust_door_behavioral_probe_function,
   direct_rust_door_behavioral_witness_bin_path,
   direct_rust_door_divergent_rust_source,
+  direct_rust_door_fixture_lane_tag,
   direct_rust_door_inferred_tree,
   direct_rust_door_module_path,
   direct_rust_door_target_model
@@ -202,11 +204,12 @@ fn direct_rust_door_compile_workspace(workspace_dir: String) -> Bool {
 fn direct_rust_door_emit_write_compile_to_cargo_green(
   workspace_dir: String
 ) -> Optional<WrittenSyntheticEmittedArtifact> {
-  match mint_written_synthetic_emitted_artifact_from_fixture_inferred(
+  match mint_written_synthetic_emitted_artifact_from_fixture_inferred_for_behavioral_qualification(
     inferred: direct_rust_door_inferred_tree,
     target: direct_rust_door_target_model(),
     module_path: direct_rust_door_module_path,
     workspace_dir: workspace_dir,
+    fixture_lane_tag: direct_rust_door_fixture_lane_tag,
     behavioral_probe_entry: direct_rust_door_behavioral_probe_entry,
     behavioral_probe_function: direct_rust_door_behavioral_probe_function
   ) {
@@ -304,6 +307,7 @@ fn run_direct_rust_door_divergent_behavioral_receipt_refused() -> Bool {
     target: direct_rust_door_target_model(),
     module_path: direct_rust_door_module_path,
     workspace_dir: dir.path,
+    fixture_lane_tag: direct_rust_door_fixture_lane_tag,
     behavioral_probe_entry: direct_rust_door_behavioral_probe_entry,
     behavioral_probe_function: direct_rust_door_behavioral_probe_function
   ) {

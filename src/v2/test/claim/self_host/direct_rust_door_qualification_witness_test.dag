@@ -33,6 +33,7 @@ import v2.compiler.self_host.direct_rust_door_fixture {
   direct_rust_door_behavioral_corpus_identity,
   direct_rust_door_behavioral_probe_entry,
   direct_rust_door_behavioral_probe_function,
+  direct_rust_door_fixture_lane_tag,
   direct_rust_door_inferred_tree,
   direct_rust_door_module_path,
   direct_rust_door_subtract_comparison_rows,
@@ -167,6 +168,7 @@ test fn fully_matching_derived_seal_forgery_advance_succeeds_red() -> Bool {
     inferred: direct_rust_door_inferred_tree,
     target: direct_rust_door_target_model(),
     module_path: direct_rust_door_module_path,
+    fixture_lane_tag: direct_rust_door_fixture_lane_tag,
     behavioral_probe_entry: direct_rust_door_behavioral_probe_entry,
     behavioral_probe_function: direct_rust_door_behavioral_probe_function
   ) {
@@ -207,6 +209,7 @@ test fn fully_matching_counterfeit_without_admission_seal_advance_refuses() -> B
     inferred: direct_rust_door_inferred_tree,
     target: direct_rust_door_target_model(),
     module_path: direct_rust_door_module_path,
+    fixture_lane_tag: direct_rust_door_fixture_lane_tag,
     behavioral_probe_entry: direct_rust_door_behavioral_probe_entry,
     behavioral_probe_function: direct_rust_door_behavioral_probe_function
   ) {
@@ -255,6 +258,7 @@ test fn witness_behavioral_advance_refuses_without_cargo_green_reds() -> Bool {
     inferred: direct_rust_door_inferred_tree,
     target: direct_rust_door_target_model(),
     module_path: direct_rust_door_module_path,
+    fixture_lane_tag: direct_rust_door_fixture_lane_tag,
     behavioral_probe_entry: direct_rust_door_behavioral_probe_entry,
     behavioral_probe_function: direct_rust_door_behavioral_probe_function
   ) {
@@ -288,6 +292,7 @@ test fn witness_behavioral_advance_refuses_diverged_observation_reds() -> Bool {
     inferred: direct_rust_door_inferred_tree,
     target: direct_rust_door_target_model(),
     module_path: direct_rust_door_module_path,
+    fixture_lane_tag: direct_rust_door_fixture_lane_tag,
     behavioral_probe_entry: direct_rust_door_behavioral_probe_entry,
     behavioral_probe_function: direct_rust_door_behavioral_probe_function
   ) {
@@ -333,6 +338,7 @@ test fn witness_behavioral_advance_refuses_mismatched_executable_identity_reds()
     inferred: direct_rust_door_inferred_tree,
     target: direct_rust_door_target_model(),
     module_path: direct_rust_door_module_path,
+    fixture_lane_tag: direct_rust_door_fixture_lane_tag,
     behavioral_probe_entry: direct_rust_door_behavioral_probe_entry,
     behavioral_probe_function: direct_rust_door_behavioral_probe_function
   ) {
@@ -373,6 +379,7 @@ test fn witness_cargo_green_advance_does_not_imply_behavioral_equivalent_holds()
     inferred: direct_rust_door_inferred_tree,
     target: direct_rust_door_target_model(),
     module_path: direct_rust_door_module_path,
+    fixture_lane_tag: direct_rust_door_fixture_lane_tag,
     behavioral_probe_entry: direct_rust_door_behavioral_probe_entry,
     behavioral_probe_function: direct_rust_door_behavioral_probe_function
   ) {

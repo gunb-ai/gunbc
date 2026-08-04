@@ -71,6 +71,8 @@ data direct_rust_door_behavioral_probe_entry: String = "dag/test/claim/direct_ru
 
 data direct_rust_door_behavioral_probe_function: String = "direct_rust_door_behavioral_qualification_holds"
 
+data direct_rust_door_fixture_lane_tag: String = "direct_rust_door_fixture_containment"
+
 fn direct_rust_door_behavioral_corpus_identity() -> Hash {
   symbol_identity_digest(sym: ^direct_rust_door_corpus_v1)
 }

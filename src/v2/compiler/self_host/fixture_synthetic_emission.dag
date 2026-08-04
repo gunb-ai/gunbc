@@ -5,8 +5,7 @@ import extdeps.communication.medium { Medium }
 import v2.compiler.infer { InferredTree }
 import v2.compiler.self_host.behavioral_comparison_receipt {
   AdmittedBehaviorEquivalentReceipt,
-  admitted_behavioral_comparison_receipt_matches_binding,
-  emitted_source_identity_for_medium
+  admitted_behavioral_comparison_receipt_matches_binding
 }
 import v2.compiler.self_host.candidate_generation {
   generate_rust_emission_candidate,
@@ -29,9 +28,9 @@ import v2.std.optional { Absent, Present, optional_absent, optional_present }
 import v2.std.text { String }
 import std.types { CommitSha }
 
-data fixture_synthetic_emission_note: String = "Parallel fixture-scoped emission authority (royal-crab-235 disposition 2, wise-ram-22 ruling): SyntheticEmittedArtifact / FixtureBehaviorReceipt carry fixture qualifications only — no constructor into ProducerEmissionReceipt or EmissionQualification, so fixture mint cannot reach the production frontier by mistake."
+data fixture_synthetic_emission_note: String = "Parallel fixture-scoped emission authority (wise-ram-22 disposition PR1 containment): SyntheticEmittedArtifact / FixtureBehaviorReceipt carry FixtureEmissionQualification only — no constructor into ProducerEmissionReceipt or production EmissionQualification."
 
-data fixture_synthetic_emission_dissolution_trigger: String = "dissolve-on disposition 1 (wise-ram-22 containment lane): real source-ingest behavioral qualification — generate_written_rust_candidate_from_ingest mints ProvenancedRustArtifact with production BehavioralEquivalent after infer(assemble(fixture ingest)) accepts without hand-authored DerivedGrounding. When that path greens, this module's fixture ladder, wet transport mints on direct_rust_door_inferred_tree, and FixtureBehaviorallyEquivalent delete together; production BehavioralEquivalent subsumes the behavioral receipt machinery for the direct-door subject."
+data fixture_synthetic_emission_dissolution_trigger: String = "dissolve-on disposition 1 (wise-ram-22 containment lane): real source-ingest qualification after infer(assemble(fixture ingest)) accepts without hand-authored DerivedGrounding. When that path greens, fixture mint on direct_rust_door_inferred_tree deletes and production ProvenancedRustArtifact subsumes the subject."
 
 type FixtureEmissionQualification
   = FixtureSourceProduced
@@ -41,6 +40,7 @@ type FixtureEmissionQualification
 type FixtureBehaviorReceipt {
   module_path: String
   emitted_source_identity: Hash
+  fixture_lane_tag: String
   behavioral_probe_entry: String
   behavioral_probe_function: String
   qualifications: List<FixtureEmissionQualification>
@@ -72,6 +72,10 @@ data fixture_behaviorally_equivalent_qualifications: List<FixtureEmissionQualifi
   FixtureCargoGreen,
   FixtureBehaviorallyEquivalent
 ]
+
+fn fixture_emitted_source_identity_for_medium(source: Medium<String>) -> Hash {
+  content_hash_atom(value: source.carried)
+}
 
 fn fixture_emission_qualification_eq(
   left: FixtureEmissionQualification,
@@ -130,12 +134,34 @@ fn fixture_behavior_receipt_identity_for(receipt: FixtureBehaviorReceipt) -> Has
 fn mint_fixture_behavior_receipt(
   module_path: String,
   emitted_source: Medium<String>,
+  fixture_lane_tag: String
+) -> FixtureBehaviorReceipt {
+  FixtureBehaviorReceipt {
+    module_path: module_path,
+    emitted_source_identity: fixture_emitted_source_identity_for_medium(
+      source: emitted_source
+    ),
+    fixture_lane_tag: fixture_lane_tag,
+    behavioral_probe_entry: "",
+    behavioral_probe_function: "",
+    qualifications: fixture_source_produced_qualifications,
+    build_green: false
+  }
+}
+
+fn mint_fixture_behavior_receipt_for_behavioral_qualification(
+  module_path: String,
+  emitted_source: Medium<String>,
+  fixture_lane_tag: String,
   behavioral_probe_entry: String,
   behavioral_probe_function: String
 ) -> FixtureBehaviorReceipt {
   FixtureBehaviorReceipt {
     module_path: module_path,
-    emitted_source_identity: emitted_source_identity_for_medium(source: emitted_source),
+    emitted_source_identity: fixture_emitted_source_identity_for_medium(
+      source: emitted_source
+    ),
+    fixture_lane_tag: fixture_lane_tag,
     behavioral_probe_entry: behavioral_probe_entry,
     behavioral_probe_function: behavioral_probe_function,
     qualifications: fixture_source_produced_qualifications,
@@ -186,6 +212,7 @@ fn advance_fixture_behavior_receipt_cargo_green(
       value: FixtureBehaviorReceipt {
         module_path: prior.module_path,
         emitted_source_identity: prior.emitted_source_identity,
+        fixture_lane_tag: prior.fixture_lane_tag,
         behavioral_probe_entry: prior.behavioral_probe_entry,
         behavioral_probe_function: prior.behavioral_probe_function,
         qualifications: fixture_cargo_green_qualifications,
@@ -207,6 +234,7 @@ fn advance_fixture_behavior_receipt_behaviorally_equivalent(
       value: FixtureBehaviorReceipt {
         module_path: prior.module_path,
         emitted_source_identity: prior.emitted_source_identity,
+        fixture_lane_tag: prior.fixture_lane_tag,
         behavioral_probe_entry: behavioral_probe_entry,
         behavioral_probe_function: behavioral_probe_function,
         qualifications: fixture_behaviorally_equivalent_qualifications,
@@ -220,8 +248,7 @@ fn mint_synthetic_emitted_artifact_from_fixture_inferred(
   inferred: InferredTree,
   target: TargetModel,
   module_path: String,
-  behavioral_probe_entry: String,
-  behavioral_probe_function: String
+  fixture_lane_tag: String
 ) -> Outcome<SyntheticEmittedArtifact> {
   bind_outcome(
     o: generate_rust_emission_candidate(inferred: inferred, target: target),
@@ -233,6 +260,33 @@ fn mint_synthetic_emitted_artifact_from_fixture_inferred(
           fixture_receipt: mint_fixture_behavior_receipt(
             module_path: module_path,
             emitted_source: candidate.source,
+            fixture_lane_tag: fixture_lane_tag
+          )
+        }
+      )
+    }
+  )
+}
+
+fn mint_synthetic_emitted_artifact_from_fixture_inferred_for_behavioral_qualification(
+  inferred: InferredTree,
+  target: TargetModel,
+  module_path: String,
+  fixture_lane_tag: String,
+  behavioral_probe_entry: String,
+  behavioral_probe_function: String
+) -> Outcome<SyntheticEmittedArtifact> {
+  bind_outcome(
+    o: generate_rust_emission_candidate(inferred: inferred, target: target),
+    f: fn(candidate) {
+      outcome_accepted(
+        value: SyntheticEmittedArtifact {
+          source: candidate.source,
+          emitted: candidate.emitted,
+          fixture_receipt: mint_fixture_behavior_receipt_for_behavioral_qualification(
+            module_path: module_path,
+            emitted_source: candidate.source,
+            fixture_lane_tag: fixture_lane_tag,
             behavioral_probe_entry: behavioral_probe_entry,
             behavioral_probe_function: behavioral_probe_function
           )
@@ -247,14 +301,44 @@ fn mint_written_synthetic_emitted_artifact_from_fixture_inferred(
   target: TargetModel,
   module_path: String,
   workspace_dir: String,
-  behavioral_probe_entry: String,
-  behavioral_probe_function: String
+  fixture_lane_tag: String
 ) -> Outcome<WrittenSyntheticEmittedArtifact> {
   bind_outcome(
     o: mint_synthetic_emitted_artifact_from_fixture_inferred(
       inferred: inferred,
       target: target,
       module_path: module_path,
+      fixture_lane_tag: fixture_lane_tag
+    ),
+    f: fn(artifact) {
+      outcome_accepted(
+        value: WrittenSyntheticEmittedArtifact {
+          artifact: artifact,
+          write: write_rust_workspace(
+            workspace_dir: workspace_dir,
+            source: artifact.source
+          )
+        }
+      )
+    }
+  )
+}
+
+fn mint_written_synthetic_emitted_artifact_from_fixture_inferred_for_behavioral_qualification(
+  inferred: InferredTree,
+  target: TargetModel,
+  module_path: String,
+  workspace_dir: String,
+  fixture_lane_tag: String,
+  behavioral_probe_entry: String,
+  behavioral_probe_function: String
+) -> Outcome<WrittenSyntheticEmittedArtifact> {
+  bind_outcome(
+    o: mint_synthetic_emitted_artifact_from_fixture_inferred_for_behavioral_qualification(
+      inferred: inferred,
+      target: target,
+      module_path: module_path,
+      fixture_lane_tag: fixture_lane_tag,
       behavioral_probe_entry: behavioral_probe_entry,
       behavioral_probe_function: behavioral_probe_function
     ),
@@ -365,4 +449,21 @@ fn written_synthetic_emitted_artifact_has_fixture_behaviorally_equivalent_qualif
     xs: written.artifact.fixture_receipt.qualifications,
     wanted: FixtureBehaviorallyEquivalent
   )
+}
+
+fn synthetic_emitted_artifact_has_fixture_source_produced_only(
+  artifact: SyntheticEmittedArtifact
+) -> Bool {
+  fixture_emission_qualifications_list_contains(
+    xs: artifact.fixture_receipt.qualifications,
+    wanted: FixtureSourceProduced
+  )
+    && !fixture_emission_qualifications_list_contains(
+      xs: artifact.fixture_receipt.qualifications,
+      wanted: FixtureCargoGreen
+    )
+    && !fixture_emission_qualifications_list_contains(
+      xs: artifact.fixture_receipt.qualifications,
+      wanted: FixtureBehaviorallyEquivalent
+    )
 }
