@@ -26,6 +26,8 @@ import extdeps.physics.bach_et_al_2013_double_slit {
 
 data bach_observation_layer_note: String = "Observing-layer receipts for Bach et al. 2013. Buildup progression derives structural properties from extdeps.physics.bach_et_al_2013_double_slit.bach_buildup_observations — sole population authority, no parallel copy."
 
+data bach_distribution_canonical_sequence_note: String = "Distribution gate checks that observations match the cited canonical sequence (slit-one, slit-two, both-open) via total bach_distribution_observation_rank — not completeness over the BachDistributionObservation coproduct. A fourth variant left unobserved still passes; the literal length 3 tracks the three known variants, not a derived coproduct arity."
+
 data bach_raw_count_additivity_not_evaluable_note: String = "Derived from cited Bach figures 1–2 (normalized distributions only): raw matched-exposure per-band arrival triplet N_both = N_slit_one + N_slit_two is not evaluable from this source."
 
 data bach_which_path_evidence_requirement_unsatisfied_note: String = "Derived from cited Bach slit-mask control (not a which-path readout): which-path distinguishability evidence requirement is unsatisfied for this source."
@@ -380,7 +382,7 @@ fn fold_distribution_observation_sequence(
   }
 }
 
-fn bach_distribution_observations_are_canonical_triplet_once(
+fn bach_distribution_observations_match_canonical_sequence_for(
   observations: List<BachDistributionObservation>,
 ) -> Bool {
   let folded = fold(
@@ -396,26 +398,24 @@ fn bach_distribution_observations_are_canonical_triplet_once(
   folded.valid && folded.expected_rank == 3 && (observations |> count) == 3
 }
 
-fn bach_distribution_observations_complete_for(
-  observations: List<BachDistributionObservation>,
-) -> Bool {
-  bach_distribution_observations_are_canonical_triplet_once(observations: observations)
-}
-
-fn bach_distribution_observations_complete() -> Bool {
-  bach_distribution_observations_complete_for(observations: bach_distribution_observations)
+fn bach_cited_distribution_observations_match_canonical_sequence() -> Bool {
+  bach_distribution_observations_match_canonical_sequence_for(
+    observations: bach_distribution_observations,
+  )
 }
 
 fn bach_double_slit_interference_evidence_holds() -> Bool {
   bach_cited_buildup_progression_holds()
-    && bach_distribution_observations_complete()
+    && bach_cited_distribution_observations_match_canonical_sequence()
 }
 
 fn bach_double_slit_interference_evidence_rejects_for_distribution(
   observations: List<BachDistributionObservation>,
 ) -> Bool {
   !bach_cited_buildup_progression_holds()
-    || !bach_distribution_observations_complete_for(observations: observations)
+    || !bach_distribution_observations_match_canonical_sequence_for(
+      observations: observations,
+    )
 }
 
 fn bach_buildup_progression_rejects_non_increasing_counts(

@@ -3,7 +3,7 @@ module test.claim.bach_double_slit_observation_witness_test
 import std.types { Bool, List }
 import gunbc.bach_double_slit_observation {
   bach_cited_buildup_progression_holds,
-  bach_distribution_observations_complete,
+  bach_cited_distribution_observations_match_canonical_sequence,
   bach_double_slit_interference_evidence_holds,
   bach_buildup_progression_rejects_non_increasing_counts,
   bach_buildup_progression_rejects_status_regression,
@@ -36,8 +36,8 @@ test fn w_bach_cited_buildup_progression_holds() -> Bool {
   bach_cited_buildup_progression_holds()
 }
 
-test fn w_bach_categorical_distribution_observations_complete() -> Bool {
-  bach_distribution_observations_complete()
+test fn w_bach_cited_distribution_observations_match_canonical_sequence() -> Bool {
+  bach_cited_distribution_observations_match_canonical_sequence()
 }
 
 test fn w_bach_double_slit_interference_evidence_holds() -> Bool {
@@ -128,13 +128,13 @@ test fn w_bach_interference_rejects_missing_both_open_diffraction_observation() 
   )
 }
 
-test fn w_bach_interference_rejects_duplicate_distribution_observation() -> Bool {
-  let duplicate_both_open = [
+test fn w_bach_interference_rejects_noncanonical_distribution_order() -> Bool {
+  let both_open_first = [
     BothSlitsDoubleSlitDiffractionObserved,
-    BothSlitsDoubleSlitDiffractionObserved,
-    BothSlitsDoubleSlitDiffractionObserved,
+    SlitOneSingleSlitDiffractionObserved,
+    SlitTwoSingleSlitDiffractionObserved,
   ]
   bach_double_slit_interference_evidence_rejects_for_distribution(
-    observations: duplicate_both_open,
+    observations: both_open_first,
   )
 }
