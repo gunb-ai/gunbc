@@ -509,7 +509,7 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     pattern: "compiler_frontier_per_module_probe_test.dag",
     classification: OfflineLocalRecipe,
     reason: "operator-ruled OFFLINE long-lane resident (Lane E closeout): per-module frontier_probe_emit_from_ingest over 27 modules exceeds the 5s fast-lane budget; test/claim/long/ dir grain excludes discovery but this row names the OFFLINE local recipe consumer (compiler_frontier_per_module_probe_exclusion_note)",
-    dissolve_on: "all 27 roster modules surveyed at HEAD, frontier.dag rows hand-authored from receipts, compiler_frontier_per_module_probe_survey_holds greens on the full host_frontier_probe_survey manifest via the local recipe, totality wall witnesses pass — then row deletes with the probe scaffold dissolution"
+    dissolve_on: "all 27 roster modules have execution_measurement receipts at one pinned source_head in host_frontier_probe_survey_manifest, frontier.dag rows hand-authored from that manifest, compiler_frontier_per_module_probe_survey_holds greens via the local recipe, totality wall witnesses pass — then row deletes with the probe scaffold dissolution"
   },
   WitnessExclusionRow {
     pattern: "no_fake_anomalies_witness_test.dag",
