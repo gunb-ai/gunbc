@@ -17,8 +17,7 @@ type InterpreterPrimitiveArmId {
 }
 
 type ArmEnumeration
-  = DerivedFromDispatch
-  | AuthoredInRoster
+  = AuthoredInRoster
   | DeclaredHere { dissolve_on: NonEmptyStr }
 
 type InterpreterDispatchEmitSite
@@ -115,7 +114,6 @@ fn v1_interpreter_declared_arms() -> List<InterpreterPrimitiveDispatchArm> {
 fn arm_declares_dissolution_trigger(arm: InterpreterPrimitiveDispatchArm) -> Bool {
   match arm.enumeration {
     DeclaredHere { dissolve_on } => string_contains(s: dissolve_on, pattern: "dissolves when")
-    DerivedFromDispatch => false
     AuthoredInRoster => false
   }
 }
