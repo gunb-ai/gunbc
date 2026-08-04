@@ -254,7 +254,7 @@ fn write_probe_overlay_manifest(
     entry_source_ref: &str,
 ) -> Result<(), String> {
     let escaped = module_path.replace('\\', "/");
-    let mut append = format!(
+    let append = format!(
         "\ndata frontier_probe_entry_module_path: String = \"{escaped}\"\n\
          data frontier_probe_entry_source_ref: SourceRef = {entry_source_ref}\n"
     );
@@ -265,22 +265,6 @@ fn write_probe_overlay_manifest(
     }
     body.push_str(&append);
     fs::write(ingest_manifest, body).map_err(|e| format!("append module_path overlay: {e}"))
-}
-
-fn manifest_path_escape(path: &str) -> Result<String, String> {
-    if path.contains('{') || path.contains('}') {
-        return Err(format!("manifest path contains brace: {path}"));
-    }
-    Ok(path.replace('\\', "/"))
-}
-
-fn emit_string_list_dag(items: &[String]) -> Result<String, String> {
-    let mut out = String::from("Empty");
-    for item in items.iter().rev() {
-        let escaped = manifest_path_escape(item)?;
-        out = format!("Cons {{\n  head: \"{escaped}\",\n  tail: {out}\n}}");
-    }
-    Ok(out)
 }
 
 fn per_module_overlay_dir(survey_dir: &Path, module_path: &str) -> PathBuf {
