@@ -13,11 +13,13 @@ import gunbc.scaffold_retirement {
   dissolves_to_from_exact_scaffold_body,
   site_disposition_for_redundancy,
   corpus_present_declaration_refs_for_pool,
+  bind_skeleton_atom_lexemes,
   ScaffoldSiteLookupUnique,
   ScaffoldSiteDecoded,
   ScaffoldCandidateDecodeRefused,
   BodyShapeNotScaffoldRecord,
   DeclaredTypeNotDisposition,
+  BindUndecodable,
 }
 import std.disposition { SingleAuthority }
 import std.decl_ref { NamedField, WholeDeclaration }
@@ -125,6 +127,60 @@ test fn fixture_population_partition_is_exact_on_fixture_pool() -> Bool {
     xs: derived_scaffold_disposition_refused_for_pool(pool_roots: scaffold_retirement_fixture_pool_roots)
   )
   candidates == decoded + refused && decoded >= 1
+}
+
+test fn fixture_named_field_bind_conj_includes_dissolves_to_lexeme() -> Bool {
+  match decl_facts(pool_roots: scaffold_retirement_fixture_pool_roots)
+    |> filter(f => f.qualified_name == planted_named_field_dissolution_specimen_qn)
+    |> first
+  {
+    Present { value: fact } =>
+      count_where(
+        xs: bind_skeleton_atom_lexemes(body: fact.node),
+        predicate: fn(lex) { lex == "dissolves_to" }
+      ) >= 1
+    Absent => false
+  }
+}
+
+test fn fixture_named_field_projection_refusal_is_bind_not_shape() -> Bool {
+  match decl_facts(pool_roots: scaffold_retirement_fixture_pool_roots)
+    |> filter(f => f.qualified_name == planted_named_field_dissolution_specimen_qn)
+    |> first
+  {
+    Present { value: fact } =>
+      match project_scaffold_site_from_body_fact_for_pool(
+        body_fact: fact,
+        pool_roots: scaffold_retirement_fixture_pool_roots
+      ) {
+        ScaffoldCandidateDecodeRefused { refusal: refusal } =>
+          refusal.cause == BindUndecodable
+        ScaffoldSiteDecoded { site: _ } => false
+        _ => false
+      }
+    Absent => false
+  }
+}
+
+test fn fixture_named_field_bind_decodes() -> Bool {
+  match decl_facts(pool_roots: scaffold_retirement_fixture_pool_roots)
+    |> filter(f => f.qualified_name == planted_named_field_dissolution_specimen_qn)
+    |> first
+  {
+    Present { value: fact } =>
+      match project_scaffold_site_from_body_fact_for_pool(
+        body_fact: fact,
+        pool_roots: scaffold_retirement_fixture_pool_roots
+      ) {
+        ScaffoldSiteDecoded { site: site } =>
+          match site.bind.field {
+            NamedField { field_name: field_name } => field_name == "dissolves_to"
+            WholeDeclaration => false
+          }
+        _ => false
+      }
+    Absent => false
+  }
 }
 
 test fn fixture_named_field_bind_dissolution_fires_when_successor_present() -> Bool {
