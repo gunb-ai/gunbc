@@ -1,11 +1,13 @@
 module test.claim.bach_double_slit_observation_witness_test
 
-import std.types { Bool, NonEmptyStr }
+import std.types { Bool }
 import gunbc.bach_double_slit_observation {
   BachRawCountPathAdditivityNotEvaluable,
   BachRawCountPathAdditivityReady,
+  BachRawCountObservationRowsAbsent,
   BachWhichPathEvidenceUncited,
   BachWhichPathEvidenceCited,
+  BachWhichPathAuthorityAbsent,
   BachObservationCapability,
   RawMatchedExposureCountRowsPresent,
   WhichPathAuthorityCited,
@@ -22,14 +24,14 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn w_bach_raw_count_path_additivity_not_evaluable_derived() -> Bool {
   match bach_quantitative_path_additivity_readiness_derived() {
-    BachRawCountPathAdditivityNotEvaluable { cause: _ } => true
+    BachRawCountPathAdditivityNotEvaluable { cause: BachRawCountObservationRowsAbsent } => true
     BachRawCountPathAdditivityReady {} => false
   }
 }
 
 test fn w_bach_which_path_evidence_uncited_derived() -> Bool {
   match bach_which_path_evidence_readiness_derived() {
-    BachWhichPathEvidenceUncited { missing_authority: _ } => true
+    BachWhichPathEvidenceUncited { cause: BachWhichPathAuthorityAbsent } => true
     BachWhichPathEvidenceCited {} => false
   }
 }
@@ -39,7 +41,7 @@ test fn w_bach_quantitative_readiness_flips_when_raw_rows_planted() -> Bool {
     capabilities: [RawMatchedExposureCountRowsPresent],
   ) {
     BachRawCountPathAdditivityReady {} => true
-    BachRawCountPathAdditivityNotEvaluable { cause: _ } => false
+    BachRawCountPathAdditivityNotEvaluable { cause: BachRawCountObservationRowsAbsent } => false
   }
 }
 
@@ -48,7 +50,7 @@ test fn w_bach_which_path_readiness_flips_when_authority_planted() -> Bool {
     capabilities: [WhichPathAuthorityCited],
   ) {
     BachWhichPathEvidenceCited {} => true
-    BachWhichPathEvidenceUncited { missing_authority: _ } => false
+    BachWhichPathEvidenceUncited { cause: BachWhichPathAuthorityAbsent } => false
   }
 }
 

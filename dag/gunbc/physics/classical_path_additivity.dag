@@ -2,7 +2,8 @@ module gunbc.physics.classical_path_additivity
 
 import std.types { Bool, Int, List, NonEmptyStr }
 import std.algebra { Ordering, Less, Equal, Greater }
-import extdeps.physics.double_slit {
+import std.integer { NonNegativeInt }
+import extdeps.physics.bach_et_al_2013_double_slit {
   SlitMaskConfiguration,
   BothSlitsOpen,
   SlitOneOpen,
@@ -33,13 +34,13 @@ type SyntheticArrivalCountObservationRow {
   arrangement: SlitMaskConfiguration
   band: ScreenBand
   exposure: SyntheticMatchedExposureSession
-  arrival_count: Int
+  arrival_count: NonNegativeInt
 }
 
 type ArrivalCountResolution
   = ArrivalCountResolved {
-      count: Int
-      contributing_rows: Int
+      count: NonNegativeInt
+      contributing_rows: NonNegativeInt
     }
   | ArrivalCountMissing {
       arrangement: SlitMaskConfiguration
@@ -50,17 +51,17 @@ type ArrivalCountResolution
       arrangement: SlitMaskConfiguration
       band: ScreenBand
       exposure: SyntheticMatchedExposureSession
-      matching_rows: Int
+      matching_rows: NonNegativeInt
     }
 
 type AdditivityInputResolution
   = AdditivityInputsResolved {
-      left: Int
-      right: Int
-      both: Int
-      left_contributing_rows: Int
-      right_contributing_rows: Int
-      both_contributing_rows: Int
+      left: NonNegativeInt
+      right: NonNegativeInt
+      both: NonNegativeInt
+      left_contributing_rows: NonNegativeInt
+      right_contributing_rows: NonNegativeInt
+      both_contributing_rows: NonNegativeInt
     }
   | AdditivityInputsIncomplete {
       missing_arrangement: SlitMaskConfiguration
@@ -70,14 +71,14 @@ type AdditivityInputResolution
   | AdditivityInputsAmbiguous {
       band: ScreenBand
       exposure: SyntheticMatchedExposureSession
-      matching_rows: Int
+      matching_rows: NonNegativeInt
     }
 
 type PathAdditivityCounterexampleWitness {
-  left_alternative_count: Int
-  right_alternative_count: Int
-  both_open_observed_count: Int
-  classical_additive_prediction: Int
+  left_alternative_count: NonNegativeInt
+  right_alternative_count: NonNegativeInt
+  both_open_observed_count: NonNegativeInt
+  classical_additive_prediction: NonNegativeInt
   observed_vs_prediction: Ordering
 }
 
@@ -91,9 +92,9 @@ type PathAdditivityRefutationReceipt {
 }
 
 fn classical_exclusive_alternative_arrival_prediction(
-  left_only_count: Int,
-  right_only_count: Int,
-) -> Int {
+  left_only_count: NonNegativeInt,
+  right_only_count: NonNegativeInt,
+) -> NonNegativeInt {
   left_only_count + right_only_count
 }
 
@@ -111,8 +112,8 @@ fn arrival_count_row_matches(
 }
 
 type ArrivalCountFoldAcc {
-  match_count: Int
-  sum: Int
+  match_count: NonNegativeInt
+  sum: NonNegativeInt
 }
 
 fn resolve_arrival_count_at(
@@ -251,8 +252,8 @@ fn resolve_additivity_inputs(
 }
 
 fn path_additivity_compare_observed_to_prediction(
-  observed_both: Int,
-  prediction: Int,
+  observed_both: NonNegativeInt,
+  prediction: NonNegativeInt,
 ) -> Ordering {
   if observed_both < prediction {
     Less
@@ -288,9 +289,9 @@ fn path_additivity_refutation_holds_for_synthetic_fixture(
 }
 
 fn path_additivity_refutation_from_resolved(
-  left: Int,
-  right: Int,
-  both: Int,
+  left: NonNegativeInt,
+  right: NonNegativeInt,
+  both: NonNegativeInt,
   band: ScreenBand,
   exposure: SyntheticMatchedExposureSession,
   observed_vs_prediction: Ordering,

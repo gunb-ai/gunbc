@@ -1,7 +1,7 @@
 module gunbc.classical_path_additivity_synthetic_fixture
 
 import std.types { Bool, Int, List }
-import extdeps.physics.double_slit {
+import extdeps.physics.bach_et_al_2013_double_slit {
   SlitMaskConfiguration,
   BothSlitsOpen,
   SlitOneOpen,

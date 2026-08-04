@@ -1,7 +1,8 @@
 module gunbc.bach_double_slit_observation
 
-import std.types { Bool, Int, List, NonEmptyStr, String }
-import extdeps.physics.double_slit {
+import std.types { Bool, List }
+import std.integer { NonNegativeInt }
+import extdeps.physics.bach_et_al_2013_double_slit {
   BachEtAl2013DoubleSlitExperiment,
   bach_et_al_2013_double_slit,
   BachDistributionObservation,
@@ -26,12 +27,18 @@ type BachObservationCapability
   = RawMatchedExposureCountRowsPresent
   | WhichPathAuthorityCited
 
+type BachRawCountPathAdditivityRefusalCause
+  = BachRawCountObservationRowsAbsent
+
+type BachWhichPathEvidenceRefusalCause
+  = BachWhichPathAuthorityAbsent
+
 type BachRawCountPathAdditivityReadiness
-  = BachRawCountPathAdditivityNotEvaluable { cause: NonEmptyStr }
+  = BachRawCountPathAdditivityNotEvaluable { cause: BachRawCountPathAdditivityRefusalCause }
   | BachRawCountPathAdditivityReady {}
 
 type BachWhichPathEvidenceReadiness
-  = BachWhichPathEvidenceUncited { missing_authority: NonEmptyStr }
+  = BachWhichPathEvidenceUncited { cause: BachWhichPathEvidenceRefusalCause }
   | BachWhichPathEvidenceCited {}
 
 fn bach_observation_capabilities_from_extdeps() -> List<BachObservationCapability> {
@@ -55,7 +62,7 @@ fn bach_quantitative_evidence_readiness(
     BachRawCountPathAdditivityReady {}
   } else {
     BachRawCountPathAdditivityNotEvaluable {
-      cause: "bach_et_al_2013_raw_count_observations is empty; figures report normalized distributions not raw matched-exposure counts" as NonEmptyStr,
+      cause: BachRawCountObservationRowsAbsent,
     }
   }
 }
@@ -79,7 +86,7 @@ fn bach_which_path_evidence_readiness(
     BachWhichPathEvidenceCited {}
   } else {
     BachWhichPathEvidenceUncited {
-      missing_authority: "a cited which-path or quantum-eraser experiment; Bach et al. 2013 controlled slit transmission only" as NonEmptyStr,
+      cause: BachWhichPathAuthorityAbsent,
     }
   }
 }
@@ -98,7 +105,7 @@ fn bach_distribution_observations_complete() -> Bool {
 }
 
 type BuildupFoldAcc {
-  max_electrons: Int
+  max_electrons: NonNegativeInt
   saw_not_yet: Bool
   saw_discernible: Bool
   saw_clearly_visible: Bool

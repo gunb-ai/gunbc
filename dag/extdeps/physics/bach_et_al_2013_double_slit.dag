@@ -1,6 +1,7 @@
-module extdeps.physics.double_slit
+module extdeps.physics.bach_et_al_2013_double_slit
 
-import std.types { String, Int, List }
+import std.types { String, List }
+import std.integer { NonNegativeInt }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -20,16 +21,16 @@ data bach_et_al_2013_double_slit: BachEtAl2013DoubleSlitExperiment = BachEtAl201
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
-      module_path: "extdeps.physics.double_slit",
+      module_path: "extdeps.physics.bach_et_al_2013_double_slit",
       decl_name: "bach_et_al_2013_double_slit",
       field: WholeDeclaration
     }
   },
-  first_citation: extdeps.physics.double_slit.extdeps_external_authority_anchor,
+  first_citation: extdeps.physics.bach_et_al_2013_double_slit.extdeps_external_authority_anchor,
   further_citations: []
 }
 
-data double_slit_citation_note: String = "Cited upstream: Bach, R., Pope, D., Liou, S.-H. and Batelaan, H., 'Controlled double-slit electron diffraction', New Journal of Physics volume 15, article 033018, 2013 (doi 10.1088/1367-2630/15/3/033018). arXiv:1210.6243. WHAT THIS MODULE OWNS: apparatus vocabulary and source-grounded categorical and buildup observation rows only."
+data bach_et_al_2013_citation_note: String = "Cited upstream: Bach, R., Pope, D., Liou, S.-H. and Batelaan, H., 'Controlled double-slit electron diffraction', New Journal of Physics volume 15, article 033018, 2013 (doi 10.1088/1367-2630/15/3/033018). arXiv:1210.6243. WHAT THIS MODULE OWNS: Bach et al. 2013 apparatus vocabulary and source-grounded categorical, buildup, and raw-count observation rows."
 
 data abstract_observed_distributions_note: String = "Abstract verbatim: By placing a movable mask in front of a double-slit to control the transmission through the individual slits, probability distributions for single- and double-slit arrangements were observed."
 
@@ -73,7 +74,7 @@ type PatternStatus
 
 type BachBuildupObservationRow {
   apparatus: BachEtAl2013DoubleSlitExperiment
-  detected_electrons: Int
+  detected_electrons: NonNegativeInt
   pattern_status: PatternStatus
 }
 
@@ -117,7 +118,7 @@ data bach_buildup_observations: List<BachBuildupObservationRow> = [
 
 type BachRawCountObservationRow {
   apparatus: BachEtAl2013DoubleSlitExperiment
-  arrival_count: Int
+  arrival_count: NonNegativeInt
 }
 
 data bach_et_al_2013_raw_count_observations: List<BachRawCountObservationRow> = []
