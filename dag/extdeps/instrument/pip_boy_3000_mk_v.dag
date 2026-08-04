@@ -1,0 +1,123 @@
+module extdeps.instrument.pip_boy_3000_mk_v
+
+import std.types { NonEmptyStr, List }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.thewandcompany.com/fallout-pip-boy/"
+  }
+}
+
+data pip_boy_mk_v_manual_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.thewandcompany.com/pip-boy-manual/"
+  }
+}
+
+data pip_boy_mk_v_retail_listing_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.amazon.com/dp/B0CWPNXHQ4"
+  }
+}
+
+type PipBoy3000MkV
+  = | PipBoy3000MkVReplica
+
+data pip_boy_3000_mk_v: PipBoy3000MkV = PipBoy3000MkVReplica
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.instrument.pip_boy_3000_mk_v",
+      decl_name: "pip_boy_3000_mk_v",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps.instrument.pip_boy_3000_mk_v.extdeps_external_authority_anchor,
+  further_citations: [
+    extdeps.instrument.pip_boy_3000_mk_v.pip_boy_mk_v_manual_authority,
+    extdeps.instrument.pip_boy_3000_mk_v.pip_boy_mk_v_retail_listing_authority
+  ]
+}
+
+data subject_separation_note: String = "This module models the Fallout TV series Pip-Boy 3000 Mk V ONLY. The Fallout 3 / New Vegas Pip-Boy 3000 is a SEPARATE independently governed product with its own module (extdeps.instrument.pip_boy_3000), its own manual, its own settings menu, and a different licensor — this product's retail listing states Amazon Studios, the other states Bethesda. The two share a manufacturer (extdeps.vendor.the_wand_company) and a family name; neither makes them one subject. DESIGN section 3 'External upstream decomposition'."
+
+data manual_read_path_note: String = "PROVENANCE GRAIN: as with the sibling product, www.thewandcompany.com returned HTTP 403 to this session on every path tried, so the manual_wording strings below are quotations surfaced through a search index rather than a direct read; the retail-listing facts are the only ones read at first hand. The typed receipt and the coverage obligation live downstream in gunbc.design.reference_instrument."
+
+data model_number_note: String = "model_number is search-surfaced alongside the settings wording and was NOT read from the manual or the listing directly. It is carried because it is the sharpest identity handle a future direct read can confirm or refute; treat it as the weakest fact in this module."
+
+data pip_boy_mk_v_model_number: NonEmptyStr = "WRC18423"
+
+type PipBoyMkVSetting
+  = GlitchOnTap
+  | TapThreshold
+  | CrtJitter
+  | VerticalShift
+
+fn pip_boy_mk_v_setting_label(s: PipBoyMkVSetting) -> NonEmptyStr {
+  match s {
+    GlitchOnTap => "Glitch on tap"
+    TapThreshold => "Tap threshold"
+    CrtJitter => "CRT jitter"
+    VerticalShift => "Vertical shift"
+  }
+}
+
+type PipBoyMkVSettingRow {
+  setting: PipBoyMkVSetting
+  manual_wording: NonEmptyStr
+  authority: ExternalAuthority
+}
+
+data glitch_on_tap_row: PipBoyMkVSettingRow = PipBoyMkVSettingRow {
+  setting: GlitchOnTap,
+  manual_wording: "Adds a random amount of glitching effects to the display: a very authentic-looking display wobble, static and both vertical and horizontal hold issues. When activated, glitches can be caused or resolved by tapping on the top of the Pip-Boy.",
+  authority: extdeps.instrument.pip_boy_3000_mk_v.pip_boy_mk_v_manual_authority,
+}
+
+data tap_threshold_row: PipBoyMkVSettingRow = PipBoyMkVSettingRow {
+  setting: TapThreshold,
+  manual_wording: "Set the tap threshold sensitivity, where setting 1 is the most sensitive.",
+  authority: extdeps.instrument.pip_boy_3000_mk_v.pip_boy_mk_v_manual_authority,
+}
+
+data crt_jitter_row: PipBoyMkVSettingRow = PipBoyMkVSettingRow {
+  setting: CrtJitter,
+  manual_wording: "Toggles between on and off, and adds a varying blurriness to the screen graphics similar to the effect seen on a faulty CRT.",
+  authority: extdeps.instrument.pip_boy_3000_mk_v.pip_boy_mk_v_manual_authority,
+}
+
+data vertical_shift_row: PipBoyMkVSettingRow = PipBoyMkVSettingRow {
+  setting: VerticalShift,
+  manual_wording: "Moves the display position up or down by a few pixels. Positive numbers move the screen up and negative move it down.",
+  authority: extdeps.instrument.pip_boy_3000_mk_v.pip_boy_mk_v_manual_authority,
+}
+
+data pip_boy_mk_v_settings: List<PipBoyMkVSettingRow> = [
+  extdeps.instrument.pip_boy_3000_mk_v.glitch_on_tap_row,
+  extdeps.instrument.pip_boy_3000_mk_v.tap_threshold_row,
+  extdeps.instrument.pip_boy_3000_mk_v.crt_jitter_row,
+  extdeps.instrument.pip_boy_3000_mk_v.vertical_shift_row
+]
+
+data tap_threshold_direction_note: String = "The threshold scale runs INVERTED against the intuition its name invites: the manual states setting 1 is the MOST sensitive, so a rising number raises the impulse a tap must clear, not the responsiveness. Recorded explicitly because a design consumer reading 'sensitivity 1..9' left-to-right will get it backwards, and because the sixth-pass strategy capture did exactly that before this row existed."
+
+data glitch_response_option_values_note: String = "NOT MODELED, DELIBERATELY: an external analysis attributed three option values — Off, Short, Persistent — to this setting. No source this session reached carries them; the only corroboration found is that the glitch can be turned off. The BEHAVIOUR the design lane wants from them is separately grounded and IS modeled, in the glitch_on_tap_row wording: glitches are 'caused or resolved by tapping', which is the tap-to-break and tap-to-fix pair. Authoring the three names anyway would put an uncited enum beside a cited quotation and let a design consumer treat invented option values as upstream fact (DESIGN section 5: no fabricated plausible output). Dissolve-on: a direct manual read confirms or refutes them."
+
+type RetailListingFacts {
+  title: NonEmptyStr
+  licensing_statement: NonEmptyStr
+  authority: ExternalAuthority
+}
+
+data pip_boy_mk_v_retail_listing: RetailListingFacts = RetailListingFacts {
+  title: "Fallout from The Wand Company: Pip-Boy Life Size Wearable Cosplay die-cast Replica. Memory Foam Cuff, LCD Screen, FM Radio, Alarm Clock and Stand. Officially Licensed Collectible by Amazon Studios.",
+  licensing_statement: "Officially Licensed Collectible by Amazon Studios.",
+  authority: extdeps.instrument.pip_boy_3000_mk_v.pip_boy_mk_v_retail_listing_authority,
+}

@@ -1,0 +1,30 @@
+module extdeps.vendor.the_wand_company
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "en.wikipedia.org/wiki/The_Wand_Company"
+  }
+}
+
+data the_wand_company: Vendor<Hardware> = Vendor { legal_name: "The Wand Company" }
+
+data legal_name_grain_note: String = "legal_name carries the trading name exactly as the cited sources spell it. No incorporation suffix is asserted: the retail listings and the encyclopedia entry read by this session all render the name bare, and appending a company-form suffix that no read source states would be a fabricated fact about a real legal entity (DESIGN section 5). Dissolve-on: a companies-register citation grounds the registered form."
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.vendor.the_wand_company",
+      decl_name: "the_wand_company",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps.vendor.the_wand_company.extdeps_external_authority_anchor,
+  further_citations: []
+}
