@@ -241,16 +241,12 @@ fn project_navigable_uri(base: Uri, sequence_construction: PdfOpenParameterSeque
   }
 }
 
-fn pdf_open_parameters_include_page(construction: PdfOpenParameterSequenceConstruction, page: PositiveInt) -> Bool {
-  match construction {
-    SequenceConstructed(sequence) =>
-      any(
-        sequence.parameters,
-        parameter => match parameter {
-          OpenPage(PdfOpenPage { page: n }) => n == page
-          _ => false
-        },
-      )
-    SequenceConstructionRefused { cause: _ } => false
-  }
+fn pdf_open_parameters_include_page(sequence: PdfOpenParameterSequence, page: PositiveInt) -> Bool {
+  any(
+    sequence.parameters,
+    parameter => match parameter {
+      OpenPage(PdfOpenPage { page: n }) => n == page
+      _ => false
+    },
+  )
 }

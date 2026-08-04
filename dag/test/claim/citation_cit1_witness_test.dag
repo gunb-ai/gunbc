@@ -73,17 +73,17 @@ test fn pdf_open_parameter_sequence_refuses_only_refused_parameters() -> Bool {
 }
 
 test fn pdf_open_parameters_include_page_holds_for_authored_page() -> Bool {
-  pdf_open_parameters_include_page(
-    construction: pdf_open_parameter_sequence(constructions: [pdf_open_page(page: 1)]),
-    page: 1,
-  )
+  match pdf_open_parameter_sequence(constructions: [pdf_open_page(page: 1)]) {
+    SequenceConstructed(sequence) => pdf_open_parameters_include_page(sequence, 1)
+    _ => false
+  }
 }
 
 test fn pdf_open_parameters_include_page_red_wrong_page() -> Bool {
-  !pdf_open_parameters_include_page(
-    construction: pdf_open_parameter_sequence(constructions: [pdf_open_page(page: 1)]),
-    page: 99,
-  )
+  match pdf_open_parameter_sequence(constructions: [pdf_open_page(page: 1)]) {
+    SequenceConstructed(sequence) => !pdf_open_parameters_include_page(sequence, 99)
+    _ => false
+  }
 }
 
 test fn project_navigable_uri_appends_ordered_fragment() -> Bool {
