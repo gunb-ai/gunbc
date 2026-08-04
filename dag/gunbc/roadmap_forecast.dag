@@ -417,7 +417,7 @@ type ForecastRefusal
     }
   | WorkerConcurrencyCapInvalid { declared_cap: Int }
   | CalibrationHistoryRefused { refusals: List<CycleTimeHistoryRefusal> }
-  | RoadmapAuthorityProjectionRefused { detail: String }
+  | ForecastRoadmapAuthorityRefused { detail: String }
   | ForecastBuildRefused { node: RoadmapNodeId }
 
 type ScheduleForecastResult
@@ -444,7 +444,7 @@ fn no_calibration_gap_count(result: ScheduleForecastResult) -> Int {
         NodeUnsized { nodes: _ } => 0
         CycleTimeObservationNonPositive { nodes: _ } => 0
         CalibrationHistoryRefused { refusals: _ } => 0
-        RoadmapAuthorityProjectionRefused { detail: _ } => 0
+        ForecastRoadmapAuthorityRefused { detail: _ } => 0
         ForecastBuildRefused { node: _ } => 0
       }
     )
@@ -831,8 +831,8 @@ fn live_roadmap_schedule_forecast(
 ) -> ScheduleForecastResult {
   match roadmap_authority_projection() {
     RoadmapAuthorityProjectionRefused { detail: detail } =>
-      ScheduleForecastRefused { refusals: [RoadmapAuthorityProjectionRefused { detail: detail }] }
-    RoadmapAuthorityProjected { doc: _ } =>
+      ScheduleForecastRefused { refusals: [ForecastRoadmapAuthorityRefused { detail: detail }] }
+    RoadmapAuthorityProjected { doc: _, accepted: _ } =>
       match accepted_roadmap_node_ids_projection() {
         AcceptedRoadmapNodeIdsProjected { ids: accepted } =>
           let builds = roadmap_cycle_time_observation_builds()
@@ -846,7 +846,7 @@ fn live_roadmap_schedule_forecast(
             anchor: anchor,
           )
         AcceptedRoadmapNodeIdsProjectionRefused { detail: detail } =>
-          ScheduleForecastRefused { refusals: [RoadmapAuthorityProjectionRefused { detail: detail }] }
+          ScheduleForecastRefused { refusals: [ForecastRoadmapAuthorityRefused { detail: detail }] }
       }
   }
 }

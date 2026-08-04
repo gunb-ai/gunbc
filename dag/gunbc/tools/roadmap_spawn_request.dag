@@ -23,7 +23,7 @@ func roadmap_next_spawnable() -> String {
         json_kv(key: "error", value: json_string(s: detail)),
         json_kv(key: "ready", value: json_array(elements: [])),
       ]))
-    RoadmapAuthorityProjected { doc: doc } => {
+    RoadmapAuthorityProjected { doc: doc, accepted: _ } => {
       let sha_result = git.Inspect.HeadCommit()
       if sha_result.success {
         roadmap_spawn_request_json(doc: doc, merged: authored_merged_prs(), anchor_commit: sha_result.sha)

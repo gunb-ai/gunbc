@@ -329,11 +329,11 @@ test fn witness_missing_carrier_prevents_silent_empty_authority_projection() -> 
     RoadmapAcceptanceEventHistoryLoadRefused { detail: _ } =>
       match roadmap_authority_projection() {
         RoadmapAuthorityProjectionRefused { detail: _ } => true
-        RoadmapAuthorityProjected { doc: doc } => count(doc_all_nodes(doc: doc)) == 0
+        RoadmapAuthorityProjected { doc: doc, accepted: _ } => count(doc_all_nodes(doc: doc)) == 0
       }
     RoadmapAcceptanceEventHistoryLoaded { events: _ } =>
       match roadmap_authority_projection() {
-        RoadmapAuthorityProjected { doc: doc } => count(doc_all_nodes(doc: doc)) > 0
+        RoadmapAuthorityProjected { doc: doc, accepted: _ } => count(doc_all_nodes(doc: doc)) > 0
         RoadmapAuthorityProjectionRefused { detail: _ } => false
       }
   }
@@ -344,7 +344,7 @@ test fn witness_dispatch_never_presents_empty_frontier_on_authority_refusal() ->
     RoadmapAuthorityProjectionRefused { detail: detail } =>
       string_contains(s: roadmap_dispatch_file_content(), pattern: detail)
         && string_contains(s: roadmap_dispatch_file_content(), pattern: "\"refused\":true")
-    RoadmapAuthorityProjected { doc: _ } =>
+    RoadmapAuthorityProjected { doc: _, accepted: _ } =>
       !string_contains(s: roadmap_dispatch_file_content(), pattern: "\"refused\":true")
   }
 }

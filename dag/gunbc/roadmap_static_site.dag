@@ -15,9 +15,20 @@ import extdeps.http.server {
 }
 import std.markup { Fragment }
 import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source }
-import gunbc.roadmap_authority { expected_roadmap_md, authored_merged_prs, roadmap_authority }
-import gunbc.roadmap_spawner { roadmap_dispatch_file_content }
-import gunbc.roadmap_page { roadmap_page_for_authority, roadmap_daily_workspace_page_for_authority }
+import gunbc.roadmap_authority {
+  expected_roadmap_md,
+  expected_roadmap_md_for_projection,
+  roadmap_authority_projection,
+  authored_merged_prs,
+  roadmap_authority,
+}
+import gunbc.roadmap_spawner { roadmap_dispatch_file_content, roadmap_dispatch_file_content_for_projection }
+import gunbc.roadmap_page {
+  roadmap_page_for_authority,
+  roadmap_page_for_projection,
+  roadmap_daily_workspace_page_for_authority,
+  roadmap_daily_workspace_page_for_projection,
+}
 import gunbc.roadmap_component { dispatch_client_js_source, roadmap_dispatch_asset_path }
 import gunbc.fleet_intent_network { fleet_intent_network }
 import extdeps.languages.json.emit {
@@ -168,8 +179,21 @@ fn served_surface_digest_kv(url_path: NonEmptyStr, body: String) -> JsonKeyValue
 }
 
 fn roadmap_site_healthz_body() -> String {
-  let roadmap = roadmap_site_roadmap_md_artifact()
-  let dispatch = roadmap_site_dispatch_json_artifact()
+  let proj = roadmap_authority_projection()
+  let roadmap_body = expected_roadmap_md_for_projection(proj: proj)
+  let dispatch_body = roadmap_dispatch_file_content_for_projection(proj: proj)
+  let roadmap = SiteArtifact {
+    kind: RoadmapMarkdown,
+    url_path: roadmap_site_roadmap_url_path,
+    body: roadmap_body,
+    digest: site_artifact_digest(body: roadmap_body),
+  }
+  let dispatch = SiteArtifact {
+    kind: RoadmapDispatchJson,
+    url_path: roadmap_site_dispatch_url_path,
+    body: dispatch_body,
+    digest: site_artifact_digest(body: dispatch_body),
+  }
   serialize_json(v: json_object(members: [
     json_kv(key: "status", value: json_string(s: "ok")),
     json_kv(key: "service", value: json_string(s: roadmap_site_service_name)),
@@ -178,11 +202,11 @@ fn roadmap_site_healthz_body() -> String {
       json_kv(key: dispatch.url_path as String, value: json_string(s: dispatch.digest.digest as String)),
       served_surface_digest_kv(
         url_path: roadmap_site_daily_url_path,
-        body: served_page_body(page: roadmap_daily_workspace_page_for_authority()),
+        body: served_page_body(page: roadmap_daily_workspace_page_for_projection(proj: proj)),
       ),
       served_surface_digest_kv(
         url_path: roadmap_site_full_url_path,
-        body: served_page_body(page: roadmap_page_for_authority()),
+        body: served_page_body(page: roadmap_page_for_projection(proj: proj)),
       ),
       served_surface_digest_kv(
         url_path: roadmap_dispatch_asset_path as NonEmptyStr,

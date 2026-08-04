@@ -15,6 +15,7 @@ import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.roadmap_authority {
   roadmap_authority, authored_merged_prs,
   roadmap_authority_projection,
+  RoadmapAuthorityProjection,
   RoadmapAuthorityProjected, RoadmapAuthorityProjectionRefused,
   roadmap_authority_for,
   declared_roadmap_nodes,
@@ -387,19 +388,23 @@ fn roadmap_dispatch_json(doc: RoadmapDocument, merged: List<Int>) -> String {
   serialize_json(v: roadmap_dispatch_json_value(doc: doc, merged: merged))
 }
 
-fn roadmap_dispatch_file_content() -> String {
-  match roadmap_authority_projection() {
+fn roadmap_dispatch_file_content_for_projection(proj: RoadmapAuthorityProjection) -> String {
+  match proj {
     RoadmapAuthorityProjectionRefused { detail: detail } =>
       serialize_json(v: json_object(members: [
         json_kv(key: "schema", value: json_string(s: "roadmap-dispatch-file/v1")),
         json_kv(key: "refused", value: json_bool(b: true)),
         json_kv(key: "detail", value: json_string(s: detail)),
       ]))
-    RoadmapAuthorityProjected { doc: doc } =>
+    RoadmapAuthorityProjected { doc: doc, accepted: _ } =>
       serialize_json(v: json_object(members: [
         json_kv(key: "schema", value: json_string(s: "roadmap-dispatch-file/v1")),
         json_kv(key: "brief_template", value: json_string(s: dispatch_brief_template)),
         json_kv(key: "dispatch", value: roadmap_dispatch_json_value(doc: doc, merged: authored_merged_prs())),
       ]))
   }
+}
+
+fn roadmap_dispatch_file_content() -> String {
+  roadmap_dispatch_file_content_for_projection(proj: roadmap_authority_projection())
 }

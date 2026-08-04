@@ -1981,7 +1981,7 @@ type AcceptedRoadmapNodeIdsProjection
   | AcceptedRoadmapNodeIdsProjectionRefused { detail: String }
 
 type RoadmapAuthorityProjection
-  = RoadmapAuthorityProjected { doc: RoadmapDocument }
+  = RoadmapAuthorityProjected { doc: RoadmapDocument, accepted: List<RoadmapNodeId> }
   | RoadmapAuthorityProjectionRefused { detail: String }
 
 fn accepted_roadmap_nodes_projection() -> AcceptedRoadmapNodesProjection {
@@ -2241,6 +2241,7 @@ fn roadmap_authority_projection() -> RoadmapAuthorityProjection {
           lead_lanes: [],
           sections: [active_section_for_acceptance(focus: roadmap_focus_selection, accepted: accepted)],
         },
+        accepted: accepted,
       }
   }
 }
@@ -2987,7 +2988,7 @@ fn roadmap_authority_refusal_document(detail: String) -> RoadmapDocument {
 
 fn roadmap_authority() -> RoadmapDocument {
   match roadmap_authority_projection() {
-    RoadmapAuthorityProjected { doc: doc } => doc
+    RoadmapAuthorityProjected { doc: doc, accepted: _ } => doc
     RoadmapAuthorityProjectionRefused { detail: detail } =>
       roadmap_authority_refusal_document(detail: detail)
   }
@@ -2995,11 +2996,11 @@ fn roadmap_authority() -> RoadmapDocument {
 
 fn authored_merged_prs() -> List<Int> { [] }
 
-fn expected_roadmap_md() -> String {
-  match roadmap_authority_projection() {
+fn expected_roadmap_md_for_projection(proj: RoadmapAuthorityProjection) -> String {
+  match proj {
     RoadmapAuthorityProjectionRefused { detail: detail } =>
       concat("# roadmap unavailable\n\n", concat(detail, "\n"))
-    RoadmapAuthorityProjected { doc: doc } =>
+    RoadmapAuthorityProjected { doc: doc, accepted: _ } =>
       serialize_markdown_source(
         doc: project_roadmap_to_markdown(
           doc: doc,
@@ -3007,6 +3008,10 @@ fn expected_roadmap_md() -> String {
         )
       )
   }
+}
+
+fn expected_roadmap_md() -> String {
+  expected_roadmap_md_for_projection(proj: roadmap_authority_projection())
 }
 
 fn roadmap_drifted(committed: String) -> Bool {

@@ -2069,7 +2069,7 @@ fn belt_run_once_in(
         verify_outcomes: belt_verify_attempts_for_instance(instance: instance),
         publish_outcomes: belt_publish_attempts_for_instance(instance: instance),
       }
-    RoadmapAuthorityProjected { doc: doc } =>
+    RoadmapAuthorityProjected { doc: doc, accepted: _ } =>
       belt_tick_for_instance(
         instance: instance,
         state: roadmap_belt_default_run_state,
@@ -3908,7 +3908,7 @@ fn belt_lookup_node(node_id: String) -> BeltNodeLookup {
   match roadmap_authority_projection() {
     RoadmapAuthorityProjectionRefused { detail: detail } =>
       AuthorityProjectionRefused { detail: detail }
-    RoadmapAuthorityProjected { doc: doc } =>
+    RoadmapAuthorityProjected { doc: doc, accepted: _ } =>
       belt_find_node_in(nodes: doc_all_nodes(doc: doc), node_id: node_id)
   }
 }

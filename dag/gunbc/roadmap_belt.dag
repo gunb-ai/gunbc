@@ -180,7 +180,7 @@ fn roadmap_belt_status_json() -> String {
         json_kv(key: "refused", value: json_bool(b: true)),
         json_kv(key: "detail", value: json_string(s: detail)),
       ]))
-    RoadmapAuthorityProjected { doc: doc } =>
+    RoadmapAuthorityProjected { doc: doc, accepted: _ } =>
       serialize_json(v: belt_json_value(
         state: roadmap_belt_default_run_state,
         doc: doc,
