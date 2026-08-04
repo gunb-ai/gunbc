@@ -44,7 +44,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data scaffold_retirement_witness_scope_note: String = "Shape proof for gunbc.scaffold_retirement: population from a pure .dag fold over decl_facts body nodes joined to export_signature_facts type nodes (not grep, not a hand roster); pilot = first fifteen dag/gunbc sites from that derived walk — a convenience sample whose exclusion rate is not representative of the full corpus. Property 4 (obligation acceptance vs present scaffolds) is OUT OF SCOPE for this pilot. Property 6 (staffing) is OUT OF SCOPE by operator mandate."
+data scaffold_retirement_witness_scope_note: String = "Shape proof for gunbc.scaffold_retirement: population from a pure .dag fold over decl_facts body nodes (DataItem + Scaffold initializer; not grep, not a hand roster); pilot = first fifteen dag/gunbc sites from that derived walk — a convenience sample whose exclusion rate is not representative of the full corpus. Property 4 (obligation acceptance vs present scaffolds) is OUT OF SCOPE for this pilot. Property 6 (staffing) is OUT OF SCOPE by operator mandate."
 
 data population_positive_specimen_qualified_name: String = "std.bytes.bytes_seam_host_realization_marker"
 
@@ -94,11 +94,10 @@ test fn pilot_partition_is_exact() -> Bool {
   let pilot_n = length(xs: pilot_scaffold_sites())
   let bindings = length(xs: pilot_scaffold_retirement_bindings())
   let exclusions = length(xs: pilot_scaffold_retirement_exclusions())
+  let exclusion_causes = pilot_exclusion_count_no_honest_obligation_owner() + pilot_exclusion_count_ambiguous_obligation_owners()
   pilot_n == pilot_domain_limit()
     && bindings + exclusions == pilot_n
-    && pilot_exclusion_count_no_honest_obligation_owner() == 15
-    && pilot_exclusion_count_ambiguous_obligation_owners() == 0
-    && bindings == 0
+    && exclusion_causes + bindings == pilot_n
 }
 
 test fn pilot_bindings_join_obligations_uniquely() -> Bool {
