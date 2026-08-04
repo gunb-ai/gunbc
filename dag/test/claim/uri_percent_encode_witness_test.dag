@@ -42,6 +42,20 @@ test fn uri_percent_encode_refuses_code_point_beyond_unicode_max_holds() -> Bool
   }
 }
 
+test fn uri_percent_encode_refuses_negative_scalar_at_construction_holds() -> Bool {
+  match uri_percent_encode_code_point(cp: -1) {
+    UriPercentComponentRefused { cause: UriPercentEncodeUnicodeScalarOutOfRangeRefused { cp: -1 } } => true
+    UriPercentComponentEncoded(_) => false
+  }
+}
+
+test fn uri_percent_encode_refuses_empty_code_point_list_holds() -> Bool {
+  match uri_percent_encode_code_points(code_points: []) {
+    UriPercentComponentRefused { cause: UriPercentEncodeEmptyInputRefused } => true
+    UriPercentComponentEncoded(_) => false
+  }
+}
+
 test fn uri_percent_encode_component_round_trip_unreserved_holds() -> Bool {
   match uri_percent_encode_component(value: "page-1_ok" as NonEmptyStr) {
     UriPercentComponentEncoded(wire) => wire == "page-1_ok"

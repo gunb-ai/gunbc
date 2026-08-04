@@ -1,6 +1,12 @@
 module extdeps.uri
 
 import std.types { NonEmptyStr }
+import std.unicode.types {
+  unicode_scalar_max_code_point,
+  unicode_surrogate_first_code_point,
+  unicode_surrogate_last_code_point,
+}
+import extdeps.external_authority { ExternalAuthority }
 
 type UriScheme
   = Http
@@ -87,7 +93,14 @@ fn parse_href_scheme(url: String) -> ParsedHrefScheme {
   }
 }
 
-data uri_component_encode_authority_note: String = "RFC 3986 URI-component percent-encoding for extdeps.uri. Unreserved ALPHA / DIGIT / -._~ pass through; reserved and non-ASCII scalars encode as UTF-8 octets percent-encoded with UPPERCASE hex. UriUnicodeScalar and UriUtf8Octet are distinct domains — UTF-8 decomposition never re-enters the scalar encoder with octet values."
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "www.rfc-editor.org/rfc/rfc3986#section-2.1",
+  },
+}
+
+data uri_component_encode_authority_note: String = "RFC 3986 section 2.1 percent-encoding for extdeps.uri (authority: extdeps.uri extdeps_external_authority_anchor). Unreserved ALPHA / DIGIT / -._~ pass through; reserved and non-ASCII scalars encode as UTF-8 octets percent-encoded with UPPERCASE hex. UriUnicodeScalar and UriUtf8Octet are distinct domains — UTF-8 decomposition never re-enters the scalar encoder with octet values. Scalar bounds consume std.unicode.types unicode_scalar_max_code_point and surrogate range rows."
 
 type UriHexNibble
   = UriNibble0
@@ -137,6 +150,7 @@ type UriPercentEncodeRefusalCause
   | UriPercentEncodeSurrogateScalarRefused { cp: Int }
   | UriPercentEncodeUnicodeScalarOutOfRangeRefused { cp: Int }
   | UriPercentEncodeUtf8OctetOutOfRangeRefused { value: Int }
+  | UriPercentEncodeEmptyInputRefused
 
 type UriPercentEncodeComponent
   = UriPercentComponentEncoded(NonEmptyStr)
@@ -212,9 +226,11 @@ fn uri_hex_nibble_wire(nibble: UriHexNibble) -> String {
 }
 
 fn uri_unicode_scalar_construction(cp: Int) -> UriUnicodeScalarConstruction {
-  if cp > 1114111 {
+  if cp < 0 {
     UriUnicodeScalarOutOfRangeRefused { cp: cp }
-  } else if cp >= 55296 && cp <= 57343 {
+  } else if cp > unicode_scalar_max_code_point {
+    UriUnicodeScalarOutOfRangeRefused { cp: cp }
+  } else if cp >= unicode_surrogate_first_code_point && cp <= unicode_surrogate_last_code_point {
     UriUnicodeScalarSurrogateRefused { cp: cp }
   } else {
     UriUnicodeScalarConstructed(UriUnicodeScalar { cp: cp })
@@ -366,29 +382,33 @@ fn uri_percent_encode_component(value: NonEmptyStr) -> UriPercentEncodeComponent
 }
 
 fn uri_percent_encode_code_points(code_points: List<Int>) -> UriPercentEncodeComponent {
-  match fold(
-    code_points,
-    init: UriPercentEncodeBuilding { wire: "" },
-    f: fn(acc, cp) {
-      match acc {
-        UriPercentEncodeRefused { cause: _ } => acc
-        UriPercentEncodeBuilding { wire: prefix } =>
-          match uri_unicode_scalar_construction(cp: cp) {
-            UriUnicodeScalarSurrogateRefused { cp: c } =>
-              UriPercentEncodeRefused { cause: UriPercentEncodeSurrogateScalarRefused { cp: c } }
-            UriUnicodeScalarOutOfRangeRefused { cp: c } =>
-              UriPercentEncodeRefused { cause: UriPercentEncodeUnicodeScalarOutOfRangeRefused { cp: c } }
-            UriUnicodeScalarConstructed(scalar) =>
-              match uri_percent_encode_unicode_scalar(scalar: scalar) {
-                UriPercentEncodeRefused { cause: cause } => UriPercentEncodeRefused { cause: cause }
-                UriPercentEncodeBuilding { wire: encoded } =>
-                  UriPercentEncodeBuilding { wire: concat(prefix, encoded) }
-              }
-          }
-      }
-    },
-  ) {
-    UriPercentEncodeRefused { cause: cause } => UriPercentComponentRefused { cause: cause }
-    UriPercentEncodeBuilding { wire: wire } => UriPercentComponentEncoded(wire as NonEmptyStr)
+  if code_points |> length == 0 {
+    UriPercentComponentRefused { cause: UriPercentEncodeEmptyInputRefused }
+  } else {
+    match fold(
+      code_points,
+      init: UriPercentEncodeBuilding { wire: "" },
+      f: fn(acc, cp) {
+        match acc {
+          UriPercentEncodeRefused { cause: _ } => acc
+          UriPercentEncodeBuilding { wire: prefix } =>
+            match uri_unicode_scalar_construction(cp: cp) {
+              UriUnicodeScalarSurrogateRefused { cp: c } =>
+                UriPercentEncodeRefused { cause: UriPercentEncodeSurrogateScalarRefused { cp: c } }
+              UriUnicodeScalarOutOfRangeRefused { cp: c } =>
+                UriPercentEncodeRefused { cause: UriPercentEncodeUnicodeScalarOutOfRangeRefused { cp: c } }
+              UriUnicodeScalarConstructed(scalar) =>
+                match uri_percent_encode_unicode_scalar(scalar: scalar) {
+                  UriPercentEncodeRefused { cause: cause } => UriPercentEncodeRefused { cause: cause }
+                  UriPercentEncodeBuilding { wire: encoded } =>
+                    UriPercentEncodeBuilding { wire: concat(prefix, encoded) }
+                }
+            }
+        }
+      },
+    ) {
+      UriPercentEncodeRefused { cause: cause } => UriPercentComponentRefused { cause: cause }
+      UriPercentEncodeBuilding { wire: wire } => UriPercentComponentEncoded(wire as NonEmptyStr)
+    }
   }
 }
