@@ -72,38 +72,63 @@ type PatternStatus
   | PatternDiscernible
   | PatternClearlyVisible
 
+data figure_3_buildup_progression_note: String = "Figure 3 panels a–e map to 2, 7, 209, 1004, and 6235 electrons. Panels 3a–3c appear completely random; pattern discernible only in 3d (1004 electrons); 3e clearly visible (6235)."
+
+type Figure3BuildupPanel
+  = Figure3PanelA
+  | Figure3PanelB
+  | Figure3PanelC
+  | Figure3PanelD
+  | Figure3PanelE
+
+data figure_3_panel_a_evidence_locator: String = "Figure 3 panel a — 2 detected electrons (doi 10.1088/1367-2630/15/3/033018)."
+
+data figure_3_panel_b_evidence_locator: String = "Figure 3 panel b — 7 detected electrons."
+
+data figure_3_panel_c_evidence_locator: String = "Figure 3 panel c — 209 detected electrons."
+
+data figure_3_panel_d_evidence_locator: String = "Figure 3 panel d — 1004 detected electrons; first discernible interference pattern."
+
+data figure_3_panel_e_evidence_locator: String = "Figure 3 panel e — 6235 detected electrons; clearly visible interference pattern."
+
 type BachBuildupObservationRow {
   apparatus: BachEtAl2013DoubleSlitExperiment
+  figure_3_panel: Figure3BuildupPanel
   detected_electrons: NonNegativeInt
   pattern_status: PatternStatus
 }
 
 data bach_buildup_2_electrons: BachBuildupObservationRow = BachBuildupObservationRow {
   apparatus: bach_et_al_2013_double_slit,
+  figure_3_panel: Figure3PanelA,
   detected_electrons: 2,
   pattern_status: PatternNotYetDiscernible,
 }
 
 data bach_buildup_7_electrons: BachBuildupObservationRow = BachBuildupObservationRow {
   apparatus: bach_et_al_2013_double_slit,
+  figure_3_panel: Figure3PanelB,
   detected_electrons: 7,
   pattern_status: PatternNotYetDiscernible,
 }
 
 data bach_buildup_209_electrons: BachBuildupObservationRow = BachBuildupObservationRow {
   apparatus: bach_et_al_2013_double_slit,
+  figure_3_panel: Figure3PanelC,
   detected_electrons: 209,
   pattern_status: PatternNotYetDiscernible,
 }
 
 data bach_buildup_1004_electrons: BachBuildupObservationRow = BachBuildupObservationRow {
   apparatus: bach_et_al_2013_double_slit,
+  figure_3_panel: Figure3PanelD,
   detected_electrons: 1004,
   pattern_status: PatternDiscernible,
 }
 
 data bach_buildup_6235_electrons: BachBuildupObservationRow = BachBuildupObservationRow {
   apparatus: bach_et_al_2013_double_slit,
+  figure_3_panel: Figure3PanelE,
   detected_electrons: 6235,
   pattern_status: PatternClearlyVisible,
 }
@@ -115,5 +140,3 @@ data bach_buildup_observations: List<BachBuildupObservationRow> = [
   bach_buildup_1004_electrons,
   bach_buildup_6235_electrons,
 ]
-
-data figure_3_buildup_progression_note: String = "Figure 3 panels a–e map to 2, 7, 209, 1004, and 6235 electrons. Panels 3a–3c appear completely random; pattern discernible only in 3d (1004 electrons); 3e clearly visible (6235)."
