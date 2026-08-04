@@ -6,7 +6,7 @@ import v2.compiler.self_host.emitter_producer_provenance {
   EmissionQualification,
   ProductionRouted,
   SourceProduced,
-  emission_qualifications_list_contains
+  emission_qualification_eq
 }
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { SingleAuthority }
@@ -20,10 +20,7 @@ import v2.std.algebra {
 import v2.std.collection {
   Absent,
   List,
-  Optional,
-  Present,
-  optional_absent,
-  optional_present
+  Present
 }
 import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
 import v2.std.diagnostic { Accepted, Rejected }
@@ -56,7 +53,7 @@ data construction_justification: ConstructionJustification = ConstructionJustifi
   class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }
 
-data production_qualification_count_axis_note: String = "All EmissionQualification axes route through production_qualification_count_axis_for_emission_qualification over production_qualification_counted_qualifications — including BehavioralEquivalent (7761 origin-accounting rung)."
+data production_qualification_counted_qualifications_note: String = "Counted EmissionQualification axes for mint-site rows — single authority from v2.compiler.self_host.emitter_producer_provenance, including BehavioralEquivalent (7761 origin-accounting rung)."
 
 data production_qualification_counted_qualifications: List<EmissionQualification> = [
   SourceProduced,
@@ -71,15 +68,9 @@ type ProductionQualificationOrigin
   | ExecutionMeasured
   | UnknownOrigin
 
-type ProductionQualificationCountAxis
-  = QualificationSourceProduced
-  | QualificationCargoGreen
-  | QualificationProductionRouted
-  | QualificationBehavioralEquivalent
-
 type DerivedProductionQualificationMintSiteRow {
   qualified_name: String
-  qualification_axis: ProductionQualificationCountAxis
+  qualification_axis: EmissionQualification
   evidence_origin: ProductionQualificationOrigin
 }
 
@@ -135,57 +126,40 @@ fn production_qualification_origin_eq(
   }
 }
 
-fn production_qualification_count_axis_eq(
-  left: ProductionQualificationCountAxis,
-  right: ProductionQualificationCountAxis
+fn site_row_already_present(
+  sites: List<DerivedProductionQualificationMintSiteRow>,
+  qualified_name: String,
+  axis: EmissionQualification
 ) -> Bool {
-  match left {
-    QualificationSourceProduced =>
-      match right {
-        QualificationSourceProduced => true
-        QualificationCargoGreen => false
-        QualificationProductionRouted => false
-        QualificationBehavioralEquivalent => false
-      }
-    QualificationCargoGreen =>
-      match right {
-        QualificationSourceProduced => false
-        QualificationCargoGreen => true
-        QualificationProductionRouted => false
-        QualificationBehavioralEquivalent => false
-      }
-    QualificationProductionRouted =>
-      match right {
-        QualificationSourceProduced => false
-        QualificationCargoGreen => false
-        QualificationProductionRouted => true
-        QualificationBehavioralEquivalent => false
-      }
-    QualificationBehavioralEquivalent =>
-      match right {
-        QualificationSourceProduced => false
-        QualificationCargoGreen => false
-        QualificationProductionRouted => false
-        QualificationBehavioralEquivalent => true
-      }
-  }
+  any(
+    xs: sites,
+    predicate: fn(row) {
+      string_eq(a: row.qualified_name, b: qualified_name)
+        && emission_qualification_eq(
+          left: row.qualification_axis,
+          right: axis
+        )
+    }
+  )
 }
 
-fn production_qualification_count_axis_for_emission_qualification(
-  qualification: EmissionQualification
-) -> Optional<ProductionQualificationCountAxis> {
-  if emission_qualifications_list_contains(
-    xs: production_qualification_counted_qualifications,
-    wanted: qualification
-  ) {
-    match qualification {
-      SourceProduced => optional_present(value: QualificationSourceProduced)
-      CargoGreen => optional_present(value: QualificationCargoGreen)
-      ProductionRouted => optional_present(value: QualificationProductionRouted)
-      BehavioralEquivalent => optional_present(value: QualificationBehavioralEquivalent)
-    }
+fn maybe_snoc_site_row(
+  sites: List<DerivedProductionQualificationMintSiteRow>,
+  qualified_name: String,
+  axis: EmissionQualification,
+  origin: ProductionQualificationOrigin
+) -> List<DerivedProductionQualificationMintSiteRow> {
+  if site_row_already_present(sites: sites, qualified_name: qualified_name, axis: axis) {
+    sites
   } else {
-    optional_absent()
+    list_snoc_item(
+      xs: sites,
+      item: DerivedProductionQualificationMintSiteRow {
+        qualified_name: qualified_name,
+        qualification_axis: axis,
+        evidence_origin: origin
+      }
+    )
   }
 }
 
@@ -345,43 +319,6 @@ fn decl_origin_from_structure(decl: FnArrowDecl) -> ProductionQualificationOrigi
   }
 }
 
-fn site_row_already_present(
-  sites: List<DerivedProductionQualificationMintSiteRow>,
-  qualified_name: String,
-  axis: ProductionQualificationCountAxis
-) -> Bool {
-  any(
-    xs: sites,
-    predicate: fn(row) {
-      string_eq(a: row.qualified_name, b: qualified_name)
-        && production_qualification_count_axis_eq(
-          left: row.qualification_axis,
-          right: axis
-        )
-    }
-  )
-}
-
-fn maybe_snoc_site_row(
-  sites: List<DerivedProductionQualificationMintSiteRow>,
-  qualified_name: String,
-  axis: ProductionQualificationCountAxis,
-  origin: ProductionQualificationOrigin
-) -> List<DerivedProductionQualificationMintSiteRow> {
-  if site_row_already_present(sites: sites, qualified_name: qualified_name, axis: axis) {
-    sites
-  } else {
-    list_snoc_item(
-      xs: sites,
-      item: DerivedProductionQualificationMintSiteRow {
-        qualified_name: qualified_name,
-        qualification_axis: axis,
-        evidence_origin: origin
-      }
-    )
-  }
-}
-
 fn derived_sites_for_decl(
   sites: List<DerivedProductionQualificationMintSiteRow>,
   decl: FnArrowDecl
@@ -393,7 +330,7 @@ fn derived_sites_for_decl(
         maybe_snoc_site_row(
           sites: sites,
           qualified_name: decl.qualified_name,
-          axis: QualificationSourceProduced,
+          axis: SourceProduced,
           origin: origin
         )
       } else {
@@ -403,7 +340,7 @@ fn derived_sites_for_decl(
       maybe_snoc_site_row(
         sites: with_source_produced,
         qualified_name: decl.qualified_name,
-        axis: QualificationCargoGreen,
+        axis: CargoGreen,
         origin: origin
       )
     } else {
@@ -491,21 +428,46 @@ fn unknown_origin_red_control_planted_decl() -> FnArrowDecl {
   }
 }
 
-fn structural_red_control_decl_present_live() -> Bool {
-  any(
-    xs: fn_arrow_decl_facts_live(),
-    predicate: fn(decl) {
-      string_eq(a: decl.name, b: "structural_red_control_mint_site_probe")
-    }
-  )
+data structural_red_control_planted_qualified_name: String = "synthetic.production_qualification_origin_census.structural_red_control_planted"
+
+fn probe_target_model_callee_atom_node() -> Node {
+  Node {
+    kind: TypeNode {
+      connective: Atom {
+        identity: symbol_intern_lexeme(lexeme: direct_rust_door_target_model_callee)
+      }
+    },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
 }
 
-fn structural_red_control_decl_has_mint_callee_live() -> Bool {
-  any(
+fn structural_red_control_planted_decl() -> FnArrowDecl {
+  FnArrowDecl {
+    qualified_name: structural_red_control_planted_qualified_name,
+    name: "structural_red_control_planted_decl",
+    output: Node {
+      kind: TypeNode { connective: Conj },
+      children: [
+        Edge { label: Positional, target: probe_mint_callee_atom_node() },
+        Edge { label: Positional, target: probe_target_model_callee_atom_node() }
+      ],
+      occurrence_id: SyntheticOccurrence
+    },
+    params: []
+  }
+}
+
+fn structural_red_control_live_body_skeleton_visible() -> Bool {
+  fold_list(
     xs: fn_arrow_decl_facts_live(),
-    predicate: fn(decl) {
-      string_eq(a: decl.name, b: "structural_red_control_mint_site_probe")
-        && decl_contains_callee(decl: decl, callee: mint_written_callee)
+    empty: false,
+    cons: fn(found, decl) {
+      if string_eq(a: decl.name, b: "structural_red_control_mint_site_probe") {
+        length(xs: atom_identities_in_node(node: decl.output)) > 0
+      } else {
+        found
+      }
     }
   )
 }

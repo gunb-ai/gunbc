@@ -1,12 +1,14 @@
 module v2.test.claim.self_host.production_qualification_origin_census_witness_test
 
 import v2.lens.production_qualification_origin_census_structural_fixture {
-  structural_red_control_mint_site_probe,
-  structural_red_control_mint_site_qualified_name
+  structural_red_control_mint_site_probe
+}
+import v2.compiler.self_host.emitter_producer_provenance {
+  SourceProduced,
+  emission_qualification_eq
 }
 import v2.lens.production_qualification_origin_census {
   FixtureDerived,
-  QualificationSourceProduced,
   UnknownOrigin,
   count_derived_fixture_origin_mint_sites,
   count_derived_mint_sites_with_origin,
@@ -14,12 +16,12 @@ import v2.lens.production_qualification_origin_census {
   derived_sites_for_decl,
   empty_site_list,
   known_fixture_origin_mint_surface_count_in_scope,
-  production_qualification_count_axis_eq,
   production_qualification_origin_eq,
   production_qualification_origin_probe_admission_holds,
   production_qualification_origin_probe_admission_holds_for_decls,
-  structural_red_control_decl_has_mint_callee_live,
-  structural_red_control_decl_present_live,
+  structural_red_control_live_body_skeleton_visible,
+  structural_red_control_planted_decl,
+  structural_red_control_planted_qualified_name,
   string_eq,
   unknown_origin_red_control_planted_decl
 }
@@ -29,15 +31,7 @@ import v2.std.integer { int_eq }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 
-data production_qualification_origin_census_witness_note: String = "Production-qualification origin PROBE witnesses (wise-ram-22 recut): structural skeleton discovery only — no witness-import closure roster, no declaration-name classifier pins. Identity joins for ingest/direct-door repository-wide surfaces are admitted RED until call-occurrence derivation lands. Structural RED control imports a real mint+fixture fn; classifier must discover it without a taught qualified name."
-
-test fn witness_debug_structural_decl_present() -> Bool {
-  structural_red_control_decl_present_live()
-}
-
-test fn witness_debug_structural_decl_has_mint_callee() -> Bool {
-  structural_red_control_decl_has_mint_callee_live()
-}
+data production_qualification_origin_census_witness_note: String = "Production-qualification origin PROBE witnesses (wise-ram-22 recut): structural skeleton discovery only — no witness-import closure roster, no declaration-name classifier pins. Structural GREEN uses a synthetic planted decl whose qualified name is oracle-only; the classifier reads callee+fixture-marker skeleton only. Live fixture fn bodies remain G2-marshal frontier until call-occurrence derivation lands."
 
 test fn witness_production_qualification_origin_probe_admission_holds() -> Bool {
   production_qualification_origin_probe_admission_holds()
@@ -54,12 +48,15 @@ test fn witness_known_fixture_origin_count_is_honest_in_scope() -> Bool {
 
 test fn witness_structural_red_control_mint_site_discovered() -> Bool {
   any(
-    xs: derived_production_qualification_mint_sites_live(),
+    xs: derived_sites_for_decl(
+      sites: empty_site_list,
+      decl: structural_red_control_planted_decl()
+    ),
     predicate: fn(row) {
-      string_eq(a: row.qualified_name, b: structural_red_control_mint_site_qualified_name)
-        && production_qualification_count_axis_eq(
+      string_eq(a: row.qualified_name, b: structural_red_control_planted_qualified_name)
+        && emission_qualification_eq(
           left: row.qualification_axis,
-          right: QualificationSourceProduced
+          right: SourceProduced
         )
         && production_qualification_origin_eq(
           left: row.evidence_origin,
@@ -78,6 +75,12 @@ test fn witness_unknown_origin_red_control_refuses_admission() -> Bool {
     && !production_qualification_origin_probe_admission_holds_for_decls(
       decls: [unknown_origin_red_control_planted_decl()]
     )
+}
+
+data witness_live_structural_fixture_body_mint_skeleton_visible_red_note: String = "Admitted RED: G2 fn-arrow marshal currently yields an empty skeleton for the live structural_red_control_mint_site_probe body (match/let mint call); classifier cannot discover the real fn until call-occurrence derivation or marshal exposes callee atoms."
+
+test fn witness_live_structural_fixture_body_mint_skeleton_visible_reds() -> Bool {
+  structural_red_control_live_body_skeleton_visible()
 }
 
 data witness_repository_wide_census_requires_call_occurrence_frontier_red_note: String = "Admitted RED (wise-ram-22): repository-wide production-qualification origin census is not closed — fn_arrow_decl_facts_live() is entry-closure scoped. Greening requires fn_arrow_decl_substrate_is_whole_tree plus call-occurrence derivation."

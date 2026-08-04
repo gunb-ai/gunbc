@@ -171,6 +171,13 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
   ),
   known_red_probe(
     entry: "src/v2/test/claim/self_host/production_qualification_origin_census_witness_test.dag",
+    f: "witness_live_structural_fixture_body_mint_skeleton_visible_reds",
+    kind: CorpusWitnessKind,
+    reason: "Admitted RED: G2 fn-arrow marshal yields empty skeleton for live structural_red_control_mint_site_probe mint body today. Owner: witness-evidence-lifecycle / call-occurrence derivation frontier.",
+    dissolve_on: "live structural_red_control_mint_site_probe body exposes mint callee atoms in fn_arrow_decl_facts_live output without a taught qualified-name pin, this witness greens, and this row deletes"
+  ),
+  known_red_probe(
+    entry: "src/v2/test/claim/self_host/production_qualification_origin_census_witness_test.dag",
     f: "witness_repository_wide_census_requires_call_occurrence_frontier_reds",
     kind: CorpusWitnessKind,
     reason: "Admitted RED (wise-ram-22 recut): repository-wide production-qualification origin census is not closed — fn_arrow_decl_facts_live() is entry-closure scoped. Owner: witness-evidence-lifecycle / call-occurrence derivation frontier.",

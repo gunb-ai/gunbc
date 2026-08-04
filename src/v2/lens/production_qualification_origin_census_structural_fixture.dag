@@ -6,11 +6,17 @@ import v2.compiler.self_host.direct_rust_door_fixture {
   direct_rust_door_module_path,
   direct_rust_door_target_model
 }
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { RealizationDispatch }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 
-data structural_red_control_fixture_note: String = "Structural RED-control fixture for production_qualification_origin_census (wise-ram-22 recut): a real fn body calling mint_written_provenanced_rust_artifact with direct_rust_door_inferred_tree fixture evidence. The classifier must discover this row from callee + fixture-marker skeleton projection only — never from a taught qualified name."
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: RealizationDispatch }
+}
+
+data structural_red_control_fixture_note: String = "Structural RED-control fixture for production_qualification_origin_census (wise-ram-22 recut): a real fn body calling mint_written_provenanced_rust_artifact with direct_rust_door_inferred_tree fixture evidence. The classifier must discover this row from callee + fixture-marker skeleton projection only — never from a taught qualified name. G2 fn-arrow marshal currently yields an empty skeleton for this body; live discovery is frontiered by witness_live_structural_fixture_body_mint_skeleton_visible_reds until call-occurrence derivation lands."
 
 data structural_red_control_mint_site_qualified_name: String = "v2.lens.production_qualification_origin_census_structural_fixture.structural_red_control_mint_site_probe"
 
