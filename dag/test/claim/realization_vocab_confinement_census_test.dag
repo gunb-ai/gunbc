@@ -10,10 +10,15 @@ import gunbc.repository_census_observation {
 import gunbc.repository_census_coverage {
   CoverageEstablished,
   CoverageRefused,
+  CensusInferenceCeiling,
+  DenominatorNotIndependent,
+  MethodConformanceUnobserved,
   census_denominator_subject_count,
   census_distinct_subject_keys,
-  census_receipt_is_self_join,
+  census_independence_is_established,
+  census_capability_receipt_conformance_established,
   census_ceiling_is_floor_only,
+  census_ceiling_has_limit,
 }
 import gunbc.realization_vocab_confinement_census {
   ConfinementSurfaceAxis,
@@ -28,6 +33,9 @@ import gunbc.realization_vocab_confinement_census {
   confinement_surface_observation,
   confinement_surface_denominator,
   confinement_surface_coverage,
+  confinement_surface_defective_rows,
+  confinement_conformance_observation,
+  confinement_capability_receipt,
   confinement_surface_ceiling,
   confinement_surface_population_claim,
   confinement_surface_declared_key_count,
@@ -75,25 +83,96 @@ test fn witness_the_declared_confinement_keys_are_distinct() -> Bool {
   count(census_distinct_subject_keys(keys: keys)) == count(keys)
 }
 
-test fn witness_the_real_confinement_surface_reconciles_exactly() -> Bool {
+fn confinement_witness_coverage_established() -> Bool {
   match confinement_surface_coverage(revision: confinement_witness_revision()) {
     CoverageEstablished { receipt: _ } => true
-    CoverageRefused { reconciliation: _ } => false
+    CoverageRefused {
+      observation_identity: _,
+      classification_run_identity: _,
+      reconciliation: _,
+    } => false
   }
 }
 
-data confinement_self_join_separability_note: String = "THIS WITNESS IS AN IMPLICATION, NOT A CONJUNCTION, and the difference is the separability rule applied to itself. Written as 'a receipt exists AND it is not a self-join' it cannot be individually falsified: a mutation that removes the receipt entirely reds it without saying anything about the self-join tell, so the tell would be licensed by a red that never examined it. Split, the two halves land on their own witnesses — receipt existence is witness_the_real_confinement_surface_reconciles_exactly, and what remains here is the conditional. The refusal arm is therefore vacuously true rather than false, which is only sound BECAUSE existence is asserted separately; on its own it would be a hole."
+test fn witness_the_real_confinement_surface_reconciles_exactly() -> Bool {
+  confinement_witness_coverage_established()
+}
 
-test fn witness_the_confinement_receipt_if_present_is_not_a_self_join() -> Bool {
+data confinement_self_join_separability_note: String = "THIS WITNESS IS AN IMPLICATION, NOT A CONJUNCTION, and the difference is the separability rule applied to itself. Written as 'a receipt exists AND its denominator is independent' it cannot be individually falsified: a mutation that removes the receipt entirely reds it without saying anything about independence, so independence would be licensed by a red that never examined it. Split, the two halves land on their own witnesses — receipt existence is witness_the_real_confinement_surface_reconciles_exactly, and what remains here is the conditional. The refusal arm is therefore vacuously true rather than false, which is only sound BECAUSE existence is asserted separately; on its own it would be a hole."
+
+test fn witness_the_confinement_receipt_if_present_has_an_independent_denominator() -> Bool {
   match confinement_surface_coverage(revision: confinement_witness_revision()) {
-    CoverageEstablished { receipt: receipt } => !census_receipt_is_self_join(receipt: receipt)
-    CoverageRefused { reconciliation: _ } => true
+    CoverageEstablished { receipt: receipt } =>
+      census_independence_is_established(independence: receipt.independence)
+    CoverageRefused {
+      observation_identity: _,
+      classification_run_identity: _,
+      reconciliation: _,
+    } => true
   }
+}
+
+data confinement_conformance_witness_note: String = "THE CONFORMANCE CONTROLS ARE ASSERTED SEPARATELY FROM THE CEILING THEY FEED, so a red says whether the classifier stopped discriminating or whether something downstream broke. The discriminating half is the load-bearing one: it asserts that the census REFUSES a classification with one axis dropped, which is probe 5 turned into an enrolled control that re-runs on every affected change rather than a mutation in a worktree that no longer exists."
+
+test fn witness_the_discriminating_control_is_refused_by_the_census() -> Bool {
+  confinement_conformance_observation(
+    revision: confinement_witness_revision(),
+  ).discriminating_input_refused
+}
+
+test fn witness_the_positive_control_is_accepted_by_the_census() -> Bool {
+  confinement_conformance_observation(
+    revision: confinement_witness_revision(),
+  ).positive_control_accepted
+}
+
+test fn witness_the_defective_control_rows_are_a_proper_subset_of_the_real_rows() -> Bool {
+  let defective = count(confinement_surface_defective_rows())
+  let real = count(confinement_surface_axis_of_declared_key())
+  defective < real
+}
+
+test fn witness_the_confinement_capability_receipt_joins_the_executed_classifier() -> Bool {
+  match confinement_capability_receipt(revision: confinement_witness_revision()) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+test fn witness_the_confinement_capability_receipt_carries_established_conformance() -> Bool {
+  match confinement_capability_receipt(revision: confinement_witness_revision()) {
+    Present { value: receipt } =>
+      census_capability_receipt_conformance_established(receipt: receipt)
+    Absent => false
+  }
+}
+
+fn confinement_witness_ceiling_predicate(f: fn(CensusInferenceCeiling) -> Bool) -> Bool {
+  match confinement_surface_ceiling(revision: confinement_witness_revision()) {
+    Present { value: ceiling } => f(ceiling)
+    Absent => false
+  }
+}
+
+test fn witness_the_confinement_ceiling_exists() -> Bool {
+  confinement_witness_ceiling_predicate(f: ceiling => true)
 }
 
 test fn witness_the_confinement_ceiling_is_not_a_floor() -> Bool {
-  !census_ceiling_is_floor_only(
-    ceiling: confinement_surface_ceiling(revision: confinement_witness_revision()),
+  !confinement_witness_ceiling_predicate(
+    f: ceiling => census_ceiling_is_floor_only(ceiling: ceiling),
+  )
+}
+
+test fn witness_the_confinement_ceiling_carries_no_independence_limit() -> Bool {
+  !confinement_witness_ceiling_predicate(
+    f: ceiling => census_ceiling_has_limit(ceiling: ceiling, limit: DenominatorNotIndependent),
+  )
+}
+
+test fn witness_the_confinement_ceiling_carries_no_conformance_limit() -> Bool {
+  !confinement_witness_ceiling_predicate(
+    f: ceiling => census_ceiling_has_limit(ceiling: ceiling, limit: MethodConformanceUnobserved),
   )
 }
 

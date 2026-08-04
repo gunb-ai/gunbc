@@ -13,47 +13,63 @@ import gunbc.repository_census_observation {
   RepositoryCensusObservation,
   census_observed_row,
   repository_census_observation,
-  repository_census_row_count,
-  repository_census_subject_keys,
+  repository_census_observation_identity,
 }
 import gunbc.repository_census_coverage {
   CensusDenominatorObservation,
   CensusCoverageReconciliation,
   CoverageReconciled,
+  CoverageSubjectsUnresolved,
+  CoverageDuplicateSubjects,
   CoverageIncomplete,
   CoverageUnexpected,
-  CoverageDuplicated,
   CoverageDiverged,
+  CoverageSubjectResolution,
+  CoverageSubjectsAligned,
+  CoveragePopulationMismatch,
+  CoverageRevisionMismatch,
+  CoverageDuplicateResolution,
+  NoDuplicateSubjects,
+  DenominatorDuplicated,
+  ObservationDuplicated,
+  BothDuplicated,
+  DenominatorIndependence,
+  IndependentDenominatorEstablished,
+  SharedRun,
+  IndependenceUnestablished,
   ExactCoverageReceipt,
   CensusCoverageOutcome,
   CoverageEstablished,
   CoverageRefused,
   CensusMethodCapability,
   ClassifiesDeclaredStructure,
-  ReadsGeneratedArtifact,
   MatchesSourceText,
-  CensusSubjectFidelity,
-  SemanticSubjects,
-  TextualMatchesOnly,
+  CensusMethodConformanceObservation,
+  CensusMethodCapabilityReceipt,
   CensusInferenceCeiling,
-  ExhaustiveSemanticPopulation,
-  SemanticPopulationFloor,
-  ExhaustiveTextualMatches,
-  TextualMatchFloor,
+  CensusCeilingLimit,
+  CoverageNotEstablished,
+  DenominatorNotIndependent,
+  MethodConformanceUnobserved,
   census_denominator_observation,
   census_denominator_identity,
   census_denominator_subject_count,
-  census_denominator_shares_method_run_with,
-  census_reconcile_subject_keys,
+  census_resolve_coverage_subjects,
+  census_resolve_duplicate_subjects,
+  census_reconcile_aligned_subjects,
+  census_reconcile_observation,
+  census_resolve_independence,
+  census_independence_is_established,
   census_establish_coverage,
-  census_receipt_is_self_join,
-  census_capability_fidelity,
-  census_capability_identity,
+  census_conformance_observation,
+  census_method_capability_receipt,
+  census_capability_receipt_conformance_established,
   census_inference_ceiling,
   census_ceiling_supports_semantic_subject_claim,
   census_ceiling_supports_semantic_absence,
   census_ceiling_supports_textual_absence,
   census_ceiling_is_floor_only,
+  census_ceiling_has_limit,
 }
 import gunbc.guarantee_measurement { MeasurementRevision, GitRevision }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -70,22 +86,54 @@ data coverage_witness_revision: MeasurementRevision = GitRevision {
   commit: "ca75137ee30000000000000000000000000000ff",
 }
 
+data coverage_witness_other_revision: MeasurementRevision = GitRevision {
+  commit: "ca75137ee30000000000000000000000000000aa",
+}
+
 fn coverage_witness_digest(seed: String) -> Fnv1a64Structural {
   content_hash_atom(value: seed as NonEmptyStr)
 }
 
-fn coverage_witness_run(seed: String) -> CensusMethodRunIdentity {
+fn coverage_witness_run_at(
+  classifier: String,
+  invocation: String,
+  revision: MeasurementRevision,
+) -> CensusMethodRunIdentity {
   CensusMethodRunIdentity {
-    classifier: coverage_witness_decl(name: "coverage_witness_classifier"),
-    classifier_revision: coverage_witness_revision,
-    invocation_identity: coverage_witness_digest(seed: seed),
+    classifier: coverage_witness_decl(name: classifier),
+    classifier_revision: revision,
+    invocation_identity: coverage_witness_digest(seed: invocation),
   }
+}
+
+fn coverage_witness_enumeration_run() -> CensusMethodRunIdentity {
+  coverage_witness_run_at(
+    classifier: "coverage_witness_enumerator",
+    invocation: "enumerate",
+    revision: coverage_witness_revision,
+  )
+}
+
+fn coverage_witness_classification_run() -> CensusMethodRunIdentity {
+  coverage_witness_run_at(
+    classifier: "coverage_witness_classifier",
+    invocation: "classify",
+    revision: coverage_witness_revision,
+  )
 }
 
 data coverage_witness_population: RepositoryPopulation = RepositoryPopulation {
   repository: "gunbc" as RepositoryIdentity,
   first_source_root: "dag" as SourceRootIdentity,
   additional_source_roots: ["src/v2" as SourceRootIdentity],
+  inclusion_rule: coverage_witness_decl(name: "coverage_witness_inclusion_rule"),
+  exclusion_rule: Absent,
+}
+
+data coverage_witness_other_population: RepositoryPopulation = RepositoryPopulation {
+  repository: "gunbc" as RepositoryIdentity,
+  first_source_root: "dag" as SourceRootIdentity,
+  additional_source_roots: [],
   inclusion_rule: coverage_witness_decl(name: "coverage_witness_inclusion_rule"),
   exclusion_rule: Absent,
 }
@@ -101,26 +149,48 @@ fn coverage_witness_row(name: String) -> CensusObservedRow {
   )
 }
 
-fn coverage_witness_observation(
+fn coverage_witness_observation_of(
+  population: RepositoryPopulation,
+  revision: MeasurementRevision,
   rows: List<CensusObservedRow>,
-  run_seed: String,
+  run: CensusMethodRunIdentity,
 ) -> RepositoryCensusObservation {
   repository_census_observation(
-    population: coverage_witness_population,
-    observed_at_revision: coverage_witness_revision,
-    method_run: coverage_witness_run(seed: run_seed),
+    population: population,
+    observed_at_revision: revision,
+    method_run: run,
     rows: rows,
+  )
+}
+
+fn coverage_witness_observation(rows: List<CensusObservedRow>) -> RepositoryCensusObservation {
+  coverage_witness_observation_of(
+    population: coverage_witness_population,
+    revision: coverage_witness_revision,
+    rows: rows,
+    run: coverage_witness_classification_run(),
+  )
+}
+
+fn coverage_witness_denominator_of(
+  population: RepositoryPopulation,
+  revision: MeasurementRevision,
+  subjects: List<CensusSubjectKey>,
+) -> CensusDenominatorObservation {
+  census_denominator_observation(
+    population: population,
+    observed_at_revision: revision,
+    enumeration_run: coverage_witness_enumeration_run(),
+    subjects: subjects,
   )
 }
 
 fn coverage_witness_denominator(
   subjects: List<CensusSubjectKey>,
-  run_seed: String,
 ) -> CensusDenominatorObservation {
-  census_denominator_observation(
+  coverage_witness_denominator_of(
     population: coverage_witness_population,
-    observed_at_revision: coverage_witness_revision,
-    enumeration_run: coverage_witness_run(seed: run_seed),
+    revision: coverage_witness_revision,
     subjects: subjects,
   )
 }
@@ -135,361 +205,696 @@ data coverage_witness_ab_rows: List<CensusObservedRow> = [
   coverage_witness_row(name: "b"),
 ]
 
-fn coverage_witness_structural_capability() -> CensusMethodCapability {
-  ClassifiesDeclaredStructure {
-    contract: coverage_witness_decl(name: "coverage_witness_structural_contract"),
-  }
-}
-
-fn coverage_witness_textual_capability() -> CensusMethodCapability {
-  MatchesSourceText {
-    contract: coverage_witness_decl(name: "coverage_witness_textual_contract"),
-  }
-}
-
 fn coverage_outcome_has_receipt(outcome: CensusCoverageOutcome) -> Bool {
   match outcome {
     CoverageEstablished { receipt: _ } => true
-    CoverageRefused { reconciliation: _ } => false
+    CoverageRefused {
+      observation_identity: _,
+      classification_run_identity: _,
+      reconciliation: _,
+    } => false
   }
 }
 
-test fn witness_a_reconciled_join_is_the_only_thing_that_yields_a_receipt() -> Bool {
+fn coverage_witness_established(
+  denominator: CensusDenominatorObservation,
+  observation: RepositoryCensusObservation,
+) -> Bool {
   coverage_outcome_has_receipt(
-    outcome: census_establish_coverage(
-      denominator: coverage_witness_denominator(
-        subjects: coverage_witness_ab_subjects,
-        run_seed: "enumerate",
-      ),
-      observation: coverage_witness_observation(
-        rows: coverage_witness_ab_rows,
-        run_seed: "classify",
-      ),
-    ),
+    outcome: census_establish_coverage(denominator: denominator, observation: observation),
   )
 }
 
-test fn witness_a_missing_subject_yields_no_receipt() -> Bool {
-  !coverage_outcome_has_receipt(
-    outcome: census_establish_coverage(
-      denominator: coverage_witness_denominator(
-        subjects: coverage_witness_ab_subjects,
-        run_seed: "enumerate",
-      ),
-      observation: coverage_witness_observation(
-        rows: [coverage_witness_row(name: "a")],
-        run_seed: "classify",
-      ),
+test fn witness_an_aligned_exact_join_yields_a_receipt() -> Bool {
+  coverage_witness_established(
+    denominator: coverage_witness_denominator(subjects: coverage_witness_ab_subjects),
+    observation: coverage_witness_observation(rows: coverage_witness_ab_rows),
+  )
+}
+
+data coverage_blocker_one_note: String = "BLOCKER 1 WITNESSES. The two populations below differ only in their source roots and the two revisions only in their commit, while the subject keys are spelled IDENTICALLY. Under the first cut both pairs reconciled and the receipt then recorded the mismatched identities beside the exhaustive status. Each of the two mismatch axes gets its own witness so a red names which one broke."
+
+test fn witness_a_population_mismatch_refuses_before_any_key_is_compared() -> Bool {
+  match census_resolve_coverage_subjects(
+    denominator: coverage_witness_denominator_of(
+      population: coverage_witness_other_population,
+      revision: coverage_witness_revision,
+      subjects: coverage_witness_ab_subjects,
     ),
+    observation: coverage_witness_observation(rows: coverage_witness_ab_rows),
+  ) {
+    CoveragePopulationMismatch {
+      denominator_population_identity: d,
+      observation_population_identity: o,
+    } => !content_hash_eq_structural(left: d, right: o)
+    CoverageSubjectsAligned { population_identity: _, revision_identity: _ } => false
+    CoverageRevisionMismatch {
+      denominator_revision_identity: _,
+      observation_revision_identity: _,
+    } => false
+  }
+}
+
+test fn witness_a_population_mismatch_yields_no_receipt() -> Bool {
+  !coverage_witness_established(
+    denominator: coverage_witness_denominator_of(
+      population: coverage_witness_other_population,
+      revision: coverage_witness_revision,
+      subjects: coverage_witness_ab_subjects,
+    ),
+    observation: coverage_witness_observation(rows: coverage_witness_ab_rows),
+  )
+}
+
+test fn witness_a_revision_mismatch_refuses_before_any_key_is_compared() -> Bool {
+  match census_resolve_coverage_subjects(
+    denominator: coverage_witness_denominator_of(
+      population: coverage_witness_population,
+      revision: coverage_witness_other_revision,
+      subjects: coverage_witness_ab_subjects,
+    ),
+    observation: coverage_witness_observation(rows: coverage_witness_ab_rows),
+  ) {
+    CoverageRevisionMismatch {
+      denominator_revision_identity: d,
+      observation_revision_identity: o,
+    } => !content_hash_eq_structural(left: d, right: o)
+    CoverageSubjectsAligned { population_identity: _, revision_identity: _ } => false
+    CoveragePopulationMismatch {
+      denominator_population_identity: _,
+      observation_population_identity: _,
+    } => false
+  }
+}
+
+test fn witness_a_revision_mismatch_yields_no_receipt() -> Bool {
+  !coverage_witness_established(
+    denominator: coverage_witness_denominator_of(
+      population: coverage_witness_population,
+      revision: coverage_witness_other_revision,
+      subjects: coverage_witness_ab_subjects,
+    ),
+    observation: coverage_witness_observation(rows: coverage_witness_ab_rows),
+  )
+}
+
+test fn witness_an_aligned_pair_carries_the_identities_the_join_established() -> Bool {
+  match census_resolve_coverage_subjects(
+    denominator: coverage_witness_denominator(subjects: coverage_witness_ab_subjects),
+    observation: coverage_witness_observation(rows: coverage_witness_ab_rows),
+  ) {
+    CoverageSubjectsAligned {
+      population_identity: population_identity,
+      revision_identity: revision_identity,
+    } => !content_hash_eq_structural(left: population_identity, right: revision_identity)
+    CoveragePopulationMismatch {
+      denominator_population_identity: _,
+      observation_population_identity: _,
+    } => false
+    CoverageRevisionMismatch {
+      denominator_revision_identity: _,
+      observation_revision_identity: _,
+    } => false
+  }
+}
+
+data coverage_blocker_two_note: String = "BLOCKER 2 WITNESSES. A denominator of A, A against an observation of A has no missing key, no unexpected key and no duplicate among the OBSERVED keys — which is the whole population the first cut looked at. It reconciled. The denominator side is now resolved with its own arm, and the three duplicate shapes each get a witness."
+
+test fn witness_a_denominator_duplicate_is_located_on_its_own_side() -> Bool {
+  match census_resolve_duplicate_subjects(
+    denominator_subjects: [coverage_witness_key(name: "a"), coverage_witness_key(name: "a")],
+    observed_subjects: [coverage_witness_key(name: "a")],
+  ) {
+    DenominatorDuplicated { denominator_duplicated: duplicated } =>
+      count(duplicated) == 1 && any(duplicated, k => (k as String) == "a")
+    NoDuplicateSubjects => false
+    ObservationDuplicated { observation_duplicated: _ } => false
+    BothDuplicated { denominator_duplicated: _, observation_duplicated: _ } => false
+  }
+}
+
+test fn witness_a_duplicated_denominator_yields_no_receipt() -> Bool {
+  !coverage_witness_established(
+    denominator: coverage_witness_denominator(
+      subjects: [coverage_witness_key(name: "a"), coverage_witness_key(name: "a")],
+    ),
+    observation: coverage_witness_observation(rows: [coverage_witness_row(name: "a")]),
+  )
+}
+
+test fn witness_an_observation_duplicate_is_located_on_its_own_side() -> Bool {
+  match census_resolve_duplicate_subjects(
+    denominator_subjects: [coverage_witness_key(name: "a")],
+    observed_subjects: [coverage_witness_key(name: "a"), coverage_witness_key(name: "a")],
+  ) {
+    ObservationDuplicated { observation_duplicated: duplicated } =>
+      count(duplicated) == 1 && any(duplicated, k => (k as String) == "a")
+    NoDuplicateSubjects => false
+    DenominatorDuplicated { denominator_duplicated: _ } => false
+    BothDuplicated { denominator_duplicated: _, observation_duplicated: _ } => false
+  }
+}
+
+test fn witness_duplicates_on_both_sides_are_reported_separately() -> Bool {
+  match census_resolve_duplicate_subjects(
+    denominator_subjects: [coverage_witness_key(name: "a"), coverage_witness_key(name: "a")],
+    observed_subjects: [coverage_witness_key(name: "b"), coverage_witness_key(name: "b")],
+  ) {
+    BothDuplicated {
+      denominator_duplicated: denominator_duplicated,
+      observation_duplicated: observation_duplicated,
+    } =>
+      any(denominator_duplicated, k => (k as String) == "a") && any(observation_duplicated, k => (k as String) == "b")
+    NoDuplicateSubjects => false
+    DenominatorDuplicated { denominator_duplicated: _ } => false
+    ObservationDuplicated { observation_duplicated: _ } => false
+  }
+}
+
+test fn witness_a_clean_pair_reports_no_duplicates() -> Bool {
+  match census_resolve_duplicate_subjects(
+    denominator_subjects: coverage_witness_ab_subjects,
+    observed_subjects: coverage_witness_ab_subjects,
+  ) {
+    NoDuplicateSubjects => true
+    DenominatorDuplicated { denominator_duplicated: _ } => false
+    ObservationDuplicated { observation_duplicated: _ } => false
+    BothDuplicated { denominator_duplicated: _, observation_duplicated: _ } => false
+  }
+}
+
+fn coverage_witness_aligned(
+  denominator_subjects: List<CensusSubjectKey>,
+  observed_subjects: List<CensusSubjectKey>,
+) -> CensusCoverageReconciliation {
+  census_reconcile_aligned_subjects(
+    denominator_subjects: denominator_subjects,
+    observed_subjects: observed_subjects,
+    population_identity: coverage_witness_digest(seed: "population"),
+    revision_identity: coverage_witness_digest(seed: "revision"),
   )
 }
 
 test fn witness_the_missing_subject_is_located_not_counted() -> Bool {
-  match census_reconcile_subject_keys(
+  match coverage_witness_aligned(
     denominator_subjects: coverage_witness_ab_subjects,
     observed_subjects: [coverage_witness_key(name: "a")],
   ) {
     CoverageIncomplete { missing: missing } =>
-      count(missing) == 1
-        && any(missing, k => (k as String) == "b")
-    CoverageReconciled => false
+      count(missing) == 1 && any(missing, k => (k as String) == "b")
+    CoverageReconciled { population_identity: _, revision_identity: _ } => false
+    CoverageSubjectsUnresolved { resolution: _ } => false
+    CoverageDuplicateSubjects { duplicates: _ } => false
     CoverageUnexpected { unexpected: _ } => false
-    CoverageDuplicated { duplicated: _ } => false
-    CoverageDiverged { missing: _, unexpected: _, duplicated: _ } => false
+    CoverageDiverged { missing: _, unexpected: _, duplicates: _ } => false
   }
 }
 
 test fn witness_an_unexpected_subject_is_located_not_counted() -> Bool {
-  match census_reconcile_subject_keys(
+  match coverage_witness_aligned(
     denominator_subjects: [coverage_witness_key(name: "a")],
     observed_subjects: coverage_witness_ab_subjects,
   ) {
     CoverageUnexpected { unexpected: unexpected } =>
-      count(unexpected) == 1
-        && any(unexpected, k => (k as String) == "b")
-    CoverageReconciled => false
+      count(unexpected) == 1 && any(unexpected, k => (k as String) == "b")
+    CoverageReconciled { population_identity: _, revision_identity: _ } => false
+    CoverageSubjectsUnresolved { resolution: _ } => false
+    CoverageDuplicateSubjects { duplicates: _ } => false
     CoverageIncomplete { missing: _ } => false
-    CoverageDuplicated { duplicated: _ } => false
-    CoverageDiverged { missing: _, unexpected: _, duplicated: _ } => false
-  }
-}
-
-test fn witness_a_duplicated_subject_is_reported_once() -> Bool {
-  match census_reconcile_subject_keys(
-    denominator_subjects: coverage_witness_ab_subjects,
-    observed_subjects: [
-      coverage_witness_key(name: "a"),
-      coverage_witness_key(name: "a"),
-      coverage_witness_key(name: "b"),
-    ],
-  ) {
-    CoverageDuplicated { duplicated: duplicated } =>
-      count(duplicated) == 1
-        && any(duplicated, k => (k as String) == "a")
-    CoverageReconciled => false
-    CoverageIncomplete { missing: _ } => false
-    CoverageUnexpected { unexpected: _ } => false
-    CoverageDiverged { missing: _, unexpected: _, duplicated: _ } => false
+    CoverageDiverged { missing: _, unexpected: _, duplicates: _ } => false
   }
 }
 
 data coverage_cancelling_totals_note: String = "THE CASE A COUNT EQUALITY CANNOT SEE, and the reason this stage reconciles identities instead of totals. A denominator of two subjects against an observation carrying one subject TWICE has equal totals — two against two — while one subject is missing entirely and another is duplicated. The two failures cancel exactly in a sum. Any check comparing sizes reports coverage as complete; the identity join reports both failures, located, and refuses the receipt."
 
-test fn witness_a_duplicate_and_a_missing_subject_cancel_in_a_total_but_not_in_the_join() -> Bool {
+test fn witness_a_duplicate_and_a_missing_subject_cancel_in_a_total() -> Bool {
   let denominator_subjects = coverage_witness_ab_subjects
-  let observed_subjects = [
-    coverage_witness_key(name: "a"),
-    coverage_witness_key(name: "a"),
-  ]
-  let totals_agree = count(denominator_subjects) == count(observed_subjects)
-  let join_refuses = match census_reconcile_subject_keys(
-    denominator_subjects: denominator_subjects,
-    observed_subjects: observed_subjects,
+  let observed_subjects = [coverage_witness_key(name: "a"), coverage_witness_key(name: "a")]
+  count(denominator_subjects) == count(observed_subjects)
+}
+
+test fn witness_a_duplicate_and_a_missing_subject_do_not_cancel_in_the_join() -> Bool {
+  match coverage_witness_aligned(
+    denominator_subjects: coverage_witness_ab_subjects,
+    observed_subjects: [coverage_witness_key(name: "a"), coverage_witness_key(name: "a")],
   ) {
-    CoverageDiverged { missing: missing, unexpected: unexpected, duplicated: duplicated } =>
-      count(missing) == 1
-        && count(unexpected) == 0
-        && count(duplicated) == 1
-    CoverageReconciled => false
+    CoverageDiverged { missing: missing, unexpected: unexpected, duplicates: duplicates } => {
+      let located = count(missing) == 1 && count(unexpected) == 0
+      let duplicated_named = match duplicates {
+        ObservationDuplicated { observation_duplicated: observation_duplicated } =>
+          any(observation_duplicated, k => (k as String) == "a")
+        NoDuplicateSubjects => false
+        DenominatorDuplicated { denominator_duplicated: _ } => false
+        BothDuplicated { denominator_duplicated: _, observation_duplicated: _ } => false
+      }
+      located && duplicated_named
+    }
+    CoverageReconciled { population_identity: _, revision_identity: _ } => false
+    CoverageSubjectsUnresolved { resolution: _ } => false
+    CoverageDuplicateSubjects { duplicates: _ } => false
     CoverageIncomplete { missing: _ } => false
     CoverageUnexpected { unexpected: _ } => false
-    CoverageDuplicated { duplicated: _ } => false
   }
-  totals_agree && join_refuses
 }
 
-test fn witness_a_cancelling_population_still_yields_no_receipt() -> Bool {
-  !coverage_outcome_has_receipt(
-    outcome: census_establish_coverage(
-      denominator: coverage_witness_denominator(
-        subjects: coverage_witness_ab_subjects,
-        run_seed: "enumerate",
-      ),
-      observation: coverage_witness_observation(
-        rows: [coverage_witness_row(name: "a"), coverage_witness_row(name: "a")],
-        run_seed: "classify",
-      ),
-    ),
-  )
+data coverage_blocker_five_note: String = "BLOCKER 5 WITNESSES. Independence is decided from the two runs and then ACTED ON. Three shapes: one run used twice, two invocations of one classifier declaration, and two different classifier declarations. Only the last establishes independence, and the first two still permit a population floor."
+
+test fn witness_one_run_used_twice_is_a_shared_run() -> Bool {
+  match census_resolve_independence(
+    enumeration_run: coverage_witness_classification_run(),
+    classification_run: coverage_witness_classification_run(),
+  ) {
+    SharedRun { run_identity: _ } => true
+    IndependentDenominatorEstablished {
+      enumeration_classifier_identity: _,
+      classification_classifier_identity: _,
+    } => false
+    IndependenceUnestablished { shared_classifier_identity: _ } => false
+  }
 }
 
-data coverage_self_join_separability_note: String = "THE TWO SELF-JOIN WITNESSES BELOW ARE IMPLICATIONS. Receipt existence is asserted by witness_a_reconciled_join_is_the_only_thing_that_yields_a_receipt, so these two need not re-assert it — and must not, because a witness that conjoins existence with the tell reds whenever the receipt disappears, licensing the tell by a red that never read it. Their refusal arms are vacuously true for that reason and for no other."
-
-test fn witness_a_shared_method_run_if_present_is_visible_on_the_receipt() -> Bool {
-  match census_establish_coverage(
-    denominator: coverage_witness_denominator(
-      subjects: coverage_witness_ab_subjects,
-      run_seed: "one-and-the-same",
+test fn witness_two_invocations_of_one_classifier_do_not_establish_independence() -> Bool {
+  match census_resolve_independence(
+    enumeration_run: coverage_witness_run_at(
+      classifier: "coverage_witness_classifier",
+      invocation: "first",
+      revision: coverage_witness_revision,
     ),
-    observation: coverage_witness_observation(
-      rows: coverage_witness_ab_rows,
-      run_seed: "one-and-the-same",
+    classification_run: coverage_witness_run_at(
+      classifier: "coverage_witness_classifier",
+      invocation: "second",
+      revision: coverage_witness_revision,
     ),
   ) {
-    CoverageEstablished { receipt: receipt } => census_receipt_is_self_join(receipt: receipt)
-    CoverageRefused { reconciliation: _ } => true
+    IndependenceUnestablished { shared_classifier_identity: _ } => true
+    SharedRun { run_identity: _ } => false
+    IndependentDenominatorEstablished {
+      enumeration_classifier_identity: _,
+      classification_classifier_identity: _,
+    } => false
   }
 }
 
-test fn witness_distinct_method_runs_if_present_are_not_flagged_as_a_self_join() -> Bool {
-  match census_establish_coverage(
-    denominator: coverage_witness_denominator(
-      subjects: coverage_witness_ab_subjects,
-      run_seed: "enumerate",
-    ),
-    observation: coverage_witness_observation(
-      rows: coverage_witness_ab_rows,
-      run_seed: "classify",
-    ),
-  ) {
-    CoverageEstablished { receipt: receipt } => !census_receipt_is_self_join(receipt: receipt)
-    CoverageRefused { reconciliation: _ } => true
-  }
-}
-
-test fn witness_the_shared_run_tell_reads_the_two_observations_directly() -> Bool {
-  census_denominator_shares_method_run_with(
-    denominator: coverage_witness_denominator(
-      subjects: coverage_witness_ab_subjects,
-      run_seed: "one-and-the-same",
-    ),
-    observation: coverage_witness_observation(
-      rows: coverage_witness_ab_rows,
-      run_seed: "one-and-the-same",
+test fn witness_two_distinct_classifiers_establish_independence() -> Bool {
+  census_independence_is_established(
+    independence: census_resolve_independence(
+      enumeration_run: coverage_witness_enumeration_run(),
+      classification_run: coverage_witness_classification_run(),
     ),
   )
 }
 
-test fn witness_the_shared_run_tell_is_false_for_distinct_runs() -> Bool {
-  !census_denominator_shares_method_run_with(
-    denominator: coverage_witness_denominator(
-      subjects: coverage_witness_ab_subjects,
-      run_seed: "enumerate",
+data coverage_blocker_four_note: String = "BLOCKER 4 WITNESSES. A capability receipt exists only when its contract names the classifier that actually ran, checked at identity grain, and when any conformance control it carries names the same classifier at the same revision under a DIFFERENT invocation. Each of those three refusals gets its own witness."
+
+fn coverage_witness_capability_for(contract_name: String) -> CensusMethodCapability {
+  ClassifiesDeclaredStructure { contract: coverage_witness_decl(name: contract_name) }
+}
+
+fn coverage_witness_conforming_control() -> CensusMethodConformanceObservation {
+  census_conformance_observation(
+    control_run: coverage_witness_run_at(
+      classifier: "coverage_witness_classifier",
+      invocation: "control",
+      revision: coverage_witness_revision,
     ),
-    observation: coverage_witness_observation(
-      rows: coverage_witness_ab_rows,
-      run_seed: "classify",
-    ),
+    discriminating_input_refused: true,
+    positive_control_accepted: true,
   )
 }
 
-test fn witness_the_denominator_subjects_reach_its_identity() -> Bool {
-  let two_subjects = coverage_witness_denominator(
-    subjects: coverage_witness_ab_subjects,
-    run_seed: "enumerate",
-  )
-  let one_subject = coverage_witness_denominator(
-    subjects: [coverage_witness_key(name: "a")],
-    run_seed: "enumerate",
-  )
-  !content_hash_eq_structural(
-    left: census_denominator_identity(denominator: two_subjects),
-    right: census_denominator_identity(denominator: one_subject),
-  )
-}
-
-test fn witness_the_denominator_enumeration_run_reaches_its_identity() -> Bool {
-  let enumerated = coverage_witness_denominator(
-    subjects: coverage_witness_ab_subjects,
-    run_seed: "enumerate",
-  )
-  let re_enumerated = coverage_witness_denominator(
-    subjects: coverage_witness_ab_subjects,
-    run_seed: "enumerate-again",
-  )
-  !content_hash_eq_structural(
-    left: census_denominator_identity(denominator: enumerated),
-    right: census_denominator_identity(denominator: re_enumerated),
-  )
-}
-
-fn coverage_witness_fidelity_is_semantic(fidelity: CensusSubjectFidelity) -> Bool {
-  match fidelity {
-    SemanticSubjects => true
-    TextualMatchesOnly => false
-  }
-}
-
-test fn witness_a_structural_capability_carries_semantic_fidelity() -> Bool {
-  coverage_witness_fidelity_is_semantic(
-    fidelity: census_capability_fidelity(capability: coverage_witness_structural_capability()),
-  )
-}
-
-test fn witness_a_text_matching_capability_carries_textual_fidelity_only() -> Bool {
-  !coverage_witness_fidelity_is_semantic(
-    fidelity: census_capability_fidelity(capability: coverage_witness_textual_capability()),
-  )
-}
-
-test fn witness_the_capability_contract_reaches_its_identity() -> Bool {
-  !content_hash_eq_structural(
-    left: census_capability_identity(capability: coverage_witness_structural_capability()),
-    right: census_capability_identity(
-      capability: ClassifiesDeclaredStructure {
-        contract: coverage_witness_decl(name: "coverage_witness_other_contract"),
-      },
-    ),
-  )
-}
-
-fn coverage_witness_ceiling(
+fn coverage_witness_receipt_exists(
   capability: CensusMethodCapability,
-  observed_rows: List<CensusObservedRow>,
-  denominator_subjects: List<CensusSubjectKey>,
-) -> CensusInferenceCeiling {
-  let observation = coverage_witness_observation(rows: observed_rows, run_seed: "classify")
-  census_inference_ceiling(
+  conformance: CensusMethodConformanceObservation?,
+) -> Bool {
+  match census_method_capability_receipt(
+    observation: coverage_witness_observation(rows: coverage_witness_ab_rows),
     capability: capability,
-    observation: observation,
-    outcome: census_establish_coverage(
-      denominator: coverage_witness_denominator(
-        subjects: denominator_subjects,
-        run_seed: "enumerate",
+    conformance: conformance,
+  ) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+test fn witness_a_contract_naming_the_executed_classifier_yields_a_capability_receipt() -> Bool {
+  coverage_witness_receipt_exists(
+    capability: coverage_witness_capability_for(contract_name: "coverage_witness_classifier"),
+    conformance: Present { value: coverage_witness_conforming_control() },
+  )
+}
+
+test fn witness_a_contract_naming_another_declaration_yields_no_capability_receipt() -> Bool {
+  !coverage_witness_receipt_exists(
+    capability: coverage_witness_capability_for(contract_name: "coverage_witness_enumerator"),
+    conformance: Present { value: coverage_witness_conforming_control() },
+  )
+}
+
+test fn witness_a_control_at_another_revision_yields_no_capability_receipt() -> Bool {
+  !coverage_witness_receipt_exists(
+    capability: coverage_witness_capability_for(contract_name: "coverage_witness_classifier"),
+    conformance: Present {
+      value: census_conformance_observation(
+        control_run: coverage_witness_run_at(
+          classifier: "coverage_witness_classifier",
+          invocation: "control",
+          revision: coverage_witness_other_revision,
+        ),
+        discriminating_input_refused: true,
+        positive_control_accepted: true,
       ),
-      observation: observation,
-    ),
+    },
   )
 }
 
-test fn witness_a_semantic_capability_with_exact_coverage_supports_semantic_absence() -> Bool {
-  census_ceiling_supports_semantic_absence(
-    ceiling: coverage_witness_ceiling(
-      capability: coverage_witness_structural_capability(),
-      observed_rows: coverage_witness_ab_rows,
-      denominator_subjects: coverage_witness_ab_subjects,
-    ),
+test fn witness_a_control_reusing_the_measured_invocation_yields_no_capability_receipt() -> Bool {
+  !coverage_witness_receipt_exists(
+    capability: coverage_witness_capability_for(contract_name: "coverage_witness_classifier"),
+    conformance: Present {
+      value: census_conformance_observation(
+        control_run: coverage_witness_classification_run(),
+        discriminating_input_refused: true,
+        positive_control_accepted: true,
+      ),
+    },
   )
 }
 
-test fn witness_a_semantic_capability_without_exact_coverage_is_a_floor() -> Bool {
-  census_ceiling_is_floor_only(
-    ceiling: coverage_witness_ceiling(
-      capability: coverage_witness_structural_capability(),
-      observed_rows: [coverage_witness_row(name: "a")],
-      denominator_subjects: coverage_witness_ab_subjects,
-    ),
+test fn witness_a_control_that_refused_nothing_does_not_establish_conformance() -> Bool {
+  !census_conformance_established_for(
+    discriminating_input_refused: false,
+    positive_control_accepted: true,
   )
 }
 
-test fn witness_a_semantic_floor_cannot_support_an_absence_claim() -> Bool {
-  !census_ceiling_supports_semantic_absence(
-    ceiling: coverage_witness_ceiling(
-      capability: coverage_witness_structural_capability(),
-      observed_rows: [coverage_witness_row(name: "a")],
-      denominator_subjects: coverage_witness_ab_subjects,
+test fn witness_a_control_that_accepted_nothing_does_not_establish_conformance() -> Bool {
+  !census_conformance_established_for(
+    discriminating_input_refused: true,
+    positive_control_accepted: false,
+  )
+}
+
+fn census_conformance_established_for(
+  discriminating_input_refused: Bool,
+  positive_control_accepted: Bool,
+) -> Bool {
+  match census_method_capability_receipt(
+    observation: coverage_witness_observation(rows: coverage_witness_ab_rows),
+    capability: coverage_witness_capability_for(contract_name: "coverage_witness_classifier"),
+    conformance: Present {
+      value: census_conformance_observation(
+        control_run: coverage_witness_run_at(
+          classifier: "coverage_witness_classifier",
+          invocation: "control",
+          revision: coverage_witness_revision,
+        ),
+        discriminating_input_refused: discriminating_input_refused,
+        positive_control_accepted: positive_control_accepted,
+      ),
+    },
+  ) {
+    Present { value: receipt } =>
+      census_capability_receipt_conformance_established(receipt: receipt)
+    Absent => false
+  }
+}
+
+data coverage_blocker_three_note: String = "BLOCKER 3 WITNESSES. The ceiling takes no observation parameter, so there is no separately supplied observation that could disagree with the coverage receipt; the observation identity is derived from the outcome. What remains joinable is the capability receipt, and it must name the same classification run the coverage outcome carries or no ceiling exists at all."
+
+fn coverage_witness_capability_receipt_for(
+  observation: RepositoryCensusObservation,
+) -> CensusMethodCapabilityReceipt? {
+  census_method_capability_receipt(
+    observation: observation,
+    capability: coverage_witness_capability_for(contract_name: "coverage_witness_classifier"),
+    conformance: Present { value: coverage_witness_conforming_control() },
+  )
+}
+
+fn coverage_witness_ceiling_for(
+  observation: RepositoryCensusObservation,
+  denominator: CensusDenominatorObservation,
+  coverage_observation: RepositoryCensusObservation,
+) -> CensusInferenceCeiling? {
+  match coverage_witness_capability_receipt_for(observation: observation) {
+    Present { value: receipt } =>
+      census_inference_ceiling(
+        capability_receipt: receipt,
+        coverage: census_establish_coverage(
+          denominator: denominator,
+          observation: coverage_observation,
+        ),
+      )
+    Absent => none
+  }
+}
+
+fn coverage_witness_matched_ceiling(
+  denominator_subjects: List<CensusSubjectKey>,
+  rows: List<CensusObservedRow>,
+) -> CensusInferenceCeiling? {
+  let observation = coverage_witness_observation(rows: rows)
+  coverage_witness_ceiling_for(
+    observation: observation,
+    denominator: coverage_witness_denominator(subjects: denominator_subjects),
+    coverage_observation: observation,
+  )
+}
+
+test fn witness_a_capability_receipt_matching_the_classification_run_yields_a_ceiling() -> Bool {
+  match coverage_witness_matched_ceiling(
+    denominator_subjects: coverage_witness_ab_subjects,
+    rows: coverage_witness_ab_rows,
+  ) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+test fn witness_a_capability_receipt_for_another_run_yields_no_ceiling() -> Bool {
+  let other_observation = coverage_witness_observation_of(
+    population: coverage_witness_population,
+    revision: coverage_witness_revision,
+    rows: coverage_witness_ab_rows,
+    run: coverage_witness_run_at(
+      classifier: "coverage_witness_classifier",
+      invocation: "a-different-invocation",
+      revision: coverage_witness_revision,
     ),
   )
+  let subject_observation = coverage_witness_observation(rows: coverage_witness_ab_rows)
+  match coverage_witness_ceiling_for(
+    observation: other_observation,
+    denominator: coverage_witness_denominator(subjects: coverage_witness_ab_subjects),
+    coverage_observation: subject_observation,
+  ) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+test fn witness_the_ceiling_observation_identity_comes_from_the_coverage_outcome() -> Bool {
+  let observation = coverage_witness_observation(rows: coverage_witness_ab_rows)
+  match coverage_witness_matched_ceiling(
+    denominator_subjects: coverage_witness_ab_subjects,
+    rows: coverage_witness_ab_rows,
+  ) {
+    Present { value: ceiling } =>
+      content_hash_eq_structural(
+        left: ceiling.observation_identity,
+        right: repository_census_observation_identity(observation: observation),
+      )
+    Absent => false
+  }
+}
+
+fn coverage_witness_ceiling_predicate(
+  ceiling: CensusInferenceCeiling?,
+  f: fn(CensusInferenceCeiling) -> Bool,
+) -> Bool {
+  match ceiling {
+    Present { value: value } => f(value)
+    Absent => false
+  }
+}
+
+test fn witness_a_conformed_independent_exact_semantic_package_supports_absence() -> Bool {
+  coverage_witness_ceiling_predicate(
+    ceiling: coverage_witness_matched_ceiling(
+      denominator_subjects: coverage_witness_ab_subjects,
+      rows: coverage_witness_ab_rows,
+    ),
+    f: ceiling => census_ceiling_supports_semantic_absence(ceiling: ceiling),
+  )
+}
+
+test fn witness_refused_coverage_limits_the_ceiling_to_a_floor() -> Bool {
+  coverage_witness_ceiling_predicate(
+    ceiling: coverage_witness_matched_ceiling(
+      denominator_subjects: coverage_witness_ab_subjects,
+      rows: [coverage_witness_row(name: "a")],
+    ),
+    f: ceiling => census_ceiling_is_floor_only(ceiling: ceiling),
+  )
+}
+
+test fn witness_refused_coverage_names_its_limit() -> Bool {
+  coverage_witness_ceiling_predicate(
+    ceiling: coverage_witness_matched_ceiling(
+      denominator_subjects: coverage_witness_ab_subjects,
+      rows: [coverage_witness_row(name: "a")],
+    ),
+    f: ceiling => census_ceiling_has_limit(ceiling: ceiling, limit: CoverageNotEstablished),
+  )
+}
+
+test fn witness_a_floor_cannot_support_a_semantic_absence_claim() -> Bool {
+  !coverage_witness_ceiling_predicate(
+    ceiling: coverage_witness_matched_ceiling(
+      denominator_subjects: coverage_witness_ab_subjects,
+      rows: [coverage_witness_row(name: "a")],
+    ),
+    f: ceiling => census_ceiling_supports_semantic_absence(ceiling: ceiling),
+  )
+}
+
+fn coverage_witness_self_joined_ceiling() -> CensusInferenceCeiling? {
+  let shared_run = coverage_witness_classification_run()
+  let observation = coverage_witness_observation(rows: coverage_witness_ab_rows)
+  let denominator = census_denominator_observation(
+    population: coverage_witness_population,
+    observed_at_revision: coverage_witness_revision,
+    enumeration_run: shared_run,
+    subjects: coverage_witness_ab_subjects,
+  )
+  match coverage_witness_capability_receipt_for(observation: observation) {
+    Present { value: receipt } =>
+      census_inference_ceiling(
+        capability_receipt: receipt,
+        coverage: census_establish_coverage(
+          denominator: denominator,
+          observation: observation,
+        ),
+      )
+    Absent => none
+  }
+}
+
+test fn witness_a_self_joined_census_still_yields_a_coverage_receipt() -> Bool {
+  let shared_run = coverage_witness_classification_run()
+  coverage_witness_established(
+    denominator: census_denominator_observation(
+      population: coverage_witness_population,
+      observed_at_revision: coverage_witness_revision,
+      enumeration_run: shared_run,
+      subjects: coverage_witness_ab_subjects,
+    ),
+    observation: coverage_witness_observation(rows: coverage_witness_ab_rows),
+  )
+}
+
+test fn witness_a_self_joined_census_cannot_reach_an_exhaustive_ceiling() -> Bool {
+  coverage_witness_ceiling_predicate(
+    ceiling: coverage_witness_self_joined_ceiling(),
+    f: ceiling => census_ceiling_is_floor_only(ceiling: ceiling),
+  )
+}
+
+test fn witness_a_self_joined_census_names_the_independence_limit() -> Bool {
+  coverage_witness_ceiling_predicate(
+    ceiling: coverage_witness_self_joined_ceiling(),
+    f: ceiling => census_ceiling_has_limit(ceiling: ceiling, limit: DenominatorNotIndependent),
+  )
+}
+
+fn coverage_witness_unconformed_ceiling() -> CensusInferenceCeiling? {
+  let observation = coverage_witness_observation(rows: coverage_witness_ab_rows)
+  match census_method_capability_receipt(
+    observation: observation,
+    capability: coverage_witness_capability_for(contract_name: "coverage_witness_classifier"),
+    conformance: Absent,
+  ) {
+    Present { value: receipt } =>
+      census_inference_ceiling(
+        capability_receipt: receipt,
+        coverage: census_establish_coverage(
+          denominator: coverage_witness_denominator(subjects: coverage_witness_ab_subjects),
+          observation: observation,
+        ),
+      )
+    Absent => none
+  }
+}
+
+test fn witness_an_unobserved_conformance_holds_the_semantic_ceiling_at_a_floor() -> Bool {
+  coverage_witness_ceiling_predicate(
+    ceiling: coverage_witness_unconformed_ceiling(),
+    f: ceiling => census_ceiling_is_floor_only(ceiling: ceiling),
+  )
+}
+
+test fn witness_an_unobserved_conformance_names_its_limit() -> Bool {
+  coverage_witness_ceiling_predicate(
+    ceiling: coverage_witness_unconformed_ceiling(),
+    f: ceiling => census_ceiling_has_limit(ceiling: ceiling, limit: MethodConformanceUnobserved),
+  )
+}
+
+fn coverage_witness_textual_ceiling(rows: List<CensusObservedRow>) -> CensusInferenceCeiling? {
+  let observation = coverage_witness_observation(rows: rows)
+  match census_method_capability_receipt(
+    observation: observation,
+    capability: MatchesSourceText {
+      contract: coverage_witness_decl(name: "coverage_witness_classifier"),
+    },
+    conformance: Present { value: coverage_witness_conforming_control() },
+  ) {
+    Present { value: receipt } =>
+      census_inference_ceiling(
+        capability_receipt: receipt,
+        coverage: census_establish_coverage(
+          denominator: coverage_witness_denominator(subjects: coverage_witness_ab_subjects),
+          observation: observation,
+        ),
+      )
+    Absent => none
+  }
 }
 
 test fn witness_an_exhaustive_text_scan_cannot_support_a_semantic_subject_claim() -> Bool {
-  !census_ceiling_supports_semantic_subject_claim(
-    ceiling: coverage_witness_ceiling(
-      capability: coverage_witness_textual_capability(),
-      observed_rows: coverage_witness_ab_rows,
-      denominator_subjects: coverage_witness_ab_subjects,
-    ),
+  !coverage_witness_ceiling_predicate(
+    ceiling: coverage_witness_textual_ceiling(rows: coverage_witness_ab_rows),
+    f: ceiling => census_ceiling_supports_semantic_subject_claim(ceiling: ceiling),
   )
 }
 
 test fn witness_an_exhaustive_text_scan_still_supports_textual_absence() -> Bool {
-  census_ceiling_supports_textual_absence(
-    ceiling: coverage_witness_ceiling(
-      capability: coverage_witness_textual_capability(),
-      observed_rows: coverage_witness_ab_rows,
-      denominator_subjects: coverage_witness_ab_subjects,
+  coverage_witness_ceiling_predicate(
+    ceiling: coverage_witness_textual_ceiling(rows: coverage_witness_ab_rows),
+    f: ceiling => census_ceiling_supports_textual_absence(ceiling: ceiling),
+  )
+}
+
+test fn witness_a_limited_text_scan_supports_no_absence_at_all() -> Bool {
+  !coverage_witness_ceiling_predicate(
+    ceiling: coverage_witness_textual_ceiling(rows: [coverage_witness_row(name: "a")]),
+    f: ceiling => census_ceiling_supports_textual_absence(ceiling: ceiling),
+  )
+}
+
+test fn witness_the_denominator_subjects_reach_its_identity() -> Bool {
+  !content_hash_eq_structural(
+    left: census_denominator_identity(
+      denominator: coverage_witness_denominator(subjects: coverage_witness_ab_subjects),
+    ),
+    right: census_denominator_identity(
+      denominator: coverage_witness_denominator(subjects: [coverage_witness_key(name: "a")]),
     ),
   )
-}
-
-test fn witness_a_text_scan_without_exact_coverage_supports_no_absence_at_all() -> Bool {
-  let ceiling = coverage_witness_ceiling(
-    capability: coverage_witness_textual_capability(),
-    observed_rows: [coverage_witness_row(name: "a")],
-    denominator_subjects: coverage_witness_ab_subjects,
-  )
-  !census_ceiling_supports_textual_absence(ceiling: ceiling)
-}
-
-test fn witness_the_ceiling_records_whether_coverage_was_established() -> Bool {
-  let established = coverage_witness_ceiling(
-    capability: coverage_witness_structural_capability(),
-    observed_rows: coverage_witness_ab_rows,
-    denominator_subjects: coverage_witness_ab_subjects,
-  )
-  let refused = coverage_witness_ceiling(
-    capability: coverage_witness_structural_capability(),
-    observed_rows: [coverage_witness_row(name: "a")],
-    denominator_subjects: coverage_witness_ab_subjects,
-  )
-  established.coverage_established && !refused.coverage_established
 }
 
 test fn witness_the_denominator_subject_count_is_a_projection() -> Bool {
   census_denominator_subject_count(
-    denominator: coverage_witness_denominator(
-      subjects: coverage_witness_ab_subjects,
-      run_seed: "enumerate",
-    ),
+    denominator: coverage_witness_denominator(subjects: coverage_witness_ab_subjects),
   ) == 2
 }

@@ -23,9 +23,13 @@ import gunbc.repository_census_coverage {
   CoverageRefused,
   CensusMethodCapability,
   ClassifiesDeclaredStructure,
+  CensusMethodConformanceObservation,
+  CensusMethodCapabilityReceipt,
   CensusInferenceCeiling,
   census_denominator_observation,
   census_establish_coverage,
+  census_conformance_observation,
+  census_method_capability_receipt,
   census_inference_ceiling,
   census_ceiling_supports_semantic_subject_claim,
   census_ceiling_supports_semantic_absence,
@@ -86,15 +90,27 @@ fn confinement_census_revision(commit: String) -> MeasurementRevision {
   GitRevision { commit: commit }
 }
 
-fn confinement_census_run(
+fn confinement_census_invocation(
   procedure: String,
+  invocation: String,
   revision: MeasurementRevision,
 ) -> CensusMethodRunIdentity {
   CensusMethodRunIdentity {
     classifier: confinement_census_decl(name: procedure),
     classifier_revision: revision,
-    invocation_identity: content_hash_atom(value: procedure as NonEmptyStr),
+    invocation_identity: content_hash_atom(value: invocation as NonEmptyStr),
   }
+}
+
+fn confinement_census_run(
+  procedure: String,
+  revision: MeasurementRevision,
+) -> CensusMethodRunIdentity {
+  confinement_census_invocation(
+    procedure: procedure,
+    invocation: procedure,
+    revision: revision,
+  )
 }
 
 data confinement_census_capability: CensusMethodCapability = ClassifiesDeclaredStructure {
@@ -161,15 +177,103 @@ fn confinement_surface_coverage(revision: MeasurementRevision) -> CensusCoverage
   )
 }
 
-fn confinement_surface_ceiling(revision: MeasurementRevision) -> CensusInferenceCeiling {
-  census_inference_ceiling(
-    capability: confinement_census_capability,
-    observation: confinement_surface_observation(revision: revision),
-    outcome: confinement_surface_coverage(revision: revision),
+data confinement_conformance_note: String = "THE CONFORMANCE CONTROLS EXECUTE INSIDE THE CORPUS, which is the difference between licensing a design decision and guarding it. A mutation probe run in a disposable worktree demonstrates that a classifier discriminates and then vanishes with the worktree; nothing re-runs it, so it is evidence about a moment rather than standing evidence. These two controls are ordinary functions this module evaluates, reached by an enrolled witness, so the discrimination is re-established on every affected change. The discriminating input is the classifier output with one whole axis dropped — the same defect probe 5 plants — and conformance requires that the reconciliation REFUSE it. The positive control requires that the real output reconcile. Both are needed: a classifier that refuses everything passes the first alone, and one that accepts everything passes the second alone. What this cannot establish is that the dropped axis was the right defect to plant; that judgement is the author's, and it is the honest frontier of the receipt."
+
+fn confinement_surface_defective_rows() -> List<CensusObservedRow> {
+  let exact = target_ast_vocab_modules
+    |> map(key => confinement_surface_row(key: key, axis: ExactVocabularyModule))
+  let prefixes = target_ast_vocab_module_prefixes
+    |> map(key => confinement_surface_row(key: key, axis: VocabularyModulePrefix))
+  let edges = realization_edge_path_prefixes
+    |> map(key => confinement_surface_row(key: key, axis: RealizationEdgePathPrefix))
+  append(append(exact, prefixes), edges)
+}
+
+fn confinement_control_observation(
+  rows: List<CensusObservedRow>,
+  invocation: String,
+  revision: MeasurementRevision,
+) -> RepositoryCensusObservation {
+  repository_census_observation(
+    population: confinement_census_population,
+    observed_at_revision: revision,
+    method_run: confinement_census_invocation(
+      procedure: "confinement_surface_axis_of_declared_key",
+      invocation: invocation,
+      revision: revision,
+    ),
+    rows: rows,
   )
 }
 
-data confinement_claim_note: String = "THE CLAIM IS A PRODUCT OF THE CEILING, NOT A NUMBER BESIDE IT. ConfinementSurfacePopulationObserved is sole_constructor and the only function returning one is confinement_surface_population_claim, which returns Absent unless the ceiling reached from an executed reconciliation supports a semantic subject claim. So the population size is not something this module can state and then annotate with a caveat — where the ceiling is a floor, there is no claim value to hold. The key count is derived from the observation's rows at read time; the claim carries no count field of its own, so it cannot drift from the rows it summarizes."
+fn confinement_control_reconciles(
+  rows: List<CensusObservedRow>,
+  invocation: String,
+  revision: MeasurementRevision,
+) -> Bool {
+  match census_establish_coverage(
+    denominator: confinement_surface_denominator(revision: revision),
+    observation: confinement_control_observation(
+      rows: rows,
+      invocation: invocation,
+      revision: revision,
+    ),
+  ) {
+    CoverageEstablished { receipt: _ } => true
+    CoverageRefused {
+      observation_identity: _,
+      classification_run_identity: _,
+      reconciliation: _,
+    } => false
+  }
+}
+
+fn confinement_conformance_observation(
+  revision: MeasurementRevision,
+) -> CensusMethodConformanceObservation {
+  let discriminating_refused = !confinement_control_reconciles(
+    rows: confinement_surface_defective_rows(),
+    invocation: "confinement_surface_axis_of_declared_key.discriminating_control",
+    revision: revision,
+  )
+  let positive_accepted = confinement_control_reconciles(
+    rows: confinement_surface_axis_of_declared_key(),
+    invocation: "confinement_surface_axis_of_declared_key.positive_control",
+    revision: revision,
+  )
+  census_conformance_observation(
+    control_run: confinement_census_invocation(
+      procedure: "confinement_surface_axis_of_declared_key",
+      invocation: "confinement_surface_axis_of_declared_key.conformance_controls",
+      revision: revision,
+    ),
+    discriminating_input_refused: discriminating_refused,
+    positive_control_accepted: positive_accepted,
+  )
+}
+
+fn confinement_capability_receipt(
+  revision: MeasurementRevision,
+) -> CensusMethodCapabilityReceipt? {
+  census_method_capability_receipt(
+    observation: confinement_surface_observation(revision: revision),
+    capability: confinement_census_capability,
+    conformance: Present { value: confinement_conformance_observation(revision: revision) },
+  )
+}
+
+fn confinement_surface_ceiling(revision: MeasurementRevision) -> CensusInferenceCeiling? {
+  match confinement_capability_receipt(revision: revision) {
+    Present { value: receipt } =>
+      census_inference_ceiling(
+        capability_receipt: receipt,
+        coverage: confinement_surface_coverage(revision: revision),
+      )
+    Absent => none
+  }
+}
+
+data confinement_claim_note: String = "THE CLAIM IS A PRODUCT OF THE CEILING, NOT A NUMBER BESIDE IT. ConfinementSurfacePopulationObserved is sole_constructor and the only function returning one is confinement_surface_population_claim, which returns none unless a ceiling EXISTS — the capability receipt joined its contract to the executed classifier, and the ceiling joined that receipt to the coverage outcome — and unless that ceiling supports a semantic subject claim. So the population size is not something this module can state and then annotate with a caveat: where the chain does not join, there is no claim value to hold. The key count is derived from the observation rows at read time; the claim carries no count field of its own, so it cannot drift from the rows it summarizes."
 
 type ConfinementSurfacePopulationObserved sole_constructor {
   observed_at_revision: MeasurementRevision
@@ -180,16 +284,20 @@ type ConfinementSurfacePopulationObserved sole_constructor {
 fn confinement_surface_population_claim(
   revision: MeasurementRevision,
 ) -> ConfinementSurfacePopulationObserved? {
-  let ceiling = confinement_surface_ceiling(revision: revision)
-  let claim = ConfinementSurfacePopulationObserved {
-    observed_at_revision: revision,
-    observation: confinement_surface_observation(revision: revision),
-    ceiling: ceiling,
-  }
-  if census_ceiling_supports_semantic_subject_claim(ceiling: ceiling) {
-    Present { value: claim }
-  } else {
-    none
+  match confinement_surface_ceiling(revision: revision) {
+    Present { value: ceiling } => {
+      let claim = ConfinementSurfacePopulationObserved {
+        observed_at_revision: revision,
+        observation: confinement_surface_observation(revision: revision),
+        ceiling: ceiling,
+      }
+      if census_ceiling_supports_semantic_subject_claim(ceiling: ceiling) {
+        Present { value: claim }
+      } else {
+        none
+      }
+    }
+    Absent => none
   }
 }
 
