@@ -1,7 +1,13 @@
-//! Attempt-scoped floor-evidence sink (operator ruling on #7785).
+//! Attempt-scoped floor-evidence sink (operator ruling on #7785; commit 4A closes the
+//! evidence boundary: exact-attempt artifact upload, no broken legacy symlink, a
+//! cross-language fingerprint file, fail-closed required writes, atomic per-receipt
+//! observation fragments, and an honest manifest body digest).
 //!
 //! Seed-retained scaffold: registry rows mirror `gunbc.ci_floor_population_receipt_registry`
-//! and MUST stay fingerprint-paired with `ci_floor_population_receipt_registry_fingerprint`.
+//! and MUST stay fingerprint-paired with `ci_floor_population_receipt_registry_fingerprint`
+//! (the pairing now runs against the canonical bytes at
+//! `dag/gunbc/ci_floor_population_receipt_registry.fingerprint`, included at compile time —
+//! not a second hand-copied literal).
 //! Dissolve-on: generated registry projection + write_floor_receipt observation fragments
 //! replace this hand mirror (`finalize_floor_evidence_seed_deferral`).
 
@@ -14,25 +20,18 @@ use std::process::{Command, ExitCode};
 
 pub const SCHEMA: &str = "gunbc.ci_floor_population_receipt_manifest.v4";
 pub const EVIDENCE_ROOT_PREFIX: &str = "target/floor-evidence";
-pub const OBSERVATIONS_REL: &str = "observations.tsv";
+pub const OBSERVATIONS_DIR: &str = "observations";
 pub const MANIFEST_REL: &str = "manifest.tsv";
 pub const PHASE_JOURNAL_REL: &str = "phase-journal.tsv";
 
-/// Exact pairing with `gunbc.ci_floor_population_receipt_registry`
-/// `ci_floor_population_receipt_registry_fingerprint`. A `.dag` registry edit that does not
-/// update this const (and the ROWS table) must red the seed-pairing control.
-pub const FLOOR_EVIDENCE_REGISTRY_FINGERPRINT: &str = "\
-PopulationReceiptManifest|manifest.tsv|AfterFloorAlways|AfterFloorAlways|1\n\
-PhaseJournal|phase-journal.tsv|DuringFloor|DuringFloor|1\n\
-BatchWall|receipts/batch-wall.txt|DuringFloor|batch-wall-receipt|1\n\
-CompileCleanWall|receipts/compile-clean-wall.txt|DuringFloor|compile-clean-wall-receipt|1\n\
-Component|receipts/component.json|DuringFloor|floor-component-receipt|1\n\
-NativeTransition|receipts/native-transition.tsv|DuringFloor|native-transition-receipt|1\n\
-OnSuccessStage1|stages/1/receipt.tsv|OnSuccessStage|on-success-stage-1|1\n\
-OnSuccessStage2|stages/2/receipt.tsv|OnSuccessStage|on-success-stage-2|1\n\
-OnSuccessMaterialization|receipts/on-success-materialization.txt|OnSuccessStage|on-success-materialization|1\n\
-WorkerObservation|workers/observation.tsv|OptionalWorker|coordinator-observation|0\n\
-WorkerTerminal|workers/terminal-*.tsv|OptionalWorker|OptionalWorker|0";
+/// Cross-language registry binding (#7785 commit 4A). The canonical fingerprint bytes
+/// are generated from `gunbc.ci_floor_population_receipt_registry`'s
+/// `ci_floor_population_receipt_registry_fingerprint()` and committed at this path —
+/// ONE authority both languages read, rather than a Rust literal that can drift from a
+/// `.dag` edit unnoticed. A `.dag` registry edit that does not update the file reds
+/// `registry_fingerprint_pairs_const` (this module) and the `.dag`-side pin witness.
+pub const FLOOR_EVIDENCE_REGISTRY_FINGERPRINT: &str =
+    include_str!("../../../../../dag/gunbc/ci_floor_population_receipt_registry.fingerprint");
 
 #[derive(Clone, Copy)]
 enum Locator {
@@ -186,24 +185,19 @@ fn fingerprint_from_rows() -> String {
         .join("\n")
 }
 
-pub fn floor_evidence_root(attempt: &str) -> PathBuf {
-    PathBuf::from(EVIDENCE_ROOT_PREFIX).join(attempt)
+fn find_row(kind: &str) -> Option<&'static RegistryRow> {
+    ROWS.iter().find(|r| r.kind == kind)
 }
 
-fn path_is_under_root(root: &Path, candidate: &Path) -> bool {
-    let Ok(root) = root
-        .canonicalize()
-        .or_else(|_| Ok::<_, std::io::Error>(root.to_path_buf()))
-    else {
-        return false;
-    };
-    let Ok(cand) = candidate
-        .canonicalize()
-        .or_else(|_| Ok::<_, std::io::Error>(candidate.to_path_buf()))
-    else {
-        return false;
-    };
-    cand.starts_with(&root)
+fn is_family_kind(kind: &str) -> bool {
+    matches!(
+        find_row(kind).map(|r| r.locator),
+        Some(Locator::Family { .. })
+    )
+}
+
+pub fn floor_evidence_root(attempt: &str) -> PathBuf {
+    PathBuf::from(EVIDENCE_ROOT_PREFIX).join(attempt)
 }
 
 fn sha256_bytes(bytes: &[u8]) -> String {
@@ -217,8 +211,50 @@ fn sha256_file(path: &Path) -> Result<(u64, String), String> {
     Ok((bytes.len() as u64, sha256_bytes(&bytes)))
 }
 
-/// Atomic write under `target/floor-evidence/<attempt>/` plus observation append.
-/// Refuses paths that escape the attempt root.
+fn relative_path_escapes_root(relative_path: &str) -> bool {
+    if relative_path.is_empty()
+        || relative_path.starts_with('/')
+        || relative_path.contains("..")
+        || Path::new(relative_path).is_absolute()
+    {
+        return true;
+    }
+    for c in Path::new(relative_path).components() {
+        if matches!(
+            c,
+            std::path::Component::ParentDir | std::path::Component::RootDir
+        ) {
+            return true;
+        }
+    }
+    false
+}
+
+/// Observation-fragment filename for one receipt (blocker 5, #7785 commit 4A). A
+/// singleton kind (any `Locator::Exact` row) owns exactly one fragment file named after
+/// the kind, so a second write for the same kind is a filesystem-visible collision
+/// rather than a silently-appended row; a family kind (`WorkerTerminal`) is keyed by the
+/// receipt's own basename so N workers get N fragments.
+fn observation_fragment_relpath(kind: &str, relative_path: &str) -> String {
+    if is_family_kind(kind) {
+        let basename = Path::new(relative_path)
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| relative_path.to_string());
+        format!("{OBSERVATIONS_DIR}/{kind}-{basename}.obs.tsv")
+    } else {
+        format!("{OBSERVATIONS_DIR}/{kind}.obs.tsv")
+    }
+}
+
+/// Atomic write under `target/floor-evidence/<attempt>/` plus an atomic per-receipt
+/// observation fragment (blocker 5, #7785 commit 4A): write receipt tmp → write obs tmp
+/// → rename receipt → rename obs — a best-effort atomic PAIR, not a single fsync unit.
+/// A crash between the two renames leaves a published receipt with no observation
+/// fragment, which the finalizer reads as `MissingAfterProducerReached` (a real, typed
+/// state) rather than as a false `ObservedPresent` — it never claims presence it cannot
+/// prove, and it never partially-writes a shared file that a concurrent worker could
+/// also be appending to (the defect this fragment split replaces).
 pub fn write_floor_receipt(
     attempt: &str,
     kind: &str,
@@ -226,77 +262,48 @@ pub fn write_floor_receipt(
     body: &[u8],
     producer_phase: &str,
 ) -> Result<PathBuf, String> {
-    if relative_path.is_empty()
-        || relative_path.starts_with('/')
-        || relative_path.contains("..")
-        || Path::new(relative_path).is_absolute()
-    {
+    if relative_path_escapes_root(relative_path) {
         return Err(format!(
             "write_floor_receipt refused unsafe relative path {relative_path:?}"
         ));
     }
     let root = floor_evidence_root(attempt);
     let path = root.join(relative_path);
-    if !path_is_under_root(&root, &path) && path.parent() != Some(root.as_path()) {
-        // Before create: ensure joined path stays under root by components.
-        let mut ok = true;
-        for c in Path::new(relative_path).components() {
-            if matches!(
-                c,
-                std::path::Component::ParentDir | std::path::Component::RootDir
-            ) {
-                ok = false;
-                break;
-            }
-        }
-        if !ok {
-            return Err(format!(
-                "write_floor_receipt path escapes FloorEvidenceRoot: {relative_path}"
-            ));
-        }
-    }
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| format!("mkdir {}: {e}", parent.display()))?;
     }
-    let tmp = path.with_extension(format!("tmp-{}", std::process::id()));
-    fs::write(&tmp, body).map_err(|e| format!("write {}: {e}", tmp.display()))?;
-    fs::rename(&tmp, &path).map_err(|e| format!("publish {}: {e}", path.display()))?;
-    let digest = sha256_bytes(body);
-    append_observation(
-        attempt,
-        kind,
-        relative_path,
-        body.len() as u64,
-        &digest,
-        producer_phase,
-    )?;
-    Ok(path)
-}
+    let receipt_tmp = path.with_extension(format!("tmp-{}", std::process::id()));
+    fs::write(&receipt_tmp, body).map_err(|e| format!("write {}: {e}", receipt_tmp.display()))?;
 
-fn append_observation(
-    attempt: &str,
-    kind: &str,
-    relative_path: &str,
-    size: u64,
-    digest: &str,
-    producer_phase: &str,
-) -> Result<(), String> {
-    let root = floor_evidence_root(attempt);
-    fs::create_dir_all(&root).map_err(|e| format!("mkdir {}: {e}", root.display()))?;
-    let obs = root.join(OBSERVATIONS_REL);
-    let mut file = fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&obs)
-        .map_err(|e| format!("open {}: {e}", obs.display()))?;
-    writeln!(
-        file,
-        "{kind}\t{relative_path}\t{size}\t{digest}\t{producer_phase}"
-    )
-    .map_err(|e| format!("append observation: {e}"))?;
-    file.sync_data()
-        .map_err(|e| format!("sync observation: {e}"))?;
-    Ok(())
+    let digest = sha256_bytes(body);
+    let obs_rel = observation_fragment_relpath(kind, relative_path);
+    let obs_path = root.join(&obs_rel);
+    if let Some(parent) = obs_path.parent() {
+        if let Err(e) = fs::create_dir_all(parent) {
+            let _ = fs::remove_file(&receipt_tmp);
+            return Err(format!("mkdir {}: {e}", parent.display()));
+        }
+    }
+    let obs_body = format!(
+        "{kind}\t{relative_path}\t{}\t{digest}\t{producer_phase}\n",
+        body.len()
+    );
+    let obs_tmp = obs_path.with_extension(format!("tmp-{}", std::process::id()));
+    if let Err(e) = fs::write(&obs_tmp, obs_body.as_bytes()) {
+        let _ = fs::remove_file(&receipt_tmp);
+        return Err(format!("write {}: {e}", obs_tmp.display()));
+    }
+
+    if let Err(e) = fs::rename(&receipt_tmp, &path) {
+        let _ = fs::remove_file(&receipt_tmp);
+        let _ = fs::remove_file(&obs_tmp);
+        return Err(format!("publish {}: {e}", path.display()));
+    }
+    if let Err(e) = fs::rename(&obs_tmp, &obs_path) {
+        let _ = fs::remove_file(&obs_tmp);
+        return Err(format!("publish {}: {e}", obs_path.display()));
+    }
+    Ok(path)
 }
 
 pub fn install_floor_evidence_root(attempt: &str) -> Result<PathBuf, String> {
@@ -306,29 +313,17 @@ pub fn install_floor_evidence_root(attempt: &str) -> Result<PathBuf, String> {
     if let Some(parent) = journal.parent() {
         fs::create_dir_all(parent).map_err(|e| format!("mkdir {}: {e}", parent.display()))?;
     }
-    // Touch so the dump step can distinguish absent vs empty when linked.
+    // Touch so the dump step can distinguish absent vs empty when read.
     if !journal.exists() {
         fs::write(&journal, "").map_err(|e| format!("touch {}: {e}", journal.display()))?;
     }
-    std::env::set_var("GUNBC_FLOOR_PHASE_JOURNAL", &journal);
-    // Convenience alias for the peak-post dump step (still keyed on the legacy path in
-    // v2.workflow.ci_floor_peak_emit). Replaced each install so the alias tracks the
-    // current attempt without cross-attempt byte copies into sibling evidence roots.
-    let legacy = PathBuf::from("target/floor-phase-journal.tsv");
-    if let Some(parent) = legacy.parent() {
-        fs::create_dir_all(parent).map_err(|e| format!("mkdir {}: {e}", parent.display()))?;
-    }
-    let _ = fs::remove_file(&legacy);
-    #[cfg(unix)]
-    {
-        std::os::unix::fs::symlink(&journal, &legacy)
-            .map_err(|e| format!("symlink {} -> {}: {e}", legacy.display(), journal.display()))?;
-    }
-    #[cfg(not(unix))]
-    {
-        fs::copy(&journal, &legacy)
-            .map_err(|e| format!("copy journal alias {}: {e}", legacy.display()))?;
-    }
+    // No legacy `target/floor-phase-journal.tsv` symlink/copy (#7785 commit 4A, blocker 2):
+    // the workflow composes the SAME attempt-scoped path directly at the GitHub Actions
+    // expression level (v2.workflow.ci_floor_peak_emit `ci_floor_phase_journal_path`), so
+    // every consumer — this process, the peak-post step, the falsifier step — reads the
+    // one real file rather than a second alias that a stale symlink target could break.
+    let journal_for_env = journal.canonicalize().unwrap_or_else(|_| journal.clone());
+    std::env::set_var("GUNBC_FLOOR_PHASE_JOURNAL", &journal_for_env);
     Ok(root)
 }
 
@@ -398,58 +393,125 @@ fn standing_label_missing(optional_worker: bool, phase: PhaseStandingExact) -> &
     }
 }
 
+#[derive(Clone, Debug)]
 struct Observation {
     kind: String,
     relative_path: String,
     size: u64,
     digest: String,
+    #[allow(dead_code)]
+    producer_phase: String,
 }
 
-fn load_observations(root: &Path) -> Result<Vec<Observation>, String> {
-    let path = root.join(OBSERVATIONS_REL);
-    if !path.is_file() {
+/// Enumerate `observations/*.obs.tsv` fragments only (blocker 5, #7785 commit 4A) — never
+/// a shared append-log. Refuses loudly (never silently ignores) on: an unknown kind, a
+/// path that escapes `FloorEvidenceRoot`, a second fragment for a singleton kind, a
+/// duplicate `(kind, path)` pair, or a fragment whose declared `producer_phase` disagrees
+/// with the registry row it names.
+fn load_observation_fragments(root: &Path) -> Result<Vec<Observation>, String> {
+    let dir = root.join(OBSERVATIONS_DIR);
+    if !dir.is_dir() {
         return Ok(Vec::new());
     }
-    let body = fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path.display()))?;
-    let mut out = Vec::new();
-    for line in body.lines() {
-        let line = line.trim();
-        if line.is_empty() {
-            continue;
+    let mut fragment_paths: Vec<PathBuf> = fs::read_dir(&dir)
+        .map_err(|e| format!("read {}: {e}", dir.display()))?
+        .filter_map(|entry| entry.ok().map(|e| e.path()))
+        .filter(|p| {
+            p.file_name()
+                .map(|n| n.to_string_lossy().ends_with(".obs.tsv"))
+                .unwrap_or(false)
+        })
+        .collect();
+    // Deterministic order so a duplicate refusal names the same pair on every run.
+    fragment_paths.sort();
+
+    let mut out: Vec<Observation> = Vec::new();
+    for frag_path in &fragment_paths {
+        let body = fs::read_to_string(frag_path)
+            .map_err(|e| format!("read {}: {e}", frag_path.display()))?;
+        let lines: Vec<&str> = body.lines().filter(|l| !l.trim().is_empty()).collect();
+        if lines.len() != 1 {
+            return Err(format!(
+                "observation fragment {} must carry exactly one row, found {}",
+                frag_path.display(),
+                lines.len()
+            ));
         }
-        let parts: Vec<&str> = line.split('\t').collect();
-        if parts.len() < 5 {
-            return Err(format!("malformed observation row: {line}"));
+        let parts: Vec<&str> = lines[0].split('\t').collect();
+        if parts.len() != 5 {
+            return Err(format!(
+                "malformed observation fragment row in {}: {:?}",
+                frag_path.display(),
+                lines[0]
+            ));
         }
+        let kind = parts[0].to_string();
         let rel = parts[1].to_string();
-        if rel.contains("..") || Path::new(&rel).is_absolute() {
-            return Err(format!("observation path escapes root: {rel}"));
+        let size: u64 = parts[2].parse().map_err(|_| {
+            format!(
+                "bad size in observation fragment {}: {:?}",
+                frag_path.display(),
+                lines[0]
+            )
+        })?;
+        let digest = parts[3].to_string();
+        let producer_phase = parts[4].to_string();
+
+        let Some(row) = find_row(&kind) else {
+            return Err(format!(
+                "observation fragment {} names unknown kind {kind:?} — refused rather than ignored",
+                frag_path.display()
+            ));
+        };
+
+        if relative_path_escapes_root(&rel) {
+            return Err(format!(
+                "observation fragment {} path escapes FloorEvidenceRoot: {rel:?}",
+                frag_path.display()
+            ));
         }
-        let abs = root.join(&rel);
-        if !path_is_under_root(root, &abs) {
-            // component check already done; still verify file is under root once created
-            let mut ok = true;
-            for c in Path::new(&rel).components() {
-                if matches!(
-                    c,
-                    std::path::Component::ParentDir | std::path::Component::RootDir
-                ) {
-                    ok = false;
-                }
-            }
-            if !ok {
-                return Err(format!("observation path escapes root: {rel}"));
-            }
+
+        if producer_phase != row.phase {
+            return Err(format!(
+                "observation fragment {} declares producer_phase={producer_phase:?} but registry row {kind} expects {:?}",
+                frag_path.display(),
+                row.phase
+            ));
         }
+
         out.push(Observation {
-            kind: parts[0].to_string(),
+            kind,
             relative_path: rel,
-            size: parts[2]
-                .parse()
-                .map_err(|_| format!("bad size in observation: {line}"))?,
-            digest: parts[3].to_string(),
+            size,
+            digest,
+            producer_phase,
         });
     }
+
+    for row in ROWS {
+        if matches!(row.locator, Locator::Family { .. }) {
+            continue;
+        }
+        let count = out.iter().filter(|o| o.kind == row.kind).count();
+        if count > 1 {
+            return Err(format!(
+                "duplicate observation fragments for singleton kind {} ({count} fragments; expected at most one)",
+                row.kind
+            ));
+        }
+    }
+
+    for i in 0..out.len() {
+        for j in (i + 1)..out.len() {
+            if out[i].kind == out[j].kind && out[i].relative_path == out[j].relative_path {
+                return Err(format!(
+                    "duplicate observation for (kind={}, path={})",
+                    out[i].kind, out[i].relative_path
+                ));
+            }
+        }
+    }
+
     Ok(out)
 }
 
@@ -588,13 +650,38 @@ fn observations_for_row<'a>(
     }
 }
 
+/// Writes `floor_evidence_root` and `walk_attempt` to `$GITHUB_OUTPUT` (blocker 1, #7785
+/// commit 4A) so the downstream `always()` upload step can address the EXACT attempt
+/// root (`${{ steps.finalize_floor_evidence.outputs.floor_evidence_root }}`) instead of
+/// a `target/floor-evidence/*` wildcard that would sweep in every sibling attempt a
+/// reused self-hosted `target/` happens to still be carrying. A no-op (never an error)
+/// when `GITHUB_OUTPUT` is unset — local/dev invocations have nothing to write into.
+fn write_github_output_kv(pairs: &[(&str, &str)]) -> Result<(), String> {
+    let path = match std::env::var("GITHUB_OUTPUT") {
+        Ok(p) if !p.is_empty() => p,
+        _ => return Ok(()),
+    };
+    let mut body = String::new();
+    for (k, v) in pairs {
+        body.push_str(&format!("{k}={v}\n"));
+    }
+    let mut file = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+        .map_err(|e| format!("open GITHUB_OUTPUT {path}: {e}"))?;
+    file.write_all(body.as_bytes())
+        .map_err(|e| format!("write GITHUB_OUTPUT {path}: {e}"))?;
+    Ok(())
+}
+
 /// Finalize one attempt root from observation fragments + exact journal phase standing.
 /// Refuses incomplete subject (non-zero exit). Never scrapes sibling attempt roots.
 pub fn finalize_floor_evidence() -> Result<ExitCode, ExitCode> {
     let computed = fingerprint_from_rows();
-    if computed != FLOOR_EVIDENCE_REGISTRY_FINGERPRINT {
+    if computed.trim() != FLOOR_EVIDENCE_REGISTRY_FINGERPRINT.trim() {
         eprintln!(
-            "::error::finalize-floor-evidence: seed registry fingerprint drifted from FLOOR_EVIDENCE_REGISTRY_FINGERPRINT"
+            "::error::finalize-floor-evidence: seed registry fingerprint drifted from dag/gunbc/ci_floor_population_receipt_registry.fingerprint"
         );
         return Err(ExitCode::from(1));
     }
@@ -651,7 +738,18 @@ pub fn finalize_floor_evidence() -> Result<ExitCode, ExitCode> {
         return Err(ExitCode::from(1));
     }
 
-    let observations = match load_observations(&root) {
+    // Write the exact attempt outputs BEFORE anything below can fail (blocker 1): the
+    // upload step downstream runs `if: always()`, so even a later refusal in this same
+    // finalize must leave a valid exact `floor_evidence_root` output behind it.
+    if let Err(e) = write_github_output_kv(&[
+        ("floor_evidence_root", &root.display().to_string()),
+        ("walk_attempt", &walk),
+    ]) {
+        eprintln!("::error::finalize-floor-evidence: {e}");
+        return Err(ExitCode::from(1));
+    }
+
+    let observations = match load_observation_fragments(&root) {
         Ok(o) => o,
         Err(e) => {
             eprintln!("::error::finalize-floor-evidence: {e}");
@@ -671,8 +769,12 @@ pub fn finalize_floor_evidence() -> Result<ExitCode, ExitCode> {
     let mut out = String::new();
     out.push_str(SCHEMA);
     out.push('\n');
+    // Honest header (blocker 6, #7785 commit 4A): a SHA-256 of the canonical fingerprint
+    // bytes, not the raw multiline blob — the field name says exactly what it is.
+    let registry_fingerprint_sha256 =
+        sha256_bytes(FLOOR_EVIDENCE_REGISTRY_FINGERPRINT.trim().as_bytes());
     out.push_str(&format!(
-        "registry_fingerprint={FLOOR_EVIDENCE_REGISTRY_FINGERPRINT}\n"
+        "registry_fingerprint_sha256={registry_fingerprint_sha256}\n"
     ));
     out.push_str(&subject_lines);
     out.push_str(
@@ -682,7 +784,10 @@ pub fn finalize_floor_evidence() -> Result<ExitCode, ExitCode> {
     let mut row_count = 0usize;
     for row in ROWS {
         if row.kind == "PopulationReceiptManifest" {
-            // Written by this finalizer; mark as pending construction then overwrite after.
+            // The manifest cannot honestly claim a content_digest of itself as a data
+            // row (blocker 6): its presence is the file existing at all, and its
+            // integrity is `manifest_body_digest` below, computed over the exact bytes
+            // that precede it — never a row inside the body it describes.
             continue;
         }
         let pattern = pattern_of(row.locator);
@@ -772,6 +877,14 @@ pub fn finalize_floor_evidence() -> Result<ExitCode, ExitCode> {
         }
     }
 
+    // Honest self-digest (blocker 6): computed over exactly the bytes written above —
+    // schema, header, subject, column header, and every data row — BEFORE this trailer
+    // line is appended, so a reader can reproduce it by hashing the file with its last
+    // line stripped. Never claimed as a `content_digest` path-digest row inside the
+    // body it describes.
+    let manifest_body_digest = sha256_bytes(out.as_bytes());
+    out.push_str(&format!("manifest_body_digest={manifest_body_digest}\n"));
+
     let manifest_path = root.join(MANIFEST_REL);
     let mut file = match fs::File::create(&manifest_path) {
         Ok(f) => f,
@@ -783,29 +896,7 @@ pub fn finalize_floor_evidence() -> Result<ExitCode, ExitCode> {
             return Err(ExitCode::from(1));
         }
     };
-    // Include manifest row after we know bytes — rewrite with ObservedPresent for manifest.
-    let mut with_manifest = out.clone();
-    // Placeholder: compute digest of body without manifest row, then append manifest row.
-    // Simpler: write body, then append manifest self-row by rewriting.
-    let body_wo_manifest = out.clone();
-    let (size, digest) = {
-        let bytes = body_wo_manifest.as_bytes();
-        (bytes.len() as u64, sha256_bytes(bytes))
-    };
-    with_manifest.push_str(&format!(
-        "PopulationReceiptManifest\tmanifest.tsv\t{}\tObservedPresent\tAfterFloorAlways\t{}\t{}\n",
-        manifest_path.display(),
-        size,
-        digest
-    ));
-    // Recompute: the manifest content includes its own row, so digest the final bytes.
-    let final_bytes = {
-        // Two-pass: write preliminary, then set digest of full content including the row
-        // with a zero digest then replace — avoid self-reference by digesting rows excluding
-        // the manifest self-row (declared: content_digest covers body before self-row).
-        with_manifest.as_bytes().to_vec()
-    };
-    if let Err(e) = file.write_all(&final_bytes).and_then(|_| file.sync_all()) {
+    if let Err(e) = file.write_all(out.as_bytes()).and_then(|_| file.sync_all()) {
         eprintln!(
             "::error::finalize-floor-evidence: write {}: {e}",
             manifest_path.display()
@@ -817,7 +908,7 @@ pub fn finalize_floor_evidence() -> Result<ExitCode, ExitCode> {
         "[floor-population-evidence] wrote {} schema={} rows={} subject_ok={subject_ok} attempt={walk}",
         manifest_path.display(),
         SCHEMA,
-        row_count + 1
+        row_count
     );
 
     if !subject_ok {
@@ -864,6 +955,7 @@ mod tests {
             "GITHUB_SHA",
             "GUNBC_WALK_ATTEMPT_ID",
             "GUNBC_TESTED_TREE",
+            "GITHUB_OUTPUT",
         ] {
             std::env::remove_var(k);
         }
@@ -883,7 +975,10 @@ mod tests {
 
     #[test]
     fn registry_fingerprint_pairs_const() {
-        assert_eq!(fingerprint_from_rows(), FLOOR_EVIDENCE_REGISTRY_FINGERPRINT);
+        assert_eq!(
+            fingerprint_from_rows().trim(),
+            FLOOR_EVIDENCE_REGISTRY_FINGERPRINT.trim()
+        );
     }
 
     #[test]
@@ -927,16 +1022,16 @@ mod tests {
             assert_eq!(b_body, "from-b\n");
             assert!(!b_body.contains("from-a"));
             // No path under B references A.
-            let obs = fs::read_to_string(b_root.join(OBSERVATIONS_REL)).unwrap();
-            assert!(!obs.contains("attempt-a"));
-            assert!(!obs.contains(a_root.to_string_lossy().as_ref()));
-            let a_obs = fs::read_to_string(a_root.join(OBSERVATIONS_REL)).unwrap();
+            let b_obs = fs::read_to_string(b_root.join("observations/BatchWall.obs.tsv")).unwrap();
+            assert!(!b_obs.contains("attempt-a"));
+            assert!(!b_obs.contains(a_root.to_string_lossy().as_ref()));
+            let a_obs = fs::read_to_string(a_root.join("observations/BatchWall.obs.tsv")).unwrap();
             assert!(a_obs.contains("from-a") || a_obs.contains("BatchWall"));
         });
     }
 
     #[test]
-    fn two_worker_terminals_two_observation_rows() {
+    fn two_worker_terminals_two_observation_fragments() {
         with_temp_cwd(|_| {
             write_floor_receipt(
                 "w",
@@ -954,9 +1049,120 @@ mod tests {
                 "OptionalWorker",
             )
             .unwrap();
-            let obs = load_observations(&floor_evidence_root("w")).unwrap();
+            let root = floor_evidence_root("w");
+            assert!(root
+                .join("observations/WorkerTerminal-terminal-0.tsv.obs.tsv")
+                .is_file());
+            assert!(root
+                .join("observations/WorkerTerminal-terminal-1.tsv.obs.tsv")
+                .is_file());
+            let obs = load_observation_fragments(&root).unwrap();
             let terminals: Vec<_> = obs.iter().filter(|o| o.kind == "WorkerTerminal").collect();
             assert_eq!(terminals.len(), 2);
+        });
+    }
+
+    #[test]
+    fn install_floor_evidence_root_does_not_create_legacy_symlink() {
+        with_temp_cwd(|_| {
+            install_floor_evidence_root("no-symlink").unwrap();
+            assert!(
+                !Path::new("target/floor-phase-journal.tsv").exists(),
+                "legacy target/floor-phase-journal.tsv must not be created (#7785 commit 4A blocker 2)"
+            );
+            assert!(floor_evidence_root("no-symlink")
+                .join(PHASE_JOURNAL_REL)
+                .is_file());
+        });
+    }
+
+    #[test]
+    fn unknown_observation_kind_refuses() {
+        with_temp_cwd(|_| {
+            let root = floor_evidence_root("unknown-kind");
+            let dir = root.join(OBSERVATIONS_DIR);
+            fs::create_dir_all(&dir).unwrap();
+            fs::write(
+                dir.join("TotallyUnknownKind.obs.tsv"),
+                "TotallyUnknownKind\treceipts/foo.txt\t3\tabc\tDuringFloor\n",
+            )
+            .unwrap();
+            let err = load_observation_fragments(&root).unwrap_err();
+            assert!(err.contains("unknown kind"), "got: {err}");
+        });
+    }
+
+    #[test]
+    fn duplicate_singleton_observation_refuses() {
+        with_temp_cwd(|_| {
+            let root = floor_evidence_root("dup-singleton");
+            let dir = root.join(OBSERVATIONS_DIR);
+            fs::create_dir_all(&dir).unwrap();
+            // Two fragments both claiming the singleton BatchWall kind — even under two
+            // different filenames, this must refuse (a real crash-injected race, or a
+            // second producer that should never exist for a singleton kind).
+            fs::write(
+                dir.join("BatchWall.obs.tsv"),
+                "BatchWall\treceipts/batch-wall.txt\t3\tabc\tDuringFloor\n",
+            )
+            .unwrap();
+            fs::write(
+                dir.join("BatchWall-2.obs.tsv"),
+                "BatchWall\treceipts/batch-wall-2.txt\t3\tdef\tDuringFloor\n",
+            )
+            .unwrap();
+            let err = load_observation_fragments(&root).unwrap_err();
+            assert!(err.contains("duplicate"), "got: {err}");
+        });
+    }
+
+    #[test]
+    fn duplicate_kind_path_pair_refuses() {
+        with_temp_cwd(|_| {
+            let root = floor_evidence_root("dup-pair");
+            let dir = root.join(OBSERVATIONS_DIR);
+            fs::create_dir_all(&dir).unwrap();
+            let row = "WorkerTerminal\tworkers/terminal-0.tsv\t2\tok\tOptionalWorker\n";
+            fs::write(dir.join("WorkerTerminal-terminal-0.tsv.obs.tsv"), row).unwrap();
+            fs::write(dir.join("WorkerTerminal-terminal-0.tsv.dup.obs.tsv"), row).unwrap();
+            let err = load_observation_fragments(&root).unwrap_err();
+            assert!(err.contains("duplicate"), "got: {err}");
+        });
+    }
+
+    #[test]
+    fn phase_mismatch_refuses() {
+        with_temp_cwd(|_| {
+            let root = floor_evidence_root("phase-mismatch");
+            let dir = root.join(OBSERVATIONS_DIR);
+            fs::create_dir_all(&dir).unwrap();
+            // BatchWall's registry phase is DuringFloor; declare AfterFloorAlways instead.
+            fs::write(
+                dir.join("BatchWall.obs.tsv"),
+                "BatchWall\treceipts/batch-wall.txt\t3\tabc\tAfterFloorAlways\n",
+            )
+            .unwrap();
+            let err = load_observation_fragments(&root).unwrap_err();
+            assert!(
+                err.contains("phase mismatch") || err.contains("expects"),
+                "got: {err}"
+            );
+        });
+    }
+
+    #[test]
+    fn path_escape_observation_refuses() {
+        with_temp_cwd(|_| {
+            let root = floor_evidence_root("escape");
+            let dir = root.join(OBSERVATIONS_DIR);
+            fs::create_dir_all(&dir).unwrap();
+            fs::write(
+                dir.join("BatchWall.obs.tsv"),
+                "BatchWall\t../escape.txt\t3\tabc\tDuringFloor\n",
+            )
+            .unwrap();
+            let err = load_observation_fragments(&root).unwrap_err();
+            assert!(err.contains("escapes"), "got: {err}");
         });
     }
 
@@ -1041,7 +1247,72 @@ mod tests {
             assert!(!manifest.contains("secret-a"));
             assert!(manifest.contains("only-b") || manifest.contains("ObservedPresent"));
             assert!(manifest.contains("BatchWall"));
+            assert!(manifest.contains("registry_fingerprint_sha256="));
+            assert!(manifest.contains("manifest_body_digest="));
+            assert!(!manifest.contains("PopulationReceiptManifest\tmanifest.tsv"));
             clear_subject_env();
+        });
+    }
+
+    #[test]
+    fn manifest_body_digest_matches_bytes_before_trailer() {
+        with_temp_cwd(|_| {
+            clear_subject_env();
+            write_floor_receipt(
+                "digest-check",
+                "BatchWall",
+                "receipts/batch-wall.txt",
+                b"payload\n",
+                "DuringFloor",
+            )
+            .unwrap();
+            fs::write(
+                floor_evidence_root("digest-check").join(PHASE_JOURNAL_REL),
+                "1\t1\tbatch-wall-receipt\tcompleted\t\n",
+            )
+            .unwrap();
+            set_full_subject("digest-check");
+            assert!(finalize_floor_evidence().is_ok());
+            let manifest =
+                fs::read_to_string(floor_evidence_root("digest-check").join(MANIFEST_REL)).unwrap();
+            let mut lines: Vec<&str> = manifest.lines().collect();
+            let trailer = lines.pop().unwrap();
+            assert!(trailer.starts_with("manifest_body_digest="));
+            let claimed = trailer.trim_start_matches("manifest_body_digest=");
+            let body_before_trailer = format!("{}\n", lines.join("\n"));
+            let actual = sha256_bytes(body_before_trailer.as_bytes());
+            assert_eq!(claimed, actual);
+            clear_subject_env();
+        });
+    }
+
+    #[test]
+    fn github_output_writes_exact_root_and_walk_attempt() {
+        with_temp_cwd(|dir| {
+            clear_subject_env();
+            let output_path = dir.join("github_output.txt");
+            fs::write(&output_path, "").unwrap();
+            std::env::set_var("GITHUB_OUTPUT", &output_path);
+            fs::write(
+                floor_evidence_root("gha-out")
+                    .join(PHASE_JOURNAL_REL)
+                    .parent()
+                    .unwrap()
+                    .join("placeholder-mkdir-guard"),
+                "",
+            )
+            .ok();
+            set_full_subject("gha-out");
+            let _ = finalize_floor_evidence();
+            let contents = fs::read_to_string(&output_path).unwrap();
+            let expected_root = floor_evidence_root("gha-out");
+            assert!(
+                contents.contains(&format!("floor_evidence_root={}", expected_root.display())),
+                "got: {contents}"
+            );
+            assert!(contents.contains("walk_attempt=gha-out"), "got: {contents}");
+            clear_subject_env();
+            std::env::remove_var("GITHUB_OUTPUT");
         });
     }
 

@@ -274,12 +274,19 @@ fn enforce_floor_compile_clean_clamp(
         );
         return true;
     }
-    let _ = publish_settlement_floor_receipt(
+    if !publish_settlement_floor_receipt(
         "CompileCleanWall",
         "receipts/compile-clean-wall.txt",
         body.as_bytes(),
         "DuringFloor",
-    );
+    ) {
+        // #7785 commit 4A, blocker 4: a discarded `let _ =` here meant a required
+        // evidence write could fail while the walk kept reporting success — the
+        // fail-closed posture this receipt exists to prove. A refused write is folded
+        // into the same `over` verdict the clamp itself uses, so the walk reds exactly
+        // as it would for an over-budget clamp.
+        over = true;
+    }
     eprintln!(
         "[receipt] floor compile-clean wall: wall_ms={wall_ms} units={units} scope={subject} (receipt: {})",
         path.display()
@@ -4735,15 +4742,34 @@ fn write_resolve_receipt(
 /// archaeology exercise. `OverBudget` rows correspond one-to-one with the FLOOR-BATCH-OVER-BUDGET
 /// refusals the walk printed; a clamp-less run (falsifier/regen plans) records walls with
 /// `verdict=Unbudgeted`. Returns false on a write error — the walk fails closed here.
+///
+/// Missing attempt identity (`observe_walk_attempt_id` refused) is legacy-tolerant by
+/// default — a bare local/dev invocation has no evidence root to write into, and that is
+/// not itself evidence of a defect. `GUNBC_FLOOR_EVIDENCE_REQUIRED=1` (#7785 commit 4A,
+/// blocker 4 — set on the CI floor and falsifier steps) flips that same missing-identity
+/// case to a walk-failing refusal: on a surface that declares evidence is required, a
+/// process that cannot even name its own attempt is exactly the silent-gap this posture
+/// exists to catch, not a legacy exemption.
 fn publish_settlement_floor_receipt(
     kind: &str,
     relative_path: &str,
     body: &[u8],
     producer_phase: &str,
 ) -> bool {
+    let evidence_required = std::env::var("GUNBC_FLOOR_EVIDENCE_REQUIRED")
+        .map(|v| v == "1")
+        .unwrap_or(false);
     let attempt = match observe_walk_attempt_id() {
         Ok(id) => id,
-        Err(_) => return true, // evidence root not installed; legacy path still written by caller
+        Err(e) => {
+            if evidence_required {
+                eprintln!(
+                    "claim_executor: floor evidence write refused for {kind}/{relative_path}: GUNBC_FLOOR_EVIDENCE_REQUIRED=1 and walk attempt identity is unavailable: {e}"
+                );
+                return false;
+            }
+            return true; // evidence root not installed; legacy path still written by caller
+        }
     };
     match floor_evidence::write_floor_receipt(&attempt, kind, relative_path, body, producer_phase) {
         Ok(path) => {

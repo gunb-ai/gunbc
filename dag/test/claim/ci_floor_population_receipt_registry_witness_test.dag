@@ -11,8 +11,10 @@ import gunbc.ci_floor_population_receipt_registry {
   ci_floor_population_receipt_registry_paths,
   ci_floor_population_receipt_registry_well_formed,
   ci_floor_population_receipt_registry_fingerprint,
-  ci_floor_population_receipts_upload_paths,
+  ci_floor_population_receipt_registry_fingerprint_pin,
   ci_floor_population_receipts_upload_glob,
+  ci_floor_population_receipts_upload_path_exact_expression,
+  ci_floor_population_receipts_walk_attempt_exact_expression,
   registry_rows_well_formed,
   planted_duplicate_kind_rows,
   planted_duplicate_path_rows,
@@ -84,8 +86,23 @@ test fn witness_registry_well_formed_exact_identities() -> Bool {
 }
 
 test fn witness_upload_paths_are_attempt_scoped_glob() -> Bool {
-  ci_floor_population_receipts_upload_paths() == "target/floor-evidence/*"
-    && ci_floor_population_receipts_upload_glob() == "target/floor-evidence/*"
+  ci_floor_population_receipts_upload_glob() == "target/floor-evidence/*"
+}
+
+test fn witness_production_upload_path_is_exact_not_wildcard() -> Bool {
+  let exact = ci_floor_population_receipts_upload_path_exact_expression()
+  !string_contains(s: exact, pattern: "*")
+    && string_contains(s: exact, pattern: "steps.finalize_floor_evidence.outputs.floor_evidence_root")
+    && exact == "${{ steps.finalize_floor_evidence.outputs.floor_evidence_root }}"
+}
+
+test fn witness_walk_attempt_expression_names_finalize_step() -> Bool {
+  let wa = ci_floor_population_receipts_walk_attempt_exact_expression()
+  string_contains(s: wa, pattern: "steps.finalize_floor_evidence.outputs.walk_attempt")
+}
+
+test fn witness_registry_fingerprint_pinned_to_committed_file() -> Bool {
+  ci_floor_population_receipt_registry_fingerprint() == ci_floor_population_receipt_registry_fingerprint_pin
 }
 
 test fn witness_required_kinds_pinned() -> Bool {

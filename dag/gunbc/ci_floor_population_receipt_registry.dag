@@ -227,13 +227,29 @@ fn ci_floor_population_receipts_upload_paths_for_attempt(attempt_id: String) -> 
     |> join(separator: "\n")
 }
 
+data ci_floor_population_receipts_upload_glob_note: String = "Archival-only (#7785 commit 4A, blocker 1): a target/floor-evidence/* wildcard sweeps in every sibling attempt a reused self-hosted target/ happens to still be carrying, not just the one this walk produced. No production upload step reads this function; it exists for a future hand-run archival/debug pull of every retained attempt root on a runner, never for the always() CI upload."
+
 fn ci_floor_population_receipts_upload_glob() -> String {
   "target/floor-evidence/*"
+}
+
+data ci_floor_population_receipts_upload_path_exact_expression_note: String = "The production upload path (#7785 commit 4A, blocker 1): the EXACT FloorEvidenceRoot this walk wrote, read back from the finalize step's own declared output rather than recomposed here from github.* context. References the step id finalize_floor_evidence, which every consumer of this expression must give its --finalize-floor-evidence invocation (ci_floor_population_receipt_manifest_step)."
+
+fn ci_floor_population_receipts_upload_path_exact_expression() -> String {
+  "${{ steps.finalize_floor_evidence.outputs.floor_evidence_root }}"
+}
+
+fn ci_floor_population_receipts_walk_attempt_exact_expression() -> String {
+  "${{ steps.finalize_floor_evidence.outputs.walk_attempt }}"
 }
 
 fn ci_floor_population_receipt_registry_row_count() -> Nat {
   length(xs: ci_floor_population_receipt_registry())
 }
+
+data ci_floor_population_receipt_registry_fingerprint_pin_note: String = "Cross-language pin (#7785 commit 4A, blocker 3): byte-equal (mod the file's single trailing newline) to the committed dag/gunbc/ci_floor_population_receipt_registry.fingerprint file, which claim_executor_floor_evidence.rs also reads verbatim via include_str! and asserts against its own fingerprint_from_rows(). A .dag registry edit that does not update BOTH this literal and the committed file reds witness_registry_fingerprint_pinned_to_committed_file here and registry_fingerprint_pairs_const on the Rust side, from two independent directions."
+
+data ci_floor_population_receipt_registry_fingerprint_pin: String = "PopulationReceiptManifest|manifest.tsv|AfterFloorAlways|AfterFloorAlways|1\nPhaseJournal|phase-journal.tsv|DuringFloor|DuringFloor|1\nBatchWall|receipts/batch-wall.txt|DuringFloor|batch-wall-receipt|1\nCompileCleanWall|receipts/compile-clean-wall.txt|DuringFloor|compile-clean-wall-receipt|1\nComponent|receipts/component.json|DuringFloor|floor-component-receipt|1\nNativeTransition|receipts/native-transition.tsv|DuringFloor|native-transition-receipt|1\nOnSuccessStage1|stages/1/receipt.tsv|OnSuccessStage|on-success-stage-1|1\nOnSuccessStage2|stages/2/receipt.tsv|OnSuccessStage|on-success-stage-2|1\nOnSuccessMaterialization|receipts/on-success-materialization.txt|OnSuccessStage|on-success-materialization|1\nWorkerObservation|workers/observation.tsv|OptionalWorker|coordinator-observation|0\nWorkerTerminal|workers/terminal-*.tsv|OptionalWorker|OptionalWorker|0"
 
 fn ci_floor_population_receipt_registry_fingerprint() -> String {
   ci_floor_population_receipt_registry()

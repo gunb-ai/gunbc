@@ -114,7 +114,9 @@ data ci_floor_peak_post_unavailable_command: String = "echo \"[calibration] floo
 
 data ci_floor_phase_journal_env_name: String = "GUNBC_FLOOR_PHASE_JOURNAL"
 
-data ci_floor_phase_journal_path: String = "target/floor-phase-journal.tsv"
+data ci_floor_phase_journal_path_note: String = "The composed attempt-scoped path directly - the SAME path claim_executor_floor_evidence.rs install_floor_evidence_root/floor_evidence_root derives from run_id, run_attempt, and job (#7785 commit 4A, blocker 2). Previously this named the legacy target/floor-phase-journal.tsv alias, installed as a same-process symlink/copy the floor step's own process created and then relied on; the peak-post step below runs in its OWN process on the SAME runner filesystem, so a broken or stale symlink silently pointed the dump at the wrong - or no - journal. Composing the same real path at the GitHub Actions expression level means every consumer (this Rust process via GUNBC_FLOOR_PHASE_JOURNAL, and the peak-post shell step) reads the one file that actually exists, with no alias layer to go stale."
+
+data ci_floor_phase_journal_path: String = "target/floor-evidence/${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}/phase-journal.tsv"
 
 data ci_floor_phase_journal_present_command: String = "[ -f \"$GUNBC_FLOOR_PHASE_JOURNAL\" ]"
 

@@ -1,0 +1,11 @@
+PopulationReceiptManifest|manifest.tsv|AfterFloorAlways|AfterFloorAlways|1
+PhaseJournal|phase-journal.tsv|DuringFloor|DuringFloor|1
+BatchWall|receipts/batch-wall.txt|DuringFloor|batch-wall-receipt|1
+CompileCleanWall|receipts/compile-clean-wall.txt|DuringFloor|compile-clean-wall-receipt|1
+Component|receipts/component.json|DuringFloor|floor-component-receipt|1
+NativeTransition|receipts/native-transition.tsv|DuringFloor|native-transition-receipt|1
+OnSuccessStage1|stages/1/receipt.tsv|OnSuccessStage|on-success-stage-1|1
+OnSuccessStage2|stages/2/receipt.tsv|OnSuccessStage|on-success-stage-2|1
+OnSuccessMaterialization|receipts/on-success-materialization.txt|OnSuccessStage|on-success-materialization|1
+WorkerObservation|workers/observation.tsv|OptionalWorker|coordinator-observation|0
+WorkerTerminal|workers/terminal-*.tsv|OptionalWorker|OptionalWorker|0

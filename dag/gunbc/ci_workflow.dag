@@ -41,6 +41,7 @@ import v2.workflow.ci_workflow_run_emit {
 }
 import v2.workflow.ci_release_build_emit { ci_release_build_script }
 import v2.workflow.ci_v1_compiler_tests_compile_gate_emit { ci_v1_compiler_tests_compile_gate_script }
+import v2.workflow.ci_floor_evidence_native_controls_emit { ci_floor_evidence_native_controls_script }
 import std.disposition { Disposition, RealizationDispatch, Scaffold, SingleAuthority, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.types { Duration }
@@ -50,7 +51,8 @@ import gunbc.falsifier_run_control {
   ci_release_bins_step_id,
 }
 import gunbc.ci_floor_population_receipt_registry {
-  ci_floor_population_receipts_upload_paths,
+  ci_floor_population_receipts_upload_path_exact_expression,
+  ci_floor_population_receipts_walk_attempt_exact_expression,
 }
 import tools.ci_floor_population_evidence_finalize {
   finalize_floor_evidence_invoke_shell,
@@ -330,6 +332,28 @@ fn ci_release_build_step() -> Step {
   }
 }
 
+data ci_floor_evidence_native_controls_step_note: String = "#7785 commit 4A, blocker 7: required CI must EXECUTE the floor-evidence native controls, not merely compile them. Placed on the build job, after the release build (both need the pin-rustup CARGO_BIN prelude; this is independent of the release binaries themselves, so it does not need to follow build to be correct - it follows it here for log locality with the other cargo-driven build-job steps)."
+
+fn ci_floor_evidence_native_controls_step() -> Step {
+  RunStep {
+    name: Present { value: "cargo test -p v1-compiler --bin claim_executor floor_evidence:: (required native controls)" },
+    id: none,
+    run: ci_floor_evidence_native_controls_script(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_floor_evidence_native_controls_timeout_minutes }
+  }
+}
+
+data gunbc_floor_evidence_required_env_posture_note: String = "GUNBC_FLOOR_EVIDENCE_REQUIRED posture (#7785 commit 4A, blocker 4): on the CI floor and falsifier steps, a required-evidence write that cannot even name its own attempt identity (observe_walk_attempt_id refused) must fail the walk rather than silently pass under the local/dev legacy exemption - the surfaces where evidence is actually depended on downstream (the population manifest, the upload step) are exactly the two that set this."
+
+data gunbc_floor_evidence_required_env_name: String = "GUNBC_FLOOR_EVIDENCE_REQUIRED"
+
+data gunbc_floor_evidence_required_env_value: String = "1"
+
 fn ci_floor_step() -> Step {
   RunStep {
     name: Present { value: "gunbc ci (.dag witnesses + gates)" },
@@ -337,7 +361,10 @@ fn ci_floor_step() -> Step {
     run: gunbc_ci_floor_run(spec: ci_floor_spec_from_roster()),
     shell: none,
     env: Present {
-      value: [kv(key: ci_floor_phase_journal_env_name, value: yaml_string(s: ci_floor_phase_journal_path))]
+      value: [
+        kv(key: ci_floor_phase_journal_env_name, value: yaml_string(s: ci_floor_phase_journal_path)),
+        kv(key: gunbc_floor_evidence_required_env_name, value: yaml_string(s: gunbc_floor_evidence_required_env_value))
+      ]
     },
     working_directory: none,
     if_condition: none,
@@ -493,6 +520,10 @@ data gunbc_ci_v1_compiler_tests_compile_gate_timeout_minutes: Duration = 15
 
 data gunbc_ci_v1_compiler_tests_compile_gate_timeout_note: String = "v1-compiler-tests compile gate step budget (operator ruling 2026-08-01, PR #7533 receipt): cargo check -p v1-compiler-tests --tests exceeded the 5m aux cap on cold native-cache hosts (run 30692671758 @ 6f20329: srv1-05, step killed at 5m00s while still compiling deps; warm-cache runs complete in ~50s). Raised 10m -> 15m after run 30719671973 @ 6945446401 (srv1-01, cache hit): step killed at 10m00s while Checking v1-compiler-tests — deps consumed the full prior budget. 15m is the cold-host envelope after that receipt — not RustMonolithGate re-enrollment."
 
+data gunbc_ci_floor_evidence_native_controls_timeout_minutes: Int = 15
+
+data gunbc_ci_floor_evidence_native_controls_timeout_note: String = "cargo test -p v1-compiler --bin claim_executor floor_evidence:: (#7785 commit 4A, blocker 7) executes claim_executor_floor_evidence.rs's own unit tests as a REQUIRED build-job step — every claim this commit makes about symlink removal, atomic observation fragments, and fail-closed writes is otherwise asserted only by code that compiles, never runs, in CI. `cargo test` builds the `test` profile, a DIFFERENT profile than the just-built `release` binaries, so this is not free off the release build's cache; 15m mirrors the compile gate's own cold-native-cache envelope (gunbc_ci_v1_compiler_tests_compile_gate_timeout_note) as the conservative starting budget pending a measured receipt."
+
 data gunbc_ci_artifact_transfer_step_timeout_minutes: Int = 10
 
 data gunbc_ci_artifact_transfer_step_note: String = "Cross-job handoff of the release bins (operator job-split ruling 2026-07-11): the build job packs ci_floor_required_artifact_names into one tgz (tar preserves the executable bits a raw artifact zip would drop) and uploads it; the ci floor job downloads, unpacks into target/release, and re-verifies via claim_executor --verify-build-artifacts before any step consumes a bin (fail-closed: a missing or truncated artifact reds the job at the verify, never as a mid-floor bin fallback). 10m is the transfer envelope for a ~200MB archive under fleet pressure; upload uses if-no-files-found: error so an empty pack is loud."
@@ -510,7 +541,7 @@ data srv1_dashboard_deploy_concurrency_group: String = "srv1-dashboard-deploy"
 data srv1_dashboard_deploy_serialization_note: String = "Blue/green selection is observe-then-mutate, so two deploy jobs may not overlap: both could observe blue active, then the first flips green while the second restarts what has become the active green slot, recreating the outage. Job-grain concurrency serializes the entire cutover with cancel-in-progress=false; QueueNotMax may replace an older pending deployment with the newest main revision, but it never interrupts the one holding the host mutation window."
 
 fn gunbc_ci_build_job_backstop_timeout_minutes() -> Int {
-  gunbc_ci_aux_step_timeout_minutes + gunbc_ci_v1_compiler_tests_compile_gate_timeout_minutes + gunbc_ci_release_build_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
+  gunbc_ci_aux_step_timeout_minutes + gunbc_ci_v1_compiler_tests_compile_gate_timeout_minutes + gunbc_ci_release_build_step_timeout_minutes + gunbc_ci_floor_evidence_native_controls_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
 }
 
 data gunbc_ci_receipt_gate_steps_moved_in_executor_note: String = "The resolve-receipt and materialization-receipt gate STEPS are deleted (ruling 2026-07-30): their laws — resolves_total equals the declared count, and the materialization receipt exists/parses/keyed nonzero — now run INSIDE claim_executor as ordinary-floor finalization (run_walk, FloorFinalization), so a receipt-law violation blocks every on-success stage instead of redding a step AFTER admission had already stamped. The two aux terms leave the backstop sum in the same motion, keeping it the exact step-sum + prelude the witness pins. The receipt FILES keep writing — they are observability the falsifier and operators read — only the shell re-validation of them is gone, because keeping it would be a second representation of the floor-completion rule."
@@ -677,7 +708,7 @@ fn ci_build_job() -> Job {
     id: "build",
     name: none,
     runner: gunbc_ci_selected_runner_spec(),
-    steps: concat(ci_heal_revalidation_prelude_steps(), [ci_fmt_gate_step(), ci_v1_compiler_tests_compile_gate_step(), ci_release_build_step(), ci_release_bins_pack_step(), ci_release_bins_upload_step()]),
+    steps: concat(ci_heal_revalidation_prelude_steps(), [ci_fmt_gate_step(), ci_v1_compiler_tests_compile_gate_step(), ci_release_build_step(), ci_floor_evidence_native_controls_step(), ci_release_bins_pack_step(), ci_release_bins_upload_step()]),
     needs: [],
     env: none,
     outputs: none,
@@ -695,10 +726,12 @@ data ci_floor_population_receipts_main_floor_artifact_name: String = "ci-floor-p
 
 data ci_floor_population_receipts_upload_note: String = "PR2 persistence seam (operator ruling on #7785): ci_workflow places a thin finalize invoke (claim_executor --finalize-floor-evidence) plus upload-artifact. Semantic construction is gunbc.ci_floor_population_evidence; expected identities are gunbc.ci_floor_population_receipt_registry. No shell rediscovery in this module. Affected CI uploads ci-floor-population-receipts; falsifier uploads ci-floor-population-receipts-main-floor immediately after the main floor before cold controls."
 
+data ci_floor_population_receipt_manifest_step_note: String = "Step id finalize_floor_evidence is load-bearing (#7785 commit 4A, blocker 1): the downstream always() upload step addresses this run's EXACT FloorEvidenceRoot via steps.finalize_floor_evidence.outputs.floor_evidence_root, which only exists because this step's claim_executor --finalize-floor-evidence writes it to $GITHUB_OUTPUT before doing anything else that could fail."
+
 fn ci_floor_population_receipt_manifest_step() -> Step {
   RunStep {
     name: Present { value: "Finalize CI floor population evidence (always)" },
-    id: none,
+    id: Present { value: "finalize_floor_evidence" },
     run: finalize_floor_evidence_invoke_shell(),
     shell: none,
     env: none,
@@ -709,6 +742,8 @@ fn ci_floor_population_receipt_manifest_step() -> Step {
   }
 }
 
+data ci_floor_population_receipts_upload_step_named_note: String = "Production upload (#7785 commit 4A, blocker 1): path: is the EXACT one attempt root this walk finalized (steps.finalize_floor_evidence.outputs.floor_evidence_root), never a target/floor-evidence/* wildcard - a reused self-hosted runner's target/ can carry sibling attempts, and a wildcard upload would silently sweep them into an artifact claiming to be this run's evidence. artifact_name carries the walk-attempt id so two artifacts on the same runner are visibly distinct even before either is opened."
+
 fn ci_floor_population_receipts_upload_step_named(artifact_name: String, step_name: String) -> Step {
   UsesStep {
     name: Present { value: step_name },
@@ -716,8 +751,11 @@ fn ci_floor_population_receipts_upload_step_named(artifact_name: String, step_na
     uses: upload_artifact_action,
     with: Present {
       value: [
-        kv(key: "name", value: yaml_string(s: artifact_name)),
-        kv(key: "path", value: yaml_string(s: ci_floor_population_receipts_upload_paths())),
+        kv(
+          key: "name",
+          value: yaml_string(s: concat(artifact_name, concat("-", ci_floor_population_receipts_walk_attempt_exact_expression())))
+        ),
+        kv(key: "path", value: yaml_string(s: ci_floor_population_receipts_upload_path_exact_expression())),
         kv(key: "if-no-files-found", value: yaml_string(s: "error")),
         kv(key: "retention-days", value: yaml_int(n: 30)),
         kv(key: "compression-level", value: yaml_int(n: 0))

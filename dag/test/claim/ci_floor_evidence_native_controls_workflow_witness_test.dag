@@ -1,0 +1,68 @@
+module test.claim.ci_floor_evidence_native_controls_workflow_witness
+
+import v2.workflow.ci_floor_evidence_native_controls_emit {
+  ci_floor_evidence_native_controls_script,
+}
+import gunbc.ci_workflow { ci_build_job }
+import extdeps.github.actions { Step, RunStep, UsesStep }
+
+fn build_job_step_index_running_native_controls() -> Int? {
+  fold(ci_build_job().steps, init: { idx: 0, found: none }, f: fn(acc, step) {
+    match acc.found {
+      Present { value: _ } => acc
+      Absent => match step {
+        RunStep { name: _, id: _, run: cmd, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+          if string_contains(s: cmd, pattern: "'test'")
+            && string_contains(s: cmd, pattern: "'claim_executor'")
+            && string_contains(s: cmd, pattern: "'floor_evidence::'") {
+            { idx: acc.idx, found: Present { value: acc.idx } }
+          } else {
+            { idx: acc.idx + 1, found: none }
+          }
+        UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+          { { idx: acc.idx + 1, found: none } }
+      }
+    }
+  }).found
+}
+
+fn build_job_step_index_running_release_build() -> Int? {
+  fold(ci_build_job().steps, init: { idx: 0, found: none }, f: fn(acc, step) {
+    match acc.found {
+      Present { value: _ } => acc
+      Absent => match step {
+        RunStep { name: _, id: _, run: cmd, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+          if string_contains(s: cmd, pattern: "--bin") && string_contains(s: cmd, pattern: "claim_executor") && string_contains(s: cmd, pattern: "--release") {
+            { idx: acc.idx, found: Present { value: acc.idx } }
+          } else {
+            { idx: acc.idx + 1, found: none }
+          }
+        UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+          { { idx: acc.idx + 1, found: none } }
+      }
+    }
+  }).found
+}
+
+test fn w_build_job_enrolls_native_controls_step() -> Bool {
+  match build_job_step_index_running_native_controls() {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+test fn w_native_controls_step_runs_test_not_check() -> Bool {
+  let script = ci_floor_evidence_native_controls_script()
+  string_contains(s: script, pattern: "'test'")
+    && !string_contains(s: script, pattern: "'check'")
+}
+
+test fn w_native_controls_step_follows_release_build() -> Bool {
+  match build_job_step_index_running_release_build() {
+    Absent => false
+    Present { value: release_idx } => match build_job_step_index_running_native_controls() {
+      Absent => false
+      Present { value: controls_idx } => controls_idx > release_idx
+    }
+  }
+}
