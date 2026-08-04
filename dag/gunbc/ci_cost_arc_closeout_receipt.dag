@@ -1,0 +1,45 @@
+module gunbc.ci_cost_arc_closeout_receipt
+
+import std.types { Int, String }
+
+data ci_cost_arc_closeout_receipt_note: String = "TERMINAL ACCOUNTING FOR THE RESEARCH ARC THAT PRECEDES SHARED ENTRY-VIEW WORK (operator call 2026-08-03, lively-crab-41). This receipt does not invent mechanism. It joins one current-main production floor harvest and settles the three ambiguous mechanisms (#7522 net wall, #7671 fleet native rate, #7534 warm-hit skip after #7728) as MEASURED or OPEN-with-trigger — never probable / expected / claimed-not-verified. Expected wall gain from banking this receipt: zero. Dominant open cost after this closeout: per-entry assembly / execution-world construction (see docs/plans/per-entry-assembly-decomposition-measurement.md and the four-PR sequence)."
+
+data harvested_floor_subject_note: String = "Subject A (representative affected / SelectionApplied floor on main): GitHub Actions run 30863019228, head ed9785817ed8 (Dissolution census A #7755), job ci success. Subject B (full-corpus / falsifier-shaped cold): NOT harvested in this closeout — OPEN trigger: next schedule falsifier or GUNBC_CI_COMPILE_CLEAN_COLD_CONTROL=1 main push with uploaded floor-attempt receipts. Do not invent a second subject from truncated logs."
+
+data harvested_pipeline_walls_note: String = "From run 30863019228 job timestamps (sequential required path): build wall ≈ 237s (23:39:51Z–23:43:48Z); regen wall ≈ 510s (23:43:50Z–23:52:20Z); heal_generated_artifacts SKIPPED; ci job wall ≈ 2509s (23:52:21Z–00:34:10Z). Sum of those required job walls ≈ 3256s (~54.3 min). This is pipeline wall by job clock, not a single process RSS span."
+
+data harvested_floor_prelude_and_selection_note: String = "Merge-admission CAPTURE (pre-walk typed claim subprocess) wall_ms=110820 on run 30863019228 (claim_executor stderr). Selection: selection_state=SelectionApplied selected_entry_groups=297 total_entry_groups=916 selection_ratio=0.3242. Discovery measurement: 6610 witnesses (4174 skipped, 1020 deferred), resolve 431121.539ms, evalu 65016.029ms. floor-drain peak_rss=8513646592; calibration floor_peak_post=10821181440; swap_after=0 on the capture subprocess line."
+
+data harvested_assembly_split_note: String = "Additive [assembly-split] spans on the same floor (NOT exclusive wall; same two-denominator caveat as #7597): symbol_index_merge=65161.4ms; root_symbol_index=32084.1ms; rewire_import_str=164938.5ms; symbol_index=43675.2ms; root_variant_base=14178.4ms; rewire_total_observation=178325.4ms. These price the assembly surface; they do not by themselves prove fleet recovery. Dominant open cost: per-entry assembly / execution-world construction."
+
+data settle_7522_net_wall_note: String = "SETTLE #7522. Cold baseline (stamp+gate) = 197130 ms from merge_admission_current_main_cold_baseline_note / run 30671526012 (stamp 94260 + gate 102870). Capture alone on run 30863019228 = 110820 ms. NET admission wall = capture + stamp + gate. Stamp and gate on-success stage walls are NOT present in the recoverable gh run --log for 30863019228 (log truncates after discovery measurement; no '[receipt] on-success stage' lines). Therefore: capture MEASURED; stamp MEASURED-at-baseline-only; gate MEASURED-at-baseline-only; NET vs 197.13s = OPEN. Trigger: upload target/floor-attempt-*/on-success-stage-{1,2}-receipt.tsv (or full untruncated job log) from one green ordinary floor and join capture_ms + stage1.wall_ms + stage2.wall_ms."
+
+data settle_7671_native_rate_note: String = "SETTLE #7671. Substrate + bounded 3-member enrollment LANDED (#7599, #7671). Small-scale native evidence remains gunbc.native_witness_transition_receipt native_at_small_scale_transition_receipt (#7599). Production fleet: ci_floor_native_batch_resolve_receipt_note records run 30767841790 with verdict fallback:native_realization_refused (counted fallback). Recoverable gh --log for run 30863019228 contains ZERO '[native-selected-bundle]' / native_count / fallback_count lines (truncation after measurement and/or missing artifact upload). Therefore production native rate on current main is NOT bankable as native=3: treat operational cutover as SUBSTRATE LANDED / FLEET RATE OPEN (known fallback class exists). Do not describe #7671 as a completed native wall-clock speedup. Trigger: persist target/native-selected-witness-transition-receipt.tsv as a CI artifact on every floor that enrolls gunbc_pr_native_batch, and cite native_count/fallback_count from that file."
+
+data settle_7534_warm_hit_note: String = "SETTLE #7534 after #7728. Disk-tier repeat-resolve OOM root-caused and fixed in #7728 (b12027cd94f). Safe controls exist (repeat_resolve_through_disk_seam_does_not_reenter_provider; reentrant_provider_ctx_construction_refuses; same_subject_resolves_share_one_graph_store_hits_v2_disk). The discriminating skip witness cross_process_hit_skips_semantic_recompute is still COMMENT-ONLY — not enrolled. materialization_kernel_closing_frontier_audit warm-hit-skips-semantic-recompute therefore remains PartiallyDelivered: OOM blocker dissolved; skip still unproven by counter. Consumer stays opt-in (GUNBC_RESOLVED_GRAPH_CACHE_DIR); does not bypass corpus/index startup. Trigger: land and green the skip test against TYPECHECK_COMPUTE_COUNT, then climb the audit clause."
+
+data terminal_lane_dispositions_note: String = "CURRENT-MAIN TRUTH TABLE (backed by this receipt + cited merged PRs):\n- warm admission (#7522): MERGED; capture MEASURED 110820ms on run 30863019228; NET vs 197.13s OPEN (stamp+gate walls not in recoverable log)\n- native substrate (#7599): MERGED; typed receipt native_at_small_scale_transition_receipt\n- production native execution (#7671): MERGED enrollment; fleet native rate OPEN (known fallback on 30767841790; no native_count line in 30863019228 recoverable log) — NOT a completed native speedup\n- exact-tree provider (#7534): MERGED opt-in; warm-hit skip PartiallyDelivered after #7728 (OOM fixed; skip proof OPEN)\n- retention-vs-drain (#7725): CLOSED — REJECT (eviction not the tax)\n- entry union (#7533/#7483): CLOSED — no repeated typecheck prize\n- selection honesty (#7722/#7729): LANDED\n- dominant open cost: per-entry assembly / execution-world construction"
+
+fn harvested_capture_wall_ms() -> Int {
+  110820
+}
+
+fn harvested_selected_entry_groups() -> Int {
+  297
+}
+
+fn harvested_total_entry_groups() -> Int {
+  916
+}
+
+fn harvested_resolve_wall_ms() -> Int {
+  431122
+}
+
+fn harvested_eval_wall_ms() -> Int {
+  65016
+}
+
+fn cold_admission_baseline_wall_ms() -> Int {
+  197130
+}

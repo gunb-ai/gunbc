@@ -1,0 +1,61 @@
+module test.claim.ci_cost_arc_closeout_receipt_witness
+
+import std.types { Bool, Int }
+import gunbc.ci_cost_arc_closeout_receipt {
+  harvested_capture_wall_ms,
+  harvested_selected_entry_groups,
+  harvested_total_entry_groups,
+  harvested_resolve_wall_ms,
+  harvested_eval_wall_ms,
+  cold_admission_baseline_wall_ms,
+  settle_7522_net_wall_note,
+  settle_7671_native_rate_note,
+  settle_7534_warm_hit_note,
+  terminal_lane_dispositions_note,
+}
+
+data ci_cost_arc_closeout_witness_note: String = "Pins the harvested numeric identity of the closeout receipt and that the three settle notes refuse to claim net wall, fleet native=3, or warm-hit Delivered. RED controls flip a measured field or strip an OPEN marker."
+
+test fn witness_harvested_capture_is_run_30863019228() -> Bool {
+  harvested_capture_wall_ms() == 110820
+}
+
+test fn witness_selection_ratio_identity() -> Bool {
+  harvested_selected_entry_groups() == 297
+    && harvested_total_entry_groups() == 916
+}
+
+test fn witness_resolve_dominates_eval() -> Bool {
+  harvested_resolve_wall_ms() > harvested_eval_wall_ms() * 5
+}
+
+test fn witness_cold_baseline_is_197130() -> Bool {
+  cold_admission_baseline_wall_ms() == 197130
+}
+
+test fn witness_7522_net_remains_open() -> Bool {
+  let n = settle_7522_net_wall_note
+  n.contains(substring: "NET vs 197.13s = OPEN")
+    && n.contains(substring: "110820")
+    && !n.contains(substring: "probable")
+}
+
+test fn witness_7671_not_described_as_completed_native_speedup() -> Bool {
+  let n = settle_7671_native_rate_note
+  n.contains(substring: "NOT a completed native")
+    || n.contains(substring: "NOT bankable as native=3")
+}
+
+test fn witness_7534_warm_hit_still_partial() -> Bool {
+  let n = settle_7534_warm_hit_note
+  n.contains(substring: "PartiallyDelivered")
+    && n.contains(substring: "#7728")
+}
+
+test fn witness_terminal_table_names_assembly_as_dominant_open() -> Bool {
+  terminal_lane_dispositions_note.contains(substring: "per-entry assembly")
+}
+
+test fn red_capture_wall_must_not_silently_drift() -> Bool {
+  !(harvested_capture_wall_ms() == 0)
+}
