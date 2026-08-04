@@ -6,6 +6,7 @@ import extdeps.pdf_citation {
   pdf_citation_detail,
   document_content_pin_verified,
 }
+import extdeps.vendor.ampere { ampere }
 import std.content_hash { Sha256DigestHex }
 import extdeps.uri { Uri, Https }
 
