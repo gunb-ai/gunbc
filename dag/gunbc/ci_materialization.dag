@@ -178,7 +178,7 @@ data ci_floor_declared_resolve_count: Nat = 2
 
 data ci_floor_declared_resolve_count_obligation_note: String = "SEMANTICS (shared CI floor item 0B, operator ruling 2026-08-04): this row names the CLOSED UNIVERSE of semantic resolve OBLIGATIONS the floor roster structurally owes each run — compile-anchor-whole-tree plus native-bundle-escaping-entry — NOT the count of physical cold resolves (resolve_nanos > 0). THE LAW (single authority here, observed by claim_executor, transported by ci_floor_plan only): expected obligation identities == observed realization obligation identities. Warm shared-pool satisfaction is SatisfiedFromSharedPool with provider + receipt, never absence. cold_resolves_total in target/floor-resolve-receipt.txt is observational only. STANDING CONSTRAINT: stays at 2 until identity-based finalization REPLACES it via a conscious roster change in the PR that adds or removes an escaping entry class."
 
-data ci_floor_resolve_obligation_authority_note: String = "AUTHORITY SPLIT (0B): gunbc.ci_materialization owns ci_floor_expected_resolve_obligations and resolve_realization_finalization_holds. claim_executor observes cold resolves and shared-pool hits into ResolveRealization rows. ci_floor_plan projects ci_floor_declared_resolve_count into WalkPlan.finalization only — it does NOT author a second obligation roster."
+data ci_floor_resolve_obligation_authority_note: String = "AUTHORITY SPLIT (0B): gunbc.ci_materialization owns ci_floor_expected_resolve_obligations and resolve_realization_finalization_holds; warm_realization consumes gunbc.floor_materialization floor_index_build_share_provider_id (no second literal). claim_executor observes cold resolves and shared-pool hits into ResolveRealization rows. ci_floor_plan projects ci_floor_declared_resolve_count into WalkPlan.finalization only — it does NOT author a second obligation roster."
 
 type ResolveObligationIdentity
   = CompileAnchorWholeTree
@@ -351,7 +351,6 @@ fn cold_realization(id: ResolveObligationIdentity, nanos: Nat) -> ResolveRealiza
     receipt: ResolveColdReceipt { resolve_nanos: nanos },
   }
 }
-
 fn warm_realization(id: ResolveObligationIdentity) -> ResolveRealization {
   SatisfiedFromSharedPool {
     obligation: expected_obligation(id: id),
