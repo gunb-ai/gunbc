@@ -370,7 +370,7 @@ test fn witness_explicit_revocation_authorizes_vanished_receipt() -> Bool {
   let current = concat(prior, [
     AcceptanceRevoked {
       exact_prior_receipt: receipt,
-      disposition: AcceptanceNodeReopensActiveFrontier,
+      disposition: AcceptanceNodeReopensActiveFrontier {},
       reason: "fixture revocation witness" as NonEmptyStr,
       revoked_by: "operator" as NonEmptyStr,
       revoked_on: "2026-08-04" as NonEmptyStr,

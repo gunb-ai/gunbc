@@ -27,7 +27,6 @@ import gunbc.roadmap_model {
   project_live_acceptance_receipts,
   acceptance_history_integrity_holds,
   acceptance_history_chain_digest,
-  acceptance_history_chain_digest,
   Intricacy,
   IntricacyLow,
   IntricacyMedium,
@@ -42,6 +41,10 @@ import gunbc.roadmap_model {
   ManualAcceptance,
   section_group,
   section_prose,
+}
+import gunbc.roadmap_acceptance_history_observation {
+  current_roadmap_acceptance_history_prior_observation,
+  prior_history_for_integrity,
 }
 import gunbc.roadmap_execution_contract { ExecutionContractUnspecified, contract_has_closing_validation }
 import gunbc.roadmap_focus {
@@ -2243,16 +2246,24 @@ fn roadmap_acceptance_event_history() -> List<RoadmapAcceptanceEvent> {
   ]
 }
 
-data roadmap_acceptance_history_note: String = "roadmap_acceptance_event_history is the single authority for acceptance facts. roadmap_acceptance_receipts projects the live receipt set by replaying recorded and revoked events only — never a second editable receipt list. New acceptance appends AcceptanceRecorded; withdrawal appends AcceptanceRevoked naming the exact prior receipt, a disposition, and audit fields. roadmap_acceptance_history_sealed_event_count and roadmap_acceptance_history_sealed_chain_digest pin the immutable prefix so prior events cannot be deleted without updating the seal in the same change."
+data roadmap_acceptance_history_note: String = "roadmap_acceptance_event_history is the single authority for acceptance facts. roadmap_acceptance_receipts projects the live receipt set by replaying recorded and revoked events only — never a second editable receipt list. New acceptance appends AcceptanceRecorded; withdrawal appends AcceptanceRevoked naming the exact prior receipt, a disposition, and audit fields. roadmap_acceptance_history_sealed_event_count and roadmap_acceptance_history_sealed_chain_digest pin the immutable prefix so prior events cannot be deleted without updating the seal in the same change. LIVE prior_history wiring is partial: gunbc.roadmap_acceptance_history_observation compares merge-base versus HEAD authority file content identity and admits prior_history = current only when that file is unchanged; a changed authority file without merge-base revision evaluation keeps prior_history empty on the production path, so acceptance_history_extends_prior is not yet executed there — see roadmap_acceptance_history_prior_history_next_rung_trigger. The sealed prefix digest remains load-bearing defense in depth against prefix edits."
 
 fn roadmap_acceptance_history_sealed_event_count() -> Int { 16 }
 
 fn roadmap_acceptance_history_sealed_chain_digest() -> Fnv1a64Structural {
-  chash(s: "PLACEHOLDER_SEAL_DIGEST")
+  chash(s: "4d935ab20742e0e7")
 }
 
 fn roadmap_acceptance_receipts() -> List<RoadmapAcceptanceReceipt> {
   project_live_acceptance_receipts(history: roadmap_acceptance_event_history())
+}
+
+fn roadmap_acceptance_history_prior_history() -> List<RoadmapAcceptanceEvent> {
+  let current = roadmap_acceptance_event_history()
+  prior_history_for_integrity(
+    observation: current_roadmap_acceptance_history_prior_observation(current_history: current),
+    current_history: current,
+  )
 }
 
 fn roadmap_acceptance_history_integrity_holds() -> Bool {
@@ -2260,9 +2271,8 @@ fn roadmap_acceptance_history_integrity_holds() -> Bool {
     history: roadmap_acceptance_event_history(),
     sealed_event_count: roadmap_acceptance_history_sealed_event_count(),
     sealed_chain_digest: roadmap_acceptance_history_sealed_chain_digest(),
-    prior_history: [],
+    prior_history: roadmap_acceptance_history_prior_history(),
   )
-    && count(roadmap_acceptance_event_history()) == roadmap_acceptance_history_sealed_event_count()
 }
 
 data v2_emitter_producer_provenance_acceptance_note: String = "ACCEPTANCE OF LANDED WORK, the exact state closing_contract_task_naming_correction_note names this node as the specimen of: bound, implemented, green, awaiting the operator act. The landing is the Gate-A oracle (#7408, operator-merged): SelfEmitted requires an executed probe receipt, so an emitter-produced claim without a receipt from the run that made it is unrepresentable — the ticket's own red control. Evidence, executed 2026-08-02 on the tree carrying this receipt: all 27 witness fns in the contract's entry file pass, including the bound closing validation (a restored binding without an executed receipt does not authorize) and its sibling refusal controls (hand-forged authorization, minted executed verdicts, synthesized digests, fabricated build-greens all red). The digest f1c76111c83a0a60 was DERIVED BY EXECUTION — node_criteria_digest run against the live node on this tree, not transcribed. The handback's three elements are on main: the relabelled roster (every frontier row producer-qualified), the retired single count (per-producer baselines, witness_producer_qualified_baselines_holds), and the refusal demonstration (the _reds suite). Acceptance is the operator's merge of the change adding this receipt; the receipt is authored by the roadmap steward as the vehicle, never as the act."

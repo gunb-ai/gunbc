@@ -170,6 +170,8 @@ fn node_accepted(receipts: List<RoadmapAcceptanceReceipt>, rn: RoadmapNode) -> B
 
 data acceptance_receipt_continuity_wall_note: String = "THE FAIL-OPEN roadmap_acceptance_receipt_note DECLARES BUT DID NOT CLOSE. Acceptance is a durable typed fact, never row deletion — yet removing a RoadmapAcceptanceReceipt row from the authority silently returned the node to the active set with no refusal. A prior validation slice kept a second hand-maintained baseline_nodes ledger beside roadmap_acceptance_receipts, so deleting both rows stayed green — the dual representation this repository keeps paying for. THIS SLICE LANDS THE CONSTRUCTION ANSWER: roadmap_acceptance_event_history is the single authority; roadmap_acceptance_receipts is a projection only. AcceptanceRecorded appends a receipt; AcceptanceRevoked names the exact prior receipt, a disposition, and audit fields. Replay refuses a vanished recorded receipt without an exact matching revocation, a wrong prior digest, a revocation while the exact receipt is still live, a revocation with nothing live to remove, and duplicate revocations for one removal. A sealed prefix chain digest refuses edits to prior events without updating the pin; witness tests compare prior history to mutated history for the deletion arms."
 
+type AcceptanceNodeReopensActiveFrontier {}
+
 type AcceptanceRevocationDisposition = AcceptanceNodeReopensActiveFrontier
 
 type RoadmapAcceptanceEvent
@@ -289,9 +291,9 @@ fn acceptance_event_eq(a: RoadmapAcceptanceEvent, b: RoadmapAcceptanceEvent) -> 
         AcceptanceRevoked { exact_prior_receipt: bpr, disposition: bd, reason: br, revoked_by: bb, revoked_on: bo } =>
           acceptance_receipt_eq(a: apr, b: bpr)
             && match ad {
-              AcceptanceNodeReopensActiveFrontier =>
+              AcceptanceNodeReopensActiveFrontier {} =>
                 match bd {
-                  AcceptanceNodeReopensActiveFrontier => true
+                  AcceptanceNodeReopensActiveFrontier {} => true
                 }
             }
             && ar == br
@@ -365,22 +367,29 @@ fn acceptance_history_chain_digest(events: List<RoadmapAcceptanceEvent>) -> Fnv1
   )
 }
 
-fn empty_acceptance_events() -> List<RoadmapAcceptanceEvent> {
-  []
+type TakeAcceptanceEventsState {
+  remaining: Int
+  taken: List<RoadmapAcceptanceEvent>
 }
 
 fn take_acceptance_events(
   events: List<RoadmapAcceptanceEvent>,
   n: Int,
 ) -> List<RoadmapAcceptanceEvent> {
-  if n <= 0 || count(events) == 0 {
-    empty_acceptance_events()
-  } else {
-    concat(
-      [first(events)],
-      take_acceptance_events(events: drop_first_acceptance_event(events: events), n: n - 1),
-    )
-  }
+  fold(
+    events,
+    init: TakeAcceptanceEventsState { remaining: n, taken: [] },
+    f: fn(state, event) {
+      if state.remaining <= 0 {
+        state
+      } else {
+        TakeAcceptanceEventsState {
+          remaining: state.remaining - 1,
+          taken: concat(state.taken, [event]),
+        }
+      }
+    },
+  ).taken
 }
 
 fn drop_first_acceptance_event(events: List<RoadmapAcceptanceEvent>) -> List<RoadmapAcceptanceEvent> {

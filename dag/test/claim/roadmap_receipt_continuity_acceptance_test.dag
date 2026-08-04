@@ -52,7 +52,7 @@ fn history_without_namespace_occurrence_transport() -> List<RoadmapAcceptanceEve
 fn exact_revocation_for(receipt: RoadmapAcceptanceReceipt) -> RoadmapAcceptanceEvent {
   AcceptanceRevoked {
     exact_prior_receipt: receipt,
-    disposition: AcceptanceNodeReopensActiveFrontier,
+    disposition: AcceptanceNodeReopensActiveFrontier {},
     reason: "fixture revocation witness" as NonEmptyStr,
     revoked_by: "operator" as NonEmptyStr,
     revoked_on: "2026-08-04" as NonEmptyStr,
