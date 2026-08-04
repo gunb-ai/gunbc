@@ -20,6 +20,7 @@ import extdeps.cache.materialization {
 import extdeps.cache.sccache { sccache_local_facts, sccache_local_id }
 import v2.workflow.ci_release_build_emit { ci_release_build_script }
 import extdeps.github.actions { Workflow, Job, Step, RunStep, UsesStep }
+import v2.std.logic { all, any }
 
 
 data ci_materialization_note: String = "The worked example the ladder was built for (operator, 2026-07-08): CI emits shell which runs the gunbc binary, and the runs in shell are one frame above the runs in the binary — not fundamentally different, since both are emitted by the same program. This module models the emitted GitHub Actions workflow as a frame tree (workflow = isolated children; each job = a shared-state frame of steps), extracts every RunStep script as a FrameDemand at its site, and declares the cache providers that discharge the obligations the ladder finds. The flagship: the release build script is demanded by THREE sibling jobs (ci, ci_regen, rust_tests warm) whose LCA is the workflow isolation boundary — unrewireable redundancy, so it MUST be discharged by a covering store-tier provider; that provider is the sccache row below, and the shell fragment that realizes it in the emitted ci.yml is DERIVED from this module (ci_sccache_provider_shell_injection), so deleting the provider row would orphan the injection, and deleting the injection while the row stands is drift the witness reds. Grain honesty: identity is the step's run-script string — deploy scripts EMBED the release build script as a superset string and do not group with it at this grain; sub-step decomposition arrives when demands derive from the DependencyView rather than emitted argv (the forward-wiring thread). UsesStep actions are foreign computations and carry no demand row yet; their caching (actions/cache) is itself a provider to model when uses-grain demands land."
@@ -174,7 +175,202 @@ data ci_floor_admission_capture_resolve_receipt_note: String = "RECEIPT 7 — CO
 
 data ci_floor_declared_resolve_count: Nat = 2
 
-data ci_floor_declared_resolve_count_obligation_note: String = "SEMANTICS (shared CI floor item 0, 2026-08-04): this row names the CLOSED UNIVERSE of semantic resolve OBLIGATIONS the floor roster structurally owes each run — compile-anchor-whole-tree plus native-bundle-escaping-entry — NOT the count of physical cold resolves (resolve_nanos > 0). Warm shared-pool satisfaction is SatisfiedFromSharedPool, not absence. The gate checks obligation accounting via gunbc.floor_resolve_realization; cold_resolves_total in target/floor-resolve-receipt.txt is observational only. STANDING CONSTRAINT: stays at 2 until a conscious roster change in the PR that adds or removes an escaping entry class."
+data ci_floor_declared_resolve_count_obligation_note: String = "SEMANTICS (shared CI floor item 0B, operator ruling 2026-08-04): this row names the CLOSED UNIVERSE of semantic resolve OBLIGATIONS the floor roster structurally owes each run — compile-anchor-whole-tree plus native-bundle-escaping-entry — NOT the count of physical cold resolves (resolve_nanos > 0). THE LAW (single authority here, observed by claim_executor, transported by ci_floor_plan only): expected obligation identities == observed realization obligation identities. Warm shared-pool satisfaction is SatisfiedFromSharedPool with provider + receipt, never absence. cold_resolves_total in target/floor-resolve-receipt.txt is observational only. STANDING CONSTRAINT: stays at 2 until identity-based finalization REPLACES it via a conscious roster change in the PR that adds or removes an escaping entry class."
+
+data ci_floor_resolve_obligation_authority_note: String = "AUTHORITY SPLIT (0B): gunbc.ci_materialization owns ci_floor_expected_resolve_obligations and resolve_realization_finalization_holds. claim_executor observes cold resolves and shared-pool hits into ResolveRealization rows. ci_floor_plan projects ci_floor_declared_resolve_count into WalkPlan.finalization only — it does NOT author a second obligation roster."
+
+type ResolveObligationIdentity
+  = CompileAnchorWholeTree
+  | NativeBundleEscapingEntry
+
+type ResolveObligationSubject {
+  entry: String
+  function: String
+}
+
+type ResolveObligation {
+  identity: ResolveObligationIdentity
+  subject: ResolveObligationSubject
+}
+
+data compile_anchor_obligation_subject: ResolveObligationSubject = ResolveObligationSubject {
+  entry: "dag/tools/floor_effect_gate_witness.dag",
+  function: "dag_compile_clean_gate_passes",
+}
+
+data native_bundle_obligation_subject: ResolveObligationSubject = ResolveObligationSubject {
+  entry: "src/v2/test/claim/execution/native_selected_witness_bundle_production.dag",
+  function: "native_selected_logic_production_spec",
+}
+
+fn expected_obligation(id: ResolveObligationIdentity) -> ResolveObligation {
+  match id {
+    CompileAnchorWholeTree => ResolveObligation {
+      identity: CompileAnchorWholeTree,
+      subject: compile_anchor_obligation_subject,
+    }
+    NativeBundleEscapingEntry => ResolveObligation {
+      identity: NativeBundleEscapingEntry,
+      subject: native_bundle_obligation_subject,
+    }
+  }
+}
+
+fn ci_floor_expected_resolve_obligations() -> List<ResolveObligation> {
+  [
+    expected_obligation(id: CompileAnchorWholeTree),
+    expected_obligation(id: NativeBundleEscapingEntry),
+  ]
+}
+
+fn ci_floor_expected_resolve_obligation_count() -> Nat {
+  ci_floor_expected_resolve_obligations() |> count
+}
+
+fn ci_floor_resolve_obligation_identities() -> List<ResolveObligationIdentity> {
+  [CompileAnchorWholeTree, NativeBundleEscapingEntry]
+}
+
+fn resolve_obligation_roster_agrees_with_declared_count() -> Bool {
+  ci_floor_expected_resolve_obligation_count() == ci_floor_declared_resolve_count
+}
+
+type ResolveColdReceipt {
+  resolve_nanos: Nat
+}
+
+type ResolveSharedPoolProvider {
+  provider_id: String
+}
+
+type ResolveSharedPoolReceipt {
+  provider_id: String
+}
+
+type ResolveRealization
+  = ColdResolvePerformed { obligation: ResolveObligation, receipt: ResolveColdReceipt }
+  | SatisfiedFromSharedPool {
+      obligation: ResolveObligation,
+      provider: ResolveSharedPoolProvider,
+      receipt: ResolveSharedPoolReceipt,
+    }
+
+fn realization_obligation(r: ResolveRealization) -> ResolveObligation {
+  match r {
+    ColdResolvePerformed { obligation: o, receipt: _ } => o
+    SatisfiedFromSharedPool { obligation: o, provider: _, receipt: _ } => o
+  }
+}
+
+fn realization_identity(r: ResolveRealization) -> ResolveObligationIdentity {
+  realization_obligation(r: r).identity
+}
+
+fn obligation_matches_expected(o: ResolveObligation) -> Bool {
+  let exp = expected_obligation(id: o.identity)
+  o.subject.entry == exp.subject.entry && o.subject.function == exp.subject.function
+}
+
+fn realization_is_well_formed(r: ResolveRealization) -> Bool {
+  match r {
+    ColdResolvePerformed { obligation: o, receipt: rec } =>
+      obligation_matches_expected(o: o) && rec.resolve_nanos > 0
+    SatisfiedFromSharedPool { obligation: o, provider: p, receipt: rec } =>
+      obligation_matches_expected(o: o)
+        && p.provider_id != ""
+        && rec.provider_id != ""
+        && rec.provider_id == p.provider_id
+  }
+}
+
+fn warm_without_provider_receipt(r: ResolveRealization) -> Bool {
+  match r {
+    SatisfiedFromSharedPool { obligation: _, provider: p, receipt: rec } =>
+      p.provider_id == "" || rec.provider_id == "" || rec.provider_id != p.provider_id
+    _ => false
+  }
+}
+
+fn cold_without_resolve_receipt(r: ResolveRealization) -> Bool {
+  match r {
+    ColdResolvePerformed { obligation: _, receipt: rec } => rec.resolve_nanos == 0
+    _ => false
+  }
+}
+
+fn resolve_obligation_receipt_has_identity(
+  realizations: List<ResolveRealization>,
+  id: ResolveObligationIdentity,
+) -> Bool {
+  any(realizations, r => realization_identity(r: r) == id)
+}
+
+fn native_obligation_absent(realizations: List<ResolveRealization>) -> Bool {
+  !resolve_obligation_receipt_has_identity(
+    realizations: realizations,
+    id: NativeBundleEscapingEntry,
+  )
+}
+
+fn unknown_obligation_appeared(realizations: List<ResolveRealization>) -> Bool {
+  any(realizations, r => !obligation_matches_expected(o: realization_obligation(r: r)))
+}
+
+fn obligation_realized_twice(
+  realizations: List<ResolveRealization>,
+  id: ResolveObligationIdentity,
+) -> Bool {
+  let n = fold(realizations, init: 0, f: fn(acc, r) {
+    if realization_identity(r: r) == id { acc + 1 } else { acc }
+  })
+  n > 1
+}
+
+fn same_obligation_realized_twice(realizations: List<ResolveRealization>) -> Bool {
+  obligation_realized_twice(realizations: realizations, id: CompileAnchorWholeTree)
+    || obligation_realized_twice(realizations: realizations, id: NativeBundleEscapingEntry)
+}
+
+fn resolve_realization_finalization_holds(
+  realizations: List<ResolveRealization>,
+  unattributed_physical_resolves: Nat,
+) -> Bool {
+  unattributed_physical_resolves == 0
+    && (realizations |> count) == ci_floor_expected_resolve_obligation_count()
+    && all(ci_floor_expected_resolve_obligations(), exp =>
+        resolve_obligation_receipt_has_identity(realizations: realizations, id: exp.identity))
+    && all(realizations, r => realization_is_well_formed(r: r))
+    && !same_obligation_realized_twice(realizations: realizations)
+    && !unknown_obligation_appeared(realizations: realizations)
+}
+
+fn cold_realization(id: ResolveObligationIdentity, nanos: Nat) -> ResolveRealization {
+  ColdResolvePerformed {
+    obligation: expected_obligation(id: id),
+    receipt: ResolveColdReceipt { resolve_nanos: nanos },
+  }
+}
+
+data ci_floor_resolve_shared_pool_provider_id: String = "process_shared_index"
+
+data ci_floor_resolve_shared_pool_provider_authority_note: String = "Provider id for SatisfiedFromSharedPool realizations. MUST equal gunbc.floor_materialization floor_index_build_share_provider_id; witness floor_resolve_realization_witness_test witness_warm_provider_matches_floor_materialization executes the identity join."
+
+fn warm_realization(id: ResolveObligationIdentity) -> ResolveRealization {
+  SatisfiedFromSharedPool {
+    obligation: expected_obligation(id: id),
+    provider: ResolveSharedPoolProvider { provider_id: ci_floor_resolve_shared_pool_provider_id },
+    receipt: ResolveSharedPoolReceipt { provider_id: ci_floor_resolve_shared_pool_provider_id },
+  }
+}
+
+fn cold_resolves_performed(realizations: List<ResolveRealization>) -> Nat {
+  fold(realizations, init: 0, f: fn(acc, r) {
+    match r {
+      ColdResolvePerformed { obligation: _, receipt: _ } => acc + 1
+      SatisfiedFromSharedPool { obligation: _, provider: _, receipt: _ } => acc
+    }
+  })
+}
 
 data ci_floor_native_batch_resolve_receipt_note: String = "RECEIPT 9 — CONSCIOUS RAISING 1 -> 2 (2026-08-02, native-bundle production enrollment): CI run 30767841790 refused exactly `floor resolve count 2 differs from declared 1` and wrote target/floor-resolve-receipt.txt with resolves_total=2, resolve_ms_total=79064. The cause is the empirical law above operating as designed: gunbc_pr_native_batch enrolls as a RunnableSingleClaim on its own entry file (src/v2/test/claim/pr_native_batch_test.dag), an entry class whose closure escapes the batch-1 whole-tree materialization, so it pays its own cold resolve — 1 anchor + 1 escaping entry = 2. Same run: the batch itself PASSED via the counted outage fallback (verdict fallback:native_realization_refused, transport causes located), so the resolve count is the sole finalization refusal. Ratchet direction unchanged: the persistent content-keyed store still owes the permanent pin at 1, and de-enrolling the native batch (or pooling its closure warm) lowers this row consciously in the PR that does it. Merge note (2026-08-03, #7522 x #7671): the warm merge-admission capture stays OUTSIDE this count — its claim_batch child owns the capture resolve per Receipt 8 — so the two lanes compose at 2, not 3."
 

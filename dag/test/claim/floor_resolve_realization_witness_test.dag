@@ -1,61 +1,123 @@
 module test.claim.floor_resolve_realization_witness
 
-import gunbc.floor_resolve_realization {
-  ResolveObligationReceipt,
+import gunbc.ci_materialization {
+  ResolveObligation,
+  ResolveObligationSubject,
+  ResolveRealization,
+  ColdResolvePerformed,
+  SatisfiedFromSharedPool,
+  ResolveColdReceipt,
+  ResolveSharedPoolProvider,
+  ResolveSharedPoolReceipt,
   CompileAnchorWholeTree,
   NativeBundleEscapingEntry,
-  resolve_obligation_finalization_holds,
-  resolve_obligation_receipt,
+  expected_obligation,
+  resolve_realization_finalization_holds,
+  cold_realization,
+  warm_realization,
   cold_resolves_performed,
-  resolve_obligation_receipts_match_roster,
+  native_obligation_absent,
+  unknown_obligation_appeared,
+  same_obligation_realized_twice,
+  warm_without_provider_receipt,
+  cold_without_resolve_receipt,
   resolve_obligation_roster_agrees_with_declared_count,
-  ci_floor_resolve_obligation_count,
+  ci_floor_expected_resolve_obligation_count,
+  ci_floor_declared_resolve_count,
+  ci_floor_resolve_shared_pool_provider_id,
 }
-import gunbc.ci_materialization { ci_floor_declared_resolve_count }
+import gunbc.floor_materialization { floor_index_build_share_provider_id }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 
-data floor_resolve_realization_witness_note: String = "Discriminating witnesses for the obligation-vs-cold split (shared CI floor item 0). Green controls: both obligations accounted on cold main (2 cold) and on warm PR shape (1 cold + 1 shared-pool). RED controls: missing obligation row, duplicate identity, roster/obligations_total mismatch. The production gate consumes the same predicates through claim_executor's obligation receipt parser — these rows execute the model without a tree-copied cold-count oracle."
+data floor_resolve_realization_witness_note: String = "Eight required controls for 0B resolve realization (operator ruling 2026-08-04). ADMIT: anchor cold + native cold; anchor cold + native warm. REFUSE: native absent; unknown third obligation; duplicate identity; warm without provider receipt; cold without resolve receipt; unattributed physical resolve. Authority: gunbc.ci_materialization; claim_executor observes; ci_floor_plan transports only."
 
-fn cold_main_receipts() -> List<ResolveObligationReceipt> {
+fn cold_main_realizations() -> List<ResolveRealization> {
   [
-    resolve_obligation_receipt(id: CompileAnchorWholeTree, cold: true),
-    resolve_obligation_receipt(id: NativeBundleEscapingEntry, cold: true),
+    cold_realization(id: CompileAnchorWholeTree, nanos: 1),
+    cold_realization(id: NativeBundleEscapingEntry, nanos: 1),
   ]
 }
 
-fn warm_pr_receipts() -> List<ResolveObligationReceipt> {
+fn warm_pr_realizations() -> List<ResolveRealization> {
   [
-    resolve_obligation_receipt(id: CompileAnchorWholeTree, cold: true),
-    resolve_obligation_receipt(id: NativeBundleEscapingEntry, cold: false),
+    cold_realization(id: CompileAnchorWholeTree, nanos: 1),
+    warm_realization(id: NativeBundleEscapingEntry),
   ]
 }
 
-fn missing_native_receipts() -> List<ResolveObligationReceipt> {
-  [resolve_obligation_receipt(id: CompileAnchorWholeTree, cold: true)]
+fn missing_native_realizations() -> List<ResolveRealization> {
+  [cold_realization(id: CompileAnchorWholeTree, nanos: 1)]
 }
 
-fn duplicate_anchor_receipts() -> List<ResolveObligationReceipt> {
+fn duplicate_anchor_realizations() -> List<ResolveRealization> {
   [
-    resolve_obligation_receipt(id: CompileAnchorWholeTree, cold: true),
-    resolve_obligation_receipt(id: CompileAnchorWholeTree, cold: false),
+    cold_realization(id: CompileAnchorWholeTree, nanos: 1),
+    warm_realization(id: CompileAnchorWholeTree),
   ]
 }
 
-test fn witness_cold_main_obligations_hold() -> Bool {
-  resolve_obligation_finalization_holds(
-    receipts: cold_main_receipts(),
-    declared_obligation_count: ci_floor_declared_resolve_count,
+fn unknown_third_obligation_realizations() -> List<ResolveRealization> {
+  [
+    cold_realization(id: CompileAnchorWholeTree, nanos: 1),
+    cold_realization(id: NativeBundleEscapingEntry, nanos: 1),
+    ColdResolvePerformed {
+      obligation: ResolveObligation {
+        identity: NativeBundleEscapingEntry,
+        subject: ResolveObligationSubject {
+          entry: "dag/test/claim/unknown_escaping_entry.dag",
+          function: "unknown_escaping_function",
+        },
+      },
+      receipt: ResolveColdReceipt { resolve_nanos: 1 },
+    },
+  ]
+}
+
+fn broken_warm_native_realization() -> ResolveRealization {
+  SatisfiedFromSharedPool {
+    obligation: expected_obligation(id: NativeBundleEscapingEntry),
+    provider: ResolveSharedPoolProvider { provider_id: "" },
+    receipt: ResolveSharedPoolReceipt { provider_id: ci_floor_resolve_shared_pool_provider_id },
+  }
+}
+
+fn warm_without_provider_realizations() -> List<ResolveRealization> {
+  [
+    cold_realization(id: CompileAnchorWholeTree, nanos: 1),
+    broken_warm_native_realization(),
+  ]
+}
+
+fn cold_without_resolve_receipt_realizations() -> List<ResolveRealization> {
+  [
+    cold_realization(id: CompileAnchorWholeTree, nanos: 1),
+    cold_realization(id: NativeBundleEscapingEntry, nanos: 0),
+  ]
+}
+
+fn broken_cold_native_realization() -> ResolveRealization {
+  cold_realization(id: NativeBundleEscapingEntry, nanos: 0)
+}
+
+test fn witness_warm_provider_matches_floor_materialization() -> Bool {
+  ci_floor_resolve_shared_pool_provider_id == floor_index_build_share_provider_id
+}
+
+test fn witness_admit_anchor_cold_and_native_cold() -> Bool {
+  resolve_realization_finalization_holds(
+    realizations: cold_main_realizations(),
+    unattributed_physical_resolves: 0,
   )
-    && cold_resolves_performed(receipts: cold_main_receipts()) == 2
+    && cold_resolves_performed(realizations: cold_main_realizations()) == 2
 }
 
-test fn witness_warm_pr_obligations_hold_with_one_cold() -> Bool {
-  resolve_obligation_finalization_holds(
-    receipts: warm_pr_receipts(),
-    declared_obligation_count: ci_floor_declared_resolve_count,
+test fn witness_admit_anchor_cold_and_native_warm() -> Bool {
+  resolve_realization_finalization_holds(
+    realizations: warm_pr_realizations(),
+    unattributed_physical_resolves: 0,
   )
-    && cold_resolves_performed(receipts: warm_pr_receipts()) == 1
+    && cold_resolves_performed(realizations: warm_pr_realizations()) == 1
 }
 
 test fn witness_roster_count_matches_declared_authority() -> Bool {
@@ -63,23 +125,56 @@ test fn witness_roster_count_matches_declared_authority() -> Bool {
 }
 
 test fn witness_forked_declared_count_reds_against_roster() -> Bool {
-  !resolve_obligation_finalization_holds(
-    receipts: cold_main_receipts(),
-    declared_obligation_count: ci_floor_declared_resolve_count + 1,
+  ci_floor_expected_resolve_obligation_count() != ci_floor_declared_resolve_count + 1
+}
+
+test fn witness_refuse_native_obligation_absent() -> Bool {
+  native_obligation_absent(realizations: missing_native_realizations())
+    && !resolve_realization_finalization_holds(
+      realizations: missing_native_realizations(),
+      unattributed_physical_resolves: 0,
+    )
+}
+
+test fn witness_refuse_unknown_third_obligation() -> Bool {
+  unknown_obligation_appeared(realizations: unknown_third_obligation_realizations())
+    && !resolve_realization_finalization_holds(
+      realizations: unknown_third_obligation_realizations(),
+      unattributed_physical_resolves: 0,
+    )
+}
+
+test fn witness_refuse_same_obligation_realized_twice() -> Bool {
+  same_obligation_realized_twice(realizations: duplicate_anchor_realizations())
+    && !resolve_realization_finalization_holds(
+      realizations: duplicate_anchor_realizations(),
+      unattributed_physical_resolves: 0,
+    )
+}
+
+test fn witness_refuse_warm_without_provider_receipt() -> Bool {
+  warm_without_provider_receipt(r: broken_warm_native_realization())
+    && !resolve_realization_finalization_holds(
+      realizations: warm_without_provider_realizations(),
+      unattributed_physical_resolves: 0,
+    )
+}
+
+test fn witness_refuse_cold_without_resolve_receipt() -> Bool {
+  cold_without_resolve_receipt(r: broken_cold_native_realization())
+    && !resolve_realization_finalization_holds(
+      realizations: cold_without_resolve_receipt_realizations(),
+      unattributed_physical_resolves: 0,
+    )
+}
+
+test fn witness_refuse_unattributed_physical_resolve() -> Bool {
+  resolve_realization_finalization_holds(
+    realizations: cold_main_realizations(),
+    unattributed_physical_resolves: 0,
   )
-}
-
-test fn witness_roster_length_reds_on_wrong_count() -> Bool {
-  ci_floor_resolve_obligation_count() != ci_floor_declared_resolve_count + 1
-}
-
-test fn witness_missing_obligation_reds() -> Bool {
-  !resolve_obligation_finalization_holds(
-    receipts: missing_native_receipts(),
-    declared_obligation_count: ci_floor_declared_resolve_count,
-  )
-}
-
-test fn witness_duplicate_obligation_identity_reds() -> Bool {
-  !resolve_obligation_receipts_match_roster(receipts: duplicate_anchor_receipts())
+    && !resolve_realization_finalization_holds(
+      realizations: cold_main_realizations(),
+      unattributed_physical_resolves: 1,
+    )
 }

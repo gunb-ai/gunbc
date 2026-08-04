@@ -4459,8 +4459,17 @@ fn floor_component_row_value(
     }
 }
 
-fn write_resolve_receipt(source_roots: &[String], batch_records: &[BatchRecord]) -> bool {
-    write_resolve_receipt_at(std::path::Path::new("target"), source_roots, batch_records)
+fn write_resolve_receipt(
+    source_roots: &[String],
+    batch_records: &[BatchRecord],
+    floor_finalization: Option<&FloorFinalization>,
+) -> bool {
+    write_resolve_receipt_at(
+        std::path::Path::new("target"),
+        source_roots,
+        batch_records,
+        floor_finalization,
+    )
 }
 
 /// Per-batch wall receipt (THE COST WALL, Piece 3 derived clamp): typed rows — one
@@ -5216,20 +5225,36 @@ fn write_selection_degradation_receipt_at(
     true
 }
 
+/// SCAFFOLD (§7 seed-retained HAND-RUST — authority: `gunbc.ci_materialization`
+/// `compile_anchor_obligation_subject`, `native_bundle_obligation_subject`,
+/// `ci_floor_resolve_shared_pool_provider_id`; dissolve-on: executor obligation
+/// observation expressed as modeled `.dag` effects / self-emitted constants).
+///
 /// Semantic resolve obligations the floor roster owes each run — a closed universe,
-/// distinct from physical cold resolves performed (`resolve_nanos > 0`). Authority:
-/// `gunbc.floor_resolve_realization` (shared CI floor item 0, 2026-08-04).
+/// distinct from physical cold resolves performed (`resolve_nanos > 0`). Observed here;
+/// law and expected population live in `gunbc.ci_materialization`; `ci_floor_plan`
+/// transports `ci_floor_declared_resolve_count` only.
 const COMPILE_ANCHOR_OBLIGATION_ENTRY: &str = "dag/tools/floor_effect_gate_witness.dag";
 const COMPILE_ANCHOR_OBLIGATION_FUNCTION: &str = "dag_compile_clean_gate_passes";
 const NATIVE_BUNDLE_OBLIGATION_ENTRY: &str =
     "src/v2/test/claim/execution/native_selected_witness_bundle_production.dag";
 const NATIVE_BUNDLE_OBLIGATION_FUNCTION: &str = "native_selected_logic_production_spec";
+const FLOOR_INDEX_BUILD_SHARE_PROVIDER_ID: &str = "process_shared_index";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ResolveObligationLine {
     identity: &'static str,
     disposition: &'static str,
     resolve_nanos: u128,
+    provider_id: Option<&'static str>,
+    entry: String,
+    function: String,
+}
+
+fn is_obligation_subject(entry: &str, function: &str) -> bool {
+    (entry == COMPILE_ANCHOR_OBLIGATION_ENTRY && function == COMPILE_ANCHOR_OBLIGATION_FUNCTION)
+        || (entry == NATIVE_BUNDLE_OBLIGATION_ENTRY
+            && function == NATIVE_BUNDLE_OBLIGATION_FUNCTION)
 }
 
 fn resolve_obligation_disposition(resolve_nanos: u128) -> &'static str {
@@ -5281,13 +5306,39 @@ fn derive_resolve_obligation_receipts(
             identity: "compile-anchor-whole-tree",
             disposition: resolve_obligation_disposition(anchor_nanos),
             resolve_nanos: anchor_nanos,
+            provider_id: if anchor_nanos > 0 {
+                None
+            } else {
+                Some(FLOOR_INDEX_BUILD_SHARE_PROVIDER_ID)
+            },
+            entry: COMPILE_ANCHOR_OBLIGATION_ENTRY.to_string(),
+            function: COMPILE_ANCHOR_OBLIGATION_FUNCTION.to_string(),
         },
         ResolveObligationLine {
             identity: "native-bundle-escaping-entry",
             disposition: resolve_obligation_disposition(native_nanos),
             resolve_nanos: native_nanos,
+            provider_id: if native_nanos > 0 {
+                None
+            } else {
+                Some(FLOOR_INDEX_BUILD_SHARE_PROVIDER_ID)
+            },
+            entry: NATIVE_BUNDLE_OBLIGATION_ENTRY.to_string(),
+            function: NATIVE_BUNDLE_OBLIGATION_FUNCTION.to_string(),
         },
     ])
+}
+
+fn count_unattributed_physical_resolves(batch_records: &[BatchRecord]) -> u64 {
+    let mut count = 0;
+    for rec in batch_records {
+        for result in &rec.results {
+            if result.resolve_nanos > 0 && !is_obligation_subject(&result.entry, &result.function) {
+                count += 1;
+            }
+        }
+    }
+    count
 }
 
 fn append_resolve_obligation_receipt_body(
@@ -5299,12 +5350,25 @@ fn append_resolve_obligation_receipt_body(
         .iter()
         .filter(|o| o.disposition == "cold_resolve_performed")
         .count();
+    let unattributed_physical_resolves = count_unattributed_physical_resolves(batch_records);
     body.push_str(&format!("obligations_total={}\n", obligations.len()));
     body.push_str(&format!("cold_resolves_total={cold_resolves_total}\n"));
+    body.push_str(&format!(
+        "unattributed_physical_resolves={unattributed_physical_resolves}\n"
+    ));
     for line in &obligations {
+        let provider = line
+            .provider_id
+            .map(|p| p.to_string())
+            .unwrap_or_else(|| "-".to_string());
         body.push_str(&format!(
-            "obligation={} disposition={} resolve_nanos={}\n",
-            line.identity, line.disposition, line.resolve_nanos
+            "obligation={} disposition={} resolve_nanos={} provider_id={} entry={} function={}\n",
+            line.identity,
+            line.disposition,
+            line.resolve_nanos,
+            provider,
+            line.entry,
+            line.function
         ));
     }
     Ok(())
@@ -5314,6 +5378,7 @@ fn write_resolve_receipt_at(
     base: &std::path::Path,
     source_roots: &[String],
     batch_records: &[BatchRecord],
+    floor_finalization: Option<&FloorFinalization>,
 ) -> bool {
     let mut resolves_total: u64 = 0;
     let mut resolve_ms_total: u128 = 0;
@@ -5333,9 +5398,11 @@ fn write_resolve_receipt_at(
     let mut body = format!(
         "resolves_total={resolves_total}\nresolve_ms_total={resolve_ms_total}\ndiscovery_corpus_resolve_ms={discovery_corpus_resolve_ms}\ndiscovery_corpus_eval_ms={discovery_corpus_eval_ms}\n{discovery_phases}"
     );
-    if let Err(msg) = append_resolve_obligation_receipt_body(&mut body, batch_records) {
-        eprintln!("claim_executor: resolve obligation receipt refused: {msg}");
-        return false;
+    if floor_finalization.is_some() {
+        if let Err(msg) = append_resolve_obligation_receipt_body(&mut body, batch_records) {
+            eprintln!("claim_executor: resolve obligation receipt refused: {msg}");
+            return false;
+        }
     }
     if let Some(snapshot) = selection_degradation_from_batch_records(batch_records) {
         match render_selection_degradation_receipt_body(source_roots, &snapshot) {
@@ -5793,10 +5860,17 @@ fn validate_floor_finalization(
     batch_records: &[BatchRecord],
 ) -> Vec<String> {
     let mut refusals = Vec::new();
-    // Law 1 — semantic resolve OBLIGATIONS (gunbc.floor_resolve_realization /
-    // ci_floor_declared_resolve_count): every rostered obligation must be accounted
-    // with a disposition; warm shared-pool satisfaction is not absence. Physical
-    // cold_resolves_total remains observational in the receipt only.
+    // Law 1 — semantic resolve OBLIGATIONS (gunbc.ci_materialization / 0B):
+    // expected obligation identities == observed realization obligation identities.
+    // Warm shared-pool satisfaction requires provider + receipt; unattributed physical
+    // cold resolves refuse. Physical cold_resolves_total remains observational only.
+    let unattributed = count_unattributed_physical_resolves(batch_records);
+    if unattributed > 0 {
+        refusals.push(format!(
+            "floor resolve unattributed physical resolve(s): {unattributed} result(s) with \
+             resolve_nanos > 0 not mapped to a rostered obligation subject"
+        ));
+    }
     match derive_resolve_obligation_receipts(batch_records) {
         Ok(obligations) => {
             if obligations.len() as i64 != fin.declared_resolve_count {
@@ -5815,6 +5889,27 @@ fn validate_floor_finalization(
                 if !seen.insert(line.identity) {
                     refusals.push(format!(
                         "floor resolve obligation duplicate identity: {}",
+                        line.identity
+                    ));
+                }
+                if line.disposition == "satisfied_from_shared_pool" {
+                    match line.provider_id {
+                        None | Some("") => refusals.push(format!(
+                            "floor resolve warm disposition without provider receipt: {}",
+                            line.identity
+                        )),
+                        Some(provider) if provider != FLOOR_INDEX_BUILD_SHARE_PROVIDER_ID => {
+                            refusals.push(format!(
+                                "floor resolve warm provider receipt mismatch for {}: {provider}",
+                                line.identity
+                            ));
+                        }
+                        _ => {}
+                    }
+                }
+                if line.disposition == "cold_resolve_performed" && line.resolve_nanos == 0 {
+                    refusals.push(format!(
+                        "floor resolve cold disposition without resolve receipt: {}",
                         line.identity
                     ));
                 }
@@ -6543,8 +6638,8 @@ fn run_walk(
     let total_wall_nanos = walk_start.elapsed().as_nanos();
     emit_gantt(&batch_records, total_wall_nanos);
     trace_floor_phase("resolve-receipt", "started", "");
-    let resolve_receipt_ok =
-        !emit_ordinary_floor_receipts || write_resolve_receipt(source_roots, &batch_records);
+    let resolve_receipt_ok = !emit_ordinary_floor_receipts
+        || write_resolve_receipt(source_roots, &batch_records, floor_finalization);
     trace_floor_phase("resolve-receipt", "completed", "");
     trace_floor_phase("selection-degradation-receipt", "started", "");
     let selection_degradation_receipt_ok = !emit_ordinary_floor_receipts
@@ -8836,6 +8931,50 @@ mod tests {
     /// production caller passes.
     const TEST_PLAN_SITE: &str = "src/v2/workflow/ci_floor_plan.dag::gunbc_ci_floor_plan";
 
+    #[test]
+    fn floor_finalization_refuses_unattributed_physical_resolve() {
+        let fin = FloorFinalization {
+            declared_resolve_count: 2,
+        };
+        let mut records = obligation_finalization_records(3, 0);
+        records[0].results.push(ClaimResult {
+            function: "extra_witness".to_string(),
+            entry: "dag/test/claim/extra.dag".to_string(),
+            ok: true,
+            detail: String::new(),
+            wall_nanos: 0,
+            resolve_nanos: 42,
+            corpus_resolve_nanos: 0,
+            corpus_eval_nanos: 0,
+            corpus_witnesses: 0,
+            witness_row_costs: Vec::new(),
+            budget_refusal: None,
+            selection_degradation: None,
+        });
+        let refusals = validate_floor_finalization(&fin, TEST_PLAN_SITE, &records);
+        assert!(
+            refusals
+                .iter()
+                .any(|m| m.contains("unattributed physical resolve")),
+            "extra cold resolve must refuse: {refusals:?}"
+        );
+    }
+
+    #[test]
+    fn floor_finalization_warm_native_includes_provider_receipt() {
+        let fin = FloorFinalization {
+            declared_resolve_count: 2,
+        };
+        let records = obligation_finalization_records(3, 0);
+        let refusals = validate_floor_finalization(&fin, TEST_PLAN_SITE, &records);
+        assert!(
+            !refusals
+                .iter()
+                .any(|m| m.contains("warm disposition without provider receipt")),
+            "warm native with provider must not refuse: {refusals:?}"
+        );
+    }
+
     // Floor finalization law 1 (in-executor form of the deleted resolve-receipt gate
     // step): obligation accounting must match the declared closed-universe count.
     // Warm shared-pool satisfaction (resolve_nanos == 0) still counts as an obligation.
@@ -9266,7 +9405,7 @@ mod tests {
             std::env::temp_dir().join(format!("claim-executor-receipt-red-{}", std::process::id()));
         let _ = fs::remove_file(&base);
         fs::write(&base, b"a file where the receipt dir should be").unwrap();
-        assert!(!write_resolve_receipt_at(&base, &[], &[]));
+        assert!(!write_resolve_receipt_at(&base, &[], &[], None));
         assert!(!write_batch_wall_receipt_at(&base, &[]));
         let _ = fs::remove_file(&base);
     }

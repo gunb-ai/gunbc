@@ -1,110 +1,38 @@
 module gunbc.floor_resolve_realization
 
+import gunbc.ci_materialization {
+  ResolveObligationIdentity,
+  ResolveObligation,
+  ResolveRealization,
+  CompileAnchorWholeTree,
+  NativeBundleEscapingEntry,
+  ci_floor_declared_resolve_count,
+  ci_floor_expected_resolve_obligations,
+  ci_floor_expected_resolve_obligation_count,
+  ci_floor_resolve_obligation_identities,
+  resolve_obligation_roster_agrees_with_declared_count,
+  resolve_realization_finalization_holds,
+  cold_realization,
+  warm_realization,
+  cold_resolves_performed,
+  native_obligation_absent,
+  unknown_obligation_appeared,
+  same_obligation_realized_twice,
+  warm_without_provider_receipt,
+  cold_without_resolve_receipt,
+}
 import std.nat { Nat }
 import v2.std.text { String }
-import v2.std.logic { Bool }
 import v2.std.collection { List }
-import gunbc.ci_materialization { ci_floor_declared_resolve_count }
 
-data floor_resolve_realization_note: String = "Cold-vs-warm resolve REALIZATION model (shared CI floor item 0, 2026-08-04): ci_floor_declared_resolve_count names a CLOSED UNIVERSE of semantic resolve OBLIGATIONS — obligations the floor roster structurally owes each run — not the count of physical cold resolves performed (resolve_nanos > 0). Those diverge when an escaping entry pools warm against the shared index: native escape remains structurally present and the obligation is SatisfiedFromSharedPool, not absent. Operator ruling: lowering the declaration when warm PRs measured fewer cold resolves conflated the two facts. ROSTER AUTHORITY (review #7810): ci_floor_resolve_obligation_roster enumerates the closed universe; ci_floor_resolve_obligation_count DERIVES from roster length — never aliases the declared literal, so adding a variant is self-consistent by construction. resolve_obligation_roster_agrees_with_declared_count cross-checks the independently authored declaration against roster size. THE GATE checks obligation accounting (identity join + declared count); cold_resolves_total stays observational in the receipt only. Dissolve-on: persistent content-keyed store collapses obligations to one anchor — declared count lowers consciously in that PR, per ci_floor_resolve_receipt_note discipline."
-
-data compile_anchor_obligation_entry: String = "dag/tools/floor_effect_gate_witness.dag"
-
-data compile_anchor_obligation_function: String = "dag_compile_clean_gate_passes"
-
-data native_bundle_obligation_entry: String = "src/v2/test/claim/execution/native_selected_witness_bundle_production.dag"
-
-data native_bundle_obligation_function: String = "native_selected_logic_production_spec"
-
-type ResolveObligationIdentity
-  = CompileAnchorWholeTree
-  | NativeBundleEscapingEntry
-
-type ResolveRealizationDisposition
-  = ColdResolvePerformed
-  | SatisfiedFromSharedPool
-
-type ResolveObligationReceipt {
-  identity: ResolveObligationIdentity
-  disposition: ResolveRealizationDisposition
-}
-
-fn resolve_realization_disposition_from_cold(cold: Bool) -> ResolveRealizationDisposition {
-  if cold {
-    ColdResolvePerformed
-  } else {
-    SatisfiedFromSharedPool
-  }
-}
+data floor_resolve_realization_note: String = "Thin re-export of gunbc.ci_materialization resolve-obligation authority (0B, 2026-08-04). Expected population and finalization law live in ci_materialization; claim_executor observes realizations; ci_floor_plan transports declared_resolve_count only. See ci_floor_resolve_obligation_authority_note and roadmap_render_witness_cost_receipt_note in this module."
 
 fn ci_floor_resolve_obligation_roster() -> List<ResolveObligationIdentity> {
-  [CompileAnchorWholeTree, NativeBundleEscapingEntry]
+  ci_floor_resolve_obligation_identities()
 }
 
 fn ci_floor_resolve_obligation_count() -> Nat {
-  ci_floor_resolve_obligation_roster() |> count
+  ci_floor_expected_resolve_obligation_count()
 }
 
-fn resolve_obligation_roster_agrees_with_declared_count() -> Bool {
-  ci_floor_resolve_obligation_count() == ci_floor_declared_resolve_count
-}
-
-fn resolve_obligation_identity_label(id: ResolveObligationIdentity) -> String {
-  match id {
-    CompileAnchorWholeTree => "compile-anchor-whole-tree"
-    NativeBundleEscapingEntry => "native-bundle-escaping-entry"
-  }
-}
-
-fn resolve_realization_disposition_label(d: ResolveRealizationDisposition) -> String {
-  match d {
-    ColdResolvePerformed => "cold_resolve_performed"
-    SatisfiedFromSharedPool => "satisfied_from_shared_pool"
-  }
-}
-
-fn resolve_obligation_receipt_count(receipts: List<ResolveObligationReceipt>) -> Nat {
-  receipts |> count
-}
-
-fn resolve_obligation_receipt_has_identity(
-  receipts: List<ResolveObligationReceipt>,
-  id: ResolveObligationIdentity,
-) -> Bool {
-  any(receipts, r => r.identity == id)
-}
-
-fn resolve_obligation_receipts_match_roster(receipts: List<ResolveObligationReceipt>) -> Bool {
-  let roster = ci_floor_resolve_obligation_roster()
-  (resolve_obligation_receipt_count(receipts: receipts) == ci_floor_resolve_obligation_count())
-    && all(roster, id => resolve_obligation_receipt_has_identity(receipts: receipts, id: id))
-}
-
-fn cold_resolves_performed(receipts: List<ResolveObligationReceipt>) -> Nat {
-  fold(receipts, init: 0, f: fn(acc, r) {
-    match r.disposition {
-      ColdResolvePerformed => acc + 1
-      SatisfiedFromSharedPool => acc
-    }
-  })
-}
-
-fn resolve_obligation_finalization_holds(
-  receipts: List<ResolveObligationReceipt>,
-  declared_obligation_count: Nat,
-) -> Bool {
-  (resolve_obligation_receipt_count(receipts: receipts) == declared_obligation_count)
-    && resolve_obligation_receipts_match_roster(receipts: receipts)
-}
-
-fn resolve_obligation_receipt(
-  id: ResolveObligationIdentity,
-  cold: Bool,
-) -> ResolveObligationReceipt {
-  ResolveObligationReceipt {
-    identity: id,
-    disposition: resolve_realization_disposition_from_cold(cold: cold)
-  }
-}
-
-data roadmap_render_witness_cost_receipt_note: String = "Roadmap-render witness cost census (shared CI floor item 0, operator-measured 2026-08-04, three populations — NOT one cluster). CLASS A (this lane): witness_per_artifact_red_receipts measured 4350ms then 4776ms on consecutive green main runs (95.5 percent of gunbc_ci_fast_lane_witness_eval_budget) — rehomed to dag/test/claim/long/generated_artifact_drift_red_receipt_witness_test.dag on falsifier_substrate_long_lane_entries; the drift gate still runs artifact_red_receipt_ok inline. CLASS B (assigned to PR #7791 owner valiant-bat-462, NOT this lane): six witnesses report 0.0-585ms on main but ~5000ms when roadmap_authority/page/forecast inputs change — all transitively call gunbc.roadmap_static_site roadmap_site_healthz_body(), which renders the WHOLE site (roadmap_page_for_authority + roadmap_daily_workspace_page_for_authority + dispatch_client_js_source) to content-hash digests; on main the render is hidden behind a warm memo (0.0ms eval), the same cold-vs-warm specification-without-execution class Task 1 models for resolve obligations. Rehoming Class B witnesses to long/ without fixing the render would be an absorbing fallback (§5) — bigger budget for work that should not be in the witness path. CLASS C (not expanded here): witness_bounded_poll_early_exit_on_grounded_read ~3260ms, witness_digest_readback_script_is_bounded_and_post_mutation ~2719ms on main."
+data roadmap_render_witness_cost_receipt_note: String = "Roadmap-render witness cost census (shared CI floor item 0, operator-measured 2026-08-04, three populations — NOT one cluster). CLASS A (this lane): witness_per_artifact_red_receipts rehomed to dag/test/claim/long/generated_artifact_drift_red_receipt_witness_test.dag — nine heterogeneous committed generators (CiYaml through Plan), each with its own artifact_generate and perturb-sensitive drift pair; no single shared producer to hoist (operator remedy 1); narrowing drops real per-generator coverage (remedy 2). Direct precedent: generated_artifact_drift_test.dag fixed_point_witness_long_lane_note (operator 2026-08-03, same 5-second rule, same inline gate coverage). Measured 4350-4776ms on green main; drift gate still runs artifact_red_receipt_ok inline. CLASS B (PR #7791, NOT this lane): six roadmap healthz witnesses ~5000ms when roadmap inputs change — render whole site behind warm memo. CLASS C: witness_bounded_poll_early_exit_on_grounded_read ~3260ms, witness_digest_readback_script_is_bounded_and_post_mutation ~2719ms."

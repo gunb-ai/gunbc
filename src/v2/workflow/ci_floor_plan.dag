@@ -11,6 +11,8 @@ import v2.compiler.self_host.wet_receipt_enrollment {
   falsifier_self_host_wet_known_red_roster
 }
 import gunbc.ci_materialization { ci_floor_declared_resolve_count }
+
+data ci_floor_plan_resolve_finalization_transport_note: String = "0B AUTHORITY SPLIT: WalkPlan.finalization.declared_resolve_count projects gunbc.ci_materialization ci_floor_declared_resolve_count only — this plan does NOT author a second obligation roster. Expected obligations and realization law live in ci_materialization; claim_executor observes cold resolves and shared-pool hits into ResolveRealization rows."
 import gunbc.ci_spec {
   gunbc_ci_spec, gunbc_ci_regen_spec, CiSpec,
   ci_spec_with_discovery_scan_dirs,
