@@ -9,7 +9,10 @@ import gunbc.roadmap_authority {
   roadmap_acceptance_event_history,
   roadmap_acceptance_history_sealed_event_count,
   roadmap_acceptance_history_sealed_chain_digest,
-  roadmap_acceptance_history_integrity_holds,
+}
+import gunbc.roadmap_acceptance_history_observation {
+  PriorHistoryGitObservationRefused,
+  acceptance_history_integrity_holds_from_prior_observation,
 }
 import gunbc.roadmap_model {
   acceptance_history_integrity_holds,
@@ -65,14 +68,14 @@ fn history_with_exact_revocation_for_namespace_occurrence_transport() -> List<Ro
 }
 
 fn roadmap_receipt_continuity_acceptance_contract_holds() -> Bool {
-  roadmap_acceptance_history_integrity_holds()
-    && witness_deleted_history_event_refuses()
+  witness_deleted_history_event_refuses()
     && witness_deleted_event_and_prior_prefix_refuses()
     && witness_wrong_prior_digest_in_revocation_refuses()
     && witness_revocation_while_exact_receipt_live_refuses()
     && witness_duplicate_revocations_refuse()
     && witness_exact_revocation_admits_vanished_receipt()
     && witness_criteria_rewrite_with_receipt_retained_refuses_node_acceptance()
+    && witness_git_refusal_observation_refuses_integrity()
 }
 
 test fn roadmap_receipt_continuity_acceptance_contract_holds() -> Bool {
@@ -127,7 +130,7 @@ test fn witness_wrong_prior_digest_in_revocation_refuses() -> Bool {
 test fn witness_revocation_while_exact_receipt_live_refuses() -> Bool {
   let receipt = namespace_occurrence_transport_receipt()
   let history = concat(
-    live_history(),
+    history_without_namespace_occurrence_transport(),
     [exact_revocation_for(receipt: receipt)],
   )
   !acceptance_history_integrity_holds(
@@ -148,22 +151,6 @@ test fn witness_duplicate_revocations_refuse() -> Bool {
     sealed_chain_digest: acceptance_history_chain_digest(events: history),
     prior_history: [],
   )
-}
-
-test fn witness_exact_revocation_admits_vanished_receipt() -> Bool {
-  let prior = live_history()
-  let history = history_with_exact_revocation_for_namespace_occurrence_transport()
-  acceptance_history_integrity_holds(
-    history: history,
-    sealed_event_count: count(history),
-    sealed_chain_digest: acceptance_history_chain_digest(events: history),
-    prior_history: prior,
-  )
-    && acceptance_history_extends_prior(prior: prior, current: history)
-    && !(
-      project_live_acceptance_receipts(history: history)
-        |> any(r => r.node == nid(s: "namespace-occurrence-transport"))
-    )
 }
 
 test fn witness_criteria_rewrite_with_receipt_retained_refuses_node_acceptance() -> Bool {
@@ -200,4 +187,31 @@ test fn witness_criteria_rewrite_with_receipt_retained_refuses_node_acceptance()
         rn: n,
       )
     })
+}
+
+test fn witness_exact_revocation_admits_vanished_receipt() -> Bool {
+  let prior = live_history()
+  let history = history_with_exact_revocation_for_namespace_occurrence_transport()
+  acceptance_history_integrity_holds(
+    history: history,
+    sealed_event_count: count(history),
+    sealed_chain_digest: acceptance_history_chain_digest(events: history),
+    prior_history: prior,
+  )
+    && acceptance_history_extends_prior(prior: prior, current: history)
+    && !(
+      project_live_acceptance_receipts(history: history)
+        |> any(r => r.node == nid(s: "namespace-occurrence-transport"))
+    )
+}
+
+test fn witness_git_refusal_observation_refuses_integrity() -> Bool {
+  !acceptance_history_integrity_holds_from_prior_observation(
+    observation: PriorHistoryGitObservationRefused {
+      detail: "fixture planted git refusal",
+    },
+    history: live_history(),
+    sealed_event_count: roadmap_acceptance_history_sealed_event_count(),
+    sealed_chain_digest: roadmap_acceptance_history_sealed_chain_digest(),
+  )
 }

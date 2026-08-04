@@ -44,7 +44,7 @@ import gunbc.roadmap_model {
 }
 import gunbc.roadmap_acceptance_history_observation {
   current_roadmap_acceptance_history_prior_observation,
-  prior_history_for_integrity,
+  acceptance_history_integrity_holds_from_prior_observation,
 }
 import gunbc.roadmap_execution_contract { ExecutionContractUnspecified, contract_has_closing_validation }
 import gunbc.roadmap_focus {
@@ -333,7 +333,7 @@ fn v1_test_migration_execution_contract() -> WorkItemExecutionContract {
   )
 }
 
-data roadmap_receipt_continuity_execution_contract_note: String = "THE CLOSING CHECK FOR roadmap-receipt-continuity. Acceptance history is append-only: roadmap_acceptance_event_history is the single authority and roadmap_acceptance_receipts is a projection. The bound validation executes acceptance_history_integrity_holds over the live history with its sealed prefix digest, and the sibling witness module plants each red control from the node's bar — deleted events, dual-list deletion, wrong prior digest, revocation while live, duplicate revocations, and the exact revocation admit path."
+data roadmap_receipt_continuity_execution_contract_note: String = "THE CLOSING CHECK FOR roadmap-receipt-continuity. Acceptance history is append-only: roadmap_acceptance_event_history is the single authority and roadmap_acceptance_receipts is a projection. The hermetic contract plants each red control from the node's bar — deleted events, dual-list deletion, wrong prior digest, revocation while live, duplicate revocations, exact revocation admit, criteria rewrite, and planted git-refusal observation. Live integrity over git-observed prior_history executes in test.claim.roadmap_receipt_continuity_live_witness (ReadsLiveTree, bin_witness_wet_entries)."
 
 fn roadmap_receipt_continuity_execution_contract() -> WorkItemExecutionContract {
   gunbc_claim_execution_contract(
@@ -2246,7 +2246,7 @@ fn roadmap_acceptance_event_history() -> List<RoadmapAcceptanceEvent> {
   ]
 }
 
-data roadmap_acceptance_history_note: String = "roadmap_acceptance_event_history is the single authority for acceptance facts. roadmap_acceptance_receipts projects the live receipt set by replaying recorded and revoked events only — never a second editable receipt list. New acceptance appends AcceptanceRecorded; withdrawal appends AcceptanceRevoked naming the exact prior receipt, a disposition, and audit fields. roadmap_acceptance_history_sealed_event_count and roadmap_acceptance_history_sealed_chain_digest pin the immutable prefix so prior events cannot be deleted without updating the seal in the same change. LIVE prior_history wiring is partial: gunbc.roadmap_acceptance_history_observation compares merge-base versus HEAD authority file content identity and admits prior_history = current only when that file is unchanged; a changed authority file without merge-base revision evaluation keeps prior_history empty on the production path, so acceptance_history_extends_prior is not yet executed there — see roadmap_acceptance_history_prior_history_next_rung_trigger. The sealed prefix digest remains load-bearing defense in depth against prefix edits."
+data roadmap_acceptance_history_note: String = "roadmap_acceptance_event_history is the single authority for acceptance facts. roadmap_acceptance_receipts projects the live receipt set by replaying recorded and revoked events only — never a second editable receipt list. New acceptance appends AcceptanceRecorded; withdrawal appends AcceptanceRevoked naming the exact prior receipt, a disposition, and audit fields. roadmap_acceptance_history_sealed_event_count and roadmap_acceptance_history_sealed_chain_digest pin the immutable prefix so prior events cannot be deleted without updating the seal in the same change. LIVE prior_history wiring is partial: gunbc.roadmap_acceptance_history_observation compares merge-base versus HEAD authority file content identity and admits prior_history = current only when that file is unchanged; a changed authority file without merge-base revision evaluation keeps prior_history empty on the production path; git observation refusal returns AcceptanceHistoryIntegrityRefusedPriorHistoryObservation — never fabricated prior_history — see roadmap_acceptance_history_prior_history_next_rung_trigger. The sealed prefix digest remains load-bearing defense in depth against prefix edits."
 
 fn roadmap_acceptance_history_sealed_event_count() -> Int { 16 }
 
@@ -2258,20 +2258,13 @@ fn roadmap_acceptance_receipts() -> List<RoadmapAcceptanceReceipt> {
   project_live_acceptance_receipts(history: roadmap_acceptance_event_history())
 }
 
-fn roadmap_acceptance_history_prior_history() -> List<RoadmapAcceptanceEvent> {
-  let current = roadmap_acceptance_event_history()
-  prior_history_for_integrity(
-    observation: current_roadmap_acceptance_history_prior_observation(current_history: current),
-    current_history: current,
-  )
-}
-
 fn roadmap_acceptance_history_integrity_holds() -> Bool {
-  acceptance_history_integrity_holds(
-    history: roadmap_acceptance_event_history(),
+  let current = roadmap_acceptance_event_history()
+  acceptance_history_integrity_holds_from_prior_observation(
+    observation: current_roadmap_acceptance_history_prior_observation(current_history: current),
+    history: current,
     sealed_event_count: roadmap_acceptance_history_sealed_event_count(),
     sealed_chain_digest: roadmap_acceptance_history_sealed_chain_digest(),
-    prior_history: roadmap_acceptance_history_prior_history(),
   )
 }
 

@@ -198,6 +198,7 @@ type AcceptanceHistoryIntegrityVerdict
     }
   | AcceptanceHistoryIntegrityRefusedSealedPrefixDigest
   | AcceptanceHistoryIntegrityRefusedPriorPrefix
+  | AcceptanceHistoryIntegrityRefusedPriorHistoryObservation { detail: String }
 
 fn red_control_evidence_eq(a: RedControlEvidence, b: RedControlEvidence) -> Bool {
   match a {
@@ -554,5 +555,6 @@ fn acceptance_history_integrity_holds(
     AcceptanceHistoryIntegrityRefusedVanishedWithoutRevocation { receipt: _ } => false
     AcceptanceHistoryIntegrityRefusedSealedPrefixDigest => false
     AcceptanceHistoryIntegrityRefusedPriorPrefix => false
+    AcceptanceHistoryIntegrityRefusedPriorHistoryObservation { detail: _ } => false
   }
 }
