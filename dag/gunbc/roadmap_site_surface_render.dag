@@ -1,0 +1,63 @@
+module gunbc.roadmap_site_surface_render
+
+import std.types { String, NonEmptyStr }
+import std.content_hash { Fnv1a64Structural, content_hash_atom }
+import std.markup { Fragment }
+import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source }
+import extdeps.languages.json.emit {
+  serialize_json,
+  json_object,
+  json_kv,
+  json_string,
+  JsonKeyValue,
+}
+import gunbc.roadmap_component { roadmap_dispatch_asset_path }
+import gunbc.roadmap_site_surface_types { RoadmapSiteSurfaceArtifact }
+
+data roadmap_site_health_path: NonEmptyStr = "/healthz"
+data roadmap_site_roadmap_url_path: NonEmptyStr = "/ROADMAP.md"
+data roadmap_site_dispatch_url_path: NonEmptyStr = "/target/roadmap-dispatch.json"
+data roadmap_site_daily_url_path: NonEmptyStr = "/"
+data roadmap_site_full_url_path: NonEmptyStr = "/roadmap"
+data roadmap_site_service_name: String = "gunbc-roadmap"
+
+data page_render_refusal_prefix: String = "page render refused: "
+
+fn page_render_refusal_body(reason: String) -> String {
+  join([page_render_refusal_prefix, reason, "\n"], "")
+}
+
+fn site_artifact_digest(body: String) -> Fnv1a64Structural {
+  content_hash_atom(value: body as NonEmptyStr)
+}
+
+fn served_page_body(page: Fragment) -> String {
+  match try_serialize_html_source(node: page) {
+    EmitOk { html: h } => h
+    EmitRejected { reason: r } => page_render_refusal_body(reason: r)
+  }
+}
+
+fn served_surface_digest_kv(url_path: NonEmptyStr, body: String) -> JsonKeyValue {
+  json_kv(key: url_path as String, value: json_string(s: site_artifact_digest(body: body).digest as String))
+}
+
+fn healthz_body_from_surface_artifacts(
+  roadmap: RoadmapSiteSurfaceArtifact,
+  dispatch: RoadmapSiteSurfaceArtifact,
+  daily: RoadmapSiteSurfaceArtifact,
+  full: RoadmapSiteSurfaceArtifact,
+  dispatch_js: RoadmapSiteSurfaceArtifact,
+) -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "status", value: json_string(s: "ok")),
+    json_kv(key: "service", value: json_string(s: roadmap_site_service_name)),
+    json_kv(key: "artifacts", value: json_object(members: [
+      json_kv(key: roadmap.url_path as String, value: json_string(s: roadmap.digest.digest as String)),
+      json_kv(key: dispatch.url_path as String, value: json_string(s: dispatch.digest.digest as String)),
+      served_surface_digest_kv(url_path: daily.url_path, body: daily.body),
+      served_surface_digest_kv(url_path: full.url_path, body: full.body),
+      served_surface_digest_kv(url_path: dispatch_js.url_path, body: dispatch_js.body),
+    ])),
+  ]))
+}

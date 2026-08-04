@@ -1,0 +1,37 @@
+module gunbc.roadmap_site_surface_types
+
+import std.types { String, NonEmptyStr }
+import std.content_hash { Fnv1a64Structural }
+import gunbc.roadmap_model { RoadmapNodeId }
+
+type RoadmapSiteSurfaceArtifact {
+  url_path: NonEmptyStr
+  body: String
+  digest: Fnv1a64Structural
+}
+
+type RoadmapSiteSurfaceBundle {
+  acceptance_identity: Fnv1a64Structural
+  authority_identity: Fnv1a64Structural
+  roadmap_md: RoadmapSiteSurfaceArtifact
+  dispatch_json: RoadmapSiteSurfaceArtifact
+  daily_html: RoadmapSiteSurfaceArtifact
+  full_html: RoadmapSiteSurfaceArtifact
+  dispatch_js: RoadmapSiteSurfaceArtifact
+  healthz_body: String
+}
+
+type RecordedRoadmapSiteSurfaceBundle {
+  subject: String
+  producer_digest: Fnv1a64Structural
+  bundle: RoadmapSiteSurfaceBundle
+}
+
+type LiveRoadmapSiteSurfaceBundle {
+  subject: String
+  bundle: RoadmapSiteSurfaceBundle
+}
+
+data roadmap_site_surface_subject: String = "gunbc.roadmap_static_site/live-tree"
+
+data roadmap_site_surface_bundle_schema_note: String = "ONE semantic snapshot per operation: acceptance observed once, authority projected once, surface rendered once, healthz serialized once. RoadmapSiteSurfaceBundle is the retained carrier every readiness witness and production healthz path evaluates — member predicates take the bundle as an argument and cannot re-invoke filesystem, Git, authority projection, or rendering producers."

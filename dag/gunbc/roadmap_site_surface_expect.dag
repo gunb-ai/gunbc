@@ -1,0 +1,85 @@
+module gunbc.roadmap_site_surface_expect
+
+import std.types { String, Bool, NonEmptyStr }
+import std.content_hash { Fnv1a64Structural, content_hash_atom }
+import extdeps.languages.json.grammar { json_text_trim_trailing_lf }
+import extdeps.languages.json.parse { json_text_parseable }
+import extdeps.http.server { media_type_wire_label, application_json_utf8 }
+import gunbc.roadmap_site_surface_types { RoadmapSiteSurfaceBundle, RoadmapSiteSurfaceArtifact }
+import gunbc.live_deploy.readiness { HealthzEffectiveRead }
+
+data roadmap_site_surface_expect_note: String = "PURE bundle predicates for roadmap served-surface witnesses. Every function here takes an already-materialized RoadmapSiteSurfaceBundle (or a typed HTTP read) and performs no filesystem, Git, authority, or rendering observation."
+
+fn roadmap_site_healthz_json_string_parses(body: String) -> Bool {
+  json_text_parseable(s: json_text_trim_trailing_lf(body: body))
+}
+
+fn roadmap_site_healthz_surface_is_current(bundle: RoadmapSiteSurfaceBundle, observed_body: String) -> Bool {
+  let observed = json_text_trim_trailing_lf(body: observed_body)
+  let expected = json_text_trim_trailing_lf(body: bundle.healthz_body)
+  observed == expected
+}
+
+fn healthz_body_json_well_formed(body: String) -> Bool {
+  starts_with(s: body, prefix: "{")
+    && ends_with(s: body, suffix: "}}")
+    && !ends_with(s: body, suffix: "}}}")
+}
+
+fn site_artifact_digest_from_body(body: String) -> Fnv1a64Structural {
+  content_hash_atom(value: body as NonEmptyStr)
+}
+
+fn artifact_digest_matches_body(artifact: RoadmapSiteSurfaceArtifact) -> Bool {
+  artifact.digest == site_artifact_digest_from_body(body: artifact.body)
+}
+
+fn healthz_round_trip_receipt_holds(bundle: RoadmapSiteSurfaceBundle) -> Bool {
+  healthz_body_json_well_formed(body: bundle.healthz_body)
+    && artifact_digest_matches_body(artifact: bundle.roadmap_md)
+    && artifact_digest_matches_body(artifact: bundle.dispatch_json)
+    && artifact_digest_matches_body(artifact: bundle.daily_html)
+    && artifact_digest_matches_body(artifact: bundle.full_html)
+    && artifact_digest_matches_body(artifact: bundle.dispatch_js)
+    && string_contains(s: bundle.healthz_body, pattern: bundle.roadmap_md.digest.digest as String)
+    && string_contains(s: bundle.healthz_body, pattern: bundle.dispatch_json.digest.digest as String)
+    && string_contains(s: bundle.healthz_body, pattern: bundle.daily_html.digest.digest as String)
+    && string_contains(s: bundle.healthz_body, pattern: bundle.full_html.digest.digest as String)
+    && string_contains(s: bundle.healthz_body, pattern: bundle.dispatch_js.digest.digest as String)
+    && string_contains(s: bundle.healthz_body, pattern: bundle.roadmap_md.url_path as String)
+    && string_contains(s: bundle.healthz_body, pattern: bundle.dispatch_json.url_path as String)
+}
+
+fn healthz_read_grounds(bundle: RoadmapSiteSurfaceBundle, read: HealthzEffectiveRead) -> Bool {
+  read.probe_error == ""
+    && roadmap_site_healthz_json_string_parses(body: read.body)
+    && roadmap_site_healthz_surface_is_current(bundle: bundle, observed_body: read.body)
+}
+
+fn fresh_surface_read_grounds(bundle: RoadmapSiteSurfaceBundle, read: HealthzEffectiveRead) -> Bool {
+  healthz_read_grounds(bundle: bundle, read: read)
+}
+
+fn stale_surface_read_does_not_ground(bundle: RoadmapSiteSurfaceBundle, stale_body: String) -> Bool {
+  roadmap_site_healthz_json_string_parses(body: stale_body)
+    && !roadmap_site_healthz_surface_is_current(bundle: bundle, observed_body: stale_body)
+    && !healthz_read_grounds(
+      bundle: bundle,
+      read: HealthzEffectiveRead { body: stale_body, probe_error: "" },
+    )
+}
+
+fn healthz_surface_tolerates_transport_trailing_lf(bundle: RoadmapSiteSurfaceBundle) -> Bool {
+  roadmap_site_healthz_surface_is_current(
+    bundle: bundle,
+    observed_body: concat(bundle.healthz_body, "\n"),
+  )
+}
+
+fn healthz_route_json_ok(bundle: RoadmapSiteSurfaceBundle) -> Bool {
+  healthz_body_json_well_formed(body: bundle.healthz_body)
+    && !healthz_body_json_well_formed(body: concat(bundle.healthz_body, "}"))
+    && ends_with(s: concat(bundle.healthz_body, "}"), suffix: "}}}")
+    && string_contains(s: bundle.healthz_body, pattern: "\"status\": \"ok\"")
+    && media_type_wire_label(m: application_json_utf8) == "application/json; charset=utf-8"
+}
