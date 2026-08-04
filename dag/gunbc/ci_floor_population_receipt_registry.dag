@@ -2,29 +2,6 @@ module gunbc.ci_floor_population_receipt_registry
 
 import std.types { Bool, NonEmptyStr, String }
 import std.nat { Nat }
-import std.content_hash { Sha256Digest, sha256_hex_digest }
-import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex }
-import gunbc.merge_admission_subject { WalkAttemptId, walk_attempt_id }
-
-type CiEvidenceSubjectWire {
-  github_run_id: String?,
-  github_run_attempt: String?,
-  github_job_key: String?,
-  head_commit: String?,
-  tested_tree: String?,
-  walk_attempt_id: String?,
-  artifact_digest: String?,
-}
-
-type CiEvidenceSubject {
-  github_run_id: NonEmptyStr,
-  github_run_attempt: NonEmptyStr,
-  github_job_key: NonEmptyStr,
-  head_commit: GitObjectId,
-  tested_tree: GitObjectId,
-  walk_attempt_id: WalkAttemptId,
-  artifact_digest: Sha256Digest,
-}
 
 type FloorPopulationReceiptKind
   = PhaseJournal {}
@@ -56,31 +33,20 @@ type FloorPopulationReceiptProducerPhase
   | AfterFloorAlways {}
   | OptionalWorker {}
 
-type ProducerPhaseStanding
-  = PhaseReached {}
-  | PhaseNotReached {}
-  | PhaseStandingUnknown {}
+type FloorReceiptLocator
+  = ExactReceiptFile { path: NonEmptyStr }
+  | ReceiptFamily {
+      directory: NonEmptyStr,
+      filename_prefix: NonEmptyStr,
+      filename_suffix: NonEmptyStr
+    }
+  | AttemptReceiptDirectory { root_prefix: NonEmptyStr }
 
 type FloorPopulationReceiptRegistryRow {
   kind: FloorPopulationReceiptKind,
-  path: NonEmptyStr,
+  locator: FloorReceiptLocator,
   producer_phase: FloorPopulationReceiptProducerPhase,
   required_for_settlement: Bool,
-}
-
-type ManifestObservationStanding
-  = ObservedPresent { size_bytes: Nat, content_digest: NonEmptyStr? }
-  | ObservedMissing {}
-  | NotApplicable { reason: NonEmptyStr }
-
-type FloorPopulationReceiptManifestRow {
-  subject: CiEvidenceSubject,
-  kind: FloorPopulationReceiptKind,
-  expected_pattern: NonEmptyStr,
-  observed_path: NonEmptyStr?,
-  standing: ManifestObservationStanding,
-  producer_phase: FloorPopulationReceiptProducerPhase,
-  producer_phase_standing: ProducerPhaseStanding,
 }
 
 type RegistryWellFormedVerdict
@@ -90,11 +56,7 @@ type RegistryWellFormedVerdict
   | MissingRequiredKind { kind_label: NonEmptyStr }
   | UnknownObservedPath { path: NonEmptyStr }
 
-data ci_floor_population_receipt_manifest_path: String = "target/floor-population-receipt-manifest.tsv"
-
-data ci_floor_population_receipt_manifest_schema: String = "gunbc.ci_floor_population_receipt_manifest.v2"
-
-data ci_floor_population_receipt_registry_note: String = "Exact path registry for CI-floor population persistence (operator review on #7785 commit 3): one modeled roster, not a multiline literal nickname. required_for_settlement marks the subset that admission/native/attribution folds consume; the full roster is uploaded so red-path evidence is durable. Manifest v2 emits a subject header plus one row per concrete file (wildcard expansion; attempt directories enumerate contained receipts). CiEvidenceSubjectWire carries raw optional fields; CiEvidenceSubject is valid-by-construction (GitObjectId / WalkAttemptId / Sha256Digest). Dissolve-on: harvester emits CiFloorPopulationEvidence from artifact bytes + Actions step metadata and this registry becomes the path authority for that fold."
+data ci_floor_population_receipt_registry_note: String = "Expected receipt identities and producer phases only (operator ruling on #7785): FloorReceiptLocator is the typed coproduct (ExactReceiptFile | ReceiptFamily | AttemptReceiptDirectory) — path spelling no longer decides meaning. Subject/manifest/standing live in gunbc.ci_floor_population_evidence. Dissolve-on: attempt-scoped exact root target/floor-evidence/<walk-attempt>/ retires Family/AttemptDirectory locators."
 
 fn floor_population_receipt_kind_label(kind: FloorPopulationReceiptKind) -> String {
   match kind {
@@ -132,133 +94,145 @@ fn floor_population_receipt_producer_phase_label(phase: FloorPopulationReceiptPr
   }
 }
 
-fn producer_phase_standing_label(standing: ProducerPhaseStanding) -> String {
-  match standing {
-    PhaseReached {} => "Reached"
-    PhaseNotReached {} => "NotReached"
-    PhaseStandingUnknown {} => "Unknown"
+fn floor_receipt_locator_upload_pattern(locator: FloorReceiptLocator) -> String {
+  match locator {
+    ExactReceiptFile { path } => path as String
+    ReceiptFamily { directory, filename_prefix, filename_suffix } =>
+      concat(
+        concat(directory as String, "/"),
+        concat(concat(filename_prefix as String, "*"), filename_suffix as String)
+      )
+    AttemptReceiptDirectory { root_prefix } => concat(root_prefix as String, "*/")
   }
+}
+
+fn exact(path: String) -> FloorReceiptLocator {
+  ExactReceiptFile { path: path as NonEmptyStr }
 }
 
 fn ci_floor_population_receipt_registry() -> List<FloorPopulationReceiptRegistryRow> {
   [
     FloorPopulationReceiptRegistryRow {
       kind: PopulationReceiptManifest {},
-      path: "target/floor-population-receipt-manifest.tsv" as NonEmptyStr,
+      locator: exact(path: "target/floor-population-receipt-manifest.tsv"),
       producer_phase: AfterFloorAlways {},
       required_for_settlement: true
     },
     FloorPopulationReceiptRegistryRow {
       kind: PhaseJournal {},
-      path: "target/floor-phase-journal.tsv" as NonEmptyStr,
+      locator: exact(path: "target/floor-phase-journal.tsv"),
       producer_phase: DuringFloor {},
       required_for_settlement: true
     },
     FloorPopulationReceiptRegistryRow {
       kind: BatchWall {},
-      path: "target/floor-batch-wall-receipt.txt" as NonEmptyStr,
+      locator: exact(path: "target/floor-batch-wall-receipt.txt"),
       producer_phase: DuringFloor {},
       required_for_settlement: true
     },
     FloorPopulationReceiptRegistryRow {
       kind: CompileCleanWall {},
-      path: "target/floor-compile-clean-wall-receipt.txt" as NonEmptyStr,
+      locator: exact(path: "target/floor-compile-clean-wall-receipt.txt"),
       producer_phase: DuringFloor {},
       required_for_settlement: true
     },
     FloorPopulationReceiptRegistryRow {
       kind: Component {},
-      path: "target/floor-component-receipt.json" as NonEmptyStr,
+      locator: exact(path: "target/floor-component-receipt.json"),
       producer_phase: DuringFloor {},
       required_for_settlement: true
     },
     FloorPopulationReceiptRegistryRow {
       kind: Resolve {},
-      path: "target/floor-resolve-receipt.txt" as NonEmptyStr,
+      locator: exact(path: "target/floor-resolve-receipt.txt"),
       producer_phase: DuringFloor {},
       required_for_settlement: false
     },
     FloorPopulationReceiptRegistryRow {
       kind: SelectionDegradation {},
-      path: "target/floor-selection-degradation-receipt.txt" as NonEmptyStr,
+      locator: exact(path: "target/floor-selection-degradation-receipt.txt"),
       producer_phase: DuringFloor {},
       required_for_settlement: false
     },
     FloorPopulationReceiptRegistryRow {
       kind: Materialization {},
-      path: "target/floor-materialization-receipt.txt" as NonEmptyStr,
+      locator: exact(path: "target/floor-materialization-receipt.txt"),
       producer_phase: DuringFloor {},
       required_for_settlement: false
     },
     FloorPopulationReceiptRegistryRow {
       kind: PopulationBudgetRefusal {},
-      path: "target/floor-population-budget-refusal.txt" as NonEmptyStr,
+      locator: exact(path: "target/floor-population-budget-refusal.txt"),
       producer_phase: DuringFloor {},
       required_for_settlement: false
     },
     FloorPopulationReceiptRegistryRow {
       kind: NativeTransition {},
-      path: "target/native-selected-witness-transition-receipt.tsv" as NonEmptyStr,
+      locator: exact(path: "target/native-selected-witness-transition-receipt.tsv"),
       producer_phase: DuringFloor {},
       required_for_settlement: true
     },
     FloorPopulationReceiptRegistryRow {
       kind: GateWarmCost {},
-      path: "target/floor-gate-warm-cost-receipt.tsv" as NonEmptyStr,
+      locator: exact(path: "target/floor-gate-warm-cost-receipt.tsv"),
       producer_phase: DuringFloor {},
       required_for_settlement: false
     },
     FloorPopulationReceiptRegistryRow {
       kind: WitnessRowCost {},
-      path: "target/floor-witness-row-cost-receipt.tsv" as NonEmptyStr,
+      locator: exact(path: "target/floor-witness-row-cost-receipt.tsv"),
       producer_phase: DuringFloor {},
       required_for_settlement: false
     },
     FloorPopulationReceiptRegistryRow {
       kind: WetWitnessRowOutcome {},
-      path: "target/floor-wet-witness-row-outcome-receipt.tsv" as NonEmptyStr,
+      locator: exact(path: "target/floor-wet-witness-row-outcome-receipt.tsv"),
       producer_phase: DuringFloor {},
       required_for_settlement: false
     },
     FloorPopulationReceiptRegistryRow {
       kind: WitnessRowCostDrift {},
-      path: "target/floor-witness-row-cost-drift-receipt.tsv" as NonEmptyStr,
+      locator: exact(path: "target/floor-witness-row-cost-drift-receipt.tsv"),
       producer_phase: DuringFloor {},
       required_for_settlement: false
     },
     FloorPopulationReceiptRegistryRow {
       kind: CompileCleanCostDrift {},
-      path: "target/floor-compile-clean-cost-drift-receipt.tsv" as NonEmptyStr,
+      locator: exact(path: "target/floor-compile-clean-cost-drift-receipt.tsv"),
       producer_phase: DuringFloor {},
       required_for_settlement: false
     },
     FloorPopulationReceiptRegistryRow {
       kind: CompileCleanCost {},
-      path: "target/floor-compile-clean-cost-receipt.tsv" as NonEmptyStr,
+      locator: exact(path: "target/floor-compile-clean-cost-receipt.tsv"),
       producer_phase: DuringFloor {},
       required_for_settlement: false
     },
     FloorPopulationReceiptRegistryRow {
       kind: ScopedWitnessExecution {},
-      path: "target/scoped-witness-execution-receipt.tsv" as NonEmptyStr,
+      locator: exact(path: "target/scoped-witness-execution-receipt.tsv"),
       producer_phase: DuringFloor {},
       required_for_settlement: false
     },
     FloorPopulationReceiptRegistryRow {
       kind: WorkerObservation {},
-      path: "target/floor-worker-observation-receipt.tsv" as NonEmptyStr,
+      locator: exact(path: "target/floor-worker-observation-receipt.tsv"),
       producer_phase: OptionalWorker {},
       required_for_settlement: false
     },
     FloorPopulationReceiptRegistryRow {
       kind: WorkerTerminal {},
-      path: "target/floor-worker-terminal-*.tsv" as NonEmptyStr,
+      locator: ReceiptFamily {
+        directory: "target" as NonEmptyStr,
+        filename_prefix: "floor-worker-terminal-" as NonEmptyStr,
+        filename_suffix: ".tsv" as NonEmptyStr
+      },
       producer_phase: OptionalWorker {},
       required_for_settlement: false
     },
     FloorPopulationReceiptRegistryRow {
       kind: AttemptDirectory {},
-      path: "target/floor-attempt-*/" as NonEmptyStr,
+      locator: AttemptReceiptDirectory { root_prefix: "target/floor-attempt-" as NonEmptyStr },
       producer_phase: OnSuccessStage {},
       required_for_settlement: true
     },
@@ -278,7 +252,8 @@ fn settlement_required_kind_labels() -> List<String> {
 }
 
 fn ci_floor_population_receipt_registry_paths() -> List<String> {
-  ci_floor_population_receipt_registry() |> map(r => r.path as String)
+  ci_floor_population_receipt_registry()
+    |> map(r => floor_receipt_locator_upload_pattern(locator: r.locator))
 }
 
 fn ci_floor_population_receipt_registry_kind_labels() -> List<String> {
@@ -293,33 +268,23 @@ fn ci_floor_population_receipt_registry_row_count() -> Nat {
   length(xs: ci_floor_population_receipt_registry())
 }
 
-fn ci_floor_population_receipt_registry_body_tsv() -> String {
-  ci_floor_population_receipt_registry()
-    |> filter(r => !(floor_population_receipt_kind_label(kind: r.kind) == "PopulationReceiptManifest"))
-    |> map(r => concat(
-      concat(floor_population_receipt_kind_label(kind: r.kind), "\t"),
-      concat(
-        concat(r.path as String, "\t"),
-        floor_population_receipt_producer_phase_label(phase: r.producer_phase)
-      )
-    ))
-    |> join(separator: "\n")
-}
-
 fn string_list_contains_exact(xs: List<String>, needle: String) -> Bool {
   xs |> any(x => x == needle)
 }
 
-fn registry_path_matches_pattern(path: String, pattern: String) -> Bool {
-  if pattern == "target/floor-worker-terminal-*.tsv" {
-    string_contains(s: path, pattern: "target/floor-worker-terminal-")
-      && string_contains(s: path, pattern: ".tsv")
-      && !(string_contains(s: path, pattern: "*"))
-  } else if pattern == "target/floor-attempt-*/" {
-    string_contains(s: path, pattern: "target/floor-attempt-")
-      && !(string_contains(s: path, pattern: "*"))
-  } else {
-    path == pattern
+fn registry_locator_matches_path(path: String, locator: FloorReceiptLocator) -> Bool {
+  match locator {
+    ExactReceiptFile { path: p } => path == (p as String)
+    ReceiptFamily { directory, filename_prefix, filename_suffix } => {
+      let dir = concat(directory as String, "/")
+      string_contains(s: path, pattern: dir)
+        && string_contains(s: path, pattern: filename_prefix as String)
+        && string_contains(s: path, pattern: filename_suffix as String)
+        && !(string_contains(s: path, pattern: "*"))
+    }
+    AttemptReceiptDirectory { root_prefix } =>
+      string_contains(s: path, pattern: root_prefix as String)
+        && !(string_contains(s: path, pattern: "*"))
   }
 }
 
@@ -336,9 +301,9 @@ fn registry_rows_duplicate_kind(rows: List<FloorPopulationReceiptRegistryRow>) -
 
 fn registry_rows_duplicate_path(rows: List<FloorPopulationReceiptRegistryRow>) -> NonEmptyStr? {
   fold(rows, init: { seen: [], dup: none }, f: fn(acc, r) {
-    let path = r.path as String
+    let path = floor_receipt_locator_upload_pattern(locator: r.locator)
     if string_list_contains_exact(xs: acc.seen, needle: path) {
-      { seen: acc.seen, dup: Present { value: r.path } }
+      { seen: acc.seen, dup: Present { value: path as NonEmptyStr } }
     } else {
       { seen: concat(acc.seen, [path]), dup: acc.dup }
     }
@@ -381,7 +346,7 @@ fn ci_floor_population_receipt_registry_well_formed() -> RegistryWellFormedVerdi
 fn observe_path_against_registry(path: NonEmptyStr) -> RegistryWellFormedVerdict {
   let p = path as String
   let matched = ci_floor_population_receipt_registry()
-    |> any(r => registry_path_matches_pattern(path: p, pattern: r.path as String))
+    |> any(r => registry_locator_matches_path(path: p, locator: r.locator))
   if matched {
     RegistryWellFormed { row_count: 1 }
   } else {
@@ -392,13 +357,13 @@ fn observe_path_against_registry(path: NonEmptyStr) -> RegistryWellFormedVerdict
 fn planted_duplicate_kind_rows() -> List<FloorPopulationReceiptRegistryRow> {
   let row = FloorPopulationReceiptRegistryRow {
     kind: PhaseJournal {},
-    path: "target/floor-phase-journal.tsv" as NonEmptyStr,
+    locator: exact(path: "target/floor-phase-journal.tsv"),
     producer_phase: DuringFloor {},
     required_for_settlement: true
   }
   let dup = FloorPopulationReceiptRegistryRow {
     kind: PhaseJournal {},
-    path: "target/floor-phase-journal-dup.tsv" as NonEmptyStr,
+    locator: exact(path: "target/floor-phase-journal-dup.tsv"),
     producer_phase: DuringFloor {},
     required_for_settlement: true
   }
@@ -408,94 +373,15 @@ fn planted_duplicate_kind_rows() -> List<FloorPopulationReceiptRegistryRow> {
 fn planted_duplicate_path_rows() -> List<FloorPopulationReceiptRegistryRow> {
   let row = FloorPopulationReceiptRegistryRow {
     kind: PhaseJournal {},
-    path: "target/floor-phase-journal.tsv" as NonEmptyStr,
+    locator: exact(path: "target/floor-phase-journal.tsv"),
     producer_phase: DuringFloor {},
     required_for_settlement: true
   }
   let dup = FloorPopulationReceiptRegistryRow {
     kind: BatchWall {},
-    path: "target/floor-phase-journal.tsv" as NonEmptyStr,
+    locator: exact(path: "target/floor-phase-journal.tsv"),
     producer_phase: DuringFloor {},
     required_for_settlement: true
   }
   [row, dup]
-}
-
-fn nonempty_string_opt(raw: String?) -> NonEmptyStr? {
-  match raw {
-    Absent => none
-    Present { value: s } => {
-      if s == "" {
-        none
-      } else {
-        Present { value: s as NonEmptyStr }
-      }
-    }
-  }
-}
-
-fn ci_evidence_subject_from_wire(w: CiEvidenceSubjectWire) -> CiEvidenceSubject? {
-  match nonempty_string_opt(raw: w.github_run_id) {
-    Absent => none
-    Present { value: run_id } => match nonempty_string_opt(raw: w.github_run_attempt) {
-      Absent => none
-      Present { value: run_attempt } => match nonempty_string_opt(raw: w.github_job_key) {
-        Absent => none
-        Present { value: job_key } => match nonempty_string_opt(raw: w.head_commit) {
-          Absent => none
-          Present { value: head_raw } => match nonempty_string_opt(raw: w.tested_tree) {
-            Absent => none
-            Present { value: tree_raw } => match nonempty_string_opt(raw: w.walk_attempt_id) {
-              Absent => none
-              Present { value: walk_raw } => match nonempty_string_opt(raw: w.artifact_digest) {
-                Absent => none
-                Present { value: digest_raw } => match git_object_id_from_untagged_hex(hex: head_raw as String) {
-                  Absent => none
-                  Present { value: head } => match git_object_id_from_untagged_hex(hex: tree_raw as String) {
-                    Absent => none
-                    Present { value: tree } => match walk_attempt_id(raw: walk_raw as String) {
-                      Absent => none
-                      Present { value: walk } => match sha256_hex_digest(hex: digest_raw as String) {
-                        Absent => none
-                        Present { value: digest } => Present {
-                          value: CiEvidenceSubject {
-                            github_run_id: run_id,
-                            github_run_attempt: run_attempt,
-                            github_job_key: job_key,
-                            head_commit: head,
-                            tested_tree: tree,
-                            walk_attempt_id: walk,
-                            artifact_digest: digest,
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-}
-
-fn ci_evidence_subject_wire_incomplete() -> CiEvidenceSubjectWire {
-  CiEvidenceSubjectWire {
-    github_run_id: none,
-    github_run_attempt: none,
-    github_job_key: none,
-    head_commit: none,
-    tested_tree: none,
-    walk_attempt_id: none,
-    artifact_digest: none,
-  }
-}
-
-fn ci_evidence_subject_wire_fields_present(w: CiEvidenceSubjectWire) -> Bool {
-  match ci_evidence_subject_from_wire(w: w) {
-    Present { value: _ } => true
-    Absent => false
-  }
 }

@@ -4206,6 +4206,396 @@ fn verify_build_artifacts(paths: &[String]) -> Result<ExitCode, ExitCode> {
     Ok(ExitCode::SUCCESS)
 }
 
+/// Interim native realization of `tools.ci_floor_population_evidence_finalize` /
+/// `gunbc.ci_floor_population_evidence` (operator ruling on #7785).
+///
+/// SEED-RETAINED scaffold: expands typed registry locators, joins phase-journal standing,
+/// writes a local-subject manifest **without** uploaded-artifact digest. Dissolve-on:
+/// receipt producers emit `ReceiptWriteObservation` fragments at write time and this
+/// rediscovery arm deletes.
+fn finalize_floor_evidence() -> Result<ExitCode, ExitCode> {
+    use sha2::{Digest, Sha256};
+    use std::io::Write as _;
+
+    const SCHEMA: &str = "gunbc.ci_floor_population_receipt_manifest.v3";
+    const MANIFEST_PATH: &str = "target/floor-population-receipt-manifest.tsv";
+
+    #[derive(Clone, Copy)]
+    enum Locator {
+        Exact(&'static str),
+        Family {
+            dir: &'static str,
+            prefix: &'static str,
+            suffix: &'static str,
+        },
+        AttemptPrefix(&'static str),
+    }
+
+    struct RegistryRow {
+        kind: &'static str,
+        locator: Locator,
+        phase: &'static str,
+        optional_worker: bool,
+    }
+
+    // Mirrors gunbc.ci_floor_population_receipt_registry rows (excluding the manifest itself).
+    const ROWS: &[RegistryRow] = &[
+        RegistryRow {
+            kind: "PhaseJournal",
+            locator: Locator::Exact("target/floor-phase-journal.tsv"),
+            phase: "DuringFloor",
+            optional_worker: false,
+        },
+        RegistryRow {
+            kind: "BatchWall",
+            locator: Locator::Exact("target/floor-batch-wall-receipt.txt"),
+            phase: "DuringFloor",
+            optional_worker: false,
+        },
+        RegistryRow {
+            kind: "CompileCleanWall",
+            locator: Locator::Exact("target/floor-compile-clean-wall-receipt.txt"),
+            phase: "DuringFloor",
+            optional_worker: false,
+        },
+        RegistryRow {
+            kind: "Component",
+            locator: Locator::Exact("target/floor-component-receipt.json"),
+            phase: "DuringFloor",
+            optional_worker: false,
+        },
+        RegistryRow {
+            kind: "Resolve",
+            locator: Locator::Exact("target/floor-resolve-receipt.txt"),
+            phase: "DuringFloor",
+            optional_worker: false,
+        },
+        RegistryRow {
+            kind: "SelectionDegradation",
+            locator: Locator::Exact("target/floor-selection-degradation-receipt.txt"),
+            phase: "DuringFloor",
+            optional_worker: false,
+        },
+        RegistryRow {
+            kind: "Materialization",
+            locator: Locator::Exact("target/floor-materialization-receipt.txt"),
+            phase: "DuringFloor",
+            optional_worker: false,
+        },
+        RegistryRow {
+            kind: "PopulationBudgetRefusal",
+            locator: Locator::Exact("target/floor-population-budget-refusal.txt"),
+            phase: "DuringFloor",
+            optional_worker: false,
+        },
+        RegistryRow {
+            kind: "NativeTransition",
+            locator: Locator::Exact("target/native-selected-witness-transition-receipt.tsv"),
+            phase: "DuringFloor",
+            optional_worker: false,
+        },
+        RegistryRow {
+            kind: "GateWarmCost",
+            locator: Locator::Exact("target/floor-gate-warm-cost-receipt.tsv"),
+            phase: "DuringFloor",
+            optional_worker: false,
+        },
+        RegistryRow {
+            kind: "WitnessRowCost",
+            locator: Locator::Exact("target/floor-witness-row-cost-receipt.tsv"),
+            phase: "DuringFloor",
+            optional_worker: false,
+        },
+        RegistryRow {
+            kind: "WetWitnessRowOutcome",
+            locator: Locator::Exact("target/floor-wet-witness-row-outcome-receipt.tsv"),
+            phase: "DuringFloor",
+            optional_worker: false,
+        },
+        RegistryRow {
+            kind: "WitnessRowCostDrift",
+            locator: Locator::Exact("target/floor-witness-row-cost-drift-receipt.tsv"),
+            phase: "DuringFloor",
+            optional_worker: false,
+        },
+        RegistryRow {
+            kind: "CompileCleanCostDrift",
+            locator: Locator::Exact("target/floor-compile-clean-cost-drift-receipt.tsv"),
+            phase: "DuringFloor",
+            optional_worker: false,
+        },
+        RegistryRow {
+            kind: "CompileCleanCost",
+            locator: Locator::Exact("target/floor-compile-clean-cost-receipt.tsv"),
+            phase: "DuringFloor",
+            optional_worker: false,
+        },
+        RegistryRow {
+            kind: "ScopedWitnessExecution",
+            locator: Locator::Exact("target/scoped-witness-execution-receipt.tsv"),
+            phase: "DuringFloor",
+            optional_worker: false,
+        },
+        RegistryRow {
+            kind: "WorkerObservation",
+            locator: Locator::Exact("target/floor-worker-observation-receipt.tsv"),
+            phase: "OptionalWorker",
+            optional_worker: true,
+        },
+        RegistryRow {
+            kind: "WorkerTerminal",
+            locator: Locator::Family {
+                dir: "target",
+                prefix: "floor-worker-terminal-",
+                suffix: ".tsv",
+            },
+            phase: "OptionalWorker",
+            optional_worker: true,
+        },
+        RegistryRow {
+            kind: "AttemptDirectory",
+            locator: Locator::AttemptPrefix("target/floor-attempt-"),
+            phase: "OnSuccessStage",
+            optional_worker: false,
+        },
+    ];
+
+    fn env_or_empty(key: &str) -> String {
+        std::env::var(key).unwrap_or_default()
+    }
+
+    fn sha256_file(path: &Path) -> Result<(u64, String), String> {
+        let bytes = fs::read(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+        let mut hasher = Sha256::new();
+        hasher.update(&bytes);
+        Ok((bytes.len() as u64, format!("{:x}", hasher.finalize())))
+    }
+
+    fn pattern_of(locator: Locator) -> String {
+        match locator {
+            Locator::Exact(p) => p.to_string(),
+            Locator::Family {
+                dir,
+                prefix,
+                suffix,
+            } => format!("{dir}/{prefix}*{suffix}"),
+            Locator::AttemptPrefix(p) => format!("{p}*/"),
+        }
+    }
+
+    fn expand(locator: Locator) -> Vec<PathBuf> {
+        match locator {
+            Locator::Exact(p) => {
+                let path = PathBuf::from(p);
+                if path.is_file() {
+                    vec![path]
+                } else {
+                    vec![]
+                }
+            }
+            Locator::Family {
+                dir,
+                prefix,
+                suffix,
+            } => {
+                let Ok(rd) = fs::read_dir(dir) else {
+                    return vec![];
+                };
+                let mut out = Vec::new();
+                for ent in rd.flatten() {
+                    let name = ent.file_name();
+                    let Some(name) = name.to_str() else {
+                        continue;
+                    };
+                    if name.starts_with(prefix) && name.ends_with(suffix) && ent.path().is_file() {
+                        out.push(ent.path());
+                    }
+                }
+                out.sort();
+                out
+            }
+            Locator::AttemptPrefix(prefix) => {
+                let Ok(rd) = fs::read_dir("target") else {
+                    return vec![];
+                };
+                let mut out = Vec::new();
+                for ent in rd.flatten() {
+                    let path = ent.path();
+                    let path_s = path.to_string_lossy();
+                    if !(path_s.starts_with(prefix) && path.is_dir()) {
+                        continue;
+                    }
+                    let mut stack = vec![path];
+                    while let Some(dir) = stack.pop() {
+                        let Ok(inner) = fs::read_dir(&dir) else {
+                            continue;
+                        };
+                        for child in inner.flatten() {
+                            let cp = child.path();
+                            if cp.is_dir() {
+                                stack.push(cp);
+                            } else if cp.is_file() {
+                                out.push(cp);
+                            }
+                        }
+                    }
+                }
+                out.sort();
+                out
+            }
+        }
+    }
+
+    struct JournalSummary {
+        saw_during_floor: bool,
+        saw_interrupted: bool,
+        present: bool,
+        empty: bool,
+    }
+
+    fn summarize_journal() -> JournalSummary {
+        let path = std::env::var_os(FLOOR_PHASE_JOURNAL_ENV)
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from("target/floor-phase-journal.tsv"));
+        match fs::read_to_string(&path) {
+            Err(_) => JournalSummary {
+                saw_during_floor: false,
+                saw_interrupted: false,
+                present: false,
+                empty: true,
+            },
+            Ok(body) if body.trim().is_empty() => JournalSummary {
+                saw_during_floor: false,
+                saw_interrupted: false,
+                present: true,
+                empty: true,
+            },
+            Ok(body) => {
+                let lower = body.to_ascii_lowercase();
+                JournalSummary {
+                    saw_during_floor: body.lines().count() > 0,
+                    saw_interrupted: lower.contains("interrupt")
+                        || lower.contains("killed")
+                        || lower.contains("abort"),
+                    present: true,
+                    empty: false,
+                }
+            }
+        }
+    }
+
+    fn standing_for(present: bool, optional: bool, journal: &JournalSummary) -> &'static str {
+        if present {
+            "ObservedPresent"
+        } else if optional {
+            "NotApplicable"
+        } else if !journal.present || journal.empty {
+            "MissingBeforeProducerReached"
+        } else if journal.saw_interrupted {
+            "ProducerInterrupted"
+        } else if journal.saw_during_floor {
+            "MissingAfterProducerReached"
+        } else {
+            "MissingBeforeProducerReached"
+        }
+    }
+
+    let run_id = env_or_empty("GITHUB_RUN_ID");
+    let run_attempt = env_or_empty("GITHUB_RUN_ATTEMPT");
+    let job_key = env_or_empty("GITHUB_JOB");
+    let head = env_or_empty("GITHUB_SHA");
+    let mut tested_tree = String::new();
+    if !head.is_empty() {
+        if let Ok(out) = Command::new("git")
+            .args(["log", "-1", "--format=%T", &head])
+            .output()
+        {
+            if out.status.success() {
+                tested_tree = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            }
+        }
+    }
+    let mut walk = env_or_empty("GUNBC_WALK_ATTEMPT_ID");
+    if walk.is_empty() && !run_id.is_empty() && !run_attempt.is_empty() && !job_key.is_empty() {
+        walk = format!("{run_id}-{run_attempt}-{job_key}");
+    }
+
+    let journal = summarize_journal();
+    if let Err(e) = fs::create_dir_all("target") {
+        eprintln!("::error::finalize-floor-evidence: mkdir target failed: {e}");
+        return Err(ExitCode::from(1));
+    }
+
+    let mut out = String::new();
+    out.push_str(SCHEMA);
+    out.push('\n');
+    out.push_str(&format!("run_id={run_id}\n"));
+    out.push_str(&format!("run_attempt={run_attempt}\n"));
+    out.push_str(&format!("job_key={job_key}\n"));
+    out.push_str(&format!("head_commit={head}\n"));
+    out.push_str(&format!("tested_tree={tested_tree}\n"));
+    out.push_str(&format!("walk_attempt={walk}\n"));
+    // Local subject only — uploaded artifact digest is a post-upload binding.
+    out.push_str(
+        "kind\texpected_pattern\tobserved_path\tstanding\tproducer_phase\tsize_bytes\tcontent_digest\n",
+    );
+
+    let mut row_count = 0usize;
+    for row in ROWS {
+        let pattern = pattern_of(row.locator);
+        let matches = expand(row.locator);
+        if matches.is_empty() {
+            let standing = standing_for(false, row.optional_worker, &journal);
+            out.push_str(&format!(
+                "{}\t{}\t\t{}\t{}\t0\t\n",
+                row.kind, pattern, standing, row.phase
+            ));
+            row_count += 1;
+            continue;
+        }
+        for path in matches {
+            match sha256_file(&path) {
+                Ok((size, digest)) => {
+                    out.push_str(&format!(
+                        "{}\t{}\t{}\tObservedPresent\t{}\t{}\t{}\n",
+                        row.kind,
+                        pattern,
+                        path.display(),
+                        row.phase,
+                        size,
+                        digest
+                    ));
+                    row_count += 1;
+                }
+                Err(e) => {
+                    eprintln!(
+                        "::error::finalize-floor-evidence: digest refused for {}: {e}",
+                        path.display()
+                    );
+                    return Err(ExitCode::from(1));
+                }
+            }
+        }
+    }
+
+    let mut file = match fs::File::create(MANIFEST_PATH) {
+        Ok(f) => f,
+        Err(e) => {
+            eprintln!("::error::finalize-floor-evidence: create {MANIFEST_PATH}: {e}");
+            return Err(ExitCode::from(1));
+        }
+    };
+    if let Err(e) = file.write_all(out.as_bytes()).and_then(|_| file.sync_all()) {
+        eprintln!("::error::finalize-floor-evidence: write {MANIFEST_PATH}: {e}");
+        return Err(ExitCode::from(1));
+    }
+
+    eprintln!(
+        "[floor-population-evidence] wrote {MANIFEST_PATH} schema={SCHEMA} rows={row_count} (local subject; no uploaded artifact digest)"
+    );
+    Ok(ExitCode::SUCCESS)
+}
+
 /// Single authority for the one-line whole-tree cgroup measurement, shared by the floor run and the
 /// standalone `--measure-cgroup-peak` mode so the `ci` and `rust_tests` jobs report an
 /// identically-shaped line. `context` distinguishes the call site.
@@ -8344,6 +8734,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     let mut measure_cgroup_peak = false;
     let mut verify_artifacts: Vec<String> = Vec::new();
     let mut verify_artifacts_mode = false;
+    let mut finalize_floor_evidence_mode = false;
     let mut floor_worker_role: Option<FloorWorkerRole> = None;
     let mut scoped_batch_id: Option<String> = None;
 
@@ -8359,6 +8750,9 @@ fn run() -> Result<ExitCode, ExitCode> {
                     i += 1;
                 }
                 break;
+            }
+            "--finalize-floor-evidence" => {
+                finalize_floor_evidence_mode = true;
             }
             "--source-root" => {
                 i += 1;
@@ -8423,6 +8817,10 @@ fn run() -> Result<ExitCode, ExitCode> {
     // Short-circuits before the plan-arg requirements so it needs no `--plan-entry`.
     if verify_artifacts_mode {
         return verify_build_artifacts(&verify_artifacts);
+    }
+
+    if finalize_floor_evidence_mode {
+        return finalize_floor_evidence();
     }
 
     // Standalone whole-tree cgroup measurement (no plan run): the `rust_tests` job invokes this

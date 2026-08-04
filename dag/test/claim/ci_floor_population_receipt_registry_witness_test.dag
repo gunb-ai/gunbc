@@ -11,8 +11,6 @@ import gunbc.ci_floor_population_receipt_registry {
   ci_floor_population_receipt_registry_paths,
   ci_floor_population_receipt_registry_well_formed,
   ci_floor_population_receipts_upload_paths,
-  ci_evidence_subject_wire_incomplete,
-  ci_evidence_subject_wire_fields_present,
   registry_rows_well_formed,
   planted_duplicate_kind_rows,
   planted_duplicate_path_rows,
@@ -108,10 +106,6 @@ test fn witness_upload_paths_derived_from_registry() -> Bool {
     && string_contains(s: paths, pattern: "target/floor-worker-observation-receipt.tsv")
     && string_contains(s: paths, pattern: "target/scoped-witness-execution-receipt.tsv")
     && string_contains(s: paths, pattern: "target/floor-attempt-*/")
-}
-
-test fn witness_incomplete_wire_refuses_subject() -> Bool {
-  !ci_evidence_subject_wire_fields_present(w: ci_evidence_subject_wire_incomplete())
 }
 
 test fn witness_required_kinds_pinned() -> Bool {

@@ -9,9 +9,6 @@ import gunbc.ci_floor_population_receipt_registry {
   FloorPopulationReceiptKind,
   FloorPopulationReceiptProducerPhase,
   FloorReceiptLocator,
-  floor_population_receipt_kind_label,
-  floor_population_receipt_producer_phase_label,
-  floor_receipt_locator_upload_pattern,
 }
 
 data ci_floor_population_evidence_note: String = "Attempt-scoped floor-evidence sink/finalizer authority (operator ruling on #7785): LocalCiEvidenceSubject is known before upload (no artifact digest). UploadedEvidenceBinding is a post-upload join. ManifestObservationStanding is derived from registry + phase journal + receipt observations — never from shell category heuristics. Dissolve-on for seed finalize: claim_executor --finalize-floor-evidence is an interim native realization of tools.ci_floor_population_evidence_finalize; producers writing ReceiptWriteObservation at write time retire rediscovery."

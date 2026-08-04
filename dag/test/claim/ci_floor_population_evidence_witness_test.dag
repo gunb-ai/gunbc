@@ -1,0 +1,66 @@
+module test.claim.ci_floor_population_evidence_witness
+
+import std.types { Bool }
+import gunbc.ci_floor_population_evidence {
+  MissingAfterProducerReached,
+  MissingBeforeProducerReached,
+  NotApplicable,
+  JournalAbsent,
+  JournalPresent,
+  local_subject_wire_incomplete,
+  local_subject_wire_fields_present,
+  standing_from_journal_and_presence,
+  red_blank_artifact_digest_forbidden_on_local_subject,
+  red_shell_category_heuristic_forbidden,
+  floor_evidence_manifest_schema,
+}
+
+test fn witness_local_subject_incomplete_refuses() -> Bool {
+  !local_subject_wire_fields_present(w: local_subject_wire_incomplete())
+}
+
+test fn witness_local_subject_has_no_artifact_digest_field() -> Bool {
+  red_blank_artifact_digest_forbidden_on_local_subject()
+}
+
+test fn witness_missing_after_producer_reached_from_journal() -> Bool {
+  red_shell_category_heuristic_forbidden()
+}
+
+test fn witness_optional_worker_absent_is_not_applicable() -> Bool {
+  match standing_from_journal_and_presence(
+    present: false,
+    optional_worker: true,
+    journal: JournalAbsent {}
+  ) {
+    NotApplicable { reason: _ } => true
+    _ => false
+  }
+}
+
+test fn witness_missing_before_producer_when_journal_absent() -> Bool {
+  match standing_from_journal_and_presence(
+    present: false,
+    optional_worker: false,
+    journal: JournalAbsent {}
+  ) {
+    MissingBeforeProducerReached {} => true
+    _ => false
+  }
+}
+
+test fn witness_manifest_schema_is_v3() -> Bool {
+  floor_evidence_manifest_schema == "gunbc.ci_floor_population_receipt_manifest.v3"
+}
+
+test fn red_journal_present_must_not_say_not_reached() -> Bool {
+  match standing_from_journal_and_presence(
+    present: false,
+    optional_worker: false,
+    journal: JournalPresent { row_count: 2, saw_during_floor: true, saw_interrupted: false }
+  ) {
+    MissingBeforeProducerReached {} => false
+    MissingAfterProducerReached {} => true
+    _ => true
+  }
+}
