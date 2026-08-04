@@ -170,7 +170,7 @@ pub fn parse_href_scheme(url: String) -> Rc<ParsedHrefScheme> {
 pub fn uri_component_encode_authority_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "RFC 3986 section 2.1 percent-encoding (https://www.rfc-editor.org/rfc/rfc3986#section-2.1) realized by extdeps.uri uri_percent_encode_* over UriUnicodeScalar / UriUtf8Octet. RFC 3986 section 3.3 path grammar is cited at extdeps.uri_path extdeps_external_authority_anchor — same specification, distinct section facts, no parallel section module. UriUnicodeScalar is the raw Int carrier; UriValidatedScalar { cp: Int where unicode_scalar } is minted only by uri_unicode_scalar_construction; UriUtf8Octet is the octet wire domain. uri_percent_encode_admitted_scalar_wire accepts UriValidatedScalar only — a hand-built UriUnicodeScalar does not typecheck there.".to_string()
+            "RFC 3986 section 2.1 percent-encoding (https://www.rfc-editor.org/rfc/rfc3986#section-2.1) realized by extdeps.uri uri_percent_encode_* over UriUnicodeScalar / UriUtf8Octet. RFC 3986 section 3.3 path grammar is cited at extdeps.uri_path extdeps_external_authority_anchor — same specification, distinct section facts, no parallel section module. UriUnicodeScalar { cp } is the raw carrier; UriValidatedScalar { admitted_cp: Int where unicode_scalar } is minted only by uri_unicode_scalar_construction and is not structurally interchangeable with UriUnicodeScalar. uri_percent_encode_admitted_scalar_wire accepts UriValidatedScalar only.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -223,7 +223,7 @@ pub struct UriUnicodeScalar {
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct UriValidatedScalar {
-    pub cp: i64,
+    pub admitted_cp: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -464,7 +464,9 @@ pub fn uri_unicode_scalar_construction(cp: i64) -> Rc<UriUnicodeScalarConstructi
                 )
             } else {
                 Rc::new(UriUnicodeScalarConstruction::UriUnicodeScalarConstructed(
-                    UriValidatedScalar { cp: cp.clone() },
+                    UriValidatedScalar {
+                        admitted_cp: cp.clone(),
+                    },
                 ))
             }
         }
@@ -640,7 +642,7 @@ pub fn uri_percent_encode_unicode_scalar(
 }
 
 pub fn uri_validated_scalar_code_point(scalar: UriValidatedScalar) -> i64 {
-    scalar.cp.clone()
+    scalar.admitted_cp.clone()
 }
 
 pub fn uri_percent_encode_admitted_scalar_wire(
