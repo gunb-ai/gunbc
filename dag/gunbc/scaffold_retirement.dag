@@ -63,8 +63,6 @@ data scaffold_retirement_long_witness_function_roster: List<String> = [
   "unknown_obligation_identity_refuses_admission",
 ]
 
-type ExactStructuralDecodeEvidence = ExactStructuralDecodeEvidence
-
 type ScaffoldDispositionSite {
   qualified_name: String
   carrier_module: String
@@ -90,7 +88,7 @@ type ScaffoldDecodeRefusalRow {
 
 type ScaffoldSiteProjection
   = NotScaffold
-  | ScaffoldSiteDecoded { site: ScaffoldDispositionSite, evidence: ExactStructuralDecodeEvidence }
+  | ScaffoldSiteDecoded { site: ScaffoldDispositionSite }
   | ScaffoldCandidateDecodeRefused { refusal: ScaffoldDecodeRefusalRow }
 
 type ScaffoldSiteLookup
@@ -179,15 +177,27 @@ fn construction_mechanism_from_lexeme(lex: String) -> ConstructionMechanism? {
   }
 }
 
-fn atom_lexeme_from_exact_child(child: Node) -> String? {
-  match node_atom_lexeme_optional(node: child) {
-    Present { value: lex } => Present { value: lex }
-    Absent =>
-      match list_at_optional(xs: node_positional_child_targets(node: child), index: 0) {
-        Present { value: nested } => node_atom_lexeme_optional(node: nested)
-        Absent => Absent
-      }
+fn decl_facts_skeleton_atom_lexeme_optional(node: Node) -> String? {
+  match node.kind {
+    TypeNode { connective: Atom { identity: sym } } =>
+      Present { value: symbol_lexeme(sym: sym) }
+    TypeNode { connective: Conj } =>
+      fold(
+        node_positional_child_targets(node: node),
+        init: Absent,
+        f: fn(acc, nested) {
+          match acc {
+            Present { value: _ } => acc
+            Absent => decl_facts_skeleton_atom_lexeme_optional(node: nested)
+          }
+        }
+      )
+    _ => Absent
   }
+}
+
+fn atom_lexeme_from_exact_child(child: Node) -> String? {
+  decl_facts_skeleton_atom_lexeme_optional(node: child)
 }
 
 fn construction_mechanism_from_exact_child(child: Node) -> ConstructionMechanism? {
@@ -207,7 +217,7 @@ fn dissolves_to_from_exact_scaffold_body(body: Node) -> ConstructionMechanism? {
 fn named_field_from_declaration_ref_conj(node: Node, field_node: Node) -> DeclField? {
   match list_at_optional(xs: node_positional_child_targets(node: node), index: 4) {
     Present { value: name_node } =>
-      match node_atom_lexeme_optional(node: name_node) {
+      match decl_facts_skeleton_atom_lexeme_optional(node: name_node) {
         Present { value: field_name } =>
           Present { value: NamedField { field_name: field_name } }
         Absent => Absent
@@ -215,7 +225,7 @@ fn named_field_from_declaration_ref_conj(node: Node, field_node: Node) -> DeclFi
     Absent =>
       match list_at_optional(xs: node_positional_child_targets(node: field_node), index: 0) {
         Present { value: name_node } =>
-          match node_atom_lexeme_optional(node: name_node) {
+          match decl_facts_skeleton_atom_lexeme_optional(node: name_node) {
             Present { value: field_name } =>
               Present { value: NamedField { field_name: field_name } }
             Absent => Absent
@@ -236,7 +246,7 @@ fn decl_field_lexeme_from_field_node(node: Node, field_node: Node, lex: String) 
 fn decl_field_from_declaration_ref_conj_at(node: Node, field_index: Int) -> DeclField? {
   match list_at_optional(xs: node_positional_child_targets(node: node), index: field_index) {
     Present { value: field_node } =>
-      match node_atom_lexeme_optional(node: field_node) {
+      match decl_facts_skeleton_atom_lexeme_optional(node: field_node) {
         Present { value: lex } => decl_field_lexeme_from_field_node(node: node, field_node: field_node, lex: lex)
         Absent => Absent
       }
@@ -264,9 +274,9 @@ fn declaration_ref_pair_at_indices(
     Present { value: module_node } =>
       match list_at_optional(xs: node_positional_child_targets(node: node), index: decl_index) {
         Present { value: decl_node } =>
-          match node_atom_lexeme_optional(node: module_node) {
+          match decl_facts_skeleton_atom_lexeme_optional(node: module_node) {
             Present { value: module_path } =>
-              match node_atom_lexeme_optional(node: decl_node) {
+              match decl_facts_skeleton_atom_lexeme_optional(node: decl_node) {
                 Present { value: decl_name } =>
                   Present {
                     value: DeclarationRef {
@@ -286,7 +296,7 @@ fn declaration_ref_pair_at_indices(
 }
 
 fn declaration_ref_from_declaration_ref_conj(node: Node) -> DeclarationRef? {
-  match declaration_ref_pair_at_indices(node: node, module_index: 1, decl_index: 2) {
+  match declaration_ref_pair_at_indices(node: node, module_index: 0, decl_index: 1) {
     Present { value: bind } =>
       match decl_field_from_declaration_ref_conj(node: node) {
         Present { value: field } =>
@@ -300,7 +310,7 @@ fn declaration_ref_from_declaration_ref_conj(node: Node) -> DeclarationRef? {
         Absent => Absent
       }
     Absent =>
-      match declaration_ref_pair_at_indices(node: node, module_index: 0, decl_index: 1) {
+      match declaration_ref_pair_at_indices(node: node, module_index: 1, decl_index: 2) {
         Present { value: bind } =>
           match decl_field_from_declaration_ref_conj(node: node) {
             Present { value: field } =>
@@ -324,10 +334,16 @@ fn bind_from_exact_scaffold_body(body: Node) -> DeclarationRef? {
       match declaration_ref_from_declaration_ref_conj(node: child) {
         Present { value: bind } => Present { value: bind }
         Absent =>
-          match list_at_optional(xs: node_positional_child_targets(node: child), index: 0) {
-            Present { value: nested } => declaration_ref_from_declaration_ref_conj(node: nested)
-            Absent => Absent
-          }
+          fold(
+            node_positional_child_targets(node: child),
+            init: Absent,
+            f: fn(acc, nested) {
+              match acc {
+                Present { value: _ } => acc
+                Absent => declaration_ref_from_declaration_ref_conj(node: nested)
+              }
+            }
+          )
       }
     Absent => Absent
   }
@@ -433,7 +449,6 @@ fn project_scaffold_site_from_body_fact_for_pool(
                                   bind: normalize_declaration_ref(bind: bind),
                                   dissolves_to: dissolves_to,
                                 },
-                                evidence: ExactStructuralDecodeEvidence,
                               }
                             Absent =>
                               scaffold_candidate_decode_refused_for_fact(
@@ -479,7 +494,7 @@ fn derived_scaffold_disposition_sites_for_pool(pool_roots: List<String>) -> List
     init: DecodedAccumulator { sites: [] },
     f: fn(acc, fact) {
       match project_scaffold_site_from_body_fact_for_pool(body_fact: fact, pool_roots: pool_roots) {
-        ScaffoldSiteDecoded { site: site, evidence: ExactStructuralDecodeEvidence } =>
+        ScaffoldSiteDecoded { site: site } =>
           DecodedAccumulator { sites: list_snoc_item(xs: acc.sites, item: site) }
         _ => acc
       }
@@ -493,10 +508,14 @@ fn derived_scaffold_disposition_refused_for_pool(pool_roots: List<String>) -> Li
     decl_facts(pool_roots: pool_roots),
     init: RefusedAccumulator { rows: [] },
     f: fn(acc, fact) {
-      match project_scaffold_site_from_body_fact_for_pool(body_fact: fact, pool_roots: pool_roots) {
-        ScaffoldCandidateDecodeRefused { refusal: row } =>
-          RefusedAccumulator { rows: list_snoc_item(xs: acc.rows, item: row) }
-        _ => acc
+      if is_scaffold_shape_candidate_for_pool(fact: fact, pool_roots: pool_roots) {
+        match project_scaffold_site_from_body_fact_for_pool(body_fact: fact, pool_roots: pool_roots) {
+          ScaffoldCandidateDecodeRefused { refusal: row } =>
+            RefusedAccumulator { rows: list_snoc_item(xs: acc.rows, item: row) }
+          _ => acc
+        }
+      } else {
+        acc
       }
     }
   )
@@ -530,9 +549,7 @@ fn disposition_type_check_for_fact(fact: DeclFact, pool_roots: List<String>) -> 
 
 fn is_scaffold_shape_candidate_for_pool(fact: DeclFact, pool_roots: List<String>) -> Bool {
   match fact.kind {
-    DataItem =>
-      disposition_type_check_for_fact(fact: fact, pool_roots: pool_roots)
-        && length(xs: node_positional_child_targets(node: fact.node)) == 2
+    DataItem => disposition_type_check_for_fact(fact: fact, pool_roots: pool_roots)
     _ => false
   }
 }

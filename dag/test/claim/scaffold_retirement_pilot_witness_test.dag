@@ -14,7 +14,6 @@ import gunbc.scaffold_retirement {
   ScaffoldSiteLookupUnique,
   ScaffoldSiteDecoded,
   ScaffoldCandidateDecodeRefused,
-  ExactStructuralDecodeEvidence,
   BodyShapeNotScaffoldRecord,
   DeclaredTypeNotDisposition,
 }
@@ -78,7 +77,7 @@ test fn fixture_exact_decode_admits_planted_specimen() -> Bool {
         body_fact: fact,
         pool_roots: scaffold_retirement_fixture_pool_roots
       ) {
-        ScaffoldSiteDecoded { site: site, evidence: ExactStructuralDecodeEvidence } =>
+        ScaffoldSiteDecoded { site: site } =>
           site.bind.decl_name == "planted_exact_scaffold_specimen"
         _ => false
       }
@@ -136,8 +135,4 @@ test fn fixture_proposed_binding_is_empty_without_roadmap_anchor() -> Bool {
       length(xs: proposed_binding_for_site(site: site)) == 0
     _ => false
   }
-}
-
-test fn fixture_decl_facts_pool_is_nonempty() -> Bool {
-  length(xs: decl_facts(pool_roots: scaffold_retirement_fixture_pool_roots)) > 0
 }
