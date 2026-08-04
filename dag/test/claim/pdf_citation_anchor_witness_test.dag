@@ -7,16 +7,15 @@ import extdeps.pdf_citation {
   PaywalledSource, FetchRefused,
   pdf_open_page, pdf_citation_detail, document_content_pin_verified,
   pdf_open_parameters_include_page, document_content_pin_is_verified,
-  document_content_pin_digest_eq,
+  document_content_pin_digest_eq, pdf_page_number_is_valid,
 }
-import extdeps.external_authority { external_authority_with_pdf_citation }
+import extdeps.external_authority { ExternalAuthority, external_authority_with_pdf_citation }
 import extdeps.uri { Uri, Https }
 import extdeps.standards.rfc_8118 {
   extdeps_external_authority_anchor,
   rfc_8118_supersedes_rfc_3778_note,
 }
 import std.content_hash { Sha256DigestHex }
-import std.integer { PositiveInt }
 import std.types { Bool, List }
 
 data x86_64_abi_pdf_sha256_hex: Sha256DigestHex = "69e117a13b560b1b957c15f05a61b130ca56828f05dca951e27cb8e2ada14283" as Sha256DigestHex
@@ -31,11 +30,11 @@ data witness_pdf_uri: Uri = Uri {
 data witness_verified_pin: DocumentContentPin = document_content_pin_verified(hex: x86_64_abi_pdf_sha256_hex)
 
 data witness_pdf_citation: PdfCitationDetail = pdf_citation_detail(
-  open_parameters: [pdf_open_page(page: 1 as PositiveInt)],
+  open_parameters: [pdf_open_page(page: 1)],
   content_pin: witness_verified_pin,
 )
 
-data witness_pdf_authority = external_authority_with_pdf_citation(
+data witness_pdf_authority: ExternalAuthority = external_authority_with_pdf_citation(
   uri: witness_pdf_uri,
   detail: witness_pdf_citation,
 )
@@ -46,17 +45,21 @@ test fn rfc_8118_anchor_cites_current_standard_not_3778() -> Bool {
     && !string_contains(s: extdeps_external_authority_anchor.uri.locator, pattern: "rfc3778")
 }
 
+test fn pdf_page_number_is_valid_red_nonpositive() -> Bool {
+  !pdf_page_number_is_valid(page: 0) && !pdf_page_number_is_valid(page: -1)
+}
+
 test fn pdf_open_parameters_include_page_holds_for_authored_page() -> Bool {
   pdf_open_parameters_include_page(
     sequence: witness_pdf_citation.open_parameters,
-    page: 1 as PositiveInt,
+    page: 1,
   )
 }
 
 test fn pdf_open_parameters_include_page_red_wrong_page() -> Bool {
   !pdf_open_parameters_include_page(
     sequence: witness_pdf_citation.open_parameters,
-    page: 99 as PositiveInt,
+    page: 99,
   )
 }
 
@@ -85,15 +88,12 @@ test fn unpinned_pin_is_not_verified() -> Bool {
 }
 
 test fn external_authority_pdf_sidecar_present_when_migrated() -> Bool {
-  match witness_pdf_authority.pdf {
-    Present { value: detail } =>
-      document_content_pin_is_verified(pin: detail.content_pin)
-        && pdf_open_parameters_include_page(
-          sequence: detail.open_parameters,
-          page: 1 as PositiveInt,
-        )
-    Absent => false
-  }
+  let detail = witness_pdf_authority.pdf
+  document_content_pin_is_verified(pin: detail.content_pin)
+    && pdf_open_parameters_include_page(
+      sequence: detail.open_parameters,
+      page: 1,
+    )
 }
 
 test fn fetch_refused_unreachable_carries_status() -> Bool {

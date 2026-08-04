@@ -1,13 +1,12 @@
 module extdeps.pdf_citation
 
 import std.types { NonEmptyStr, String, Int, List, Bool }
-import std.integer { PositiveInt }
 import std.content_hash { Sha256Digest, Sha256DigestHex }
 
 data pdf_citation_vocabulary_note: String = "Typed PDF citation anchors per RFC 8118 section 3 (authority: extdeps.standards.rfc_8118). Fragment parameters are a closed coproduct sequence — never a string in Uri.locator. Content pins record verification at citation time: Verified carries a Sha256Digest minted only through the content_hash wall; Unreachable carries an explicit cause rather than silent absence."
 
 type PdfOpenPage {
-  page: PositiveInt
+  page: Int
 }
 
 type PdfOpenNamedDest {
@@ -91,7 +90,7 @@ type PdfCitationDetail {
   content_pin: DocumentContentPin
 }
 
-fn pdf_open_page(page: PositiveInt) -> PdfOpenParameter {
+fn pdf_open_page(page: Int) -> PdfOpenParameter {
   OpenPage(PdfOpenPage { page: page })
 }
 
@@ -111,9 +110,13 @@ fn document_content_pin_verified(hex: Sha256DigestHex) -> DocumentContentPin {
   }
 }
 
+fn pdf_page_number_is_valid(page: Int) -> Bool {
+  page > 0
+}
+
 fn pdf_open_parameters_include_page(
   sequence: PdfOpenParameterSequence,
-  page: PositiveInt,
+  page: Int,
 ) -> Bool {
   any(
     sequence.parameters,
