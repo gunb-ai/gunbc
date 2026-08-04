@@ -13,8 +13,10 @@ use crate::std_occurrence_binding::OccurrenceBindingResult::{
 pub use crate::std_occurrence_binding_resolve::OccurrenceReferenceBindingOutcome;
 use crate::std_occurrence_binding_resolve::OccurrenceReferenceBindingOutcome::OccurrenceReferenceBindingDecided;
 use crate::std_reference_binding_observation::ReferenceBindingObservation::{
-    DistinctHomonymObservation, LaterDeclarationObservation, RepeatedMentionDependencyObservation,
-    SameFileNeighbourObservation, SiblingBranchObservation, UnrelatedLoadedFileObservation,
+    DistinctHomonymObservation, DistinctHomonymProductionRefused, LaterDeclarationObservation,
+    LaterDeclarationProductionRefused, RepeatedMentionDependencyObservation,
+    SameFileNeighbourObservation, SameFileNeighbourProductionRefused, SiblingBranchObservation,
+    SiblingBranchProductionRefused, UnrelatedLoadedFileObservation,
 };
 use crate::std_reference_binding_observation::StructuralBindingResolution::StructuralBindingResolved;
 pub use crate::std_reference_binding_observation::{
@@ -139,6 +141,10 @@ pub fn assess_reference_binding_observation(
     observation: Rc<ReferenceBindingObservation>,
 ) -> Rc<ReferenceDerivedClosureAdmission> {
     match (*observation.clone()).clone() {
+        ReferenceBindingObservation::SameFileNeighbourProductionRefused { gap: _, .. } => refused(
+            ReferenceDerivedClosureCapability::SameFileEarlierNeighbourVisible,
+            ReferenceDerivedClosureScenarioFailure::SameFileNeighbourMissing,
+        ),
         ReferenceBindingObservation::SameFileNeighbourObservation {
             neighbour,
             resolution,
@@ -185,6 +191,10 @@ pub fn assess_reference_binding_observation(
                 }
             }
         }
+        ReferenceBindingObservation::SiblingBranchProductionRefused { gap: _, .. } => refused(
+            ReferenceDerivedClosureCapability::SiblingDecisionBranchExcluded,
+            ReferenceDerivedClosureScenarioFailure::SiblingBranchLeaked,
+        ),
         ReferenceBindingObservation::SiblingBranchObservation {
             own_branch_declaration,
             sibling_branch_declaration,
@@ -242,6 +252,10 @@ pub fn assess_reference_binding_observation(
                 }
             }
         }
+        ReferenceBindingObservation::LaterDeclarationProductionRefused { gap: _, .. } => refused(
+            ReferenceDerivedClosureCapability::LaterDeclarationExcluded,
+            ReferenceDerivedClosureScenarioFailure::LaterDeclarationLeaked,
+        ),
         ReferenceBindingObservation::LaterDeclarationObservation { resolution, .. } => {
             match binding_outcome_from_resolution(resolution.clone()) {
                 None => refused(
@@ -267,6 +281,10 @@ pub fn assess_reference_binding_observation(
                 },
             }
         }
+        ReferenceBindingObservation::DistinctHomonymProductionRefused { gap: _, .. } => refused(
+            ReferenceDerivedClosureCapability::DistinctSameSpelledDeclarationsPreserved,
+            ReferenceDerivedClosureScenarioFailure::DistinctDeclarationCollapsed,
+        ),
         ReferenceBindingObservation::DistinctHomonymObservation {
             first_declaration,
             second_declaration,

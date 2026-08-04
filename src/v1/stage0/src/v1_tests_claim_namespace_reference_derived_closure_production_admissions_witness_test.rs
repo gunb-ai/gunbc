@@ -14,7 +14,7 @@ use crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerived
 use crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerivedClosureTrigger::{P2aReferenceDependencyProjection7515, P2aPoolIndependentDependencyProjection7515};
 pub use crate::gunbc_namespace_reference_derived_closure_contract::{reference_derived_closure_closing_frontier_count};
 pub use crate::std_reference_binding_observation::{ReferenceBindingObservation};
-use crate::std_reference_binding_observation::ReferenceBindingObservation::{DistinctHomonymObservation, LaterDeclarationObservation, SameFileNeighbourObservation, SiblingBranchObservation};
+use crate::std_reference_binding_observation::ReferenceBindingObservation::{DistinctHomonymObservation, DistinctHomonymProductionRefused, LaterDeclarationObservation, LaterDeclarationProductionRefused, SameFileNeighbourObservation, SameFileNeighbourProductionRefused, SiblingBranchObservation, SiblingBranchProductionRefused};
 pub use crate::v1_gunbc_namespace_reference_derived_closure_production_observations::{namespace_structural_binding_observations_a_through_d};
 pub use crate::std_types::{Bool, List};
 use crate::std_types::Bool::*;
@@ -40,6 +40,10 @@ pub fn witness_structural_production_variants_match_clauses_a_through_d() -> boo
             for obs in observations.clone().iter().cloned() {
                 if match (*obs.clone()).clone() {
                     ReferenceBindingObservation::SameFileNeighbourObservation { .. } => true,
+                    ReferenceBindingObservation::SameFileNeighbourProductionRefused {
+                        gap: _,
+                        ..
+                    } => true,
                     _ => false,
                 } {
                     __found = true;
@@ -52,6 +56,9 @@ pub fn witness_structural_production_variants_match_clauses_a_through_d() -> boo
             for obs in observations.clone().iter().cloned() {
                 if match (*obs.clone()).clone() {
                     ReferenceBindingObservation::SiblingBranchObservation { .. } => true,
+                    ReferenceBindingObservation::SiblingBranchProductionRefused {
+                        gap: _, ..
+                    } => true,
                     _ => false,
                 } {
                     __found = true;
@@ -64,6 +71,10 @@ pub fn witness_structural_production_variants_match_clauses_a_through_d() -> boo
             for obs in observations.clone().iter().cloned() {
                 if match (*obs.clone()).clone() {
                     ReferenceBindingObservation::LaterDeclarationObservation { .. } => true,
+                    ReferenceBindingObservation::LaterDeclarationProductionRefused {
+                        gap: _,
+                        ..
+                    } => true,
                     _ => false,
                 } {
                     __found = true;
@@ -76,6 +87,10 @@ pub fn witness_structural_production_variants_match_clauses_a_through_d() -> boo
             for obs in observations.clone().iter().cloned() {
                 if match (*obs.clone()).clone() {
                     ReferenceBindingObservation::DistinctHomonymObservation { .. } => true,
+                    ReferenceBindingObservation::DistinctHomonymProductionRefused {
+                        gap: _,
+                        ..
+                    } => true,
                     _ => false,
                 } {
                     __found = true;

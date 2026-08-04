@@ -87,19 +87,31 @@ pub enum ReferenceBindingObservation {
         neighbour: OccurrenceId,
         resolution: Rc<StructuralBindingResolution>,
     },
+    SameFileNeighbourProductionRefused {
+        gap: ReferenceBindingProductionGap,
+    },
     SiblingBranchObservation {
         own_branch_declaration: OccurrenceId,
         sibling_branch_declaration: OccurrenceId,
         resolution: Rc<StructuralBindingResolution>,
     },
+    SiblingBranchProductionRefused {
+        gap: ReferenceBindingProductionGap,
+    },
     LaterDeclarationObservation {
         later_declaration: OccurrenceId,
         resolution: Rc<StructuralBindingResolution>,
+    },
+    LaterDeclarationProductionRefused {
+        gap: ReferenceBindingProductionGap,
     },
     DistinctHomonymObservation {
         first_declaration: OccurrenceId,
         second_declaration: OccurrenceId,
         resolution: Rc<StructuralBindingResolution>,
+    },
+    DistinctHomonymProductionRefused {
+        gap: ReferenceBindingProductionGap,
     },
     RepeatedMentionDependencyObservation {
         provider_file: FilePath,
