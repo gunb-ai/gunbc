@@ -44,7 +44,7 @@ import gunbc.roadmap_acceptance_history_carrier {
 }
 import gunbc.roadmap_acceptance_history_observation {
   current_roadmap_acceptance_history_prior_observation,
-  acceptance_history_integrity_holds_from_prior_observation,
+  acceptance_history_integrity_holds_from_prior_observation_with_prior,
 }
 import gunbc.roadmap_execution_contract { ExecutionContractUnspecified, contract_has_closing_validation }
 import gunbc.roadmap_focus {
@@ -1961,7 +1961,7 @@ fn roadmap_acceptance_history_integrity_holds() -> Bool {
   match roadmap_acceptance_event_history_load() {
     RoadmapAcceptanceEventHistoryLoadRefused { detail: _ } => false
     RoadmapAcceptanceEventHistoryLoaded { events: current } =>
-      acceptance_history_integrity_holds_from_prior_observation(
+      acceptance_history_integrity_holds_from_prior_observation_with_prior(
         observation: current_roadmap_acceptance_history_prior_observation(current_history: current),
         history: current,
       )

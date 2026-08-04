@@ -1,7 +1,7 @@
 module gunbc.roadmap_site_surface_observe
 
 import std.types { String, NonEmptyStr, List }
-import std.content_hash { Fnv1a64Structural, content_hash_atom, combine_hash }
+import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_combine_structural, content_hash_tagged_structural }
 import gunbc.roadmap_authority {
   roadmap_authority_projection,
   RoadmapAuthorityProjection,
@@ -37,7 +37,10 @@ data roadmap_site_surface_observe_note: String = "THE SOLE LIVE OBSERVATION AUTH
 
 fn acceptance_identity_from_accepted(accepted: List<RoadmapNodeId>) -> Fnv1a64Structural {
   fold(accepted, init: content_hash_atom(value: "roadmap-acceptance-snapshot/v1" as NonEmptyStr), f: (acc, id) =>
-    combine_hash(left: acc, right: content_hash_atom(value: id as NonEmptyStr))
+    content_hash_combine_structural(
+      left: acc,
+      right: content_hash_atom(value: id as NonEmptyStr),
+    )
   )
 }
 
@@ -51,9 +54,9 @@ fn acceptance_identity_for_projection(proj: RoadmapAuthorityProjection) -> Fnv1a
 }
 
 fn authority_identity_from_acceptance(acceptance_identity: Fnv1a64Structural) -> Fnv1a64Structural {
-  combine_hash(
-    left: acceptance_identity,
-    right: content_hash_atom(value: "roadmap-authority-snapshot/v1" as NonEmptyStr),
+  content_hash_tagged_structural(
+    tag: "roadmap-authority-snapshot/v1" as NonEmptyStr,
+    payload: acceptance_identity,
   )
 }
 

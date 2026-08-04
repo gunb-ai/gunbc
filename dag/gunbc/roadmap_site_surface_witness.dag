@@ -1,0 +1,95 @@
+module gunbc.roadmap_site_surface_witness
+
+import gunbc.roadmap_site_surface_observe {
+  live_roadmap_site_surface_bundle,
+  recorded_roadmap_site_surface_bundle,
+}
+import gunbc.roadmap_site_surface_expect {
+  healthz_round_trip_receipt_holds,
+  fresh_surface_read_grounds,
+  stale_surface_read_does_not_ground,
+  healthz_surface_tolerates_transport_trailing_lf,
+  healthz_route_json_ok,
+}
+import std.realization_reconcile {
+  ShowEffectiveRead,
+  ReadObserved,
+  ReadAbsent,
+  Grounding,
+  Grounds,
+  DoesNotGround,
+  Reconciliation,
+  Converged,
+  NotConverged,
+  reconcile_grounded,
+  reconciliation_converged,
+}
+import gunbc.live_deploy.readiness {
+  HealthzEffectiveRead,
+  reconcile_service_ready_read_for_bundle,
+  live_deploy_service_ready_once_for_bundle,
+  show_healthz_read_fixture_healthy,
+  service_ready_apply_effect,
+  ground_service_ready_from_healthz_with_bundle,
+}
+import gunbc.roadmap_site_surface_types { RoadmapSiteSurfaceBundle }
+
+data witness_stale_healthz_body: String = "{\"status\":\"ok\",\"service\":\"gunbc-roadmap\",\"artifacts\":{\"/roadmap\":\"stale-digest\"}}"
+
+fn fresh_surface_read_grounds_for_bundle(bundle: RoadmapSiteSurfaceBundle) -> Bool {
+  fresh_surface_read_grounds(
+    bundle: bundle,
+    read: HealthzEffectiveRead { body: bundle.healthz_body, probe_error: "" },
+  )
+}
+
+fn stale_surface_read_does_not_ground_for_bundle(bundle: RoadmapSiteSurfaceBundle) -> Bool {
+  stale_surface_read_does_not_ground(bundle: bundle, stale_body: witness_stale_healthz_body)
+    && match ground_service_ready_from_healthz_with_bundle(
+      read: HealthzEffectiveRead { body: witness_stale_healthz_body, probe_error: "" },
+      bundle: bundle,
+    ) {
+      DoesNotGround { reason: why } =>
+        string_contains(s: why, pattern: "ServedSurfaceStale")
+          && string_contains(s: why, pattern: "stale-digest")
+          && !string_contains(s: why, pattern: "JSON.parse")
+      Grounds { evidence: _ } => false
+    }
+}
+
+fn reconcile_grounds_healthy_fixture_read_for_bundle(bundle: RoadmapSiteSurfaceBundle) -> Bool {
+  reconciliation_converged(
+    r: reconcile_service_ready_read_for_bundle(
+      read: show_healthz_read_fixture_healthy(bundle: bundle),
+      bundle: bundle,
+      effect: service_ready_apply_effect(),
+    )
+  )
+}
+
+fn service_ready_once_converges_on_healthy_fixture_for_bundle(bundle: RoadmapSiteSurfaceBundle) -> Bool {
+  reconciliation_converged(r: live_deploy_service_ready_once_for_bundle(bundle: bundle))
+}
+
+fn roadmap_site_surface_readiness_group_holds() -> Bool {
+  let live = live_roadmap_site_surface_bundle()
+  let bundle = live.bundle
+  let recorded = recorded_roadmap_site_surface_bundle(bundle: bundle)
+  recorded.subject == live.subject
+    && recorded.producer_digest == bundle.authority_identity
+    && healthz_round_trip_receipt_holds(bundle: bundle)
+    && fresh_surface_read_grounds_for_bundle(bundle: bundle)
+    && stale_surface_read_does_not_ground_for_bundle(bundle: bundle)
+    && reconcile_grounds_healthy_fixture_read_for_bundle(bundle: bundle)
+    && service_ready_once_converges_on_healthy_fixture_for_bundle(bundle: bundle)
+    && healthz_surface_tolerates_transport_trailing_lf(bundle: bundle)
+    && healthz_route_json_ok(bundle: bundle)
+}
+
+fn live_roadmap_site_surface_bundle_matches_recorded_carrier() -> Bool {
+  let live = live_roadmap_site_surface_bundle()
+  let recorded = recorded_roadmap_site_surface_bundle(bundle: live.bundle)
+  recorded.subject == live.subject
+    && recorded.producer_digest == live.bundle.authority_identity
+    && recorded.bundle.healthz_body == live.bundle.healthz_body
+}

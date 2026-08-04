@@ -25,7 +25,7 @@ import gunbc.roadmap_acceptance_history_observation {
   PriorHistoryGitObservationRefused,
   PriorHistoryObserved,
   prior_history_from_carrier_text,
-  acceptance_history_integrity_holds_from_prior_observation,
+  acceptance_history_integrity_holds_from_prior_observation_with_prior,
 }
 import gunbc.roadmap_spawner { doc_all_nodes, roadmap_dispatch_file_content }
 import gunbc.roadmap_model {
@@ -240,7 +240,7 @@ test fn witness_exact_revocation_admits_vanished_receipt() -> Bool {
 }
 
 test fn witness_git_refusal_observation_refuses_integrity() -> Bool {
-  !acceptance_history_integrity_holds_from_prior_observation(
+  !acceptance_history_integrity_holds_from_prior_observation_with_prior(
     observation: PriorHistoryGitObservationRefused {
       detail: "fixture planted git refusal",
     },
@@ -261,7 +261,7 @@ test fn witness_changed_history_empty_prior_bypass_admits_deletion_observed_prio
   count(prior) > count(current)
     && acceptance_history_integrity_holds(history: current, prior_history: [])
     && !acceptance_history_integrity_holds(history: current, prior_history: prior)
-    && !acceptance_history_integrity_holds_from_prior_observation(
+    && !acceptance_history_integrity_holds_from_prior_observation_with_prior(
       observation: PriorHistoryObserved { prior: prior },
       history: current,
     )

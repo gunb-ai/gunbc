@@ -277,6 +277,16 @@ pub enum RoadmapAcceptanceHistoryProjection {
 
 static ROADMAP_AUTHORITY_OVERLAY_SEQ: AtomicU64 = AtomicU64::new(0);
 
+struct RoadmapAuthorityOverlayGuard {
+    path: std::path::PathBuf,
+}
+
+impl Drop for RoadmapAuthorityOverlayGuard {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.path);
+    }
+}
+
 pub fn project_roadmap_acceptance_event_history_from_authority_text(
     authority_text: &str,
 ) -> RoadmapAcceptanceHistoryProjection {
@@ -287,6 +297,9 @@ pub fn project_roadmap_acceptance_event_history_from_authority_text(
         std::process::id(),
         overlay_seq
     ));
+    let _overlay_guard = RoadmapAuthorityOverlayGuard {
+        path: temp_dir.clone(),
+    };
     if let Err(error) = std::fs::remove_dir_all(&temp_dir) {
         if error.kind() != std::io::ErrorKind::NotFound {
             return RoadmapAcceptanceHistoryProjection::Refused {
@@ -298,7 +311,6 @@ pub fn project_roadmap_acceptance_event_history_from_authority_text(
     if let Err(error) = std::fs::create_dir_all(overlay_path.parent().unwrap())
         .and_then(|_| std::fs::write(&overlay_path, authority_text))
     {
-        let _ = std::fs::remove_dir_all(&temp_dir);
         return RoadmapAcceptanceHistoryProjection::Refused {
             detail: format!("failed to stage authority overlay: {error}"),
         };
@@ -310,11 +322,10 @@ pub fn project_roadmap_acceptance_event_history_from_authority_text(
         workspace.join("src/v2").to_string_lossy().into_owned(),
     ];
     let entry_file = "dag/gunbc/roadmap_authority.dag";
-    let index = build_multi_entry_index(&source_roots);
+    let index = build_multi_entry_index_primary_precedence(&source_roots);
     let sources = match load_sources_for_entry_with_pool(&index, entry_file) {
         Ok(sources) => sources,
         Err(detail) => {
-            let _ = std::fs::remove_dir_all(&temp_dir);
             return RoadmapAcceptanceHistoryProjection::Refused { detail };
         }
     };
@@ -327,7 +338,6 @@ pub fn project_roadmap_acceptance_event_history_from_authority_text(
     ) {
         Ok(parts) => parts,
         Err(detail) => {
-            let _ = std::fs::remove_dir_all(&temp_dir);
             return RoadmapAcceptanceHistoryProjection::Refused { detail };
         }
     };
@@ -341,7 +351,6 @@ pub fn project_roadmap_acceptance_event_history_from_authority_text(
             .map(|diag| format_error_node(diag, &source_indices))
             .collect::<Vec<_>>()
             .join("; ");
-        let _ = std::fs::remove_dir_all(&temp_dir);
         return RoadmapAcceptanceHistoryProjection::Refused { detail };
     }
 
@@ -351,7 +360,6 @@ pub fn project_roadmap_acceptance_event_history_from_authority_text(
         v1_interpreter::ExecutionMode::Wet,
     );
     let result = v1_interpreter::run_in_context(&ctx, "roadmap_acceptance_event_history", true);
-    let _ = std::fs::remove_dir_all(&temp_dir);
 
     match result {
         Ok(v1_interpreter::Value::List(events)) => RoadmapAcceptanceHistoryProjection::Projected {

@@ -4,6 +4,11 @@ import std.types { String, NonEmptyStr }
 import std.content_hash { Fnv1a64Structural }
 import gunbc.roadmap_model { RoadmapNodeId }
 
+type HealthzEffectiveRead {
+  body: String
+  probe_error: String
+}
+
 type RoadmapSiteSurfaceArtifact {
   url_path: NonEmptyStr
   body: String

@@ -25,8 +25,8 @@ import gunbc.roadmap_model {
   AcceptanceHistoryIntegrityRefusedPriorHistoryObservation,
   acceptance_history_integrity_verdict,
 }
-import std.content_hash { content_hash_atom, content_hash_eq_structural }
-import std.types { CommitSha, GitRef, String }
+import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_eq_structural }
+import std.types { CommitSha, GitRef, Int, String }
 import v2.std.collection { List }
 
 data roadmap_acceptance_history_authority_repo_path: String = "dag/gunbc/roadmap_authority.dag"
@@ -176,7 +176,7 @@ fn acceptance_history_integrity_verdict_from_prior_observation(
   }
 }
 
-fn acceptance_history_integrity_holds_from_prior_observation(
+fn acceptance_history_integrity_holds_from_prior_observation_with_prior(
   observation: RoadmapAcceptanceHistoryPriorObservation,
   history: List<RoadmapAcceptanceEvent>,
 ) -> Bool {
@@ -190,4 +190,18 @@ fn acceptance_history_integrity_holds_from_prior_observation(
     AcceptanceHistoryIntegrityRefusedPriorPrefix => false
     AcceptanceHistoryIntegrityRefusedPriorHistoryObservation { detail: _ } => false
   }
+}
+
+data roadmap_acceptance_history_sealed_compat_note: String = "Merge-base roadmap_authority.dag still calls acceptance_history_integrity_holds_from_prior_observation with sealed_event_count and sealed_chain_digest until this branch merges. The bootstrap overlay compiles that authority text against the workspace; these parameters are ignored because sealed-prefix pinning dissolved on the JSONL carrier path."
+
+fn acceptance_history_integrity_holds_from_prior_observation(
+  observation: RoadmapAcceptanceHistoryPriorObservation,
+  history: List<RoadmapAcceptanceEvent>,
+  sealed_event_count: Int,
+  sealed_chain_digest: Fnv1a64Structural,
+) -> Bool {
+  acceptance_history_integrity_holds_from_prior_observation_with_prior(
+    observation: observation,
+    history: history,
+  )
 }

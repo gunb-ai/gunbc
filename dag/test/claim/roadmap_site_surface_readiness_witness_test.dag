@@ -1,0 +1,17 @@
+module test.claim.roadmap_site_surface_readiness
+
+import gunbc.roadmap_site_surface_witness {
+  roadmap_site_surface_readiness_group_holds,
+  live_roadmap_site_surface_bundle_matches_recorded_carrier,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn witness_roadmap_site_surface_readiness_materialized_batch_holds() -> Bool {
+  roadmap_site_surface_readiness_group_holds()
+}
+
+test fn witness_live_roadmap_site_surface_bundle_matches_recorded_carrier() -> Bool {
+  live_roadmap_site_surface_bundle_matches_recorded_carrier()
+}
