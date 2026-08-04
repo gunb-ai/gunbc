@@ -274,6 +274,7 @@ type ArgResult { arg: Node, tokens: TokenStream, ctx: ParseContext, err: ErrorNo
 type FieldResult { field: Node, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
 type FieldInitResult { field: Node, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
 type ResUseResult { resource_use: Node, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
+type AdmitCallersResult { props: List<Node>, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
 
 type ItemPrefixResult {
   name: String
@@ -2448,6 +2449,17 @@ fn parse_fn_after_kw(tokens: TokenStream, ctx: ParseContext, start_span: SourceS
   ItemResult { item: item, tokens: skip_newlines(tokens: r.tokens), ctx: r.ctx, err: none }
 }
 
+fn parse_optional_admit_callers(tokens: TokenStream, ctx: ParseContext) -> AdmitCallersResult {
+  let tokens = skip_newlines(tokens: tokens)
+  if tok_is_ident_text(tok: token_stream_first(stream: tokens), text: "admit_callers") {
+    let r = parse_field_init(tokens: tokens, ctx: ctx)
+    if has_err(err: r.err) { return AdmitCallersResult { props: [], tokens: r.tokens, ctx: r.ctx, err: r.err } }
+    AdmitCallersResult { props: [r.field], tokens: skip_newlines(tokens: r.tokens), ctx: r.ctx, err: none }
+  } else {
+    AdmitCallersResult { props: [], tokens: tokens, ctx: ctx, err: none }
+  }
+}
+
 fn parse_fn_body_from_prefix(prefix: ItemPrefixResult, start_span: SourceSpan) -> ItemResult {
   let name = prefix.name
   let name_span = prefix.name_span
@@ -2460,6 +2472,11 @@ fn parse_fn_body_from_prefix(prefix: ItemPrefixResult, start_span: SourceSpan) -
   let named_dummy = Node { name: name, span: start_span, ident_span: Present { value: name_span }, children: [], params: all_params, inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 
   let tokens = skip_newlines(tokens: prefix.tokens)
+  let admit_r = parse_optional_admit_callers(tokens: tokens, ctx: ctx)
+  if has_err(err: admit_r.err) { return ItemResult { item: named_dummy, tokens: admit_r.tokens, ctx: admit_r.ctx, err: admit_r.err } }
+  let admit_props = admit_r.props
+  let tokens = admit_r.tokens
+  let ctx = admit_r.ctx
   let body_result = if tok_is_eq(tok: token_stream_first(stream: tokens)) {
     let r = expect(tokens: tokens, expected: ExpectEq)
     if has_err(err: r.err) { return ItemResult { item: named_dummy, tokens: r.tokens, ctx: ctx, err: r.err } }
@@ -2476,7 +2493,7 @@ fn parse_fn_body_from_prefix(prefix: ItemPrefixResult, start_span: SourceSpan) -
   let item = Node { name: name, span: start_span, ident_span: Present { value: name_span }, children: [], params: all_params,
     inferred: inferred, return_cardinality: Required, uses: [],
     body: Present { value: body }, connective: NoConnective, transport: none,
-    properties: [], type_annotation: none,
+    properties: admit_props, type_annotation: none,
     is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   ItemResult { item: item, tokens: skip_newlines(tokens: body_result.tokens), ctx: body_result.ctx, err: none }
 }

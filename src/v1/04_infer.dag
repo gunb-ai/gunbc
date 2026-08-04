@@ -31,7 +31,7 @@ import v1.std.core {
   Cardinality, Required, CardOptional,
   ErrorNode, make_error_node, is_error_diagnostic, diagnostic_to_span,
   FrontierOccurrenceKey, diagnostic_frontier_occurrence_key,
-  InternalError, TypeMismatch, VariantCollision, SoleConstructorViolation, UnresolvedType, FieldNotFound, MethodNotFound, MethodExistenceUndecided, MethodExistenceFrontierAdmitted, ReceiverTypeUnestablished, FrontierOccurrenceBudgetExceeded, MissingField, AmbiguousReference,
+  InternalError, TypeMismatch, VariantCollision, SoleConstructorViolation, ConstructorReferenceAdmissionViolation, UnresolvedType, FieldNotFound, MethodNotFound, MethodExistenceUndecided, MethodExistenceFrontierAdmitted, ReceiverTypeUnestablished, FrontierOccurrenceBudgetExceeded, MissingField, AmbiguousReference,
   CallArgumentNameUnknown, CallPositionalSurplus,
   resource_use_name_at, resource_use_resource,
   is_child_accessor_in_model, is_tree_size_reducing, is_property_contraction,
@@ -140,7 +140,7 @@ import v1.compiler.infer_resolve {
 import v1.compiler.infer_sigs {
   ResolvedFuncSig, ResolvedFuncEnv, ResolveFuncSigsResult,
   resolve_func_sigs, flatten_parent_envs,
-  FuncSigLookup, FuncSigResolved, FuncSigUnresolved, FuncSigAmbiguous
+  FuncSigLookup, FuncSigResolved, FuncSigUnresolved, FuncSigAmbiguous, FuncSigCallerNotAdmitted
 }
 import v1.compiler.infer_emit_info {
   TypeRepr, StructRepr, EnumRepr,
@@ -603,6 +603,13 @@ fn ambiguous_reference_refusal(name: String, candidates: List<String>, span: Sou
   InferResult {
     typed: semantic_expr_error_node(message: concat("ambiguous reference '", name, "'"), span: span),
     diagnostics: [make_error_node(diagnostic: AmbiguousReference { name: name, candidates: candidates, span: span }, module_name: scope.module_name)]
+  }
+}
+
+fn constructor_reference_admission_refusal(function_name: String, owner_module_path: String, admitted: List<String>, span: SourceSpan, scope: InferScope) -> InferResult {
+  InferResult {
+    typed: semantic_expr_error_node(message: concat("function '", function_name, "' refuses this call — not in its admit_callers list"), span: span),
+    diagnostics: [make_error_node(diagnostic: ConstructorReferenceAdmissionViolation { function_name: function_name, caller_module: scope.module_name, owner_module_path: owner_module_path, admitted: admitted, span: span }, module_name: scope.module_name)]
   }
 }
 
@@ -2483,6 +2490,8 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
               }
             FuncSigAmbiguous { candidates: ambiguous_fn_candidates } =>
               ambiguous_reference_refusal(name: name, candidates: ambiguous_fn_candidates, span: span, scope: scope)
+            FuncSigCallerNotAdmitted { function_name: adm_fname, owner_module_path: adm_owner, admitted: adm_admitted } =>
+              constructor_reference_admission_refusal(function_name: adm_fname, owner_module_path: adm_owner, admitted: adm_admitted, span: span, scope: scope)
             FuncSigUnresolved =>
               match lookup_binding_by_name(env: scope.type_env, name: name) {
                 Present { value: gbinding } =>
@@ -2657,6 +2666,8 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       match call_sig_lookup {
       FuncSigAmbiguous { candidates: ambiguous_fn_candidates } =>
         ambiguous_reference_refusal(name: func_name, candidates: ambiguous_fn_candidates, span: span, scope: scope)
+      FuncSigCallerNotAdmitted { function_name: adm_fname, owner_module_path: adm_owner, admitted: adm_admitted } =>
+        constructor_reference_admission_refusal(function_name: adm_fname, owner_module_path: adm_owner, admitted: adm_admitted, span: span, scope: scope)
       _ =>
       let sig = func_sig_if_resolved(lookup: call_sig_lookup)
       let sig_params = match sig {
