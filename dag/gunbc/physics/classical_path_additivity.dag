@@ -2,14 +2,15 @@ module gunbc.physics.classical_path_additivity
 
 import std.types { Bool, Int, List, NonEmptyStr }
 import std.algebra { Ordering, Less, Equal, Greater }
+import extdeps.physics.double_slit {
+  SlitMaskConfiguration,
+  BothSlitsOpen,
+  SlitOneOpen,
+  SlitTwoOpen,
+  BothSlitsBlocked,
+}
 
 data classical_path_additivity_note: String = "Downstream physics model-debugging layer for exclusive-alternative raw-count additivity: N_both = N_left + N_right. Not std.algebra_law — experiment-specific count equality lives here until a generic distributivity substrate lands in Slice B."
-
-type SyntheticSlitArrangement
-  = BothSlitsOpen
-  | SlitOneOpen
-  | SlitTwoOpen
-  | BothSlitsBlocked
 
 type ScreenBand
   = CentralBand
@@ -29,7 +30,7 @@ type SyntheticDoubleSlitFixture
 
 type SyntheticArrivalCountObservationRow {
   fixture: SyntheticDoubleSlitFixture
-  arrangement: SyntheticSlitArrangement
+  arrangement: SlitMaskConfiguration
   band: ScreenBand
   exposure: SyntheticMatchedExposureSession
   arrival_count: Int
@@ -41,12 +42,12 @@ type ArrivalCountResolution
       contributing_rows: Int
     }
   | ArrivalCountMissing {
-      arrangement: SyntheticSlitArrangement
+      arrangement: SlitMaskConfiguration
       band: ScreenBand
       exposure: SyntheticMatchedExposureSession
     }
   | ArrivalCountAmbiguous {
-      arrangement: SyntheticSlitArrangement
+      arrangement: SlitMaskConfiguration
       band: ScreenBand
       exposure: SyntheticMatchedExposureSession
       matching_rows: Int
@@ -62,7 +63,7 @@ type AdditivityInputResolution
       both_contributing_rows: Int
     }
   | AdditivityInputsIncomplete {
-      missing_arrangement: SyntheticSlitArrangement
+      missing_arrangement: SlitMaskConfiguration
       band: ScreenBand
       exposure: SyntheticMatchedExposureSession
     }
@@ -99,7 +100,7 @@ fn classical_exclusive_alternative_arrival_prediction(
 fn arrival_count_row_matches(
   row: SyntheticArrivalCountObservationRow,
   fixture: SyntheticDoubleSlitFixture,
-  arrangement: SyntheticSlitArrangement,
+  arrangement: SlitMaskConfiguration,
   band: ScreenBand,
   exposure: SyntheticMatchedExposureSession,
 ) -> Bool {
@@ -117,7 +118,7 @@ type ArrivalCountFoldAcc {
 fn resolve_arrival_count_at(
   rows: List<SyntheticArrivalCountObservationRow>,
   fixture: SyntheticDoubleSlitFixture,
-  arrangement: SyntheticSlitArrangement,
+  arrangement: SlitMaskConfiguration,
   band: ScreenBand,
   exposure: SyntheticMatchedExposureSession,
 ) -> ArrivalCountResolution {

@@ -1,14 +1,16 @@
 module gunbc.classical_path_additivity_synthetic_fixture
 
 import std.types { Bool, Int, List }
-import gunbc.physics.classical_path_additivity {
-  SyntheticDoubleSlitFixture,
-  SyntheticDoubleSlitFixtureOne,
-  SyntheticSlitArrangement,
+import extdeps.physics.double_slit {
+  SlitMaskConfiguration,
   BothSlitsOpen,
   SlitOneOpen,
   SlitTwoOpen,
   BothSlitsBlocked,
+}
+import gunbc.physics.classical_path_additivity {
+  SyntheticDoubleSlitFixture,
+  SyntheticDoubleSlitFixtureOne,
   ScreenBand,
   CentralBand,
   FirstMinimumBand,
