@@ -93,7 +93,7 @@ fn parse_href_scheme(url: String) -> ParsedHrefScheme {
   }
 }
 
-data uri_component_encode_authority_note: String = "RFC 3986 section 2.1 percent-encoding (https://www.rfc-editor.org/rfc/rfc3986#section-2.1) realized by extdeps.uri uri_percent_encode_* over UriUnicodeScalar / UriUtf8Octet. RFC 3986 section 3.3 path grammar is cited at extdeps.uri_path extdeps_external_authority_anchor — same specification, distinct section facts, no parallel section module. UriUnicodeScalar is the raw Int carrier; UriValidatedScalar (Int where unicode_scalar) is minted only by uri_unicode_scalar_construction; UriUtf8Octet is the octet wire domain. uri_percent_encode_admitted_scalar_wire accepts UriValidatedScalar only — a hand-built UriUnicodeScalar does not typecheck there."
+data uri_component_encode_authority_note: String = "RFC 3986 section 2.1 percent-encoding (https://www.rfc-editor.org/rfc/rfc3986#section-2.1) realized by extdeps.uri uri_percent_encode_* over UriUnicodeScalar / UriUtf8Octet. RFC 3986 section 3.3 path grammar is cited at extdeps.uri_path extdeps_external_authority_anchor — same specification, distinct section facts, no parallel section module. UriUnicodeScalar is the raw Int carrier; UriValidatedScalar { cp: Int where unicode_scalar } is minted only by uri_unicode_scalar_construction; UriUtf8Octet is the octet wire domain. uri_percent_encode_admitted_scalar_wire accepts UriValidatedScalar only — a hand-built UriUnicodeScalar does not typecheck there."
 
 type UriHexNibble
   = UriNibble0
@@ -119,7 +119,7 @@ type UriHexNibbleConstruction
 
 type UriUnicodeScalar { cp: Int }
 
-type UriValidatedScalar = Int where unicode_scalar, brand("UriValidatedScalar")
+type UriValidatedScalar { cp: Int where unicode_scalar }
 
 type UriUnicodeScalarConstruction
   = UriUnicodeScalarConstructed(UriValidatedScalar)
@@ -228,7 +228,7 @@ fn uri_unicode_scalar_construction(cp: Int) -> UriUnicodeScalarConstruction {
   } else if cp >= unicode_surrogate_first_code_point && cp <= unicode_surrogate_last_code_point {
     UriUnicodeScalarSurrogateRefused { cp: cp }
   } else {
-    UriUnicodeScalarConstructed(cp as UriValidatedScalar)
+    UriUnicodeScalarConstructed(UriValidatedScalar { cp: cp })
   }
 }
 
@@ -303,7 +303,7 @@ fn uri_percent_encode_unicode_scalar(scalar: UriUnicodeScalar) -> UriPercentEnco
 }
 
 fn uri_validated_scalar_code_point(scalar: UriValidatedScalar) -> Int {
-  scalar + 0
+  scalar.cp
 }
 
 fn uri_percent_encode_admitted_scalar_wire(scalar: UriValidatedScalar) -> UriPercentEncodeFoldState {
@@ -431,7 +431,7 @@ fn uri_percent_encode_code_points(code_points: List<Int>) -> UriPercentEncodeCom
       UriPercentEncodeFragmentsRefused { cause: cause } =>
         UriPercentComponentRefused { cause: cause }
       UriPercentEncodeFragmentsBuilding { fragments: fragments } =>
-        UriPercentComponentEncoded(join(reverse(fragments), "") as NonEmptyStr)
+        UriPercentComponentEncoded(join(fragments, "") as NonEmptyStr)
     }
   }
 }
