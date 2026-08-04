@@ -158,6 +158,12 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     dissolve_on: "the wet lane un-darkens and admits live cargo compile smokes under its own budget; this witness enrolls there as a declared execution row and this exclusion deletes. Local recipe until then: claim_batch --wet --source-root dag --source-root src/v2 --entry dag/test/claim/direct_rust_door_write_compile_witness_test.dag --function direct_rust_door_emit_write_compile_holds"
   },
   WitnessExclusionRow {
+    pattern: "direct_rust_door_behavioral_qualification_witness_test.dag",
+    classification: OfflineLocalRecipe,
+    reason: "wet-integration class (royal-crab-235 Lane 4 PR2): direct_rust_door_behavioral_qualification_holds and direct_rust_door_divergent_behavioral_receipt_refused_reds run tools.direct_rust_door_transport behavioral qualification smokes — live shell.Mktemp, Filesystem.Write, cargo.Build.BuildManifest (lib + witness bin), and gunbc.WitnessBin.Run with --inject-fault. Hermetic discovery REFUSES rather than fabricating Unit. Fast construction + ladder RED controls stay per-PR in src/v2/test/claim/self_host/direct_rust_door_qualification_witness_test.dag.",
+    dissolve_on: "the wet lane un-darkens and admits Lane 4 behavioral qualification smokes under its own budget; this witness enrolls there as a declared execution row and this exclusion deletes. Local recipe until then: claim_batch --wet --source-root dag --source-root src/v2 --entry dag/test/claim/direct_rust_door_behavioral_qualification_witness_test.dag --function direct_rust_door_behavioral_qualification_holds"
+  },
+  WitnessExclusionRow {
     pattern: "external_model_scope_live_cover_witness_test.dag",
     classification: OfflineLocalRecipe,
     reason: "wet-integration class (wet_integration_offline_note posture), substantiated per-row at enrollment (the d4bef96 floor red is the receipt): every test fn in this file performs genuinely live host effects — a Filesystem.List directory walk of dag/extdeps and a git.Core.DiffNameStatus diff from the pinned legacy_manifest_freeze_sha to HEAD — and hermetic discovery REFUSES them (no published mock operation for either), so there is no hermetic dual to discover. The discriminating pure logic is NOT excluded: scope_cover_holds / manifest_freeze_holds / carrier_content_declares_scope RED controls and all roster/manifest accounting stay discovery-enrolled in external_model_scope_witness_test.dag per-PR; only the live observations run here.",

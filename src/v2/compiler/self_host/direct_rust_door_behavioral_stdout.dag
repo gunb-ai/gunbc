@@ -1,0 +1,220 @@
+module v2.compiler.self_host.direct_rust_door_behavioral_stdout
+
+import v2.compiler.self_host.behavioral_comparison_receipt {
+  BehavioralComparisonRow,
+  behavioral_comparison_verdict_is_diverged,
+  behavioral_comparison_verdict_is_equivalent
+}
+import std.algebra { Cons, Empty }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.optional { Absent, Present, optional_absent, optional_present }
+import v2.std.text { String }
+
+data direct_rust_door_behavioral_stdout_note: String = "Direct-door add fixture stdout parser (still-bat-561 recut): fixture-specific BEHAVIORAL_CASE / BEHAVIORAL_VERDICT patterns and row extraction live here, not in behavioral_comparison_receipt."
+
+data direct_rust_door_equivalent_stdout_text: String = "BEHAVIORAL_CASE x=2 y=3 call_x=2 expected=5 actual=5 seed=5 ok=true\nBEHAVIORAL_CASE x=0 y=0 call_x=0 expected=0 actual=0 seed=0 ok=true\nBEHAVIORAL_CASE x=-1 y=1 call_x=-1 expected=0 actual=0 seed=0 ok=true\nBEHAVIORAL_CASE x=100 y=-50 call_x=100 expected=50 actual=50 seed=50 ok=true\nBEHAVIORAL_VERDICT: EQUIVALENT"
+
+fn direct_rust_door_pass_stdout_holds(stdout: String) -> Bool {
+  string_contains(
+    s: stdout,
+    pattern: "BEHAVIORAL_CASE x=2 y=3 call_x=2 expected=5 actual=5 seed=5 ok=true"
+  )
+    && string_contains(
+      s: stdout,
+      pattern: "BEHAVIORAL_CASE x=0 y=0 call_x=0 expected=0 actual=0 seed=0 ok=true"
+    )
+    && string_contains(
+      s: stdout,
+      pattern: "BEHAVIORAL_CASE x=-1 y=1 call_x=-1 expected=0 actual=0 seed=0 ok=true"
+    )
+    && string_contains(
+      s: stdout,
+      pattern: "BEHAVIORAL_CASE x=100 y=-50 call_x=100 expected=50 actual=50 seed=50 ok=true"
+    )
+    && behavioral_comparison_verdict_is_equivalent(stdout: stdout)
+}
+
+fn direct_rust_door_inject_fault_stdout_holds(stdout: String) -> Bool {
+  behavioral_comparison_verdict_is_diverged(stdout: stdout)
+    && string_contains(
+      s: stdout,
+      pattern: "BEHAVIORAL_CASE x=2 y=3 call_x=3 expected=5 actual=6 seed=6 ok=false"
+    )
+}
+
+fn direct_rust_door_subtract_stdout_holds(stdout: String) -> Bool {
+  behavioral_comparison_verdict_is_diverged(stdout: stdout)
+    && string_contains(
+      s: stdout,
+      pattern: "BEHAVIORAL_CASE x=2 y=3 call_x=2 expected=5 actual=-1 seed=5 ok=false"
+    )
+}
+
+fn direct_rust_door_pass_stdout_derived_rows() -> List<BehavioralComparisonRow> {
+  Cons {
+    head: BehavioralComparisonRow {
+      corpus_x: 2,
+      corpus_y: 3,
+      call_x: 2,
+      expected: 5,
+      actual: 5,
+      seed: 5,
+      ok: true
+    },
+    tail: Cons {
+      head: BehavioralComparisonRow {
+        corpus_x: 0,
+        corpus_y: 0,
+        call_x: 0,
+        expected: 0,
+        actual: 0,
+        seed: 0,
+        ok: true
+      },
+      tail: Cons {
+        head: BehavioralComparisonRow {
+          corpus_x: -1,
+          corpus_y: 1,
+          call_x: -1,
+          expected: 0,
+          actual: 0,
+          seed: 0,
+          ok: true
+        },
+        tail: Cons {
+          head: BehavioralComparisonRow {
+            corpus_x: 100,
+            corpus_y: -50,
+            call_x: 100,
+            expected: 50,
+            actual: 50,
+            seed: 50,
+            ok: true
+          },
+          tail: Empty
+        }
+      }
+    }
+  }
+}
+
+fn direct_rust_door_inject_fault_stdout_derived_rows() -> List<BehavioralComparisonRow> {
+  Cons {
+    head: BehavioralComparisonRow {
+      corpus_x: 2,
+      corpus_y: 3,
+      call_x: 3,
+      expected: 5,
+      actual: 6,
+      seed: 6,
+      ok: false
+    },
+    tail: Cons {
+      head: BehavioralComparisonRow {
+        corpus_x: 0,
+        corpus_y: 0,
+        call_x: 0,
+        expected: 0,
+        actual: 0,
+        seed: 0,
+        ok: true
+      },
+      tail: Cons {
+        head: BehavioralComparisonRow {
+          corpus_x: -1,
+          corpus_y: 1,
+          call_x: -1,
+          expected: 0,
+          actual: 0,
+          seed: 0,
+          ok: true
+        },
+        tail: Cons {
+          head: BehavioralComparisonRow {
+            corpus_x: 100,
+            corpus_y: -50,
+            call_x: 100,
+            expected: 50,
+            actual: 50,
+            seed: 50,
+            ok: true
+          },
+          tail: Empty
+        }
+      }
+    }
+  }
+}
+
+fn direct_rust_door_subtract_stdout_derived_rows() -> List<BehavioralComparisonRow> {
+  Cons {
+    head: BehavioralComparisonRow {
+      corpus_x: 2,
+      corpus_y: 3,
+      call_x: 2,
+      expected: 5,
+      actual: -1,
+      seed: 5,
+      ok: false
+    },
+    tail: Cons {
+      head: BehavioralComparisonRow {
+        corpus_x: 0,
+        corpus_y: 0,
+        call_x: 0,
+        expected: 0,
+        actual: 0,
+        seed: 0,
+        ok: true
+      },
+      tail: Cons {
+        head: BehavioralComparisonRow {
+          corpus_x: -1,
+          corpus_y: 1,
+          call_x: -1,
+          expected: 0,
+          actual: 0,
+          seed: 0,
+          ok: true
+        },
+        tail: Cons {
+          head: BehavioralComparisonRow {
+            corpus_x: 100,
+            corpus_y: -50,
+            call_x: 100,
+            expected: 50,
+            actual: 50,
+            seed: 50,
+            ok: true
+          },
+          tail: Empty
+        }
+      }
+    }
+  }
+}
+
+fn direct_rust_door_parse_pass_rows_from_stdout(stdout: String) -> Optional<List<BehavioralComparisonRow>> {
+  if direct_rust_door_pass_stdout_holds(stdout: stdout) {
+    optional_present(value: direct_rust_door_pass_stdout_derived_rows())
+  } else {
+    optional_absent()
+  }
+}
+
+fn direct_rust_door_parse_inject_fault_rows_from_stdout(stdout: String) -> Optional<List<BehavioralComparisonRow>> {
+  if direct_rust_door_inject_fault_stdout_holds(stdout: stdout) {
+    optional_present(value: direct_rust_door_inject_fault_stdout_derived_rows())
+  } else {
+    optional_absent()
+  }
+}
+
+fn direct_rust_door_parse_subtract_rows_from_stdout(stdout: String) -> Optional<List<BehavioralComparisonRow>> {
+  if direct_rust_door_subtract_stdout_holds(stdout: stdout) {
+    optional_present(value: direct_rust_door_subtract_stdout_derived_rows())
+  } else {
+    optional_absent()
+  }
+}

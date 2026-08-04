@@ -1,0 +1,344 @@
+module v2.compiler.self_host.behavioral_comparison_receipt
+
+import std.content_hash { content_hash_atom }
+import extdeps.communication.medium { Medium }
+import v2.std.algebra { Cons, Empty, fold_list, length }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.node { Hash, combine_hash, symbol_identity_digest }
+import v2.std.optional { Absent, Present, optional_absent, optional_present }
+import v2.std.text { String }
+import std.types { CommitSha, Int }
+
+data behavioral_comparison_receipt_note: String = "Executed behavioral comparison receipt carrier (still-bat-561 ceiling audit): rows and verdict are derived from stdout at observation construction. advance checks field binding against the written artifact — NOT that stdout came from a real process."
+
+data behavioral_admission_seal_ceiling_note: String = "CEILING (still-bat-561): admission_seal is a pure digest of caller-supplied observation fields — behavioral_admission_seal_for_observation(observation) is reachable from any module and authenticates nothing. behavioral_admission_seal_is_minted is a not-equal-to-sentinel test only. A matching counterfeit with derived seal passes advance; witness fully_matching_derived_seal_forgery_advance_succeeds_red records that gap. Unforgeable execution witness requires observation construction walled to the wet transport host-effect path (sole_constructor on BehavioralComparisonObservation with mint reachable only from process output, or equivalent) — not expressible as a derived post-hoc seal today; sole_constructor completeness on AdmittedBehaviorEquivalentReceipt alone does not close observation forgery because admit_behavioral_comparison_equivalent(observation) accepts caller-authored observations."
+
+type BehavioralComparisonSubject {
+  module_path: String
+  emitted_source_identity: Hash
+  subject_binding_identity: Hash
+  executable_identity: Hash
+}
+
+type BehavioralComparisonRow {
+  corpus_x: Int
+  corpus_y: Int
+  call_x: Int
+  expected: Int
+  actual: Int
+  seed: Int
+  ok: Bool
+}
+
+type BehavioralComparisonDifference {
+  corpus_x: Int
+  corpus_y: Int
+  call_x: Int
+  expected: Int
+  actual: Int
+  seed: Int
+}
+
+type BehavioralComparisonReceipt {
+  subject: BehavioralComparisonSubject
+  corpus_identity: Hash
+  comparison_rows: List<BehavioralComparisonRow>
+  stdout: String
+  stderr: String
+  exit_success: Bool
+  execution_identity: Hash
+  head_sha: CommitSha
+  behavioral_probe_entry: String
+  behavioral_probe_function: String
+  admission_seal: Hash
+}
+
+type BehavioralComparisonObservation {
+  module_path: String
+  emitted_source: Medium<String>
+  subject_binding_identity: Hash
+  executable_content: String
+  stdout: String
+  stderr: String
+  exit_success: Bool
+  head_sha: CommitSha
+  corpus_identity: Hash
+  comparison_rows: List<BehavioralComparisonRow>
+  behavioral_probe_entry: String
+  behavioral_probe_function: String
+}
+
+type AdmittedBehaviorEquivalentReceipt {
+  receipt: BehavioralComparisonReceipt
+}
+
+type BehavioralComparisonAdmission
+  = AdmittedBehaviorEquivalent { admitted: AdmittedBehaviorEquivalentReceipt }
+  | BehaviorDiverged {
+      receipt: BehavioralComparisonReceipt,
+      differences: List<BehavioralComparisonDifference>
+    }
+  | BehaviorExecutionRefused {
+      cause: Symbol,
+      receipt: BehavioralComparisonReceipt
+    }
+
+data behavioral_admission_seal_unminted: Hash = symbol_identity_digest(
+  sym: ^behavioral_admission_seal_unminted
+)
+
+data behavioral_comparison_corpus_nonempty_note: String = "Admission refuses empty comparison_rows — a comparison with zero cases is not discriminating."
+
+fn behavioral_comparison_rows_nonempty(rows: List<BehavioralComparisonRow>) -> Bool {
+  length(xs: rows) > 0
+}
+
+fn emitted_source_identity_for_medium(source: Medium<String>) -> Hash {
+  content_hash_atom(value: source.carried)
+}
+
+fn executable_identity_for_content(content: String) -> Hash {
+  combine_hash(
+    a: symbol_identity_digest(sym: ^behavioral_comparison_executable_content),
+    b: content_hash_atom(value: content)
+  )
+}
+
+fn behavioral_comparison_execution_identity(
+  stdout: String,
+  stderr: String,
+  exit_success: Bool
+) -> Hash {
+  combine_hash(
+    a: symbol_identity_digest(sym: ^behavioral_comparison_execution_identity),
+    b: combine_hash(
+      a: content_hash_atom(value: stdout),
+      b: combine_hash(
+        a: content_hash_atom(value: stderr),
+        b: if exit_success {
+          symbol_identity_digest(sym: ^behavioral_exit_success)
+        } else {
+          symbol_identity_digest(sym: ^behavioral_exit_failure)
+        }
+      )
+    )
+  )
+}
+
+fn behavioral_comparison_verdict_is_equivalent(stdout: String) -> Bool {
+  string_contains(s: stdout, pattern: "BEHAVIORAL_VERDICT: EQUIVALENT")
+}
+
+fn behavioral_comparison_verdict_is_diverged(stdout: String) -> Bool {
+  string_contains(s: stdout, pattern: "BEHAVIORAL_VERDICT: DIVERGED")
+}
+
+fn behavioral_comparison_row_is_equivalent(row: BehavioralComparisonRow) -> Bool {
+  row.ok && (row.actual == row.expected) && (row.actual == row.seed)
+}
+
+fn behavioral_comparison_all_rows_equivalent(rows: List<BehavioralComparisonRow>) -> Bool {
+  fold_list(
+    xs: rows,
+    empty: true,
+    cons: fn(acc, row) {
+      acc && behavioral_comparison_row_is_equivalent(row: row)
+    }
+  )
+}
+
+fn behavioral_comparison_difference_from_row(row: BehavioralComparisonRow) -> BehavioralComparisonDifference {
+  BehavioralComparisonDifference {
+    corpus_x: row.corpus_x,
+    corpus_y: row.corpus_y,
+    call_x: row.call_x,
+    expected: row.expected,
+    actual: row.actual,
+    seed: row.seed
+  }
+}
+
+fn behavioral_comparison_differences_from_rows(
+  rows: List<BehavioralComparisonRow>
+) -> List<BehavioralComparisonDifference> {
+  fold_list(
+    xs: rows,
+    empty: Empty,
+    cons: fn(acc, row) {
+      if behavioral_comparison_row_is_equivalent(row: row) {
+        acc
+      } else {
+        Cons {
+          head: behavioral_comparison_difference_from_row(row: row),
+          tail: acc
+        }
+      }
+    }
+  )
+}
+
+fn behavioral_admission_seal_for_observation(
+  observation: BehavioralComparisonObservation
+) -> Hash {
+  combine_hash(
+    a: symbol_identity_digest(sym: ^behavioral_admission_mint_seal),
+    b: combine_hash(
+      a: behavioral_comparison_execution_identity(
+        stdout: observation.stdout,
+        stderr: observation.stderr,
+        exit_success: observation.exit_success
+      ),
+      b: combine_hash(
+        a: observation.corpus_identity,
+        b: combine_hash(
+          a: executable_identity_for_content(content: observation.executable_content),
+          b: combine_hash(
+            a: observation.subject_binding_identity,
+            b: content_hash_atom(value: observation.stdout)
+          )
+        )
+      )
+    )
+  )
+}
+
+fn behavioral_comparison_subject_for_observation(
+  observation: BehavioralComparisonObservation
+) -> BehavioralComparisonSubject {
+  BehavioralComparisonSubject {
+    module_path: observation.module_path,
+    emitted_source_identity: emitted_source_identity_for_medium(
+      source: observation.emitted_source
+    ),
+    subject_binding_identity: observation.subject_binding_identity,
+    executable_identity: executable_identity_for_content(
+      content: observation.executable_content
+    )
+  }
+}
+
+fn behavioral_comparison_receipt_from_observation(
+  observation: BehavioralComparisonObservation,
+  admission_seal: Hash
+) -> BehavioralComparisonReceipt {
+  BehavioralComparisonReceipt {
+    subject: behavioral_comparison_subject_for_observation(observation: observation),
+    corpus_identity: observation.corpus_identity,
+    comparison_rows: observation.comparison_rows,
+    stdout: observation.stdout,
+    stderr: observation.stderr,
+    exit_success: observation.exit_success,
+    execution_identity: behavioral_comparison_execution_identity(
+      stdout: observation.stdout,
+      stderr: observation.stderr,
+      exit_success: observation.exit_success
+    ),
+    head_sha: observation.head_sha,
+    behavioral_probe_entry: observation.behavioral_probe_entry,
+    behavioral_probe_function: observation.behavioral_probe_function,
+    admission_seal: admission_seal
+  }
+}
+
+fn behavioral_comparison_receipt_unminted_from_observation(
+  observation: BehavioralComparisonObservation
+) -> BehavioralComparisonReceipt {
+  behavioral_comparison_receipt_from_observation(
+    observation: observation,
+    admission_seal: behavioral_admission_seal_unminted
+  )
+}
+
+fn admit_behavioral_comparison(
+  observation: BehavioralComparisonObservation
+) -> BehavioralComparisonAdmission {
+  if !behavioral_comparison_rows_nonempty(rows: observation.comparison_rows) {
+    BehaviorExecutionRefused {
+      cause: ^behavioral_comparison_empty_rows,
+      receipt: behavioral_comparison_receipt_unminted_from_observation(
+        observation: observation
+      )
+    }
+  } else if behavioral_comparison_all_rows_equivalent(rows: observation.comparison_rows)
+    && observation.exit_success
+    && behavioral_comparison_verdict_is_equivalent(stdout: observation.stdout) {
+    AdmittedBehaviorEquivalent {
+      admitted: AdmittedBehaviorEquivalentReceipt {
+        receipt: behavioral_comparison_receipt_from_observation(
+          observation: observation,
+          admission_seal: behavioral_admission_seal_for_observation(
+            observation: observation
+          )
+        )
+      }
+    }
+  } else if behavioral_comparison_verdict_is_diverged(stdout: observation.stdout) {
+    BehaviorDiverged {
+      receipt: behavioral_comparison_receipt_unminted_from_observation(
+        observation: observation
+      ),
+      differences: behavioral_comparison_differences_from_rows(
+        rows: observation.comparison_rows
+      )
+    }
+  } else if !observation.exit_success {
+    BehaviorExecutionRefused {
+      cause: ^behavioral_comparison_execution_failed,
+      receipt: behavioral_comparison_receipt_unminted_from_observation(
+        observation: observation
+      )
+    }
+  } else {
+    BehaviorExecutionRefused {
+      cause: ^behavioral_comparison_stdout_unbound,
+      receipt: behavioral_comparison_receipt_unminted_from_observation(
+        observation: observation
+      )
+    }
+  }
+}
+
+fn admit_behavioral_comparison_equivalent(
+  observation: BehavioralComparisonObservation
+) -> Optional<AdmittedBehaviorEquivalentReceipt> {
+  match admit_behavioral_comparison(observation: observation) {
+    AdmittedBehaviorEquivalent { admitted } => optional_present(value: admitted)
+    BehaviorDiverged { receipt: _, differences: _ } => optional_absent()
+    BehaviorExecutionRefused { cause: _, receipt: _ } => optional_absent()
+  }
+}
+
+fn behavioral_admission_seal_is_minted(admitted: AdmittedBehaviorEquivalentReceipt) -> Bool {
+  admitted.receipt.admission_seal != behavioral_admission_seal_unminted
+}
+
+fn admitted_behavioral_comparison_receipt_matches_binding(
+  admitted: AdmittedBehaviorEquivalentReceipt,
+  module_path: String,
+  emitted_source: Medium<String>,
+  subject_binding_identity: Hash,
+  executable_content: String,
+  head_sha: CommitSha,
+  expected_behavioral_probe_entry: String,
+  expected_behavioral_probe_function: String
+) -> Bool {
+  let receipt = admitted.receipt
+  let expected_subject = BehavioralComparisonSubject {
+    module_path: module_path,
+    emitted_source_identity: emitted_source_identity_for_medium(source: emitted_source),
+    subject_binding_identity: subject_binding_identity,
+    executable_identity: executable_identity_for_content(content: executable_content)
+  }
+  behavioral_admission_seal_is_minted(admitted: admitted)
+    && (receipt.subject.module_path == expected_subject.module_path)
+    && (receipt.subject.emitted_source_identity == expected_subject.emitted_source_identity)
+    && (receipt.subject.subject_binding_identity == expected_subject.subject_binding_identity)
+    && (receipt.subject.executable_identity == expected_subject.executable_identity)
+    && behavioral_comparison_all_rows_equivalent(rows: receipt.comparison_rows)
+    && behavioral_comparison_verdict_is_equivalent(stdout: receipt.stdout)
+    && receipt.exit_success
+    && (receipt.head_sha == head_sha)
+    && (receipt.behavioral_probe_entry == expected_behavioral_probe_entry)
+    && (receipt.behavioral_probe_function == expected_behavioral_probe_function)
+}

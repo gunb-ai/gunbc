@@ -1,0 +1,20 @@
+module test.claim.direct_rust_door_behavioral_qualification_witness_test
+
+import tools.direct_rust_door_transport {
+  run_direct_rust_door_behavioral_qualification_smoke,
+  run_direct_rust_door_divergent_behavioral_receipt_refused
+}
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import v2.std.logic { Bool }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data direct_rust_door_behavioral_qualification_witness_note: String = "Lane 4 wet fixture behavioral qualification (disposition 2): after FixtureCargoGreen, executed comparison must green before advance_written_synthetic_emitted_artifact_fixture_behaviorally_equivalent mints FixtureBehaviorallyEquivalent — not production BehavioralEquivalent. Positive control: run_direct_rust_door_behavioral_qualification_smoke. RED control: run_direct_rust_door_divergent_behavioral_receipt_refused. Local recipe: claim_batch --wet --source-root dag --source-root src/v2 --entry dag/test/claim/direct_rust_door_behavioral_qualification_witness_test.dag --function direct_rust_door_behavioral_qualification_holds"
+
+test fn direct_rust_door_behavioral_qualification_holds() -> Bool {
+  run_direct_rust_door_behavioral_qualification_smoke()
+}
+
+test fn direct_rust_door_divergent_behavioral_receipt_refused_reds() -> Bool {
+  run_direct_rust_door_divergent_behavioral_receipt_refused()
+}

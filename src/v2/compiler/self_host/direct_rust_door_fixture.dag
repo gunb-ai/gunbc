@@ -43,7 +43,11 @@ import v2.std.optional {
   optional_present
 }
 import v2.std.node { Node }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
 import v2.std.text { String }
+import v2.std.node { Hash, symbol_identity_digest }
+import v2.compiler.self_host.behavioral_comparison_receipt { BehavioralComparisonRow }
 import v2.std.witness {
   Holds,
   StructuralPropertyWitness,
@@ -56,6 +60,183 @@ data direct_rust_door_fixture_note: String = "Self-host fixture for v2-emitter-d
 data direct_rust_door_module_path: String = "src/v2/compiler/self_host/direct_rust_door_fixture.dag"
 
 data direct_rust_door_expected_source: String = rust_source_text
+
+data direct_rust_door_divergent_rust_source: String = "fn add(x: i32, y: i32) -> i32 { x - y }"
+
+data direct_rust_door_behavioral_corpus_note: String = "Lane 4 discriminating corpus authority (DESIGN section 7): behavioral equivalence to add_probe semantics (x+y), not byte agreement with v1.compiler.emit_rust. The witness driver compares emitted add against a seed_add reference oracle on multiple input pairs; --inject-fault perturbs one call so the comparison must fail. comparison_rows in the typed receipt are admitted only after stdout carries the matching BEHAVIORAL_CASE lines for this corpus."
+
+data direct_rust_door_behavioral_corpus_revision: String = "direct_rust_door_corpus_v1"
+
+data direct_rust_door_behavioral_probe_entry: String = "dag/test/claim/direct_rust_door_behavioral_qualification_witness_test.dag"
+
+data direct_rust_door_behavioral_probe_function: String = "direct_rust_door_behavioral_qualification_holds"
+
+fn direct_rust_door_behavioral_corpus_identity() -> Hash {
+  symbol_identity_digest(sym: ^direct_rust_door_corpus_v1)
+}
+
+fn direct_rust_door_behavioral_corpus_rows() -> List<BehavioralComparisonRow> {
+  Cons {
+    head: BehavioralComparisonRow {
+      corpus_x: 2,
+      corpus_y: 3,
+      call_x: 2,
+      expected: 5,
+      actual: 5,
+      seed: 5,
+      ok: true
+    },
+    tail: Cons {
+      head: BehavioralComparisonRow {
+        corpus_x: 0,
+        corpus_y: 0,
+        call_x: 0,
+        expected: 0,
+        actual: 0,
+        seed: 0,
+        ok: true
+      },
+      tail: Cons {
+        head: BehavioralComparisonRow {
+          corpus_x: -1,
+          corpus_y: 1,
+          call_x: -1,
+          expected: 0,
+          actual: 0,
+          seed: 0,
+          ok: true
+        },
+        tail: Cons {
+          head: BehavioralComparisonRow {
+            corpus_x: 100,
+            corpus_y: -50,
+            call_x: 100,
+            expected: 50,
+            actual: 50,
+            seed: 50,
+            ok: true
+          },
+          tail: Empty
+        }
+      }
+    }
+  }
+}
+
+fn direct_rust_door_inject_fault_divergence_row() -> BehavioralComparisonRow {
+  BehavioralComparisonRow {
+    corpus_x: 2,
+    corpus_y: 3,
+    call_x: 3,
+    expected: 5,
+    actual: 6,
+    seed: 6,
+    ok: false
+  }
+}
+
+fn direct_rust_door_inject_fault_comparison_rows() -> List<BehavioralComparisonRow> {
+  Cons {
+    head: direct_rust_door_inject_fault_divergence_row(),
+    tail: Cons {
+      head: BehavioralComparisonRow {
+        corpus_x: 0,
+        corpus_y: 0,
+        call_x: 0,
+        expected: 0,
+        actual: 0,
+        seed: 0,
+        ok: true
+      },
+      tail: Cons {
+        head: BehavioralComparisonRow {
+          corpus_x: -1,
+          corpus_y: 1,
+          call_x: -1,
+          expected: 0,
+          actual: 0,
+          seed: 0,
+          ok: true
+        },
+        tail: Cons {
+          head: BehavioralComparisonRow {
+            corpus_x: 100,
+            corpus_y: -50,
+            call_x: 100,
+            expected: 50,
+            actual: 50,
+            seed: 50,
+            ok: true
+          },
+          tail: Empty
+        }
+      }
+    }
+  }
+}
+
+fn direct_rust_door_subtract_divergence_row() -> BehavioralComparisonRow {
+  BehavioralComparisonRow {
+    corpus_x: 2,
+    corpus_y: 3,
+    call_x: 2,
+    expected: 5,
+    actual: -1,
+    seed: 5,
+    ok: false
+  }
+}
+
+fn direct_rust_door_subtract_comparison_rows() -> List<BehavioralComparisonRow> {
+  Cons {
+    head: direct_rust_door_subtract_divergence_row(),
+    tail: Cons {
+      head: BehavioralComparisonRow {
+        corpus_x: 0,
+        corpus_y: 0,
+        call_x: 0,
+        expected: 0,
+        actual: 0,
+        seed: 0,
+        ok: true
+      },
+      tail: Cons {
+        head: BehavioralComparisonRow {
+          corpus_x: -1,
+          corpus_y: 1,
+          call_x: -1,
+          expected: 0,
+          actual: 0,
+          seed: 0,
+          ok: true
+        },
+        tail: Cons {
+          head: BehavioralComparisonRow {
+            corpus_x: 100,
+            corpus_y: -50,
+            call_x: 100,
+            expected: 50,
+            actual: 50,
+            seed: 50,
+            ok: true
+          },
+          tail: Empty
+        }
+      }
+    }
+  }
+}
+
+fn direct_rust_door_behavioral_witness_bin_rel_path() -> String {
+  "target/release/witness"
+}
+
+fn direct_rust_door_behavioral_witness_bin_path(workspace_dir: String) -> String {
+  concat(
+    workspace_dir,
+    concat("/", direct_rust_door_behavioral_witness_bin_rel_path())
+  )
+}
 
 data direct_rust_door_dag_module_source: String = "module add_probe\n\nfn add(x: Int, y: Int) -> Int { x + y }\n"
 
