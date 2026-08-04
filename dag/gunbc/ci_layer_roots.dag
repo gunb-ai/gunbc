@@ -989,8 +989,8 @@ data falsifier_rehomed_bin_wet_rows: List<RehomedBinWetRow> = [
   RehomedBinWetRow {
     entry: "src/v2/test/claim/long/frontier_probe_closure_matrix_integration_test.dag",
     function: "frontier_probe_second_source_root_population_gates_pass_holds",
-    reason: "965000ms measured eval estimate from sibling below_cap class on claim_batch --wet 2026-08-04 (second source root closure is wider): same population-totality integration leg",
-    dissolve_on: "fires with frontier_probe_below_cap_complete_population_gates_pass_holds dissolve_on (same file, same mechanism)"
+    reason: "742109ms measured eval on claim_batch --wet 2026-08-04 (123x bin_witness_wet_per_row_wall_budget_seconds): full receipt_for_subject with observed SourceRef through assemble on a two-root closure — population-totality integration leg, not admission-algebra",
+    dissolve_on: "measured eval lands under bin_witness_wet_per_row_wall_budget_seconds on a measured run — then re-enroll per-PR consciously, or delete when emit-stage receipt is no longer full-pipeline priced"
   }
 ]
 

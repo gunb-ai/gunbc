@@ -1492,7 +1492,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
       span: SpanSeams {
         seams: [
           WitnessSeam {
-            producer: "FalsifierCadenceJob_max_staleness_4h_lane_budget_pending_measurement",
+            producer: "FalsifierCadenceJob_max_staleness_4h_lane_budget_742109ms",
             consumer: "frontier_probe_second_source_root_population_gates_pass_holds"
           }
         ]
