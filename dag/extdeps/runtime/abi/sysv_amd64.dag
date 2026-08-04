@@ -395,9 +395,10 @@ fn witness_syscall_evidence_link_binds_fact() -> Bool {
     X86_64AbiEvidenceLinkConstructed(link) =>
       match x86_64_abi_syscall_convention_citation_fact_construction {
         X86_64AbiCitationFactConstructed(fact) => link.fact.id == fact.id
-        _ => false
+        X86_64AbiCitationFactRefused { representation: _, selector: _ } => false
       }
-    _ => false
+    X86_64AbiEvidenceLinkRefused { fact: X86_64AbiCitationFactConstructed(_) } => false
+    X86_64AbiEvidenceLinkRefused { fact: X86_64AbiCitationFactRefused { representation: _, selector: _ } } => false
   }
 }
 

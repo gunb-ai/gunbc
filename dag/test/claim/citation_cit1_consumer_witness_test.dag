@@ -19,7 +19,9 @@ import extdeps.runtime.abi.sysv_amd64 {
   X86_64AbiPdfNavigableUriRefused,
   X86_64AbiPdfPinConstructed,
   X86_64AbiCitationFactConstructed,
+  X86_64AbiCitationFactRefused,
   X86_64AbiEvidenceLinkConstructed,
+  X86_64AbiEvidenceLinkRefused,
 }
 import std.citation {
   RepresentationRetrieved,
@@ -107,9 +109,10 @@ test fn x86_64_abi_syscall_citation_bound_to_evidence_link() -> Bool {
       match x86_64_abi_syscall_convention_citation_fact_construction {
         X86_64AbiCitationFactConstructed(fact) =>
           link.fact.id == fact.id && link.direction == EvidenceSupports
-        _ => false
+        X86_64AbiCitationFactRefused { representation: _, selector: _ } => false
       }
-    _ => false
+    X86_64AbiEvidenceLinkRefused { fact: X86_64AbiCitationFactConstructed(_) } => false
+    X86_64AbiEvidenceLinkRefused { fact: X86_64AbiCitationFactRefused { representation: _, selector: _ } } => false
   }
 }
 
