@@ -12,7 +12,14 @@ import std.citation {
   citation_recorded_fact,
   citation_exact_pin,
   text_quote_selector,
+  text_position_selector,
   TextQuoteSelectorVariant,
+  TextPositionSelectorVariant,
+  TextPositionEndBeforeStart,
+  SelectorRefused,
+  CitationAccessRefused,
+  HttpAccessRefused,
+  DnsResolutionFailed,
   retrieved_representation,
   cited_resource,
 }
@@ -83,7 +90,15 @@ data witness_upstream_unreachable_observation: CitationRetrievalObservation = Ci
     locator: witness_authority.uri,
   },
   observed_at: witness_observed_at_midnight_utc,
-  cause: "fixture upstream-authored observation" as NonEmptyStr,
+  cause: DnsResolutionFailed,
+}
+
+data witness_access_refused_observation: CitationRetrievalObservation = CitationAccessRefused {
+  request: CitationRetrievalRequest {
+    locator: witness_authority.uri,
+  },
+  observed_at: witness_observed_at_midnight_utc,
+  cause: HttpAccessRefused { status: 403 },
 }
 
 test fn cited_resource_constructs_with_text_quote_selector() -> Bool {
@@ -139,6 +154,36 @@ test fn citation_recorded_fact_feeds_claim_evidence_interface() -> Bool {
 
 test fn web_annotation_authority_is_cited_for_selectors() -> Bool {
   web_annotation_authority.uri.locator == "www.w3.org/TR/annotation-model/"
+}
+
+test fn text_position_selector_refuses_end_before_start() -> Bool {
+  match text_position_selector(start: 10, end: 2) {
+    SelectorRefused { cause: TextPositionEndBeforeStart { start: s, end: e } } =>
+      s == 10 && e == 2
+    _ => false
+  }
+}
+
+test fn text_position_selector_admits_non_negative_range() -> Bool {
+  match text_position_selector(start: 0, end: 12) {
+    TextPositionSelectorVariant(_) => true
+    _ => false
+  }
+}
+
+test fn citation_unreachable_carries_typed_cause_not_prose() -> Bool {
+  match witness_upstream_unreachable_observation {
+    CitationUnreachable { cause: DnsResolutionFailed, request: _, observed_at: _ } => true
+    _ => false
+  }
+}
+
+test fn citation_access_refused_carries_http_status() -> Bool {
+  match witness_access_refused_observation {
+    CitationAccessRefused { cause: HttpAccessRefused { status: s }, request: _, observed_at: _ } =>
+      s == 403
+    _ => false
+  }
 }
 
 test fn exact_citation_pin_currency_is_an_unfilled_gap() -> Bool {

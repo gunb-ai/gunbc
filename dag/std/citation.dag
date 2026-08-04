@@ -1,6 +1,9 @@
 module std.citation
 
-import std.types { NonEmptyStr, String, Int, List, Bool, EpochMs, HttpStatus }
+import std.types { NonEmptyStr, String, List, Bool, EpochMs, HttpStatus }
+import std.integer { NonNegativeInt }
+import std.nat { nat_compare }
+import std.algebra { Less, Equal, Greater }
 import std.measure { Second }
 import std.content_hash { ContentHash, Sha256Digest, as_content_hash_cryptographic }
 import std.claim_evidence { RecordedFact, RecordedFactId }
@@ -56,16 +59,33 @@ type TextQuoteSelector {
   suffix: NonEmptyStr?
 }
 
+data citation_refusal_cause_note: String = "Every refusal cause is a typed coproduct arm carrying modeled values, not prose — the PinRefusalCause precedent in extdeps.pin. Causes are countable by class so migration frontiers burn down visibly. A free-string cause is loud and located but not countable: you cannot ask how many citations failed for DNS versus TLS without parsing text."
+
+data text_position_selector_cross_field_note: String = "W3C Web Annotation TextPositionSelector start and end are non-negative character indices (std.integer.NonNegativeInt = Nat). end < start is refused by text_position_selector returning SelectorRefused { cause: TextPositionEndBeforeStart } — VALIDATION at the constructor today, not a construction wall: two independent refined scalars do not constrain each other. dissolve-on: cross-field refinement or sole-constructor wall makes inverted ranges unwritable."
+
+type SelectorRefusalCause
+  = TextPositionEndBeforeStart { start: NonNegativeInt, end: NonNegativeInt }
+
+type CitationAccessRefusalCause
+  = HttpAccessRefused { status: HttpStatus }
+
+type CitationUnreachableCause
+  = DnsResolutionFailed
+  | TlsHandshakeFailed
+  | ConnectionRefused
+  | RequestTimedOut
+  | TransportUnreachable
+
 type TextPositionSelector {
-  start: Int
-  end: Int
+  start: NonNegativeInt
+  end: NonNegativeInt
 }
 
 type CitationSelector
   = FragmentSelectorVariant(FragmentSelector)
   | TextQuoteSelectorVariant(TextQuoteSelector)
   | TextPositionSelectorVariant(TextPositionSelector)
-  | SelectorRefused { cause: NonEmptyStr }
+  | SelectorRefused { cause: SelectorRefusalCause }
 
 fn cited_representation(
   authority: ExternalAuthority,
@@ -110,11 +130,23 @@ fn text_quote_selector(
   })
 }
 
-fn text_position_selector(start: Int, end: Int) -> CitationSelector {
-  TextPositionSelectorVariant(TextPositionSelector {
-    start: start,
-    end: end,
-  })
+fn text_position_selector(start: NonNegativeInt, end: NonNegativeInt) -> CitationSelector {
+  match nat_compare(a: end, b: start) {
+    Less =>
+      SelectorRefused {
+        cause: TextPositionEndBeforeStart { start: start, end: end },
+      }
+    Equal =>
+      TextPositionSelectorVariant(TextPositionSelector {
+        start: start,
+        end: end,
+      })
+    Greater =>
+      TextPositionSelectorVariant(TextPositionSelector {
+        start: start,
+        end: end,
+      })
+  }
 }
 
 fn retrieved_representation(
@@ -158,12 +190,12 @@ type CitationRetrievalObservation
   | CitationAccessRefused {
       request: CitationRetrievalRequest,
       observed_at: EpochMs,
-      cause: NonEmptyStr,
+      cause: CitationAccessRefusalCause,
     }
   | CitationUnreachable {
       request: CitationRetrievalRequest,
       observed_at: EpochMs,
-      cause: NonEmptyStr,
+      cause: CitationUnreachableCause,
     }
   | CitationRateLimited {
       request: CitationRetrievalRequest,
