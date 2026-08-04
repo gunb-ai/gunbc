@@ -202,6 +202,5 @@ test fn witness_env_binding_names_neutral_path_var() -> Bool {
 
 test fn witness_window_identity_hex_matches_derived_digest() -> Bool {
   let window = planted_exact_window()
-  git_diff_window_identity_hex(identity: window.window_identity)
-    == (window.window_identity.digest as String)
+  git_diff_window_identity_hex(identity: window.window_identity) == (window.window_identity.digest as String)
 }
