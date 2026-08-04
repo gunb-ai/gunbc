@@ -1,6 +1,6 @@
 module extdeps.package
 
-import std.types { NonEmptyStr, String, Bool, List }
+import std.types { NonEmptyStr, String, Bool, List, Int }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -25,11 +25,11 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: []
 }
 
-data package_scope_subject_note: String = "THE SUBJECT IS THE PACKAGE — an archive plus the metadata a package manager needs (en.wikipedia.org/wiki/Package_format). A PackageLockGraph is the exact closed set of those packages a resolver admitted: nodes are package selections, edges are dependency relations at the manager's node grain.\\n\\nWHY NOT REPRODUCIBLE BUILDS HERE (operator, 2026-08-04): that definition already anchors extdeps.pin for a single subject's exact version + content identity. Re-citing it for the package hub would nickname one authority across two modules and blur what this citation may carry. Package_format grounds what a package *is*; pin grounds how one subject is pinned.\\n\\nTHE CITATION BOUNDS WHAT MAY LIVE HERE. Package_format does NOT ground JavaScript module formats, npm lifecycle-script policy, artifact-admission outcomes, or gunbc's chosen materialization receipt — those live in extdeps.npm (upstream manager facts) and gunbc.package_delivery (product policy and mechanism). An earlier hub revision that stuffed those in was rejected (operator review, 2026-08-04)."
+data package_scope_subject_note: String = "THE SUBJECT IS THE PACKAGE — an archive plus the metadata a package manager needs (en.wikipedia.org/wiki/Package_format). A PackageLockGraph is the exact closed set of those packages a resolver admitted: nodes are package selections, edges are dependency relations at the manager's node grain.\\n\\nWHY NOT REPRODUCIBLE BUILDS HERE (operator, 2026-08-04): that definition already anchors extdeps.pin for a single subject's exact version + content identity. Re-citing it for the package hub would nickname one authority across two modules and blur what this citation may carry. Package_format grounds what a package *is*; pin grounds how one subject is pinned.\\n\\nTHE CITATION BOUNDS WHAT MAY LIVE HERE. Package_format does NOT ground JavaScript module formats, npm lifecycle-script policy, artifact-admission outcomes, or gunbc's chosen materialization receipt — those live in extdeps.npm (upstream manager facts) and gunbc.package_delivery (product policy and mechanism)."
 
-data package_hub_agnostic_note: String = "THE AGNOSTIC SHAPE OF A DEPENDENCY GRAPH, and deliberately NOT a place where ecosystems are enumerated. DESIGN section 3's external-upstream rule is explicit that a generic hub may define agnostic shapes but may not enumerate concrete products — adding Opera must not widen a browser enum, and adding pnpm must not widen a PackageEcosystem enum here. The ecosystem is therefore a TYPE ARGUMENT following the Vendor<Domain> precedent.\\n\\nTHE FIRST CUT FAILED ITS OWN TEST AND THIS RECORDS HOW, because the failure mode is subtle enough to recur. It carried no PackageEcosystem enum — and still authored PeerDependency, install-script policy, EsModule, CommonJsModule, import_specifier and export_path directly in the hub. Peer dependencies are load-bearing specifically in npm-family resolution; ESM and CommonJS are JavaScript module formats; a Rust crate consumer binds through neither an import specifier nor an export path. Avoiding the enum is necessary and NOT sufficient: a hub can stay free of product NAMES while being saturated with one product's CONCEPTS, and the resulting shape is just as unable to admit a second ecosystem. The test that actually discriminates is whether a second ecosystem could inhabit the vocabulary unchanged."
+data package_hub_agnostic_note: String = "THE AGNOSTIC SHAPE OF A DEPENDENCY GRAPH. The hub parameterizes Selection — ecosystems define their own selection shapes. The hub never enumerates package managers."
 
-data package_lock_node_grain_note: String = "THE LOCK NODE, NOT name@version, IS THE IDENTITY (operator review, 2026-08-04). One npm lock may contain the same name at the same exact version at several installation paths, or under different peer-dependency contexts, and dependencies point at the PATH-QUALIFIED node — name@version is one projection from it, not the thing itself. A membership key of name plus version silently collapses those distinct nodes, which is a wrong-hit rather than a loud miss.\\n\\nSo NodeKey is a type parameter supplied by the ecosystem: npm supplies its package-lock path key, cargo would supply its own. And EDGES NAME KEYS RATHER THAN CARRYING SELECTIONS — the first cut copied whole PackageSelection values into every edge while independently storing selections in the graph roster, so an edge could carry a selection disagreeing with the graph's own canonical row. Selections live on nodes; edges reference. One fact, one home."
+data package_lock_node_grain_note: String = "THE LOCK NODE, NOT name@version, IS THE IDENTITY. NodeKey is a type parameter from the ecosystem. Edges name keys; selections live on nodes."
 
 type PackageCoordinate<Ecosystem> {
   ecosystem: Ecosystem
@@ -41,20 +41,22 @@ type PackageRequirement<Ecosystem, RequirementSpec> {
   spec: RequirementSpec
 }
 
-data package_artifact_source_note: String = "WHERE THE BYTES CAME FROM IS EVIDENCE, NOT A FALLBACK LADDER. A selection records the locator it was resolved from so a materialization can be re-run against the same source; it does NOT carry an ordered list of places to try. An ordered source list is the absorbing fallback DESIGN section 5 forbids, one layer down: the first reachable mirror silently becomes the answer and the intended source's failure is never counted."
+data package_artifact_source_note: String = "WHERE THE BYTES CAME FROM IS EVIDENCE, NOT A FALLBACK LADDER. One locator, never an ordered mirror list."
 
 type PackageArtifactSource {
   locator: NonEmptyStr
 }
 
-data package_single_version_witness_note: String = "ONE VERSION WITNESS, BECAUSE TWO WERE WRITABLE AND COULD DISAGREE (operator review, 2026-08-04). The first cut pinned Pin<PackageRelease> where PackageRelease itself carried a version — so Pin.version and pin.subject.version were independently writable fields for one fact, and a selection could say 1.0.0 in one and 2.0.0 in the other. That is exactly the two-writable-witness defect extdeps.pin's own subject_projected_pin_note warns against, reproduced by a consumer that had read the warning.\\n\\nThe subject is therefore the COORDINATE — ecosystem plus name, which carries no version — and the exact release is DERIVED as pin.subject plus pin.version. PackageRelease is deleted rather than kept as a convenience alias, because a second spelling of a derived pair is how the duplicate returns."
+data pinned_package_artifact_selection_note: String = "PINNED RELEASE ARTIFACT SELECTION — optional hub convenience for ecosystems whose lock nodes are downloaded name@version releases with one content identity and one locator. It is NOT required of every PackageLockNode: Selection is a type parameter. npm roots, links, and git artifacts use npm-local selection arms instead (operator portfolio 2026-08-04). Formerly named PackageSelection; renamed so the hub does not pretend every lock node is a pinned registry artifact."
 
-type PackageSelection<Ecosystem> {
+type PinnedPackageArtifactSelection<Ecosystem> {
   pin: Pin<PackageCoordinate<Ecosystem>>
   source: PackageArtifactSource
 }
 
-fn package_selection_name<Ecosystem>(selection: PackageSelection<Ecosystem>) -> NonEmptyStr {
+fn pinned_package_artifact_name<Ecosystem>(
+  selection: PinnedPackageArtifactSelection<Ecosystem>
+) -> NonEmptyStr {
   selection.pin.subject.name
 }
 
@@ -77,45 +79,115 @@ type PackageLockGraph<ManagerIdentity, NodeKey, Selection, Metadata, EdgeKind> {
   edges: List<PackageDependencyEdge<NodeKey, EdgeKind>>
 }
 
-data package_graph_identity_absent_note: String = "THIS CARRIER HOLDS NO lock_identity FIELD, AND ITS ABSENCE IS THE POINT (operator review, 2026-08-04). The first cut carried a freely authored lock_identity beside the selections, so a caller could alter a node and keep the old digest — the identity was a sibling field rather than a fold over the parts, which is the caller-asserted-input failure std.materialization_provider's own derivation invariant states outright: no correctness-relevant input may be caller-asserted; every one is derived from the request coproduct, a fold over carried parts, or a realization read-back.\\n\\nA canonical graph digest is a FOLD over this structure and belongs to whoever computes it, beside the raw artifact digest it was parsed from. It is not stored here, so it cannot drift from the graph it names."
+data package_graph_identity_absent_note: String = "NO authored lock_identity field. Canonical graph digest is a fold over parts, computed by the consumer."
 
-fn package_lock_node_keys<NodeKey, Selection, Metadata, EdgeKind, ManagerIdentity>(
-  graph: PackageLockGraph<ManagerIdentity, NodeKey, Selection, Metadata, EdgeKind>
-) -> List<NodeKey> {
-  map(graph.nodes, n => n.key)
-}
+type PackageLockNodeLookup<NodeKey, Selection, Metadata>
+  = PackageLockNodeAbsent { key: NodeKey }
+  | PackageLockNodeUnique {
+      node: PackageLockNode<NodeKey, Selection, Metadata>
+    }
+  | PackageLockNodeDuplicate {
+      key: NodeKey
+      count: Int
+    }
 
-fn package_lock_contains_key<NodeKey, Selection, Metadata, EdgeKind, ManagerIdentity>(
+data package_lock_lookup_note: String = "EXACT CARDINALITY, NOT BOOLEAN MEMBERSHIP (operator portfolio 2026-08-04). any(key==) was fail-open on duplicates: one key and three duplicate keys both returned true, so roots and edges resolved against an ambiguous graph. Lookup is 0 / 1 / many."
+
+fn package_lock_lookup_node<NodeKey, Selection, Metadata, EdgeKind, ManagerIdentity>(
   graph: PackageLockGraph<ManagerIdentity, NodeKey, Selection, Metadata, EdgeKind>,
-  key: NodeKey
-) -> Bool {
-  any(graph.nodes, n => n.key == key)
+  key: NodeKey,
+) -> PackageLockNodeLookup<NodeKey, Selection, Metadata> {
+  let hits = graph.nodes |> filter(n => n.key == key)
+  let n = count(hits)
+  if n == 0 {
+    PackageLockNodeAbsent { key: key }
+  } else if n == 1 {
+    fold(
+      hits,
+      init: PackageLockNodeAbsent { key: key },
+      f: (_acc, node) => PackageLockNodeUnique { node: node },
+    )
+  } else {
+    PackageLockNodeDuplicate { key: key, count: n }
+  }
 }
 
-data package_edge_endpoint_note: String = "AN EDGE NAMING A MISSING NODE IS A REFUSAL, NOT A SKIP. A dangling endpoint means the lock is not the closed graph it claims to be, and silently dropping the edge would make an incomplete closure look complete — the empty-observation narrow DESIGN names as strictly worse than a widen, because a widen is merely expensive while a narrow is silently uncovered."
+type PackageLockGraphAdmission<ManagerIdentity, NodeKey, Selection, Metadata, EdgeKind>
+  = PackageLockGraphAdmitted {
+      graph: PackageLockGraph<ManagerIdentity, NodeKey, Selection, Metadata, EdgeKind>
+    }
+  | PackageLockGraphDuplicateNode {
+      key: NodeKey
+      count: Int
+    }
+  | PackageLockGraphMissingRoot { key: NodeKey }
+  | PackageLockGraphMissingEdgeConsumer { key: NodeKey }
+  | PackageLockGraphMissingEdgeDependency { key: NodeKey }
 
-fn package_edge_endpoints_resolve<NodeKey, Selection, Metadata, EdgeKind, ManagerIdentity>(
+data package_lock_admission_note: String = "PRODUCTION CONSUMERS TAKE THE ADMITTED CARRIER, NEVER THE RAW GRAPH. Admission is exact-cardinality: duplicate keys refuse before roots or edges are trusted; missing roots and missing edge endpoints refuse with typed causes. Boolean membership is not an admission path."
+
+fn package_lock_admit_graph<ManagerIdentity, NodeKey, Selection, Metadata, EdgeKind>(
   graph: PackageLockGraph<ManagerIdentity, NodeKey, Selection, Metadata, EdgeKind>,
-  edge: PackageDependencyEdge<NodeKey, EdgeKind>
-) -> Bool {
-  package_lock_contains_key(graph: graph, key: edge.consumer)
-    && package_lock_contains_key(graph: graph, key: edge.dependency)
+) -> PackageLockGraphAdmission<ManagerIdentity, NodeKey, Selection, Metadata, EdgeKind> {
+  let after_nodes = fold(
+    graph.nodes,
+    init: PackageLockGraphAdmitted { graph: graph },
+    f: (acc, node) => match acc {
+      PackageLockGraphAdmitted { graph: g } =>
+        match package_lock_lookup_node(graph: g, key: node.key) {
+          PackageLockNodeUnique { node: _ } => PackageLockGraphAdmitted { graph: g }
+          PackageLockNodeDuplicate { key, count } =>
+            PackageLockGraphDuplicateNode { key: key, count: count }
+          PackageLockNodeAbsent { key } => PackageLockGraphMissingRoot { key: key }
+        }
+      other => other
+    },
+  )
+  let after_roots = match after_nodes {
+    PackageLockGraphAdmitted { graph: g } =>
+      fold(
+        g.roots,
+        init: PackageLockGraphAdmitted { graph: g },
+        f: (acc, root_key) => match acc {
+          PackageLockGraphAdmitted { graph: g2 } =>
+            match package_lock_lookup_node(graph: g2, key: root_key) {
+              PackageLockNodeUnique { node: _ } => PackageLockGraphAdmitted { graph: g2 }
+              PackageLockNodeAbsent { key } => PackageLockGraphMissingRoot { key: key }
+              PackageLockNodeDuplicate { key, count } =>
+                PackageLockGraphDuplicateNode { key: key, count: count }
+            }
+          other => other
+        },
+      )
+    other => other
+  }
+  match after_roots {
+    PackageLockGraphAdmitted { graph: g3 } =>
+      fold(
+        g3.edges,
+        init: PackageLockGraphAdmitted { graph: g3 },
+        f: (acc, edge) => match acc {
+          PackageLockGraphAdmitted { graph: g4 } =>
+            match package_lock_lookup_node(graph: g4, key: edge.consumer) {
+              PackageLockNodeAbsent { key } =>
+                PackageLockGraphMissingEdgeConsumer { key: key }
+              PackageLockNodeDuplicate { key, count } =>
+                PackageLockGraphDuplicateNode { key: key, count: count }
+              PackageLockNodeUnique { node: _ } =>
+                match package_lock_lookup_node(graph: g4, key: edge.dependency) {
+                  PackageLockNodeUnique { node: _ } =>
+                    PackageLockGraphAdmitted { graph: g4 }
+                  PackageLockNodeAbsent { key } =>
+                    PackageLockGraphMissingEdgeDependency { key: key }
+                  PackageLockNodeDuplicate { key, count } =>
+                    PackageLockGraphDuplicateNode { key: key, count: count }
+                }
+            }
+          other => other
+        },
+      )
+    other => other
+  }
 }
 
-fn package_graph_edges_all_resolve<NodeKey, Selection, Metadata, EdgeKind, ManagerIdentity>(
-  graph: PackageLockGraph<ManagerIdentity, NodeKey, Selection, Metadata, EdgeKind>
-) -> Bool {
-  all(graph.edges, e => package_edge_endpoints_resolve(graph: graph, edge: e))
-}
-
-fn package_graph_roots_all_resolve<NodeKey, Selection, Metadata, EdgeKind, ManagerIdentity>(
-  graph: PackageLockGraph<ManagerIdentity, NodeKey, Selection, Metadata, EdgeKind>
-) -> Bool {
-  all(graph.roots, r => package_lock_contains_key(graph: graph, key: r))
-}
-
-data package_node_key_distinctness_note: String = "NODE KEYS ARE COMPARED STRUCTURALLY AT THEIR OWN GRAIN, which is what keeps two same-name same-version nodes at different lock paths distinct. The discriminating evidence for that lives with the ecosystem that supplies the key, because only there is a realistic same-name-different-path pair constructible — a generic witness over an abstract NodeKey can only restate the equality it was given."
-
-data package_layering_note: String = "WHICH WAY THE RELATIONSHIP POINTS. A concrete manager's module IMPORTS this hub and instantiates its shapes; this hub never imports, names, or dispatches among them. Grounded precedent in tree: extdeps/browser/chromium.dag imports shared shapes and dag/extdeps/whatwg/ contains no mention of chromium, webkit or safari. There is no layer violation in an extdeps module importing another; the import graph's only structural law is acyclicity and the folder-prefix direction rule was deleted 2026-07-24.\\n\\nNOT EVERY 'PACKAGE MANAGER' INHABITS THIS SHAPE. npm, cargo and the Python resolvers are APPLICATION dependency resolvers whose exact graph is a committed lockfile artifact — that file is what PackageLockGraph models. The apt, dpkg and brew modules in extdeps/package_managers/ are SYSTEM package managers: their resolved set is host state, there is no committed apt.lock to hash, and measured at this writing all three declare zero types and are 27-62 lines of argv and path constants. They are transport-shaped, not graph-shaped, and are deliberately not adopted; adopting them later requires a consumer needing lock-graph semantics, not a name match on the word package.\\n\\nPYTHON IS FLAGGED AS MESSIER rather than discovered mid-implementation: npm has one canonical package-lock.json and cargo one Cargo.lock, while Python spans hash-pinned requirements.txt, poetry.lock, uv.lock and pylock.toml — plausibly several manager-identity rows under one subject, or several subject modules. That is the decision of whichever PR first carries a Python consumer; nothing is modeled here speculatively."
-
-data package_delivery_placement_note: String = "WHERE DELIVERY LIVES, AND THE CLAIM THAT WAS WITHDRAWN. Package DELIVERY is materialization-centered, but package MANAGEMENT is not only materialization: resolution and lock semantics are the manager's, acquisition/verification/tree construction are materialization, and bundle layout/provisioning/update policy are product decisions. Three layers, not one.\\n\\nAN EARLIER NOTE HERE CLAIMED THE std MATERIALIZATION KERNEL ALREADY EXISTS AND NEEDS ONLY A HANDLER. That was too strong and is withdrawn (operator review, 2026-08-04). The std modules are real precedents and must not be forked — std.realization models effect placement, scheduling and recompute/memoize/share decisions; std.materialization_provider is a compiler-artifact cache contract with Parse/Typecheck/Resolve request families; std.artifact_store is a budgeted keyed store. None of them acquires a registry archive, verifies its integrity, realizes a package tree, or provisions a bundle atomically. The instinct not to build a second content-addressed universe was right; the inference that the mechanism was therefore already built was not.\\n\\nSo the first delivery mechanism lands as a CONSUMED handler in gunbc.package_delivery, and the common portion is promoted into std only after a second real consumer proves the abstraction — safer than declaring a generic std package mechanism before one package closure has ever been materialized."
+data package_delivery_placement_note: String = "First delivery mechanism lands as a CONSUMED handler in gunbc.package_delivery; promote to std only after a second real consumer."

@@ -248,7 +248,7 @@ test fn oci_content_digest_accepts_sha512_wire() -> Bool {
   match parse_oci_content_digest_wire(raw: concat("sha512:", hex)) {
     Present { value: d } =>
       match d {
-        OciSha512Digest(body) => true
+        OciSha512Digest(_) => true
         OciSha256Digest(_) => false
         OciOtherDigest(_) => false
       }
