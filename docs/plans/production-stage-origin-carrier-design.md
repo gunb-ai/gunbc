@@ -254,10 +254,12 @@ obligations**, and B1 alone never establishes the class.
 ## Out of scope
 
 CI evidence lifecycle (route, expectation, semantic-evidence currency) is a separate
-program with its own signed decision — see
-[witness evidence lifecycle](witness-evidence-lifecycle-design.md). That program prevents
-missing evidence; this one prevents convincing evidence about the wrong thing. They join
-at one invariant:
+program with its own signed decision, carried by the plan slug
+`witness-evidence-lifecycle-design` (registered on `gunbc.doc_graph_roots`; not yet on
+main at the time this note was authored, so it is named by slug rather than linked by
+path — a doc link is a positional reference to something the bind registry already names,
+DESIGN section 3). That program prevents missing evidence; this one prevents convincing
+evidence about the wrong thing. They join at one invariant:
 
 ```
 CI requires current evidence for every witness
