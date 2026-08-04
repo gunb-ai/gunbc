@@ -122,7 +122,49 @@ type DiscoveredSourceRefsDigest
       cause: DiscoveredSourceRefsDigestUnavailableCause
     }
 
-data discovered_source_refs_digest_ceiling_note: String = "CEILING (operator ruling 2026-08-04): DiscoveredSourceRefsDigestFromList proves the supplied ref list matches what THAT producer discovered over its records vector. FrontierProbeReferencedClosure still accepts refs and digest as separate parameters — a synthetic subject can supply a mutually consistent pair without proving closure equals independent discovery. Next trigger: probe performs its own discovery rather than consuming a supplied population."
+data discovered_source_refs_digest_ceiling_note: String = "CLOSED (operator ruling 2026-08-04, merge requirement): population identity lives in FrontierProbeDiscoveredClosure — refs and population_digest are sealed together by frontier_probe_discovered_closure_seal and cannot be authored as independent halves. Host manifest consumption binds receipt digest to the sealed closure in frontier_probe_discovered_closure_subject_from_host_manifest before probe execution."
+
+type FrontierProbeDiscoveredClosure {
+  refs: List<SourceRef>,
+  population_digest: DiscoveredSourceRefsDigest,
+  entry: SourceRef
+}
+
+data frontier_probe_discovered_closure_note: String = "Closed probe-side closure carrier (operator ruling 2026-08-04): refs, population_digest, and entry are one subject. population_digest is always derived from refs at seal time — never a separate caller input."
+
+fn discovered_source_refs_digest_eq(
+  left: DiscoveredSourceRefsDigest,
+  right: DiscoveredSourceRefsDigest
+) -> Bool {
+  match left {
+    DiscoveredSourceRefsDigestFromList { digest: left_digest } =>
+      match right {
+        DiscoveredSourceRefsDigestFromList { digest: right_digest } =>
+          content_hash_eq_structural(left: left_digest, right: right_digest)
+        _ => false
+      }
+    DiscoveredSourceRefsDigestUnavailable {
+      cause: DiscoveredSourceRefsDigestNoRefList { reason: left_reason }
+    } =>
+      match right {
+        DiscoveredSourceRefsDigestUnavailable {
+          cause: DiscoveredSourceRefsDigestNoRefList { reason: right_reason }
+        } => left_reason == right_reason
+        _ => false
+      }
+  }
+}
+
+fn frontier_probe_discovered_closure_seal(
+  refs: List<SourceRef>,
+  entry: SourceRef
+) -> FrontierProbeDiscoveredClosure {
+  FrontierProbeDiscoveredClosure {
+    refs: refs,
+    population_digest: discovered_source_refs_digest_for_refs(refs: refs),
+    entry: entry
+  }
+}
 
 type SourceRootProvenanceCoverageReceipt {
   ingest_read_count: Int

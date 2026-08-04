@@ -39,6 +39,7 @@ import v2.compiler.source_authority {
   DiscoveredSourceRefsDigest,
   DiscoveredSourceRefsDigestFromList,
   DiscoveredSourceRefsDigestUnavailable,
+  FrontierProbeDiscoveredClosure,
   SourceRef,
   SourceRefFilesystemReadRefused,
   SourceRefListDigestNonStructuralRefused,
@@ -54,6 +55,8 @@ import v2.compiler.source_authority {
   SourceRootManifestAbsent,
   SourceRootManifestElided,
   SourceRootRowsMissing,
+  discovered_source_refs_digest_eq,
+  frontier_probe_discovered_closure_seal,
   source_ref_content_hash_mismatch,
   source_ref_count_in_list,
   source_ref_list_digest_build,
@@ -111,20 +114,60 @@ type FrontierProbeCoverageGate
   = FrontierProbeCoveragePermitted
   | FrontierProbeCoverageBlocked { coverage: SourceRootCoverage }
 
-data frontier_probe_ingest_subject_note: String = "Single ingest authority for frontier probe (operator ruling 2026-08-04): FrontierProbeReferencedClosure reads through modeled SourceRef rows with content-hash verification and proves closure population identity (no duplicate refs, entry exactly once, count matches ingest_read_count, digest matches when DiscoveredSourceRefsDigestFromList) before read-through. Receipt module_path is derived from entry.path only. CEILING: refs and digest are separate parameters — a synthetic subject can supply a mutually consistent pair without independent discovery; next trigger is probe-side discovery (discovered_source_refs_digest_ceiling_note). FrontierProbeFixture is explicit hermetic harness ingest."
+data frontier_probe_subject_digest_mismatch_reason: Symbol = ^frontier_probe_subject_digest_mismatch
+
+data frontier_probe_ingest_subject_note: String = "Single ingest authority for frontier probe (operator ruling 2026-08-04): FrontierProbeDiscoveredClosureSubject carries ONE sealed closure (refs + population_digest + entry bound at seal). Host manifest consumption verifies receipt digest matches the sealed population before probe execution. Population gates run read-through with content-hash verification. FrontierProbeFixture is explicit hermetic harness ingest."
 
 type FrontierProbeIngestSubject
-  = FrontierProbeReferencedClosure {
-      refs: List<SourceRef>,
+  = FrontierProbeDiscoveredClosureSubject {
+      closure: FrontierProbeDiscoveredClosure,
       coverage: SourceRootCoverage,
-      ingest_read_count: Int,
-      discovered_source_refs_digest: DiscoveredSourceRefsDigest,
-      entry: SourceRef
+      ingest_read_count: Int
     }
   | FrontierProbeFixture {
       ingest: SourceRootIngest,
       admission: Admission
     }
+
+fn frontier_probe_discovered_closure_subject_from_host_manifest(
+  refs: List<SourceRef>,
+  entry: SourceRef,
+  coverage: SourceRootCoverage,
+  ingest_read_count: Int,
+  host_discovered_digest: DiscoveredSourceRefsDigest
+) -> Outcome<FrontierProbeIngestSubject> {
+  let closure = frontier_probe_discovered_closure_seal(refs: refs, entry: entry)
+  if discovered_source_refs_digest_eq(
+    left: closure.population_digest,
+    right: host_discovered_digest
+  ) {
+    outcome_accepted(
+      value: FrontierProbeDiscoveredClosureSubject {
+        closure: closure,
+        coverage: coverage,
+        ingest_read_count: ingest_read_count
+      }
+    )
+  } else {
+    outcome_rejected(
+      d: diagnostics_singleton(
+        reason: frontier_probe_subject_digest_mismatch_reason
+      )
+    )
+  }
+}
+
+fn frontier_probe_discovered_closure_subject_for_matrix(
+  closure: FrontierProbeDiscoveredClosure,
+  coverage: SourceRootCoverage,
+  ingest_read_count: Int
+) -> FrontierProbeIngestSubject {
+  FrontierProbeDiscoveredClosureSubject {
+    closure: closure,
+    coverage: coverage,
+    ingest_read_count: ingest_read_count
+  }
+}
 
 fn frontier_probe_source_ref_for_path(
   refs: List<SourceRef>,
