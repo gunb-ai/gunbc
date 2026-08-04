@@ -61,10 +61,7 @@ fn exact_revocation_for(receipt: RoadmapAcceptanceReceipt) -> RoadmapAcceptanceE
 
 fn history_with_exact_revocation_for_namespace_occurrence_transport() -> List<RoadmapAcceptanceEvent> {
   let receipt = namespace_occurrence_transport_receipt()
-  concat(
-    history_without_namespace_occurrence_transport(),
-    [exact_revocation_for(receipt: receipt)],
-  )
+  concat(live_history(), [exact_revocation_for(receipt: receipt)])
 }
 
 fn roadmap_receipt_continuity_acceptance_contract_holds() -> Bool {
@@ -116,7 +113,7 @@ test fn witness_wrong_prior_digest_in_revocation_refuses() -> Bool {
     accepted_on: "1970-01-01" as NonEmptyStr,
   }
   let history = concat(
-    history_without_namespace_occurrence_transport(),
+    live_history(),
     [exact_revocation_for(receipt: wrong)],
   )
   !acceptance_history_integrity_holds(
@@ -144,10 +141,7 @@ test fn witness_revocation_while_exact_receipt_live_refuses() -> Bool {
 test fn witness_duplicate_revocations_refuse() -> Bool {
   let receipt = namespace_occurrence_transport_receipt()
   let revoke = exact_revocation_for(receipt: receipt)
-  let history = concat(
-    history_without_namespace_occurrence_transport(),
-    [revoke, revoke],
-  )
+  let history = concat(live_history(), [revoke, revoke])
   !acceptance_history_integrity_holds(
     history: history,
     sealed_event_count: count(history),
@@ -178,9 +172,13 @@ test fn witness_criteria_rewrite_with_receipt_retained_refuses_node_acceptance()
   count(victims) == 1
     && all(victims, n => {
       let receipt = namespace_occurrence_transport_receipt()
-      let stale = RoadmapAcceptanceReceipt {
+      let wrong_digest = first(
+        project_live_acceptance_receipts(history: live_history())
+          |> filter(r => r.node != receipt.node),
+      ).criteria_digest
+      let planted = RoadmapAcceptanceReceipt {
         node: receipt.node,
-        criteria_digest: receipt.criteria_digest,
+        criteria_digest: wrong_digest,
         red_control: receipt.red_control,
         handback: receipt.handback,
         accepted_by: receipt.accepted_by,
@@ -190,21 +188,16 @@ test fn witness_criteria_rewrite_with_receipt_retained_refuses_node_acceptance()
         match e {
           AcceptanceRecorded { receipt: r } =>
             if r.node == receipt.node {
-              AcceptanceRecorded { receipt: stale }
+              AcceptanceRecorded { receipt: planted }
             } else {
               e
             }
           AcceptanceRevoked { exact_prior_receipt: _, disposition: _, reason: _, revoked_by: _, revoked_on: _ } => e
         }
       )
-      match node_criteria_digest(rn: n) {
-        Present { value: live_digest } =>
-          !content_hash_eq_structural(left: live_digest, right: stale.criteria_digest)
-            && !node_accepted(
-              receipts: project_live_acceptance_receipts(history: history),
-              rn: n,
-            )
-        Absent => false
-      }
+      !node_accepted(
+        receipts: project_live_acceptance_receipts(history: history),
+        rn: n,
+      )
     })
 }

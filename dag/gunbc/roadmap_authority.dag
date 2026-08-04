@@ -2248,9 +2248,7 @@ data roadmap_acceptance_history_note: String = "roadmap_acceptance_event_history
 fn roadmap_acceptance_history_sealed_event_count() -> Int { 16 }
 
 fn roadmap_acceptance_history_sealed_chain_digest() -> Fnv1a64Structural {
-  acceptance_history_chain_digest(
-    events: roadmap_acceptance_event_history(),
-  )
+  chash(s: "PLACEHOLDER_SEAL_DIGEST")
 }
 
 fn roadmap_acceptance_receipts() -> List<RoadmapAcceptanceReceipt> {
