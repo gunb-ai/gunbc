@@ -6,7 +6,7 @@ use self::ReferenceDerivedClosureCapability::*;
 use self::ReferenceDerivedClosureObservation::*;
 use self::ReferenceDerivedClosureScenarioFailure::*;
 use self::ReferenceDerivedClosureTrigger::*;
-pub use crate::std_occurrence_binding::ambiguous_binding_candidates_rest_is_empty;
+pub use crate::std_algebra::is_empty;
 pub use crate::std_occurrence_binding::OccurrenceBindingResult;
 use crate::std_occurrence_binding::OccurrenceBindingResult::{
     OccurrenceAmbiguous, OccurrenceBound, OccurrenceUnbound,
@@ -297,7 +297,7 @@ pub fn assess_reference_derived_closure_observation(
                     else {
                         unreachable!()
                     };
-                    if (((ambiguous_binding_candidates_rest_is_empty(candidates.clone())
+                    if (((is_empty(candidates.rest.clone())
                         && (first_declaration.value.clone() != second_declaration.value.clone()))
                         && (candidates
                             .first

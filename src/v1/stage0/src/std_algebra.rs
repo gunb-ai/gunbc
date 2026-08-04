@@ -228,6 +228,17 @@ pub struct PointwisePower<T> {
 
 pub type FreeMonoid<T> = Vec<T>;
 
+pub fn is_empty<T: Clone>(xs: Rc<Vec<T>>) -> bool {
+    {
+        let __fm = xs.clone();
+        if __fm.is_empty() {
+            true
+        } else {
+            false
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct PartialFunction<K, V> {
     pub lookup: Rc<dyn Fn(K) -> Option<V>>,

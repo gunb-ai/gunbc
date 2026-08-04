@@ -122,6 +122,13 @@ type FreeMonoid<T>
   = Empty
   | Cons { head: T, tail: FreeMonoid<T> }
 
+fn is_empty<T>(xs: FreeMonoid<T>) -> Bool {
+  match xs {
+    Empty => true
+    Cons { head: _, tail: _ } => false
+  }
+}
+
 type PartialFunction<K, V> {
   lookup: fn(K) -> V?
   empty: PartialFunction<K, V>
