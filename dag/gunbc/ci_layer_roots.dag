@@ -501,6 +501,12 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     dissolve_on: "fixture-home policy changes (witness_admission_fixture_note); row deletes"
   },
   WitnessExclusionRow {
+    pattern: "frontier_probe_closure_matrix_positive_test.dag",
+    classification: OfflineLocalRecipe,
+    reason: "PR #7762 frontier probe closure read-through positives (operator 2026-08-04): five witnesses in src/v2/test/claim/long/frontier_probe_closure_matrix_positive_test.dag execute frontier_probe_receipt_for_subject with observed SourceRef rows (ReadsLiveTree) through full assemble+emit — measured on local claim_batch --wet 2026-08-04: below_cap ~772s, elided_complete ~853s, second_root ~965s eval wall (154-193x the 5s fast-lane budget); read_failure ~523ms; hash_mismatch ~181ms. Cost is full compiler pipeline per entry closure, not matrix fixture row count. Population/coverage refusal matrix stays per-PR in src/v2/test/claim/workflow/frontier_probe_closure_matrix_test.dag (SubstrateInputsOnly synthetic fixtures, sub-second eval).",
+    dissolve_on: "measured eval for all three positive witnesses lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or positives delete when emit receipts go green without full-pipeline cost"
+  },
+  WitnessExclusionRow {
     pattern: "test/claim/long/",
     classification: OfflineLocalRecipe,
     reason: "the LONG-test home at dir grain (operator 5-second rule). It removes these entries from per-PR discovery and NOTHING MORE: since 2026-08-04 it no longer answers the admission question, because the eval-deadline backstop it was blessed on is disarmed by the very relocation it was supposed to govern (long_lane_exclusion_note carries the retraction and the gunbc#7762 receipt). Admission is decided at identity grain by gunbc.witness_deferral_freeze plus gunbc.explicit_witness_admission",

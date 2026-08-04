@@ -1,0 +1,201 @@
+module v2.test.long.frontier_probe_closure_matrix_positive
+
+import v2.compiler.self_host.frontier_probe {
+  FrontierProbeIngestSubject,
+  frontier_probe_discovered_closure_subject_for_matrix,
+  frontier_probe_receipt_for_subject
+}
+import v2.compiler.self_host.frontier_probe_types {
+  FrontierProbeDetailAbsent,
+  FrontierProbeReceipt,
+  ProbeStageEmit,
+  SourceRefContentHashMismatch,
+  SourceRefReadRefused
+}
+import v2.compiler.source_authority {
+  SourceRef,
+  SourceRootCoverage,
+  SourceRootCoverageComplete,
+  SourceRootManifestElided,
+  content_hash_of_value,
+  frontier_probe_discovered_closure_seal,
+  source_ref_for_observed_storage_path
+}
+import v2.std.cross_tree.import_model { DagTree }
+import std.algebra { Cons, Empty }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data frontier_probe_closure_matrix_positive_offline_recipe: String = "LOCAL CONTROL RECIPE (PR #7762, measured 2026-08-04): target/debug/claim_batch --wet --source-root dag --source-root src/v2 --entry src/v2/test/claim/long/frontier_probe_closure_matrix_positive_test.dag --functions frontier_probe_below_cap_complete_passes_population_gate_holds,frontier_probe_elided_complete_refs_passes_population_gate_holds,frontier_probe_second_source_root_passes_population_gate_holds,frontier_probe_read_failure_detail_refused_holds,frontier_probe_hash_mismatch_detail_carries_observed_holds"
+
+fn fp_matrix_ref_a() -> SourceRef {
+  source_ref_for_observed_storage_path(path: "dag/std/algebra.dag")
+}
+
+fn fp_matrix_ref_b() -> SourceRef {
+  source_ref_for_observed_storage_path(path: "dag/std/types.dag")
+}
+
+fn fp_matrix_ref_v2() -> SourceRef {
+  source_ref_for_observed_storage_path(path: "src/v2/std/text.dag")
+}
+
+fn fp_matrix_closure_subject_matching_digest(
+  refs: List<SourceRef>,
+  coverage: SourceRootCoverage,
+  ingest_read_count: Int,
+  entry: SourceRef
+) -> FrontierProbeIngestSubject {
+  frontier_probe_discovered_closure_subject_for_matrix(
+    closure: frontier_probe_discovered_closure_seal(refs: refs, entry: entry),
+    coverage: coverage,
+    ingest_read_count: ingest_read_count
+  )
+}
+
+fn fp_matrix_elided_complete_refs_subject() -> FrontierProbeIngestSubject {
+  fp_matrix_closure_subject_matching_digest(
+    refs: Cons {
+      head: fp_matrix_ref_a(),
+      tail: Cons { head: fp_matrix_ref_b(), tail: Empty }
+    },
+    coverage: SourceRootManifestElided { read_count: 2, cap: 64 },
+    ingest_read_count: 2,
+    entry: fp_matrix_ref_a()
+  )
+}
+
+fn fp_matrix_below_cap_complete_subject() -> FrontierProbeIngestSubject {
+  fp_matrix_closure_subject_matching_digest(
+    refs: Cons {
+      head: fp_matrix_ref_a(),
+      tail: Empty
+    },
+    coverage: SourceRootCoverageComplete,
+    ingest_read_count: 1,
+    entry: fp_matrix_ref_a()
+  )
+}
+
+fn fp_matrix_second_root_subject() -> FrontierProbeIngestSubject {
+  fp_matrix_closure_subject_matching_digest(
+    refs: Cons {
+      head: fp_matrix_ref_a(),
+      tail: Cons { head: fp_matrix_ref_v2(), tail: Empty }
+    },
+    coverage: SourceRootCoverageComplete,
+    ingest_read_count: 2,
+    entry: fp_matrix_ref_v2()
+  )
+}
+
+fn fp_matrix_missing_path_ref() -> SourceRef {
+  SourceRef {
+    path: "dag/nonexistent_fp_matrix_probe_path.dag",
+    source_root: DagTree,
+    content_hash: content_hash_of_value(value: "missing-path" as NonEmptyStr)
+  }
+}
+
+fn fp_matrix_read_failure_subject() -> FrontierProbeIngestSubject {
+  fp_matrix_closure_subject_matching_digest(
+    refs: Cons {
+      head: fp_matrix_missing_path_ref(),
+      tail: Empty
+    },
+    coverage: SourceRootCoverageComplete,
+    ingest_read_count: 1,
+    entry: fp_matrix_missing_path_ref()
+  )
+}
+
+fn fp_matrix_wrong_hash_ref() -> SourceRef {
+  SourceRef {
+    path: "dag/std/algebra.dag",
+    source_root: DagTree,
+    content_hash: content_hash_of_value(value: "wrong-hash-bytes" as NonEmptyStr)
+  }
+}
+
+fn fp_matrix_hash_mismatch_subject() -> FrontierProbeIngestSubject {
+  fp_matrix_closure_subject_matching_digest(
+    refs: Cons {
+      head: fp_matrix_wrong_hash_ref(),
+      tail: Empty
+    },
+    coverage: SourceRootCoverageComplete,
+    ingest_read_count: 1,
+    entry: fp_matrix_wrong_hash_ref()
+  )
+}
+
+test fn frontier_probe_below_cap_complete_passes_population_gate_holds() -> Bool {
+  match frontier_probe_receipt_for_subject(
+    subject: fp_matrix_below_cap_complete_subject(),
+    fixture_module_path: ""
+  ) {
+    FrontierProbeReceipt {
+      located_stage: ProbeStageEmit,
+      detail: FrontierProbeDetailAbsent,
+      module_path: _,
+      blocker_class: _,
+      located_reason: _
+    } => true
+    _ => false
+  }
+}
+
+test fn frontier_probe_elided_complete_refs_passes_population_gate_holds() -> Bool {
+  match frontier_probe_receipt_for_subject(
+    subject: fp_matrix_elided_complete_refs_subject(),
+    fixture_module_path: ""
+  ) {
+    FrontierProbeReceipt {
+      located_stage: ProbeStageEmit,
+      detail: FrontierProbeDetailAbsent,
+      module_path: _,
+      blocker_class: _,
+      located_reason: _
+    } => true
+    _ => false
+  }
+}
+
+test fn frontier_probe_second_source_root_passes_population_gate_holds() -> Bool {
+  match frontier_probe_receipt_for_subject(
+    subject: fp_matrix_second_root_subject(),
+    fixture_module_path: ""
+  ) {
+    FrontierProbeReceipt {
+      located_stage: ProbeStageEmit,
+      detail: FrontierProbeDetailAbsent,
+      module_path: _,
+      blocker_class: _,
+      located_reason: _
+    } => true
+    _ => false
+  }
+}
+
+test fn frontier_probe_read_failure_detail_refused_holds() -> Bool {
+  match frontier_probe_receipt_for_subject(
+    subject: fp_matrix_read_failure_subject(),
+    fixture_module_path: ""
+  ).detail {
+    SourceRefReadRefused { source_ref: _, error: _ } => true
+    _ => false
+  }
+}
+
+test fn frontier_probe_hash_mismatch_detail_carries_observed_holds() -> Bool {
+  match frontier_probe_receipt_for_subject(
+    subject: fp_matrix_hash_mismatch_subject(),
+    fixture_module_path: ""
+  ).detail {
+    SourceRefContentHashMismatch { source_ref: _, expected: _, observed: _ } => true
+    _ => false
+  }
+}

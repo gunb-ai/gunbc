@@ -1,4 +1,4 @@
-module v2.test.long.frontier_probe_closure_matrix
+module v2.test.workflow.frontier_probe_closure_matrix
 
 import v2.compiler.self_host.frontier_probe {
   FrontierProbeIngestSubject,
@@ -11,12 +11,7 @@ import v2.compiler.self_host.frontier_probe {
 }
 import v2.compiler.self_host.frontier_probe_types {
   FrontierProbeClosurePopulationRefused,
-  FrontierProbeCoverageRefused,
-  FrontierProbeDetailAbsent,
-  FrontierProbeReceipt,
-  ProbeStageEmit,
-  SourceRefContentHashMismatch,
-  SourceRefReadRefused
+  FrontierProbeCoverageRefused
 }
 import v2.compiler.source_authority {
   DiscoveredSourceRefsDigest,
@@ -29,29 +24,30 @@ import v2.compiler.source_authority {
   SourceRootRowsMissing,
   content_hash_of_value,
   discovered_source_refs_digest_for_refs,
-  frontier_probe_discovered_closure_seal,
-  source_ref_for_observed_storage_path
+  frontier_probe_discovered_closure_seal
 }
 import v2.std.cross_tree.import_model { DagTree }
 import std.algebra { Cons, Empty }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data frontier_probe_closure_matrix_offline_recipe: String = "LOCAL CONTROL RECIPE (operator 5s rule): target/debug/claim_batch --wet --source-root dag --source-root src/v2 --entry src/v2/test/claim/long/frontier_probe_closure_matrix_test.dag --functions frontier_probe_closure_storage_duplicate_refused_holds,frontier_probe_closure_entry_binding_refused_holds,frontier_probe_closure_count_mismatch_refused_holds,frontier_probe_closure_refs_digest_mismatch_refused_holds,frontier_probe_coverage_rows_missing_refused_holds,frontier_probe_coverage_manifest_absent_refused_holds,frontier_probe_elided_incomplete_refs_coverage_refused_holds,frontier_probe_below_cap_complete_passes_population_gate_holds,frontier_probe_elided_complete_refs_passes_population_gate_holds,frontier_probe_second_source_root_passes_population_gate_holds,frontier_probe_read_failure_detail_refused_holds,frontier_probe_hash_mismatch_detail_carries_observed_holds,frontier_probe_storage_hash_conflict_refused_holds"
+fn fp_matrix_synthetic_ref(path: String, hash_seed: String) -> SourceRef {
+  SourceRef {
+    path: path,
+    source_root: DagTree,
+    content_hash: content_hash_of_value(value: hash_seed as NonEmptyStr)
+  }
+}
 
 fn fp_matrix_ref_a() -> SourceRef {
-  source_ref_for_observed_storage_path(path: "dag/std/algebra.dag")
+  fp_matrix_synthetic_ref(path: "dag/std/algebra.dag", hash_seed: "fp-matrix-ref-a")
 }
 
 fn fp_matrix_ref_b() -> SourceRef {
-  source_ref_for_observed_storage_path(path: "dag/std/types.dag")
-}
-
-fn fp_matrix_ref_v2() -> SourceRef {
-  source_ref_for_observed_storage_path(path: "src/v2/std/text.dag")
+  fp_matrix_synthetic_ref(path: "dag/std/types.dag", hash_seed: "fp-matrix-ref-b")
 }
 
 fn fp_matrix_closure_subject_matching_digest(
@@ -142,80 +138,8 @@ fn fp_matrix_elided_incomplete_refs_subject() -> FrontierProbeIngestSubject {
   )
 }
 
-fn fp_matrix_elided_complete_refs_subject() -> FrontierProbeIngestSubject {
-  fp_matrix_closure_subject_matching_digest(
-    refs: Cons {
-      head: fp_matrix_ref_a(),
-      tail: Cons { head: fp_matrix_ref_b(), tail: Empty }
-    },
-    coverage: SourceRootManifestElided { read_count: 2, cap: 64 },
-    ingest_read_count: 2,
-    entry: fp_matrix_ref_a()
-  )
-}
-
-fn fp_matrix_below_cap_complete_subject() -> FrontierProbeIngestSubject {
-  fp_matrix_closure_subject_matching_digest(
-    refs: Cons {
-      head: fp_matrix_ref_a(),
-      tail: Empty
-    },
-    coverage: SourceRootCoverageComplete,
-    ingest_read_count: 1,
-    entry: fp_matrix_ref_a()
-  )
-}
-
-fn fp_matrix_second_root_subject() -> FrontierProbeIngestSubject {
-  fp_matrix_closure_subject_matching_digest(
-    refs: Cons {
-      head: fp_matrix_ref_a(),
-      tail: Cons { head: fp_matrix_ref_v2(), tail: Empty }
-    },
-    coverage: SourceRootCoverageComplete,
-    ingest_read_count: 2,
-    entry: fp_matrix_ref_v2()
-  )
-}
-
-fn fp_matrix_missing_path_ref() -> SourceRef {
-  SourceRef {
-    path: "dag/nonexistent_fp_matrix_probe_path.dag",
-    source_root: DagTree,
-    content_hash: content_hash_of_value(value: "missing-path" as NonEmptyStr)
-  }
-}
-
-fn fp_matrix_read_failure_subject() -> FrontierProbeIngestSubject {
-  fp_matrix_closure_subject_matching_digest(
-    refs: Cons {
-      head: fp_matrix_missing_path_ref(),
-      tail: Empty
-    },
-    coverage: SourceRootCoverageComplete,
-    ingest_read_count: 1,
-    entry: fp_matrix_missing_path_ref()
-  )
-}
-
 fn fp_matrix_wrong_hash_ref() -> SourceRef {
-  SourceRef {
-    path: "dag/std/algebra.dag",
-    source_root: DagTree,
-    content_hash: content_hash_of_value(value: "wrong-hash-bytes" as NonEmptyStr)
-  }
-}
-
-fn fp_matrix_hash_mismatch_subject() -> FrontierProbeIngestSubject {
-  fp_matrix_closure_subject_matching_digest(
-    refs: Cons {
-      head: fp_matrix_wrong_hash_ref(),
-      tail: Empty
-    },
-    coverage: SourceRootCoverageComplete,
-    ingest_read_count: 1,
-    entry: fp_matrix_wrong_hash_ref()
-  )
+  fp_matrix_synthetic_ref(path: "dag/std/algebra.dag", hash_seed: "wrong-hash-bytes")
 }
 
 fn fp_matrix_storage_hash_conflict_subject() -> FrontierProbeIngestSubject {
@@ -336,74 +260,6 @@ test fn frontier_probe_elided_incomplete_refs_coverage_refused_holds() -> Bool {
         SourceRootManifestElided { read_count: 91, cap: 64 } => true
         _ => false
       }
-    _ => false
-  }
-}
-
-test fn frontier_probe_below_cap_complete_passes_population_gate_holds() -> Bool {
-  match frontier_probe_receipt_for_subject(
-    subject: fp_matrix_below_cap_complete_subject(),
-    fixture_module_path: ""
-  ) {
-    FrontierProbeReceipt {
-      located_stage: ProbeStageEmit,
-      detail: FrontierProbeDetailAbsent,
-      module_path: _,
-      blocker_class: _,
-      located_reason: _
-    } => true
-    _ => false
-  }
-}
-
-test fn frontier_probe_elided_complete_refs_passes_population_gate_holds() -> Bool {
-  match frontier_probe_receipt_for_subject(
-    subject: fp_matrix_elided_complete_refs_subject(),
-    fixture_module_path: ""
-  ) {
-    FrontierProbeReceipt {
-      located_stage: ProbeStageEmit,
-      detail: FrontierProbeDetailAbsent,
-      module_path: _,
-      blocker_class: _,
-      located_reason: _
-    } => true
-    _ => false
-  }
-}
-
-test fn frontier_probe_second_source_root_passes_population_gate_holds() -> Bool {
-  match frontier_probe_receipt_for_subject(
-    subject: fp_matrix_second_root_subject(),
-    fixture_module_path: ""
-  ) {
-    FrontierProbeReceipt {
-      located_stage: ProbeStageEmit,
-      detail: FrontierProbeDetailAbsent,
-      module_path: _,
-      blocker_class: _,
-      located_reason: _
-    } => true
-    _ => false
-  }
-}
-
-test fn frontier_probe_read_failure_detail_refused_holds() -> Bool {
-  match frontier_probe_receipt_for_subject(
-    subject: fp_matrix_read_failure_subject(),
-    fixture_module_path: ""
-  ).detail {
-    SourceRefReadRefused { source_ref: _, error: _ } => true
-    _ => false
-  }
-}
-
-test fn frontier_probe_hash_mismatch_detail_carries_observed_holds() -> Bool {
-  match frontier_probe_receipt_for_subject(
-    subject: fp_matrix_hash_mismatch_subject(),
-    fixture_module_path: ""
-  ).detail {
-    SourceRefContentHashMismatch { source_ref: _, expected: _, observed: _ } => true
     _ => false
   }
 }
