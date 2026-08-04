@@ -683,42 +683,8 @@ fn resolve_field(field: Node, env: TypeEnv, module_name: String) -> FieldResolve
   }
 }
 
-fn is_emitter_clone_bound_marker(
-  type_expr: Node,
-  source_indices: Map<String, NewlineIndex>
-) -> Bool {
-  authored_name_at(source_indices: source_indices, node: type_expr) == "Clone"
-    && type_expr.connective == NoConnective
-    && (type_expr.children |> count) == 0
-}
-
 fn resolve_param(param: Node, env: TypeEnv, module_name: String) -> ParamResolveResult {
   let authored_type = param_node_type_expr(n: param)
-  if is_emitter_clone_bound_marker(type_expr: authored_type, source_indices: env.source_indices) {
-    let default_resolved = match param_node_default_value(n: param) {
-      Present { value: default_value } => Present { value: resolve_expr_types(texpr: default_value, env: env, module_name: module_name) }
-      Absent => none
-    }
-    let default_diags = match default_resolved {
-      Present { value: result } => result.diagnostics
-      Absent => []
-    }
-    let default_expr = match default_resolved {
-      Present { value: result } => Present { value: result.expr }
-      Absent => none
-    }
-    ParamResolveResult {
-      param: make_resolved_param_node(
-        name: param_node_name_at(n: param, source_indices: env.source_indices),
-        type_expr: authored_type,
-        default_value: default_expr,
-        properties: param.properties,
-        span: param.span,
-        name_span: node_name_span(n: param)
-      ),
-      diagnostics: default_diags
-    }
-  } else {
   let type_result = resolve_node(n: authored_type, env: env, module_name: module_name)
   let type_resolved = type_result.resolved
   let rendered_type = if authored_type.children |> count > 0 {
@@ -749,7 +715,6 @@ fn resolve_param(param: Node, env: TypeEnv, module_name: String) -> ParamResolve
       name_span: node_name_span(n: param)
     ),
     diagnostics: concat(type_diags, default_diags)
-  }
   }
 }
 

@@ -2269,32 +2269,17 @@ fn parse_optional_type_params(tokens: TokenStream, ctx: ParseContext) -> TypePar
   }
 }
 
-fn parse_type_param_bound_type_expr(name: String, name_span: SourceSpan, tokens: TokenStream, ctx: ParseContext) -> TypeResult {
-  match eat(tokens: tokens, expected: ExpectColon) {
-  EatConsumed { token: _, tokens: bound_tokens } =>
-    let bound_r = expect_ident(tokens: bound_tokens)
-    if has_err(err: bound_r.err) {
-      TypeResult { type_expr: leaf_type_node(name: name, span: name_span), tokens: tokens, ctx: ctx, err: bound_r.err }
-    } else {
-      TypeResult { type_expr: leaf_type_node(name: bound_r.name, span: bound_r.span), tokens: bound_r.tokens, ctx: ctx, err: none }
-    }
-  EatUnchanged { tokens: __eu } =>
-    TypeResult { type_expr: leaf_type_node(name: name, span: name_span), tokens: tokens, ctx: ctx, err: none }
-  }
-}
-
 fn collect_type_param_names(tokens: TokenStream, ctx: ParseContext, params: List<Node>) -> TypeParamsResult {
   if tok_is_ident(tok: token_stream_first(stream: tokens)) {
     let r = expect_ident(tokens: tokens)
     let span = r.span
-    let bound_result = parse_type_param_bound_type_expr(name: r.name, name_span: span, tokens: r.tokens, ctx: ctx)
-    let param = make_param_node(name: r.name, type_expr: bound_result.type_expr, default_value: none, span: span, name_span: span)
+    let param = make_param_node(name: r.name, type_expr: leaf_type_node(name: r.name, span: span), default_value: none, span: span, name_span: span)
     let next_params = list_push(params, param)
-    match eat(tokens: bound_result.tokens, expected: ExpectComma) {
+    match eat(tokens: r.tokens, expected: ExpectComma) {
     EatConsumed { token: _, tokens: __ec } =>
-      collect_type_param_names(tokens: __ec, ctx: bound_result.ctx, params: next_params)
+      collect_type_param_names(tokens: __ec, ctx: ctx, params: next_params)
     EatUnchanged { tokens: __eu } =>
-      TypeParamsResult { params: next_params, tokens: bound_result.tokens, ctx: bound_result.ctx }
+      TypeParamsResult { params: next_params, tokens: r.tokens, ctx: ctx }
     }
   } else {
     TypeParamsResult { params: params, tokens: tokens, ctx: ctx }

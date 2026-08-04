@@ -222,23 +222,10 @@ fn w_fn_value_box_alpha_renamed_gets_clone() -> Bool {
   )
 }
 
-fn w_fn_bounded_phantom_wf_bound_propagates() -> Bool {
-  compile_dag_rust_emit_check(
-    "module fn_clone_bound_witness.alpha_bounded_phantom\n\ntype BoundedPhantom<T: Clone> {\n  tag: Int\n}\n\nfn inspect<N>(h: BoundedPhantom<N>) -> String {\n  \"bounded\"\n}\n",
-    "src/fn_clone_bound_witness_alpha_bounded_phantom.rs",
-    ["fn inspect<N: Clone>"],
-    ["fn inspect<N>"]
-  )
-}
-
 test fn fn_phantom_alpha_renamed_negative_control() -> Bool {
   w_fn_phantom_alpha_renamed_stays_bare()
 }
 
 test fn fn_value_box_alpha_renamed_positive_control() -> Bool {
   w_fn_value_box_alpha_renamed_gets_clone()
-}
-
-test fn fn_bounded_phantom_wf_bound_positive_control() -> Bool {
-  w_fn_bounded_phantom_wf_bound_propagates()
 }
