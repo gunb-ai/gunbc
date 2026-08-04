@@ -1,0 +1,41 @@
+module test.claim.namespace_reference_derived_closure_acceptance
+
+import gunbc.namespace_reference_derived_closure_admission {
+  ReferenceDerivedClosureAdmission,
+  ReferenceDerivedClosureUnavailable,
+  RepeatedMentionsCollapseDependency,
+  UnrelatedLoadedFileExcluded,
+  P2aReferenceDependencyProjection7515,
+  P2aPoolIndependentDependencyProjection7515,
+}
+import gunbc.namespace_reference_derived_closure_contract {
+  reference_derived_closure_closing_contract_holds,
+}
+import v1.gunbc.namespace_reference_derived_closure_production_admissions {
+  observe_same_file_earlier_neighbour_visible,
+  observe_sibling_decision_branch_excluded,
+  observe_later_declaration_excluded,
+  observe_distinct_same_spelled_declarations_preserved,
+}
+import std.types { Bool, List }
+
+data namespace_reference_derived_closure_acceptance_note: String = "THE DISCRIMINATING CLOSING VALIDATION for roadmap node namespace-reference-derived-closure. RED ON PURPOSE while clauses (e-f) remain unavailable. Composition lives inline in the witness test (operator ruling loyal-ram-550): the contract predicate is unchanged and takes admissions as a parameter; each lane owns ONE observe/supplier function for its clause(s); this witness imports both dag contract/admission types and v1 production observers. N3-A supplies structural clauses (a-d); clauses (e-f) remain literal Unavailable rows until N3-B/N3-C land their suppliers. Executes under the dag plus src/v1 envelope (known_red_probe_v1_envelope_roster) because the witness imports v1.*."
+
+test fn witness_namespace_reference_derived_closure_closing_contract_holds() -> Bool {
+  reference_derived_closure_closing_contract_holds(
+    admissions: [
+      observe_same_file_earlier_neighbour_visible(),
+      observe_sibling_decision_branch_excluded(),
+      observe_later_declaration_excluded(),
+      observe_distinct_same_spelled_declarations_preserved(),
+      ReferenceDerivedClosureUnavailable {
+        capability: RepeatedMentionsCollapseDependency,
+        trigger: P2aReferenceDependencyProjection7515,
+      },
+      ReferenceDerivedClosureUnavailable {
+        capability: UnrelatedLoadedFileExcluded,
+        trigger: P2aPoolIndependentDependencyProjection7515,
+      },
+    ],
+  )
+}
