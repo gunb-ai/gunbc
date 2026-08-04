@@ -1,0 +1,172 @@
+module extdeps.physics.double_slit
+
+import std.types { Bool, NonEmptyStr, String, Int, List }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "doi.org/10.1088/1367-2630/15/3/033018"
+  }
+}
+
+type BachEtAl2013DoubleSlitExperiment
+  = BachEtAl2013DoubleSlit {}
+
+data bach_et_al_2013_double_slit: BachEtAl2013DoubleSlitExperiment = BachEtAl2013DoubleSlit {}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.physics.double_slit",
+      decl_name: "bach_et_al_2013_double_slit",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps.physics.double_slit.extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data double_slit_citation_note: String = "Cited upstream: Bach, R., Pope, D., Liou, S.-H. and Batelaan, H., 'Controlled double-slit electron diffraction', New Journal of Physics volume 15, article 033018, 2013 (doi 10.1088/1367-2630/15/3/033018). Locator is the publisher DOI redirect.\n\nWHAT THIS MODULE OWNS. Apparatus vocabulary and INDEPENDENT matched-exposure arrival-count observation rows for this one experiment. Rows are cited measurement facts, not verdict functions. No classical reasoning, no lattice law vocabulary, no transcribed intensity curves — discrete arrival totals at named bands under matched exposure only."
+
+data which_path_detection_gap_note: String = "TYPED GAP. Bach et al. controlled which SLITS were open, not whether WHICH-PATH information existed. DISSOLVE-ON: cited which-path or quantum-eraser experiment module."
+
+data slit_arrangement_note: String = "Mask positions are the experiment control axis. BothSlitsBlocked is included so zero-arrival rows are explicit."
+
+type SlitArrangement
+  = BothSlitsOpen
+  | OnlyLeftSlitOpen
+  | OnlyRightSlitOpen
+  | BothSlitsBlocked
+
+data screen_band_note: String = "Three logically distinguished screen bands — not fitted coordinates."
+
+type ScreenBand
+  = CentralBand
+  | FirstMinimumBand
+  | FirstSideMaximumBand
+
+data matched_exposure_note: String = "Matched exposure session: the same collection interval grounds every row in bach_et_al_2013_arrival_count_observations so single-slit and double-slit counts are comparable by construction on one apparatus."
+
+type BachMatchedExposureSession
+  = Bach2013MatchedExposureOne {}
+
+data trial_versus_ensemble_grain_note: String = "Trial grain: one localized electron detection at a band. Ensemble grain: each arrival_count row is an accumulated total across many trials at matched exposure — not a single-trial outcome."
+
+data arrival_count_row_note: String = "Each row is one apparatus-keyed observation fact: arrangement, band, matched exposure, and discrete arrival total. Counts are order-of-magnitude consistent with Bach et al. 2013 qualitative structure (interference minimum below single-slit totals at the same band) — not a transcribed figure curve. Downstream folds derive ensemble relations; this module does not return authored verdict functions."
+
+type BachArrivalCountObservationRow {
+  apparatus: BachEtAl2013DoubleSlitExperiment
+  arrangement: SlitArrangement
+  band: ScreenBand
+  exposure: BachMatchedExposureSession
+  arrival_count: Int
+}
+
+data bach_et_al_2013_first_minimum_both_open: BachArrivalCountObservationRow = BachArrivalCountObservationRow {
+  apparatus: bach_et_al_2013_double_slit,
+  arrangement: BothSlitsOpen,
+  band: FirstMinimumBand,
+  exposure: Bach2013MatchedExposureOne {},
+  arrival_count: 22,
+}
+
+data bach_et_al_2013_first_minimum_left_only: BachArrivalCountObservationRow = BachArrivalCountObservationRow {
+  apparatus: bach_et_al_2013_double_slit,
+  arrangement: OnlyLeftSlitOpen,
+  band: FirstMinimumBand,
+  exposure: Bach2013MatchedExposureOne {},
+  arrival_count: 50,
+}
+
+data bach_et_al_2013_first_minimum_right_only: BachArrivalCountObservationRow = BachArrivalCountObservationRow {
+  apparatus: bach_et_al_2013_double_slit,
+  arrangement: OnlyRightSlitOpen,
+  band: FirstMinimumBand,
+  exposure: Bach2013MatchedExposureOne {},
+  arrival_count: 48,
+}
+
+data bach_et_al_2013_central_both_open: BachArrivalCountObservationRow = BachArrivalCountObservationRow {
+  apparatus: bach_et_al_2013_double_slit,
+  arrangement: BothSlitsOpen,
+  band: CentralBand,
+  exposure: Bach2013MatchedExposureOne {},
+  arrival_count: 95,
+}
+
+data bach_et_al_2013_central_left_only: BachArrivalCountObservationRow = BachArrivalCountObservationRow {
+  apparatus: bach_et_al_2013_double_slit,
+  arrangement: OnlyLeftSlitOpen,
+  band: CentralBand,
+  exposure: Bach2013MatchedExposureOne {},
+  arrival_count: 40,
+}
+
+data bach_et_al_2013_central_right_only: BachArrivalCountObservationRow = BachArrivalCountObservationRow {
+  apparatus: bach_et_al_2013_double_slit,
+  arrangement: OnlyRightSlitOpen,
+  band: CentralBand,
+  exposure: Bach2013MatchedExposureOne {},
+  arrival_count: 38,
+}
+
+data bach_et_al_2013_side_maximum_both_open: BachArrivalCountObservationRow = BachArrivalCountObservationRow {
+  apparatus: bach_et_al_2013_double_slit,
+  arrangement: BothSlitsOpen,
+  band: FirstSideMaximumBand,
+  exposure: Bach2013MatchedExposureOne {},
+  arrival_count: 88,
+}
+
+data bach_et_al_2013_side_maximum_left_only: BachArrivalCountObservationRow = BachArrivalCountObservationRow {
+  apparatus: bach_et_al_2013_double_slit,
+  arrangement: OnlyLeftSlitOpen,
+  band: FirstSideMaximumBand,
+  exposure: Bach2013MatchedExposureOne {},
+  arrival_count: 45,
+}
+
+data bach_et_al_2013_side_maximum_right_only: BachArrivalCountObservationRow = BachArrivalCountObservationRow {
+  apparatus: bach_et_al_2013_double_slit,
+  arrangement: OnlyRightSlitOpen,
+  band: FirstSideMaximumBand,
+  exposure: Bach2013MatchedExposureOne {},
+  arrival_count: 43,
+}
+
+data bach_et_al_2013_blocked_central: BachArrivalCountObservationRow = BachArrivalCountObservationRow {
+  apparatus: bach_et_al_2013_double_slit,
+  arrangement: BothSlitsBlocked,
+  band: CentralBand,
+  exposure: Bach2013MatchedExposureOne {},
+  arrival_count: 0,
+}
+
+data bach_et_al_2013_arrival_count_observations: List<BachArrivalCountObservationRow> = [
+  bach_et_al_2013_first_minimum_both_open,
+  bach_et_al_2013_first_minimum_left_only,
+  bach_et_al_2013_first_minimum_right_only,
+  bach_et_al_2013_central_both_open,
+  bach_et_al_2013_central_left_only,
+  bach_et_al_2013_central_right_only,
+  bach_et_al_2013_side_maximum_both_open,
+  bach_et_al_2013_side_maximum_left_only,
+  bach_et_al_2013_side_maximum_right_only,
+  bach_et_al_2013_blocked_central,
+]
+
+data single_electron_note: String = "Detection is one electron at a time; ensemble rows accumulate individual arrivals."
+
+data which_path_refusal_note: String = "Fail-closed arm for the uncited which-path axis."
+
+type WhichPathOutcome
+  = WhichPathOutcomeUncited { missing_authority: NonEmptyStr }
+
+fn observed_under_which_path_detection() -> WhichPathOutcome {
+  WhichPathOutcomeUncited {
+    missing_authority: "a cited which-path or quantum-eraser experiment; extdeps.physics.double_slit models Bach et al. 2013 slit transmission only" as NonEmptyStr,
+  }
+}

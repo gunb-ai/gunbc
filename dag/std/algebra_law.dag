@@ -1,10 +1,10 @@
 module std.algebra_law
 
-import std.types { Float, NonEmptyStr, is_kernel_type }
+import std.types { Float, NonEmptyStr, Int, is_kernel_type }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 
-data algebra_law_slice_note: String = "Slice-1 associativity evidence only: AssociativityCounterexampleWitness plus AssociativityRefutationReceipt bound to the closed AssociativityOperationSubject coproduct (sole variant AssociativityFloatAdd — kernel Float addition, rostered in std.types kernel_type_set). LawExhaustivelyVerified and LawDeclaredByAuthority are omitted until an exhaustive checker or cited proposition producer exists. Float binary + has no DeclarationRef-producing surface (compiler builtin); extdeps.standards.ieee_754_2019 owns the cited standard subject and gunbc.float_add_associativity_observation records the execution receipt."
+data algebra_law_slice_note: String = "Slice-1 associativity (AssociativityOperationSubject / AssociativityFloatAdd). Slice-A classical path additivity (ClassicalPathAdditivityOperationSubject / ClassicalPathAdditivityBach2013) — exclusive-alternative mixture refutation from cited arrival-count rows, executed derivation in gunbc.bach_double_slit_path_additivity_observation. Lattice distributivity (Slice B) is deferred. LawExhaustivelyVerified and LawDeclaredByAuthority remain omitted."
 
 data algebra_law_subject_coproduct_expansion_disposition: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
@@ -31,6 +31,22 @@ type AssociativityRefutationReceipt<T> {
   witness: AssociativityCounterexampleWitness<T>
 }
 
+type ClassicalPathAdditivityCounterexampleWitness {
+  left_alternative_count: Int
+  right_alternative_count: Int
+  both_open_observed_count: Int
+  classical_additive_prediction: Int
+}
+
+type ClassicalPathAdditivityOperationSubject
+  = ClassicalPathAdditivityBach2013 {}
+
+type ClassicalPathAdditivityRefutationReceipt {
+  subject: ClassicalPathAdditivityOperationSubject
+  witness: ClassicalPathAdditivityCounterexampleWitness
+  location_label: NonEmptyStr
+}
+
 fn float_kernel_type_in_authority_roster() -> Bool {
   is_kernel_type(name: "Float")
 }
@@ -51,5 +67,27 @@ fn associativity_refutation_holds_for_float_add(
   match receipt.subject {
     AssociativityFloatAdd {} =>
       float_add_associativity_witness_matches_execution(witness: receipt.witness)
+  }
+}
+
+fn classical_path_additivity_witness_matches_additive_prediction(
+  witness: ClassicalPathAdditivityCounterexampleWitness,
+) -> Bool {
+  witness.classical_additive_prediction == (witness.left_alternative_count + witness.right_alternative_count)
+}
+
+fn classical_path_additivity_witness_is_counterexample(
+  witness: ClassicalPathAdditivityCounterexampleWitness,
+) -> Bool {
+  classical_path_additivity_witness_matches_additive_prediction(witness: witness)
+    && (witness.both_open_observed_count < witness.classical_additive_prediction)
+}
+
+fn classical_path_additivity_refutation_holds_for_bach_2013(
+  receipt: ClassicalPathAdditivityRefutationReceipt,
+) -> Bool {
+  match receipt.subject {
+    ClassicalPathAdditivityBach2013 {} =>
+      classical_path_additivity_witness_is_counterexample(witness: receipt.witness)
   }
 }
