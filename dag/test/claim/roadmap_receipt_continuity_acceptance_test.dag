@@ -78,10 +78,6 @@ fn roadmap_receipt_continuity_acceptance_contract_holds() -> Bool {
     && witness_git_refusal_observation_refuses_integrity()
 }
 
-test fn roadmap_receipt_continuity_acceptance_contract_holds() -> Bool {
-  roadmap_receipt_continuity_acceptance_contract_holds()
-}
-
 test fn witness_deleted_history_event_refuses() -> Bool {
   let prior = live_history()
   let current = drop_first_acceptance_event(events: prior)
