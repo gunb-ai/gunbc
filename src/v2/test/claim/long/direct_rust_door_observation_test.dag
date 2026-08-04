@@ -3,7 +3,7 @@ module v2.test.long.direct_rust_door_observation
 import v2.compiler.self_host.direct_rust_door_observation {
   DirectRustDoorObservation,
   DirectRustDoorSourceProduced,
-  MintRefused,
+  direct_rust_door_observation_is_candidate_rejection,
   direct_rust_door_observation_establishes,
   observe_direct_rust_door_provenance
 }
@@ -13,24 +13,15 @@ import v2.std.text { String }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data direct_rust_door_observation_long_note: String = "LONG lane (operator 5s rule): runs the full ingest-assemble-infer-mint path; measured 13-15s per evaluation on a cold single-entry index. Enrolled on falsifier_substrate_long_lane_rows. Local recipe: claim_batch --source-root dag --source-root src/v2 --entry src/v2/test/claim/long/direct_rust_door_observation_test.dag --functions direct_rust_door_observation_is_mint_refused"
+data direct_rust_door_observation_long_note: String = "LONG lane (operator 5s rule): runs the full ingest-assemble-infer-mint path; measured 13-15s per evaluation on a cold single-entry index. Enrolled on falsifier_substrate_long_lane_rows. Local recipe: claim_batch --source-root dag --source-root src/v2 --entry src/v2/test/claim/long/direct_rust_door_observation_test.dag --functions direct_rust_door_observation_is_candidate_rejected"
 
 data direct_rust_door_observation_expected_red_note: String = "EXPECTING RED BY DESIGN until the grounding derivations land (containment lane PR D). direct_rust_door_observation_establishes_source_produced asserts the terminal green and MUST fail today: production inference returns GroundingNotDerived for node kinds it does not derive, translate refuses those, and the hand-authored fixture tree is what made the old fixture path green. This row is the discriminating control for the whole lane - when PR D lands the derivations, it greens by execution and that greening is the counted un-quarantine event, not a hand edit. Per DESIGN 4b(4) the control REMAINS enrolled after it greens, as the permanent regression wall."
 
-test fn direct_rust_door_observation_is_mint_refused() -> Bool {
-  match observe_direct_rust_door_provenance() {
-    MintRefused { reason: _ } => true
-    _ => false
-  }
+test fn direct_rust_door_observation_is_candidate_rejected() -> Bool {
+  direct_rust_door_observation_is_candidate_rejection(o: observe_direct_rust_door_provenance())
 }
 
 test fn direct_rust_door_observation_establishes_source_produced() -> Bool {
   direct_rust_door_observation_establishes(o: observe_direct_rust_door_provenance())
 }
 
-test fn direct_rust_door_mint_refusal_is_receipt_refused() -> Bool {
-  match observe_direct_rust_door_provenance() {
-    MintRefused { reason: r } => r == ^direct_rust_door_producer_receipt_refused
-    _ => false
-  }
-}

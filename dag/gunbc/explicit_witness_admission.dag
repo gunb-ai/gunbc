@@ -121,6 +121,13 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
     dissolve_on: "the production candidate producer and dependency projection establish all six ReferenceDerivedClosureCapability rows by execution — this row deletes in the completing change, promoting the unchanged acceptance witness to ordinary DiscoverySelection as the permanent namespace-derived-closure regression wall"
   ),
   known_red_probe(
+    entry: "src/v2/test/claim/long/direct_rust_door_observation_test.dag",
+    f: "direct_rust_door_observation_establishes_source_produced",
+    kind: CorpusWitnessKind,
+    reason: "the containment lane's discriminating control for the direct v2 Rust door (wise-ram-22, 2026-08-04). RED BY EXECUTION, attributed rather than asserted: observe_direct_rust_door_provenance returns CandidateRejected, so assemble ACCEPTS, infer ACCEPTS, and generate_rust_emission_candidate refuses the real inferred tree. The refusal is the compiler working — production inference honestly returns GroundingNotDerived for node kinds it does not derive and the translate grounding gate refuses those; the previously green fixture path minted from a hand-authored InferredTree carrying DerivedGrounding facts that no compilation produces. Owner: this containment lane. Not a broken test and not deletable — deleting it would discard the only executing evidence that the source path does not close.",
+    dissolve_on: "the grounding derivations for this source path land (containment lane PR D) and direct_rust_door_observation_establishes_source_produced greens by execution — this row deletes in the completing change and the unchanged witness stays enrolled as the permanent direct-rust-door source-path regression wall (DESIGN 4b(4): the climb deletes the quarantine, never the evidence)"
+  ),
+  known_red_probe(
     entry: "src/v2/test/claim/long/v2_emitter_direct_rust_door_acceptance_test.dag",
     f: "witness_v2_emitter_direct_rust_door_closing_contract_holds",
     kind: CorpusWitnessKind,
