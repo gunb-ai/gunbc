@@ -4,6 +4,11 @@ import extdeps.git.inspect
 import extdeps.git
 import gunbc.output_policy { ExpectSuccess }
 import gunbc.repo_identity { gunbc_merge_target_ref }
+import gunbc.roadmap_acceptance_history_projection {
+  RoadmapAcceptanceHistoryProjection,
+  RoadmapAcceptanceHistoryProjected,
+  RoadmapAcceptanceHistoryProjectionRefused,
+}
 import gunbc.roadmap_model {
   RoadmapAcceptanceEvent,
   AcceptanceHistoryIntegrityVerdict,
@@ -21,11 +26,10 @@ import v2.std.collection { List }
 
 data roadmap_acceptance_history_authority_repo_path: String = "dag/gunbc/roadmap_authority.dag"
 
-data roadmap_acceptance_history_prior_history_next_rung_trigger: String = "NEXT RUNG: evaluate roadmap_acceptance_event_history at the merge-base revision (git.Inspect.MergeBase between HEAD and gunbc_merge_target_ref, then project the authority module at that revision) so prior_history is the observed base-side event list. Until that substrate exists, this module compares revision-addressed authority file content identity only: an unchanged file at merge-base admits prior_history = current; a changed file without revision evaluation returns PriorHistoryRevisionEvaluationRequired and the live integrity path keeps prior_history empty so acceptance_history_extends_prior does not execute on production yet. PriorHistoryGitObservationRefused is a typed refusal on the integrity verdict (AcceptanceHistoryIntegrityRefusedPriorHistoryObservation) — never fabricated prior_history. Witness tests continue to supply non-empty prior_history fixtures for the deletion arms."
+data roadmap_acceptance_history_prior_history_next_rung_trigger: String = "DISSOLVED: merge-base revision evaluation now projects roadmap_acceptance_event_history from git.Core.Show authority text via gunbc.roadmap_acceptance_history_projection (seed bridge project_roadmap_acceptance_event_history_from_authority_text). PriorHistoryRevisionEvaluationRequired deleted — a changed authority file no longer bypasses acceptance_history_extends_prior with prior_history = []. Remaining dissolve-on: delete the seed bridge when a modeled revision-addressed module evaluator lands."
 
 type RoadmapAcceptanceHistoryPriorObservation
   = PriorHistoryObserved { prior: List<RoadmapAcceptanceEvent> }
-  | PriorHistoryRevisionEvaluationRequired { detail: String }
   | PriorHistoryGitObservationRefused { detail: String }
 
 fn git_refusal_detail(operation: String, stderr: String) -> String {
@@ -34,6 +38,15 @@ fn git_refusal_detail(operation: String, stderr: String) -> String {
     concat(operation, " refused without stderr")
   } else {
     concat(operation, concat(": ", detail))
+  }
+}
+
+fn prior_history_from_authority_text(authority_text: String) -> RoadmapAcceptanceHistoryPriorObservation {
+  match project_roadmap_acceptance_event_history_from_authority_text(authority_text: authority_text) {
+    RoadmapAcceptanceHistoryProjected { events: events } =>
+      PriorHistoryObserved { prior: events }
+    RoadmapAcceptanceHistoryProjectionRefused { detail: detail } =>
+      PriorHistoryGitObservationRefused { detail: detail }
   }
 }
 
@@ -87,12 +100,7 @@ fn observe_roadmap_acceptance_history_prior(
           if content_hash_eq_structural(left: head_identity, right: base_identity) {
             PriorHistoryObserved { prior: current_history }
           } else {
-            PriorHistoryRevisionEvaluationRequired {
-              detail: concat(
-                "authority file changed between merge-base ",
-                concat(baseline.sha as String, concat(" and HEAD ", revision)),
-              ),
-            }
+            prior_history_from_authority_text(authority_text: base_manifest.content)
           }
         }
       }
@@ -121,13 +129,6 @@ fn acceptance_history_integrity_verdict_from_prior_observation(
   match observation {
     PriorHistoryGitObservationRefused { detail: detail } =>
       AcceptanceHistoryIntegrityRefusedPriorHistoryObservation { detail: detail }
-    PriorHistoryRevisionEvaluationRequired { detail: _ } =>
-      acceptance_history_integrity_verdict(
-        history: history,
-        sealed_event_count: sealed_event_count,
-        sealed_chain_digest: sealed_chain_digest,
-        prior_history: [],
-      )
     PriorHistoryObserved { prior: prior } =>
       acceptance_history_integrity_verdict(
         history: history,

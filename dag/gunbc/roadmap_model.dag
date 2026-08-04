@@ -325,29 +325,100 @@ fn remove_exact_receipt(
   receipts |> filter(r => !acceptance_receipt_eq(a: r, b: receipt))
 }
 
+fn non_empty_str_list_digest(items: List<NonEmptyStr>) -> Fnv1a64Structural {
+  fold(
+    items,
+    init: content_hash_atom(value: "non-empty-str-list-v1" as NonEmptyStr),
+    f: fn(acc, item) {
+      content_hash_combine_structural(
+        left: acc,
+        right: content_hash_atom(value: item),
+      )
+    },
+  )
+}
+
+fn red_control_evidence_digest(e: RedControlEvidence) -> Fnv1a64Structural {
+  match e {
+    RedControlNotRun =>
+      content_hash_tagged_structural(
+        tag: "roadmap-red-control-not-run-v1",
+        payload: content_hash_atom(value: "RedControlNotRun" as NonEmptyStr),
+      )
+    RedControlExecuted { witness_module, witness_fn, executed_on } =>
+      content_hash_tagged_structural(
+        tag: "roadmap-red-control-executed-v1",
+        payload: content_hash_combine_structural(
+          left: content_hash_combine_structural(
+            left: content_hash_atom(value: witness_module),
+            right: content_hash_atom(value: witness_fn),
+          ),
+          right: content_hash_atom(value: executed_on),
+        ),
+      )
+  }
+}
+
+fn handback_evidence_digest(e: HandbackEvidence) -> Fnv1a64Structural {
+  match e {
+    HandbackNotDelivered =>
+      content_hash_tagged_structural(
+        tag: "roadmap-handback-not-delivered-v1",
+        payload: content_hash_atom(value: "HandbackNotDelivered" as NonEmptyStr),
+      )
+    HandbackDelivered { first_artifact, further_artifacts } =>
+      content_hash_tagged_structural(
+        tag: "roadmap-handback-delivered-v1",
+        payload: content_hash_combine_structural(
+          left: content_hash_atom(value: first_artifact),
+          right: non_empty_str_list_digest(items: further_artifacts),
+        ),
+      )
+  }
+}
+
+fn acceptance_receipt_digest(receipt: RoadmapAcceptanceReceipt) -> Fnv1a64Structural {
+  content_hash_tagged_structural(
+    tag: "roadmap-acceptance-receipt-v1",
+    payload: content_hash_combine_structural(
+      left: content_hash_combine_structural(
+        left: content_hash_atom(value: receipt.node as NonEmptyStr),
+        right: content_hash_combine_structural(
+          left: receipt.criteria_digest,
+          right: red_control_evidence_digest(e: receipt.red_control),
+        ),
+      ),
+      right: content_hash_combine_structural(
+        left: handback_evidence_digest(e: receipt.handback),
+        right: content_hash_combine_structural(
+          left: content_hash_atom(value: receipt.accepted_by),
+          right: content_hash_atom(value: receipt.accepted_on),
+        ),
+      ),
+    ),
+  )
+}
+
 fn acceptance_event_digest(event: RoadmapAcceptanceEvent) -> Fnv1a64Structural {
   match event {
     AcceptanceRecorded { receipt } =>
       content_hash_tagged_structural(
-        tag: "roadmap-acceptance-recorded-v1",
-        payload: content_hash_combine_structural(
-          left: content_hash_atom(value: receipt.node as NonEmptyStr),
-          right: content_hash_combine_structural(
-            left: content_hash_atom(value: receipt.accepted_by),
-            right: content_hash_atom(value: receipt.accepted_on),
-          ),
-        ),
+        tag: "roadmap-acceptance-recorded-v2",
+        payload: acceptance_receipt_digest(receipt: receipt),
       )
     AcceptanceRevoked { exact_prior_receipt, disposition, reason, revoked_by, revoked_on } =>
       content_hash_tagged_structural(
-        tag: "roadmap-acceptance-revoked-v1",
+        tag: "roadmap-acceptance-revoked-v2",
         payload: content_hash_combine_structural(
-          left: content_hash_atom(value: exact_prior_receipt.node as NonEmptyStr),
+          left: acceptance_receipt_digest(receipt: exact_prior_receipt),
           right: content_hash_combine_structural(
-            left: content_hash_atom(value: reason),
+            left: content_hash_atom(value: "AcceptanceNodeReopensActiveFrontier" as NonEmptyStr),
             right: content_hash_combine_structural(
-              left: content_hash_atom(value: revoked_by),
-              right: content_hash_atom(value: revoked_on),
+              left: content_hash_atom(value: reason),
+              right: content_hash_combine_structural(
+                left: content_hash_atom(value: revoked_by),
+                right: content_hash_atom(value: revoked_on),
+              ),
             ),
           ),
         ),
