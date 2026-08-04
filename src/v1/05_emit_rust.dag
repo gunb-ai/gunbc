@@ -2331,14 +2331,7 @@ fn emit_lib_rs_mod_decl(mod_name: String) -> String {
 }
 
 fn order_lib_rs_mod_names(mod_names: List<String>) -> List<String> {
-  let without_dispatch = mod_names |> filter(n => n != "v1_interpreter_dispatch_generated")
-  without_dispatch |> fold(init: [], f: fn(acc, name) {
-    if name == "v1_interpreter" {
-      concat(concat(acc, ["v1_interpreter_dispatch_generated"]), [name])
-    } else {
-      concat(acc, [name])
-    }
-  })
+  mod_names |> filter(n => n != "v1_interpreter_dispatch_generated")
 }
 
 fn emit_lib_rs_from_files(all_module_files: List<TextFile>, has_compiler_tests: Bool) -> TextFile {
@@ -2348,7 +2341,7 @@ fn emit_lib_rs_from_files(all_module_files: List<TextFile>, has_compiler_tests: 
   let hand_maintained_mods = if has_compiler_tests {
     generated_pub_mod_block
   } else {
-    ""
+    "\n#[macro_use]\npub mod v1_interpreter_dispatch_generated;"
   }
   let test_mod = if has_compiler_tests {
     "\n\n#[cfg(test)]\nmod compiler_tests;"
@@ -6475,6 +6468,8 @@ fn variant_ref_self_wraps(name: String, enum_name: String, shared_types: Set<Str
 }
 
 data value_ref_ident_dotted_fallback_note: String = "Construction wall for the dotted-render class in VALUE-EXPRESSION position (sibling of variant_pattern_dotted_qualification_note/PATTERN, bare_qualified_name in emit_typed_record_lit/CONSTRUCTION, coerce_primitive_type_dotted_fallback_note/TYPE, and rust_fn_sig_leaf_name_dotted_note/FN-SIG TYPE). A namespace-qualified dotted name (e.g. v2.std.node.Edge) whose leaf misses the registry previously fell through to emit_ident(name: name, ...) with the FULL dotted string still attached — emit_ident has no dot-awareness (pure case-conversion/sanitization), so the dots rode straight into the emitted Rust as a bare field-access chain starting at the first segment (rustc: 'cannot find value v2 in this scope', E0425). Fixed by passing the already-computed leaf, the same qualified_last_segment (v1.std.core) reduction the Present arm already keys its registry lookup on — not a new fallback, the existing one corrected to use the value already in scope. The CALL-callee sibling (emit_typed_call's func_ident, e.g. a bare dotted function reference like v2.std.staging.resolve_probe(..) rendered verbatim) reuses this same fn directly rather than re-deriving the leaf a third time (DESIGN section 2/3: one shared helper, not a forked per-seam patch); its registry lookup (the `callee` binding) is likewise re-keyed on qualified_last_segment(func) so a dotted cross-module call resolves the same ItemInfo a bare call would. Every already-bare name renders exactly as before (qualified_last_segment is the identity on an unqualified name)."
+
+data value_ref_cross_module_qualifier_routing_note: String = "Construction wall for cross-module qualified VALUE references when the flat item_registry leaf key collides (post-#7685 class, witness qualified_leaf_registry_collision_emit_witness_test): map_get(registry, leaf) returns whichever module won the last-write-wins insert, so emit_value_ref_ident must render crate paths from the authored qualifier prefix (value_ref_qualifier_prefix) rather than info.module_name from the collision winner. Same-module normalization (value_ref_normalize_self_module) remains the sibling wall for the qualifier == current-module case."
 
 fn emit_value_ref_ident(name: String, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo) -> String {
   if string_contains(s: name, pattern: ".") {

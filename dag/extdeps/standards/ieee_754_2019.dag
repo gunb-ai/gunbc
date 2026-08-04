@@ -1,0 +1,37 @@
+module extdeps.standards.ieee_754_2019
+
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "standards.ieee.org/ieee/754/6210/"
+  }
+}
+
+type Ieee754Standard
+  = Ieee7542019 {}
+
+data ieee_754_2019: Ieee754Standard = Ieee7542019 {}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.standards.ieee_754_2019",
+      decl_name: "ieee_754_2019",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps.standards.ieee_754_2019.extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data ieee_754_2019_note: String = "Cited upstream: edition-specific anchor above (IEEE Std 754-2019 document id 6210). This module owns standard-governed interchange binary format and default rounding facts only — not gunbc execution receipts."
+
+data ieee_754_binary64_interchange_note: String = "IEEE 754 binary64 interchange format: 64-bit double-precision radix-2 floating-point as cited at the anchor."
+
+data ieee_754_round_ties_to_even_note: String = "Default rounding attribute roundTiesToEven (round to nearest, ties to even) for binary floating-point arithmetic as cited at the anchor."
+
+data ieee_754_2008_2019_binary_add_equivalence_note: String = "For binary64 roundTiesToEven interchange addition, triple (1e16, 1.0, 1.0) yields the same left fold 1e16 and right fold 1e16+2 under both the 2008 and 2019 revisions at this locator family — interchange binary addition semantics did not change between them."

@@ -14,7 +14,7 @@ import extdeps.uri { Uri, Https }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
-    locator: "canonical-subiquity.readthedocs-hosted.com/en/latest/reference/autoinstall-methods.html"
+    locator: "canonical-subiquity.readthedocs-hosted.com/en/latest/tutorial/providing-autoinstall.html"
   }
 }
 

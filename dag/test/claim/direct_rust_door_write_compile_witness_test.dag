@@ -1,0 +1,13 @@
+module test.claim.direct_rust_door_write_compile_witness_test
+
+import tools.direct_rust_door_transport { run_direct_rust_door_emit_write_compile_smoke }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import v2.std.logic { Bool }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data direct_rust_door_write_compile_witness_note: String = "Lane B wet compile receipt: v2-emitted rust add source is written through candidate_generation.write_rust_workspace (mint_written_provenanced_rust_artifact) to a temp lib crate and compiles via cargo.Build.BuildManifest without v1.compiler.emit_rust in the realized closure."
+
+test fn direct_rust_door_emit_write_compile_holds() -> Bool {
+  run_direct_rust_door_emit_write_compile_smoke()
+}

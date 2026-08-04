@@ -5330,33 +5330,15 @@ pub fn emit_lib_rs_mod_decl(mod_name: String) -> String {
 }
 
 pub fn order_lib_rs_mod_names(mod_names: Rc<Vec<String>>) -> Rc<Vec<String>> {
-    {
-        let without_dispatch = Rc::new({
-            let mut __result = Vec::new();
-            for n in mod_names.clone().iter().cloned() {
-                if (n.clone() != "v1_interpreter_dispatch_generated".to_string()) {
-                    __result.push(n);
-                }
+    Rc::new({
+        let mut __result = Vec::new();
+        for n in mod_names.clone().iter().cloned() {
+            if (n.clone() != "v1_interpreter_dispatch_generated".to_string()) {
+                __result.push(n);
             }
-            __result
-        });
-        without_dispatch.clone().iter().cloned().fold(
-            Rc::new(vec![]),
-            |acc: Rc<Vec<String>>, name: String| {
-                if (name.clone() == "v1_interpreter".to_string()) {
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            acc.clone(),
-                            Rc::new(vec!["v1_interpreter_dispatch_generated".to_string()]),
-                        ),
-                        Rc::new(vec![name.clone()]),
-                    )
-                } else {
-                    v1_rt::concat(acc.clone(), Rc::new(vec![name.clone()]))
-                }
-            },
-        )
-    }
+        }
+        __result
+    })
 }
 
 pub fn emit_lib_rs_from_files(
@@ -5383,7 +5365,7 @@ pub fn emit_lib_rs_from_files(
         let hand_maintained_mods = if has_compiler_tests.clone() {
             generated_pub_mod_block()
         } else {
-            "".to_string()
+            "\n#[macro_use]\npub mod v1_interpreter_dispatch_generated;".to_string()
         };
         let test_mod = if has_compiler_tests.clone() {
             "\n\n#[cfg(test)]\nmod compiler_tests;".to_string()
@@ -17406,6 +17388,15 @@ pub fn value_ref_ident_dotted_fallback_note() -> String {
     thread_local! {
         static CACHED: String = {
             "Construction wall for the dotted-render class in VALUE-EXPRESSION position (sibling of variant_pattern_dotted_qualification_note/PATTERN, bare_qualified_name in emit_typed_record_lit/CONSTRUCTION, coerce_primitive_type_dotted_fallback_note/TYPE, and rust_fn_sig_leaf_name_dotted_note/FN-SIG TYPE). A namespace-qualified dotted name (e.g. v2.std.node.Edge) whose leaf misses the registry previously fell through to emit_ident(name: name, ...) with the FULL dotted string still attached — emit_ident has no dot-awareness (pure case-conversion/sanitization), so the dots rode straight into the emitted Rust as a bare field-access chain starting at the first segment (rustc: 'cannot find value v2 in this scope', E0425). Fixed by passing the already-computed leaf, the same qualified_last_segment (v1.std.core) reduction the Present arm already keys its registry lookup on — not a new fallback, the existing one corrected to use the value already in scope. The CALL-callee sibling (emit_typed_call's func_ident, e.g. a bare dotted function reference like v2.std.staging.resolve_probe(..) rendered verbatim) reuses this same fn directly rather than re-deriving the leaf a third time (DESIGN section 2/3: one shared helper, not a forked per-seam patch); its registry lookup (the `callee` binding) is likewise re-keyed on qualified_last_segment(func) so a dotted cross-module call resolves the same ItemInfo a bare call would. Every already-bare name renders exactly as before (qualified_last_segment is the identity on an unqualified name).".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn value_ref_cross_module_qualifier_routing_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Construction wall for cross-module qualified VALUE references when the flat item_registry leaf key collides (post-#7685 class, witness qualified_leaf_registry_collision_emit_witness_test): map_get(registry, leaf) returns whichever module won the last-write-wins insert, so emit_value_ref_ident must render crate paths from the authored qualifier prefix (value_ref_qualifier_prefix) rather than info.module_name from the collision winner. Same-module normalization (value_ref_normalize_self_module) remains the sibling wall for the qualifier == current-module case.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())

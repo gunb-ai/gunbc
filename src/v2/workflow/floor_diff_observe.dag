@@ -9,9 +9,15 @@ import gunbc.ci_spec {
 }
 import gunbc.diff_baseline {
   CiDiffEvent,
+  DiffBaseline,
   DiffBaselineResolution,
   BaselineSelected,
   BaselineRefused,
+  PushBefore,
+  PushBeforeInput,
+  PushBeforeSha,
+  PushBeforeZeroShaInput,
+  PushBeforeInputRefused,
   resolve_diff_baseline,
   diff_baseline_ref
 }
@@ -31,7 +37,17 @@ import extdeps.git {
   git_diff_name_status_field_separator,
   git_remote_ref_parts
 }
-import extdeps.github.actions { github_event_name_env, github_base_ref_env }
+import extdeps.github.actions { github_event_name_env, github_base_ref_env, github_event_name_push }
+import extdeps.github.actions_environment { github_sha_variable_name }
+import extdeps.github.push_event {
+  github_event_path_env,
+  push_before_from_event_path,
+  PushBeforeObserved,
+  PushBeforeAbsent,
+  PushBeforeZeroSha,
+  PushBeforeMalformed,
+  PushEventPayloadReadRefused
+}
 import extdeps.shell
 
 type FloorUnifiedDiffResult
@@ -54,13 +70,76 @@ fn floor_env_optional(env_name: NonEmptyStr) -> String? {
   shell.Env.Get(name: env_name).value
 }
 
-data floor_diff_baseline_law: String = "The affected-set base is RESOLVED from the CI event, not a constant (gunbc.diff_baseline; the de-fork of the origin/main policy-as-literal, DESIGN §3(c)). floor_observe_ci_diff_event reads the three env facts — GUNBC_CI_DIFF_BASE (the gunbc OperatorOverride channel, e.g. the falsifier's HEAD~20 cold control), GITHUB_EVENT_NAME, GITHUB_BASE_REF (the GitHub surface extdeps.github.actions owns) — and resolve_diff_baseline (pure) maps them: pull_request → MergeTarget against the PR's ACTUAL base (was silently origin/main — the stacked-PR over-selection defect #7129 hit); push / workflow_dispatch / merge_group / schedule / local-bootstrap → PushParent (today's DiffPolicy.base, origin/main — merge_group queue runs and the falsifier's scheduled cold-control steps have no base ref and diff their tree against the default branch, matching the pre-de-fork behavior so the floor RUNS rather than aborting). GUNBC_CI_DIFF_BASE → OperatorOverride. A genuinely-unrecognized event yields BaselineRefused → UnifiedDiffFail / NameStatusDiffFail → the executor HALTS the floor with a typed AFFECTED-SET REFUSAL (refuses every enrolled row, never widens to a full-corpus run; operator ruling 2026-07-05). The PushParent ref carries its own remote, so the MergeTarget remote is derived from it (git_remote_ref_parts) rather than re-imported."
+data floor_diff_baseline_law: String = "The affected-set base is RESOLVED from the CI event, not a constant (gunbc.diff_baseline; the de-fork of the origin/main policy-as-literal, DESIGN §3(c)). floor_observe_ci_diff_event reads the env facts — GUNBC_CI_DIFF_BASE (the gunbc OperatorOverride channel, e.g. the falsifier's HEAD~20 cold control), GITHUB_EVENT_NAME, GITHUB_BASE_REF (the GitHub surface extdeps.github.actions owns), GITHUB_SHA (head, for self-compare refusal), and for push events the before member from GITHUB_EVENT_PATH (extdeps.github.push_event) — and resolve_diff_baseline (pure) maps them: pull_request → MergeTarget against the PR's ACTUAL base (was silently origin/main — the stacked-PR over-selection defect #7129 hit); push → PushBefore from the event payload's before SHA (absent/zero/self-compare refuses); workflow_dispatch / merge_group / schedule / local-bootstrap → PushParent (today's DiffPolicy.base, origin/main). GUNBC_CI_DIFF_BASE → OperatorOverride. A genuinely-unrecognized event yields BaselineRefused → UnifiedDiffFail / NameStatusDiffFail → the executor HALTS the floor with a typed AFFECTED-SET REFUSAL (refuses every enrolled row, never widens to a full-corpus run; operator ruling 2026-07-05). PushBefore diffs use TwoDot (before..head); all other arms use the policy's merge-base mode."
+
+fn floor_push_before_refusal(prefix: String, detail: String) -> PushBeforeInput {
+  PushBeforeInputRefused { reason: concat(concat(prefix, detail), "; halting the floor (AFFECTED-SET REFUSAL)") }
+}
+
+fn floor_observe_push_before_input(event_name: String) -> PushBeforeInput? {
+  if event_name != github_event_name_push {
+    none
+  } else {
+    match floor_env_optional(env_name: github_event_path_env) {
+      Absent =>
+        Present {
+          value: floor_push_before_refusal(
+            prefix: "push event but GITHUB_EVENT_PATH is unset — ",
+            detail: "cannot read before SHA from event payload"
+          )
+        }
+      Present { value: path } =>
+        if path == "" {
+          Present {
+            value: floor_push_before_refusal(
+              prefix: "push event but GITHUB_EVENT_PATH is empty — ",
+              detail: "cannot read before SHA from event payload"
+            )
+          }
+        } else {
+          match push_before_from_event_path(path: path) {
+            PushBeforeObserved { sha: sha } =>
+              Present { value: PushBeforeSha { sha: sha as String } }
+            PushBeforeAbsent { detail: detail } =>
+              Present {
+                value: floor_push_before_refusal(
+                  prefix: "push event before SHA absent — ",
+                  detail: detail
+                )
+              }
+            PushBeforeZeroSha =>
+              Present { value: PushBeforeZeroShaInput }
+            PushBeforeMalformed { detail: detail } =>
+              Present {
+                value: floor_push_before_refusal(
+                  prefix: "push event before SHA malformed — ",
+                  detail: detail
+                )
+              }
+            PushEventPayloadReadRefused { path: event_path, cause: cause } =>
+              Present {
+                value: floor_push_before_refusal(
+                  prefix: concat(
+                    "push event payload unreadable at ",
+                    concat(event_path, " — ")
+                  ),
+                  detail: cause
+                )
+              }
+          }
+        }
+    }
+  }
+}
 
 fn floor_observe_ci_diff_event() -> CiDiffEvent {
+  let event_name = floor_env_override_or(env_name: github_event_name_env, default: "")
   CiDiffEvent {
     override_ref: floor_env_optional(env_name: "GUNBC_CI_DIFF_BASE" as NonEmptyStr),
-    event_name: floor_env_override_or(env_name: github_event_name_env, default: ""),
-    base_ref: floor_env_optional(env_name: github_base_ref_env)
+    event_name: event_name,
+    base_ref: floor_env_optional(env_name: github_base_ref_env),
+    push_before: floor_observe_push_before_input(event_name: event_name),
+    head_sha: floor_env_optional(env_name: github_sha_variable_name as NonEmptyStr)
   }
 }
 
@@ -75,6 +154,15 @@ fn floor_resolve_baseline(policy: DiffPolicy) -> DiffBaselineResolution {
 
 fn floor_resolved_head(policy: DiffPolicy) -> String {
   floor_env_override_or(env_name: "GUNBC_CI_DIFF_HEAD" as NonEmptyStr, default: policy.head)
+}
+
+fn floor_diff_mode_for_baseline(baseline: DiffBaseline, policy: DiffPolicy) -> DiffMode {
+  match baseline {
+    PushBefore { ref: _ } => DiffTwoDot
+    MergeTarget { ref: _ } => policy.mode
+    PushParent { ref: _ } => policy.mode
+    OperatorOverride { ref: _ } => policy.mode
+  }
 }
 
 fn floor_git_diff_range_of_mode(mode: DiffMode) -> GitDiffRange {
@@ -104,7 +192,7 @@ fn floor_observe_git_diff_unified(policy: DiffPolicy) -> FloorUnifiedDiffResult 
           floor_run_git_diff_unified(
             base: diff_baseline_ref(b: baseline) as String,
             head: floor_resolved_head(policy: policy),
-            mode: policy.mode
+            mode: floor_diff_mode_for_baseline(baseline: baseline, policy: policy)
           )
       }
   }
@@ -180,7 +268,7 @@ fn floor_observe_git_diff_name_status(policy: DiffPolicy) -> FloorNameStatusDiff
           floor_run_git_diff_name_status(
             base: diff_baseline_ref(b: baseline) as String,
             head: floor_resolved_head(policy: policy),
-            mode: policy.mode
+            mode: floor_diff_mode_for_baseline(baseline: baseline, policy: policy)
           )
       }
   }
