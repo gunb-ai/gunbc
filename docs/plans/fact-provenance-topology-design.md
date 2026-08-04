@@ -44,14 +44,14 @@ Both **CENSUS** and **HOMONYM** are §3 “grep the name, not the concept” at 
 
 ## 1. Specimen record (closed PR lanes — do not touch)
 
-Four relation kinds, four specimens. Operator framing (relation, not fix):
+Four relation kinds, four specimens. Operator framing (relation, not fix). **Discharge symbols live on closed specimen branches, not `main`** — verify with `git grep <symbol> origin/session/<lane>` (review 48039); only symbols named here that also appear on `main` are grep-verifiable without fetching a branch.
 
 | label | relation kind | what went wrong | discharge (specimen branch) |
 |---|---|---|---|
-| **CIT-0** | duplicate fact-home, **unjoined** | source and representation identity deduplicated but left **unjoined** — `CitedResource.authority` vs `Pin.expected_identity` writable independently | `std.citation` `citation_cit0_note`; `Pin<CitedRepresentation>` per `pin_subject_must_not_be_self_identifying_note` |
-| **CIT-1** | observation-required | authored digest **named as observation**, then made **its own expectation** — same 64-hex as `example.test` fixture; no bytes→digest edge | fixture vs cited URI separated; observation coproduct (`origin/session/cit-1`) |
-| **QM** | derivation-only | held/undecided outcomes **convertible into proof-shaped receipts** — `observed_vs_prediction: Ordering` stored beside counts; inconsistent triple passed | field deleted; `path_additivity_witness_observed_vs_prediction()` derived (`c200375c0c6`) |
-| **SCAFFOLD** | identity join | scaffold **arity and fixture names** standing in for **exact variant identity** — substring `rel_path` match → binding | `RoadmapNodeIdentity` join; derived `scaffold_disposition_sites_live()` (`ec85b225782`) |
+| **CIT-0** | duplicate fact-home, **unjoined** | source and representation identity deduplicated but left **unjoined** — `CitedResource.authority` vs `Pin.expected_identity` writable independently | `origin/session/cit-0` — `dag/std/citation.dag` `citation_cit0_note`; `Pin<CitedRepresentation>` per `extdeps.pin` `pin_subject_must_not_be_self_identifying_note` (latter on `main`) |
+| **CIT-1** | observation-required | authored digest **named as observation**, then made **its own expectation** — same 64-hex as `example.test` fixture; no bytes→digest edge | `origin/session/cit-1` — fixture vs cited URI separated; `CitationRetrievalObservation` observation coproduct |
+| **QM** | derivation-only | held/undecided outcomes **convertible into proof-shaped receipts** — `observed_vs_prediction: Ordering` stored beside counts; inconsistent triple passed | `origin/session/fierce-lynx-76` (`c200375c0c6`) — stored field deleted; `dag/gunbc/physics/bach_double_slit_path_additivity.dag` `path_additivity_witness_observed_vs_prediction` derived |
+| **SCAFFOLD** | identity join | scaffold **arity and fixture names** standing in for **exact variant identity** — substring `rel_path` match → binding | `origin/session/royal-boar-448` (`ec85b225782`) — `gunbc.scaffold_retirement` `scaffold_disposition_sites_live`; `RoadmapNodeIdentity` join |
 
 ---
 
@@ -74,7 +74,7 @@ Four relation kinds, four specimens. Operator framing (relation, not fix):
 
 **Question:** what makes a value admissible as evidence rather than assertion?
 
-**Discharge:** observation receipt (`CitationRetrievalObservation`); bytes→digest pipeline; fixture vs cited namespace separation; §5 oracle rule (2026-08-01).
+**Discharge:** observation receipt (e.g. `CitationRetrievalObservation` on `origin/session/cit-1`); bytes→digest pipeline; fixture vs cited namespace separation; §5 oracle rule (2026-08-01).
 
 ### 2.3 Derivation-only
 
@@ -127,7 +127,7 @@ Measured on `main`, 2026-08-04, unless noted.
 
 ## 5. Live censuses (step 2)
 
-**Step-2 outcomes (not shortfalls):** two of three operator-flagged candidates **retired at census** — `*Readiness` had **no shared axis** (ten domain verdict types, naming suffix only); fold-`concat` is a **DESIGN §6 cost-shape** class (interpreter-realization quadratic; emitted-Rust `im::Vector` O(log n) concat), **not fact provenance** — cited out with `list_concat_items_copied` as the measurement instrument. Weak-digest census remains **open** (unpartitioned, per-site rows below).
+**Step-2 outcomes (not shortfalls):** two of three operator-flagged candidates **retired at census** — `*Readiness` had **no shared axis** (nine domain verdict types, naming suffix only); fold-`concat` is a **DESIGN §6 cost-shape** class (interpreter-realization quadratic; emitted-Rust `im::Vector` O(log n) concat), **not fact provenance** — cited out with `list_concat_items_copied` as the measurement instrument. Weak-digest census remains **open** (unpartitioned, per-site rows below).
 
 ### 5.1 Weak digest parameters
 
@@ -156,7 +156,7 @@ Measured on `main`, 2026-08-04, unless noted.
 | | |
 |---|---|
 | **method** | `rg '^type [A-Za-z]*Readiness' --glob '*.dag'`; drop prefix false positives (`ReadinessLayer`, `ClaimReadinessPolicy`, …) |
-| **population** | **10** distinct top-level type names ending in `Readiness` |
+| **population** | **9** distinct domain verdict types matching `rg '^type [A-Za-z]*Readiness'` after dropping generic `std.claim_evidence` machinery and `*Readiness*` auxiliary rows (table below) |
 | **revision** | operator “~17” was prefix-match artifact (`ReadinessLayer` ∈ `*Readiness`) |
 | **maximum conclusion** | per-name kind + arms + interchangeability — **no shared axis found**; does **not** establish one `Readiness<Domain>` parameter |
 
@@ -174,7 +174,7 @@ Measured on `main`, 2026-08-04, unless noted.
 
 **Interchangeability check:** no function accepts a generic `Readiness` parameter; no shared fold across these types. `ProviderReadiness` name is shared between `extdeps.llm.cli_lifecycle` (type) and `gunbc.provider_readiness_claim_evidence` (claim value parameter referencing the extdeps type) — **same type, not two axes**.
 
-**Step-3 verdict (census output):** ten unrelated domain verdict types sharing a naming suffix — **no evidence of one `Readiness<Domain>` axis**. Generic machinery already exists at `std.claim_evidence` (`ClaimReadinessReceipt`, `ClaimRequirementReadiness`) for claim-indexed evidence; these 10 are domain instantiations, not duplicates of that axis.
+**Step-3 verdict (census output):** nine unrelated domain verdict types sharing a naming suffix — **no evidence of one `Readiness<Domain>` axis**. Generic machinery already exists at `std.claim_evidence` (`ClaimReadinessReceipt`, `ClaimRequirementReadiness`) for claim-indexed evidence; these nine are domain instantiations, not duplicates of that axis.
 
 ---
 
