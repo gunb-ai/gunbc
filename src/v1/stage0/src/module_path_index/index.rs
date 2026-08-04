@@ -110,4 +110,38 @@ mod tests {
             .expect("stage0 emit plan must declare a module");
         assert_eq!(binding.module_path, "gunbc.stage0_emit_plan");
     }
+
+    #[test]
+    fn parse_roadmap_belt_actuate_binding() {
+        let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let path = manifest_dir.join("../../../dag/gunbc/roadmap_belt_actuate.dag");
+        let content = std::fs::read_to_string(&path).expect("read belt actuate");
+        if let Err(msg) = parse_module_binding(&path, &content) {
+            let tokens = crate::v1_compiler_tokenize::tokenize(
+                content.clone(),
+                path.to_string_lossy().to_string(),
+            );
+            let source_index = crate::v1_std_core::build_newline_index(
+                path.to_string_lossy().to_string(),
+                content.clone(),
+            );
+            let mut indices = HashMap::new();
+            indices.insert(path.to_string_lossy().to_string(), source_index);
+            let result = crate::v1_compiler_parse::parse(tokens, Rc::new(indices));
+            if let Some(ref err) = result.error {
+                let span = crate::v1_std_core::diagnostic_to_span(err.diagnostic.clone());
+                let line = content[..span.start.max(0) as usize]
+                    .chars()
+                    .filter(|c| *c == '\n')
+                    .count()
+                    + 1;
+                panic!("{msg} (line {line})");
+            }
+            panic!("{msg}");
+        }
+        let binding = parse_module_binding(&path, &content)
+            .expect("belt actuate must parse")
+            .expect("belt actuate must declare a module");
+        assert_eq!(binding.module_path, "gunbc.roadmap_belt_actuate");
+    }
 }

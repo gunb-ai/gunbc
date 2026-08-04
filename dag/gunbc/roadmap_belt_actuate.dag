@@ -3044,11 +3044,11 @@ fn git_target_generation_observation_of(outcome: BeltExecOutcome) -> GitTargetGe
           GitTargetGenerationOutputMalformed { stdout: trim(stdout) }
         Present { value: generation } =>
           GitTargetGenerationObserved { generation: generation }
-    ExecFailed { program, exit_code, stdout, stderr } =>
+    ExecFailed { program, exit_code, stderr } =>
       GitTargetGenerationExecutionFailed {
         program: program,
         exit_code: exit_code,
-        stdout: stdout,
+        stdout: "",
         stderr: stderr,
       }
     ExecRefused { program, reason } =>
