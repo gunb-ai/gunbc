@@ -1,83 +1,129 @@
-# `.dag` annotation prose — policy audit
+# `.dag` annotation prose — the representation defect
 
-**Status:** audit open, measured at `64aed6007e`, 2026-08-04. **Nothing deleted, nothing migrated.**
-This document exists to settle one question before any deletion pass starts: *how much of the
-annotation prose is actually low-value?*
-
-**The short answer: far less than the brief assumed, and the deletable mass is not where anyone
-is looking for it.** The brief's estimate — "90% of the low value stuff we can bankrupt/delete" —
-is not supported by a byte-weighted hand-read. But the brief's *instinct* that something is wrong
-is supported, and §5 names what it actually is.
+**Status:** audit open, measured at `64aed6007e`, 2026-08-04. **Nothing deleted, migrated, or reconciled.**
+**This document deliberately stops at the audit.** It does not answer its own decisions and does not begin
+a corpus pass; both wait on the source-annotation destination and the non-trivia parser model being
+designed (operator instruction, 2026-08-04).
 
 **Instrument:** a scratchpad Python extractor (three tiers, ≥200 B decoded string values, matching
 [dag-note-prose-census.md](dag-note-prose-census.md) §6's grain). **Not committed** — see §8. Verified
 against an independent count on `dag/gunbc/ci_layer_roots.dag`: 90 sites vs 91 (~1%).
 
-**Relation to prior censuses.** [dag-note-prose-census.md](dag-note-prose-census.md) measured *semantic
-class* (what kind of statement is this); censuses A/B/C measured *dissolution markers* in three
-subtrees. This audit measures a different axis — **value**: would deleting this cost anyone anything?
-The axes are orthogonal and this one is the one the brief asks about.
-
 ---
 
 ## 0. The one-paragraph answer
 
-Of a byte-weighted random sample of 48 annotation sites read by hand, **zero** were primarily
-deletable-as-worthless. Half were irreducible rationale — a non-obvious *why*, a measured finding, or
-a counterfactual that would be re-litigated if it vanished. The real defect is not worthless prose;
-it is **fusion**: 56% of annotation bytes carry a time-bound marker (a date, PR number, review id,
-SHA, session name, CI run id, or `LANDED` status word) welded into a note whose core is irreducible.
-That residue is what makes a reader open a note and conclude most of it is not why-this-does-this —
-which is exactly the brief's experience, correctly observed and misattributed. So the move is **not a
-deletion pass**. It is a **split**: the why stays, the time-bound half becomes a typed row, and a
-policy stops the fusion recurring at the ~2 KiB/PR the corpus is currently appending.
+**The disease is lost source-level intent. The prose fusion measured below is downstream of it.**
+Banning `//` made comment *syntax* unwritable; it did not make commentary unwritable. It removed the only
+structural signal that said *this text is commentary, not program data* — so the corpus kept writing
+commentary and smuggled it into `data …: String` rows, where intent is mechanically indistinguishable
+from program data. §1 shows that displacement as three merged PRs. The consequence is that **no
+classifier, lens, census, or migration can decide what a given string was for**, which is why every pass
+over this material has been an English-reading exercise. So the correct move is not a deletion pass and
+not (only) a split: it is to **restore `//` as a modeled, non-trivia source annotation** — quarantining
+prose in a carrier that is real data but not *program* data — and only then reconcile the existing
+mountain against that destination.
 
 ---
 
-## 1. Denominator — what counts as annotation prose
+## 1. The displacement chain — measured, not inferred
 
-A naive scan of every ≥200 B string in the corpus returns 3,622 KiB, and that number is wrong for this
-question. Two populations must come out first:
+Three merged PRs, verified in this tree by commit and title:
 
-| population | sites | bytes | share |
-|---|---|---|---|
-| **ANNOTATION** (the subject of this audit) | 3,592 | **2,708.4 KiB** | 74.8% |
-| DOC_AUTHORITY — `design_document`, `roadmap_authority`, `plans/`, `site/` | 1,541 | 824.7 KiB | 22.8% |
-| PAYLOAD — emitted source, golden fixtures, language templates | 117 | 89.4 KiB | 2.5% |
-| **total ≥200 B strings** | 5,250 | 3,622.5 KiB | 100% |
+| PR | commit | title |
+|---|---|---|
+| **#5579** | `f9cc238976` | Parser-wall: remove DAG comment trivia rules (fail-closed by construction) |
+| **#6262** | `9e7c3c1d11` | Unbreak v1 self-resolution after #6242: **hoist .dag `//` comments to typed data rows**, dedup dag_collect registry |
+| **#6424** | `c14e001a34` | **Sweep dead prose data-String rows (comments smuggled in strings): 215 rows across ~130 files** |
 
-**`DOC_AUTHORITY` is not annotation and must never be swept.** `roadmap_authority.dag` holds 115.7 KiB
-of `_note`-suffixed declarations that are the *authored body of ROADMAP.md* — a generated artifact's
-content, not a comment on a declaration. The `_note` suffix names two unrelated things in this corpus,
-which is a §3 nicknaming instance in its own right and the first trap any automated pass would fall into.
+Read in order that is a closed causal loop: **comments banned → commentary smuggled into `data` rows →
+intent becomes mechanically indistinguishable → recurring cleanup.** #6262 is not an accident; it is the
+compensating convention adopted *deliberately* to keep the tree resolving after the ban. #6424 is the
+first cleanup the convention made necessary, and it reported that the habit stayed live because no wall
+covered `data` declarations.
 
-**Payload leakage is real but small.** Two of the 48 sampled sites (3.1% of sampled bytes) were golden
-bash fixtures inside `bash_program_fold_test.dag`, not prose — my filter missed them. So the annotation
-denominator above is overstated by roughly 3%, and every share below inherits that error.
-
-**Concentration:** 50% of annotation bytes sit in **108 of 1,119** files.
+The wall from #5579 is real and executing today — `v2.test.round_trip.dag_comment_wall_test` sends
+synthetic modules through the production compile path and refuses both line and block comments, with an
+accepted control and a `//`-inside-a-string-literal control. **The wall is not the defect.** The defect is
+that it has no counterpart destination, so the pressure it creates has nowhere to go but `String`.
 
 ---
 
-## 2. Reconciling "90% deletable" with the prior census's "<1%"
+## 2. The destination: `//` as a modeled source annotation
 
-These two figures never disagreed — they measure different things, and neither answers the brief:
+The proposal is *not* to restore comments as lexer trivia. `v2.std.compilers.lexing` `TriviaRule` consumes
+a lexeme without emitting a token, so a restored trivia rule would be readable to humans and invisible to
+every parser, lens, census, migration, and SCM operation — the same semantic blindness with nicer syntax.
+Nor should `//` lower to a binding (`let` or `data`): that puts prose in the namespace, makes it
+referenceable, and re-classifies it as program data — the very move #6262 was forced into.
 
-- The prior census's **0.6% "crisp deletable"** counts only prose that is *lexically decidable as dead*:
-  a fired dissolution trigger, or a dated snapshot superseded by a later sibling in the same file. It is
-  a floor on machine-detectable death, not an estimate of value.
-- The brief's **90%** reads on *the experience of opening a note* — most of what you read is not the
-  rationale you came for.
+The intended reading, with provisional names and load-bearing laws:
 
-Both are consistent with what the hand-read found: the prose is **valuable and adulterated**. Almost none
-of it is dead; most of it is mixed.
+```
+type SourceAnnotationPurpose = SourceAnnotationModelingDebt | SourceAnnotationRationale
+
+type SourceAnnotation {
+  occurrence: OccurrenceId      // the annotation's own identity
+  subject:    OccurrenceId      // the structural occurrence it annotates
+  purpose:    SourceAnnotationPurpose
+  text:       String
+}
+```
+
+**Real data, but not program data.** The object program cannot bind, import, reference, call, evaluate, or
+inspect an annotation. Compiler, lens, formatter, and SCM machinery *can* enumerate it through an
+annotation-specific projection — that exception is necessary, since without it neither the census nor the
+migration below could exist. **Quarantine, not erasure.**
+
+**Sidecar, not `Node`.** v1's `Node` carries a `properties: List<Node>` field (`v1.00_core`) and attaching
+there looks attractive. It should not be the first cut: `properties` participates in the semantic carrier,
+so annotations there risk moving structural equality, content hashes, resolver and inference walks,
+affected-set computation, emitted bytes, and cache keys. `v2.compiler.02_parse` already returns
+`ParseArtifact { tree, span_index }`; an annotation graph belongs **beside** the tree and provenance, not
+inside the semantic tree. v2 already mints occurrence identity (`v2.std.node` `NodeOccurrenceId` /
+`MintedOccurrence`), which is the seam for naming annotation subjects without inventing file identity.
+
+**There are no file comments.** A comment annotates a structural occurrence — a module, an import, a
+declaration, eventually an expression or field — never "this file". The normalized row carries no path and
+no line number; source spans stay diagnostic provenance in the existing `SpanIndex`, never semantic
+identity.
+
+**Two mandatory projections.** Semantically inert without being source-invisible:
+
+- **semantic** — `semantic(parse(src with comment)) == semantic(parse(src without comment))`. Adding or
+  removing a comment must not move declarations, references, resolution, inference, evaluation, the
+  semantic IR hash, or target bytes.
+- **authored-source** — `annotations(…with) != annotations(…without)`. Comments *do* affect source
+  rendering, the annotation census, source-level SCM, and authored-source identity.
+
+That pair buys an exact distinction later: a comment-only change alters authored source while leaving
+semantic IR unchanged — much stronger than classifying a whole file as docs-like by path.
+
+**First cut is deliberately narrow:** standalone leading `//` lines, attached to the next structural
+occurrence in the same containment scope; comments before `module` attach to the module occurrence;
+pending comments at scope end or EOF are a typed `UnattachedSourceAnnotation` refusal; **trailing
+end-of-line and block comments stay fail-closed** until their attachment rules are separately modeled.
+That defers the genuinely ambiguous case (`fn a() -> Int { 1 } // …` — function, return expression, or next
+item?) instead of guessing at it.
+
+**Default purpose is `SourceAnnotationModelingDebt`.** Plain `//` should say *this prose was quarantined
+because it is not currently represented in the executable model*. A `why:` rationale escape hatch should
+**not** ship in the first cut — offered early, every unmodeled invariant acquires a `why:` prefix and
+declares itself permanent.
 
 ---
 
-## 3. The hand-read — method and result
+## 3. What the measurement still establishes (and what it does not)
 
-48 annotation sites drawn **byte-weighted** without replacement (seed `20260804`, so the draw is
-reproducible), each read in full and scored on one axis: *what would be lost by deleting this?*
+The audit below measured **survivors**, and that bound is load-bearing:
+
+> **#6424 had already swept 215 mechanically dead prose rows across ~130 files before this sample was
+> drawn.** The surviving population is therefore predictably *enriched* for referenced, mixed, and
+> load-bearing text. This sample says something real about survivors; it **cannot** retroactively refute
+> the measured dead population, and it settles nothing about representation.
+
+48 sites drawn **byte-weighted** without replacement (seed `20260804`), each read in full and scored on
+one axis: *what would be lost by deleting this?*
 
 | disposition | sites | bytes | share of sampled bytes |
 |---|---|---|---|
@@ -87,25 +133,20 @@ reproducible), each read in full and scored on one axis: *what would be lost by 
 | NOT PROSE — payload contamination | 2 | 1,861 | 3.1% |
 | **DELETE** — worthless as authored | **0** | **0** | **0.0%** |
 
-**Zero primary-delete in 48 draws.** By the rule of three that bounds the true site-rate at roughly
-**≤6%** with 95% confidence — not zero, but nowhere near 90%. Reading the specimens is more convincing
-than the number: the KEEP set includes why a predicate is deliberately concrete rather than generic and
-what breaks if you lift it (`std/effects.dag`); why `ABSENT` and `UNOBSERVED` are different answers about
-a required executable, and the operator-facing bug that conflating them produced
-(`roadmap_dashboard_instance_apply.dag`); why a stale-socket host and a never-provisioned host are
-different states, with a week of silent uncaching as the measured cost (`build_cache_endpoint_path.dag`);
-and why RFC 7519's registered claims are all optional, including the note that the first cut got it
-backwards by generalizing from one observed token (`extdeps/auth/jwt.dag`).
+**Zero primary-delete in 48 draws** (rule of three: ≤6% of *sites* at 95%). The KEEP specimens are
+load-bearing — why a predicate is deliberately concrete rather than generic and what breaks if you lift it
+(`std.effects` `generic_predicate_frontier_note`); why `ABSENT` and `UNOBSERVED` are different answers
+about a required executable (`gunbc.roadmap_dashboard_instance_apply` `executable_survey_note`); why a
+stale-socket host differs from a never-provisioned one, at a measured cost of a week's silent uncaching
+(`gunbc.build_cache_endpoint_path` `endpoint_path_state_authority_note`); why RFC 7519's registered claims
+are all optional, including that the first cut got it backwards (`extdeps.auth.jwt`
+`jwt_registered_claims_note`).
 
-**None of that is recoverable from the code.** Deleting it does not remove a comment; it removes the
-reason a future author will not repeat the mistake — and in at least three of the sampled cases the note
-explicitly records that the mistake *was already made once*.
+**The crucial reading: valuable and irreducible does not mean correctly represented.** Every one of those
+notes is worth keeping *and* wrong as `data Foo: String`. Value and representation are independent axes,
+and conflating them is what made "delete vs keep" feel like the whole question.
 
----
-
-## 4. What is mechanically decidable — the time-bound marker measurement
-
-Unlike value, this is decidable, corpus-wide, today:
+### 3b. The fusion measurement — still the sharpest available signal
 
 | marker | sites | % sites | KiB | **% bytes** |
 |---|---|---|---|---|
@@ -116,131 +157,128 @@ Unlike value, this is decidable, corpus-wide, today:
 | git SHA (≥7 hex) | 156 | 4.3% | 214.2 | 7.9% |
 | session name (`calm-heron-729`) | 129 | 3.6% | 148.2 | 5.5% |
 | CI run id (`run 30702499883`) | 77 | 2.1% | 123.7 | 4.6% |
-| `LANDED`/`MERGED`/`SUPERSEDED` status | 65 | 1.8% | 106.9 | 3.9% |
+| `LANDED`/`MERGED`/`SUPERSEDED` | 65 | 1.8% | 106.9 | 3.9% |
 | **any of the above** | **1,535** | **42.7%** | **1,518.0** | **56.0%** |
 
-**56% of annotation bytes carry at least one fact that goes stale without anyone touching it.** This is
-the same class DESIGN §3 rules on for citations (*cite the symbol, not the position*) and the same class
-the operator ruled on for #7710 (*a design criterion embedding a SHA or a pass count has to be edited
-every time the world moves*). It is already repository law for two narrow cases; the measurement says the
-general case is more than half the prose mass.
+**56% of annotation bytes carry a fact that goes stale without anyone touching it** — the same class DESIGN
+§3 rules on for citations and the operator ruled on for #7710. Under §2's model these are exactly the facts
+that must *not* become annotations: they belong in typed carriers, and `//` must not become their new home.
 
----
+### 3c. Denominator and concentration
 
-## 5. The actual disease: fusion, concentrated in mega-notes
-
-| band | sites | KiB | % bytes |
+| population | sites | bytes | share |
 |---|---|---|---|
-| 200–500 B | 1,400 | 465.9 | 17.2% |
-| 500–1,000 B | 1,401 | 971.3 | 35.9% |
-| 1,000–2,000 B | 653 | 852.7 | 31.5% |
-| 2,000–4,000 B | 119 | 303.1 | 11.2% |
-| ≥4,000 B | 19 | 115.5 | 4.3% |
+| **ANNOTATION** | 3,592 | **2,708.4 KiB** | 74.8% |
+| DOC_AUTHORITY — `design_document`, `roadmap_authority`, `plans/`, `site/` | 1,541 | 824.7 KiB | 22.8% |
+| PAYLOAD — emitted source, golden fixtures, language templates | 117 | 89.4 KiB | 2.5% |
 
-**Mega-notes (≥2,000 B) are 3.8% of sites but 15.5% of bytes** — and *every* MIXED case in the sample was
-one. The largest sampled note is 7,265 B (`src/v1/04_infer.dag` `declared_type_conformance_note`); it
-contains four genuinely load-bearing measured false-positive classes **and** a running account of six
-review round-trips by id. The first must survive; the second is a receipt.
-
-That is the shape of the whole problem: **a mega-note is an unmodeled changelog with a good essay inside
-it.** The brief's "90% is low value" is what that feels like from the reading end. The measurement says
-the ratio is nearer 1:1 by bytes, and — decisively — that the two halves are *separable*, because the
-deletable half is exactly the mechanically-detectable half in §4.
+**`DOC_AUTHORITY` is not annotation and must never be swept.** `roadmap_authority.dag` holds 115.7 KiB of
+`_note`-suffixed declarations that are *the authored body of ROADMAP.md*; `design_document.dag` builds
+DESIGN.md from `p(text:)` / `h1(text:)` / `li(text:)` constructors. The `_note` suffix names two unrelated
+things, and a name filter and a path filter each miss a different half. Size: **mega-notes (≥2,000 B) are
+3.8% of sites but 15.5% of bytes**, and every MIXED specimen in the sample was one. Concentration: 50% of
+annotation bytes in **108 of 1,119** files; 50% of the §3b marker mass in **63 of 617** files, with 124
+mega-notes carrying a marker between them.
 
 ---
 
-## 6. Proposed policy (needs operator sign-off — §7 D1)
+## 4. The target, restated
 
-Four rules, each decidable by a reader without judgment calls, and each traceable to an existing DESIGN
-principle rather than newly invented:
+Not *"delete 90% of bytes."* The measurable target is **100% representation classification, zero anonymous
+comment-smuggling.** The first partition is by *what the text is*, before any keep/migrate/delete judgment:
 
-> **P1 — A note says *why*, never *what*.** If a sentence restates what the declaration, type, field, or
-> variant names already say, it is a second representation of one fact — delete it (§2/§3). The test:
-> *could a reader derive this sentence from the code beside it?* If yes, it is not a note.
->
-> **P2 — A note carries no time-bound fact.** No dates, PR/issue numbers, review ids, session names, CI
-> run ids, SHAs, or `LANDED`/`MERGED` status words. Those are receipts; they belong in a typed row that a
-> consumer reads, cited by symbol (§3 cite-the-symbol; the #7710 ruling generalized). A note states what
-> is *true of the declaration*, in the present tense, with no clock in it.
->
-> **P3 — One note, one job, with a ceiling.** A note past ~1,200 B is a mixture and must be split: the
-> irreducible why stays; a spec becomes a type or a lens; a trigger becomes a typed dissolve-on row; a
-> measurement becomes a receipt row. **≥2,000 B is a hard refusal** — 15.5% of bytes sit above that line
-> and every mixed specimen in the sample was there.
->
-> **P4 — A note is attached to what it explains.** It lives beside the declaration it is about and names
-> it. Lane state, migration sequencing, and cross-session coordination belong in the lane's plan or
-> roadmap authority — not in a substrate module.
+```
+ProgramData | DocumentPayload | TypedOperationalFact | SourceAnnotationSmuggledAsString
+```
 
-**The single acceptance test, for authors and reviewers:** *would deleting this note cause someone to
-re-litigate a settled decision or reintroduce a defect?* If yes it stays and P2/P3 apply to its form. If
-no, it does not land. That test is what the KEEP set in §3 passes and what the time-bound residue in §4
-fails.
-
-**What P1–P4 do NOT license.** They do not authorize a deletion pass over the corpus. Under this policy
-the sampled prose is overwhelmingly *reformatted and split*, not removed — §3 measured the removable
-fraction at ≤6% of sites. Anyone reading this policy as permission to bankrupt notes wholesale has
-inverted its finding.
+Only within that partition does disposition become a fold rather than an English-reading exercise. The
+policy that follows — *a comment may explain why a nearby construction deliberately has its current shape;
+it must not restate what the declaration structurally says, must not carry when-facts, and is never
+evidence that a machine claim holds* — is only enforceable once the text is structurally known to be
+commentary.
 
 ---
 
-## 6b. Where the reconciliation starts
+## 5. Decisions this audit needs
 
-The §4 population is as concentrated as the prose itself: **1,400 KiB across 1,370 sites in 617 files,
-with 50% of the marker mass in 63 of them.** A split pass can cover half the problem in ~63 files, and
-**124 mega-notes carry a marker between them (381 KiB)** — that intersection is the highest-density
-target in the corpus and the natural first slice.
+Superseding an earlier D1–D4 that asked about deletion rates and ceilings — the wrong questions, because
+they presumed the current representation:
 
-| # | KiB | sites | file |
-|---|---|---|---|
-| 1 | 57.9 | 21 | `src/v1/04_infer.dag` |
-| 2 | 42.2 | 44 | `dag/gunbc/ci_layer_roots.dag` |
-| 3 | 42.0 | 21 | `dag/gunbc/ci_spec.dag` |
-| 4 | 32.5 | 15 | `dag/gunbc/commit_workflow.dag` |
-| 5 | 24.6 | 11 | `dag/gunbc/ci_workflow.dag` |
-| 6 | 23.3 | 13 | `dag/gunbc/ci_materialization.dag` |
-| 7 | 21.5 | 13 | `dag/extdeps/pin.dag` |
-| 8 | 19.9 | 17 | `src/v2/workflow/ci_floor_plan.dag` |
+- **D-A — carrier.** Confirm `SourceAnnotation` as a **sidecar on the parse artifact**, not `Node.properties`,
+  not a binding, not restored trivia. Confirm the home after a concept DFS (candidate:
+  `dag/std/source_annotation.dag`, language-agnostic, naming no `.dag` syntax).
+- **D-B — attachment.** Confirm the narrow first cut: standalone-leading only; next structural occurrence
+  in the same containment scope; pre-`module` attaches to the module; `UnattachedSourceAnnotation` refusal
+  at scope end/EOF; trailing and block comments stay `FailClosed`.
+- **D-C — erasure.** Confirm the two-projection law, and that the semantic projection must be proven
+  byte-identical (emitted target bytes with and without the comment) rather than argued.
+- **D-D — migration.** Confirm the §4 partition and that `SourceAnnotationModelingDebt` is the default
+  purpose, with `SourceAnnotationRationale` withheld from the first cut.
 
-`ci_layer_roots.dag` is already censused at row grain by
-[dissolution-census-a](dissolution-census-a-ci-layer-roots.md), so it is the one file where the split
-pass can start from typed rows rather than a fresh read — which makes it the cheapest proof of the
-policy, not the biggest win. **Note that `src/v1/04_infer.dag` and `dag/gunbc/ci_spec.dag` are
-load-bearing per DESIGN §7 and the Building-&-checks section**; they head the list by mass but must not
-lead the pass.
+**Not asked, deliberately:** the delete rate, the size ceilings, and the instrument's home. The first two
+are downstream of representation; the third dissolves if the annotation census replaces the lexical one.
 
 ---
 
-## 7. Decisions this audit needs
+## 6. Sequence after sign-off (nothing here is started)
 
-- **D1 — is the 90%-delete premise withdrawn?** The evidence says the deletable-as-worthless fraction is
-  ≤6% of sites and ~0% of sampled bytes. Recommend: yes, replace "bankrupt 90%" with "split the 56%".
-- **D2 — is P2 enforced, and by what?** A lens over the `Node` tree can decide every marker in §4
-  mechanically (they are all lexical, on String values the tree already carries). That is the cheapest
-  available wall and it is construction-adjacent, not judgment. Needs a home and a receipt carrier for
-  the evicted facts before it can refuse.
-- **D3 — the P3 ceiling number.** 1,200 B split / 2,000 B refuse are drawn from §5's distribution, not
-  from first principles. If the ceiling should be lower, the population above it grows accordingly.
-- **D4 — instrument home.** This audit's extractor is uncommitted, so §1's and §4's counts are not
-  independently re-derivable — the same specification-without-execution weakness
-  [dag-note-prose-census.md](dag-note-prose-census.md) §6 flagged and left open. Either widen the modeled
-  Python allowlist (a third variant beside the two already there) or write the `.dag` lens D2 needs
-  anyway. Recommend the latter: it discharges D2 and D4 together and deletes this document's instrument.
+1. **Slice 1 — authority + pure laws.** Annotation occurrence, structural subject, purpose, graph,
+   attachment refusals, erasure projection, same-scope attachment law. Names no `.dag` syntax.
+2. **Slice 2 — `.dag` syntax realization.** A line-comment **`TokenRule`, never `TriviaRule`**, reusing the
+   existing `LineCommentTextChar` lexical class; split comment fidelity out of
+   `v2.extdeps.languages.dag` `DagTriviaNormalization` (a preserved comment is no longer trivia) so
+   `dag_line_comment_fidelity` becomes `Modeled` while `dag_block_comment_fidelity` stays
+   `FailClosed { feature: DagBlockCommentFailClosed }`. The v1 bridge needs a new `TokenShape` variant
+   (`v1.00_core` — the `Sh*` convention has no comment variant today), tokenize-rather-than-skip in
+   `01_tokenize`, pending-annotation attachment in `02_parse`, and a **regenerated** stage0 mirror.
+3. **Slice 3 — discriminating execution.** Recut `v2.test.round_trip.dag_comment_wall_test` rather than
+   invert it. Controls: annotation appears exactly once with the right subject; semantic IR equal with and
+   without; census differs with and without; a `TriviaRule` treatment reds the visibility witness; a
+   binding treatment reds the non-binding witness; `//` inside a string yields zero annotations; block and
+   trailing still refuse; pending-at-EOF refuses; **emitted Rust bytes identical**; authored-source
+   identity differs.
+4. **Slice 4 — make recurrence unwritable.** Extend an existing liveness kernel (`v2.lens.inert_carrier`
+   covers type carriers, not this `data`-declaration class) rather than minting a fresh prose lens. The
+   decidable class: *a declaration with zero real program/document/typed-carrier consumers cannot survive
+   merely to hold prose.* Deadness and consumer identity are **graph facts** — resolved declaration and
+   reference facts, not `_note` names and not regexes.
+5. **Slice 5 — reconcile the mountain**, per the §4 partition, splitting mixed rows by fact before
+   disposition.
+
+---
+
+## 7. Proposed DESIGN.md paragraph (NOT landed here)
+
+Authored by the operator, 2026-08-04; carried here for review. It would land through
+`gunbc.design_document` with DESIGN.md regenerated — **deliberately not done in this PR**, because
+DESIGN.md is the canonical authority and this document stops at the audit.
+
+> Source annotations are data, but not program data. `.dag` line-comment syntax lowers to a typed source
+> annotation attached to a graph-local structural occurrence; it is never discarded lexer trivia, never a
+> namespace binding, and never a fact about a file. The object program cannot reference, evaluate, or emit
+> annotation text. Authoring, formatting, SCM, and lens consumers may enumerate the annotation graph.
+> Ordinary compilation derives from an annotation-erased semantic projection, while authored-source
+> identity retains annotations. Plain comments are modeling debt by default. A comment may preserve
+> irreducible human rationale about why a construction exists; any fact needed by a machine
+> consumer—including invariants, receipts, events, rulings, citations, status, counts, and dissolution
+> conditions—belongs in a typed carrier. An ordinary String declaration used solely to simulate commentary
+> is misplaced or dead data.
 
 ---
 
 ## 8. Honesty bound
 
-- **The sample is 48 sites.** Shares in §3 carry roughly ±14pp at 95%; the ≤6% delete-rate bound is the
-  rule of three on 0/48 and is a *site* bound, not a byte bound.
-- **Scoring was mine and unblinded.** I drew the sample, read it, and scored it against a rubric I wrote.
-  A second reader scoring the same 48 blind is the control this audit does not have.
-- **The extractor over-counts by ~3%** (payload leakage, §1) and by ~1% against an independent count.
-- **§4's markers are lexical.** `review 45213` is decidable; whether a note's *core* is irreducible is
-  not, and no rule in §6 pretends otherwise — P1's test is a judgment, stated as one.
-- **Nothing here was deleted, split, or migrated.** This is evidence for a decision, not a change.
+- **The sample measures survivors.** #6424 removed 215 dead rows first (§3); the 0/48 result is a statement
+  about what survived that sweep, not about the original population, and **not** an argument that the
+  current representation should stand.
+- **Scoring was mine and unblinded.** I drew, read, and scored against a rubric I wrote. A second reader
+  scoring the same 48 blind is the control this audit does not have.
+- **48 sites** — §3's shares carry roughly ±14pp at 95%; ≤6% is a *site* bound, not a byte bound.
+- **The extractor over-counts by ~3%** (payload leakage) and ~1% against an independent count.
+- **§3b's markers are lexical.** Whether a note's core is irreducible is a judgment, stated as one.
+- **§2's type names are provisional**; the laws beside them are the substance.
+- **Nothing was deleted, split, migrated, or reconciled**, and no decision in §5 is answered here.
 
-**Scaffold, with a dissolution trigger:** this document deletes when P1–P4 land as an enforced policy
-(D2's lens plus a receipt carrier for the evicted time-bound facts) and the reconciliation pass over the
-§4 population completes — at which point a hand-read audit over prose is superseded by a fold over typed
-rows, exactly as [dag-note-prose-census.md](dag-note-prose-census.md) anticipates for its own.
+**Scaffold, with a dissolution trigger:** this document deletes when the source-annotation carrier lands
+with its executed controls and the §4 partition is complete — at which point a lexical audit over prose is
+superseded by a fold over the annotation graph and the typed populations beside it.

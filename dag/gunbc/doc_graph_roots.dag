@@ -405,7 +405,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     slug: "dag-prose-policy-audit",
     primary_work: DeclarationRef { module_path: "v2.lens.enforcement.standing_intent", decl_name: "StandingIntent", field: WholeDeclaration },
     additional_works: [],
-    dissolution: HasTrigger { text: "P1-P4 land as enforced policy (a Node-tree lens deciding the time-bound marker classes, plus a receipt carrier for the facts it evicts) and the reconciliation pass over the measured population completes — at which point a hand-read value audit over prose is superseded by a fold over typed rows, and this doc plus its uncommitted instrument delete together (same trigger family as dag-note-prose-census)" },
+    dissolution: HasTrigger { text: "the source-annotation carrier lands with its executed controls (line comments modeled as a TokenRule attached to a structural occurrence, semantic-erasure proven by identical emitted bytes, block and trailing comments still fail-closed) and the representation partition over the measured prose population completes — at which point a lexical audit over prose is superseded by a fold over the annotation graph and the typed populations beside it, and this doc plus its uncommitted instrument delete together (same trigger family as dag-note-prose-census)" },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
