@@ -1,14 +1,26 @@
 module v2.compiler.self_host.v2_emitter_direct_rust_door_contract
 
 import v2.compiler.self_host.candidate_generation {
+  ArtifactProduced,
+  AssemblyRejected,
+  EmissionRejected,
+  InferenceRejected,
+  ProducerReceiptRejected,
+  ProvenancedRustEmissionObservation,
   generate_provenanced_rust_candidate_from_ingest,
+  observe_provenanced_rust_emission_from_ingest,
   provenanced_rust_artifact_seed_independent
 }
 import v2.compiler.self_host.direct_rust_door_fixture {
   direct_rust_door_admission,
+  direct_rust_door_expected_source,
   direct_rust_door_ingest,
   direct_rust_door_module_path,
   direct_rust_door_target_model
+}
+import v2.compiler.self_host.emitter_producer_provenance {
+  emission_qualifications_list_contains,
+  SourceProduced
 }
 import v2.compiler.translate {
   target_serialize_source_from_model,
@@ -32,10 +44,11 @@ import v2.std.logic { Bool }
 import v2.std.node {
   Conj,
   Node,
+  Symbol,
   SyntheticOccurrence,
   TypeNode,
 }
-import v2.std.optional { Absent, Present }
+import v2.std.optional { Absent, Optional, Present }
 import v2.std.text { String }
 
 data v2_emitter_direct_rust_door_contract_note: String = "THE CLOSING CONDITION for roadmap node v2-emitter-direct-rust-door, transcribed at the node's two-clause red control. MissingTranslationRuleRefuses: a deliberately incomplete Rust TargetModel must refuse through target_serialize_source_from_model with TargetBundleMalformed rather than accepting guessed source. WrittenSourceIndependentOfSeedEmitter: mint_provenanced_rust_artifact with V2EmitterInterpreted and a realized closure excluding v1.compiler.emit_rust establishes the capability; byte-equality against rust_source_text is owned by the discriminating provenance witness, not this admission fold."
@@ -189,4 +202,158 @@ fn v2_emitter_direct_rust_door_acceptance_admissions() -> List<DirectRustDoorAdm
     assess_missing_translation_rule_refuses(),
     assess_written_source_independent_of_seed_emitter(),
   ]
+}
+
+data direct_rust_door_production_group_note: String = "THE FIRST COMPOSITION SPECIMEN for this lane. The expensive production path (ingest, assemble, infer, emit, receipt mint) is walked EXACTLY ONCE per group, into one ProvenancedRustEmissionObservation; the four leaf results below are PURE derivations from that one observation plus the independent missing-rule refusal leaf. The parent retains every child outcome rather than collapsing to a Bool, and a leaf that production never reached reports LeafNotReached with the locating stage rather than a false that reads as refuted. Cargo compilation, behavioral execution, and any generic composition substrate are deliberately out of this slice."
+
+data direct_rust_door_leaf_not_reached_assembly: Symbol = ^direct_rust_door_leaf_not_reached_assembly_rejected
+
+data direct_rust_door_leaf_not_reached_inference: Symbol = ^direct_rust_door_leaf_not_reached_inference_rejected
+
+data direct_rust_door_leaf_not_reached_emission: Symbol = ^direct_rust_door_leaf_not_reached_emission_rejected
+
+data direct_rust_door_leaf_not_reached_receipt: Symbol = ^direct_rust_door_leaf_not_reached_producer_receipt_rejected
+
+data direct_rust_door_source_mismatch_cause: Symbol = ^direct_rust_door_emitted_source_differs_from_expected
+
+data direct_rust_door_declared_closure_seed_cause: Symbol = ^direct_rust_door_declared_producer_closure_contains_seed_emitter
+
+data direct_rust_door_source_produced_missing_cause: Symbol = ^direct_rust_door_source_produced_qualification_missing
+
+type DirectRustDoorLeafResult
+  = LeafEstablished
+  | LeafRefused { cause: Symbol }
+  | LeafNotReached { cause: Symbol }
+
+type DirectRustDoorProductionGroup {
+  emission: ProvenancedRustEmissionObservation
+  source_fidelity: DirectRustDoorLeafResult
+  declared_producer_closure: DirectRustDoorLeafResult
+  source_produced_qualification: DirectRustDoorLeafResult
+  missing_translation_rule_refusal: DirectRustDoorLeafResult
+}
+
+fn direct_rust_door_production_stage_not_reached_cause(
+  observation: ProvenancedRustEmissionObservation
+) -> Optional<Symbol> {
+  match observation {
+    AssemblyRejected { diagnostics: _ } =>
+      Present { value: direct_rust_door_leaf_not_reached_assembly }
+    InferenceRejected { diagnostics: _ } =>
+      Present { value: direct_rust_door_leaf_not_reached_inference }
+    EmissionRejected { diagnostics: _ } =>
+      Present { value: direct_rust_door_leaf_not_reached_emission }
+    ProducerReceiptRejected { diagnostics: _ } =>
+      Present { value: direct_rust_door_leaf_not_reached_receipt }
+    ArtifactProduced { artifact: _ } => Absent
+  }
+}
+
+fn direct_rust_door_leaf_from_artifact_predicate(
+  observation: ProvenancedRustEmissionObservation,
+  holds: Bool,
+  refusal_cause: Symbol
+) -> DirectRustDoorLeafResult {
+  match direct_rust_door_production_stage_not_reached_cause(observation: observation) {
+    Present { value: cause } => LeafNotReached { cause: cause }
+    Absent =>
+      if holds { LeafEstablished } else { LeafRefused { cause: refusal_cause } }
+  }
+}
+
+fn direct_rust_door_source_fidelity_holds(
+  observation: ProvenancedRustEmissionObservation
+) -> Bool {
+  match observation {
+    ArtifactProduced { artifact: a } =>
+      a.source.carried == direct_rust_door_expected_source
+    AssemblyRejected { diagnostics: _ } => false
+    InferenceRejected { diagnostics: _ } => false
+    EmissionRejected { diagnostics: _ } => false
+    ProducerReceiptRejected { diagnostics: _ } => false
+  }
+}
+
+fn direct_rust_door_declared_closure_seed_free_holds(
+  observation: ProvenancedRustEmissionObservation
+) -> Bool {
+  match observation {
+    ArtifactProduced { artifact: a } =>
+      provenanced_rust_artifact_seed_independent(artifact: a)
+    AssemblyRejected { diagnostics: _ } => false
+    InferenceRejected { diagnostics: _ } => false
+    EmissionRejected { diagnostics: _ } => false
+    ProducerReceiptRejected { diagnostics: _ } => false
+  }
+}
+
+fn direct_rust_door_source_produced_qualification_holds(
+  observation: ProvenancedRustEmissionObservation
+) -> Bool {
+  match observation {
+    ArtifactProduced { artifact: a } =>
+      emission_qualifications_list_contains(
+        xs: a.producer_receipt.qualifications,
+        wanted: SourceProduced
+      )
+    AssemblyRejected { diagnostics: _ } => false
+    InferenceRejected { diagnostics: _ } => false
+    EmissionRejected { diagnostics: _ } => false
+    ProducerReceiptRejected { diagnostics: _ } => false
+  }
+}
+
+fn direct_rust_door_missing_rule_leaf() -> DirectRustDoorLeafResult {
+  match assess_missing_translation_rule_refuses() {
+    DirectRustDoorEstablished { capability: _ } => LeafEstablished
+    DirectRustDoorRefused { capability: _, failure: _ } =>
+      LeafRefused { cause: ^direct_rust_door_missing_rule_refusal_not_established }
+    DirectRustDoorUnavailable { capability: _, trigger: _ } =>
+      LeafNotReached { cause: ^direct_rust_door_missing_rule_refusal_unavailable }
+  }
+}
+
+fn direct_rust_door_production_group() -> DirectRustDoorProductionGroup {
+  let observation = observe_provenanced_rust_emission_from_ingest(
+    ingest: direct_rust_door_ingest(),
+    admission: direct_rust_door_admission(),
+    target: direct_rust_door_target_model(),
+    module_path: direct_rust_door_module_path
+  )
+  DirectRustDoorProductionGroup {
+    emission: observation,
+    source_fidelity: direct_rust_door_leaf_from_artifact_predicate(
+      observation: observation,
+      holds: direct_rust_door_source_fidelity_holds(observation: observation),
+      refusal_cause: direct_rust_door_source_mismatch_cause
+    ),
+    declared_producer_closure: direct_rust_door_leaf_from_artifact_predicate(
+      observation: observation,
+      holds: direct_rust_door_declared_closure_seed_free_holds(observation: observation),
+      refusal_cause: direct_rust_door_declared_closure_seed_cause
+    ),
+    source_produced_qualification: direct_rust_door_leaf_from_artifact_predicate(
+      observation: observation,
+      holds: direct_rust_door_source_produced_qualification_holds(observation: observation),
+      refusal_cause: direct_rust_door_source_produced_missing_cause
+    ),
+    missing_translation_rule_refusal: direct_rust_door_missing_rule_leaf()
+  }
+}
+
+fn direct_rust_door_leaf_established(leaf: DirectRustDoorLeafResult) -> Bool {
+  match leaf {
+    LeafEstablished => true
+    LeafRefused { cause: _ } => false
+    LeafNotReached { cause: _ } => false
+  }
+}
+
+fn direct_rust_door_production_group_holds(
+  group: DirectRustDoorProductionGroup
+) -> Bool {
+  direct_rust_door_leaf_established(leaf: group.source_fidelity)
+    && direct_rust_door_leaf_established(leaf: group.declared_producer_closure)
+    && direct_rust_door_leaf_established(leaf: group.source_produced_qualification)
+    && direct_rust_door_leaf_established(leaf: group.missing_translation_rule_refusal)
 }
