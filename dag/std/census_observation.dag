@@ -143,7 +143,7 @@ fn census_conclusion_strength_for(
     CoverageUnestablished { first_missing: _, additional_missing: _ } => NoConclusionSupported
     Sampled { selection: _ } =>
       match fidelity {
-        SemanticSubjects => ExhaustiveSemanticPopulation
+        SemanticSubjects => SemanticPopulationFloor
         TextualMatchesOnly => TextualMatchFloor
       }
     CompleteForDeclaredPopulation =>
