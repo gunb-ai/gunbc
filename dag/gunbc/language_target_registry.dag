@@ -60,12 +60,48 @@ data bash_subject_ref: ExternalSubjectRef = ExternalSubjectRef {
 
 data d0_population_blocker_note: String = "D0 — THE COMPLETE TARGET UNIVERSE — IS NOT REGISTERED HERE, AND THE REASON IS THE CONSTRUCTION WALL ITSELF. A registration derives its subject from a REQUIRED TargetGrounding, so an ungrounded target is unwritable (target_grounding_law). External grounding is an ExternalModelScope, and a scope carries at least one real upstream citation by construction. Therefore registering TypeScript, C, C++, Verilog, SPICE, Python, Go, Java, Kotlin, Swift, LLVM IR, WebAssembly, PTX, machine code, Lean, SQL, HTML, CSS, ECMAScript, JSON, YAML and Markdown requires FIRST authoring one cited subject declaration each — the same file this branch created for Bash — because NONE of them has one today. That is the measured state, not an obstacle invented here: Bash was uncited until this branch, and the same sweep that found it found no subject declaration for any other target. Registering them without grounding would mean either fabricating citations or reopening the wall, and both are refused. The .dag language and controlled English take ProjectGrounding instead and need no external citation, so they are the cheapest rows to add next. SIZING, so the remaining work is countable rather than vague: roughly twenty external subject declarations, each a new dag/extdeps scope carrier requiring its own roster enrollment, each needing a citation verified against the real upstream rather than recalled. DISSOLVE-ON: those subjects land and this note deletes with the rows it explains."
 
+data project_grounded_targets_note: String = "The two PROJECT-grounded targets, and they are here for a reason beyond being cheap: ProjectGrounding had zero inhabitants, so an entire arm of the grounding coproduct was unexercised. These are also the two rows that could not have existed under a universal ExternalSubjectRef — the .dag language and the controlled-English medium are this project's OWN targets, with no independently governed upstream to cite, and forcing them through an external scope would have made them claim a governance they do not have. Their authority declarations are real and symbolic: dag_item_forms is the .dag surface-form authority, FormalSentence the controlled-English one. Neither carries an extdeps_model_scope and neither should."
+
 data registered_language_targets: List<LanguageTargetRegistration> = [
   LanguageTargetRegistration {
     grounding: ExternalGrounding { scope: extdeps_model_scope },
     disposition: TargetActive
+  },
+  LanguageTargetRegistration {
+    grounding: ProjectGrounding {
+      authority: DeclarationRef {
+        module_path: "extdeps.languages.dag.syntax",
+        decl_name: "dag_item_forms",
+        field: WholeDeclaration
+      }
+    },
+    disposition: TargetActive
+  },
+  LanguageTargetRegistration {
+    grounding: ProjectGrounding {
+      authority: DeclarationRef {
+        module_path: "v2.extdeps.languages.english",
+        decl_name: "FormalSentence",
+        field: WholeDeclaration
+      }
+    },
+    disposition: TargetParked {
+      reason: "controlled-English medium: bounded formal-subset profile, P3 priority; registered so the strategy row stays visible while implementation has not begun"
+    }
   }
 ]
+
+data dag_subject_ref: ExternalSubjectRef = ExternalSubjectRef {
+  declaration: DeclarationRef {
+    module_path: "extdeps.languages.dag.syntax",
+    decl_name: "dag_item_forms",
+    field: WholeDeclaration
+  }
+}
+
+fn registered_target_count() -> Int {
+  fold(registered_language_targets, init: 0, f: fn(a, _r) { a + 1 })
+}
 
 fn unidentified_decl_row(
   authority: LanguageTargetSurfaceAuthority,

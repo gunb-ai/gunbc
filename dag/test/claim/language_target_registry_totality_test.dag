@@ -13,11 +13,15 @@ import std.language_target_identity {
   resolve_target_for_surface,
 }
 import std.language_target_identity {
+  registration_subject,
   LanguageIdLookup,
   LanguageIdResolved,
   LanguageIdUnregistered,
 }
+import std.roster_frontier { declaration_ref_eq }
 import gunbc.language_target_registry {
+  dag_subject_ref,
+  registered_target_count,
   bash_display_name,
   lookup_language_id,
   every_projection_subject_is_registered,
@@ -104,4 +108,16 @@ test fn red_unknown_legacy_id_refuses_rather_than_defaulting() -> Bool {
     LanguageIdUnregistered { language_id: _ } => true
     LanguageIdResolved { target: _ } => false
   }
+}
+
+data project_grounding_note: String = "Controls for the ProjectGrounding arm, which had zero inhabitants until the .dag and controlled-English rows landed — an unexercised coproduct arm is untested code, and this is the arm that exists precisely because a universal ExternalSubjectRef would have forced this project's own targets to claim an upstream governance they do not have. The discriminating property is that a project-grounded subject derives from its OWN authority declaration rather than from any external scope, so the derived subject equals the declared authority exactly."
+
+test fn project_grounded_target_derives_its_own_authority_as_subject() -> Bool {
+  fold(registered_language_targets, init: false, f: fn(acc, r) {
+    acc || declaration_ref_eq(a: registration_subject(registration: r), b: dag_subject_ref.declaration)
+  })
+}
+
+test fn registry_carries_both_grounding_arms() -> Bool {
+  registered_target_count() == 3
 }
