@@ -10,15 +10,18 @@ import v2.compiler.self_host.emitter_producer_provenance {
 import v2.lens.production_qualification_origin_census {
   FixtureDerived,
   UnknownOrigin,
-  count_derived_fixture_origin_mint_sites,
   count_derived_mint_sites_with_origin,
   derived_production_qualification_mint_sites_live,
   derived_sites_for_decl,
   empty_site_list,
   known_fixture_origin_mint_surface_count_in_scope,
+  planted_fixture_origin_mint_site_count,
+  production_qualification_live_scope_fixture_origin_oracle_count,
   production_qualification_origin_eq,
   production_qualification_origin_probe_admission_holds,
   production_qualification_origin_probe_admission_holds_for_decls,
+  production_qualification_planted_fixture_origin_oracle_count,
+  production_qualification_repository_wide_origin_census_closed,
   structural_red_control_live_body_skeleton_visible,
   structural_red_control_planted_decl,
   structural_red_control_planted_qualified_name,
@@ -26,23 +29,27 @@ import v2.lens.production_qualification_origin_census {
   unknown_origin_red_control_planted_decl
 }
 import v2.std.algebra { any }
-import v2.std.fn_index { fn_arrow_decl_substrate_is_whole_tree }
 import v2.std.integer { int_eq }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 
-data production_qualification_origin_census_witness_note: String = "Production-qualification origin PROBE witnesses (wise-ram-22 recut): structural skeleton discovery only — no witness-import closure roster, no declaration-name classifier pins. Structural GREEN uses a synthetic planted decl whose qualified name is oracle-only; the classifier reads callee+fixture-marker skeleton only. Live fixture fn bodies remain G2-marshal frontier until call-occurrence derivation lands."
+data production_qualification_origin_census_witness_note: String = "Production-qualification origin PROBE witnesses (wise-ram-22 recut): structural skeleton discovery only — no witness-import closure roster, no declaration-name classifier pins. Count witnesses use closed-subject planted oracles (DESIGN §5), not measure()==measure() on the same live derivation. Structural GREEN uses a synthetic planted decl whose qualified name is oracle-only; the classifier reads callee+fixture-marker skeleton only."
 
 test fn witness_production_qualification_origin_probe_admission_holds() -> Bool {
   production_qualification_origin_probe_admission_holds()
 }
 
-test fn witness_known_fixture_origin_count_is_honest_in_scope() -> Bool {
+test fn witness_planted_fixture_origin_count_matches_oracle() -> Bool {
+  int_eq(
+    a: planted_fixture_origin_mint_site_count(),
+    b: production_qualification_planted_fixture_origin_oracle_count
+  )
+}
+
+test fn witness_live_scope_fixture_origin_count_matches_policy_oracle() -> Bool {
   int_eq(
     a: known_fixture_origin_mint_surface_count_in_scope(),
-    b: count_derived_fixture_origin_mint_sites(
-      sites: derived_production_qualification_mint_sites_live()
-    )
+    b: production_qualification_live_scope_fixture_origin_oracle_count
   )
 }
 
@@ -83,10 +90,10 @@ test fn witness_live_structural_fixture_body_mint_skeleton_visible_reds() -> Boo
   structural_red_control_live_body_skeleton_visible()
 }
 
-data witness_repository_wide_census_requires_call_occurrence_frontier_red_note: String = "Admitted RED (wise-ram-22): repository-wide production-qualification origin census is not closed — fn_arrow_decl_facts_live() is entry-closure scoped. Greening requires fn_arrow_decl_substrate_is_whole_tree plus call-occurrence derivation."
+data witness_repository_wide_census_requires_call_occurrence_frontier_red_note: String = "Admitted RED (wise-ram-22): repository-wide production-qualification origin census is not closed — fn_arrow_decl_substrate_is_whole_tree alone is insufficient. Greening requires production_qualification_call_occurrence_derivation_landed (call-reachable classification on effect_reach substrate)."
 
 test fn witness_repository_wide_census_requires_call_occurrence_frontier_reds() -> Bool {
-  fn_arrow_decl_substrate_is_whole_tree()
+  production_qualification_repository_wide_origin_census_closed()
 }
 
 data witness_ingest_mint_surface_requires_call_occurrence_frontier_red_note: String = "Admitted RED: generate_provenanced_rust_candidate_from_ingest mint callee is pruned from G2 skeleton marshal — structural probe cannot discover ingest-inline surfaces without call-occurrence derivation."

@@ -181,7 +181,7 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
     f: "witness_repository_wide_census_requires_call_occurrence_frontier_reds",
     kind: CorpusWitnessKind,
     reason: "Admitted RED (wise-ram-22 recut): repository-wide production-qualification origin census is not closed — fn_arrow_decl_facts_live() is entry-closure scoped. Owner: witness-evidence-lifecycle / call-occurrence derivation frontier.",
-    dissolve_on: "call-reachable production-qualification classification shares the effect_reach skeleton authority, this witness greens, and this row deletes"
+    dissolve_on: "production_qualification_call_occurrence_derivation_landed is true, derived_production_qualification_mint_sites_live() derives from resolved call occurrences corpus-wide, witness_repository_wide_census_requires_call_occurrence_frontier_reds greens, and this row deletes"
   ),
   known_red_probe(
     entry: "src/v2/test/claim/self_host/production_qualification_origin_census_witness_test.dag",
