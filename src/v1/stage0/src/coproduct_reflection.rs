@@ -655,6 +655,37 @@ fn hoist_call_arg_string_literal_edges(
     }
 }
 
+fn is_uppercase_variant_spelling(name: &str) -> bool {
+    name.chars().next().is_some_and(|c| c.is_ascii_uppercase())
+}
+
+/// Nullary coproduct variant VALUE atom in declaration skeletons.
+///
+/// In infer-backed fn bodies: only stamped `VariantValueBinding`.
+/// In parse-only data-init marshal (`param_names` empty): uppercase leaf `ExprVar`
+/// spellings only — the convention for nullary variant values in `.dag` surface syntax.
+/// Deliberately excludes `FunctionValueBinding`, `LocalValueBinding`, lowercase
+/// identifiers (locals / functions), and unresolved names in fn-body contexts.
+fn should_emit_nullary_variant_value_atom(
+    node: &Rc<Node>,
+    name: &str,
+    param_names: &[String],
+    binding_kind: Option<&Rc<VarBindingKind>>,
+) -> bool {
+    if name.is_empty() || node_references_param(node, name, param_names) {
+        return false;
+    }
+    match binding_kind {
+        Some(bk) => matches!(bk.as_ref(), VarBindingKind::VariantValueBinding { .. }),
+        None => {
+            param_names.is_empty()
+                && matches!(node.expr_data.as_ref(), ExprData::ExprVar { .. })
+                && node.children.is_empty()
+                && is_uppercase_variant_spelling(name)
+        }
+    }
+}
+
 fn marshal_generic(
     ctx: &InterpContext,
     node: &Rc<Node>,
@@ -675,13 +706,12 @@ fn marshal_generic(
         edges.push(edge_positional(ctx, atom_identity_node(ctx, &name)));
     } else if !name.is_empty() {
         if let ExprData::ExprVar { binding_kind } = node.expr_data.as_ref() {
-            if matches!(
-                binding_kind,
-                Some(bk) if matches!(bk.as_ref(), VarBindingKind::VariantValueBinding { .. })
-            ) && !node_references_param(node, &name, param_names)
-            {
-                // Nullary variant VALUE references only (e.g. dissolves_to: SingleAuthority).
-                // Deliberately excludes binding_kind None (unresolved) and FunctionValueBinding.
+            if should_emit_nullary_variant_value_atom(
+                node,
+                &name,
+                param_names,
+                binding_kind.as_ref(),
+            ) {
                 edges.push(edge_positional(ctx, atom_identity_node(ctx, &name)));
             }
         }

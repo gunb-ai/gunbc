@@ -29,12 +29,12 @@ mod coverage_completeness_lens_test;
 #[cfg(test)]
 mod cross_representation_equality_test;
 #[cfg(test)]
-mod decl_facts_skeleton_reflection_test;
-#[cfg(test)]
 #[cfg(test)]
 mod data_cache_scoping_test;
 #[cfg(test)]
 mod data_def_brand_alias_type_test;
+#[cfg(test)]
+mod decl_facts_skeleton_reflection_test;
 #[cfg(test)]
 mod dependency_pool_index_compile_test;
 #[cfg(test)]
