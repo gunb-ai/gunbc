@@ -8,7 +8,7 @@ use crate::std_reference_binding_observation::ReferenceBindingObservation::{
 };
 use crate::std_types::Bool::*;
 pub use crate::std_types::{Bool, List};
-pub use crate::v1_gunbc_namespace_reference_derived_closure_production_admissions::namespace_structural_binding_observations_a_through_d;
+pub use crate::v1_gunbc_namespace_reference_derived_closure_production_observations::namespace_structural_binding_observations_a_through_d;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
@@ -19,7 +19,7 @@ use std::rc::Rc;
 pub fn namespace_reference_derived_closure_production_admissions_witness_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "N3-A v1 executing witnesses: production returns neutral ReferenceBindingObservation carriers only — no admission types or assess_* imports in src/v1 production modules. Capability projection and closing-contract composition live at witness seams (dag/test/claim for assessment rows; src/v1/tests/claim for the closing acceptance witness).".to_string()
+            "N3-A v1 executing witnesses: production returns neutral ReferenceBindingObservation carriers only — no roadmap capability imports in src/v1 production modules. Capability projection and closing-contract composition live at witness seams (dag/test/claim for assessment rows; dag/test/claim for the closing acceptance witness).".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
