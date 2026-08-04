@@ -7,6 +7,7 @@ import extdeps.runtime.abi.sysv_amd64 {
   x86_64_abi_pdf_wet_receipt_hex,
   x86_64_abi_syscall_convention_citation_fact,
   x86_64_abi_pdf_syscall_fragment_selector,
+  x86_64_abi_pdf_syscall_fragment_selector_construction,
   x86_64_abi_pdf_version_navigable_uri_projection,
   x86_64_abi_pdf_syscall_navigable_uri_projection,
   x86_64_abi_pdf_navigable_uri_from_nameddest_scalar_code_points,
@@ -14,6 +15,7 @@ import extdeps.runtime.abi.sysv_amd64 {
   x86_64_abi_syscall_evidence_link,
   x86_64_abi_pdf_authority,
   X86_64AbiPdfExpectedDigestConstructed,
+  X86_64AbiPdfCitationSelectorConstructed,
   X86_64AbiPdfNavigableUriProjected,
   X86_64AbiPdfNavigableUriRefused,
 }
@@ -86,11 +88,9 @@ test fn x86_64_abi_consumer_refuses_unencodable_nameddest_navigable_uri() -> Boo
 }
 
 test fn x86_64_abi_syscall_citation_selector_conforms_to_rfc_8118() -> Bool {
-  match x86_64_abi_pdf_syscall_fragment_selector {
-    FragmentSelectorVariant(s) =>
-      string_contains(s: s.conforms_to.uri.locator, pattern: "rfc8118")
-        && s.value == ("page=28" as NonEmptyStr)
-        && s.conforms_to.uri.locator != x86_64_abi_pdf_authority.uri.locator
+  match x86_64_abi_pdf_syscall_fragment_selector_construction {
+    X86_64AbiPdfCitationSelectorConstructed(FragmentSelectorVariant(s)) =>
+      s.value == ("page=28" as NonEmptyStr)
     _ => false
   }
 }
@@ -106,7 +106,16 @@ test fn x86_64_abi_syscall_citation_fact_binds_extraction_observation() -> Bool 
       match x86_64_abi_syscall_convention_citation_fact.value {
         CitationRecordedFact { cited: c } =>
           match c.representation {
-            RetrievedRepresentation { observed: obs } => obs.observed_identity == o.observed_identity
+            RetrievedRepresentation { observed: obs } =>
+              obs.observed_identity == o.observed_identity
+                && match x86_64_abi_pdf_expected_digest_from_extraction(extraction: x86_64_abi_pdf_byte_extraction) {
+                  X86_64AbiPdfExpectedDigestConstructed(expected) => o.observed_identity == expected
+                  _ => false
+                }
+                && match x86_64_abi_pdf_syscall_fragment_selector_construction {
+                  X86_64AbiPdfCitationSelectorConstructed(FragmentSelectorVariant(s)) => s.value == ("page=28" as NonEmptyStr)
+                  _ => false
+                }
             none => false
           }
       }
