@@ -1,10 +1,28 @@
 module extdeps.runtime.abi.sysv_amd64
 
 import std.abi { ArchitecturalRegister, CallingConvention }
-import std.types { Bool }
-
+import std.types { Bool, NonEmptyStr }
+import std.citation {
+  CitedResource,
+  RetrievedRepresentation,
+  cited_resource,
+  retrieved_representation,
+  citation_exact_pin,
+  CitedRepresentation,
+  RawResponseBody,
+}
+import extdeps.pin { Pin }
+import extdeps.version { VersionIdentity }
+import std.content_hash { Sha256Digest, as_content_hash_cryptographic }
+import extdeps.http.server { MediaType, TopLevelApplication }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.standards.rfc_8118 {
+  PdfOpenParameterSequence,
+  pdf_open_page,
+  pdf_open_parameter_sequence,
+  project_navigable_uri,
+}
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -12,6 +30,34 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
     locator: "refspecs.linuxfoundation.org/elf/x86_64-abi-0.99.pdf"
   }
 }
+
+data x86_64_abi_pdf_sha256_hex: NonEmptyStr = "69e117a13b560b1b957c15f05a61b130ca56828f05dca951e27cb8e2ada14283" as NonEmptyStr
+
+data x86_64_abi_application_pdf: MediaType = MediaType {
+  top_level: TopLevelApplication,
+  subtype: "pdf",
+  parameters: [],
+}
+
+data x86_64_abi_pdf_pin: Pin<CitedRepresentation> = citation_exact_pin(
+  authority: extdeps_external_authority_anchor,
+  byte_domain: RawResponseBody,
+  version: "0.99" as VersionIdentity,
+  expected_identity: as_content_hash_cryptographic(
+    digest: Sha256Digest { hex: x86_64_abi_pdf_sha256_hex },
+  ),
+)
+
+data x86_64_abi_pdf_fragment: PdfOpenParameterSequence = pdf_open_parameter_sequence(
+  parameters: [pdf_open_page(page: 1)],
+)
+
+data x86_64_abi_pdf_navigable_uri: Uri = project_navigable_uri(
+  base: extdeps_external_authority_anchor.uri,
+  sequence: x86_64_abi_pdf_fragment,
+)
+
+data x86_64_abi_pdf_cited_resource: CitedResource<RetrievedRepresentation, PdfOpenParameterSequence> = cited_resource(authority: extdeps_external_authority_anchor, representation: retrieved_representation(media_type: x86_64_abi_application_pdf, pin: x86_64_abi_pdf_pin), selector: x86_64_abi_pdf_fragment)
 
 type Amd64Gpr = Rdi | Rsi | Rdx | R10 | R8 | R9 | Rax | Rcx
 

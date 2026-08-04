@@ -1,0 +1,189 @@
+module extdeps.standards.rfc_8118
+
+import std.types { NonEmptyStr, String, List, Bool }
+import std.integer { PositiveInt }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.rfc-editor.org/rfc/rfc8118#section-3"
+  }
+}
+
+data iso_32000_2_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.iso.org/standard/75839.html"
+  }
+}
+
+data rfc_8118_normative_relationship_note: String = "RFC 8118 (Informational, March 2017) specifies PDF Open Parameters for fragment identifiers and OBSOLETES RFC 3778. Where RFC 8118 and ISO 32000-2 disagree on PDF document semantics, ISO 32000-2 controls — cited as iso_32000_2_authority in extdeps_model_scope.further_citations. This module models the CIT-1 safe profile only: page, nameddest, structelem. All other RFC 8118 section-3 parameters are refused by typed PdfProfileRefusalCause arms naming which parameter and why."
+
+data pdf_open_parameter_sequence_note: String = "RFC 8118 section 3: PDF fragment parameters are an ORDERED sequence separated by ampersand; later parameters override earlier ones, so page should precede zoom in full RFC — the CIT-1 safe profile admits only page, nameddest, and structelem as a closed coproduct list, never a string in Uri.locator."
+
+data rfc_8118_section_3_locator: NonEmptyStr = "www.rfc-editor.org/rfc/rfc8118#section-3" as NonEmptyStr
+
+data rfc_8118: NonEmptyStr = "RFC 8118"
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.standards.rfc_8118",
+      decl_name: "rfc_8118",
+      field: WholeDeclaration,
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [iso_32000_2_authority],
+}
+
+type PdfRefusedParameterKind
+  = PdfParameterComment
+  | PdfParameterEmbeddedFile
+  | PdfParameterZoom
+  | PdfParameterView
+  | PdfParameterViewRect
+  | PdfParameterHighlight
+  | PdfParameterSearch
+  | PdfParameterFdf
+
+type PdfProfileRefusalCause
+  = ParameterOutsideCit1SafeProfile { parameter: PdfRefusedParameterKind }
+
+type PdfOpenPage {
+  page: PositiveInt
+}
+
+type PdfOpenNamedDest {
+  name: NonEmptyStr
+}
+
+type PdfOpenStructElem {
+  struct_id: NonEmptyStr
+}
+
+type PdfProfileParameter
+  = OpenPage(PdfOpenPage)
+  | OpenNamedDest(PdfOpenNamedDest)
+  | OpenStructElem(PdfOpenStructElem)
+  | ProfileRefused { cause: PdfProfileRefusalCause }
+
+type PdfOpenParameterSequence {
+  parameters: List<PdfProfileParameter>
+}
+
+fn pdf_open_page(page: PositiveInt) -> PdfProfileParameter {
+  OpenPage(PdfOpenPage { page: page })
+}
+
+fn pdf_open_nameddest(name: NonEmptyStr) -> PdfProfileParameter {
+  OpenNamedDest(PdfOpenNamedDest { name: name })
+}
+
+fn pdf_open_structelem(struct_id: NonEmptyStr) -> PdfProfileParameter {
+  OpenStructElem(PdfOpenStructElem { struct_id: struct_id })
+}
+
+fn pdf_open_comment(_comment_id: NonEmptyStr) -> PdfProfileParameter {
+  ProfileRefused {
+    cause: ParameterOutsideCit1SafeProfile { parameter: PdfParameterComment },
+  }
+}
+
+fn pdf_open_embedded_file(_name: NonEmptyStr) -> PdfProfileParameter {
+  ProfileRefused {
+    cause: ParameterOutsideCit1SafeProfile { parameter: PdfParameterEmbeddedFile },
+  }
+}
+
+fn pdf_open_zoom(_scale_percent: PositiveInt) -> PdfProfileParameter {
+  ProfileRefused {
+    cause: ParameterOutsideCit1SafeProfile { parameter: PdfParameterZoom },
+  }
+}
+
+fn pdf_open_view(_keyword: NonEmptyStr, _position: String) -> PdfProfileParameter {
+  ProfileRefused {
+    cause: ParameterOutsideCit1SafeProfile { parameter: PdfParameterView },
+  }
+}
+
+fn pdf_open_viewrect(_left: PositiveInt, _top: PositiveInt, _width: PositiveInt, _height: PositiveInt) -> PdfProfileParameter {
+  ProfileRefused {
+    cause: ParameterOutsideCit1SafeProfile { parameter: PdfParameterViewRect },
+  }
+}
+
+fn pdf_open_highlight(_left: PositiveInt, _right: PositiveInt, _top: PositiveInt, _bottom: PositiveInt) -> PdfProfileParameter {
+  ProfileRefused {
+    cause: ParameterOutsideCit1SafeProfile { parameter: PdfParameterHighlight },
+  }
+}
+
+fn pdf_open_search(_words: NonEmptyStr) -> PdfProfileParameter {
+  ProfileRefused {
+    cause: ParameterOutsideCit1SafeProfile { parameter: PdfParameterSearch },
+  }
+}
+
+fn pdf_open_fdf(_uri: Uri) -> PdfProfileParameter {
+  ProfileRefused {
+    cause: ParameterOutsideCit1SafeProfile { parameter: PdfParameterFdf },
+  }
+}
+
+fn pdf_open_parameter_sequence(parameters: List<PdfProfileParameter>) -> PdfOpenParameterSequence {
+  PdfOpenParameterSequence { parameters: parameters }
+}
+
+fn pdf_profile_parameter_wire(parameter: PdfProfileParameter) -> String {
+  match parameter {
+    OpenPage(PdfOpenPage { page: p }) => concat("page=", to_string(p))
+    OpenNamedDest(PdfOpenNamedDest { name: n }) => concat("nameddest=", n)
+    OpenStructElem(PdfOpenStructElem { struct_id: id }) => concat("structelem=", id)
+    ProfileRefused { cause: _ } => ""
+  }
+}
+
+fn pdf_open_parameter_sequence_wire(sequence: PdfOpenParameterSequence) -> String {
+  fold(
+    sequence.parameters,
+    init: "",
+    f: fn(acc, p) {
+      match p {
+        ProfileRefused { cause: _ } => acc
+        _ =>
+          if acc == "" {
+            pdf_profile_parameter_wire(parameter: p)
+          } else {
+            concat(acc, concat("&", pdf_profile_parameter_wire(parameter: p)))
+          }
+      }
+    },
+  )
+}
+
+fn project_navigable_uri(base: Uri, sequence: PdfOpenParameterSequence) -> Uri {
+  let fragment = pdf_open_parameter_sequence_wire(sequence: sequence)
+  if fragment == "" {
+    base
+  } else {
+    Uri {
+      scheme: base.scheme,
+      locator: concat(base.locator, concat("#", fragment)) as NonEmptyStr,
+    }
+  }
+}
+
+fn pdf_open_parameters_include_page(sequence: PdfOpenParameterSequence, page: PositiveInt) -> Bool {
+  any(
+    sequence.parameters,
+    p => match p {
+      OpenPage(PdfOpenPage { page: n }) => n == page
+      _ => false
+    },
+  )
+}
