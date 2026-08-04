@@ -15,27 +15,7 @@ import v2.compiler.self_host.v2_emitter_direct_rust_door_contract {
 import v2.std.logic { Bool }
 import v2.std.text { String }
 
-data direct_rust_door_production_group_test_note: String = "LONG lane (5s rule): walks the real ingest-assemble-infer-emit path once. The five stage functions below are a DISCRIMINATION SET, not five independent claims — exactly one stage function is true for any run, so the set locates where production stops. They are permanent: when the lane closes, production_reaches_artifact is the one that greens and the other four become standing regression controls proving production did not silently retreat to an earlier stage. Local recipe: claim_batch --source-root dag --source-root src/v2 --entry src/v2/test/claim/long/direct_rust_door_production_group_test.dag --functions <csv>"
-
-test fn direct_rust_door_production_stops_at_assembly() -> Bool {
-  match direct_rust_door_production_group().emission {
-    AssemblyRejected { diagnostics: _ } => true
-    InferenceRejected { diagnostics: _ } => false
-    EmissionRejected { diagnostics: _ } => false
-    ProducerReceiptRejected { diagnostics: _ } => false
-    ArtifactProduced { artifact: _ } => false
-  }
-}
-
-test fn direct_rust_door_production_stops_at_inference() -> Bool {
-  match direct_rust_door_production_group().emission {
-    AssemblyRejected { diagnostics: _ } => false
-    InferenceRejected { diagnostics: _ } => true
-    EmissionRejected { diagnostics: _ } => false
-    ProducerReceiptRejected { diagnostics: _ } => false
-    ArtifactProduced { artifact: _ } => false
-  }
-}
+data direct_rust_door_production_group_test_note: String = "LONG lane (5s rule): each witness here walks the real ingest-assemble-infer-emit path. MEASURED COST DISCIPLINE — one production walk per witness, no cross-witness reuse exists yet, so this file is deliberately held to four functions rather than one per postcondition; the four group postconditions share a SINGLE walk inside direct_rust_door_production_group. A seven-function discrimination set was executed once at abaa23e5d3 to locate the failing stage (assembly true-negative, inference true-negative, emission POSITIVE, producer-receipt true-negative, artifact true-negative — exactly one arm, so the set discriminated) and then trimmed to the two stage rows that carry standing value. Local recipe: claim_batch --source-root dag --source-root src/v2 --entry src/v2/test/claim/long/direct_rust_door_production_group_test.dag --functions <csv>"
 
 test fn direct_rust_door_production_stops_at_emission() -> Bool {
   match direct_rust_door_production_group().emission {
@@ -43,16 +23,6 @@ test fn direct_rust_door_production_stops_at_emission() -> Bool {
     InferenceRejected { diagnostics: _ } => false
     EmissionRejected { diagnostics: _ } => true
     ProducerReceiptRejected { diagnostics: _ } => false
-    ArtifactProduced { artifact: _ } => false
-  }
-}
-
-test fn direct_rust_door_production_stops_at_producer_receipt() -> Bool {
-  match direct_rust_door_production_group().emission {
-    AssemblyRejected { diagnostics: _ } => false
-    InferenceRejected { diagnostics: _ } => false
-    EmissionRejected { diagnostics: _ } => false
-    ProducerReceiptRejected { diagnostics: _ } => true
     ArtifactProduced { artifact: _ } => false
   }
 }

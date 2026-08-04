@@ -121,6 +121,20 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
     dissolve_on: "the production candidate producer and dependency projection establish all six ReferenceDerivedClosureCapability rows by execution — this row deletes in the completing change, promoting the unchanged acceptance witness to ordinary DiscoverySelection as the permanent namespace-derived-closure regression wall"
   ),
   known_red_probe(
+    entry: "src/v2/test/claim/long/direct_rust_door_production_group_test.dag",
+    f: "direct_rust_door_production_reaches_artifact",
+    kind: CorpusWitnessKind,
+    reason: "RED BY EXECUTION at abaa23e5d3, and now LOCATED: the ingest-path production walk is observed through ProvenancedRustEmissionObservation and stops at EmissionRejected. Assembly accepts and inference accepts on the real add_probe source; the real inferred tree is what emission refuses. This supersedes the unlocated red the sibling acceptance row carried, whose failure arm could not distinguish a rejected pipeline from a seed-dependent artifact. Not relaxable: the only edit that may green it is making the real inferred tree emit.",
+    dissolve_on: "the ingest-path inferred tree survives emission and this witness greens by execution — this row deletes in the completing change, promoting the unchanged witness to ordinary DiscoverySelection as the lane's production regression wall"
+  ),
+  known_red_probe(
+    entry: "src/v2/test/claim/long/direct_rust_door_production_group_test.dag",
+    f: "direct_rust_door_production_group_closing_expectation_holds",
+    kind: CorpusWitnessKind,
+    reason: "the higher-order group expectation, RED BY EXECUTION at abaa23e5d3 because its production leaves report LeafNotReached { emission } rather than a refutation. It is NOT a conjunction over child verdicts — the four leaves derive from ONE production walk and the parent retains each child outcome, so a red names which leaf and why. The missing-rule leaf is green in the same group, which is what proves the red is located rather than uniform.",
+    dissolve_on: "every leaf reaches LeafEstablished — this row deletes in the completing change, promoting the unchanged group witness to ordinary DiscoverySelection as the lane's composed regression wall"
+  ),
+  known_red_probe(
     entry: "src/v2/test/claim/long/v2_emitter_direct_rust_door_acceptance_test.dag",
     f: "witness_v2_emitter_direct_rust_door_closing_contract_holds",
     kind: CorpusWitnessKind,
