@@ -9,11 +9,14 @@ import v2.std.text { Char, CharAbsent, CharFound, SourceFold, String, fold_sourc
 import v2.std.nat { Nat, nat_lte, nat_gte }
 import v2.std.logic { Bool }
 import v2.std.compilers.lexing {
+  AnnotationPlacement,
+  AnnotationRule,
   BlockCommentTextChar,
   DigitChar,
   HexDigitChar,
   IdentContinueChar,
   IdentStartChar,
+  LexArtifact,
   LexCharClass,
   LexPattern,
   LexPatternFold,
@@ -26,9 +29,14 @@ import v2.std.compilers.lexing {
   Token,
   TokenRule,
   TokenStream,
+  lex_artifact_new,
+  lex_artifact_semantic_tokens,
   token_stream_empty,
   token_stream_new,
+  LeadingAfterLineIndent,
+  TrailingAfterSemanticToken,
   TriviaRule,
+  UnboundSourceAnnotation,
   VoidLexRules,
   WhitespaceChar,
   fold_lex_pattern
@@ -42,6 +50,7 @@ type LexRuleApply
   = LexRuleNoMatch
   | LexRuleToken { class: Symbol, lexeme: String, remaining: String }
   | LexRuleTrivia { lexeme: String, remaining: String }
+  | LexRuleAnnotation { class: Symbol, lexeme: String, remaining: String }
 
 type LexMatchThunk {
   apply: fn(String) -> LexMatchResult
@@ -348,6 +357,8 @@ fn lex_try_compiled(compiled: CompiledLexRule, source: String) -> LexRuleApply {
           LexRuleToken { class: class, lexeme: lexeme, remaining: remaining }
         TriviaRule { pattern: _ } =>
           LexRuleTrivia { lexeme: lexeme, remaining: remaining }
+        AnnotationRule { annotation_class: class, pattern: _ } =>
+          LexRuleAnnotation { class: class, lexeme: lexeme, remaining: remaining }
       }
   }
 }
@@ -375,6 +386,7 @@ fn lex_rule_apply_lexeme_length(apply: LexRuleApply) -> Int {
     LexRuleNoMatch => 0
     LexRuleToken { lexeme: lexeme, remaining: _, class: _ } => length(xs: lexeme)
     LexRuleTrivia { lexeme: lexeme, remaining: _ } => length(xs: lexeme)
+    LexRuleAnnotation { lexeme: lexeme, remaining: _, class: _ } => length(xs: lexeme)
   }
 }
 
@@ -407,9 +419,21 @@ fn lex_try_rules(rules: List<CompiledLexRule>, source: String) -> LexRuleApply {
   )
 }
 
+data lexeme_opens_new_line_note: String = "Trivia is where a line ends, so trivia is where the line-state flag resets. A trivia lexeme carrying a line feed means whatever follows begins a fresh line, and an annotation appearing there is LEADING. Without this reset the flag would stay set from the previous line's last token, and every leading annotation after the first declaration would be misread as trailing."
+
+fn lexeme_contains_line_feed(lexeme: String) -> Bool {
+  fold_list(
+    xs: lexeme,
+    empty: false,
+    cons: fn(acc, c) { acc || c == 10 }
+  )
+}
+
 type LexWalkAcc {
   remaining: String
   tokens: List<Token>
+  annotations: List<UnboundSourceAnnotation>
+  line_has_semantic_token: Bool
   pos: Int
   done: Bool
   error: Bool
@@ -421,6 +445,8 @@ fn lex_walk_init(src: String, file: Symbol, rules: LexRuleSet) -> LexWalkAcc {
   LexWalkAcc {
     remaining: src,
     tokens: std.algebra.Empty,
+    annotations: std.algebra.Empty,
+    line_has_semantic_token: false,
     pos: 0,
     done: false,
     error: false,
@@ -439,6 +465,8 @@ fn lex_walk_step(acc: LexWalkAcc) -> LexWalkAcc {
       LexWalkAcc {
         remaining: acc.remaining,
         tokens: acc.tokens,
+        annotations: acc.annotations,
+        line_has_semantic_token: acc.line_has_semantic_token,
         pos: acc.pos,
         done: true,
         error: false,
@@ -451,6 +479,8 @@ fn lex_walk_step(acc: LexWalkAcc) -> LexWalkAcc {
           LexWalkAcc {
             remaining: acc.remaining,
             tokens: acc.tokens,
+            annotations: acc.annotations,
+            line_has_semantic_token: acc.line_has_semantic_token,
             pos: acc.pos,
             done: true,
             error: true,
@@ -463,6 +493,8 @@ fn lex_walk_step(acc: LexWalkAcc) -> LexWalkAcc {
               LexWalkAcc {
                 remaining: acc.remaining,
                 tokens: acc.tokens,
+                annotations: acc.annotations,
+                line_has_semantic_token: acc.line_has_semantic_token,
                 pos: acc.pos,
                 done: true,
                 error: true,
@@ -473,6 +505,8 @@ fn lex_walk_step(acc: LexWalkAcc) -> LexWalkAcc {
               LexWalkAcc {
                 remaining: remaining,
                 tokens: acc.tokens,
+                annotations: acc.annotations,
+                line_has_semantic_token: if lexeme_contains_line_feed(lexeme: lexeme) { false } else { acc.line_has_semantic_token },
                 pos: acc.pos + length(xs: lexeme),
                 done: false,
                 error: false,
@@ -486,6 +520,8 @@ fn lex_walk_step(acc: LexWalkAcc) -> LexWalkAcc {
               LexWalkAcc {
                 remaining: acc.remaining,
                 tokens: acc.tokens,
+                annotations: acc.annotations,
+                line_has_semantic_token: acc.line_has_semantic_token,
                 pos: acc.pos,
                 done: true,
                 error: true,
@@ -505,6 +541,45 @@ fn lex_walk_step(acc: LexWalkAcc) -> LexWalkAcc {
                   },
                   tail: acc.tokens
                 },
+                annotations: acc.annotations,
+                line_has_semantic_token: true,
+                pos: acc.pos + length(xs: lexeme),
+                done: false,
+                error: false,
+                file: acc.file,
+                rules: acc.rules
+              }
+          }
+        LexRuleAnnotation { class: class, lexeme: lexeme, remaining: remaining } =>
+          match string_is_empty(s: lexeme) {
+            true =>
+              LexWalkAcc {
+                remaining: acc.remaining,
+                tokens: acc.tokens,
+                annotations: acc.annotations,
+                line_has_semantic_token: acc.line_has_semantic_token,
+                pos: acc.pos,
+                done: true,
+                error: true,
+                file: acc.file,
+                rules: acc.rules
+              }
+            false =>
+              LexWalkAcc {
+                remaining: remaining,
+                tokens: acc.tokens,
+                annotations: Cons {
+                  head: UnboundSourceAnnotation {
+                    annotation_class: class,
+                    lexeme: lexeme,
+                    placement: if acc.line_has_semantic_token { TrailingAfterSemanticToken } else { LeadingAfterLineIndent },
+                    file: acc.file,
+                    start: acc.pos,
+                    end: acc.pos + length(xs: lexeme)
+                  },
+                  tail: acc.annotations
+                },
+                line_has_semantic_token: acc.line_has_semantic_token,
                 pos: acc.pos + length(xs: lexeme),
                 done: false,
                 error: false,
@@ -524,7 +599,9 @@ fn lex_walk_source_algebra(file: Symbol, rules: LexRuleSet) -> SourceFold<LexWal
   }
 }
 
-fn lex_walk(source: String, file: Symbol, rules: LexRuleSet) -> Outcome<TokenStream> {
+data lex_walk_artifact_projection_note: String = "lex_walk_artifact is the authored result; lex_walk is its SEMANTIC PROJECTION and is what every existing caller keeps using. The direction matters: the projection is derived from the artifact by dropping the annotation channel, never the reverse, so a semantic consumer cannot reach annotation text and an annotation-aware consumer does not have to re-lex. Both fold the same walk exactly once — this is one traversal read two ways, not two traversals (DESIGN 4c erasure boundary at the lexical layer, mirroring AuthoredParseArtifact at the parse layer)."
+
+fn lex_walk_artifact(source: String, file: Symbol, rules: LexRuleSet) -> Outcome<LexArtifact> {
   let result = fold_source(
     src: source,
     algebra: lex_walk_source_algebra(file: file, rules: rules)
@@ -533,7 +610,22 @@ fn lex_walk(source: String, file: Symbol, rules: LexRuleSet) -> Outcome<TokenStr
   if result.error {
     v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: tokenize_lex_e1_unrecognized_char_diagnostic(at: at)) }
   } else {
-    v2.std.diagnostic.Accepted { value: token_stream_new(all: result.tokens.reverse()), diagnostics: v2.std.diagnostic.None }
+    v2.std.diagnostic.Accepted {
+      value: lex_artifact_new(
+        tokens: token_stream_new(all: result.tokens.reverse()),
+        annotations: result.annotations.reverse()
+      ),
+      diagnostics: v2.std.diagnostic.None
+    }
+  }
+}
+
+fn lex_walk(source: String, file: Symbol, rules: LexRuleSet) -> Outcome<TokenStream> {
+  match lex_walk_artifact(source: source, file: file, rules: rules) {
+    v2.std.diagnostic.Rejected { diagnostics: ds } =>
+      v2.std.diagnostic.Rejected { diagnostics: ds }
+    v2.std.diagnostic.Accepted { value: artifact, diagnostics: ds } =>
+      v2.std.diagnostic.Accepted { value: lex_artifact_semantic_tokens(artifact: artifact), diagnostics: ds }
   }
 }
 

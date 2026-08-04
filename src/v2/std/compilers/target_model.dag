@@ -35,6 +35,7 @@ import v2.std.diagnostic {
   rejected_with_pending
 }
 import v2.std.compilers.lexing {
+  AnnotationRule,
   KeywordPattern,
   LexPattern,
   LexRule,
