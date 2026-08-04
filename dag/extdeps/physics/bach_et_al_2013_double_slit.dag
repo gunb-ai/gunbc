@@ -34,9 +34,9 @@ data bach_et_al_2013_citation_note: String = "Cited upstream: Bach, R., Pope, D.
 
 data abstract_observed_distributions_note: String = "Abstract verbatim: By placing a movable mask in front of a double-slit to control the transmission through the individual slits, probability distributions for single- and double-slit arrangements were observed."
 
-data raw_count_not_evaluable_note: String = "RAW COUNT PATH ADDITIVITY NOT EVALUABLE. Figures 1 and 2 present normalized probability distributions; the paper sums frames then normalizes. It does not supply a raw matched-exposure per-band arrival triplet for N_both = N_slit_one + N_slit_two. No raw-count observation rows are authored until that grain is grounded."
+data figures_one_and_two_normalized_distributions_note: String = "Figures 1 and 2 present normalized probability distributions; the paper sums frames then normalizes."
 
-data which_path_upstream_gap_note: String = "Bach et al. controlled which slits were open, not whether which-path information existed. Missing which-path evidence is a downstream coverage obligation in gunbc."
+data slit_mask_control_not_which_path_readout_note: String = "Bach et al. 2013 controlled which slits were open via the movable mask; the cited experiment did not perform a which-path distinguishability readout condition."
 
 data slit_mask_note: String = "Mask can block slit 1, slit 2, both, or neither (figure caption). BothSlitsBlocked is an apparatus configuration only — not an arrival observation."
 
@@ -72,8 +72,6 @@ type PatternStatus
   | PatternDiscernible
   | PatternClearlyVisible
 
-data figure_3_buildup_progression_note: String = "Figure 3 panels a–e map to 2, 7, 209, 1004, and 6235 electrons. Panels 3a–3c appear completely random; pattern discernible only in 3d (1004 electrons); 3e clearly visible (6235)."
-
 type Figure3BuildupPanel
   = Figure3PanelA
   | Figure3PanelB
@@ -81,15 +79,15 @@ type Figure3BuildupPanel
   | Figure3PanelD
   | Figure3PanelE
 
-data figure_3_panel_a_evidence_locator: String = "Figure 3 panel a — 2 detected electrons (doi 10.1088/1367-2630/15/3/033018)."
+data figure_3_panel_a_evidence_locator: String = "Figure3PanelA under extdeps.physics.bach_et_al_2013_double_slit; cited via doi 10.1088/1367-2630/15/3/033018."
 
-data figure_3_panel_b_evidence_locator: String = "Figure 3 panel b — 7 detected electrons."
+data figure_3_panel_b_evidence_locator: String = "Figure3PanelB under extdeps.physics.bach_et_al_2013_double_slit; cited via doi 10.1088/1367-2630/15/3/033018."
 
-data figure_3_panel_c_evidence_locator: String = "Figure 3 panel c — 209 detected electrons."
+data figure_3_panel_c_evidence_locator: String = "Figure3PanelC under extdeps.physics.bach_et_al_2013_double_slit; cited via doi 10.1088/1367-2630/15/3/033018."
 
-data figure_3_panel_d_evidence_locator: String = "Figure 3 panel d — 1004 detected electrons; first discernible interference pattern."
+data figure_3_panel_d_evidence_locator: String = "Figure3PanelD under extdeps.physics.bach_et_al_2013_double_slit; cited via doi 10.1088/1367-2630/15/3/033018."
 
-data figure_3_panel_e_evidence_locator: String = "Figure 3 panel e — 6235 detected electrons; clearly visible interference pattern."
+data figure_3_panel_e_evidence_locator: String = "Figure3PanelE under extdeps.physics.bach_et_al_2013_double_slit; cited via doi 10.1088/1367-2630/15/3/033018."
 
 type BachBuildupObservationRow {
   apparatus: BachEtAl2013DoubleSlitExperiment

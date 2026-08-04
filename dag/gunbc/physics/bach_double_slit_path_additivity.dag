@@ -13,7 +13,7 @@ import extdeps.physics.bach_et_al_2013_double_slit {
 
 data bach_double_slit_path_additivity_note: String = "Bach et al. 2013 double-slit scoped path-additivity model: exclusive-alternative raw-count additivity N_both = N_left + N_right over Bach slit-mask configurations. Not std.algebra_law — not a generic classical-additivity hub until a second experiment consumer lands."
 
-data path_additivity_refutation_receipt_admission_note: String = "Admission gate: path_additivity_refutation_receipt_resolution_from_resolved_counts is the sole production path from bare counts to a receipt; equal observed and prediction returns RefutationNotEstablished, never PathAdditivityRefutationReceipt."
+data path_additivity_refutation_receipt_admission_note: String = "Validation-rung admission: path_additivity_refutation_receipt_resolution_from_resolved_counts is the sole production path from bare counts to a receipt on the fold path; equal observed/prediction returns RefutationNotEstablished. PathAdditivityRefutationReceipt remains directly constructible at this rung — witness tests fabricate bad receipts to exercise path_additivity_witness_is_counterexample. Terminal shape: PathAdditivityBandVerdict from derive_path_additivity_refutation_at_band is the authority; receipt is a projection of PathAdditivityRefutationAtBand."
 
 type ScreenBand
   = CentralBand
