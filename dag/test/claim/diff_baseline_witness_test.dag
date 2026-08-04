@@ -17,18 +17,19 @@ import gunbc.diff_baseline {
   PushBeforeInputRefused,
   BaselineSelected,
   BaselineRefused,
+  BaselineSourceConflict,
   resolve_diff_baseline,
   diff_baseline_ref,
   diff_baseline_diff_base,
   diff_baseline_diff_head,
   diff_baseline_is_exact_replay
 }
-import gunbc.diff_change_window {
-  DiffWindowObservation,
-  DiffWindowObserved,
-  ClaimedMergeBase,
-  exact_diff_window_for_verification
+import gunbc.git_diff_change_window {
+  GitDiffWindowObservation,
+  GitDiffWindowObserved,
+  git_exact_diff_window_for_verification,
 }
+import std.types { GitRef }
 import extdeps.git.object_store {
   git_sha1_object_id,
   git_object_id_wire_hex,
@@ -58,13 +59,16 @@ fn planted_oid(hex: String) -> GitObjectId {
   }
 }
 
-fn planted_diff_window() -> DiffWindowObservation {
+data planted_target_generation_sha: String = "1111111111111111111111111111111111111111"
+
+fn planted_diff_window() -> GitDiffWindowObservation {
   Present {
-    value: DiffWindowObserved {
-      window: exact_diff_window_for_verification(
+    value: GitDiffWindowObserved {
+      window: git_exact_diff_window_for_verification(
+        target: "origin/main" as GitRef,
+        target_generation: planted_oid(hex: planted_target_generation_sha),
         base: planted_oid(hex: planted_merge_base_sha),
         head: planted_oid(hex: planted_head_sha),
-        relation: ClaimedMergeBase {},
       )
     }
   }
@@ -76,7 +80,7 @@ fn resolve_case(
   base_ref: String?,
   push_before: PushBeforeInput?,
   head_sha: String?,
-  diff_window: DiffWindowObservation?
+  diff_window: GitDiffWindowObservation?
 ) -> DiffBaselineResolution {
   resolve_diff_baseline(
     event: CiDiffEvent {
@@ -95,12 +99,13 @@ fn resolve_case(
 fn arm_tag(res: DiffBaselineResolution) -> String {
   match res {
     BaselineSelected { baseline: MergeTarget { ref: _ } } => "merge_target"
-    BaselineSelected { baseline: ExactReplayBoundary { base: _, head: _, claimed_relation: _ } } =>
+    BaselineSelected { baseline: ExactReplayBoundary { base: _, head: _, observed_relation: _ } } =>
       "exact_replay"
     BaselineSelected { baseline: PushBefore { ref: _ } } => "push_before"
     BaselineSelected { baseline: PushParent { ref: _ } } => "push_parent"
     BaselineSelected { baseline: OperatorOverride { ref: _ } } => "operator_override"
     BaselineRefused { reason: _ } => "refused"
+    BaselineSourceConflict { window_detail: _, override_ref: _ } => "source_conflict"
   }
 }
 
@@ -108,6 +113,7 @@ fn selected_ref(res: DiffBaselineResolution) -> String {
   match res {
     BaselineSelected { baseline: b } => diff_baseline_ref(b: b) as String
     BaselineRefused { reason: _ } => "<<refused>>"
+    BaselineSourceConflict { window_detail: _, override_ref: _ } => "<<source_conflict>>"
   }
 }
 
@@ -126,6 +132,7 @@ test fn witness_dashboard_exact_replay_arm_pins_typed_identities() -> Bool {
         && diff_baseline_diff_base(b: b) == planted_merge_base_sha
         && diff_baseline_diff_head(b: b, default_head: "HEAD") == planted_head_sha
     BaselineRefused { reason: _ } => false
+    BaselineSourceConflict { window_detail: _, override_ref: _ } => false
   }
 }
 

@@ -5,14 +5,12 @@ import std.logic { Bool }
 import extdeps.git { GitRemoteRefParts, git_remote_ref }
 import extdeps.git.hooks { zero_sha }
 import extdeps.git.object_store { GitObjectId, git_object_id_wire_hex }
-import gunbc.diff_change_window {
-  DiffWindowObservation,
-  DiffWindowObserved,
-  DiffWindowMalformed,
-  DiffWindowReadRefused,
-  DiffWindowRelation,
-  ClaimedMergeBase,
-  VerifiedMergeBase
+import gunbc.git_diff_change_window {
+  GitDiffWindowObservation,
+  GitDiffWindowObserved,
+  GitDiffWindowMalformed,
+  GitDiffWindowReadRefused,
+  GitObservedMergeBase,
 }
 import extdeps.github.actions {
   github_event_name_pull_request,
@@ -30,16 +28,18 @@ data diff_baseline_bootstrap_arm_note: String = "The empty-event-name arm ('' �
 
 data diff_baseline_push_before_law: String = "Push events resolve PushBefore from the webhook payload's before member (extdeps.github.push_event), NOT PushParent. Absent, empty, zero (0000000000000000000000000000000000000000 — new-branch creation per cited payload semantics, not observed in-repo), equal-to-head, or head-unknown before SHAs REFUSE: a push with no prior commit has no honest affected-set window; a before SHA equal to head is a self-compare; and head unknown cannot rule out self-compare. Observation-layer refusals (unreadable event payload, malformed JSON) arrive as PushBeforeInputRefused and propagate with their computed cause — they never collapse to a generic absent. These refusals halt the floor; they never widen to origin/main. The baseline SOURCE (payload before SHA) stays separable from these policy arms so a future last-green source swap does not rewrite refusal logic."
 
-data diff_baseline_merge_target_law: String = "pull_request MergeTarget reads GITHUB_BASE_REF as a GitHub TARGET BRANCH NAME only (extdeps.github.actions github_ci_event_surface_note). It always becomes origin/<branch> via git_remote_ref — even when the branch name is lexically 40 lowercase hex characters, because Git ref names are not reserved against object-id spellings and semantic kind cannot be recovered from text alone. Exact merge-base object identities belong in gunbc.diff_change_window (GUNBC_DIFF_WINDOW_PATH), never in GITHUB_BASE_REF."
+data diff_baseline_merge_target_law: String = "pull_request MergeTarget reads GITHUB_BASE_REF as a GitHub TARGET BRANCH NAME only (extdeps.github.actions github_ci_event_surface_note). It always becomes origin/<branch> via git_remote_ref — even when the branch name is lexically 40 lowercase hex characters, because Git ref names are not reserved against object-id spellings and semantic kind cannot be recovered from text alone. Exact merge-base object identities belong in gunbc.git_diff_change_window (GUNBC_DIFF_WINDOW_PATH), never in GITHUB_BASE_REF."
 
-data diff_baseline_exact_replay_law: String = "Exact replay selects ExactReplayBoundary with typed GitObjectId base/head from gunbc.diff_change_window. Git CLI operands are rendered only at the realization boundary via diff_baseline_diff_base/diff_baseline_diff_head (git_object_id_wire_hex). Comparison is direct/two-dot — not triple-dot — because the producer already claims the merge-base boundary. Repository availability, object kind, ancestry verification, and checkout/head pinning are PR-2 Git endpoint repairs; this arm still refuses malformed wire input and self-compare at parse time."
+data diff_baseline_exact_replay_law: String = "Exact replay selects ExactReplayBoundary with typed GitObjectId base/head from gunbc.git_diff_change_window. Git CLI operands are rendered only at the realization boundary via diff_baseline_diff_base/diff_baseline_diff_head (git_object_id_wire_hex). Comparison is direct/two-dot — not triple-dot — because the producer already claims the merge-base boundary. Repository availability, object kind, ancestry verification, and checkout/head pinning are PR-2 Git endpoint repairs; this arm still refuses malformed wire input and self-compare at parse time."
+
+data diff_baseline_source_conflict_law: String = "GUNBC_DIFF_WINDOW_PATH and GUNBC_CI_DIFF_BASE are independent baseline authorities. When both are set, resolve_diff_baseline refuses with BaselineSourceConflict rather than picking an order — the collision is typed evidence, not a silent precedence guess."
 
 type DiffBaseline
   = MergeTarget { ref: GitRef }
   | ExactReplayBoundary {
       base: GitObjectId,
       head: GitObjectId,
-      claimed_relation: DiffWindowRelation
+      observed_relation: GitObservedMergeBase,
     }
   | PushBefore { ref: GitRef }
   | PushParent { ref: GitRef }
@@ -56,17 +56,18 @@ type CiDiffEvent {
   base_ref: String?
   push_before: PushBeforeInput?
   head_sha: String?
-  diff_window: DiffWindowObservation?
+  diff_window: GitDiffWindowObservation?
 }
 
 type DiffBaselineResolution
   = BaselineSelected { baseline: DiffBaseline }
   | BaselineRefused { reason: String }
+  | BaselineSourceConflict { window_detail: String, override_ref: String }
 
 fn diff_baseline_ref(b: DiffBaseline) -> GitRef {
   match b {
     MergeTarget { ref: r } => r
-    ExactReplayBoundary { base: oid, head: _, claimed_relation: _ } =>
+    ExactReplayBoundary { base: oid, head: _, observed_relation: _ } =>
       git_object_id_wire_hex(oid: oid) as GitRef
     PushBefore { ref: r } => r
     PushParent { ref: r } => r
@@ -76,7 +77,7 @@ fn diff_baseline_ref(b: DiffBaseline) -> GitRef {
 
 fn diff_baseline_diff_base(b: DiffBaseline) -> String {
   match b {
-    ExactReplayBoundary { base: oid, head: _, claimed_relation: _ } =>
+    ExactReplayBoundary { base: oid, head: _, observed_relation: _ } =>
       git_object_id_wire_hex(oid: oid) as String
     MergeTarget { ref: r } => r as String
     PushBefore { ref: r } => r as String
@@ -87,7 +88,7 @@ fn diff_baseline_diff_base(b: DiffBaseline) -> String {
 
 fn diff_baseline_diff_head(b: DiffBaseline, default_head: String) -> String {
   match b {
-    ExactReplayBoundary { base: _, head: oid, claimed_relation: _ } =>
+    ExactReplayBoundary { base: _, head: oid, observed_relation: _ } =>
       git_object_id_wire_hex(oid: oid) as String
     MergeTarget { ref: _ } => default_head
     PushBefore { ref: _ } => default_head
@@ -98,7 +99,7 @@ fn diff_baseline_diff_head(b: DiffBaseline, default_head: String) -> String {
 
 fn diff_baseline_is_exact_replay(b: DiffBaseline) -> Bool {
   match b {
-    ExactReplayBoundary { base: _, head: _, claimed_relation: _ } => true
+    ExactReplayBoundary { base: _, head: _, observed_relation: _ } => true
     MergeTarget { ref: _ } => false
     PushBefore { ref: _ } => false
     PushParent { ref: _ } => false
@@ -106,32 +107,47 @@ fn diff_baseline_is_exact_replay(b: DiffBaseline) -> Bool {
   }
 }
 
-fn resolve_diff_window(observation: DiffWindowObservation?) -> DiffBaselineResolution? {
+fn resolve_diff_window(observation: GitDiffWindowObservation?) -> DiffBaselineResolution? {
   match observation {
     Absent => none
-    Present { value: DiffWindowObserved { window: window } } =>
+    Present { value: GitDiffWindowObserved { window: window } } =>
       Present {
         value: BaselineSelected {
           baseline: ExactReplayBoundary {
             base: window.base,
             head: window.head,
-            claimed_relation: window.relation
+            observed_relation: window.relation
           }
         }
       }
-    Present { value: DiffWindowMalformed { detail: detail } } =>
+    Present { value: GitDiffWindowMalformed { detail: detail } } =>
       Present {
         value: BaselineRefused {
           reason: concat("exact diff window malformed — ", concat(detail, "; halting the floor (AFFECTED-SET REFUSAL)"))
         }
       }
-    Present { value: DiffWindowReadRefused { path: path, cause: cause } } =>
+    Present { value: GitDiffWindowReadRefused { path: path, cause: cause } } =>
       Present {
         value: BaselineRefused {
           reason: concat(
             concat("exact diff window unreadable at ", concat(path, " — ")),
             concat(cause, "; halting the floor (AFFECTED-SET REFUSAL)")
           )
+        }
+      }
+  }
+}
+
+fn diff_baseline_sources_conflict(event: CiDiffEvent) -> Bool {
+  match event.override_ref {
+    Absent => false
+    Present { value: override_ref } =>
+      if override_ref == "" {
+        false
+      } else {
+        match event.diff_window {
+          Absent => false
+          Present { value: _ } => true
         }
       }
   }
@@ -224,26 +240,36 @@ fn resolve_diff_baseline(
   push_parent_ref: GitRef,
   default_remote_name: String
 ) -> DiffBaselineResolution {
-  match resolve_diff_window(observation: event.diff_window) {
-    Present { value: dashboard_res } => dashboard_res
-    Absent =>
-      match event.override_ref {
-        Present { value: r } =>
-          if r == "" {
+  if diff_baseline_sources_conflict(event: event) {
+    BaselineSourceConflict {
+      window_detail: "GUNBC_DIFF_WINDOW_PATH names an exact replay wire",
+      override_ref: match event.override_ref {
+        Present { value: r } => r
+        Absent => ""
+      },
+    }
+  } else {
+    match resolve_diff_window(observation: event.diff_window) {
+      Present { value: dashboard_res } => dashboard_res
+      Absent =>
+        match event.override_ref {
+          Present { value: r } =>
+            if r == "" {
+              resolve_diff_baseline_by_event(
+                event: event,
+                push_parent_ref: push_parent_ref,
+                default_remote_name: default_remote_name
+              )
+            } else {
+              BaselineSelected { baseline: OperatorOverride { ref: r as GitRef } }
+            }
+          Absent =>
             resolve_diff_baseline_by_event(
               event: event,
               push_parent_ref: push_parent_ref,
               default_remote_name: default_remote_name
             )
-          } else {
-            BaselineSelected { baseline: OperatorOverride { ref: r as GitRef } }
-          }
-        Absent =>
-          resolve_diff_baseline_by_event(
-            event: event,
-            push_parent_ref: push_parent_ref,
-            default_remote_name: default_remote_name
-          )
-      }
+        }
+    }
   }
 }

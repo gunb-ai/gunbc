@@ -34,6 +34,10 @@ import gunbc.roadmap_execution_contract {
   ExecutionContract,
   ExecutionContractUnspecified,
 }
+import gunbc.git_diff_change_window {
+  ChangeWindowPreparationRefusal,
+  change_window_preparation_refusal_detail,
+}
 import extdeps.languages.json.parse {
   parse_json,
   json_object_unique_member,
@@ -366,6 +370,9 @@ type ValidationRefusalCause
       program: String,
       reason: String,
     }
+  | ValidationChangeWindowRefused {
+      cause: ChangeWindowPreparationRefusal,
+    }
 
 data validation_not_run_note: String = "review 45271. ValidationNotRun exists so that the ABSENCE of a receipt stops being a state the verification seam has to interpret. The seam previously asked `is the receipt text empty` and got `\"\"` from three different worlds — no file, an unreadable file, and an empty one — then RAN THE VALIDATION AND OVERWROTE whatever was there. Absent and unreadable have opposite correct actions (run it; stop and do not touch the evidence), so collapsing them let an I/O fault regenerate a verdict against a worktree the agent may have moved since. The fix is construction rather than a better classifier, because the Filesystem.Read surface exposes no typed absence and deciding it from an error string would be a guess: dispatch WRITES this verdict beside the attempt during state initialization, exactly as it already writes an empty provider-events.jsonl so that stream's absence is meaningful. After that, a receipt is always present, so a failed read is unambiguously a fault and refuses. The Verify lamp reads this as pending — which makes its pending state evidence-backed rather than inferred from nothing."
 
@@ -590,6 +597,7 @@ fn validation_refusal_cause_key(cause: ValidationRefusalCause) -> String {
     ValidationPinReceiptUnreadable { detail: _ } => "pin-receipt-unreadable"
     ValidationCommandUnrealized => "command-unrealized"
     ValidationCommandRefused { program: _, reason: _ } => "command-refused"
+    ValidationChangeWindowRefused { cause: _ } => "change-window-refused"
   }
 }
 
@@ -650,6 +658,8 @@ fn validation_refusal_cause_detail(cause: ValidationRefusalCause) -> String {
       "the declared validation has no host capability realization, so no command exists to run"
     ValidationCommandRefused { program, reason } =>
       join([program, ": ", reason], "")
+    ValidationChangeWindowRefused { cause } =>
+      change_window_preparation_refusal_detail(cause: cause)
   }
 }
 

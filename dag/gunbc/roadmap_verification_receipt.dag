@@ -70,7 +70,7 @@ import gunbc.roadmap_validation_oracle {
   validation_oracle_parse_pinned_identity_wire,
 }
 
-data verification_subject_note: String = "ONE VERIFICATION QUESTION HAS ONE SUBJECT. A verdict is about one durable roadmap node identity under one criteria revision, in one attempt and branch, at one committed head. None of those five fields is Optional: a receipt that cannot name any one of them cannot state which question it answered and therefore cannot be constructed as VerificationReceipt. The node's durable identity is RoadmapNodeIdentity rather than its editable slug; criteria_digest is the Fnv1a64Structural value derived by gunbc.roadmap_model node_criteria_digest; head_sha is std.types CommitSha rather than an anonymous revision string.\n\nTHE HEAD IS OBSERVED, NOT INFERRED FROM THE BRANCH. A branch is a moving publication handle and remains in the subject because it locates the attempt's line of work. The committed head is the verification identity: head A and head B in the same attempt are different subjects, so findings against A can coexist with a later green receipt for B without either overwriting or impersonating the other."
+data verification_subject_note: String = "ONE VERIFICATION QUESTION HAS ONE SUBJECT. A verdict is about one durable roadmap node identity under one criteria revision, in one attempt and branch, at one committed head, against one exact change-window identity. None of those six fields is Optional: a receipt that cannot name any one of them cannot state which question it answered and therefore cannot be constructed as VerificationReceipt. The node's durable identity is RoadmapNodeIdentity rather than its editable slug; criteria_digest is the Fnv1a64Structural value derived by gunbc.roadmap_model node_criteria_digest; head_sha is std.types CommitSha rather than an anonymous revision string; change_window_identity is the Fnv1a64Structural content hash over target, target_generation, base, head, and relation from gunbc.git_diff_change_window (git_diff_window_absent_identity when the contract does not consume an affected-set window).\n\nTHE HEAD IS OBSERVED, NOT INFERRED FROM THE BRANCH. A branch is a moving publication handle and remains in the subject because it locates the attempt's line of work. The committed head is the verification identity: head A and head B in the same attempt are different subjects, so findings against A can coexist with a later green receipt for B without either overwriting or impersonating the other. When the target branch advances but head stays fixed, change_window_identity moves with target_generation and base, so an old receipt for (B1, H) cannot answer (B2, H)."
 
 type VerificationSubject {
   node_identity: RoadmapNodeIdentity
@@ -78,6 +78,7 @@ type VerificationSubject {
   attempt_key: String
   branch: NonEmptyStr
   head_sha: CommitSha
+  change_window_identity: Fnv1a64Structural
 }
 
 data validation_execution_note: String = "AN EXECUTION RECORDS THE DECLARED OPERATION, THE REALIZED COMMAND, AND THE PROCESS EVIDENCE AS STRUCTURE. ValidationOperation is the existing semantic validation authority; ModeledValidationCommand keeps program and argv separate instead of persisting a shell sentence; exit_code, stdout and stderr preserve the three observations without rendering them into explanatory prose. A command that never ran contributes no ValidationExecution — its reason belongs to the existing ValidationRefused verdict. This is why executions is a list: a contract may declare several validations, and one summary command string cannot honestly describe all of them."
@@ -99,7 +100,7 @@ type VerificationReceipt {
   verdict: ValidationVerdict
 }
 
-data verification_subject_match_note: String = "A READABLE RECEIPT ABOUT ANOTHER SUBJECT IS NOT EVIDENCE. The comparison is total over all five required fields and returns the first differing field with both values, mirroring gunbc.roadmap_publish publication_receipt_subject_match. In particular, an old head's passed receipt cannot move the lamp for a new head merely because node, criteria, attempt and branch still agree."
+data verification_subject_match_note: String = "A READABLE RECEIPT ABOUT ANOTHER SUBJECT IS NOT EVIDENCE. The comparison is total over all six required fields and returns the first differing field with both values, mirroring gunbc.roadmap_publish publication_receipt_subject_match. In particular, an old head's passed receipt cannot move the lamp for a new head merely because node, criteria, attempt and branch still agree; nor can an old window identity answer after the target branch advances."
 
 type VerificationSubjectMatch
   = VerificationSubjectMatches
@@ -145,6 +146,15 @@ fn verification_subject_match(
       field: "head_sha",
       expected: expected.head_sha as String,
       found: found.head_sha as String,
+    }
+  } else if !content_hash_eq_structural(
+    left: found.change_window_identity,
+    right: expected.change_window_identity,
+  ) {
+    VerificationSubjectDiffers {
+      field: "change_window_identity",
+      expected: expected.change_window_identity.digest as String,
+      found: found.change_window_identity.digest as String,
     }
   } else {
     VerificationSubjectMatches
@@ -315,6 +325,10 @@ fn verification_subject_json(subject: VerificationSubject) -> JsonValue {
     json_kv(key: "attempt_key", value: json_string(s: subject.attempt_key)),
     json_kv(key: "branch", value: json_string(s: subject.branch as String)),
     json_kv(key: "head_sha", value: json_string(s: subject.head_sha as String)),
+    json_kv(
+      key: "change_window_identity",
+      value: json_string(s: subject.change_window_identity.digest as String),
+    ),
   ])
 }
 
@@ -456,14 +470,26 @@ fn verification_subject_decode(doc: JsonValue) -> VerificationSubject? {
                       match verification_receipt_string_member(doc: doc, key: "head_sha") {
                         VerificationReceiptMemberUnreadable { reason: _ } => none
                         VerificationReceiptMemberRead { value: head_sha } =>
-                          Present {
-                            value: VerificationSubject {
-                              node_identity: node_identity as NonEmptyStr as RoadmapNodeIdentity,
-                              criteria_digest: criteria_digest,
-                              attempt_key: attempt_key,
-                              branch: branch as NonEmptyStr,
-                              head_sha: head_sha as CommitSha,
-                            },
+                          match verification_receipt_string_member(
+                            doc: doc,
+                            key: "change_window_identity",
+                          ) {
+                            VerificationReceiptMemberUnreadable { reason: _ } => none
+                            VerificationReceiptMemberRead { value: window_identity_wire } =>
+                              match fnv1a64_structural_hex_digest(hex: window_identity_wire) {
+                                Absent => none
+                                Present { value: change_window_identity } =>
+                                  Present {
+                                    value: VerificationSubject {
+                                      node_identity: node_identity as NonEmptyStr as RoadmapNodeIdentity,
+                                      criteria_digest: criteria_digest,
+                                      attempt_key: attempt_key,
+                                      branch: branch as NonEmptyStr,
+                                      head_sha: head_sha as CommitSha,
+                                      change_window_identity: change_window_identity,
+                                    },
+                                  }
+                              }
                           }
                       }
                   }

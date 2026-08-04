@@ -26,6 +26,7 @@ import extdeps.github.pulls { PullRequest, PullRequestRef, Open }
 import extdeps.github.github { GitHubUser, User, Repository }
 import std.types { CommitSha }
 import std.content_hash { content_hash_atom }
+import gunbc.git_diff_change_window { git_diff_window_absent_identity }
 import gunbc.roadmap_execution_contract {
   ExecutionContractUnspecified,
   gunbc_claim_execution_contract,
@@ -816,6 +817,7 @@ fn fixture_verification_subject(node_id: String) -> VerificationSubject {
     attempt_key: "feedfacefeedface",
     branch: join(["dispatch/", node_id, "-afeedfacefeedface"], "") as NonEmptyStr,
     head_sha: fixture_verification_head,
+    change_window_identity: git_diff_window_absent_identity(),
   }
 }
 

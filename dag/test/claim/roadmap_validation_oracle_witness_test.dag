@@ -11,6 +11,7 @@ import std.content_hash {
   as_content_hash_cryptographic,
 }
 import extdeps.pin { CrossFamilyIdentityIncomparable }
+import gunbc.git_diff_change_window { git_diff_window_absent_identity }
 import gunbc.roadmap_workflow_progress {
   WorkflowAttemptEvidence,
   workflow_attempt_progress,
@@ -714,6 +715,7 @@ fn verify_fixture_subject() -> VerificationSubject {
     attempt_key: "feedfacefeedface",
     branch: "dispatch/v1-emitter-fixed-point-afeedfacefeedface" as NonEmptyStr,
     head_sha: verify_fixture_head,
+    change_window_identity: git_diff_window_absent_identity(),
   }
 }
 

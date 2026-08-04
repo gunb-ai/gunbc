@@ -732,6 +732,7 @@ fn dispatch_attempt_verification_receipt_path_for_instance(
   node_id: RoadmapNodeId,
   attempt_key: String,
   head_sha: String,
+  window_identity_hex: String,
 ) -> String {
   join([
     dispatch_attempt_verification_dir_for_instance(
@@ -741,6 +742,8 @@ fn dispatch_attempt_verification_receipt_path_for_instance(
     ),
     "/",
     head_sha,
+    ".",
+    window_identity_hex,
     ".json",
   ], "")
 }
@@ -750,6 +753,7 @@ fn dispatch_attempt_diff_window_path_for_instance(
   node_id: RoadmapNodeId,
   attempt_key: String,
   head_sha: String,
+  window_identity_hex: String,
 ) -> String {
   join([
     dispatch_attempt_verification_dir_for_instance(
@@ -759,6 +763,8 @@ fn dispatch_attempt_diff_window_path_for_instance(
     ),
     "/",
     head_sha,
+    ".",
+    window_identity_hex,
     ".diff-window.json",
   ], "")
 }

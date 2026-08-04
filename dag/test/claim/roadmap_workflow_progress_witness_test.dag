@@ -73,6 +73,7 @@ import gunbc.roadmap_verification_receipt {
 }
 import std.types { CommitSha }
 import std.content_hash { content_hash_atom }
+import gunbc.git_diff_change_window { git_diff_window_absent_identity }
 import gunbc.roadmap_model { RoadmapNodeIdentity }
 
 data fixture_verification_head: CommitSha = "cafecafecafecafecafecafecafecafecafecafe" as CommitSha
@@ -84,6 +85,7 @@ fn fixture_verification_subject() -> VerificationSubject {
     attempt_key: "feedfacefeedface",
     branch: "dispatch/node-1-afeedfacefeedface" as NonEmptyStr,
     head_sha: fixture_verification_head,
+    change_window_identity: git_diff_window_absent_identity(),
   }
 }
 
