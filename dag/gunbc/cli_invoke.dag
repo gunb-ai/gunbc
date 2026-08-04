@@ -1,6 +1,6 @@
 module gunbc.cli_invoke
 
-import std.types { FilePath, String }
+import std.types { FilePath, String, NonEmptyStr, List }
 
 data cli_invoke_shell_spelling_dissolve_trigger: String = "dissolve-on: cli_invoke _shell builders — interim GHA emit surface for Phase 3a; delete when gunbc run / claim_executor call sites render through bash emit (shell→intent open thread, docs/plans/shell-intent-emit-realization-design.md Phase 3 completion)."
 
@@ -92,21 +92,49 @@ fn claim_executor_verify_artifacts_transport_argv(artifact_paths: List<String>) 
   concat(["--verify-build-artifacts"], artifact_paths)
 }
 
+data gunbc_run_named_arg_note: String = "`--arg name=value` is the interpreter's NAMED-argument channel, and it is named-only by construction: a .dag entry's parameters are named, so a positional order across the CLI boundary would be an unchecked coincidence. Values arrive as strings with no fabricated coercion, so a callee wanting another type validates and refuses rather than receiving a silent conversion.\\n\\nThis carrier exists so a caller cannot hand-spell `--arg` and the `name=value` join at a call site. That join is exactly where an empty name or a missing `=` becomes a refusal at the far end of a process boundary, which is the worst place to discover it."
+
+type GunbcRunNamedArg {
+  name: NonEmptyStr
+  value: String
+}
+
+fn gunbc_run_named_arg_argv(arg: GunbcRunNamedArg) -> List<String> {
+  ["--arg", concat(concat(arg.name as String, "="), arg.value)]
+}
+
+fn gunbc_run_transport_argv_with_named_args(
+  source_roots: List<String>,
+  entry: String,
+  function: String,
+  claim_run: Bool,
+  named_args: List<GunbcRunNamedArg>
+) -> List<String> {
+  let base = concat(
+    concat(["run"], source_root_transport_argv(roots: source_roots)),
+    ["--entry", entry, "--function", function]
+  )
+  let claimed = if claim_run {
+    concat(base, ["--claim-run"])
+  } else {
+    base
+  }
+  concat(claimed, flat_map(named_args, a => gunbc_run_named_arg_argv(arg: a)))
+}
+
 fn gunbc_run_transport_argv(
   source_roots: List<String>,
   entry: String,
   function: String,
   claim_run: Bool
 ) -> List<String> {
-  let base = concat(
-    concat(["run"], source_root_transport_argv(roots: source_roots)),
-    ["--entry", entry, "--function", function]
+  gunbc_run_transport_argv_with_named_args(
+    source_roots: source_roots,
+    entry: entry,
+    function: function,
+    claim_run: claim_run,
+    named_args: []
   )
-  if claim_run {
-    concat(base, ["--claim-run"])
-  } else {
-    base
-  }
 }
 
 

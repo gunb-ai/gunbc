@@ -1,0 +1,125 @@
+module gunbc.live_deploy.lease
+
+import std.types { String, List, Int, Duration, FilePath, NonEmptyStr, CommitSha }
+import extdeps.linux.flock {
+  FlockWaitBound,
+  FlockWaitSeconds,
+  flock_exclusive_command,
+  flock_exit_is_lock_conflict,
+  flock_conflict_exit_code,
+}
+import extdeps.exec.command { ArgvCommand }
+import gunbc.cli_invoke {
+  GunbcRunNamedArg,
+  gunbc_run_transport_argv_with_named_args,
+  release_bin_rel_path,
+  gunbc_bin_name,
+}
+import gunbc.live_deploy.revision {
+  DeploymentTarget,
+  Srv1Dashboard,
+  deploy_target_key,
+  deploy_target_lease_path,
+}
+
+data lease_owns_the_critical_section_note: String = "THE DEPLOY ENTRY OWNS THE LEASE; GITHUB ACTIONS DOES NOT (operator ruling 2026-08-04). Putting `flock` in the workflow would make the CI path temporarily special: the operator entrypoint would stay outside the lock, and the split between 'the deploy CI runs' and 'the deploy an operator runs' would harden into two deployment systems. So the lock is realized here, inside the live-deploy model, and every public mutation entry routes through it.\\n\\nWHY THE LOCK MUST WRAP THE WHOLE PROCESS RATHER THAN THE MUTATION. The blue/green operation is one transaction — observe route, select active/idle, prepare idle, prove readiness and readback, flip route, verify the routed result, persist the receipt, retire the old runtime. The lock must be held BEFORE the route observation, because acquiring it only around mutation leaves the original observe-then-mutate race intact: two callers can both conclude the same slot is idle. It must still be held after the flip, because releasing at the flip lets another caller observe a deployment whose receipt is not yet recorded.\\n\\nWHY NOT AN Acquire/Release EFFECT PAIR. Each live-deploy mutation, readiness probe and readback is realized as its OWN host-effect invocation. A file descriptor taken by one of those shell processes is gone when that process exits, so a modeled AcquireLease effect would return success while holding nothing across the calls that follow — a lock that type-checks and excludes nobody. Process-grain is the first realization that is honestly exclusive, because flock(2) holds across exec and releases exactly on process exit."
+
+data lease_advisory_obligation_note: String = "flock(2) is ADVISORY, so this excludes only callers that take the same lock on the same path. That makes 'every public mutation entry routes through the leased launcher' a load-bearing obligation rather than a convention — one official entrypoint bypassing it makes the lease advisory in the bad sense. The composition witnesses assert that join rather than trusting it, and a planted direct call to an inner unleased entry is the discriminating RED."
+
+data lease_wait_bound_note: String = "The wait bound is finite and deliberately smaller than the deploy job's own backstop. A lease conflict means another deploy holds the host; the correct behavior is to wait for an ordinary cutover to finish and then proceed, not to queue indefinitely. Waiting past the job cap would convert a conflict into a job-timeout kill — an infrastructure-shaped failure that loses the typed cause, which is exactly what flock's --conflict-exit-code exists to preserve.\\n\\n600s is the bound: the observed blue/green cutover wall is ~3.5-4 minutes end to end (the deploy job windows in srv1-deploy-serialization-and-false-greens.md §9.3 run 3m30s-4m40s), so 10 minutes admits one full cutover ahead of this one with margin, while the job backstop is 10 minutes of its own on top. A conflict that outlives this bound is a stuck holder, which is a defect to diagnose rather than headroom to grant."
+
+data live_deploy_lease_wait_seconds: Duration = 600
+
+type LiveDeployExclusiveInvocation {
+  target: DeploymentTarget
+  lock_path: FilePath
+  wait_bound: FlockWaitBound
+}
+
+fn live_deploy_exclusive_invocation(target: DeploymentTarget) -> LiveDeployExclusiveInvocation {
+  LiveDeployExclusiveInvocation {
+    target: target,
+    lock_path: deploy_target_lease_path(target: target),
+    wait_bound: FlockWaitSeconds { seconds: live_deploy_lease_wait_seconds },
+  }
+}
+
+data candidate_release_note: String = "THE CANDIDATE IS AN EXPLICIT VALUE, not 'whatever tree happens to be current'. It names the revision this invocation is trying to make live, and it crosses the lease's process boundary as a named argument so the inner reconciliation receives it as a parameter rather than re-deriving it. Re-deriving inside would reintroduce the defect the global tree-sync selector already demonstrated: the thing that decides which source is deployed must not be a piece of ambient host state that another concurrent run can rewrite."
+
+type CandidateRelease {
+  revision: CommitSha
+}
+
+data leased_argv_note: String = "The wrapped command is a second `gunbc run` against the SAME source roots and the same released binary, invoking the inner reconciliation entry under the lock. The candidate revision rides as `--arg candidate=<sha>`, which is the interpreter's named-argument channel rather than an environment variable — an env channel at a runtime-present site is the shell-to-intent class DESIGN names, and it would also make the candidate ambient exactly where this model is trying to make it explicit."
+
+data live_deploy_apply_entry_path: String = "dag/gunbc/live_deploy/apply.dag"
+
+data live_deploy_candidate_arg_name: NonEmptyStr = "candidate"
+
+fn live_deploy_leased_command(
+  invocation: LiveDeployExclusiveInvocation,
+  source_roots: List<String>,
+  inner_function: String,
+  candidate: CandidateRelease,
+) -> ArgvCommand {
+  flock_exclusive_command(
+    lock_path: invocation.lock_path,
+    wait: invocation.wait_bound,
+    command: concat(
+      [release_bin_rel_path(bin_name: gunbc_bin_name)],
+      gunbc_run_transport_argv_with_named_args(
+        source_roots: source_roots,
+        entry: live_deploy_apply_entry_path,
+        function: inner_function,
+        claim_run: false,
+        named_args: [
+          GunbcRunNamedArg {
+            name: live_deploy_candidate_arg_name,
+            value: candidate.revision as String,
+          }
+        ],
+      )
+    ),
+  )
+}
+
+data lease_outcome_note: String = "THREE OUTCOMES, AND THE CONFLICT IS NOT A FAILURE OF THIS DEPLOY. LeaseConflict means another holder owns the target for longer than the bound — the host is busy, this run mutated nothing, and the cause is separable from the wrapped command's own exit precisely because flock reports it on a distinct code. LeaseAcquiredExit carries the inner reconciliation's own exit through unchanged, so a Keep exits zero and a Refuse exits nonzero exactly as the inner entry decided; the lease adds no verdict of its own to a run that got the lock.\\n\\nThe conflict arm is a REFUSAL rather than a retry-in-place. Retrying here would re-enter the same wait with no new information and no counter, which is the absorbing shape DESIGN §5 forbids — the frequency of lease contention has to stay observable, because a rising rate is the signal that deploys have started overlapping again."
+
+type LiveDeployLeaseOutcome
+  = LeaseConflict { target_key: String, waited: Duration }
+  | LeaseAcquiredExit { exit_code: Int }
+
+fn live_deploy_lease_outcome(
+  invocation: LiveDeployExclusiveInvocation,
+  exit_code: Int,
+) -> LiveDeployLeaseOutcome {
+  if flock_exit_is_lock_conflict(exit_code: exit_code) {
+    LeaseConflict {
+      target_key: deploy_target_key(target: invocation.target),
+      waited: match invocation.wait_bound {
+        FlockWaitSeconds { seconds: s } => s
+        FlockFailImmediately => 0
+      },
+    }
+  } else {
+    LeaseAcquiredExit { exit_code: exit_code }
+  }
+}
+
+fn live_deploy_lease_conflict_reason(outcome: LiveDeployLeaseOutcome) -> NonEmptyStr {
+  match outcome {
+    LeaseConflict { target_key: k, waited: w } =>
+      join(
+        [
+          "deploy refused: another deployment holds the exclusive lease on target ",
+          k,
+          " after waiting ",
+          to_string(w),
+          "s — this run mutated nothing"
+        ],
+        ""
+      ) as NonEmptyStr
+    LeaseAcquiredExit { exit_code: _ } =>
+      "deploy lease was acquired; this is not a conflict" as NonEmptyStr
+  }
+}
