@@ -23,11 +23,15 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
-    locator: "github.com/gunb-ai/ctrl/blob/main/scripts/session-dashboard/lib/gunbc_run.mjs"
+    locator: "github.com/gunb-ai/gunbc/blob/main/docs/plans/gunbc-served-dashboard-design.md"
   }
 }
 
-data change_window_note: String = "Dashboard-owned exact replay wire for affected-PR runs. GitHub's GITHUB_BASE_REF names a pull-request TARGET BRANCH (extdeps.github.actions github_ci_event_surface_note); it is not a merge-base object id. Session-dashboard replay instead writes this structured request to the path named by GUNBC_CI_CHANGE_WINDOW_PATH so gunbc.diff_baseline can select ExactReplayBoundary without impersonating GitHub's branch field or inferring object identity from branch-name spelling."
+data change_window_note: String = "Dashboard-owned exact replay wire for affected-PR runs. GitHub's GITHUB_BASE_REF names a pull-request TARGET BRANCH (extdeps.github.actions github_ci_event_surface_note); it is not a merge-base object id. The gunbc-served roadmap dashboard (gunbc.roadmap_serve, gunbc.roadmap_belt_actuate — docs/plans/gunbc-served-dashboard-design.md) writes this structured request to the path named by GUNBC_CI_CHANGE_WINDOW_PATH so gunbc.diff_baseline can select ExactReplayBoundary without impersonating GitHub's branch field or inferring object identity from branch-name spelling. The retired ctrl session-dashboard producer is not an authority for this wire."
+
+data change_window_producer_wire: String = "gunbc-roadmap-dashboard"
+
+data change_window_producer_adoption_note: String = "PRODUCER ADOPTION IS OUT OF SCOPE FOR THE CONSUMER PR (#7756). This module models the wire gunbc.diff_baseline consumes; landing it does not prove a live affected-PR dashboard run writes GUNBC_CI_CHANGE_WINDOW_PATH yet. Follow-on: gunbc.roadmap_belt_actuate (or its CI actuation seam) must (1) write this JSON document, (2) supply typed base/head GitObjectIds, (3) keep GITHUB_BASE_REF as the target branch name only. Dissolve this note when a linked gunbc commit or live replay receipt names ExactReplayBoundary with the requested base/head."
 
 data gunbc_ci_change_window_path_env: NonEmptyStr = "GUNBC_CI_CHANGE_WINDOW_PATH"
 

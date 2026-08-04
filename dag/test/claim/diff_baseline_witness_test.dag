@@ -63,7 +63,7 @@ fn planted_dashboard_replay() -> DashboardReplayObservation {
       base: planted_oid(hex: planted_merge_base_sha),
       head: planted_oid(hex: planted_head_sha),
       claimed_relation: ClaimedMergeBase {},
-      producer: "session-dashboard"
+      producer: "gunbc-roadmap-dashboard"
     }
   }
 }

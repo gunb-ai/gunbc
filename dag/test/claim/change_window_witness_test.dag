@@ -24,7 +24,7 @@ fn valid_change_window_json(base_hex: String, head_hex: String) -> String {
       concat(
         concat(
           concat(
-            "{\"producer\":\"session-dashboard\",\"realization\":\"git\",\"base_object_id\":\"",
+            "{\"producer\":\"gunbc-roadmap-dashboard\",\"realization\":\"git\",\"base_object_id\":\"",
             base_hex
           ),
           concat("\",\"head_object_id\":\"", head_hex)
@@ -44,7 +44,7 @@ test fn witness_dashboard_wire_parses_sha1_exact_replay() -> Bool {
     DashboardExactReplayObserved { base: base, head: head, claimed_relation: ClaimedMergeBase {}, producer: producer } =>
       (git_object_id_wire_hex(oid: base) as String) == planted_base_hex
         && (git_object_id_wire_hex(oid: head) as String) == planted_head_hex
-        && producer == "session-dashboard"
+        && producer == "gunbc-roadmap-dashboard"
     DashboardReplayMalformed { detail: _ } => false
     DashboardReplayReadRefused { path: _, cause: _ } => false
   }
