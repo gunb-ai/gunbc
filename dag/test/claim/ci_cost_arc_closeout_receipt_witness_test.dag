@@ -35,25 +35,24 @@ test fn witness_cold_baseline_is_197130() -> Bool {
 
 test fn witness_7522_net_remains_open() -> Bool {
   let n = settle_7522_net_wall_note
-  n.contains(substring: "NET vs 197.13s = OPEN")
-    && n.contains(substring: "110820")
-    && !n.contains(substring: "probable")
+  string_contains(s: n, pattern: "NET vs 197.13s = OPEN")
+    && string_contains(s: n, pattern: "110820")
+    && !string_contains(s: n, pattern: "probable")
 }
 
 test fn witness_7671_not_described_as_completed_native_speedup() -> Bool {
   let n = settle_7671_native_rate_note
-  n.contains(substring: "NOT a completed native")
-    || n.contains(substring: "NOT bankable as native=3")
+  string_contains(s: n, pattern: "NOT bankable as native=3")
 }
 
 test fn witness_7534_warm_hit_still_partial() -> Bool {
   let n = settle_7534_warm_hit_note
-  n.contains(substring: "PartiallyDelivered")
-    && n.contains(substring: "#7728")
+  string_contains(s: n, pattern: "PartiallyDelivered")
+    && string_contains(s: n, pattern: "#7728")
 }
 
 test fn witness_terminal_table_names_assembly_as_dominant_open() -> Bool {
-  terminal_lane_dispositions_note.contains(substring: "per-entry assembly")
+  string_contains(s: terminal_lane_dispositions_note, pattern: "per-entry assembly")
 }
 
 test fn red_capture_wall_must_not_silently_drift() -> Bool {

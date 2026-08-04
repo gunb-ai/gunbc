@@ -140,8 +140,8 @@ at full altitude. Claimed-not-verified figures are typed separately.
 ## Related work outside this program
 
 - **Floor prep-tax program** — [floor-prep-tax-program.md](floor-prep-tax-program.md):
-  time-axis reopen of retention; discriminating A/B before width / broad native
-  enlargement. Does **not** defer this program's step-3 bounded native cutover.
+  P1 REJECT banked (#7725); redirect to assembly / shared entry-view. Does **not**
+  reopen retention-vs-drain.
 - **Placement / build-flake lane** — srv1 cache miss + placement crawl; **do not
   raise step cap first** (cap lives in `gunbc.ci_spec`; measure after Arm A).
 - **Placement chain** — host/job placement; owner `ci-placement`.

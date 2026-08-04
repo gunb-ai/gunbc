@@ -907,12 +907,12 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       path: "docs/plans/five-minute-ci-gate-design.md",
       t: fields(
         headline: "Serve every required CI operation with the bare minimum computation; five minutes is the distress ceiling, not the contract",
-        boundary: "Every required operation performs only the computation its inputs require — no semantic fact recomputed whose inputs did not change (re-anchored by operator ruling 2026-08-02: five minutes is the distress ceiling — the Stage C checkpoint bound, not the contract). Six sub-lanes plus operator sequence: (1) #7522 warm-merge-admission net receipt; (2) #7599 native bundle slice; (3) bounded production cutover to native execution; (4) #7534 materialization substrate (module→entry→bundle hierarchy); (5) union closed → per-entry assembly lane; (6) this registration. Native-at-small-scale settled (#7599); open: operational migration rate. Staged expectations A/B/C in design note; the gate is the Stage C conjunction.",
-        displaced_cost: "Today witness bodies are still interpreted and materialization is recomputed across phases — confidence is bought with time the product boundary forbids.",
-        first_slice: "Register sequence, staged expectations, and #7599 in-flight disposition in authority; land no implementation under the parent id.",
+        boundary: "Every required operation performs only the computation its inputs require — no semantic fact recomputed whose inputs did not change (re-anchored by operator ruling 2026-08-02: five minutes is the distress ceiling — the Stage C checkpoint bound, not the contract). Sequence dispositions on current main (gunbc.ci_cost_arc_closeout_receipt): (1) #7522 MERGED — capture MEASURED, NET OPEN; (2) #7599 MERGED; (3) #7671 enrollment MERGED — fleet native rate OPEN; (4) #7534 MERGED opt-in — warm-hit PartiallyDelivered post-#7728; (5) union CLOSED → assembly dominant open cost; (6) this registration. Staged expectations A/B/C in design note; the gate is the Stage C conjunction.",
+        displaced_cost: "Today witness bodies are still interpreted and materialization is recomputed across phases — confidence is bought with time the product boundary forbids. Dominant measured open cost: per-entry assembly / execution-world construction.",
+        first_slice: "Bank arc closeout receipt (gunbc.ci_cost_arc_closeout_receipt) so no stale in-flight claims remain; next mechanism is shared entry-view (operator PR2).",
         red_control: "A sub-lane that widens to whole-corpus work, silently falls through from an incomplete materialization artifact to cold recompute, or claims the five-minute envelope without Stage C fleet receipts refuses rather than greens.",
         out_of_scope: "No single PR closes the parent; placement/build-flake cap-first work, tokenizer escape scan, and closed entry-graph-union stay outside.",
-        handback: "Sequence graph, staged expectations, six sub-lane rows, and design note in docs/plans/five-minute-ci-gate-design.md."
+        handback: "Sequence graph, staged expectations, six sub-lane rows, design note, and ci_cost_arc_closeout_receipt."
       )
     ),
     active(
@@ -922,12 +922,12 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       path: "docs/plans/five-minute-ci-gate-design.md",
       t: fields(
         headline: "Admit merges from warm stamped receipts, not cold recomputation",
-        boundary: "NEXT (sequence step 1, #7522 in flight): fold resolve and materialization receipt gates into merge admission so the pull-request path stamps once and admits from warm receipts. Operator expectation: probable net recovery ~1–1.5 min (not ~3 min) — final-head run decides; not transcribed as receipt until measured.",
+        boundary: "MERGED (#7522). Capture MEASURED 110820ms on main run 30863019228. NET admission wall vs 197.13s cold baseline OPEN until stamp+gate on-success stage walls join from uploaded floor-attempt receipts (gunbc.ci_cost_arc_closeout_receipt settle_7522_net_wall_note). No probable/expected net figures.",
         displaced_cost: "Merge admission and the floor tail currently pay separate cold paths for facts already fixed when the run started.",
-        first_slice: "Finish #7522 with real net wall receipt and stage profile.",
+        first_slice: "Finish #7522 topology (done). Remaining: bank joined net wall receipt.",
         red_control: "A stale base-tree or stale gate-roster receipt blocks merge; a missing or invalid receipt refuses rather than widening to a full rerun.",
         out_of_scope: "No change to main-push cold controls or the falsifier cadence.",
-        handback: "One admission path with discriminating stale-base, stale-roster, and fresh controls executed."
+        handback: "One admission path with discriminating stale-base, stale-roster, and fresh controls executed; net wall receipt when stage TSVs are uploaded."
       )
     ),
     active_large(
@@ -937,12 +937,12 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       path: "docs/plans/five-minute-ci-gate-design.md",
       t: fields(
         headline: "Migrate the production selected witness set onto native bundle execution",
-        boundary: "A selected witness population executes as native code in one process: a SelectedWitnessPlan names the population, the bundle carries a content-addressed identity, witnesses run as direct calls rather than through the interpreter, an equivalence oracle establishes that the native result matches the interpreted one, and every failure is a typed refusal. Native execution is dispositive only at the scale actually measured, and any timing ratio against interpreted and warm-cargo paths is reported with its evidence, never asserted unverified. The next step cuts over a bounded production witness population. Migration rate, fallback, artifact identity, and fail-closed memory remain open.",
-        displaced_cost: "Running selected witnesses interpreted still pays per-row interpreter tax documented in ci-floor-child-spawn-attribution.",
-        first_slice: "Merge #7599 once controls clear; then enroll bounded production cutover with counted interpreted-fallback rows.",
+        boundary: "MERGED substrate (#7599) + MERGED bounded production enrollment (#7671, 3-member cohort). Small-scale evidence: native_at_small_scale_transition_receipt. Fleet native rate OPEN (known fallback:native_realization_refused on run 30767841790; recoverable logs omit native_count — gunbc.ci_cost_arc_closeout_receipt). Do not claim completed native wall-clock speedup. Migration rate, artifact identity, and fail-closed memory remain open; next mechanism work is shared entry-view, not broad enrollment.",
+        displaced_cost: "Running selected witnesses interpreted still pays per-row interpreter tax documented in ci-floor-child-spawn-attribution — but resolve/assembly dominates eval on harvested floors.",
+        first_slice: "Merge #7599 and #7671 (done). Remaining: bank fleet native_count/fallback_count from uploaded transition TSV.",
         red_control: "A provenance gap in selection refuses rather than widening to the whole corpus; stale compiler identity, missing native realization, or uncounted fallback refuses.",
-        out_of_scope: "No change to the scheduled falsifier's whole-corpus cold control; no claim that #7599 slice alone closes the five-minute gate.",
-        handback: "#7599 merge receipt; production cutover receipts with native-vs-interpreted attribution and fallback counts trending to zero."
+        out_of_scope: "No change to the scheduled falsifier's whole-corpus cold control; no claim that enrollment alone closes the five-minute gate.",
+        handback: "#7599/#7671 merge receipts; fleet native_count/fallback_count artifact uploads; fallback counts trending to zero before Stage B wall claims."
       )
     ),
     active_large(
@@ -952,12 +952,12 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       path: "docs/plans/five-minute-ci-gate-design.md",
       t: fields(
         headline: "Recompute only the edited module and its semantic dependents",
-        boundary: "NEXT (sequence step 4, #7534 continues): shared materialization substrate — hierarchy module parse/type/interface → resolved entry → selected native witness bundle. No default CI savings credited until ordinary invocations consume hits. FIRST RUNG: exact-tree cross-process cache (#7534, opt-in) — verified serve, not default CI activation.",
+        boundary: "MERGED first rung (#7534 exact-tree, opt-in). Warm-hit-skips-semantic-recompute PartiallyDelivered after #7728 (OOM fixed; skip counter proof OPEN). No default CI savings until ordinary invocations consume hits. Lookup-ahead-of-index remains NotDelivered until warm-hit proof.",
         displaced_cost: "Cross-entry typed-module work is repeated today even when module inputs are byte-identical across entries in one process.",
-        first_slice: "Continue #7534 provider; land module-grain typed memo with byte-identical cached-vs-cold oracle on a representative edit.",
+        first_slice: "#7534 provider (done, opt-in). Remaining: land cross_process_hit_skips_semantic_recompute against TYPECHECK_COMPUTE_COUNT.",
         red_control: "A cache hit with divergent corpus or emit fingerprints refuses; incomplete materialization artifacts refuse rather than falling through to cold recompute.",
         out_of_scope: "Not pre-index lookup before corpus-scale index construction.",
-        handback: "Module-grain key authority, exact-tree provider receipts, and cached-vs-cold oracle green on the edit cone."
+        handback: "Warm-hit skip witness green; then one ordinary invocation consuming hits without opt-in env."
       )
     ),
     active(
