@@ -11,7 +11,7 @@ import gunbc.v1_interpreter_primitive_surface {
 }
 import v2.std.algebra { fold_list }
 import v2.std.collection { List }
-import v2.std.optional { Absent, Optional, Present }
+import v2.std.optional { Absent, Present }
 import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
 import v2.std.text { String }
 
@@ -362,23 +362,16 @@ fn render_dispatch_generated_rs(rows: List<InterpreterPrimitiveDispatchArm>) -> 
   )
 }
 
-fn dispatch_emit_site_bridge_module(site: InterpreterDispatchEmitSite) -> Optional<QualifiedName> {
-  match site {
-    EvalCallBridgeFamilySite { module: bridge_module } => Present { value: bridge_module }
-    EvalBuiltinInnerSite => Absent
-    EvalAlgebraMethodInnerSite => Absent
-    EvalCallNativeInterceptSite => Absent
-    TryV2StdCollectionMapPrimitiveGroundingSite => Absent
-    TryParseTableMemoDispatchSite => Absent
-    EvalMethodCallShortCircuitSite => Absent
-    EvalServiceCallCarveOutSite => Absent
-  }
-}
-
 fn row_has_invalid_bridge_family_domain_prefix(row: InterpreterPrimitiveDispatchArm) -> Bool {
-  match dispatch_emit_site_bridge_module(site: row.dispatch_emit_site) {
-    Present { value: module } => !module_domain_prefix_ok(module: module)
-    Absent => false
+  match row.dispatch_emit_site {
+    EvalCallBridgeFamilySite { module: bridge_module } => !module_domain_prefix_ok(module: bridge_module)
+    EvalBuiltinInnerSite => false
+    EvalAlgebraMethodInnerSite => false
+    EvalCallNativeInterceptSite => false
+    TryV2StdCollectionMapPrimitiveGroundingSite => false
+    TryParseTableMemoDispatchSite => false
+    EvalMethodCallShortCircuitSite => false
+    EvalServiceCallCarveOutSite => false
   }
 }
 
