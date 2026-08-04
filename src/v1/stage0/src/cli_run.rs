@@ -16210,6 +16210,18 @@ pub(crate) fn explicit_witness_admission_pairs() -> Vec<(String, String)> {
         .collect()
 }
 
+// SCAFFOLD (§7 HAND-RUST — `cli_run_witness_deferral_freeze`): the seed realization of the
+// frozen path-deferral wall. Registered disposition, dissolution sequence and measured LOC delta:
+// `gunbc.cli_run_witness_deferral_freeze_scaffold` (authority `gunbc.witness_deferral_freeze`).
+// The .dag side being the authority does NOT exempt this realization — cli_run.rs is the largest
+// hand-maintained Rust wall in the program and is growing against its own hollowing plan, so this
+// block is accounted for rather than admitted quietly. DELETE WHEN: the frozen-deferral projection
+// is emitted or natively realized (then the source-scan helpers go), the classification path
+// follows it (then the rest goes), or the frozen population reaches zero (then all of it goes with
+// the freeze itself). Not a compiler_frontier `.dag` row: seed-Rust, counted here.
+pub(crate) const CLI_RUN_WITNESS_DEFERRAL_FREEZE_SCAFFOLD_MARKER: &str =
+    "cli_run_witness_deferral_freeze";
+
 /// The THIRD source of an executing consumer, and the one that was missing. `commit_gate_roster`
 /// carries `CommitWitnessClaim` rows at function grain; `project_ci_floor_witness_entries` and
 /// `project_falsifier_witness_entries` turn them into explicit entries that RUN, and explicit rows
@@ -16379,10 +16391,32 @@ fn quoted_literals(text: &str) -> Vec<String> {
 /// fixture roster), and — since 2026-08-04 — a broad `OfflineLocalRecipe` path policy is no longer
 /// an answer on its own. A row that policy claims is admitted only while it sits in the frozen
 /// legacy population (`gunbc.witness_deferral_freeze`); anything new refuses.
-pub fn collect_unexecuted_deferred_witnesses(
+/// Per-row EXECUTION STANDING — what actually runs this witness. Mirrors the
+/// `WitnessExecutionStanding` coproduct in `std.witness_admission` arm for arm, and the split is
+/// the point: `LegacyFrozenPathDeferral` means TOLERATED BY THE MIGRATION RATCHET, never COVERED.
+/// A frozen row has no executing consumer — that is the entire content of its debt — so the two
+/// gates below are deliberately different rather than one success arm serving both questions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WitnessExecutionStanding {
+    HasExecutingConsumer,
+    LegacyFrozenPathDeferral,
+    UnclassifiedPathDeferral,
+    UnexecutedDeferredWitness,
+}
+
+/// One deferred row with its standing, so a caller can ask the coverage question and the floor
+/// question separately instead of receiving one boolean that answers neither honestly.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeferredRowStanding {
+    pub entry: String,
+    pub function: String,
+    pub standing: WitnessExecutionStanding,
+}
+
+pub fn classify_deferred_discovery_rows(
     deferred_rows: &[DeferredDiscoveryRow],
-) -> Vec<DeferredAdmissionRefusal> {
-    collect_unexecuted_deferred_witnesses_in(
+) -> Vec<DeferredRowStanding> {
+    classify_deferred_discovery_rows_in(
         deferred_rows,
         &witness_admission_explicit_consumer_keys(),
         &witness_admission_offline_exclusion_substrings(),
@@ -16391,42 +16425,89 @@ pub fn collect_unexecuted_deferred_witnesses(
     )
 }
 
-/// The same fold over supplied rosters — the grain the fixture REDs plant into, so a control can
-/// hold the row fixed and move only freeze membership (the discriminator this wall adds).
-fn collect_unexecuted_deferred_witnesses_in(
+/// The same fold over supplied rosters — the grain the fixture controls plant into, so a control
+/// can hold the row fixed and move only freeze membership (the discriminator this wall adds).
+fn classify_deferred_discovery_rows_in(
     deferred_rows: &[DeferredDiscoveryRow],
     explicit: &[String],
     offline: &[String],
     fixture: &[String],
     frozen: &[String],
-) -> Vec<DeferredAdmissionRefusal> {
-    let mut orphans = Vec::new();
-    for row in deferred_rows {
-        let key = witness_admission_manifest_key(&row.entry, &row.function);
-        if explicit.iter().any(|k| k == &key) {
-            continue;
-        }
-        if path_matches_any_substring(&row.entry, offline) {
-            if frozen.iter().any(|k| k == &key) {
-                continue;
-            }
-            orphans.push(DeferredAdmissionRefusal {
+) -> Vec<DeferredRowStanding> {
+    deferred_rows
+        .iter()
+        .map(|row| {
+            let key = witness_admission_manifest_key(&row.entry, &row.function);
+            let standing = if explicit.iter().any(|k| k == &key) {
+                WitnessExecutionStanding::HasExecutingConsumer
+            } else if path_matches_any_substring(&row.entry, offline) {
+                if frozen.iter().any(|k| k == &key) {
+                    WitnessExecutionStanding::LegacyFrozenPathDeferral
+                } else {
+                    WitnessExecutionStanding::UnclassifiedPathDeferral
+                }
+            } else if path_matches_any_substring(&row.entry, fixture) {
+                WitnessExecutionStanding::HasExecutingConsumer
+            } else {
+                WitnessExecutionStanding::UnexecutedDeferredWitness
+            };
+            DeferredRowStanding {
                 entry: row.entry.clone(),
                 function: row.function.clone(),
-                cause: DeferredAdmissionCause::UnclassifiedPathDeferral,
-            });
-            continue;
-        }
-        if path_matches_any_substring(&row.entry, fixture) {
-            continue;
-        }
-        orphans.push(DeferredAdmissionRefusal {
-            entry: row.entry.clone(),
-            function: row.function.clone(),
-            cause: DeferredAdmissionCause::UnexecutedDeferredWitness,
-        });
-    }
-    orphans
+                standing,
+            }
+        })
+        .collect()
+}
+
+/// THE COVERAGE QUESTION. Only one arm means covered. A frozen row answers `false`, so nothing
+/// downstream asking "is this behavior exercised" receives an admission success for a witness that
+/// executes nowhere.
+pub fn witness_standing_has_executing_consumer(standing: WitnessExecutionStanding) -> bool {
+    matches!(standing, WitnessExecutionStanding::HasExecutingConsumer)
+}
+
+/// THE FLOOR GATE, a different question: may the floor proceed with this row today. It admits a
+/// real consumer unconditionally and additionally TOLERATES the frozen legacy debt — but the
+/// toleration is conditional on the roster axis, enforced by
+/// `refuse_frozen_path_deferral_additions` and `refuse_stale_frozen_path_deferrals` above, which
+/// stop the whole run when the baseline grows or rots. That is why this function does not silently
+/// widen: the frozen arm is only reachable while those two refusals are silent.
+pub fn collect_unexecuted_deferred_witnesses(
+    deferred_rows: &[DeferredDiscoveryRow],
+) -> Vec<DeferredAdmissionRefusal> {
+    refusals_from_standings(&classify_deferred_discovery_rows(deferred_rows))
+}
+
+fn refusals_from_standings(rows: &[DeferredRowStanding]) -> Vec<DeferredAdmissionRefusal> {
+    rows.iter()
+        .filter_map(|row| {
+            let cause = match row.standing {
+                WitnessExecutionStanding::UnclassifiedPathDeferral => {
+                    DeferredAdmissionCause::UnclassifiedPathDeferral
+                }
+                WitnessExecutionStanding::UnexecutedDeferredWitness => {
+                    DeferredAdmissionCause::UnexecutedDeferredWitness
+                }
+                WitnessExecutionStanding::HasExecutingConsumer
+                | WitnessExecutionStanding::LegacyFrozenPathDeferral => return None,
+            };
+            Some(DeferredAdmissionRefusal {
+                entry: row.entry.clone(),
+                function: row.function.clone(),
+                cause,
+            })
+        })
+        .collect()
+}
+
+/// The tolerated-but-uncovered population, counted so the debt is observable in the receipt rather
+/// than hidden inside a green gate. This is the number that must fall to zero, and it is a COUNT
+/// OF A DERIVED SET rather than a stored literal — nothing asserts it against a number.
+pub fn count_legacy_frozen_debt_rows(rows: &[DeferredRowStanding]) -> usize {
+    rows.iter()
+        .filter(|r| r.standing == WitnessExecutionStanding::LegacyFrozenPathDeferral)
+        .count()
 }
 
 /// The second direction of the identity join: a frozen row whose witness the tree no longer
@@ -16628,12 +16709,15 @@ fn eprintln_deferred_discovery_rows(rows: &[DeferredDiscoveryRow]) {
         return;
     }
     let live = rows.iter().filter(|r| r.reads_live_tree).count();
+    let frozen_debt = count_legacy_frozen_debt_rows(&classify_deferred_discovery_rows(rows));
     let ts = floor_ts();
     eprintln!(
         "{ts} [deferred-discovery] {} witness row(s) excluded from per-PR discovery \
-         ({} declare ReadsLiveTree) — counted, not silent; run via long-lane / local recipe",
+         ({} declare ReadsLiveTree, {} are frozen legacy debt with NO executing consumer — \
+         tolerated by the migration ratchet, not covered) — counted, not silent",
         rows.len(),
-        live
+        live,
+        frozen_debt
     );
     for row in rows.iter().take(8) {
         eprintln!(
@@ -23173,18 +23257,35 @@ mod node_frontier_plumbing_controls {
         );
     }
 
-    // Phase 0(b) admission invariant: every deferred witness row names an executing consumer.
+    // The live floor gate, and the claim is deliberately NOT "every deferred row has a consumer" —
+    // that is what the first shape of this test asserted, and it was false the moment the freeze
+    // started tolerating rows. What holds is: no row REFUSES, and the tolerated population is
+    // counted as UNCOVERED rather than folded into the green.
     #[test]
-    fn witness_admission_deferred_rows_have_consumers() {
+    fn witness_admission_deferred_rows_refuse_none_and_frozen_debt_is_counted_uncovered() {
         let ws = workspace_root();
         std::env::set_current_dir(&ws).expect("chdir workspace");
         let roots = setup_roots(&ws);
         let excludes = super::witness_exclusion_substrings();
         let deferred =
             super::collect_deferred_discovery_rows(&roots, &excludes).expect("deferred scan");
-        let orphans = super::collect_unexecuted_deferred_witnesses(&deferred);
+        let standings = super::classify_deferred_discovery_rows(&deferred);
+        let orphans = super::refusals_from_standings(&standings);
         super::refuse_unexecuted_deferred_witnesses(&orphans)
-            .unwrap_or_else(|e| panic!("live deferred corpus must admit every row: {e}"));
+            .unwrap_or_else(|e| panic!("live deferred corpus must contain no refusing row: {e}"));
+        let debt = super::count_legacy_frozen_debt_rows(&standings);
+        assert!(
+            debt > 0,
+            "the frozen legacy debt is non-empty today; a zero here means the freeze stopped \
+             being consulted, not that the debt was paid"
+        );
+        assert!(
+            standings
+                .iter()
+                .filter(|r| r.standing == super::WitnessExecutionStanding::LegacyFrozenPathDeferral)
+                .all(|r| !super::witness_standing_has_executing_consumer(r.standing)),
+            "every tolerated row must answer NO to the coverage question"
+        );
         let normalize = deferred
             .iter()
             .find(|r| r.function == "self_host_03_normalize_behavioral_receipt_holds")
@@ -23232,13 +23333,13 @@ mod node_frontier_plumbing_controls {
     fn unfrozen_offline_path_row_refuses_as_unclassified_path_deferral() {
         let offline = vec!["test/claim/long/".to_string()];
         let row = long_lane_row("relocated_matrix_holds");
-        let refused = super::collect_unexecuted_deferred_witnesses_in(
+        let refused = super::refusals_from_standings(&super::classify_deferred_discovery_rows_in(
             std::slice::from_ref(&row),
             &[],
             &offline,
             &[],
             &[],
-        );
+        ));
         assert_eq!(refused.len(), 1, "an unfrozen offline row must refuse");
         assert_eq!(
             refused[0].cause,
@@ -23252,7 +23353,7 @@ mod node_frontier_plumbing_controls {
             &row.entry,
             &row.function,
         )];
-        let admitted = super::collect_unexecuted_deferred_witnesses_in(
+        let standings = super::classify_deferred_discovery_rows_in(
             std::slice::from_ref(&row),
             &[],
             &offline,
@@ -23260,9 +23361,20 @@ mod node_frontier_plumbing_controls {
             &frozen,
         );
         assert!(
-            admitted.is_empty(),
-            "the same row inside the frozen population is admitted: {admitted:?}"
+            super::refusals_from_standings(&standings).is_empty(),
+            "the same row inside the frozen population does not refuse"
         );
+        // ...and it is TOLERATED, not COVERED. One success arm for both is the defect this split
+        // repaired: the floor may proceed while the coverage question still answers no.
+        assert_eq!(
+            standings[0].standing,
+            super::WitnessExecutionStanding::LegacyFrozenPathDeferral
+        );
+        assert!(
+            !super::witness_standing_has_executing_consumer(standings[0].standing),
+            "a frozen row must never read as covered"
+        );
+        assert_eq!(super::count_legacy_frozen_debt_rows(&standings), 1);
     }
 
     // A sibling function under the same frozen ENTRY is a different identity: the freeze is a
@@ -23275,13 +23387,13 @@ mod node_frontier_plumbing_controls {
             &frozen_row.entry,
             &frozen_row.function,
         )];
-        let refused = super::collect_unexecuted_deferred_witnesses_in(
+        let refused = super::refusals_from_standings(&super::classify_deferred_discovery_rows_in(
             &[long_lane_row("added_after_the_freeze_holds")],
             &[],
             &offline,
             &[],
             &frozen,
-        );
+        ));
         assert_eq!(refused.len(), 1);
         assert_eq!(
             refused[0].cause,
@@ -23298,13 +23410,13 @@ mod node_frontier_plumbing_controls {
             &row.entry,
             &row.function,
         )];
-        let refused = super::collect_unexecuted_deferred_witnesses_in(
+        let refused = super::refusals_from_standings(&super::classify_deferred_discovery_rows_in(
             &[row],
             &explicit,
             &["test/claim/long/".to_string()],
             &[],
             &[],
-        );
+        ));
         assert!(refused.is_empty(), "{refused:?}");
     }
 
@@ -23317,13 +23429,13 @@ mod node_frontier_plumbing_controls {
             exclude_reason: "test/fixture/floor_skip/".to_string(),
             reads_live_tree: false,
         };
-        let refused = super::collect_unexecuted_deferred_witnesses_in(
+        let refused = super::refusals_from_standings(&super::classify_deferred_discovery_rows_in(
             &[row],
             &[],
             &[],
             &["test/fixture/floor_skip/".to_string()],
             &[],
-        );
+        ));
         assert!(refused.is_empty(), "{refused:?}");
     }
 

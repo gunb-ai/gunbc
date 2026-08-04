@@ -53,9 +53,11 @@ import gunbc.witness_deferral_freeze {
   frozen_path_deferrals,
   frozen_path_deferral_covers_in
 }
+import std.types { Int }
 import std.witness_admission {
   WitnessConsumerCadence,
-  WitnessAdmissionRefusal,
+  WitnessExecutionStanding,
+  FrozenBaselineStanding,
   DiscoverySelection,
   FalsifierSelfHostWet,
   FalsifierRehomedBinWet,
@@ -65,9 +67,14 @@ import std.witness_admission {
   OfflineLocalRecipe,
   FixtureExplicitRoster,
   NoConsumer,
-  WitnessAdmissionHolds,
+  WitnessHasExecutingConsumer,
+  LegacyFrozenPathDeferral,
   UnexecutedDeferredWitness,
-  UnclassifiedPathDeferral
+  UnclassifiedPathDeferral,
+  FrozenBaselineDebtAllowed,
+  FrozenBaselineDebtShrank,
+  FrozenBaselineDebtGrew,
+  FrozenBaselineDebtStale
 }
 
 fn schedule_row_matches(
@@ -178,37 +185,37 @@ fn witness_consumer_cadence_for_row(
 
 data witness_path_policy_admission_wall_note: String = "THE ARM THIS WALL CLOSED, and why it needed a wall rather than a stronger reconciliation. witness_consumer_cadence_for_row answers WHICH policy claims a row; this function answers whether that policy is an admissible answer, and until 2026-08-04 it conflated the two by refusing only NoConsumer. So OfflineLocalRecipe — the verdict a broad directory pattern produces — was accepted unconditionally, and moving a file under such a directory both removed it from per-PR discovery and satisfied admission. The exact-admission authority already forbids exactly this shape: explicit_witness_admission_cadence_executes refuses OfflineLocalRecipe on an admission row so that an admission cannot execute nowhere. The path side now meets the same bar, with the frozen legacy population (gunbc.witness_deferral_freeze) as the only exemption and that exemption itself joined by identity in both directions.
 
-READING ORDER IS LOAD-BEARING. The explicit rosters are consulted FIRST and are total for the rows they cover, so this path-policy fold decides only rows no roster claims — the same precedence witness_row_excluded_two_kinds_note states for exclusion. One consequence is deliberate and is NOT closed here: consumer_for_explicit_rosters maps a falsifier_self_host_wet row to OfflineLocalRecipe while falsifier_self_host_wet_cadence_active is false, and that reaches WitnessAdmissionHolds through the explicit arm. That is the same shape one layer in — a declared cadence that currently executes nothing — but it is a counted roster with a named owner and a dated trigger (falsifier_self_host_wet_build_verification_cadence_note) rather than a directory admitting silently, so it is adjacent scope, named here so it is not mistaken for covered."
+READING ORDER IS LOAD-BEARING. The explicit rosters are consulted FIRST and are total for the rows they cover, so this path-policy fold decides only rows no roster claims — the same precedence witness_row_excluded_two_kinds_note states for exclusion. One consequence is deliberate and is NOT closed here: consumer_for_explicit_rosters maps a falsifier_self_host_wet row to OfflineLocalRecipe while falsifier_self_host_wet_cadence_active is false, and that reaches WitnessHasExecutingConsumer through the explicit arm. That is the same shape one layer in — a declared cadence that currently executes nothing — but it is a counted roster with a named owner and a dated trigger (falsifier_self_host_wet_build_verification_cadence_note) rather than a directory admitting silently, so it is adjacent scope, named here so it is not mistaken for covered."
 
-fn witness_path_policy_admission_refusal_in(
+fn witness_path_policy_execution_standing_in(
   entry: String,
   function: String,
   excluded_from_discovery: Bool,
   offline: List<String>,
   fixture: List<String>,
   frozen: List<FrozenPathDeferral>
-) -> WitnessAdmissionRefusal {
+) -> WitnessExecutionStanding {
   if !excluded_from_discovery {
-    WitnessAdmissionHolds
+    WitnessHasExecutingConsumer { cadence: DiscoverySelection }
   } else if path_matches_any_substring(path: entry, subs: offline) {
     if frozen_path_deferral_covers_in(rows: frozen, entry: entry, function: function) {
-      WitnessAdmissionHolds
+      LegacyFrozenPathDeferral { entry: entry, function: function }
     } else {
       UnclassifiedPathDeferral { entry: entry, function: function }
     }
   } else if path_matches_any_substring(path: entry, subs: fixture) {
-    WitnessAdmissionHolds
+    WitnessHasExecutingConsumer { cadence: FixtureExplicitRoster }
   } else {
     UnexecutedDeferredWitness { entry: entry, function: function }
   }
 }
 
-fn witness_path_policy_admission_refusal(
+fn witness_path_policy_execution_standing(
   entry: String,
   function: String,
   excluded_from_discovery: Bool
-) -> WitnessAdmissionRefusal {
-  witness_path_policy_admission_refusal_in(
+) -> WitnessExecutionStanding {
+  witness_path_policy_execution_standing_in(
     entry: entry,
     function: function,
     excluded_from_discovery: excluded_from_discovery,
@@ -237,23 +244,57 @@ fn witness_commit_roster_enrolled(entry: String, function: String) -> Bool {
     )
 }
 
-fn witness_admission_refusal_for_row(
+fn witness_execution_standing_for_row(
   entry: String,
   function: String,
   excluded_from_discovery: Bool
-) -> WitnessAdmissionRefusal {
-  match consumer_for_explicit_rosters(entry: entry, function: function) {
+) -> WitnessExecutionStanding {
+  let explicit = consumer_for_explicit_rosters(entry: entry, function: function)
+  match explicit {
     NoConsumer =>
       if witness_commit_roster_enrolled(entry: entry, function: function) {
-        WitnessAdmissionHolds
+        WitnessHasExecutingConsumer { cadence: DiscoverySelection }
       } else {
-        witness_path_policy_admission_refusal(
+        witness_path_policy_execution_standing(
           entry: entry,
           function: function,
           excluded_from_discovery: excluded_from_discovery
         )
       }
-    _ => WitnessAdmissionHolds
+    _ => WitnessHasExecutingConsumer { cadence: explicit }
+  }
+}
+
+data witness_coverage_versus_floor_gate_note: String = "THE TWO GATES, and why they must not be one function. witness_has_executing_consumer is the COVERAGE question — is this behavior actually exercised anywhere — and it admits exactly one arm, so a frozen legacy row answers NO and every downstream reader of coverage gets no rather than an admission success. witness_floor_admission_holds is the MIGRATION RATCHET — may the floor proceed with this row today — and it additionally tolerates LegacyFrozenPathDeferral while the baseline axis holds, so the tree stays green through the migration without anything claiming the frozen population executes. Collapsing them is precisely the defect this split repaired: the first shape returned one success arm for both and then read the green gate as evidence of coverage."
+
+fn witness_has_executing_consumer(standing: WitnessExecutionStanding) -> Bool {
+  match standing {
+    WitnessHasExecutingConsumer { cadence: _ } => true
+    LegacyFrozenPathDeferral { entry: _, function: _ } => false
+    UnclassifiedPathDeferral { entry: _, function: _ } => false
+    UnexecutedDeferredWitness { entry: _, function: _ } => false
+  }
+}
+
+fn frozen_baseline_permits_legacy_debt(baseline: FrozenBaselineStanding) -> Bool {
+  match baseline {
+    FrozenBaselineDebtAllowed => true
+    FrozenBaselineDebtShrank => true
+    FrozenBaselineDebtGrew { added_count: _ } => false
+    FrozenBaselineDebtStale { stale_count: _ } => false
+  }
+}
+
+fn witness_floor_admission_holds(
+  standing: WitnessExecutionStanding,
+  baseline: FrozenBaselineStanding
+) -> Bool {
+  match standing {
+    WitnessHasExecutingConsumer { cadence: _ } => true
+    LegacyFrozenPathDeferral { entry: _, function: _ } =>
+      frozen_baseline_permits_legacy_debt(baseline: baseline)
+    UnclassifiedPathDeferral { entry: _, function: _ } => false
+    UnexecutedDeferredWitness { entry: _, function: _ } => false
   }
 }
 
@@ -290,19 +331,35 @@ fn witness_row_excluded_from_discovery(entry: String, function: String) -> Bool 
     || path_matches_any_substring(path: entry, subs: witness_exclusion_substrings())
 }
 
-fn witness_admission_holds_for_row(entry: String, function: String) -> Bool {
-  match witness_admission_refusal_for_row(
+fn witness_execution_standing_for_live_row(
+  entry: String,
+  function: String
+) -> WitnessExecutionStanding {
+  witness_execution_standing_for_row(
     entry: entry,
     function: function,
     excluded_from_discovery: witness_row_excluded_from_discovery(
       entry: entry,
       function: function
     )
-  ) {
-    WitnessAdmissionHolds => true
-    UnexecutedDeferredWitness { entry: _, function: _ } => false
-    UnclassifiedPathDeferral { entry: _, function: _ } => false
-  }
+  )
+}
+
+fn witness_has_executing_consumer_for_row(entry: String, function: String) -> Bool {
+  witness_has_executing_consumer(
+    standing: witness_execution_standing_for_live_row(entry: entry, function: function)
+  )
+}
+
+fn witness_floor_admission_holds_for_row(
+  entry: String,
+  function: String,
+  baseline: FrozenBaselineStanding
+) -> Bool {
+  witness_floor_admission_holds(
+    standing: witness_execution_standing_for_live_row(entry: entry, function: function),
+    baseline: baseline
+  )
 }
 
 fn witness_admission_manifest_entry_key(entry: String, function: String) -> String {

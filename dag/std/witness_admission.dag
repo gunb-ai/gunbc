@@ -14,11 +14,24 @@ type WitnessConsumerCadence
   | FixtureExplicitRoster
   | NoConsumer
 
-data witness_admission_refusal_cause_split_note: String = "TWO CAUSES, NOT ONE, because their remedies differ and collapsing them would hide the larger population behind the rarer one. UnexecutedDeferredWitness is a row excluded from discovery that matches NO policy at all — nothing, not even a directory, claims it — and the remedy is to name a cadence or delete the witness. UnclassifiedPathDeferral is a row a broad OfflineLocalRecipe path policy DID claim, which until 2026-08-04 was accepted as an answer: a directory deciding an admission question, answering yes unconditionally, so relocating a file under such a path removed it from per-PR discovery AND satisfied admission in one move. Its remedy is different — an exact function-grain admission naming an executing cadence, or freeze membership while the legacy population migrates (gunbc.witness_deferral_freeze). One arm would have made the second class read as the first, and the first is nearly empty while the second was 732 identities."
+data witness_execution_standing_axis_note: String = "TWO INDEPENDENT AXES, because ALLOWED TO REMAIN and HAS AN EXECUTING CONSUMER are different facts and one success arm cannot carry both (operator ruling on gunbc#7804, 2026-08-04). The first shape of the freeze wall returned WitnessAdmissionHolds — the same arm an executing consumer returns — for a frozen legacy row, and then reported the live gate green as evidence that every current row is admitted. But a frozen row has NO executing consumer; that is the entire content of its debt. Freezing establishes that the unexecuted hole existed at the cut and cannot grow. It does not establish coverage, and returning the success arm made the same fact answer differently depending on which door it entered: exact function-grain admission correctly REFUSES OfflineLocalRecipe because a local recipe is not an executing cadence, while path policy was returning success for exactly that.
 
-type WitnessAdmissionRefusal
-  = WitnessAdmissionHolds
-  | UnexecutedDeferredWitness { entry: String, function: String }
+AXIS ONE — WitnessExecutionStanding, what actually runs this witness. WitnessHasExecutingConsumer is the only arm that means covered, and it carries WHICH cadence so the claim is checkable rather than a bare yes. LegacyFrozenPathDeferral means the identity is in the frozen baseline: tolerated by the migration ratchet, NOT covered, and anything downstream asking whether the behavior is covered must receive no from this arm. UnclassifiedPathDeferral is a row a broad OfflineLocalRecipe path policy claims but the freeze does not — the forward hole, refused. UnexecutedDeferredWitness is a row nothing claims at all; its remedy is to name a cadence or delete the witness, and it is nearly empty while the path-policy class is in the hundreds, which is why one arm would have hidden the larger population behind the rarer one.
+
+AXIS TWO — FrozenBaselineStanding, whether the migration ratchet still holds, a property of the ROSTER rather than of any row. Allowed and Shrank both permit the tolerated arm; Grew and Stale refuse regardless of any individual row, because a baseline that grew is the escape hatch reopening and a baseline naming a departed witness is an exemption the next witness to take that name inherits.
+
+THE GATES DERIVE, and they are deliberately different: the coverage question admits ONLY WitnessHasExecutingConsumer, so seven hundred dark witnesses never read as covered; the floor gate additionally tolerates LegacyFrozenPathDeferral while axis two holds, so the tree stays green under the ratchet without anything claiming those rows execute."
+
+type WitnessExecutionStanding
+  = WitnessHasExecutingConsumer { cadence: WitnessConsumerCadence }
+  | LegacyFrozenPathDeferral { entry: String, function: String }
   | UnclassifiedPathDeferral { entry: String, function: String }
+  | UnexecutedDeferredWitness { entry: String, function: String }
+
+type FrozenBaselineStanding
+  = FrozenBaselineDebtAllowed
+  | FrozenBaselineDebtShrank
+  | FrozenBaselineDebtGrew { added_count: Int }
+  | FrozenBaselineDebtStale { stale_count: Int }
 
 data witness_admission_predicate_dissolution_note: String = "witness_consumer_cadence_is_live / witness_admission_refusal_is_holds dissolved per review 39760 — workflow and tests match the coproducts directly (integration 39758 scaffold superseded on this branch)."

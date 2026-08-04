@@ -1,8 +1,10 @@
 module dag.test.claim.witness_deferral_freeze_witness
 
 import v2.workflow.witness_admission {
-  witness_path_policy_admission_refusal_in,
-  witness_admission_holds_for_row,
+  witness_path_policy_execution_standing_in,
+  witness_has_executing_consumer,
+  witness_has_executing_consumer_for_row,
+  witness_floor_admission_holds,
   frozen_path_deferrals_all_discovered
 }
 import gunbc.witness_deferral_freeze {
@@ -13,14 +15,24 @@ import gunbc.witness_deferral_freeze {
   frozen_path_deferrals_well_formed
 }
 import std.witness_admission {
-  WitnessAdmissionRefusal,
-  WitnessAdmissionHolds,
+  WitnessExecutionStanding,
+  FrozenBaselineStanding,
+  WitnessHasExecutingConsumer,
+  LegacyFrozenPathDeferral,
   UnexecutedDeferredWitness,
-  UnclassifiedPathDeferral
+  UnclassifiedPathDeferral,
+  FrozenBaselineDebtAllowed,
+  FrozenBaselineDebtGrew
 }
 import std.realization_schedule { ScheduleWitnessEntry, CorpusWitnessKind }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { String, List, Bool }
+import std.disposition { Disposition, Scaffold }
+import gunbc.cli_run_witness_deferral_freeze_scaffold {
+  cli_run_witness_deferral_freeze_scaffold,
+  cli_run_witness_deferral_freeze_dissolve_trigger,
+  cli_run_witness_deferral_freeze_loc_delta_basis
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -49,8 +61,8 @@ fn probe_frozen_roster() -> List<FrozenPathDeferral> {
   ]
 }
 
-fn probe_refusal(entry: String, function: String, frozen: List<FrozenPathDeferral>) -> WitnessAdmissionRefusal {
-  witness_path_policy_admission_refusal_in(
+fn probe_standing(entry: String, function: String, frozen: List<FrozenPathDeferral>) -> WitnessExecutionStanding {
+  witness_path_policy_execution_standing_in(
     entry: entry,
     function: function,
     excluded_from_discovery: true,
@@ -60,33 +72,36 @@ fn probe_refusal(entry: String, function: String, frozen: List<FrozenPathDeferra
   )
 }
 
-fn refusal_is_unclassified_path_deferral(r: WitnessAdmissionRefusal) -> Bool {
+fn standing_is_unclassified_path_deferral(r: WitnessExecutionStanding) -> Bool {
   match r {
     UnclassifiedPathDeferral { entry: _, function: _ } => true
     UnexecutedDeferredWitness { entry: _, function: _ } => false
-    WitnessAdmissionHolds => false
+    LegacyFrozenPathDeferral { entry: _, function: _ } => false
+    WitnessHasExecutingConsumer { cadence: _ } => false
   }
 }
 
-fn refusal_is_unexecuted_deferred(r: WitnessAdmissionRefusal) -> Bool {
+fn standing_is_unexecuted_deferred(r: WitnessExecutionStanding) -> Bool {
   match r {
     UnexecutedDeferredWitness { entry: _, function: _ } => true
     UnclassifiedPathDeferral { entry: _, function: _ } => false
-    WitnessAdmissionHolds => false
+    LegacyFrozenPathDeferral { entry: _, function: _ } => false
+    WitnessHasExecutingConsumer { cadence: _ } => false
   }
 }
 
-fn refusal_holds(r: WitnessAdmissionRefusal) -> Bool {
+fn standing_is_legacy_frozen(r: WitnessExecutionStanding) -> Bool {
   match r {
-    WitnessAdmissionHolds => true
+    LegacyFrozenPathDeferral { entry: _, function: _ } => true
     UnexecutedDeferredWitness { entry: _, function: _ } => false
     UnclassifiedPathDeferral { entry: _, function: _ } => false
+    WitnessHasExecutingConsumer { cadence: _ } => false
   }
 }
 
 test fn witness_deferral_freeze_unfrozen_offline_row_refuses() -> Bool {
-  refusal_is_unclassified_path_deferral(
-    r: probe_refusal(
+  standing_is_unclassified_path_deferral(
+    r: probe_standing(
       entry: probe_entry(),
       function: "relocated_matrix_holds",
       frozen: probe_frozen_roster()
@@ -94,25 +109,56 @@ test fn witness_deferral_freeze_unfrozen_offline_row_refuses() -> Bool {
   )
 }
 
-test fn witness_deferral_freeze_frozen_row_holds() -> Bool {
-  refusal_holds(
-    r: probe_refusal(
+data frozen_is_tolerated_not_covered_note: String = "THE CLAIM THIS PAIR SEPARATES, and the defect it exists to prevent from returning. A frozen row is TOLERATED by the migration ratchet and is NOT COVERED, and those are answered by two different gates over the same standing. The first shape of this wall returned one success arm for both, so a frozen row was indistinguishable from a witness with a real cadence and the live gate going green read as evidence that every current row is admitted — while every one of those rows still executed nowhere. Here the same standing answers NO to coverage and YES to the floor, and a third claim shows the floor's YES is conditional on the baseline axis rather than unconditional."
+
+test fn witness_deferral_freeze_frozen_row_is_not_covered() -> Bool {
+  !witness_has_executing_consumer(
+    standing: probe_standing(
       entry: probe_entry(),
       function: "already_frozen_holds",
       frozen: probe_frozen_roster()
     )
   )
+    && standing_is_legacy_frozen(
+      r: probe_standing(
+        entry: probe_entry(),
+        function: "already_frozen_holds",
+        frozen: probe_frozen_roster()
+      )
+    )
+}
+
+test fn witness_deferral_freeze_frozen_row_is_tolerated_by_the_floor() -> Bool {
+  witness_floor_admission_holds(
+    standing: probe_standing(
+      entry: probe_entry(),
+      function: "already_frozen_holds",
+      frozen: probe_frozen_roster()
+    ),
+    baseline: FrozenBaselineDebtAllowed
+  )
+}
+
+test fn witness_deferral_freeze_grown_baseline_withdraws_the_toleration() -> Bool {
+  !witness_floor_admission_holds(
+    standing: probe_standing(
+      entry: probe_entry(),
+      function: "already_frozen_holds",
+      frozen: probe_frozen_roster()
+    ),
+    baseline: FrozenBaselineDebtGrew { added_count: 1 }
+  )
 }
 
 test fn witness_deferral_freeze_empty_roster_refuses_the_same_row() -> Bool {
-  refusal_is_unclassified_path_deferral(
-    r: probe_refusal(entry: probe_entry(), function: "already_frozen_holds", frozen: [])
+  standing_is_unclassified_path_deferral(
+    r: probe_standing(entry: probe_entry(), function: "already_frozen_holds", frozen: [])
   )
 }
 
 test fn witness_deferral_freeze_fixture_path_is_unaffected() -> Bool {
-  refusal_holds(
-    r: probe_refusal(
+  witness_has_executing_consumer(
+    standing: probe_standing(
       entry: "dag/test/fixture/floor_skip/synthetic_control_test.dag",
       function: "floor_skip_control_holds",
       frozen: []
@@ -121,8 +167,8 @@ test fn witness_deferral_freeze_fixture_path_is_unaffected() -> Bool {
 }
 
 test fn witness_deferral_freeze_unclaimed_path_stays_unexecuted_deferred() -> Bool {
-  refusal_is_unexecuted_deferred(
-    r: probe_refusal(
+  standing_is_unexecuted_deferred(
+    r: probe_standing(
       entry: "dag/test/claim/synthetic_orphan_admission_witness_test.dag",
       function: "synthetic_orphan_no_consumer_holds",
       frozen: []
@@ -131,8 +177,8 @@ test fn witness_deferral_freeze_unclaimed_path_stays_unexecuted_deferred() -> Bo
 }
 
 test fn witness_deferral_freeze_included_row_is_never_refused() -> Bool {
-  refusal_holds(
-    r: witness_path_policy_admission_refusal_in(
+  witness_has_executing_consumer(
+    standing: witness_path_policy_execution_standing_in(
       entry: probe_entry(),
       function: "relocated_matrix_holds",
       excluded_from_discovery: false,
@@ -207,7 +253,7 @@ test fn witness_deferral_freeze_live_roster_is_well_formed() -> Bool {
 data commit_roster_consumer_control_note: String = "THE FALSE-POSITIVE CONTROL, and it caught a real one. A CommitWitnessClaim enrollment on an executing surface makes a witness run as an explicit entry, and explicit rows merge after discovery with no exclusion filter — so an enrolled witness under an offline path executes even though the path excludes it. The first revision of this wall did not read that authority and would have refused 31 such identities: fail-closed, and still a wrong answer. This pair is the discriminator, on a LIVE row rather than a fixture, because the defect was precisely that the live authority was unread: the identity below is admitted while being absent from the frozen population, so its admission can only be coming from its enrollment."
 
 test fn witness_deferral_freeze_commit_roster_enrollment_admits() -> Bool {
-  witness_admission_holds_for_row(
+  witness_has_executing_consumer_for_row(
     entry: "src/v2/test/claim/long/parse_table_memo_governed_witness_test.dag",
     function: "witness_content_key_subject_stable"
   )
@@ -218,4 +264,18 @@ test fn witness_deferral_freeze_commit_roster_row_is_not_frozen() -> Bool {
     entry: "src/v2/test/claim/long/parse_table_memo_governed_witness_test.dag",
     function: "witness_content_key_subject_stable"
   )
+}
+
+data rust_realization_disposition_note: String = "THE REALIZATION IS ACCOUNTED FOR, not just the policy. The .dag carriers above are the authority, but the seed realization in cli_run.rs is several hundred hand-maintained lines in the largest such wall in the program, and a modeled policy does not exempt its realization. gunbc.cli_run_witness_deferral_freeze_scaffold carries the typed Scaffold disposition, the measured landing LOC delta and the ordered dissolution sequence; this pair keeps that registration from becoming a file nobody reads by requiring the disposition to exist and to name a dissolution."
+
+test fn witness_deferral_freeze_rust_realization_is_declared_scaffold() -> Bool {
+  match cli_run_witness_deferral_freeze_scaffold {
+    Scaffold { dissolves_to: _, bind: _ } => true
+    _ => false
+  }
+}
+
+test fn witness_deferral_freeze_rust_realization_names_a_dissolution() -> Bool {
+  !(cli_run_witness_deferral_freeze_dissolve_trigger == "")
+    && !(cli_run_witness_deferral_freeze_loc_delta_basis == "")
 }
