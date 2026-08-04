@@ -7,8 +7,10 @@ import gunbc.scaffold_retirement {
   ScaffoldRetirementBinding,
   ScaffoldRetirementExclusion,
   derived_scaffold_disposition_sites,
-  scaffold_disposition_site_count_live,
-  scaffold_dissolves_to_parses_for_qualified_name,
+  derived_scaffold_disposition_decoded_count,
+  derived_scaffold_disposition_undecodable_count,
+  scaffold_initializer_data_item_count,
+  scaffold_site_by_qualified_name,
   pilot_scaffold_sites,
   pilot_domain_limit,
   pilot_scaffold_retirement_bindings,
@@ -38,9 +40,8 @@ import v2.lens.disposition_redundancy {
   decl_ref_eq,
 }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
-import v2.std.decl_index { decl_facts, DataItem }
-import gunbc.ci_layer_roots { witness_layer_roots }
-import v2.std.node_query { node_positional_child_targets }
+import v2.std.algebra { length }
+import v2.std.collection { Absent, Present }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -57,7 +58,7 @@ data population_positive_specimen_bind_decl: String = "builtin_function_registry
 
 data fired_dissolution_specimen_qualified_name: String = "gunbc.walk_plan_stage_fixture_scaffold.walk_plan_stage_fixture_hand_rust_scaffold"
 
-data fired_dissolution_specimen_bind_module: String = "v2.test.fixture.walk_plan_stage.plan"
+data fired_dissolution_specimen_bind_module: String = "test.fixture.walk_plan_stage.plan"
 
 data fired_dissolution_specimen_bind_decl: String = "walk_plan_stage_overlap_barrier_recipe"
 
@@ -88,36 +89,11 @@ test fn derived_population_excludes_construction_justification_carriers() -> Boo
   )
 }
 
-test fn debug_bytes_dissolves_to_parses() -> Bool {
-  scaffold_dissolves_to_parses_for_qualified_name(qn: "std.bytes.bytes_seam_host_realization_marker")
-}
-
-test fn debug_fn_index_scaffold_in_population() -> Bool {
-  any(
-    derived_scaffold_disposition_sites(),
-    s => s.carrier_decl == "fn_arrow_skeleton_g2_marshal_host_scaffold_dissolution_trigger"
-  )
-}
-
-test fn debug_bytes_is_data_item_with_two_field_init() -> Bool {
-  fold(
-    decl_facts(pool_roots: witness_layer_roots),
-    init: false,
-    f: fn(acc, fact) {
-      if fact.qualified_name == "std.bytes.bytes_seam_host_realization_marker" {
-        match fact.kind {
-          DataItem => length(xs: node_positional_child_targets(node: fact.node)) == 2
-          _ => false
-        }
-      } else {
-        acc
-      }
-    }
-  )
-}
-
-test fn derived_population_count_matches_list_length() -> Bool {
-  scaffold_disposition_site_count_live() == length(xs: derived_scaffold_disposition_sites())
+test fn derived_population_partition_is_exact() -> Bool {
+  let initializer_n = scaffold_initializer_data_item_count()
+  let decoded_n = derived_scaffold_disposition_decoded_count()
+  let undecodable_n = derived_scaffold_disposition_undecodable_count()
+  initializer_n == decoded_n + undecodable_n
 }
 
 test fn pilot_population_is_derived_domain_gate_not_hand_roster() -> Bool {

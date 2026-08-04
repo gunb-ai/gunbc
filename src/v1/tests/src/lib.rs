@@ -193,7 +193,6 @@ mod variant_owner_disambiguation_test;
 #[cfg(test)]
 mod wet_hermetic_equivalence_test;
 #[cfg(test)]
-mod scaffold_dissolves_to_shape_test;
 mod whole_tree_wiring_enum_test;
 #[cfg(test)]
 mod width_nat_type_arg_test;

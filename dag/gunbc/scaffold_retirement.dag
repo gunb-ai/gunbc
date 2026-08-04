@@ -58,6 +58,20 @@ type ScaffoldDispositionSite {
   dissolves_to: ConstructionMechanism
 }
 
+type ScaffoldSiteUndecodableCause
+  = ScaffoldDissolvesToUndecodable
+  | ScaffoldBindUndecodable
+
+type ScaffoldUndecodableSite {
+  qualified_name: String
+  cause: ScaffoldSiteUndecodableCause
+}
+
+type ScaffoldDispositionSiteDecode
+  = NotAScaffoldDisposition
+  | ScaffoldSiteDecoded { site: ScaffoldDispositionSite }
+  | ScaffoldSiteUndecodable { qualified_name: String, cause: ScaffoldSiteUndecodableCause }
+
 type ScaffoldRetirementBinding {
   scaffold: DeclarationRef
   obligation: RoadmapNodeIdentity
@@ -142,6 +156,22 @@ fn declaration_ref_from_string_lexemes(lexemes: List<String>) -> DeclarationRef?
         Absent => Absent
       }
     Absent => Absent
+  }
+}
+
+fn normalize_decl_module_path(module_path: String) -> String {
+  if module_path.starts_with(prefix: "v2.") {
+    module_path.substring(start: 3, end: module_path.length())
+  } else {
+    module_path
+  }
+}
+
+fn normalize_declaration_ref(bind: DeclarationRef) -> DeclarationRef {
+  DeclarationRef {
+    module_path: normalize_decl_module_path(module_path: bind.module_path),
+    decl_name: bind.decl_name,
+    field: bind.field,
   }
 }
 
@@ -357,61 +387,88 @@ fn bind_from_scaffold_body(body: Node) -> DeclarationRef? {
   }
 }
 
-fn scaffold_site_when_disposition_scaffold(
-  body_fact: DeclFact
-) -> ScaffoldDispositionSite? {
+fn scaffold_site_decode_when_data_item(body_fact: DeclFact) -> ScaffoldDispositionSiteDecode {
   match node_is_scaffold_initializer(body: body_fact.node) {
-    false => Absent
+    false => NotAScaffoldDisposition
     true =>
       match dissolves_to_from_scaffold_body(body: body_fact.node) {
         Present { value: dissolves_to } =>
           match bind_from_scaffold_body(body: body_fact.node) {
             Present { value: bind } =>
-              Present {
-                value: ScaffoldDispositionSite {
+              ScaffoldSiteDecoded {
+                site: ScaffoldDispositionSite {
                   qualified_name: body_fact.qualified_name,
                   carrier_module: decl_fact_carrier_module(fact: body_fact),
                   carrier_decl: body_fact.name,
                   rel_path: body_fact.rel_path,
-                  bind: bind,
+                  bind: normalize_declaration_ref(bind: bind),
                   dissolves_to: dissolves_to,
                 }
               }
-            Absent => Absent
+            Absent =>
+              ScaffoldSiteUndecodable {
+                qualified_name: body_fact.qualified_name,
+                cause: ScaffoldBindUndecodable,
+              }
           }
-        Absent => Absent
+        Absent =>
+          ScaffoldSiteUndecodable {
+            qualified_name: body_fact.qualified_name,
+            cause: ScaffoldDissolvesToUndecodable,
+          }
       }
   }
 }
 
-fn scaffold_site_from_body_fact(
-  body_fact: DeclFact
-) -> ScaffoldDispositionSite? {
+fn scaffold_site_decode_from_body_fact(body_fact: DeclFact) -> ScaffoldDispositionSiteDecode {
   match body_fact.kind {
-    DataItem => scaffold_site_when_disposition_scaffold(body_fact: body_fact)
-    FnItem => Absent
-    FuncItem => Absent
-    TypeItem => Absent
-    ServiceItem => Absent
-    OtherItem => Absent
+    DataItem => scaffold_site_decode_when_data_item(body_fact: body_fact)
+    FnItem => NotAScaffoldDisposition
+    FuncItem => NotAScaffoldDisposition
+    TypeItem => NotAScaffoldDisposition
+    ServiceItem => NotAScaffoldDisposition
+    OtherItem => NotAScaffoldDisposition
   }
 }
 
-fn scaffold_dissolves_to_parses_for_qualified_name(qn: String) -> Bool {
+fn scaffold_initializer_data_item_count() -> Int {
   fold(
     decl_facts(pool_roots: witness_layer_roots),
-    init: false,
+    init: 0,
     f: fn(acc, fact) {
-      if fact.qualified_name == qn {
-        match dissolves_to_from_scaffold_body(body: fact.node) {
-          Present { value: _ } => true
-          Absent => false
-        }
-      } else {
-        acc
+      match fact.kind {
+        DataItem =>
+          if node_is_scaffold_initializer(body: fact.node) {
+            acc + 1
+          } else {
+            acc
+          }
+        _ => acc
       }
     }
   )
+}
+
+fn derived_scaffold_disposition_undecodable() -> List<ScaffoldUndecodableSite> {
+  fold(
+    decl_facts(pool_roots: witness_layer_roots),
+    init: [],
+    f: fn(acc, fact) {
+      match scaffold_site_decode_from_body_fact(body_fact: fact) {
+        ScaffoldSiteUndecodable { qualified_name: qn, cause: cause } =>
+          append(acc, [ScaffoldUndecodableSite { qualified_name: qn, cause: cause }])
+        _ => acc
+      }
+    }
+  )
+}
+
+fn derived_scaffold_disposition_decoded_count() -> Int {
+  length(xs: derived_scaffold_disposition_sites())
+}
+
+fn derived_scaffold_disposition_undecodable_count() -> Int {
+  length(xs: derived_scaffold_disposition_undecodable())
 }
 
 fn derived_scaffold_disposition_sites() -> List<ScaffoldDispositionSite> {
@@ -420,16 +477,12 @@ fn derived_scaffold_disposition_sites() -> List<ScaffoldDispositionSite> {
     decl_facts(pool_roots: roots),
     init: [],
     f: fn(acc, fact) {
-      match scaffold_site_from_body_fact(body_fact: fact) {
-        Present { value: site } => append(acc, [site])
-        Absent => acc
+      match scaffold_site_decode_from_body_fact(body_fact: fact) {
+        ScaffoldSiteDecoded { site: site } => append(acc, [site])
+        _ => acc
       }
     }
   )
-}
-
-fn scaffold_disposition_site_count_live() -> Int {
-  length(xs: derived_scaffold_disposition_sites())
 }
 
 fn scaffold_site_by_qualified_name(
