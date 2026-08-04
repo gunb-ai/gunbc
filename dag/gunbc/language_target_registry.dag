@@ -121,6 +121,31 @@ data unregistered_target_findings: List<UnregisteredTargetFinding> = [
   }
 ]
 
+data legacy_frontier_label_fusion_note: String = "FILED, NOT FIXED (direction from the lane owner, 2026-08-04). These are findings about the PROSE self-host frontier table, whose rows the per-subject carriers are meant to replace. They are carried as typed rows rather than prose because the point of filing them is that they are COUNTABLE and joinable during that migration — a paragraph describing a fused label cannot be enumerated, and this table is exactly what someone migrating the rows will need to consult. WHY THEY MATTER MORE TOGETHER THAN SEPARATELY: the machine_code coproduct fuses three ISAs in the TYPE layer, and the frontier table independently fuses the same targets in its LABEL layer. One defect visible at two layers is stronger evidence than either sighting alone, because it shows the fusion was not an artifact of how one carrier happened to be written. The targets named here ARE registered and correctly grounded — nothing about their subjects is in doubt; what is defective is the legacy label that a migration would otherwise match them by."
+
+type LegacyLabelFinding {
+  legacy_label: String
+  distinct_subjects_under_it: String
+  consequence: String
+}
+
+data legacy_frontier_label_findings: List<LegacyLabelFinding> = [
+  LegacyLabelFinding {
+    legacy_label: "cpp — Phase-0-C / cpp — full C target",
+    distinct_subjects_under_it: "c_language (ISO/IEC 9899) and cpp_language (ISO/IEC 14882)",
+    consequence: "The frontier table carries two rows both labelled 'cpp' for what are two SEPARATELY STANDARDISED languages with different committees, WG14 and WG21. A migration matching rows to subjects by label would either merge C into C++ or have to guess from the row's prose which one 'Phase-0-C' meant. Both subjects are registered here with their own citations, so the fix at migration time is to match on the subject, never on this label."
+  },
+  LegacyLabelFinding {
+    legacy_label: "machine_code / ptx",
+    distinct_subjects_under_it: "ptx_language (NVIDIA PTX ISA) and riscv_isa (RISC-V International), plus the unregistered x86-64 and Aarch64",
+    consequence: "One label spans a GPU virtual ISA and at least three physical machine architectures. PTX is explicitly a virtual ISA translated at install time to a target-specific instruction set, so it is not even the same KIND of thing as the others. This is the machine_code coproduct's fusion showing up again in the prose layer; see machine_code_fusion_note for the type-layer sighting."
+  }
+]
+
+fn legacy_frontier_label_finding_count() -> Int {
+  fold(legacy_frontier_label_findings, init: 0, f: fn(acc, r) { acc + 1 })
+}
+
 fn unregistered_target_finding_count() -> Int {
   fold(unregistered_target_findings, init: 0, f: fn(acc, r) { acc + 1 })
 }

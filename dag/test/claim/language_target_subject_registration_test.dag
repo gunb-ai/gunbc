@@ -26,6 +26,7 @@ import gunbc.language_target_registry {
   language_target_projections,
   unregistered_target_findings,
   unregistered_target_finding_count,
+  legacy_frontier_label_findings,
   UnregisteredTargetFinding,
   TargetNonRegistrationCause,
   UpstreamAuthorityUnreadable,
@@ -188,4 +189,13 @@ test fn red_empty_cause_fields_are_detected() -> Bool {
     UpstreamAuthorityUnreadable { attempted_locator: l, observed: o } => l != "" && o != ""
     SurfaceFusesIndependentSubjects { surface_module: m, fused_subjects: fs } => m != "" && fs != ""
   }
+}
+
+data legacy_label_finding_note: String = "The filed legacy-label findings are asserted NON-EMPTY and fully populated, so a row cannot be filed as a hollow placeholder. This is deliberately a weak assertion about strong content: the findings describe a defect in a prose table this change does not touch, so there is nothing here to prove green by execution — what the assertion prevents is a row that names a label while saying nothing about which subjects it fuses or why that matters, which is how a filed finding quietly becomes a checkbox."
+
+test fn filed_legacy_label_findings_are_populated() -> Bool {
+  (legacy_frontier_label_findings |> count) > 0
+    && fold(legacy_frontier_label_findings, init: true, f: fn(acc, r) {
+         acc && r.legacy_label != "" && r.distinct_subjects_under_it != "" && r.consequence != ""
+       })
 }
