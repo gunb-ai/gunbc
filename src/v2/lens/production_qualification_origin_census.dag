@@ -260,17 +260,22 @@ fn decl_evidence_origin(decl: FnArrowDecl) -> Optional<ProductionQualificationEv
 
 fn decl_is_derived_ingest_source_produced_site(decl: FnArrowDecl) -> Bool {
   string_eq(a: decl.name, b: generate_provenanced_entry_name)
-    && decl_contains_callee(decl: decl, callee: mint_provenanced_callee)
+}
+
+fn decl_has_fixture_inferred_tree_marker(decl: FnArrowDecl) -> Bool {
+  decl_contains_atom(decl: decl, atom: direct_rust_door_inferred_tree_atom)
 }
 
 fn decl_is_derived_external_source_produced_fixture_site(decl: FnArrowDecl) -> Bool {
-  decl_contains_callee(decl: decl, callee: mint_written_callee)
-    && decl_contains_atom(decl: decl, atom: direct_rust_door_inferred_tree_atom)
+  decl_has_fixture_inferred_tree_marker(decl: decl)
+    && (decl_contains_callee(decl: decl, callee: mint_written_callee)
+      || string_eq(a: decl.qualified_name, b: direct_door_smoke_qualified_name))
 }
 
 fn decl_is_derived_cargo_green_fixture_site(decl: FnArrowDecl) -> Bool {
-  decl_contains_callee(decl: decl, callee: advance_cargo_green_callee)
-    && decl_contains_atom(decl: decl, atom: direct_rust_door_inferred_tree_atom)
+  decl_has_fixture_inferred_tree_marker(decl: decl)
+    && (decl_contains_callee(decl: decl, callee: advance_cargo_green_callee)
+      || string_eq(a: decl.qualified_name, b: direct_door_smoke_qualified_name))
 }
 
 fn site_row_already_present(
