@@ -41,6 +41,16 @@ import gunbc.repository_census_observation {
   repository_census_observation_identity_eq,
 }
 import gunbc.guarantee_measurement { MeasurementRevision, GitRevision }
+import gunbc.census_representability_receipt {
+  ReviewExecutionReceipt,
+  ReviewExecutionOutcome,
+  WitnessPopulationAllGreen,
+  WitnessPopulationFailed,
+  WitnessPopulationNotRun,
+  language_residue_representability_receipt,
+  review_execution_outcome_is_green,
+  review_execution_witness_count,
+}
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -304,4 +314,24 @@ test fn witness_the_same_residue_rows_under_a_narrower_population_are_a_new_obse
   let dag_only_rows = repository_census_row_count(observation: dag_only)
   repo_wide_rows == dag_only_rows
     && !repository_census_observation_identity_eq(left: repo_wide, right: dag_only)
+}
+
+data representability_receipt_witness_note: String = "THE RECEIPT IS ASSERTED, NOT MERELY AUTHORED — AND IT IS DELIBERATELY NOT JOINED TO THIS FILE'S CURRENT WITNESS COUNT. The obvious second witness would check that the receipt's witness_count equals the number of test functions declared here, and that check would be wrong for the same reason the ruling exists: the receipt describes a run at a PINNED TREE, and this file is whatever it is now. Joining a revision-scoped observation to a live population re-creates the mutable present-tense fact one level in, and it would red on any honest edit to this file while saying nothing about whether the recorded run happened. What is asserted instead is the fold that reads the outcome — that green means green, and that a failed outcome is not read as green — which is a property of the receipt shape rather than of a moving tree."
+
+test fn witness_the_representability_receipt_records_a_green_outcome() -> Bool {
+  review_execution_outcome_is_green(
+    outcome: language_residue_representability_receipt.outcome,
+  )
+}
+
+test fn witness_a_failed_outcome_is_not_read_as_green() -> Bool {
+  !review_execution_outcome_is_green(
+    outcome: WitnessPopulationFailed { witness_count: 8, failed_count: 1 },
+  )
+}
+
+test fn witness_an_unrun_population_is_not_read_as_green() -> Bool {
+  !review_execution_outcome_is_green(
+    outcome: WitnessPopulationNotRun { cause: "harness unavailable" as NonEmptyStr },
+  )
 }

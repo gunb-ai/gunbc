@@ -1,0 +1,59 @@
+module gunbc.census_representability_receipt
+
+import std.types { String, NonEmptyStr, Bool, Int, List, Timestamp }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.guarantee_measurement { MeasurementRevision, GitRevision }
+
+data review_execution_receipt_note: String = "AN EXACT SHA IS AN OBSERVATION, NOT A STATUS (operator ruling 2026-08-04). A pull-request body sentence naming a head commit is a second representation of something GitHub already owns and answers live, and it goes stale the moment anyone pushes — including a push that only amends a comment. Worse, it goes stale SILENTLY: the sentence still reads as a present-tense fact about the branch while describing a commit the branch no longer points at, which is the same shape as a census number that outlived the population it counted. The repair is not to keep the sentence updated, because a fact that must be maintained by hand to stay true is exactly the redundancy DESIGN section 2 removes. It is to stop writing present-tense head claims and write REVISION-SCOPED OBSERVATIONS instead: this receipt says what was executed, against which base, head and tree, by which harness, over which witness population, and with what outcome. That statement stays true forever about that head, and never pretends to describe whatever the branch becomes."
+
+data review_execution_receipt_scope_note: String = "WHAT A RECEIPT DOES NOT ESTABLISH. It records that a named harness was run over a named witness population at a named tree and reports the outcome it produced. It does not establish that the harness was the right one, that the population was complete, or that a green outcome means the underlying claim is true — those are the coverage and inference-ceiling questions CENSUS-0B answers, and a receipt is an input to them rather than a substitute. It also does not establish that the run happened: this row is authored from an executed run by the author who ran it, so its own rung is a recorded observation, not a producer-side proof. Naming that limit here rather than in prose beside the number is deliberate; the receipt is only worth having if it is honest about being a record."
+
+type ReviewExecutionOutcome
+  = WitnessPopulationAllGreen { witness_count: Int }
+  | WitnessPopulationFailed { witness_count: Int, failed_count: Int }
+  | WitnessPopulationNotRun { cause: NonEmptyStr }
+
+type ReviewExecutionReceipt {
+  subject: DeclarationRef
+  pull_request: NonEmptyStr
+  base_revision: MeasurementRevision
+  head_revision: MeasurementRevision
+  tree_revision: MeasurementRevision
+  harness: NonEmptyStr
+  observed_on: Timestamp
+  witness_entry: NonEmptyStr
+  outcome: ReviewExecutionOutcome
+}
+
+fn review_execution_outcome_is_green(outcome: ReviewExecutionOutcome) -> Bool {
+  match outcome {
+    WitnessPopulationAllGreen { witness_count: _ } => true
+    WitnessPopulationFailed { witness_count: _, failed_count: _ } => false
+    WitnessPopulationNotRun { cause: _ } => false
+  }
+}
+
+fn review_execution_witness_count(outcome: ReviewExecutionOutcome) -> Int {
+  match outcome {
+    WitnessPopulationAllGreen { witness_count: witness_count } => witness_count
+    WitnessPopulationFailed { witness_count: witness_count, failed_count: _ } => witness_count
+    WitnessPopulationNotRun { cause: _ } => 0
+  }
+}
+
+data census_representability_receipt_note: String = "THE 0A REPRESENTABILITY EVIDENCE, preserved as a revision-scoped observation rather than as a transient count in a pull-request body (operator request 2026-08-04). What was executed: the language-residue census, read from the real gunbc.language_target_registry language_target_surface_census, carried through the CENSUS-0A observation carrier, with its subject-key distinctness cross-checked against that consumer's OWN surface_locus_eq rather than against a count derived from the same map. The base is the keen-ibex-349 language-target identity branch this stacks on; the head is the 0A carrier commit at which the run was performed. It stays true about that head whatever either branch becomes."
+
+data language_residue_representability_receipt: ReviewExecutionReceipt = ReviewExecutionReceipt {
+  subject: decl_ref(
+    module_path: "test.claim.language_residue_census_representability_test",
+    decl_name: "language_residue_census_representability_test",
+  ),
+  pull_request: "gunb-ai/gunbc#7800" as NonEmptyStr,
+  base_revision: GitRevision { commit: "ca75137ee3a5b0796cc89e8de1f0c195fde80cca" },
+  head_revision: GitRevision { commit: "1e52ad8cb2df2b60d0742d89795f8ddaad682760" },
+  tree_revision: GitRevision { commit: "64cb8fbe3649145db9bdc3e734ed0f7f9eeeecdc" },
+  harness: "claim_batch --source-root dag --source-root src/v2" as NonEmptyStr,
+  observed_on: "2026-08-04",
+  witness_entry: "dag/test/claim/language_residue_census_representability_test.dag" as NonEmptyStr,
+  outcome: WitnessPopulationAllGreen { witness_count: 8 },
+}
