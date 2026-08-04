@@ -28,6 +28,8 @@ import gunbc.provider_turn_adjudication {
 import extdeps.llm.codex_app_server {
   CodexAppServerStdio,
   CodexAppServerInitialize,
+  CodexAppServerTurnStart,
+  codex_app_server_method_wire_name,
 }
 
 data witness_note: String = "Hermetic press carriers: itinerary + stdio binding + terminal/cause adjudication RED. Live JSON-RPC turn execution is the next wet slice."
@@ -43,16 +45,32 @@ fn fixture_bundle_from_digest(digest: Sha512Digest) -> CodexRuntimeBundle {
   }
 }
 
-test fn press_itinerary_is_four_steps_starting_with_initialize() -> Bool {
+test fn press_itinerary_is_five_steps_starting_with_initialize() -> Bool {
   let steps = codex_press_method_itinerary()
   match steps.first() {
     Present { value: step } =>
       match step {
-        CodexAppServerInitialize => count(steps) == 4
+        CodexAppServerInitialize => count(steps) == 5
         _ => false
       }
     Absent => false
   }
+}
+
+test fn press_itinerary_wire_names_match_generated_schema() -> Bool {
+  let steps = codex_press_method_itinerary()
+  count(steps) == 5
+    && (codex_app_server_method_wire_name(method: CodexAppServerInitialize) as String) == "initialize"
+    && (codex_app_server_method_wire_name(method: CodexAppServerTurnStart) as String) == "turn/start"
+    && match steps.last() {
+      Present { value: last } =>
+        match last {
+          CodexAppServerTurnStart =>
+            (codex_app_server_method_wire_name(method: last) as String) == "turn/start"
+          _ => false
+        }
+      Absent => false
+    }
 }
 
 test fn stdio_binding_derives_from_runtime_bundle() -> Bool {
@@ -86,7 +104,7 @@ test fn press_start_names_attempt_turn_and_binding() -> Bool {
         CodexPressStartAdmitted { start, itinerary } =>
           (start.attempt as String) == "attempt-fixture-1"
             && (start.turn as String) == "turn-fixture-1"
-            && count(itinerary) == 4
+            && count(itinerary) == 5
         _ => false
       }
   }

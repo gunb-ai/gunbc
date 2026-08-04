@@ -24,7 +24,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: []
 }
 
-data codex_app_server_subject_note: String = "THE SUBJECT IS the Codex app-server control interface (stdio/JSON-RPC style methods initialize, account/read, rateLimits/read, thread/turn) — not exec --json and not gunbc product policy. Observed against @openai/codex 0.146.0 in the provider-control-interface audit."
+data codex_app_server_subject_note: String = "THE SUBJECT IS the Codex app-server control interface (stdio/JSON-RPC methods) — not exec --json and not gunbc product policy. Method strings below are cited from `codex app-server generate-json-schema` against @openai/codex 0.146.0 (ClientRequest oneOf enum values). Wire request/response shapes land with the JSON-AST reader next; do not invent alternate method spellings."
 
 type CodexAppServerTransport
   = CodexAppServerStdio
@@ -35,10 +35,21 @@ type CodexAppServerTransport
 type CodexAppServerMethod
   = CodexAppServerInitialize
   | CodexAppServerAccountRead
-  | CodexAppServerRateLimitsRead
-  | CodexAppServerThreadTurn
+  | CodexAppServerAccountRateLimitsRead
+  | CodexAppServerThreadStart
+  | CodexAppServerTurnStart
 
-data codex_app_server_method_note: String = "FIRST SLICE names the press-trip method sequence. Wire request/response shapes land with the JSON-AST reader; this module owns the method vocabulary cited from the generated app-server schema, not fabricated params."
+fn codex_app_server_method_wire_name(method: CodexAppServerMethod) -> NonEmptyStr {
+  match method {
+    CodexAppServerInitialize => "initialize" as NonEmptyStr
+    CodexAppServerAccountRead => "account/read" as NonEmptyStr
+    CodexAppServerAccountRateLimitsRead => "account/rateLimits/read" as NonEmptyStr
+    CodexAppServerThreadStart => "thread/start" as NonEmptyStr
+    CodexAppServerTurnStart => "turn/start" as NonEmptyStr
+  }
+}
+
+data codex_app_server_method_note: String = "FIRST PRESS SLICE method sequence from the generated ClientRequest schema: initialize → account/read → account/rateLimits/read → thread/start → turn/start. There is no `thread/turn` or bare `rateLimits/read` method in 0.146.0."
 
 type CodexAppServerExecutable {
   path: FilePath
