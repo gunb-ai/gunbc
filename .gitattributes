@@ -137,6 +137,7 @@ src/v1/stage0/src/std_pareto.rs merge=generated-artifact
 src/v1/stage0/src/std_realization_schedule.rs merge=generated-artifact
 src/v1/stage0/src/std_roster_frontier.rs merge=generated-artifact
 src/v1/stage0/src/std_serialization.rs merge=generated-artifact
+src/v1/stage0/src/std_source_annotation.rs merge=generated-artifact
 src/v1/stage0/src/std_syntax.rs merge=generated-artifact
 src/v1/stage0/src/std_termination.rs merge=generated-artifact
 src/v1/stage0/src/std_trait_derive_shape.rs merge=generated-artifact
