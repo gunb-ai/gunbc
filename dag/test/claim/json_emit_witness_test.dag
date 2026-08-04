@@ -1,5 +1,34 @@
 module test.claim.json_emit_witness
 
+import extdeps.languages.json.emit {
+  escape_json_string,
+  quote_json_string,
+  serialize_json,
+  json_null,
+  json_bool,
+  json_int,
+  json_string,
+  json_object,
+  json_kv,
+  json_array,
+  json_int_list,
+  json_str_list,
+  json_number_from_lexeme_string,
+  json_unicode_escape_hex4,
+}
+import extdeps.languages.json.grammar {
+  json_production_rows,
+  json_number_lexeme_valid,
+  json_int_lexeme,
+  json_number_lexeme,
+}
+import extdeps.languages.json.parse { json_text_parseable }
+import std.text { from_code_point, concat }
+import std.types { Bool, Int, List, Present, Absent }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.collection { length }
+import v2.std.logic { all }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn witness_json_cites_rfc8259() -> Bool {

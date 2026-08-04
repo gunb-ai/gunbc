@@ -285,8 +285,24 @@ fn known_red_entry_is_v1_scoped(entry: String) -> Bool {
   starts_with(s: entry, prefix: "src/v1/")
 }
 
+data known_red_v1_envelope_dag_entries: List<String> = [
+  "dag/test/claim/namespace_structural_observations_acceptance_test.dag",
+  "dag/test/claim/namespace_reference_derived_closure_production_admissions_witness_test.dag",
+]
+
+data known_red_v1_envelope_dag_entries_note: String = "dag/test/claim witnesses that import v1.* and therefore require the dag plus src/v1 scoped envelope — same routing rule as src/v1/ paths in v1_claim_scoped_known_red_probe_batch. Kept as an explicit list because path prefix alone cannot detect v1 imports; dissolve-on when closure-independent binding makes the envelope unnecessary."
+
+fn known_red_entry_is_v1_envelope_dag_entry(entry: String) -> Bool {
+  fold(
+    known_red_v1_envelope_dag_entries,
+    init: false,
+    f: fn(found, path) { found || (entry == path) }
+  )
+}
+
 fn known_red_entry_needs_v1_envelope(entry: String) -> Bool {
   known_red_entry_is_v1_scoped(entry: entry)
+    || known_red_entry_is_v1_envelope_dag_entry(entry: entry)
 }
 
 fn known_red_probe_corpus_roster() -> List<ScheduleWitnessEntry> {

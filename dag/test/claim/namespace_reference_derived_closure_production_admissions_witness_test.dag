@@ -25,7 +25,7 @@ import std.types { Bool, Int, List }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data namespace_reference_derived_closure_production_admissions_witness_note: String = "N3-A assessment witnesses at the dag seam: v1 production returns neutral ReferenceBindingObservation carriers; assess_reference_binding_observation projects capability admissions here. Inline six-row lists leave clauses (e-f) unavailable (frontier 2); the closing acceptance witness at dag/test/claim/namespace_reference_derived_closure_acceptance composes the full list. Discriminating RED: witness_closing_contract_still_reds_until_dependency_clauses_land."
+data namespace_reference_derived_closure_production_admissions_witness_note: String = "N3-A assessment witnesses at the dag seam: v1 production returns neutral ReferenceBindingObservation carriers; assess_reference_binding_observation projects capability admissions here. The namespace-structural-observations closing witness (dag/test/claim/namespace_structural_observations_acceptance_test.dag) binds the four-clause structural check; the parent six-row witness remains N3-D's handback. Discriminating RED: witness_closing_contract_still_reds_until_dependency_clauses_land exercises the parent frontier count."
 
 test fn witness_structural_production_observations_establish_clauses_a_through_d() -> Bool {
   let admissions =
