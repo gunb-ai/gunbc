@@ -167,6 +167,8 @@ import gunbc.roadmap_execution_contract {
   validation_operation_command,
   modeled_validation_command_wire,
   execution_contract_validation_summary,
+  validation_consumes_affected_set_window,
+  execution_contract_needs_diff_window,
 }
 import std.credentials { CredentialSource }
 import gunbc.repository { gunbc_repository }
@@ -273,8 +275,6 @@ import gunbc.git_diff_change_window {
   git_diff_window_env_assignment,
   git_diff_window_identity_hex,
   git_diff_window_absent_identity,
-  validation_consumes_affected_set_window,
-  execution_contract_needs_diff_window,
 }
 import extdeps.git.object_store { git_object_id_from_untagged_hex, git_object_id_wire_hex }
 import extdeps.git { shape_git_rev_parse_head_args }
@@ -2721,32 +2721,39 @@ fn belt_verification_subject_for(
   }
 }
 
-fn belt_verification_receipt_line_matches(line: String, prefix: String) -> Bool {
-  line != ""
-    && starts_with(s: line, prefix: prefix)
-    && ends_with(s: line, suffix: ".json")
-    && !string_contains(s: line, pattern: ".diff-window.json")
+fn belt_verification_window_identity_for_attempt(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+  node: RoadmapNode,
+  partial_subject: VerificationSubject,
+  worktree: String,
+) -> Fnv1a64Structural {
+  if worktree == "" || !execution_contract_needs_diff_window(contract: node.execution) {
+    git_diff_window_absent_identity()
+  } else {
+    match belt_prepare_diff_window_for_verification(
+      instance: instance,
+      node_id: node_id,
+      attempt_key: attempt_key,
+      subject: partial_subject,
+      worktree: worktree,
+    ) {
+      GitDiffWindowPrepared { path: _, window: window } => window.window_identity
+      GitDiffWindowPrepareRefused { cause: _ } => git_diff_window_absent_identity()
+    }
+  }
 }
 
-fn belt_verification_receipt_filename_for_head(
-  listing: String,
-  head_sha: String,
-) -> String? {
-  let prefix = join([head_sha, "."], "")
-  fold(
-    split(s: listing, delimiter: "\n"),
-    init: none,
-    f: fn(acc, line) {
-      match acc {
-        Present { value: _ } => acc
-        Absent =>
-          if belt_verification_receipt_line_matches(line: line, prefix: prefix) {
-            Present { value: line }
-          } else {
-            none
-          }
-      }
-    },
+fn belt_verification_receipt_basename_for_subject(subject: VerificationSubject) -> String {
+  join(
+    [
+      subject.head_sha as String,
+      ".",
+      git_diff_window_identity_hex(identity: subject.change_window_identity),
+      ".json",
+    ],
+    "",
   )
 }
 
@@ -2823,27 +2830,39 @@ fn belt_verification_receipt_source(
             ], ""),
           }
         } else {
-          match belt_verification_receipt_filename_for_head(
+          let receipt_name = belt_verification_receipt_basename_for_subject(
+            subject: observed,
+          )
+          let receipt_path = join(
+            [
+              dispatch_attempt_verification_dir_for_instance(
+                instance: instance,
+                node_id: node_id,
+                attempt_key: attempt_key,
+              ),
+              "/",
+              receipt_name,
+            ],
+            "",
+          )
+          let read = Filesystem.Read(path: receipt_path)
+          if read.success {
+            VerificationReceiptPresent { text: read.content }
+          } else if belt_listing_names_entry(
             listing: verification_listing.entries,
-            head_sha: observed.head_sha as String,
+            name: receipt_name,
           ) {
-            Absent => VerificationReceiptAbsent
-            Present { value: receipt_name } =>
-              let path = join([verification_dir, "/", receipt_name], "")
-              let read = Filesystem.Read(path: path)
-              if read.success {
-                VerificationReceiptPresent { text: read.content }
-              } else {
-                VerificationReceiptUnreadable {
-                  detail: join([
-                    "a verification receipt for this head was listed and then could not be read, so it exists and its content is unavailable: ",
-                    path,
-                    " (",
-                    read.error,
-                    ")",
-                  ], ""),
-                }
-              }
+            VerificationReceiptUnreadable {
+              detail: join([
+                "the exact-head verification receipt for this subject was listed and then could not be read, so it exists and its content is unavailable: ",
+                receipt_path,
+                " (",
+                read.error,
+                ")",
+              ], ""),
+            }
+          } else {
+            VerificationReceiptAbsent
           }
         }
       }
@@ -2865,24 +2884,56 @@ fn belt_verification_subject_observation_for_attempt(
       VerificationSubjectUnobserved {
         reason: "the roadmap authority declares no node with this id, so there is no verification subject",
       }
-    NodeFound { node } =>
-      belt_verification_subject_for(
-        node: node,
+    NodeFound { node } => {
+      let node_id_typed = node_id as RoadmapNodeId
+      let worktree = dispatch_worktree_path_for_instance(
+        instance: instance,
+        node_id: node_id_typed,
         attempt_key: attempt_key,
-        branch: dispatch_branch_name(
-          node_id: node_id as RoadmapNodeId,
-          attempt_key: attempt_key,
-        ),
-        head: belt_worktree_head_observe(
-          instance: instance,
-          worktree: dispatch_worktree_path_for_instance(
-            instance: instance,
-            node_id: node_id as RoadmapNodeId,
-            attempt_key: attempt_key,
-          ),
-        ),
-        change_window_identity: git_diff_window_absent_identity(),
       )
+      let head = belt_worktree_head_observe(
+        instance: instance,
+        worktree: worktree,
+      )
+      match head {
+        WorktreeHeadUnobserved { reason } =>
+          VerificationSubjectUnobserved { reason: reason }
+        WorktreeHeadObserved { revision: revision } =>
+          match node_criteria_digest(rn: node) {
+            Absent =>
+              VerificationSubjectUnobserved {
+                reason: "this roadmap node has no criteria digest, so the verification subject cannot be constructed",
+              }
+            Present { value: criteria_digest } =>
+              let branch = dispatch_branch_name(
+                node_id: node_id_typed,
+                attempt_key: attempt_key,
+              )
+              let partial_subject = VerificationSubject {
+                node_identity: node.identity,
+                criteria_digest: criteria_digest,
+                attempt_key: attempt_key,
+                branch: branch as NonEmptyStr,
+                head_sha: revision as CommitSha,
+                change_window_identity: git_diff_window_absent_identity(),
+              }
+              belt_verification_subject_for(
+                node: node,
+                attempt_key: attempt_key,
+                branch: branch,
+                head: head,
+                change_window_identity: belt_verification_window_identity_for_attempt(
+                  instance: instance,
+                  node_id: node_id_typed,
+                  attempt_key: attempt_key,
+                  node: node,
+                  partial_subject: partial_subject,
+                  worktree: worktree,
+                ),
+              )
+          }
+      }
+    }
   }
 }
 
@@ -3294,7 +3345,7 @@ fn belt_run_validation_operations(
   validations: List<ValidationOperation>,
   worktree: String,
   oracle_identity: ContentHash,
-  diff_window_path: String,
+  diff_window_path: String?,
 ) -> BeltValidationRun {
   fold(
     validations,
@@ -3325,15 +3376,30 @@ fn belt_run_validation_operations(
               let exec_outcome = if validation_consumes_affected_set_window(
                 validation: validation,
               ) {
-                belt_exec_with_diff_window_env(
-                  instance: instance,
-                  cmd: host_exec_argv(
-                    program: command.program as String,
-                    args: command.args,
-                  ),
-                  workdir: worktree,
-                  diff_window_path: diff_window_path,
-                )
+                match diff_window_path {
+                  Present { value: path } =>
+                    if path == "" {
+                      ExecRefused {
+                        program: "gunbc-diff-window",
+                        reason: "verification requires an affected-set diff window path but the prepared path is empty",
+                      }
+                    } else {
+                      belt_exec_with_diff_window_env(
+                        instance: instance,
+                        cmd: host_exec_argv(
+                          program: command.program as String,
+                          args: command.args,
+                        ),
+                        workdir: worktree,
+                        diff_window_path: path,
+                      )
+                    }
+                  Absent =>
+                    ExecRefused {
+                      program: "gunbc-diff-window",
+                      reason: "verification requires an affected-set diff window path but none was prepared",
+                    }
+                }
               } else {
                 belt_exec(
                   cmd: host_exec_argv(
@@ -3381,9 +3447,18 @@ fn belt_run_validation_operations(
                   BeltValidationRun {
                     executions: acc.executions,
                     verdict: ValidationRefused {
-                      cause: ValidationCommandRefused {
-                        program: program,
-                        reason: reason,
+                      cause: if program == "gunbc-diff-window" {
+                        ValidationChangeWindowRefused {
+                          cause: ChangeWindowPersistenceRefused {
+                            path: "",
+                            cause: reason,
+                          },
+                        }
+                      } else {
+                        ValidationCommandRefused {
+                          program: program,
+                          reason: reason,
+                        }
                       },
                     },
                   }
@@ -3485,49 +3560,7 @@ fn belt_verify_attempt_for_instance(
                     window_identity_hex: identity_hex,
                   )
                   let receipt_read = Filesystem.Read(path: receipt_path)
-                  let should_run = if !receipt_read.success {
-                    true
-                  } else {
-                    match verification_receipt_text_decode(receipt: receipt_read.content) {
-                      VerificationReceiptTextExactHead { receipt } =>
-                        match verification_subject_match(
-                          expected: subject,
-                          found: receipt.subject,
-                        ) {
-                          VerificationSubjectMatches =>
-                            validation_verdict_key(verdict: receipt.verdict) == "not_run"
-                          VerificationSubjectDiffers { field: _, expected: _, found: _ } =>
-                            true
-                        }
-                      VerificationReceiptTextLegacy { verdict_key: _ } => true
-                      VerificationReceiptTextUndecodable { reason: _ } => false
-                    }
-                  }
-                  if !receipt_read.success || should_run {
-                    let diff_window_path = if execution_contract_needs_diff_window(
-                      contract: node.execution,
-                    ) {
-                      Present {
-                        value: dispatch_attempt_diff_window_path_for_instance(
-                          instance: instance,
-                          node_id: node_id,
-                          attempt_key: progress.attempt_key,
-                          head_sha: subject.head_sha as String,
-                          window_identity_hex: identity_hex,
-                        ),
-                      }
-                    } else {
-                      none
-                    }
-                    belt_verify_run_and_persist(
-                      instance: instance,
-                      node: node,
-                      progress: progress,
-                      subject: subject,
-                      diff_window_path: diff_window_path,
-                      change_window_refusal: none,
-                    )
-                  } else if !receipt_read.success {
+                  if !receipt_read.success {
                     VerifyEvidenceUnreadable {
                       node_id: progress.node_id,
                       detail: join([
@@ -3546,18 +3579,6 @@ fn belt_verify_attempt_for_instance(
                           detail: join([
                             "a verification receipt for this head and window identity could not be decoded: ",
                             reason,
-                          ], ""),
-                        }
-                      VerificationReceiptTextExactHead { receipt } =>
-                        VerifyDeferred {
-                          node_id: progress.node_id,
-                          reason: join([
-                            "an exact-head verification verdict is already recorded for this attempt at ",
-                            subject.head_sha as String,
-                            " with window identity ",
-                            identity_hex,
-                            ": ",
-                            validation_verdict_key(verdict: receipt.verdict),
                           ], ""),
                         }
                       VerificationReceiptTextLegacy { verdict_key: _ } =>
@@ -3583,6 +3604,72 @@ fn belt_verify_attempt_for_instance(
                           },
                           change_window_refusal: none,
                         )
+                      VerificationReceiptTextExactHead { receipt } =>
+                        match verification_subject_match(
+                          expected: subject,
+                          found: receipt.subject,
+                        ) {
+                          VerificationSubjectDiffers { field: _, expected: _, found: _ } =>
+                            belt_verify_run_and_persist(
+                              instance: instance,
+                              node: node,
+                              progress: progress,
+                              subject: subject,
+                              diff_window_path: if execution_contract_needs_diff_window(
+                                contract: node.execution,
+                              ) {
+                                Present {
+                                  value: dispatch_attempt_diff_window_path_for_instance(
+                                    instance: instance,
+                                    node_id: node_id,
+                                    attempt_key: progress.attempt_key,
+                                    head_sha: subject.head_sha as String,
+                                    window_identity_hex: identity_hex,
+                                  ),
+                                }
+                              } else {
+                                none
+                              },
+                              change_window_refusal: none,
+                            )
+                          VerificationSubjectMatches =>
+                            if validation_verdict_key(verdict: receipt.verdict) == "not_run" {
+                              belt_verify_run_and_persist(
+                                instance: instance,
+                                node: node,
+                                progress: progress,
+                                subject: subject,
+                                diff_window_path: if execution_contract_needs_diff_window(
+                                  contract: node.execution,
+                                ) {
+                                  Present {
+                                    value: dispatch_attempt_diff_window_path_for_instance(
+                                      instance: instance,
+                                      node_id: node_id,
+                                      attempt_key: progress.attempt_key,
+                                      head_sha: subject.head_sha as String,
+                                      window_identity_hex: identity_hex,
+                                    ),
+                                  }
+                                } else {
+                                  none
+                                },
+                                change_window_refusal: none,
+                              )
+                            } else {
+                              VerifyDeferred {
+                                node_id: progress.node_id,
+                                reason: join([
+                                  "an exact-head verification verdict is already recorded for this attempt at ",
+                                  subject.head_sha as String,
+                                  " with window identity ",
+                                  identity_hex,
+                                  ": ",
+                                  validation_verdict_key(verdict: receipt.verdict),
+                                ], ""),
+                              }
+                            }
+                        }
                     }
                   }
                 }
@@ -3779,10 +3866,7 @@ fn belt_verify_run_and_persist(
               validations: validations,
               worktree: worktree,
               oracle_identity: identity,
-              diff_window_path: match diff_window_path {
-                Present { value: path } => path
-                Absent => ""
-              },
+              diff_window_path: diff_window_path,
             )
         }
     }

@@ -29,6 +29,12 @@ import gunbc.diff_baseline {
   diff_baseline_is_exact_replay
 }
 import gunbc.repo_identity { gunbc_merge_target_ref, gunbc_default_remote_name }
+import gunbc.ci_spec { DiffTwoDot, gunbc_ci_spec }
+import v2.workflow.floor_diff_observe {
+  floor_diff_mode_for_baseline,
+  floor_git_diff_range_of_mode,
+}
+import extdeps.git { TwoDot }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -203,4 +209,30 @@ test fn witness_env_binding_names_neutral_path_var() -> Bool {
 test fn witness_window_identity_hex_matches_derived_digest() -> Bool {
   let window = planted_exact_window()
   git_diff_window_identity_hex(identity: window.window_identity) == (window.window_identity.digest as String)
+}
+
+test fn witness_persisted_window_selects_floor_two_dot_mode() -> Bool {
+  let json = git_diff_window_json(window: planted_exact_window())
+  match git_diff_window_from_json(text: json) {
+    GitDiffWindowObserved { window: window } =>
+      match resolve_with_diff_window(
+        diff_window: Present { value: GitDiffWindowObserved { window: window } },
+        base_ref: Present { value: "main" },
+        override_ref: none
+      ) {
+        BaselineSelected { baseline: b } =>
+          diff_baseline_is_exact_replay(b: b)
+            && floor_diff_mode_for_baseline(
+              baseline: b,
+              policy: gunbc_ci_spec.diff_policy,
+            ) == DiffTwoDot
+            && floor_git_diff_range_of_mode(mode: DiffTwoDot) == TwoDot
+            && diff_baseline_diff_base(b: b) == planted_base_hex
+            && diff_baseline_diff_head(b: b, default_head: "HEAD") == planted_head_hex
+        BaselineRefused { reason: _ } => false
+        BaselineSourceConflict { window_detail: _, override_ref: _ } => false
+      }
+    GitDiffWindowMalformed { detail: _ } => false
+    GitDiffWindowReadRefused { path: _, cause: _ } => false
+  }
 }

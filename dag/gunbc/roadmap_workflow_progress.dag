@@ -82,6 +82,7 @@ import gunbc.roadmap_verification_receipt {
   VerificationEvidenceForSubject,
   VerificationEvidenceForAnotherSubject,
   VerificationEvidenceLegacyAttemptLevel,
+  VerificationEvidenceUnreadable,
   VerificationFileEvidence,
   VerificationFileAbsent,
   VerificationFileUnreadable,
@@ -553,6 +554,15 @@ fn verification_evidence_segment(
               " (verdict key: ",
               verdict_key,
               ")",
+            ], ""),
+          }
+        VerificationEvidenceUnreadable { reason } =>
+          WorkflowSegment {
+            kind: VerificationWorkflowSegment,
+            state: WorkflowSegmentRefused,
+            detail: join([
+              "a verification receipt exists for this attempt's head and this reader cannot decode it: ",
+              reason,
             ], ""),
           }
       }

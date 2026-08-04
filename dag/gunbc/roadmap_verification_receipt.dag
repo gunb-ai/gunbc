@@ -62,6 +62,7 @@ import gunbc.roadmap_validation_oracle {
   validation_verdict_detail,
   validation_refusal_cause_key,
   validation_refusal_cause_detail,
+  validation_refusal_cause_decode,
   validation_receipt_schema,
   validation_receipt_decode,
   validation_receipt_decode_document,
@@ -170,6 +171,8 @@ data belt_exact_head_wiring_seam_note: String = "P2 HANDOFF TO THE BELT WIRING L
 type VerificationReceiptSource
   = ExactHeadVerificationReceipt { receipt: VerificationReceipt }
   | LegacyAttemptValidationReceipt { verdict_key: String }
+  | VerificationReceiptSourceUnreadable { detail: String }
+  | VerificationReceiptSourceUndecodable { reason: String }
 
 type VerificationEvidence
   = VerificationEvidenceForSubject { receipt: VerificationReceipt }
@@ -179,6 +182,7 @@ type VerificationEvidence
       found: String,
     }
   | VerificationEvidenceLegacyAttemptLevel { verdict_key: String }
+  | VerificationEvidenceUnreadable { reason: String }
 
 fn verification_evidence_for(
   expected: VerificationSubject,
@@ -187,6 +191,10 @@ fn verification_evidence_for(
   match source {
     LegacyAttemptValidationReceipt { verdict_key } =>
       VerificationEvidenceLegacyAttemptLevel { verdict_key: verdict_key }
+    VerificationReceiptSourceUnreadable { detail } =>
+      VerificationEvidenceUnreadable { reason: detail }
+    VerificationReceiptSourceUndecodable { reason } =>
+      VerificationEvidenceUnreadable { reason: reason }
     ExactHeadVerificationReceipt { receipt } =>
       match verification_subject_match(
         expected: expected,
@@ -212,6 +220,7 @@ fn verification_evidence_moves_lamp(evidence: VerificationEvidence) -> Bool {
       field: _, expected: _, found: _,
     } => false
     VerificationEvidenceLegacyAttemptLevel { verdict_key: _ } => false
+    VerificationEvidenceUnreadable { reason: _ } => false
   }
 }
 
@@ -224,7 +233,8 @@ type VerificationReceiptFileSource
   | VerificationReceiptPresent { text: String }
   | VerificationReceiptUnreadable { detail: String }
 
-data verification_receipt_schema: NonEmptyStr = "roadmap-verification-receipt/v1"
+data verification_receipt_schema: NonEmptyStr = "roadmap-verification-receipt/v2"
+data verification_receipt_schema_v1: NonEmptyStr = "roadmap-verification-receipt/v1"
 
 type VerificationReceiptMember
   = VerificationReceiptMemberRead { value: String }
@@ -654,16 +664,15 @@ fn verification_verdict_decode(doc: JsonValue) -> ValidationVerdict? {
             match verification_receipt_string_member(doc: doc, key: "cause_detail") {
               VerificationReceiptMemberUnreadable { reason: _ } => none
               VerificationReceiptMemberRead { value: cause_detail } =>
-                Present {
-                  value: ValidationRefused {
-                    cause: if cause_kind == "contract-unspecified" {
-                      ValidationContractUnspecified
-                    } else if cause_kind == "command-unrealized" {
-                      ValidationCommandUnrealized
-                    } else {
-                      ValidationPinReceiptUnreadable { detail: cause_detail }
-                    },
-                  },
+                match validation_refusal_cause_decode(
+                  cause_kind: cause_kind,
+                  cause_detail: cause_detail,
+                ) {
+                  Absent => none
+                  Present { value: cause } =>
+                    Present {
+                      value: ValidationRefused { cause: cause },
+                    }
                 }
             }
         }
@@ -678,7 +687,16 @@ fn verification_receipt_decode_document(doc: JsonValue) -> VerificationReceiptDe
     VerificationReceiptMemberUnreadable { reason: r } =>
       VerificationReceiptUndecodable { reason: r }
     VerificationReceiptMemberRead { value: schema } =>
-      if schema != (verification_receipt_schema as String) {
+      if schema == (verification_receipt_schema_v1 as String) {
+        VerificationReceiptUndecodable {
+          reason: join([
+            "verification receipt schema is ",
+            schema,
+            "; v1 receipts lack change_window_identity and must be regenerated as ",
+            verification_receipt_schema as String,
+          ], ""),
+        }
+      } else if schema != (verification_receipt_schema as String) {
         VerificationReceiptUndecodable {
           reason: join([
             "verification receipt schema is ", schema,
@@ -825,6 +843,15 @@ fn verification_receipt_text_decode(receipt: String) -> VerificationReceiptTextD
                 VerificationReceiptDecoded { receipt: r } =>
                   VerificationReceiptTextExactHead { receipt: r }
               }
+            } else if schema == (verification_receipt_schema_v1 as String) {
+              VerificationReceiptTextUndecodable {
+                reason: join([
+                  "verification receipt schema is ",
+                  schema,
+                  "; v1 receipts lack change_window_identity and must be regenerated as ",
+                  verification_receipt_schema as String,
+                ], ""),
+              }
             } else if schema == (validation_receipt_schema as String) {
               match validation_receipt_decode_document(doc: doc) {
                 ValidationReceiptUndecodable { reason } =>
@@ -851,7 +878,10 @@ fn verification_receipt_source_from_file(
 ) -> VerificationReceiptSource? {
   match source {
     VerificationReceiptAbsent => none
-    VerificationReceiptUnreadable { detail: _ } => none
+    VerificationReceiptUnreadable { detail } =>
+      Present {
+        value: VerificationReceiptSourceUnreadable { detail: detail },
+      }
     VerificationReceiptPresent { text } =>
       match verification_receipt_text_decode(receipt: text) {
         VerificationReceiptTextExactHead { receipt } =>
@@ -862,7 +892,10 @@ fn verification_receipt_source_from_file(
           Present {
             value: LegacyAttemptValidationReceipt { verdict_key: verdict_key },
           }
-        VerificationReceiptTextUndecodable { reason: _ } => none
+        VerificationReceiptTextUndecodable { reason } =>
+          Present {
+            value: VerificationReceiptSourceUndecodable { reason: reason },
+          }
       }
   }
 }

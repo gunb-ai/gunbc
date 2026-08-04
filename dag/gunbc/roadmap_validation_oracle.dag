@@ -719,6 +719,75 @@ fn validation_refusal_cause_detail(cause: ValidationRefusalCause) -> String {
   }
 }
 
+fn validation_refusal_cause_decode(
+  cause_kind: String,
+  cause_detail: String,
+) -> ValidationRefusalCause? {
+  if cause_kind == "contract-unspecified" {
+    Present { value: ValidationContractUnspecified }
+  } else if cause_kind == "command-unrealized" {
+    Present { value: ValidationCommandUnrealized }
+  } else if cause_kind == "pin-receipt-unreadable" {
+    Present {
+      value: ValidationPinReceiptUnreadable { detail: cause_detail },
+    }
+  } else if cause_kind == "command-refused" {
+    Present {
+      value: ValidationCommandRefused {
+        program: "unknown",
+        reason: cause_detail,
+      },
+    }
+  } else if cause_kind == "change-window-refused" {
+    Present {
+      value: ValidationChangeWindowRefused {
+        cause: ChangeWindowPersistenceRefused {
+          path: "",
+          cause: cause_detail,
+        },
+      },
+    }
+  } else if cause_kind == "oracle-unpinnable" {
+    Present {
+      value: ValidationOracleUnpinnable {
+        validation_label: "unknown",
+        reason: cause_detail,
+      },
+    }
+  } else if cause_kind == "oracle-missing" {
+    Present {
+      value: ValidationOracleMissing {
+        entry: "unknown",
+        function: "unknown",
+        detail: cause_detail,
+      },
+    }
+  } else if cause_kind == "oracle-ambiguous" {
+    Present {
+      value: ValidationOracleAmbiguous {
+        entry: "unknown",
+        function: "unknown",
+        declaration_count: 0,
+      },
+    }
+  } else if cause_kind == "oracle-unpinned-dependency" {
+    Present {
+      value: ValidationOracleUnpinnedDependency {
+        entry: "unknown",
+        imports: [],
+      },
+    }
+  } else if cause_kind == "oracle-pin-unrecorded" {
+    Present {
+      value: ValidationOraclePinUnrecorded {
+        channel: cause_detail as NonEmptyStr as VersionIdentity,
+      },
+    }
+  } else {
+    none
+  }
+}
+
 fn validation_verdict_key(verdict: ValidationVerdict) -> String {
   match verdict {
     ValidationNotRun => "not_run"
