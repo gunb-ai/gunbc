@@ -322,9 +322,13 @@ fn decl_has_fixture_marker(decl: FnArrowDecl) -> Bool {
     )
 }
 
+data production_qualification_origin_compiler_derived_note: String = "Non-fixture mint surfaces whose fn-arrow skeleton exposes mint_provenanced_rust_artifact (ingest grain) classify CompilerDerived — production compiler pipeline, not fixture evidence and not unknown. mint_written-only without fixture stays UnknownOrigin so synthetic unknown-origin RED controls and unclassified written paths remain fail-closed."
+
 fn decl_origin_from_structure(decl: FnArrowDecl) -> ProductionQualificationOrigin {
   if decl_has_fixture_marker(decl: decl) {
     FixtureDerived
+  } else if decl_contains_callee(decl: decl, callee: mint_provenanced_callee) {
+    CompilerDerived
   } else {
     UnknownOrigin
   }
