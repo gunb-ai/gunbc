@@ -2,11 +2,11 @@ module v2.test.workflow.frontier_probe_closure_matrix
 
 import v2.compiler.self_host.frontier_probe {
   FrontierProbeIngestSubject,
-  FrontierProbeReferencedClosure,
   frontier_probe_closure_count_mismatch_reason,
   frontier_probe_closure_refs_digest_mismatch_reason,
   frontier_probe_closure_storage_duplicate_reason,
   frontier_probe_closure_storage_hash_conflict_reason,
+  frontier_probe_discovered_closure_subject_for_matrix,
   frontier_probe_entry_binding_refused_reason,
   frontier_probe_receipt_for_subject
 }
@@ -21,6 +21,7 @@ import v2.compiler.self_host.frontier_probe_types {
 }
 import v2.compiler.source_authority {
   DiscoveredSourceRefsDigest,
+  FrontierProbeDiscoveredClosure,
   SourceRef,
   SourceRootCoverage,
   SourceRootCoverageComplete,
@@ -29,6 +30,7 @@ import v2.compiler.source_authority {
   SourceRootRowsMissing,
   content_hash_of_value,
   discovered_source_refs_digest_for_refs,
+  frontier_probe_discovered_closure_seal,
   source_ref_for_observed_storage_path
 }
 import v2.std.cross_tree.import_model { DagTree }
@@ -48,34 +50,16 @@ fn fp_matrix_ref_v2() -> SourceRef {
   source_ref_for_observed_storage_path(path: "src/v2/std/text.dag")
 }
 
-fn fp_matrix_closure_subject(
-  refs: List<SourceRef>,
-  coverage: SourceRootCoverage,
-  ingest_read_count: Int,
-  entry: SourceRef,
-  discovered_source_refs_digest: DiscoveredSourceRefsDigest
-) -> FrontierProbeIngestSubject {
-  FrontierProbeReferencedClosure {
-    refs: refs,
-    coverage: coverage,
-    ingest_read_count: ingest_read_count,
-    discovered_source_refs_digest: discovered_source_refs_digest,
-    entry: entry
-  }
-}
-
 fn fp_matrix_closure_subject_matching_digest(
   refs: List<SourceRef>,
   coverage: SourceRootCoverage,
   ingest_read_count: Int,
   entry: SourceRef
 ) -> FrontierProbeIngestSubject {
-  fp_matrix_closure_subject(
-    refs: refs,
+  frontier_probe_discovered_closure_subject_for_matrix(
+    closure: frontier_probe_discovered_closure_seal(refs: refs, entry: entry),
     coverage: coverage,
-    ingest_read_count: ingest_read_count,
-    entry: entry,
-    discovered_source_refs_digest: discovered_source_refs_digest_for_refs(refs: refs)
+    ingest_read_count: ingest_read_count
   )
 }
 
@@ -251,16 +235,18 @@ fn fp_matrix_substituted_refs_digest() -> DiscoveredSourceRefsDigest {
   )
 }
 
-fn fp_matrix_substituted_refs_subject() -> FrontierProbeIngestSubject {
-  fp_matrix_closure_subject(
-    refs: Cons {
-      head: fp_matrix_ref_a(),
-      tail: Cons { head: fp_matrix_ref_b(), tail: Empty }
+fn fp_matrix_forged_closure_subject() -> FrontierProbeIngestSubject {
+  frontier_probe_discovered_closure_subject_for_matrix(
+    closure: FrontierProbeDiscoveredClosure {
+      refs: Cons {
+        head: fp_matrix_ref_a(),
+        tail: Cons { head: fp_matrix_ref_b(), tail: Empty }
+      },
+      population_digest: fp_matrix_substituted_refs_digest(),
+      entry: fp_matrix_ref_a()
     },
     coverage: SourceRootCoverageComplete,
-    ingest_read_count: 2,
-    entry: fp_matrix_ref_a(),
-    discovered_source_refs_digest: fp_matrix_substituted_refs_digest()
+    ingest_read_count: 2
   )
 }
 
@@ -299,7 +285,7 @@ test fn frontier_probe_closure_count_mismatch_refused_holds() -> Bool {
 
 test fn frontier_probe_closure_refs_digest_mismatch_refused_holds() -> Bool {
   match frontier_probe_receipt_for_subject(
-    subject: fp_matrix_substituted_refs_subject(),
+    subject: fp_matrix_forged_closure_subject(),
     fixture_module_path: ""
   ).detail {
     FrontierProbeClosurePopulationRefused { cause: cause } =>

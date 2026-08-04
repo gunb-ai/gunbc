@@ -79,13 +79,19 @@ import v2.std.collection { List }
 import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
 import v2.std.diagnostic {
   Accepted,
+  Correction,
+  Diagnostic,
   LocusAnchor,
   NonEmptyDiagnostics,
   Outcome,
   PortLocus,
   Rejected,
   Textual,
+  Unavailable,
+  ExternalContractUnknown,
   diagnostics_singleton,
+  outcome_accepted,
+  outcome_rejected,
   port_locus
 }
 import v2.std.qualified_name { QualifiedName }
@@ -129,6 +135,14 @@ type FrontierProbeIngestSubject
       admission: Admission
     }
 
+fn frontier_probe_subject_digest_mismatch_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: frontier_probe_subject_digest_mismatch_reason,
+    at: port_locus(port: frontier_probe_subject_digest_mismatch_reason),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
 fn frontier_probe_discovered_closure_subject_from_host_manifest(
   refs: List<SourceRef>,
   entry: SourceRef,
@@ -150,9 +164,7 @@ fn frontier_probe_discovered_closure_subject_from_host_manifest(
     )
   } else {
     outcome_rejected(
-      d: diagnostics_singleton(
-        reason: frontier_probe_subject_digest_mismatch_reason
-      )
+      d: frontier_probe_subject_digest_mismatch_diagnostic()
     )
   }
 }
@@ -430,13 +442,13 @@ fn frontier_probe_coverage_gate(
   }
 }
 
-fn frontier_probe_receipt_from_referenced_closure(
-  refs: List<SourceRef>,
+fn frontier_probe_receipt_from_discovered_closure(
+  closure: FrontierProbeDiscoveredClosure,
   coverage: SourceRootCoverage,
-  ingest_read_count: Int,
-  discovered_source_refs_digest: DiscoveredSourceRefsDigest,
-  entry: SourceRef
+  ingest_read_count: Int
 ) -> FrontierProbeReceipt {
+  let refs = closure.refs
+  let entry = closure.entry
   let module_path = entry.path
   if source_ref_count_in_list(refs: refs, target: entry) != 1 {
     frontier_probe_receipt_from_population_refused(
@@ -459,21 +471,24 @@ fn frontier_probe_receipt_from_referenced_closure(
       cause: frontier_probe_closure_count_mismatch_reason
     )
   } else {
-    match discovered_source_refs_digest {
+    match closure.population_digest {
       DiscoveredSourceRefsDigestUnavailable { cause: _ } =>
         frontier_probe_receipt_from_population_refused(
           module_path: module_path,
           cause: frontier_probe_closure_refs_digest_unavailable_reason
         )
-      DiscoveredSourceRefsDigestFromList { digest: expected } =>
+      DiscoveredSourceRefsDigestFromList { digest: sealed_digest } =>
         match source_ref_list_digest_build(refs: refs) {
           SourceRefListDigestNonStructuralRefused { path: _ } =>
             frontier_probe_receipt_from_population_refused(
               module_path: module_path,
               cause: frontier_probe_closure_non_structural_hash_reason
             )
-          SourceRefListDigestOk { digest: computed } =>
-            if !content_hash_eq_structural(left: computed, right: expected) {
+          SourceRefListDigestOk { digest: computed_digest } =>
+            if !content_hash_eq_structural(
+              left: computed_digest,
+              right: sealed_digest
+            ) {
               frontier_probe_receipt_from_population_refused(
                 module_path: module_path,
                 cause: frontier_probe_closure_refs_digest_mismatch_reason
@@ -560,19 +575,34 @@ fn frontier_probe_receipt_for_subject(
         ingest: ingest,
         admission: admission
       )
-    FrontierProbeReferencedClosure {
-      refs: refs,
+    FrontierProbeDiscoveredClosureSubject {
+      closure: closure,
       coverage: coverage,
-      ingest_read_count: read_count,
-      discovered_source_refs_digest: refs_digest,
-      entry: entry_ref
+      ingest_read_count: read_count
     } =>
-      frontier_probe_receipt_from_referenced_closure(
-        refs: refs,
+      frontier_probe_receipt_from_discovered_closure(
+        closure: closure,
         coverage: coverage,
-        ingest_read_count: read_count,
-        discovered_source_refs_digest: refs_digest,
-        entry: entry_ref
+        ingest_read_count: read_count
+      )
+  }
+}
+
+fn frontier_probe_receipt_for_subject_outcome(
+  subject_outcome: Outcome<FrontierProbeIngestSubject>,
+  fixture_module_path: String
+) -> FrontierProbeReceipt {
+  match subject_outcome {
+    Accepted { value: subject, diagnostics: _ } =>
+      frontier_probe_receipt_for_subject(
+        subject: subject,
+        fixture_module_path: fixture_module_path
+      )
+    Rejected { diagnostics: _ } =>
+      frontier_probe_receipt_from_reason_only(
+        module_path: fixture_module_path,
+        reason: frontier_probe_subject_digest_mismatch_reason,
+        detail: FrontierProbeDetailAbsent
       )
   }
 }
