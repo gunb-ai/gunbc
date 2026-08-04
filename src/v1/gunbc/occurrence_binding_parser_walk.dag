@@ -226,23 +226,51 @@ fn reference_named(
   transport: OccurrenceTransport,
   name: String
 ) -> ReferenceOccurrence? {
+  match references_named(transport: transport, name: name) |> first {
+    Present { value: reference } => Present { value: reference }
+    Absent => none
+  }
+}
+
+fn references_named(
+  transport: OccurrenceTransport,
+  name: String
+) -> List<ReferenceOccurrence> {
   fold(
     transport.references,
-    init: none,
-    f: (found, reference) =>
-      match found {
-        Present { value: _ } => found
-        Absent =>
-          match index_entry_for_occurrence(
-            transport: transport,
-            occurrence: reference.occurrence,
-          ) {
-            Absent => Absent
-            Present { value: entry } =>
-              match entry.projection.authored_name == name {
-                true => Present { value: reference }
-                false => Absent
-              }
+    init: [],
+    f: (acc, reference) =>
+      match index_entry_for_occurrence(
+        transport: transport,
+        occurrence: reference.occurrence,
+      ) {
+        Absent => acc
+        Present { value: entry } =>
+          match entry.projection.authored_name == name {
+            true => concat(acc, [reference])
+            false => acc
+          }
+      },
+  )
+}
+
+fn declarations_named(
+  transport: OccurrenceTransport,
+  name: String
+) -> List<DeclarationOccurrence> {
+  fold(
+    transport.declarations,
+    init: [],
+    f: (acc, declaration) =>
+      match index_entry_for_occurrence(
+        transport: transport,
+        occurrence: declaration.occurrence,
+      ) {
+        Absent => acc
+        Present { value: entry } =>
+          match entry.projection.authored_name == name {
+            true => concat(acc, [declaration])
+            false => acc
           }
       },
   )

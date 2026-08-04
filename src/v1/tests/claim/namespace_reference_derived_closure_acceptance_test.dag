@@ -1,0 +1,45 @@
+module v1.tests.claim.namespace_reference_derived_closure_acceptance
+
+import gunbc.namespace_reference_derived_closure_contract {
+  reference_derived_closure_closing_contract_holds,
+  SameFileEarlierNeighbourVisible,
+  SiblingDecisionBranchExcluded,
+  LaterDeclarationExcluded,
+  DistinctSameSpelledDeclarationsPreserved,
+  UnrelatedLoadedFileExcluded,
+  P2aStructuralCandidateProducer7515,
+  P2aPoolIndependentDependencyProjection7515,
+  ReferenceDerivedClosureUnavailable,
+}
+import v1.gunbc.namespace_reference_derived_closure_structural_production {
+  observe_same_file_earlier_neighbour_visible,
+  observe_sibling_decision_branch_excluded,
+  observe_later_declaration_excluded,
+  observe_distinct_same_spelled_declarations_preserved,
+}
+import gunbc.namespace_reference_derived_closure_admission {
+  RepeatedMentionsCollapseDependency,
+  P2aReferenceDependencyProjection7515,
+}
+import std.types { Bool }
+
+data namespace_reference_derived_closure_acceptance_note: String = "THE DISCRIMINATING CLOSING VALIDATION for roadmap node namespace-reference-derived-closure. It is RED ON PURPOSE and enrolled QuarantineProbeExpectRed. Governed placement: src/v1/tests/claim because structural production calls parser transport outside witness_layer_roots. The witness composes the six-row admission list — each clause lane owns its supplier; clauses (e-f) remain literal Unavailable until N3-B/N3-C land. Today: four Established for (a-d) plus two Unavailable, frontier 2 not 0."
+
+test fn witness_namespace_reference_derived_closure_closing_contract_holds() -> Bool {
+  reference_derived_closure_closing_contract_holds(
+    admissions: [
+      observe_same_file_earlier_neighbour_visible(),
+      observe_sibling_decision_branch_excluded(),
+      observe_later_declaration_excluded(),
+      observe_distinct_same_spelled_declarations_preserved(),
+      ReferenceDerivedClosureUnavailable {
+        capability: RepeatedMentionsCollapseDependency,
+        trigger: P2aReferenceDependencyProjection7515,
+      },
+      ReferenceDerivedClosureUnavailable {
+        capability: UnrelatedLoadedFileExcluded,
+        trigger: P2aPoolIndependentDependencyProjection7515,
+      },
+    ],
+  )
+}
