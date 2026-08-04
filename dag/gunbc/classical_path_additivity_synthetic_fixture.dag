@@ -34,6 +34,10 @@ import gunbc.physics.classical_path_additivity {
   path_additivity_refutation_holds_for_synthetic_fixture,
   path_additivity_refutation_from_resolved,
   path_additivity_witness_is_counterexample,
+  PathAdditivityBandVerdict,
+  PathAdditivityRefutationAtBand,
+  PathAdditivityHeldAtBand,
+  PathAdditivityUndecidedAtBand,
 }
 
 data synthetic_fixture_note: String = "SYNTHETIC MECHANISM FIXTURE — NOT Bach et al. 2013 provenance. Rows exercise gunbc.physics.classical_path_additivity with equal declared exposure identity; classical mechanism adds raw counts."
@@ -125,6 +129,15 @@ fn classical_path_additivity_refutation_holds() -> Bool {
   path_additivity_refutation_holds_for_synthetic_fixture(receipt: classical_path_additivity_refuted)
 }
 
+fn synthetic_central_band_verdict() -> PathAdditivityBandVerdict {
+  derive_path_additivity_refutation_at_band(
+    rows: synthetic_fixture_arrival_count_observations,
+    fixture: synthetic_double_slit_fixture,
+    band: CentralBand,
+    exposure: SyntheticMatchedExposureOne {},
+  )
+}
+
 fn classical_path_additivity_central_band_refutation_holds() -> Bool {
   match derive_path_additivity_refutation_at_band(
     rows: synthetic_fixture_arrival_count_observations,
@@ -132,8 +145,8 @@ fn classical_path_additivity_central_band_refutation_holds() -> Bool {
     band: CentralBand,
     exposure: SyntheticMatchedExposureOne {},
   ) {
-    Present {
-      value: PathAdditivityRefutationReceipt {
+    PathAdditivityRefutationAtBand {
+      receipt: PathAdditivityRefutationReceipt {
         witness: w,
         subject: s,
         location: l,
@@ -141,8 +154,25 @@ fn classical_path_additivity_central_band_refutation_holds() -> Bool {
     } =>
       path_additivity_witness_is_counterexample(witness: w)
         && w.observed_vs_prediction == Greater
-    Absent => false
+    PathAdditivityHeldAtBand {
+      band: held_band,
+      exposure: held_exposure,
+    } => false
+    PathAdditivityUndecidedAtBand { resolution: undecided_resolution } => false
   }
+}
+
+fn synthetic_derive_first_minimum_verdict_from_partial_rows() -> PathAdditivityBandVerdict {
+  let partial_rows = [
+    synthetic_first_minimum_both_open,
+    synthetic_first_minimum_slit_one,
+  ]
+  derive_path_additivity_refutation_at_band(
+    rows: partial_rows,
+    fixture: synthetic_double_slit_fixture,
+    band: FirstMinimumBand,
+    exposure: SyntheticMatchedExposureOne {},
+  )
 }
 
 fn synthetic_blocked_count_is_resolved_zero_not_missing() -> Bool {

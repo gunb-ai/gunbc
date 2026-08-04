@@ -91,6 +91,18 @@ type PathAdditivityRefutationReceipt {
   location: PathAdditivityLocationKey
 }
 
+type PathAdditivityBandVerdict
+  = PathAdditivityRefutationAtBand {
+      receipt: PathAdditivityRefutationReceipt
+    }
+  | PathAdditivityHeldAtBand {
+      band: ScreenBand
+      exposure: SyntheticMatchedExposureSession
+    }
+  | PathAdditivityUndecidedAtBand {
+      resolution: AdditivityInputResolution
+    }
+
 fn classical_exclusive_alternative_arrival_prediction(
   left_only_count: NonNegativeInt,
   right_only_count: NonNegativeInt,
@@ -321,7 +333,7 @@ fn derive_path_additivity_refutation_at_band(
   fixture: SyntheticDoubleSlitFixture,
   band: ScreenBand,
   exposure: SyntheticMatchedExposureSession,
-) -> PathAdditivityRefutationReceipt? {
+) -> PathAdditivityBandVerdict {
   match resolve_additivity_inputs(
     rows: rows,
     fixture: fixture,
@@ -345,10 +357,14 @@ fn derive_path_additivity_refutation_at_band(
         prediction: prediction,
       )
       match ordering {
-        Equal => none
+        Equal =>
+          PathAdditivityHeldAtBand {
+            band: band,
+            exposure: exposure,
+          }
         Less =>
-          Present {
-            value: path_additivity_refutation_from_resolved(
+          PathAdditivityRefutationAtBand {
+            receipt: path_additivity_refutation_from_resolved(
               left: left,
               right: right,
               both: both,
@@ -358,8 +374,8 @@ fn derive_path_additivity_refutation_at_band(
             ),
           }
         Greater =>
-          Present {
-            value: path_additivity_refutation_from_resolved(
+          PathAdditivityRefutationAtBand {
+            receipt: path_additivity_refutation_from_resolved(
               left: left,
               right: right,
               both: both,
@@ -374,11 +390,25 @@ fn derive_path_additivity_refutation_at_band(
       missing_arrangement: missing_arrangement,
       band: incomplete_band,
       exposure: incomplete_exposure,
-    } => none
+    } =>
+      PathAdditivityUndecidedAtBand {
+        resolution: AdditivityInputsIncomplete {
+          missing_arrangement: missing_arrangement,
+          band: incomplete_band,
+          exposure: incomplete_exposure,
+        },
+      }
     AdditivityInputsAmbiguous {
       band: ambiguous_band,
       exposure: ambiguous_exposure,
       matching_rows: ambiguous_rows,
-    } => none
+    } =>
+      PathAdditivityUndecidedAtBand {
+        resolution: AdditivityInputsAmbiguous {
+          band: ambiguous_band,
+          exposure: ambiguous_exposure,
+          matching_rows: ambiguous_rows,
+        },
+      }
   }
 }

@@ -8,6 +8,10 @@ import gunbc.physics.classical_path_additivity {
   PathAdditivityCounterexampleWitness,
   path_additivity_refutation_holds_for_synthetic_fixture,
   path_additivity_compare_observed_to_prediction,
+  PathAdditivityRefutationAtBand,
+  PathAdditivityHeldAtBand,
+  PathAdditivityUndecidedAtBand,
+  AdditivityInputsIncomplete,
 }
 import gunbc.classical_path_additivity_synthetic_fixture {
   classical_path_additivity_refutation_holds,
@@ -16,7 +20,10 @@ import gunbc.classical_path_additivity_synthetic_fixture {
   classical_path_additivity_central_band_refutation_holds,
   synthetic_blocked_count_is_resolved_zero_not_missing,
   synthetic_missing_row_yields_incomplete_inputs,
+  synthetic_derive_first_minimum_verdict_from_partial_rows,
+  synthetic_central_band_verdict,
 }
+import extdeps.physics.bach_et_al_2013_double_slit { SlitTwoOpen }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -57,6 +64,28 @@ test fn w_synthetic_path_additivity_rejects_corrupted_left_count() -> Bool {
     location: classical_path_additivity_refuted.location,
   }
   !path_additivity_refutation_holds_for_synthetic_fixture(receipt: bad_receipt)
+}
+
+test fn w_synthetic_derive_undecided_carries_incomplete_resolution() -> Bool {
+  match synthetic_derive_first_minimum_verdict_from_partial_rows() {
+    PathAdditivityUndecidedAtBand {
+      resolution: AdditivityInputsIncomplete {
+        missing_arrangement: SlitTwoOpen,
+        band: incomplete_band,
+        exposure: incomplete_exposure,
+      },
+    } => true
+    PathAdditivityRefutationAtBand { receipt: refutation_receipt } => false
+    PathAdditivityHeldAtBand { band: held_band, exposure: held_exposure } => false
+  }
+}
+
+test fn w_synthetic_central_band_verdict_is_refutation_not_held_or_undecided() -> Bool {
+  match synthetic_central_band_verdict() {
+    PathAdditivityRefutationAtBand { receipt: refutation_receipt } => true
+    PathAdditivityHeldAtBand { band: held_band, exposure: held_exposure } => false
+    PathAdditivityUndecidedAtBand { resolution: undecided_resolution } => false
+  }
 }
 
 test fn w_synthetic_central_band_refutes_with_observed_above_prediction() -> Bool {
