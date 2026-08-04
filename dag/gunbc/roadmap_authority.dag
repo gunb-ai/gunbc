@@ -1641,6 +1641,21 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The four observations plus a stale-state refresh."
       )
     ),
+    active(
+      identity: "rn_C0D3XAPP5RV3RT1CALP0D1460",
+      id: "codex-app-server-press-vertical",
+      owner: "roadmap-runtime",
+      path: "docs/plans/provider-control-interface-audit.md",
+      t: fields(
+        headline: "Bundle exact provider dependencies and run Codex app-server through the roadmap press",
+        boundary: "One attributable press trip: exact Codex package selection under scripts-disabled materialization; ProviderInterfaceBinding whose realization nests runtime bundle + transport + lifecycle (provider identity derived, never a writable sibling); subjectful Start naming attempt+turn+interface; device-code enrollment + exact SM credential version + account/read and rateLimits/read; JSON-AST wire parse with raw native event retention; terminal/cause split; page-level OperatorActionItem inbox; persisted turn receipt. Missing app-server never falls back to exec --json; srv1 exec--json/tmux production offer is removed once the receipt path is live.",
+        displaced_cost: "Replaces CLI-shaped quota guessing and tmux-as-authority with a typed control interface the audit locked, so a press click names a real turn instead of a fabricated dispatch-accepted — and so the operator manages exceptions, not routine provider accounts.",
+        first_slice: "Correct realization-shaped binding + package spine + Codex 0.146.0 lock + credential-home lease + usage standing + operator action carriers + app-server Start/adjudication keystone witness; then wire production press + cut over srv1 offer.",
+        red_control: "Missing binary refuses without exec --json; legacy non-production realization refuses; `latest` secret version refuses; malformed JSON refuses; failed+unclassified cannot authorize recovery; agent-authored usage-limit prose is not quota; legacy exec fixture remains fidelity-loss evidence read from file bytes.",
+        out_of_scope: "No Claude Agent SDK trip, no Cursor, no cross-provider recovery policy, no assumed OAuth refresh write-back contract, no socket/daemon transport cutover.",
+        handback: "Carriers under gunbc.codex_* / gunbc.provider_* / extdeps.llm.codex_app_server / extdeps.package.npm_selection, keystone witness green, and the production press path using CodexAppServer only."
+      )
+    ),
 
     with_execution(active_sized(
       identity: "rn_2NDX8VQ4KJ7ZTBM5WGPRAF06L",
@@ -1917,6 +1932,7 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "roadmap-runtime-ready-override", parent: "roadmap-runtime-identity-join"),
     edge(child: "roadmap-runtime-dispatch-consumer", parent: "roadmap-runtime-ready-override"),
     edge(child: "roadmap-runtime-readback", parent: "roadmap-runtime-dispatch-consumer"),
+    edge(child: "codex-app-server-press-vertical", parent: "roadmap-runtime-dispatch-consumer"),
 
     edge(child: "fleet-bmc-policy-convergence", parent: "fleet-state-frontier"),
     edge(child: "fleet-closed-loop-converge", parent: "fleet-state-frontier"),
