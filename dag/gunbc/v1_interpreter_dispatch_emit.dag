@@ -11,6 +11,7 @@ import gunbc.v1_interpreter_primitive_surface {
 }
 import v2.std.algebra { fold_list }
 import v2.std.collection { List }
+import v2.std.optional { Absent, Optional, Present }
 import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
 import v2.std.text { String }
 
@@ -361,7 +362,7 @@ fn render_dispatch_generated_rs(rows: List<InterpreterPrimitiveDispatchArm>) -> 
   )
 }
 
-fn dispatch_emit_site_bridge_module(site: InterpreterDispatchEmitSite) -> QualifiedName? {
+fn dispatch_emit_site_bridge_module(site: InterpreterDispatchEmitSite) -> Optional<QualifiedName> {
   match site {
     EvalCallBridgeFamilySite { module } => Present { value: module }
     EvalBuiltinInnerSite => Absent
