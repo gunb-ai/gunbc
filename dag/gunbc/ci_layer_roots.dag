@@ -88,6 +88,12 @@ data excl_install_media_dissolve: String = "mock_response coverage lands and ass
 
 data witness_exclusion_frontier: List<WitnessExclusionRow> = [
   WitnessExclusionRow {
+    pattern: "roadmap_receipt_continuity_live_witness_test.dag",
+    classification: OfflineLocalRecipe,
+    reason: "SUBSTANTIATED per-row: live_acceptance_history_integrity_holds_on_authority reaches git.Inspect.HeadCommit, git.Inspect.MergeBase, and git.Core.Show without mock_response, so the hermetic discovery envelope REFUSES rather than skipping. The hermetic closing contract in roadmap_receipt_continuity_acceptance_test.dag keeps planted red controls only; this file executes the live git-observed integrity path on the per-PR wet corpora batch.",
+    dissolve_on: "mock_response coverage lands for the git revision-addressed operations used by roadmap_acceptance_history_observation AND live assertions are re-checked under a fixed mock; or merge-base revision evaluation lands so hermetic fixtures can supply observed prior_history without live git. Either way this row deletes."
+  },
+  WitnessExclusionRow {
     pattern: "stage0_rust_host_observation_live_witness_test.dag",
     classification: OfflineLocalRecipe,
     reason: "SUBSTANTIATED per-row: every fn in this file reaches git.Inspect.HeadCommit and git.Inspect.MergeBase without mock_response, so the hermetic discovery envelope REFUSES rather than skipping (a refusing discovery member fails its whole batch — CI receipt on PR 7562). Publishing mocks was tried and reverted: it only moves the refusal to the next unmocked operation, and mocking the whole revision-addressed chain would let a liveness witness pass against a constant sha. The closing contract `live_rust_observation_matches_actions_subject` is enrolled in bin_witness_wet_entries for the per-PR wet corpora batch (GITHUB_SHA supplied by the runner, not hand-set); per-row wet outcomes are not yet observable in Actions job logs (bin_witness_wet_per_row_actions_log_observation_gap_note). The three scaffold witnesses in this file remain offline-local: they are not on the bin roster and the wet cadence they would otherwise need is not scheduled (falsifier_self_host_wet_cadence_active is false).",
@@ -505,7 +511,7 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     pattern: "compiler_frontier_per_module_probe_test.dag",
     classification: OfflineLocalRecipe,
     reason: "operator-ruled OFFLINE long-lane resident (Lane E closeout): per-module frontier_probe_emit_from_ingest over 27 modules exceeds the 5s fast-lane budget; test/claim/long/ dir grain excludes discovery but this row names the OFFLINE local recipe consumer (compiler_frontier_per_module_probe_exclusion_note)",
-    dissolve_on: "all 27 roster modules surveyed at HEAD, frontier.dag rows hand-authored from receipts, compiler_frontier_per_module_probe_survey_holds greens on the full host_frontier_probe_survey manifest via the local recipe, totality wall witnesses pass — then row deletes with the probe scaffold dissolution"
+    dissolve_on: "all 27 roster modules have execution_measurement receipts at one pinned source_head in host_frontier_probe_survey_manifest, frontier.dag rows hand-authored from that manifest, compiler_frontier_per_module_probe_survey_holds greens via the local recipe, totality wall witnesses pass — then row deletes with the probe scaffold dissolution"
   },
   WitnessExclusionRow {
     pattern: "no_fake_anomalies_witness_test.dag",
@@ -894,6 +900,7 @@ data bin_witness_wet_entries: List<ScheduleWitnessEntry> = [
   bin_wet(entry: "dag/test/claim/host_build_cache_provision_real_execution_witness_test.dag", f: "provision_read_back_failure_not_converged_by_real_execution"),
   bin_wet(entry: "dag/test/claim/repo_local_git_config_real_execution_witness_test.dag", f: "repo_local_git_config_actuator_sets_local_bindings_by_real_execution"),
   bin_wet(entry: "dag/test/claim/stage0_rust_host_observation_live_witness_test.dag", f: "live_rust_observation_matches_actions_subject"),
+  bin_wet(entry: "dag/test/claim/roadmap_receipt_continuity_live_witness_test.dag", f: "live_acceptance_history_integrity_holds_on_authority"),
   bin_wet(entry: "dag/test/claim/host_effect_plan_real_execution_witness_test.dag", f: "host_effect_plan_shell_witness_holds_by_real_execution"),
   bin_wet(entry: "dag/test/claim/effect_plan_bash_materialize_real_execution_witness_test.dag", f: "effect_plan_bash_two_declared_operations_execute"),
   bin_wet(entry: "dag/test/claim/effect_plan_bash_materialize_real_execution_witness_test.dag", f: "effect_plan_bash_fail_fast_prevents_later_operation_execution"),
