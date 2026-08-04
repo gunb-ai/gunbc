@@ -1,23 +1,5 @@
 module test.claim.uri_percent_encode_witness
 
-import std.types { NonEmptyStr }
-
-import extdeps.uri {
-  uri_percent_encode_code_point,
-  uri_percent_encode_code_points,
-  uri_percent_encode_component,
-  uri_percent_encode_unicode_scalar,
-  uri_unicode_scalar_construction,
-  UriPercentComponentEncoded,
-  UriPercentComponentRefused,
-  UriPercentEncodeBuilding,
-  UriPercentEncodeRefused,
-  UriUnicodeScalarConstructed,
-  UriUnicodeScalarSurrogateRefused,
-  UriUnicodeScalarOutOfRangeRefused,
-  UriHexNibbleOutOfRange,
-}
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn uri_percent_encode_scalar_e_acute_holds() -> Bool {
