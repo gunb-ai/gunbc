@@ -60,13 +60,6 @@ data fired_dissolution_specimen_bind_module: String = "v2.test.fixture.walk_plan
 
 data fired_dissolution_specimen_bind_decl: String = "walk_plan_stage_overlap_barrier_recipe"
 
-test fn debug_walk_plan_carrier_present() -> Bool {
-  any(
-    derived_scaffold_disposition_sites(),
-    s => s.carrier_decl == "walk_plan_stage_fixture_hand_rust_scaffold"
-  )
-}
-
 test fn derived_population_includes_known_specimen_by_identity() -> Bool {
   match scaffold_site_by_qualified_name(
     qn: population_positive_specimen_qualified_name,
@@ -84,6 +77,20 @@ test fn derived_population_excludes_unrelated_scaffold_types() -> Bool {
   !any(
     derived_scaffold_disposition_sites(),
     s => string_contains(s: s.carrier_decl, pattern: "TargetBodiedArrowStatementScaffold")
+  )
+}
+
+test fn derived_population_excludes_construction_justification_carriers() -> Bool {
+  !any(
+    derived_scaffold_disposition_sites(),
+    s => s.carrier_decl == "construction_justification"
+  )
+}
+
+test fn debug_bytes_marker_in_population() -> Bool {
+  any(
+    derived_scaffold_disposition_sites(),
+    s => s.carrier_decl == "bytes_seam_host_realization_marker"
   )
 }
 

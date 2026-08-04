@@ -22,17 +22,12 @@ import v2.std.decl_index {
   OtherItem,
   decl_facts,
 }
-import v2.std.algebra { length, count_where }
+import v2.std.algebra { length, count_where, list_tail, TailFound, TailAbsent }
 import v2.std.collection { Absent, Present, list_at_optional }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.compilers.lexing { symbol_lexeme }
 import v2.std.node {
-  Atom,
   Node,
-  NodeFold,
-  Symbol,
-  TypeNode,
-  fold_node,
 }
 import v2.std.node_query { node_positional_child_targets }
 import v2.lens.disposition_redundancy {
@@ -48,7 +43,7 @@ import std.disposition {
   SubstrateMandatoryTag,
 }
 
-data scaffold_retirement_pilot_derivation_note: String = "POPULATION IS DERIVED, NEVER AUTHORED. derived_scaffold_disposition_sites() folds decl_facts(pool_roots) body nodes over witness_layer_roots (dag + src/v2): every DataItem whose initializer variant is Scaffold (Disposition-typed by construction — Scaffold is only a Disposition constructor). Structural Node-tree selection only — not regex, not a hand roster. The pilot takes the first fifteen rows, lexicographically stable in the decl_facts corpus walk (rel_path, name), whose rel_path is under dag/gunbc/ — a reproducible convenience sample, not a representative census of the full derived population; exclusion rates measured on the pilot must not be read as corpus-wide rates. Obligation bindings use the interim carrier-path substring heuristic documented in scaffold_retirement_obligation_join_scaffold_note until roadmap rows carry an explicit DeclarationRef obligation anchor; zero or plural matches become typed exclusions, never fabricated owners."
+data scaffold_retirement_pilot_derivation_note: String = "POPULATION IS DERIVED, NEVER AUTHORED. derived_scaffold_disposition_sites() folds decl_facts(pool_roots) body nodes over witness_layer_roots (dag + src/v2): every DataItem whose initializer is the Disposition Scaffold variant — detected structurally as a two-field conj (dissolves_to + bind) carrying a ConstructionMechanism, because decl_facts ExprRecordLit marshal omits the variant label atom. Not regex, not a hand roster. The pilot takes the first fifteen rows, lexicographically stable in the decl_facts corpus walk (rel_path, name), whose rel_path is under dag/gunbc/ — a reproducible convenience sample, not a representative census of the full derived population; exclusion rates measured on the pilot must not be read as corpus-wide rates. Obligation bindings use the interim carrier-path substring heuristic documented in scaffold_retirement_obligation_join_scaffold_note until roadmap rows carry an explicit DeclarationRef obligation anchor; zero or plural matches become typed exclusions, never fabricated owners."
 
 data scaffold_retirement_obligation_join_scaffold_note: String = "INTERIM HEURISTIC — NOT an identity join on site.bind. obligation_candidates_for_site selects declared_roadmap_nodes() rows whose carrier paths string_contains site.rel_path, site.bind.module_path, site.bind.decl_name, or site.carrier_module. Unique hit → binding; zero or plural → typed exclusion. Dissolve-on: roadmap obligation rows carry an explicit DeclarationRef anchor and derived_binding_for_site joins site.bind against that anchor via decl_ref_eq, retiring substring carrier-path matching."
 
@@ -91,21 +86,6 @@ type ObligationIdentityAdmission
   | ObligationIdentityUnknown { identity: RoadmapNodeIdentity }
   | ObligationIdentityAmbiguous { identity: RoadmapNodeIdentity, matches: Int }
 
-fn scaffold_subtree_atoms(n: Node) -> List<Symbol> {
-  fold_node(
-    n: n,
-    algebra: NodeFold {
-      init: fn(n0) {
-        match n0.kind {
-          TypeNode { connective: Atom { identity: s } } => [s]
-          _ => []
-        }
-      },
-      step: fn(acc, _edge, child) { concat(acc, child) }
-    }
-  )
-}
-
 fn node_atom_lexeme_optional(node: Node) -> String? {
   match node_atom_identity_optional(node: node) {
     Present { value: sym } => Present { value: symbol_lexeme(sym: sym) }
@@ -113,21 +93,64 @@ fn node_atom_lexeme_optional(node: Node) -> String? {
   }
 }
 
-fn atom_lexeme_list_contains(atoms: List<Symbol>, lexeme: String) -> Bool {
-  any(
-    xs: atoms,
-    predicate: fn(sym) { symbol_lexeme(sym: sym) == lexeme }
-  )
+fn string_lexemes_in_node_tree(node: Node) -> List<String> {
+  match node_atom_lexeme_optional(node: node) {
+    Present { value: lex } => [lex]
+    Absent =>
+      fold(
+        node_positional_child_targets(node: node),
+        init: [],
+        f: fn(acc, child) { concat(acc, string_lexemes_in_node_tree(node: child)) }
+      )
+  }
+}
+
+fn looks_like_module_path(lex: String) -> Bool {
+  string_contains(s: lex, pattern: ".")
+}
+
+fn declaration_ref_from_adjacent_lexemes(
+  module_path: String,
+  decl_name: String
+) -> DeclarationRef? {
+  match looks_like_module_path(lex: module_path) && !looks_like_module_path(lex: decl_name) {
+    true =>
+      Present {
+        value: DeclarationRef {
+          module_path: module_path,
+          decl_name: decl_name,
+          field: WholeDeclaration,
+        }
+      }
+    false => Absent
+  }
+}
+
+fn declaration_ref_from_string_lexemes(lexemes: List<String>) -> DeclarationRef? {
+  match list_at_optional(xs: lexemes, index: 0) {
+    Present { value: head } =>
+      match list_at_optional(xs: lexemes, index: 1) {
+        Present { value: next } =>
+          match declaration_ref_from_adjacent_lexemes(module_path: head, decl_name: next) {
+            Present { value: bind } => Present { value: bind }
+            Absent =>
+              match list_tail(xs: lexemes) {
+                TailFound { tail: tail } => declaration_ref_from_string_lexemes(lexemes: tail)
+                TailAbsent => Absent
+              }
+          }
+        Absent => Absent
+      }
+    Absent => Absent
+  }
 }
 
 fn node_is_scaffold_initializer(body: Node) -> Bool {
-  atom_lexeme_list_contains(
-    atoms: scaffold_subtree_atoms(n: body),
-    lexeme: "Scaffold"
-  ) || match first_construction_mechanism(node: body) {
-    Present { value: _ } => true
-    Absent => false
-  }
+  length(xs: node_positional_child_targets(node: body)) == 2
+    && match first_construction_mechanism(node: body) {
+      Present { value: _ } => true
+      Absent => false
+    }
 }
 
 fn construction_mechanism_from_lexeme(lex: String) -> ConstructionMechanism? {
@@ -141,22 +164,19 @@ fn construction_mechanism_from_lexeme(lex: String) -> ConstructionMechanism? {
 
 fn first_construction_mechanism(node: Node) -> ConstructionMechanism? {
   fold(
-    scaffold_subtree_atoms(n: node),
+    string_lexemes_in_node_tree(node: node),
     init: Absent,
-    f: fn(acc, sym) {
+    f: fn(acc, lex) {
       match acc {
         Present { value: _ } => acc
-        Absent => construction_mechanism_from_lexeme(lex: symbol_lexeme(sym: sym))
+        Absent => construction_mechanism_from_lexeme(lex: lex)
       }
     }
   )
 }
 
 fn dissolves_to_from_scaffold_body(body: Node) -> ConstructionMechanism? {
-  match list_at_optional(xs: node_positional_child_targets(node: body), index: 1) {
-    Present { value: dissolves_to_init } => first_construction_mechanism(node: dissolves_to_init)
-    Absent => first_construction_mechanism(node: body)
-  }
+  first_construction_mechanism(node: body)
 }
 
 fn named_field_from_declaration_ref_conj(node: Node, field_node: Node) -> DeclField? {
@@ -319,7 +339,11 @@ fn declaration_ref_from_node_tree(node: Node) -> DeclarationRef? {
 }
 
 fn bind_from_scaffold_body(body: Node) -> DeclarationRef? {
-  declaration_ref_from_node_tree(node: body)
+  match declaration_ref_from_node_tree(node: body) {
+    Present { value: bind } => Present { value: bind }
+    Absent =>
+      declaration_ref_from_string_lexemes(lexemes: string_lexemes_in_node_tree(node: body))
+  }
 }
 
 fn scaffold_site_when_disposition_scaffold(
