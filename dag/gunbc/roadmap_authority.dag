@@ -1653,7 +1653,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         first_slice: "Correct realization-shaped binding + package spine + Codex 0.146.0 lock + credential-home lease + usage standing + operator action carriers + app-server Start/adjudication keystone witness; then wire production press + cut over srv1 offer.",
         red_control: "Missing binary refuses without exec --json; legacy non-production realization refuses; `latest` secret version refuses; malformed JSON refuses; failed+unclassified cannot authorize recovery; agent-authored usage-limit prose is not quota; legacy exec fixture remains fidelity-loss evidence read from file bytes.",
         out_of_scope: "No Claude Agent SDK trip, no Cursor, no cross-provider recovery policy, no assumed OAuth refresh write-back contract, no socket/daemon transport cutover.",
-        handback: "Carriers under gunbc.codex_* / gunbc.provider_* / extdeps.llm.codex_app_server / extdeps.npm (NpmPackageLockV3 + npm_decode_integrity) / gunbc.package_delivery; admitted Codex lock + runtime-bundle receipt; keystone witness green; production press path using CodexAppServer only."
+        handback: "Carriers under gunbc.codex_* / gunbc.provider_* / extdeps.llm.codex_app_server / extdeps.npm (NpmPackageLockFormat + npm_decode_integrity) / gunbc.package_delivery (Codex integrity profile + materializer); admitted Codex lock + runtime-bundle receipt; keystone witness green; production press path using CodexAppServer only."
       )
     ),
 

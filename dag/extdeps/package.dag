@@ -190,4 +190,4 @@ fn package_lock_admit_graph<ManagerIdentity, NodeKey, Selection, Metadata, EdgeK
   }
 }
 
-data package_delivery_placement_note: String = "First delivery mechanism lands as a CONSUMED handler in gunbc.package_delivery; promote to std only after a second real consumer."
+data package_delivery_placement_note: String = "First delivery mechanism lands as a CONSUMED handler in gunbc.package_delivery (product policy + materialization); promote to std only after a second real consumer. Codex integrity admission already lives there — not in extdeps.npm."
