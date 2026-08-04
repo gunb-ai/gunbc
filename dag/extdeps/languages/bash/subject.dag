@@ -1,0 +1,41 @@
+module extdeps.languages.bash.subject
+
+import std.types { String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.gnu.org/software/bash/manual/bash.html"
+  }
+}
+
+data gnu_bash_posix_conformance_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "pubs.opengroup.org/onlinepubs/9699919799/utilities/V3_chap02.html"
+  }
+}
+
+data bash_subject_note: String = "THE CANONICAL BASH SUBJECT — the one declaration every Bash-bearing surface in this repository joins (operator verdict, 2026-08-04). A target is its UPSTREAM SUBJECT, symbolically identified per extdeps.external_authority's external_subject_symbolic_identity_note; the grammar, build helpers, command fold, orchestration emission, and runtime transport modules are SURFACES that describe or realize that subject, not five targets. This is why the subject is homed apart from any one of them: a surface may move or split without changing what Bash is, and a module path is a discriminator rather than an identity (DESIGN section 3). WHY THIS FILE EXISTS AT ALL: before it, Bash was the target this repository emits most and the only one with no cited subject anywhere — v2.extdeps.languages.bash carries neither an extdeps_model_scope nor an upstream citation, so v2.lens.realization_vocabulary_containment has been confining the module PREFIX 'v2.extdeps.languages.bash' around a name rather than an authority. Expect that to be the common case rather than the exception as the registry totality wall runs (loyal-ant-382, 2026-08-04)."
+
+data bash_implementation_versus_specification_note: String = "TWO CITATIONS, ONE SUBJECT, and the split is deliberate rather than belt-and-braces. GNU Bash is an IMPLEMENTATION; the POSIX Shell Command Language is a SPECIFICATION it conforms to in part. DESIGN section 3's external-upstream decomposition keeps independently governed entities separate — the whatwg.html_navigation / browser.chromium shape — so the specification is cited here as a conformance authority of this subject, NOT merged into it. The distinction is load-bearing for emission: this repository's bash grammar emits Bash-specific constructs, and extdeps.shell.exec already routes shell.Exec.Check through 'sh -c' against the same POSIX citation carried here. A future POSIX-shell subject, if one is ever needed as a target in its own right, is a SEPARATE subject declaration that this one cites — never an arm added to GnuBash. Revision identity stays off the scope by construction (external_model_scope_revision_grain_note): a specific Bash release is a fact on a release row, not a property of the subject."
+
+type GnuBash
+  = | GnuBashShell
+
+data gnu_bash: GnuBash = GnuBashShell
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.languages.bash.subject",
+      decl_name: "gnu_bash",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps.languages.bash.subject.extdeps_external_authority_anchor,
+  further_citations: [extdeps.languages.bash.subject.gnu_bash_posix_conformance_authority]
+}
