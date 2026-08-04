@@ -472,6 +472,8 @@ fn v1_fn_generic_clone_bound_via_bounded_container_element(
   )
 }
 
+data surface_trigger_removed_from_fn_structural_note: String = "v1_generic_param_used_in_value_param_type_surface was removed from v1_type_param_needs_clone_bound (2026-08-04): any-mention of N in a value-param type forced N: Clone on every fn naming Holder<N>, collapsing fn_wf_no_trigger_negative_control. Keyed-roster Clone remains on the module allowlist + WF/container triggers; dissolve-on for that allowlist is unchanged."
+
 fn v1_type_param_needs_clone_bound(
   param_name: String,
   return_is_bare_generic: Bool,
@@ -485,7 +487,6 @@ fn v1_type_param_needs_clone_bound(
   let structural = (return_is_bare_generic && !body_is_param_ref && param_name == ret_name)
     || v1_generic_param_used_as_collection_element(param_name: param_name, value_params: value_params, bounds: bounds, type_decl_items: type_decl_items, source_indices: source_indices)
     || v1_generic_param_used_as_bare_value_param_type(param_name: param_name, value_params: value_params, source_indices: source_indices)
-    || v1_generic_param_used_in_value_param_type_surface(param_name: param_name, value_params: value_params, bounds: bounds, type_decl_items: type_decl_items, source_indices: source_indices)
   structural
 }
 
