@@ -54,6 +54,29 @@ test fn uri_percent_encode_refuses_negative_scalar_at_construction_holds() -> Bo
   }
 }
 
+test fn uri_percent_encode_refuses_directly_constructed_surrogate_scalar_holds() -> Bool {
+  match uri_percent_encode_unicode_scalar(scalar: UriUnicodeScalar { cp: 55296 }) {
+    UriPercentEncodeRefused { cause: UriPercentEncodeSurrogateScalarRefused { cp: 55296 } } => true
+    UriPercentEncodeBuilding { wire: _ } => false
+  }
+}
+
+test fn uri_percent_encode_refuses_directly_constructed_above_max_scalar_holds() -> Bool {
+  match uri_percent_encode_unicode_scalar(scalar: UriUnicodeScalar { cp: 1114112 }) {
+    UriPercentEncodeRefused {
+      cause: UriPercentEncodeUnicodeScalarOutOfRangeRefused { cp: 1114112 },
+    } => true
+    UriPercentEncodeBuilding { wire: _ } => false
+  }
+}
+
+test fn uri_percent_encode_code_points_joins_fragments_once_holds() -> Bool {
+  match uri_percent_encode_code_points(code_points: [233, 8364]) {
+    UriPercentComponentEncoded(wire) => wire == "%C3%A9%E2%82%AC"
+    UriPercentComponentRefused { cause: _ } => false
+  }
+}
+
 test fn uri_percent_encode_refuses_empty_code_point_list_holds() -> Bool {
   match uri_percent_encode_code_points(code_points: []) {
     UriPercentComponentRefused { cause: UriPercentEncodeEmptyInputRefused } => true

@@ -289,6 +289,17 @@ fn uri_percent_encode_four_octets(b0: UriUtf8Octet, b1: UriUtf8Octet, b2: UriUtf
 }
 
 fn uri_percent_encode_unicode_scalar(scalar: UriUnicodeScalar) -> UriPercentEncodeFoldState {
+  match uri_unicode_scalar_construction(cp: scalar.cp) {
+    UriUnicodeScalarSurrogateRefused { cp: c } =>
+      UriPercentEncodeRefused { cause: UriPercentEncodeSurrogateScalarRefused { cp: c } }
+    UriUnicodeScalarOutOfRangeRefused { cp: c } =>
+      UriPercentEncodeRefused { cause: UriPercentEncodeUnicodeScalarOutOfRangeRefused { cp: c } }
+    UriUnicodeScalarConstructed(validated) =>
+      uri_percent_encode_unicode_scalar_validated(scalar: validated)
+  }
+}
+
+fn uri_percent_encode_unicode_scalar_validated(scalar: UriUnicodeScalar) -> UriPercentEncodeFoldState {
   let cp = scalar.cp
   if uri_component_is_unreserved(cp: cp) {
     UriPercentEncodeBuilding { wire: from_code_point(cp: cp) }
@@ -373,34 +384,47 @@ fn uri_percent_encode_component(value: NonEmptyStr) -> UriPercentEncodeComponent
   uri_percent_encode_code_points(code_points: (value as String) |> chars)
 }
 
+fn uri_percent_encode_scalar_fragment(cp: Int) -> UriPercentEncodeFoldState {
+  match uri_unicode_scalar_construction(cp: cp) {
+    UriUnicodeScalarSurrogateRefused { cp: c } =>
+      UriPercentEncodeRefused { cause: UriPercentEncodeSurrogateScalarRefused { cp: c } }
+    UriUnicodeScalarOutOfRangeRefused { cp: c } =>
+      UriPercentEncodeRefused { cause: UriPercentEncodeUnicodeScalarOutOfRangeRefused { cp: c } }
+    UriUnicodeScalarConstructed(scalar) =>
+      uri_percent_encode_unicode_scalar_validated(scalar: scalar)
+  }
+}
+
+type UriPercentEncodeFragmentsState
+  = UriPercentEncodeFragmentsBuilding { fragments: List<String> }
+  | UriPercentEncodeFragmentsRefused { cause: UriPercentEncodeRefusalCause }
+
 fn uri_percent_encode_code_points(code_points: List<Int>) -> UriPercentEncodeComponent {
   if code_points |> length == 0 {
     UriPercentComponentRefused { cause: UriPercentEncodeEmptyInputRefused }
   } else {
     match fold(
       code_points,
-      init: UriPercentEncodeBuilding { wire: "" },
+      init: UriPercentEncodeFragmentsBuilding { fragments: [] },
       f: fn(acc, cp) {
         match acc {
-          UriPercentEncodeRefused { cause: _ } => acc
-          UriPercentEncodeBuilding { wire: prefix } =>
-            match uri_unicode_scalar_construction(cp: cp) {
-              UriUnicodeScalarSurrogateRefused { cp: c } =>
-                UriPercentEncodeRefused { cause: UriPercentEncodeSurrogateScalarRefused { cp: c } }
-              UriUnicodeScalarOutOfRangeRefused { cp: c } =>
-                UriPercentEncodeRefused { cause: UriPercentEncodeUnicodeScalarOutOfRangeRefused { cp: c } }
-              UriUnicodeScalarConstructed(scalar) =>
-                match uri_percent_encode_unicode_scalar(scalar: scalar) {
-                  UriPercentEncodeRefused { cause: cause } => UriPercentEncodeRefused { cause: cause }
-                  UriPercentEncodeBuilding { wire: encoded } =>
-                    UriPercentEncodeBuilding { wire: concat(prefix, encoded) }
+          UriPercentEncodeFragmentsRefused { cause: _ } => acc
+          UriPercentEncodeFragmentsBuilding { fragments: fragments } =>
+            match uri_percent_encode_scalar_fragment(cp: cp) {
+              UriPercentEncodeRefused { cause: cause } =>
+                UriPercentEncodeFragmentsRefused { cause: cause }
+              UriPercentEncodeBuilding { wire: wire } =>
+                UriPercentEncodeFragmentsBuilding {
+                  fragments: concat(fragments, [wire]),
                 }
             }
         }
       },
     ) {
-      UriPercentEncodeRefused { cause: cause } => UriPercentComponentRefused { cause: cause }
-      UriPercentEncodeBuilding { wire: wire } => UriPercentComponentEncoded(wire as NonEmptyStr)
+      UriPercentEncodeFragmentsRefused { cause: cause } =>
+        UriPercentComponentRefused { cause: cause }
+      UriPercentEncodeFragmentsBuilding { fragments: fragments } =>
+        UriPercentComponentEncoded(join(fragments, "") as NonEmptyStr)
     }
   }
 }
