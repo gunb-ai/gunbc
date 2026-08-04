@@ -108,6 +108,14 @@ fn section_4b_blocks() -> List<MarkdownBlock> {
   ]
 }
 
+fn section_4c_blocks() -> List<MarkdownBlock> {
+  [
+    h2(text: "4c. Source annotations (prose the substrate can see)"),
+    p(text: "**Source annotations are captured authored-source data, not semantic program data and not discarded trivia.** A language realization that admits annotation syntax routes it through an annotation-specific lexical channel; it may not produce an ordinary semantic token or namespace binding. Parsing returns annotations beside the semantic artifact, attached to eligible structural subjects. Annotation capture and provenance are disjoint from semantic occurrence allocation: adding, deleting, or moving an annotation cannot alter any semantic occurrence identity, semantic graph, resolution result, semantic hash, or target-program bytes. Textual provenance may move and must remain correct. Semantic compiler passes receive only the annotation-erased projection; source authoring, formatting, SCM, and annotation lenses consume and preserve the authored wrapper. The initial `.dag` realization admits only standalone leading `//` blocks attached to module-scope declarations; trailing, body, unattached, and block-comment forms refuse until separately modeled. Plain source annotations are modeling debt. Any invariant, receipt, event, ruling, citation, status, count, dissolution condition, or other machine-consumed fact belongs in a typed carrier. An ordinary `String` declaration whose sole purpose is commentary is misplaced or dead data."),
+    p(text: "**Prose is not forbidden; unclassified prose is.** The rule exists because the opposite was tried and measured: removing `//` as a parse error (#5579) made comment *syntax* unwritable without making commentary unwritable, so the corpus adopted an explicit compensating convention — hoisting comments into `data …: String` rows (#6262) — where intent is mechanically indistinguishable from program data, and the first cleanup it forced swept 215 dead prose rows across ~130 files (#6424). That is the §2/§3 failure in its purest form: a second representation with no authority, undecidable by any lens. `//` is therefore the explicit quarantine boundary — the compiler keeps enough structure to migrate prose later without ever having pretended it was program data. Two consequences bind authors: an annotation may preserve irreducible human rationale about *why* a construction has its shape, and it must not restate what the declaration structurally says; and an annotation is never evidence that a machine claim holds, because no `Accepted` program can read one."),
+  ]
+}
+
 fn section_5_blocks() -> List<MarkdownBlock> {
   [
     h2(text: "5. Fail-closed (§1's safety axis — harm reduction)"),
@@ -211,6 +219,7 @@ fn design_blocks() -> List<MarkdownBlock> {
     section_3_blocks(),
     section_4_blocks(),
     section_4b_blocks(),
+    section_4c_blocks(),
     section_5_blocks(),
     section_6_blocks(),
     section_7_blocks(),
