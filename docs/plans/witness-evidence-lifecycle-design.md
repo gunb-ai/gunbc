@@ -1,7 +1,19 @@
 # Witness evidence lifecycle — route is a projection, evidence is the lifecycle
 
-**Status: DESIGN NOTE, operator sign required before any code lands.** No implementation
-follows from this note until step 1 below is signed.
+**Status: MODELING DECISION SIGNED (operator, 2026-08-04). Steps 3-5 remain ungated
+implementation work.** Step 2 (the typed direct-rust-door observation) ships in the same
+PR as this note and is already implemented; the earlier "no implementation follows until
+signed" line is retired as inaccurate.
+
+The sign, as issued:
+
+> Witness identity and expectation are declarations; complexity/resource requirements are
+> declared or structurally derived; route is a projection; attempt termination and
+> runner-scoped cost are observations; semantic evidence is the pending/current lifecycle;
+> lane budget is scheduler policy. Census precedes routing. `Interrupted`, including
+> `BudgetExceeded`, is not a verdict and satisfies no expectation. A timeout yields only a
+> runner-bound cost lower bound and preserves the semantic obligation. Expectation
+> matching is function-grain and pointwise, never batch-wide.
 
 ## The incident that priced this
 
@@ -314,7 +326,36 @@ independently authored roster.
 | 2 | `DirectRustDoorProvenanceObservation`; run all four functions to completion under a lifted budget |
 | 3 | Census before routing in `v2.workflow.floor_discovery_producer` |
 | 4 | Attempt and evidence algebra; expectation split; pointwise matching |
-| 5 | Route derived from execution requirement; directory semantics deleted |
+| 5 | Route derived from execution requirement; `test/claim/long/` deleted |
+
+### Step-5 ruling (operator, 2026-08-04): delete the directory
+
+`test/claim/long/` is deleted as the **terminal** state. It may remain as temporary
+migration scaffolding while census-before-routing and derived execution requirements land,
+but **no new semantic dependence may be added to it**.
+
+The reason is dual representation, not tidiness. Once route is derived, a source directory
+named `long` asserts a second, stale answer to a question the derivation already answers:
+
+```
+derived route      says where this runs
+path name          implies where this runs
+```
+
+Even with the exclusion removed, authors and future mechanisms will read the directory
+semantically again — which is how this defect reappears under a different scheduler.
+
+Completion shape:
+
+```
+witness stays beside its subject/domain
+  -> canonical census enumerates it
+  -> execution requirement derives route
+  -> generated CI plan groups it
+```
+
+Operator visibility comes from a **generated** long-route-witness projection (dashboard or
+receipt), never from encoding scheduler disposition in the source tree.
 
 Step 2 is independent of steps 3-5 and of this note's review. Its output is semantic
 observations plus a local-runner cost datum — **not** envelope inputs, per the runner
