@@ -40,6 +40,6 @@ data gnu_bash_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: [gnu_bash_posix_conformance_authority]
 }
 
-data gnu_bash_mandated_scope_name_scaffold_note: String = "DECLARED SCAFFOLD — see the identical note on every sibling language subject carrier for the full measurement and both dissolution triggers. Bash was authored before the other subjects existed, when it was the only registered target and the mandated name 'extdeps_model_scope' could be imported unambiguously. It is converted to the unique-name shape here for one reason: with 24 carriers the registry must import 24 scopes, and importing the mandated name from more than one of them does not refuse — it SILENTLY BINDS THE LAST ONE (measured 2026-08-04). Leaving Bash on the mandated name would work today only because exactly one carrier still used it, and would break silently the moment a 25th subject did the same. The scope value is unchanged; only its name is, and 'extdeps_model_scope' below is a binding to it."
+data gnu_bash_mandated_scope_name_scaffold_note: String = "DECLARED SCAFFOLD — the shared explanation and both dissolution triggers live once at gunbc.language_subject_scope_scaffold mandated_scope_name_scaffold, and are deliberately not repeated inside an upstream subject carrier (cursor review 48122)."
 
 data extdeps_model_scope: ExternalModelScope = gnu_bash_model_scope

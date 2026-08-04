@@ -21,7 +21,8 @@ import extdeps.languages.ptx.subject { ptx_language_model_scope }
 import extdeps.languages.python.subject { python_language_model_scope }
 import extdeps.languages.riscv.subject { riscv_isa_model_scope }
 import extdeps.languages.rust.subject { rust_language_model_scope }
-import extdeps.languages.spice.subject { ngspice_simulator_model_scope }
+import extdeps.languages.spice.subject { spice_netlist_language_model_scope }
+import extdeps.simulators.ngspice.subject { ngspice_simulator_model_scope }
 import extdeps.languages.swift.subject { swift_language_model_scope }
 import extdeps.languages.typescript.subject { typescript_language_model_scope }
 import extdeps.languages.verilog.subject { verilog_language_model_scope }
@@ -150,6 +151,10 @@ fn unregistered_target_finding_count() -> Int {
 
 data project_grounded_targets_note: String = "The two PROJECT-grounded targets, and they are here for a reason beyond being cheap: ProjectGrounding had zero inhabitants, so an entire arm of the grounding coproduct was unexercised. These are also the two rows that could not have existed under a universal ExternalSubjectRef — the .dag language and the controlled-English medium are this project's OWN targets, with no independently governed upstream to cite, and forcing them through an external scope would have made them claim a governance they do not have. Their authority declarations are real and symbolic: dag_item_forms is the .dag surface-form authority, FormalSentence the controlled-English one. Neither carries an extdeps_model_scope and neither should."
 
+data jsx_registry_role_note: String = "JSX'S REGISTRY ROLE IS AN OPEN DECISION, SURFACED RATHER THAN SETTLED BY REGISTRATION (cursor review 48122, P1). This registry registered JSX as a parked P3 target because a live surface is named extdeps.languages.react_jsx and the census must account for it. The reviewer's objection is fair: the web direction treats JSX as an OPTIONAL PROJECTION and React as a projection rather than a second component authority, so quietly adding JSX as an independently supported target enlarges the strategy's target universe by a side effect of census bookkeeping. THE QUESTION, stated so it can be answered rather than inherited: is JSX an independently supported target MEDIUM, or a syntax CAPABILITY of the web/ECMAScript path? WHAT IS NOT IN DOUBT is the subject: the upstream JSX specification states in its own text that JSX is independent of React and has no defined semantics, so citing it separately from React is correct either way and the carrier stands whichever role is chosen. WHAT THE DISPOSITION MEANS TODAY: TargetDecisionPending, not TargetParked. Parked would assert a settled strategy slot awaiting implementation; pending says the slot itself is undecided, which is the honest state. Registering it as pending keeps the surface accounted for — a census that dropped the row would hide a real target-bearing module — without asserting the answer."
+
+data d0_scope_boundary_note: String = "WHAT THIS REGISTRY IS AND IS NOT, so it is not read as closing more than it does (cursor review 48122, P1 — a fair objection to how this work could be presented). This is the D0 IDENTITY AND GROUNDING slice: which targets exist, what upstream authority grounds each, and which surfaces join which subject. IT DOES NOT CLOSE THE SUPPORT REGISTRY. The support contract requires every registered target to carry declared support PROFILES, required CAPABILITY sets, EVIDENCE refs, and checker bindings in one typed registry, and none of those exist here. What is here in their place is deliberately weaker and should be read as such: priority appears only as free text inside parked reasons, and there are no capability or profile rows at all. Anyone treating a registration in this file as a support claim is reading it wrong — grounding says a target has an authority behind it, not that anything about it is supported."
+
 data registered_language_targets: List<LanguageTargetRegistration> = [
   LanguageTargetRegistration {
     grounding: ExternalGrounding { scope: gnu_bash_model_scope },
@@ -180,7 +185,7 @@ data registered_language_targets: List<LanguageTargetRegistration> = [
     disposition: TargetActive
   },
   LanguageTargetRegistration {
-    grounding: ExternalGrounding { scope: ngspice_simulator_model_scope },
+    grounding: ExternalGrounding { scope: spice_netlist_language_model_scope },
     disposition: TargetActive
   },
   LanguageTargetRegistration {
@@ -189,11 +194,11 @@ data registered_language_targets: List<LanguageTargetRegistration> = [
   },
   LanguageTargetRegistration {
     grounding: ExternalGrounding { scope: ecmascript_language_model_scope },
-    disposition: TargetDecisionPending { decision_id: "ecmascript-authority" }
+    disposition: TargetDecisionPending { decision_id: "docs/plans/language-support-completion-design.md#7 decision 1 — ECMAScript authority" }
   },
   LanguageTargetRegistration {
     grounding: ExternalGrounding { scope: cpp_language_model_scope },
-    disposition: TargetDecisionPending { decision_id: "cpp-profile" }
+    disposition: TargetDecisionPending { decision_id: "docs/plans/language-support-completion-design.md#7 decision 2 — C++ profile" }
   },
   LanguageTargetRegistration {
     grounding: ExternalGrounding { scope: go_language_model_scope },
@@ -229,7 +234,7 @@ data registered_language_targets: List<LanguageTargetRegistration> = [
   },
   LanguageTargetRegistration {
     grounding: ExternalGrounding { scope: jsx_language_model_scope },
-    disposition: TargetParked { reason: "P3; upstream is an explicit DRAFT with no defined semantics, so a support profile cannot be stated against it yet" }
+    disposition: TargetDecisionPending { decision_id: "jsx registry role — independently supported target medium, or syntax capability of the web/ECMAScript path (see jsx_registry_role_note)" }
   },
   LanguageTargetRegistration {
     grounding: ExternalGrounding { scope: riscv_isa_model_scope },
@@ -290,7 +295,27 @@ data ptx_language_subject_ref: ExternalSubjectRef = ptx_language_model_scope.sub
 data python_language_subject_ref: ExternalSubjectRef = python_language_model_scope.subject
 data riscv_isa_subject_ref: ExternalSubjectRef = riscv_isa_model_scope.subject
 data rust_language_subject_ref: ExternalSubjectRef = rust_language_model_scope.subject
+data spice_netlist_language_subject_ref: ExternalSubjectRef = spice_netlist_language_model_scope.subject
+
 data ngspice_simulator_subject_ref: ExternalSubjectRef = ngspice_simulator_model_scope.subject
+
+data target_runtime_binding_note: String = "WHICH RUNTIME EXECUTES A TARGET IS A SEPARATE FACT FROM WHAT THE TARGET IS (cursor review 48122, P0). Fusing them is what made ngspice look like a language: the registry registered the simulator, gave it the netlist's file extensions, and joined it to a surface that models a generic SpiceNetlist. Split here into two subjects plus this binding, so the medium can gain a second runtime without either subject changing — which is the whole test of whether the split was real. A binding is NOT a support claim: it says which tool WOULD execute this target, not that any execution receipt exists. SPICE's frontier row is bar-b, meaning the witness compares emitted text to a golden file and never runs ngspice at all, so this binding is precisely the thing an execution receipt would later discharge."
+
+type TargetRuntimeBinding {
+  target: ExternalSubjectRef
+  runtime: ExternalSubjectRef
+}
+
+data target_runtime_bindings: List<TargetRuntimeBinding> = [
+  TargetRuntimeBinding {
+    target: spice_netlist_language_subject_ref,
+    runtime: ngspice_simulator_subject_ref
+  }
+]
+
+fn target_runtime_binding_count() -> Int {
+  fold(target_runtime_bindings, init: 0, f: fn(acc, b) { acc + 1 })
+}
 data swift_language_subject_ref: ExternalSubjectRef = swift_language_model_scope.subject
 data typescript_language_subject_ref: ExternalSubjectRef = typescript_language_model_scope.subject
 data verilog_language_subject_ref: ExternalSubjectRef = verilog_language_model_scope.subject
@@ -377,17 +402,18 @@ data target_model_declaration_rows: List<LanguageTargetSurfaceRow> = [
   identified_module_row(authority: TargetModelDeclaration, module_path: "v2.extdeps.languages.swift", subject: swift_language_subject_ref),
   identified_module_row(authority: TargetModelDeclaration, module_path: "v2.extdeps.languages.ecmascript", subject: ecmascript_language_subject_ref),
   identified_module_row(authority: TargetModelDeclaration, module_path: "v2.extdeps.languages.english", subject: english_subject_ref),
-  identified_module_row(authority: TargetModelDeclaration, module_path: "v2.extdeps.formats.spice", subject: ngspice_simulator_subject_ref),
+  identified_module_row(authority: TargetModelDeclaration, module_path: "v2.extdeps.formats.spice", subject: spice_netlist_language_subject_ref),
   unidentified_module_row(authority: TargetModelDeclaration, module_path: "v2.extdeps.languages.machine_code"),
 ]
 
 data census_path_resolution_note: String = "EVERY module_path IN THIS CENSUS WAS VERIFIED AGAINST THE REAL MODULE TREE, after review 48122 caught one that named nothing. The reviewer found the SPICE row pointing at extdeps.formats.spice, which is not a module — the surface is v2.extdeps.formats.spice, as this registry's own SPICE subject carrier already said. Identifying that row made a phantom worse: an unidentified phantom is merely a surface nobody can find, while an IDENTIFIED one asserts a join that can never be exercised, and it hid the real SPICE surface's absence from the census behind an apparently-accounted-for row. SWEEPING THE WHOLE CENSUS RATHER THAN THE ONE CITED ROW FOUND TWO MORE, both older and both the same root cause: extdeps.rust.cargo and extdeps.python.interpreter are FILE PATHS transcribed as module paths (dag/extdeps/rust/cargo.dag and dag/extdeps/python/python.dag), but the modules those files declare are extdeps.cargo and extdeps.python. That is DESIGN section 3's 'paths are discriminators, not gospel' violated in the direction that is hardest to see — a module path that LOOKS derived from a real file. They are corrected to the real modules and, per surface_locus_grain_note, moved to MODULE grain rather than being given invented decl_names: 'cargo' and 'python_interpreter' are not declarations either, and inventing one would be a nickname for a module. THE NINE REMAINING NON-EXACT PATHS ARE LEGITIMATE AND WERE CHECKED INDIVIDUALLY: the nine extdeps.languages family paths (rust, typescript, python, go, c, css, json, yaml, lean) each name a FAMILY of two to six real modules, and v2.workflow.bash is a string prefix covering v2.workflow.bash_command_fold_serialize and v2.workflow.bash_emit — the same prefix grain the containment lens uses. WHAT THIS DOES NOT ESTABLISH, and it is the honest limit: the sweep was done ONCE, by hand, at this revision. Nothing prevents the next phantom, because the census is hand-declared. The construction-side fix is the census being DERIVED from the module tree — already named as the residue-census obligation in language_target_registry_maximum_conclusion — at which point a path that names no module becomes unwritable rather than reviewable."
 
-data runtime_checker_subject_note: String = "THE RUNTIME-CHECKER ROWS STAY UNIDENTIFIED ON PURPOSE, and they are the clearest demonstration that this registry keeps language identity separate from toolchain identity. extdeps.rust.cargo names Cargo and extdeps.python.interpreter names a Python interpreter. Neither is a LANGUAGE: Cargo is a build tool governed by the Rust project but versioned and specified separately from the language the Rust Reference defines, and a Python interpreter is an IMPLEMENTATION distinct from the language the PSF reference specifies. Joining either to the Rust or Python language subject would fuse a checker into a language identity — the same class of error machine_code_fusion_note refuses one row up. If this repository ever needs to name a toolchain as a subject, each takes its own cited declaration, and only then can these rows join. Until then the wall correctly reports them as surfaces with no target identity, which is the honest state, not a defect."
+data runtime_checker_subject_note: String = "THE CHECKER ROWS BIND TO THE TARGET THEY REALIZE, AND THIS REVERSES THIS FILE'S EARLIER REASONING (cursor review 48122, P0; the lane owner, whose rows these are, agreed and asked that their original intent be overruled). An earlier revision left them unidentified on the argument that a toolchain is not a language. That argument is TRUE AND IRRELEVANT, and mistaking one for the other is the actual defect: LanguageTargetSurfaceRow.target answers WHICH TARGET THIS SURFACE REALIZES, not whether the tool IS the language. This registry already treats run_rust_smoke and run_python_smoke exactly that way — nobody claimed those smoke functions were the Rust and Python languages — so leaving cargo and the interpreter unidentified was inconsistent within one file. Bound: cargo realizes Rust, the Python interpreter realizes Python. Cargo and CPython keep their own separate upstream identities and would take their own cited subject declarations if either is ever registered in its own right; binding a surface to a target does not merge the two. Leaving them unidentified would have permanently conflated tool identity with associated target and stopped the unidentified population reaching zero for a reason that was never real."
+
 
 data runtime_checker_rows: List<LanguageTargetSurfaceRow> = [
-  unidentified_module_row(authority: RuntimeChecker, module_path: "extdeps.cargo"),
-  unidentified_module_row(authority: RuntimeChecker, module_path: "extdeps.python"),
+  identified_module_row(authority: RuntimeChecker, module_path: "extdeps.cargo", subject: rust_language_subject_ref),
+  identified_module_row(authority: RuntimeChecker, module_path: "extdeps.python", subject: python_language_subject_ref),
 ]
 
 data legacy_frontier_row_note: String = "The legacy frontier surface stays unidentified because it is a MULTI-TARGET prose table, not a surface belonging to one subject: gunbc.plans.language_target_self_host_frontier carries a row per target for a dozen targets at once. It cannot join a single subject, and the join kernel is right to report it. Its dissolution is the migration of those prose rows onto per-subject carriers — now possible for the first time, because until this change there were no subjects to migrate them ONTO. That migration is not done here; what this change removes is the reason it was blocked. The projections below carry legacy_frontier_label so each prose row can be matched to its canonical subject by name rather than by eye when that work happens."
@@ -531,8 +557,8 @@ data language_target_projections: List<LanguageTargetProjection> = [
     legacy_frontier_label: Present { value: "verilog" }
   },
   LanguageTargetProjection {
-    subject: ngspice_simulator_subject_ref,
-    display_name: "ngspice",
+    subject: spice_netlist_language_subject_ref,
+    display_name: "SPICE",
     file_extensions: [".cir", ".sp"],
     legacy_language_id: none,
     legacy_frontier_label: Present { value: "spice" }

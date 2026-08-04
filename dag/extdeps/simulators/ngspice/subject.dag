@@ -1,0 +1,36 @@
+module extdeps.simulators.ngspice.subject
+
+import std.types { String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "ngspice.sourceforge.io/docs.html"
+  }
+}
+
+data ngspice_simulator_subject_note: String = "NGSPICE, THE SIMULATOR — A RUNTIME, DELIBERATELY NOT A LANGUAGE TARGET (cursor review 48122, P0). Verified live 2026-08-04: the fetched page describes ngspice as 'the open source Spice circuit simulator', a 'mixed mode - mixed level circuit simulator - based on Berkeley's Spice3f5', with the current release manual at version 46. WHY THIS IS ITS OWN SUBJECT AND NOT AN ARM OF SPICE: ngspice is independently versioned and maintained, so under external-upstream decomposition it is its own governed entity — the same reason Chromium is not an arm of the HTML standard. WHY IT IS NOT REGISTERED AS A TARGET: a simulator is not a language. It EXECUTES the SPICE netlist medium, and that relationship is carried as a TargetRuntimeBinding in gunbc.language_target_registry, which is what keeps 'which medium do we emit' separable from 'which tool runs it'. Registering it as a target was the fusion this split repairs. PLACEMENT: homed under simulators/ rather than languages/ precisely so the folder stops implying it is a language; paths are discriminators, not gospel, but a misleading one is worth moving."
+
+type Ngspice
+  = | NgspiceSimulator
+
+data ngspice_simulator: Ngspice = NgspiceSimulator
+
+data ngspice_simulator_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.simulators.ngspice.subject",
+      decl_name: "ngspice_simulator",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data ngspice_mandated_scope_name_scaffold_note: String = "DECLARED SCAFFOLD — the shared explanation and both dissolution triggers live once at gunbc.language_subject_scope_scaffold mandated_scope_name_scaffold, and are deliberately not repeated inside an upstream subject carrier (cursor review 48122)."
+
+data extdeps_model_scope: ExternalModelScope = ngspice_simulator_model_scope

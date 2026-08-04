@@ -32,7 +32,9 @@ import gunbc.language_target_registry {
   UpstreamAuthorityUnreadable,
   SurfaceFusesIndependentSubjects,
   rust_language_subject_ref,
+  spice_netlist_language_subject_ref,
   ngspice_simulator_subject_ref,
+  target_runtime_bindings,
   commonmark_format_subject_ref,
 }
 import gunbc.extdeps_scope_frontier { scope_carrier_paths, scope_frontier_strings_contain }
@@ -93,6 +95,7 @@ data expected_subject_carrier_paths: List<String> = [
   "dag/extdeps/languages/rust/subject.dag",
   "dag/extdeps/languages/spice/subject.dag",
   "dag/extdeps/languages/swift/subject.dag",
+  "dag/extdeps/simulators/ngspice/subject.dag",
   "dag/extdeps/languages/typescript/subject.dag",
   "dag/extdeps/languages/verilog/subject.dag",
   "dag/extdeps/languages/wasm/subject.dag",
@@ -166,7 +169,7 @@ fn subject_is_registered(target: ExternalSubjectRef) -> Bool {
 
 test fn named_projections_hang_off_registered_subjects() -> Bool {
   subject_is_registered(target: rust_language_subject_ref)
-    && subject_is_registered(target: ngspice_simulator_subject_ref)
+    && subject_is_registered(target: spice_netlist_language_subject_ref)
     && subject_is_registered(target: commonmark_format_subject_ref)
 }
 
@@ -198,4 +201,19 @@ test fn filed_legacy_label_findings_are_populated() -> Bool {
     && fold(legacy_frontier_label_findings, init: true, f: fn(acc, r) {
          acc && r.legacy_label != "" && r.distinct_subjects_under_it != "" && r.consequence != ""
        })
+}
+
+data runtime_binding_split_note: String = "The SPICE split, asserted as a PROPERTY rather than as two names. The medium and the runtime must be DISTINCT subjects, the binding must relate exactly those two, and — the discriminating part — the runtime must NOT be registered as a language target. If someone re-registers ngspice as a target, the last assertion reds; that is the regression this witness exists to catch, because re-fusing them would look harmless row by row."
+
+test fn spice_medium_and_ngspice_runtime_are_distinct_subjects() -> Bool {
+  !external_subject_ref_eq(a: spice_netlist_language_subject_ref, b: ngspice_simulator_subject_ref)
+    && subject_is_registered(target: spice_netlist_language_subject_ref)
+    && !subject_is_registered(target: ngspice_simulator_subject_ref)
+}
+
+test fn the_runtime_binding_relates_the_medium_to_its_runtime() -> Bool {
+  fold(target_runtime_bindings, init: false, f: fn(acc, b) {
+    acc || (external_subject_ref_eq(a: b.target, b: spice_netlist_language_subject_ref)
+      && external_subject_ref_eq(a: b.runtime, b: ngspice_simulator_subject_ref))
+  })
 }

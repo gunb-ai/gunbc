@@ -8,29 +8,36 @@ import extdeps.uri { Uri, Https }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https,
+    locator: "ptolemy.berkeley.edu/projects/embedded/pubs/downloads/spice/index.htm"
+  }
+}
+
+data spice_netlist_dialect_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
     locator: "ngspice.sourceforge.io/docs.html"
   }
 }
 
-data ngspice_simulator_subject_note: String = "NGSPICE, THE IMPLEMENTATION, cited to the Ngspice user's manual (verified live 2026-08-04 by fetching the cited locator and confirming its title and publisher from the response, per the D0 verify-or-refuse rule): the fetched page describes ngspice as 'the open source Spice circuit simulator', a 'mixed mode - mixed level circuit simulator - based on Berkeley's Spice3f5', with the current release manual at version 46. WHY THE SUBJECT IS NGSPICE AND NOT 'SPICE': SPICE originates as Berkeley's simulator family and has no single governing specification for the netlist language; the concrete artifact this repository would emit for and execute against is ngspice, which is independently versioned and maintained, so ngspice is the honest subject per DESIGN section 3. Berkeley Spice3f5 is named by the upstream as ngspice's ancestor and would be a separate historical subject if it were ever needed. PLACEMENT: this carrier sits under languages/ with the other target subjects while the surface it grounds lives at v2.extdeps.formats.spice — paths are discriminators, not gospel (DESIGN section 3), and the subject's home is its layer."
+data spice_netlist_language_subject_note: String = "THE SPICE NETLIST LANGUAGE — THE TARGET MEDIUM, SPLIT FROM THE SIMULATOR THAT EXECUTES IT (cursor review 48122, P0; the split IS this file's reason to exist). An earlier revision registered ngspice as the target itself, which collapsed an interface into one of its implementations — the same fusion this registry refuses for machine_code, committed one row over. The surface being modelled makes the split obvious once looked at: v2.extdeps.formats.spice carries a generic SpiceNetlist with a generic spice_emit AND a separate spice_emit_ngspice, which is exactly the shape of a medium plus a per-implementation realization. So the medium is the target and ngspice is a RUNTIME bound to it, carried at gunbc.language_target_registry as a TargetRuntimeBinding rather than as a second language. VERIFIED LIVE 2026-08-04: the cited Berkeley page states SPICE was developed at UC Berkeley and describes the 1972 release as the industry-standard tool for integrated circuit design. THE HONEST WEAKNESS OF THIS CITATION, stated rather than smoothed over: SPICE has NO single normative netlist specification. Berkeley is the origin authority, the fetched page references a Spice3 README and Postscript documentation without naming a formal netlist grammar, and there is no SPICE standards committee. That is a real property of this target, not a gap in the lookup — and it is exactly why the ngspice manual is carried as a SECOND CITATION of this subject: it is the readable authority for the concrete DIALECT this repository would actually emit. A support claim for SPICE must therefore name the dialect it implements, for the same reason the CommonMark subject must not be called 'Markdown'."
 
-type Ngspice
-  = | NgspiceTarget
+type SpiceNetlistLanguage
+  = | SpiceNetlistLanguageTarget
 
-data ngspice_simulator: Ngspice = NgspiceTarget
+data spice_netlist_language: SpiceNetlistLanguage = SpiceNetlistLanguageTarget
 
-data ngspice_simulator_model_scope: ExternalModelScope = ExternalModelScope {
+data spice_netlist_language_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.languages.spice.subject",
-      decl_name: "ngspice_simulator",
+      decl_name: "spice_netlist_language",
       field: WholeDeclaration
     }
   },
   first_citation: extdeps_external_authority_anchor,
-  further_citations: []
+  further_citations: [spice_netlist_dialect_authority]
 }
 
-data ngspice_simulator_mandated_scope_name_scaffold_note: String = "DECLARED SCAFFOLD, with its dissolution triggers — why the scope is authored under a unique name and the mandated name is bound to it. The authored value is the one above; 'extdeps_model_scope' is a BINDING to that same value, not a second authority, and it cannot drift from its source because it IS its source. It exists because two independent mechanisms collide. (1) gunbc.extdeps_scope_frontier's carrier_content_declares_scope text-scans every scope carrier for the literal 'data extdeps_model_scope:', so the name is mandatory. (2) The resolver offers no way to name two same-named imports apart: MEASURED 2026-08-04 against the real binary, a qualified reference (extdeps.languages.rust.subject.rust_language_model_scope) fails with 'undefined variable', module projection after an import fails the same way, no import aliasing exists in the grammar, and — the reason this is not merely inconvenient — importing one name from two modules does NOT refuse, it SILENTLY BINDS THE LAST ONE with exit 0. So a registry importing the mandated name from every carrier would ground 22 of 23 targets in the WRONG upstream scope and, because registration_subject derives the subject from the grounding, report the wrong subject for each — green and materially false. The unique name is what keeps that unwritable. DISSOLVE-ON, either trigger suffices: the resolver gains import aliasing or module projection (then the registry imports the mandated name directly and this binding deletes), OR the v2.lens.mandatory_tag region promotion retires the carrier_content_declares_scope text scan (then the mandated name is no longer required and the unique name stands alone). This is a scaffold pinned to a scaffold — carrier_content_declares_scope calls itself a declared scaffold in its own note — and they retire together. The resolver defect itself is corpus-wide and is being raised as its own lane; it is not a language-support fact."
+data spice_netlist_language_mandated_scope_name_scaffold_note: String = "DECLARED SCAFFOLD — the shared explanation and both dissolution triggers live once at gunbc.language_subject_scope_scaffold mandated_scope_name_scaffold, and are deliberately not repeated inside an upstream subject carrier (cursor review 48122)."
 
-data extdeps_model_scope: ExternalModelScope = ngspice_simulator_model_scope
+data extdeps_model_scope: ExternalModelScope = spice_netlist_language_model_scope
