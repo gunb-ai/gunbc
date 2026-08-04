@@ -12,7 +12,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data rfc_8118_supersedes_rfc_3778_note: String = "PDF fragment identifiers for application/pdf are specified by RFC 8118 (Informational, March 2017), which OBSOLETES RFC 3778. This module cites RFC 8118 section 3 as the single authority for the parameter set modeled in extdeps.pdf_citation; RFC 3778 is historical only. The supersession is itself a worked example of tier-1 version anchoring: cite the current standard, not the obsoleted one."
+data rfc_8118_supersedes_rfc_3778_note: String = "PDF fragment identifiers for application/pdf are specified by RFC 8118 (Informational, March 2017; the current IETF-published application/pdf media-type fragment specification), which OBSOLETES RFC 3778. ISO 32000-2 governs in the event of disagreement. CIT-1 will model the ordered fragment profile against this authority; RFC 3778 is historical only."
 
 data pdf_open_parameter_sequence_note: String = "RFC 8118 section 3: a PDF fragment has one or more parameters separated by ampersand or pound; parameters process left to right and later actions override earlier ones, so page should precede zoom. extdeps.pdf_citation models an ORDERED sequence as a closed coproduct list — never a string — so fragment semantics cannot be smuggled into Uri.locator."
 

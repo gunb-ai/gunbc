@@ -1,0 +1,185 @@
+module test.claim.citation_cit0_witness
+
+import std.citation {
+  CitedResource, RetrievedRepresentation, CitationSelector,
+  RepresentationPin, RepresentationByteDomain, RawResponseBody,
+  Pinned, Unpinned,
+  CitationRetrievalRequest, CitationRetrievalObservation,
+  CitationUnreachable, CitationRetrieved, CitationRetrievalResponse,
+  ObservingProductLayer, UpstreamModuleLayer,
+  CitationLayerAdmitted, CitationLayerRefusedUpstreamObservation,
+  admit_citation_retrieval_observation,
+  citation_retrieval_observation_layer_gate_accepts,
+  citation_retrieval_observation_layer_gate_widened_sketch,
+  citation_recorded_fact,
+  text_quote_selector,
+  TextQuoteSelectorVariant,
+  retrieved_representation,
+  representation_pin_pinned,
+  cited_resource,
+  provider_observation_is_found,
+  provider_observation_revision_id,
+  ProviderRevisionFound, ProviderRevisionMissing, ProviderRevisionSuppressed,
+}
+import std.claim_evidence { RecordedFactId }
+import std.content_hash { Sha256Digest, as_content_hash_cryptographic }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.standards.web_annotation { extdeps_external_authority_anchor }
+import std.types { Bool, NonEmptyStr }
+
+data witness_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "example.test/cit0-fixture",
+  },
+}
+
+data witness_sha256_hex: NonEmptyStr = "69e117a13b560b1b957c15f05a61b130ca56828f05dca951e27cb8e2ada14283" as NonEmptyStr
+
+data witness_sha256_digest: Sha256Digest = Sha256Digest { hex: witness_sha256_hex }
+
+data witness_pinned_representation: RetrievedRepresentation = retrieved_representation(
+  media_type: "application/pdf" as NonEmptyStr,
+  pin: representation_pin_pinned(
+    digest: as_content_hash_cryptographic(digest: witness_sha256_digest),
+    domain: RawResponseBody,
+  ),
+)
+
+data witness_text_quote: CitationSelector = text_quote_selector(
+  exact: "grounded selector text" as NonEmptyStr,
+  prefix: none,
+  suffix: none,
+)
+
+type WitnessCitedResource = CitedResource<NonEmptyStr, RetrievedRepresentation, CitationSelector>
+
+data witness_cited_resource: WitnessCitedResource = CitedResource {
+  authority: witness_authority,
+  revision: none,
+  representation: witness_pinned_representation,
+  selector: witness_text_quote,
+}
+
+data witness_upstream_unreachable_observation: CitationRetrievalObservation = CitationUnreachable {
+  request: CitationRetrievalRequest {
+    locator: witness_authority.uri,
+  },
+  observed_at: "2026-08-04T00:00:00Z" as NonEmptyStr,
+  cause: "fixture upstream-authored observation" as NonEmptyStr,
+}
+
+test fn cited_resource_constructs_with_text_quote_selector() -> Bool {
+  match witness_text_quote {
+    TextQuoteSelectorVariant(_) => true
+    _ => false
+  }
+}
+
+test fn representation_pin_pairs_digest_and_domain_at_construction() -> Bool {
+  match witness_pinned_representation.pin {
+    Pinned { digest: _, domain: RawResponseBody } => true
+    Unpinned => false
+  }
+}
+
+data witness_unpinned: RepresentationPin = Unpinned
+
+test fn representation_pin_unpinned_carries_no_digest() -> Bool {
+  match witness_unpinned {
+    Pinned { digest: _, domain: _ } => false
+    Unpinned => true
+  }
+}
+
+test fn retrieval_observation_admitted_in_observing_layer() -> Bool {
+  match admit_citation_retrieval_observation(
+    layer: ObservingProductLayer,
+    observation: witness_upstream_unreachable_observation,
+  ) {
+    CitationLayerAdmitted => true
+    CitationLayerRefusedUpstreamObservation => false
+  }
+}
+
+test fn retrieval_observation_refused_in_upstream_module_layer() -> Bool {
+  match admit_citation_retrieval_observation(
+    layer: UpstreamModuleLayer {
+      module_path: "extdeps.router.verizon_cr1000a" as NonEmptyStr,
+    },
+    observation: witness_upstream_unreachable_observation,
+  ) {
+    CitationLayerRefusedUpstreamObservation => true
+    CitationLayerAdmitted => false
+  }
+}
+
+test fn layer_gate_red_control_widened_sketch_accepts_upstream_observation() -> Bool {
+  let observation = witness_upstream_unreachable_observation
+  let layer = UpstreamModuleLayer {
+    module_path: "extdeps.sec.operating_metrics" as NonEmptyStr,
+  }
+  let authority = citation_retrieval_observation_layer_gate_accepts(
+    layer: layer,
+    observation: observation,
+  )
+  let widened = citation_retrieval_observation_layer_gate_widened_sketch(
+    layer: layer,
+    observation: observation,
+  )
+  widened && !authority
+}
+
+test fn citation_recorded_fact_feeds_claim_evidence_interface() -> Bool {
+  let fact = citation_recorded_fact(
+    id: "cit0-fixture-fact" as RecordedFactId,
+    cited: witness_cited_resource,
+  )
+  fact.id == ("cit0-fixture-fact" as RecordedFactId)
+    && witness_authority.uri.locator == "example.test/cit0-fixture"
+}
+
+test fn provider_observation_found_decodes_fixture_revision() -> Bool {
+  provider_observation_is_found(
+    observation: ProviderRevisionFound {
+      revision_id: "424242" as NonEmptyStr,
+      content_sha1_hex: "deadbeef" as NonEmptyStr,
+    },
+  )
+    && provider_observation_revision_id(
+      observation: ProviderRevisionFound {
+        revision_id: "424242" as NonEmptyStr,
+        content_sha1_hex: "deadbeef" as NonEmptyStr,
+      },
+    ) == ("424242" as NonEmptyStr)
+}
+
+test fn provider_observation_missing_red_on_found_predicate() -> Bool {
+  !provider_observation_is_found(observation: ProviderRevisionMissing)
+    && provider_observation_revision_id(observation: ProviderRevisionMissing) == none
+}
+
+test fn provider_observation_suppressed_red_on_found_predicate() -> Bool {
+  !provider_observation_is_found(observation: ProviderRevisionSuppressed)
+}
+
+test fn web_annotation_authority_is_cited_for_selectors() -> Bool {
+  extdeps_external_authority_anchor.uri.locator == "www.w3.org/TR/annotation-model/"
+}
+
+test fn retrieved_observation_carries_observed_at_and_request() -> Bool {
+  match CitationRetrieved {
+    request: CitationRetrievalRequest { locator: witness_authority.uri },
+    observed_at: "2026-08-04T12:00:00Z" as NonEmptyStr,
+    response: CitationRetrievalResponse {
+      http_status: 200,
+      media_type: "application/pdf" as NonEmptyStr,
+      representation_pin: witness_pinned_representation.pin,
+    },
+  } {
+    CitationRetrieved { request: r, observed_at: t, response: _ } =>
+      r.locator.locator == "example.test/cit0-fixture" && t == ("2026-08-04T12:00:00Z" as NonEmptyStr)
+    _ => false
+  }
+}
