@@ -25,9 +25,11 @@ import gunbc.physics.classical_path_additivity {
   ArrivalCountResolution,
   ArrivalCountResolved,
   ArrivalCountMissing,
+  ArrivalCountAmbiguous,
   AdditivityInputResolution,
   AdditivityInputsResolved,
   AdditivityInputsIncomplete,
+  AdditivityInputsAmbiguous,
   resolve_arrival_count_at,
   resolve_additivity_inputs,
   derive_path_additivity_refutation_at_band,
@@ -189,7 +191,12 @@ fn synthetic_blocked_count_is_resolved_zero_not_missing() -> Bool {
       band: missing_band,
       exposure: missing_exposure,
     } => false
-    _ => false
+    ArrivalCountAmbiguous {
+      arrangement: ambiguous_arrangement,
+      band: ambiguous_band,
+      exposure: ambiguous_exposure,
+      matching_rows: ambiguous_matching_rows,
+    } => false
   }
 }
 
@@ -217,6 +224,10 @@ fn synthetic_missing_row_yields_incomplete_inputs() -> Bool {
       right_contributing_rows: resolved_right_rows,
       both_contributing_rows: resolved_both_rows,
     } => false
-    _ => false
+    AdditivityInputsAmbiguous {
+      band: ambiguous_band,
+      exposure: ambiguous_exposure,
+      matching_rows: ambiguous_matching_rows,
+    } => false
   }
 }
