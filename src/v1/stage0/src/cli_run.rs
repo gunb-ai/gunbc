@@ -23499,7 +23499,9 @@ mod node_frontier_plumbing_controls {
         const FUNCTION: &str = "witness_content_key_subject_stable";
         let key = super::witness_admission_manifest_key(ENTRY, FUNCTION);
         assert!(
-            super::commit_roster_witness_claim_keys().iter().any(|k| k == &key),
+            super::commit_roster_witness_claim_keys()
+                .iter()
+                .any(|k| k == &key),
             "the enrollment authority must name this identity"
         );
         assert!(
