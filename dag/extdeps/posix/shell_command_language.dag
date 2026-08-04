@@ -5,12 +5,16 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+data posix_authority_consolidation_note: String = "THE SINGLE POSIX SHELL AUTHORITY, consolidating four independently authored copies (cursor review 48163, 2026-08-04). That review caught this module minting a FIFTH ExternalAuthority for a locator already declared verbatim in extdeps.shell, extdeps.shell.exec, extdeps.transports.shell and extdeps.process.posix_exit — DESIGN section 2 and 3's consume-never-fork, and it was a fresh violation in new extdeps code rather than inherited debt. THE FIX DIRECTION MATTERS AND IS NOT SYMMETRIC: importing one of the four existing anchors would have blessed an arbitrary fork as canonical AND inverted the layering, since a shell-execution transport module would then own the specification citation that the specification's own subject module consumes. The subject module is the authority's natural home, so the four consumers now alias THIS declaration and the corpus holds one copy of the locator instead of five. Each consumer keeps its mandated extdeps_external_authority_anchor tag as an alias, so the compile-grain tag region is unaffected and only the duplicated literal is gone. The anchor is declared under a unique name with the tag as its alias for the same reason the scope is (scope_alias_note): the tag name is identical in every extdeps carrier, and .dag has no import aliasing, so a consumer cannot import it under the tag name."
+
+data posix_shell_command_language_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "pubs.opengroup.org/onlinepubs/9699919799/utilities/V3_chap02.html"
   }
 }
+
+data extdeps_external_authority_anchor: ExternalAuthority = posix_shell_command_language_authority
 
 data posix_shell_subject_note: String = "THE POSIX SHELL COMMAND LANGUAGE, as its own subject rather than as a citation of GNU Bash (review relayed through the operator, 2026-08-04). It was previously stored as a further_citation on the GNU Bash ExternalModelScope, while the Bash carrier's own prose said the two were independently governed entities — so the file asserted the decomposition and then violated it one declaration later. DESIGN section 3's external-upstream decomposition rules on exactly this: multiple citations may ground ONE subject, but a second INDEPENDENTLY GOVERNED subject is not a citation of the first. The Open Group governs this specification; the GNU project governs Bash; neither versions with the other, and a change to one must not require editing the other's module — the Chromium/Safari test from that section. WHAT THIS SUBJECT IS: the Shell Command Language chapter of IEEE Std 1003.1-2017 (POSIX.1-2017), the shell syntax and semantics an implementation may conform to. It is NOT registered as a language target today and this module makes no such claim; it exists so that Bash's conformance can be stated as a relation between two named subjects instead of being smuggled into one scope. If a POSIX-shell target is ever claimed in its own right — a real possibility, since extdeps.shell.exec already routes shell.Exec.Check through 'sh -c' rather than through bash — it registers against THIS declaration and needs no new grounding."
 

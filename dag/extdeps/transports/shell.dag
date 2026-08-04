@@ -3,14 +3,9 @@ module extdeps.transports.shell
 import std.types { FermiDepth }
 import std.fidelity { TransportFidelity }
 import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
+import extdeps.posix.shell_command_language { posix_shell_command_language_authority }
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
-    locator: "pubs.opengroup.org/onlinepubs/9699919799/utilities/V3_chap02.html"
-  }
-}
+data extdeps_external_authority_anchor: ExternalAuthority = posix_shell_command_language_authority
 
 data shell_transport_fidelity: TransportFidelity = TransportFidelity { depth: S, hermetic: true }
 

@@ -2,16 +2,11 @@ module extdeps.shell.exec
 
 import std.types { String }
 import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
+import extdeps.posix.shell_command_language { posix_shell_command_language_authority }
 import extdeps.exec.exec_arg_limit { host_exec_arg_max_strlen }
 import std.measure { ByteSize }
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
-    locator: "pubs.opengroup.org/onlinepubs/9699919799/utilities/V3_chap02.html"
-  }
-}
+data extdeps_external_authority_anchor: ExternalAuthority = posix_shell_command_language_authority
 
 type TransportScript = String where brand("TransportScript")
 
