@@ -713,14 +713,6 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
-      arm: InterpreterPrimitiveArmId { identity: "free_call.decl_facts_reflection_fixture_witness_host" },
-      form: FreeCall,
-      authored_spelling: "decl_facts_reflection_fixture_witness_host",
-      realization_module: "v1_interpreter",
-      dispatch_symbol: "eval_builtin_inner",
-      enumeration: AuthoredInRoster,
-    },
-    InterpreterPrimitiveDispatchArm {
       arm: InterpreterPrimitiveArmId { identity: "free_call.module_declaration_facts" },
       form: FreeCall,
       authored_spelling: "module_declaration_facts",

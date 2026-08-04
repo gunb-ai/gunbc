@@ -655,28 +655,6 @@ fn hoist_call_arg_string_literal_edges(
     }
 }
 
-/// Nullary coproduct variant VALUE atom in declaration skeletons.
-///
-/// Only when inference has stamped `VariantValueBinding` on the `ExprVar` (via
-/// `lookup_variant_parent_enum`). Parse-only `decl_facts` marshal leaves
-/// `binding_kind: None` on every `ExprVar`, so nullary variant value identity is
-/// intentionally unreachable there — see `v2.std.decl_facts_skeleton`
-/// `decl_facts_nullary_variant_value_identity_gap_note`.
-fn should_emit_nullary_variant_value_atom(
-    node: &Rc<Node>,
-    name: &str,
-    param_names: &[String],
-    binding_kind: Option<&Rc<VarBindingKind>>,
-) -> bool {
-    if name.is_empty() || node_references_param(node, name, param_names) {
-        return false;
-    }
-    matches!(
-        binding_kind,
-        Some(bk) if matches!(bk.as_ref(), VarBindingKind::VariantValueBinding { .. })
-    )
-}
-
 fn marshal_generic(
     ctx: &InterpContext,
     node: &Rc<Node>,
@@ -687,7 +665,9 @@ fn marshal_generic(
     let mut edges: Vec<Value> = Vec::with_capacity(node.children.len() + 1);
     let mut refs: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
     if matches!(node.expr_data.as_ref(), ExprData::ExprRecordLit { .. }) && !name.is_empty() {
-        // Outer coproduct/record variant constructor (e.g. Scaffold, Terminal, DeclarationRef).
+        // Outer record-constructor SPELLING (OuterRecordConstructorLexeme) from ExprRecordLit
+        // authored name — not resolved parent-variant identity; see
+        // `v2.std.decl_facts_skeleton` `decl_facts_outer_record_constructor_lexeme_authority_note`.
         edges.push(edge_positional(ctx, atom_identity_node(ctx, &name)));
     } else if node_references_param(node, &name, param_names) {
         edges.push(edge_positional(ctx, atom_identity_node(ctx, &name)));
@@ -695,17 +675,6 @@ fn marshal_generic(
         // G2 live-read call reachability: callee atoms make cross-fn carrier chains
         // visible in the fn-arrow skeleton (docs/plans/live-read-witness-classification-design.md P1).
         edges.push(edge_positional(ctx, atom_identity_node(ctx, &name)));
-    } else if !name.is_empty() {
-        if let ExprData::ExprVar { binding_kind } = node.expr_data.as_ref() {
-            if should_emit_nullary_variant_value_atom(
-                node,
-                &name,
-                param_names,
-                binding_kind.as_ref(),
-            ) {
-                edges.push(edge_positional(ctx, atom_identity_node(ctx, &name)));
-            }
-        }
     }
     if let Some(literal_edge) = marshal_string_literal_atom(ctx, node) {
         edges.push(literal_edge);
@@ -1490,224 +1459,4 @@ fn outcome_rejected_value(ctx: &InterpContext, reason: &str) -> Value {
             }]),
         )]),
     }
-}
-
-const DECL_FACTS_REFLECTION_FIXTURE_POOL: &str = "dag/test/fixture/decl_facts_reflection";
-
-fn decl_facts_reflection_fixture_roots() -> Vec<String> {
-    vec![DECL_FACTS_REFLECTION_FIXTURE_POOL.to_string()]
-}
-
-fn collect_value_atom_identities(
-    val: &Value,
-    ctx: &InterpContext,
-    out: &mut std::collections::BTreeSet<String>,
-) {
-    match val {
-        Value::Variant {
-            variant_name,
-            fields,
-            ..
-        } => {
-            if ctx.sym_eq(*variant_name, "Atom") {
-                if let Some((_, Value::Str(identity))) =
-                    fields.iter().find(|(k, _)| ctx.sym_eq(*k, "identity"))
-                {
-                    out.insert(identity.to_string());
-                }
-            }
-            for (_, v) in fields.iter() {
-                collect_value_atom_identities(v, ctx, out);
-            }
-        }
-        Value::Record { fields, .. } => {
-            for (_, v) in fields.iter() {
-                collect_value_atom_identities(v, ctx, out);
-            }
-        }
-        Value::List(items) => {
-            for v in items.iter() {
-                collect_value_atom_identities(v, ctx, out);
-            }
-        }
-        _ => {}
-    }
-}
-
-fn count_value_atom_identity(val: &Value, ctx: &InterpContext, identity: &str) -> usize {
-    let mut count = 0usize;
-    fn walk(val: &Value, ctx: &InterpContext, identity: &str, count: &mut usize) {
-        match val {
-            Value::Variant {
-                variant_name,
-                fields,
-                ..
-            } => {
-                if ctx.sym_eq(*variant_name, "Atom")
-                    && fields.iter().any(|(k, v)| {
-                        ctx.sym_eq(*k, "identity")
-                            && matches!(v, Value::Str(s) if s.as_str() == identity)
-                    })
-                {
-                    *count += 1;
-                }
-                for (_, v) in fields.iter() {
-                    walk(v, ctx, identity, count);
-                }
-            }
-            Value::Record { fields, .. } => {
-                for (_, v) in fields.iter() {
-                    walk(v, ctx, identity, count);
-                }
-            }
-            Value::List(items) => {
-                for v in items.iter() {
-                    walk(v, ctx, identity, count);
-                }
-            }
-            _ => {}
-        }
-    }
-    walk(val, ctx, identity, &mut count);
-    count
-}
-
-fn value_contains_atom_identity(val: &Value, ctx: &InterpContext, identity: &str) -> bool {
-    count_value_atom_identity(val, ctx, identity) > 0
-}
-
-fn decl_fact_node_skeleton_value(
-    ctx: &InterpContext,
-    rows: &Value,
-    qualified_name: &str,
-) -> Option<Value> {
-    let Value::List(items) = rows else {
-        return None;
-    };
-    for row in items.iter() {
-        let Value::Record { fields, .. } = row else {
-            continue;
-        };
-        let Some(Value::Str(qn)) = ctx.field(fields, "qualified_name") else {
-            continue;
-        };
-        if qn != qualified_name {
-            continue;
-        }
-        return ctx.field(fields, "node").cloned();
-    }
-    None
-}
-
-fn decl_facts_reflection_skeleton_for(
-    ctx: &InterpContext,
-    qualified_name: &str,
-) -> InterpResult<Option<Value>> {
-    let rows = eval_decl_facts(ctx, &decl_facts_reflection_fixture_roots())?;
-    Ok(decl_fact_node_skeleton_value(ctx, &rows, qualified_name))
-}
-
-/// Host builtin backing `dag/test/claim/decl_facts_reflection_witness_test.dag`.
-/// Executes marshaled-skeleton checks over the hermetic fixture pool via `eval_decl_facts`
-/// (Value oracle — substrate `Node` pattern matching cannot read interpreter skeleton atoms).
-pub fn eval_decl_facts_reflection_fixture_witness(
-    ctx: &InterpContext,
-    case: &str,
-) -> InterpResult<Value> {
-    const QN_SCAFFOLD: &str =
-        "test.fixture.decl_facts_reflection.specimens.planted_scaffold_specimen";
-    const QN_TERMINAL: &str =
-        "test.fixture.decl_facts_reflection.specimens.planted_terminal_specimen";
-    const QN_NULLARY: &str =
-        "test.fixture.decl_facts_reflection.specimens.planted_nullary_disposition_specimen";
-    const QN_NAMED_FIELD_REF: &str =
-        "test.fixture.decl_facts_reflection.specimens.planted_named_field_ref_specimen";
-    const QN_PLAIN_INT: &str =
-        "test.fixture.decl_facts_reflection.specimens.planted_plain_int_specimen";
-    const QN_USES_PARAM_ONLY: &str =
-        "test.fixture.decl_facts_reflection.specimens.uses_param_only";
-    const QN_USES_LOCAL: &str = "test.fixture.decl_facts_reflection.specimens.uses_local";
-
-    let ok = match case {
-        "outer_variant_scaffold" => {
-            let Some(skeleton) = decl_facts_reflection_skeleton_for(ctx, QN_SCAFFOLD)? else {
-                return Ok(Value::Bool(false));
-            };
-            value_contains_atom_identity(&skeleton, ctx, "Scaffold")
-                && count_value_atom_identity(&skeleton, ctx, "Scaffold") == 1
-        }
-        "outer_variant_terminal" => {
-            let Some(skeleton) = decl_facts_reflection_skeleton_for(ctx, QN_TERMINAL)? else {
-                return Ok(Value::Bool(false));
-            };
-            value_contains_atom_identity(&skeleton, ctx, "Terminal")
-        }
-        "declaration_ref_bind_fields" => {
-            let Some(skeleton) = decl_facts_reflection_skeleton_for(ctx, QN_SCAFFOLD)? else {
-                return Ok(Value::Bool(false));
-            };
-            value_contains_atom_identity(&skeleton, ctx, "DeclarationRef")
-                && value_contains_atom_identity(
-                    &skeleton,
-                    ctx,
-                    "test.fixture.decl_facts_reflection.specimens",
-                )
-                && value_contains_atom_identity(&skeleton, ctx, "planted_scaffold_specimen")
-                && !value_contains_atom_identity(&skeleton, ctx, "WholeDeclaration")
-        }
-        "named_field_declaration_ref" => {
-            let Some(skeleton) = decl_facts_reflection_skeleton_for(ctx, QN_NAMED_FIELD_REF)? else {
-                return Ok(Value::Bool(false));
-            };
-            value_contains_atom_identity(&skeleton, ctx, "NamedField")
-                && value_contains_atom_identity(&skeleton, ctx, "dissolves_to")
-        }
-        "plain_int_no_variant_atoms" => {
-            let Some(skeleton) = decl_facts_reflection_skeleton_for(ctx, QN_PLAIN_INT)? else {
-                return Ok(Value::Bool(false));
-            };
-            let mut atoms = std::collections::BTreeSet::new();
-            collect_value_atom_identities(&skeleton, ctx, &mut atoms);
-            !atoms.contains("Scaffold")
-                && !atoms.contains("Terminal")
-                && !atoms.contains("SingleAuthority")
-                && !atoms.contains("DeclarationRef")
-        }
-        "nullary_variant_value_absent_top_level" => {
-            let Some(skeleton) = decl_facts_reflection_skeleton_for(ctx, QN_NULLARY)? else {
-                return Ok(Value::Bool(false));
-            };
-            !value_contains_atom_identity(&skeleton, ctx, "SingleAuthority")
-        }
-        "nullary_variant_value_absent_nested" => {
-            let Some(skeleton) = decl_facts_reflection_skeleton_for(ctx, QN_SCAFFOLD)? else {
-                return Ok(Value::Bool(false));
-            };
-            !value_contains_atom_identity(&skeleton, ctx, "SingleAuthority")
-        }
-        "fn_body_param_no_variant_atoms" => {
-            let Some(skeleton) = decl_facts_reflection_skeleton_for(ctx, QN_USES_PARAM_ONLY)? else {
-                return Ok(Value::Bool(false));
-            };
-            !value_contains_atom_identity(&skeleton, ctx, "Scaffold")
-                && !value_contains_atom_identity(&skeleton, ctx, "SingleAuthority")
-                && !value_contains_atom_identity(&skeleton, ctx, "DeclarationRef")
-        }
-        "fn_body_local_no_variant_atoms" => {
-            let Some(skeleton) = decl_facts_reflection_skeleton_for(ctx, QN_USES_LOCAL)? else {
-                return Ok(Value::Bool(false));
-            };
-            !value_contains_atom_identity(&skeleton, ctx, "Scaffold")
-                && !value_contains_atom_identity(&skeleton, ctx, "SingleAuthority")
-                && !value_contains_atom_identity(&skeleton, ctx, "DeclarationRef")
-        }
-        other => {
-            return Err(InterpError::TypeError {
-                msg: format!(
-                    "decl_facts_reflection_fixture_witness: unknown case {other:?}"
-                ),
-            });
-        }
-    };
-    Ok(Value::Bool(ok))
 }

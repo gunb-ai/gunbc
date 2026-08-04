@@ -636,7 +636,6 @@ fn builtin_registry_surface_names() -> List<String> {
     "module_declaration_facts",
     "concept_decl_facts",
     "decl_facts",
-    "decl_facts_reflection_fixture_witness_host",
     "export_signature_facts",
     "fact_cardinality_decl_facts",
     "languages_consumer_census_data_decl_count",

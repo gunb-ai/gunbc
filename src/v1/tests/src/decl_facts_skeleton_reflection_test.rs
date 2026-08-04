@@ -1,5 +1,8 @@
 //! Generic `decl_facts` data-init skeleton reflection prerequisite (step 1 / #7759 split).
 //!
+//! PARTIAL capability: outer record-constructor SPELLING (OuterRecordConstructorLexeme) only.
+//! Exact parent-variant identity and nullary variant VALUE identity remain open.
+//!
 //! Developer convenience only — CI runs `cargo check` on this crate, not `cargo test`
 //! (nextest retired 2026-07-11). Merge-blocking evidence lives in
 //! `dag/test/claim/decl_facts_reflection_witness_test.dag`.
@@ -148,29 +151,29 @@ fn fixture_decl_facts(ctx: &InterpContext) -> Value {
 }
 
 #[test]
-fn outer_variant_identity_scaffold_specimen() {
+fn outer_record_constructor_lexeme_scaffold_specimen() {
     let ctx = wet_ctx();
     let skeleton = decl_fact_node_skeleton(&ctx, &fixture_decl_facts(&ctx), QN_SCAFFOLD)
         .expect("missing scaffold specimen");
     assert!(
         value_contains_atom_identity(&skeleton, &ctx, "Scaffold"),
-        "Scaffold outer variant constructor must appear in skeleton"
+        "Scaffold outer record-constructor lexeme must appear in skeleton"
     );
     assert_eq!(
         count_atom_identity(&skeleton, &ctx, "Scaffold"),
         1,
-        "Scaffold constructor atom must appear exactly once (no duplicate emission)"
+        "Scaffold constructor lexeme must appear exactly once (no duplicate emission)"
     );
 }
 
 #[test]
-fn outer_variant_identity_terminal_specimen() {
+fn outer_record_constructor_lexeme_terminal_specimen() {
     let ctx = wet_ctx();
     let skeleton = decl_fact_node_skeleton(&ctx, &fixture_decl_facts(&ctx), QN_TERMINAL)
         .expect("missing terminal specimen");
     assert!(
         value_contains_atom_identity(&skeleton, &ctx, "Terminal"),
-        "Terminal outer variant constructor must appear in skeleton"
+        "Terminal outer record-constructor lexeme must appear in skeleton"
     );
 }
 
