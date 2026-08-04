@@ -12,22 +12,20 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data gnu_bash_posix_conformance_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
-    locator: "pubs.opengroup.org/onlinepubs/9699919799/utilities/V3_chap02.html"
-  }
-}
-
 data bash_subject_note: String = "THE CANONICAL BASH SUBJECT — the one declaration every Bash-bearing surface in this repository joins (operator verdict, 2026-08-04). A target is its UPSTREAM SUBJECT, symbolically identified per extdeps.external_authority's external_subject_symbolic_identity_note; the grammar, build helpers, command fold, orchestration emission, and runtime transport modules are SURFACES that describe or realize that subject, not five targets. This is why the subject is homed apart from any one of them: a surface may move or split without changing what Bash is, and a module path is a discriminator rather than an identity (DESIGN section 3). WHY THIS FILE EXISTS AT ALL: before it, Bash was the target this repository emits most and the only one with no cited subject anywhere — v2.extdeps.languages.bash carries neither an extdeps_model_scope nor an upstream citation, so v2.lens.realization_vocabulary_containment has been confining the module PREFIX 'v2.extdeps.languages.bash' around a name rather than an authority. Expect that to be the common case rather than the exception as the registry totality wall runs (loyal-ant-382, 2026-08-04)."
 
-data bash_implementation_versus_specification_note: String = "TWO CITATIONS, ONE SUBJECT, and the split is deliberate rather than belt-and-braces. GNU Bash is an IMPLEMENTATION; the POSIX Shell Command Language is a SPECIFICATION it conforms to in part. DESIGN section 3's external-upstream decomposition keeps independently governed entities separate — the whatwg.html_navigation / browser.chromium shape — so the specification is cited here as a conformance authority of this subject, NOT merged into it. The distinction is load-bearing for emission: this repository's bash grammar emits Bash-specific constructs, and extdeps.shell.exec already routes shell.Exec.Check through 'sh -c' against the same POSIX citation carried here. A future POSIX-shell subject, if one is ever needed as a target in its own right, is a SEPARATE subject declaration that this one cites — never an arm added to GnuBash. Revision identity stays off the scope by construction (external_model_scope_revision_grain_note): a specific Bash release is a fact on a release row, not a property of the subject."
+data bash_implementation_versus_specification_note: String = "ONE SUBJECT, ONE CITATION — THE POSIX SPECIFICATION IS NOT ONE OF THIS SUBJECT'S CITATIONS (corrected 2026-08-04, review relayed through the operator). An earlier revision of this file stored the POSIX Shell Command Language as a further_citation on this scope while asserting, in this very row, that GNU Bash and POSIX are independently governed entities that DESIGN section 3 keeps separate. The row was right and the declaration below contradicted it: a citation grounds THIS subject, and the Open Group's specification is not a source about GNU Bash — it is a different subject with a different governing body. The rule the earlier text quoted correctly and then broke: multiple citations may ground one subject; a second independently governed subject is never a citation of the first. WHERE EACH PIECE LIVES NOW: the specification is its own subject at extdeps.posix.shell_command_language, and the conformance relation between them is a product-layer join at gunbc.shell_target_conformance, following the whatwg.html_navigation / browser.chromium / served_surface_browser_support shape that section works through. The distinction stays load-bearing for emission: this repository's bash grammar emits Bash-specific constructs while extdeps.shell.exec routes shell.Exec.Check through 'sh -c', so the two subjects are genuinely both in play and a support profile has to say which one it means. Revision identity stays off the scope by construction (external_model_scope_revision_grain_note): a specific Bash release is a fact on a release row, not a property of the subject."
 
 type GnuBash
   = | GnuBashShell
 
 data gnu_bash: GnuBash = GnuBashShell
 
+<<<<<<< HEAD
+=======
+data scope_alias_note: String = "The scope is declared under a UNIQUE name and extdeps_model_scope is its alias, rather than the other way round. Two reasons, both load-bearing. The mandated tag name is identical in every extdeps carrier, and .dag has no import aliasing, so a consumer that needs to reference two carriers' scopes at once — the conformance join in gunbc.shell_target_conformance, or any witness comparing this subject to another — cannot import both under the tag name. And a uniquely named canonical declaration is what a symbolic citation can point AT (DESIGN section 3 cite-the-symbol): 'extdeps_model_scope' names forty different things across the corpus and therefore names none of them."
+
+>>>>>>> origin/session/keen-ibex-349
 data gnu_bash_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
@@ -37,9 +35,12 @@ data gnu_bash_model_scope: ExternalModelScope = ExternalModelScope {
     }
   },
   first_citation: extdeps_external_authority_anchor,
-  further_citations: [gnu_bash_posix_conformance_authority]
+  further_citations: []
 }
 
+<<<<<<< HEAD
 data gnu_bash_mandated_scope_name_scaffold_note: String = "DECLARED SCAFFOLD — the shared explanation and both dissolution triggers live once at gunbc.language_subject_scope_scaffold mandated_scope_name_scaffold, and are deliberately not repeated inside an upstream subject carrier (cursor review 48122)."
 
+=======
+>>>>>>> origin/session/keen-ibex-349
 data extdeps_model_scope: ExternalModelScope = gnu_bash_model_scope

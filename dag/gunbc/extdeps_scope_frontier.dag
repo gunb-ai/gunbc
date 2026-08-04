@@ -129,6 +129,7 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/container/oci/digest.dag",
   "dag/extdeps/git/publication_transport.dag",
   "dag/extdeps/languages/bash/subject.dag",
+<<<<<<< HEAD
   "dag/extdeps/languages/c/subject.dag",
   "dag/extdeps/languages/cpp/subject.dag",
   "dag/extdeps/languages/css/subject.dag",
@@ -153,6 +154,9 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/languages/verilog/subject.dag",
   "dag/extdeps/languages/wasm/subject.dag",
   "dag/extdeps/languages/yaml/subject.dag",
+=======
+  "dag/extdeps/posix/shell_command_language.dag",
+>>>>>>> origin/session/keen-ibex-349
   "dag/extdeps/github/actions_environment.dag",
   "dag/extdeps/github/push_event.dag",
   "dag/extdeps/standards/ieee_754_2019.dag",
