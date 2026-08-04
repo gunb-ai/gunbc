@@ -216,23 +216,65 @@ named-record-expression typing path.
   module split across files falsely refuses; two modules in one file falsely permit.
 - **Fail-open on lookup miss.** `None => Rc::new(vec![])` — a construction site whose type
   fails to resolve is silently admitted.
+- **The check executes on the v1 seed path only.** `src/v2/compiler/04_infer.dag` carries
+  zero `sole_constructor` handling — the type marker is modeled in v2 source while the
+  refusal runs only in the v1 stack (measured independently by `royal-crab-235`,
+  gunbc#7792). This audit did not establish that fact and the ceiling table below is
+  corrected for it: a per-path rung is the minimum across paths (DESIGN §4b(1)), so
+  "mechanically preventable" cannot be claimed for a path where the mechanism is absent.
+
+### The named next-rung capability
+
+`ConstructorReferenceAdmission` — refuse unlisted call edges to a sealed constructor
+(`docs/plans/constructor-reference-admission-design.md`, gunbc#7792, DRAFT). That lane
+established by execution what this audit's record-literal framing missed: `sole_constructor`
+refuses a cross-module **record literal** but not a cross-module **call** to an exported
+mint taking caller-supplied fields, and the legitimate wet transport itself requires that
+mint — so the hole is not closable by carrier reshuffle under today's language.
+
+Naming it here is not a cross-reference for convenience. A ceiling row with no named
+trigger is an **untracked stall**, which DESIGN §4b(2) forbids; naming the capability is
+what distinguishes *cannot climb further* from *can climb after one grounding*. The two
+lanes are complements: that lane supplies the wall, this note's population law supplies the
+coverage denominator the wall's closure claim needs.
 
 ## Ceiling — the claimed rung is the MINIMUM of these rows
 
-| Property | Current mechanism | Honest status |
-| --- | --- | --- |
-| External record literal detected | `sole_constructor` recognized call site | Mechanically preventable **on covered form** |
-| Cast construction detected | none | **Open** |
-| Module moves preserve constructor ownership | file-identity scoped | **Open** |
-| Missing declaration lookup refuses | fail-open today | **Open** |
-| All production qualification constructors enumerated | #7786 call-occurrence frontier | **Unknown** |
-| Fixture origin cannot enter the known direct-door transport | parallel fixture carrier (#7761) | Closed for that path |
-| Fixture origin cannot reach any production qualification anywhere | not yet proven | **Open** |
+| Property | Current mechanism | Honest status | Next-rung trigger |
+| --- | --- | --- | --- |
+| External record literal detected, **v1 seed path** | `sole_constructor` recognized call site | Mechanically preventable **on covered form** | — |
+| External record literal detected, **v2 infer path** | none — zero `sole_constructor` handling | **Open** | port the construction-admission authority into v2 infer |
+| Cross-module call to an exported mint refused | none | **Open** | `ConstructorReferenceAdmission` |
+| Cast construction detected | none | **Open** | `ConstructorReferenceAdmission` (same authority) |
+| Module moves preserve constructor ownership | file-identity scoped | **Open** | module-identity-vs-storage lane |
+| Missing declaration lookup refuses | fail-open today | **Open** | typed lookup refusal in the same arm |
+| All production qualification constructors enumerated | #7786 call-occurrence frontier | **Unknown** | closed call-occurrence population |
+| Fixture origin cannot enter the known direct-door transport | parallel fixture carrier (#7761) | Closed for that path | — |
+| Fixture origin cannot reach any production qualification anywhere | not yet proven | **Open** | all rows above, **plus** §1's origin-bearing carrier |
+
+`ConstructorReferenceAdmission` does **not** close this note's headline class on its own,
+and the table must not be read as saying it does. Call-edge admission answers *who may
+call the constructor*; the direct-door specimen is a **permitted** caller supplying a
+hand-authored `InferredTree` to a mint whose signature legitimately accepts one. No roster
+of permitted callers refuses that, because the caller is not the problem — the discarded
+epistemic distinction in the parameter type is. That class is closed only by §1: the mint
+stops accepting a raw stage value and starts requiring an origin-bearing carrier the
+fixture cannot construct.
+
+Stated the other way, so the division of labour is explicit rather than implied: the two
+mechanisms are orthogonal and both are required. Call-edge admission narrows *who
+constructs*; the origin carrier constrains *what may be constructed from*. A production
+qualification reachable by a permitted caller from a fixture-origin value is refused by
+neither alone.
 
 **Claimed rung: mechanically preventable for resolved record-literal construction sites
-inside the currently recognized file-identity scope.** That phrasing is deliberately ugly;
-it is the measured subject grain. The mechanism is not a wall and this note does not call
-it one.
+inside the currently recognized file-identity scope, on the v1 seed path only.** That
+phrasing is deliberately ugly; it is the measured subject grain. The mechanism is not a
+wall and this note does not call it one.
+
+The path qualifier is load-bearing and was **absent from this table's first revision**. A
+rung is the minimum across a class's in-scope paths (DESIGN §4b(1)); citing the v1 path
+while the v2 path stays silent is rung inflation, not a summary.
 
 ## Mutation contract — required before class closure may be claimed
 
