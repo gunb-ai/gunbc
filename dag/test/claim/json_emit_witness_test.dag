@@ -9,58 +9,58 @@ test fn witness_json_cites_rfc8259() -> Bool {
 }
 
 test fn witness_escape_backslash_and_quote() -> Bool {
-  escape_json_string(s: "a\"b\\c") == "a\\\"b\\\\c"
+  extdeps.languages.json.emit.escape_json_string(s: "a\"b\\c") == "a\\\"b\\\\c"
 }
 
 test fn witness_escape_newline() -> Bool {
-  escape_json_string(s: "line one\nline two") == "line one\\nline two"
+  extdeps.languages.json.emit.escape_json_string(s: "line one\nline two") == "line one\\nline two"
 }
 
 test fn witness_escape_tab() -> Bool {
-  escape_json_string(s: concat("a", concat(from_code_point(cp: 9), "b"))) == "a\\tb"
+  extdeps.languages.json.emit.escape_json_string(s: concat("a", concat(from_code_point(cp: 9), "b"))) == "a\\tb"
 }
 
 test fn witness_escape_carriage_return() -> Bool {
-  escape_json_string(s: concat("x", concat(from_code_point(cp: 13), "y"))) == "x\\ry"
+  extdeps.languages.json.emit.escape_json_string(s: concat("x", concat(from_code_point(cp: 13), "y"))) == "x\\ry"
 }
 
 test fn witness_escape_control_u0001() -> Bool {
-  escape_json_string(s: from_code_point(cp: 1)) == "\\u0001"
+  extdeps.languages.json.emit.escape_json_string(s: from_code_point(cp: 1)) == "\\u0001"
 }
 
 test fn witness_quote_json_string() -> Bool {
-  quote_json_string(s: "hello") == "\"hello\""
-    && quote_json_string(s: "a\"b") == "\"a\\\"b\""
+  extdeps.languages.json.emit.quote_json_string(s: "hello") == "\"hello\""
+    && extdeps.languages.json.emit.quote_json_string(s: "a\"b") == "\"a\\\"b\""
 }
 
 test fn witness_serialize_null() -> Bool {
-  serialize_json(v: json_null()) == "null"
+  extdeps.languages.json.emit.serialize_json(v: extdeps.languages.json.emit.json_null()) == "null"
 }
 
 test fn witness_serialize_bool() -> Bool {
-  serialize_json(v: json_bool(b: true)) == "true"
-    && serialize_json(v: json_bool(b: false)) == "false"
+  extdeps.languages.json.emit.serialize_json(v: extdeps.languages.json.emit.json_bool(b: true)) == "true"
+    && extdeps.languages.json.emit.serialize_json(v: extdeps.languages.json.emit.json_bool(b: false)) == "false"
 }
 
 test fn witness_serialize_int() -> Bool {
-  serialize_json(v: json_int(n: 42)) == "42"
+  extdeps.languages.json.emit.serialize_json(v: extdeps.languages.json.emit.json_int(n: 42)) == "42"
 }
 
 test fn witness_serialize_object() -> Bool {
-  serialize_json(v: json_object(members: [
-    json_kv(key: "host", value: json_string(s: "srv1")),
-    json_kv(key: "runner_count", value: json_int(n: 4)),
+  extdeps.languages.json.emit.serialize_json(v: extdeps.languages.json.emit.json_object(members: [
+    extdeps.languages.json.emit.json_kv(key: "host", value: json_string(s: "srv1")),
+    extdeps.languages.json.emit.json_kv(key: "runner_count", value: extdeps.languages.json.emit.json_int(n: 4)),
   ])) == "{\"host\": \"srv1\", \"runner_count\": 4}"
 }
 
 test fn witness_serialize_nested_object() -> Bool {
-  serialize_json(v: json_object(members: [
-    json_kv(key: "Password", value: json_string(s: "secret")),
+  extdeps.languages.json.emit.serialize_json(v: extdeps.languages.json.emit.json_object(members: [
+    extdeps.languages.json.emit.json_kv(key: "Password", value: json_string(s: "secret")),
   ])) == "{\"Password\": \"secret\"}"
 }
 
 test fn witness_serialize_array() -> Bool {
-  serialize_json(v: json_array(elements: [json_string(s: "a"), json_string(s: "b")])) == "[\"a\", \"b\"]"
+  extdeps.languages.json.emit.serialize_json(v: json_array(elements: [json_string(s: "a"), json_string(s: "b")])) == "[\"a\", \"b\"]"
 }
 
 test fn witness_int_list_helper() -> Bool {
