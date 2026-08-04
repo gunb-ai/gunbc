@@ -19,6 +19,8 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.standards.rfc_8118 {
   PdfOpenParameterSequence,
+  NavigableUriProjection,
+  NavigableUriProjected,
   pdf_open_page,
   pdf_open_parameter_sequence,
   project_navigable_uri,
@@ -52,7 +54,7 @@ data x86_64_abi_pdf_fragment: PdfOpenParameterSequence = pdf_open_parameter_sequ
   parameters: [pdf_open_page(page: 1)],
 )
 
-data x86_64_abi_pdf_navigable_uri: Uri = project_navigable_uri(
+data x86_64_abi_pdf_navigable_projection: NavigableUriProjection = project_navigable_uri(
   base: extdeps_external_authority_anchor.uri,
   sequence: x86_64_abi_pdf_fragment,
 )

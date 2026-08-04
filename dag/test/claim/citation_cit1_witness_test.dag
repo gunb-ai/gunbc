@@ -1,9 +1,11 @@
 module test.claim.citation_cit1_witness
 
 import extdeps.standards.rfc_8118 {
+  extdeps_external_authority_anchor,
   rfc_8118_section_3_locator,
   iso_32000_2_authority,
   rfc_8118_normative_relationship_note,
+  citation_cit1_witness_split_note,
   extdeps_model_scope,
   PdfOpenPage,
   OpenPage,
@@ -11,6 +13,9 @@ import extdeps.standards.rfc_8118 {
   ParameterOutsideCit1SafeProfile,
   PdfParameterZoom,
   PdfParameterComment,
+  NavigableUriProjected,
+  NavigableUriRefused,
+  BaseLocatorAlreadyCarriesFragment,
   pdf_open_page,
   pdf_open_zoom,
   pdf_open_comment,
@@ -71,13 +76,31 @@ test fn pdf_open_parameters_include_page_red_wrong_page() -> Bool {
 }
 
 test fn project_navigable_uri_appends_ordered_fragment() -> Bool {
-  let navigable = project_navigable_uri(
+  match project_navigable_uri(
     base: witness_pdf_base_uri,
     sequence: pdf_open_parameter_sequence(parameters: [pdf_open_page(page: 1)]),
-  )
-  navigable.locator == "example.test/fixture.pdf#page=1"
+  ) {
+    NavigableUriProjected { uri: u } => u.locator == "example.test/fixture.pdf#page=1"
+    _ => false
+  }
+}
+
+test fn project_navigable_uri_refuses_when_base_carries_fragment() -> Bool {
+  match project_navigable_uri(
+    base: extdeps_external_authority_anchor.uri,
+    sequence: pdf_open_parameter_sequence(parameters: [pdf_open_page(page: 1)]),
+  ) {
+    NavigableUriRefused { cause: BaseLocatorAlreadyCarriesFragment { locator: l } } =>
+      l == rfc_8118_section_3_locator
+    _ => false
+  }
 }
 
 test fn pdf_profile_parameter_wire_names_page() -> Bool {
   pdf_profile_parameter_wire(parameter: pdf_open_page(page: 3)) == "page=3"
+}
+
+test fn citation_cit1_witness_split_names_homonym_accommodation() -> Bool {
+  string_contains(s: citation_cit1_witness_split_note, pattern: "decl_ref_constructor_authority_note")
+    && string_contains(s: citation_cit1_witness_split_note, pattern: "namespace-only resolution")
 }

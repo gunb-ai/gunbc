@@ -24,6 +24,17 @@ data rfc_8118_normative_relationship_note: String = "RFC 8118 (Informational, Ma
 
 data pdf_open_parameter_sequence_note: String = "RFC 8118 section 3: PDF fragment parameters are an ORDERED sequence separated by ampersand; later parameters override earlier ones, so page should precede zoom in full RFC — the CIT-1 safe profile admits only page, nameddest, and structelem as a closed coproduct list, never a string in Uri.locator."
 
+data project_navigable_uri_fragment_decompose_dissolve_on: String = "dissolve-on: extdeps.uri Uri decomposes authority, path, query, and fragment as typed fields. Until then Uri.locator compresses all wire parts into one NonEmptyStr, so whether a base already carries a fragment is not a modeled question — only a string scan. project_navigable_uri refuses BaseLocatorAlreadyCarriesFragment when appending a PDF open-parameter wire form would synthesize a second # (RFC 3986 permits exactly one fragment). Do not strip or replace an existing fragment silently — that would be arm widening, not refusal."
+
+data citation_cit1_witness_split_note: String = "CIT-1 witnesses split across citation_cit1_witness_test and citation_cit1_consumer_witness_test because extdeps_external_authority_anchor is not module-scoped in v1-seed — the same collision std.decl_ref decl_ref_constructor_authority_note documents, which redded primitive_identity_join on main. dissolve-on: namespace-only resolution lane gives declarations module-scoped identity so one witness file can import both rfc_8118 and sysv_amd64 without homonym shadowing. The split is an accommodation with an end date, not witness-file organization policy."
+
+type NavigableUriRefusalCause
+  = BaseLocatorAlreadyCarriesFragment { locator: NonEmptyStr }
+
+type NavigableUriProjection
+  = NavigableUriProjected { uri: Uri }
+  | NavigableUriRefused { cause: NavigableUriRefusalCause }
+
 data rfc_8118_section_3_locator: NonEmptyStr = "www.rfc-editor.org/rfc/rfc8118#section-3" as NonEmptyStr
 
 data rfc_8118: NonEmptyStr = "RFC 8118"
@@ -166,14 +177,26 @@ fn pdf_open_parameter_sequence_wire(sequence: PdfOpenParameterSequence) -> Strin
   )
 }
 
-fn project_navigable_uri(base: Uri, sequence: PdfOpenParameterSequence) -> Uri {
+fn uri_locator_carries_fragment(locator: NonEmptyStr) -> Bool {
+  string_contains(s: locator, pattern: "#")
+}
+
+fn project_navigable_uri(base: Uri, sequence: PdfOpenParameterSequence) -> NavigableUriProjection {
   let fragment = pdf_open_parameter_sequence_wire(sequence: sequence)
   if fragment == "" {
-    base
+    NavigableUriProjected { uri: base }
   } else {
-    Uri {
-      scheme: base.scheme,
-      locator: concat(base.locator, concat("#", fragment)) as NonEmptyStr,
+    if uri_locator_carries_fragment(locator: base.locator) {
+      NavigableUriRefused {
+        cause: BaseLocatorAlreadyCarriesFragment { locator: base.locator },
+      }
+    } else {
+      NavigableUriProjected {
+        uri: Uri {
+          scheme: base.scheme,
+          locator: concat(base.locator, concat("#", fragment)) as NonEmptyStr,
+        },
+      }
     }
   }
 }

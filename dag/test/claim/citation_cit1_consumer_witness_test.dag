@@ -2,16 +2,20 @@ module test.claim.citation_cit1_consumer_witness
 
 import extdeps.runtime.abi.sysv_amd64 {
   x86_64_abi_pdf_fragment,
-  x86_64_abi_pdf_navigable_uri,
+  x86_64_abi_pdf_navigable_projection,
   x86_64_abi_pdf_pin,
 }
-import extdeps.standards.rfc_8118 { pdf_open_parameters_include_page }
+import extdeps.standards.rfc_8118 { pdf_open_parameters_include_page, NavigableUriProjected }
 import extdeps.pin { pin_currency_gap, AuthoredPinHasNoReviewDate, ExactPin }
 import std.types { Bool }
 
 test fn x86_64_abi_pdf_consumer_carries_exact_pin_and_page_fragment() -> Bool {
   pdf_open_parameters_include_page(sequence: x86_64_abi_pdf_fragment, page: 1)
-    && string_contains(s: x86_64_abi_pdf_navigable_uri.locator, pattern: "x86_64-abi-0.99.pdf")
+    && match x86_64_abi_pdf_navigable_projection {
+      NavigableUriProjected { uri: u } =>
+        string_contains(s: u.locator, pattern: "x86_64-abi-0.99.pdf")
+      _ => false
+    }
     && match x86_64_abi_pdf_pin.selection {
       ExactPin => true
       _ => false
@@ -19,7 +23,11 @@ test fn x86_64_abi_pdf_consumer_carries_exact_pin_and_page_fragment() -> Bool {
 }
 
 test fn x86_64_abi_navigable_uri_projects_page_fragment() -> Bool {
-  x86_64_abi_pdf_navigable_uri.locator == "refspecs.linuxfoundation.org/elf/x86_64-abi-0.99.pdf#page=1"
+  match x86_64_abi_pdf_navigable_projection {
+    NavigableUriProjected { uri: u } =>
+      u.locator == "refspecs.linuxfoundation.org/elf/x86_64-abi-0.99.pdf#page=1"
+    _ => false
+  }
 }
 
 test fn pin_currency_gap_is_total_not_citation_current() -> Bool {
