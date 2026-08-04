@@ -1,4 +1,4 @@
-module gunbc.physics.classical_path_additivity
+module gunbc.physics.bach_double_slit_path_additivity
 
 import std.types { Bool, Int, List, NonEmptyStr }
 import std.algebra { Ordering, Less, Equal, Greater }
@@ -11,7 +11,7 @@ import extdeps.physics.bach_et_al_2013_double_slit {
   BothSlitsBlocked,
 }
 
-data classical_path_additivity_note: String = "Downstream physics model-debugging layer for exclusive-alternative raw-count additivity: N_both = N_left + N_right. Not std.algebra_law — experiment-specific count equality lives here until a generic distributivity substrate lands in Slice B."
+data bach_double_slit_path_additivity_note: String = "Bach et al. 2013 double-slit scoped path-additivity model: exclusive-alternative raw-count additivity N_both = N_left + N_right over Bach slit-mask configurations. Not std.algebra_law — not a generic classical-additivity hub until a second experiment consumer lands."
 
 type ScreenBand
   = CentralBand
@@ -115,6 +115,33 @@ type PathAdditivityBandVerdict
   | PathAdditivityUndecidedAtBand {
       failure: AdditivityInputFailure
     }
+
+type RefutationReceiptResolution
+  = RefutationReceiptResolved { receipt: PathAdditivityRefutationReceipt }
+  | RefutationNotEstablished { verdict: PathAdditivityBandVerdict }
+
+fn refutation_receipt_resolution_from_band_verdict(
+  verdict: PathAdditivityBandVerdict,
+) -> RefutationReceiptResolution {
+  match verdict {
+    PathAdditivityRefutationAtBand { receipt: receipt } =>
+      RefutationReceiptResolved { receipt: receipt }
+    PathAdditivityHeldAtBand {
+      band: held_band,
+      exposure: held_exposure,
+    } =>
+      RefutationNotEstablished {
+        verdict: PathAdditivityHeldAtBand {
+          band: held_band,
+          exposure: held_exposure,
+        },
+      }
+    PathAdditivityUndecidedAtBand { failure: undecided_failure } =>
+      RefutationNotEstablished {
+        verdict: PathAdditivityUndecidedAtBand { failure: undecided_failure },
+      }
+  }
+}
 
 fn classical_exclusive_alternative_arrival_prediction(
   left_only_count: NonNegativeInt,

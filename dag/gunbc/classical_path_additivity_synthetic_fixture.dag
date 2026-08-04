@@ -8,7 +8,7 @@ import extdeps.physics.bach_et_al_2013_double_slit {
   SlitTwoOpen,
   BothSlitsBlocked,
 }
-import gunbc.physics.classical_path_additivity {
+import gunbc.physics.bach_double_slit_path_additivity {
   SyntheticDoubleSlitFixture,
   SyntheticDoubleSlitFixtureOne,
   ScreenBand,
@@ -42,10 +42,14 @@ import gunbc.physics.classical_path_additivity {
   PathAdditivityRefutationAtBand,
   PathAdditivityHeldAtBand,
   PathAdditivityUndecidedAtBand,
+  RefutationReceiptResolution,
+  RefutationReceiptResolved,
+  RefutationNotEstablished,
+  refutation_receipt_resolution_from_band_verdict,
 }
 import std.algebra { Greater }
 
-data synthetic_fixture_note: String = "SYNTHETIC MECHANISM FIXTURE — NOT Bach et al. 2013 provenance. Rows exercise gunbc.physics.classical_path_additivity with equal declared exposure identity; classical mechanism adds raw counts."
+data synthetic_fixture_note: String = "SYNTHETIC MECHANISM FIXTURE — NOT Bach et al. 2013 provenance. Rows exercise gunbc.physics.bach_double_slit_path_additivity with equal declared exposure identity; classical mechanism adds raw counts."
 
 data synthetic_double_slit_fixture: SyntheticDoubleSlitFixture = SyntheticDoubleSlitFixtureOne {}
 
@@ -126,32 +130,10 @@ fn synthetic_first_minimum_verdict() -> PathAdditivityBandVerdict {
   )
 }
 
-fn synthetic_first_minimum_refutation_receipt_from_fold() -> PathAdditivityRefutationReceipt {
-  match synthetic_first_minimum_verdict() {
-    PathAdditivityRefutationAtBand { receipt: receipt } => receipt
-    PathAdditivityHeldAtBand {
-      band: held_band,
-      exposure: held_exposure,
-    } => path_additivity_refutation_from_resolved(
-      left: 10,
-      right: 10,
-      both: 20,
-      band: held_band,
-      exposure: held_exposure,
-    )
-    PathAdditivityUndecidedAtBand { failure: undecided_failure } =>
-      path_additivity_refutation_from_resolved(
-        left: 0,
-        right: 0,
-        both: 0,
-        band: FirstMinimumBand,
-        exposure: SyntheticMatchedExposureOne {},
-      )
-  }
-}
+data classical_path_additivity_first_minimum_verdict: PathAdditivityBandVerdict = synthetic_first_minimum_verdict()
 
-fn classical_path_additivity_refuted_receipt() -> PathAdditivityRefutationReceipt {
-  synthetic_first_minimum_refutation_receipt_from_fold()
+fn synthetic_first_minimum_receipt_resolution() -> RefutationReceiptResolution {
+  refutation_receipt_resolution_from_band_verdict(verdict: synthetic_first_minimum_verdict())
 }
 
 fn synthetic_first_minimum_refutation_receipt_direct() -> PathAdditivityRefutationReceipt {
@@ -164,10 +146,16 @@ fn synthetic_first_minimum_refutation_receipt_direct() -> PathAdditivityRefutati
   )
 }
 
-data classical_path_additivity_refuted: PathAdditivityRefutationReceipt = classical_path_additivity_refuted_receipt()
-
 fn classical_path_additivity_refutation_holds() -> Bool {
-  path_additivity_refutation_holds_for_synthetic_fixture(receipt: classical_path_additivity_refuted)
+  match classical_path_additivity_first_minimum_verdict {
+    PathAdditivityRefutationAtBand { receipt: receipt } =>
+      path_additivity_refutation_holds_for_synthetic_fixture(receipt: receipt)
+    PathAdditivityHeldAtBand {
+      band: held_band,
+      exposure: held_exposure,
+    } => false
+    PathAdditivityUndecidedAtBand { failure: undecided_failure } => false
+  }
 }
 
 fn synthetic_central_band_verdict() -> PathAdditivityBandVerdict {
@@ -273,10 +261,14 @@ fn synthetic_missing_row_yields_incomplete_inputs() -> Bool {
 }
 
 fn synthetic_direct_kernel_receipt_matches_fold() -> Bool {
-  let direct = synthetic_first_minimum_refutation_receipt_direct()
-  let folded = synthetic_first_minimum_refutation_receipt_from_fold()
-  direct.witness.left_alternative_count == folded.witness.left_alternative_count
-    && direct.witness.right_alternative_count == folded.witness.right_alternative_count
-    && direct.witness.both_open_observed_count == folded.witness.both_open_observed_count
-    && direct.witness.classical_additive_prediction == folded.witness.classical_additive_prediction
+  match synthetic_first_minimum_receipt_resolution() {
+    RefutationReceiptResolved { receipt: folded } => {
+      let direct = synthetic_first_minimum_refutation_receipt_direct()
+      direct.witness.left_alternative_count == folded.witness.left_alternative_count
+        && direct.witness.right_alternative_count == folded.witness.right_alternative_count
+        && direct.witness.both_open_observed_count == folded.witness.both_open_observed_count
+        && direct.witness.classical_additive_prediction == folded.witness.classical_additive_prediction
+    }
+    RefutationNotEstablished { verdict: not_established_verdict } => false
+  }
 }

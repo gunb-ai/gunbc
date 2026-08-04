@@ -30,7 +30,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: []
 }
 
-data bach_et_al_2013_citation_note: String = "Cited upstream: Bach, R., Pope, D., Liou, S.-H. and Batelaan, H., 'Controlled double-slit electron diffraction', New Journal of Physics volume 15, article 033018, 2013 (doi 10.1088/1367-2630/15/3/033018). arXiv:1210.6243. WHAT THIS MODULE OWNS: Bach et al. 2013 apparatus vocabulary and source-grounded categorical, buildup, and raw-count observation rows."
+data bach_et_al_2013_citation_note: String = "Cited upstream: Bach, R., Pope, D., Liou, S.-H. and Batelaan, H., 'Controlled double-slit electron diffraction', New Journal of Physics volume 15, article 033018, 2013 (doi 10.1088/1367-2630/15/3/033018). arXiv:1210.6243. WHAT THIS MODULE OWNS: Bach et al. 2013 apparatus vocabulary and source-grounded categorical and buildup observation rows."
 
 data abstract_observed_distributions_note: String = "Abstract verbatim: By placing a movable mask in front of a double-slit to control the transmission through the individual slits, probability distributions for single- and double-slit arrangements were observed."
 

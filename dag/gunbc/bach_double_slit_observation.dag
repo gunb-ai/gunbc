@@ -2,6 +2,7 @@ module gunbc.bach_double_slit_observation
 
 import std.types { Bool, Int, List }
 import std.integer { NonNegativeInt }
+import v2.std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
 import extdeps.physics.bach_et_al_2013_double_slit {
   BachEtAl2013DoubleSlitExperiment,
   bach_et_al_2013_double_slit,
@@ -84,7 +85,7 @@ fn bach_distribution_observations_complete() -> Bool {
 fn bach_ensemble_interference_holds_for_distribution(
   observations: List<BachDistributionObservation>,
 ) -> Bool {
-  bach_buildup_progression_is_source_ordered(rows: bach_cited_buildup_progression_rows())
+  bach_cited_buildup_matches_source_population()
     && bach_distribution_observations_complete_for(observations: observations)
 }
 
@@ -98,14 +99,6 @@ fn bach_ensemble_interference_rejects_missing_both_open(
   !bach_ensemble_interference_holds_for_distribution(observations: observations)
 }
 
-fn pattern_status_rank(status: PatternStatus) -> Int {
-  match status {
-    PatternNotYetDiscernible => 0
-    PatternDiscernible => 1
-    PatternClearlyVisible => 2
-  }
-}
-
 fn bach_buildup_row_is_canonical_apparatus(row: BachBuildupProgressionRow) -> Bool {
   match row.apparatus {
     BachCitedDoubleSlitApparatus { subject: cited_subject } =>
@@ -114,102 +107,147 @@ fn bach_buildup_row_is_canonical_apparatus(row: BachBuildupProgressionRow) -> Bo
   }
 }
 
-type BuildupProgressionAcc {
-  valid: Bool
-  prev_electrons: NonNegativeInt?
-  prev_status_rank: Int?
-  max_electrons: NonNegativeInt
-  status_at_max: PatternStatus?
+type BachBuildupPopulationExpectation {
+  detected_electrons: NonNegativeInt
+  expected_status: PatternStatus
 }
 
-fn fold_buildup_progression_acc(
-  acc: BuildupProgressionAcc,
+data bach_source_buildup_population_fixture: List<BachBuildupPopulationExpectation> = [
+  BachBuildupPopulationExpectation {
+    detected_electrons: 2,
+    expected_status: PatternNotYetDiscernible,
+  },
+  BachBuildupPopulationExpectation {
+    detected_electrons: 7,
+    expected_status: PatternNotYetDiscernible,
+  },
+  BachBuildupPopulationExpectation {
+    detected_electrons: 209,
+    expected_status: PatternNotYetDiscernible,
+  },
+  BachBuildupPopulationExpectation {
+    detected_electrons: 1004,
+    expected_status: PatternDiscernible,
+  },
+  BachBuildupPopulationExpectation {
+    detected_electrons: 6235,
+    expected_status: PatternClearlyVisible,
+  },
+]
+
+data bach_source_buildup_population_fixture_note: String = "Controlled fixture for Figure 3 panels a-e (doi 10.1088/1367-2630/15/3/033018): 2/7/209 NotYet, 1004 first Discernible, 6235 ClearlyVisible."
+
+fn bach_buildup_row_matches_fixture_entry(
   row: BachBuildupProgressionRow,
-) -> BuildupProgressionAcc {
+  expectation: BachBuildupPopulationExpectation,
+) -> Bool {
+  bach_buildup_row_is_canonical_apparatus(row: row)
+    && row.detected_electrons == expectation.detected_electrons
+    && row.pattern_status == expectation.expected_status
+}
+
+type OrderedPopulationMatchAcc {
+  remaining_rows: List<BachBuildupProgressionRow>
+  valid: Bool
+}
+
+fn fold_ordered_population_expectation(
+  acc: OrderedPopulationMatchAcc,
+  expectation: BachBuildupPopulationExpectation,
+) -> OrderedPopulationMatchAcc {
   if !acc.valid {
     acc
   } else {
-    if !bach_buildup_row_is_canonical_apparatus(row: row) {
-      BuildupProgressionAcc {
-        valid: false,
-        prev_electrons: acc.prev_electrons,
-        prev_status_rank: acc.prev_status_rank,
-        max_electrons: acc.max_electrons,
-        status_at_max: acc.status_at_max,
-      }
-    } else {
-      let rank = pattern_status_rank(status: row.pattern_status)
-      let electrons_increase = match acc.prev_electrons {
-        Absent => true
-        Present { value: prev_electrons } => row.detected_electrons > prev_electrons
-      }
-      let status_monotone = match acc.prev_status_rank {
-        Absent => true
-        Present { value: prev_rank } => rank >= prev_rank
-      }
-      let max_electrons = if row.detected_electrons > acc.max_electrons {
-        row.detected_electrons
-      } else {
-        acc.max_electrons
-      }
-      let status_at_max = if row.detected_electrons > acc.max_electrons {
-        Present { value: row.pattern_status }
-      } else {
-        acc.status_at_max
-      }
-      BuildupProgressionAcc {
-        valid: electrons_increase && status_monotone,
-        prev_electrons: Present { value: row.detected_electrons },
-        prev_status_rank: Present { value: rank },
-        max_electrons: max_electrons,
-        status_at_max: status_at_max,
-      }
+    match list_head(xs: acc.remaining_rows) {
+      HeadFound { value: head_row } =>
+        match list_tail(xs: acc.remaining_rows) {
+          TailFound { tail: tail_rows } =>
+            if bach_buildup_row_matches_fixture_entry(row: head_row, expectation: expectation) {
+              OrderedPopulationMatchAcc {
+                remaining_rows: tail_rows,
+                valid: true,
+              }
+            } else {
+              OrderedPopulationMatchAcc {
+                remaining_rows: tail_rows,
+                valid: false,
+              }
+            }
+          TailAbsent =>
+            if bach_buildup_row_matches_fixture_entry(row: head_row, expectation: expectation) {
+              OrderedPopulationMatchAcc {
+                remaining_rows: [],
+                valid: true,
+              }
+            } else {
+              OrderedPopulationMatchAcc {
+                remaining_rows: [],
+                valid: false,
+              }
+            }
+        }
+      HeadAbsent =>
+        OrderedPopulationMatchAcc {
+          remaining_rows: [],
+          valid: false,
+        }
     }
   }
 }
 
-fn bach_buildup_progression_is_source_ordered(rows: List<BachBuildupProgressionRow>) -> Bool {
+fn bach_buildup_matches_ordered_source_population(
+  rows: List<BachBuildupProgressionRow>,
+  fixture: List<BachBuildupPopulationExpectation>,
+) -> Bool {
   let acc = fold(
-    rows,
-    init: BuildupProgressionAcc {
+    fixture,
+    init: OrderedPopulationMatchAcc {
+      remaining_rows: rows,
       valid: true,
-      prev_electrons: Absent,
-      prev_status_rank: Absent,
-      max_electrons: 0,
-      status_at_max: Absent,
     },
-    f: fn(a, row) { fold_buildup_progression_acc(acc: a, row: row) },
+    f: fn(a, exp) {
+      fold_ordered_population_expectation(acc: a, expectation: exp)
+    },
   )
-  acc.valid
-    && acc.max_electrons == 6235
-    && match acc.status_at_max {
-      Present { value: PatternClearlyVisible } => true
-      Present { value: PatternNotYetDiscernible } => false
-      Present { value: PatternDiscernible } => false
-      Absent => false
-    }
+  acc.valid && (acc.remaining_rows |> count) == 0
+}
+
+fn bach_cited_buildup_matches_source_population() -> Bool {
+  bach_buildup_matches_ordered_source_population(
+    rows: bach_cited_buildup_progression_rows(),
+    fixture: bach_source_buildup_population_fixture,
+  )
+}
+
+fn bach_buildup_population_rejects_planted_rows(
+  rows: List<BachBuildupProgressionRow>,
+) -> Bool {
+  !bach_buildup_matches_ordered_source_population(
+    rows: rows,
+    fixture: bach_source_buildup_population_fixture,
+  )
 }
 
 fn bach_buildup_progression_rejects_clearly_visible_at_low_count(
   rows: List<BachBuildupProgressionRow>,
 ) -> Bool {
-  !bach_buildup_progression_is_source_ordered(rows: rows)
+  bach_buildup_population_rejects_planted_rows(rows: rows)
 }
 
 fn bach_buildup_progression_rejects_not_yet_at_max_count(
   rows: List<BachBuildupProgressionRow>,
 ) -> Bool {
-  !bach_buildup_progression_is_source_ordered(rows: rows)
+  bach_buildup_population_rejects_planted_rows(rows: rows)
 }
 
 fn bach_buildup_progression_rejects_foreign_apparatus(
   rows: List<BachBuildupProgressionRow>,
 ) -> Bool {
-  !bach_buildup_progression_is_source_ordered(rows: rows)
+  bach_buildup_population_rejects_planted_rows(rows: rows)
 }
 
 fn bach_buildup_progression_rejects_reversed_order(
   rows: List<BachBuildupProgressionRow>,
 ) -> Bool {
-  !bach_buildup_progression_is_source_ordered(rows: rows)
+  bach_buildup_population_rejects_planted_rows(rows: rows)
 }
