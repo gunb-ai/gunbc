@@ -14,9 +14,7 @@ import v2.lens.production_qualification_origin_census {
   derived_production_qualification_mint_sites_live,
   derived_sites_for_decl,
   empty_site_list,
-  known_fixture_origin_mint_surface_count_in_scope,
   planted_fixture_origin_mint_site_count,
-  production_qualification_live_scope_fixture_origin_oracle_count,
   production_qualification_origin_eq,
   production_qualification_origin_probe_admission_holds,
   production_qualification_origin_probe_admission_holds_for_decls,
@@ -34,7 +32,7 @@ import v2.std.integer { int_eq }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 
-data production_qualification_origin_census_witness_note: String = "Production-qualification origin PROBE witnesses (wise-ram-22 recut): structural skeleton discovery only — no witness-import closure roster, no declaration-name classifier pins. Count witnesses use closed-subject planted oracles (DESIGN §5), not measure()==measure() on the same live derivation. Structural GREEN uses a synthetic planted decl whose qualified name is oracle-only; the classifier reads callee+fixture-marker skeleton only."
+data production_qualification_origin_census_witness_note: String = "Production-qualification origin PROBE witnesses (wise-ram-22 recut): structural skeleton discovery only — no witness-import closure roster, no declaration-name classifier pins. Planted count witness uses closed-subject oracle (DESIGN §5). Live-scope policy-oracle count witness is long-lane (fn_arrow_decl_facts_live walk exceeds 5s discovery budget). Structural GREEN uses a synthetic planted decl whose qualified name is oracle-only; the classifier reads callee+fixture-marker skeleton only."
 
 test fn witness_production_qualification_origin_probe_admission_holds() -> Bool {
   production_qualification_origin_probe_admission_holds()
@@ -44,13 +42,6 @@ test fn witness_planted_fixture_origin_count_matches_oracle() -> Bool {
   int_eq(
     a: planted_fixture_origin_mint_site_count(),
     b: production_qualification_planted_fixture_origin_oracle_count
-  )
-}
-
-test fn witness_live_scope_fixture_origin_count_matches_policy_oracle() -> Bool {
-  int_eq(
-    a: known_fixture_origin_mint_surface_count_in_scope(),
-    b: production_qualification_live_scope_fixture_origin_oracle_count
   )
 }
 
