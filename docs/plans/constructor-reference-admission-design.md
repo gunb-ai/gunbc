@@ -105,7 +105,25 @@ Construction admission is **one authority**. Record-literal refusal and call-edg
 
 **Session disposition:** carrier shape, refusal coordinates, composition, first_slice bar, alias stance, and no-separate-pass rule are all decidable without picking the horn. **Implementation waits on operator choice among the three rows in §4.2.**
 
-## 5. Design questions (decided or answered in this note)
+### 4.3 Measured floor — tidy-fox-81 prototype (#7806, non-conforming)
+
+**Source:** tidy-fox-81 implemented the v1 horn without the design note (stopped; writeups only). **Not the specified design** — a floor for horn comparison. **Hold stands:** nothing lands until operator picks.
+
+**Model half (committed `.dag` diff):** 110 changed lines across five files (`00_core`, `02_parse`, `04_infer`, `04_lookup`, `04_sigs`). Parse surface (`admit_callers` property), lookup/sig gate, diagnostic variant — **not** wired to `mint_behavioral_comparison_observation` on that branch.
+
+**Rust realization half (execution-measured via `regen_stage0`, not inferred):** 424 changed lines across five generated files — `v1_compiler_infer.rs`, `v1_compiler_infer_lookup.rs`, `v1_compiler_infer_sigs.rs`, `v1_compiler_parse.rs`, `v1_std_core.rs`. `v1_compiler_infer.rs` specifically: one new function (~28 lines), two match arms (~12 each), import edit. **Roughly four-to-one model-to-realization amplification.** An operator comparing horns on the `.dag` number alone is comparing the wrong quantity.
+
+**Still a floor:** conforming to this note costs **strictly more** on **both** halves. Three named deltas still outstanding (each adds model + realization work):
+
+1. **DeclarationRef grain** — not `module_path` strings (§3 `std.decl_ref` import rule).
+2. **One construction-admission authority** — not a separate lookup gate beside `sole_constructor` infer (§4.1).
+3. **Resolvable caller identity** — not `caller_module` alone.
+
+**Over-admission finding (module-grain, separate from typo-resolution):** the prototype compares admitted callers against the **caller's module path**, so admission is **module-grain**: permitting one module permits **every function in it**, now and every function added later — the wall **widens silently** as that module grows; nobody edits `admit_callers` when a new function is added. The annotation names modules; the actual admitted set is whatever those modules currently contain. The admitted set cannot be read off the annotation. **§4b ceiling consequence:** grain determines what the wall admits, not just whether a `DeclarationRef` resolves — stronger than the authoring-time-resolution argument alone. **Named trigger for coverage roster:** enrollment lens over annotated constructors (`admit_callers` / `ConstructorReferenceAdmission` rows) vs `sole_constructor` census.
+
+**Opt-in semantics (correct, not fail-open):** absent `admit_callers` → call resolves — unannotated functions are not sealed (same class as `sole_constructor`). The measured forgery hole on `mint_behavioral_comparison_observation` stays open on #7806 because **unwired** (one property on one fn), not because the mechanism is unsound.
+
+**§4b opt-in ceiling:** an opt-in wall tops at **mechanically preventable** — cannot be structurally impossible for carriers nobody annotated. Closes the two measured construction routes **only** for opted-in constructors; coverage is a roster question, not automatic language closure.
 
 ### 5.1 Alias and higher-order positions (operator-approved, msg_a87c2c75)
 
@@ -126,9 +144,14 @@ Together they close the two routes measured on `BehavioralComparisonObservation`
 
 ### 5.3 Where the permitted list is authored
 
-**Proposal:** admission row lives **on the constructor's declaring module** (beside the type or mint fn), cited by `DeclarationRef` to the constructor symbol. Callers list wet-transport (and test) callers explicitly.
+**Proposal:** admission row lives **on the constructor's declaring module** (beside the type or mint fn), cited by `DeclarationRef` to the constructor symbol. Callers list wet-transport (and test) callers explicitly at **declaration grain** (`DeclarationRef` per permitted caller fn), not module grain — see §4.3 over-admission finding.
 
-**Module move:** `DeclarationRef` uses `module_path` + `decl_name` — if a permitted caller moves modules, the ref must be updated (same as any `DeclarationRef` row); no path-inferred auto-permission.
+**Two independent derivations agreeing on constructor-side placement (not one measurement confirming the other):**
+
+1. **First principles (this note):** the constructor is the sealed symbol; the permitted set is metadata **about** who may invoke that constructor — it belongs beside the constructor declaration.
+2. **Structural (tidy-fox-81 #7806 check site):** the admission check already holds the constructor's declaration node and both module paths at the call site — permitted list is one field read on the callee. Caller-side placement would need the caller's own declaration node and new plumbing. Constructor-side is cheaper for a structural reason, not merely a preference.
+
+**Module move:** `DeclarationRef` uses `module_path` + `decl_name` — if a permitted caller moves modules, the ref must be updated (same as any `DeclarationRef` row); no path-inferred auto-permission. **Module-path admission is over-admission** (§4.3): it silently widens as the permitted module grows.
 
 ### 5.4 Compiler-module exemptions
 
