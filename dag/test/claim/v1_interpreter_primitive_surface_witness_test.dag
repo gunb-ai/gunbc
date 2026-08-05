@@ -2,7 +2,7 @@ module test.claim.v1_interpreter_primitive_surface_witness_test
 
 import gunbc.v1_interpreter_primitive_surface {
   AuthoredInRoster,
-  DerivedFromDispatch,
+  EvalBuiltinInnerSite,
   FreeCall,
   InterpreterPrimitiveArmId,
   InterpreterPrimitiveDispatchArm,
@@ -16,7 +16,7 @@ import gunbc.v1_interpreter_primitive_surface {
   shadowed_spellings,
   v1_interpreter_cross_form_spellings,
   v1_interpreter_declared_arms,
-  v1_interpreter_derived_arms,
+  v1_interpreter_authored_roster_arms,
   v1_interpreter_free_call_arms,
   v1_interpreter_method_call_arms,
   v1_interpreter_primitive_arms,
@@ -30,7 +30,8 @@ fn planted_row(identity: String, spelling: String, symbol: String) -> Interprete
     authored_spelling: spelling,
     realization_module: "planted",
     dispatch_symbol: symbol,
-    enumeration: DerivedFromDispatch,
+    dispatch_emit_site: EvalBuiltinInnerSite,
+    enumeration: AuthoredInRoster,
   }
 }
 
@@ -44,7 +45,7 @@ test fn stage0_source_identity_supply_scaffold_is_enumerated() -> Bool {
 }
 
 test fn observed_monotonic_nanos_arm_is_one_authored_roster_free_call() -> Bool {
-  let rows = v1_interpreter_derived_arms()
+  let rows = v1_interpreter_authored_roster_arms()
     |> filter(r => r.authored_spelling == "observed_monotonic_nanos")
   count(rows) == 1 && (rows |> all(r =>
     r.arm.identity == "free_call.observed_monotonic_nanos"
@@ -62,7 +63,7 @@ test fn every_derived_site_contributes_rows() -> Bool {
     "try_v2_std_collection_map_primitive_grounding",
     "try_parse_table_memo_dispatch",
   ]
-  symbols |> all(s => v1_interpreter_derived_arms() |> any(r => r.dispatch_symbol == s))
+  symbols |> all(s => v1_interpreter_authored_roster_arms() |> any(r => r.dispatch_symbol == s))
 }
 
 test fn method_rows_are_authored_in_roster_rather_than_transcribed() -> Bool {
@@ -72,7 +73,7 @@ test fn method_rows_are_authored_in_roster_rather_than_transcribed() -> Bool {
 }
 
 test fn v4_bridge_rows_are_authored_in_roster_rather_than_transcribed() -> Bool {
-  let rows = v1_interpreter_derived_arms() |> filter(r => r.dispatch_symbol == "eval_call" && r.form == FreeCall)
+  let rows = v1_interpreter_authored_roster_arms() |> filter(r => r.dispatch_symbol == "eval_call" && r.form == FreeCall)
   rows |> any(r => r.authored_spelling == "resolve_type_node")
     && rows |> all(r => r.enumeration == AuthoredInRoster)
 }
