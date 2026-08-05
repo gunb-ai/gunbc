@@ -150,9 +150,21 @@ fn func_decl_binding_for_call(
 ) -> BorrowedCensusDecl? {
   match lookup_binding_by_name_local(env: type_env, name: name) {
     Present { value: binding } =>
+      let owner_module_path = match map_get(type_env.str_bindings, name) {
+        Present { value: _ } => type_env.module_path
+        Absent =>
+          match func_decl_owner_module(func_env: func_env, name: name) {
+            Present { value: owner } => owner
+            Absent =>
+              match borrowed_census_decl(type_env: type_env, name: name) {
+                Present { value: bd } => bd.owner_module_path
+                Absent => type_env.module_path
+              }
+          }
+      }
       Present {
         value: BorrowedCensusDecl {
-          owner_module_path: type_env.module_path,
+          owner_module_path: owner_module_path,
           node: binding.resolved
         }
       }
