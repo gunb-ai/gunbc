@@ -739,12 +739,21 @@ pub enum InterpError {
         key: String,
         service: String,
     },
+    /// The fast-lane per-witness eval budget, enforced on THREAD CPU by the cooperative
+    /// stride-poll in `eval_expr`. The measured field is named for its clock deliberately:
+    /// this budget and the wall-clock one below are different quantities of the same
+    /// occurrence, and a shared `elapsed_ms` spelling let a CPU figure be read as wall at
+    /// every downstream consumer (2026-08-05 — the same conflation that leaves the enforced
+    /// quantity absent from every cost receipt; see `witness_cost_clock_basis_note`).
     EvalBudgetExceeded {
-        elapsed_ms: u64,
+        cpu_ms: u64,
         budget_ms: u64,
     },
+    /// The whole-receipt wall budget (falsifier wet/silent-pick lane). Genuinely wall:
+    /// emit+cargo subprocess I/O counts against it, which is why it cannot share the CPU
+    /// carrier above.
     WitnessWallBudgetExceeded {
-        elapsed_ms: u64,
+        wall_ms: u64,
         budget_ms: u64,
     },
     ArgvExceedsHostArgMax {
@@ -789,22 +798,22 @@ impl fmt::Display for InterpError {
             }
             InterpError::TypeError { msg } => write!(f, "type error: {}", msg),
             InterpError::EvalBudgetExceeded {
-                elapsed_ms,
+                cpu_ms: elapsed_ms,
                 budget_ms,
             } => {
                 write!(
                     f,
-                    "eval budget exceeded: {}ms elapsed > {}ms fast-lane budget (operator 5s rule 2026-07-12: a witness this slow lives in a long/ test dir and runs via its dedicated lane, not per-PR discovery)",
+                    "eval budget exceeded: {}ms thread-CPU > {}ms fast-lane budget (operator 5s rule 2026-07-12). This budget is enforced on THREAD CPU, not wall. RELOCATING THE FILE DOES NOT DISCHARGE IT: moving a witness under a long/ dir removes it from per-PR discovery without giving it an executing consumer, which deletes the coverage while retaining the source (the gunbc#7762 specimen behind the 2026-08-04 admission ruling). Either reduce the witness's cost, or enroll it in a lane that declares its own dated ceiling AND names the row as an executing consumer.",
                     elapsed_ms, budget_ms
                 )
             }
             InterpError::WitnessWallBudgetExceeded {
-                elapsed_ms,
+                wall_ms: elapsed_ms,
                 budget_ms,
             } => {
                 write!(
                     f,
-                    "witness receipt wall budget exceeded: {}ms elapsed > {}ms whole-receipt budget (falsifier wet/silent-pick lane; kill-at-deadline)",
+                    "witness receipt wall budget exceeded: {}ms wall > {}ms whole-receipt budget (falsifier wet/silent-pick lane; kill-at-deadline)",
                     elapsed_ms, budget_ms
                 )
             }
@@ -1668,7 +1677,7 @@ impl InterpContext {
         let elapsed_ms = start.elapsed().as_millis() as u64;
         if elapsed_ms > budget_ms {
             Some(InterpError::WitnessWallBudgetExceeded {
-                elapsed_ms,
+                wall_ms: elapsed_ms,
                 budget_ms,
             })
         } else {
@@ -2103,7 +2112,7 @@ fn eval_expr(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
                 (thread_cpu_nanos().saturating_sub(cpu_baseline_nanos) / 1_000_000) as u64;
             if elapsed_ms > budget_ms {
                 return Err(InterpError::EvalBudgetExceeded {
-                    elapsed_ms,
+                    cpu_ms: elapsed_ms,
                     budget_ms,
                 });
             }
@@ -12022,10 +12031,41 @@ fn eval_profile_enabled() -> bool {
 pub struct PerformanceReceipt {
     pub subject_key: String,
     pub work_shape: String,
+    /// Wall-clock duration of the witness — the MEASUREMENT basis, and what every
+    /// existing receipt column projects.
     pub wall_nanos: u128,
+    /// Thread-CPU duration of the witness — the ENFORCEMENT basis: the quantity the
+    /// fast-lane cap is actually compared against, by both the cooperative stride-poll
+    /// (`EvalBudgetExceeded`) and the completion-side backstop (`BudgetKind::Cpu`).
+    ///
+    /// Carried beside `wall_nanos` rather than replacing it because they are two clocks
+    /// on one occurrence and neither substitutes for the other. Before this field existed
+    /// the enforced quantity was computed, spent on the budget decision, and dropped — so
+    /// no artifact in the tree recorded the number the cap reads, and any threshold built
+    /// on a cost receipt selected a different population than the cap kills.
+    ///
+    /// The useful bound, since eval is single-threaded and CPU is therefore bounded above
+    /// by wall: a recorded wall UNDER the cap proves CPU under the cap, so budget triggers
+    /// stated as "lands under the fast-lane budget" were always decidable from wall alone.
+    /// What wall cannot answer is the other direction — how near the cap a row sits, or
+    /// whether an over-cap wall figure reflects CPU at all — which is exactly the ranking
+    /// question the per-witness cost-envelope lane needs.
+    pub cpu_nanos: u128,
     pub eval_self_nanos: u128,
     pub sample_count: u64,
 }
+
+pub const WITNESS_COST_CLOCK_BASIS_NOTE: &str = "\
+Witness cost carries TWO clocks and they are not interchangeable. wall_nanos is the \
+measurement basis; cpu_nanos is the enforcement basis (thread CPU, what the fast-lane cap \
+is compared against). Recording only wall meant the enforced quantity appeared in no \
+artifact. Eval is single-threaded, so cpu <= wall: a wall figure under the cap PROVES cpu \
+under the cap (firing direction, decidable), while an over-cap wall figure proves nothing \
+about cpu (ranking direction, blind). OPEN: the declaration-grain cost receipt projects \
+through std.observation.ObservationEvent, which carries wall and rss but no cpu, so \
+discovery-grain rows still record wall only. Closing that is a load-bearing std.observation \
+change (a third measured quantity beside wall and rss, and a clock basis on the TimedOut \
+outcome so a crossing says which cap it crossed) and is deliberately NOT improvised here.";
 
 pub fn subject_self_nanos_snapshot() -> HashMap<String, u128> {
     SUBJECT_SELF_NANOS.with(|m| m.borrow().clone())
@@ -12044,10 +12084,14 @@ pub fn eval_subject_timing_reset() {
     CHILD_NANOS.set(0);
 }
 
+/// Both clocks are REQUIRED parameters. Defaulting `cpu_nanos` would reintroduce exactly
+/// the defect this field closes: a caller that forgot it would silently record zero for the
+/// enforced quantity, which reads as "measured, and free" rather than "not measured".
 pub fn performance_receipt_from_witness(
     subject_key: String,
     work_shape: &str,
     wall_nanos: u128,
+    cpu_nanos: u128,
 ) -> PerformanceReceipt {
     let eval_self_nanos = SUBJECT_SELF_NANOS
         .with(|m| m.borrow().get(&subject_key).copied())
@@ -12056,6 +12100,7 @@ pub fn performance_receipt_from_witness(
         subject_key,
         work_shape: work_shape.to_string(),
         wall_nanos,
+        cpu_nanos,
         eval_self_nanos,
         sample_count: 1,
     }
@@ -12909,7 +12954,7 @@ mod wall_deadline_kill_tests {
         let elapsed_ms = started.elapsed().as_millis() as u64;
         match err {
             InterpError::WitnessWallBudgetExceeded {
-                elapsed_ms: reported,
+                wall_ms: reported,
                 budget_ms,
             } => {
                 assert_eq!(budget_ms, 200);

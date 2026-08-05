@@ -12880,8 +12880,17 @@ pub fn run_claim_measured(
     v1_interpreter::eval_subject_clear();
     let outcome = budget_completion_outcome(ctx.witness_eval_budget(), outcome, cpu_nanos);
     let outcome = wall_budget_completion_outcome(ctx.witness_wall_budget(), outcome, wall_nanos);
-    let receipt =
-        v1_interpreter::performance_receipt_from_witness(subject_key, function, wall_nanos);
+    // The receipt records BOTH clocks, and records the same `cpu_nanos` value that
+    // `budget_completion_outcome` just enforced against — one binding feeding both, so the
+    // enforced and the recorded quantity cannot drift apart. Previously `cpu_nanos` died on
+    // the line above and only wall reached the receipt, which is why the cap enforced a
+    // quantity no artifact carried.
+    let receipt = v1_interpreter::performance_receipt_from_witness(
+        subject_key,
+        function,
+        wall_nanos,
+        cpu_nanos,
+    );
     (outcome, receipt)
 }
 
@@ -25134,6 +25143,7 @@ mod discovery_summary_merge_tests {
                     subject_key: "subj-a".to_string(),
                     work_shape: "claim".to_string(),
                     wall_nanos: 1_000,
+                    cpu_nanos: 1_000,
                     eval_self_nanos: 1_000,
                     sample_count: 1,
                 },
@@ -25141,6 +25151,7 @@ mod discovery_summary_merge_tests {
                     subject_key: "subj-b".to_string(),
                     work_shape: "claim".to_string(),
                     wall_nanos: 50_000,
+                    cpu_nanos: 50_000,
                     eval_self_nanos: 50_000,
                     sample_count: 1,
                 },
@@ -25148,6 +25159,7 @@ mod discovery_summary_merge_tests {
                     subject_key: "subj-a".to_string(),
                     work_shape: "claim".to_string(),
                     wall_nanos: 5_000,
+                    cpu_nanos: 5_000,
                     eval_self_nanos: 5_000,
                     sample_count: 1,
                 },
