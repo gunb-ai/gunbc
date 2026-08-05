@@ -14,7 +14,7 @@ import v1.std.core {
   authored_name_at, generic_param_name_at, NewlineIndex, find_child_named, find_property_string, has_child_named, build_newline_index,
   expr_literal_int_optional, expr_literal_string_optional, record_lit_expr_optional, record_lit_named_field_value_optional,
   module_node, module_imports, module_items, import_is_all, import_specific_names_at,
-  make_param_node, param_node_name_at, param_node_type_expr,
+  make_param_node, param_node_name_at, param_node_type_expr, param_node_default_value,
   field_node_type_expr, field_node_name_at,
   Connective, Conj, Disj, NoConnective, Arrow,
   ExprData, NoExprData,
@@ -32,7 +32,7 @@ import v1.std.core {
   ErrorNode, make_error_node, is_error_diagnostic, diagnostic_to_span,
   FrontierOccurrenceKey, diagnostic_frontier_occurrence_key,
   InternalError, TypeMismatch, VariantCollision, SoleConstructorViolation, UnresolvedType, FieldNotFound, MethodNotFound, MethodExistenceUndecided, MethodExistenceFrontierAdmitted, ReceiverTypeUnestablished, FrontierOccurrenceBudgetExceeded, MissingField, AmbiguousReference,
-  CallArgumentNameUnknown, CallPositionalSurplus, CallNamedArgOnFunctionValue,
+  CallArgumentNameUnknown, CallPositionalSurplus, CallPositionalDeficit, CallNamedArgOnFunctionValue,
   resource_use_name_at, resource_use_resource,
   is_child_accessor_in_model, is_tree_size_reducing, is_property_contraction,
   expr_has_self_call, expr_has_non_tail_self_call,
@@ -1536,7 +1536,76 @@ fn param_binds_positionally(p: Node, source_indices: Map<String, NewlineIndex>) 
   }
 }
 
-fn direct_call_shape_diags(func_name: String, sig_params: List<Node>, typed_args: List<Node>, type_env: TypeEnv, module_name: String) -> List<ErrorNode> {
+type CallShapeArityScan {
+  positional_slot: Int
+  required_count: Int
+  supplied_count: Int
+  deficit_param: Node?
+}
+
+fn scan_call_shape_arity(
+  sig_params: List<Node>,
+  typed_args: List<Node>,
+  positional_args: List<Node>,
+  source_indices: Map<String, NewlineIndex>
+) -> CallShapeArityScan {
+  fold(
+    sig_params,
+    init: CallShapeArityScan {
+      positional_slot: 0,
+      required_count: 0,
+      supplied_count: 0,
+      deficit_param: none
+    },
+    f: (st, param) =>
+      if st.deficit_param != none {
+        st
+      } else if param_node_default_value(n: param) != none {
+        st
+      } else {
+        let param_name = authored_name_at(source_indices: source_indices, node: param)
+        let named_supplied = typed_args |> any(ta =>
+          match arg_name_at(n: ta, source_indices: source_indices) {
+            Present { value: label } => call_arg_label_matches_param(param_name: param_name, arg_label: label)
+            Absent => false
+          })
+        let next_required = st.required_count + 1
+        if named_supplied {
+          CallShapeArityScan {
+            positional_slot: st.positional_slot,
+            required_count: next_required,
+            supplied_count: st.supplied_count + 1,
+            deficit_param: none
+          }
+        } else if param_binds_positionally(p: param, source_indices: source_indices) {
+          if st.positional_slot < length(xs: positional_args) {
+            CallShapeArityScan {
+              positional_slot: st.positional_slot + 1,
+              required_count: next_required,
+              supplied_count: st.supplied_count + 1,
+              deficit_param: none
+            }
+          } else {
+            CallShapeArityScan {
+              positional_slot: st.positional_slot,
+              required_count: next_required,
+              supplied_count: st.supplied_count,
+              deficit_param: Present { value: param }
+            }
+          }
+        } else {
+          CallShapeArityScan {
+            positional_slot: st.positional_slot,
+            required_count: next_required,
+            supplied_count: st.supplied_count,
+            deficit_param: Present { value: param }
+          }
+        }
+      }
+  )
+}
+
+fn direct_call_shape_diags(func_name: String, sig_params: List<Node>, typed_args: List<Node>, type_env: TypeEnv, module_name: String, call_span: SourceSpan) -> List<ErrorNode> {
   let source_indices = type_env.source_indices
   let declared_names = sig_params |> map(p => authored_name_at(source_indices: source_indices, node: p))
   let unknown_label_diags = typed_args |> flat_map(ta =>
@@ -1561,7 +1630,26 @@ fn direct_call_shape_diags(func_name: String, sig_params: List<Node>, typed_args
       Absent => []
     }
   } else { [] }
-  concat(unknown_label_diags, surplus_diags)
+  let arity_scan = scan_call_shape_arity(
+    sig_params: sig_params,
+    typed_args: typed_args,
+    positional_args: positional_args,
+    source_indices: source_indices
+  )
+  let deficit_diags = match arity_scan.deficit_param {
+    Present { value: missing_param } =>
+      [make_error_node(
+        diagnostic: CallPositionalDeficit {
+          callee: func_name,
+          parameter: authored_name_at(source_indices: source_indices, node: missing_param),
+          supplied: arity_scan.supplied_count,
+          required: arity_scan.required_count,
+          span: call_span
+        },
+        module_name: module_name)]
+    Absent => []
+  }
+  concat(unknown_label_diags, concat(surplus_diags, deficit_diags))
 }
 
 fn function_value_call_named_arg_diags(
@@ -2791,7 +2879,8 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           sig_params: sig_params,
           typed_args: typed_args,
           type_env: scope.type_env,
-          module_name: scope.module_name
+          module_name: scope.module_name,
+          call_span: span
         )
         let arg_compat_diags = if module_skips_direct_call_arg_check(module_name: scope.module_name) { [] } else {
           direct_call_arg_mismatch_diags(

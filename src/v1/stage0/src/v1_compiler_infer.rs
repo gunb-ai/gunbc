@@ -139,9 +139,9 @@ use crate::v1_std_core::CallSemantics::{LookupCallSemantics, PlainCallSemantics}
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::{
     AmbiguousReference, CallArgumentNameUnknown, CallNamedArgOnFunctionValue,
-    CallPositionalSurplus, FieldNotFound, FrontierOccurrenceBudgetExceeded, InternalError,
-    MethodExistenceFrontierAdmitted, MethodExistenceUndecided, MethodNotFound, MissingField,
-    ReceiverTypeUnestablished, SoleConstructorViolation, TypeMismatch, UnresolvedType,
+    CallPositionalDeficit, CallPositionalSurplus, FieldNotFound, FrontierOccurrenceBudgetExceeded,
+    InternalError, MethodExistenceFrontierAdmitted, MethodExistenceUndecided, MethodNotFound,
+    MissingField, ReceiverTypeUnestablished, SoleConstructorViolation, TypeMismatch, UnresolvedType,
     VariantCollision,
 };
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
@@ -185,8 +185,9 @@ pub use crate::v1_std_core::{
     make_expr_error_node, make_expr_node, make_field_binding_node, make_field_init_node,
     make_interp_part_node, make_named_expr_node, make_param_node, make_span, make_text_part_node,
     make_transport_node, map_children, match_arm_nodes, match_scrutinee, method_arg_nodes,
-    method_receiver, module_imports, module_items, module_node, no_span, node_name_span, none_type,
-    param_node_name_at, param_node_type_expr, preserve_outer_optional_cardinality,
+    method_receiver,     module_imports, module_items, module_node, no_span, node_name_span, none_type,
+    param_node_default_value, param_node_name_at, param_node_type_expr,
+    preserve_outer_optional_cardinality,
     qualified_last_segment, record_lit_expr_optional, record_lit_named_field_value_optional,
     record_lit_type_name_at, resource_use_name_at, resource_use_resource, return_value, slice_base,
     slice_end, slice_start, string_type, type_name_compatible, unaryop_operand, unit_type,
@@ -2547,12 +2548,64 @@ pub fn param_binds_positionally(
     }
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct CallShapeArityScan {
+    pub positional_slot: i64,
+    pub required_count: i64,
+    pub supplied_count: i64,
+    pub deficit_param: Option<Rc<Node>>,
+}
+
+pub fn scan_call_shape_arity(
+    sig_params: Rc<Vec<Rc<Node>>>,
+    typed_args: Rc<Vec<Rc<Node>>>,
+    positional_args: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> CallShapeArityScan {
+    let mut st = CallShapeArityScan {
+        positional_slot: 0,
+        required_count: 0,
+        supplied_count: 0,
+        deficit_param: None,
+    };
+    for param in sig_params.iter().cloned() {
+        if st.deficit_param.is_some() {
+            break;
+        }
+        if param_node_default_value(param.clone()).is_some() {
+            continue;
+        }
+        let param_name = authored_name_at(source_indices.clone(), param.clone());
+        let named_supplied = typed_args.clone().iter().cloned().any(|ta| {
+            match arg_name_at(ta.clone(), source_indices.clone()) {
+                Some(label) => call_arg_label_matches_param(param_name.clone(), label),
+                None => false,
+            }
+        });
+        st.required_count += 1;
+        if named_supplied {
+            st.supplied_count += 1;
+        } else if param_binds_positionally(param.clone(), source_indices.clone()) {
+            if (st.positional_slot as usize) < positional_args.len() {
+                st.positional_slot += 1;
+                st.supplied_count += 1;
+            } else {
+                st.deficit_param = Some(param);
+            }
+        } else {
+            st.deficit_param = Some(param);
+        }
+    }
+    st
+}
+
 pub fn direct_call_shape_diags(
     func_name: String,
     sig_params: Rc<Vec<Rc<Node>>>,
     typed_args: Rc<Vec<Rc<Node>>>,
     type_env: Rc<TypeEnv>,
     module_name: String,
+    call_span: Rc<SourceSpan>,
 ) -> Rc<Vec<Rc<ErrorNode>>> {
     {
         let source_indices = type_env.source_indices.clone();
