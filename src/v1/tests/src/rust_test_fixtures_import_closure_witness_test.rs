@@ -13,7 +13,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use v1_compiler::cli_run::{
     compile_declared_import_closure_only_with_pool, compile_entry_on_declared_import_closure_only,
-    cross_module_binding_receipts_for_symbols, CrossModuleBindingReceipt, UnlistedImportBindingSource,
+    cross_module_binding_receipts_for_symbols, CrossModuleBindingReceipt,
+    UnlistedImportBindingSource,
 };
 use v1_compiler::v1_compiler_compile::ResolvedPipelineResult;
 use v1_compiler::v1_compiler_infer_items::ResolvedGraph;
@@ -152,11 +153,13 @@ fn class_b_binding_profile(resolved: &Rc<ResolvedPipelineResult>) -> ClassBBindi
     }
 }
 
-fn assert_exact_rust_declaration_identities(receipts: &BTreeMap<String, CrossModuleBindingReceipt>) {
+fn assert_exact_rust_declaration_identities(
+    receipts: &BTreeMap<String, CrossModuleBindingReceipt>,
+) {
     for sym in CLASS_B_RUST_BINDING_SYMBOLS {
-        let receipt = receipts.get(*sym).unwrap_or_else(|| {
-            panic!("missing binding receipt for Class B symbol {sym}")
-        });
+        let receipt = receipts
+            .get(*sym)
+            .unwrap_or_else(|| panic!("missing binding receipt for Class B symbol {sym}"));
         assert_eq!(
             receipt.definer_module.as_deref(),
             Some(RUST_MODULE),
