@@ -265,6 +265,182 @@ pub fn parse_stage0_cargo_manifest_bin_paths(content: &str) -> Stage0CargoManife
     }
 }
 
+/// Temporary seed bridge for `gunbc.roadmap_acceptance_history_projection`.
+/// Evaluates `roadmap_acceptance_event_history` from revision-addressed authority
+/// source text using a first-root overlay; used only when the JSONL carrier is
+/// absent at merge-base (one-time migration bootstrap).
+#[derive(Debug, Clone, PartialEq)]
+pub enum RoadmapAcceptanceHistoryProjection {
+    Projected { events: Vec<v1_interpreter::Value> },
+    Refused { detail: String },
+}
+
+static ROADMAP_AUTHORITY_OVERLAY_SEQ: AtomicU64 = AtomicU64::new(0);
+
+struct RoadmapAuthorityOverlayGuard {
+    path: std::path::PathBuf,
+}
+
+impl Drop for RoadmapAuthorityOverlayGuard {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.path);
+    }
+}
+
+pub fn project_roadmap_acceptance_event_history_from_authority_text(
+    authority_text: &str,
+) -> RoadmapAcceptanceHistoryProjection {
+    project_roadmap_acceptance_event_history_from_authority_text_inner(authority_text, None)
+}
+
+fn project_roadmap_acceptance_event_history_from_authority_text_inner(
+    authority_text: &str,
+    remap_ctx: Option<&v1_interpreter::InterpContext>,
+) -> RoadmapAcceptanceHistoryProjection {
+    let workspace = workspace_root();
+    let overlay_seq = ROADMAP_AUTHORITY_OVERLAY_SEQ.fetch_add(1, Ordering::Relaxed);
+    let temp_dir = workspace.join("target").join(format!(
+        "gunbc-roadmap-auth-proj-{}-{}",
+        std::process::id(),
+        overlay_seq
+    ));
+    let _overlay_guard = RoadmapAuthorityOverlayGuard {
+        path: temp_dir.clone(),
+    };
+    if let Err(error) = std::fs::remove_dir_all(&temp_dir) {
+        if error.kind() != std::io::ErrorKind::NotFound {
+            return RoadmapAcceptanceHistoryProjection::Refused {
+                detail: format!("failed to reset authority overlay directory: {error}"),
+            };
+        }
+    }
+    let overlay_path = temp_dir.join("dag/gunbc/roadmap_authority.dag");
+    if let Err(error) = std::fs::create_dir_all(overlay_path.parent().unwrap())
+        .and_then(|_| std::fs::write(&overlay_path, authority_text))
+    {
+        return RoadmapAcceptanceHistoryProjection::Refused {
+            detail: format!("failed to stage authority overlay: {error}"),
+        };
+    }
+
+    let source_roots = vec![
+        temp_dir.to_string_lossy().into_owned(),
+        workspace.join("dag").to_string_lossy().into_owned(),
+        workspace.join("src/v2").to_string_lossy().into_owned(),
+    ];
+    let entry_file = overlay_path.to_string_lossy().into_owned();
+    let index = build_multi_entry_index_primary_precedence(&source_roots);
+    let sources = match load_sources_for_entry_with_pool(&index, &entry_file) {
+        Ok(sources) => sources,
+        Err(detail) => {
+            return RoadmapAcceptanceHistoryProjection::Refused { detail };
+        }
+    };
+    let (graph, source_indices, compile_clean_diags) = match resolved_graph_from_sources_with_index(
+        &index,
+        sources,
+        ResolveTypecheckGate::Strict,
+        &entry_file,
+        ResolvedGraphMemoShare::Ephemeral,
+    ) {
+        Ok(parts) => parts,
+        Err(detail) => {
+            return RoadmapAcceptanceHistoryProjection::Refused { detail };
+        }
+    };
+    if compile_clean_diags
+        .iter()
+        .any(compile_clean_diagnostic_is_hard)
+    {
+        let detail = compile_clean_diags
+            .iter()
+            .filter(|diag| compile_clean_diagnostic_is_hard(diag))
+            .map(|diag| format_error_node(diag, &source_indices))
+            .collect::<Vec<_>>()
+            .join("; ");
+        return RoadmapAcceptanceHistoryProjection::Refused { detail };
+    }
+
+    let ctx = v1_interpreter::InterpContext::new(
+        graph.as_ref(),
+        source_indices,
+        v1_interpreter::ExecutionMode::Wet,
+    );
+    let result = v1_interpreter::run_in_context(&ctx, "roadmap_acceptance_event_history", true);
+
+    match result {
+        Ok(v1_interpreter::Value::List(events)) => {
+            let mut events: Vec<v1_interpreter::Value> = events.iter().cloned().collect();
+            if let Some(witness_ctx) = remap_ctx {
+                match roadmap_acceptance_history_carrier::serialize_roadmap_acceptance_events_to_jsonl(
+                    &events, &ctx,
+                ) {
+                    Ok(jsonl) => {
+                        match roadmap_acceptance_history_carrier::parse_roadmap_acceptance_event_history_jsonl(
+                            &jsonl,
+                            witness_ctx,
+                        ) {
+                            roadmap_acceptance_history_carrier::RoadmapAcceptanceEventHistoryParse::Parsed {
+                                events: remapped,
+                            } => events = remapped,
+                            roadmap_acceptance_history_carrier::RoadmapAcceptanceEventHistoryParse::Refused {
+                                detail,
+                            } => {
+                                return RoadmapAcceptanceHistoryProjection::Refused {
+                                    detail: format!(
+                                        "bootstrap projection jsonl remap refused: {detail}"
+                                    ),
+                                };
+                            }
+                        }
+                    }
+                    Err(detail) => {
+                        return RoadmapAcceptanceHistoryProjection::Refused { detail };
+                    }
+                }
+            }
+            RoadmapAcceptanceHistoryProjection::Projected { events }
+        }
+        Ok(other) => RoadmapAcceptanceHistoryProjection::Refused {
+            detail: format!(
+                "roadmap_acceptance_event_history returned {}, expected List",
+                other.type_label_public()
+            ),
+        },
+        Err(error) => RoadmapAcceptanceHistoryProjection::Refused {
+            detail: error.to_string(),
+        },
+    }
+}
+
+pub fn project_roadmap_acceptance_event_history_from_authority_text_builtin(
+    authority_text: &str,
+    ctx: &v1_interpreter::InterpContext,
+) -> v1_interpreter::InterpResult<v1_interpreter::Value> {
+    use std::rc::Rc;
+
+    use v1_interpreter::{list_value, sorted_fields, Value};
+
+    let projected = project_roadmap_acceptance_event_history_from_authority_text_inner(
+        authority_text,
+        Some(ctx),
+    );
+    Ok(match projected {
+        RoadmapAcceptanceHistoryProjection::Projected { events } => Value::Variant {
+            type_name: ctx.sym("RoadmapAcceptanceHistoryProjection"),
+            variant_name: ctx.sym("RoadmapAcceptanceHistoryProjected"),
+            fields: Rc::new(sorted_fields(vec![(ctx.sym("events"), list_value(events))])),
+        },
+        RoadmapAcceptanceHistoryProjection::Refused { detail } => Value::Variant {
+            type_name: ctx.sym("RoadmapAcceptanceHistoryProjection"),
+            variant_name: ctx.sym("RoadmapAcceptanceHistoryProjectionRefused"),
+            fields: Rc::new(sorted_fields(vec![(ctx.sym("detail"), Value::Str(detail))])),
+        },
+    })
+}
+
+pub mod roadmap_acceptance_history_carrier;
+
 #[cfg(test)]
 mod stage0_cargo_manifest_parser_tests {
     use super::{parse_stage0_cargo_manifest_bin_paths, Stage0CargoManifestBinParse};
@@ -318,6 +494,76 @@ path = "src/bin/claim_batch.rs"
             Stage0CargoManifestBinParse::Parsed {
                 authored_relative_paths: vec!["../../outside.rs".to_string()],
             }
+        );
+    }
+}
+
+#[cfg(test)]
+mod roadmap_acceptance_history_projection_tests {
+    use super::{
+        project_roadmap_acceptance_event_history_from_authority_text,
+        roadmap_acceptance_history_carrier::{
+            parse_roadmap_acceptance_event_history_jsonl,
+            serialize_roadmap_acceptance_events_to_jsonl, RoadmapAcceptanceEventHistoryParse,
+        },
+        RoadmapAcceptanceHistoryProjection,
+    };
+    use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
+    use crate::v1_compiler_infer_items::ResolvedGraph;
+    use crate::v1_interpreter::{ExecutionMode, InterpContext};
+    use im::HashMap;
+    use std::rc::Rc;
+
+    fn empty_ctx() -> InterpContext {
+        let graph = ResolvedGraph {
+            modules: Rc::new(im::Vector::new()),
+            item_registry: Rc::new(HashMap::new()),
+            diagnostics: Rc::new(im::Vector::new()),
+            emit_graph_info: empty_emit_graph_info(),
+        };
+        InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic)
+    }
+
+    #[test]
+    fn merge_base_authority_projection_matches_jsonl_carrier() {
+        let authority = std::process::Command::new("git")
+            .args(["show", "9ce6526c528:dag/gunbc/roadmap_authority.dag"])
+            .output()
+            .expect("git show merge-base authority");
+        assert!(
+            authority.status.success(),
+            "git show failed: {}",
+            String::from_utf8_lossy(&authority.stderr)
+        );
+        let authority = String::from_utf8(authority.stdout).expect("utf8 authority");
+        let jsonl = std::fs::read_to_string(
+            super::workspace_root().join("dag/gunbc/roadmap_acceptance_event_history.jsonl"),
+        )
+        .expect("jsonl carrier");
+        let projected = project_roadmap_acceptance_event_history_from_authority_text(&authority);
+        let RoadmapAcceptanceHistoryProjection::Projected { events: prior } = projected else {
+            panic!("projection refused: {projected:?}");
+        };
+        let ctx = empty_ctx();
+        let RoadmapAcceptanceEventHistoryParse::Parsed { events: current } =
+            parse_roadmap_acceptance_event_history_jsonl(&jsonl, &ctx)
+        else {
+            panic!("jsonl parse refused");
+        };
+        assert_eq!(
+            prior.len(),
+            current.len(),
+            "event count prior={} current={}",
+            prior.len(),
+            current.len()
+        );
+        let prior_jsonl = serialize_roadmap_acceptance_events_to_jsonl(&prior, &ctx)
+            .expect("serialize projected events");
+        let current_jsonl = serialize_roadmap_acceptance_events_to_jsonl(&current, &ctx)
+            .expect("serialize carrier events");
+        assert_eq!(
+            prior_jsonl, current_jsonl,
+            "jsonl carrier mismatch after projection"
         );
     }
 }
@@ -1254,6 +1500,16 @@ fn build_module_path_index_uncached(source_roots: &[String]) -> HashMap<String, 
         if manifest_stub_superseded_by_overlay(&rel, source_roots, root_idx) {
             return;
         }
+        if let Some(existing) = index.get(&binding.module_path) {
+            if existing == &rel || same_canonical_file(existing, &rel) {
+                return;
+            }
+            if root_idx > 0 {
+                // Primary-precedence multi-root: root[0] owns overlapping module paths;
+                // later roots contribute only absent modules (build_module_index_primary_precedence).
+                return;
+            }
+        }
         insert_module_path(&mut index, &binding.module_path, rel);
     });
     index
@@ -1335,6 +1591,9 @@ fn collect_module_binding_manifest_rows(source_roots: &[String]) -> Vec<ModuleBi
         }
         if let Some(existing) = rows_by_module.get(&binding.module_path) {
             if existing.rel_path != rel && !same_canonical_file(&existing.rel_path, &rel) {
+                if root_idx > 0 {
+                    return;
+                }
                 panic!(
                     "{}",
                     module_path_collision_panic_message(
@@ -2114,6 +2373,9 @@ fn build_module_index(source_roots: &[String]) -> ModuleSourceIndex {
                 if let Some(existing) = index.get(&module_path) {
                     if existing.path != rel_path && !same_canonical_file(&existing.path, &rel_path)
                     {
+                        if root_idx > 0 {
+                            continue;
+                        }
                         panic!(
                             "{}",
                             module_path_collision_panic_message(
@@ -2123,6 +2385,7 @@ fn build_module_index(source_roots: &[String]) -> ModuleSourceIndex {
                             )
                         );
                     }
+                    continue;
                 }
                 index.insert(
                     module_path,
@@ -4308,8 +4571,10 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::AmbiguousReference { .. } => "AmbiguousReference",
         CompilerDiagnostic::CallArgumentNameUnknown { .. } => "CallArgumentNameUnknown",
         CompilerDiagnostic::CallPositionalSurplus { .. } => "CallPositionalSurplus",
+        CompilerDiagnostic::CallPositionalDeficit { .. } => "CallPositionalDeficit",
         CompilerDiagnostic::CallNamedArgOnFunctionValue { .. } => "CallNamedArgOnFunctionValue",
         CompilerDiagnostic::OccurrenceTransportViolation { .. } => "OccurrenceTransportViolation",
+        CompilerDiagnostic::SourceAnnotationRefused { .. } => "SourceAnnotationRefused",
     };
     let name = match d.diagnostic.as_ref() {
         CompilerDiagnostic::UnresolvedImport { module_path, .. } => module_path.clone(),
@@ -4342,9 +4607,27 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::AmbiguousReference { name, .. } => name.clone(),
         CompilerDiagnostic::CallArgumentNameUnknown { argument, .. } => argument.clone(),
         CompilerDiagnostic::CallPositionalSurplus { callee, .. } => callee.clone(),
+        CompilerDiagnostic::CallPositionalDeficit { parameter, .. } => parameter.clone(),
         CompilerDiagnostic::CallNamedArgOnFunctionValue { argument, .. } => argument.clone(),
         CompilerDiagnostic::OccurrenceTransportViolation { .. } => {
             "(occurrence-transport-refusal)".to_string()
+        }
+        // The three refusal kinds are separate failure classes — a reader fixing
+        // "prose in the wrong place" needs to know WHICH wrong place, so they stay
+        // distinct in the histogram rather than collapsing to one annotation bucket.
+        CompilerDiagnostic::SourceAnnotationRefused { refusal, .. } => {
+            use crate::std_source_annotation::AnnotationAttachmentRefusal;
+            match refusal.as_ref() {
+                AnnotationAttachmentRefusal::UnattachedAtScopeEnd { .. } => {
+                    "(annotation-unattached)".to_string()
+                }
+                AnnotationAttachmentRefusal::TrailingNotModeled { .. } => {
+                    "(annotation-trailing)".to_string()
+                }
+                AnnotationAttachmentRefusal::BodyGrainNotModeled { .. } => {
+                    "(annotation-body-grain)".to_string()
+                }
+            }
         }
     };
     (class.to_string(), name)
@@ -12630,11 +12913,36 @@ pub fn whole_tree_ancestry_retention_probe(
 /// is why ten consecutive `extdeps_scope_placement_gate_passes` reds reported nothing but
 /// `returned Bool(false)`. A missing companion stays "not declared" either way, so widening
 /// the derivation cannot invent a required hook for a witness that has none.
-pub fn failure_receipt_companion(function: &str) -> Option<String> {
-    function
-        .strip_suffix("_holds")
-        .or_else(|| function.strip_suffix("_passes"))
-        .map(|base| format!("{base}_failure_receipt"))
+/// Delegates suffix derivation to `gunbc.test_module_hygiene.failure_receipt_companion`
+/// (single authority — orphan reachability and claim_executor share the same rule).
+/// `NotDeclared` means the witness name carries no `_holds`/`_passes` companion convention;
+/// `AuthorityRefused` is a located lookup failure and must not be rendered as not-declared.
+pub use test_module_hygiene_bridge::FailureReceiptCompanionLookup;
+
+pub fn failure_receipt_companion(function: &str) -> FailureReceiptCompanionLookup {
+    test_module_hygiene_bridge::failure_receipt_companion_from_authority(function)
+}
+
+/// Append failure-receipt loudness to a Bool(false) witness detail string.
+pub fn append_failure_receipt_companion_loudness(
+    detail: &mut String,
+    ctx: &v1_interpreter::InterpContext,
+    witness_function: &str,
+) {
+    match failure_receipt_companion(witness_function) {
+        FailureReceiptCompanionLookup::Declared(companion) => {
+            let receipt = run_claim_failure_receipt(ctx, &companion);
+            if !receipt.is_empty() {
+                detail.push_str(" | ");
+                detail.push_str(&receipt);
+            }
+        }
+        FailureReceiptCompanionLookup::AuthorityRefused { cause } => {
+            detail.push_str(" | failure_receipt_companion_refused: ");
+            detail.push_str(&cause);
+        }
+        FailureReceiptCompanionLookup::NotDeclared => {}
+    }
 }
 
 /// Run a witness companion that returns `String` divergence detail (Lane B agreement loudness).
@@ -21687,13 +21995,7 @@ fn run_discovery_rows(
             ClaimOutcome::Pass => summary.passed += 1,
             ClaimOutcome::Fail => {
                 let mut failure = format!("{} ({}) returned Bool(false)", row.function, row.entry);
-                if let Some(companion) = failure_receipt_companion(&row.function) {
-                    let receipt = run_claim_failure_receipt(ctx_ref, &companion);
-                    if !receipt.is_empty() {
-                        failure.push_str(" | ");
-                        failure.push_str(&receipt);
-                    }
-                }
+                append_failure_receipt_companion_loudness(&mut failure, ctx_ref, &row.function);
                 summary.failures.push(failure);
             }
             ClaimOutcome::NotBool { got } => summary.failures.push(format!(
@@ -24919,6 +25221,60 @@ fn emit_source_root_read_witness(rec: &SourceRootReadRecord) -> Result<String, S
     ))
 }
 
+fn emit_source_content_hash_dag_for_text(source: &str) -> String {
+    let digest = crate::v1_rt::atom_identity_hash(source.to_string());
+    format!("Fnv1a64(Fnv1a64Structural {{ digest: \"{digest}\" }})")
+}
+
+fn emit_source_ref_dag(rec: &SourceRootReadRecord) -> Result<String, String> {
+    let path = dag_manifest_scalar_escape(&rec.file_path)?;
+    let hash = emit_source_content_hash_dag_for_text(&rec.source);
+    Ok(format!(
+        "SourceRef {{ path: \"{path}\", source_root: {}, content_hash: {hash} }}",
+        rec.source_root
+    ))
+}
+
+fn emit_source_ref_list_dag(records: &[SourceRootReadRecord]) -> Result<String, String> {
+    let mut nodes: Vec<String> = records
+        .iter()
+        .map(emit_source_ref_dag)
+        .collect::<Result<_, _>>()?;
+    let mut out = String::from("Empty");
+    while let Some(head) = nodes.pop() {
+        out = format!("Cons {{\n  head: {head},\n  tail: {out}\n}}");
+    }
+    Ok(out)
+}
+
+fn source_ref_identity_digest_hex(rec: &SourceRootReadRecord) -> String {
+    let path_hash = crate::v1_rt::atom_identity_hash(rec.file_path.clone());
+    let root_hash = crate::v1_rt::atom_identity_hash(rec.source_root.clone());
+    let storage = crate::v1_rt::hash_combine(path_hash, root_hash);
+    let content_hash = crate::v1_rt::atom_identity_hash(rec.source.clone());
+    crate::v1_rt::hash_combine(storage, content_hash)
+}
+
+fn source_ref_list_structural_digest_hex(records: &[SourceRootReadRecord]) -> String {
+    let mut acc = crate::v1_rt::atom_identity_hash("source-ref-closure-list".to_string());
+    for rec in records {
+        let ref_digest = source_ref_identity_digest_hex(rec);
+        acc = crate::v1_rt::hash_combine(acc, ref_digest);
+    }
+    acc
+}
+
+pub fn emit_source_ref_dag_for_path(
+    records: &[SourceRootReadRecord],
+    file_path: &str,
+) -> Result<String, String> {
+    let rec = records
+        .iter()
+        .find(|r| r.file_path.replace('\\', "/") == file_path.replace('\\', "/"))
+        .ok_or_else(|| format!("emit_source_ref_dag_for_path: no record for {file_path}"))?;
+    emit_source_ref_dag(rec)
+}
+
 fn emit_source_root_ingest_monoid(records: &[SourceRootReadRecord]) -> Result<String, String> {
     let mut witness_nodes: Vec<String> = records
         .iter()
@@ -25115,14 +25471,18 @@ pub fn emit_source_root_ingest_manifest(
     out.push_str("module v2.test.workflow.host_source_root_ingest_manifest\n\n\n");
     out.push_str("import v2.compiler.source_authority {\n");
     out.push_str("  DagSourceReadWitness,\n");
+    out.push_str("  DiscoveredSourceRefsDigestFromList,\n");
+    out.push_str("  SourceRef,\n");
     out.push_str("  SourceRootIngest,\n");
     out.push_str("  SourceRootCoverageComplete,\n");
     out.push_str("  SourceRootManifestElided,\n");
     out.push_str("  SourceRootProvenanceCoverageReceipt\n");
     out.push_str("}\n");
     out.push_str("import extdeps.communication.medium { Lossless, Medium }\n");
+    out.push_str("import std.content_hash { ContentHash, Fnv1a64, Fnv1a64Structural }\n");
     out.push_str("import v2.std.algebra { Cons, Empty }\n");
     out.push_str("import v2.std.artifact { Artifact, SourceFile }\n");
+    out.push_str("import v2.std.collection { List }\n");
     out.push_str("import v2.std.text { String }\n");
     // Each DagSourceReadWitness carries a grounded `source_root: SourceRootRef` (V2Tree/DagTree,
     // #5473/#5486), so the manifest must import the constructors it references or every witness
@@ -25131,6 +25491,8 @@ pub fn emit_source_root_ingest_manifest(
     // records (supersedes the earlier hardcoded-both-constructors form).
     if !inline_records.is_empty() {
         out.push_str(&emit_source_root_ref_import(inline_records));
+    } else if !records.is_empty() {
+        out.push_str(&emit_source_root_ref_import(records));
     }
     if entry_admission.is_some() {
         out.push_str("import v2.compiler.name_resolve {\n");
@@ -25140,6 +25502,7 @@ pub fn emit_source_root_ingest_manifest(
         out.push_str("  ResolutionSubject\n");
         out.push_str("}\n");
         out.push_str("import v2.std.algebra { Cons, Empty }\n");
+        out.push_str("import v2.std.collection { List }\n");
     }
     out.push('\n');
     out.push_str(&format!(
@@ -25162,6 +25525,10 @@ pub fn emit_source_root_ingest_manifest(
     let produced_row_count = inline_records.len();
     out.push_str(&format!("  ingest_read_count: {read_count},\n"));
     out.push_str(&format!("  produced_row_count: {produced_row_count},\n"));
+    out.push_str(&format!(
+        "  discovered_source_refs_digest: DiscoveredSourceRefsDigestFromList {{ digest: Fnv1a64Structural {{ digest: \"{}\" }} }},\n",
+        source_ref_list_structural_digest_hex(records)
+    ));
     if produced_row_count == read_count {
         out.push_str("  coverage: SourceRootCoverageComplete\n");
     } else {
@@ -25175,6 +25542,12 @@ pub fn emit_source_root_ingest_manifest(
         out.push_str("Empty\n");
     } else {
         out.push_str(&emit_source_root_ingest_monoid(inline_records)?);
+        out.push('\n');
+    }
+    if !records.is_empty() {
+        out.push('\n');
+        out.push_str("data host_source_root_closure_refs: List<SourceRef> = ");
+        out.push_str(&emit_source_ref_list_dag(records)?);
         out.push('\n');
     }
     if let Some(admission) = entry_admission {

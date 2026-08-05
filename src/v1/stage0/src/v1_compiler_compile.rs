@@ -17,6 +17,10 @@ pub use crate::std_occurrence_identity::{
 pub use crate::std_occurrence_identity::{
     OccurrenceIdAllocator, OccurrenceIndex, OccurrenceTransport,
 };
+pub use crate::std_source_annotation::{
+    source_annotation_graph_concat, source_annotation_graph_empty,
+};
+pub use crate::std_source_annotation::{SourceAnnotationGraph, UnboundAnnotationCapture};
 use crate::std_syntax::BinOp::*;
 use crate::std_syntax::LiteralValue::*;
 pub use crate::std_syntax::{BinOp, LiteralValue};
@@ -24,6 +28,7 @@ use crate::std_termination::PositiveDescentAmount::{AdditionalStep, OneStep};
 use crate::std_termination::ProportionalDivisor::{DivideByTwo, StrictlyLarger};
 pub use crate::std_termination::{PositiveDescentAmount, ProportionalDivisor};
 pub use crate::std_types::SourceSpan;
+pub use crate::v1_compiler_annotation_bind::admit_source_annotations;
 pub use crate::v1_compiler_artifact::default_artifact_plan;
 use crate::v1_compiler_artifact::RenderTarget::Dag;
 pub use crate::v1_compiler_artifact::{Artifact, ArtifactPlan, RenderTarget};
@@ -54,7 +59,7 @@ pub use crate::v1_compiler_resolve::{
     resolve_modules_with_occurrence_transport,
 };
 pub use crate::v1_compiler_resolve::{ModuleGraph, ModuleOccurrenceInput};
-pub use crate::v1_compiler_tokenize::tokenize;
+pub use crate::v1_compiler_tokenize::tokenize_artifact;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::CallSemantics::*;
@@ -114,6 +119,15 @@ pub struct PipelineResult {
     pub newline_indices: Rc<Vec<Rc<NewlineIndex>>>,
 }
 
+pub fn frontend_result_authored_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "The authored source annotation graph rides beside the semantic result rather than inside it. Every existing consumer reads the fields it already read and is unaffected; annotation-aware machinery reads the graph. Refusals are carried too, because a graph without them cannot distinguish prose that was never written from prose that was dropped.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FrontendResult {
     pub graph: Option<Rc<ModuleGraph>>,
@@ -121,6 +135,7 @@ pub struct FrontendResult {
     pub newline_indices: Rc<Vec<Rc<NewlineIndex>>>,
     pub intern_table: Rc<InternTable>,
     pub occurrence_transport: Rc<OccurrenceTransport>,
+    pub annotations: Rc<SourceAnnotationGraph>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -136,11 +151,24 @@ pub struct FrontendAccum {
     pub newline_indices: Rc<Vec<Rc<NewlineIndex>>>,
     pub intern_table: Rc<InternTable>,
     pub occurrence_allocator: OccurrenceIdAllocator,
+    pub annotations: Rc<SourceAnnotationGraph>,
+    pub annotation_diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+}
+
+pub fn frontend_prepared_authored_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Carries the AUTHORED lexical result, not only the semantic tokens. `tokens` is what pre-interning and parsing consume, unchanged; `annotations` is what the annotation channel captured on the same pass, and `source_length` is what the binder needs to bound the last module item's extent.\n\nThreading the captures through this record rather than re-tokenizing later is what keeps the two halves of one lexical pass from drifting: a second pass could observe a different source, and placement in particular is unrecoverable once whitespace is gone.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FrontendPrepared {
     pub tokens: Rc<Vec<Rc<Token>>>,
+    pub annotations: Rc<Vec<Rc<UnboundAnnotationCapture>>>,
+    pub source_length: i64,
     pub newline_index: Rc<NewlineIndex>,
 }
 
@@ -2336,10 +2364,12 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
             let mut __result = Vec::new();
             for s in sources.clone().iter().cloned() {
                 __result.push({
-                    let tokens = tokenize(s.content.clone(), s.path.clone());
+                    let artifact = tokenize_artifact(s.content.clone(), s.path.clone());
                     let si = build_newline_index(s.path.clone(), s.content.clone());
                     Rc::new(FrontendPrepared {
-                        tokens: tokens.clone(),
+                        tokens: artifact.tokens.clone(),
+                        annotations: artifact.annotations.clone(),
+                        source_length: v1_rt::string_length(&s.content.clone()),
                         newline_index: si.clone(),
                     })
                 });
@@ -2357,6 +2387,8 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
                 newline_indices: Rc::new(vec![]),
                 intern_table: intern_table.clone(),
                 occurrence_allocator: occurrence_id_allocator_initial(),
+                annotations: source_annotation_graph_empty(),
+                annotation_diagnostics: Rc::new(vec![]),
             }),
             |acc: Rc<FrontendAccum>, p: Rc<FrontendPrepared>| {
                 let parsed = parse_with_table_in_occurrence_scope(
@@ -2368,6 +2400,11 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
                     ),
                     acc.intern_table.clone(),
                     acc.occurrence_allocator.clone(),
+                );
+                let bound = admit_source_annotations(
+                    parsed.occurrence_transport.clone(),
+                    p.annotations.clone(),
+                    p.source_length.clone(),
                 );
                 Rc::new(FrontendAccum {
                     parse_results: v1_rt::rc_list_push(
@@ -2390,6 +2427,23 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
                     ),
                     intern_table: parsed.intern_table.clone(),
                     occurrence_allocator: parsed.occurrence_allocator.clone(),
+                    annotations: source_annotation_graph_concat(
+                        acc.annotations.clone(),
+                        bound.graph.clone(),
+                    ),
+                    annotation_diagnostics: v1_rt::concat(
+                        acc.annotation_diagnostics.clone(),
+                        Rc::new({
+                            let mut __result = Vec::new();
+                            for d in bound.diagnostics.clone().iter().cloned() {
+                                __result.push(make_error_node(
+                                    d.clone(),
+                                    p.newline_index.clone().file.clone(),
+                                ));
+                            }
+                            __result
+                        }),
+                    ),
                 })
             },
         );
@@ -2417,10 +2471,14 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
         );
         Rc::new(FrontendResult {
             graph: resolution.graph.clone(),
-            diagnostics: v1_rt::concat(parse_diagnostics.clone(), resolution.diagnostics.clone()),
+            diagnostics: v1_rt::concat(
+                v1_rt::concat(parse_diagnostics.clone(), resolution.diagnostics.clone()),
+                parsed.annotation_diagnostics.clone(),
+            ),
             newline_indices: newline_indices.clone(),
             intern_table: parsed.intern_table.clone(),
             occurrence_transport: occurrence_transport.clone(),
+            annotations: parsed.annotations.clone(),
         })
     }
 }
@@ -2431,6 +2489,7 @@ pub struct CensusFillParse {
     pub newline_indices: Rc<Vec<Rc<NewlineIndex>>>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
     pub occurrence_transport: Rc<OccurrenceTransport>,
+    pub annotations: Rc<SourceAnnotationGraph>,
 }
 
 pub fn parse_census_fill_note() -> String {
@@ -2448,10 +2507,12 @@ pub fn parse_census_fill_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<CensusF
             let mut __result = Vec::new();
             for s in sources.clone().iter().cloned() {
                 __result.push({
-                    let tokens = tokenize(s.content.clone(), s.path.clone());
+                    let artifact = tokenize_artifact(s.content.clone(), s.path.clone());
                     let si = build_newline_index(s.path.clone(), s.content.clone());
                     Rc::new(FrontendPrepared {
-                        tokens: tokens.clone(),
+                        tokens: artifact.tokens.clone(),
+                        annotations: artifact.annotations.clone(),
+                        source_length: v1_rt::string_length(&s.content.clone()),
                         newline_index: si.clone(),
                     })
                 });
@@ -2469,6 +2530,8 @@ pub fn parse_census_fill_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<CensusF
                 newline_indices: Rc::new(vec![]),
                 intern_table: intern_table.clone(),
                 occurrence_allocator: occurrence_id_allocator_initial(),
+                annotations: source_annotation_graph_empty(),
+                annotation_diagnostics: Rc::new(vec![]),
             }),
             |acc: Rc<FrontendAccum>, p: Rc<FrontendPrepared>| {
                 let parsed = parse_with_table_in_occurrence_scope(
@@ -2480,6 +2543,11 @@ pub fn parse_census_fill_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<CensusF
                     ),
                     acc.intern_table.clone(),
                     acc.occurrence_allocator.clone(),
+                );
+                let bound = admit_source_annotations(
+                    parsed.occurrence_transport.clone(),
+                    p.annotations.clone(),
+                    p.source_length.clone(),
                 );
                 Rc::new(FrontendAccum {
                     parse_results: v1_rt::rc_list_push(
@@ -2502,6 +2570,23 @@ pub fn parse_census_fill_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<CensusF
                     ),
                     intern_table: parsed.intern_table.clone(),
                     occurrence_allocator: parsed.occurrence_allocator.clone(),
+                    annotations: source_annotation_graph_concat(
+                        acc.annotations.clone(),
+                        bound.graph.clone(),
+                    ),
+                    annotation_diagnostics: v1_rt::concat(
+                        acc.annotation_diagnostics.clone(),
+                        Rc::new({
+                            let mut __result = Vec::new();
+                            for d in bound.diagnostics.clone().iter().cloned() {
+                                __result.push(make_error_node(
+                                    d.clone(),
+                                    p.newline_index.clone().file.clone(),
+                                ));
+                            }
+                            __result
+                        }),
+                    ),
                 })
             },
         );
@@ -2516,7 +2601,10 @@ pub fn parse_census_fill_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<CensusF
                 __result
             }),
             newline_indices: parsed.newline_indices.clone(),
-            diagnostics: collect_diagnostics(parse_results.clone()),
+            diagnostics: v1_rt::concat(
+                collect_diagnostics(parse_results.clone()),
+                parsed.annotation_diagnostics.clone(),
+            ),
             occurrence_transport: merge_occurrence_transports(Rc::new({
                 let mut __result = Vec::new();
                 for input in module_inputs.clone().iter().cloned() {
@@ -2524,6 +2612,7 @@ pub fn parse_census_fill_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<CensusF
                 }
                 __result
             })),
+            annotations: parsed.annotations.clone(),
         })
     }
 }

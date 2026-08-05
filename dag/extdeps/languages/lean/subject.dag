@@ -1,0 +1,41 @@
+module extdeps.languages.lean.subject
+
+import std.types { String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "lean-lang.org/doc/reference/latest/"
+  }
+}
+
+data lean_language_further_authority_1: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "github.com/leanprover/reference-manual"
+  }
+}
+
+data lean_language_subject_note: String = "LEAN, cited to The Lean Language Reference (verified live 2026-08-04 by fetching the cited locator and confirming its title and publisher from the response, per the D0 verify-or-refuse rule): the fetched document is titled 'The Lean Language Reference', describes Lean version 4.33.0-rc2, and is published by the Lean project with source at github.com/leanprover/reference-manual. NOTE: dag/extdeps/languages/lean/overflow.dag already carries a cited upstream fact about Lean fixed-precision integer overflow. That module is a FACT carrier about this subject and remains in the frozen legacy scope manifest; this file is the SUBJECT it is about. The two are not duplicates — one says what Lean is, the other records a specific semantic fact cited from it."
+
+type Lean
+  = | LeanTarget
+
+data lean_language: Lean = LeanTarget
+
+data lean_language_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.languages.lean.subject",
+      decl_name: "lean_language",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [lean_language_further_authority_1]
+}
+
+data extdeps_model_scope: ExternalModelScope = lean_language_model_scope

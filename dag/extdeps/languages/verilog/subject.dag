@@ -1,0 +1,41 @@
+module extdeps.languages.verilog.subject
+
+import std.types { String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "standards.ieee.org/ieee/1364/3641/"
+  }
+}
+
+data verilog_language_further_authority_1: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "standards.ieee.org/ieee/1800/7743/"
+  }
+}
+
+data verilog_language_subject_note: String = "VERILOG, cited to IEEE Std 1364-2005 (verified live 2026-08-04 by fetching the cited locator and confirming its title and publisher from the response, per the D0 verify-or-refuse rule): the fetched standard page gives 'IEEE Standard for Verilog Hardware Description Language', IEEE 1364-2005, published 2006. THE SUPERSESSION IS PART OF THE FACT AND IS WHY THERE ARE TWO CITATIONS: that same page records 1364-2005 as superseded by IEEE Std 1800-2009, the SystemVerilog unified language, and the further citation is IEEE 1800-2023, 'IEEE Standard for SystemVerilog--Unified Hardware Design, Specification, and Verification Language' (also fetched and confirmed). Both are carried because this repository's verilog surface models plain Verilog — a scan for SystemVerilog-only vocabulary (always_ff, always_comb, the 1800 designation) found none in it — while the living upstream standard is now 1800. A target modelling a superseded standard is a real support fact that belongs in the registry's evidence, not a detail to smooth over."
+
+type Verilog
+  = | VerilogTarget
+
+data verilog_language: Verilog = VerilogTarget
+
+data verilog_language_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.languages.verilog.subject",
+      decl_name: "verilog_language",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [verilog_language_further_authority_1]
+}
+
+data extdeps_model_scope: ExternalModelScope = verilog_language_model_scope
