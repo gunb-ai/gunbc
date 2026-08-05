@@ -94,12 +94,22 @@ type ObservedGitHubAppSigner {
   github_registered_fingerprint: GitHubAppPublicKeyFingerprint
 }
 
+type SignerSealFailure
+  = SignerNamesDifferentApp {
+      observed_app_id: GitHubAppId
+      declared_app_id: GitHubAppId
+    }
+  | SignerFingerprintNotRegistered {
+      derived: GitHubAppPublicKeyFingerprint
+      registered: GitHubAppPublicKeyFingerprint
+    }
+
 type SignerCustody
   = SignerCustodyObserved { signer: ObservedGitHubAppSigner }
   | SignerMaterialAvailabilityUnobserved
   | SignerMaterialAvailableForImport { source: SecretRef }
   | SignerKeyGenerationRequired
-  | SignerReadbackFailed { detail: NonEmptyStr }
+  | SignerReadbackFailed { cause: SignerSealFailure }
 
 fn app_key_settings_locator(app: DeclaredGitHubApp) -> Uri {
   Uri {
@@ -113,9 +123,34 @@ fn app_key_settings_locator(app: DeclaredGitHubApp) -> Uri {
 
 data gunbai_bot_signer_custody: SignerCustody = SignerMaterialAvailabilityUnobserved
 
+fn signer_seal_failure(
+  signer: ObservedGitHubAppSigner,
+  app: DeclaredGitHubApp
+) -> SignerSealFailure? {
+  if signer.app_id.value != app.app_id.value {
+    Present {
+      value: SignerNamesDifferentApp {
+        observed_app_id: signer.app_id,
+        declared_app_id: app.app_id
+      }
+    }
+  } else if !key_fingerprint_eq(a: signer.derived_public_fingerprint, b: signer.github_registered_fingerprint) {
+    Present {
+      value: SignerFingerprintNotRegistered {
+        derived: signer.derived_public_fingerprint,
+        registered: signer.github_registered_fingerprint
+      }
+    }
+  } else {
+    none
+  }
+}
+
 fn signer_seals_app(signer: ObservedGitHubAppSigner, app: DeclaredGitHubApp) -> Bool {
-  signer.app_id.value == app.app_id.value
-    && key_fingerprint_eq(a: signer.derived_public_fingerprint, b: signer.github_registered_fingerprint)
+  match signer_seal_failure(signer: signer, app: app) {
+    Absent => true
+    Present { value: _ } => false
+  }
 }
 
 type GitHubAppPermissionChangeRequest {
@@ -255,17 +290,16 @@ fn sealed_control_plane_state(
       SignerCustodyUnresolved { app: app, custody: custody }
     SignerKeyGenerationRequired =>
       SignerCustodyUnresolved { app: app, custody: custody }
-    SignerReadbackFailed { detail: _ } =>
+    SignerReadbackFailed { cause: _ } =>
       SignerCustodyUnresolved { app: app, custody: custody }
     SignerCustodyObserved { signer } =>
-      if !signer_seals_app(signer: signer, app: app) {
-        SignerCustodyUnresolved {
-          app: app,
-          custody: SignerReadbackFailed {
-            detail: "observed signer does not seal to this app: app id or registered fingerprint disagrees"
+      match signer_seal_failure(signer: signer, app: app) {
+        Present { value: cause } =>
+          SignerCustodyUnresolved {
+            app: app,
+            custody: SignerReadbackFailed { cause: cause }
           }
-        }
-      } else {
+        Absent =>
         match registration {
           AppRegistrationReadbackUnavailable => AppRegistrationUnobserved { app: app }
           AppRegistrationReadback { app_id: registration_app, requested_permissions } =>
@@ -408,7 +442,7 @@ fn control_plane_next_action(state: GitHubAppControlPlaneState) -> GitHubAppNext
     SignerCustodyUnresolved { app, custody } => match custody {
       SignerMaterialAvailableForImport { source } =>
         MachineActionRequired { action: ImportSignerKeyVersion { app: app, source: source } }
-      SignerReadbackFailed { detail: _ } =>
+      SignerReadbackFailed { cause: _ } =>
         MachineActionRequired { action: ReReadSignerCustody { app: app } }
       SignerCustodyObserved { signer: _ } =>
         MachineActionRequired { action: ReReadSignerCustody { app: app } }

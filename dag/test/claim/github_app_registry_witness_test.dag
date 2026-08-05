@@ -281,6 +281,30 @@ test fn witness_cross_app_signer_does_not_seal_the_selected_app() -> Bool {
   }
 }
 
+test fn witness_seal_failure_names_which_of_the_two_causes_fired() -> Bool {
+  match observed_grant_with(custody: cross_app_signer, perms: full_workflow_grant) {
+    SignerCustodyUnresolved { app: _, custody } => match custody {
+      SignerReadbackFailed { cause } => match cause {
+        SignerNamesDifferentApp { observed_app_id, declared_app_id } =>
+          observed_app_id.value != declared_app_id.value
+        SignerFingerprintNotRegistered { derived: _, registered: _ } => false
+      }
+      _ => false
+    }
+    _ => false
+  } && match observed_grant_with(custody: unregistered_key_signer, perms: full_workflow_grant) {
+    SignerCustodyUnresolved { app: _, custody } => match custody {
+      SignerReadbackFailed { cause } => match cause {
+        SignerFingerprintNotRegistered { derived, registered } =>
+          !key_fingerprint_eq(a: derived, b: registered)
+        SignerNamesDifferentApp { observed_app_id: _, declared_app_id: _ } => false
+      }
+      _ => false
+    }
+    _ => false
+  }
+}
+
 test fn witness_credential_app_must_match_the_observed_subject() -> Bool {
   let control_plane = observed_grant(perms: full_workflow_grant)
   credential_authorizes(
