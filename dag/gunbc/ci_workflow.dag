@@ -45,6 +45,10 @@ import std.disposition { Disposition, RealizationDispatch, Scaffold, SingleAutho
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.types { Duration }
 import gunbc.repo_identity { gunbc_default_branch_name }
+import gunbc.falsifier_run_control {
+  falsifier_release_build_step_id,
+  ci_release_bins_step_id,
+}
 import extdeps.github.actions {
   Workflow, Job, Step, RunStep, UsesStep,
   WorkflowTrigger, Push, PullRequest, WorkflowDispatch, MergeGroup,
@@ -309,7 +313,7 @@ fn ci_v1_compiler_tests_compile_gate_step() -> Step {
 fn ci_release_build_step() -> Step {
   RunStep {
     name: Present { value: "Build release bins (claim_executor + gunbc)" },
-    id: none,
+    id: Present { value: falsifier_release_build_step_id },
     run: ci_release_build_script(),
     shell: none,
     env: none,
@@ -391,7 +395,7 @@ fn ci_release_bins_download_step() -> Step {
 fn ci_release_bins_unpack_verify_step() -> Step {
   RunStep {
     name: Present { value: "Unpack + verify release bins (claim_executor --verify-build-artifacts; fail-closed)" },
-    id: none,
+    id: Present { value: ci_release_bins_step_id },
     run: ci_release_bins_unpack_verify_script(),
     shell: none,
     env: none,
