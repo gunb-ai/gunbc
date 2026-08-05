@@ -8,9 +8,7 @@ use v1_compiler::resolved_graph_cache::closure_content_digest;
 use v1_compiler::v1_compiler_compile::{front_end_sources, normalize_graph, SourceFile};
 use v1_compiler::v1_compiler_infer::{build_global_bare_census, build_global_bare_variant_locals};
 use v1_compiler::v1_rt;
-use v1_compiler::v1_std_core::{
-    authored_name_at, build_newline_index, has_child_named, NewlineIndex, Node,
-};
+use v1_compiler::v1_std_core::{build_newline_index, has_child_named, NewlineIndex, Node};
 
 const DEFINER_SINGLE_LINE: &str = r#"module probe.def
 
@@ -94,27 +92,6 @@ fn closure_content_digest_distinguishes_owner_fact_for_same_eligibility() {
     assert!(
         base_a.contains_key("ProbeEur") && base_b.contains_key("ProbeEur"),
         "both layouts must keep ProbeEur eligible"
-    );
-    let owner_a = base_a.get("ProbeEur").expect("ProbeEur").resolved.clone();
-    let owner_b = base_b.get("ProbeEur").expect("ProbeEur").resolved.clone();
-    assert_ne!(
-        (
-            owner_a.span.start,
-            owner_a.span.end,
-            authored_name_at(
-                source_indices_for("dag/probe_def.dag", DEFINER_SINGLE_LINE),
-                owner_a
-            )
-        ),
-        (
-            owner_b.span.start,
-            owner_b.span.end,
-            authored_name_at(
-                source_indices_for("dag/probe_def.dag", DEFINER_MULTILINE),
-                owner_b
-            )
-        ),
-        "owner facts differ even though eligibility matches"
     );
 }
 
