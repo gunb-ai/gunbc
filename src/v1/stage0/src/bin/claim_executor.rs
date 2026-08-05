@@ -8877,6 +8877,7 @@ mod tests {
                 budget_ms: 900_000,
                 kind: BudgetKind::Wall,
             }),
+            selection_degradation: None,
         };
         // Sanity: the string classifier alone really would misclassify this detail.
         assert_eq!(
@@ -9108,6 +9109,104 @@ mod tests {
         assert!(!write_resolve_receipt_at(&base, &[], &[]));
         assert!(!write_batch_wall_receipt_at(&base, &[]));
         let _ = fs::remove_file(&base);
+    }
+
+    /// TOTALITY, BOTH DIRECTIONS: a component the stop policy never reached appears in the
+    /// receipt under its OWN planned identity, not a placeholder.
+    ///
+    /// This is the discriminating pair for the identity join. The plan below is the shape
+    /// that matters: batch 0 is an ordinary claim that fails, batch 1 is the affected-set
+    /// cold control (`predict_only`), and the stop policy means batch 1 never runs — so it
+    /// exists only as a padded row. Before this fix that row was written with a literal
+    /// "not reached" label and an "off" selection tag, which deleted the one property that
+    /// IDENTIFIES the cold control (`gunbc.floor_component_receipt` role note keys on
+    /// `predict_only`). `floor_affected_set_control_state` then answered `ControlAbsent`,
+    /// conflating "the control was never enrolled" with "the control was enrolled and the
+    /// line stopped before it ran" — different states with different remedies.
+    ///
+    /// The negative half is the point: asserting only that `predict_only` is present would
+    /// also pass on a receipt that tagged EVERY padded row predict_only. So the batch-0
+    /// side is asserted too — a real `off` component stays `off` — and the vanished
+    /// placeholder literal is asserted absent.
+    #[test]
+    fn unreached_components_carry_planned_identity_not_placeholder() {
+        let root = workspace_root();
+        let source_roots = vec![
+            root.join("src/v2").to_string_lossy().into_owned(),
+            root.join("dag").to_string_lossy().into_owned(),
+        ];
+        let base = std::env::temp_dir().join(format!(
+            "claim-executor-totality-{}-{}",
+            std::process::id(),
+            "unreached"
+        ));
+        let _ = fs::remove_dir_all(&base);
+
+        // The PLAN: two components. Batch 1 is the cold control and is never reached.
+        let batches: Vec<Vec<Runnable>> = vec![
+            vec![Runnable::SingleClaim {
+                entry: "dag/test/claim/some_gate_test.dag".to_string(),
+                function: "some_gate_holds".to_string(),
+                profile: ParsedRunnableProfile::undeclared(),
+            }],
+            vec![Runnable::DiscoveryBatch {
+                source_roots: source_roots.clone(),
+                scan_dirs: vec!["dag/test/claim".to_string()],
+                explicit_entries: Vec::new(),
+                native_bundle_entries: Vec::new(),
+                node_frontier_selection: NodeFrontierSelectionMode::PredictOnly,
+                exclude_substrings: Vec::new(),
+                discovery_scope_dirs: Vec::new(),
+                execution_mode: ExecutionMode::Hermetic,
+            }],
+        ];
+
+        // The RUN: only batch 0 produced a record — the line stopped there.
+        let batch_records = vec![BatchRecord {
+            batch_index: 0,
+            wall_nanos: 1_000_000_000,
+            clamp_ms: None,
+            unit_count: 1,
+            results: Vec::new(),
+            label: batch_heartbeat_label(&batches[0]),
+            selection_tag: batch_selection_tag(&batches[0]),
+            is_wet: false,
+        }];
+
+        assert!(write_floor_component_receipt_at(
+            &base,
+            &source_roots,
+            &batch_records,
+            &batches,
+        ));
+        let body = fs::read_to_string(base.join("floor-component-receipt.json")).unwrap();
+
+        // The unreached cold control is present AS the cold control.
+        assert!(
+            body.contains("\"selection\": \"predict_only\""),
+            "the unreached cold control must keep the predict_only tag that identifies it: {body}"
+        );
+        assert!(
+            body.contains("some_gate_holds"),
+            "the reached component keeps its own label: {body}"
+        );
+        // Its outcome is honestly Skipped with the stop-policy cause — not fabricated Done.
+        assert!(
+            body.contains("\"outcome\": \"skipped\""),
+            "an unreached component concludes Skipped: {body}"
+        );
+        // The placeholder identity is gone.
+        assert!(
+            !body.contains("\"label\": \"not reached\""),
+            "the placeholder label must not survive: {body}"
+        );
+        // NEGATIVE HALF: a genuinely `off` component is not relabelled predict_only.
+        assert!(
+            body.contains("\"selection\": \"off\""),
+            "batch 0 is an ordinary off component and must stay off: {body}"
+        );
+
+        let _ = fs::remove_dir_all(&base);
     }
 
     // D5 receipt rows, both directions: an over-budget batch records OverBudget and is
@@ -10776,6 +10875,7 @@ mod tests {
                     ),
                 ],
                 budget_refusal: None,
+                selection_degradation: None,
             }],
         }];
         assert!(write_floor_wet_witness_row_outcome_receipt_at(
