@@ -269,5 +269,5 @@ fn complexity_bound_dominates(a: ComplexityBound, b: ComplexityBound) -> Bool {
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: RatchetForever
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }
