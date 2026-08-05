@@ -1,0 +1,40 @@
+module gunbc.floor_witness_failure_receipt
+
+import std.types { String, Bool }
+
+data floor_witness_failure_receipt_note: String = "Semantic authority for Bool(false) gate-witness loudness (gunbc#7644; parallel to v2.std.native_agreement for *_holds witnesses). Naming: <witness>_passes or <witness>_holds yields <witness>_failure_receipt; non-empty receipts project as 'returned Bool(false) | <receipt>'. The pre-#7660 defect stripped only _holds in the seed runner, so *_passes gate witnesses were mute in CI until failure_receipt_companion gained the _passes arm; per-gate companions remain enrollment debt — see tools.floor_effect_gate_witness floor_gate_failure_receipt_note for the counted mute frontier. Consumers: tools.floor_effect_gate_witness re-exports these fns beside the live *_passes / *_failure_receipt companions claim_executor evaluates in THAT entry's context. Seed retention (DESIGN section 7): cli_run failure_receipt_companion and append_failure_receipt_suffix mirror this module byte-for-byte until witness execution leaves the hand-maintained runner."
+
+fn witness_suffix_strip(s: String, suffix: String) -> String {
+  if !ends_with(s: s, suffix: suffix) {
+    ""
+  } else {
+    let end = string_length(s: s) - string_length(s: suffix)
+    substring(s: s, start: 0, end: end)
+  }
+}
+
+fn witness_failure_receipt_companion_suffix(witness: String, suffix: String) -> String {
+  let base = witness_suffix_strip(s: witness, suffix: suffix)
+  if base == "" {
+    ""
+  } else {
+    concat(base, "_failure_receipt")
+  }
+}
+
+fn witness_failure_receipt_companion_name(witness: String) -> String {
+  let passes = witness_failure_receipt_companion_suffix(witness: witness, suffix: "_passes")
+  if passes != "" {
+    passes
+  } else {
+    witness_failure_receipt_companion_suffix(witness: witness, suffix: "_holds")
+  }
+}
+
+fn project_bool_witness_failure_detail(receipt: String) -> String {
+  if receipt == "" {
+    "returned Bool(false)"
+  } else {
+    concat("returned Bool(false) | ", receipt)
+  }
+}
