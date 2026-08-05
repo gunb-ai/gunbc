@@ -289,6 +289,8 @@ pub type HardwareThreadCount = Rc<Measure<(), (), i64>>;
 
 pub type CharacterCount = Rc<Measure<(), (), i64>>;
 
+pub type TokenCount = Rc<Measure<(), (), i64>>;
+
 pub type Millicore = Rc<Measure<(), (), i64>>;
 
 pub type Watt = Rc<Measure<(), (), i64>>;
@@ -625,6 +627,26 @@ pub fn character_count(count: Nat) -> CharacterCount {
 
 pub fn character_count_value(c: CharacterCount) -> Nat {
     measure_count(c.clone())
+}
+
+pub fn token_count_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "A count of LLM tokens is a COUNT of a unit on the same axis HardwareThreadCount and CharacterCount already instantiate, with a different thing being counted — so it is a fourth member of an existing family, not a new point in the type space. It lives HERE, beside its siblings, because Measure of Count at One over Nat takes only arguments std.measure already owns: an instantiation declared downstream would be a fourth name for a shape this module already names three times, which is the DESIGN section 3 fork. That is the distinction from extdeps.pricing.billing_units, whose MoneyRate aliases introduce their own phantom markers and are therefore genuinely new instantiations that CANNOT be written here without importing vendor vocabulary. Landed by review 48816 on gunbc#7851, which caught the alias minted in gunbc.econ.llm_attempt_receipt and correctly refused the billing_units citation offered for it. HONEST LIMIT, unchanged from the siblings: all four are structurally identical, so passing a TokenCount where a CharacterCount belongs is WRITABLE — the family buys reading clarity and one construction site each, never a wall.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn token_count(count: Nat) -> TokenCount {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn token_count_value(t: TokenCount) -> Nat {
+    measure_count(t.clone())
 }
 
 pub fn millicore(count: Nat) -> Millicore {
