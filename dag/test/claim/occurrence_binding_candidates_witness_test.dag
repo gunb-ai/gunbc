@@ -68,6 +68,8 @@ import std.occurrence_binding_candidates {
   reference_derived_provider_files_for_consumer,
   ReferenceDerivedProviderFileProjectionReady,
   reference_derived_provider_files_for_assembled_closure,
+  ReferenceDerivedProviderFilesForAssembledClosureReady,
+  ReferenceDerivedProviderFilesForAssembledClosureRefused,
   reference_derived_dependency_projection,
   reference_derived_dependency_projection_for_assembled_closure,
   ReferenceDerivedDependencyProjectionReady,
@@ -700,13 +702,13 @@ test fn cross_file_clause_e_fixture_collapses_provider_file_holds() -> Bool {
   match reference_derived_provider_files_for_assembled_closure(
     closure: cross_file_clause_e_fixture_assembled_closure(),
   ) {
-    Present { value: provider_files } =>
+    ReferenceDerivedProviderFilesForAssembledClosureReady { provider_files: provider_files } =>
       (provider_files |> count) == 1
         && match provider_files |> first {
           Present { value: provider_file } => provider_file == cross_file_clause_e_fixture_provider_file()
           Absent => false
         }
-    Absent => false
+    ReferenceDerivedProviderFilesForAssembledClosureRefused { refusal: _ } => false
   }
 }
 

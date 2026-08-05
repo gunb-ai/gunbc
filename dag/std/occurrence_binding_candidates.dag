@@ -1098,7 +1098,9 @@ fn direct_module_dependencies_from_bound_population(
   }
 }
 
-data module_path_file_row_note: String = "ModulePathFileRow is the storage-realization join for cross-file binding provenance: one symbolic module path maps to exactly one authored file path. It is deliberately separate from OccurrenceModulePathRow (which names module membership only) and from import lists (which are transitional loading data, not naming authority). File projection refuses when either side of a bound reference lacks a row — never fabricates a path from module_to_filename heuristics at this seam. Duplicate identical rows are ModulePathFileDuplicateSame; conflicting paths for one module are ModulePathFileConflict — last-write-wins map_insert is forbidden."
+data module_path_file_row_note: String = "ModulePathFileRow is the parser-embedded storage-realization join for cross-file binding provenance at the N3-B substrate seam: one symbolic module path maps to exactly one authored file path. Single authority for path⇄module binding is v2.compiler.source_authority.ModuleStorageBinding / ModuleStorageIndex (module_storage_binding_authority_note); this row is a scaffold projection of that fact from parser-walk inputs until B2 wires OrdinaryLoadedCompilationClosure through source_authority directly. Deliberately separate from OccurrenceModulePathRow (module membership only) and from import lists (transitional loading data). File projection refuses when either side of a bound reference lacks a row — never fabricates a path from module_to_filename heuristics at this seam. Duplicate identical rows are ModulePathFileDuplicateSame; conflicting paths for one module are ModulePathFileConflict — last-write-wins map_insert is forbidden."
+
+data module_path_file_row_dissolution_note: String = "Dissolve-on: cross-file binding production consumes ModuleStorageBinding rows from v2.compiler.source_authority (module_storage_binding_module_dotted × module_storage_binding_file_path) on OrdinaryLoadedCompilationClosure; ModulePathFileRow, ModulePathFileIndex, and this note delete in the completing change. Until then parser-walk supplies rows with ParsedFromSource provenance only."
 
 type ModulePathFileRow {
   module_path: NonEmptyStr
@@ -2118,9 +2120,15 @@ fn reference_derived_dependency_projection_for_assembled_closure(
   }
 }
 
+type ReferenceDerivedProviderFilesForAssembledClosure
+  = ReferenceDerivedProviderFilesForAssembledClosureReady { provider_files: List<FilePath> }
+  | ReferenceDerivedProviderFilesForAssembledClosureRefused {
+      refusal: AssembledClosureDependencyProjectionRefusal,
+    }
+
 fn reference_derived_provider_files_for_assembled_closure(
   closure: AssembledCrossFileBindingClosure
-) -> List<FilePath>? {
+) -> ReferenceDerivedProviderFilesForAssembledClosure {
   match reference_derived_dependency_projection_for_assembled_closure(closure: closure) {
     AssembledClosureDependencyProjectionReady {
       projection: ReferenceDerivedDependencyProjectionReady {
@@ -2129,10 +2137,11 @@ fn reference_derived_provider_files_for_assembled_closure(
         bound_population: _,
       },
     } =>
-      Present {
-        value: dependencies |> map(edge => edge.provider_file),
+      ReferenceDerivedProviderFilesForAssembledClosureReady {
+        provider_files: dependencies |> map(edge => edge.provider_file),
       }
-    _ => Absent
+    AssembledClosureDependencyProjectionRefused { refusal: refusal } =>
+      ReferenceDerivedProviderFilesForAssembledClosureRefused { refusal: refusal }
   }
 }
 
@@ -2149,7 +2158,6 @@ type ReferenceDerivedClauseEProductionRefusal
   | ReferenceDerivedClauseEProductionProviderParseRefused {
       file: FilePath,
     }
-  | ReferenceDerivedClauseEProductionEmptyDependencies
 
 type ReferenceDerivedClauseEProduction
   = ReferenceDerivedClauseEProductionReady {
@@ -2184,20 +2192,13 @@ fn reference_derived_clause_e_production_from_assembled_closure(
             bound_population: bound_population,
           },
         } =>
-          match dependencies |> first {
-            Present { value: _ } =>
-              ReferenceDerivedClauseEProductionReady {
-                projection: ReferenceDerivedDependencyProjectionReady {
-                  binding_provenance: provenances,
-                  file_dependencies: dependencies,
-                  bound_population: bound_population,
-                },
-                consumer_file: consumer_file,
-              }
-            Absent =>
-              ReferenceDerivedClauseEProductionRefused {
-                refusal: ReferenceDerivedClauseEProductionEmptyDependencies,
-              }
+          ReferenceDerivedClauseEProductionReady {
+            projection: ReferenceDerivedDependencyProjectionReady {
+              binding_provenance: provenances,
+              file_dependencies: dependencies,
+              bound_population: bound_population,
+            },
+            consumer_file: consumer_file,
           }
         AssembledClosureDependencyProjectionRefused { refusal: refusal } =>
           ReferenceDerivedClauseEProductionRefused {
