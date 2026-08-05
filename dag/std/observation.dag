@@ -201,13 +201,68 @@ type Measured<T>
 
 data observation_measured_note: String = "Absence of a measurement is a NAMED state carrying its cause, never a fabricated zero (DESIGN section 5). This mirrors the discipline the floor heartbeat already keeps in the seed: an unreadable cgroup field prints unreadable and refuses to invent a number. A renderer projecting MeasuredUnavailable prints the cause; it never prints 0 and never omits the field, because a silently omitted number is the same fabrication one layer up."
 
+type ClockBasis
+  = CpuClock
+  | WallClock
+
+data observation_clock_basis_note: String = "WHICH CLOCK a duration was read from, carried as data rather than spelled in a field name (operator ruling 2026-08-05). The defect this closes is not recording one clock instead of two — recording BOTH is correct — it is a duration whose meaning lives only in the name of the field holding it. A figure called wall_nanos and a figure called cpu_nanos are two magnitudes that compare, add and threshold as if they were the same quantity, and nothing in the type stops it: the fast-lane cap is enforced on CPU while every cost receipt recorded wall, and four sessions spent an evening comparing 1005 against 5004, 2507 against 5003 and 7944 against 5018 -- every number correct, only the bases differing, and no test could have caught any of it. THE REPO ALREADY RULED ON THIS SHAPE one magnitude over: extdeps.pricing.object_storage byte_basis_note opens with 'the unit word is not the unit' and resolves vendor GB-vs-GiB ambiguity with a typed ByteBasis on the row, never a second field named gibibytes beside one named gigabytes. This is that resolution for clocks. TWO ARMS AND NOT THREE, deliberately, and this is where it DIVERGES from ByteBasis: ByteBasisUnstated exists because vendors publish rates without saying which byte they mean, so the ambiguity is an external fact we can only record. A clock basis is never external -- this repository takes its own measurements and always knows which clock it read -- so an Unstated arm would model an absence that cannot occur here, and an uninhabited arm is its own defect. Failing to READ a clock is a different fact and is carried by Measured on the value, not by a third basis."
+
+type TimedMeasurement {
+  basis: ClockBasis
+  elapsed: Measured<Nanosecond>
+}
+
+data observation_timed_measurement_note: String = "One duration, tagged with the clock it came from. THE BASIS IS NOT OPTIONAL AND THE VALUE IS: you always know which clock you tried to read, and you may fail to read it. So basis is a plain ClockBasis while elapsed is Measured, which keeps the cause of an unreadable clock (observation_measured_note: never a fabricated zero, never a silently omitted field) without inventing a basis nobody observed. The inverse shape -- Measured<TimedMeasurement> -- was rejected because an Unavailable arm would then carry no basis, so a failed CPU read and a failed wall read would be indistinguishable."
+
+fn timed_measurement_basis(t: TimedMeasurement) -> ClockBasis {
+  t.basis
+}
+
+fn timed_measurement_elapsed(t: TimedMeasurement) -> Measured<Nanosecond> {
+  t.elapsed
+}
+
+fn clock_basis_eq(a: ClockBasis, b: ClockBasis) -> Bool {
+  match a {
+    CpuClock =>
+      match b {
+        CpuClock => true
+        WallClock => false
+      }
+    WallClock =>
+      match b {
+        CpuClock => false
+        WallClock => true
+      }
+  }
+}
+
+fn clock_basis_cpu() -> ClockBasis {
+  CpuClock
+}
+
+fn clock_basis_wall() -> ClockBasis {
+  WallClock
+}
+
+data observation_clock_basis_seed_entry_note: String = "Two nullary constructors exist so the v1 seed can hand a ClockBasis across the interpreter boundary WITHOUT building a Value in Rust — the same discipline millisecond(count:) and nanosecond(count:) already carry at this seam, and the reason gunbc.witness_row_cost's seed notes give for it: a carrier assembled on the Rust side is a second copy of this module's shape, and it drifts silently. WHICH one the seed calls is chosen by matching its own typed BudgetKind, so the clock is never recovered from a label string; the function name is a symbol the seed selects, not prose it parses. They dissolve with the seed transport itself, on the witness-realization lane's trigger — when a realized runner enforces the deadline, it constructs the outcome here directly and has nothing to marshal."
+
+fn clock_basis_label(b: ClockBasis) -> NonEmptyStr {
+  match b {
+    CpuClock => "thread-CPU" as NonEmptyStr
+    WallClock => "wall" as NonEmptyStr
+  }
+}
+
 type ObservationOutcome
   = Done
   | Refused { diagnostic: NonEmptyStr }
   | Failed { error: NonEmptyStr, output: String }
-  | TimedOut { budget: Millisecond, elapsed: Millisecond }
+  | TimedOut { basis: ClockBasis, budget: Millisecond, elapsed: Millisecond }
   | Skipped { reason: NonEmptyStr }
   | Final { shown_failures: Nat }
+
+data observation_timed_out_basis_note: String = "TimedOut names the clock its cap was enforced on, so a crossing says WHICH cap it crossed. Before this, budget and elapsed were two bare magnitudes and a reader could not tell a CPU fail-stop from a wall ceiling -- the live specimen being a 5000ms CPU eval budget and a 600000ms wall receipt budget, both surfacing as TimedOut with no way to distinguish them. ONE basis governs BOTH fields rather than each carrying its own: a budget and the elapsed figure compared against it must be on the same clock or the comparison is meaningless, so two independently-based fields would make the incoherent state representable. Same reason the seed's BudgetKind sits beside the pair rather than inside each half."
 
 data observation_refused_distinct_note: String = "Refused is DISTINCT from Failed, and this is the point of the sum, not a nicety. A typed refusal is the house's fail-closed spine (DESIGN section 5): the line stopped deliberately, located, with a diagnostic — the stopped line the operator is meant to analyse. A failure is the process breaking. The reference implementation studied for this lane conflates them behind one red glyph, which is exactly how a deliberate refusal reads as a crash and a crash reads as policy. They get different glyphs and different rendering; a renderer that maps both to one symbol is a regression the presentation census reds."
 
@@ -219,9 +274,84 @@ type ObservationTransition
 type ObservationEvent {
   subject: ObservationSubject
   transition: ObservationTransition
-  wall: Measured<Nanosecond>
+  durations: List<TimedMeasurement>
   rss: Measured<ByteSize>
 }
+
+data observation_event_durations_note: String = "THE FIELD THAT USED TO BE CALLED wall. It held a Measured<Nanosecond> whose clock lived entirely in the four letters of its name, and every producer filled it from a wall reading while the fast-lane budget it was compared against is enforced on thread CPU — the exact defect observation_clock_basis_note prices. Renaming it would have moved the nickname, not retired it, so the clock became data (operator ruling 2026-08-05). WHY A LIST AND NOT ONE TAGGED DURATION: a transition is one event and may be measured on more than one clock at once. The seed already holds both for every witness occurrence — v1 cli_run run_claim_measured computes cpu_nanos and wall_nanos from a single run and 7820A put both on PerformanceReceipt — so a carrier admitting one would have forced the producer to choose which truth to drop, which is how the receipt came to disagree with the cap in the first place. AND THE SECOND CLOCK EARNS ITS PLACE BY BEING A REMEDY DISCRIMINATOR, not by being a second threshold (operator ruling 2026-08-05, relayed through the v1-deletion lane): where a witness threshold is stated on wall, the CPU figure beside it is what tells an author WHICH fix applies — high wall with high CPU is algorithm or repeated evaluation, high wall with low CPU is waiting, I/O, subprocess or scheduling. One clock cannot make that distinction, and two untagged clocks cannot be trusted to be the ones you think they are. WHY NOT A RECORD WITH A cpu FIELD AND A wall FIELD: that is the nickname again, twice, and it is what the operator refused when the first draft of this work proposed cpu as a third measured quantity beside wall and rss. WHAT IS NOT WALLED: nothing prevents two entries sharing one basis. A total function from a closed sum to a value is the construction that would make it unwritable, and this substrate has no such carrier — Map is a closure, is not wire-serializable, and its projections are refused by the determinism gate. So the ambiguity is representable and REFUSED AT READ instead: observation_duration returns MeasuredUnavailable carrying the duplicate as its cause, never a silent first-match pick (DESIGN section 5 — a failure arm must refuse, never widen). Rung: mechanically preventable, ceiling structurally impossible, next trigger a total-over-closed-sum carrier in the substrate."
+
+type ClockLookup
+  = ClockNotFound
+  | ClockFound { elapsed: Measured<Nanosecond> }
+  | ClockAmbiguous
+
+fn observation_clock_lookup(
+  durations: List<TimedMeasurement>,
+  basis: ClockBasis
+) -> ClockLookup {
+  fold(durations, init: ClockNotFound, f: (acc, t) =>
+    if clock_basis_eq(a: timed_measurement_basis(t: t), b: basis) {
+      match acc {
+        ClockNotFound => ClockFound { elapsed: timed_measurement_elapsed(t: t) }
+        ClockFound { elapsed: _ } => ClockAmbiguous
+        ClockAmbiguous => ClockAmbiguous
+      }
+    } else {
+      acc
+    }
+  )
+}
+
+fn observation_duration_of(
+  durations: List<TimedMeasurement>,
+  basis: ClockBasis
+) -> Measured<Nanosecond> {
+  match observation_clock_lookup(durations: durations, basis: basis) {
+    ClockNotFound =>
+      MeasuredUnavailable {
+        cause: concat(
+          concat("no ", clock_basis_label(b: basis) as String),
+          " duration was recorded on this event"
+        ) as NonEmptyStr
+      }
+    ClockFound { elapsed: e } => e
+    ClockAmbiguous =>
+      MeasuredUnavailable {
+        cause: concat(
+          concat("two ", clock_basis_label(b: basis) as String),
+          " durations were recorded on one event; the observation is ambiguous"
+        ) as NonEmptyStr
+      }
+  }
+}
+
+fn observation_duration(event: ObservationEvent, basis: ClockBasis) -> Measured<Nanosecond> {
+  observation_duration_of(durations: event.durations, basis: basis)
+}
+
+fn observation_wall(event: ObservationEvent) -> Measured<Nanosecond> {
+  observation_duration(event: event, basis: WallClock)
+}
+
+fn observation_durations_wall(elapsed: Nanosecond) -> List<TimedMeasurement> {
+  [TimedMeasurement { basis: WallClock, elapsed: MeasuredValue { value: elapsed } }]
+}
+
+fn observation_durations_wall_unavailable(cause: NonEmptyStr) -> List<TimedMeasurement> {
+  [TimedMeasurement { basis: WallClock, elapsed: MeasuredUnavailable { cause: cause } }]
+}
+
+fn observation_durations_cpu_and_wall(
+  cpu: Nanosecond,
+  wall: Nanosecond
+) -> List<TimedMeasurement> {
+  [
+    TimedMeasurement { basis: CpuClock, elapsed: MeasuredValue { value: cpu } },
+    TimedMeasurement { basis: WallClock, elapsed: MeasuredValue { value: wall } }
+  ]
+}
+
+data observation_wall_facade_note: String = "observation_wall is the strict wall projection every pre-ruling consumer already wanted, and it is NOT a compatibility shim: an attention threshold, a CI clamp constant and a dwell escalation are all wall notions, so a consumer asking for wall is asking correctly and now says so. What it replaces is the field access event.wall, which asked for nothing — it returned whatever the producer happened to put there. The three durations_* builders exist so a producer states its clock once at the construction site rather than at 49 of them; a producer needing a shape they do not cover constructs TimedMeasurement directly, which is still explicit about the basis. There is deliberately no observation_durations_cpu builder: a CPU-only observation has no wall figure, which no producer in this corpus can honestly claim, and minting the builder before a producer exists would be the orphan this house rejects."
 
 type SchedulerHold
   = WindowFull { active: Nat, target: Nat }
@@ -290,7 +420,7 @@ fn observation_outcome_is_anomaly(o: ObservationOutcome) -> Bool {
     Done => false
     Refused { diagnostic: _ } => true
     Failed { error: _, output: _ } => true
-    TimedOut { budget: _, elapsed: _ } => true
+    TimedOut { basis: _, budget: _, elapsed: _ } => true
     Skipped { reason: _ } => false
     Final { shown_failures: _ } => false
   }
@@ -322,13 +452,13 @@ fn observation_attention_with_measured_basis(
       if observation_outcome_is_anomaly(o: o) {
         Anomaly
       } else {
-        match event.wall {
+        match observation_wall(event: event) {
           MeasuredUnavailable { cause: _ } => Ambient
           MeasuredValue { value: w } => observation_attention_of_elapsed(elapsed: w, basis: basis)
         }
       }
     Step { k: _, n: _ } =>
-      match event.wall {
+      match observation_wall(event: event) {
         MeasuredUnavailable { cause: _ } => Ambient
         MeasuredValue { value: w } => observation_attention_of_elapsed(elapsed: w, basis: basis)
       }
@@ -348,13 +478,13 @@ fn observation_attention_under(event: ObservationEvent, basis: Measured<Attentio
           if observation_outcome_is_anomaly(o: o) {
             AttentionAssigned { level: Anomaly }
           } else {
-            match event.wall {
+            match observation_wall(event: event) {
               MeasuredUnavailable { cause: _ } => AttentionAssigned { level: Ambient }
               MeasuredValue { value: _ } => AttentionRefused { cause: basis_cause }
             }
           }
         Step { k: _, n: _ } =>
-          match event.wall {
+          match observation_wall(event: event) {
             MeasuredUnavailable { cause: _ } => AttentionAssigned { level: Ambient }
             MeasuredValue { value: _ } => AttentionRefused { cause: basis_cause }
           }
@@ -396,7 +526,7 @@ fn observation_outcome_class(o: ObservationOutcome) -> ObservationEventClass {
     Done => ClassDone
     Refused { diagnostic: _ } => ClassRefused
     Failed { error: _, output: _ } => ClassFailed
-    TimedOut { budget: _, elapsed: _ } => ClassTimedOut
+    TimedOut { basis: _, budget: _, elapsed: _ } => ClassTimedOut
     Skipped { reason: _ } => ClassSkipped
     Final { shown_failures: _ } => ClassFinal
   }

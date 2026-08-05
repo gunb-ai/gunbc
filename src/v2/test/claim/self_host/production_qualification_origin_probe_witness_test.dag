@@ -17,7 +17,6 @@ import v2.lens.production_qualification_origin_probe {
   production_qualification_planted_fixture_origin_oracle_count,
   structural_red_control_planted_decl,
   structural_red_control_planted_qualified_name,
-  string_eq,
   target_without_fixture_tree_red_control_planted_decl,
   unknown_origin_red_control_planted_decl
 }
@@ -54,7 +53,7 @@ test fn witness_structural_red_control_mint_site_discovered() -> Bool {
       decl: structural_red_control_planted_decl()
     ),
     predicate: fn(row) {
-      string_eq(a: row.qualified_name, b: structural_red_control_planted_qualified_name)
+      row.qualified_name == structural_red_control_planted_qualified_name
         && emission_qualification_eq(
           left: row.qualification_axis,
           right: SourceProduced

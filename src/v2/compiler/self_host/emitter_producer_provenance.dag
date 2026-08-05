@@ -2,6 +2,7 @@ module v2.compiler.self_host.emitter_producer_provenance
 
 import std.content_hash { content_hash_atom }
 import v2.compiler.self_host.frontier_probe_types {
+  FrontierProbeDetailAbsent,
   FrontierProbeReceipt,
   FrontierProbeStage,
   ProbeStageEmit,
@@ -347,7 +348,8 @@ fn producer_emission_measured_probe_receipt(module_path: String) -> FrontierProb
     module_path: module_path,
     blocker_class: SelfEmitReady,
     located_stage: ProbeStageEmit,
-    located_reason: ^measured_probe_self_emit_ready
+    located_reason: ^measured_probe_self_emit_ready,
+    detail: FrontierProbeDetailAbsent
   }
 }
 

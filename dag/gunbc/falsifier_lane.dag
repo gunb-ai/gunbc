@@ -8,7 +8,8 @@ import gunbc.floor_component_receipt {
   floor_component_row_is_done,
   floor_component_row_of,
   floor_component_row_of_failure_mode,
-  floor_component_transition_outcome
+  floor_component_transition_outcome,
+  ModeUnrecorded
 }
 import std.realization_schedule { SelectionApplied }
 import std.observation { Done, Refused, Failed, TimedOut, Skipped, Final }
@@ -278,7 +279,7 @@ fn falsifier_failure_class_of_row(row: FloorComponentRow) -> FalsifierFailureCla
         Done => none
         Refused { diagnostic: d } => Present { value: ClassBudgetExceeded { diagnostic: d } }
         Failed { error: e, output: out } => Present { value: ClassFailedIndistinct { error: e } }
-        TimedOut { budget: b, elapsed: el } => Present { value: ClassTimedOut }
+        TimedOut { basis: _, budget: b, elapsed: el } => Present { value: ClassTimedOut }
         Skipped { reason: r } => Present { value: ClassNotReached { reason: r } }
         Final { shown_failures: n } =>
           if n == 0 { none } else { Present { value: ClassShownFailures { count: n } } }
@@ -335,7 +336,8 @@ fn falsifier_witness_row(index: Nat, done: Bool) -> FloorComponentRow {
     selection: SelectionApplied,
     witnesses: 0,
     outcome: if done { Done } else { Failed { error: "synthetic red" as NonEmptyStr, output: "" } },
-    wall: millisecond(count: 0)
+    wall: millisecond(count: 0),
+    failure_mode: ModeUnrecorded
   )
 }
 

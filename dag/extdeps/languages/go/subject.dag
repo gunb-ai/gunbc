@@ -1,0 +1,34 @@
+module extdeps.languages.go.subject
+
+import std.types { String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "go.dev/ref/spec"
+  }
+}
+
+data go_language_subject_note: String = "GO, cited to The Go Programming Language Specification (verified live 2026-08-04 by fetching the cited locator and confirming its title and publisher from the response, per the D0 verify-or-refuse rule): the fetched document is titled 'The Go Programming Language Specification', self-describes as 'the reference manual for the Go programming language', and carries an explicit language version in its header. Go is one of the few targets here whose upstream publishes a single normative specification document for the language proper, which is why this subject needs only one citation."
+
+type Go
+  = | GoTarget
+
+data go_language_subject: Go = GoTarget
+
+data go_language_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.languages.go.subject",
+      decl_name: "go_language_subject",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data extdeps_model_scope: ExternalModelScope = go_language_model_scope
