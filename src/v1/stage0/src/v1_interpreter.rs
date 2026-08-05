@@ -11339,6 +11339,13 @@ macro_rules! v1_builtin_arms {
                 crate::cli_run::extdeps_external_authority_live_roster_module_count(),
             ))),
 
+            arm "free_call.seed_runner_bool_false_failure_detail" { "seed_runner_bool_false_failure_detail" } => {
+                let witness = expect_str($positional.first().copied(), $name)?;
+                Ok(Some(Value::Str(crate::cli_run::seed_runner_bool_false_failure_detail(
+                    $ctx, &witness,
+                ))))
+            },
+
             arm "free_call.doc_graph_orphan_count" { "doc_graph_orphan_count" } => {
                 let extra_roots = expect_str_list($positional.first().copied(), $name)?;
                 Ok(Some(Value::Int(crate::cli_run::doc_graph_orphan_count(
@@ -11891,7 +11898,20 @@ pub fn fold_caller_snapshot() -> Vec<(String, u64, u64, u64, &'static str)> {
 /// HashMap/HashSet write, per call. dissolve-on: the residual-hunt work item
 /// closes (adhoc-c328b166-bca) -- delete these recorders and their call
 /// sites, they are not a permanent profiler.
+#[cfg(any(test, feature = "test_hooks"))]
+static FORCE_FORENSICS_FOR_TEST: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+#[cfg(any(test, feature = "test_hooks"))]
+pub fn set_call_frequency_forensics_for_test(enabled: bool) {
+    FORCE_FORENSICS_FOR_TEST.store(enabled, std::sync::atomic::Ordering::Relaxed);
+}
+
 fn residual_hunt_forensics_enabled() -> bool {
+    #[cfg(any(test, feature = "test_hooks"))]
+    if FORCE_FORENSICS_FOR_TEST.load(std::sync::atomic::Ordering::Relaxed) {
+        return true;
+    }
     static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *ENABLED.get_or_init(|| std::env::var("GUNBC_FLATTEN_SITE_DUMP_SECS").is_ok())
 }
@@ -12024,6 +12044,7 @@ fn record_call_frequency(func_name: &str) {
         "parse_table_lookup",
         "parse_table_insert",
         "parse_choice_residue_backtrack",
+        "uri_percent_encode_scalar_fragment",
     ];
     let Some(key) = WATCHLIST.iter().find(|w| **w == func_name) else {
         return;

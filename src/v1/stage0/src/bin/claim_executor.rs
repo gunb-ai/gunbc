@@ -21,7 +21,7 @@ use v1_compiler::cli_run::{
     top_n_slowest_witnesses, BudgetKind, ClaimOutcome, DiscoveryCorpusOptions, DiscoverySummary,
     DiscoveryWidthPolicy, FloorPhase, HistogramData, NodeFrontierSelectionMode, PhaseProfile,
     ResolutionDivergencePhase, ResolutionDivergencePhaseState, SelectionDegradationSnapshot,
-    TimingPercentiles, DEFAULT_SLOWEST_WITNESS_ATTRIBUTION_N,
+    TimingPercentiles, WitnessRowCost, DEFAULT_SLOWEST_WITNESS_ATTRIBUTION_N,
 };
 use v1_compiler::memory_governor::{
     binding_cap_cgroup_dir, binding_high_cgroup_dir, floor_budget_below_minimum_footprint,
@@ -339,6 +339,7 @@ fn write_compile_clean_cost_drift_receipt_at(
         String::from("kind\tsubject\tobserved_wall_ms\tbasis_wall_ms\tverdict\trun_ref\n");
     let mut drift_count = 0usize;
     let mut basis_absent_count = 0usize;
+    let mut clock_mismatch_count = 0usize;
     for (kind, subj, observed) in &rows {
         match basis.get(&(kind.clone(), subj.clone())) {
             None => {
@@ -346,25 +347,21 @@ fn write_compile_clean_cost_drift_receipt_at(
                 body.push_str(&format!("{kind}\t{subj}\t{observed}\t\tBasisAbsent\t\n"));
             }
             Some(b) => {
-                let exceeds = match witness_row_cost_exceeds_basis_via_authority(
-                    &ctx,
-                    *observed,
-                    b.eval_ms_basis,
-                ) {
+                let verdict = match witness_row_cost_verdict_via_authority(&ctx, *observed, Some(b))
+                {
                     Ok(v) => v,
                     Err(e) => {
                         eprintln!(
-                            "claim_executor: compile-clean drift comparator refused for {kind}::{subj}: {e} — walk fails closed here"
-                        );
+                                "claim_executor: compile-clean drift comparator refused for {kind}::{subj}: {e} — walk fails closed here"
+                            );
                         return false;
                     }
                 };
-                let verdict = if exceeds {
-                    drift_count += 1;
-                    "DriftExceeded"
-                } else {
-                    "WithinBasis"
-                };
+                match verdict.as_str() {
+                    "DriftExceeded" => drift_count += 1,
+                    "BasisClockMismatch" => clock_mismatch_count += 1,
+                    _ => {}
+                }
                 body.push_str(&format!(
                     "{kind}\t{subj}\t{observed}\t{}\t{verdict}\t{}\n",
                     b.eval_ms_basis, b.run_ref
@@ -373,7 +370,7 @@ fn write_compile_clean_cost_drift_receipt_at(
         }
     }
     eprintln!(
-        "[compile-clean-cost-drift] basis_absent={basis_absent_count} drift_exceeded={drift_count}"
+        "[compile-clean-cost-drift] basis_absent={basis_absent_count} clock_mismatch={clock_mismatch_count} drift_exceeded={drift_count}"
     );
     for line in body.lines() {
         eprintln!("[compile-clean-cost-drift] {line}");
@@ -387,7 +384,7 @@ fn write_compile_clean_cost_drift_receipt_at(
         return false;
     }
     eprintln!(
-        "[receipt] floor compile-clean cost drift: basis_absent={basis_absent_count} drift_exceeded={drift_count} (TSV: {})",
+        "[receipt] floor compile-clean cost drift: basis_absent={basis_absent_count} clock_mismatch={clock_mismatch_count} drift_exceeded={drift_count} (TSV: {})",
         path.display()
     );
     true
@@ -1675,7 +1672,7 @@ struct ClaimResult {
     /// Number of discovery witnesses (non-zero only for discovery batch nodes).
     corpus_witnesses: usize,
     /// Per-witness eval+resolve identity preserved from discovery (empty for gate/single-claim rows).
-    witness_row_costs: Vec<(String, String, u128, u128, u128, String, String)>,
+    witness_row_costs: Vec<WitnessRowCost>,
     /// Set only when this row was killed at a budget, carrying the pair that explains it.
     ///
     /// `ok`/`detail` are a lossy flattening of `ClaimOutcome`, so without this the batch's
@@ -2926,7 +2923,7 @@ fn str_list_value(lines: &[String]) -> Value {
 /// Render the top-N slowest witnesses through `dag/gunbc/ci_render.dag`.
 fn render_slowest_witnesses(
     source_roots: &[String],
-    rows: &[(String, String, u128, u128, u128, String, String)],
+    rows: &[WitnessRowCost],
 ) -> Result<String, String> {
     if rows.is_empty() {
         return Ok(String::new());
@@ -2947,19 +2944,22 @@ fn render_slowest_witnesses(
             "slowest_witness_row",
             &[
                 (Some("rank".to_string()), Value::Int((i + 1) as i64)),
-                (Some("function".to_string()), Value::Str(row.1.clone())),
-                (Some("entry".to_string()), Value::Str(row.0.clone())),
+                (
+                    Some("function".to_string()),
+                    Value::Str(row.function.clone()),
+                ),
+                (Some("entry".to_string()), Value::Str(row.entry.clone())),
                 (
                     Some("eval_ns".to_string()),
-                    Value::Int(clamp_nanos_to_i64(row.2)),
+                    Value::Int(clamp_nanos_to_i64(row.eval_wall_nanos)),
                 ),
                 (
                     Some("resolve_ns".to_string()),
-                    Value::Int(clamp_nanos_to_i64(row.3)),
+                    Value::Int(clamp_nanos_to_i64(row.resolve_nanos)),
                 ),
                 (
                     Some("total_ns".to_string()),
-                    Value::Int(clamp_nanos_to_i64(row.4)),
+                    Value::Int(clamp_nanos_to_i64(row.warm_nanos)),
                 ),
             ],
             false,
@@ -2993,10 +2993,7 @@ fn render_slowest_witnesses(
     }
 }
 
-fn emit_slowest_witness_attribution(
-    source_roots: &[String],
-    rows: &[(String, String, u128, u128, u128, String, String)],
-) {
+fn emit_slowest_witness_attribution(source_roots: &[String], rows: &[WitnessRowCost]) {
     let n = slowest_witness_attribution_n().min(rows.len());
     if n == 0 {
         return;
@@ -3005,8 +3002,9 @@ fn emit_slowest_witness_attribution(
     match render_slowest_witnesses(source_roots, &top) {
         Ok(boxed) => {
             eprintln!("{boxed}");
-            let tail_eval_ms: u128 = top.iter().map(|r| r.2).sum::<u128>() / 1_000_000;
-            let total_eval_ms = rows.iter().map(|r| r.2).sum::<u128>() / 1_000_000;
+            let tail_eval_ms: u128 =
+                top.iter().map(|r| r.eval_wall_nanos).sum::<u128>() / 1_000_000;
+            let total_eval_ms = rows.iter().map(|r| r.eval_wall_nanos).sum::<u128>() / 1_000_000;
             let pct = if total_eval_ms == 0 {
                 0.0
             } else {
@@ -3318,7 +3316,7 @@ fn discovery_claim_result(
     detail: String,
     selection: NodeFrontierSelectionMode,
     summary: &DiscoverySummary,
-    projected: Result<Vec<(String, String, u128, u128, u128, String, String)>, String>,
+    projected: Result<Vec<WitnessRowCost>, String>,
 ) -> ClaimResult {
     // Per-row identity is load-bearing for the receipt spine: a compute failure OR an
     // incomplete row set must refuse the discovery claim (typed/located), never silently
@@ -3326,15 +3324,21 @@ fn discovery_claim_result(
     match projected {
         Ok(mut witness_row_costs) => {
             for row in &summary.selection_skipped_rows {
-                witness_row_costs.push((
-                    row.entry.clone(),
-                    row.function.clone(),
-                    0,
-                    0,
-                    0,
-                    "selection-skipped".to_string(),
-                    row.provenance.clone(),
-                ));
+                // Zeros here are placeholders the writer never renders: the row's own
+                // `selection-skipped` outcome routes every timing cell to UNMEASURED. The
+                // CPU slot is `None` for the stronger reason that it is not a placeholder
+                // at all — an unexecuted row has no clock reading of any kind, and the type
+                // now says so rather than leaving a zero to be believed.
+                witness_row_costs.push(WitnessRowCost {
+                    entry: row.entry.clone(),
+                    function: row.function.clone(),
+                    eval_wall_nanos: 0,
+                    eval_cpu_nanos: None,
+                    resolve_nanos: 0,
+                    warm_nanos: 0,
+                    outcome: "selection-skipped".to_string(),
+                    detail: row.provenance.clone(),
+                });
             }
             ClaimResult {
                 function,
@@ -4923,7 +4927,7 @@ fn write_witness_row_cost_receipt_at(
     emit_full_tsv_log: bool,
 ) -> bool {
     let mut body = String::from(
-        "batch\tentry\tfunction\teval_wall_ms\tresolve_ms\twarm_ms\toutcome\tdetail\n",
+        "batch\tentry\tfunction\teval_wall_ms\teval_cpu_ms\tresolve_ms\twarm_ms\toutcome\tdetail\n",
     );
     let mut row_count = 0usize;
     for rec in batch_records {
@@ -4939,19 +4943,33 @@ fn write_witness_row_cost_receipt_at(
                 //
                 // Note the two are genuinely different facts here: an executed witness may
                 // legitimately measure 0 ms (sub-millisecond), and those rows keep their `0`.
-                let cells = if row_measurement_is_absent(&row.5) {
-                    format!("{UNMEASURED_CELL}\t{UNMEASURED_CELL}\t{UNMEASURED_CELL}")
-                } else {
+                //
+                // `eval_cpu_ms` sits BESIDE `eval_wall_ms` rather than replacing it, and its
+                // job is to make the remedy readable from this file alone: a slow row with
+                // high CPU is algorithm or repeated evaluation, a slow row with low CPU is
+                // waiting, I/O, subprocess or scheduling (operator ruling 2026-08-05). It is
+                // not a second threshold — the witness threshold is stated on wall — and a
+                // clock the producer did not sample renders UNMEASURED for the same reason
+                // an unexecuted row does: an unread clock must not read as a fast one.
+                let cells = if row_measurement_is_absent(&row.outcome) {
                     format!(
-                        "{}\t{}\t{}",
-                        row.2 / 1_000_000,
-                        row.3 / 1_000_000,
-                        row.4 / 1_000_000
+                        "{UNMEASURED_CELL}\t{UNMEASURED_CELL}\t{UNMEASURED_CELL}\t{UNMEASURED_CELL}"
+                    )
+                } else {
+                    let cpu = match row.eval_cpu_nanos {
+                        Some(ns) => (ns / 1_000_000).to_string(),
+                        None => UNMEASURED_CELL.to_string(),
+                    };
+                    format!(
+                        "{}\t{cpu}\t{}\t{}",
+                        row.eval_wall_nanos / 1_000_000,
+                        row.resolve_nanos / 1_000_000,
+                        row.warm_nanos / 1_000_000
                     )
                 };
                 body.push_str(&format!(
                     "{n}\t{}\t{}\t{cells}\t{}\t{}\n",
-                    row.0, row.1, row.5, row.6
+                    row.entry, row.function, row.outcome, row.detail
                 ));
                 row_count += 1;
             }
@@ -5015,14 +5033,14 @@ fn write_floor_wet_witness_row_outcome_receipt_at(
         let batch = rec.batch_index + 1;
         for result in &rec.results {
             for row in &result.witness_row_costs {
-                let outcome = wet_witness_row_outcome_label(&row.5);
-                let detail = scoped_wire_text(&row.6);
+                let outcome = wet_witness_row_outcome_label(&row.outcome);
+                let detail = scoped_wire_text(&row.detail);
                 body.push_str(&format!(
                     "{}\n",
                     [
                         batch.to_string(),
-                        row.0.clone(),
-                        row.1.clone(),
+                        row.entry.clone(),
+                        row.function.clone(),
                         outcome.to_string(),
                         detail,
                     ]
@@ -5050,15 +5068,34 @@ fn write_floor_wet_witness_row_outcome_receipt_at(
 /// Required `host_class` on every signed basis row (`witness_row_cost_basis_host_class_note`).
 const WITNESS_ROW_COST_BASIS_HOST_CLASS: &str = "srv_fleet_arm64";
 
+/// The `.dag` constructor for each `std.observation.ClockBasis` arm, keyed by the spelling the
+/// basis file uses. The seed names no clock of its own: it maps the cell to a constructor and
+/// calls it, so a clock that this repository does not model has no path into a comparison.
+fn clock_basis_constructor_for(cell: &str) -> Option<&'static str> {
+    match cell {
+        "wall" => Some("clock_basis_wall"),
+        "cpu" => Some("clock_basis_cpu"),
+        _ => None,
+    }
+}
+
 #[derive(Debug)]
 struct WitnessRowCostBasisRow {
     eval_ms_basis: u128,
     run_ref: String,
+    /// Which clock `eval_ms_basis` was read from, as the `.dag` constructor name for it.
+    ///
+    /// Carried per row rather than assumed for the file, because the file's rows are seeded
+    /// over time from whatever the producer of the day recorded — and a basis whose clock is
+    /// assumed is exactly the state the 2026-08-05 ruling ends. A comparison against an
+    /// observation on a different clock refuses (`BasisClockMismatch`) rather than answering.
+    clock_constructor: &'static str,
 }
 
 /// Parse one TSV body line from `witness_row_cost_basis.tsv`.
-/// Returns `Ok(None)` for blank/comment lines; `Err` for malformed or wrong-host-class rows
-/// (caller must not insert them — a wrong host class would poison the 2× comparator).
+/// Returns `Ok(None)` for blank/comment lines; `Err` for malformed, wrong-host-class, or
+/// unknown-clock rows (caller must not insert them — a wrong host class would poison the 2×
+/// comparator, and an unmodelled clock cannot be compared at all).
 fn parse_witness_row_cost_basis_line(
     line: &str,
 ) -> Result<Option<((String, String), WitnessRowCostBasisRow)>, String> {
@@ -5067,9 +5104,9 @@ fn parse_witness_row_cost_basis_line(
         return Ok(None);
     }
     let parts: Vec<&str> = line.split('\t').collect();
-    if parts.len() < 5 {
+    if parts.len() < 6 {
         return Err(format!(
-            "malformed witness-row-cost basis line (need 5 cols: entry function eval_ms_basis run_ref host_class): {line}"
+            "malformed witness-row-cost basis line (need 6 cols: entry function eval_ms_basis run_ref host_class clock): {line}"
         ));
     }
     let host_class = parts[4];
@@ -5078,6 +5115,16 @@ fn parse_witness_row_cost_basis_line(
             "witness-row-cost basis row host_class={host_class:?} refused (required {WITNESS_ROW_COST_BASIS_HOST_CLASS}; wrong host class poisons the 2× comparator): {line}"
         ));
     }
+    // A row that does not say which clock its figure came from is REFUSED, not defaulted.
+    // Defaulting to wall would be right for every row in the file today and wrong the first
+    // time someone seeds one from a CPU receipt — and it would be wrong silently, which is
+    // the whole failure this column exists to prevent.
+    let Some(clock_constructor) = clock_basis_constructor_for(parts[5]) else {
+        return Err(format!(
+            "witness-row-cost basis row clock={:?} refused (known clocks: wall, cpu; a basis whose clock is unknown cannot be compared): {line}",
+            parts[5]
+        ));
+    };
     let eval_ms_basis = parts[2].parse::<u128>().unwrap_or(0);
     if eval_ms_basis == 0 {
         return Err(format!(
@@ -5089,6 +5136,7 @@ fn parse_witness_row_cost_basis_line(
         WitnessRowCostBasisRow {
             eval_ms_basis,
             run_ref: parts[3].to_string(),
+            clock_constructor,
         },
     )))
 }
@@ -5110,27 +5158,65 @@ fn millisecond_value(ctx: &InterpContext, count_ms: u128) -> Result<Value, Strin
 
 /// Single-authority projection: evaluate `gunbc.witness_row_cost.witness_row_cost_exceeds_basis`
 /// rather than re-implementing `observed > basis * 2` in the seed (review 43261).
-fn witness_row_cost_exceeds_basis_via_authority(
+/// The clock the drift wire's observed figure is read from.
+///
+/// `witness_row_costs.2` is the row's `eval_wall_ms` — wall, and named so since #7820 — which
+/// is also the clock the witness threshold is stated on (operator ruling 2026-08-05). It is
+/// passed to the comparator rather than left implicit, which is the entire point: the
+/// comparison now asserts that both sides are the same clock instead of both happening to be.
+const WITNESS_ROW_COST_OBSERVED_CLOCK: &str = "clock_basis_wall";
+
+/// Ask the authored comparator for a verdict and return the ARM IT NAMED.
+///
+/// The seed used to call `witness_row_cost_exceeds_basis` — the bare ratio predicate — and
+/// then rebuild `DriftExceeded` / `WithinBasis` / `BasisAbsent` as Rust string literals. That
+/// was a second representation of `WitnessRowCostVerdict`, and it meant the cross-clock wall
+/// the carrier grew could not reach the cadence receipt at all: the clock never crossed the
+/// seam, so a CPU figure against a wall basis would still have answered confidently.
+///
+/// Now the arm's own name is what gets rendered, so a new arm reaches the receipt without a
+/// Rust edit and `BasisClockMismatch` fires here exactly as it does in the witness.
+fn witness_row_cost_verdict_via_authority(
     ctx: &InterpContext,
     observed_ms: u128,
-    basis_ms: u128,
-) -> Result<bool, String> {
+    basis: Option<&WitnessRowCostBasisRow>,
+) -> Result<String, String> {
     let observed = millisecond_value(ctx, observed_ms)?;
-    let basis = millisecond_value(ctx, basis_ms)?;
-    match run_in_context_with_args(
-        ctx,
-        "witness_row_cost_exceeds_basis",
-        &[
-            (Some("observed".to_string()), observed),
-            (Some("basis".to_string()), basis),
-        ],
-        false,
-    ) {
-        Ok(Value::Bool(b)) => Ok(b),
+    let observed_clock = run_in_context_with_args(ctx, WITNESS_ROW_COST_OBSERVED_CLOCK, &[], false)
+        .map_err(|e| format!("{WITNESS_ROW_COST_OBSERVED_CLOCK}: {e}"))?;
+    let (function, args) = match basis {
+        None => (
+            "witness_row_cost_seed_verdict_undated",
+            vec![
+                (Some("observed".to_string()), observed),
+                (Some("observed_clock".to_string()), observed_clock),
+            ],
+        ),
+        Some(b) => {
+            let basis_clock = run_in_context_with_args(ctx, b.clock_constructor, &[], false)
+                .map_err(|e| format!("{}: {e}", b.clock_constructor))?;
+            let basis_eval = millisecond_value(ctx, b.eval_ms_basis)?;
+            (
+                "witness_row_cost_seed_verdict_dated",
+                vec![
+                    (Some("observed".to_string()), observed),
+                    (Some("observed_clock".to_string()), observed_clock),
+                    (Some("basis_clock".to_string()), basis_clock),
+                    (Some("basis_eval".to_string()), basis_eval),
+                    (
+                        Some("run_ref".to_string()),
+                        Value::Str(b.run_ref.clone().into()),
+                    ),
+                ],
+            )
+        }
+    };
+    match run_in_context_with_args(ctx, function, &args, false) {
+        Ok(Value::Variant { variant_name, .. }) => Ok(ctx.resolve(variant_name).to_string()),
         Ok(other) => Err(format!(
-            "witness_row_cost_exceeds_basis returned {other}, expected Bool (fail-closed)"
+            "{function} returned {other}, expected a WitnessRowCostVerdict (fail-closed)"
         )),
-        Err(e) => Err(format!("witness_row_cost_exceeds_basis: {e}")),
+        Err(e) => Err(format!("{function}: {e}")),
     }
 }
 
@@ -5184,6 +5270,11 @@ fn write_witness_row_cost_drift_receipt_at(
     let mut drift_count = 0usize;
     let mut basis_absent_count = 0usize;
     let mut observation_absent_count = 0usize;
+    // A cross-clock pair is neither within basis nor exceeding it, and it is not a missing
+    // basis either — a basis IS present, on the wrong clock. Counted on its own line because
+    // its remedy differs: seed the missing row versus fix the producer handing over the wrong
+    // clock. Absorbing it into either neighbour would zero its frequency by construction.
+    let mut clock_mismatch_count = 0usize;
     for rec in batch_records {
         let n = rec.batch_index + 1;
         for result in &rec.results {
@@ -5199,8 +5290,8 @@ fn write_witness_row_cost_drift_receipt_at(
                 // there a measurement exists with no basis to judge it, here a basis exists
                 // with no measurement to judge. Neither is a comparison, and neither is
                 // reported as one. Counted, so the population is visible rather than absorbed.
-                let key = (row.0.clone(), row.1.clone());
-                if drift_row_disposition(&row.5, basis.contains_key(&key))
+                let key = (row.entry.clone(), row.function.clone());
+                if drift_row_disposition(&row.outcome, basis.contains_key(&key))
                     == DriftRowDisposition::ObservationAbsent
                 {
                     observation_absent_count += 1;
@@ -5210,51 +5301,42 @@ fn write_witness_row_cost_drift_receipt_at(
                         .unwrap_or_default();
                     body.push_str(&format!(
                         "{n}\t{}\t{}\t{UNMEASURED_CELL}\t{basis_cell}\tObservationAbsent\t\n",
-                        row.0, row.1
+                        row.entry, row.function
                     ));
                     continue;
                 }
-                let observed = row.2 / 1_000_000;
-                match basis.get(&key) {
-                    None => {
-                        basis_absent_count += 1;
-                        body.push_str(&format!(
-                            "{n}\t{}\t{}\t{observed}\t\tBasisAbsent\t\n",
-                            row.0, row.1
-                        ));
+                let observed = row.eval_wall_nanos / 1_000_000;
+                let dated = basis.get(&key);
+                let verdict = match witness_row_cost_verdict_via_authority(&ctx, observed, dated) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        eprintln!(
+                            "claim_executor: drift comparator refused for {}::{}: {e} — walk fails closed here",
+                            row.entry, row.function
+                        );
+                        return false;
                     }
-                    Some(b) => {
-                        let exceeds = match witness_row_cost_exceeds_basis_via_authority(
-                            &ctx,
-                            observed,
-                            b.eval_ms_basis,
-                        ) {
-                            Ok(v) => v,
-                            Err(e) => {
-                                eprintln!(
-                                    "claim_executor: drift comparator refused for {}::{}: {e} — walk fails closed here",
-                                    row.0, row.1
-                                );
-                                return false;
-                            }
-                        };
-                        let verdict = if exceeds {
-                            drift_count += 1;
-                            "DriftExceeded"
-                        } else {
-                            "WithinBasis"
-                        };
-                        body.push_str(&format!(
-                            "{n}\t{}\t{}\t{observed}\t{}\t{verdict}\t{}\n",
-                            row.0, row.1, b.eval_ms_basis, b.run_ref
-                        ));
-                    }
+                };
+                // Counting reads the arm the authority named; it does not re-decide it.
+                match verdict.as_str() {
+                    "BasisAbsent" => basis_absent_count += 1,
+                    "DriftExceeded" => drift_count += 1,
+                    "BasisClockMismatch" => clock_mismatch_count += 1,
+                    _ => {}
                 }
+                let (basis_cell, run_ref_cell) = match dated {
+                    None => (String::new(), String::new()),
+                    Some(b) => (b.eval_ms_basis.to_string(), b.run_ref.clone()),
+                };
+                body.push_str(&format!(
+                    "{n}\t{}\t{}\t{observed}\t{basis_cell}\t{verdict}\t{run_ref_cell}\n",
+                    row.entry, row.function
+                ));
             }
         }
     }
     eprintln!(
-        "[witness-row-cost-drift] basis_absent={basis_absent_count} observation_absent={observation_absent_count} drift_exceeded={drift_count}"
+        "[witness-row-cost-drift] basis_absent={basis_absent_count} observation_absent={observation_absent_count} clock_mismatch={clock_mismatch_count} drift_exceeded={drift_count}"
     );
     for line in body.lines() {
         eprintln!("[witness-row-cost-drift] {line}");
@@ -5268,7 +5350,7 @@ fn write_witness_row_cost_drift_receipt_at(
         return false;
     }
     eprintln!(
-        "[receipt] floor witness row-cost drift: basis_absent={basis_absent_count} observation_absent={observation_absent_count} drift_exceeded={drift_count} (TSV: {})",
+        "[receipt] floor witness row-cost drift: basis_absent={basis_absent_count} observation_absent={observation_absent_count} clock_mismatch={clock_mismatch_count} drift_exceeded={drift_count} (TSV: {})",
         path.display()
     );
     true
@@ -12114,33 +12196,118 @@ mod tests {
         }
     }
 
+    fn drift_authority_source_roots() -> Vec<String> {
+        let workspace = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("workspace root");
+        vec![
+            workspace.join("dag").to_string_lossy().into_owned(),
+            workspace.join("src/v2").to_string_lossy().into_owned(),
+        ]
+    }
+
+    fn drift_basis_fixture(clock_constructor: &'static str) -> WitnessRowCostBasisRow {
+        WitnessRowCostBasisRow {
+            eval_ms_basis: 10,
+            run_ref: "synthetic-run".to_string(),
+            clock_constructor,
+        }
+    }
+
+    /// The END-TO-END proof that the drift seam carries the clock, which neither the `.dag`
+    /// witnesses nor the parser tests can give: the witnesses never cross this Rust boundary,
+    /// and the parser only shows the cell is read.
+    ///
+    /// Two claims. First, every verdict string in the receipt is a name the AUTHORITY
+    /// produced — the seed no longer decides that exceeding a basis means `DriftExceeded`, so
+    /// an arm added to `WitnessRowCostVerdict` reaches the cadence receipt with no Rust edit.
+    /// Second, a cross-clock pair REFUSES, asserted on BOTH sides of the 2× ratio: 21ms and
+    /// 20ms against a 10ms basis land on opposite sides of the threshold, so a single case
+    /// would be satisfiable by a comparator refusing for the wrong reason. The pair proves
+    /// the refusal is decided by the CLOCK, not the magnitude.
+    #[test]
+    fn drift_verdicts_come_from_the_authority_and_a_cross_clock_basis_refuses() {
+        let workspace = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("workspace root");
+        let roots = drift_authority_source_roots();
+        let entry = workspace.join("dag/gunbc/witness_row_cost.dag");
+        let (graph, indices) =
+            resolve_entry_graph(&roots, &entry.to_string_lossy()).expect("resolve");
+        let ctx = make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+
+        let wall = drift_basis_fixture("clock_basis_wall");
+        let cpu = drift_basis_fixture("clock_basis_cpu");
+        let verdict = |observed, basis| {
+            witness_row_cost_verdict_via_authority(&ctx, observed, basis).expect("verdict")
+        };
+
+        // Same clock on both sides: the ratio decides, in both directions.
+        assert_eq!(verdict(21, Some(&wall)), "DriftExceeded");
+        assert_eq!(verdict(20, Some(&wall)), "WithinBasis");
+
+        // No dated basis: the honest third state, and it too comes from the authority.
+        assert_eq!(verdict(999, None), "BasisAbsent");
+
+        // Different clocks: refused on BOTH sides of the ratio. Before the clock crossed
+        // this seam these two answered `DriftExceeded` and `WithinBasis` — confident
+        // verdicts about two different quantities.
+        assert_eq!(verdict(21, Some(&cpu)), "BasisClockMismatch");
+        assert_eq!(verdict(20, Some(&cpu)), "BasisClockMismatch");
+    }
+
     #[test]
     fn parse_witness_row_cost_basis_line_requires_srv_fleet_arm64() {
         // RED control for review 43284: wrong/missing host_class must refuse, never load.
-        let ok = parse_witness_row_cost_basis_line("e.dag\tf\t10\trun-1\tsrv_fleet_arm64")
+        let ok = parse_witness_row_cost_basis_line("e.dag\tf\t10\trun-1\tsrv_fleet_arm64\twall")
             .expect("parse")
             .expect("row");
         assert_eq!(ok.0, ("e.dag".to_string(), "f".to_string()));
         assert_eq!(ok.1.eval_ms_basis, 10);
         assert_eq!(ok.1.run_ref, "run-1");
+        assert_eq!(ok.1.clock_constructor, "clock_basis_wall");
+
+        // The clock is READ, not assumed: a cpu-clocked basis row loads as cpu, which is
+        // what lets the comparator refuse it against a wall observation instead of
+        // answering. If this cell were ignored the whole column would be decoration.
+        let cpu = parse_witness_row_cost_basis_line("e.dag\tf\t10\trun-1\tsrv_fleet_arm64\tcpu")
+            .expect("parse")
+            .expect("row");
+        assert_eq!(cpu.1.clock_constructor, "clock_basis_cpu");
 
         assert!(parse_witness_row_cost_basis_line("# comment")
             .unwrap()
             .is_none());
         assert!(parse_witness_row_cost_basis_line("").unwrap().is_none());
 
-        let wrong = parse_witness_row_cost_basis_line("e.dag\tf\t10\trun-1\tlocal_x86")
+        let wrong = parse_witness_row_cost_basis_line("e.dag\tf\t10\trun-1\tlocal_x86\twall")
             .expect_err("wrong host_class must refuse");
         assert!(
             wrong.contains("host_class") && wrong.contains("srv_fleet_arm64"),
             "expected host_class refusal, got: {wrong}"
         );
 
-        let short =
-            parse_witness_row_cost_basis_line("e.dag\tf\t10\trun-1").expect_err("need 5 cols");
-        assert!(short.contains("need 5 cols"), "got: {short}");
+        // A row with no clock cell REFUSES rather than defaulting to wall. Defaulting
+        // would be right for every row in the file today and silently wrong the first
+        // time one is seeded from a CPU receipt — the exact failure the column exists to
+        // prevent, so the pre-clock 5-column shape must not still parse.
+        let short = parse_witness_row_cost_basis_line("e.dag\tf\t10\trun-1\tsrv_fleet_arm64")
+            .expect_err("a row without a clock column must refuse");
+        assert!(short.contains("need 6 cols"), "got: {short}");
 
-        let zero = parse_witness_row_cost_basis_line("e.dag\tf\t0\trun-1\tsrv_fleet_arm64")
+        // An unmodelled clock is not a clock. It cannot map to a ClockBasis constructor,
+        // so it cannot enter a comparison at all.
+        let unknown =
+            parse_witness_row_cost_basis_line("e.dag\tf\t10\trun-1\tsrv_fleet_arm64\tmonotonic")
+                .expect_err("unknown clock must refuse");
+        assert!(
+            unknown.contains("clock") && unknown.contains("monotonic"),
+            "got: {unknown}"
+        );
+
+        let zero = parse_witness_row_cost_basis_line("e.dag\tf\t0\trun-1\tsrv_fleet_arm64\twall")
             .expect_err("zero eval must refuse");
         assert!(zero.contains("zero eval_ms_basis"), "got: {zero}");
     }
@@ -12172,34 +12339,37 @@ mod tests {
                 corpus_eval_nanos: 0,
                 corpus_witnesses: 3,
                 witness_row_costs: vec![
-                    (
-                        "dag/test/claim/stage0_rust_host_observation_live_witness_test.dag"
+                    WitnessRowCost {
+                        entry: "dag/test/claim/stage0_rust_host_observation_live_witness_test.dag"
                             .to_string(),
-                        "planted_pass_wet_row".to_string(),
-                        1_000_000,
-                        0,
-                        0,
-                        "Done".to_string(),
-                        String::new(),
-                    ),
-                    (
-                        "dag/test/claim/planted_fail_wet_row_test.dag".to_string(),
-                        "planted_fail_wet_row".to_string(),
-                        500_000,
-                        0,
-                        0,
-                        "Failed".to_string(),
-                        "returned Bool(false)".to_string(),
-                    ),
-                    (
-                        "dag/other.dag".to_string(),
-                        "planted_selection_skip_wet_row".to_string(),
-                        0,
-                        0,
-                        0,
-                        "selection-skipped".to_string(),
-                        "affected-set".to_string(),
-                    ),
+                        function: "planted_pass_wet_row".to_string(),
+                        eval_wall_nanos: 1_000_000,
+                        eval_cpu_nanos: Some(800_000),
+                        resolve_nanos: 0,
+                        warm_nanos: 0,
+                        outcome: "Done".to_string(),
+                        detail: String::new(),
+                    },
+                    WitnessRowCost {
+                        entry: "dag/test/claim/planted_fail_wet_row_test.dag".to_string(),
+                        function: "planted_fail_wet_row".to_string(),
+                        eval_wall_nanos: 500_000,
+                        eval_cpu_nanos: Some(400_000),
+                        resolve_nanos: 0,
+                        warm_nanos: 0,
+                        outcome: "Failed".to_string(),
+                        detail: "returned Bool(false)".to_string(),
+                    },
+                    WitnessRowCost {
+                        entry: "dag/other.dag".to_string(),
+                        function: "planted_selection_skip_wet_row".to_string(),
+                        eval_wall_nanos: 0,
+                        eval_cpu_nanos: None,
+                        resolve_nanos: 0,
+                        warm_nanos: 0,
+                        outcome: "selection-skipped".to_string(),
+                        detail: "affected-set".to_string(),
+                    },
                 ],
                 budget_refusal: None,
                 selection_degradation: None,
@@ -12263,26 +12433,41 @@ mod tests {
                 corpus_eval_nanos: 0,
                 corpus_witnesses: 2,
                 witness_row_costs: vec![
-                    // Executed, sub-millisecond: 500_000ns / 1_000_000 == 0.
-                    (
-                        "dag/test/claim/fast_test.dag".to_string(),
-                        "ran_in_under_a_millisecond".to_string(),
-                        500_000,
-                        0,
-                        0,
-                        "Done".to_string(),
-                        String::new(),
-                    ),
+                    // Executed, sub-millisecond: 500_000ns / 1_000_000 == 0. Both clocks
+                    // sampled, as production rows are.
+                    WitnessRowCost {
+                        entry: "dag/test/claim/fast_test.dag".to_string(),
+                        function: "ran_in_under_a_millisecond".to_string(),
+                        eval_wall_nanos: 500_000,
+                        eval_cpu_nanos: Some(300_000),
+                        resolve_nanos: 0,
+                        warm_nanos: 0,
+                        outcome: "Done".to_string(),
+                        detail: String::new(),
+                    },
+                    // Executed, but only the wall clock was sampled — a real state for any
+                    // producer that is not `run_claim_measured`.
+                    WitnessRowCost {
+                        entry: "dag/test/claim/wall_only_test.dag".to_string(),
+                        function: "cpu_clock_not_sampled".to_string(),
+                        eval_wall_nanos: 4_000_000,
+                        eval_cpu_nanos: None,
+                        resolve_nanos: 0,
+                        warm_nanos: 0,
+                        outcome: "Done".to_string(),
+                        detail: String::new(),
+                    },
                     // Never executed: pushed by `discovery_claim_result` with zero timings.
-                    (
-                        "dag/test/claim/skipped_test.dag".to_string(),
-                        "never_executed_at_all".to_string(),
-                        0,
-                        0,
-                        0,
-                        "selection-skipped".to_string(),
-                        "affected-set".to_string(),
-                    ),
+                    WitnessRowCost {
+                        entry: "dag/test/claim/skipped_test.dag".to_string(),
+                        function: "never_executed_at_all".to_string(),
+                        eval_wall_nanos: 0,
+                        eval_cpu_nanos: None,
+                        resolve_nanos: 0,
+                        warm_nanos: 0,
+                        outcome: "selection-skipped".to_string(),
+                        detail: "affected-set".to_string(),
+                    },
                 ],
                 budget_refusal: None,
                 selection_degradation: None,
@@ -12317,16 +12502,28 @@ mod tests {
             .find(|l| l.contains("never_executed_at_all"))
             .expect("skipped row");
 
+        // Columns 3..7 are eval_wall_ms, eval_cpu_ms, resolve_ms, warm_ms.
         let cost_cols = |line: &str| {
             let f: Vec<&str> = line.split('\t').collect();
-            (f[3].to_string(), f[4].to_string(), f[5].to_string())
+            (
+                f[3].to_string(),
+                f[4].to_string(),
+                f[5].to_string(),
+                f[6].to_string(),
+            )
         };
 
-        // The executed row measured genuinely-zero milliseconds (500_000ns floors to 0). That
-        // is a real measurement and must survive as the number it is.
+        // The executed row measured genuinely-zero milliseconds (500_000ns wall, 300_000ns
+        // cpu, both floor to 0). Those are real measurements and must survive as the numbers
+        // they are.
         assert_eq!(
             cost_cols(executed),
-            ("0".to_string(), "0".to_string(), "0".to_string()),
+            (
+                "0".to_string(),
+                "0".to_string(),
+                "0".to_string(),
+                "0".to_string()
+            ),
             "a sub-millisecond row measured 0 and must report 0: {executed}"
         );
 
@@ -12339,11 +12536,12 @@ mod tests {
             (
                 UNMEASURED_CELL.to_string(),
                 UNMEASURED_CELL.to_string(),
+                UNMEASURED_CELL.to_string(),
                 UNMEASURED_CELL.to_string()
             ),
             "an unexecuted row must report absence, not a zero: {skipped}"
         );
-        for cell in [&absent.0, &absent.1, &absent.2] {
+        for cell in [&absent.0, &absent.1, &absent.2, &absent.3] {
             assert!(
                 cell.parse::<u128>().is_err(),
                 "an absent measurement must not parse as a number, or a census counts an \
@@ -12357,6 +12555,61 @@ mod tests {
             cost_cols(executed),
             absent,
             "executed and unexecuted must differ in the cost columns themselves"
+        );
+
+        // THE SAME COLLISION ONE COLUMN OVER. A row that RAN but whose CPU clock was never
+        // sampled has no cpu figure, and rendering `0` there would say the witness used no
+        // CPU at all — which reads as the strongest possible remedy signal (pure waiting)
+        // for a row about which nothing is known. It must render absence while its wall
+        // figure, which WAS measured, stays a number.
+        let wall_only = body
+            .lines()
+            .find(|l| l.contains("cpu_clock_not_sampled"))
+            .expect("wall-only row");
+        let (wall, cpu, _, _) = cost_cols(wall_only);
+        assert_eq!(
+            wall, "4",
+            "a measured wall figure must survive: {wall_only}"
+        );
+        assert_eq!(
+            cpu, UNMEASURED_CELL,
+            "an unsampled cpu clock must report absence, not 0: {wall_only}"
+        );
+        assert!(
+            cpu.parse::<u128>().is_err(),
+            "an absent cpu measurement must not parse as a number, or a remedy read counts \
+             an unsampled clock as an idle one: {cpu}"
+        );
+
+        // And the two clocks must not be aliases of one another: the executed fixture
+        // measured 500_000ns wall against 300_000ns cpu, so a producer that filled both
+        // columns from one figure would be invisible at millisecond grain here. Assert on
+        // the raw rows instead, where the distinction is representable.
+        let records = zero_eval_collision_records();
+        let fast = &records[0].results[0].witness_row_costs[0];
+        assert_eq!(fast.eval_wall_nanos, 500_000);
+        assert_eq!(fast.eval_cpu_nanos, Some(300_000));
+        assert_ne!(
+            Some(fast.eval_wall_nanos),
+            fast.eval_cpu_nanos,
+            "the two clocks are independent carriers, not one figure written twice"
+        );
+
+        // The header names the column, so a consumer joins on a name rather than on an
+        // index that silently shifted when it was inserted.
+        let header: Vec<&str> = body.lines().next().expect("header").split('\t').collect();
+        assert!(
+            header.contains(&"eval_cpu_ms"),
+            "the cpu column must be named in the header: {header:?}"
+        );
+        assert_eq!(
+            header
+                .iter()
+                .position(|c| *c == "eval_wall_ms")
+                .map(|i| i + 1),
+            header.iter().position(|c| *c == "eval_cpu_ms"),
+            "the two clocks belong side by side, so the remedy is readable from this file \
+             alone without joining another: {header:?}"
         );
 
         // The typed disposition still rides beside the number, so the cause stays recoverable

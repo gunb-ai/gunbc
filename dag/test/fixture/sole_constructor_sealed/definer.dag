@@ -1,0 +1,7 @@
+module test.fixture.sole_constructor_sealed.definer
+
+type LocalValidated sole_constructor { n: Int }
+
+fn mint_local(n: Int) -> LocalValidated {
+  LocalValidated { n: n }
+}
