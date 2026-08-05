@@ -1,7 +1,5 @@
 module v2.lens.complexity
 
-import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
-import std.disposition { SingleAuthority }
 
 fn complexity_variables_admits(xs: List<SizeVariable>) -> Bool {
   true
@@ -271,5 +269,5 @@ fn complexity_bound_dominates(a: ComplexityBound, b: ComplexityBound) -> Bool {
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding { dissolves_to: SingleAuthority }
+  class: RatchetForever
 }
