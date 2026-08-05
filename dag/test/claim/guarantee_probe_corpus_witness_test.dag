@@ -128,6 +128,19 @@ data call_shape_green_source: String = "module probe_call_green\nfn sub(a: Int, 
 
 data call_duplicate_red_source: String = "module probe_call_duplicate\nfn two(a: Int, b: Int) -> Int { a + b }\nfn f() -> Int { two(a: 1, a: 2) }\n"
 
+// cursor review 48724: the runtime authority (v1_interpreter.rs call_function_inner)
+// binds `bindings` by resolved parameter symbol regardless of whether the caller wrote
+// the argument positionally or by label, so `one(1, a: 2)` against `fn one(a: Int)`
+// refuses at runtime (the positional bind of `a` then the named `a: 2` collide on the
+// same key). Before the fix, the compile-seam duplicate check compared caller labels
+// only among earlier NAMED actuals (`Absent => false` for positional predecessors), so
+// this exact program compiled clean and reached emit while interpretation refused it —
+// a compile/runtime disagreement on the seam this wall exists to unify. This fixture is
+// deliberately single-parameter and mixed positional-then-named, discriminating from
+// call_duplicate_red_source (both actuals named) so a fix that only widens named-named
+// matching would still leave this red.
+data call_duplicate_mixed_red_source: String = "module probe_call_duplicate_mixed\nfn one(a: Int) -> Int { a }\nfn f() -> Int { one(1, a: 2) }\n"
+
 data call_duplicate_green_source: String = "module probe_call_duplicate_green\nfn two(a: Int, b: Int) -> Int { a + b }\nfn ignore_ctx(_ctx: Int, b: Int) -> Int { b }\nfn distinct() -> Int { two(a: 1, b: 2) }\nfn reordered() -> Int { two(b: 2, a: 1) }\nfn positional() -> Int { two(1, 2) }\nfn underscore_idiom() -> Int { ignore_ctx(ctx: 1, b: 2) }\n"
 
 data method_missing_source: String = "module probe_method_red\nfn f(xs: List<Int>) -> List<Int> { xs |> filter_map(x => x) }\nfn g(xs: List<Int>) -> Bool { xs |> starts_with(\"x\") }\nfn h(xs: List<Int>) -> String { xs |> to_upper() }\n"
@@ -193,6 +206,14 @@ test fn call_duplicate_red_refuses_blocking_call_argument_duplicate() -> Bool {
           Present { value: n } => n >= 1
           Absent => false
         }
+    Absent => false
+  }
+}
+
+test fn call_duplicate_mixed_positional_named_red_refuses_blocking_call_argument_duplicate() -> Bool {
+  let census = census_of(source: call_duplicate_mixed_red_source)
+  match census_blocking_count_for_class(census: census, wanted: "CallArgumentDuplicate") {
+    Present { value: n } => n >= 1
     Absent => false
   }
 }
