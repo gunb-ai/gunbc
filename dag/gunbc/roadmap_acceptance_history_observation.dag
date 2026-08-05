@@ -25,7 +25,7 @@ import gunbc.roadmap_model {
   AcceptanceHistoryIntegrityRefusedPriorHistoryObservation,
   acceptance_history_integrity_verdict,
 }
-import std.content_hash { content_hash_atom, content_hash_eq_structural }
+import std.content_hash { content_hash_atom, content_hash_eq_structural, Fnv1a64Structural }
 import std.types { CommitSha, GitRef, Int, String }
 import v2.std.collection { List }
 
@@ -205,4 +205,20 @@ fn acceptance_history_integrity_holds_from_prior_observation_with_prior(
     AcceptanceHistoryIntegrityRefusedPriorPrefix { index: _ } => false
     AcceptanceHistoryIntegrityRefusedPriorHistoryObservation { detail: _ } => false
   }
+}
+
+data roadmap_acceptance_history_observation_bootstrap_compat_note: String = "SCAFFOLD (carrier-introduction window only): merge-base authority overlay still imports the sealed-prefix observation entry points deleted on HEAD. Bootstrap projection compiles that overlay against HEAD's transitive closure solely to evaluate roadmap_acceptance_event_history(); these compat rows satisfy the import surface and ignore sealed_event_count/sealed_chain_digest — prefix law is enforced by acceptance_history_integrity_verdict on observed prior, not the retired seal columns. Dissolve-on: modeled revision-addressed carrier ingest deletes the projection seed and these compat rows together."
+
+fn acceptance_history_integrity_holds_from_prior_observation(
+  observation: RoadmapAcceptanceHistoryPriorObservation,
+  history: List<RoadmapAcceptanceEvent>,
+  sealed_event_count: Int,
+  sealed_chain_digest: Fnv1a64Structural,
+) -> Bool {
+  let _ = sealed_event_count
+  let _ = sealed_chain_digest
+  acceptance_history_integrity_holds_from_prior_observation_with_prior(
+    observation: observation,
+    history: history,
+  )
 }

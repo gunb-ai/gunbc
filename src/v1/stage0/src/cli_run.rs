@@ -321,9 +321,9 @@ pub fn project_roadmap_acceptance_event_history_from_authority_text(
         workspace.join("dag").to_string_lossy().into_owned(),
         workspace.join("src/v2").to_string_lossy().into_owned(),
     ];
-    let entry_file = "dag/gunbc/roadmap_authority.dag";
+    let entry_file = overlay_path.to_string_lossy().into_owned();
     let index = build_multi_entry_index_primary_precedence(&source_roots);
-    let sources = match load_sources_for_entry_with_pool(&index, entry_file) {
+    let sources = match load_sources_for_entry_with_pool(&index, &entry_file) {
         Ok(sources) => sources,
         Err(detail) => {
             return RoadmapAcceptanceHistoryProjection::Refused { detail };
@@ -333,7 +333,7 @@ pub fn project_roadmap_acceptance_event_history_from_authority_text(
         &index,
         sources,
         ResolveTypecheckGate::Strict,
-        entry_file,
+        &entry_file,
         ResolvedGraphMemoShare::Ephemeral,
     ) {
         Ok(parts) => parts,
@@ -456,6 +456,70 @@ path = "src/bin/claim_batch.rs"
                 authored_relative_paths: vec!["../../outside.rs".to_string()],
             }
         );
+    }
+}
+
+#[cfg(test)]
+mod roadmap_acceptance_history_projection_tests {
+    use super::{
+        project_roadmap_acceptance_event_history_from_authority_text,
+        roadmap_acceptance_history_carrier::{
+            parse_roadmap_acceptance_event_history_jsonl, RoadmapAcceptanceEventHistoryParse,
+        },
+        RoadmapAcceptanceHistoryProjection,
+    };
+    use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
+    use crate::v1_compiler_infer_items::ResolvedGraph;
+    use crate::v1_interpreter::{ExecutionMode, InterpContext};
+    use im::HashMap;
+    use std::rc::Rc;
+
+    fn empty_ctx() -> InterpContext {
+        let graph = ResolvedGraph {
+            modules: Rc::new(im::Vector::new()),
+            item_registry: Rc::new(HashMap::new()),
+            diagnostics: Rc::new(im::Vector::new()),
+            emit_graph_info: empty_emit_graph_info(),
+        };
+        InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic)
+    }
+
+    #[test]
+    fn merge_base_authority_projection_matches_jsonl_carrier() {
+        let authority = std::process::Command::new("git")
+            .args(["show", "9ce6526c528:dag/gunbc/roadmap_authority.dag"])
+            .output()
+            .expect("git show merge-base authority");
+        assert!(
+            authority.status.success(),
+            "git show failed: {}",
+            String::from_utf8_lossy(&authority.stderr)
+        );
+        let authority = String::from_utf8(authority.stdout).expect("utf8 authority");
+        let jsonl = std::fs::read_to_string(
+            super::workspace_root().join("dag/gunbc/roadmap_acceptance_event_history.jsonl"),
+        )
+            .expect("jsonl carrier");
+        let projected = project_roadmap_acceptance_event_history_from_authority_text(&authority);
+        let RoadmapAcceptanceHistoryProjection::Projected { events: prior } = projected else {
+            panic!("projection refused: {projected:?}");
+        };
+        let ctx = empty_ctx();
+        let RoadmapAcceptanceEventHistoryParse::Parsed { events: current } =
+            parse_roadmap_acceptance_event_history_jsonl(&jsonl, &ctx)
+        else {
+            panic!("jsonl parse refused");
+        };
+        assert_eq!(
+            prior.len(),
+            current.len(),
+            "event count prior={} current={}",
+            prior.len(),
+            current.len()
+        );
+        for (i, (a, b)) in prior.iter().zip(current.iter()).enumerate() {
+            assert_eq!(a, b, "event mismatch at index {i}: {a:?} vs {b:?}");
+        }
     }
 }
 
@@ -1391,6 +1455,16 @@ fn build_module_path_index_uncached(source_roots: &[String]) -> HashMap<String, 
         if manifest_stub_superseded_by_overlay(&rel, source_roots, root_idx) {
             return;
         }
+        if let Some(existing) = index.get(&binding.module_path) {
+            if existing == &rel || same_canonical_file(existing, &rel) {
+                return;
+            }
+            if root_idx > 0 {
+                // Primary-precedence multi-root: root[0] owns overlapping module paths;
+                // later roots contribute only absent modules (build_module_index_primary_precedence).
+                return;
+            }
+        }
         insert_module_path(&mut index, &binding.module_path, rel);
     });
     index
@@ -1472,6 +1546,9 @@ fn collect_module_binding_manifest_rows(source_roots: &[String]) -> Vec<ModuleBi
         }
         if let Some(existing) = rows_by_module.get(&binding.module_path) {
             if existing.rel_path != rel && !same_canonical_file(&existing.rel_path, &rel) {
+                if root_idx > 0 {
+                    return;
+                }
                 panic!(
                     "{}",
                     module_path_collision_panic_message(
@@ -2251,6 +2328,9 @@ fn build_module_index(source_roots: &[String]) -> ModuleSourceIndex {
                 if let Some(existing) = index.get(&module_path) {
                     if existing.path != rel_path && !same_canonical_file(&existing.path, &rel_path)
                     {
+                        if root_idx > 0 {
+                            continue;
+                        }
                         panic!(
                             "{}",
                             module_path_collision_panic_message(
@@ -2260,6 +2340,7 @@ fn build_module_index(source_roots: &[String]) -> ModuleSourceIndex {
                             )
                         );
                     }
+                    continue;
                 }
                 index.insert(
                     module_path,

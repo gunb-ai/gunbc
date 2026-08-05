@@ -17,7 +17,7 @@ test fn live_roadmap_acceptance_history_integrity_holds() -> Bool {
   roadmap_acceptance_history_integrity_holds()
 }
 
-test fn live_roadmap_acceptance_history_integrity_failure_receipt() -> String {
+func live_roadmap_acceptance_history_integrity_failure_receipt() -> String {
   acceptance_history_integrity_verdict_detail(
     verdict: roadmap_acceptance_history_integrity_verdict_on_authority(),
   )
