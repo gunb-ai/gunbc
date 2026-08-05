@@ -35,7 +35,7 @@ type NativeFleetSettle
   = EnrollmentLandedFleetRateOpen {}
 
 type WarmHitSettle
-  = PartiallyDeliveredSkipProofOpen {}
+  = ClosedSkipProofLanded {}
 
 type RetentionSettle
   = ClosedReject {}
@@ -170,7 +170,7 @@ fn native_fleet_settle() -> NativeFleetSettle {
 }
 
 fn warm_hit_settle() -> WarmHitSettle {
-  PartiallyDeliveredSkipProofOpen {}
+  ClosedSkipProofLanded {}
 }
 
 fn retention_settle() -> RetentionSettle {

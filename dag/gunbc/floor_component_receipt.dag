@@ -73,10 +73,41 @@ data floor_component_receipt_path: String = "target/floor-component-receipt.json
 
 data floor_component_receipt_artifact_name: String = "floor-component-receipt"
 
+data floor_component_failure_mode_edge_note: String = "WHY THE MODE RIDES BESIDE THE OUTCOME INSTEAD OF BEING RECOVERED FROM IT. floor_component_outcome_of_failure_mode is deliberately many-to-one: Infra and WitnessRed BOTH map to Failed, because both are a component that broke and ObservationOutcome is the right grain for the observation record. But they are not the same fault and they do not route to the same place — Infra is the fleet's (a runner died, a toolchain went missing), WitnessRed is the witness owner's (a claim is genuinely false). A consumer holding only the Failed arm cannot tell them apart, so it either routes both to one owner or re-derives the class by sniffing the diagnostic prose, which is the string-classification this module already refuses at the seed boundary. The mode therefore rides ON THE ROW, at row grain, and std.observation is NOT widened: ObservationOutcome stays the canonical record of WHAT the transition was, and the mode records WHICH declared failure vocabulary produced it. The two are derived from ONE tag in one place (floor_component_row_of_failure_mode), so they cannot disagree — a row whose mode says Infra while its outcome says Done is not constructible through the seed path. ModeUnrecorded is the honest arm for the tag-built constructor, which is handed an outcome directly and genuinely never saw a mode; the seed path never produces it."
+
+type FloorComponentFailureMode
+  = ModeNoFailure
+  | ModeBudgetExceeded
+  | ModeInfra
+  | ModeWitnessRed
+  | ModeNotReached
+  | ModeUnrecorded
+
+fn floor_component_failure_mode_of(mode: NonEmptyStr) -> FloorComponentFailureMode? {
+  if (mode as String) == "none" { Present { value: ModeNoFailure } }
+  else if (mode as String) == "BudgetExceeded" { Present { value: ModeBudgetExceeded } }
+  else if (mode as String) == "Infra" { Present { value: ModeInfra } }
+  else if (mode as String) == "WitnessRed" { Present { value: ModeWitnessRed } }
+  else if (mode as String) == "not_reached" { Present { value: ModeNotReached } }
+  else { none }
+}
+
+fn floor_component_failure_mode_tag(m: FloorComponentFailureMode) -> String {
+  match m {
+    ModeNoFailure => "none"
+    ModeBudgetExceeded => "BudgetExceeded"
+    ModeInfra => "Infra"
+    ModeWitnessRed => "WitnessRed"
+    ModeNotReached => "not_reached"
+    ModeUnrecorded => "unrecorded"
+  }
+}
+
 type FloorComponentRow {
   event: ObservationEvent
   selection: NodeFrontierSelection
   witnesses: Nat
+  failure_mode: FloorComponentFailureMode
 }
 
 type FloorControlState
@@ -128,13 +159,24 @@ fn floor_component_outcome_of_tag(
 
 data floor_component_failure_mode_note: String = "The seed's failure-mode vocabulary (claim_executor falsifier_failure_mode: BudgetExceeded | Infra | WitnessRed, plus the no-failures case) mapped onto ObservationOutcome HERE rather than in Rust, so the classification sits under a witness and the seed transport carries no judgment of its own. BudgetExceeded becomes Refused, not Failed: a kill at a declared ceiling is the deliberate, located stop observation_refused_distinct_note defines Refused to mean, and its remedy (re-basis the dated ceiling, or fix the row's cost) differs from a broken witness's. UNKNOWN MODE REFUSES. The first version of this mapping lived in the seed with a `_ => failed` catch-all, which would have absorbed a newly added mode into `failed` silently — a widen with no diagnostic, exactly the absorbing fallback DESIGN section 5 forbids. Here an unmodelled mode returns absent, the row cannot be built, and the walk fails closed with the mode named."
 
+data floor_component_outcome_of_mode_single_authority_note: String = "ONE tag table, not two. An earlier revision of the failure-mode edge parsed the seed's tag twice — once to a FloorComponentFailureMode and once, separately, to an ObservationOutcome — so the tag vocabulary was written out in two parallel string tables that had to be edited together (caught by review 48341 on gunbc#7827, non-blocking; fixed here rather than left, because two representations of one vocabulary is the second-representation DESIGN 3 forbids and the fact that today's only caller invokes them back-to-back makes the drift local, not impossible). The outcome is now derived FROM THE MODE rather than from the tag, so the tag appears exactly once (floor_component_failure_mode_of) and the mode-to-outcome collapse appears exactly once here. A newly added mode is a compile error in this match instead of a silently unmapped string, which is the construction form of the fail-closed property the note above states. ModeUnrecorded REFUSES rather than being given an outcome: it is not a failure mode at all, it is the absence of a recorded one, so inventing an outcome for it would be the fabricated-plausible-output DESIGN 5 forbids. It is unreachable from the tag path by construction — floor_component_failure_mode_of never returns it — so the refusal is a total-match obligation, not a live arm."
+
+fn floor_component_outcome_of_mode(m: FloorComponentFailureMode, detail: NonEmptyStr) -> ObservationOutcome? {
+  match m {
+    ModeNoFailure => Present { value: Done }
+    ModeBudgetExceeded => Present { value: Refused { diagnostic: detail } }
+    ModeInfra => Present { value: Failed { error: detail, output: "" } }
+    ModeWitnessRed => Present { value: Failed { error: detail, output: "" } }
+    ModeNotReached => Present { value: Skipped { reason: detail } }
+    ModeUnrecorded => none
+  }
+}
+
 fn floor_component_outcome_of_failure_mode(mode: NonEmptyStr, detail: NonEmptyStr) -> ObservationOutcome? {
-  if (mode as String) == "none" { Present { value: Done } }
-  else if (mode as String) == "BudgetExceeded" { Present { value: Refused { diagnostic: detail } } }
-  else if (mode as String) == "Infra" { Present { value: Failed { error: detail, output: "" } } }
-  else if (mode as String) == "WitnessRed" { Present { value: Failed { error: detail, output: "" } } }
-  else if (mode as String) == "not_reached" { Present { value: Skipped { reason: detail } } }
-  else { none }
+  match floor_component_failure_mode_of(mode: mode) {
+    Absent => none
+    Present { value: m } => floor_component_outcome_of_mode(m: m, detail: detail)
+  }
 }
 
 fn floor_component_outcome_tag(o: ObservationOutcome) -> String {
@@ -180,7 +222,8 @@ fn floor_component_row_of(
   selection: NodeFrontierSelection,
   witnesses: Nat,
   outcome: ObservationOutcome,
-  wall: Millisecond
+  wall: Millisecond,
+  failure_mode: FloorComponentFailureMode
 ) -> FloorComponentRow {
   FloorComponentRow {
     event: ObservationEvent {
@@ -190,7 +233,8 @@ fn floor_component_row_of(
       rss: MeasuredUnavailable { cause: "per-component RSS not sampled by the floor walk" as NonEmptyStr }
     },
     selection: selection,
-    witnesses: witnesses
+    witnesses: witnesses,
+    failure_mode: failure_mode
   }
 }
 
@@ -226,7 +270,8 @@ fn floor_component_row(
             selection: sel,
             witnesses: witnesses,
             outcome: outcome,
-            wall: wall
+            wall: wall,
+            failure_mode: ModeUnrecorded
           )
         }
       }
@@ -246,19 +291,24 @@ fn floor_component_row_of_failure_mode(
   match floor_component_selection_of_tag(tag: selection_tag) {
     Absent => none
     Present { value: sel } =>
-      match floor_component_outcome_of_failure_mode(mode: failure_mode, detail: detail) {
+      match floor_component_failure_mode_of(mode: failure_mode) {
         Absent => none
-        Present { value: outcome } => Present {
-          value: floor_component_row_of(
-            run_id: run_id,
-            index: index,
-            label: label,
-            selection: sel,
-            witnesses: witnesses,
-            outcome: outcome,
-            wall: wall
-          )
-        }
+        Present { value: mode } =>
+          match floor_component_outcome_of_mode(m: mode, detail: detail) {
+            Absent => none
+            Present { value: outcome } => Present {
+              value: floor_component_row_of(
+                run_id: run_id,
+                index: index,
+                label: label,
+                selection: sel,
+                witnesses: witnesses,
+                outcome: outcome,
+                wall: wall,
+                failure_mode: mode
+              )
+            }
+          }
       }
   }
 }
@@ -322,7 +372,8 @@ fn floor_component_row_json(row: FloorComponentRow) -> JsonValue {
       json_kv(key: "index", value: json_int(n: floor_component_row_index(row: row))),
       json_kv(key: "label", value: json_string(s: floor_component_row_label(row: row))),
       json_kv(key: "selection", value: json_string(s: floor_component_selection_tag(s: row.selection))),
-      json_kv(key: "outcome", value: json_string(s: "not_concluded"))
+      json_kv(key: "outcome", value: json_string(s: "not_concluded")),
+      json_kv(key: "failure_mode", value: json_string(s: floor_component_failure_mode_tag(m: row.failure_mode)))
     ])
     Present { value: o } => json_object(members: concat(
       [
@@ -331,6 +382,7 @@ fn floor_component_row_json(row: FloorComponentRow) -> JsonValue {
         json_kv(key: "selection", value: json_string(s: floor_component_selection_tag(s: row.selection))),
         json_kv(key: "witnesses", value: json_int(n: row.witnesses)),
         json_kv(key: "outcome", value: json_string(s: floor_component_outcome_tag(o: o))),
+        json_kv(key: "failure_mode", value: json_string(s: floor_component_failure_mode_tag(m: row.failure_mode))),
         json_kv(key: "is_affected_set_cold_control", value: json_bool(
           b: node_frontier_selection_eq(left: row.selection, right: SelectionPredictOnly)
         ))
