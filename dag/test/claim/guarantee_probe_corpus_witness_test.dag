@@ -16,6 +16,8 @@ import gunbc.guarantee_probe_corpus {
   call_mislabel_red_probe,
   call_surplus_red_probe,
   call_shape_green_probe,
+  call_duplicate_red_probe,
+  call_duplicate_green_probe,
   method_missing_red_probe,
   method_green_probe,
   conformance_scalar_red_probe,
@@ -124,6 +126,12 @@ data call_surplus_source: String = "module probe_call_surplus\nfn two(a: Int, b:
 
 data call_shape_green_source: String = "module probe_call_green\nfn sub(a: Int, b: Int) -> Int { a - b }\nfn ignore_ctx(_ctx: Int, b: Int) -> Int { b }\nfn named() -> Int { sub(a: 10, b: 3) }\nfn positional() -> Int { sub(10, 3) }\nfn underscore_idiom() -> Int { ignore_ctx(ctx: 1, b: 2) }\n"
 
+data call_duplicate_red_source: String = "module probe_call_duplicate\nfn two(a: Int, b: Int) -> Int { a + b }\nfn f() -> Int { two(a: 1, a: 2) }\n"
+
+data call_duplicate_mixed_red_source: String = "module probe_call_duplicate_mixed\nfn one(a: Int) -> Int { a }\nfn f() -> Int { one(1, a: 2) }\n"
+
+data call_duplicate_green_source: String = "module probe_call_duplicate_green\nfn two(a: Int, b: Int) -> Int { a + b }\nfn ignore_ctx(_ctx: Int, b: Int) -> Int { b }\nfn distinct() -> Int { two(a: 1, b: 2) }\nfn reordered() -> Int { two(b: 2, a: 1) }\nfn positional() -> Int { two(1, 2) }\nfn underscore_idiom() -> Int { ignore_ctx(ctx: 1, b: 2) }\n"
+
 data method_missing_source: String = "module probe_method_red\nfn f(xs: List<Int>) -> List<Int> { xs |> filter_map(x => x) }\nfn g(xs: List<Int>) -> Bool { xs |> starts_with(\"x\") }\nfn h(xs: List<Int>) -> String { xs |> to_upper() }\n"
 
 data method_green_source: String = "module probe_method_green\nfn p(xs: List<Int>) -> List<Int> { xs |> filter(x => x > 1) |> map(x => x + 1) }\nfn q(xs: List<Int>) -> Int { xs |> fold(0, (a, x) => a + x) }\nfn r(s: String) -> Int { s |> count }\n"
@@ -174,6 +182,54 @@ test fn call_shape_green_control_has_zero_diagnostics() -> Bool {
   match active_probe_row(probe: call_shape_green_probe) {
     Present { value: row } =>
       probe_row_expectation_holds(census: census_of(source: call_shape_green_source), row: row)
+    Absent => false
+  }
+}
+
+test fn call_duplicate_red_refuses_blocking_call_argument_duplicate() -> Bool {
+  let census = census_of(source: call_duplicate_red_source)
+  match active_probe_row(probe: call_duplicate_red_probe) {
+    Present { value: row } =>
+      probe_row_expectation_holds(census: census, row: row)
+        && match census_blocking_count_for_class(census: census, wanted: "CallArgumentDuplicate") {
+          Present { value: n } => n >= 1
+          Absent => false
+        }
+    Absent => false
+  }
+}
+
+test fn call_duplicate_mixed_positional_named_red_refuses_blocking_call_argument_duplicate() -> Bool {
+  let census = census_of(source: call_duplicate_mixed_red_source)
+  match census_blocking_count_for_class(census: census, wanted: "CallArgumentDuplicate") {
+    Present { value: n } => n >= 1
+    Absent => false
+  }
+}
+
+test fn call_duplicate_green_control_has_zero_diagnostics() -> Bool {
+  match active_probe_row(probe: call_duplicate_green_probe) {
+    Present { value: row } =>
+      probe_row_expectation_holds(census: census_of(source: call_duplicate_green_source), row: row)
+    Absent => false
+  }
+}
+
+test fn call_duplicate_red_does_not_satisfy_mislabel_or_surplus_expectation() -> Bool {
+  let census = census_of(source: call_duplicate_red_source)
+  match active_probe_row(probe: call_duplicate_red_probe) {
+    Present { value: dup_row } =>
+      match active_probe_row(probe: call_mislabel_red_probe) {
+        Present { value: mislabel_row } =>
+          match active_probe_row(probe: call_surplus_red_probe) {
+            Present { value: surplus_row } =>
+              probe_row_expectation_holds(census: census, row: dup_row)
+                && !probe_row_expectation_holds(census: census, row: mislabel_row)
+                && !probe_row_expectation_holds(census: census, row: surplus_row)
+            Absent => false
+          }
+        Absent => false
+      }
     Absent => false
   }
 }
@@ -504,7 +560,7 @@ test fn canonical_probe_resolution_refuses_duplicate_population() -> Bool {
 
 test fn dark_suite_dispositions_cover_migrated_v1_probes() -> Bool {
   let dispositions = guarantee_probe_dark_suite_dispositions()
-  count(dispositions) == 3
+  count(dispositions) == 4
     && fold_list(
       xs: dispositions,
       empty: 0,
@@ -520,7 +576,7 @@ test fn dark_suite_dispositions_cover_migrated_v1_probes() -> Bool {
           }
         }
       },
-    ) == 7
+    ) == 9
 }
 
 test fn v2_frontier_identities_are_declared() -> Bool {
