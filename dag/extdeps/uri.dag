@@ -2,7 +2,6 @@ module extdeps.uri
 
 import std.types { NonEmptyStr }
 import std.unicode.types {
-  unicode_scalar,
   unicode_scalar_max_code_point,
   unicode_surrogate_first_code_point,
   unicode_surrogate_last_code_point,
