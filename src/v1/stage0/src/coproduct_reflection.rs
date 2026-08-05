@@ -1157,14 +1157,16 @@ fn marshal_decl_fact_node(
         ItemKind::FnItem | ItemKind::FuncItem => {
             Ok(fn_arrow_output_skeleton(ctx, si, item).unwrap_or_else(|| unit_type_node(ctx)))
         }
-        ItemKind::DataItem => crate::data_initializer_identity::marshal_data_initializer_projection(
-            ctx,
-            item,
-            qualified_name,
-            &authored_name_at(si.clone(), item.clone()),
-            catalog,
-            si,
-        ),
+        ItemKind::DataItem => {
+            crate::data_initializer_identity::marshal_data_initializer_projection(
+                ctx,
+                item,
+                qualified_name,
+                &authored_name_at(si.clone(), item.clone()),
+                catalog,
+                si,
+            )
+        }
         _ => Ok(unit_type_node(ctx)),
     }
 }
@@ -1264,12 +1266,12 @@ pub fn eval_decl_facts(ctx: &InterpContext, pool_roots: &[String]) -> InterpResu
             &catalog,
             &fact.qualified_name,
         )
-            .map_err(|e| InterpError::TypeError {
-                msg: format!(
-                    "decl_facts: failed to marshal `{}` ({:?}) in `{}`: {e}",
-                    fact.qualified_name, fact.kind, fact.rel_path
-                ),
-            })?;
+        .map_err(|e| InterpError::TypeError {
+            msg: format!(
+                "decl_facts: failed to marshal `{}` ({:?}) in `{}`: {e}",
+                fact.qualified_name, fact.kind, fact.rel_path
+            ),
+        })?;
         rows.push(Value::Record {
             type_name: ctx.sym("DeclFact"),
             fields: Rc::new(sorted_fields(vec![

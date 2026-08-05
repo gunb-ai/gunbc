@@ -102,6 +102,16 @@ fn decl_facts_reflection_resolved_nullary_variant_name(qn: String) -> Optional<S
   }
 }
 
+fn decl_facts_reflection_projection_variant_label_optional(node: Node) -> Optional<String> {
+  if value_projection_is_resolved_variant(node: node) {
+    resolved_variant_name_optional(node: node)
+  } else if data_initializer_is_record_projection(node: node) {
+    record_constructor_variant_name_optional(record: node)
+  } else {
+    optional_absent()
+  }
+}
+
 fn decl_facts_reflection_decl_field_variant_name(qn: String) -> Optional<String> {
   match decl_facts_reflection_field_projection(qn: qn, field: "bind") {
     Present { value: bind_projection } =>
@@ -110,19 +120,7 @@ fn decl_facts_reflection_decl_field_variant_name(qn: String) -> Optional<String>
           if kind == "DataInitializerPlainRecordProjection" {
             match record_field_projection_optional(record: bind_projection, label: "field") {
               Present { value: field_projection } =>
-                if value_projection_is_resolved_variant(node: field_projection) {
-                  resolved_variant_name_optional(node: field_projection)
-                } else {
-                  match projection_kind_lexeme_optional(node: field_projection) {
-                    Present { value: nested_kind } =>
-                      if nested_kind == "DataInitializerRecordProjection" {
-                        record_constructor_variant_name_optional(record: field_projection)
-                      } else {
-                        optional_absent()
-                      }
-                    Absent => optional_absent()
-                  }
-                }
+                decl_facts_reflection_projection_variant_label_optional(node: field_projection)
               Absent => optional_absent()
             }
           } else {

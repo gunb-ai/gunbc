@@ -7,11 +7,12 @@ use std::rc::Rc;
 use crate::cli_run::{build_module_path_index, workspace_root};
 use crate::module_path_index::parsed_dag_file::parse_dag_file;
 use crate::v1_compiler_infer_items::{item_kind, ItemKind};
-use crate::v1_interpreter::{InterpContext, InterpError, InterpResult, Value, sorted_fields};
+use crate::v1_compiler_infer_types::normalize_access_type_node;
+use crate::v1_interpreter::{sorted_fields, InterpContext, InterpError, InterpResult, Value};
 use crate::v1_std_core::{
     authored_name_at, expr_var_name_at, field_init_node_name_at, field_init_node_value,
     find_child_named, has_child_named, module_imports, param_node_type_expr,
-    record_lit_type_name_at, Connective, ExprData, NewlineIndex, Node,
+    record_lit_type_name_at, Connective, ExprData, InferredNode, NewlineIndex, Node,
 };
 
 type SourceIndices = Rc<HashMap<String, Rc<NewlineIndex>>>;
@@ -128,14 +129,14 @@ impl CorpusTypeCatalog {
         &self,
         qualified_name: &str,
     ) -> Option<ResolvedDeclarationIdentity> {
-        self.types_by_qualified.get(qualified_name).map(|e| {
-            ResolvedDeclarationIdentity {
+        self.types_by_qualified
+            .get(qualified_name)
+            .map(|e| ResolvedDeclarationIdentity {
                 qualified_name: e.qualified_name.clone(),
                 name: e.name.clone(),
                 module_path: e.module_path.clone(),
                 rel_path: e.rel_path.clone(),
-            }
-        })
+            })
     }
 
     fn resolve_type_name(
@@ -226,14 +227,26 @@ impl CorpusTypeCatalog {
     ) -> Result<String, TypeResolutionFailure> {
         for child in product.children.iter() {
             let fname = authored_name_at(entry.source_indices.clone(), child.clone());
-            if fname == field_name {
-                let ty = param_node_type_expr(child.clone());
-                let ty_name = authored_name_at(entry.source_indices.clone(), ty);
-                if ty_name.is_empty() {
-                    return Err(TypeResolutionFailure::Missing);
-                }
-                return Ok(ty_name);
+            if fname != field_name {
+                continue;
             }
+            if let Some(inferred) = child.inferred.as_ref() {
+                if let InferredNode::Resolved { node: ft, .. } = inferred.as_ref() {
+                    let ty_name = authored_name_at(
+                        entry.source_indices.clone(),
+                        normalize_access_type_node(ft.clone()),
+                    );
+                    if !ty_name.is_empty() {
+                        return Ok(ty_name);
+                    }
+                }
+            }
+            let ty = param_node_type_expr(child.clone());
+            let ty_name = authored_name_at(entry.source_indices.clone(), ty);
+            if ty_name.is_empty() {
+                return Err(TypeResolutionFailure::Missing);
+            }
+            return Ok(ty_name);
         }
         Err(TypeResolutionFailure::Missing)
     }
@@ -243,8 +256,7 @@ impl CorpusTypeCatalog {
         importing_module: &str,
         declared_type_bare: &str,
         variant_name: &str,
-    ) -> Result<(ResolvedDeclarationIdentity, ResolvedVariantIdentity), TypeResolutionFailure>
-    {
+    ) -> Result<(ResolvedDeclarationIdentity, ResolvedVariantIdentity), TypeResolutionFailure> {
         let parent_qn = self.resolve_type_name(declared_type_bare, importing_module)?;
         let parent_id = self
             .declaration_identity_for_type(&parent_qn)
@@ -404,11 +416,7 @@ fn projection_edge_named(ctx: &InterpContext, name: &str, target: Value) -> Valu
     }
 }
 
-fn projection_node_record(
-    ctx: &InterpContext,
-    projection_kind: &str,
-    edges: Vec<Value>,
-) -> Value {
+fn projection_node_record(ctx: &InterpContext, projection_kind: &str, edges: Vec<Value>) -> Value {
     Value::Record {
         type_name: ctx.sym("Node"),
         fields: Rc::new(sorted_fields(vec![
@@ -458,15 +466,30 @@ fn projection_node_with_named_edges(
     projection_node_record(ctx, projection_kind, children)
 }
 
-fn marshal_declaration_identity_node(ctx: &InterpContext, id: &ResolvedDeclarationIdentity) -> Value {
+fn marshal_declaration_identity_node(
+    ctx: &InterpContext,
+    id: &ResolvedDeclarationIdentity,
+) -> Value {
     projection_node_with_named_edges(
         ctx,
         "DeclarationIdentityProjection",
         &[
-            ("qualified_name".to_string(), projection_atom_identity_node(ctx, &id.qualified_name)),
-            ("name".to_string(), projection_atom_identity_node(ctx, &id.name)),
-            ("module_path".to_string(), projection_atom_identity_node(ctx, &id.module_path)),
-            ("rel_path".to_string(), projection_atom_identity_node(ctx, &id.rel_path)),
+            (
+                "qualified_name".to_string(),
+                projection_atom_identity_node(ctx, &id.qualified_name),
+            ),
+            (
+                "name".to_string(),
+                projection_atom_identity_node(ctx, &id.name),
+            ),
+            (
+                "module_path".to_string(),
+                projection_atom_identity_node(ctx, &id.module_path),
+            ),
+            (
+                "rel_path".to_string(),
+                projection_atom_identity_node(ctx, &id.rel_path),
+            ),
         ],
     )
 }
@@ -497,8 +520,14 @@ fn marshal_constructor_identity_node(
         ctx,
         "DataInitializerConstructorIdentityProjection",
         &[
-            ("parent_type".to_string(), marshal_declaration_identity_node(ctx, parent)),
-            ("constructor".to_string(), marshal_variant_identity_node(ctx, variant)),
+            (
+                "parent_type".to_string(),
+                marshal_declaration_identity_node(ctx, parent),
+            ),
+            (
+                "constructor".to_string(),
+                marshal_variant_identity_node(ctx, variant),
+            ),
         ],
     )
 }
@@ -522,16 +551,12 @@ fn marshal_value_identity_node(
                 ),
             ],
         ),
-        DataInitializerValueResolution::NotVariantValue => projection_node_with_named_edges(
-            ctx,
-            "NotVariantValueProjection",
-            &[],
-        ),
-        DataInitializerValueResolution::Missing => projection_node_with_named_edges(
-            ctx,
-            "VariantValueResolutionMissingProjection",
-            &[],
-        ),
+        DataInitializerValueResolution::NotVariantValue => {
+            projection_node_with_named_edges(ctx, "NotVariantValueProjection", &[])
+        }
+        DataInitializerValueResolution::Missing => {
+            projection_node_with_named_edges(ctx, "VariantValueResolutionMissingProjection", &[])
+        }
         DataInitializerValueResolution::Ambiguous(cands) => {
             let mut edges: Vec<(String, Value)> = Vec::new();
             for (i, c) in cands.iter().enumerate() {
@@ -588,10 +613,9 @@ fn marshal_plain_record_projection(
                 catalog,
                 si,
             )?,
-            Err(_) => marshal_value_identity_node(
-                ctx,
-                &DataInitializerValueResolution::NotVariantValue,
-            ),
+            Err(_) => {
+                marshal_value_identity_node(ctx, &DataInitializerValueResolution::NotVariantValue)
+            }
         };
         edges.push((field_name.clone(), field_projection));
     }
@@ -613,36 +637,37 @@ fn marshal_field_initializer_projection(
 ) -> InterpResult<Value> {
     match field_value.expr_data.as_ref() {
         ExprData::ExprRecordLit { .. } => {
-            let type_bare = record_lit_type_name_at(field_value.clone(), si.clone())
-                .unwrap_or_else(|| expected_field_type.to_string());
-            let parent_qn = catalog
-                .resolve_type_name(importing_module, &type_bare)
-                .map_err(|_| InterpError::TypeError {
-                    msg: format!("nested record type resolution refused for `{type_bare}`"),
-                })?;
-            let entry = catalog.types_by_qualified.get(&parent_qn).ok_or_else(|| {
-                InterpError::TypeError {
-                    msg: format!("nested record catalog entry missing for `{parent_qn}`"),
+            match catalog.resolve_type_name(importing_module, expected_field_type) {
+                Ok(parent_qn) => {
+                    let entry = catalog.types_by_qualified.get(&parent_qn).ok_or_else(|| {
+                        InterpError::TypeError {
+                            msg: format!("nested record catalog entry missing for `{parent_qn}`"),
+                        }
+                    })?;
+                    if entry.item.connective == Connective::Disj {
+                        marshal_record_initializer_projection(
+                            ctx,
+                            field_value,
+                            expected_field_type,
+                            importing_module,
+                            catalog,
+                            si,
+                        )
+                    } else {
+                        marshal_plain_record_projection(
+                            ctx,
+                            field_value,
+                            expected_field_type,
+                            importing_module,
+                            catalog,
+                            si,
+                        )
+                    }
                 }
-            })?;
-            if entry.item.connective == Connective::Disj {
-                marshal_record_initializer_projection(
+                Err(_) => Ok(marshal_value_identity_node(
                     ctx,
-                    field_value,
-                    &type_bare,
-                    importing_module,
-                    catalog,
-                    si,
-                )
-            } else {
-                marshal_plain_record_projection(
-                    ctx,
-                    field_value,
-                    &type_bare,
-                    importing_module,
-                    catalog,
-                    si,
-                )
+                    &DataInitializerValueResolution::NotVariantValue,
+                )),
             }
         }
         _ => {
@@ -666,14 +691,19 @@ fn marshal_record_initializer_projection(
     catalog: &CorpusTypeCatalog,
     si: &SourceIndices,
 ) -> InterpResult<Value> {
-    let variant_name = record_lit_type_name_at(body.clone(), si.clone()).ok_or_else(|| {
-        InterpError::TypeError {
-            msg: "data initializer record missing constructor name".to_string(),
-        }
-    })?;
-    let (parent_id, variant_id) = match catalog
-        .resolve_constructor_identity(importing_module, declared_type_bare, &variant_name)
-    {
+    let variant_name = record_lit_type_name_at(body.clone(), si.clone()).unwrap_or_default();
+    if variant_name.is_empty() {
+        return Ok(projection_node_with_named_edges(
+            ctx,
+            "DataInitializerConstructorResolutionRefusedProjection",
+            &[],
+        ));
+    }
+    let (parent_id, variant_id) = match catalog.resolve_constructor_identity(
+        importing_module,
+        declared_type_bare,
+        &variant_name,
+    ) {
         Ok(ids) => ids,
         Err(_) => {
             return Ok(projection_node_with_named_edges(
@@ -695,12 +725,11 @@ fn marshal_record_initializer_projection(
             continue;
         }
         let field_value = field_init_node_value(child.clone());
-        let field_projection = match catalog
-            .field_type_name_in_variant(
-                &parent_id.qualified_name,
-                &variant_id.variant_name,
-                &field_name,
-            ) {
+        let field_projection = match catalog.field_type_name_in_variant(
+            &parent_id.qualified_name,
+            &variant_id.variant_name,
+            &field_name,
+        ) {
             Ok(expected_field_type) => marshal_field_initializer_projection(
                 ctx,
                 &field_value,
@@ -709,10 +738,9 @@ fn marshal_record_initializer_projection(
                 catalog,
                 si,
             )?,
-            Err(_) => marshal_value_identity_node(
-                ctx,
-                &DataInitializerValueResolution::NotVariantValue,
-            ),
+            Err(_) => {
+                marshal_value_identity_node(ctx, &DataInitializerValueResolution::NotVariantValue)
+            }
         };
         edges.push((field_name.clone(), field_projection));
     }
@@ -732,8 +760,11 @@ fn resolve_expr_value_identity(
     si: &SourceIndices,
 ) -> DataInitializerValueResolution {
     if let Some(var_name) = expr_var_bare_name(node, si) {
-        return catalog
-            .resolve_variant_value_identity(importing_module, expected_type_bare, &var_name);
+        return catalog.resolve_variant_value_identity(
+            importing_module,
+            expected_type_bare,
+            &var_name,
+        );
     }
     if matches!(node.expr_data.as_ref(), ExprData::ExprRecordLit { .. }) {
         return DataInitializerValueResolution::NotVariantValue;
@@ -807,5 +838,28 @@ pub fn marshal_data_initializer_projection(
             ctx,
             &DataInitializerValueResolution::NotVariantValue,
         )),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn scaffold_dissolves_to_field_type_resolves() {
+        let catalog = CorpusTypeCatalog::build_for_pool(&["dag".to_string()]);
+        let got = catalog
+            .field_type_name_in_variant("std.disposition.Disposition", "Scaffold", "dissolves_to")
+            .expect("dissolves_to field type");
+        assert_eq!(got, "ConstructionMechanism");
+    }
+
+    #[test]
+    fn declaration_ref_field_type_resolves() {
+        let catalog = CorpusTypeCatalog::build_for_pool(&["dag".to_string()]);
+        let got = catalog
+            .field_type_name_in_record("std.decl_ref.DeclarationRef", "field")
+            .expect("field type");
+        assert_eq!(got, "DeclField");
     }
 }
