@@ -4189,8 +4189,9 @@ fn write_floor_component_receipt_at(
     base: &std::path::Path,
     source_roots: &[String],
     batch_records: &[BatchRecord],
-    total_batches: usize,
+    batches: &[Vec<Runnable>],
 ) -> bool {
+    let total_batches = batches.len();
     let Some(entry) = source_roots
         .iter()
         .map(|r| Path::new(r).join("gunbc/floor_component_receipt.dag"))
@@ -4233,13 +4234,31 @@ fn write_floor_component_receipt_at(
     }
     // Batches the stop policy never reached are Skipped with their cause — a named
     // state, never an absent row the alert would have to guess about.
+    //
+    // They carry their PLANNED identity, not a placeholder. `batch_heartbeat_label` and
+    // `batch_selection_tag` are pure functions of `batches[bi]`, so the roster identity of
+    // an unreached component is fully available here; the earlier version discarded it and
+    // wrote a literal "not reached" / "off" pair. That made the receipt complete by COUNT
+    // and anonymous by IDENTITY for exactly the components that did not run — the shape
+    // DESIGN §5 rules out ("Completeness is an identity join, not a count equality").
+    //
+    // The erased `selection_tag` was the load-bearing half. The affected-set cold control is
+    // identified by the property that DEFINES it — `predict_only`
+    // (`gunbc.floor_component_receipt` role note) — so padding it as "off" deleted the cold
+    // control from its own receipt: `floor_affected_set_control_state` then returned
+    // `ControlAbsent`, which cannot distinguish "the control was never enrolled" from "the
+    // control was enrolled and an earlier batch stopped the line before it ran". Two states,
+    // two different remedies, one output — a state-space conflation in the receipt whose
+    // whole purpose is to keep component states distinct. With the planned tag carried, that
+    // run instead yields `ControlConcluded` with a `Skipped` outcome, and the alert reports
+    // the control RED with its real cause.
     for bi in batch_records.len()..total_batches {
         match floor_component_row_value(
             &ctx,
             &run_id,
             bi as i64 + 1,
-            "not reached",
-            "off",
+            &batch_heartbeat_label(&batches[bi]),
+            batch_selection_tag(&batches[bi]),
             0,
             "not_reached",
             "batch not reached — an earlier batch failed under the stop policy",
@@ -6467,7 +6486,7 @@ fn run_walk(
             std::path::Path::new("target"),
             source_roots,
             &batch_records,
-            batches.len(),
+            &batches,
         );
     trace_floor_phase("floor-component-receipt", "completed", "");
     // Memo contexts absorb their ledger totals into the process accumulator on
