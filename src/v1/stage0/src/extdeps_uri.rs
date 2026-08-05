@@ -15,7 +15,7 @@ use self::UriUtf8OctetConstruction::*;
 use self::UriValidatedScalarConstruction::*;
 pub use crate::std_types::NonEmptyStr;
 pub use crate::std_unicode_types::{
-    unicode_scalar, unicode_scalar_max_code_point, unicode_surrogate_first_code_point,
+    unicode_scalar_max_code_point, unicode_surrogate_first_code_point,
     unicode_surrogate_last_code_point,
 };
 use crate::v1_rt;
