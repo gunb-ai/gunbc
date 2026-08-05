@@ -201,6 +201,168 @@ fn event_value(event: JsonEvent, ctx: &InterpContext) -> Result<Value, String> {
     })
 }
 
+fn field_value<'a>(
+    value: &'a Value,
+    field: &str,
+    ctx: &InterpContext,
+) -> Result<&'a Value, String> {
+    let sym = ctx.sym(field);
+    match value {
+        Value::Record { fields, .. } | Value::Variant { fields, .. } => fields
+            .iter()
+            .find(|(k, _)| *k == sym)
+            .map(|(_, v)| v)
+            .ok_or_else(|| format!("missing field `{field}`")),
+        other => Err(format!(
+            "expected Record or Variant, got {}",
+            other.type_label_public()
+        )),
+    }
+}
+
+fn field_str(value: &Value, field: &str, ctx: &InterpContext) -> Result<String, String> {
+    match field_value(value, field, ctx)? {
+        Value::Str(s) => Ok(s.clone()),
+        other => Err(format!(
+            "field `{field}` must be String, got {}",
+            other.type_label_public()
+        )),
+    }
+}
+
+fn field_list(value: &Value, field: &str, ctx: &InterpContext) -> Result<Vec<Value>, String> {
+    match field_value(value, field, ctx)? {
+        Value::List(items) => Ok(items.iter().cloned().collect()),
+        other => Err(format!(
+            "field `{field}` must be List, got {}",
+            other.type_label_public()
+        )),
+    }
+}
+
+fn variant_name(value: &Value, ctx: &InterpContext) -> Result<String, String> {
+    match value {
+        Value::Variant { variant_name, .. } => Ok(ctx.resolve(*variant_name)),
+        other => Err(format!(
+            "expected Variant, got {}",
+            other.type_label_public()
+        )),
+    }
+}
+
+fn red_control_to_json(value: &Value, ctx: &InterpContext) -> Result<JsonRedControl, String> {
+    match variant_name(value, ctx)?.as_str() {
+        "RedControlNotRun" => Ok(JsonRedControl::RedControlNotRun),
+        "RedControlExecuted" => Ok(JsonRedControl::RedControlExecuted {
+            witness_module: field_str(value, "witness_module", ctx)?,
+            witness_fn: field_str(value, "witness_fn", ctx)?,
+            executed_on: field_str(value, "executed_on", ctx)?,
+        }),
+        name => Err(format!("unknown RedControlEvidence variant `{name}`")),
+    }
+}
+
+fn handback_to_json(value: &Value, ctx: &InterpContext) -> Result<JsonHandback, String> {
+    match variant_name(value, ctx)?.as_str() {
+        "HandbackNotDelivered" => Ok(JsonHandback::HandbackNotDelivered),
+        "HandbackDelivered" => {
+            let further = field_list(value, "further_artifacts", ctx)?
+                .into_iter()
+                .map(|item| match item {
+                    Value::Str(s) => Ok(s),
+                    other => Err(format!(
+                        "further_artifacts element must be String, got {}",
+                        other.type_label_public()
+                    )),
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(JsonHandback::HandbackDelivered {
+                first_artifact: field_str(value, "first_artifact", ctx)?,
+                further_artifacts: further,
+            })
+        }
+        name => Err(format!("unknown HandbackEvidence variant `{name}`")),
+    }
+}
+
+fn receipt_to_json(value: &Value, ctx: &InterpContext) -> Result<JsonReceipt, String> {
+    let criteria_digest = match field_value(value, "criteria_digest", ctx)? {
+        Value::Record { fields, .. } => {
+            let sym = ctx.sym("digest");
+            fields
+                .iter()
+                .find(|(k, _)| *k == sym)
+                .and_then(|(_, v)| match v {
+                    Value::Str(s) => Some(s.clone()),
+                    _ => None,
+                })
+                .ok_or_else(|| "criteria_digest.digest must be String".to_string())?
+        }
+        other => {
+            return Err(format!(
+                "criteria_digest must be Fnv1a64Structural record, got {}",
+                other.type_label_public()
+            ));
+        }
+    };
+    Ok(JsonReceipt {
+        node: field_str(value, "node", ctx)?,
+        criteria_digest,
+        red_control: red_control_to_json(field_value(value, "red_control", ctx)?, ctx)?,
+        handback: handback_to_json(field_value(value, "handback", ctx)?, ctx)?,
+        accepted_by: field_str(value, "accepted_by", ctx)?,
+        accepted_on: field_str(value, "accepted_on", ctx)?,
+    })
+}
+
+fn event_to_json(value: &Value, ctx: &InterpContext) -> Result<JsonEvent, String> {
+    match variant_name(value, ctx)?.as_str() {
+        "AcceptanceRecorded" => Ok(JsonEvent::AcceptanceRecorded {
+            receipt: receipt_to_json(field_value(value, "receipt", ctx)?, ctx)?,
+        }),
+        "AcceptanceRevoked" => {
+            let disposition =
+                match variant_name(field_value(value, "disposition", ctx)?, ctx)?.as_str() {
+                    "AcceptanceNodeReopensActiveFrontier" => {
+                        JsonAcceptanceRevocationDisposition::AcceptanceNodeReopensActiveFrontier
+                    }
+                    name => {
+                        return Err(format!(
+                            "unknown AcceptanceRevocationDisposition variant `{name}`"
+                        ));
+                    }
+                };
+            Ok(JsonEvent::AcceptanceRevoked {
+                exact_prior_receipt: receipt_to_json(
+                    field_value(value, "exact_prior_receipt", ctx)?,
+                    ctx,
+                )?,
+                disposition,
+                reason: field_str(value, "reason", ctx)?,
+                revoked_by: field_str(value, "revoked_by", ctx)?,
+                revoked_on: field_str(value, "revoked_on", ctx)?,
+            })
+        }
+        name => Err(format!("unknown RoadmapAcceptanceEvent variant `{name}`")),
+    }
+}
+
+/// Serialize interpreted events to the JSONL carrier wire form. Used to remap bootstrap
+/// projection values from an isolated overlay context into the caller's symbol table.
+pub fn serialize_roadmap_acceptance_events_to_jsonl(
+    events: &[Value],
+    ctx: &InterpContext,
+) -> Result<String, String> {
+    let mut lines = Vec::with_capacity(events.len());
+    for (index, event) in events.iter().enumerate() {
+        let json = event_to_json(event, ctx)?;
+        let line = serde_json::to_string(&json)
+            .map_err(|error| format!("event {index}: json encode failed: {error}"))?;
+        lines.push(line);
+    }
+    Ok(lines.join("\n"))
+}
+
 pub fn parse_roadmap_acceptance_event_history_jsonl(
     content: &str,
     ctx: &InterpContext,

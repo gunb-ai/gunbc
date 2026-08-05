@@ -290,6 +290,13 @@ impl Drop for RoadmapAuthorityOverlayGuard {
 pub fn project_roadmap_acceptance_event_history_from_authority_text(
     authority_text: &str,
 ) -> RoadmapAcceptanceHistoryProjection {
+    project_roadmap_acceptance_event_history_from_authority_text_inner(authority_text, None)
+}
+
+fn project_roadmap_acceptance_event_history_from_authority_text_inner(
+    authority_text: &str,
+    remap_ctx: Option<&v1_interpreter::InterpContext>,
+) -> RoadmapAcceptanceHistoryProjection {
     let workspace = workspace_root();
     let overlay_seq = ROADMAP_AUTHORITY_OVERLAY_SEQ.fetch_add(1, Ordering::Relaxed);
     let temp_dir = workspace.join("target").join(format!(
@@ -362,9 +369,38 @@ pub fn project_roadmap_acceptance_event_history_from_authority_text(
     let result = v1_interpreter::run_in_context(&ctx, "roadmap_acceptance_event_history", true);
 
     match result {
-        Ok(v1_interpreter::Value::List(events)) => RoadmapAcceptanceHistoryProjection::Projected {
-            events: events.iter().cloned().collect(),
-        },
+        Ok(v1_interpreter::Value::List(events)) => {
+            let mut events: Vec<v1_interpreter::Value> = events.iter().cloned().collect();
+            if let Some(witness_ctx) = remap_ctx {
+                match roadmap_acceptance_history_carrier::serialize_roadmap_acceptance_events_to_jsonl(
+                    &events, &ctx,
+                ) {
+                    Ok(jsonl) => {
+                        match roadmap_acceptance_history_carrier::parse_roadmap_acceptance_event_history_jsonl(
+                            &jsonl,
+                            witness_ctx,
+                        ) {
+                            roadmap_acceptance_history_carrier::RoadmapAcceptanceEventHistoryParse::Parsed {
+                                events: remapped,
+                            } => events = remapped,
+                            roadmap_acceptance_history_carrier::RoadmapAcceptanceEventHistoryParse::Refused {
+                                detail,
+                            } => {
+                                return RoadmapAcceptanceHistoryProjection::Refused {
+                                    detail: format!(
+                                        "bootstrap projection jsonl remap refused: {detail}"
+                                    ),
+                                };
+                            }
+                        }
+                    }
+                    Err(detail) => {
+                        return RoadmapAcceptanceHistoryProjection::Refused { detail };
+                    }
+                }
+            }
+            RoadmapAcceptanceHistoryProjection::Projected { events }
+        }
         Ok(other) => RoadmapAcceptanceHistoryProjection::Refused {
             detail: format!(
                 "roadmap_acceptance_event_history returned {}, expected List",
@@ -385,7 +421,10 @@ pub fn project_roadmap_acceptance_event_history_from_authority_text_builtin(
 
     use v1_interpreter::{list_value, sorted_fields, Value};
 
-    let projected = project_roadmap_acceptance_event_history_from_authority_text(authority_text);
+    let projected = project_roadmap_acceptance_event_history_from_authority_text_inner(
+        authority_text,
+        Some(ctx),
+    );
     Ok(match projected {
         RoadmapAcceptanceHistoryProjection::Projected { events } => Value::Variant {
             type_name: ctx.sym("RoadmapAcceptanceHistoryProjection"),
@@ -464,7 +503,8 @@ mod roadmap_acceptance_history_projection_tests {
     use super::{
         project_roadmap_acceptance_event_history_from_authority_text,
         roadmap_acceptance_history_carrier::{
-            parse_roadmap_acceptance_event_history_jsonl, RoadmapAcceptanceEventHistoryParse,
+            parse_roadmap_acceptance_event_history_jsonl,
+            serialize_roadmap_acceptance_events_to_jsonl, RoadmapAcceptanceEventHistoryParse,
         },
         RoadmapAcceptanceHistoryProjection,
     };
@@ -517,9 +557,14 @@ mod roadmap_acceptance_history_projection_tests {
             prior.len(),
             current.len()
         );
-        for (i, (a, b)) in prior.iter().zip(current.iter()).enumerate() {
-            assert_eq!(a, b, "event mismatch at index {i}: {a:?} vs {b:?}");
-        }
+        let prior_jsonl = serialize_roadmap_acceptance_events_to_jsonl(&prior, &ctx)
+            .expect("serialize projected events");
+        let current_jsonl = serialize_roadmap_acceptance_events_to_jsonl(&current, &ctx)
+            .expect("serialize carrier events");
+        assert_eq!(
+            prior_jsonl, current_jsonl,
+            "jsonl carrier mismatch after projection"
+        );
     }
 }
 
@@ -12848,11 +12893,10 @@ pub fn whole_tree_ancestry_retention_probe(
 /// is why ten consecutive `extdeps_scope_placement_gate_passes` reds reported nothing but
 /// `returned Bool(false)`. A missing companion stays "not declared" either way, so widening
 /// the derivation cannot invent a required hook for a witness that has none.
+/// Delegates suffix derivation to `gunbc.test_module_hygiene.failure_receipt_companion`
+/// (single authority — orphan reachability and claim_executor share the same rule).
 pub fn failure_receipt_companion(function: &str) -> Option<String> {
-    function
-        .strip_suffix("_holds")
-        .or_else(|| function.strip_suffix("_passes"))
-        .map(|base| format!("{base}_failure_receipt"))
+    test_module_hygiene_bridge::failure_receipt_companion_from_authority(function)
 }
 
 /// Run a witness companion that returns `String` divergence detail (Lane B agreement loudness).

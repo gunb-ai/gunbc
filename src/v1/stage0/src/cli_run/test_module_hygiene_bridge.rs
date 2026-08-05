@@ -300,6 +300,46 @@ fn collect_module_surfaces(roots: &[String]) -> Result<Vec<ModuleSurface>, Strin
     Ok(surfaces)
 }
 
+pub(crate) fn failure_receipt_companion_from_authority(function: &str) -> Option<String> {
+    let roots = super::default_source_roots();
+    let ctx = resolve_hygiene_ctx(&roots)
+        .expect("gunbc.test_module_hygiene must resolve for failure_receipt_companion");
+    let args = [(
+        Some("function".to_string()),
+        v1_interpreter::Value::Str(function.to_string()),
+    )];
+    let result =
+        v1_interpreter::run_in_context_with_args(&ctx, "failure_receipt_companion", &args, false)
+            .expect("failure_receipt_companion must be callable");
+    match &result {
+        v1_interpreter::Value::Variant {
+            type_name,
+            variant_name,
+            fields,
+            ..
+        } if ctx.sym_eq(*type_name, "Optional") && ctx.sym_eq(*variant_name, "Present") => {
+            match ctx.field(fields, "value") {
+                Some(v1_interpreter::Value::Str(companion)) => Some(companion.clone()),
+                other => panic!(
+                    "failure_receipt_companion Present value must be String, got {}",
+                    other
+                        .map(|v| ctx.format_value(v))
+                        .unwrap_or_else(|| "<missing>".to_string())
+                ),
+            }
+        }
+        v1_interpreter::Value::Variant {
+            type_name,
+            variant_name,
+            ..
+        } if ctx.sym_eq(*type_name, "Optional") && ctx.sym_eq(*variant_name, "Absent") => None,
+        other => panic!(
+            "failure_receipt_companion returned {}, expected Optional<String>",
+            ctx.format_value(other)
+        ),
+    }
+}
+
 pub(crate) fn check_orphan_helpers_or_err(source_roots: &[String]) -> Result<(), String> {
     let surfaces = collect_module_surfaces(source_roots)?;
     let ctx = resolve_hygiene_ctx(source_roots)?;
@@ -706,6 +746,59 @@ fn plain_only() -> Bool {
             "must refuse empty enumerate: {err}"
         );
         assert!(err.contains(&entry), "must name entry: {err}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn failure_receipt_companion_reachable_from_holds_witness() {
+        let dir = tmp_dir();
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("failure_receipt_companion_test.dag");
+        std::fs::write(
+            &file,
+            r#"module failure_receipt_companion_fixture
+
+test fn witness_holds() -> Bool {
+  true
+}
+
+func witness_failure_receipt() -> String {
+  "detail"
+}
+"#,
+        )
+        .unwrap();
+        let entry = file.to_string_lossy().into_owned();
+        check_entries_or_err(&[entry]).expect("companion must be reachable from holds witness");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn failure_receipt_without_matching_witness_still_refuses() {
+        let dir = tmp_dir();
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("failure_receipt_orphan_test.dag");
+        std::fs::write(
+            &file,
+            r#"module failure_receipt_orphan_fixture
+
+test fn witness_holds() -> Bool {
+  true
+}
+
+func orphan_failure_receipt() -> String {
+  "detail"
+}
+"#,
+        )
+        .unwrap();
+        let entry = file.to_string_lossy().into_owned();
+        let err = check_entries_or_err(&[entry])
+            .expect_err("companion without matching witness must refuse");
+        assert!(
+            err.contains("orphan_failure_receipt"),
+            "must name the orphan companion: {err}"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
