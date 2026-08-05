@@ -339,6 +339,7 @@ fn write_compile_clean_cost_drift_receipt_at(
         String::from("kind\tsubject\tobserved_wall_ms\tbasis_wall_ms\tverdict\trun_ref\n");
     let mut drift_count = 0usize;
     let mut basis_absent_count = 0usize;
+    let mut clock_mismatch_count = 0usize;
     for (kind, subj, observed) in &rows {
         match basis.get(&(kind.clone(), subj.clone())) {
             None => {
@@ -346,25 +347,21 @@ fn write_compile_clean_cost_drift_receipt_at(
                 body.push_str(&format!("{kind}\t{subj}\t{observed}\t\tBasisAbsent\t\n"));
             }
             Some(b) => {
-                let exceeds = match witness_row_cost_exceeds_basis_via_authority(
-                    &ctx,
-                    *observed,
-                    b.eval_ms_basis,
-                ) {
+                let verdict = match witness_row_cost_verdict_via_authority(&ctx, *observed, Some(b))
+                {
                     Ok(v) => v,
                     Err(e) => {
                         eprintln!(
-                            "claim_executor: compile-clean drift comparator refused for {kind}::{subj}: {e} — walk fails closed here"
-                        );
+                                "claim_executor: compile-clean drift comparator refused for {kind}::{subj}: {e} — walk fails closed here"
+                            );
                         return false;
                     }
                 };
-                let verdict = if exceeds {
-                    drift_count += 1;
-                    "DriftExceeded"
-                } else {
-                    "WithinBasis"
-                };
+                match verdict.as_str() {
+                    "DriftExceeded" => drift_count += 1,
+                    "BasisClockMismatch" => clock_mismatch_count += 1,
+                    _ => {}
+                }
                 body.push_str(&format!(
                     "{kind}\t{subj}\t{observed}\t{}\t{verdict}\t{}\n",
                     b.eval_ms_basis, b.run_ref
@@ -373,7 +370,7 @@ fn write_compile_clean_cost_drift_receipt_at(
         }
     }
     eprintln!(
-        "[compile-clean-cost-drift] basis_absent={basis_absent_count} drift_exceeded={drift_count}"
+        "[compile-clean-cost-drift] basis_absent={basis_absent_count} clock_mismatch={clock_mismatch_count} drift_exceeded={drift_count}"
     );
     for line in body.lines() {
         eprintln!("[compile-clean-cost-drift] {line}");
@@ -387,7 +384,7 @@ fn write_compile_clean_cost_drift_receipt_at(
         return false;
     }
     eprintln!(
-        "[receipt] floor compile-clean cost drift: basis_absent={basis_absent_count} drift_exceeded={drift_count} (TSV: {})",
+        "[receipt] floor compile-clean cost drift: basis_absent={basis_absent_count} clock_mismatch={clock_mismatch_count} drift_exceeded={drift_count} (TSV: {})",
         path.display()
     );
     true
@@ -5050,15 +5047,34 @@ fn write_floor_wet_witness_row_outcome_receipt_at(
 /// Required `host_class` on every signed basis row (`witness_row_cost_basis_host_class_note`).
 const WITNESS_ROW_COST_BASIS_HOST_CLASS: &str = "srv_fleet_arm64";
 
+/// The `.dag` constructor for each `std.observation.ClockBasis` arm, keyed by the spelling the
+/// basis file uses. The seed names no clock of its own: it maps the cell to a constructor and
+/// calls it, so a clock that this repository does not model has no path into a comparison.
+fn clock_basis_constructor_for(cell: &str) -> Option<&'static str> {
+    match cell {
+        "wall" => Some("clock_basis_wall"),
+        "cpu" => Some("clock_basis_cpu"),
+        _ => None,
+    }
+}
+
 #[derive(Debug)]
 struct WitnessRowCostBasisRow {
     eval_ms_basis: u128,
     run_ref: String,
+    /// Which clock `eval_ms_basis` was read from, as the `.dag` constructor name for it.
+    ///
+    /// Carried per row rather than assumed for the file, because the file's rows are seeded
+    /// over time from whatever the producer of the day recorded — and a basis whose clock is
+    /// assumed is exactly the state the 2026-08-05 ruling ends. A comparison against an
+    /// observation on a different clock refuses (`BasisClockMismatch`) rather than answering.
+    clock_constructor: &'static str,
 }
 
 /// Parse one TSV body line from `witness_row_cost_basis.tsv`.
-/// Returns `Ok(None)` for blank/comment lines; `Err` for malformed or wrong-host-class rows
-/// (caller must not insert them — a wrong host class would poison the 2× comparator).
+/// Returns `Ok(None)` for blank/comment lines; `Err` for malformed, wrong-host-class, or
+/// unknown-clock rows (caller must not insert them — a wrong host class would poison the 2×
+/// comparator, and an unmodelled clock cannot be compared at all).
 fn parse_witness_row_cost_basis_line(
     line: &str,
 ) -> Result<Option<((String, String), WitnessRowCostBasisRow)>, String> {
@@ -5067,9 +5083,9 @@ fn parse_witness_row_cost_basis_line(
         return Ok(None);
     }
     let parts: Vec<&str> = line.split('\t').collect();
-    if parts.len() < 5 {
+    if parts.len() < 6 {
         return Err(format!(
-            "malformed witness-row-cost basis line (need 5 cols: entry function eval_ms_basis run_ref host_class): {line}"
+            "malformed witness-row-cost basis line (need 6 cols: entry function eval_ms_basis run_ref host_class clock): {line}"
         ));
     }
     let host_class = parts[4];
@@ -5078,6 +5094,16 @@ fn parse_witness_row_cost_basis_line(
             "witness-row-cost basis row host_class={host_class:?} refused (required {WITNESS_ROW_COST_BASIS_HOST_CLASS}; wrong host class poisons the 2× comparator): {line}"
         ));
     }
+    // A row that does not say which clock its figure came from is REFUSED, not defaulted.
+    // Defaulting to wall would be right for every row in the file today and wrong the first
+    // time someone seeds one from a CPU receipt — and it would be wrong silently, which is
+    // the whole failure this column exists to prevent.
+    let Some(clock_constructor) = clock_basis_constructor_for(parts[5]) else {
+        return Err(format!(
+            "witness-row-cost basis row clock={:?} refused (known clocks: wall, cpu; a basis whose clock is unknown cannot be compared): {line}",
+            parts[5]
+        ));
+    };
     let eval_ms_basis = parts[2].parse::<u128>().unwrap_or(0);
     if eval_ms_basis == 0 {
         return Err(format!(
@@ -5089,6 +5115,7 @@ fn parse_witness_row_cost_basis_line(
         WitnessRowCostBasisRow {
             eval_ms_basis,
             run_ref: parts[3].to_string(),
+            clock_constructor,
         },
     )))
 }
@@ -5110,27 +5137,65 @@ fn millisecond_value(ctx: &InterpContext, count_ms: u128) -> Result<Value, Strin
 
 /// Single-authority projection: evaluate `gunbc.witness_row_cost.witness_row_cost_exceeds_basis`
 /// rather than re-implementing `observed > basis * 2` in the seed (review 43261).
-fn witness_row_cost_exceeds_basis_via_authority(
+/// The clock the drift wire's observed figure is read from.
+///
+/// `witness_row_costs.2` is the row's `eval_wall_ms` — wall, and named so since #7820 — which
+/// is also the clock the witness threshold is stated on (operator ruling 2026-08-05). It is
+/// passed to the comparator rather than left implicit, which is the entire point: the
+/// comparison now asserts that both sides are the same clock instead of both happening to be.
+const WITNESS_ROW_COST_OBSERVED_CLOCK: &str = "clock_basis_wall";
+
+/// Ask the authored comparator for a verdict and return the ARM IT NAMED.
+///
+/// The seed used to call `witness_row_cost_exceeds_basis` — the bare ratio predicate — and
+/// then rebuild `DriftExceeded` / `WithinBasis` / `BasisAbsent` as Rust string literals. That
+/// was a second representation of `WitnessRowCostVerdict`, and it meant the cross-clock wall
+/// the carrier grew could not reach the cadence receipt at all: the clock never crossed the
+/// seam, so a CPU figure against a wall basis would still have answered confidently.
+///
+/// Now the arm's own name is what gets rendered, so a new arm reaches the receipt without a
+/// Rust edit and `BasisClockMismatch` fires here exactly as it does in the witness.
+fn witness_row_cost_verdict_via_authority(
     ctx: &InterpContext,
     observed_ms: u128,
-    basis_ms: u128,
-) -> Result<bool, String> {
+    basis: Option<&WitnessRowCostBasisRow>,
+) -> Result<String, String> {
     let observed = millisecond_value(ctx, observed_ms)?;
-    let basis = millisecond_value(ctx, basis_ms)?;
-    match run_in_context_with_args(
-        ctx,
-        "witness_row_cost_exceeds_basis",
-        &[
-            (Some("observed".to_string()), observed),
-            (Some("basis".to_string()), basis),
-        ],
-        false,
-    ) {
-        Ok(Value::Bool(b)) => Ok(b),
+    let observed_clock = run_in_context_with_args(ctx, WITNESS_ROW_COST_OBSERVED_CLOCK, &[], false)
+        .map_err(|e| format!("{WITNESS_ROW_COST_OBSERVED_CLOCK}: {e}"))?;
+    let (function, args) = match basis {
+        None => (
+            "witness_row_cost_seed_verdict_undated",
+            vec![
+                (Some("observed".to_string()), observed),
+                (Some("observed_clock".to_string()), observed_clock),
+            ],
+        ),
+        Some(b) => {
+            let basis_clock = run_in_context_with_args(ctx, b.clock_constructor, &[], false)
+                .map_err(|e| format!("{}: {e}", b.clock_constructor))?;
+            let basis_eval = millisecond_value(ctx, b.eval_ms_basis)?;
+            (
+                "witness_row_cost_seed_verdict_dated",
+                vec![
+                    (Some("observed".to_string()), observed),
+                    (Some("observed_clock".to_string()), observed_clock),
+                    (Some("basis_clock".to_string()), basis_clock),
+                    (Some("basis_eval".to_string()), basis_eval),
+                    (
+                        Some("run_ref".to_string()),
+                        Value::Str(b.run_ref.clone().into()),
+                    ),
+                ],
+            )
+        }
+    };
+    match run_in_context_with_args(ctx, function, &args, false) {
+        Ok(Value::Variant { variant_name, .. }) => Ok(ctx.resolve(variant_name).to_string()),
         Ok(other) => Err(format!(
-            "witness_row_cost_exceeds_basis returned {other}, expected Bool (fail-closed)"
+            "{function} returned {other}, expected a WitnessRowCostVerdict (fail-closed)"
         )),
-        Err(e) => Err(format!("witness_row_cost_exceeds_basis: {e}")),
+        Err(e) => Err(format!("{function}: {e}")),
     }
 }
 
@@ -5184,6 +5249,11 @@ fn write_witness_row_cost_drift_receipt_at(
     let mut drift_count = 0usize;
     let mut basis_absent_count = 0usize;
     let mut observation_absent_count = 0usize;
+    // A cross-clock pair is neither within basis nor exceeding it, and it is not a missing
+    // basis either — a basis IS present, on the wrong clock. Counted on its own line because
+    // its remedy differs: seed the missing row versus fix the producer handing over the wrong
+    // clock. Absorbing it into either neighbour would zero its frequency by construction.
+    let mut clock_mismatch_count = 0usize;
     for rec in batch_records {
         let n = rec.batch_index + 1;
         for result in &rec.results {
@@ -5215,46 +5285,37 @@ fn write_witness_row_cost_drift_receipt_at(
                     continue;
                 }
                 let observed = row.2 / 1_000_000;
-                match basis.get(&key) {
-                    None => {
-                        basis_absent_count += 1;
-                        body.push_str(&format!(
-                            "{n}\t{}\t{}\t{observed}\t\tBasisAbsent\t\n",
+                let dated = basis.get(&key);
+                let verdict = match witness_row_cost_verdict_via_authority(&ctx, observed, dated) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        eprintln!(
+                            "claim_executor: drift comparator refused for {}::{}: {e} — walk fails closed here",
                             row.0, row.1
-                        ));
+                        );
+                        return false;
                     }
-                    Some(b) => {
-                        let exceeds = match witness_row_cost_exceeds_basis_via_authority(
-                            &ctx,
-                            observed,
-                            b.eval_ms_basis,
-                        ) {
-                            Ok(v) => v,
-                            Err(e) => {
-                                eprintln!(
-                                    "claim_executor: drift comparator refused for {}::{}: {e} — walk fails closed here",
-                                    row.0, row.1
-                                );
-                                return false;
-                            }
-                        };
-                        let verdict = if exceeds {
-                            drift_count += 1;
-                            "DriftExceeded"
-                        } else {
-                            "WithinBasis"
-                        };
-                        body.push_str(&format!(
-                            "{n}\t{}\t{}\t{observed}\t{}\t{verdict}\t{}\n",
-                            row.0, row.1, b.eval_ms_basis, b.run_ref
-                        ));
-                    }
+                };
+                // Counting reads the arm the authority named; it does not re-decide it.
+                match verdict.as_str() {
+                    "BasisAbsent" => basis_absent_count += 1,
+                    "DriftExceeded" => drift_count += 1,
+                    "BasisClockMismatch" => clock_mismatch_count += 1,
+                    _ => {}
                 }
+                let (basis_cell, run_ref_cell) = match dated {
+                    None => (String::new(), String::new()),
+                    Some(b) => (b.eval_ms_basis.to_string(), b.run_ref.clone()),
+                };
+                body.push_str(&format!(
+                    "{n}\t{}\t{}\t{observed}\t{basis_cell}\t{verdict}\t{run_ref_cell}\n",
+                    row.0, row.1
+                ));
             }
         }
     }
     eprintln!(
-        "[witness-row-cost-drift] basis_absent={basis_absent_count} observation_absent={observation_absent_count} drift_exceeded={drift_count}"
+        "[witness-row-cost-drift] basis_absent={basis_absent_count} observation_absent={observation_absent_count} clock_mismatch={clock_mismatch_count} drift_exceeded={drift_count}"
     );
     for line in body.lines() {
         eprintln!("[witness-row-cost-drift] {line}");
@@ -5268,7 +5329,7 @@ fn write_witness_row_cost_drift_receipt_at(
         return false;
     }
     eprintln!(
-        "[receipt] floor witness row-cost drift: basis_absent={basis_absent_count} observation_absent={observation_absent_count} drift_exceeded={drift_count} (TSV: {})",
+        "[receipt] floor witness row-cost drift: basis_absent={basis_absent_count} observation_absent={observation_absent_count} clock_mismatch={clock_mismatch_count} drift_exceeded={drift_count} (TSV: {})",
         path.display()
     );
     true
@@ -12114,33 +12175,118 @@ mod tests {
         }
     }
 
+    fn drift_authority_source_roots() -> Vec<String> {
+        let workspace = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("workspace root");
+        vec![
+            workspace.join("dag").to_string_lossy().into_owned(),
+            workspace.join("src/v2").to_string_lossy().into_owned(),
+        ]
+    }
+
+    fn drift_basis_fixture(clock_constructor: &'static str) -> WitnessRowCostBasisRow {
+        WitnessRowCostBasisRow {
+            eval_ms_basis: 10,
+            run_ref: "synthetic-run".to_string(),
+            clock_constructor,
+        }
+    }
+
+    /// The END-TO-END proof that the drift seam carries the clock, which neither the `.dag`
+    /// witnesses nor the parser tests can give: the witnesses never cross this Rust boundary,
+    /// and the parser only shows the cell is read.
+    ///
+    /// Two claims. First, every verdict string in the receipt is a name the AUTHORITY
+    /// produced — the seed no longer decides that exceeding a basis means `DriftExceeded`, so
+    /// an arm added to `WitnessRowCostVerdict` reaches the cadence receipt with no Rust edit.
+    /// Second, a cross-clock pair REFUSES, asserted on BOTH sides of the 2× ratio: 21ms and
+    /// 20ms against a 10ms basis land on opposite sides of the threshold, so a single case
+    /// would be satisfiable by a comparator refusing for the wrong reason. The pair proves
+    /// the refusal is decided by the CLOCK, not the magnitude.
+    #[test]
+    fn drift_verdicts_come_from_the_authority_and_a_cross_clock_basis_refuses() {
+        let workspace = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("workspace root");
+        let roots = drift_authority_source_roots();
+        let entry = workspace.join("dag/gunbc/witness_row_cost.dag");
+        let (graph, indices) =
+            resolve_entry_graph(&roots, &entry.to_string_lossy()).expect("resolve");
+        let ctx = make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+
+        let wall = drift_basis_fixture("clock_basis_wall");
+        let cpu = drift_basis_fixture("clock_basis_cpu");
+        let verdict = |observed, basis| {
+            witness_row_cost_verdict_via_authority(&ctx, observed, basis).expect("verdict")
+        };
+
+        // Same clock on both sides: the ratio decides, in both directions.
+        assert_eq!(verdict(21, Some(&wall)), "DriftExceeded");
+        assert_eq!(verdict(20, Some(&wall)), "WithinBasis");
+
+        // No dated basis: the honest third state, and it too comes from the authority.
+        assert_eq!(verdict(999, None), "BasisAbsent");
+
+        // Different clocks: refused on BOTH sides of the ratio. Before the clock crossed
+        // this seam these two answered `DriftExceeded` and `WithinBasis` — confident
+        // verdicts about two different quantities.
+        assert_eq!(verdict(21, Some(&cpu)), "BasisClockMismatch");
+        assert_eq!(verdict(20, Some(&cpu)), "BasisClockMismatch");
+    }
+
     #[test]
     fn parse_witness_row_cost_basis_line_requires_srv_fleet_arm64() {
         // RED control for review 43284: wrong/missing host_class must refuse, never load.
-        let ok = parse_witness_row_cost_basis_line("e.dag\tf\t10\trun-1\tsrv_fleet_arm64")
+        let ok = parse_witness_row_cost_basis_line("e.dag\tf\t10\trun-1\tsrv_fleet_arm64\twall")
             .expect("parse")
             .expect("row");
         assert_eq!(ok.0, ("e.dag".to_string(), "f".to_string()));
         assert_eq!(ok.1.eval_ms_basis, 10);
         assert_eq!(ok.1.run_ref, "run-1");
+        assert_eq!(ok.1.clock_constructor, "clock_basis_wall");
+
+        // The clock is READ, not assumed: a cpu-clocked basis row loads as cpu, which is
+        // what lets the comparator refuse it against a wall observation instead of
+        // answering. If this cell were ignored the whole column would be decoration.
+        let cpu = parse_witness_row_cost_basis_line("e.dag\tf\t10\trun-1\tsrv_fleet_arm64\tcpu")
+            .expect("parse")
+            .expect("row");
+        assert_eq!(cpu.1.clock_constructor, "clock_basis_cpu");
 
         assert!(parse_witness_row_cost_basis_line("# comment")
             .unwrap()
             .is_none());
         assert!(parse_witness_row_cost_basis_line("").unwrap().is_none());
 
-        let wrong = parse_witness_row_cost_basis_line("e.dag\tf\t10\trun-1\tlocal_x86")
+        let wrong = parse_witness_row_cost_basis_line("e.dag\tf\t10\trun-1\tlocal_x86\twall")
             .expect_err("wrong host_class must refuse");
         assert!(
             wrong.contains("host_class") && wrong.contains("srv_fleet_arm64"),
             "expected host_class refusal, got: {wrong}"
         );
 
-        let short =
-            parse_witness_row_cost_basis_line("e.dag\tf\t10\trun-1").expect_err("need 5 cols");
-        assert!(short.contains("need 5 cols"), "got: {short}");
+        // A row with no clock cell REFUSES rather than defaulting to wall. Defaulting
+        // would be right for every row in the file today and silently wrong the first
+        // time one is seeded from a CPU receipt — the exact failure the column exists to
+        // prevent, so the pre-clock 5-column shape must not still parse.
+        let short = parse_witness_row_cost_basis_line("e.dag\tf\t10\trun-1\tsrv_fleet_arm64")
+            .expect_err("a row without a clock column must refuse");
+        assert!(short.contains("need 6 cols"), "got: {short}");
 
-        let zero = parse_witness_row_cost_basis_line("e.dag\tf\t0\trun-1\tsrv_fleet_arm64")
+        // An unmodelled clock is not a clock. It cannot map to a ClockBasis constructor,
+        // so it cannot enter a comparison at all.
+        let unknown =
+            parse_witness_row_cost_basis_line("e.dag\tf\t10\trun-1\tsrv_fleet_arm64\tmonotonic")
+                .expect_err("unknown clock must refuse");
+        assert!(
+            unknown.contains("clock") && unknown.contains("monotonic"),
+            "got: {unknown}"
+        );
+
+        let zero = parse_witness_row_cost_basis_line("e.dag\tf\t0\trun-1\tsrv_fleet_arm64\twall")
             .expect_err("zero eval must refuse");
         assert!(zero.contains("zero eval_ms_basis"), "got: {zero}");
     }
