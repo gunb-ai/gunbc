@@ -1,10 +1,10 @@
 # ConstructorReferenceAdmission — reference-edge admission for sealed constructors
 
-**Status:** DRAFT for operator review (2026-08-04, royal-crab-235, msg_13fbbaaf / node `adhoc-f519571b-764`; updated msg_a87c2c75). **No code lands from this note** until the shape is agreed and the **which-compiler** horn is operator-picked (§4). Owner: royal-crab-235.
+**Status:** DRAFT for operator review (2026-08-04, royal-crab-235, msg_13fbbaaf / node `adhoc-f519571b-764`; updated msg_a87c2c75, operator ruling msg_1a57418c). **No code lands from this note** until the shape is agreed and the **which-compiler** horn is operator-picked (§4). Owner: royal-crab-235 (custody of tidy-fox-81 #7806 scaffold as of msg_1a57418c consolidation).
 
-**Origin:** Executed falsification (royal-crab-235, msg_6701c04d): `sole_constructor` refuses cross-module **record literals** but does **not** refuse cross-module **calls** to an exported mint with caller-supplied fields; legitimate wet transport requires that mint. Process-output carrier reshuffle and opaque `WitnessBin.Run` output do not close the hole. **Derived ceiling:** `can-climb-after-one-capability`. **Preferred trigger:** this capability.
+**Origin:** Executed falsification (royal-crab-235, msg_6701c04d): `sole_constructor` refuses cross-module **record literals** but does **not** refuse cross-module **calls** to an exported mint with caller-supplied fields; legitimate wet transport requires that mint. Process-output carrier reshuffle and opaque `WitnessBin.Run` output do not close the hole. **Derived ceiling:** `can-climb-after-a-capability` (not can-climb-now). **Preferred trigger:** this capability.
 
-**Evidence PRs (draft, do not merge claiming `FixtureBehaviorallyEquivalent`):** #7792, #7794.
+**Evidence PRs (draft, parked — operator ruling msg_1a57418c):** #7792, #7794 remain capability-audit/falsification records; **do not merge** with `FixtureBehaviorallyEquivalent` as terminal claim. May stay as falsification records or non-authorizing caller-supplied observation experiments. **Not** a docs-only merge under that claim. Dashboard disposition: *green, draft, do-not-merge falsification record; not pending merge work.*
 
 ## 0. Displaced cost
 
@@ -122,7 +122,9 @@ Construction admission is **one authority**. Record-literal refusal and call-edg
 
 **Session disposition:** carrier shape, refusal coordinates, composition, first_slice bar, alias stance, and no-separate-pass rule are all decidable without picking the horn. **Implementation waits on operator choice among the three rows in §4.2.**
 
-### 4.3 Measured floor — tidy-fox-81 prototype (#7806, non-conforming)
+### 4.3 Model-only scaffold — tidy-fox-81 prototype (#7806, non-conforming; custody royal-crab-235)
+
+**Operator ruling (msg_1a57418c):** #7806 is a **model-only capability scaffold** — must **not** claim enforcement without a **production consumer**. Keep draft (or title explicitly as capability model). A model-only carrier with no compiler consumer is coverage-by-illusion. **Consolidation:** tidy-fox-81 closed; #7806 parked artifact custody transfers to royal-crab-235 (same lane, horn-blocked — custody not active implementation).
 
 **Source:** tidy-fox-81 implemented the v1 horn without the design note (stopped; writeups only). **Not the specified design** — a floor for horn comparison. **Hold stands:** nothing lands until operator picks.
 
@@ -141,6 +143,20 @@ Construction admission is **one authority**. Record-literal refusal and call-edg
 **Opt-in semantics (correct, not fail-open):** absent `admit_callers` → call resolves — unannotated functions are not sealed (same class as `sole_constructor`). The measured forgery hole on `mint_behavioral_comparison_observation` stays open on #7806 because **unwired** (one property on one fn), not because the mechanism is unsound.
 
 **§4b opt-in ceiling:** an opt-in wall tops at **mechanically preventable** — cannot be structurally impossible for carriers nobody annotated. Closes the two measured construction routes **only** for opted-in constructors; coverage is a roster question, not automatic language closure.
+
+**Explicit-import bypass (review 48287, operator sequence step 3):** `lookup_func_sig` reaches `func_sig_from_global_bare` — and therefore `admit_callers` — only on the census-fallback path. Callers with an explicit `import` resolve via import-closure and **never consult admission**. This is **not** a nit to defer on #7806; it is step 3 of the real implementation (unified post-resolution check at call-edge construction). tidy-fox-81 correctly declined implementing it on a branch that must not land.
+
+### 4.4 Implementation sequence when horn unblocks (operator ruling msg_1a57418c)
+
+**Enforcement status today:** `NotEnforced` — do not flip until the sequence completes on a production consumer.
+
+1. Reuse exact declaration/reference identities from the binding substrate (`std.decl_ref` — §3 import rule).
+2. At **call-edge construction**, carry caller declaration, callee declaration, and referenced constructor.
+3. When the callee is sealed, require the caller in the **exact** admission roster (unified authority — closes explicit-import bypass; §4.1 one mechanism, not lookup-only).
+4. Refuse an unlisted edge with a typed diagnostic (`ConstructorCallAdmissionRefused` coordinates — §2).
+5. Add a real cross-module exported-function forgery RED (`fully_matching_derived_seal_forgery_advance_succeeds_red` flips).
+6. Add a positive admitted-host-transport control (wet path caller listed).
+7. **Only then** change enforcement from `NotEnforced`.
 
 ## 5. Design questions (decided or answered in this note)
 
@@ -219,13 +235,14 @@ Classified **specimens** — denominator not closed; keen-lark-681 successor owe
 
 **Proof bar:** green-by-execution on the slice + forge RED flips — not grep, not title claim.
 
-## 7. Phases (no code until note signed + operator picks compiler horn)
+## 7. Phases (no enforcement until note signed + operator picks compiler horn + §4.4 sequence complete)
 
-1. **P0 — this note:** operator sign-off on shape; **operator pick among §4.2 three horns** (still-bat-561 recommends third row — land inside already-counted `compiler_frontier_row_04_infer`).
-2. **P1 — model carrier** in `std` with nonempty permitted callers; import `decl_ref` from `std.decl_ref`.
-3. **P2 — compiler refusal** in the **chosen** infer authority (record literal + call edge, one mechanism — no separate pass).
-4. **P3 — first slice wiring** on `BehavioralComparisonObservation` + forge RED flip.
-5. **P4 — falsification matrix** on other construction forms and alias/HOF climb triggers.
+1. **P0 — this note:** operator sign-off on shape; **operator pick among §4.2 three horns** (recommendation exists in packet — still-bat-561 + royal-crab-235; operator reads packet, not summary).
+2. **P1 — model carrier** in `std` with nonempty permitted callers; import `decl_ref` from `std.decl_ref` (#7806 is a non-conforming floor for one horn — not production enforcement).
+3. **P2 — compiler refusal** per §4.4 steps 1–4 in the **chosen** infer authority (record literal + call edge, one mechanism — no separate pass).
+4. **P3 — witnesses** per §4.4 steps 5–6 on `BehavioralComparisonObservation` + forge RED flip.
+5. **P4 — enforcement flip** per §4.4 step 7 (`NotEnforced` → enforced only after witnesses green).
+6. **P5 — falsification matrix** on other construction forms and alias/HOF climb triggers.
 
 ## 8. Out of scope
 
