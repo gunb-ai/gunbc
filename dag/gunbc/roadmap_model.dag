@@ -631,3 +631,17 @@ fn acceptance_history_integrity_holds(
     AcceptanceHistoryIntegrityRefusedPriorHistoryObservation { detail: _ } => false
   }
 }
+
+fn acceptance_history_integrity_verdict_detail(verdict: AcceptanceHistoryIntegrityVerdict) -> String {
+  match verdict {
+    AcceptanceHistoryIntegrityHolds => ""
+    AcceptanceHistoryIntegrityRefusedReplay =>
+      "acceptance history replay refused: event sequence is not replayable"
+    AcceptanceHistoryIntegrityRefusedVanishedWithoutRevocation { receipt: receipt } =>
+      concat("acceptance receipt vanished without revocation: node=", receipt.node as String)
+    AcceptanceHistoryIntegrityRefusedPriorPrefix { index: index } =>
+      concat("prior acceptance history prefix mismatch at index ", to_string(index))
+    AcceptanceHistoryIntegrityRefusedPriorHistoryObservation { detail: detail } =>
+      concat("prior history observation refused: ", detail)
+  }
+}

@@ -28,6 +28,7 @@ import gunbc.roadmap_acceptance_history_observation {
   PriorHistoryObserved,
   prior_history_from_carrier_text,
   acceptance_history_integrity_holds_from_prior_observation_with_prior,
+  git_show_path_absent_at_ref,
 }
 import gunbc.roadmap_spawner {
   doc_all_nodes,
@@ -245,6 +246,15 @@ test fn witness_exact_revocation_admits_vanished_receipt() -> Bool {
     && !(
       project_live_acceptance_receipts(history: history)
         |> any(r => r.node == nid(s: "namespace-occurrence-transport"))
+    )
+}
+
+test fn witness_git_show_exists_on_disk_but_not_in_ref_counts_as_path_absent() -> Bool {
+  git_show_path_absent_at_ref(
+    stderr: "fatal: path 'dag/gunbc/roadmap_acceptance_event_history.jsonl' exists on disk, but not in '9ce6526c528'",
+  )
+    && git_show_path_absent_at_ref(
+      stderr: "fatal: path 'dag/gunbc/roadmap_acceptance_event_history.jsonl' does not exist in '9ce6526c528'",
     )
 }
 

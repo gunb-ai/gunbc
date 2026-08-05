@@ -21,6 +21,13 @@ import gunbc.roadmap_model {
   node_accepted,
   project_live_acceptance_receipts,
   acceptance_history_integrity_holds,
+  AcceptanceHistoryIntegrityVerdict,
+  AcceptanceHistoryIntegrityHolds,
+  AcceptanceHistoryIntegrityRefusedReplay,
+  AcceptanceHistoryIntegrityRefusedVanishedWithoutRevocation,
+  AcceptanceHistoryIntegrityRefusedPriorPrefix,
+  AcceptanceHistoryIntegrityRefusedPriorHistoryObservation,
+  acceptance_history_integrity_verdict_detail,
   Intricacy,
   IntricacyLow,
   IntricacyMedium,
@@ -45,7 +52,7 @@ import gunbc.roadmap_acceptance_history_carrier {
 }
 import gunbc.roadmap_acceptance_history_observation {
   current_roadmap_acceptance_history_prior_observation,
-  acceptance_history_integrity_holds_from_prior_observation_with_prior,
+  acceptance_history_integrity_verdict_from_prior_observation,
 }
 import gunbc.roadmap_execution_contract { ExecutionContractUnspecified, contract_has_closing_validation }
 import gunbc.roadmap_focus {
@@ -1971,14 +1978,27 @@ fn roadmap_acceptance_receipts() -> RoadmapAcceptanceReceiptsProjection {
   }
 }
 
-fn roadmap_acceptance_history_integrity_holds() -> Bool {
+fn roadmap_acceptance_history_integrity_verdict_on_authority() -> AcceptanceHistoryIntegrityVerdict {
   match roadmap_acceptance_event_history_load() {
-    RoadmapAcceptanceEventHistoryLoadRefused { detail: _ } => false
+    RoadmapAcceptanceEventHistoryLoadRefused { detail: detail } =>
+      AcceptanceHistoryIntegrityRefusedPriorHistoryObservation {
+        detail: concat("current history load refused: ", detail),
+      }
     RoadmapAcceptanceEventHistoryLoaded { events: current } =>
-      acceptance_history_integrity_holds_from_prior_observation_with_prior(
+      acceptance_history_integrity_verdict_from_prior_observation(
         observation: current_roadmap_acceptance_history_prior_observation(current_history: current),
         history: current,
       )
+  }
+}
+
+fn roadmap_acceptance_history_integrity_holds() -> Bool {
+  match roadmap_acceptance_history_integrity_verdict_on_authority() {
+    AcceptanceHistoryIntegrityHolds => true
+    AcceptanceHistoryIntegrityRefusedReplay => false
+    AcceptanceHistoryIntegrityRefusedVanishedWithoutRevocation { receipt: _ } => false
+    AcceptanceHistoryIntegrityRefusedPriorPrefix { index: _ } => false
+    AcceptanceHistoryIntegrityRefusedPriorHistoryObservation { detail: _ } => false
   }
 }
 
