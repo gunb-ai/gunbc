@@ -23,7 +23,13 @@ import gunbc.repository_census_coverage {
   CoverageRefused,
   CensusMethodCapability,
   ClassifiesDeclaredStructure,
-  CensusMethodConformanceObservation,
+  CensusControlPair,
+  CensusConformanceOutcome,
+  CensusConformanceEstablished,
+  CensusConformanceControlOutcomesUnjoined,
+  CensusConformanceControlNotDistinctFromMeasurement,
+  CensusConformanceControlsDidNotDiscriminate,
+  CensusMethodConformanceReceipt,
   CensusMethodCapabilityReceipt,
   CensusInferenceCeiling,
   CensusInferenceCeilingOutcome,
@@ -31,7 +37,8 @@ import gunbc.repository_census_coverage {
   CensusCeilingRefusedRunMismatch,
   census_denominator_observation,
   census_establish_coverage,
-  census_conformance_observation,
+  census_method_conformance_receipt,
+  census_conformance_receipt_of,
   census_method_capability_receipt,
   census_inference_ceiling,
   census_ceiling_supports_semantic_subject_claim,
@@ -209,49 +216,55 @@ fn confinement_control_observation(
   )
 }
 
-fn confinement_control_reconciles(
+data confinement_control_outcome_note: String = "THE CONTROLS HAND UP THEIR OUTCOMES, NOT A VERDICT ABOUT THEM. This helper used to collapse each control run to a Bool and pass the pair of Bools into the generic carrier, which is what let the carrier accept an authored answer where an executed one belonged (operator ruling 2026-08-05). Returning the CensusCoverageOutcome unchanged means the derivation happens once, inside the authority that owns it, against evidence that carries its own run identity — so this module can no longer be the only reason the conformance verdict is honest."
+
+fn confinement_control_outcome(
   rows: List<CensusObservedRow>,
   invocation: String,
   revision: MeasurementRevision,
-) -> Bool {
-  match census_establish_coverage(
+) -> CensusCoverageOutcome {
+  census_establish_coverage(
     denominator: confinement_surface_denominator(revision: revision),
     observation: confinement_control_observation(
       rows: rows,
       invocation: invocation,
       revision: revision,
     ),
-  ) {
-    CoverageEstablished { receipt: _ } => true
-    CoverageRefused {
-      observation_identity: _,
-      classification_run_identity: _,
-      reconciliation: _,
-    } => false
+  )
+}
+
+data confinement_control_run_note: String = "BOTH CONTROLS RUN UNDER ONE DECLARED CONTROL INVOCATION, and the carrier now checks that rather than taking this module's word for it. The pair names the invocation the two control observations were produced under, and census_method_conformance_receipt refuses unless each outcome's own classification run identity equals it — so a control outcome produced under some other invocation cannot be presented here, and the control invocation must still differ from the measurement invocation."
+
+fn confinement_control_pair(revision: MeasurementRevision) -> CensusControlPair {
+  let control_invocation = "confinement_surface_axis_of_declared_key.conformance_controls"
+  CensusControlPair {
+    control_run: confinement_census_invocation(
+      procedure: "confinement_surface_axis_of_declared_key",
+      invocation: control_invocation,
+      revision: revision,
+    ),
+    discriminating: confinement_control_outcome(
+      rows: confinement_surface_defective_rows(),
+      invocation: control_invocation,
+      revision: revision,
+    ),
+    positive: confinement_control_outcome(
+      rows: confinement_surface_axis_of_declared_key(),
+      invocation: control_invocation,
+      revision: revision,
+    ),
   }
 }
 
-fn confinement_conformance_observation(
+fn confinement_conformance_outcome(
   revision: MeasurementRevision,
-) -> CensusMethodConformanceObservation {
-  let discriminating_refused = !confinement_control_reconciles(
-    rows: confinement_surface_defective_rows(),
-    invocation: "confinement_surface_axis_of_declared_key.discriminating_control",
-    revision: revision,
-  )
-  let positive_accepted = confinement_control_reconciles(
-    rows: confinement_surface_axis_of_declared_key(),
-    invocation: "confinement_surface_axis_of_declared_key.positive_control",
-    revision: revision,
-  )
-  census_conformance_observation(
-    control_run: confinement_census_invocation(
+) -> CensusConformanceOutcome {
+  census_method_conformance_receipt(
+    pair: confinement_control_pair(revision: revision),
+    method_run: confinement_census_run(
       procedure: "confinement_surface_axis_of_declared_key",
-      invocation: "confinement_surface_axis_of_declared_key.conformance_controls",
       revision: revision,
     ),
-    discriminating_input_refused: discriminating_refused,
-    positive_control_accepted: positive_accepted,
   )
 }
 
@@ -261,7 +274,9 @@ fn confinement_capability_receipt(
   census_method_capability_receipt(
     observation: confinement_surface_observation(revision: revision),
     capability: confinement_census_capability,
-    conformance: Present { value: confinement_conformance_observation(revision: revision) },
+    conformance: census_conformance_receipt_of(
+      outcome: confinement_conformance_outcome(revision: revision),
+    ),
   )
 }
 

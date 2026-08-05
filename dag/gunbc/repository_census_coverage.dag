@@ -562,30 +562,145 @@ fn census_capability_identity(capability: CensusMethodCapability) -> Fnv1a64Stru
   pair_with(left: kind, right: contract)
 }
 
-data repository_census_conformance_note: String = "CONFORMANCE IS AN OBSERVED CONTROL PAIR, and both halves are required because either alone is satisfiable by a broken classifier. A classifier that accepts everything passes the positive control; a classifier that refuses everything passes the discriminating one. Establishing conformance means the SAME classifier declaration, at the SAME revision, under a DIFFERENT invocation, refused a discriminating input and accepted a positive control. The invocation must differ because a control that is the same invocation as the measurement is the measurement re-described, which is the self-join defect one level down. This carrier records that such a pair was observed; it does not and cannot establish that the discriminating input was well chosen — that judgement belongs to whoever authored the control, and it is the honest frontier of this receipt."
+data repository_census_conformance_note: String = "CONFORMANCE IS DERIVED FROM EXECUTED CONTROL OUTCOMES, NEVER FROM AUTHORED BOOLEANS (operator ruling 2026-08-05, superseding the first shape of this carrier). The previous shape took discriminating_input_refused and positive_control_accepted as caller-supplied Bool, so ANY caller could pass true and true and receive a conformance value that then raised a semantic ceiling. The domain consumer in this repository computed those two honestly by running the controls, and that is exactly what made the defect invisible: the GENERIC CARRIER never required it, so the honesty lived in one consumer rather than in the type. That is the same author-supplied-answer class this whole module exists to close, committed one layer above the layer it closes it at — the third time on this carrier that a name stood where a receipt belonged.\n\nWHAT REPLACES IT. The carrier now consumes a CensusControlPair of two real CensusCoverageOutcome values and DERIVES the verdict. Four conditions must hold together and each is checked against structure rather than assertion: the discriminating control must have REFUSED, the positive control must have been ESTABLISHED, both outcomes must have come from the declared control run (joined on the classification run identity each outcome carries, so an outcome borrowed from an unrelated run cannot be presented), and the control run must be the same classifier at the same revision under a DIFFERENT invocation from the measurement. Only that join yields a CensusMethodConformanceReceipt, which is sole_constructor and has no other producer. Both halves remain required because either alone is satisfiable by a broken classifier: one that accepts everything passes the positive control, one that refuses everything passes the discriminating one.\n\nWHAT IS STILL NOT ESTABLISHED, unchanged and still the honest frontier: that the discriminating input was WELL CHOSEN. This carrier can prove a classifier discriminated between two inputs; it cannot prove the input it refused was the one worth refusing. That judgement belongs to whoever authored the control."
 
-type CensusMethodConformanceObservation sole_constructor {
+type CensusControlPair {
   control_run: CensusMethodRunIdentity
-  discriminating_input_refused: Bool
-  positive_control_accepted: Bool
+  discriminating: CensusCoverageOutcome
+  positive: CensusCoverageOutcome
 }
 
-fn census_conformance_observation(
-  control_run: CensusMethodRunIdentity,
-  discriminating_input_refused: Bool,
-  positive_control_accepted: Bool,
-) -> CensusMethodConformanceObservation {
-  CensusMethodConformanceObservation {
-    control_run: control_run,
-    discriminating_input_refused: discriminating_input_refused,
-    positive_control_accepted: positive_control_accepted,
+type CensusMethodConformanceReceipt sole_constructor {
+  control_run_identity: Fnv1a64Structural
+  method_run_identity: Fnv1a64Structural
+  discriminating_observation_identity: Fnv1a64Structural
+  positive_observation_identity: Fnv1a64Structural
+}
+
+type CensusConformanceOutcome
+  = CensusConformanceEstablished { receipt: CensusMethodConformanceReceipt }
+  | CensusConformanceControlOutcomesUnjoined {
+      control_run_identity: Fnv1a64Structural
+      discriminating_run_identity: Fnv1a64Structural
+      positive_run_identity: Fnv1a64Structural
+    }
+  | CensusConformanceControlNotDistinctFromMeasurement {
+      control_run_identity: Fnv1a64Structural
+      method_run_identity: Fnv1a64Structural
+    }
+  | CensusConformanceControlsDidNotDiscriminate {
+      discriminating: CensusCoverageOutcome
+      positive: CensusCoverageOutcome
+    }
+
+fn census_coverage_is_refused(coverage: CensusCoverageOutcome) -> Bool {
+  match coverage {
+    CoverageEstablished { receipt: _ } => false
+    CoverageRefused {
+      observation_identity: _,
+      classification_run_identity: _,
+      reconciliation: _,
+    } => true
   }
 }
 
-fn census_conformance_is_established(
-  conformance: CensusMethodConformanceObservation,
+fn census_control_run_is_distinct_from_measurement(
+  control_run: CensusMethodRunIdentity,
+  method_run: CensusMethodRunIdentity,
 ) -> Bool {
-  conformance.discriminating_input_refused && conformance.positive_control_accepted
+  let same_classifier = content_hash_eq_structural(
+    left: census_declaration_ref_identity(reference: control_run.classifier),
+    right: census_declaration_ref_identity(reference: method_run.classifier),
+  )
+  let same_revision = content_hash_eq_structural(
+    left: census_revision_identity(revision: control_run.classifier_revision),
+    right: census_revision_identity(revision: method_run.classifier_revision),
+  )
+  let same_invocation = content_hash_eq_structural(
+    left: control_run.invocation_identity,
+    right: method_run.invocation_identity,
+  )
+  same_classifier && same_revision && !same_invocation
+}
+
+fn census_control_outcomes_join_the_control_run(
+  pair: CensusControlPair,
+  control_run_identity: Fnv1a64Structural,
+) -> Bool {
+  let discriminating_joins = content_hash_eq_structural(
+    left: census_coverage_classification_run_identity(coverage: pair.discriminating),
+    right: control_run_identity,
+  )
+  let positive_joins = content_hash_eq_structural(
+    left: census_coverage_classification_run_identity(coverage: pair.positive),
+    right: control_run_identity,
+  )
+  discriminating_joins && positive_joins
+}
+
+fn census_method_conformance_receipt(
+  pair: CensusControlPair,
+  method_run: CensusMethodRunIdentity,
+) -> CensusConformanceOutcome {
+  let control_run_identity = census_method_run_identity(method: pair.control_run)
+  let method_run_identity = census_method_run_identity(method: method_run)
+  if !census_control_outcomes_join_the_control_run(
+    pair: pair,
+    control_run_identity: control_run_identity,
+  ) {
+    CensusConformanceControlOutcomesUnjoined {
+      control_run_identity: control_run_identity,
+      discriminating_run_identity: census_coverage_classification_run_identity(
+        coverage: pair.discriminating,
+      ),
+      positive_run_identity: census_coverage_classification_run_identity(
+        coverage: pair.positive,
+      ),
+    }
+  } else if !census_control_run_is_distinct_from_measurement(
+    control_run: pair.control_run,
+    method_run: method_run,
+  ) {
+    CensusConformanceControlNotDistinctFromMeasurement {
+      control_run_identity: control_run_identity,
+      method_run_identity: method_run_identity,
+    }
+  } else if census_coverage_is_refused(coverage: pair.discriminating)
+    && !census_coverage_is_refused(coverage: pair.positive) {
+    CensusConformanceEstablished {
+      receipt: CensusMethodConformanceReceipt {
+        control_run_identity: control_run_identity,
+        method_run_identity: method_run_identity,
+        discriminating_observation_identity: census_coverage_observation_identity(
+          coverage: pair.discriminating,
+        ),
+        positive_observation_identity: census_coverage_observation_identity(
+          coverage: pair.positive,
+        ),
+      },
+    }
+  } else {
+    CensusConformanceControlsDidNotDiscriminate {
+      discriminating: pair.discriminating,
+      positive: pair.positive,
+    }
+  }
+}
+
+fn census_conformance_receipt_of(outcome: CensusConformanceOutcome) -> CensusMethodConformanceReceipt? {
+  match outcome {
+    CensusConformanceEstablished { receipt: receipt } => Present { value: receipt }
+    CensusConformanceControlOutcomesUnjoined {
+      control_run_identity: _,
+      discriminating_run_identity: _,
+      positive_run_identity: _,
+    } => none
+    CensusConformanceControlNotDistinctFromMeasurement {
+      control_run_identity: _,
+      method_run_identity: _,
+    } => none
+    CensusConformanceControlsDidNotDiscriminate { discriminating: _, positive: _ } => none
+  }
 }
 
 type CensusMethodCapabilityReceipt sole_constructor {
@@ -593,70 +708,51 @@ type CensusMethodCapabilityReceipt sole_constructor {
   contract: DeclarationRef
   capability_identity: Fnv1a64Structural
   fidelity: CensusSubjectFidelity
-  conformance: CensusMethodConformanceObservation?
+  conformance: CensusMethodConformanceReceipt?
 }
 
 fn census_method_capability_receipt(
   observation: RepositoryCensusObservation,
   capability: CensusMethodCapability,
-  conformance: CensusMethodConformanceObservation?,
+  conformance: CensusMethodConformanceReceipt?,
 ) -> CensusMethodCapabilityReceipt? {
   let contract = census_capability_contract(capability: capability)
-  let contract_identity = census_declaration_ref_identity(reference: contract)
-  let classifier_identity = census_declaration_ref_identity(
-    reference: observation.method_run.classifier,
-  )
+  let method_run_identity = census_method_run_identity(method: observation.method_run)
   let contract_names_the_classifier = content_hash_eq_structural(
-    left: contract_identity,
-    right: classifier_identity,
+    left: census_declaration_ref_identity(reference: contract),
+    right: census_declaration_ref_identity(reference: observation.method_run.classifier),
   )
-  let control_conforms = census_control_run_joins(
+  let conformance_joins = census_conformance_joins_the_method_run(
     conformance: conformance,
-    method_run: observation.method_run,
+    method_run_identity: method_run_identity,
   )
   let receipt = CensusMethodCapabilityReceipt {
-    method_run_identity: census_method_run_identity(method: observation.method_run),
+    method_run_identity: method_run_identity,
     contract: contract,
     capability_identity: census_capability_identity(capability: capability),
     fidelity: census_capability_fidelity(capability: capability),
     conformance: conformance,
   }
-  if contract_names_the_classifier && control_conforms {
+  if contract_names_the_classifier && conformance_joins {
     Present { value: receipt }
   } else {
     none
   }
 }
 
-fn census_control_run_joins(
-  conformance: CensusMethodConformanceObservation?,
-  method_run: CensusMethodRunIdentity,
+data repository_census_conformance_rejoin_note: String = "THE CONFORMANCE RECEIPT IS RE-JOINED TO THIS OBSERVATION rather than trusted because it exists. A receipt proves that SOME measurement run had a distinct, discriminating control; it does not prove that run was THIS one. Without the re-join a caller could derive a valid receipt against method run A and attach it to a capability receipt for method run B, which is the borrowed-evidence shape the ceiling join closes one level up. Absent conformance is not a failure here — it produces a capability receipt whose ceiling stays a floor — so the arm returns true rather than refusing."
+
+fn census_conformance_joins_the_method_run(
+  conformance: CensusMethodConformanceReceipt?,
+  method_run_identity: Fnv1a64Structural,
 ) -> Bool {
   match conformance {
     Absent => true
-    Present { value: observed } => {
-      let control_classifier = census_declaration_ref_identity(
-        reference: observed.control_run.classifier,
+    Present { value: receipt } =>
+      content_hash_eq_structural(
+        left: receipt.method_run_identity,
+        right: method_run_identity,
       )
-      let method_classifier = census_declaration_ref_identity(reference: method_run.classifier)
-      let control_revision = census_revision_identity(
-        revision: observed.control_run.classifier_revision,
-      )
-      let method_revision = census_revision_identity(revision: method_run.classifier_revision)
-      let same_classifier = content_hash_eq_structural(
-        left: control_classifier,
-        right: method_classifier,
-      )
-      let same_revision = content_hash_eq_structural(
-        left: control_revision,
-        right: method_revision,
-      )
-      let distinct_invocation = !content_hash_eq_structural(
-        left: observed.control_run.invocation_identity,
-        right: method_run.invocation_identity,
-      )
-      same_classifier && same_revision && distinct_invocation
-    }
   }
 }
 
@@ -665,7 +761,7 @@ fn census_capability_receipt_conformance_established(
 ) -> Bool {
   match receipt.conformance {
     Absent => false
-    Present { value: observed } => census_conformance_is_established(conformance: observed)
+    Present { value: _ } => true
   }
 }
 
