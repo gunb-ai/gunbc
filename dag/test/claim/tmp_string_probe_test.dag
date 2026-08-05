@@ -1,0 +1,11 @@
+module test.claim.tmp_string_probe_test
+
+import std.types { String, Bool, Int }
+
+test fn probe_index_of() -> Bool {
+  string_index_of(s: "dag/extdeps/languages/html/medium.dag", pattern: "dag/extdeps/languages/html/") == 0
+}
+
+test fn probe_index_of_negative() -> Bool {
+  string_index_of(s: "dag/extdeps/languages/markdown.dag", pattern: "dag/extdeps/languages/html/") != 0
+}
