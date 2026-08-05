@@ -9,6 +9,21 @@
 # issue (notifying watchers), sustained red heartbeats at most daily, and
 # transition-to-green closes it with a receipt.
 #
+# The open issue describes the CURRENT failure, not the first one. Earlier this
+# workflow wrote the body once at first red and thereafter only appended a
+# throttled heartbeat comment, so the body — the thing a human actually reads —
+# froze while the failure changed underneath it. Receipt: #7737 sat open for ~30h
+# describing a BudgetExceeded kill on witness_committed_is_fixed_point that had
+# stopped occurring at 2026-08-03T17:53, while the live failure was WitnessRed on
+# five entirely different witnesses; recovering the real failing set meant
+# downloading a two-hour run log and grepping it. An open issue reads as an
+# accurate live description of the current state, so a stale one is worse than
+# none. The body is therefore rewritten every red window (body edits do not
+# notify, so this costs no noise), and the failing set plus its failure class is
+# carried as a signature: a red that CHANGES CLASS is a different incident from a
+# red that persists, and it bypasses the comment throttle rather than being
+# suppressed by it.
+#
 # It reports PER-COMPONENT state read from the floor's own receipt
 # (gunbc.floor_component_receipt, uploaded by the falsifier job as
 # floor-component-receipt), never inferred from the overall workflow conclusion.
@@ -145,8 +160,70 @@ jobs:
               return lines.join('\n');
             }
 
+            // ---- failing-set / failure-class signature -------------------------
+            // The signature is what makes a red that CHANGED CLASS distinguishable
+            // from a red that merely persists. They are different incidents with
+            // different remedies (re-basis a dated ceiling vs. fix a witness vs.
+            // repair a runner), and the 20h heartbeat throttle below is keyed on it
+            // so a transition is never suppressed as "still red".
+            //
+            // It is derived from the receipt's own identities — component index,
+            // label, and the outcome tag the floor already emits — never from
+            // rendered prose. `refused` (a deliberate stop at a declared ceiling,
+            // which is where BudgetExceeded lands) and `failed` are distinct tags in
+            // the receipt, so a BudgetExceeded -> WitnessRed transition changes this
+            // string. An unreadable receipt gets its own signature carrying the
+            // cause: it is an unknown, never folded into any known failing set.
+            function signatureOf(r) {
+              if (!r.ok) return `receipt-unavailable:${r.cause}`;
+              const bad = Array.isArray(r.doc.unsuccessful_components)
+                ? r.doc.unsuccessful_components : [];
+              if (bad.length === 0) return 'no-unsuccessful-components';
+              return bad
+                .map((c) => `${c.index}:${c.label}:${c.outcome}`)
+                .sort()
+                .join('|');
+            }
+
+            // Prior state rides in the issue body as a marker, so no external store
+            // is needed and the issue stays the single authority for its own state.
+            // A body with no marker (an issue opened by the previous version of this
+            // workflow) yields null — an explicit unknown, which compares unequal to
+            // every real signature, so the first run after this lands rewrites the
+            // stale body instead of silently keeping it.
+            const STATE_RE = /<!-- falsifier-alert-state: (.*?) -->/;
+            function readState(body) {
+              const m = STATE_RE.exec(body || '');
+              if (!m) return { first_red: null, signature: null };
+              try {
+                const s = JSON.parse(m[1]);
+                return {
+                  first_red: typeof s.first_red === 'string' ? s.first_red : null,
+                  signature: typeof s.signature === 'string' ? s.signature : null,
+                };
+              } catch (e) {
+                return { first_red: null, signature: null };
+              }
+            }
+
+            // Owner routing is REFUSED, not guessed. gunbc.falsifier_lane derives a
+            // lane for a failing component but its owner roster is honestly empty,
+            // and minting a @mention from a string in this file would fabricate a
+            // routing fact that no carrier grounds — a second authority for
+            // ownership living in workflow YAML.
+            // 🟡 dissolve-on: the owner grounding carrier lands; this block then
+            // renders the routed owner (or that carrier's own typed refusal).
+            const ROUTING = [
+              '**Owner routing: REFUSED — no grounding carrier.**',
+              '',
+              'The failing component(s) above are named, but no declared roster maps a',
+              'falsifier lane to an owner, so this alert routes to nobody rather than',
+              'guessing. Treat the missing roster as its own obligation.',
+            ].join('\n');
+
             const receipt = readReceipt();
             const report = componentReport(receipt);
+            const signature = signatureOf(receipt);
 
             let titleSuffix;
             if (!receipt.ok) {
@@ -166,36 +243,91 @@ jobs:
             const existing = open[0];
 
             if (conclusion === 'failure') {
+              const prior = readState(existing ? existing.body : null);
+              // The first-red line is a SNAPSHOT and is preserved verbatim across
+              // rewrites; "Current" is re-derived every window. Losing the former
+              // would discard when the incident started, keeping only the latter
+              // would leave the body describing a failure that no longer occurs —
+              // which is exactly the defect this fixes (#7737 sat for ~30h showing a
+              // BudgetExceeded story while the actual failure was five red witnesses).
+              const firstRed = prior.first_red || runLine;
+              const state = JSON.stringify({ first_red: firstRed, signature });
               const body = [
-                '@briansrls — the scheduled affected-set falsifier just went RED.',
+                '@briansrls — the scheduled affected-set falsifier is RED.',
                 '',
-                `First red: ${runLine}`,
+                `First red: ${firstRed}`,
+                `Current: ${runLine}`,
+                '',
+                '## Current failing set',
                 '',
                 report,
                 '',
-                'This issue auto-closes when a scheduled run goes green; sustained',
-                'red heartbeats at most daily.',
+                '## Routing',
+                '',
+                ROUTING,
+                '',
+                'This issue auto-closes when a scheduled run goes green. The body above',
+                'is REWRITTEN every red window, so it always describes the current',
+                'failure rather than the first one. Comments are throttled to at most',
+                'every 20h while the failing set and its failure class are unchanged; a',
+                'change in either is a different incident and comments immediately.',
+                '',
+                `<!-- falsifier-alert-state: ${state} -->`,
               ].join('\n');
               if (!existing) {
                 await github.rest.issues.create({
                   owner: context.repo.owner, repo: context.repo.repo,
                   title, labels: [label], body,
                 });
-                core.notice('falsifier alert issue opened');
+                core.notice(`falsifier alert issue opened — signature ${signature}`);
               } else {
-                // heartbeat at most every 20h while red
+                // The body and title are rewritten on EVERY red window. Editing an
+                // issue body sends no notification, so this costs no noise and is
+                // deliberately not rate-limited: a stale-but-open issue reads as an
+                // accurate live description of the current failure, which is worse
+                // than no description at all.
+                await github.rest.issues.update({
+                  owner: context.repo.owner, repo: context.repo.repo,
+                  issue_number: existing.number, title, body,
+                });
+
+                // Comments DO notify, so they stay throttled — except across a
+                // transition, which the throttle must not swallow.
+                const changed = prior.signature !== signature;
                 const { data: comments } = await github.rest.issues.listComments({
                   owner: context.repo.owner, repo: context.repo.repo,
                   issue_number: existing.number, per_page: 100,
                 });
                 const last = comments[comments.length - 1];
                 const lastTs = new Date(last ? last.created_at : existing.created_at).getTime();
-                if (Date.now() - lastTs > 20 * 3600 * 1000) {
+                const heartbeatDue = Date.now() - lastTs > 20 * 3600 * 1000;
+                if (changed) {
+                  const priorLine = prior.signature === null
+                    ? 'not recorded (issue predates signature tracking)'
+                    : `\`${prior.signature}\``;
                   await github.rest.issues.createComment({
                     owner: context.repo.owner, repo: context.repo.repo,
                     issue_number: existing.number,
-                    body: `Still red. Latest: ${runLine}\n\n${report}`,
+                    body: [
+                      `**The failing set changed** — this is a different incident from the one first reported.`,
+                      '',
+                      `Previous: ${priorLine}`,
+                      `Now: \`${signature}\``,
+                      '',
+                      `Latest: ${runLine}`,
+                      '',
+                      report,
+                    ].join('\n'),
                   });
+                  core.notice(`falsifier failing set changed: ${prior.signature} -> ${signature}`);
+                } else if (heartbeatDue) {
+                  await github.rest.issues.createComment({
+                    owner: context.repo.owner, repo: context.repo.repo,
+                    issue_number: existing.number,
+                    body: `Still red, unchanged failing set. Latest: ${runLine}\n\n${report}`,
+                  });
+                } else {
+                  core.info(`red, signature unchanged (${signature}) — body refreshed, comment throttled`);
                 }
               }
             } else if (existing) {
