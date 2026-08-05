@@ -1,0 +1,41 @@
+module extdeps.languages.wasm.subject
+
+import std.types { String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "webassembly.github.io/spec/core/"
+  }
+}
+
+data webassembly_language_further_authority_1: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "www.w3.org/groups/cg/webassembly/"
+  }
+}
+
+data webassembly_language_subject_note: String = "WEBASSEMBLY, cited to the WebAssembly Specification (verified live 2026-08-04 by fetching the cited locator and confirming its title and publisher from the response, per the D0 verify-or-refuse rule): the fetched document is titled 'WebAssembly Specification' at WebAssembly 3.0, edited by Andreas Rossberg and published by the WebAssembly Community Group under W3C. The core specification is the subject here; the JavaScript and Web embedding interfaces are separate documents and, if this repository ever targets them, separate concerns rather than arms of this subject."
+
+type WebAssembly
+  = | WebAssemblyTarget
+
+data webassembly_language: WebAssembly = WebAssemblyTarget
+
+data webassembly_language_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.languages.wasm.subject",
+      decl_name: "webassembly_language",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [webassembly_language_further_authority_1]
+}
+
+data extdeps_model_scope: ExternalModelScope = webassembly_language_model_scope

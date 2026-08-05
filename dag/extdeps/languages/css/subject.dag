@@ -1,0 +1,41 @@
+module extdeps.languages.css.subject
+
+import std.types { String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "www.w3.org/TR/CSS/"
+  }
+}
+
+data css_language_further_authority_1: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "www.w3.org/Style/CSS/current-work"
+  }
+}
+
+data css_language_subject_note: String = "CSS, cited to the CSS Snapshot (verified live 2026-08-04 by fetching the cited locator and confirming its title and publisher from the response, per the D0 verify-or-refuse rule): the fetched document is 'CSS Snapshot 2026', a W3C Group Note published by the CSS Working Group, which compiles the CSS specifications considered stable. THE STRUCTURAL FACT WORTH CARRYING: CSS is not one specification. The W3C publishes it as independent modules at independent maturity levels, and the Snapshot is the annual document that says which modules count as stable CSS. So a CSS support claim in this repository must name the MODULES it covers; 'supports CSS' is not a checkable statement, and the further citation is the working group's live module index that any such claim has to be read against."
+
+type Css
+  = | CssTarget
+
+data css_language: Css = CssTarget
+
+data css_language_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.languages.css.subject",
+      decl_name: "css_language",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [css_language_further_authority_1]
+}
+
+data extdeps_model_scope: ExternalModelScope = css_language_model_scope

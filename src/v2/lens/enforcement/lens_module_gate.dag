@@ -4,7 +4,7 @@ import v2.lens.common.construction_justification { ConstructionJustification, Wa
 import v2.lens.module_graph { ModuleDeclarationFact }
 import v2.lens.registry {
   Bound, LensIdV0, Unbound, lens_registry_v0,
-  Complexity, ComplexityAccumulatorCopy, ComplexityLinearityAudit,
+  ComplexityDerivedKernel, ComplexityOptimality, ComplexityAccumulatorCopy, ComplexityLinearityAudit,
   ComplexityLowering, Cost, Coverage, DependencyFidelity, Discrimination, DispositionRedundancy,
   DocReachability, DuplicateComputation, EffectReach, EmittedBinaryEffectConfinement, FallbackArmCensus, MandatoryTag, ExtdepsShapeTransportPolicy,
   FactCardinality, FactDensity, FnFamily, Grounding, HostLanguageTransportScript,
@@ -153,12 +153,19 @@ fn lens_module_gate_surface_for_lens_id(id: LensIdV0, module: String) -> LensInv
       remedy: RemedyReport,
       admission: GenuinelyNewInvariant
     }
-    Complexity => LensInvariantSurface {
+    ComplexityDerivedKernel => LensInvariantSurface {
       module: module,
       projection: ProjectionNodeDag,
       verdict_authority: VerdictAsymptoticCost,
       remedy: RemedyReport,
       admission: GenuinelyNewInvariant
+    }
+    ComplexityOptimality => LensInvariantSurface {
+      module: module,
+      projection: ProjectionNodeDag,
+      verdict_authority: VerdictAsymptoticCost,
+      remedy: RemedyReport,
+      admission: AdvisoryLens
     }
     ComplexityAccumulatorCopy => LensInvariantSurface {
       module: module,

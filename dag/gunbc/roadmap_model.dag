@@ -196,8 +196,7 @@ type AcceptanceHistoryIntegrityVerdict
   | AcceptanceHistoryIntegrityRefusedVanishedWithoutRevocation {
       receipt: RoadmapAcceptanceReceipt,
     }
-  | AcceptanceHistoryIntegrityRefusedSealedPrefixDigest
-  | AcceptanceHistoryIntegrityRefusedPriorPrefix
+  | AcceptanceHistoryIntegrityRefusedPriorPrefix { index: Int }
   | AcceptanceHistoryIntegrityRefusedPriorHistoryObservation { detail: String }
 
 fn red_control_evidence_eq(a: RedControlEvidence, b: RedControlEvidence) -> Bool {
@@ -325,29 +324,112 @@ fn remove_exact_receipt(
   receipts |> filter(r => !acceptance_receipt_eq(a: r, b: receipt))
 }
 
+fn non_empty_str_list_digest(items: List<NonEmptyStr>) -> Fnv1a64Structural {
+  fold(
+    items,
+    init: content_hash_atom(value: "non-empty-str-list-v1" as NonEmptyStr),
+    f: fn(acc, item) {
+      content_hash_combine_structural(
+        left: acc,
+        right: content_hash_atom(value: item),
+      )
+    },
+  )
+}
+
+fn red_control_evidence_digest(e: RedControlEvidence) -> Fnv1a64Structural {
+  match e {
+    RedControlNotRun =>
+      content_hash_tagged_structural(
+        tag: "roadmap-red-control-not-run-v1",
+        payload: content_hash_atom(value: "RedControlNotRun" as NonEmptyStr),
+      )
+    RedControlExecuted { witness_module, witness_fn, executed_on } =>
+      content_hash_tagged_structural(
+        tag: "roadmap-red-control-executed-v1",
+        payload: content_hash_combine_structural(
+          left: content_hash_combine_structural(
+            left: content_hash_atom(value: witness_module),
+            right: content_hash_atom(value: witness_fn),
+          ),
+          right: content_hash_atom(value: executed_on),
+        ),
+      )
+  }
+}
+
+fn handback_evidence_digest(e: HandbackEvidence) -> Fnv1a64Structural {
+  match e {
+    HandbackNotDelivered =>
+      content_hash_tagged_structural(
+        tag: "roadmap-handback-not-delivered-v1",
+        payload: content_hash_atom(value: "HandbackNotDelivered" as NonEmptyStr),
+      )
+    HandbackDelivered { first_artifact, further_artifacts } =>
+      content_hash_tagged_structural(
+        tag: "roadmap-handback-delivered-v1",
+        payload: content_hash_combine_structural(
+          left: content_hash_atom(value: first_artifact),
+          right: non_empty_str_list_digest(items: further_artifacts),
+        ),
+      )
+  }
+}
+
+fn acceptance_receipt_digest(receipt: RoadmapAcceptanceReceipt) -> Fnv1a64Structural {
+  content_hash_tagged_structural(
+    tag: "roadmap-acceptance-receipt-v1",
+    payload: content_hash_combine_structural(
+      left: content_hash_combine_structural(
+        left: content_hash_atom(value: receipt.node as NonEmptyStr),
+        right: content_hash_combine_structural(
+          left: receipt.criteria_digest,
+          right: red_control_evidence_digest(e: receipt.red_control),
+        ),
+      ),
+      right: content_hash_combine_structural(
+        left: handback_evidence_digest(e: receipt.handback),
+        right: content_hash_combine_structural(
+          left: content_hash_atom(value: receipt.accepted_by),
+          right: content_hash_atom(value: receipt.accepted_on),
+        ),
+      ),
+    ),
+  )
+}
+
+fn acceptance_revocation_disposition_digest(
+  disposition: AcceptanceRevocationDisposition,
+) -> Fnv1a64Structural {
+  match disposition {
+    AcceptanceNodeReopensActiveFrontier {} =>
+      content_hash_tagged_structural(
+        tag: "roadmap-acceptance-reopens-active-frontier-v1",
+        payload: content_hash_atom(value: "AcceptanceNodeReopensActiveFrontier" as NonEmptyStr),
+      )
+  }
+}
+
 fn acceptance_event_digest(event: RoadmapAcceptanceEvent) -> Fnv1a64Structural {
   match event {
     AcceptanceRecorded { receipt } =>
       content_hash_tagged_structural(
-        tag: "roadmap-acceptance-recorded-v1",
-        payload: content_hash_combine_structural(
-          left: content_hash_atom(value: receipt.node as NonEmptyStr),
-          right: content_hash_combine_structural(
-            left: content_hash_atom(value: receipt.accepted_by),
-            right: content_hash_atom(value: receipt.accepted_on),
-          ),
-        ),
+        tag: "roadmap-acceptance-recorded-v2",
+        payload: acceptance_receipt_digest(receipt: receipt),
       )
     AcceptanceRevoked { exact_prior_receipt, disposition, reason, revoked_by, revoked_on } =>
       content_hash_tagged_structural(
-        tag: "roadmap-acceptance-revoked-v1",
+        tag: "roadmap-acceptance-revoked-v2",
         payload: content_hash_combine_structural(
-          left: content_hash_atom(value: exact_prior_receipt.node as NonEmptyStr),
+          left: acceptance_receipt_digest(receipt: exact_prior_receipt),
           right: content_hash_combine_structural(
-            left: content_hash_atom(value: reason),
+            left: acceptance_revocation_disposition_digest(disposition: disposition),
             right: content_hash_combine_structural(
-              left: content_hash_atom(value: revoked_by),
-              right: content_hash_atom(value: revoked_on),
+              left: content_hash_atom(value: reason),
+              right: content_hash_combine_structural(
+                left: content_hash_atom(value: revoked_by),
+                right: content_hash_atom(value: revoked_on),
+              ),
             ),
           ),
         ),
@@ -368,31 +450,6 @@ fn acceptance_history_chain_digest(events: List<RoadmapAcceptanceEvent>) -> Fnv1
   )
 }
 
-type TakeAcceptanceEventsState {
-  remaining: Int
-  taken: List<RoadmapAcceptanceEvent>
-}
-
-fn take_acceptance_events(
-  events: List<RoadmapAcceptanceEvent>,
-  n: Int,
-) -> List<RoadmapAcceptanceEvent> {
-  fold(
-    events,
-    init: TakeAcceptanceEventsState { remaining: n, taken: [] },
-    f: fn(state, event) {
-      if state.remaining <= 0 {
-        state
-      } else {
-        TakeAcceptanceEventsState {
-          remaining: state.remaining - 1,
-          taken: concat(state.taken, [event]),
-        }
-      }
-    },
-  ).taken
-}
-
 fn drop_first_acceptance_event(events: List<RoadmapAcceptanceEvent>) -> List<RoadmapAcceptanceEvent> {
   fold(
     events,
@@ -405,6 +462,33 @@ fn drop_first_acceptance_event(events: List<RoadmapAcceptanceEvent>) -> List<Roa
       }
     },
   ).rest
+}
+
+fn acceptance_history_prior_prefix_mismatch_index_at(
+  prior: List<RoadmapAcceptanceEvent>,
+  current: List<RoadmapAcceptanceEvent>,
+  index: Int,
+) -> Int {
+  if count(prior) == 0 {
+    index
+  } else if count(current) == 0 {
+    index
+  } else if !acceptance_event_eq(a: first(prior), b: first(current)) {
+    index
+  } else {
+    acceptance_history_prior_prefix_mismatch_index_at(
+      prior: drop_first_acceptance_event(events: prior),
+      current: drop_first_acceptance_event(events: current),
+      index: index + 1,
+    )
+  }
+}
+
+fn acceptance_history_prior_prefix_mismatch_index(
+  prior: List<RoadmapAcceptanceEvent>,
+  current: List<RoadmapAcceptanceEvent>,
+) -> Int {
+  acceptance_history_prior_prefix_mismatch_index_at(prior: prior, current: current, index: 0)
 }
 
 fn acceptance_history_extends_prior(
@@ -493,21 +577,15 @@ fn project_live_acceptance_receipts(history: List<RoadmapAcceptanceEvent>) -> Li
 
 fn acceptance_history_integrity_verdict(
   history: List<RoadmapAcceptanceEvent>,
-  sealed_event_count: Int,
-  sealed_chain_digest: Fnv1a64Structural,
   prior_history: List<RoadmapAcceptanceEvent>,
 ) -> AcceptanceHistoryIntegrityVerdict {
   if count(prior_history) > 0 && !acceptance_history_extends_prior(prior: prior_history, current: history) {
-    AcceptanceHistoryIntegrityRefusedPriorPrefix
-  } else if count(history) < sealed_event_count {
-    AcceptanceHistoryIntegrityRefusedSealedPrefixDigest
-  } else if !content_hash_eq_structural(
-    left: acceptance_history_chain_digest(
-      events: take_acceptance_events(events: history, n: sealed_event_count),
-    ),
-    right: sealed_chain_digest,
-  ) {
-    AcceptanceHistoryIntegrityRefusedSealedPrefixDigest
+    AcceptanceHistoryIntegrityRefusedPriorPrefix {
+      index: acceptance_history_prior_prefix_mismatch_index(
+        prior: prior_history,
+        current: history,
+      ),
+    }
   } else {
     match replay_acceptance_history(events: history) {
       Absent => AcceptanceHistoryIntegrityRefusedReplay
@@ -540,21 +618,30 @@ fn acceptance_history_integrity_verdict(
 
 fn acceptance_history_integrity_holds(
   history: List<RoadmapAcceptanceEvent>,
-  sealed_event_count: Int,
-  sealed_chain_digest: Fnv1a64Structural,
   prior_history: List<RoadmapAcceptanceEvent>,
 ) -> Bool {
   match acceptance_history_integrity_verdict(
     history: history,
-    sealed_event_count: sealed_event_count,
-    sealed_chain_digest: sealed_chain_digest,
     prior_history: prior_history,
   ) {
     AcceptanceHistoryIntegrityHolds => true
     AcceptanceHistoryIntegrityRefusedReplay => false
     AcceptanceHistoryIntegrityRefusedVanishedWithoutRevocation { receipt: _ } => false
-    AcceptanceHistoryIntegrityRefusedSealedPrefixDigest => false
-    AcceptanceHistoryIntegrityRefusedPriorPrefix => false
+    AcceptanceHistoryIntegrityRefusedPriorPrefix { index: _ } => false
     AcceptanceHistoryIntegrityRefusedPriorHistoryObservation { detail: _ } => false
+  }
+}
+
+fn acceptance_history_integrity_verdict_detail(verdict: AcceptanceHistoryIntegrityVerdict) -> String {
+  match verdict {
+    AcceptanceHistoryIntegrityHolds => ""
+    AcceptanceHistoryIntegrityRefusedReplay =>
+      "acceptance history replay refused: event sequence is not replayable"
+    AcceptanceHistoryIntegrityRefusedVanishedWithoutRevocation { receipt: receipt } =>
+      concat("acceptance receipt vanished without revocation: node=", receipt.node as String)
+    AcceptanceHistoryIntegrityRefusedPriorPrefix { index: index } =>
+      concat("prior acceptance history prefix mismatch at index ", to_string(index))
+    AcceptanceHistoryIntegrityRefusedPriorHistoryObservation { detail: detail } =>
+      concat("prior history observation refused: ", detail)
   }
 }
