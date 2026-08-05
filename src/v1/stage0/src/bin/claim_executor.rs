@@ -5085,13 +5085,6 @@ fn witness_row_cost_migration_verdict_via_authority(
 /// the walk on a nonzero population. Both the threshold fetch and the per-row verdict are authority
 /// calls into `gunbc.witness_row_cost`; this function only serializes the resulting rows to a TSV
 /// and a log — it is strictly the receipt-writing seam, not a second decision surface.
-///
-/// CLOCK BASIS (#7820, `v1_interpreter::WITNESS_COST_CLOCK_BASIS_NOTE`): `row.2` here is WALL,
-/// while the 5000ms cap this threshold derives from is enforced on THREAD CPU. Because eval is
-/// single-threaded, wall bounds cpu above, so a row this disclosure reports as
-/// `BelowMigrationThreshold` is provably below the cap on cpu too — the under-threshold
-/// direction is sound on wall. What this disclosure cannot yet answer is ranking (how near the
-/// cap a row sits), which needs the std.observation change #7820 named rather than built here.
 fn write_witness_row_cost_migration_disclosure_receipt_at(
     base: &std::path::Path,
     batch_records: &[BatchRecord],
@@ -5119,7 +5112,7 @@ fn write_witness_row_cost_migration_disclosure_receipt_at(
     };
 
     let mut body =
-        String::from("batch\tentry\tfunction\tobserved_eval_wall_ms\tthreshold_ms\tverdict\n");
+        String::from("batch\tentry\tfunction\tobserved_eval_ms\tthreshold_ms\tverdict\n");
     let mut mandatory_count = 0usize;
     let mut worst: Vec<(u128, String, String)> = Vec::new();
     let mut observation_absent_count = 0usize;
@@ -5131,14 +5124,13 @@ fn write_witness_row_cost_migration_disclosure_receipt_at(
                 // measurement), not a comfortably-fast witness: reporting it as
                 // BelowMigrationThreshold would be the same fabricated-zero-reads-as-healthy
                 // shape review 43261/43274 already root-caused for the drift comparator's
-                // WithinBasis arm, and the same defect #7820 closed at the artifact layer for
-                // the cost receipt itself (`row_measurement_is_absent`, shared here rather than
-                // re-spelling the outcome literal). Disjoint from the population this gate
-                // counts: located separately, never silently folded into BelowMigrationThreshold.
-                if row_measurement_is_absent(&row.5) {
+                // WithinBasis arm (merry-raven-690 / still-bat-561, 7820A's ObservationAbsent).
+                // Disjoint from the population this gate counts: located separately, never
+                // silently folded into BelowMigrationThreshold.
+                if row.5 == "selection-skipped" {
                     observation_absent_count += 1;
                     body.push_str(&format!(
-                        "{n}\t{}\t{}\t{UNMEASURED_CELL}\t{threshold_ms}\tObservationAbsent\n",
+                        "{n}\t{}\t{}\t\t{threshold_ms}\tObservationAbsent\n",
                         row.0, row.1
                     ));
                     continue;
