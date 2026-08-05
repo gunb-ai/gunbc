@@ -95,8 +95,6 @@ import gunbc.roadmap_belt_actuate {
   belt_node_session_live,
   BeltDispatchResult, DispatchSpawned, DispatchAlreadyLive, DispatchDisabled, DispatchNodeNotFound,
   DispatchNodeAlreadyDone, DispatchObserveRefused, DispatchAuthorityRefused, DispatchSpawnFailed,
-  DispatchPressAccountReady, DispatchPressLoginRequired,
-  DispatchPressUnavailable, DispatchPressRefused,
   belt_dispatch_result_ok,
   belt_dispatch_status_label,
   belt_dispatch_result_json_value,
@@ -509,14 +507,6 @@ test fn witness_dispatch_status_labels_pin_wire_contract() -> Bool {
     && belt_dispatch_status_label(r: DispatchObserveRefused { node_id: "a", reason: "x" }) == "observe_refused"
     && belt_dispatch_status_label(r: DispatchAuthorityRefused { node_id: "a", detail: "x" }) == "authority_refused"
     && belt_dispatch_status_label(r: DispatchSpawnFailed { node_id: "a", step: "git", detail: "x" }) == "spawn_failed"
-    && belt_dispatch_status_label(r: DispatchPressAccountReady {
-      node_id: "a",
-      attempt_key: "k",
-      caption: "account ready",
-    }) == "account_ready"
-    && belt_dispatch_status_label(r: DispatchPressLoginRequired { node_id: "a", reason: "r" }) == "login_required"
-    && belt_dispatch_status_label(r: DispatchPressUnavailable { node_id: "a", reason: "r" }) == "unavailable"
-    && belt_dispatch_status_label(r: DispatchPressRefused { node_id: "a", reason: "r" }) == "press_refused"
 }
 
 test fn witness_fresh_spawn_wire_names_selected_provider() -> Bool {
@@ -540,7 +530,7 @@ fn band_key_for_label(label: String) -> String {
 }
 
 test fn witness_band_fold_pins_operator_vocabulary() -> Bool {
-  belt_dispatch_label_band_rows().length() == 12
+  belt_dispatch_label_band_rows().length() == 8
     && band_key_for_label(label: "spawned") == "ok"
     && band_key_for_label(label: "already_live") == "ok"
     && band_key_for_label(label: "disabled") == "fail"
@@ -549,10 +539,6 @@ test fn witness_band_fold_pins_operator_vocabulary() -> Bool {
     && band_key_for_label(label: "observe_refused") == "loud"
     && band_key_for_label(label: "authority_refused") == "loud"
     && band_key_for_label(label: "spawn_failed") == "loud"
-    && band_key_for_label(label: "account_ready") == "ok"
-    && band_key_for_label(label: "login_required") == "fail"
-    && band_key_for_label(label: "unavailable") == "loud"
-    && band_key_for_label(label: "press_refused") == "loud"
 }
 
 test fn witness_no_result_maps_to_in_progress() -> Bool {
@@ -560,7 +546,7 @@ test fn witness_no_result_maps_to_in_progress() -> Bool {
 }
 
 test fn witness_ok_labels_derive_from_band_fold() -> Bool {
-  belt_dispatch_ok_status_labels() == ["spawned", "already_live", "account_ready"]
+  belt_dispatch_ok_status_labels() == ["spawned", "already_live"]
 }
 
 test fn witness_label_band_cover_reds_on_missing_row() -> Bool {
@@ -583,10 +569,6 @@ fn d4_wire_contract_labels() -> List<String> {
     "observe_refused",
     "authority_refused",
     "spawn_failed",
-    "account_ready",
-    "login_required",
-    "unavailable",
-    "press_refused",
   ]
 }
 

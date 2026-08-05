@@ -48,8 +48,8 @@ test fn acquire_required_codex_tarball_sha512_matches_lock() -> Bool {
               lock_node_key: "node_modules/@openai/codex" as NonEmptyStr,
               dest_dir: staging.path,
             ) {
-              RegistryArtifactAdmitted { receipt } =>
-                (receipt.observed_digest.hex as String) == openai_codex_integrity_hex
+              RegistryArtifactAdmitted { staged } =>
+                (staged.receipt.observed_digest.hex as String) == openai_codex_integrity_hex
               _ => false
             }
           }
@@ -120,7 +120,18 @@ test fn materialize_codex_runtime_bundle_produces_native_executable() -> Bool {
           Sha512Hash(_) => true
           _ => false
         }
-        && (bundle.receipt.npm_cli_version as String) != ""
+        && match bundle.receipt.materialized_tree.tree_identity {
+          Sha512Hash(_) => true
+          _ => false
+        }
+        && (bundle.receipt.toolchain.npm_cli_version as String) != ""
+        && (bundle.receipt.toolchain.node_version as String) != ""
+        && shell.Test.IsFile(
+          path: concat(
+            bundle.root as String,
+            "/.gunbc-codex-runtime-receipt",
+          ) as FilePath,
+        ).is_file
     _ => false
   }
 }

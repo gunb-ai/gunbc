@@ -14,39 +14,27 @@ import gunbc.codex_app_server_press {
   codex_press_specimen_node_identity,
   codex_press_outcome_wire_status,
   codex_press_outcome_operator_caption,
+  account_standing_projection,
+  standing_is_redacted_projection,
   CodexPressAccountReady,
   CodexPressLoginRequired,
   CodexPressUnavailable,
   CodexPressRefused,
+  AccountStandingReady,
+  AccountStandingLoginRequired,
+  AccountStandingQuotaReached,
+  AccountStandingIncomplete,
+  AccountStandingInitializeMissing,
 }
 import gunbc.codex_runtime_bundle { codex_bundle_executable_path }
 import extdeps.shell
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-data witness_note: String = "WET: materialize content-addressed Codex runtime, then observe account standing via initialize → account/read → account/rateLimits/read. Accepts account_ready OR typed login_required / quota press_refused. Must NEVER claim turn_started. Standing summaries are redacted projections, not raw NDJSON. Excluded from hermetic discovery."
+data witness_note: String = "WET: materialize content-addressed Codex runtime, then observe account standing via ONE held-open initialize → account/read → account/rateLimits/read session with typed id correlation. Accepts account_ready OR login_required OR quota press_refused. Incomplete and unavailable are RED. Must NEVER claim turn_started. Excluded from hermetic discovery."
 
 fn committed_codex_lock_text() -> String {
   filesystem_read(path: codex_runtime_lock_path as String).content
-}
-
-fn standing_is_redacted(redacted: String) -> Bool {
-  redacted.contains("@") == false
-    && redacted.contains("access_token") == false
-    && redacted.contains("refresh_token") == false
-    && redacted.contains("email") == false
-}
-
-fn press_account_trip_outcome_is_attributable(status: String, reason: String) -> Bool {
-  if status == "account_ready" {
-    true
-  } else if status == "login_required" {
-    true
-  } else if status == "press_refused" {
-    reason.contains("quota") || reason.contains("incomplete") || reason.contains("initialize")
-  } else {
-    false
-  }
 }
 
 test fn press_account_trip_yields_standing_or_typed_refusal_never_turn_started() -> Bool {
@@ -75,28 +63,36 @@ test fn press_account_trip_yields_standing_or_typed_refusal_never_turn_started()
             let caption = codex_press_outcome_operator_caption(
               outcome: CodexPressAccountReady { receipt: receipt },
             )
-            status == "account_ready"
-              && status != "turn_started"
-              && caption == "account ready"
-              && caption != "turn started"
-              && standing_is_redacted(redacted: receipt.standing.redacted_standing)
-              && receipt.standing.redacted_standing.contains("account_read_ok")
+            match receipt.standing.evidence.classification {
+              AccountStandingReady =>
+                status == "account_ready"
+                  && status != "turn_started"
+                  && caption == "account ready"
+                  && standing_is_redacted_projection(summary: receipt.standing)
+                  && account_standing_projection(
+                    classification: receipt.standing.evidence.classification,
+                  ).contains("rate_limits_observed")
+              _ => false
+            }
           }
           CodexPressLoginRequired { reason, standing } =>
             codex_press_outcome_wire_status(
               outcome: CodexPressLoginRequired { reason: reason, standing: standing },
             ) == "login_required"
-              && standing_is_redacted(redacted: standing.redacted_standing)
+              && standing_is_redacted_projection(summary: standing)
+              && match standing.evidence.classification {
+                AccountStandingLoginRequired => true
+                _ => false
+              }
           CodexPressRefused { reason, standing } =>
-            press_account_trip_outcome_is_attributable(
-              status: "press_refused",
-              reason: reason as String,
-            )
-              && standing_is_redacted(redacted: standing.redacted_standing)
-              && (
-                (reason as String).contains("quota")
-                  || (reason as String).contains("incomplete")
-              )
+            (reason as String).contains("quota")
+              && standing_is_redacted_projection(summary: standing)
+              && match standing.evidence.classification {
+                AccountStandingQuotaReached => true
+                AccountStandingIncomplete => false
+                AccountStandingInitializeMissing => false
+                _ => false
+              }
           CodexPressUnavailable { reason: _ } => false
         }
       }

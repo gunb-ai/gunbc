@@ -665,7 +665,7 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
   WitnessExclusionRow {
     pattern: "codex_app_server_press_wet_witness_test.dag",
     classification: BinWitnessWet,
-    reason: "wet real-execution class: materialize Codex runtime then app-server account-standing trip (initialize/account/read/rateLimits); hermetic discovery refuses. Runs every PR via bin_witness_wet_entries. AccountReady only — never turn_started.",
+    reason: "wet real-execution class: materialize Codex runtime then typed app-server account-standing session (initialize/account/read/rateLimits with id correlation); hermetic discovery refuses. Runs every PR via bin_witness_wet_entries. Accepts Ready|Login|quota only — incomplete RED; never turn_started.",
     dissolve_on: excl_bin_wet_dissolve
   },
   WitnessExclusionRow {
