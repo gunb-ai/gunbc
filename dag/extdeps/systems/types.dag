@@ -8,7 +8,8 @@ import extdeps.gpu.types { GpuModelCatalogRow }
 import extdeps.memory.types { MemoryFacts }
 import extdeps.toolchain.types { Architecture }
 
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -16,6 +17,18 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
     scheme: Https
     locator: "en.wikipedia.org/wiki/System_on_a_chip"
   }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.systems.types",
+      decl_name: "IntegratedComputeSystemCatalogRow",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps.systems.types.extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 type CpuCoreCluster {

@@ -3,7 +3,8 @@ module extdeps.systems.nvidia_fleet_lifecycle
 import std.types { NonEmptyStr, List, Int, Bool }
 import std.types { Timestamp, Milliseconds }
 
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -11,6 +12,18 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
     scheme: Https
     locator: "docs.nvidia.com/dgx/dgx-spark/enterprise-fleet-lifecycle.html"
   }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.systems.nvidia_fleet_lifecycle",
+      decl_name: "FleetLifecycleOperation",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps.systems.nvidia_fleet_lifecycle.extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 // SPARK-0 (2026-08-05), live-fetched from the cited page. This models the OPERATION SHAPE only (DESIGN §3: 'the interface shape ... is what extdeps owns'; transport -- SSH execution of these Python entry points -- and business policy -- which host, which maintenance window -- are realization and workflow facts respectively, owned elsewhere, never here). Quoted verbatim: the common envelope carries 'tool' (stable identifier), 'ts' (UTC timestamp), 'host' (target identity used by the orchestrator), 'status', 'rc' (exit code), 'duration_ms', 'summary' (bounded, indexable), 'warnings' (optional non-fatal issues), 'artifacts' (optional artifact pointers). Failure is classified into exactly four named classes: 'Transport/auth -- SSH could not connect or authenticate; device unreachable; key or policy issue.'; 'Privilege -- Command requires sudo or access to privileged system interfaces.'; 'Tool execution -- Missing dependency, unexpected OS state, or tool internal error.'; 'Endpoint degraded -- Tool ran successfully but returned warning or failure status due to device health signals.'
