@@ -769,6 +769,24 @@ fn dispatch_attempt_diff_window_path_for_instance(
   ], "")
 }
 
+fn dispatch_attempt_verification_current_selection_path_for_instance(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+  head_sha: String,
+) -> String {
+  join([
+    dispatch_attempt_verification_dir_for_instance(
+      instance: instance,
+      node_id: node_id,
+      attempt_key: attempt_key,
+    ),
+    "/",
+    head_sha,
+    ".current-selection.json",
+  ], "")
+}
+
 fn dispatch_attempt_validation_receipt_path_for_instance(
   instance: HostDashboardInstance,
   node_id: RoadmapNodeId,

@@ -63,6 +63,7 @@ import gunbc.roadmap_dispatch_actuator {
   dispatch_attempt_verification_receipt_path_for_instance,
   dispatch_attempt_verification_dir_for_instance,
   dispatch_attempt_diff_window_path_for_instance,
+  dispatch_attempt_verification_current_selection_path_for_instance,
   verification_receipt_directory_segment,
   dispatch_attempt_publication_receipt_path_for_instance,
   dispatch_attempt_publication_dir_for_instance,
@@ -217,6 +218,23 @@ import gunbc.roadmap_verification_receipt {
   verification_subject_match,
   VerificationSubjectMatches,
   VerificationSubjectDiffers,
+  CurrentVerificationSelection,
+  CurrentVerificationSelectionObservation,
+  SelectionAbsent,
+  SelectionUnreadable,
+  SelectionMalformed,
+  SelectionObserved,
+  ExactVerificationReceiptSource,
+  current_verification_selection_json,
+  current_verification_selection_observe,
+  exact_verification_receipt_source_read,
+  exact_verification_receipt_basename,
+  verification_receipt_file_source_from_exact,
+  belt_verification_decision,
+  BeltVerificationRun,
+  BeltVerificationDefer,
+  BeltVerificationRefuse,
+  verification_directory_segment,
 }
 import extdeps.github.github { Repository }
 import gunbc.roadmap_validation_oracle {
@@ -2745,15 +2763,141 @@ fn belt_verification_window_identity_for_attempt(
   }
 }
 
-fn belt_verification_receipt_basename_for_subject(subject: VerificationSubject) -> String {
-  join(
-    [
-      subject.head_sha as String,
-      ".",
-      git_diff_window_identity_hex(identity: subject.change_window_identity),
-      ".json",
-    ],
-    "",
+fn belt_publish_current_verification_selection(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+  subject: VerificationSubject,
+) -> BeltExecOutcome {
+  let path = dispatch_attempt_verification_current_selection_path_for_instance(
+    instance: instance,
+    node_id: node_id,
+    attempt_key: attempt_key,
+    head_sha: subject.head_sha as String,
+  )
+  let write = Filesystem.Write(
+    path: path,
+    content: current_verification_selection_json(
+      selection: CurrentVerificationSelection {
+        head_sha: subject.head_sha,
+        change_window_identity: subject.change_window_identity,
+      },
+    ),
+  )
+  if write.success {
+    ExecOk { stdout: path }
+  } else {
+    ExecRefused {
+      program: "current-selection",
+      reason: join([
+        "the belt could not publish the current verification selection at ",
+        path,
+        ": ",
+        write.error,
+      ], ""),
+    }
+  }
+}
+
+fn belt_verification_selection_observe(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+  head_sha: String,
+) -> CurrentVerificationSelectionObservation {
+  current_verification_selection_observe(
+    selection_path: dispatch_attempt_verification_current_selection_path_for_instance(
+      instance: instance,
+      node_id: node_id,
+      attempt_key: attempt_key,
+      head_sha: head_sha,
+    ),
+  )
+}
+
+fn belt_verification_subject_from_selection(
+  node: RoadmapNode,
+  attempt_key: String,
+  branch: String,
+  head: CommitSha,
+  selection: CurrentVerificationSelectionObservation,
+) -> VerificationSubjectObservation {
+  match selection {
+    SelectionAbsent =>
+      VerificationSubjectUnobserved {
+        reason: "the belt has not selected a verification window for this head yet",
+      }
+    SelectionUnreadable { cause } =>
+      VerificationSubjectUnobserved { reason: cause }
+    SelectionMalformed { cause } =>
+      VerificationSubjectUnobserved { reason: cause }
+    SelectionObserved { head: selected_head, window_identity } =>
+      if (selected_head as String) != (head as String) {
+        VerificationSubjectUnobserved {
+          reason: join([
+            "the current verification selection names head ",
+            selected_head as String,
+            " but the worktree head is ",
+            head as String,
+          ], ""),
+        }
+      } else {
+        match node_criteria_digest(rn: node) {
+          Absent =>
+            VerificationSubjectUnobserved {
+              reason: "this roadmap node has no criteria digest, so the verification subject cannot be constructed",
+            }
+          Present { value: criteria_digest } =>
+            VerificationSubjectObserved {
+              subject: VerificationSubject {
+                node_identity: node.identity,
+                criteria_digest: criteria_digest,
+                attempt_key: attempt_key,
+                branch: branch as NonEmptyStr,
+                head_sha: head,
+                change_window_identity: window_identity,
+              },
+            }
+        }
+      }
+  }
+}
+
+fn belt_verification_receipt_source_for_selection(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+  head_sha: String,
+  window_identity_hex: String,
+) -> VerificationReceiptFileSource {
+  let attempt_dir = dispatch_attempt_state_path_for_instance(
+    instance: instance,
+    node_id: node_id,
+    attempt_key: attempt_key,
+  )
+  let verification_dir = dispatch_attempt_verification_dir_for_instance(
+    instance: instance,
+    node_id: node_id,
+    attempt_key: attempt_key,
+  )
+  let receipt_basename = exact_verification_receipt_basename(
+    head_sha: head_sha,
+    window_identity_hex: window_identity_hex,
+  )
+  let receipt_path = dispatch_attempt_verification_receipt_path_for_instance(
+    instance: instance,
+    node_id: node_id,
+    attempt_key: attempt_key,
+    head_sha: head_sha,
+    window_identity_hex: window_identity_hex,
+  )
+  verification_receipt_file_source_from_exact(
+    source: exact_verification_receipt_source_read(
+      attempt_dir: attempt_dir,
+      verification_dir: verification_dir,
+      receipt_basename: receipt_basename,
+      receipt_path: receipt_path,
+    ),
   )
 }
 
@@ -2762,111 +2906,32 @@ fn belt_verification_receipt_source(
   node_id: RoadmapNodeId,
   attempt_key: String,
   subject: VerificationSubjectObservation,
+  selection: CurrentVerificationSelectionObservation,
 ) -> VerificationReceiptFileSource {
-  match subject {
-    VerificationSubjectUnobserved { reason: _ } => VerificationReceiptAbsent
-    VerificationSubjectObserved { subject: observed } => {
-      let attempt_dir = dispatch_attempt_state_path_for_instance(
+  match selection {
+    SelectionAbsent => VerificationReceiptAbsent
+    SelectionUnreadable { cause: _ } =>
+      VerificationReceiptUnreadable {
+        detail: join([
+          "the current verification selection could not be read, so the exact receipt path was not established: ",
+          cause,
+        ], ""),
+      }
+    SelectionMalformed { cause } =>
+      VerificationReceiptUnreadable {
+        detail: join([
+          "the current verification selection is malformed, so the exact receipt path was not established: ",
+          cause,
+        ], ""),
+      }
+    SelectionObserved { head, window_identity } =>
+      belt_verification_receipt_source_for_selection(
         instance: instance,
         node_id: node_id,
         attempt_key: attempt_key,
+        head_sha: head as String,
+        window_identity_hex: window_identity.digest as String,
       )
-      let attempt_listing = Filesystem.List(path: attempt_dir)
-      if !attempt_listing.success {
-        VerificationReceiptUnreadable {
-          detail: join([
-            "the attempt state directory could not be listed, so whether a verification receipt exists was not established: ",
-            attempt_dir,
-            " (",
-            attempt_listing.error,
-            ")",
-          ], ""),
-        }
-      } else if !belt_listing_names_entry(
-        listing: attempt_listing.entries,
-        name: verification_receipt_directory_segment,
-      ) {
-        if belt_listing_names_entry(
-          listing: attempt_listing.entries,
-          name: "validation-receipt.json",
-        ) {
-          let legacy_path = dispatch_attempt_validation_receipt_path_for_instance(
-            instance: instance,
-            node_id: node_id,
-            attempt_key: attempt_key,
-          )
-          let legacy_read = Filesystem.Read(path: legacy_path)
-          if legacy_read.success {
-            VerificationReceiptPresent { text: legacy_read.content }
-          } else {
-            VerificationReceiptUnreadable {
-              detail: join([
-                "the legacy validation receipt was listed and then could not be read: ",
-                legacy_path,
-                " (",
-                legacy_read.error,
-                ")",
-              ], ""),
-            }
-          }
-        } else {
-          VerificationReceiptAbsent
-        }
-      } else {
-        let verification_dir = dispatch_attempt_verification_dir_for_instance(
-          instance: instance,
-          node_id: node_id,
-          attempt_key: attempt_key,
-        )
-        let verification_listing = Filesystem.List(path: verification_dir)
-        if !verification_listing.success {
-          VerificationReceiptUnreadable {
-            detail: join([
-              "the verification receipt directory was named by the attempt listing but could not itself be listed: ",
-              verification_dir,
-              " (",
-              verification_listing.error,
-              ")",
-            ], ""),
-          }
-        } else {
-          let receipt_name = belt_verification_receipt_basename_for_subject(
-            subject: observed,
-          )
-          let receipt_path = join(
-            [
-              dispatch_attempt_verification_dir_for_instance(
-                instance: instance,
-                node_id: node_id,
-                attempt_key: attempt_key,
-              ),
-              "/",
-              receipt_name,
-            ],
-            "",
-          )
-          let read = Filesystem.Read(path: receipt_path)
-          if read.success {
-            VerificationReceiptPresent { text: read.content }
-          } else if belt_listing_names_entry(
-            listing: verification_listing.entries,
-            name: receipt_name,
-          ) {
-            VerificationReceiptUnreadable {
-              detail: join([
-                "the exact-head verification receipt for this subject was listed and then could not be read, so it exists and its content is unavailable: ",
-                receipt_path,
-                " (",
-                read.error,
-                ")",
-              ], ""),
-            }
-          } else {
-            VerificationReceiptAbsent
-          }
-        }
-      }
-    }
   }
 }
 
@@ -2899,38 +2964,29 @@ fn belt_verification_subject_observation_for_attempt(
         WorktreeHeadUnobserved { reason } =>
           VerificationSubjectUnobserved { reason: reason }
         WorktreeHeadObserved { revision: revision } =>
-          match node_criteria_digest(rn: node) {
-            Absent =>
-              VerificationSubjectUnobserved {
-                reason: "this roadmap node has no criteria digest, so the verification subject cannot be constructed",
-              }
-            Present { value: criteria_digest } =>
-              let branch = dispatch_branch_name(
+          if trim(dispatch_branch_name(
+            node_id: node_id_typed,
+            attempt_key: attempt_key,
+          )) == "" {
+            VerificationSubjectUnobserved {
+              reason: "the attempt has no branch name, so there is no verification subject to construct",
+            }
+          } else {
+            belt_verification_subject_from_selection(
+              node: node,
+              attempt_key: attempt_key,
+              branch: dispatch_branch_name(
                 node_id: node_id_typed,
                 attempt_key: attempt_key,
-              )
-              let partial_subject = VerificationSubject {
-                node_identity: node.identity,
-                criteria_digest: criteria_digest,
+              ),
+              head: revision as CommitSha,
+              selection: belt_verification_selection_observe(
+                instance: instance,
+                node_id: node_id_typed,
                 attempt_key: attempt_key,
-                branch: branch as NonEmptyStr,
-                head_sha: revision as CommitSha,
-                change_window_identity: git_diff_window_absent_identity(),
-              }
-              belt_verification_subject_for(
-                node: node,
-                attempt_key: attempt_key,
-                branch: branch,
-                head: head,
-                change_window_identity: belt_verification_window_identity_for_attempt(
-                  instance: instance,
-                  node_id: node_id_typed,
-                  attempt_key: attempt_key,
-                  node: node,
-                  partial_subject: partial_subject,
-                  worktree: worktree,
-                ),
-              )
+                head_sha: revision as String,
+              ),
+            )
           }
       }
     }
@@ -3021,6 +3077,16 @@ fn belt_workflow_progress_for_attempt_ref(
       node_id: attempt.node_id,
       attempt_key: current_key,
     )
+    let verification_selection = match verification_subject {
+      VerificationSubjectObserved { subject: observed } =>
+        belt_verification_selection_observe(
+          instance: instance,
+          node_id: node_id,
+          attempt_key: current_key,
+          head_sha: observed.head_sha as String,
+        )
+      VerificationSubjectUnobserved { reason: _ } => SelectionAbsent
+    }
     let publication_receipt = belt_publication_receipt_source(
       instance: instance,
       node_id: node_id,
@@ -3057,11 +3123,13 @@ fn belt_workflow_progress_for_attempt_ref(
         node_id: attempt.node_id,
       ),
       verification_subject: verification_subject,
+      verification_selection: verification_selection,
       verification_source: belt_verification_receipt_source(
         instance: instance,
         node_id: node_id,
         attempt_key: current_key,
         subject: verification_subject,
+        selection: verification_selection,
       ),
       publication_subject: publication_subject,
       publication_source: publication_receipt,
