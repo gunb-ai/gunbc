@@ -22,7 +22,7 @@ import gunbc.ci_spec {
 import v2.workflow.ci_heal_revalidation_preflight_emit {
   ci_heal_revalidation_preflight_script,
 }
-import gunbc.ci_workflow_expressions { ci_deploy_push_to_main_if, ci_regen_heal_if }
+import gunbc.ci_workflow_expressions { ci_deploy_push_to_main_if, ci_regen_heal_if, ci_floor_upstream_clean_if }
 import gunbc.commit_workflow { commit_gate_roster, project_ci_floor_gates, project_ci_floor_witness_entries }
 import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec, ci_runner_target_ram_speed_budget, selected_ci_runner_target }
 import gunbc.ci_compile_jobs { ci_compile_jobs, compile_jobs_count_or_serial }
@@ -691,10 +691,10 @@ fn ci_job() -> Job {
     name: none,
     runner: gunbc_ci_selected_runner_spec(),
     steps: concat(ci_floor_job_prelude_steps(), [ci_release_bins_download_step(), ci_release_bins_unpack_verify_step(), ci_floor_peak_pre_step(), ci_floor_step(), ci_floor_peak_post_step()]),
-    needs: ["build", "regen"],
+    needs: ["build", "regen", "heal_generated_artifacts"],
     env: none,
     outputs: none,
-    if_condition: none,
+    if_condition: Present { value: ci_floor_upstream_clean_if },
     timeout_minutes: Present { value: gunbc_ci_job_backstop_timeout_minutes() },
     continue_on_error: none,
     concurrency: none,
