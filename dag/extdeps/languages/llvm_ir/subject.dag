@@ -31,6 +31,4 @@ data llvm_ir_language_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: []
 }
 
-data llvm_ir_language_mandated_scope_name_scaffold_note: String = "DECLARED SCAFFOLD — the shared explanation and both dissolution triggers live once at gunbc.language_subject_scope_scaffold mandated_scope_name_scaffold, and are deliberately not repeated inside an upstream subject carrier (cursor review 48122)."
-
 data extdeps_model_scope: ExternalModelScope = llvm_ir_language_model_scope
