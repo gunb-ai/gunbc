@@ -11379,6 +11379,13 @@ macro_rules! v1_builtin_arms {
                 crate::cli_run::extdeps_external_authority_live_roster_module_count(),
             ))),
 
+            arm "free_call.seed_runner_bool_false_failure_detail" { "seed_runner_bool_false_failure_detail" } => {
+                let witness = expect_str($positional.first().copied(), $name)?;
+                Ok(Some(Value::Str(crate::cli_run::seed_runner_bool_false_failure_detail(
+                    $ctx, &witness,
+                ))))
+            },
+
             arm "free_call.doc_graph_orphan_count" { "doc_graph_orphan_count" } => {
                 let extra_roots = expect_str_list($positional.first().copied(), $name)?;
                 Ok(Some(Value::Int(crate::cli_run::doc_graph_orphan_count(

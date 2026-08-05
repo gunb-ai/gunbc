@@ -4567,6 +4567,9 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::OwnershipViolation { .. } => "OwnershipViolation",
         CompilerDiagnostic::VariantCollision { .. } => "VariantCollision",
         CompilerDiagnostic::SoleConstructorViolation { .. } => "SoleConstructorViolation",
+        CompilerDiagnostic::ConstructorCallAdmissionRefused { .. } => {
+            "ConstructorCallAdmissionRefused"
+        }
         CompilerDiagnostic::UnlistedImportUse { .. } => "UnlistedImportUse",
         CompilerDiagnostic::AmbiguousReference { .. } => "AmbiguousReference",
         CompilerDiagnostic::CallArgumentNameUnknown { .. } => "CallArgumentNameUnknown",
@@ -4604,6 +4607,10 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::OwnershipViolation { binding, .. } => binding.clone(),
         CompilerDiagnostic::VariantCollision { variant, .. } => variant.clone(),
         CompilerDiagnostic::SoleConstructorViolation { type_name, .. } => type_name.clone(),
+        CompilerDiagnostic::ConstructorCallAdmissionRefused {
+            constructor_decl_name,
+            ..
+        } => constructor_decl_name.clone(),
         CompilerDiagnostic::UnlistedImportUse { name, .. } => name.clone(),
         CompilerDiagnostic::AmbiguousReference { name, .. } => name.clone(),
         CompilerDiagnostic::CallArgumentNameUnknown { argument, .. } => argument.clone(),
@@ -12945,6 +12952,27 @@ pub fn append_failure_receipt_companion_loudness(
         }
         FailureReceiptCompanionLookup::NotDeclared => {}
     }
+}
+
+/// Production claim_executor / discovery-summary Bool(false) detail rendering.
+/// Exposed to `.dag` witnesses via `seed_runner_bool_false_failure_detail` so CI can
+/// exercise the same `append_failure_receipt_companion_loudness` path the floor runner uses.
+///
+/// HAND-RUST DISPOSITION (DESIGN §7 seed-shrinks-toward-zero; review 48788). DEFERRED seed
+/// retention: one new builtin arm routing witness loudness through the existing
+/// `append_failure_receipt_companion_loudness` / `gunbc.test_module_hygiene.failure_receipt_companion`
+/// stack — no parallel naming authority. Lane: **v1 exit** (zero hand-maintained Rust).
+/// ROADMAP row: "Get hand-written Rust in this repository down to zero"
+/// (authority `dag/gunbc/v1_deletion_plan.dag`). Dissolution trigger: deleted with
+/// `claim_executor` when witness execution leaves the seed runner; witnesses then call the
+/// loudness projection directly without this bridge.
+pub fn seed_runner_bool_false_failure_detail(
+    ctx: &v1_interpreter::InterpContext,
+    witness_function: &str,
+) -> String {
+    let mut detail = "returned Bool(false)".to_string();
+    append_failure_receipt_companion_loudness(&mut detail, ctx, witness_function);
+    detail
 }
 
 /// Run a witness companion that returns `String` divergence detail (Lane B agreement loudness).

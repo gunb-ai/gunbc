@@ -31,7 +31,7 @@ import v1.std.core {
   Cardinality, Required, CardOptional,
   ErrorNode, make_error_node, is_error_diagnostic, diagnostic_to_span,
   FrontierOccurrenceKey, diagnostic_frontier_occurrence_key,
-  InternalError, TypeMismatch, VariantCollision, SoleConstructorViolation, UnresolvedType, FieldNotFound, MethodNotFound, MethodExistenceUndecided, MethodExistenceFrontierAdmitted, ReceiverTypeUnestablished, FrontierOccurrenceBudgetExceeded, MissingField, AmbiguousReference,
+  InternalError, TypeMismatch, VariantCollision, SoleConstructorViolation, ConstructorCallAdmissionRefused, UnresolvedType, FieldNotFound, MethodNotFound, MethodExistenceUndecided, MethodExistenceFrontierAdmitted, ReceiverTypeUnestablished, FrontierOccurrenceBudgetExceeded, MissingField, AmbiguousReference,
   CallArgumentNameUnknown, CallPositionalSurplus, CallPositionalDeficit, CallNamedArgOnFunctionValue, CallArgumentDuplicate,
   resource_use_name_at, resource_use_resource,
   is_child_accessor_in_model, is_tree_size_reducing, is_property_contraction,
@@ -64,6 +64,7 @@ import v1.std.core {
   unit_type, bool_type, string_type, int_type, float_type, none_type,
   error_type,
   is_container_type, container_expected_arity,
+  DeclRefCoords, fn_admit_callers, decl_ref_coords_label,
   default_ident_span, node_name_span,
 }
 import v1.compiler.resolve { ModuleGraph, ResolvedModule, ResolvedImport }
@@ -179,7 +180,7 @@ import v1.compiler.infer_lookup {
   lookup_field_type_node, lookup_coproduct_common_field_node, product_field_result_type,
   map_value_type_in_env, map_key_type_in_env, set_element_type_in_env,
   lookup_in_scope, lookup_func_sig, func_sig_if_resolved,
-  global_bare_callable_node
+  global_bare_callable_node, func_decl_binding_for_call
 }
 import v1.compiler.infer_access {
   AccessCheckResultNode,
@@ -234,6 +235,7 @@ type InferScope {
   service_registry: Map<String, List<OpEntry>>
   item_registry: Map<String, ItemInfo>
   lambda_param_provenance: Map<String, SubValueRelation>
+  caller_decl_name: String
 }
 
 type InferResult {
@@ -603,6 +605,119 @@ fn ambiguous_reference_refusal(name: String, candidates: List<String>, span: Sou
   InferResult {
     typed: semantic_expr_error_node(message: concat("ambiguous reference '", name, "'"), span: span),
     diagnostics: [make_error_node(diagnostic: AmbiguousReference { name: name, candidates: candidates, span: span }, module_name: scope.module_name)]
+  }
+}
+
+data constructor_reference_admission_enforced: Bool = true
+
+data constructor_reference_admission_frontier_note: String = "Counted v1 seed realization for ConstructorReferenceAdmission (Horn 3, msg_968d6c24): unified infer construction-admission beside sole_constructor record-literal refusal. Dissolves when compiler_frontier_row_04_infer self-emits CargoGreen and v2 infer is the production typecheck path (^migrate_when_closure_self_emits_cargo_green)."
+
+fn constructor_reference_admission_enforced_now() -> Bool {
+  constructor_reference_admission_enforced
+}
+
+fn decl_ref_coords_equal(a: DeclRefCoords, b: DeclRefCoords) -> Bool {
+  a.module_path == b.module_path && a.decl_name == b.decl_name
+}
+
+fn caller_decl_coords(scope: InferScope) -> DeclRefCoords? {
+  if scope.caller_decl_name == "" {
+    none
+  } else {
+    Present {
+      value: DeclRefCoords {
+        module_path: scope.module_name,
+        decl_name: scope.caller_decl_name
+      }
+    }
+  }
+}
+
+fn constructor_call_admission_diags(
+  callee_name: String,
+  scope: InferScope,
+  span: SourceSpan
+) -> List<ErrorNode> {
+  if !constructor_reference_admission_enforced_now() {
+    []
+  } else {
+    match func_decl_binding_for_call(
+      func_env: scope.func_env,
+      type_env: scope.type_env,
+      name: callee_name
+    ) {
+      Present { value: bd } =>
+        match fn_admit_callers(n: bd.node, source_indices: scope.type_env.source_indices) {
+          Present { value: permitted } =>
+            if bd.owner_module_path == scope.module_name {
+              []
+            } else {
+              match caller_decl_coords(scope: scope) {
+                Present { value: caller } =>
+                  if permitted |> any(p => decl_ref_coords_equal(a: p, b: caller)) {
+                    []
+                  } else {
+                    [
+                      make_error_node(
+                        diagnostic: ConstructorCallAdmissionRefused {
+                          constructor_module_path: bd.owner_module_path,
+                          constructor_decl_name: callee_name,
+                          caller_module_path: caller.module_path,
+                          caller_decl_name: caller.decl_name,
+                          permitted_callers: permitted |> map(p => decl_ref_coords_label(coords: p)),
+                          span: span
+                        },
+                        module_name: scope.module_name
+                      )
+                    ]
+                  }
+                Absent =>
+                  [
+                    make_error_node(
+                      diagnostic: ConstructorCallAdmissionRefused {
+                        constructor_module_path: bd.owner_module_path,
+                        constructor_decl_name: callee_name,
+                        caller_module_path: scope.module_name,
+                        caller_decl_name: "<unknown>",
+                        permitted_callers: permitted |> map(p => decl_ref_coords_label(coords: p)),
+                        span: span
+                      },
+                      module_name: scope.module_name
+                    )
+                  ]
+              }
+            }
+          Absent => []
+        }
+      Absent => []
+    }
+  }
+}
+
+fn constructor_reference_admission_refusal(
+  callee_name: String,
+  span: SourceSpan,
+  scope: InferScope
+) -> InferResult {
+  InferResult {
+    typed: semantic_expr_error_node(
+      message: concat("constructor call admission refused for '", callee_name, "'"),
+      span: span
+    ),
+    diagnostics: constructor_call_admission_diags(callee_name: callee_name, scope: scope, span: span)
+  }
+}
+
+fn constructor_reference_admission_early_refusal(
+  callee_name: String,
+  span: SourceSpan,
+  scope: InferScope
+) -> InferResult? {
+  let admission_diags = constructor_call_admission_diags(callee_name: callee_name, scope: scope, span: span)
+  match admission_diags |> first {
+    Present { value: _ } =>
+      Present { value: constructor_reference_admission_refusal(callee_name: callee_name, span: span, scope: scope) }
+    Absent => Absent
   }
 }
 
@@ -2289,6 +2404,7 @@ fn build_params_scope(scope: InferScope, params: List<Node>) -> InferScope {
     module_name: scope.module_name,
     service_registry: scope.service_registry,
     item_registry: scope.item_registry,
+    caller_decl_name: scope.caller_decl_name,
     lambda_param_provenance: empty_map()
   }
 }
@@ -2303,6 +2419,7 @@ fn extend_scope(scope: InferScope, name: String, resolved: Node, provenance: Sub
     module_name: scope.module_name,
     service_registry: scope.service_registry,
     item_registry: scope.item_registry,
+    caller_decl_name: scope.caller_decl_name,
     lambda_param_provenance: scope.lambda_param_provenance
   }
 }
@@ -2317,6 +2434,7 @@ fn extend_scope_match_bound(scope: InferScope, name: String, resolved: Node, pro
     module_name: scope.module_name,
     service_registry: scope.service_registry,
     item_registry: scope.item_registry,
+    caller_decl_name: scope.caller_decl_name,
     lambda_param_provenance: scope.lambda_param_provenance
   }
 }
@@ -2337,6 +2455,7 @@ fn extend_scope_with_params(scope: InferScope, params: List<String>) -> InferSco
     module_name: scope.module_name,
     service_registry: scope.service_registry,
     item_registry: scope.item_registry,
+    caller_decl_name: scope.caller_decl_name,
     lambda_param_provenance: scope.lambda_param_provenance
   }
 }
@@ -2489,6 +2608,7 @@ fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fo
         module_name: scope.module_name,
         service_registry: scope.service_registry,
         item_registry: scope.item_registry,
+        caller_decl_name: scope.caller_decl_name,
         lambda_param_provenance: prov_map
       }
       let ar = infer_expr(texpr: lam_value, scope: fold_scope, expected: Present { value: fold_callable })
@@ -2509,6 +2629,7 @@ fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fo
           module_name: scope.module_name,
           service_registry: scope.service_registry,
           item_registry: scope.item_registry,
+          caller_decl_name: scope.caller_decl_name,
           lambda_param_provenance: nf_prov_map
         }
       } else { scope }
@@ -2638,24 +2759,29 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         Absent =>
           match lookup_func_sig(func_env: scope.func_env, type_env: scope.type_env, name: name) {
             FuncSigResolved { sig: fsig } =>
-              if (fsig.params |> count) == 0 {
-                ok_infer(texpr: make_named_expr_node(
-                  name: name,
-                  expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics }, descent_evidence: none },
-                  children: [],
-                  inferred: Present { value: Resolved { node: fsig.inferred } },
-                  span: span,
-                  name_span: span
-                ))
-              } else {
-                ok_infer(texpr: make_named_expr_node(
-                  name: name,
-                  expr_data: ExprVar { binding_kind: Present { value: FunctionValueBinding } },
-                  children: [],
-                  inferred: Present { value: Resolved { node: resolved_callable_type(func_params: fsig.params, ret: fsig.inferred) } },
-                  span: span,
-                  name_span: span
-                ))
+              match (fsig.params |> count) == 0 {
+                true =>
+                  match constructor_reference_admission_early_refusal(callee_name: name, span: span, scope: scope) {
+                    Present { value: refusal } => refusal
+                    Absent =>
+                      ok_infer(texpr: make_named_expr_node(
+                        name: name,
+                        expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics }, descent_evidence: none },
+                        children: [],
+                        inferred: Present { value: Resolved { node: fsig.inferred } },
+                        span: span,
+                        name_span: span
+                      ))
+                  }
+                false =>
+                  ok_infer(texpr: make_named_expr_node(
+                    name: name,
+                    expr_data: ExprVar { binding_kind: Present { value: FunctionValueBinding } },
+                    children: [],
+                    inferred: Present { value: Resolved { node: resolved_callable_type(func_params: fsig.params, ret: fsig.inferred) } },
+                    span: span,
+                    name_span: span
+                  ))
               }
             FuncSigAmbiguous { candidates: ambiguous_fn_candidates } =>
               ambiguous_reference_refusal(name: name, candidates: ambiguous_fn_candidates, span: span, scope: scope)
@@ -2834,6 +2960,9 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       FuncSigAmbiguous { candidates: ambiguous_fn_candidates } =>
         ambiguous_reference_refusal(name: func_name, candidates: ambiguous_fn_candidates, span: span, scope: scope)
       _ =>
+      match constructor_reference_admission_early_refusal(callee_name: func_name, span: span, scope: scope) {
+        Present { value: refusal } => refusal
+        Absent =>
       let sig = func_sig_if_resolved(lookup: call_sig_lookup)
       let sig_params = match sig {
         Present { value: s } => s.params
@@ -3256,6 +3385,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           }
         }
         }
+      }
       }
       }
 
@@ -3723,7 +3853,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         locals: lam_scope.locals, body_locals: lam_scope.body_locals,
         match_bound_names: lam_scope.match_bound_names,
         module_name: lam_scope.module_name, service_registry: lam_scope.service_registry,
-        item_registry: lam_scope.item_registry, lambda_param_provenance: empty_map()
+        item_registry: lam_scope.item_registry, caller_decl_name: lam_scope.caller_decl_name, lambda_param_provenance: empty_map()
       }
       let body_result = infer_expr(texpr: lam_body, scope: body_scope, expected: body_expected)
       let body_typed = body_result.typed
@@ -6764,6 +6894,19 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
     let fn_scope = fold(item.uses, init: fn_scope, f: (s, u) =>
       extend_scope(scope: s, name: resource_use_name_at(n: u, source_indices: scope.type_env.source_indices), resolved: resource_use_resource(n: u), provenance: SubValueUnknown)
     )
+    let fn_decl_name = authored_name_at(source_indices: scope.type_env.source_indices, node: item)
+    let fn_scope = InferScope {
+      type_env: fn_scope.type_env,
+      func_env: fn_scope.func_env,
+      locals: fn_scope.locals,
+      body_locals: fn_scope.body_locals,
+      match_bound_names: fn_scope.match_bound_names,
+      module_name: fn_scope.module_name,
+      service_registry: fn_scope.service_registry,
+      item_registry: fn_scope.item_registry,
+      caller_decl_name: fn_decl_name,
+      lambda_param_provenance: fn_scope.lambda_param_provenance
+    }
     let fn_return_expected = if item.inferred != none { Present { value: resolved_type(n: item) } } else { none }
     let body_result = infer_expr(texpr: item.body.value, scope: fn_scope, expected: fn_return_expected)
     let body_typed = body_result.typed
@@ -6793,7 +6936,19 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
     }
   }
   else if item.body != none && item.params |> count == 0 && item.inferred != none {
-    let fn_scope = scope
+    let fn_decl_name = authored_name_at(source_indices: scope.type_env.source_indices, node: item)
+    let fn_scope = InferScope {
+      type_env: scope.type_env,
+      func_env: scope.func_env,
+      locals: scope.locals,
+      body_locals: scope.body_locals,
+      match_bound_names: scope.match_bound_names,
+      module_name: scope.module_name,
+      service_registry: scope.service_registry,
+      item_registry: scope.item_registry,
+      caller_decl_name: fn_decl_name,
+      lambda_param_provenance: scope.lambda_param_provenance
+    }
     let body_result = infer_expr(texpr: item.body.value, scope: fn_scope, expected: Present { value: resolved_type(n: item) })
     let body_typed = body_result.typed
     let body_diags = concat(
@@ -7379,7 +7534,7 @@ fn local_binding_for_item(item: Node, source_indices: Map<String, NewlineIndex>)
       name: item.name, span: item.span, ident_span: item.ident_span, children: [],
       connective: NoConnective, params: item.params, inferred: item.inferred,
       return_cardinality: item.return_cardinality,
-      uses: [], body: none, transport: none, properties: [],
+      uses: [], body: none, transport: none, properties: item.properties,
       type_annotation: item.type_annotation, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
     }
     Present { value: TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: fn_node, provenance: SubValueUnknown } }
@@ -8645,6 +8800,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
     module_name: resolved_module_name,
     service_registry: ctx.svc_registry,
     item_registry: ctx.item_registry,
+    caller_decl_name: "",
     lambda_param_provenance: empty_map()
   }
   let typed_item_results = infer_items(items: ctx.resolved_items, scope: infer_scope)

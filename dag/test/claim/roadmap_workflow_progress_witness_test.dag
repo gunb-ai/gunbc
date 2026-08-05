@@ -70,9 +70,13 @@ import gunbc.roadmap_verification_receipt {
   VerificationReceiptFileSource,
   VerificationReceiptAbsent,
   VerificationReceiptPresent,
+  CurrentVerificationSelectionObservation,
+  SelectionAbsent,
+  SelectionObserved,
 }
 import std.types { CommitSha }
 import std.content_hash { content_hash_atom }
+import gunbc.git_diff_change_window { git_diff_window_absent_identity }
 import gunbc.roadmap_model { RoadmapNodeIdentity }
 
 data fixture_verification_head: CommitSha = "cafecafecafecafecafecafecafecafecafecafe" as CommitSha
@@ -84,6 +88,14 @@ fn fixture_verification_subject() -> VerificationSubject {
     attempt_key: "feedfacefeedface",
     branch: "dispatch/node-1-afeedfacefeedface" as NonEmptyStr,
     head_sha: fixture_verification_head,
+    change_window_identity: git_diff_window_absent_identity(),
+  }
+}
+
+fn fixture_verification_selection() -> CurrentVerificationSelectionObservation {
+  SelectionObserved {
+    head: fixture_verification_head,
+    window_identity: git_diff_window_absent_identity(),
   }
 }
 
@@ -108,6 +120,7 @@ fn fixture_evidence(
     verification_subject: VerificationSubjectObserved {
       subject: fixture_verification_subject(),
     },
+    verification_selection: fixture_verification_selection(),
     verification_source: VerificationReceiptAbsent,
     publication_subject: PublicationSubjectObserved {
       subject: PublicationSubject {
@@ -355,6 +368,7 @@ test fn forged_admission_receipt_cannot_complete_environment() -> Bool {
     process: base.process,
     validation_summary: base.validation_summary,
     verification_subject: base.verification_subject,
+    verification_selection: base.verification_selection,
     verification_source: base.verification_source,
     publication_subject: base.publication_subject,
     publication_source: base.publication_source,
@@ -384,6 +398,7 @@ test fn persisted_staging_failure_precedes_empty_event_stream() -> Bool {
     process: base.process,
     validation_summary: base.validation_summary,
     verification_subject: base.verification_subject,
+    verification_selection: base.verification_selection,
     verification_source: base.verification_source,
     publication_subject: base.publication_subject,
     publication_source: base.publication_source,
@@ -413,6 +428,7 @@ test fn legacy_attempt_refuses_unobserved_early_stages() -> Bool {
     verification_subject: VerificationSubjectUnobserved {
       reason: "legacy attempt has no modeled verification subject",
     },
+    verification_selection: SelectionAbsent,
     verification_source: VerificationReceiptAbsent,
     publication_subject: PublicationSubjectObserved {
       subject: PublicationSubject {
@@ -437,7 +453,8 @@ test fn legacy_attempt_refuses_unobserved_early_stages() -> Bool {
       activity == legacy_attempt_supersedable_label
         && segment_state(progress.segments, "environment") == "refused"
         && segment_state(progress.segments, "workspace") == "refused"
-        && progress.reconciliation.observed_refusal_count == 4
+        && segment_state(progress.segments, "verify") == "pending"
+        && progress.reconciliation.observed_refusal_count == 3
     _ => false
   }
 }
@@ -462,6 +479,7 @@ test fn readable_but_invalid_admission_receipt_refuses_progress() -> Bool {
     process: base.process,
     validation_summary: base.validation_summary,
     verification_subject: base.verification_subject,
+    verification_selection: base.verification_selection,
     verification_source: base.verification_source,
     publication_subject: base.publication_subject,
     publication_source: base.publication_source,
@@ -607,6 +625,7 @@ fn publication_segment_of(
     process: base.process,
     validation_summary: base.validation_summary,
     verification_subject: base.verification_subject,
+    verification_selection: base.verification_selection,
     verification_source: base.verification_source,
     publication_subject: subject,
     publication_source: source,

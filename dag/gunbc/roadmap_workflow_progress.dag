@@ -82,10 +82,18 @@ import gunbc.roadmap_verification_receipt {
   VerificationEvidenceForSubject,
   VerificationEvidenceForAnotherSubject,
   VerificationEvidenceLegacyAttemptLevel,
+  VerificationEvidenceUnreadable,
+  VerificationEvidenceV1LegacyExactHead,
   VerificationFileEvidence,
   VerificationFileAbsent,
   VerificationFileUnreadable,
   VerificationFileDecoded,
+  CurrentVerificationSelectionObservation,
+  SelectionAbsent,
+  SelectionUnaddressable,
+  SelectionUnreadable,
+  SelectionMalformed,
+  SelectionObserved,
   verification_file_evidence_for,
   verification_evidence_moves_lamp,
   legacy_validation_receipt_detail,
@@ -141,6 +149,7 @@ type WorkflowAttemptEvidence {
   process: WorkerProcessEvidence
   validation_summary: String
   verification_subject: VerificationSubjectObservation
+  verification_selection: CurrentVerificationSelectionObservation
   verification_source: VerificationReceiptFileSource
   publication_subject: PublicationSubjectObservation
   publication_source: PublicationReceiptSource
@@ -555,6 +564,21 @@ fn verification_evidence_segment(
               ")",
             ], ""),
           }
+        VerificationEvidenceUnreadable { reason } =>
+          WorkflowSegment {
+            kind: VerificationWorkflowSegment,
+            state: WorkflowSegmentRefused,
+            detail: join([
+              "a verification receipt exists for this attempt's head and this reader cannot decode it: ",
+              reason,
+            ], ""),
+          }
+        VerificationEvidenceV1LegacyExactHead { legacy: _ } =>
+          WorkflowSegment {
+            kind: VerificationWorkflowSegment,
+            state: WorkflowSegmentRefused,
+            detail: "a v1 exact-head receipt at the exact path lacks change_window_identity and cannot satisfy the selected v2 subject",
+          }
       }
   }
 }
@@ -563,46 +587,83 @@ fn verification_segment(
   provider: ProviderExecutionState,
   validation_summary: String,
   verification_subject: VerificationSubjectObservation,
+  verification_selection: CurrentVerificationSelectionObservation,
   verification_source: VerificationReceiptFileSource,
 ) -> WorkflowSegment {
-  match verification_subject {
-    VerificationSubjectUnobserved { reason } =>
+  match verification_selection {
+    SelectionUnaddressable { cause } =>
       WorkflowSegment {
         kind: VerificationWorkflowSegment,
         state: WorkflowSegmentRefused,
         detail: join([
-          "this attempt has no exact head to adjudicate verification against, so no receipt can be checked for it: ",
-          reason,
+          "the worktree head could not be observed, so the verification question cannot be addressed: ",
+          cause,
         ], ""),
       }
-    VerificationSubjectObserved { subject } =>
-      if match verification_source {
-        VerificationReceiptAbsent => true
-        VerificationReceiptUnreadable { detail: _ } => false
-        VerificationReceiptPresent { text: _ } => false
-      } && match provider {
-        ProviderCompleted { activity: _ } => true
-        _ => false
-      } {
-        WorkflowSegment {
-          kind: VerificationWorkflowSegment,
-          state: WorkflowSegmentPending,
-          detail: join([
-            "awaiting independent exact-head validation receipt",
-            if validation_summary == "" {
-              ""
-            } else {
-              join([": ", validation_summary], "")
-            },
-          ], ""),
-        }
-      } else {
-        verification_evidence_segment(
-          evidence: verification_file_evidence_for(
-            expected: subject,
-            source: verification_source,
-          ),
-        )
+    SelectionAbsent =>
+      WorkflowSegment {
+        kind: VerificationWorkflowSegment,
+        state: WorkflowSegmentPending,
+        detail: "the belt has not selected a verification window for this head yet",
+      }
+    SelectionUnreadable { cause } =>
+      WorkflowSegment {
+        kind: VerificationWorkflowSegment,
+        state: WorkflowSegmentRefused,
+        detail: join([
+          "the current verification selection could not be read: ",
+          cause,
+        ], ""),
+      }
+    SelectionMalformed { cause } =>
+      WorkflowSegment {
+        kind: VerificationWorkflowSegment,
+        state: WorkflowSegmentRefused,
+        detail: join([
+          "the current verification selection is malformed: ",
+          cause,
+        ], ""),
+      }
+    SelectionObserved { head: _, window_identity: _ } =>
+      match verification_subject {
+        VerificationSubjectUnobserved { reason } =>
+          WorkflowSegment {
+            kind: VerificationWorkflowSegment,
+            state: WorkflowSegmentRefused,
+            detail: join([
+              "this attempt has no exact head to adjudicate verification against, so no receipt can be checked for it: ",
+              reason,
+            ], ""),
+          }
+        VerificationSubjectObserved { subject } =>
+          if match verification_source {
+            VerificationReceiptAbsent => true
+            VerificationReceiptUnreadable { detail: _ } => false
+            VerificationReceiptPresent { text: _ } => false
+          } && match provider {
+            ProviderCompleted { activity: _ } => true
+            _ => false
+          } {
+            WorkflowSegment {
+              kind: VerificationWorkflowSegment,
+              state: WorkflowSegmentPending,
+              detail: join([
+                "awaiting independent exact-head validation receipt",
+                if validation_summary == "" {
+                  ""
+                } else {
+                  join([": ", validation_summary], "")
+                },
+              ], ""),
+            }
+          } else {
+            verification_evidence_segment(
+              evidence: verification_file_evidence_for(
+                expected: subject,
+                source: verification_source,
+              ),
+            )
+          }
       }
   }
 }
@@ -651,6 +712,7 @@ fn workflow_segment_from_evidence(
         provider: provider,
         validation_summary: evidence.validation_summary,
         verification_subject: evidence.verification_subject,
+        verification_selection: evidence.verification_selection,
         verification_source: evidence.verification_source,
       )
     PublicationWorkflowSegment =>
