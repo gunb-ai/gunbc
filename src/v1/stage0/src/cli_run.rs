@@ -1758,6 +1758,96 @@ pub fn compile_dag_diagnostic_census(source: &str) -> CompileDiagnosticCensus {
     )
 }
 
+/// One symbol's binding observation on a declared-import-closure-only compile.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeclaredImportClosureBindingObserved {
+    pub binding_source: Option<UnlistedImportBindingSource>,
+    pub definer_module: Option<String>,
+    pub symbol_resolves: bool,
+    pub blocking_hard_diagnostic_count: i64,
+}
+
+/// Result of [`observe_declared_import_closure_symbol_binding`]. `NotRunnable` is distinct from
+/// an observed refusal so could-not-measure never reads as the subject passing (DESIGN §5).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DeclaredImportClosureBindingObservation {
+    Observed(DeclaredImportClosureBindingObserved),
+    NotRunnable(String),
+}
+
+fn blocking_hard_diagnostic_count_for_symbol(
+    resolved: &v1_compiler_compile::ResolvedPipelineResult,
+    consumer_module: &str,
+    symbol: &str,
+) -> i64 {
+    resolved
+        .diagnostics
+        .iter()
+        .filter(|d| compile_clean_diagnostic_is_hard(d))
+        .filter(|d| d.module_name == consumer_module)
+        .filter(|d| {
+            let msg = diagnostic_to_message(d.diagnostic.clone());
+            msg.contains(symbol)
+        })
+        .count() as i64
+}
+
+/// Host realization backing the `observe_declared_import_closure_symbol_binding` builtin:
+/// compile an entry's **declared import-edge closure only** (no reference-derived widening) under
+/// primary-precedence `pool_roots`, then classify how `consumer_module` binds `symbol`.
+///
+/// MEASUREMENT ONLY — binding-source classification (`ListedImport` vs `PoolCoincidence`) is
+/// carried as data for Class B (#6985) controls; callers judge acceptance.
+pub fn observe_declared_import_closure_symbol_binding(
+    pool_roots: &[String],
+    entry_path: &str,
+    consumer_module: &str,
+    symbol: &str,
+) -> DeclaredImportClosureBindingObservation {
+    let compiled = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        compile_declared_import_closure_only_with_pool(pool_roots, entry_path, None)
+    }));
+    let resolved = match compiled {
+        Ok(Ok(r)) => r,
+        Ok(Err(cause)) => {
+            return DeclaredImportClosureBindingObservation::NotRunnable(cause);
+        }
+        Err(_) => {
+            return DeclaredImportClosureBindingObservation::NotRunnable(
+                "observe_declared_import_closure_symbol_binding: compile panicked before producing a graph"
+                    .to_string(),
+            );
+        }
+    };
+    let blocking = blocking_hard_diagnostic_count_for_symbol(&resolved, consumer_module, symbol);
+    let graph = match resolved.graph.as_ref() {
+        Some(g) => g.as_ref(),
+        None => {
+            return DeclaredImportClosureBindingObservation::Observed(
+                DeclaredImportClosureBindingObserved {
+                    binding_source: None,
+                    definer_module: None,
+                    symbol_resolves: false,
+                    blocking_hard_diagnostic_count: blocking,
+                },
+            );
+        }
+    };
+    let definer = definer_module_for_name(graph, symbol);
+    let symbol_resolves = definer.is_some();
+    let binding_source = if symbol_resolves {
+        Some(classify_unlisted_import_binding_source(graph, consumer_module, symbol).0)
+    } else {
+        None
+    };
+    DeclaredImportClosureBindingObservation::Observed(DeclaredImportClosureBindingObserved {
+        binding_source,
+        definer_module: definer,
+        symbol_resolves,
+        blocking_hard_diagnostic_count: blocking,
+    })
+}
+
 /// Host realization backing the `compile_dag_rust_emit_check` builtin: compile an in-memory
 /// `.dag` program to Rust and check that the named emitted file contains every string in
 /// `includes` and none of `excludes`, with zero **compile-clean hard** diagnostics
@@ -6240,7 +6330,6 @@ pub fn declared_import_closure_source_paths(
         .collect())
 }
 
-#[cfg(feature = "test_hooks")]
 fn load_declared_import_closure_sources(
     index: &MultiEntryIndex,
     entry_path: &str,
@@ -6277,7 +6366,6 @@ pub fn compile_entry_on_declared_import_closure_only(
 /// root[0]) when simulating a stripped entry so pool membership can affect resolution
 /// while the import closure stays entry-only; `entry_content_override` skips the pool
 /// entirely and is only for fast isolated negative controls without ambient pressure.
-#[cfg(feature = "test_hooks")]
 pub fn compile_declared_import_closure_only_with_pool(
     pool_roots: &[String],
     entry_path: &str,
