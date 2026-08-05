@@ -135,7 +135,9 @@ fn duplicate_bare_type_name_variant_candidates(
     for tm in ctx.modules.iter() {
         let mod_name = authored_name_at(si.clone(), tm.module.clone());
         for item in tm.items.iter() {
-            if item_kind(Rc::clone(item)) != ItemKind::TypeItem || item.connective != Connective::Disj {
+            if item_kind(Rc::clone(item)) != ItemKind::TypeItem
+                || item.connective != Connective::Disj
+            {
                 continue;
             }
             let bare = authored_name_at(si.clone(), item.clone());
@@ -173,11 +175,12 @@ fn ambiguous_variant_candidates(
     variant_name: &str,
     si: &SourceIndices,
 ) -> Vec<ResolvedVariantIdentity> {
-    let mut cands = if variant_to_enum_is_ambiguous_sentinel(ctx.emit_graph_info.as_ref(), variant_name) {
-        cross_module_coproduct_variant_candidates(ctx, variant_name, si)
-    } else {
-        Vec::new()
-    };
+    let mut cands =
+        if variant_to_enum_is_ambiguous_sentinel(ctx.emit_graph_info.as_ref(), variant_name) {
+            cross_module_coproduct_variant_candidates(ctx, variant_name, si)
+        } else {
+            Vec::new()
+        };
     if cands.len() < 2 {
         let dup = duplicate_bare_type_name_variant_candidates(ctx, variant_name, si);
         if dup.len() >= 2 {
