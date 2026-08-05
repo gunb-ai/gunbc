@@ -1414,14 +1414,23 @@ fn is_rostered_obligation_subject(
     subjects.contains(&(entry.to_string(), function.to_string()))
 }
 
-/// Attach the group's resolve-realization observation to the first claim in the
-/// resolve group. Roster membership is enforced later by
-/// `unrostered_observed_obligation_subjects`, not at attachment time.
+/// Attach the group's resolve-realization observation to the first rostered obligation
+/// subject in the resolve group — not the first arbitrary co-resident claim.
 fn take_group_observation_for_claim(
+    obligation_subjects: Option<&ObligationSubjectSet>,
+    entry: &str,
+    function: &str,
     group_observation: &Option<ResolveRealizationObservation>,
     group_observation_attached: &mut bool,
 ) -> Option<ResolveRealizationObservation> {
     if *group_observation_attached {
+        return None;
+    }
+    let rostered = match obligation_subjects {
+        None => true,
+        Some(subjects) => is_rostered_obligation_subject(subjects, entry, function),
+    };
+    if !rostered {
         return None;
     }
     *group_observation_attached = true;
@@ -2497,6 +2506,7 @@ fn run_batch_unit(
     governor: Arc<MemoryGovernor>,
     fast_lane_eval_budget_ms: Option<u64>,
     falsifier_self_host_wet_budgets: FalsifierSelfHostWetBudgets,
+    obligation_subjects: Option<&ObligationSubjectSet>,
 ) -> Vec<ClaimResult> {
     match unit {
         BatchUnit::UnrunnableSentinel { function } => vec![ClaimResult {
@@ -2618,8 +2628,13 @@ fn run_batch_unit(
             // slot for the unit's lifetime so gate threads and discovery workers draw
             // from the same admission window instead of stacking unbounded.
             let mut slot = AdmittedSlot::acquire_blocking(&governor, &format!("gate-unit {entry}"));
-            let results =
-                run_shared_entry_claims(&source_roots, &entry, &functions, execution_mode);
+            let results = run_shared_entry_claims(
+                &source_roots,
+                &entry,
+                &functions,
+                execution_mode,
+                obligation_subjects,
+            );
             slot.note_unit_complete();
             results
         }
@@ -2631,6 +2646,7 @@ fn run_shared_entry_claims(
     entry: &str,
     functions: &[String],
     execution_mode: ExecutionMode,
+    obligation_subjects: Option<&ObligationSubjectSet>,
 ) -> Vec<ClaimResult> {
     let resolve_start = Instant::now();
     let (graph, source_indices) = match resolve_entry_graph(source_roots, entry) {
@@ -2680,6 +2696,9 @@ fn run_shared_entry_claims(
                     0
                 };
                 let observation = take_group_observation_for_claim(
+                    obligation_subjects,
+                    entry,
+                    function,
                     &group_resolve_observation,
                     &mut group_observation_attached,
                 );
@@ -2707,6 +2726,7 @@ fn run_memo_shared_claims(
     functions: &[String],
     execution_mode: ExecutionMode,
     memo: &mut std::collections::HashMap<(String, ExecutionMode), InterpContext>,
+    obligation_subjects: Option<&ObligationSubjectSet>,
 ) -> Vec<ClaimResult> {
     let resolve_start = Instant::now();
     let mut fresh_resolve = false;
@@ -2777,6 +2797,9 @@ fn run_memo_shared_claims(
                     0
                 };
                 let observation = take_group_observation_for_claim(
+                    obligation_subjects,
+                    entry,
+                    function,
                     &group_resolve_observation,
                     &mut group_observation_attached,
                 );
@@ -5652,28 +5675,58 @@ fn derive_resolve_obligation_receipts(
         .collect()
 }
 
-fn count_unattributed_physical_resolves(
+fn obligation_entries_with_realization(
     fin: &FloorFinalization,
     batch_records: &[BatchRecord],
-) -> u64 {
-    let obligation_entries: std::collections::HashSet<String> = fin
-        .expected_obligations
-        .iter()
-        .map(|o| o.entry.clone())
-        .collect();
-    let mut count = 0;
+) -> std::collections::HashSet<String> {
+    let subjects = obligation_subject_set(Some(fin)).expect("fin provided");
+    let mut entries = std::collections::HashSet::new();
+    for rec in batch_records {
+        for result in &rec.results {
+            if result.resolve_realization.is_none() {
+                continue;
+            }
+            if is_rostered_obligation_subject(&subjects, &result.entry, &result.function) {
+                entries.insert(result.entry.clone());
+            }
+        }
+    }
+    entries
+}
+
+fn unattributed_physical_resolve_subjects(
+    fin: &FloorFinalization,
+    batch_records: &[BatchRecord],
+) -> Vec<(String, String)> {
+    let subjects = obligation_subject_set(Some(fin)).expect("fin provided");
+    let satisfied_entries = obligation_entries_with_realization(fin, batch_records);
+    let mut seen = std::collections::HashSet::new();
+    let mut surplus = Vec::new();
     for rec in batch_records {
         for result in &rec.results {
             if result.resolve_nanos == 0 {
                 continue;
             }
-            if obligation_entries.contains(&result.entry) {
+            if is_rostered_obligation_subject(&subjects, &result.entry, &result.function) {
                 continue;
             }
-            count += 1;
+            if satisfied_entries.contains(&result.entry) {
+                continue;
+            }
+            let key = format!("{}::{}", result.entry, result.function);
+            if seen.insert(key) {
+                surplus.push((result.entry.clone(), result.function.clone()));
+            }
         }
     }
-    count
+    surplus
+}
+
+fn count_unattributed_physical_resolves(
+    fin: &FloorFinalization,
+    batch_records: &[BatchRecord],
+) -> u64 {
+    unattributed_physical_resolve_subjects(fin, batch_records).len() as u64
 }
 
 fn obligation_entry_duplicate_cold_resolves(
@@ -6207,9 +6260,7 @@ fn validate_on_success_stage_admissibility(stages: &[Vec<Runnable>]) -> Vec<Stri
 /// materialization check while the success line still reported that disclosure held
 /// (review 2026-07-30). A plan DECLARES that it carries these laws by returning
 /// `WalkPlan<FloorFinalization>` where regen/falsifier/plan-artifact return
-/// `WalkPlan<NoWalkFinalization>` — a declaration, not a guarantee: the typechecker
-/// does not check return position, so the value is what decides, and the enrolled
-/// witnesses in v2.test.claim.ci_floor_plan_witness are what check the value.
+/// Obligation subjects never executed on a completed walk.
 fn unexecuted_transport_obligations<'a>(
     fin: &'a FloorFinalization,
     batch_records: &[BatchRecord],
@@ -6218,33 +6269,6 @@ fn unexecuted_transport_obligations<'a>(
         .iter()
         .filter(|obl| find_claim_result(batch_records, &obl.entry, &obl.function).is_none())
         .collect()
-}
-
-/// Observed resolve-realization subjects not present in the transported roster — the
-/// derived-minus-roster direction of the identity join (DESIGN §5: completeness is
-/// identity join, not count equality).
-fn unrostered_observed_obligation_subjects(
-    fin: &FloorFinalization,
-    batch_records: &[BatchRecord],
-) -> Vec<(String, String)> {
-    let subjects = obligation_subject_set(Some(fin)).expect("fin provided");
-    let mut seen = std::collections::HashSet::new();
-    let mut surplus = Vec::new();
-    for rec in batch_records {
-        for result in &rec.results {
-            if result.resolve_realization.is_none() {
-                continue;
-            }
-            if is_rostered_obligation_subject(&subjects, &result.entry, &result.function) {
-                continue;
-            }
-            let key = format!("{}::{}", result.entry, result.function);
-            if seen.insert(key) {
-                surplus.push((result.entry.clone(), result.function.clone()));
-            }
-        }
-    }
-    surplus
 }
 
 fn validate_floor_finalization(
@@ -6258,30 +6282,23 @@ fn validate_floor_finalization(
     // transported obligation subjects == observed realization observations.
     // Warm shared-pool satisfaction requires provider + receipt recorded at the reuse
     // site; unattributed physical cold resolves refuse. resolve_nanos is cost evidence.
-    let unattributed = count_unattributed_physical_resolves(fin, batch_records);
-    if unattributed > 0 {
+    let unattributed = unattributed_physical_resolve_subjects(fin, batch_records);
+    if !unattributed.is_empty() {
+        let listing = unattributed
+            .iter()
+            .map(|(entry, function)| format!("{entry}::{function}"))
+            .collect::<Vec<_>>()
+            .join("; ");
         refusals.push(format!(
-            "floor resolve unattributed physical resolve(s): {unattributed} result(s) with \
-             resolve_nanos > 0 outside every transported obligation entry"
+            "floor resolve unattributed physical resolve(s): {} subject(s) with \
+             resolve_nanos > 0 outside transported expected_resolve_obligations — {listing}",
+            unattributed.len(),
         ));
     }
     for (entry, count) in obligation_entry_duplicate_cold_resolves(fin, batch_records) {
         refusals.push(format!(
             "floor resolve duplicate cold on obligation entry {entry}: {count} physical \
              resolve(s) with resolve_nanos > 0 (expected at most 1 per rostered entry)"
-        ));
-    }
-    let unrostered = unrostered_observed_obligation_subjects(fin, batch_records);
-    if !unrostered.is_empty() {
-        let listing = unrostered
-            .iter()
-            .map(|(entry, function)| format!("{entry}::{function}"))
-            .collect::<Vec<_>>()
-            .join("; ");
-        refusals.push(format!(
-            "floor resolve unknown obligation subject(s) observed: {} subject(s) not in \
-             transported expected_resolve_obligations — {listing}",
-            unrostered.len(),
         ));
     }
     let unexecuted = unexecuted_transport_obligations(fin, batch_records);
@@ -6521,6 +6538,7 @@ fn run_stage(
     falsifier_self_host_wet_budgets: &FalsifierSelfHostWetBudgets,
     clamp_params: Option<(u128, u128)>,
     budget_tighten_ms: Option<u128>,
+    obligation_subjects: Option<&ObligationSubjectSet>,
 ) -> StageRun {
     let units = group_batch_units(stage);
     // Arm the observation heartbeat feed at stage-enter: discovery leaves entry_total
@@ -6592,6 +6610,7 @@ fn run_stage(
             let roots = source_roots.to_vec();
             let unit_governor = governor.clone();
             let wet_budgets = falsifier_self_host_wet_budgets.clone();
+            let obligation_subjects_owned = obligation_subjects.cloned();
             let boxed: Box<dyn FnOnce() -> Vec<ClaimResult> + Send> = Box::new(move || {
                 run_batch_unit(
                     roots,
@@ -6599,6 +6618,7 @@ fn run_stage(
                     unit_governor,
                     fast_lane_eval_budget_ms,
                     wet_budgets,
+                    obligation_subjects_owned.as_ref(),
                 )
             });
             boxed
@@ -6615,8 +6635,14 @@ fn run_stage(
             ..
         } = unit
         {
-            let results =
-                run_memo_shared_claims(source_roots, &entry, &functions, execution_mode, memo);
+            let results = run_memo_shared_claims(
+                source_roots,
+                &entry,
+                &functions,
+                execution_mode,
+                memo,
+                obligation_subjects,
+            );
             memo_results.extend(results);
         }
     }
@@ -6631,6 +6657,7 @@ fn run_stage(
             governor.clone(),
             fast_lane_eval_budget_ms,
             falsifier_self_host_wet_budgets.clone(),
+            obligation_subjects,
         ));
     }
     // Collect all results before returning — the caller's PASS/FAIL prints must land
@@ -6890,6 +6917,7 @@ fn run_walk(
     let mut walk_memo: std::collections::HashMap<(String, ExecutionMode), InterpContext> =
         std::collections::HashMap::new();
     let memo_path_entries = memo_path_entry_keys(batches);
+    let obligation_subjects = obligation_subject_set(floor_finalization);
     for (bi, batch) in batches.iter().enumerate() {
         if ordinary_budget_ms
             .is_some_and(|budget| ordinary_start.elapsed().as_millis() >= u128::from(budget))
@@ -6934,6 +6962,7 @@ fn run_walk(
                 .copied()
                 .flatten(),
             budget_tighten_ms,
+            obligation_subjects.as_ref(),
         );
         for result in &batch_results {
             if result.ok {
@@ -7242,12 +7271,8 @@ fn run_walk(
                     // The arm-time validator refuses the profiles that would need one.
                     None,
                     budget_tighten_ms,
+                    obligation_subjects.as_ref(),
                 );
-                // A supplied clamp must have teeth. Stages pass None today (see the
-                // call above), so this is currently unreachable — it is wired now so that
-                // adding a declared stage clamp is a one-line change rather than a
-                // one-line change plus remembering this fold, which is exactly the kind of
-                // omission the ordinary path's own clamp handling had to be corrected for.
                 let mut stage_failed = run.thread_panicked || run.over_budget;
                 if run.over_budget {
                     failure_details.push(format!(
@@ -9543,54 +9568,55 @@ mod tests {
     }
 
     #[test]
-    fn floor_finalization_refuses_unrostered_observed_obligation_subject_by_name() {
+    fn floor_finalization_refuses_unattributed_physical_resolve_at_non_rostered_subject() {
         let fin = test_floor_finalization();
-        let mut records = obligation_finalization_records(3, 9);
-        records[0].results.push(ClaimResult {
-            function: "unexpected_surplus_witness".to_string(),
-            entry: "dag/test/claim/surplus_obligation_fixture.dag".to_string(),
-            ok: true,
-            detail: String::new(),
+        let anchor_entry = TEST_COMPILE_ANCHOR_OBLIGATION_ENTRY;
+        let records = vec![BatchRecord {
+            batch_index: 0,
             wall_nanos: 0,
-            resolve_nanos: 7,
-            corpus_resolve_nanos: 0,
-            corpus_eval_nanos: 0,
-            corpus_witnesses: 0,
-            witness_row_costs: Vec::new(),
-            budget_refusal: None,
-            selection_degradation: None,
-            resolve_realization: Some(ResolveRealizationObservation::ColdResolvePerformed {
+            clamp_ms: None,
+            unit_count: 0,
+            label: "emit-only".to_string(),
+            selection_tag: "fixture",
+            is_wet: false,
+            results: vec![ClaimResult {
+                function: "emit_host_gate_passes".to_string(),
+                entry: anchor_entry.to_string(),
+                ok: true,
+                detail: String::new(),
+                wall_nanos: 0,
                 resolve_nanos: 7,
-            }),
-        });
+                corpus_resolve_nanos: 0,
+                corpus_eval_nanos: 0,
+                corpus_witnesses: 0,
+                witness_row_costs: Vec::new(),
+                budget_refusal: None,
+                selection_degradation: None,
+                resolve_realization: None,
+            }],
+        }];
         let refusals = validate_floor_finalization(&fin, TEST_PLAN_SITE, &records, false);
         assert!(
             refusals.iter().any(|m| {
-                m.contains("unknown obligation subject(s) observed")
-                    && m.contains(
-                        "dag/test/claim/surplus_obligation_fixture.dag::unexpected_surplus_witness",
-                    )
+                m.contains("unattributed physical resolve")
+                    && m.contains(&format!("{anchor_entry}::emit_host_gate_passes"))
             }),
-            "surplus observed subject must be named, not counted: {refusals:?}"
-        );
-        assert!(
-            !refusals
-                .iter()
-                .any(|m| m.contains("differs from transported")),
-            "count-equality debt message must not substitute for identity join: {refusals:?}"
+            "non-rostered subject with cold resolve_nanos must be named: {refusals:?}"
         );
     }
 
     #[test]
-    fn floor_finalization_names_unrostered_subject_when_roster_subject_also_missing() {
+    fn floor_finalization_names_unattributed_subject_when_roster_subject_also_missing() {
         let fin = test_floor_finalization();
+        let anchor_entry = TEST_COMPILE_ANCHOR_OBLIGATION_ENTRY;
         let mut records = obligation_finalization_records(5, 0);
         records[0]
             .results
             .retain(|r| r.function == "dag_compile_clean_gate_passes");
+        records[0].results[0].resolve_realization = None;
         records[0].results.push(ClaimResult {
-            function: "unexpected_surplus_witness".to_string(),
-            entry: "dag/test/claim/surplus_obligation_fixture.dag".to_string(),
+            function: "emit_host_gate_passes".to_string(),
+            entry: anchor_entry.to_string(),
             ok: true,
             detail: String::new(),
             wall_nanos: 0,
@@ -9601,17 +9627,15 @@ mod tests {
             witness_row_costs: Vec::new(),
             budget_refusal: None,
             selection_degradation: None,
-            resolve_realization: Some(ResolveRealizationObservation::ColdResolvePerformed {
-                resolve_nanos: 7,
-            }),
+            resolve_realization: None,
         });
         let refusals = validate_floor_finalization(&fin, TEST_PLAN_SITE, &records, false);
         assert!(
             refusals.iter().any(|m| {
-                m.contains("unknown obligation subject(s) observed")
-                    && m.contains("surplus_obligation_fixture.dag::unexpected_surplus_witness")
+                m.contains("unattributed physical resolve")
+                    && m.contains(&format!("{anchor_entry}::emit_host_gate_passes"))
             }),
-            "surplus must be named even when a roster subject is also missing: {refusals:?}"
+            "unattributed subject must be named even when a roster subject is also missing: {refusals:?}"
         );
         assert!(
             refusals
@@ -11713,6 +11737,7 @@ mod tests {
             Arc::new(MemoryGovernor::from_environment(1)),
             None,
             FalsifierSelfHostWetBudgets::default(),
+            None,
         );
         assert_eq!(results.len(), 1);
         assert!(!results[0].ok, "unmapped sentinel must fail closed");
@@ -11838,6 +11863,7 @@ mod tests {
                     &entry,
                     std::slice::from_ref(f),
                     ExecutionMode::Hermetic,
+                    None,
                 )
                 .into_iter()
                 .map(|r| (r.function, r.ok, r.detail))
@@ -11855,6 +11881,7 @@ mod tests {
                     std::slice::from_ref(f),
                     ExecutionMode::Hermetic,
                     &mut memo,
+                    None,
                 )
                 .into_iter()
                 .map(|r| (r.function, r.ok, r.detail))
@@ -11893,6 +11920,7 @@ mod tests {
             &["witness_negligible_profile_is_not_heavy".to_string()],
             ExecutionMode::Hermetic,
             &mut memo,
+            None,
         );
         assert!(
             first[0].resolve_nanos > 0,
@@ -11908,6 +11936,7 @@ mod tests {
             &["witness_substantial_memory_forbids_corpus_co_residence".to_string()],
             ExecutionMode::Hermetic,
             &mut memo,
+            None,
         );
         assert_eq!(
             second[0].resolve_nanos, 0,
@@ -11936,6 +11965,7 @@ mod tests {
             &["witness_negligible_profile_is_not_heavy".to_string()],
             ExecutionMode::Hermetic,
             &mut memo,
+            None,
         );
         let warm = run_memo_shared_claims(
             &source_roots,
@@ -11943,6 +11973,7 @@ mod tests {
             &["witness_substantial_memory_forbids_corpus_co_residence".to_string()],
             ExecutionMode::Hermetic,
             &mut memo,
+            None,
         );
         assert_eq!(warm[0].resolve_nanos, 0);
         match warm[0].resolve_realization.as_ref() {
@@ -11956,16 +11987,88 @@ mod tests {
     }
 
     #[test]
-    fn take_group_observation_attaches_first_claim_in_group() {
+    fn take_group_observation_attaches_only_to_rostered_subject() {
+        let subjects: ObligationSubjectSet =
+            [("fixture.dag".to_string(), "rostered_fn".to_string())]
+                .into_iter()
+                .collect();
         let observation =
             Some(ResolveRealizationObservation::ColdResolvePerformed { resolve_nanos: 42 });
         let mut attached = false;
+        assert!(take_group_observation_for_claim(
+            Some(&subjects),
+            "fixture.dag",
+            "other_fn",
+            &observation,
+            &mut attached,
+        )
+        .is_none());
+        assert!(!attached);
         assert!(matches!(
-            take_group_observation_for_claim(&observation, &mut attached),
+            take_group_observation_for_claim(
+                Some(&subjects),
+                "fixture.dag",
+                "rostered_fn",
+                &observation,
+                &mut attached,
+            ),
             Some(ResolveRealizationObservation::ColdResolvePerformed { resolve_nanos: 42 })
         ));
-        assert!(attached);
-        assert!(take_group_observation_for_claim(&observation, &mut attached).is_none());
+    }
+
+    #[test]
+    fn obligation_observation_skips_non_rostered_co_residents() {
+        let root = workspace_root();
+        let source_roots = vec![
+            root.join("src/v2").to_string_lossy().into_owned(),
+            root.join("dag").to_string_lossy().into_owned(),
+        ];
+        let entry = root
+            .join("dag/test/claim/runnable_resource_profile_witness_test.dag")
+            .to_string_lossy()
+            .into_owned();
+        let rostered_fn = "witness_substantial_memory_forbids_corpus_co_residence".to_string();
+        let non_rostered_fn = "witness_negligible_profile_is_not_heavy".to_string();
+        let subjects: ObligationSubjectSet =
+            [(entry.clone(), rostered_fn.clone())].into_iter().collect();
+        let mode = ExecutionMode::Hermetic;
+
+        let cheap_only = run_shared_entry_claims(
+            &source_roots,
+            &entry,
+            &[non_rostered_fn.clone()],
+            mode,
+            Some(&subjects),
+        );
+        assert!(cheap_only[0].resolve_realization.is_none());
+
+        let mut memo = std::collections::HashMap::new();
+        let rostered_only = run_memo_shared_claims(
+            &source_roots,
+            &entry,
+            &[rostered_fn.clone()],
+            mode,
+            &mut memo,
+            Some(&subjects),
+        );
+        assert!(matches!(
+            rostered_only[0].resolve_realization,
+            Some(ResolveRealizationObservation::ColdResolvePerformed { .. })
+        ));
+
+        let co_resident = run_memo_shared_claims(
+            &source_roots,
+            &entry,
+            &[non_rostered_fn, rostered_fn],
+            mode,
+            &mut memo,
+            Some(&subjects),
+        );
+        assert!(co_resident[0].resolve_realization.is_none());
+        assert!(matches!(
+            co_resident[1].resolve_realization,
+            Some(ResolveRealizationObservation::SatisfiedFromSharedPool { .. })
+        ));
     }
 
     /// The committed basis file must actually load. A basis that parses to zero rows
