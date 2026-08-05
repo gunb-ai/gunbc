@@ -2057,6 +2057,76 @@ fn call_function_inner(
         }
     }
 
+    let caller_label_matches_param = |param_name: &str, arg_label: &str| {
+        param_name == arg_label
+            || param_name == "_"
+            || param_name
+                .strip_prefix('_')
+                .is_some_and(|stripped| stripped == arg_label)
+    };
+    let param_supplied_at_call = |pname: &str| {
+        if bindings.contains_key(&ctx.sym(pname)) {
+            return true;
+        }
+        for (opt_name, _) in args.iter() {
+            if let Some(label) = opt_name {
+                if caller_label_matches_param(pname, label) {
+                    return true;
+                }
+            }
+        }
+        false
+    };
+
+    let required_count = fn_node
+        .params
+        .iter()
+        .enumerate()
+        .filter(|(i, p)| {
+            param_node_default_value((*p).clone()).is_none()
+                && match p.children.first() {
+                    Some(type_expr) => {
+                        authored_name_at(ctx.si(), type_expr.clone()) != all_param_names[*i]
+                    }
+                    None => false,
+                }
+        })
+        .count();
+    let supplied_required = fn_node
+        .params
+        .iter()
+        .enumerate()
+        .filter(|(i, p)| {
+            param_node_default_value((*p).clone()).is_none()
+                && match p.children.first() {
+                    Some(type_expr) => {
+                        authored_name_at(ctx.si(), type_expr.clone()) != all_param_names[*i]
+                    }
+                    None => false,
+                }
+                && param_supplied_at_call(&all_param_names[*i])
+        })
+        .count();
+    for (i, param) in fn_node.params.iter().enumerate() {
+        let pname = &all_param_names[i];
+        let is_value_param = match param.children.first() {
+            Some(type_expr) => authored_name_at(ctx.si(), type_expr.clone()) != *pname,
+            None => false,
+        };
+        if is_value_param
+            && param_node_default_value(param.clone()).is_none()
+            && !param_supplied_at_call(pname)
+        {
+            return Err(InterpError::CallContractMismatch {
+                callee: fn_node.name.clone(),
+                detail: format!(
+                    "missing required argument '{}' ({} of {} required argument(s) supplied)",
+                    pname, supplied_required, required_count
+                ),
+            });
+        }
+    }
+
     let call_env = Env::extend(&lexical_base_env(env), bindings);
     #[cfg(any(test, feature = "interp_test_witness"))]
     record_call_env_depth(&call_env);
