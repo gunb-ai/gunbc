@@ -37,6 +37,7 @@ import v2.compiler.self_host.frontier_probe_survey {
 import v2.compiler.self_host.frontier_probe_types {
   EmitSurfaceGap,
   FrontierBlockerClass,
+  FrontierProbeDetailAbsent,
   FrontierProbeReceipt,
   FrontierProbeStage,
   NameResolutionGap,
@@ -238,7 +239,8 @@ fn execution_measured_seed_retained_row(
       module_path: module_path,
       blocker_class: measured_blocker,
       located_stage: located_stage,
-      located_reason: located_reason
+      located_reason: located_reason,
+      detail: FrontierProbeDetailAbsent
     },
     tractability_rank: tractability_rank_for(closure_reads: closure_reads, blocker: measured_blocker)
   }
