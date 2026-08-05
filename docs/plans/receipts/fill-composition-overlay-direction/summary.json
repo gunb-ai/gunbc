@@ -1,0 +1,291 @@
+{
+  "derived_from": [
+    "base-r1.tsv",
+    "base-r2.tsv",
+    "after-r1.tsv",
+    "after-r2.tsv"
+  ],
+  "binary_sha256": {
+    "base-r1": "2ddef20051bbed71c9a7c940e34f8926a126919dd9ceb55565ea36ef419d5547",
+    "base-r2": "2ddef20051bbed71c9a7c940e34f8926a126919dd9ceb55565ea36ef419d5547",
+    "after-r1": "2987a28d15b0f271b2b5506c99959ea1322c7a5025beb04c2e0899022205a1da",
+    "after-r2": "2987a28d15b0f271b2b5506c99959ea1322c7a5025beb04c2e0899022205a1da"
+  },
+  "exclusive_assembly_rows": {
+    "schedule": {
+      "base_ms": [
+        21.7,
+        19.0
+      ],
+      "after_ms": [
+        18.7,
+        19.0
+      ],
+      "delta_pct": -7.4
+    },
+    "probe": {
+      "base_ms": [
+        26.9,
+        26.2
+      ],
+      "after_ms": [
+        25.5,
+        23.4
+      ],
+      "delta_pct": -7.9
+    },
+    "graph": {
+      "base_ms": [
+        10.6,
+        9.2
+      ],
+      "after_ms": [
+        9.5,
+        10.1
+      ],
+      "delta_pct": -1.0
+    },
+    "symbol_index": {
+      "base_ms": [
+        7832.0,
+        7676.4
+      ],
+      "after_ms": [
+        7693.2,
+        7491.8
+      ],
+      "delta_pct": -2.1
+    },
+    "pool_fill": {
+      "base_ms": [
+        3193.6,
+        3335.0
+      ],
+      "after_ms": [
+        3231.0,
+        3000.7
+      ],
+      "delta_pct": -4.5
+    },
+    "symbol_index_merge": {
+      "base_ms": [
+        34654.4,
+        28420.1
+      ],
+      "after_ms": [
+        624.6,
+        585.4
+      ],
+      "delta_pct": -98.1
+    },
+    "variant_base": {
+      "base_ms": [
+        1315.9,
+        799.9
+      ],
+      "after_ms": [
+        415.7,
+        411.1
+      ],
+      "delta_pct": -60.9
+    },
+    "root_symbol_index": {
+      "base_ms": [
+        27095.2,
+        18642.2
+      ],
+      "after_ms": [
+        719.4,
+        618.5
+      ],
+      "delta_pct": -97.1
+    },
+    "root_variant_base": {
+      "base_ms": [
+        8610.8,
+        7514.7
+      ],
+      "after_ms": [
+        7594.8,
+        7209.6
+      ],
+      "delta_pct": -8.2
+    },
+    "environment": {
+      "base_ms": [
+        468.8,
+        435.5
+      ],
+      "after_ms": [
+        410.5,
+        419.5
+      ],
+      "delta_pct": -8.2
+    },
+    "diagnostics": {
+      "base_ms": [
+        8.6,
+        8.6
+      ],
+      "after_ms": [
+        11.6,
+        6.9
+      ],
+      "delta_pct": 7.6
+    },
+    "registry": {
+      "base_ms": [
+        99.9,
+        54.1
+      ],
+      "after_ms": [
+        58.8,
+        58.5
+      ],
+      "delta_pct": -23.8
+    },
+    "services": {
+      "base_ms": [
+        2030.5,
+        2127.6
+      ],
+      "after_ms": [
+        2113.1,
+        2061.2
+      ],
+      "delta_pct": 0.4
+    },
+    "rewire_type_env": {
+      "base_ms": [
+        1147.1,
+        1069.8
+      ],
+      "after_ms": [
+        1241.0,
+        1055.5
+      ],
+      "delta_pct": 3.6
+    },
+    "rewire_import_str": {
+      "base_ms": [
+        10631.5,
+        10820.2
+      ],
+      "after_ms": [
+        13812.5,
+        10223.1
+      ],
+      "delta_pct": 12.0
+    },
+    "rewire_func_env": {
+      "base_ms": [
+        190.5,
+        208.1
+      ],
+      "after_ms": [
+        206.0,
+        185.5
+      ],
+      "delta_pct": -1.8
+    },
+    "emit_info": {
+      "base_ms": [
+        2746.7,
+        2576.5
+      ],
+      "after_ms": [
+        2590.2,
+        2421.0
+      ],
+      "delta_pct": -5.9
+    },
+    "other": {
+      "base_ms": [
+        688.6,
+        237.3
+      ],
+      "after_ms": [
+        235.8,
+        216.2
+      ],
+      "delta_pct": -51.2
+    }
+  },
+  "aggregates": {
+    "assembly_total_ms": {
+      "base": [
+        100773.30000000002,
+        83980.40000000002
+      ],
+      "after": [
+        41011.899999999994,
+        36017.0
+      ],
+      "delta_pct": -58.3
+    },
+    "resolve_additive_ms": {
+      "base": [
+        155680,
+        146484
+      ],
+      "after": [
+        105012,
+        94624
+      ],
+      "delta_pct": -33.9
+    },
+    "elapsed_wall_ms": {
+      "base": [
+        268369,
+        247963
+      ],
+      "after": [
+        200932,
+        183286
+      ],
+      "delta_pct": -25.6
+    },
+    "peak_rss_kb": {
+      "base": [
+        8160560,
+        8108424
+      ],
+      "after": [
+        5804768,
+        5803012
+      ],
+      "delta_pct": -28.7
+    }
+  },
+  "outcomes": {
+    "base-r1": {
+      "pass": 48,
+      "fail": 2
+    },
+    "base-r2": {
+      "pass": 48,
+      "fail": 2
+    },
+    "after-r1": {
+      "pass": 48,
+      "fail": 2
+    },
+    "after-r2": {
+      "pass": 48,
+      "fail": 2
+    }
+  },
+  "outcomes_identical_across_arms": true,
+  "resolve_count": {
+    "base-r1": 50,
+    "base-r2": 50,
+    "after-r1": 50,
+    "after-r2": 50
+  },
+  "witness_eval_ms": {
+    "base-r1": 150,
+    "base-r2": 144,
+    "after-r1": 133,
+    "after-r2": 133
+  }
+}
