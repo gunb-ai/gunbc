@@ -309,7 +309,7 @@ test fn witness_persist_credentials_false_unbinds_the_push_credential() -> Bool 
 
 test fn witness_heal_condition_and_origin_share_one_binding() -> Bool {
   let no_dependabot_clause = heal_origin_binding(
-    guard: HealOriginGuard { event: PullRequestEvent, exclude_dependabot: false }
+    guard: HealOriginGuard { exclude_dependabot: false }
   )
   string_contains(s: ci_regen_heal_if, pattern: "github.event_name == 'pull_request'")
     && string_contains(s: ci_regen_heal_if, pattern: "github.event.pull_request.head.repo.full_name == github.repository")

@@ -402,8 +402,8 @@ test fn witness_bound_producer_yields_the_operator_packet() -> Bool {
              _ => false
            }
         && match observation {
-             ObservationProducerAbsent { required_observation: _ } => true
-             ObservationProducerBound { producer: _ } => false
+             ObservationProducerBound { producer } => producer.decl_name == "app_control_plane_state"
+             ObservationProducerAbsent { required_observation: _ } => false
            }
     _ => false
   }
@@ -421,14 +421,23 @@ test fn witness_unobserved_states_are_machine_owned_not_operator_owned() -> Bool
     required: full_workflow_grant,
     reason: "heal branch advance"
   )
-  match next_action_owner(action: control_plane_next_action(state: unobserved)) {
+  match control_plane_next_action(state: unobserved) {
+    MachineActionRequired { action } => match action {
+      ReadBackInstallation { app } => app.app_id.value == 3909950
+      _ => false
+    }
+    _ => false
+  } && match control_plane_next_action(
+    state: observed_grant(perms: [metadata_read_perm, contents_write_perm])
+  ) {
+    MachineActionRequired { action } => match action {
+      BindObservationProducer { required_observation: _ } => true
+      _ => false
+    }
+    _ => false
+  } && match next_action_owner(action: control_plane_next_action(state: unobserved)) {
     MachineOwner => true
     OperatorOwner => false
-  } && match next_action_owner(
-    action: control_plane_next_action(state: observed_grant(perms: [metadata_read_perm, contents_write_perm]))
-  ) {
-    OperatorOwner => true
-    MachineOwner => false
   }
 }
 
@@ -461,9 +470,23 @@ test fn witness_key_generation_is_operator_work_only_after_discovery_fails() -> 
     reason: "heal branch advance"
   )
   match next_action_owner(action: control_plane_next_action(state: must_generate)) {
-    OperatorOwner => true
-    MachineOwner => false
+    MachineOwner => true
+    OperatorOwner => false
   } && match control_plane_next_action(state: must_generate) {
+    MachineActionRequired { action } => match action {
+      BindObservationProducer { required_observation } => match required_observation {
+        SignerFingerprintObservation => true
+        _ => false
+      }
+      _ => false
+    }
+    _ => false
+  } && match operator_packet_or_producer_binding(
+    action: GenerateAppSigningKey,
+    locator: app_key_settings_locator(app: gunbai_bot_declared),
+    postcondition: AppHasRegisteredSigningKey { app: gunbai_bot_declared },
+    observation: ObservationProducerBound { producer: control_plane_probe_ref }
+  ) {
     OperatorActionRequired { action, locator, postcondition, observation: _ } =>
       match action {
         GenerateAppSigningKey => true
