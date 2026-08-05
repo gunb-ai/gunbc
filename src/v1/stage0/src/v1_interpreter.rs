@@ -3617,7 +3617,9 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
     };
     record_call_frequency(&func_name);
     if func_name == "uri_percent_encode_scalar_fragment" {
-        ctx.mutation_counters.borrow_mut().uri_percent_encode_scalar_fragment_calls += 1;
+        ctx.mutation_counters
+            .borrow_mut()
+            .uri_percent_encode_scalar_fragment_calls += 1;
     }
 
     let arg_nodes = &node.children;
