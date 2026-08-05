@@ -2735,60 +2735,62 @@ pub fn direct_call_shape_diags(
             .cloned()
             {
                 __result.extend(
-                    (*match arg_name_at(pair.1.clone(), source_indices.clone()) {
-                        Some(label) => {
-                            let current_bound = call_arg_bound_param_at(
-                                pair.0.clone(),
-                                typed_args.clone(),
-                                source_indices.clone(),
-                                declared_names.clone(),
-                                positionally_eligible_names.clone(),
-                            );
-                            let earlier_dup = ((current_bound.clone() != None) && {
-                                let mut __found = false;
-                                for other in Rc::new(
-                                    typed_args
-                                        .clone()
-                                        .iter()
-                                        .cloned()
-                                        .enumerate()
-                                        .map(|(i, v)| (i as i64, v))
-                                        .collect::<Vec<_>>(),
-                                )
-                                .iter()
-                                .cloned()
-                                {
-                                    if ((other.0.clone() < pair.0.clone())
-                                        && (call_arg_bound_param_at(
-                                            other.0.clone(),
-                                            typed_args.clone(),
-                                            source_indices.clone(),
-                                            declared_names.clone(),
-                                            positionally_eligible_names.clone(),
-                                        )
-                                        .as_deref()
-                                            == current_bound.clone().as_deref()))
+                    (*{
+                        let current_bound = call_arg_bound_param_at(
+                            pair.0.clone(),
+                            typed_args.clone(),
+                            source_indices.clone(),
+                            declared_names.clone(),
+                            positionally_eligible_names.clone(),
+                        );
+                        match current_bound.clone() {
+                            Some(bound_name) => {
+                                let earlier_dup = {
+                                    let mut __found = false;
+                                    for other in Rc::new(
+                                        typed_args
+                                            .clone()
+                                            .iter()
+                                            .cloned()
+                                            .enumerate()
+                                            .map(|(i, v)| (i as i64, v))
+                                            .collect::<Vec<_>>(),
+                                    )
+                                    .iter()
+                                    .cloned()
                                     {
-                                        __found = true;
-                                        break;
+                                        if ((other.0.clone() < pair.0.clone())
+                                            && (call_arg_bound_param_at(
+                                                other.0.clone(),
+                                                typed_args.clone(),
+                                                source_indices.clone(),
+                                                declared_names.clone(),
+                                                positionally_eligible_names.clone(),
+                                            )
+                                            .as_deref()
+                                                == current_bound.clone().as_deref()))
+                                        {
+                                            __found = true;
+                                            break;
+                                        }
                                     }
+                                    __found
+                                };
+                                if earlier_dup.clone() {
+                                    Rc::new(vec![make_error_node(
+                                        Rc::new(CompilerDiagnostic::CallArgumentDuplicate {
+                                            callee: func_name.clone(),
+                                            argument: bound_name.clone(),
+                                            span: pair.1.clone().span.clone(),
+                                        }),
+                                        module_name.clone(),
+                                    )])
+                                } else {
+                                    Rc::new(vec![])
                                 }
-                                __found
-                            });
-                            if earlier_dup.clone() {
-                                Rc::new(vec![make_error_node(
-                                    Rc::new(CompilerDiagnostic::CallArgumentDuplicate {
-                                        callee: func_name.clone(),
-                                        argument: label.clone(),
-                                        span: pair.1.clone().span.clone(),
-                                    }),
-                                    module_name.clone(),
-                                )])
-                            } else {
-                                Rc::new(vec![])
                             }
+                            None => Rc::new(vec![]),
                         }
-                        None => Rc::new(vec![]),
                     })
                     .iter()
                     .cloned(),

@@ -1586,16 +1586,15 @@ fn direct_call_shape_diags(func_name: String, sig_params: List<Node>, typed_args
     }
   } else { [] }
   let duplicate_label_diags = typed_args |> enumerate |> flat_map(pair =>
-    match arg_name_at(n: pair.second, source_indices: source_indices) {
-      Present { value: label } =>
-        let current_bound = call_arg_bound_param_at(idx: pair.first, typed_args: typed_args, source_indices: source_indices, declared_names: declared_names, positionally_eligible_names: positionally_eligible_names)
-        let earlier_dup = current_bound != none
-          && typed_args |> enumerate |> any(other =>
+    let current_bound = call_arg_bound_param_at(idx: pair.first, typed_args: typed_args, source_indices: source_indices, declared_names: declared_names, positionally_eligible_names: positionally_eligible_names)
+    match current_bound {
+      Present { value: bound_name } =>
+        let earlier_dup = typed_args |> enumerate |> any(other =>
                other.first < pair.first
                  && call_arg_bound_param_at(idx: other.first, typed_args: typed_args, source_indices: source_indices, declared_names: declared_names, positionally_eligible_names: positionally_eligible_names) == current_bound)
         if earlier_dup {
           [make_error_node(
-            diagnostic: CallArgumentDuplicate { callee: func_name, argument: label, span: pair.second.span },
+            diagnostic: CallArgumentDuplicate { callee: func_name, argument: bound_name, span: pair.second.span },
             module_name: module_name)]
         } else { [] }
       Absent => []

@@ -130,6 +130,8 @@ data call_duplicate_red_source: String = "module probe_call_duplicate\nfn two(a:
 
 data call_duplicate_mixed_red_source: String = "module probe_call_duplicate_mixed\nfn one(a: Int) -> Int { a }\nfn f() -> Int { one(1, a: 2) }\n"
 
+data call_duplicate_named_then_positional_red_source: String = "module probe_call_duplicate_named_then_positional\nfn two(a: Int, b: Int) -> Int { a + b }\nfn f() -> Int { two(a: 1, 2) }\n"
+
 data call_duplicate_green_source: String = "module probe_call_duplicate_green\nfn two(a: Int, b: Int) -> Int { a + b }\nfn ignore_ctx(_ctx: Int, b: Int) -> Int { b }\nfn distinct() -> Int { two(a: 1, b: 2) }\nfn reordered() -> Int { two(b: 2, a: 1) }\nfn positional() -> Int { two(1, 2) }\nfn underscore_idiom() -> Int { ignore_ctx(ctx: 1, b: 2) }\n"
 
 data method_missing_source: String = "module probe_method_red\nfn f(xs: List<Int>) -> List<Int> { xs |> filter_map(x => x) }\nfn g(xs: List<Int>) -> Bool { xs |> starts_with(\"x\") }\nfn h(xs: List<Int>) -> String { xs |> to_upper() }\n"
@@ -201,6 +203,14 @@ test fn call_duplicate_red_refuses_blocking_call_argument_duplicate() -> Bool {
 
 test fn call_duplicate_mixed_positional_named_red_refuses_blocking_call_argument_duplicate() -> Bool {
   let census = census_of(source: call_duplicate_mixed_red_source)
+  match census_blocking_count_for_class(census: census, wanted: "CallArgumentDuplicate") {
+    Present { value: n } => n >= 1
+    Absent => false
+  }
+}
+
+test fn call_duplicate_named_then_positional_red_refuses_blocking_call_argument_duplicate() -> Bool {
+  let census = census_of(source: call_duplicate_named_then_positional_red_source)
   match census_blocking_count_for_class(census: census, wanted: "CallArgumentDuplicate") {
     Present { value: n } => n >= 1
     Absent => false
