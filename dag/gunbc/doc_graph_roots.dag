@@ -543,6 +543,16 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     additional_works: [],
     dissolution: HasTrigger { text: "permanent discriminating control for feature:cited-symbol-resolution (operator ruling 2026-08-03): enrolled DeclarationRef names a real decl_facts row but a NamedField absent from its node — distinct refusal arm from declaration-absent and module-absent; never retires when production population is zero" },
   },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "falsifier-memory-root-cause-diagnosis",
+    primary_work: DeclarationRef { module_path: "gunbc.falsifier_workflow", decl_name: "gunbc_falsifier_job_split_note", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "gunbc.falsifier_workflow", decl_name: "falsifier_workflow", field: WholeDeclaration },
+      DeclarationRef { module_path: "test.claim.falsifier_workflow_witness_test", decl_name: "falsifier_backstop_is_step_sum_plus_prelude", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the falsifier-build→falsifier job split merges to main (P0 cgroup hygiene landed) AND Class B witness root-cause is landed on its carrier with the five named witnesses green on the falsifier cadence — then surviving facts migrate to DESIGN open-thread or a registered gunbc.plan.Plan row and this bind deletes with the doc." },
+  },
 ]
 
 fn hand_authored_doc_graph_roots() -> List<String> {

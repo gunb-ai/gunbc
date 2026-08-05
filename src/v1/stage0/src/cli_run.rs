@@ -4308,6 +4308,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::AmbiguousReference { .. } => "AmbiguousReference",
         CompilerDiagnostic::CallArgumentNameUnknown { .. } => "CallArgumentNameUnknown",
         CompilerDiagnostic::CallPositionalSurplus { .. } => "CallPositionalSurplus",
+        CompilerDiagnostic::CallNamedArgOnFunctionValue { .. } => "CallNamedArgOnFunctionValue",
         CompilerDiagnostic::OccurrenceTransportViolation { .. } => "OccurrenceTransportViolation",
     };
     let name = match d.diagnostic.as_ref() {
@@ -4341,6 +4342,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::AmbiguousReference { name, .. } => name.clone(),
         CompilerDiagnostic::CallArgumentNameUnknown { argument, .. } => argument.clone(),
         CompilerDiagnostic::CallPositionalSurplus { callee, .. } => callee.clone(),
+        CompilerDiagnostic::CallNamedArgOnFunctionValue { argument, .. } => argument.clone(),
         CompilerDiagnostic::OccurrenceTransportViolation { .. } => {
             "(occurrence-transport-refusal)".to_string()
         }
@@ -12882,8 +12884,17 @@ pub fn run_claim_measured(
     v1_interpreter::eval_subject_clear();
     let outcome = budget_completion_outcome(ctx.witness_eval_budget(), outcome, cpu_nanos);
     let outcome = wall_budget_completion_outcome(ctx.witness_wall_budget(), outcome, wall_nanos);
-    let receipt =
-        v1_interpreter::performance_receipt_from_witness(subject_key, function, wall_nanos);
+    // The receipt records BOTH clocks, and records the same `cpu_nanos` value that
+    // `budget_completion_outcome` just enforced against — one binding feeding both, so the
+    // enforced and the recorded quantity cannot drift apart. Previously `cpu_nanos` died on
+    // the line above and only wall reached the receipt, which is why the cap enforced a
+    // quantity no artifact carried.
+    let receipt = v1_interpreter::performance_receipt_from_witness(
+        subject_key,
+        function,
+        wall_nanos,
+        cpu_nanos,
+    );
     (outcome, receipt)
 }
 
@@ -13033,6 +13044,54 @@ mod budget_completion_tests {
         assert!(matches!(
             budget_completion_outcome(Some(5), ClaimOutcome::Pass, 4_000_000),
             ClaimOutcome::Pass
+        ));
+    }
+
+    #[test]
+    /// The enforced quantity must be RECORDED, not just spent. `run_claim_measured` computes
+    /// thread CPU, hands it to `budget_completion_outcome`, and — until this landed — dropped
+    /// it, so the cap was enforced on a number no artifact carried and no threshold built on
+    /// a cost receipt could select the population the cap kills.
+    ///
+    /// The two clocks are asserted to be INDEPENDENTLY carried: a receipt that stored one
+    /// value under both names would pass a weaker test while reintroducing the conflation.
+    fn performance_receipt_carries_the_enforced_cpu_clock_beside_wall() {
+        let receipt = v1_interpreter::performance_receipt_from_witness(
+            "subj".to_string(),
+            "claim",
+            9_000_000,
+            4_000_000,
+        );
+        assert_eq!(
+            receipt.wall_nanos, 9_000_000,
+            "wall is the measurement basis"
+        );
+        assert_eq!(receipt.cpu_nanos, 4_000_000, "cpu is the enforcement basis");
+        assert_ne!(
+            receipt.wall_nanos, receipt.cpu_nanos,
+            "the two clocks must be carried independently, not aliased"
+        );
+
+        // The bound that makes the wall figure useful in one direction only: eval is
+        // single-threaded, so cpu <= wall. A wall figure under the cap PROVES cpu under it
+        // (so existing "lands under the fast-lane budget" triggers were always decidable),
+        // while an over-cap wall figure proves nothing about cpu — the ranking direction the
+        // per-witness cost-envelope lane needs, and the reason wall alone was insufficient.
+        let budget_ms = 5u64;
+        assert!(
+            receipt.cpu_nanos <= receipt.wall_nanos,
+            "single-threaded eval: cpu must be bounded above by wall"
+        );
+        assert!(matches!(
+            budget_completion_outcome(Some(budget_ms), ClaimOutcome::Pass, receipt.cpu_nanos),
+            ClaimOutcome::Pass
+        ));
+        // Same occurrence, judged on wall, would have crossed — the two bases genuinely
+        // disagree here, which is why recording only one of them was a defect rather than a
+        // naming quibble.
+        assert!(matches!(
+            budget_completion_outcome(Some(budget_ms), ClaimOutcome::Pass, receipt.wall_nanos),
+            ClaimOutcome::TimedOut { .. }
         ));
     }
 
@@ -25973,6 +26032,7 @@ mod discovery_summary_merge_tests {
                     subject_key: "subj-a".to_string(),
                     work_shape: "claim".to_string(),
                     wall_nanos: 1_000,
+                    cpu_nanos: 1_000,
                     eval_self_nanos: 1_000,
                     sample_count: 1,
                 },
@@ -25980,6 +26040,7 @@ mod discovery_summary_merge_tests {
                     subject_key: "subj-b".to_string(),
                     work_shape: "claim".to_string(),
                     wall_nanos: 50_000,
+                    cpu_nanos: 50_000,
                     eval_self_nanos: 50_000,
                     sample_count: 1,
                 },
@@ -25987,6 +26048,7 @@ mod discovery_summary_merge_tests {
                     subject_key: "subj-a".to_string(),
                     work_shape: "claim".to_string(),
                     wall_nanos: 5_000,
+                    cpu_nanos: 5_000,
                     eval_self_nanos: 5_000,
                     sample_count: 1,
                 },
