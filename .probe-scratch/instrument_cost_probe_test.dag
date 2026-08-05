@@ -1,0 +1,55 @@
+module test.claim.instrument_cost_probe
+
+import std.types { String, Bool, Int, List }
+import std.markup { Fragment, Element, FragmentText, RawNode }
+import gunbc.roadmap_serve {
+  InstrumentSandboxPageHandler, roadmap_serve_invoke_for_instance,
+}
+import gunbc.roadmap_dashboard_instance { srv2_preview_dashboard_instance }
+import gunbc.roadmap_instrument_sandbox {
+  instrument_sandbox_page, instrument_css, live_program_view_result,
+  LiveProgramView, LiveViewDerived, LiveViewRefused,
+}
+import extdeps.http.server { ServeHttpRequest, ServeHttpResponse, GET }
+
+data probe_note: String = "scratch cost attribution probe; never committed"
+
+fn fixture_request(path: String) -> ServeHttpRequest {
+  ServeHttpRequest { method: GET, path: path, body: "" }
+}
+
+fn served() -> ServeHttpResponse {
+  roadmap_serve_invoke_for_instance(
+    instance: srv2_preview_dashboard_instance(),
+    handler: InstrumentSandboxPageHandler,
+    params: [],
+    request: fixture_request(path: "/sandbox/instrument"),
+  )
+}
+
+fn frag_tag(f: Fragment) -> String {
+  match f {
+    Element { tag, attributes, children } => tag
+    FragmentText { content } => "text"
+    RawNode { content } => "raw"
+  }
+}
+
+test fn probe_a_projection_only() -> Bool {
+  match live_program_view_result() {
+    LiveViewDerived { view } => count(view.finish_lines) > 0
+    LiveViewRefused { causes } => false
+  }
+}
+
+test fn probe_b_css_only() -> Bool {
+  string_contains(s: instrument_css(), pattern: "instrument")
+}
+
+test fn probe_c_page_fragment_built() -> Bool {
+  frag_tag(f: instrument_sandbox_page()) == "html"
+}
+
+test fn probe_d_full_served() -> Bool {
+  served().status == 200
+}
