@@ -465,6 +465,12 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     dissolve_on: excl_substrate_long_lane_dissolve
   },
   WitnessExclusionRow {
+    pattern: "rust_test_fixtures_import_closure_witness_test.dag",
+    classification: FalsifierSubstrateLongLane,
+    reason: "Class B rows 1-2 (#7835): cold-control falsifier long-lane backstop; per-PR merge-blocking consumer is run_class_b_import_closure_gate on source_root_ingest_gate. Row 2 measured 48868.8ms on CI run 30986525413 (>5s fast-lane budget).",
+    dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured cold run with class_b_declared_import_pool_roots and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt"
+  },
+  WitnessExclusionRow {
     pattern: "synthetic_orphan_admission_witness_test.dag",
     classification: NoConsumer,
     reason: "deliberate no-consumer synthetic path: the admission RED control keys on this reserved (nonexistent) entry to prove enrolled-with-zero-consumers refuses (witness_admission_test, cli_run admission tests)",
