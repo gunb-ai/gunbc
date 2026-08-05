@@ -216,13 +216,19 @@ fn authored_name_of(transport: OccurrenceTransport, id: OccurrenceId) -> String?
   )
 }
 
+data empty_keyed_rows_note: String = "Pins the element type of the accumulator's empty list. A bare `[]` in the fold's init leaves the element type unconstrained until the first push, and the emitter writes that unconstrained type into the closure signature it generates — so the seed compiles the accumulator as a list of unit and the fold no longer typechecks. Naming the empty list through a typed return is the one place the element type is stated."
+
+fn empty_keyed_rows() -> List<KeyedAnnotationRow> {
+  []
+}
+
 fn keyed_annotation_rows(
   transport: OccurrenceTransport,
   graph: SourceAnnotationGraph
 ) -> List<KeyedAnnotationRow>? {
   fold(
     source_annotation_graph_rows(graph: graph),
-    init: Present { value: [] },
+    init: Present { value: empty_keyed_rows() },
     f: (acc, row) =>
       match acc {
         Absent => none

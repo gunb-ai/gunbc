@@ -1,7 +1,7 @@
 module v1.tests.claim.v1_annotation_round_trip_test
 
 import std.types { Bool, Int, String, List }
-import std.occurrence_identity { OccurrenceId, OccurrenceTransport }
+import std.occurrence_identity { OccurrenceId, OccurrenceIndexEntry, OccurrenceTransport }
 import std.source_annotation {
   KeyedAnnotationRow,
   SourceAnnotationGraph,
