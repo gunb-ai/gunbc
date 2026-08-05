@@ -11,7 +11,7 @@ fn keyed_occurrence_count<K, V>(
   key_eq: fn(K, K) -> Bool,
 ) -> Int {
   fold(rows, init: 0, f: fn(n, row) {
-    if key_eq(a: row.row_key, b: wanted_key) { n + 1 } else { n }
+    if key_eq(row.row_key, wanted_key) { n + 1 } else { n }
   })
 }
 
@@ -40,13 +40,13 @@ fn keyed_roster_locate_second_row<K, V>(
     match acc {
       KeyedRosterSecondRowScanFound { row: _ } => acc
       KeyedRosterSecondRowScanAwaitingSecond =>
-        if key_eq(a: row.row_key, b: wanted_key) {
+        if key_eq(row.row_key, wanted_key) {
           KeyedRosterSecondRowScanFound { row: row }
         } else {
           acc
         }
       KeyedRosterSecondRowScanAbsent =>
-        if key_eq(a: row.row_key, b: wanted_key) {
+        if key_eq(row.row_key, wanted_key) {
           KeyedRosterSecondRowScanAwaitingSecond
         } else {
           acc
@@ -68,7 +68,7 @@ fn keyed_roster_locate_first_row<K, V>(
     match acc {
       Present { value: _ } => acc
       Absent =>
-        if key_eq(a: row.row_key, b: wanted_key) {
+        if key_eq(row.row_key, wanted_key) {
           Present { value: row }
         } else {
           acc
