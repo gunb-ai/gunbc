@@ -264,7 +264,7 @@ pub fn render_annotation_block(text: String) -> String {
 pub fn subject_annotation_blocks_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "The renderer's precondition made STRUCTURAL rather than documented. An earlier cut took a bare List<SourceAnnotationDebt>, named it `rows for one subject`, and then ignored every row's subject field — so a caller handing it rows attached to two different declarations would have rendered both above the first, and the next parse would silently rebind the second declaration's prose onto the first. The note said one subject; nothing checked it, and no fixture with two declarations existed to notice.\n\nConstruction is the check. subject_annotation_blocks_for refuses when any row names a different subject, so a mixed-subject list cannot reach the renderer at all — the misuse has no representable value rather than a validation that a future caller might skip. Empty is also refused: rendering `no blocks` is the caller's decision to omit the region entirely, and returning an empty string would put a bare newline where nothing was authored.".to_string()
+            "The renderer's precondition made STRUCTURAL rather than documented. An earlier cut took a bare List<SourceAnnotationDebt>, named it `rows for one subject`, and then ignored every row's subject field — so a caller handing it rows attached to two different declarations would have rendered both above the first, and the next parse would silently rebind the second declaration's prose onto the first. The note said one subject; nothing checked it, and no fixture with two declarations existed to notice.\n\nTHE CARRIER HOLDS BLOCK TEXTS, NOT ROWS, and that is the whole of the fix. A SourceAnnotationDebt carries its own subject, so a value naming one subject while holding rows naming another was a representable contradiction, and every guard against it — a predicate over the rows, a filter in the factory — was a validation that a direct constructor simply skipped. A text carries no subject, so there is no second subject in the value for the first to disagree with, and the mixed-subject state has no representation to check.\n\nRUNG, STATED EXACTLY, because the earlier cut of this note overstated it and a review caught the overstatement. Mixed-subject is structurally impossible: unwritable, not validated, so the predicate that used to assert it is deleted rather than kept beside it. NONEMPTY is not at that rung: subject_annotation_blocks_for returns Absent for a subject carrying no prose — rendering `no blocks` is the caller's decision to omit the region entirely, and an empty string would put a bare newline where nothing was authored — but SubjectAnnotationBlocks { subject, texts: [] } stays constructible and renders empty. That residue is named rather than argued away. NEXT-RUNG TRIGGER: a nonempty list carrier, which v1 does not have; minting one for a single site is the cost DESIGN.md sec 6 declines until a second consumer wants it.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -273,19 +273,7 @@ pub fn subject_annotation_blocks_note() -> String {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SubjectAnnotationBlocks {
     pub subject: OccurrenceId,
-    pub rows: Rc<Vec<Rc<SourceAnnotationDebt>>>,
-}
-
-pub fn rows_all_name_subject(
-    rows: Rc<Vec<Rc<SourceAnnotationDebt>>>,
-    subject: OccurrenceId,
-) -> bool {
-    rows.clone()
-        .iter()
-        .cloned()
-        .fold(true, |ok: bool, row: Rc<SourceAnnotationDebt>| {
-            (ok && (row.subject.clone().value.clone() == subject.value.clone()))
-        })
+    pub texts: Rc<Vec<String>>,
 }
 
 pub fn subject_annotation_blocks_for(
@@ -293,27 +281,23 @@ pub fn subject_annotation_blocks_for(
     subject: OccurrenceId,
 ) -> Option<Rc<SubjectAnnotationBlocks>> {
     {
-        let rows = source_annotation_graph_rows(graph.clone())
+        let texts = source_annotation_graph_rows(graph.clone())
             .iter()
             .cloned()
             .fold(Rc::new(vec![]), |acc: _, row: Rc<SourceAnnotationDebt>| {
                 if (row.subject.clone().value.clone() == subject.value.clone()) {
-                    v1_rt::rc_list_push(acc.clone(), row.clone())
+                    v1_rt::rc_list_push(acc.clone(), row.text.clone())
                 } else {
                     acc.clone()
                 }
             });
-        if ((rows.clone().len() as i64) == 0) {
+        if ((texts.clone().len() as i64) == 0) {
             None
         } else {
-            if rows_all_name_subject(rows.clone(), subject.clone()) {
-                Some(Rc::new(SubjectAnnotationBlocks {
-                    subject: subject.clone(),
-                    rows: rows.clone(),
-                }))
-            } else {
-                None
-            }
+            Some(Rc::new(SubjectAnnotationBlocks {
+                subject: subject.clone(),
+                texts: texts.clone(),
+            }))
         }
     }
 }
@@ -330,8 +314,8 @@ pub fn render_subject_blocks_note() -> String {
 pub fn render_subject_annotation_blocks(blocks: Rc<SubjectAnnotationBlocks>) -> String {
     Rc::new({
         let mut __result = Vec::new();
-        for row in blocks.rows.clone().iter().cloned() {
-            __result.push(render_annotation_block(row.text.clone()));
+        for text in blocks.texts.clone().iter().cloned() {
+            __result.push(render_annotation_block(text.clone()));
         }
         __result
     })

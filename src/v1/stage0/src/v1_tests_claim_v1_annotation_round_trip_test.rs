@@ -15,6 +15,7 @@ pub use crate::v1_compiler_annotation_bind::{
 };
 pub use crate::v1_compiler_parse::parse_with_table;
 pub use crate::v1_compiler_tokenize::tokenize_artifact;
+pub use crate::v1_compiler_tokenize::V1LexArtifact;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 pub use crate::v1_std_core::NewlineIndex;
@@ -42,40 +43,26 @@ pub fn v1_annotation_round_trip_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn single_tokenize_note() -> String {
+pub fn single_parse_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Tokenizes ONCE and feeds both the semantic tokens and the captures from that same artifact. Tokenizing the same source twice — once for the parser and once for the captures — is two runs of a fold that is supposed to produce one artifact, and it would mask a defect in which the two halves disagree, since each call would independently re-derive its own half.".to_string()
+            "ONE ARTIFACT AND ONE PARSE PER SOURCE, carried in a record so every consumer below reads the same one. Tokenizing the same source twice — once for the parser and once for the captures — is two runs of a fold that is supposed to produce one artifact, and it would mask a defect in which the two halves disagree, since each call would independently re-derive its own half.\n\nThe earlier cut declared that rule and then broke it, which a review caught: separate admitted_of and transport_of helpers each tokenized and parsed, so the keyed projection paired a GRAPH from one parse with an OCCURRENCE INDEX from another. That is worse than the redundant work it looks like. The keying resolves a subject id through the index, so two parses meant resolving one parse's ids against the other parse's table — sound only while the two agree, which is precisely the drift the rule exists to catch. Holding the artifact, the transport, and the admitted result in one value makes the pairing structural: there is no second parse in scope to reach for.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn admitted_of(source: String) -> Rc<AdmittedSourceAnnotations> {
-    {
-        let artifact = tokenize_artifact(source.clone(), "rt.dag".to_string());
-        admit_source_annotations(
-            parse_with_table(
-                artifact.tokens.clone(),
-                v1_rt::rc_map_insert(
-                    v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
-                    "rt.dag".to_string(),
-                    build_newline_index("rt.dag".to_string(), source.clone()),
-                ),
-                empty_intern_table(),
-            )
-            .occurrence_transport
-            .clone(),
-            artifact.annotations.clone(),
-            v1_rt::string_length(&source),
-        )
-    }
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ParsedSource {
+    pub artifact: Rc<V1LexArtifact>,
+    pub transport: Rc<OccurrenceTransport>,
+    pub admitted: Rc<AdmittedSourceAnnotations>,
 }
 
-pub fn transport_of(source: String) -> Rc<OccurrenceTransport> {
+pub fn parsed_of(source: String) -> Rc<ParsedSource> {
     {
         let artifact = tokenize_artifact(source.clone(), "rt.dag".to_string());
-        parse_with_table(
+        let transport = parse_with_table(
             artifact.tokens.clone(),
             v1_rt::rc_map_insert(
                 v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
@@ -85,7 +72,16 @@ pub fn transport_of(source: String) -> Rc<OccurrenceTransport> {
             empty_intern_table(),
         )
         .occurrence_transport
-        .clone()
+        .clone();
+        Rc::new(ParsedSource {
+            artifact: artifact.clone(),
+            transport: transport.clone(),
+            admitted: admit_source_annotations(
+                transport.clone(),
+                artifact.annotations.clone(),
+                v1_rt::string_length(&source),
+            ),
+        })
     }
 }
 
@@ -98,15 +94,19 @@ pub fn admitted_rows_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn admitted_keyed_rows(source: String) -> Option<Rc<Vec<Rc<KeyedAnnotationRow>>>> {
-    {
-        let admitted = admitted_of(source.clone());
-        if ((admitted.diagnostics.clone().len() as i64) > 0) {
-            None
-        } else {
-            keyed_annotation_rows(transport_of(source.clone()), admitted.graph.clone())
-        }
+pub fn keyed_rows_of(parsed: Rc<ParsedSource>) -> Option<Rc<Vec<Rc<KeyedAnnotationRow>>>> {
+    if ((parsed.admitted.clone().diagnostics.clone().len() as i64) > 0) {
+        None
+    } else {
+        keyed_annotation_rows(
+            parsed.transport.clone(),
+            parsed.admitted.clone().graph.clone(),
+        )
     }
+}
+
+pub fn admitted_keyed_rows(source: String) -> Option<Rc<Vec<Rc<KeyedAnnotationRow>>>> {
+    keyed_rows_of(parsed_of(source.clone()))
 }
 
 pub fn admitted_row_count(source: String) -> i64 {
@@ -136,27 +136,30 @@ pub fn rendered_source_note() -> String {
 
 pub fn rendered_source_for(source: String, subject_name: String, decl: String) -> String {
     {
-        let admitted = admitted_of(source.clone());
-        match subject_named(source.clone(), subject_name.clone()) {
+        let parsed = parsed_of(source.clone());
+        match subject_named_in(parsed.clone(), subject_name.clone()) {
             None => "module rt\n\n".to_string(),
-            Some(subject) => {
-                match subject_annotation_blocks_for(admitted.graph.clone(), subject.clone()) {
-                    None => "module rt\n\n".to_string(),
-                    Some(blocks) => v1_rt::concat(
-                        "module rt\n\n".to_string(),
-                        v1_rt::concat(
-                            render_subject_annotation_blocks(blocks.clone()),
-                            v1_rt::concat("\n".to_string(), decl.clone()),
-                        ),
+            Some(subject) => match subject_annotation_blocks_for(
+                parsed.admitted.clone().graph.clone(),
+                subject.clone(),
+            ) {
+                None => "module rt\n\n".to_string(),
+                Some(blocks) => v1_rt::concat(
+                    "module rt\n\n".to_string(),
+                    v1_rt::concat(
+                        render_subject_annotation_blocks(blocks.clone()),
+                        v1_rt::concat("\n".to_string(), decl.clone()),
                     ),
-                }
-            }
+                ),
+            },
         }
     }
 }
 
-pub fn subject_named(source: String, name: String) -> Option<OccurrenceId> {
-    transport_of(source.clone())
+pub fn subject_named_in(parsed: Rc<ParsedSource>, name: String) -> Option<OccurrenceId> {
+    parsed
+        .transport
+        .clone()
         .index
         .clone()
         .entries
@@ -170,6 +173,10 @@ pub fn subject_named(source: String, name: String) -> Option<OccurrenceId> {
                 acc.clone()
             }
         })
+}
+
+pub fn subject_named(source: String, name: String) -> Option<OccurrenceId> {
+    subject_named_in(parsed_of(source.clone()), name.clone())
 }
 
 pub fn evidence_predicate_note() -> String {
@@ -286,9 +293,11 @@ pub fn merged_rendering(source: String) -> String {
         v1_rt::concat(
             Rc::new({
                 let mut __result = Vec::new();
-                for row in source_annotation_graph_rows(admitted_of(source.clone()).graph.clone())
-                    .iter()
-                    .cloned()
+                for row in source_annotation_graph_rows(
+                    parsed_of(source.clone()).admitted.clone().graph.clone(),
+                )
+                .iter()
+                .cloned()
                 {
                     __result.push(render_annotation_block(row.text.clone()));
                 }
@@ -371,10 +380,10 @@ pub fn mixed_refusal_source() -> String {
 
 pub fn bypassed_row_count(source: String) -> i64 {
     {
-        let artifact = tokenize_artifact(source.clone(), "rt.dag".to_string());
+        let parsed = parsed_of(source.clone());
         (source_annotation_graph_rows(annotation_attachment_result_graph(bind_annotations(
-            transport_of(source.clone()),
-            artifact.annotations.clone(),
+            parsed.transport.clone(),
+            parsed.artifact.clone().annotations.clone(),
             v1_rt::string_length(&source),
         )))
         .len() as i64)
@@ -478,7 +487,7 @@ pub fn w_each_declaration_keeps_its_own_prose() -> bool {
 pub fn mixed_subject_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Construction refuses what the renderer's signature no longer has to trust. subject_annotation_blocks_for over a two-declaration graph yields only that subject's rows, and a subject carrying no rows yields Absent rather than an empty block list — so `render both declarations' prose above the first` has no value to construct, rather than being a misuse a caller must remember to avoid.".to_string()
+            "WHAT THIS ARM CAN AND CANNOT SHOW, stated because an earlier cut of it claimed the stronger half. The mixed-subject state is unrepresentable — SubjectAnnotationBlocks holds block TEXTS, and a text carries no subject to disagree with the carrier's — and unrepresentability is exactly the property no executed arm can witness: there is no value to hand the renderer, which is the point. What executes here is the SELECTION: over a two-declaration graph the factory yields only the named subject's blocks, and a subject carrying no prose yields Absent rather than an empty block list. The carrier's own claim, and the residue it does not close, are stated at its declaration.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -486,19 +495,22 @@ pub fn mixed_subject_note() -> String {
 
 pub fn w_mixed_subject_rows_cannot_reach_the_renderer() -> bool {
     {
-        let graph = admitted_of(two_decl_source()).graph.clone();
-        match subject_named(two_decl_source(), "alpha".to_string()) {
+        let parsed = parsed_of(two_decl_source());
+        match subject_named_in(parsed.clone(), "alpha".to_string()) {
             None => false,
-            Some(alpha) => match subject_annotation_blocks_for(graph.clone(), alpha.clone()) {
+            Some(alpha) => match subject_annotation_blocks_for(
+                parsed.admitted.clone().graph.clone(),
+                alpha.clone(),
+            ) {
                 None => false,
                 Some(blocks) => {
-                    ((((blocks.rows.clone().len() as i64) == 1)
+                    ((((blocks.texts.clone().len() as i64) == 1)
                         && (render_subject_annotation_blocks(blocks.clone())
                             == "// about alpha".to_string()))
                         && match subject_named(bare_source(), "alpha".to_string()) {
                             None => false,
                             Some(unannotated) => match subject_annotation_blocks_for(
-                                admitted_of(bare_source()).graph.clone(),
+                                parsed_of(bare_source()).admitted.clone().graph.clone(),
                                 unannotated.clone(),
                             ) {
                                 None => true,

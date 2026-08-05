@@ -160,32 +160,28 @@ fn render_annotation_block(text: String) -> String {
 
 data subject_annotation_blocks_note: String = "The renderer's precondition made STRUCTURAL rather than documented. An earlier cut took a bare List<SourceAnnotationDebt>, named it `rows for one subject`, and then ignored every row's subject field — so a caller handing it rows attached to two different declarations would have rendered both above the first, and the next parse would silently rebind the second declaration's prose onto the first. The note said one subject; nothing checked it, and no fixture with two declarations existed to notice.
 
-Construction is the check. subject_annotation_blocks_for refuses when any row names a different subject, so a mixed-subject list cannot reach the renderer at all — the misuse has no representable value rather than a validation that a future caller might skip. Empty is also refused: rendering `no blocks` is the caller's decision to omit the region entirely, and returning an empty string would put a bare newline where nothing was authored."
+THE CARRIER HOLDS BLOCK TEXTS, NOT ROWS, and that is the whole of the fix. A SourceAnnotationDebt carries its own subject, so a value naming one subject while holding rows naming another was a representable contradiction, and every guard against it — a predicate over the rows, a filter in the factory — was a validation that a direct constructor simply skipped. A text carries no subject, so there is no second subject in the value for the first to disagree with, and the mixed-subject state has no representation to check.
+
+RUNG, STATED EXACTLY, because the earlier cut of this note overstated it and a review caught the overstatement. Mixed-subject is structurally impossible: unwritable, not validated, so the predicate that used to assert it is deleted rather than kept beside it. NONEMPTY is not at that rung: subject_annotation_blocks_for returns Absent for a subject carrying no prose — rendering `no blocks` is the caller's decision to omit the region entirely, and an empty string would put a bare newline where nothing was authored — but SubjectAnnotationBlocks { subject, texts: [] } stays constructible and renders empty. That residue is named rather than argued away. NEXT-RUNG TRIGGER: a nonempty list carrier, which v1 does not have; minting one for a single site is the cost DESIGN.md sec 6 declines until a second consumer wants it."
 
 type SubjectAnnotationBlocks {
   subject: OccurrenceId
-  rows: List<SourceAnnotationDebt>
-}
-
-fn rows_all_name_subject(rows: List<SourceAnnotationDebt>, subject: OccurrenceId) -> Bool {
-  fold(rows, init: true, f: (ok, row) => ok && row.subject.value == subject.value)
+  texts: List<String>
 }
 
 fn subject_annotation_blocks_for(
   graph: SourceAnnotationGraph,
   subject: OccurrenceId
 ) -> SubjectAnnotationBlocks? {
-  let rows = fold(
+  let texts = fold(
     source_annotation_graph_rows(graph: graph),
     init: [],
-    f: (acc, row) => if row.subject.value == subject.value { list_push(acc, row) } else { acc }
+    f: (acc, row) => if row.subject.value == subject.value { list_push(acc, row.text) } else { acc }
   )
-  if (rows |> count) == 0 {
+  if (texts |> count) == 0 {
     none
-  } else if rows_all_name_subject(rows: rows, subject: subject) {
-    Present { value: SubjectAnnotationBlocks { subject: subject, rows: rows } }
   } else {
-    none
+    Present { value: SubjectAnnotationBlocks { subject: subject, texts: texts } }
   }
 }
 
@@ -194,8 +190,8 @@ data render_subject_blocks_note: String = "Consecutive rows on ONE subject are s
 It takes SubjectAnnotationBlocks rather than a list because the one-subject precondition is what makes `separated by a blank line` mean anything: blocks belonging to different declarations are not consecutive blocks on one subject, they are two regions of the file."
 
 fn render_subject_annotation_blocks(blocks: SubjectAnnotationBlocks) -> String {
-  blocks.rows
-    |> map(row => render_annotation_block(text: row.text))
+  blocks.texts
+    |> map(text => render_annotation_block(text: text))
     |> join(separator: "\n\n")
 }
 

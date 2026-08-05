@@ -19,7 +19,7 @@ import v1.compiler.annotation_bind {
   render_subject_annotation_blocks,
   subject_annotation_blocks_for
 }
-import v1.compiler.tokenize { tokenize_artifact }
+import v1.compiler.tokenize { V1LexArtifact, tokenize_artifact }
 import v1.compiler.parse { parse_with_table }
 import v1.std.core { build_newline_index, empty_intern_table, NewlineIndex }
 
@@ -33,39 +33,46 @@ EVERY GRAPH COMES THROUGH THE PRODUCTION ADMISSION SEAM. An earlier cut read the
 
 THE PROPERTY IS OVER THE ANNOTATION CHANNEL, with the declaration text held fixed to isolate it. Property 4 already proved that annotations do not perturb the semantic projection or the emitted bytes; what this proves is that the prose itself makes the trip. See the scope note in the module authority for why no production authored-source renderer is wired: there is none in the tree to wire."
 
-data single_tokenize_note: String = "Tokenizes ONCE and feeds both the semantic tokens and the captures from that same artifact. Tokenizing the same source twice — once for the parser and once for the captures — is two runs of a fold that is supposed to produce one artifact, and it would mask a defect in which the two halves disagree, since each call would independently re-derive its own half."
+data single_parse_note: String = "ONE ARTIFACT AND ONE PARSE PER SOURCE, carried in a record so every consumer below reads the same one. Tokenizing the same source twice — once for the parser and once for the captures — is two runs of a fold that is supposed to produce one artifact, and it would mask a defect in which the two halves disagree, since each call would independently re-derive its own half.
 
-fn admitted_of(source: String) -> AdmittedSourceAnnotations {
-  let artifact = tokenize_artifact(source: source, file: "rt.dag")
-  admit_source_annotations(
-    transport: parse_with_table(
-      tokens: artifact.tokens,
-      source_indices: map_insert(empty_map(), "rt.dag", build_newline_index(file: "rt.dag", source: source)),
-      intern_table: empty_intern_table(),
-    ).occurrence_transport,
-    captures: artifact.annotations,
-    source_length: string_length(s: source)
-  )
+The earlier cut declared that rule and then broke it, which a review caught: separate admitted_of and transport_of helpers each tokenized and parsed, so the keyed projection paired a GRAPH from one parse with an OCCURRENCE INDEX from another. That is worse than the redundant work it looks like. The keying resolves a subject id through the index, so two parses meant resolving one parse's ids against the other parse's table — sound only while the two agree, which is precisely the drift the rule exists to catch. Holding the artifact, the transport, and the admitted result in one value makes the pairing structural: there is no second parse in scope to reach for."
+
+type ParsedSource {
+  artifact: V1LexArtifact
+  transport: OccurrenceTransport
+  admitted: AdmittedSourceAnnotations
 }
 
-fn transport_of(source: String) -> OccurrenceTransport {
+fn parsed_of(source: String) -> ParsedSource {
   let artifact = tokenize_artifact(source: source, file: "rt.dag")
-  parse_with_table(
+  let transport = parse_with_table(
     tokens: artifact.tokens,
     source_indices: map_insert(empty_map(), "rt.dag", build_newline_index(file: "rt.dag", source: source)),
     intern_table: empty_intern_table(),
   ).occurrence_transport
+  ParsedSource {
+    artifact: artifact,
+    transport: transport,
+    admitted: admit_source_annotations(
+      transport: transport,
+      captures: artifact.annotations,
+      source_length: string_length(s: source)
+    )
+  }
 }
 
 data admitted_rows_note: String = "The keyed projection of an ADMITTED graph, or Absent. Three distinct failures collapse to Absent here — the source was refused admission, or a subject would not resolve to a name — and every one of them must make a property arm fail rather than compare an empty list against an empty list, which is why the evidence predicate below requires nonemptiness explicitly."
 
-fn admitted_keyed_rows(source: String) -> List<KeyedAnnotationRow>? {
-  let admitted = admitted_of(source: source)
-  if (admitted.diagnostics |> count) > 0 {
+fn keyed_rows_of(parsed: ParsedSource) -> List<KeyedAnnotationRow>? {
+  if (parsed.admitted.diagnostics |> count) > 0 {
     none
   } else {
-    keyed_annotation_rows(transport: transport_of(source: source), graph: admitted.graph)
+    keyed_annotation_rows(transport: parsed.transport, graph: parsed.admitted.graph)
   }
+}
+
+fn admitted_keyed_rows(source: String) -> List<KeyedAnnotationRow>? {
+  keyed_rows_of(parsed: parsed_of(source: source))
 }
 
 fn admitted_row_count(source: String) -> Int {
@@ -80,11 +87,11 @@ data declaration_text: String = "data alpha: String = \"a\"\n"
 data rendered_source_note: String = "Rebuilds a source from the CANONICAL rendering of an admitted graph, through subject_annotation_blocks_for and the production renderer rather than assembling annotation lines locally, so a defect in either reaches these claims. A source whose graph is refused, empty, or unresolvable renders as a marker that parses to no annotations, so the failure surfaces as a disagreement rather than as an accidentally-matching empty pair."
 
 fn rendered_source_for(source: String, subject_name: String, decl: String) -> String {
-  let admitted = admitted_of(source: source)
-  match subject_named(source: source, name: subject_name) {
+  let parsed = parsed_of(source: source)
+  match subject_named_in(parsed: parsed, name: subject_name) {
     Absent => "module rt\n\n"
     Present { value: subject } =>
-      match subject_annotation_blocks_for(graph: admitted.graph, subject: subject) {
+      match subject_annotation_blocks_for(graph: parsed.admitted.graph, subject: subject) {
         Absent => "module rt\n\n"
         Present { value: blocks } =>
           concat(
@@ -95,13 +102,17 @@ fn rendered_source_for(source: String, subject_name: String, decl: String) -> St
   }
 }
 
-fn subject_named(source: String, name: String) -> OccurrenceId? {
+fn subject_named_in(parsed: ParsedSource, name: String) -> OccurrenceId? {
   fold(
-    transport_of(source: source).index.entries,
+    parsed.transport.index.entries,
     init: none,
     f: (acc, entry) =>
       if entry.projection.authored_name == name { Present { value: entry.projection.occurrence } } else { acc }
   )
+}
+
+fn subject_named(source: String, name: String) -> OccurrenceId? {
+  subject_named_in(parsed: parsed_of(source: source), name: name)
 }
 
 data evidence_predicate_note: String = "ONE predicate for `this arm is evidence`, so no arm can pass on an empty comparison. It requires the original to be admitted with a NONEMPTY keyed projection, the rendered source to be admitted too, and the two to agree. Agreement alone is satisfied by empty-against-empty, which is precisely how a round-trip witness greens while exercising nothing."
@@ -148,7 +159,7 @@ fn merged_rendering(source: String) -> String {
   concat(
     "module rt\n\n",
     concat(
-      source_annotation_graph_rows(graph: admitted_of(source: source).graph)
+      source_annotation_graph_rows(graph: parsed_of(source: source).admitted.graph)
         |> map(row => render_annotation_block(text: row.text))
         |> join(separator: "\n"),
       concat("\n", declaration_text)
@@ -206,12 +217,12 @@ That is the whole hazard in one fixture. Reading the raw graph, a round trip ove
 data mixed_refusal_source: String = "module rt\n\n// good prose\ndata alpha: String = \"a\" // stray trailing\n"
 
 fn bypassed_row_count(source: String) -> Int {
-  let artifact = tokenize_artifact(source: source, file: "rt.dag")
+  let parsed = parsed_of(source: source)
   source_annotation_graph_rows(
     graph: annotation_attachment_result_graph(
       result: bind_annotations(
-        transport: transport_of(source: source),
-        captures: artifact.annotations,
+        transport: parsed.transport,
+        captures: parsed.artifact.annotations,
         source_length: string_length(s: source)
       )
     )
@@ -269,23 +280,23 @@ test fn w_each_declaration_keeps_its_own_prose() -> Bool {
       "module rt\n\n// about beta\ndata alpha: String = \"a\"\n"
 }
 
-data mixed_subject_note: String = "Construction refuses what the renderer's signature no longer has to trust. subject_annotation_blocks_for over a two-declaration graph yields only that subject's rows, and a subject carrying no rows yields Absent rather than an empty block list — so `render both declarations' prose above the first` has no value to construct, rather than being a misuse a caller must remember to avoid."
+data mixed_subject_note: String = "WHAT THIS ARM CAN AND CANNOT SHOW, stated because an earlier cut of it claimed the stronger half. The mixed-subject state is unrepresentable — SubjectAnnotationBlocks holds block TEXTS, and a text carries no subject to disagree with the carrier's — and unrepresentability is exactly the property no executed arm can witness: there is no value to hand the renderer, which is the point. What executes here is the SELECTION: over a two-declaration graph the factory yields only the named subject's blocks, and a subject carrying no prose yields Absent rather than an empty block list. The carrier's own claim, and the residue it does not close, are stated at its declaration."
 
 test fn w_mixed_subject_rows_cannot_reach_the_renderer() -> Bool {
-  let graph = admitted_of(source: two_decl_source).graph
-  match subject_named(source: two_decl_source, name: "alpha") {
+  let parsed = parsed_of(source: two_decl_source)
+  match subject_named_in(parsed: parsed, name: "alpha") {
     Absent => false
     Present { value: alpha } =>
-      match subject_annotation_blocks_for(graph: graph, subject: alpha) {
+      match subject_annotation_blocks_for(graph: parsed.admitted.graph, subject: alpha) {
         Absent => false
         Present { value: blocks } =>
-          (blocks.rows |> count) == 1 &&
+          (blocks.texts |> count) == 1 &&
             render_subject_annotation_blocks(blocks: blocks) == "// about alpha" &&
             match subject_named(source: bare_source, name: "alpha") {
               Absent => false
               Present { value: unannotated } =>
                 match subject_annotation_blocks_for(
-                  graph: admitted_of(source: bare_source).graph,
+                  graph: parsed_of(source: bare_source).admitted.graph,
                   subject: unannotated
                 ) {
                   Absent => true
