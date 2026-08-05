@@ -3,14 +3,15 @@ module test.claim.decl_facts_reflection_witness_test
 import test.claim.decl_facts_reflection_witness_support {
   decl_facts_reflection_constructor_parent,
   decl_facts_reflection_constructor_variant,
-  decl_facts_reflection_decl_field_variant_name,
   decl_facts_reflection_field_projection,
   decl_facts_reflection_nullary_value_projection,
+  decl_facts_reflection_projection_variant_label_optional,
   decl_facts_reflection_resolved_nullary_parent,
   decl_facts_reflection_resolved_nullary_variant_name,
 }
 import v2.std.data_initializer_identity {
   ambiguous_candidate_projection_count,
+  record_field_projection_optional,
   value_projection_is_ambiguous,
   value_projection_is_missing,
   value_projection_is_resolved_variant,
@@ -115,10 +116,26 @@ test fn decl_facts_reflection_single_authority_vs_realization_dispatch_distinct(
 }
 
 test fn decl_facts_reflection_whole_declaration_vs_named_field_field_grain() -> Bool {
-  match decl_facts_reflection_decl_field_variant_name(qn: whole_declaration_bind_qn) {
-    Present { value: whole } =>
-      match decl_facts_reflection_decl_field_variant_name(qn: scaffold_named_field_bind_qn) {
-        Present { value: named } => whole == "WholeDeclaration" && named == "NamedField"
+  match decl_facts_reflection_field_projection(qn: whole_declaration_bind_qn, field: "bind") {
+    Present { value: whole_bind } =>
+      match record_field_projection_optional(record: whole_bind, label: "field") {
+        Present { value: whole_field } =>
+          match decl_facts_reflection_field_projection(qn: scaffold_named_field_bind_qn, field: "bind") {
+            Present { value: named_bind } =>
+              match record_field_projection_optional(record: named_bind, label: "field") {
+                Present { value: named_field } =>
+                  match decl_facts_reflection_projection_variant_label_optional(node: whole_field) {
+                    Present { value: whole } =>
+                      match decl_facts_reflection_projection_variant_label_optional(node: named_field) {
+                        Present { value: named } => whole == "WholeDeclaration" && named == "NamedField"
+                        Absent => false
+                      }
+                    Absent => false
+                  }
+                Absent => false
+              }
+            Absent => false
+          }
         Absent => false
       }
     Absent => false
