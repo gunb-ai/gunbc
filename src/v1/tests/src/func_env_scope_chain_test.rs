@@ -345,6 +345,7 @@ fn func_env_dropped_parent_chain_fails_lookup() {
         service_registry: Rc::new(HashMap::new()),
         item_registry: consumer.item_registry.clone(),
         lambda_param_provenance: Rc::new(HashMap::new()),
+        caller_decl_name: "".to_string(),
     });
     let reinfer = infer_expr(body, stripped_scope, None);
     let diag_msgs: Vec<String> = reinfer
