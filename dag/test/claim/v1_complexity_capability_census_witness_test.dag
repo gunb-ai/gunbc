@@ -1,0 +1,245 @@
+module test.claim.v1_complexity_capability_census_witness_test
+
+import std.types { String, NonEmptyStr, Bool, List }
+import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
+import gunbc.v1_complexity_capability_census {
+  ComplexityCapabilityId,
+  ComplexityCapabilityDisposition,
+  CapabilityWorkKind,
+  CapabilityFactProducer,
+  FactsFromCostLens,
+  NoWorkOwed,
+  IntegrationWork,
+  MigrationWork,
+  RetirementWork,
+  CostProgramRole,
+  RoleMigrationAuthority,
+  RoleAsymptoticProjection,
+  RoleRealizationAccounts,
+  RoleLegacyOracle,
+  CostMigrationDestination,
+  MigrateToV2LensCost,
+  MigrateToV2LensComplexity,
+  MigrateToStdRealizationSchedule,
+  ParityPhase,
+  ParityC1ExpressionAuthority,
+  ParityC4Interprocedural,
+  RetirementTrigger,
+  RetiresWhenReplacementExecutes,
+  RetiresWithSeedDeletion,
+  V1ComplexityInventoryRow,
+  V1ComplexityInventoryItem,
+  SemanticCapabilityItem,
+  LegacyHazardItem,
+  LegacyRealizationItem,
+  SummaryEvictionHazard,
+  ParserProgressV1WalkerRealization,
+  CompleteInV2,
+  IntegrationOwed,
+  MigrationOwed,
+  SupersededByBetterModel,
+  RetirementOwed,
+  Retired,
+  ParserProgressFactProduction,
+  InterproceduralSummaryMemo,
+  CallGraphAndScc,
+  AsymptoticClassAndDominance,
+  v1_complexity_inventory_roster,
+  capability_work_kind,
+  capability_work_owed,
+  capability_cited_carrier,
+  capability_work_count,
+  cost_program_role_module_path,
+  cost_migration_destination_module_path,
+  call_graph_and_scc,
+  parser_progress_v1_walker,
+  parser_progress_fact_production,
+  summary_eviction,
+  asymptotic_class_and_dominance,
+}
+
+data witness_note: String = "FAST-LANE structural hygiene for the C0(b1) capability roster. Exact DeclarationRef resolution against live decl_facts is deliberately NOT here — it costs a full witness-layer decl_facts scan and would breach the 5s fast-lane budget. That census is this roster's companion in test.claim.long.v1_complexity_capability_census_resolution_test. What this file proves is what is cheap and structural: every arm lands in exactly one work-state, EVERY arm has a controlled fixture including the ones no row inhabits, and routing metadata is drawn from typed vocabularies."
+
+fn fixture_complete() -> V1ComplexityInventoryRow {
+  V1ComplexityInventoryRow {
+    item: SemanticCapabilityItem { capability: AsymptoticClassAndDominance },
+    v1_carrier: decl_ref(module_path: "v1.compiler.complexity", decl_name: "classify_complexity"),
+    disposition: CompleteInV2 {
+      carrier: decl_ref(module_path: "v2.lens.cost", decl_name: "asymptotic_class_of_cost"),
+      note: "fixture" as NonEmptyStr
+    }
+  }
+}
+
+fn fixture_integration() -> V1ComplexityInventoryRow {
+  V1ComplexityInventoryRow {
+    item: SemanticCapabilityItem { capability: CallGraphAndScc },
+    v1_carrier: decl_ref(module_path: "v1.compiler.complexity", decl_name: "build_scc_index"),
+    disposition: IntegrationOwed {
+      substrate_carrier: decl_ref(module_path: "std.graph", decl_name: "graph_multi_node_scc_members"),
+      phase: ParityC4Interprocedural,
+      note: "fixture" as NonEmptyStr
+    }
+  }
+}
+
+fn fixture_migration() -> V1ComplexityInventoryRow {
+  V1ComplexityInventoryRow {
+    item: LegacyHazardItem { hazard: SummaryEvictionHazard, of_capability: InterproceduralSummaryMemo },
+    v1_carrier: decl_ref(module_path: "v1.compiler.complexity", decl_name: "evict_summary"),
+    disposition: MigrationOwed {
+      destination: MigrateToV2LensCost,
+      producer: FactsFromCostLens,
+      phase: ParityC1ExpressionAuthority,
+      note: "fixture" as NonEmptyStr
+    }
+  }
+}
+
+fn fixture_superseded() -> V1ComplexityInventoryRow {
+  V1ComplexityInventoryRow {
+    item: SemanticCapabilityItem { capability: ParserProgressFactProduction },
+    v1_carrier: decl_ref(module_path: "v1.compiler.complexity", decl_name: "collect_parser_progress_edges"),
+    disposition: SupersededByBetterModel {
+      superseded_by: decl_ref(module_path: "std.termination", decl_name: "DescentEvidence"),
+      note: "fixture — uninhabited by the roster, proven here so the arm is not green-by-vacancy" as NonEmptyStr
+    }
+  }
+}
+
+fn fixture_retirement_owed() -> V1ComplexityInventoryRow {
+  V1ComplexityInventoryRow {
+    item: LegacyRealizationItem { realization: ParserProgressV1WalkerRealization, of_capability: ParserProgressFactProduction },
+    v1_carrier: decl_ref(module_path: "v1.compiler.complexity", decl_name: "parser_state_expr_progress"),
+    disposition: RetirementOwed {
+      trigger: RetiresWhenReplacementExecutes { replacement: ParserProgressFactProduction },
+      note: "fixture" as NonEmptyStr
+    }
+  }
+}
+
+fn fixture_retired() -> V1ComplexityInventoryRow {
+  V1ComplexityInventoryRow {
+    item: LegacyRealizationItem { realization: ParserProgressV1WalkerRealization, of_capability: ParserProgressFactProduction },
+    v1_carrier: decl_ref(module_path: "v1.compiler.complexity", decl_name: "parser_state_expr_progress"),
+    disposition: Retired {
+      reason: "fixture — uninhabited by the roster, proven here so the arm is not green-by-vacancy" as NonEmptyStr
+    }
+  }
+}
+
+fn all_disposition_fixtures() -> List<V1ComplexityInventoryRow> {
+  [
+    fixture_complete(),
+    fixture_integration(),
+    fixture_migration(),
+    fixture_superseded(),
+    fixture_retirement_owed(),
+    fixture_retired()
+  ]
+}
+
+fn fixture_kind_present(kind: CapabilityWorkKind) -> Bool {
+  fold(all_disposition_fixtures(), init: false, f: (acc, c) =>
+    acc || capability_work_kind(c: c) == kind)
+}
+
+test fn w_fixture_set_covers_every_work_kind() -> Bool {
+  fixture_kind_present(kind: NoWorkOwed) &&
+  fixture_kind_present(kind: IntegrationWork) &&
+  fixture_kind_present(kind: MigrationWork) &&
+  fixture_kind_present(kind: RetirementWork) &&
+  length(xs: all_disposition_fixtures()) == 6
+}
+
+test fn w_every_disposition_arm_has_a_fixture_and_one_work_kind() -> Bool {
+  capability_work_kind(c: fixture_complete()) == NoWorkOwed &&
+  capability_work_kind(c: fixture_superseded()) == NoWorkOwed &&
+  capability_work_kind(c: fixture_retired()) == NoWorkOwed &&
+  capability_work_kind(c: fixture_integration()) == IntegrationWork &&
+  capability_work_kind(c: fixture_migration()) == MigrationWork &&
+  capability_work_kind(c: fixture_retirement_owed()) == RetirementWork
+}
+
+test fn w_work_owed_partitions_every_fixture_arm() -> Bool {
+  !capability_work_owed(c: fixture_complete()) &&
+  !capability_work_owed(c: fixture_superseded()) &&
+  !capability_work_owed(c: fixture_retired()) &&
+  capability_work_owed(c: fixture_integration()) &&
+  capability_work_owed(c: fixture_migration()) &&
+  capability_work_owed(c: fixture_retirement_owed())
+}
+
+test fn w_integration_owed_is_not_discharged() -> Bool {
+  capability_work_owed(c: call_graph_and_scc) &&
+  capability_work_kind(c: call_graph_and_scc) == IntegrationWork &&
+  capability_work_kind(c: call_graph_and_scc) != NoWorkOwed
+}
+
+test fn w_parser_progress_ruling_is_modeled_as_two_rows() -> Bool {
+  capability_work_kind(c: parser_progress_fact_production) == MigrationWork &&
+  capability_work_kind(c: parser_progress_v1_walker) == RetirementWork &&
+  capability_work_owed(c: parser_progress_v1_walker) &&
+  match parser_progress_v1_walker.disposition {
+    RetirementOwed { trigger: t, note: _ } =>
+      match t {
+        RetiresWhenReplacementExecutes { replacement: r } => r == ParserProgressFactProduction
+        RetiresWithSeedDeletion => false
+      }
+    _ => false
+  }
+}
+
+test fn w_every_roster_row_lands_in_exactly_one_work_kind() -> Bool {
+  fold(v1_complexity_inventory_roster, init: true, f: (acc, c) =>
+    let k = capability_work_kind(c: c)
+    acc && (
+      (k == NoWorkOwed && !capability_work_owed(c: c)) ||
+      (k != NoWorkOwed && capability_work_owed(c: c))
+    ))
+}
+
+test fn w_work_kind_counts_exhaust_the_roster() -> Bool {
+  let n = length(xs: v1_complexity_inventory_roster)
+  let none_owed = capability_work_count(rows: v1_complexity_inventory_roster, kind: NoWorkOwed)
+  let integration = capability_work_count(rows: v1_complexity_inventory_roster, kind: IntegrationWork)
+  let migration = capability_work_count(rows: v1_complexity_inventory_roster, kind: MigrationWork)
+  let retirement = capability_work_count(rows: v1_complexity_inventory_roster, kind: RetirementWork)
+  none_owed + integration + migration + retirement == n &&
+  integration > 0 &&
+  migration > 0 &&
+  retirement > 0
+}
+
+test fn w_destination_vocabulary_matches_the_signed_ruling() -> Bool {
+  cost_migration_destination_module_path(d: MigrateToV2LensCost) == "v2.lens.cost" &&
+  cost_migration_destination_module_path(d: MigrateToV2LensComplexity) == "v2.lens.complexity" &&
+  cost_migration_destination_module_path(d: MigrateToStdRealizationSchedule) == "std.realization_schedule"
+}
+
+test fn w_program_role_vocabulary_matches_the_signed_ruling() -> Bool {
+  cost_program_role_module_path(r: RoleMigrationAuthority) == "v2.lens.cost" &&
+  cost_program_role_module_path(r: RoleAsymptoticProjection) == "v2.lens.complexity" &&
+  cost_program_role_module_path(r: RoleRealizationAccounts) == "std.realization_schedule" &&
+  cost_program_role_module_path(r: RoleLegacyOracle) == "v1.compiler.complexity"
+}
+
+test fn w_every_v1_carrier_targets_the_seed_module() -> Bool {
+  fold(v1_complexity_inventory_roster, init: true, f: (acc, c) =>
+    acc && (c.v1_carrier.module_path as String) == "v1.compiler.complexity")
+}
+
+test fn w_cited_carrier_absence_is_structural_not_a_lookup_failure() -> Bool {
+  match capability_cited_carrier(c: fixture_retired()) {
+    Present { value: _ } => false
+    Absent => true
+  } &&
+  match capability_cited_carrier(c: fixture_retirement_owed()) {
+    Present { value: _ } => false
+    Absent => true
+  } &&
+  match capability_cited_carrier(c: asymptotic_class_and_dominance) {
+    Present { value: r } => (r.module_path as String) == "v2.lens.cost"
+    Absent => false
+  }
+}
