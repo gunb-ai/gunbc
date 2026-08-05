@@ -1,0 +1,164 @@
+module gunbc.design.instrument_camera
+
+import std.types { String, Bool, Int, List }
+import gunbc.v1_deletion_plan { V1FinishLine, v1_finish_line_key }
+
+data state_ownership_note: String = "FOUR OWNERS, AND THE SPLIT IS THE WHOLE POINT (instrument wave, operator directive 2026-08-04). Before physical-device input can drive presentation, it has to be impossible for it to drive anything else. The authoritative program view is V0's derived v1-deletion facts and this module NEVER writes it — no fn here returns a finish line, an acceptance, or a roadmap edge. Local instrument state is what the person operating the instrument chose: which subject is selected, how deep the camera sits, which mode it reads. Instrument observation is what the world told us: whether a sensor exists, whether permission was granted, whether an impulse arrived. Renderer ephemera is plate position, velocity, glow interpolation, glitch phase — none of it modelled here at all, because it is per-frame and belongs to the realization. The law that makes the split real rather than a naming convention: a ProgramCamera carries only a depth, a mode, and a focus KEY, so it structurally cannot hold a program fact to corrupt."
+
+type StateOwner
+  = AuthoritativeProgramView
+  | LocalInstrumentState
+  | InstrumentObservation
+  | RendererEphemera
+
+fn state_owner_key(o: StateOwner) -> String {
+  match o {
+    AuthoritativeProgramView => "authoritative-program-view"
+    LocalInstrumentState => "local-instrument-state"
+    InstrumentObservation => "instrument-observation"
+    RendererEphemera => "renderer-ephemera"
+  }
+}
+
+data owner_write_authority_note: String = "Which owner may WRITE a domain fact: exactly one, and it is not reachable from the instrument. This is the predicate the physical-input lane needs, because 'a tap changed the screen' and 'a tap changed the program' differ only by whether the writing owner was authoritative — and the tap's owner never is."
+
+fn owner_may_write_domain_fact(o: StateOwner) -> Bool {
+  match o {
+    AuthoritativeProgramView => true
+    LocalInstrumentState => false
+    InstrumentObservation => false
+    RendererEphemera => false
+  }
+}
+
+data depth_note: String = "The semantic camera's one axis, ordered outermost to innermost. The variants carry a Depth stem because a bare-name identifier is a corpus-wide name in this substrate, not a module-local one — an unprefixed Node variant would have collided head-on with the substrate's own Node type, which is the nicknaming violation before it is ever a resolution hazard. It is a DEPTH, not a zoom: each position is a discrete detent with its own subject grain, so there is no continuous scale and no arbitrary pan. History is deliberately absent — a mode that cannot be answered from a real historical projection would be a fabricated affordance, and the directive names it as out of scope until one exists."
+
+type ProgramDepth
+  = DepthProgram
+  | DepthOutcome
+  | DepthFront
+  | DepthNode
+  | DepthEvidence
+
+fn program_depth_key(d: ProgramDepth) -> String {
+  match d {
+    DepthProgram => "program"
+    DepthOutcome => "outcome"
+    DepthFront => "front"
+    DepthNode => "node"
+    DepthEvidence => "evidence"
+  }
+}
+
+fn program_depth_index(d: ProgramDepth) -> Int {
+  match d {
+    DepthProgram => 0
+    DepthOutcome => 1
+    DepthFront => 2
+    DepthNode => 3
+    DepthEvidence => 4
+  }
+}
+
+data depth_ordering_note: String = "program_depth_index exists so a detent crossing is DERIVED rather than authored: one wheel threshold or one arrow key moves the index by exactly one, and the dial's rendered position is the index. Authoring a per-pair transition table would be the same ordering said twice."
+
+data depth_detent_step_note: String = "A depth change crosses AT MOST ONE detent, by construction: step_depth takes a direction, not a target, so no caller can jump from the outermost detent to the innermost in one gesture and no continuous zoom can exist. Clamping at the ends is deliberate and is not an absorbing fallback — the request is fully answered ('you are already at the outermost detent'), nothing is widened, and a caller that wants to know whether it moved compares the returned depth."
+
+type DepthStep
+  = Inward
+  | Outward
+
+fn step_depth(d: ProgramDepth, step: DepthStep) -> ProgramDepth {
+  match step {
+    Inward => match d {
+      DepthProgram => DepthOutcome
+      DepthOutcome => DepthFront
+      DepthFront => DepthNode
+      DepthNode => DepthEvidence
+      DepthEvidence => DepthEvidence
+    }
+    Outward => match d {
+      DepthProgram => DepthProgram
+      DepthOutcome => DepthProgram
+      DepthFront => DepthOutcome
+      DepthNode => DepthFront
+      DepthEvidence => DepthNode
+    }
+  }
+}
+
+type ProgramMode
+  = ModeStatus
+  | ModeRemaining
+  | ModeWhy
+
+fn program_mode_key(m: ProgramMode) -> String {
+  match m {
+    ModeStatus => "status"
+    ModeRemaining => "remaining"
+    ModeWhy => "why"
+  }
+}
+
+data focus_is_a_key_not_a_fact_note: String = "FocusSubject carries the finish line's KEY, not its spec. That is what keeps the camera structurally unable to hold a program fact: a key is an identity the authoritative view can resolve, while a spec would be a copy of V0's claim living in local state, free to drift from the thing it names. Selecting nothing is a real state — the instrument opens with no subject chosen — so it is a variant rather than an empty string."
+
+type FocusSubject
+  = NoSubjectSelected
+  | FinishLineFocused { line_key: String }
+
+fn focus_subject_key(f: FocusSubject) -> String {
+  match f {
+    NoSubjectSelected => "none"
+    FinishLineFocused { line_key } => line_key
+  }
+}
+
+fn focus_finish_line(l: V1FinishLine) -> FocusSubject {
+  FinishLineFocused { line_key: v1_finish_line_key(l: l) }
+}
+
+fn focus_subject_eq(a: FocusSubject, b: FocusSubject) -> Bool {
+  focus_subject_key(f: a) == focus_subject_key(f: b)
+}
+
+type ProgramCamera {
+  depth: ProgramDepth
+  mode: ProgramMode
+  focus: FocusSubject
+}
+
+data camera_opens_outermost_note: String = "The instrument opens at the outermost depth in Status mode with nothing selected — no subject is preselected, because a preselected subject is a claim about what matters that the program did not make."
+
+data camera_initial: ProgramCamera = ProgramCamera {
+  depth: DepthProgram,
+  mode: ModeStatus,
+  focus: NoSubjectSelected,
+}
+
+fn camera_step_depth(c: ProgramCamera, step: DepthStep) -> ProgramCamera {
+  ProgramCamera { depth: step_depth(d: c.depth, step: step), mode: c.mode, focus: c.focus }
+}
+
+fn camera_set_mode(c: ProgramCamera, m: ProgramMode) -> ProgramCamera {
+  ProgramCamera { depth: c.depth, mode: m, focus: c.focus }
+}
+
+data selection_toggles_note: String = "Re-selecting the selected subject clears it, matching the production roadmap's row-selection rule so the two surfaces do not teach different gestures for the same act."
+
+fn camera_select(c: ProgramCamera, f: FocusSubject) -> ProgramCamera {
+  if focus_subject_eq(a: c.focus, b: f) {
+    ProgramCamera { depth: c.depth, mode: c.mode, focus: NoSubjectSelected }
+  } else {
+    ProgramCamera { depth: c.depth, mode: c.mode, focus: f }
+  }
+}
+
+data camera_cannot_touch_the_program_note: String = "THE LAW THE PHYSICAL LANE DEPENDS ON, stated as a predicate over the camera's own shape rather than as a promise: every camera transition above returns a ProgramCamera built from a depth, a mode and a focus key, so no transition can carry a roadmap node, an acceptance, or a finish-line claim. A tap, a wheel, a key, or a pointer can therefore move the camera and nothing else. What this does NOT prove is that a RENDERER refrains from writing elsewhere; that is the renderer's own obligation and is witnessed at its own seam."
+
+fn camera_preserves_subject_across_depth(c: ProgramCamera, step: DepthStep) -> Bool {
+  focus_subject_eq(a: camera_step_depth(c: c, step: step).focus, b: c.focus)
+}
+
+fn camera_preserves_subject_across_mode(c: ProgramCamera, m: ProgramMode) -> Bool {
+  focus_subject_eq(a: camera_set_mode(c: c, m: m).focus, b: c.focus)
+}
