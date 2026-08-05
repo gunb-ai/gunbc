@@ -583,7 +583,7 @@ fn ci_heal_repo_local_git_config_step() -> Step {
 fn ci_heal_commit_push_step() -> Step {
   RunStep {
     name: Present { value: "Commit + push auto-push-eligible regenerated artifacts (workflow paths are author-commit-required)" },
-    id: none,
+    id: Present { value: ci_heal_commit_push_step_id },
     run: gunbc_ci_heal_commit_push_script(),
     shell: none,
     env: Present {
@@ -594,6 +594,15 @@ fn ci_heal_commit_push_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
   }
+}
+
+data ci_heal_commit_push_step_id: String = "heal_commit_push"
+
+fn ci_heal_author_commit_upload_if() -> String {
+  concat(
+    concat("always() && steps.", ci_heal_commit_push_step_id),
+    concat(".outputs.", concat(ci_heal_author_commit_required_output, " == '1'"))
+  )
 }
 
 fn any_author_commit_path_is_hidden() -> Bool {
@@ -613,7 +622,7 @@ fn ci_heal_author_commit_upload_step() -> Step {
       value: [
         kv(key: "name", value: yaml_string(s: ci_heal_author_commit_artifact_name)),
         kv(key: "path", value: yaml_string(s: ci_heal_author_commit_artifact_dir)),
-        kv(key: "if-no-files-found", value: yaml_string(s: "ignore")),
+        kv(key: "if-no-files-found", value: yaml_string(s: "error")),
         kv(
           key: "include-hidden-files",
           value: yaml_bool(b: any_author_commit_path_is_hidden())
@@ -623,7 +632,7 @@ fn ci_heal_author_commit_upload_step() -> Step {
       ]
     },
     env: none,
-    if_condition: Present { value: "always()" },
+    if_condition: Present { value: ci_heal_author_commit_upload_if() },
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
   }

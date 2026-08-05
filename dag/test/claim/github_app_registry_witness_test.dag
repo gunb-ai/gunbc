@@ -2,6 +2,12 @@ module test.claim.github_app_registry
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
+data control_plane_probe_ref: DeclarationRef = DeclarationRef {
+  module_path: "gunbc.auth.github_apps",
+  decl_name: "app_control_plane_state",
+  field: WholeDeclaration
+}
+
 fn live_heal_push_authority() -> GitHubCredentialAuthority {
   match push_binding_authority(resolution: live_heal_push_binding_resolution) {
     Present { value: a } => a
@@ -138,7 +144,7 @@ fn observed_grant_with(
     custody: custody,
     registration: AppRegistrationReadback {
       app_id: gunbai_bot_declared.app_id,
-      requested_permissions: full_workflow_grant
+      requested_permissions: map(full_workflow_grant, p => as_observed_permission(p: p))
     },
     observed: InstallationReadback { installation: installation_holding(perms: perms) },
     required: full_workflow_grant,
@@ -248,7 +254,7 @@ test fn witness_signer_custody_missing_precedes_every_readback() -> Bool {
     custody: gunbai_bot_signer_custody,
     registration: AppRegistrationReadback {
       app_id: gunbai_bot_declared.app_id,
-      requested_permissions: full_workflow_grant
+      requested_permissions: map(full_workflow_grant, p => as_observed_permission(p: p))
     },
     observed: InstallationReadback { installation: installation_holding(perms: full_workflow_grant) },
     required: full_workflow_grant,
@@ -310,7 +316,7 @@ test fn witness_installation_readback_naming_another_app_is_unobserved() -> Bool
     custody: sealed_bot_signer,
     registration: AppRegistrationReadback {
       app_id: gunbai_bot_declared.app_id,
-      requested_permissions: full_workflow_grant
+      requested_permissions: map(full_workflow_grant, p => as_observed_permission(p: p))
     },
     observed: InstallationReadback {
       installation: installation_of(
@@ -336,7 +342,7 @@ test fn witness_unobserved_readback_never_authorizes() -> Bool {
     custody: sealed_bot_signer,
     registration: AppRegistrationReadback {
       app_id: gunbai_bot_declared.app_id,
-      requested_permissions: full_workflow_grant
+      requested_permissions: map(full_workflow_grant, p => as_observed_permission(p: p))
     },
     observed: InstallationReadbackUnavailable { cause: InstallationReadbackNotAttempted },
     required: full_workflow_grant,
@@ -359,8 +365,31 @@ test fn witness_unobserved_readback_never_authorizes() -> Bool {
   }
 }
 
-test fn witness_operator_action_carries_locator_and_delta() -> Bool {
+test fn witness_operator_action_waits_for_a_bound_observation_producer() -> Bool {
   match control_plane_next_action(state: observed_grant(perms: [metadata_read_perm, contents_write_perm])) {
+    MachineActionRequired { action } => match action {
+      BindObservationProducer { required_observation } => match required_observation {
+        InstallationReadbackObservation => true
+        _ => false
+      }
+      _ => false
+    }
+    _ => false
+  } && match next_action_owner(
+    action: control_plane_next_action(state: observed_grant(perms: [metadata_read_perm, contents_write_perm]))
+  ) {
+    MachineOwner => true
+    OperatorOwner => false
+  }
+}
+
+test fn witness_bound_producer_yields_the_operator_packet() -> Bool {
+  match operator_packet_or_producer_binding(
+    action: AcceptInstallationPermissions,
+    locator: bot_installation_locator,
+    postcondition: InstallationHoldsPermissions { accept: [workflows_write_perm] },
+    observation: ObservationProducerBound { producer: control_plane_probe_ref }
+  ) {
     OperatorActionRequired { action, locator, postcondition, observation } =>
       match action {
         AcceptInstallationPermissions => true
@@ -386,7 +415,7 @@ test fn witness_unobserved_states_are_machine_owned_not_operator_owned() -> Bool
     custody: sealed_bot_signer,
     registration: AppRegistrationReadback {
       app_id: gunbai_bot_declared.app_id,
-      requested_permissions: full_workflow_grant
+      requested_permissions: map(full_workflow_grant, p => as_observed_permission(p: p))
     },
     observed: InstallationReadbackUnavailable { cause: InstallationReadbackNotAttempted },
     required: full_workflow_grant,
@@ -406,7 +435,7 @@ test fn witness_unobserved_states_are_machine_owned_not_operator_owned() -> Bool
 test fn witness_live_control_plane_starts_at_material_discovery() -> Bool {
   match live_heal_control_plane {
     SignerCustodyUnresolved { app, custody } => app.app_id.value == 3909950 && match custody {
-      SignerMaterialAvailabilityUnobserved { app: unobserved } => unobserved.app_id.value == 3909950
+      SignerMaterialAvailabilityUnobserved => true
       _ => false
     }
     _ => false
@@ -425,7 +454,7 @@ test fn witness_live_control_plane_starts_at_material_discovery() -> Bool {
 test fn witness_key_generation_is_operator_work_only_after_discovery_fails() -> Bool {
   let must_generate = app_control_plane_state(
     app: gunbai_bot_declared,
-    custody: SignerKeyGenerationRequired { app: gunbai_bot_declared },
+    custody: SignerKeyGenerationRequired,
     registration: AppRegistrationReadbackUnavailable,
     observed: InstallationReadbackUnavailable { cause: InstallationReadbackNotAttempted },
     required: full_workflow_grant,
@@ -526,18 +555,53 @@ test fn witness_duplicate_permission_observation_refuses_in_production() -> Bool
     custody: sealed_bot_signer,
     registration: AppRegistrationReadback {
       app_id: gunbai_bot_declared.app_id,
-      requested_permissions: full_workflow_grant
+      requested_permissions: map(full_workflow_grant, p => as_observed_permission(p: p))
     },
     observed: InstallationReadback { installation: installation_holding(perms: dup) },
     required: full_workflow_grant,
     reason: "heal branch advance"
   ) {
     PermissionObservationRefused { app, duplicate } =>
-      app.app_id.value == 3909950 && permission_axis_wire_name(axis: duplicate) == "contents"
+      app.app_id.value == 3909950 && duplicate.wire_name == "contents"
     _ => false
   } && match observed_grant(perms: full_workflow_grant) {
     PermissionObservationRefused { app: _, duplicate: _ } => false
     _ => true
+  }
+}
+
+test fn witness_unknown_provider_permission_survives_refusal_verbatim() -> Bool {
+  let unknown = ObservedGitHubPermission {
+    name: ObservedGitHubPermissionName { wire_name: "future_provider_permission" },
+    access: AppAccessRead
+  }
+  let observed_dup = GitHubAppInstallation {
+    installation_id: bot_installation_id,
+    app_id: gunbai_bot_declared.app_id,
+    app_slug: gunbai_bot_declared.slug,
+    html_url: bot_installation_locator,
+    account: GitHubUser { login: "gunb-ai", id: 0, type: Organization },
+    repository_selection: SelectionAll,
+    permissions: [unknown, unknown],
+    subscribed_events: [],
+  }
+  match app_control_plane_state(
+    app: gunbai_bot_declared,
+    custody: sealed_bot_signer,
+    registration: AppRegistrationReadback {
+      app_id: gunbai_bot_declared.app_id,
+      requested_permissions: map(full_workflow_grant, p => as_observed_permission(p: p))
+    },
+    observed: InstallationReadback { installation: observed_dup },
+    required: full_workflow_grant,
+    reason: "heal branch advance"
+  ) {
+    PermissionObservationRefused { app: _, duplicate } =>
+      duplicate.wire_name == "future_provider_permission"
+    _ => false
+  } && match permission_axis_from_wire(name: "future_provider_permission") {
+    Absent => true
+    Present { value: _ } => false
   }
 }
 
@@ -574,7 +638,7 @@ test fn witness_registration_gap_precedes_installation_approval() -> Bool {
     custody: sealed_bot_signer,
     registration: AppRegistrationReadback {
       app_id: gunbai_bot_declared.app_id,
-      requested_permissions: [metadata_read_perm, contents_write_perm]
+      requested_permissions: map([metadata_read_perm, contents_write_perm], p => as_observed_permission(p: p))
     },
     observed: InstallationReadback { installation: installation_holding(perms: full_workflow_grant) },
     required: full_workflow_grant,
@@ -604,7 +668,7 @@ test fn witness_registration_unobserved_is_not_a_gap() -> Bool {
     custody: sealed_bot_signer,
     registration: AppRegistrationReadback {
       app_id: gunbai_ci_declared.app_id,
-      requested_permissions: full_workflow_grant
+      requested_permissions: map(full_workflow_grant, p => as_observed_permission(p: p))
     },
     observed: InstallationReadback { installation: installation_holding(perms: full_workflow_grant) },
     required: full_workflow_grant,
@@ -639,7 +703,7 @@ test fn witness_unresolved_migration_target_yields_no_credential() -> Bool {
     Absent => true
     Present { value: _ } => false
   } && match heal_push_migration_target {
-    AppUndecided { profile, pending_decision: _ } => profile.name == "heal-branch-advance"
+    AppUndecided { profile, pending: _ } => profile.name == "heal-branch-advance"
     InstallationUnresolved { app: _, profile: _ } => false
     InstallationResolved { app: _, installation: _, profile: _ } => false
   } && match resolved_target_credential(

@@ -589,14 +589,19 @@ fn ci_heal_author_commit_drift_lines() -> List<String> {
   )
 }
 
+data ci_heal_author_commit_required_output: String = "heal_author_commit_required"
+
 fn ci_heal_author_commit_package_lines() -> List<String> {
   [
+    concat(concat("echo \"", ci_heal_author_commit_required_output), "=0\" >> \"$GITHUB_OUTPUT\""),
     "if [ -n \"$AUTHOR_COMMIT_DRIFT\" ]; then",
     concat("  rm -rf \"", concat(ci_heal_author_commit_artifact_dir, "\"")),
     "  for p in $AUTHOR_COMMIT_DRIFT; do",
     concat("    mkdir -p \"", concat(ci_heal_author_commit_artifact_dir, "/$(dirname \"$p\")\"")),
     concat("    cp \"$p\" \"", concat(ci_heal_author_commit_artifact_dir, "/$p\"")),
+    concat("    if [ ! -e \"", concat(ci_heal_author_commit_artifact_dir, "/$p\" ]; then echo \"::error::HealRepairBundleIncomplete path=$p\" >&2; exit 1; fi")),
     "  done",
+    concat(concat("  echo \"", ci_heal_author_commit_required_output), "=1\" >> \"$GITHUB_OUTPUT\""),
     "fi"
   ]
 }

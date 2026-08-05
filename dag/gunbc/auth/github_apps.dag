@@ -138,7 +138,7 @@ type InstallationReadbackCause
   | InstallationReadbackFailed { detail: NonEmptyStr }
 
 type GitHubAppControlPlaneState
-  = PermissionObservationRefused { app: DeclaredGitHubApp, duplicate: GitHubPermissionAxis }
+  = PermissionObservationRefused { app: DeclaredGitHubApp, duplicate: ObservedGitHubPermissionName }
   | SignerCustodyUnresolved { app: DeclaredGitHubApp, custody: SignerCustody }
   | AppRegistrationUnobserved { app: DeclaredGitHubApp }
   | InstallationUnobserved { app: DeclaredGitHubApp, reason: InstallationReadbackCause }
