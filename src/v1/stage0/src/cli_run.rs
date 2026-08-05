@@ -12895,8 +12895,34 @@ pub fn whole_tree_ancestry_retention_probe(
 /// the derivation cannot invent a required hook for a witness that has none.
 /// Delegates suffix derivation to `gunbc.test_module_hygiene.failure_receipt_companion`
 /// (single authority — orphan reachability and claim_executor share the same rule).
-pub fn failure_receipt_companion(function: &str) -> Option<String> {
+/// `NotDeclared` means the witness name carries no `_holds`/`_passes` companion convention;
+/// `AuthorityRefused` is a located lookup failure and must not be rendered as not-declared.
+pub use test_module_hygiene_bridge::FailureReceiptCompanionLookup;
+
+pub fn failure_receipt_companion(function: &str) -> FailureReceiptCompanionLookup {
     test_module_hygiene_bridge::failure_receipt_companion_from_authority(function)
+}
+
+/// Append failure-receipt loudness to a Bool(false) witness detail string.
+pub fn append_failure_receipt_companion_loudness(
+    detail: &mut String,
+    ctx: &v1_interpreter::InterpContext,
+    witness_function: &str,
+) {
+    match failure_receipt_companion(witness_function) {
+        FailureReceiptCompanionLookup::Declared(companion) => {
+            let receipt = run_claim_failure_receipt(ctx, &companion);
+            if !receipt.is_empty() {
+                detail.push_str(" | ");
+                detail.push_str(&receipt);
+            }
+        }
+        FailureReceiptCompanionLookup::AuthorityRefused { cause } => {
+            detail.push_str(" | failure_receipt_companion_refused: ");
+            detail.push_str(&cause);
+        }
+        FailureReceiptCompanionLookup::NotDeclared => {}
+    }
 }
 
 /// Run a witness companion that returns `String` divergence detail (Lane B agreement loudness).
@@ -21796,13 +21822,7 @@ fn run_discovery_rows(
             ClaimOutcome::Pass => summary.passed += 1,
             ClaimOutcome::Fail => {
                 let mut failure = format!("{} ({}) returned Bool(false)", row.function, row.entry);
-                if let Some(companion) = failure_receipt_companion(&row.function) {
-                    let receipt = run_claim_failure_receipt(ctx_ref, &companion);
-                    if !receipt.is_empty() {
-                        failure.push_str(" | ");
-                        failure.push_str(&receipt);
-                    }
-                }
+                append_failure_receipt_companion_loudness(&mut failure, ctx_ref, &row.function);
                 summary.failures.push(failure);
             }
             ClaimOutcome::NotBool { got } => summary.failures.push(format!(

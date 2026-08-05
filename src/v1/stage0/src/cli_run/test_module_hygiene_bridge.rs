@@ -300,13 +300,21 @@ fn collect_module_surfaces(roots: &[String]) -> Result<Vec<ModuleSurface>, Strin
     Ok(surfaces)
 }
 
-pub(crate) fn failure_receipt_companion_from_authority(function: &str) -> Option<String> {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FailureReceiptCompanionLookup {
+    NotDeclared,
+    Declared(String),
+    AuthorityRefused { cause: String },
+}
+
+pub(crate) fn failure_receipt_companion_from_authority(
+    function: &str,
+) -> FailureReceiptCompanionLookup {
     let roots = super::default_source_roots();
     let ctx = match resolve_hygiene_ctx(&roots) {
         Ok(ctx) => ctx,
         Err(detail) => {
-            eprintln!("failure_receipt_companion: hygiene resolve refused: {detail}");
-            return None;
+            return FailureReceiptCompanionLookup::AuthorityRefused { cause: detail };
         }
     };
     let args = [(
@@ -321,8 +329,9 @@ pub(crate) fn failure_receipt_companion_from_authority(function: &str) -> Option
     ) {
         Ok(value) => value,
         Err(detail) => {
-            eprintln!("failure_receipt_companion: call refused: {detail}");
-            return None;
+            return FailureReceiptCompanionLookup::AuthorityRefused {
+                cause: detail.to_string(),
+            };
         }
     };
     match &result {
@@ -333,30 +342,32 @@ pub(crate) fn failure_receipt_companion_from_authority(function: &str) -> Option
             ..
         } if ctx.sym_eq(*type_name, "Optional") && ctx.sym_eq(*variant_name, "Present") => {
             match ctx.field(fields, "value") {
-                Some(v1_interpreter::Value::Str(companion)) => Some(companion.clone()),
-                other => {
-                    eprintln!(
-                        "failure_receipt_companion: Present value must be String, got {}",
+                Some(v1_interpreter::Value::Str(companion)) => {
+                    FailureReceiptCompanionLookup::Declared(companion.clone())
+                }
+                other => FailureReceiptCompanionLookup::AuthorityRefused {
+                    cause: format!(
+                        "Present value must be String, got {}",
                         other
                             .map(|v| ctx.format_value(v))
                             .unwrap_or_else(|| "<missing>".to_string())
-                    );
-                    None
-                }
+                    ),
+                },
             }
         }
         v1_interpreter::Value::Variant {
             type_name,
             variant_name,
             ..
-        } if ctx.sym_eq(*type_name, "Optional") && ctx.sym_eq(*variant_name, "Absent") => None,
-        other => {
-            eprintln!(
-                "failure_receipt_companion: returned {}, expected Optional<String>",
-                ctx.format_value(other)
-            );
-            None
+        } if ctx.sym_eq(*type_name, "Optional") && ctx.sym_eq(*variant_name, "Absent") => {
+            FailureReceiptCompanionLookup::NotDeclared
         }
+        other => FailureReceiptCompanionLookup::AuthorityRefused {
+            cause: format!(
+                "returned {}, expected Optional<String>",
+                ctx.format_value(other)
+            ),
+        },
     }
 }
 
