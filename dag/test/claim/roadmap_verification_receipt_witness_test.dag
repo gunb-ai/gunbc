@@ -13,6 +13,9 @@ import gunbc.roadmap_execution_contract {
 }
 import gunbc.roadmap_validation_oracle {
   ValidationPassed,
+  ValidationRefused,
+  ValidationChangeWindowRefused,
+  validation_refusal_cause_key,
 }
 import gunbc.roadmap_verification_receipt {
   VerificationSubject,
@@ -32,6 +35,11 @@ import gunbc.roadmap_verification_receipt {
   verification_receipt_decode,
   VerificationReceiptDecoded,
   VerificationReceiptUndecodable,
+  verification_receipt_schema,
+}
+import gunbc.git_diff_change_window {
+  git_diff_window_absent_identity,
+  ChangeWindowPersistenceRefused,
 }
 import gunbc.roadmap_dashboard_instance { srv2_lab_dashboard_instance }
 import gunbc.roadmap_dispatch_actuator {
@@ -47,6 +55,7 @@ fn subject_at(head: CommitSha) -> VerificationSubject {
     attempt_key: "feedfacefeedface",
     branch: "dispatch/exact-head-afeedfacefeedface" as NonEmptyStr,
     head_sha: head,
+    change_window_identity: git_diff_window_absent_identity(),
   }
 }
 
@@ -132,21 +141,30 @@ test fn attempt_level_pass_is_typed_legacy_and_never_evidence() -> Bool {
 
 test fn one_attempt_addresses_multiple_heads_without_overwrite() -> Bool {
   let instance = srv2_lab_dashboard_instance()
+  let absent_identity = git_diff_window_absent_identity().digest as String
   let path_a = dispatch_attempt_verification_receipt_path_for_instance(
     instance: instance,
     node_id: "exact-head-node" as NonEmptyStr as RoadmapNodeId,
     attempt_key: "feedfacefeedface",
     head_sha: head_a as String,
+    window_identity_hex: absent_identity,
   )
   let path_b = dispatch_attempt_verification_receipt_path_for_instance(
     instance: instance,
     node_id: "exact-head-node" as NonEmptyStr as RoadmapNodeId,
     attempt_key: "feedfacefeedface",
     head_sha: head_b as String,
+    window_identity_hex: absent_identity,
   )
   path_a != path_b
-    && string_contains(s: path_a, pattern: "/verification/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json")
-    && string_contains(s: path_b, pattern: "/verification/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.json")
+    && string_contains(
+      s: path_a,
+      pattern: concat("/verification/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.", absent_identity, ".json"),
+    )
+    && string_contains(
+      s: path_b,
+      pattern: concat("/verification/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.", absent_identity, ".json"),
+    )
 }
 
 test fn exact_head_receipt_round_trips_through_json_codec() -> Bool {
@@ -166,10 +184,42 @@ test fn exact_head_receipt_round_trips_through_json_codec() -> Bool {
   }
 }
 
+test fn change_window_refused_verdict_round_trips_through_json_codec() -> Bool {
+  let receipt = VerificationReceipt {
+    subject: subject_at(head: head_a),
+    oracle_identity: content_hash_of_value(value: "pinned-oracle"),
+    executions: [],
+    verdict: ValidationRefused {
+      cause: ValidationChangeWindowRefused {
+        cause: ChangeWindowPersistenceRefused {
+          path: "/tmp/attempt/verification/window.json",
+          cause: "merge-base observation failed (exit 128): fatal: Not a valid object name",
+        },
+      },
+    },
+  }
+  let wire = verification_receipt_json(receipt: receipt)
+  match verification_receipt_decode(receipt: wire) {
+    VerificationReceiptDecoded { receipt: decoded } =>
+      match decoded.verdict {
+        ValidationRefused { cause } =>
+          validation_refusal_cause_key(cause: cause) == "change-window-refused"
+        _ => false
+      }
+    VerificationReceiptUndecodable { reason: _ } => false
+  }
+}
+
+test fn verification_receipt_schema_is_v2() -> Bool {
+  (verification_receipt_schema as String) == "roadmap-verification-receipt/v2"
+}
+
 test fn roadmap_verification_receipt_keystone_holds() -> Bool {
   complete_exact_head_receipt_constructs_and_matches()
     && passed_receipt_for_old_head_refuses_to_move_new_head_lamp()
     && attempt_level_pass_is_typed_legacy_and_never_evidence()
     && one_attempt_addresses_multiple_heads_without_overwrite()
     && exact_head_receipt_round_trips_through_json_codec()
+    && change_window_refused_verdict_round_trips_through_json_codec()
+    && verification_receipt_schema_is_v2()
 }
