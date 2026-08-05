@@ -41,17 +41,6 @@ type GapLedgerRow {
   authority_or_interim: String
 }
 
-type AssimilationCompleteInput
-  = NodeRegistered
-  | ResourcesPresent
-  | GreenPlacePinCoherent
-  | RunnerSlotHealthy
-
-type AssimilationInputWitness
-  = InputSatisfied
-  | InputRefused { input: AssimilationCompleteInput, reason: String }
-  | InputGap { input: AssimilationCompleteInput, interim_realization: String }
-
 type GreenPlacePinCoherentWitness
   = GreenPlaceFromGunbcGate {
       noop_satisfied_authority: DeclarationRef
@@ -61,17 +50,6 @@ type GreenPlacePinCoherentWitness
     }
   | GreenPlacePinRefused { reason: String }
   | GreenPlacePinGap { interim_realization: String }
-
-type AssimilationCompleteGate {
-  node_registered: AssimilationInputWitness
-  resources_present: AssimilationInputWitness
-  green_place_pin_coherent: GreenPlacePinCoherentWitness
-  runner_healthy: AssimilationInputWitness
-}
-
-type AssimilationCompleteVerdict
-  = AssimilationComplete
-  | AssimilationIncomplete { input: AssimilationCompleteInput, reason: String }
 
 data host_standup_p3_gunbc_pinned_tree_landing_gate: String = "gunbc.host_converge.GunbcPinnedTree (#5948 merged)"
 
@@ -112,7 +90,7 @@ data host_standup_p5_green_place_pin_scaffold: Disposition = Scaffold {
 data host_standup_p5_composite_gate_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
-    module_path: "gunbc.host_standup",
+    module_path: "gunbc.host_assimilation_program",
     decl_name: "AssimilationCompleteGate",
     field: WholeDeclaration
   }
@@ -290,8 +268,9 @@ data host_standup_spine: List<HostStandupStep> = [
     label: "P5:assimilation-complete-gate",
     disposition: ModeledCompose {
       authorities: [
-        decl_ref(module_path: "gunbc.host_standup", decl_name: "AssimilationCompleteGate"),
-        decl_ref(module_path: "gunbc.host_standup", decl_name: "assimilation_complete"),
+        decl_ref(module_path: "gunbc.host_assimilation_program", decl_name: "AssimilationCompleteGate"),
+        decl_ref(module_path: "gunbc.host_assimilation_program", decl_name: "assimilation_complete"),
+        decl_ref(module_path: "gunbc.host_assimilation_program", decl_name: "assimilation_completion_obligations_for"),
         host_standup_p5_green_place_noop_gate_authority,
         host_standup_p5_green_place_marker_gate_authority,
         host_standup_p5_desired_pin_authority,
@@ -362,7 +341,7 @@ data host_standup_gap_ledger: List<GapLedgerRow> = [
   GapLedgerRow {
     phase_label: "P5:assimilation-complete-gate",
     modeling: "modeled-new-authority",
-    authority_or_interim: "gunbc.host_standup.AssimilationCompleteGate — AND(node_registered, resources_present, green_place_pin_coherent via gunbc_pinned_noop_satisfied gate ref, runner_slot_healthy); no pin re-derivation in P5"
+    authority_or_interim: "gunbc.host_assimilation_program.assimilation_completion_obligations_for — program-derived obligation roster (spine prerequisites + CI extrinsic checks); fold over obligations, fail-closed on first gap/refusal; no pin re-derivation in P5"
   },
 ]
 
@@ -445,103 +424,10 @@ fn green_place_pin_coherent_satisfied(w: GreenPlacePinCoherentWitness) -> Bool {
   }
 }
 
-fn green_place_pin_coherent_failure(w: GreenPlacePinCoherentWitness) -> AssimilationCompleteVerdict? {
-  match w {
-    GreenPlaceFromGunbcGate { gate_verdict: false, noop_satisfied_authority: _, marker_satisfied_authority: _, desired_pin_authority: _ } =>
-      Present {
-        value: AssimilationIncomplete {
-          input: GreenPlacePinCoherent,
-          reason: "host_standup:P5:green_place_pin_coherent: gunbc gate verdict false or unread — fail-closed, no pin re-derivation in spine"
-        }
-      }
-    GreenPlaceFromGunbcGate { gate_verdict: true, noop_satisfied_authority: _, marker_satisfied_authority: _, desired_pin_authority: _ } => Absent
-    GreenPlacePinRefused { reason: r } =>
-      Present { value: AssimilationIncomplete { input: GreenPlacePinCoherent, reason: r } }
-    GreenPlacePinGap { interim_realization: path } =>
-      Present {
-        value: AssimilationIncomplete {
-          input: GreenPlacePinCoherent,
-          reason: concat("host_standup:P5:gap-refused:", path)
-        }
-      }
-  }
-}
-
-fn host_standup_default_assimilation_gate_unsatisfied() -> AssimilationCompleteGate {
-  AssimilationCompleteGate {
-    node_registered: InputGap { input: NodeRegistered, interim_realization: "ctrl:node_registry.mjs" },
-    resources_present: InputGap { input: ResourcesPresent, interim_realization: "ctrl:resources-present-unmodeled" },
-    green_place_pin_coherent: host_standup_p3_green_place_input_witness(),
-    runner_healthy: InputGap { input: RunnerSlotHealthy, interim_realization: "gunbc.runner_slot_enforcement until P1 converged" },
-  }
-}
-
-fn host_standup_p3_fail_closed_blocks_complete() -> Bool {
-  !host_standup_p3_gunbc_pinned_tree_landed
-    && match assimilation_complete(gate: host_standup_default_assimilation_gate_unsatisfied()) {
-      AssimilationIncomplete { input: GreenPlacePinCoherent, reason: r } =>
-        string_contains(s: r, pattern: "#5948")
-      AssimilationComplete => false
-      AssimilationIncomplete { input: _, reason: _ } => true
-    }
-}
-
 fn host_standup_gap_count() -> Int {
   host_standup_gap_count_at_actuation_verdict(
     verdict: srv3_pre_install_actuation_verdict(elapsed: millisecond(count: 0)),
   )
-}
-
-fn assimilation_input_satisfied(w: AssimilationInputWitness) -> Bool {
-  match w {
-    InputSatisfied => true
-    InputRefused { input: _, reason: _ } => false
-    InputGap { input: _, interim_realization: _ } => false
-  }
-}
-
-fn assimilation_input_failure(w: AssimilationInputWitness) -> AssimilationCompleteVerdict? {
-  match w {
-    InputSatisfied => Absent
-    InputRefused { input: i, reason: r } =>
-      Present { value: AssimilationIncomplete { input: i, reason: r } }
-    InputGap { input: i, interim_realization: path } =>
-      Present {
-        value: AssimilationIncomplete {
-          input: i,
-          reason: concat("host_standup:P5:gap-refused:", path)
-        }
-      }
-  }
-}
-
-fn assimilation_complete_first_failure(gate: AssimilationCompleteGate) -> AssimilationCompleteVerdict? {
-  match assimilation_input_failure(w: gate.node_registered) {
-    Present { value: v } => Present { value: v }
-    Absent =>
-      match assimilation_input_failure(w: gate.resources_present) {
-        Present { value: v } => Present { value: v }
-        Absent =>
-          match green_place_pin_coherent_failure(w: gate.green_place_pin_coherent) {
-            Present { value: v } => Present { value: v }
-            Absent => assimilation_input_failure(w: gate.runner_healthy)
-          }
-      }
-  }
-}
-
-fn assimilation_complete(gate: AssimilationCompleteGate) -> AssimilationCompleteVerdict {
-  match assimilation_complete_first_failure(gate: gate) {
-    Present { value: v } => v
-    Absent => AssimilationComplete
-  }
-}
-
-fn assimilation_complete_all_satisfied(gate: AssimilationCompleteGate) -> Bool {
-  assimilation_input_satisfied(w: gate.node_registered)
-    && assimilation_input_satisfied(w: gate.resources_present)
-    && green_place_pin_coherent_satisfied(w: gate.green_place_pin_coherent)
-    && assimilation_input_satisfied(w: gate.runner_healthy)
 }
 
 fn srv3_install_mechanism_is_nbd_proxy_no_fallback() -> Bool {
