@@ -15744,6 +15744,38 @@ fn witness_cost_nanosecond_value(
     .map_err(|e| format!("[witness-row-cost] REFUSED: nanosecond constructor failed: {e}"))
 }
 
+/// Hand the occurrence's two clocks over as ONE basis-tagged list, built by the authored
+/// constructor rather than assembled here.
+///
+/// The seed constructs no carrier: it calls `observation_durations_cpu_and_wall` across the
+/// interpreter boundary and passes the returned value straight through, exactly as it already
+/// does for `nanosecond` and `millisecond`. A `Value::List` of hand-built records would fork
+/// `std.observation`'s shape into Rust, which is the thing every note on this seam forbids.
+///
+/// Both clocks come from ONE run — `run_claim_measured` reads `thread_cpu_nanos` and
+/// `Instant::elapsed` around the same evaluation — so a row can never carry a CPU figure from
+/// one occurrence beside a wall figure from another. Order is fixed by the constructor's
+/// parameter names, not by position here, so a swap is a compile error rather than a silent
+/// exchange of the two magnitudes.
+fn witness_cost_eval_durations(
+    ctx: &v1_interpreter::InterpContext,
+    cpu_nanos: u128,
+    wall_nanos: u128,
+) -> Result<v1_interpreter::Value, String> {
+    let cpu = witness_cost_nanosecond_value(ctx, cpu_nanos)?;
+    let wall = witness_cost_nanosecond_value(ctx, wall_nanos)?;
+    v1_interpreter::run_in_context_with_args(
+        ctx,
+        "observation_durations_cpu_and_wall",
+        &[
+            (Some("cpu".to_string()), cpu),
+            (Some("wall".to_string()), wall),
+        ],
+        false,
+    )
+    .map_err(|e| format!("[witness-row-cost] REFUSED: eval duration constructor failed: {e}"))
+}
+
 fn witness_cost_string_field(
     ctx: &v1_interpreter::InterpContext,
     fields: &[(v1_interpreter::Symbol, v1_interpreter::Value)],
@@ -15759,6 +15791,67 @@ fn witness_cost_string_field(
             "[witness-row-cost] REFUSED: projected receipt row lacks {name}"
         )),
     }
+}
+
+/// Read ONE clock out of a row's tagged eval durations, through the authored projection.
+///
+/// The row's `eval` term is a `List<TimedMeasurement>` — every clock the occurrence was
+/// measured on, each tagged — so the seed cannot reach for "the duration" any more, and that
+/// is the point: which clock it wants is now a thing it has to say. It says it by calling
+/// `std.observation.observation_duration_of`, the same projection every `.dag` consumer uses,
+/// rather than walking the list here. A local walk would be a second copy of the lookup,
+/// including its ambiguity refusal, and the two would drift.
+///
+/// Returns `None` for a clock the producer did not sample, distinguished from a clock it
+/// sampled as zero. `MeasuredUnavailable` carries its cause and this returns `None` rather
+/// than `0`, which is the same `observation_measured_note` discipline the TSV's `unmeasured`
+/// cell keeps: a number that does not exist must not render as a small one.
+fn witness_cost_clock_nanos(
+    ctx: &v1_interpreter::InterpContext,
+    durations: &v1_interpreter::Value,
+    basis_constructor: &str,
+) -> Result<Option<u128>, String> {
+    use v1_interpreter::Value;
+    let basis = v1_interpreter::run_in_context_with_args(ctx, basis_constructor, &[], false)
+        .map_err(|e| format!("[witness-row-cost] REFUSED: {basis_constructor} failed: {e}"))?;
+    let measured = v1_interpreter::run_in_context_with_args(
+        ctx,
+        "observation_duration_of",
+        &[
+            (Some("durations".to_string()), durations.clone()),
+            (Some("basis".to_string()), basis),
+        ],
+        false,
+    )
+    .map_err(|e| {
+        format!(
+            "[witness-row-cost] REFUSED: observation_duration_of({basis_constructor}) failed: {e}"
+        )
+    })?;
+    let Value::Variant {
+        variant_name,
+        fields,
+        ..
+    } = measured
+    else {
+        return Err(
+            "[witness-row-cost] REFUSED: observation_duration_of returned a non-Measured value"
+                .to_string(),
+        );
+    };
+    if ctx.sym_eq(variant_name, "MeasuredUnavailable") {
+        return Ok(None);
+    }
+    if !ctx.sym_eq(variant_name, "MeasuredValue") {
+        return Err(format!(
+            "[witness-row-cost] REFUSED: observation_duration_of returned unknown variant {}",
+            ctx.resolve(variant_name)
+        ));
+    }
+    let value = ctx.field(&fields, "value").cloned().ok_or_else(|| {
+        "[witness-row-cost] REFUSED: MeasuredValue lacks its Nanosecond".to_string()
+    })?;
+    witness_cost_nanosecond_count(ctx, value, basis_constructor).map(Some)
 }
 
 fn witness_cost_nanosecond_count(
@@ -15870,8 +15963,9 @@ pub fn project_witness_cost_receipt(
         }
         for index in indices {
             let outcome = &summary.witness_outcomes[index];
-            let eval = witness_cost_nanosecond_value(
+            let eval = witness_cost_eval_durations(
                 &ctx,
+                summary.performance_receipts[index].cpu_nanos,
                 summary.performance_receipts[index].wall_nanos,
             )?;
             let mut args = vec![
@@ -15918,8 +16012,27 @@ pub fn project_witness_cost_receipt(
                 ClaimOutcome::TimedOut {
                     elapsed_ms,
                     budget_ms,
-                    ..
+                    kind,
                 } => {
+                    // The clock the deadline was enforced on travels WITH the pair, so a
+                    // reader of the event can tell a thread-CPU fail-stop from a wall
+                    // ceiling. The seed already held this fact as `BudgetKind` and used to
+                    // spend it on a prose label; `std.observation.TimedOut` now carries it.
+                    // The basis is selected by matching the typed enum and calling the
+                    // corresponding authored constructor — never recovered from a string.
+                    let basis_constructor = match kind {
+                        BudgetKind::Cpu => "clock_basis_cpu",
+                        BudgetKind::Wall => "clock_basis_wall",
+                    };
+                    let basis = run_in_context_with_args(&ctx, basis_constructor, &[], false)
+                        .map_err(|e| {
+                            format!(
+                                "[witness-row-cost] REFUSED: {basis_constructor} failed on \
+                                 {}::{}: {e}",
+                                outcome.entry, outcome.function
+                            )
+                        })?;
+                    args.push((Some("basis".to_string()), basis));
                     for (name, ms) in [("budget", *budget_ms), ("elapsed", *elapsed_ms)] {
                         let carrier = run_in_context_with_args(
                             &ctx,
@@ -16041,10 +16154,23 @@ pub fn project_witness_cost_receipt(
                     )
                 }
             };
+            // The receipt's cost column is WALL — the clock the witness threshold is stated
+            // on (operator ruling 2026-08-05) — and it is now SAID rather than assumed. The
+            // authored projection already refuses a witness whose wall figure is
+            // unavailable, so `None` here would mean the row reached this point without the
+            // one measurement the receipt exists to carry; that refuses rather than
+            // defaulting.
+            let eval_wall_nanos = witness_cost_clock_nanos(&ctx, &eval, "clock_basis_wall")?
+                .ok_or_else(|| {
+                    format!(
+                        "[witness-row-cost] REFUSED: projected row {row_entry}::{function} \
+                         carries no wall duration"
+                    )
+                })?;
             projected_rows.push((
                 row_entry,
                 function,
-                witness_cost_nanosecond_count(&ctx, eval, "eval")?,
+                eval_wall_nanos,
                 witness_cost_nanosecond_count(&ctx, resolve, "resolve")?,
                 witness_cost_nanosecond_count(&ctx, warm, "warm")?,
                 outcome,

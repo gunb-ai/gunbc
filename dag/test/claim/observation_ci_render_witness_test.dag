@@ -28,6 +28,8 @@ import std.observation {
   observation_dwell_threshold,
   observation_escalation_depth,
   PsiPressure,
+  observation_durations_wall,
+  observation_durations_wall_unavailable,
 }
 import gunbc.observation_ci_render {
   RenderedLine,
@@ -169,9 +171,7 @@ test fn w_outcome_lines_carry_durations() -> Bool {
   let event = ObservationEvent {
     subject: crawl_entry_subject(),
     transition: Concluded { outcome: Done },
-    wall: MeasuredValue {
-      value: millisecond_to_nanosecond(m: millisecond(count: 230))
-    },
+    durations: observation_durations_wall(elapsed: millisecond_to_nanosecond(m: millisecond(count: 230))),
     rss: MeasuredUnavailable { cause: "not sampled per entry" as NonEmptyStr }
   }
   string_contains(s: ci_event_line(event: event, basis: crawl_basis()).text, pattern: "in 230ms")
@@ -181,7 +181,7 @@ test fn w_sub_millisecond_duration_never_renders_as_zero() -> Bool {
   let event = ObservationEvent {
     subject: crawl_entry_subject(),
     transition: Concluded { outcome: Done },
-    wall: MeasuredValue { value: nanosecond(count: 999999) },
+    durations: observation_durations_wall(elapsed: nanosecond(count: 999999)),
     rss: MeasuredUnavailable { cause: "not sampled per entry" as NonEmptyStr }
   }
   let text = ci_event_line(event: event, basis: crawl_basis()).text
@@ -193,9 +193,7 @@ test fn w_refusal_never_renders_inside_a_collapsed_group() -> Bool {
   let refusal = ObservationEvent {
     subject: crawl_entry_subject(),
     transition: Concluded { outcome: Refused { diagnostic: "FLOOR-BATCH-OVER-BUDGET" as NonEmptyStr } },
-    wall: MeasuredValue {
-      value: millisecond_to_nanosecond(m: millisecond(count: 2472000))
-    },
+    durations: observation_durations_wall(elapsed: millisecond_to_nanosecond(m: millisecond(count: 2472000))),
     rss: MeasuredUnavailable { cause: "not sampled per entry" as NonEmptyStr }
   }
   let line = ci_event_line(event: refusal, basis: crawl_basis())
@@ -207,9 +205,7 @@ test fn w_routine_green_collapses_inside_a_group() -> Bool {
   let green = ObservationEvent {
     subject: crawl_entry_subject(),
     transition: Concluded { outcome: Done },
-    wall: MeasuredValue {
-      value: millisecond_to_nanosecond(m: millisecond(count: 230))
-    },
+    durations: observation_durations_wall(elapsed: millisecond_to_nanosecond(m: millisecond(count: 230))),
     rss: MeasuredUnavailable { cause: "not sampled per entry" as NonEmptyStr }
   }
   let line = ci_event_line(event: green, basis: crawl_basis())
@@ -278,7 +274,7 @@ test fn w_unmeasured_duration_names_its_cause_rather_than_vanishing() -> Bool {
   let event = ObservationEvent {
     subject: crawl_entry_subject(),
     transition: Concluded { outcome: Done },
-    wall: MeasuredUnavailable { cause: "clock unavailable in this leg" as NonEmptyStr },
+    durations: observation_durations_wall_unavailable(cause: "clock unavailable in this leg" as NonEmptyStr),
     rss: MeasuredUnavailable { cause: "not sampled per entry" as NonEmptyStr }
   }
   let line = ci_event_line(event: event, basis: crawl_basis())
