@@ -11,13 +11,14 @@ import extdeps.linux.flock {
   flock_launcher_failure_reason,
   flock_conflict_exit_code,
 }
-import extdeps.exec.command { ArgvCommand, CommandTransport, LocalExec }
+import extdeps.exec.command { ArgvCommand, CommandTransport, LocalExec, shell_command_render }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.resources { Network }
 import std.content_hash { sha1_hex_digest }
 import v2.std.collection { Present, Absent }
 import gunbc.command_runner { run_shell_command_exit_code }
 import gunbc.ci_layer_roots { witness_layer_roots }
+import gunbc.roadmap_static_site { sh_single_quote }
 import gunbc.output_policy { ExpectSuccess }
 import gunbc.host_effect {
   HostEffectTransport,
@@ -44,11 +45,7 @@ import gunbc.live_deploy.coordination {
   CoordinationAdmission,
   CoordinationCovers,
   CoordinationRefused,
-  DeployMutationKind,
-  MutateApply,
-  MutateRetract,
-  MutateRouteFlip,
-  MutateSlotRevisionRecord,
+  DeployMutator,
   deploy_coordination_admission,
   coordination_refusal_reason,
   command_transport_lease_locus,
@@ -312,14 +309,14 @@ fn live_deploy_coordination_subject(
     lease_extent: command_transport_lease_extent(transport: lease_transport),
     required_extent: deploy_required_extent,
     mutation_population: deploy_mutation_population(),
-    covered_population: live_deploy_leased_mutation_kinds(),
+    covered_population: live_deploy_leased_participants(),
   }
 }
 
-data leased_mutation_kinds_note: String = "WHAT THIS LEASE ACTUALLY COVERS, listed so the population axis is a join against reality rather than an assumption. Every public mutation entrypoint for this target launches under this lease — apply and retract alike — and the route flip and revision record occur inside the leased apply process, so all four kinds are covered. This list is what goes red if a fifth mutator is added to the population without being routed through the launcher."
+data leased_participants_note: String = "WHAT THIS LEASE ACTUALLY COVERS, AT DECLARATION IDENTITY. Every public mutation entrypoint for this target launches under this lease — apply and retract alike — and the route flip and revision record execute inside the leased apply process, so each named declaration is covered. Listing PARTICIPANTS rather than kinds is what makes a fifth entrypoint performing an existing kind visible: under the kind grain a new route-flipping function found MutateRouteFlip already covered and the admission stayed green (participant_grain_note carries the ruling). This list is what goes red when the population names a declaration the launcher does not reach."
 
-fn live_deploy_leased_mutation_kinds() -> List<DeployMutationKind> {
-  [MutateApply, MutateRetract, MutateRouteFlip, MutateSlotRevisionRecord]
+fn live_deploy_leased_participants() -> List<DeployMutator> {
+  deploy_mutation_population()
 }
 
 data lease_launch_operation_note: String = "APPLY AND RETRACT ARE TWO ARMS OF ONE LEASED OPERATION, because they mutate the same slot, the same units, the same files, and the same route-adjacent domain. Leasing only apply left retract able to race a cutover while the apply process believed it held exclusive ownership — and the carrier note claimed 'every public mutation entry routes through the leased launcher' the whole time it was false (operator ruling 2026-08-05).\\n\\nThe candidate rides on the Apply arm only, because it is the thing apply decides about and retract has no candidate to compare. Making it a field of the operation rather than a parameter of the launcher is what keeps a retract from being launched with a meaningless candidate argument."
@@ -375,18 +372,16 @@ fn live_deploy_leased_command_for_operation(
   )
 }
 
-data lease_namespace_note: String = "THE LOCK FILE'S DIRECTORY HAS TO EXIST BEFORE flock CAN OPEN IT, AND NOTHING CREATED IT (operator ruling 2026-08-05). The launcher runs flock BEFORE entering any inner process, so a missing /var/lib/gunbc/deploy-lease could not be provisioned by the deploy it gates: the first run would fail at the lock, and the deploy principal cannot write under /var/lib/gunbc unaided — which this PR's own receipt writer already establishes by staging through mktemp and placing with the granted sudo install.\\n\\nSo the namespace is provisioned as its own step, before acquisition, through the same granted install. It is NAMESPACE PROVISIONING and deliberately not part of deployment mutation: it creates the directory the coordination mechanism lives in and touches nothing the deploy decides about. `install -d` is idempotent and safe under concurrent execution — two racing provisioners converge on the same directory — which is what makes it admissible ahead of the lock rather than needing the lock it is creating.\\n\\nNo ownership flags: the lock file is created by flock running as the deploy principal, so the directory must be writable by that principal — the mode is argued separately in lease_namespace_mode_note, which is the authority for it — and the file itself carries no content anyone reads. A stale lock file is not state — flock(2) releases on process exit regardless of the file persisting."
+data lease_namespace_note: String = "THE LOCK OBJECT HAS TO EXIST BEFORE flock CAN OPEN IT, AND NOTHING CREATED IT (operator ruling 2026-08-05). The launcher runs flock BEFORE entering any inner process, so a missing lock object could not be provisioned by the deploy it gates: the first run would fail at the lock, and the deploy principal cannot write under /var/lib/gunbc unaided — which this PR's own receipt writer already establishes by staging through mktemp and placing with the granted sudo install.\\n\\nSo the object is provisioned as its own step, before acquisition, through the same granted install. It is NAMESPACE PROVISIONING and deliberately not part of deployment mutation: it creates the object the coordination mechanism lives on and touches nothing the deploy decides about. `install -d` is idempotent and safe under concurrent execution — two racing provisioners converge on the same directory — which is what makes it admissible ahead of the lock rather than needing the lock it is creating. It also creates the parent, so one command establishes both.\\n\\nMODE 0755, ROOT-OWNED, AND NEITHER PRINCIPAL NEEDS WRITE ANYWHERE (operator ruling 2026-08-05). An earlier revision used 0777, because a lock FILE has to be created by whichever principal acquires first. A directory lock object is created once here, and flock(1) opens a directory read-only, so the acquiring principals need only traverse and read — which 0755 already grants. The world-writable namespace is deleted rather than argued down, and with it the replacement attack lock_object_is_a_directory_note records: a parent nobody but root can write is a parent in which the lock object cannot be unlinked or renamed."
 
 fn live_deploy_lease_namespace_command(invocation: LiveDeployExclusiveInvocation) -> ArgvCommand {
   ArgvCommand {
     argv: [
-      "sudo", "-n", "install", "-d", "-m", "0777",
-      deploy_target_lease_dir as String,
+      "sudo", "-n", "install", "-d", "-m", "0755",
+      invocation.lock_path as String,
     ]
   }
 }
-
-data lease_namespace_mode_note: String = "0777 ON THE LEASE DIRECTORY IS DELIBERATE AND IS THE NARROWEST THING THAT WORKS TODAY. flock must CREATE the lock file on first use, so the acquiring principal needs write on the directory — and the two acquiring principals are different accounts (the CI runner and, once a session-scoped remote lock exists, the operator). A group-write mode would need a shared group that gunbc.fleet_posix_accounts does not model, so picking one would be inventing an authority rather than citing one.\\n\\n🟡 dissolve-on: PosixUser (or a PosixGroup beside it) carries a group name, at which point this becomes 0775 owned by that group and the world-write bit deletes. The directory holds only zero-length lock files whose content nobody reads, so the exposure is a local principal being able to create or remove a lock file — which flock(2) already tolerates, since the lock lives on the open file description rather than on the file's persistence."
 
 func live_deploy_launch_under_lease(
   inner_function: String,
@@ -475,13 +470,14 @@ fn lease_probe_step_refusal(step: String, expected: Int, observed: Int, lock: St
   }
 }
 
-data lease_probe_steps_note: String = "STEP A — acquire the free lock and run `true`, expecting 0: proves the path is openable and exclusively acquirable by THIS principal, which is the half that fails when the namespace does not exist or is not writable. STEP B — hold it and, inside, attempt the same lock again, expecting the modeled conflict code: proves exclusion is real and reports on the code the outcome partition depends on. STEP C — acquire it again, expecting 0: proves the lock released when step B's process exited, which is the property that makes an expiry unnecessary."
+data lease_probe_steps_note: String = "STEP A — acquire the free lock and run `true`, expecting 0: proves the object is openable and exclusively acquirable by THIS principal, which is the half that fails when the namespace does not exist or is not reachable. STEP B — hold it and, inside, attempt the same lock again, expecting the modeled conflict code: proves exclusion is real and reports on the code the outcome partition depends on. STEP C — acquire it again, expecting 0: proves the lock released when step B's process exited, which is the property that makes an expiry unnecessary.\\n\\nSTEP B WRITES A MARKER BEFORE ATTEMPTING THE NESTED LOCK, AND THE MARKER IS LOAD-BEARING (operator ruling 2026-08-05). Without it the sequence 0/111/0 can be produced by an UNRELATED holder: if some other deploy acquires the lock between A and B, B's OUTER flock returns the conflict code without ever running the nested attempt, and if that holder exits before C then C returns 0 — a passing probe that established nothing about self-contention. So B's inner command creates the marker AFTER the outer lock is held and BEFORE the nested attempt runs, and the outcome requires both the marker and the conflict code. An outer conflict now fails the probe instead of impersonating an inner one.\\n\\nSTEP D — the lock object is a directory and its parent is not writable by this principal. That is the property that makes the object's identity stable: a replaceable pathname passes A/B/C perfectly while providing no exclusion at all, because a new entrant recreates the path and locks a different inode (lock_object_is_a_directory_note carries the measured reproduction). Stated at its real rung: this proves THIS principal cannot unlink or rename the object, not that no principal can — root still can, and no probe run as an unprivileged account can establish otherwise."
 
 func live_deploy_lease_contention_probe_wet() -> ProcessExit
   uses net: Network
 {
   let invocation = live_deploy_exclusive_invocation(target: Srv1Dashboard)
   let lock = invocation.lock_path as String
+  let marker = lease_probe_marker_path(invocation: invocation)
   let namespace = run_shell_command_exit_code(
     command: live_deploy_lease_namespace_command(invocation: invocation),
     transport: LocalExec,
@@ -489,26 +485,38 @@ func live_deploy_lease_contention_probe_wet() -> ProcessExit
   if namespace != 0 {
     exit_failure(reason: live_deploy_lease_namespace_refusal(exit_code: namespace))
   } else {
+    let cleared = run_shell_command_exit_code(
+      command: ArgvCommand { argv: ["rm", "-f", marker] },
+      transport: LocalExec,
+    )
     let free_before = run_shell_command_exit_code(
       command: live_deploy_lease_probe_command(invocation: invocation, inner: ["true"]),
       transport: LocalExec,
     )
     let contended = run_shell_command_exit_code(
-      command: live_deploy_lease_probe_command(
-        invocation: invocation,
-        inner: live_deploy_lease_probe_command(invocation: invocation, inner: ["true"]).argv,
-      ),
+      command: live_deploy_lease_self_contention_command(invocation: invocation, marker: marker),
+      transport: LocalExec,
+    )
+    let inner_ran = run_shell_command_exit_code(
+      command: ArgvCommand { argv: ["test", "-e", marker] },
       transport: LocalExec,
     )
     let free_after = run_shell_command_exit_code(
       command: live_deploy_lease_probe_command(invocation: invocation, inner: ["true"]),
       transport: LocalExec,
     )
+    let object_stable = run_shell_command_exit_code(
+      command: lease_probe_object_stability_command(invocation: invocation),
+      transport: LocalExec,
+    )
     match lease_probe_outcome(
       lock: lock,
+      cleared: cleared,
       free_before: free_before,
       contended: contended,
+      inner_ran: inner_ran,
       free_after: free_after,
+      object_stable: object_stable,
     ) {
       LeaseProbeHolds => ExitSuccess
       LeaseProbeRefused { cause: why } => exit_failure(reason: why as String)
@@ -516,33 +524,86 @@ func live_deploy_lease_contention_probe_wet() -> ProcessExit
   }
 }
 
+
+data lease_probe_marker_path_note: String = "The marker lives beside the lock object's name in the runner's own temp directory, so it needs no privilege to create or remove and cannot collide with the lock namespace this probe is testing. It is evidence of one step within one probe run, cleared at the start, never state anything else reads."
+
+fn lease_probe_marker_path(invocation: LiveDeployExclusiveInvocation) -> String {
+  join(["/tmp/gunbc-lease-probe-", deploy_target_key(target: invocation.target), ".marker"], "")
+}
+
+fn live_deploy_lease_self_contention_command(
+  invocation: LiveDeployExclusiveInvocation,
+  marker: String,
+) -> ArgvCommand {
+  let nested = shell_command_render(
+    command: live_deploy_lease_probe_command(invocation: invocation, inner: ["true"])
+  )
+  live_deploy_lease_probe_command(
+    invocation: invocation,
+    inner: [
+      "sh", "-c",
+      join(["touch ", sh_single_quote(s: marker), "; ", nested], ""),
+    ],
+  )
+}
+
+fn lease_probe_object_stability_command(invocation: LiveDeployExclusiveInvocation) -> ArgvCommand {
+  ArgvCommand {
+    argv: [
+      "sh", "-c",
+      join(
+        [
+          "test -d ", sh_single_quote(s: invocation.lock_path as String),
+          " && test ! -w ", sh_single_quote(s: deploy_target_lease_dir as String),
+        ],
+        ""
+      ),
+    ]
+  }
+}
+
 fn lease_probe_outcome(
   lock: String,
+  cleared: Int,
   free_before: Int,
   contended: Int,
+  inner_ran: Int,
   free_after: Int,
+  object_stable: Int,
 ) -> LeaseProbeOutcome {
-  if free_before != 0 {
+  if cleared != 0 {
+    lease_probe_step_refusal(step: "0 (clear the self-contention marker)", expected: 0, observed: cleared, lock: lock)
+  } else if free_before != 0 {
     lease_probe_step_refusal(step: "A (acquire a free lock)", expected: 0, observed: free_before, lock: lock)
+  } else if inner_ran != 0 {
+    lease_probe_step_refusal(
+      step: "B (the outer lock must be HELD BY THIS PROBE before the nested attempt; an absent marker means the conflict came from an unrelated holder)",
+      expected: 0,
+      observed: inner_ran,
+      lock: lock,
+    )
+  } else if contended != flock_conflict_exit_code {
+    lease_probe_step_refusal(
+      step: "B (a second attempt while held must conflict)",
+      expected: flock_conflict_exit_code,
+      observed: contended,
+      lock: lock,
+    )
+  } else if free_after != 0 {
+    lease_probe_step_refusal(
+      step: "C (the lock must be free once the holder exits)",
+      expected: 0,
+      observed: free_after,
+      lock: lock,
+    )
+  } else if object_stable != 0 {
+    lease_probe_step_refusal(
+      step: "D (the lock object must be a directory whose parent this principal cannot write, so its identity cannot be replaced under a live lease)",
+      expected: 0,
+      observed: object_stable,
+      lock: lock,
+    )
   } else {
-    if contended != flock_conflict_exit_code {
-      lease_probe_step_refusal(
-        step: "B (a second attempt while held must conflict)",
-        expected: flock_conflict_exit_code,
-        observed: contended,
-        lock: lock,
-      )
-    } else {
-      if free_after != 0 {
-        lease_probe_step_refusal(
-          step: "C (the lock must be free once the holder exits)",
-          expected: 0,
-          observed: free_after,
-          lock: lock,
-        )
-      } else {
-        LeaseProbeHolds
-      }
-    }
+    LeaseProbeHolds
   }
 }

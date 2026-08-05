@@ -11,6 +11,7 @@ import gunbc.host_effect {
 import extdeps.exec.command { CommandTransport, LocalExec, SshExec }
 import v2.std.algebra { list_head, ListHeadResult, HeadFound, HeadAbsent }
 import gunbc.live_deploy.revision { DeploymentTarget, deploy_target_key }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.output_policy { ExpectSuccess }
 import extdeps.tools.hostname
 
@@ -48,6 +49,27 @@ fn deploy_mutation_kind_key(kind: DeployMutationKind) -> String {
   }
 }
 
+data participant_grain_note: String = "THE POPULATION IS JOINED AT PARTICIPANT IDENTITY, NOT AT MUTATION KIND (operator ruling 2026-08-05). An earlier revision compared two lists of KINDS, and both listed the same four — so it detected a new kind added without coverage, and was blind to the thing that actually happens: a fifth public function performing an EXISTING kind. A new entrypoint flipping the route would find MutateRouteFlip already in both sets and the admission would stay green while a real mutator sat outside the lease. That is coverage measured at a grain coarser than the failure.\\n\\nSo a participant is a DeclarationRef paired with what it mutates, and the join is on the declaration. The kind survives because it still carries the answer to 'what would this change', which is what the refusal reason needs to be actionable.\\n\\nWHAT THIS IS AND IS NOT, stated so the rung is not inflated. The population roster below is HAND-AUTHORED, so this joins two authored lists at identity grain — it makes an uncovered participant unrepresentable in the admission once someone lists it, and it does NOT discover a participant nobody listed. Under the DESIGN §5 oracle rule that is a roster, not a closed subject universe: the discovering half needs a lens over the corpus that finds every declaration reaching a deploy mutation and joins it against this roster. 🟡 dissolve-on: that lens lands and supplies mutation_population by discovery, at which point this roster becomes the covered side only."
+
+type DeployMutator {
+  declaration: DeclarationRef
+  kind: DeployMutationKind
+}
+
+fn deploy_mutator_key(m: DeployMutator) -> String {
+  join(
+    [
+      m.declaration.module_path,
+      ".",
+      m.declaration.decl_name,
+      " (",
+      deploy_mutation_kind_key(kind: m.kind),
+      ")"
+    ],
+    ""
+  )
+}
+
 data coordination_subject_note: String = "ONE VALUE CARRYING BOTH SIDES OF EVERY AXIS, so coverage is a comparison rather than a judgement. The lease side and the mutation side are named separately on purpose: the whole class of defect here is the two silently differing while a lock is genuinely held, well-formed, and useless."
 
 type DeployCoordinationSubject {
@@ -56,21 +78,21 @@ type DeployCoordinationSubject {
   mutation_locus: ExecutionLocus
   lease_extent: CoordinationExtent
   required_extent: CoordinationExtent
-  mutation_population: List<DeployMutationKind>
-  covered_population: List<DeployMutationKind>
+  mutation_population: List<DeployMutator>
+  covered_population: List<DeployMutator>
 }
 
 type CoordinationRefusalCause
   = CoordinationLocusMismatch { lease_host: String, mutation_host: String }
   | CoordinationExtentTooShort
-  | MutationEntrypointUncovered { kind: String }
+  | MutationEntrypointUncovered { participant: String }
   | CoordinationLocusUnobserved
 
 type CoordinationAdmission
   = CoordinationCovers
   | CoordinationRefused { cause: CoordinationRefusalCause }
 
-data locus_agreement_note: String = "TWO LOCI AGREE ONLY WHEN BOTH NAME THE SAME MACHINE AND THE LEASE'S IS THE ONE THIS PROCESS IS ON. A lease locus of NamedHost is never agreement even when it names the same host as the mutations, because a lock this process takes locally does not become a lock on that machine by naming it — that is the fabrication being ruled out. Deferred and unobserved loci refuse on both sides."
+data locus_agreement_note: String = "TWO LOCI AGREE WHEN THEY NAME THE SAME MACHINE, AND THAT IS ALL THIS AXIS DECIDES (operator ruling 2026-08-05). An earlier revision refused EVERY NamedHost lease locus before it looked at extent, on the reasoning that 'a lock this process takes locally does not become a lock on that machine by naming it'. That sentence is true and it is about a DIFFERENT pair: a lock taken locally has lease locus CurrentHost, so the local-lock/SSH-effects fabrication is already caught as CurrentHost × NamedHost. Refusing NamedHost × NamedHost as well folded the extent question into the locus arm and made the module's own stated escape hatch unreachable — no SessionLifetime value could ever admit the future remote path, so enabling it would have required editing this match, which is precisely what transports-project-facts was built to avoid.\\n\\nSo the fold is now symmetric on identity: same machine covers, everything unequal, deferred or unobserved refuses. Today's SshExec reaches the correct named host and is refused on EXTENT, because `ssh host flock ... cmd` releases when that command returns — a fact about the realization, reported by the transport, not a policy about SSH. A future remote session holding one lock across the whole remote apply reports SessionLifetime on the same NamedHost locus and admits without a policy edit. That is the separation the two axes exist for."
 
 fn execution_locus_host_text(locus: ExecutionLocus) -> String {
   match locus {
@@ -81,35 +103,26 @@ fn execution_locus_host_text(locus: ExecutionLocus) -> String {
   }
 }
 
+fn locus_machine_identity(locus: ExecutionLocus) -> ObservedMachine {
+  match locus {
+    CurrentHost { host: h } => MachineNamed { host: h }
+    NamedHost { host: h } => MachineNamed { host: h }
+    DeferredExecution => MachineIndeterminate
+    ExecutionLocusUnobserved => MachineIndeterminate
+  }
+}
+
+type ObservedMachine
+  = MachineNamed { host: HostIdentity }
+  | MachineIndeterminate
+
 fn coordination_locus_covers(lease: ExecutionLocus, mutation: ExecutionLocus) -> CoordinationAdmission {
-  match lease {
-    ExecutionLocusUnobserved => CoordinationRefused { cause: CoordinationLocusUnobserved }
-    DeferredExecution => CoordinationRefused { cause: CoordinationLocusUnobserved }
-    NamedHost { host: _ } =>
-      CoordinationRefused {
-        cause: CoordinationLocusMismatch {
-          lease_host: execution_locus_host_text(locus: lease),
-          mutation_host: execution_locus_host_text(locus: mutation),
-        }
-      }
-    CurrentHost { host: lease_host } =>
-      match mutation {
-        ExecutionLocusUnobserved => CoordinationRefused { cause: CoordinationLocusUnobserved }
-        DeferredExecution =>
-          CoordinationRefused {
-            cause: CoordinationLocusMismatch {
-              lease_host: execution_locus_host_text(locus: lease),
-              mutation_host: execution_locus_host_text(locus: mutation),
-            }
-          }
-        NamedHost { host: _ } =>
-          CoordinationRefused {
-            cause: CoordinationLocusMismatch {
-              lease_host: execution_locus_host_text(locus: lease),
-              mutation_host: execution_locus_host_text(locus: mutation),
-            }
-          }
-        CurrentHost { host: mutation_host } =>
+  match locus_machine_identity(locus: lease) {
+    MachineIndeterminate => CoordinationRefused { cause: CoordinationLocusUnobserved }
+    MachineNamed { host: lease_host } =>
+      match locus_machine_identity(locus: mutation) {
+        MachineIndeterminate => CoordinationRefused { cause: CoordinationLocusUnobserved }
+        MachineNamed { host: mutation_host } =>
           if lease_host == mutation_host {
             CoordinationCovers
           } else {
@@ -152,14 +165,18 @@ fn coordination_extent_covers(provided: CoordinationExtent, required: Coordinati
 data population_completeness_note: String = "EVERY MUTATOR MUST BE COVERED, and the check is an identity join over the population rather than a count. A count would green when one mutator was added and another dropped in the same change, which is the failure the DESIGN §5 oracle rule names: completeness is an identity join, not a count equality."
 
 fn coordination_population_covers(
-  mutation_population: List<DeployMutationKind>,
-  covered: List<DeployMutationKind>,
+  mutation_population: List<DeployMutator>,
+  covered: List<DeployMutator>,
 ) -> CoordinationAdmission {
-  match list_head(xs: filter(mutation_population, k => !any(covered, c => c == k))) {
+  let uncovered = filter(
+    mutation_population,
+    m => !any(covered, c => deploy_mutator_key(m: c) == deploy_mutator_key(m: m))
+  )
+  match list_head(xs: uncovered) {
     HeadAbsent => CoordinationCovers
-    HeadFound { value: k } =>
+    HeadFound { value: m } =>
       CoordinationRefused {
-        cause: MutationEntrypointUncovered { kind: deploy_mutation_kind_key(kind: k) }
+        cause: MutationEntrypointUncovered { participant: deploy_mutator_key(m: m) }
       }
   }
 }
@@ -222,10 +239,28 @@ data deploy_required_extent_note: String = "THE CUTOVER REQUIRES ProcessLifetime
 
 data deploy_required_extent: CoordinationExtent = ProcessLifetime
 
-data deploy_mutation_population_note: String = "THE FULL POPULATION OF MUTATORS FOR THIS TARGET. Apply and Retract are public entrypoints; RouteFlip and SlotRevisionRecord occur inside an Apply today and are listed because the question is what can change the coordinated resources, not what entrypoints happen to exist. A new entrypoint performing any of these has to be covered before the admission greens."
+data deploy_mutation_population_note: String = "EVERY DECLARATION THAT CAN CHANGE THIS TARGET'S COORDINATED RESOURCES, NAMED. The four public entrypoints are here because they are what a caller reaches; the two internal actuators are here because the question is what can change the resources, not what is publicly callable — a future entrypoint that flips the route alone would be a new row and would have to be covered before the admission greens. Named symbolically per DESIGN §3: module plus declaration, never a file position."
 
-fn deploy_mutation_population() -> List<DeployMutationKind> {
-  [MutateApply, MutateRetract, MutateRouteFlip, MutateSlotRevisionRecord]
+fn deploy_mutator_of(decl_name: String, kind: DeployMutationKind) -> DeployMutator {
+  DeployMutator {
+    declaration: DeclarationRef {
+      module_path: "gunbc.live_deploy.apply",
+      decl_name: decl_name,
+      field: WholeDeclaration,
+    },
+    kind: kind,
+  }
+}
+
+fn deploy_mutation_population() -> List<DeployMutator> {
+  [
+    deploy_mutator_of(decl_name: "live_deploy_apply_srv1_wet", kind: MutateApply),
+    deploy_mutator_of(decl_name: "live_deploy_apply_srv1_operator_wet", kind: MutateApply),
+    deploy_mutator_of(decl_name: "live_deploy_retract_srv1_wet", kind: MutateRetract),
+    deploy_mutator_of(decl_name: "live_deploy_retract_srv1_operator_wet", kind: MutateRetract),
+    deploy_mutator_of(decl_name: "live_deploy_flip_route_to_recorded_candidate", kind: MutateRouteFlip),
+    deploy_mutator_of(decl_name: "live_deploy_record_slot_revision", kind: MutateSlotRevisionRecord),
+  ]
 }
 
 fn coordination_refusal_reason(target: DeploymentTarget, cause: CoordinationRefusalCause) -> NonEmptyStr {
@@ -249,12 +284,12 @@ fn coordination_refusal_reason(target: DeploymentTarget, cause: CoordinationRefu
         ],
         ""
       ) as NonEmptyStr
-    MutationEntrypointUncovered { kind: k } =>
+    MutationEntrypointUncovered { participant: p } =>
       join(
         [
           prefix,
-          "the mutation kind '", k,
-          "' can change this target's resources but is not covered by the lease, so a lease held by another mutator does not exclude it"
+          p,
+          " can change this target's resources but is not covered by the lease, so a lease held by another mutator does not exclude it"
         ],
         ""
       ) as NonEmptyStr
