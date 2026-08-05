@@ -5804,6 +5804,78 @@ pub fn load_sources_for_entry_with_pool_index(
     load_sources_for_entry_with_pool(&index, entry_path)
 }
 
+/// Import-edge closure ONLY — no reference-derived or bare-reference extension.
+/// Host twin for witnesses proving a module's cross-module bindings come from
+/// declared `import` edges, not pool membership or bare-reference coincidence
+/// (Class B controls per DESIGN import-strip witness-discovery cascade).
+#[cfg(feature = "test_hooks")]
+pub fn declared_import_closure_live_paths(
+    source_roots: &[String],
+    entry_path: &str,
+) -> Result<Vec<String>, String> {
+    let index = build_multi_entry_index_primary_precedence(source_roots);
+    let entry_rel = workspace_relative_entry_path(entry_path);
+    if !index.module_graph_facts.declares_repo_path(&entry_rel) {
+        return Err(format!(
+            "declared_import_closure_live_paths: entry '{entry_rel}' has no provenance in the module-graph facts pool (fail-closed)"
+        ));
+    }
+    Ok(import_closure_live_paths_with_facts(
+        &entry_rel,
+        &index.module_graph_facts,
+    ))
+}
+
+#[cfg(feature = "test_hooks")]
+fn load_declared_import_closure_sources(
+    index: &MultiEntryIndex,
+    entry_path: &str,
+) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
+    let entry_source = entry_source_from_index_or_disk(&index.source_files, entry_path)?;
+    let rel_path = entry_source.path.clone();
+    let mut sources = resolve_transitively(
+        vec![entry_source.clone()],
+        &index.source_files,
+        &index.module_graph_facts,
+    )?;
+    if !sources
+        .iter()
+        .any(|s| s.path == rel_path || same_canonical_file(&s.path, &rel_path))
+    {
+        sources.push(entry_source);
+    }
+    sources.sort_by(|a, b| a.path.cmp(&b.path));
+    sources.dedup_by(|a, b| a.path == b.path);
+    Ok(sources)
+}
+
+/// Resolve/typecheck an entry using ONLY its declared import-edge closure.
+#[cfg(feature = "test_hooks")]
+pub fn compile_entry_on_declared_import_closure_only(
+    source_roots: &[String],
+    entry_path: &str,
+) -> Result<Rc<v1_compiler_compile::ResolvedPipelineResult>, String> {
+    let index = build_multi_entry_index_primary_precedence(source_roots);
+    let sources = load_declared_import_closure_sources(&index, entry_path)?;
+    Ok(v1_compiler_compile::compile_to_resolved(Rc::new(
+        sources.into(),
+    )))
+}
+
+/// Negative-arm helper: compile a stripped entry on its honest declared import
+/// closure (the entry module alone — zero `import` lines means zero import edges).
+#[cfg(feature = "test_hooks")]
+pub fn compile_stripped_entry_declared_import_closure_only(
+    entry_path: &str,
+    stripped_content: &str,
+) -> Rc<v1_compiler_compile::ResolvedPipelineResult> {
+    let entry_source = Rc::new(v1_compiler_compile::SourceFile {
+        path: entry_path.to_string(),
+        content: stripped_content.to_string(),
+    });
+    v1_compiler_compile::compile_to_resolved(Rc::new(vec![entry_source].into()))
+}
+
 /// Builtins that REQUIRE a service registration to dispatch, paired with the
 /// services-census key whose provider must therefore be in the closure. This is
 /// the one dependency edge a name-derived closure cannot see: the builtin's

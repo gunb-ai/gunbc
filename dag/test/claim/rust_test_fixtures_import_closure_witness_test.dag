@@ -1,0 +1,24 @@
+module test.claim.rust_test_fixtures_import_closure_witness
+
+import std.types { Bool }
+import v2.std.text { string_contains }
+
+data rust_test_fixtures_import_closure_witness_note: String = "Class B closure control owed against #7811: src/v2/extdeps/languages/rust_test_fixtures.dag must resolve from its declared import-edge closure only — no unrelated pool import may supply v2.extdeps.languages.rust indirectly. DESIGN section 5 discriminating control: positive arm (explicit import block present) compiles clean on the narrow import closure; negative arm (same entry with import block removed) must refuse on that same closure. Executed by cargo test -p v1-compiler-tests rust_test_fixtures_import_closure_witness_test (host hook compile_entry_on_declared_import_closure_only in cli_run.rs, test_hooks feature)."
+
+data rust_test_fixtures_import_closure_witness_entry: String = "src/v2/extdeps/languages/rust_test_fixtures.dag"
+
+data rust_test_fixtures_import_closure_witness_rust_provider: String = "src/v2/extdeps/languages/rust.dag"
+
+test fn rust_test_fixtures_import_closure_witness_enrollment_holds() -> Bool {
+  !(rust_test_fixtures_import_closure_witness_note == "")
+    && rust_test_fixtures_import_closure_witness_entry == "src/v2/extdeps/languages/rust_test_fixtures.dag"
+    && rust_test_fixtures_import_closure_witness_rust_provider == "src/v2/extdeps/languages/rust.dag"
+    && string_contains(
+      s: rust_test_fixtures_import_closure_witness_note,
+      pattern: "declared import-edge closure only"
+    )
+    && string_contains(
+      s: rust_test_fixtures_import_closure_witness_note,
+      pattern: "cargo test -p v1-compiler-tests rust_test_fixtures_import_closure_witness_test"
+    )
+}

@@ -151,13 +151,13 @@ mod resolve_expr_types_retraversal_guard_test;
 #[cfg(test)]
 mod resolve_typed_cache_equivalence_test;
 #[cfg(test)]
-mod rust_test_fixtures_import_closure_probe;
-#[cfg(test)]
 mod resolved_graph_cache_size_bound_test;
 #[cfg(test)]
 mod route_a_emit_fresh_cargo_green_test;
 #[cfg(test)]
 mod route_a_final_six_test;
+#[cfg(test)]
+mod rust_test_fixtures_import_closure_witness_test;
 #[cfg(test)]
 mod shared_recursive_field_access_test;
 #[cfg(test)]
