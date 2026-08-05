@@ -138,10 +138,11 @@ use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::CallSemantics::{LookupCallSemantics, PlainCallSemantics};
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::{
-    AmbiguousReference, CallArgumentNameUnknown, CallPositionalSurplus, FieldNotFound,
-    FrontierOccurrenceBudgetExceeded, InternalError, MethodExistenceFrontierAdmitted,
-    MethodExistenceUndecided, MethodNotFound, MissingField, ReceiverTypeUnestablished,
-    SoleConstructorViolation, TypeMismatch, UnresolvedType, VariantCollision,
+    AmbiguousReference, CallArgumentNameUnknown, CallNamedArgOnFunctionValue,
+    CallPositionalSurplus, FieldNotFound, FrontierOccurrenceBudgetExceeded, InternalError,
+    MethodExistenceFrontierAdmitted, MethodExistenceUndecided, MethodNotFound, MissingField,
+    ReceiverTypeUnestablished, SoleConstructorViolation, TypeMismatch, UnresolvedType,
+    VariantCollision,
 };
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v1_std_core::ExprData::{
@@ -2643,19 +2644,45 @@ pub fn direct_call_shape_diags(
             };
         let duplicate_label_diags = Rc::new({
             let mut __result = Vec::new();
-            for (i, ta) in typed_args.clone().iter().cloned().enumerate() {
+            for pair in Rc::new(
+                typed_args
+                    .clone()
+                    .iter()
+                    .cloned()
+                    .enumerate()
+                    .map(|(i, v)| (i as i64, v))
+                    .collect::<Vec<_>>(),
+            )
+            .iter()
+            .cloned()
+            {
                 __result.extend(
-                    (*match arg_name_at(ta.clone(), source_indices.clone()) {
+                    (*match arg_name_at(pair.1.clone(), source_indices.clone()) {
                         Some(label) => {
                             let earlier_dup = {
                                 let mut __found = false;
-                                for (j, other) in typed_args.clone().iter().cloned().enumerate() {
-                                    if (j < i)
-                                        && match arg_name_at(other.clone(), source_indices.clone())
-                                        {
-                                            Some(other_label) => other_label == label,
+                                for other in Rc::new(
+                                    typed_args
+                                        .clone()
+                                        .iter()
+                                        .cloned()
+                                        .enumerate()
+                                        .map(|(i, v)| (i as i64, v))
+                                        .collect::<Vec<_>>(),
+                                )
+                                .iter()
+                                .cloned()
+                                {
+                                    if ((other.0.clone() < pair.0.clone())
+                                        && match arg_name_at(
+                                            other.1.clone(),
+                                            source_indices.clone(),
+                                        ) {
+                                            Some(other_label) => {
+                                                (other_label.clone() == label.clone())
+                                            }
                                             None => false,
-                                        }
+                                        })
                                     {
                                         __found = true;
                                         break;
@@ -2663,12 +2690,12 @@ pub fn direct_call_shape_diags(
                                 }
                                 __found
                             };
-                            if earlier_dup {
+                            if earlier_dup.clone() {
                                 Rc::new(vec![make_error_node(
                                     Rc::new(CompilerDiagnostic::CallArgumentDuplicate {
                                         callee: func_name.clone(),
                                         argument: label.clone(),
-                                        span: ta.span.clone(),
+                                        span: pair.1.clone().span.clone(),
                                     }),
                                     module_name.clone(),
                                 )])
@@ -2689,6 +2716,87 @@ pub fn direct_call_shape_diags(
             duplicate_label_diags.clone(),
         )
     }
+}
+
+pub fn function_value_call_named_arg_diags(
+    func_name: String,
+    typed_args: Rc<Vec<Rc<Node>>>,
+    type_env: Rc<TypeEnv>,
+    module_name: String,
+    body_locals: Rc<HashMap<String, bool>>,
+    locals: Rc<HashMap<String, Rc<TypeBinding>>>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    match v1_rt::map_get(&body_locals, func_name.clone()) {
+        None => Rc::new(vec![]),
+        Some(_) => {
+            let named_diags = Rc::new({
+                let mut __result = Vec::new();
+                for ta in typed_args.clone().iter().cloned() {
+                    __result.extend(
+                        (*match arg_name_at(ta.clone(), type_env.source_indices.clone()) {
+                            Some(label) => Rc::new(vec![make_error_node(
+                                Rc::new(CompilerDiagnostic::CallNamedArgOnFunctionValue {
+                                    callee: func_name.clone(),
+                                    argument: label.clone(),
+                                    span: ta.span.clone(),
+                                }),
+                                module_name.clone(),
+                            )]),
+                            None => Rc::new(vec![]),
+                        })
+                        .iter()
+                        .cloned(),
+                    );
+                }
+                __result
+            });
+            let arity_diags = match v1_rt::map_get(&locals, func_name.clone()) {
+                Some(binding) => {
+                    let param_count = (binding.resolved.clone().params.clone().len() as i64);
+                    if (param_count.clone() > 0) {
+                        {
+                            let supplied = (typed_args.clone().len() as i64);
+                            if (supplied.clone() > param_count.clone()) {
+                                match typed_args
+                                    .clone()
+                                    .iter()
+                                    .cloned()
+                                    .skip(param_count.clone() as usize)
+                                    .next()
+                                {
+                                    Some(overflow) => Rc::new(vec![make_error_node(
+                                        Rc::new(CompilerDiagnostic::CallPositionalSurplus {
+                                            callee: func_name.clone(),
+                                            supplied: supplied.clone(),
+                                            capacity: param_count.clone(),
+                                            span: overflow.span.clone(),
+                                        }),
+                                        module_name.clone(),
+                                    )]),
+                                    None => Rc::new(vec![]),
+                                }
+                            } else {
+                                Rc::new(vec![])
+                            }
+                        }
+                    } else {
+                        Rc::new(vec![])
+                    }
+                }
+                None => Rc::new(vec![]),
+            };
+            v1_rt::concat(named_diags.clone(), arity_diags.clone())
+        }
+    }
+}
+
+pub fn function_value_named_application_wall_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "WALL (DESIGN §5) — RUNG (§4b): mitigatable minimum for the class named actuals on function-value application. Reason: coverage path (5) — record-field fn value invoked as cfg.callback(a:) via ExprMethodCall — is compile-clean Accepted today and bypasses both this wall and #7519; executing probe function_value_field_method_known_hole_probe (ct_function_value_field_method_known_hole_probe_test) pins that hole and flips to a permanent regression control when the method-call label wall lands. The direct-call label wall (direct_call_shape_wall_note, gunbc#7519) runs only when a module fn sig resolves at the ExprCall seam. Function-value calls route through body_locals shadowing (call_locals_shadow_note): a let-bound or parameter callee skips sig lookup, so named actuals were silently accepted while the emitter's order_typed_call_args cannot reorder them (lookup_func_sig_in_scope returns Absent) and labels are not validated against any declared parameter authority. This wall refuses every named actual when the callee is a body-scope binding — the function-value path — until declaration-identity join can validate labels against the underlying fn. Positional calls on function values stay allowed. Named actuals on direct module/builtin calls (sig resolved) remain on the sibling wall. COVERAGE ACROSS CALLEE PATHS (§4b rung honesty — class rung is the minimum in-scope path, specimens measured by execution): (1) ExprCall bare name in body_locals (fn param, let, match binder, lambda param) — THIS WALL; structurally guaranteed for named actuals on that path. (2) ExprCall bare name with module fn sig resolved — sibling direct_call_shape_wall_note (#7519). (3) Module-level data binding with typed fn value called by bare name (data cb: fn(...) = ...) — NOT body_locals; routes #7519 when lookup resolves (specimen: CallArgumentNameUnknown on cb(a:, b:)). (4) Generic HO param where the arrow is a type variable (agree: F) — body_locals; same wall as (1). (5) Record field holding fn value invoked as cfg.callback(a:) — UNCOVERED HOLE: parser make_call_expr maps ExprFieldAccess callee to ExprMethodCall, not ExprCall; neither this wall nor #7519 runs; specimen compiles clean with named actuals; executing probe function_value_field_method_known_hole_probe. Dissolve-on: method-call / ExprMethodCall argument-label wall (direct_call_shape_wall_note unwalled class (3)). (6) Immediate apply f()(a:) on a call result — syntax parses (make_call_expr default → ExprCall name \"<expr>\"); NOT body_locals, sig does not resolve; neither wall fires on named args; specimen fails InternalError before Accepted (non-identifier ExprCall callee not modeled) — unwritable as Accepted today, not a live compile-clean named-arg hole.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn direct_call_shape_wall_note() -> String {
@@ -5232,13 +5340,23 @@ pub fn infer_expr_body(
                         }
                         __result
                     });
-                    let arg_diags = Rc::new({
-                        let mut __result = Vec::new();
-                        for air in arg_infer_results.clone().iter().cloned() {
-                            __result.extend((*air.diagnostics.clone()).iter().cloned());
-                        }
-                        __result
-                    });
+                    let arg_diags = v1_rt::concat(
+                        Rc::new({
+                            let mut __result = Vec::new();
+                            for air in arg_infer_results.clone().iter().cloned() {
+                                __result.extend((*air.diagnostics.clone()).iter().cloned());
+                            }
+                            __result
+                        }),
+                        function_value_call_named_arg_diags(
+                            func_name.clone(),
+                            typed_args.clone(),
+                            scope.type_env.clone(),
+                            scope.module_name.clone(),
+                            scope.body_locals.clone(),
+                            scope.locals.clone(),
+                        ),
+                    );
                     let typed_arg_nodes = typed_args.clone();
                     if (sig.clone() != None) {
                         {

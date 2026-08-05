@@ -269,7 +269,7 @@ fn effect_io_pure_invoke_handler(
   request: EffectRequest
 ) -> Outcome<RuntimeValue> {
   match handler {
-    EffectHandler { handle: h } => h(request: request)
+    EffectHandler { handle: h } => h(request)
   }
 }
 

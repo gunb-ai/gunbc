@@ -536,17 +536,9 @@ mod compiler_tests {
     }
 
     #[test]
-    fn call_shape_duplicate_wall_witness() {
-        // DISCRIMINATING RED for the duplicate-label half of
-        // call-missing-and-duplicate-wall (roadmap rn_EXUHLON5V24YU7Z4XLJFWEZO33,
-        // first_slice). Before the wall, `two(a: 1, a: 2)` against
-        // `fn two(a: Int, b: Int)` compiled with ZERO diagnostics while the runtime
-        // authority (call_function_inner's bindings.insert) silently overwrote the
-        // first binding — the second `a` value winning with no trace of the first —
-        // and the interpreter now refuses the same call (CallContractMismatch). The
-        // wall makes the compile seam agree with that runtime refusal, mirroring
-        // the CallArgumentNameUnknown/CallPositionalSurplus wall above on the third
-        // of the four bijection failure modes.
+    fn function_value_named_application_controls_witness() {
+        // Operator-required controls for higher-order named application (P0).
+        // Direct declaration calls keep named args; function-value calls are positional-only.
         let result = std::thread::Builder::new()
             .stack_size(8 * 1024 * 1024)
             .spawn(|| {
@@ -561,60 +553,131 @@ mod compiler_tests {
                         crate::v1_compiler_artifact::RenderTarget::Rust,
                     )
                 };
-                let duplicate = compile_one(
-                    "duplicate.dag",
-                    "module duplicate\nfn two(a: Int, b: Int) -> Int { a + b }\nfn f() -> Int { two(a: 1, a: 2) }\n",
+                // 1. Direct declaration call with reordered named arguments -> ADMIT
+                let direct_reordered = compile_one(
+                    "direct_reordered.dag",
+                    "module direct_reordered\nfn sub(a: Int, b: Int) -> Int { a - b }\nfn witness() -> Int { sub(b: 3, a: 10) }\n",
                 );
-                let dup: Vec<_> = duplicate.diagnostics.iter()
-                    .filter(|d| matches!(*d.diagnostic, crate::v1_std_core::CompilerDiagnostic::CallArgumentDuplicate { .. }))
+                assert!(
+                    direct_reordered.diagnostics.is_empty(),
+                    "direct declaration with reordered named args must ADMIT, got: {:?}",
+                    direct_reordered.diagnostics
+                );
+                // 2. Higher-order callback declared left/right, applied positionally -> ADMIT
+                let hof_positional = compile_one(
+                    "hof_positional.dag",
+                    "module hof_positional\nfn cmp(left: Int, right: Int) -> Bool { left < right }\nfn host(agree: fn(Int, Int) -> Bool) -> Bool { agree(1, 2) }\nfn witness() -> Bool { host(cmp) }\n",
+                );
+                assert!(
+                    hof_positional.diagnostics.is_empty(),
+                    "positional function-value application must ADMIT, got: {:?}",
+                    hof_positional.diagnostics
+                );
+                // 3. Higher-order named application without labeled function type -> REFUSE
+                let named_on_value = compile_one(
+                    "named_on_value.dag",
+                    "module named_on_value\nfn host(agree: fn(Int, Int) -> Bool) -> Bool { agree(a: 1, b: 2) }\n",
+                );
+                let named: Vec<_> = named_on_value.diagnostics.iter()
+                    .filter(|d| matches!(*d.diagnostic, crate::v1_std_core::CompilerDiagnostic::CallNamedArgOnFunctionValue { .. }))
                     .collect();
                 assert!(
-                    !dup.is_empty(),
-                    "a caller label supplied more than once must refuse at the compile seam — the interpreter already refuses this call at runtime, got: {:?}",
-                    duplicate.diagnostics
+                    named.len() >= 2,
+                    "named args on function-value call must REFUSE, got: {:?}",
+                    named_on_value.diagnostics
                 );
                 assert!(
-                    dup.iter().all(|d| crate::v1_std_core::is_error_diagnostic(d.diagnostic.clone())
+                    named.iter().all(|d| crate::v1_std_core::is_error_diagnostic(d.diagnostic.clone())
                         && crate::v1_std_core::is_interpreter_blocking_diagnostic(d.diagnostic.clone())),
-                    "CallArgumentDuplicate must BLOCK — a counted advisory would still emit the silently-overwritten realization"
+                    "CallNamedArgOnFunctionValue must BLOCK"
                 );
-                // Runtime authority: the same duplicate-label call must refuse via
-                // call_function_inner (InterpError::CallContractMismatch), never
-                // silently pick the last-bound value.
+                // 4. Wrong higher-order arity -> REFUSE
+                let wrong_arity = compile_one(
+                    "wrong_arity.dag",
+                    "module wrong_arity\nfn host(agree: fn(Int, Int) -> Bool) -> Bool { agree(1, 2, 3) }\n",
+                );
+                assert!(
+                    wrong_arity.diagnostics.iter().any(|d| matches!(
+                        *d.diagnostic,
+                        crate::v1_std_core::CompilerDiagnostic::CallPositionalSurplus { .. }
+                    )),
+                    "surplus args on function-value call must REFUSE, got: {:?}",
+                    wrong_arity.diagnostics
+                );
+                // 5. Swapped positional callback arguments -> semantic RED (compile admits; order matters)
+                let semantic = compile_one(
+                    "semantic_swap.dag",
+                    "module semantic_swap\nfn cmp(left: Int, right: Int) -> Bool { left < right }\nfn host(agree: fn(Int, Int) -> Bool, a: Int, b: Int) -> Bool { agree(a, b) }\nfn correct_order() -> Bool { host(cmp, 1, 2) }\nfn swapped_order() -> Bool { host(cmp, 2, 1) }\n",
+                );
+                assert!(
+                    semantic.diagnostics.is_empty(),
+                    "swapped positional controls must compile clean for semantic RED, got: {:?}",
+                    semantic.diagnostics
+                );
                 let resolved = crate::v1_compiler_compile::compile_to_resolved(
                     std::rc::Rc::new(im::vector![std::rc::Rc::new(
                         crate::v1_compiler_compile::SourceFile {
-                            path: "duplicate_rt.dag".to_string(),
-                            content: "module duplicate_rt\nfn two(a: Int, b: Int) -> Int { a + b }\nfn f() -> Int { two(a: 1, a: 2) }\n".to_string(),
+                            path: "semantic_swap.dag".to_string(),
+                            content: "module semantic_swap\nfn cmp(left: Int, right: Int) -> Bool { left < right }\nfn host(agree: fn(Int, Int) -> Bool, a: Int, b: Int) -> Bool { agree(a, b) }\nfn correct_order() -> Bool { host(cmp, 1, 2) }\nfn swapped_order() -> Bool { host(cmp, 2, 1) }\n".to_string(),
                         }
                     )]),
                 );
-                let graph = resolved.graph.clone().expect("duplicate-label fixture must resolve — it is a runtime-authority probe, not a compile-seam one");
-                let run = crate::v1_interpreter::run(&graph, resolved.source_indices.clone(), "f");
-                assert!(
-                    run.is_err(),
-                    "the runtime authority must refuse a duplicate-label call rather than silently overwrite the earlier binding, got: {:?}",
-                    run
+                let graph = resolved.graph.as_ref().expect("graph");
+                let ctx = crate::cli_run::make_eval_context(
+                    graph,
+                    resolved.source_indices.clone(),
+                    crate::v1_interpreter::ExecutionMode::Wet,
                 );
-                // POSITIVE CONTROLS at ZERO diagnostics: distinct labels, positional
-                // args, the reordered-named-args idiom, and the deliberately-unused
-                // underscore idiom (two DIFFERENT surface labels for the SAME
-                // parameter, `x` and `_x`/`_`, are not a duplicate — only exact
-                // caller-label equality is, matching the runtime HashMap::insert
-                // condition exactly) all stay silent.
-                let green = compile_one(
-                    "green_dup.dag",
-                    "module green_dup\nfn two(a: Int, b: Int) -> Int { a + b }\nfn ignore_ctx(_ctx: Int, b: Int) -> Int { b }\nfn distinct() -> Int { two(a: 1, b: 2) }\nfn reordered() -> Int { two(b: 2, a: 1) }\nfn positional() -> Int { two(1, 2) }\nfn underscore_idiom() -> Int { ignore_ctx(ctx: 1, b: 2) }\n",
+                let correct = crate::v1_interpreter::run_in_context(&ctx, "correct_order", false)
+                    .expect("correct_order should run");
+                let swapped = crate::v1_interpreter::run_in_context(&ctx, "swapped_order", false)
+                    .expect("swapped_order should run");
+                assert!(
+                    matches!(correct, crate::v1_interpreter::Value::Bool(true)),
+                    "correct positional order must be true, got {:?}",
+                    correct
                 );
                 assert!(
-                    green.diagnostics.is_empty(),
-                    "distinct labels, positional args, reordered named args, and the underscore idiom must compile with NO diagnostic of any severity, got: {:?}",
-                    green.diagnostics
+                    matches!(swapped, crate::v1_interpreter::Value::Bool(false)),
+                    "swapped positional order must be false — semantic RED proving bind order, got {:?}",
+                    swapped
                 );
             })
             .expect("failed to spawn thread")
             .join();
-        result.expect("call_shape_duplicate_wall_witness panicked");
+        result.expect("function_value_named_application_controls_witness panicked");
+    }
+
+    #[test]
+    fn function_value_field_method_known_hole_probe() {
+        // KNOWN-HOLE PROBE (not a desired-behavior control): coverage path (5) in
+        // function_value_named_application_wall_note. cfg.callback(a:, b:) parses as
+        // ExprMethodCall (make_call_expr on ExprFieldAccess), bypasses BOTH the
+        // body_locals wall and #7519 direct_call_shape_diags. Today it compiles clean
+        // with named actuals on a record-field function value. When the method-call
+        // argument-label wall lands, this probe must FLIP (refusal) and become a
+        // permanent regression control per DESIGN §4b(4).
+        let field_named = crate::v1_compiler_compile::compile_sources(
+            std::rc::Rc::new(im::vector![std::rc::Rc::new(
+                crate::v1_compiler_compile::SourceFile {
+                    path: "field_method_named_hole.dag".to_string(),
+                    content: "module field_method_named_hole\ntype Cfg { callback: fn(Int, Int) -> Bool }\nfn cmp(left: Int, right: Int) -> Bool { left < right }\nfn witness() -> Bool { host(Cfg { callback: cmp }) }\nfn host(cfg: Cfg) -> Bool { cfg.callback(a: 1, b: 2) }\n".to_string(),
+                }
+            )]),
+            crate::v1_compiler_artifact::RenderTarget::Rust,
+        );
+        assert!(
+            field_named.diagnostics.is_empty(),
+            "KNOWN HOLE today: field-held fn via method syntax with named actuals must compile clean until the method-call label wall lands, got: {:?}",
+            field_named.diagnostics
+        );
+        assert!(
+            !field_named.diagnostics.iter().any(|d| matches!(
+                *d.diagnostic,
+                crate::v1_std_core::CompilerDiagnostic::CallNamedArgOnFunctionValue { .. }
+            )),
+            "this path is ExprMethodCall — CallNamedArgOnFunctionValue must not fire here"
+        );
     }
 
     #[test]
