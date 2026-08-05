@@ -4,12 +4,11 @@ import extdeps.communication.medium { Lossless, Medium }
 import extdeps.filesystem.filesystem_io
 import std.algebra { Cons, Empty, FreeMonoid }
 import v2.compiler.compile { compile_source_root_ingest_with_admission }
-import v2.compiler.name_resolve { Admission, Import, ImportVisible, ResolutionSubject }
-import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
-import v2.extdeps.languages.dag {
-  parse_production_emitted_identity_optional,
-  qualified_name_from_module_node
+import v2.compiler.name_resolve {
+  Admission,
+  admission_from_module_root
 }
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.extdeps.languages.rust { rust_target_model }
 import v2.lens.module_graph {
   ImportResolutionFact,
@@ -18,7 +17,7 @@ import v2.lens.module_graph {
   import_resolution_facts_live,
   module_declaration_facts_live
 }
-import v2.lens.reference_deps { reference_deps_ingest_source_text, reference_qn_from_import_decl_strict }
+import v2.lens.reference_deps { reference_deps_ingest_source_text }
 import v2.std.algebra { filter, fold_list, length, list_reverse }
 import v2.workflow.floor_diff_observe {
   FloorNameStatusDiffResult,
@@ -81,66 +80,15 @@ fn module_graph_facts(pool_roots: List<String>) -> ModuleGraphFacts {
   }
 }
 
-fn collect_import_decl_nodes(n: Node, acc: FreeMonoid<Node>) -> FreeMonoid<Node> {
-  let here = match parse_production_emitted_identity_optional(node: n) {
-    Present { value: id } =>
-      if id == ^dag_surface_import_decl { Cons { head: n, tail: acc } } else { acc }
-    Absent => acc
-  }
-  fold(n.children, init: here, f: fn(a, e) {
-    collect_import_decl_nodes(n: e.target, acc: a)
-  })
-}
-
-type ImportRowsState
-  = ImportRowsFailed { reason: Symbol }
-  | ImportRowsOk { rows: List<Import> }
-
-fn import_rows_from_parsed_module(root: Node) -> ImportRowsState {
-  let gathered = fold_list(
-    xs: list_reverse(xs: collect_import_decl_nodes(n: root, acc: Empty)),
-    empty: ImportRowsOk { rows: Empty },
-    cons: fn(state, import_node) {
-      match state {
-        ImportRowsFailed { reason: r } => ImportRowsFailed { reason: r }
-        ImportRowsOk { rows: prior } =>
-          match reference_qn_from_import_decl_strict(node: import_node, module_root: root) {
-            Rejected { diagnostics: d } => ImportRowsFailed { reason: d.head.reason }
-            Accepted { value: target_qn, diagnostics: _ } =>
-              ImportRowsOk {
-                rows: Cons {
-                  head: Import { target: target_qn, visibility: ImportVisible },
-                  tail: prior
-                }
-              }
-          }
-      }
-    }
-  )
-  match gathered {
-    ImportRowsFailed { reason: r } => ImportRowsFailed { reason: r }
-    ImportRowsOk { rows: rev } => ImportRowsOk { rows: list_reverse(xs: rev) }
-  }
-}
-
 type AdmissionDerivation
   = AdmissionRefused { reason: Symbol }
   | AdmissionDerived { admission: Admission }
 
 fn derive_module_admission(root: Node) -> AdmissionDerivation {
-  match qualified_name_from_module_node(root: root) {
+  match admission_from_module_root(root: root) {
     Rejected { diagnostics: d } => AdmissionRefused { reason: d.head.reason }
-    Accepted { value: subject_qn, diagnostics: _ } =>
-      match import_rows_from_parsed_module(root: root) {
-        ImportRowsFailed { reason: r } => AdmissionRefused { reason: r }
-        ImportRowsOk { rows: rows } =>
-          AdmissionDerived {
-            admission: Admission {
-              subject: ResolutionSubject { name: subject_qn },
-              imports: rows
-            }
-          }
-      }
+    Accepted { value: admission, diagnostics: _ } =>
+      AdmissionDerived { admission: admission }
   }
 }
 

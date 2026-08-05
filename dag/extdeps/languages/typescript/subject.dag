@@ -1,0 +1,41 @@
+module extdeps.languages.typescript.subject
+
+import std.types { String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "www.typescriptlang.org/docs/handbook/intro.html"
+  }
+}
+
+data typescript_language_further_authority_1: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "github.com/microsoft/TypeScript"
+  }
+}
+
+data typescript_language_subject_note: String = "TYPESCRIPT, AND THE FINDING THAT IT HAS NO FORMAL SPECIFICATION (verified live 2026-08-04 by fetching the cited locator and confirming its title and publisher from the response, per the D0 verify-or-refuse rule). The cited handbook states in its own text that it 'isn't intended to be a replacement for a language specification', and no separate normative TypeScript specification is published today — the formal spec was retired upstream. So the honest citation is Microsoft's handbook plus the implementation repository, and the authority for TypeScript's semantics is the compiler. This matters to the P0 product-browser profile: a bar-c support claim for TypeScript can be checked against tsc acceptance but NOT against a normative document, so 'conforms to the spec' is not a claim this repository can make about TypeScript. Recording that here keeps the profile honest rather than discovering it during a completion review."
+
+type TypeScript
+  = | TypeScriptTarget
+
+data typescript_language_subject: TypeScript = TypeScriptTarget
+
+data typescript_language_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.languages.typescript.subject",
+      decl_name: "typescript_language_subject",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [typescript_language_further_authority_1]
+}
+
+data extdeps_model_scope: ExternalModelScope = typescript_language_model_scope

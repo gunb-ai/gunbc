@@ -6,10 +6,19 @@ import extdeps.git.object_store {
   git_object_id_eq,
   git_object_id_from_untagged_hex
 }
+import v2.compiler.source_authority {
+  SourceRef,
+  SourceRootCoverage,
+  SourceRootCoverageComplete,
+  SourceRootManifestAbsent,
+  SourceRootManifestElided,
+  SourceRootRowsMissing
+}
 import std.content_hash {
   ContentHash,
   ContentHashComparison,
   ContentHashEqual,
+  Fnv1a64,
   Fnv1a64Structural,
   Sha256Digest,
   as_content_hash_structural,
@@ -21,9 +30,11 @@ import std.content_hash {
 import std.types { CommitSha, GitRef }
 import v2.std.algebra { fold_list }
 import v2.std.collection { List }
+import v2.std.integer { Int }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol }
-import v2.std.optional { Absent, Present }
+import v2.std.optional { Absent, Optional, Present }
+import v2.std.qualified_name { QualifiedName }
 import v2.std.text { String }
 
 data frontier_fixture_cemented_producer_note: String = "FixtureCemented is forward-declared for the fixture-free self-host bar; inhabited by the behavioral-equivalence probe when it detects injected fixtures cementing greens (e.g. add_arrow_eval_allocate_literal, pick-lit hardcoding) — not by frontier_classify_rejection_reason (assemble/emit stage only)."
@@ -51,11 +62,27 @@ data frontier_probe_pre_emit_upstream_semantic_scan_dissolve_trigger: String = "
 
 data upstream_semantic_compiler_error_class: Symbol = ^CompilerError
 
+type FrontierProbeDetail
+  = FrontierProbeDetailAbsent
+  | MissingModule { requested: QualifiedName }
+  | SourceRootManifestElidedProbe { read_count: Int, cap: Int }
+  | FrontierProbeClosurePopulationRefused { cause: Symbol }
+  | FrontierProbeCoverageRefused { coverage: SourceRootCoverage }
+  | SourceRefReadRefused { source_ref: SourceRef, error: String }
+  | SourceRefContentHashMismatch {
+      source_ref: SourceRef,
+      expected: ContentHash,
+      observed: ContentHash
+    }
+
+data frontier_probe_detail_note: String = "Survey receipts carry structural probe detail beside the reason symbol. MissingModule holds the QualifiedName sought (not only its dotted projection). SourceRootManifestElidedProbe records inline-manifest elision when the inline carrier cannot supply the closure. FrontierProbeClosurePopulationRefused records entry-binding and closure-population identity failures (duplicate refs, count mismatch, entry not exactly once). FrontierProbeCoverageRefused preserves the original SourceRootCoverage arm. SourceRefReadRefused carries the filesystem error string without fabricating missing-vs-unreadable. SourceRefContentHashMismatch carries expected and observed ContentHash beside the ref."
+
 type FrontierProbeReceipt {
   module_path: String
   blocker_class: FrontierBlockerClass
   located_stage: FrontierProbeStage
   located_reason: Symbol
+  detail: FrontierProbeDetail
 }
 
 data frontier_survey_subject_grounding_note: String = "FrontierSurveySubject pins one execution-measured survey: source_commit + source_tree (GitObjectId authority — operator GitTreeObjectId names the same tree-object fact), survey_executable Sha256Digest (binary built from that tree), ordered source_roots_digest Fnv1a64Structural, and probe_policy_revision ContentHash (structural family only). Every shard row must carry all five subject fields on the TSV wire; the seed bin load_probe_rows_from_tsv refuses SurveySubjectMismatch when any row disagrees with the first. FrontierProbeReceipt has no subject field and FrontierSurveyManifest carries one manifest-level subject — the per-row invariant is enforced only by the seed bin producer, not representable on the .dag carrier; manifests from any other producer carry no such guarantee. Honest next trigger: subject on each receipt (structural per-row requirement)."

@@ -265,6 +265,182 @@ pub fn parse_stage0_cargo_manifest_bin_paths(content: &str) -> Stage0CargoManife
     }
 }
 
+/// Temporary seed bridge for `gunbc.roadmap_acceptance_history_projection`.
+/// Evaluates `roadmap_acceptance_event_history` from revision-addressed authority
+/// source text using a first-root overlay; used only when the JSONL carrier is
+/// absent at merge-base (one-time migration bootstrap).
+#[derive(Debug, Clone, PartialEq)]
+pub enum RoadmapAcceptanceHistoryProjection {
+    Projected { events: Vec<v1_interpreter::Value> },
+    Refused { detail: String },
+}
+
+static ROADMAP_AUTHORITY_OVERLAY_SEQ: AtomicU64 = AtomicU64::new(0);
+
+struct RoadmapAuthorityOverlayGuard {
+    path: std::path::PathBuf,
+}
+
+impl Drop for RoadmapAuthorityOverlayGuard {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.path);
+    }
+}
+
+pub fn project_roadmap_acceptance_event_history_from_authority_text(
+    authority_text: &str,
+) -> RoadmapAcceptanceHistoryProjection {
+    project_roadmap_acceptance_event_history_from_authority_text_inner(authority_text, None)
+}
+
+fn project_roadmap_acceptance_event_history_from_authority_text_inner(
+    authority_text: &str,
+    remap_ctx: Option<&v1_interpreter::InterpContext>,
+) -> RoadmapAcceptanceHistoryProjection {
+    let workspace = workspace_root();
+    let overlay_seq = ROADMAP_AUTHORITY_OVERLAY_SEQ.fetch_add(1, Ordering::Relaxed);
+    let temp_dir = workspace.join("target").join(format!(
+        "gunbc-roadmap-auth-proj-{}-{}",
+        std::process::id(),
+        overlay_seq
+    ));
+    let _overlay_guard = RoadmapAuthorityOverlayGuard {
+        path: temp_dir.clone(),
+    };
+    if let Err(error) = std::fs::remove_dir_all(&temp_dir) {
+        if error.kind() != std::io::ErrorKind::NotFound {
+            return RoadmapAcceptanceHistoryProjection::Refused {
+                detail: format!("failed to reset authority overlay directory: {error}"),
+            };
+        }
+    }
+    let overlay_path = temp_dir.join("dag/gunbc/roadmap_authority.dag");
+    if let Err(error) = std::fs::create_dir_all(overlay_path.parent().unwrap())
+        .and_then(|_| std::fs::write(&overlay_path, authority_text))
+    {
+        return RoadmapAcceptanceHistoryProjection::Refused {
+            detail: format!("failed to stage authority overlay: {error}"),
+        };
+    }
+
+    let source_roots = vec![
+        temp_dir.to_string_lossy().into_owned(),
+        workspace.join("dag").to_string_lossy().into_owned(),
+        workspace.join("src/v2").to_string_lossy().into_owned(),
+    ];
+    let entry_file = overlay_path.to_string_lossy().into_owned();
+    let index = build_multi_entry_index_primary_precedence(&source_roots);
+    let sources = match load_sources_for_entry_with_pool(&index, &entry_file) {
+        Ok(sources) => sources,
+        Err(detail) => {
+            return RoadmapAcceptanceHistoryProjection::Refused { detail };
+        }
+    };
+    let (graph, source_indices, compile_clean_diags) = match resolved_graph_from_sources_with_index(
+        &index,
+        sources,
+        ResolveTypecheckGate::Strict,
+        &entry_file,
+        ResolvedGraphMemoShare::Ephemeral,
+    ) {
+        Ok(parts) => parts,
+        Err(detail) => {
+            return RoadmapAcceptanceHistoryProjection::Refused { detail };
+        }
+    };
+    if compile_clean_diags
+        .iter()
+        .any(compile_clean_diagnostic_is_hard)
+    {
+        let detail = compile_clean_diags
+            .iter()
+            .filter(|diag| compile_clean_diagnostic_is_hard(diag))
+            .map(|diag| format_error_node(diag, &source_indices))
+            .collect::<Vec<_>>()
+            .join("; ");
+        return RoadmapAcceptanceHistoryProjection::Refused { detail };
+    }
+
+    let ctx = v1_interpreter::InterpContext::new(
+        graph.as_ref(),
+        source_indices,
+        v1_interpreter::ExecutionMode::Wet,
+    );
+    let result = v1_interpreter::run_in_context(&ctx, "roadmap_acceptance_event_history", true);
+
+    match result {
+        Ok(v1_interpreter::Value::List(events)) => {
+            let mut events: Vec<v1_interpreter::Value> = events.iter().cloned().collect();
+            if let Some(witness_ctx) = remap_ctx {
+                match roadmap_acceptance_history_carrier::serialize_roadmap_acceptance_events_to_jsonl(
+                    &events, &ctx,
+                ) {
+                    Ok(jsonl) => {
+                        match roadmap_acceptance_history_carrier::parse_roadmap_acceptance_event_history_jsonl(
+                            &jsonl,
+                            witness_ctx,
+                        ) {
+                            roadmap_acceptance_history_carrier::RoadmapAcceptanceEventHistoryParse::Parsed {
+                                events: remapped,
+                            } => events = remapped,
+                            roadmap_acceptance_history_carrier::RoadmapAcceptanceEventHistoryParse::Refused {
+                                detail,
+                            } => {
+                                return RoadmapAcceptanceHistoryProjection::Refused {
+                                    detail: format!(
+                                        "bootstrap projection jsonl remap refused: {detail}"
+                                    ),
+                                };
+                            }
+                        }
+                    }
+                    Err(detail) => {
+                        return RoadmapAcceptanceHistoryProjection::Refused { detail };
+                    }
+                }
+            }
+            RoadmapAcceptanceHistoryProjection::Projected { events }
+        }
+        Ok(other) => RoadmapAcceptanceHistoryProjection::Refused {
+            detail: format!(
+                "roadmap_acceptance_event_history returned {}, expected List",
+                other.type_label_public()
+            ),
+        },
+        Err(error) => RoadmapAcceptanceHistoryProjection::Refused {
+            detail: error.to_string(),
+        },
+    }
+}
+
+pub fn project_roadmap_acceptance_event_history_from_authority_text_builtin(
+    authority_text: &str,
+    ctx: &v1_interpreter::InterpContext,
+) -> v1_interpreter::InterpResult<v1_interpreter::Value> {
+    use std::rc::Rc;
+
+    use v1_interpreter::{list_value, sorted_fields, Value};
+
+    let projected = project_roadmap_acceptance_event_history_from_authority_text_inner(
+        authority_text,
+        Some(ctx),
+    );
+    Ok(match projected {
+        RoadmapAcceptanceHistoryProjection::Projected { events } => Value::Variant {
+            type_name: ctx.sym("RoadmapAcceptanceHistoryProjection"),
+            variant_name: ctx.sym("RoadmapAcceptanceHistoryProjected"),
+            fields: Rc::new(sorted_fields(vec![(ctx.sym("events"), list_value(events))])),
+        },
+        RoadmapAcceptanceHistoryProjection::Refused { detail } => Value::Variant {
+            type_name: ctx.sym("RoadmapAcceptanceHistoryProjection"),
+            variant_name: ctx.sym("RoadmapAcceptanceHistoryProjectionRefused"),
+            fields: Rc::new(sorted_fields(vec![(ctx.sym("detail"), Value::Str(detail))])),
+        },
+    })
+}
+
+pub mod roadmap_acceptance_history_carrier;
+
 #[cfg(test)]
 mod stage0_cargo_manifest_parser_tests {
     use super::{parse_stage0_cargo_manifest_bin_paths, Stage0CargoManifestBinParse};
@@ -318,6 +494,76 @@ path = "src/bin/claim_batch.rs"
             Stage0CargoManifestBinParse::Parsed {
                 authored_relative_paths: vec!["../../outside.rs".to_string()],
             }
+        );
+    }
+}
+
+#[cfg(test)]
+mod roadmap_acceptance_history_projection_tests {
+    use super::{
+        project_roadmap_acceptance_event_history_from_authority_text,
+        roadmap_acceptance_history_carrier::{
+            parse_roadmap_acceptance_event_history_jsonl,
+            serialize_roadmap_acceptance_events_to_jsonl, RoadmapAcceptanceEventHistoryParse,
+        },
+        RoadmapAcceptanceHistoryProjection,
+    };
+    use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
+    use crate::v1_compiler_infer_items::ResolvedGraph;
+    use crate::v1_interpreter::{ExecutionMode, InterpContext};
+    use im::HashMap;
+    use std::rc::Rc;
+
+    fn empty_ctx() -> InterpContext {
+        let graph = ResolvedGraph {
+            modules: Rc::new(im::Vector::new()),
+            item_registry: Rc::new(HashMap::new()),
+            diagnostics: Rc::new(im::Vector::new()),
+            emit_graph_info: empty_emit_graph_info(),
+        };
+        InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic)
+    }
+
+    #[test]
+    fn merge_base_authority_projection_matches_jsonl_carrier() {
+        let authority = std::process::Command::new("git")
+            .args(["show", "9ce6526c528:dag/gunbc/roadmap_authority.dag"])
+            .output()
+            .expect("git show merge-base authority");
+        assert!(
+            authority.status.success(),
+            "git show failed: {}",
+            String::from_utf8_lossy(&authority.stderr)
+        );
+        let authority = String::from_utf8(authority.stdout).expect("utf8 authority");
+        let jsonl = std::fs::read_to_string(
+            super::workspace_root().join("dag/gunbc/roadmap_acceptance_event_history.jsonl"),
+        )
+        .expect("jsonl carrier");
+        let projected = project_roadmap_acceptance_event_history_from_authority_text(&authority);
+        let RoadmapAcceptanceHistoryProjection::Projected { events: prior } = projected else {
+            panic!("projection refused: {projected:?}");
+        };
+        let ctx = empty_ctx();
+        let RoadmapAcceptanceEventHistoryParse::Parsed { events: current } =
+            parse_roadmap_acceptance_event_history_jsonl(&jsonl, &ctx)
+        else {
+            panic!("jsonl parse refused");
+        };
+        assert_eq!(
+            prior.len(),
+            current.len(),
+            "event count prior={} current={}",
+            prior.len(),
+            current.len()
+        );
+        let prior_jsonl = serialize_roadmap_acceptance_events_to_jsonl(&prior, &ctx)
+            .expect("serialize projected events");
+        let current_jsonl = serialize_roadmap_acceptance_events_to_jsonl(&current, &ctx)
+            .expect("serialize carrier events");
+        assert_eq!(
+            prior_jsonl, current_jsonl,
+            "jsonl carrier mismatch after projection"
         );
     }
 }
@@ -1254,6 +1500,16 @@ fn build_module_path_index_uncached(source_roots: &[String]) -> HashMap<String, 
         if manifest_stub_superseded_by_overlay(&rel, source_roots, root_idx) {
             return;
         }
+        if let Some(existing) = index.get(&binding.module_path) {
+            if existing == &rel || same_canonical_file(existing, &rel) {
+                return;
+            }
+            if root_idx > 0 {
+                // Primary-precedence multi-root: root[0] owns overlapping module paths;
+                // later roots contribute only absent modules (build_module_index_primary_precedence).
+                return;
+            }
+        }
         insert_module_path(&mut index, &binding.module_path, rel);
     });
     index
@@ -1335,6 +1591,9 @@ fn collect_module_binding_manifest_rows(source_roots: &[String]) -> Vec<ModuleBi
         }
         if let Some(existing) = rows_by_module.get(&binding.module_path) {
             if existing.rel_path != rel && !same_canonical_file(&existing.rel_path, &rel) {
+                if root_idx > 0 {
+                    return;
+                }
                 panic!(
                     "{}",
                     module_path_collision_panic_message(
@@ -1541,6 +1800,8 @@ const CI_LAYER_ROOTS_AUTHORITY_REL: &str = "dag/gunbc/ci_layer_roots.dag";
 /// its executing cadence, a path policy names a place, and fusing them into one substring
 /// representation is what made the old reconciliation weaker than its name.
 const EXPLICIT_WITNESS_ADMISSION_AUTHORITY_REL: &str = "dag/gunbc/explicit_witness_admission.dag";
+const WITNESS_DEFERRAL_FREEZE_AUTHORITY_REL: &str = "dag/gunbc/witness_deferral_freeze.dag";
+const COMMIT_WORKFLOW_AUTHORITY_REL: &str = "dag/gunbc/commit_workflow.dag";
 const WITNESS_LAYER_ROOTS_DATA_NAME: &str = "witness_layer_roots";
 const WITNESS_DISCOVERY_SCAN_DIRS_DATA_NAME: &str = "witness_discovery_scan_dirs";
 const WITNESS_EXCLUSION_FRONTIER_DATA_NAME: &str = "witness_exclusion_frontier";
@@ -2112,6 +2373,9 @@ fn build_module_index(source_roots: &[String]) -> ModuleSourceIndex {
                 if let Some(existing) = index.get(&module_path) {
                     if existing.path != rel_path && !same_canonical_file(&existing.path, &rel_path)
                     {
+                        if root_idx > 0 {
+                            continue;
+                        }
                         panic!(
                             "{}",
                             module_path_collision_panic_message(
@@ -2121,6 +2385,7 @@ fn build_module_index(source_roots: &[String]) -> ModuleSourceIndex {
                             )
                         );
                     }
+                    continue;
                 }
                 index.insert(
                     module_path,
@@ -4306,6 +4571,8 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::AmbiguousReference { .. } => "AmbiguousReference",
         CompilerDiagnostic::CallArgumentNameUnknown { .. } => "CallArgumentNameUnknown",
         CompilerDiagnostic::CallPositionalSurplus { .. } => "CallPositionalSurplus",
+        CompilerDiagnostic::CallPositionalDeficit { .. } => "CallPositionalDeficit",
+        CompilerDiagnostic::CallNamedArgOnFunctionValue { .. } => "CallNamedArgOnFunctionValue",
         CompilerDiagnostic::OccurrenceTransportViolation { .. } => "OccurrenceTransportViolation",
     };
     let name = match d.diagnostic.as_ref() {
@@ -4339,6 +4606,8 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::AmbiguousReference { name, .. } => name.clone(),
         CompilerDiagnostic::CallArgumentNameUnknown { argument, .. } => argument.clone(),
         CompilerDiagnostic::CallPositionalSurplus { callee, .. } => callee.clone(),
+        CompilerDiagnostic::CallPositionalDeficit { parameter, .. } => parameter.clone(),
+        CompilerDiagnostic::CallNamedArgOnFunctionValue { argument, .. } => argument.clone(),
         CompilerDiagnostic::OccurrenceTransportViolation { .. } => {
             "(occurrence-transport-refusal)".to_string()
         }
@@ -12626,11 +12895,36 @@ pub fn whole_tree_ancestry_retention_probe(
 /// is why ten consecutive `extdeps_scope_placement_gate_passes` reds reported nothing but
 /// `returned Bool(false)`. A missing companion stays "not declared" either way, so widening
 /// the derivation cannot invent a required hook for a witness that has none.
-pub fn failure_receipt_companion(function: &str) -> Option<String> {
-    function
-        .strip_suffix("_holds")
-        .or_else(|| function.strip_suffix("_passes"))
-        .map(|base| format!("{base}_failure_receipt"))
+/// Delegates suffix derivation to `gunbc.test_module_hygiene.failure_receipt_companion`
+/// (single authority — orphan reachability and claim_executor share the same rule).
+/// `NotDeclared` means the witness name carries no `_holds`/`_passes` companion convention;
+/// `AuthorityRefused` is a located lookup failure and must not be rendered as not-declared.
+pub use test_module_hygiene_bridge::FailureReceiptCompanionLookup;
+
+pub fn failure_receipt_companion(function: &str) -> FailureReceiptCompanionLookup {
+    test_module_hygiene_bridge::failure_receipt_companion_from_authority(function)
+}
+
+/// Append failure-receipt loudness to a Bool(false) witness detail string.
+pub fn append_failure_receipt_companion_loudness(
+    detail: &mut String,
+    ctx: &v1_interpreter::InterpContext,
+    witness_function: &str,
+) {
+    match failure_receipt_companion(witness_function) {
+        FailureReceiptCompanionLookup::Declared(companion) => {
+            let receipt = run_claim_failure_receipt(ctx, &companion);
+            if !receipt.is_empty() {
+                detail.push_str(" | ");
+                detail.push_str(&receipt);
+            }
+        }
+        FailureReceiptCompanionLookup::AuthorityRefused { cause } => {
+            detail.push_str(" | failure_receipt_companion_refused: ");
+            detail.push_str(&cause);
+        }
+        FailureReceiptCompanionLookup::NotDeclared => {}
+    }
 }
 
 /// Run a witness companion that returns `String` divergence detail (Lane B agreement loudness).
@@ -12880,8 +13174,17 @@ pub fn run_claim_measured(
     v1_interpreter::eval_subject_clear();
     let outcome = budget_completion_outcome(ctx.witness_eval_budget(), outcome, cpu_nanos);
     let outcome = wall_budget_completion_outcome(ctx.witness_wall_budget(), outcome, wall_nanos);
-    let receipt =
-        v1_interpreter::performance_receipt_from_witness(subject_key, function, wall_nanos);
+    // The receipt records BOTH clocks, and records the same `cpu_nanos` value that
+    // `budget_completion_outcome` just enforced against — one binding feeding both, so the
+    // enforced and the recorded quantity cannot drift apart. Previously `cpu_nanos` died on
+    // the line above and only wall reached the receipt, which is why the cap enforced a
+    // quantity no artifact carried.
+    let receipt = v1_interpreter::performance_receipt_from_witness(
+        subject_key,
+        function,
+        wall_nanos,
+        cpu_nanos,
+    );
     (outcome, receipt)
 }
 
@@ -13031,6 +13334,54 @@ mod budget_completion_tests {
         assert!(matches!(
             budget_completion_outcome(Some(5), ClaimOutcome::Pass, 4_000_000),
             ClaimOutcome::Pass
+        ));
+    }
+
+    #[test]
+    /// The enforced quantity must be RECORDED, not just spent. `run_claim_measured` computes
+    /// thread CPU, hands it to `budget_completion_outcome`, and — until this landed — dropped
+    /// it, so the cap was enforced on a number no artifact carried and no threshold built on
+    /// a cost receipt could select the population the cap kills.
+    ///
+    /// The two clocks are asserted to be INDEPENDENTLY carried: a receipt that stored one
+    /// value under both names would pass a weaker test while reintroducing the conflation.
+    fn performance_receipt_carries_the_enforced_cpu_clock_beside_wall() {
+        let receipt = v1_interpreter::performance_receipt_from_witness(
+            "subj".to_string(),
+            "claim",
+            9_000_000,
+            4_000_000,
+        );
+        assert_eq!(
+            receipt.wall_nanos, 9_000_000,
+            "wall is the measurement basis"
+        );
+        assert_eq!(receipt.cpu_nanos, 4_000_000, "cpu is the enforcement basis");
+        assert_ne!(
+            receipt.wall_nanos, receipt.cpu_nanos,
+            "the two clocks must be carried independently, not aliased"
+        );
+
+        // The bound that makes the wall figure useful in one direction only: eval is
+        // single-threaded, so cpu <= wall. A wall figure under the cap PROVES cpu under it
+        // (so existing "lands under the fast-lane budget" triggers were always decidable),
+        // while an over-cap wall figure proves nothing about cpu — the ranking direction the
+        // per-witness cost-envelope lane needs, and the reason wall alone was insufficient.
+        let budget_ms = 5u64;
+        assert!(
+            receipt.cpu_nanos <= receipt.wall_nanos,
+            "single-threaded eval: cpu must be bounded above by wall"
+        );
+        assert!(matches!(
+            budget_completion_outcome(Some(budget_ms), ClaimOutcome::Pass, receipt.cpu_nanos),
+            ClaimOutcome::Pass
+        ));
+        // Same occurrence, judged on wall, would have crossed — the two bases genuinely
+        // disagree here, which is why recording only one of them was a defect rather than a
+        // naming quibble.
+        assert!(matches!(
+            budget_completion_outcome(Some(budget_ms), ClaimOutcome::Pass, receipt.wall_nanos),
+            ClaimOutcome::TimedOut { .. }
         ));
     }
 
@@ -15250,11 +15601,34 @@ pub struct DeferredDiscoveryRow {
     pub reads_live_tree: bool,
 }
 
+/// Why an excluded witness row failed admission. These are the two REFUSING arms of
+/// `std.witness_admission`'s `WitnessExecutionStanding`; they are separate because their remedies
+/// differ. The other two arms are absent because neither refuses: one has an executing consumer,
+/// the other is frozen legacy debt the migration ratchet tolerates without ever counting as covered.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DeferredAdmissionCause {
+    /// Nothing claims the row — no roster, no path policy. Remedy: name a cadence or delete it.
+    UnexecutedDeferredWitness,
+    /// A broad `OfflineLocalRecipe` path policy claims it, nothing executes it, and it is outside
+    /// the frozen legacy population. Remedy: an exact admission naming an executing cadence.
+    UnclassifiedPathDeferral,
+}
+
+impl DeferredAdmissionCause {
+    fn label(self) -> &'static str {
+        match self {
+            Self::UnexecutedDeferredWitness => "UnexecutedDeferredWitness",
+            Self::UnclassifiedPathDeferral => "UnclassifiedPathDeferral",
+        }
+    }
+}
+
 /// Phase 0(b) admission invariant refusal — an excluded witness row with zero executing consumers.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct UnexecutedDeferredWitness {
+pub struct DeferredAdmissionRefusal {
     pub entry: String,
     pub function: String,
+    pub cause: DeferredAdmissionCause,
 }
 
 #[derive(Debug)]
@@ -15370,6 +15744,38 @@ fn witness_cost_nanosecond_value(
     .map_err(|e| format!("[witness-row-cost] REFUSED: nanosecond constructor failed: {e}"))
 }
 
+/// Hand the occurrence's two clocks over as ONE basis-tagged list, built by the authored
+/// constructor rather than assembled here.
+///
+/// The seed constructs no carrier: it calls `observation_durations_cpu_and_wall` across the
+/// interpreter boundary and passes the returned value straight through, exactly as it already
+/// does for `nanosecond` and `millisecond`. A `Value::List` of hand-built records would fork
+/// `std.observation`'s shape into Rust, which is the thing every note on this seam forbids.
+///
+/// Both clocks come from ONE run — `run_claim_measured` reads `thread_cpu_nanos` and
+/// `Instant::elapsed` around the same evaluation — so a row can never carry a CPU figure from
+/// one occurrence beside a wall figure from another. Order is fixed by the constructor's
+/// parameter names, not by position here, so a swap is a compile error rather than a silent
+/// exchange of the two magnitudes.
+fn witness_cost_eval_durations(
+    ctx: &v1_interpreter::InterpContext,
+    cpu_nanos: u128,
+    wall_nanos: u128,
+) -> Result<v1_interpreter::Value, String> {
+    let cpu = witness_cost_nanosecond_value(ctx, cpu_nanos)?;
+    let wall = witness_cost_nanosecond_value(ctx, wall_nanos)?;
+    v1_interpreter::run_in_context_with_args(
+        ctx,
+        "observation_durations_cpu_and_wall",
+        &[
+            (Some("cpu".to_string()), cpu),
+            (Some("wall".to_string()), wall),
+        ],
+        false,
+    )
+    .map_err(|e| format!("[witness-row-cost] REFUSED: eval duration constructor failed: {e}"))
+}
+
 fn witness_cost_string_field(
     ctx: &v1_interpreter::InterpContext,
     fields: &[(v1_interpreter::Symbol, v1_interpreter::Value)],
@@ -15385,6 +15791,67 @@ fn witness_cost_string_field(
             "[witness-row-cost] REFUSED: projected receipt row lacks {name}"
         )),
     }
+}
+
+/// Read ONE clock out of a row's tagged eval durations, through the authored projection.
+///
+/// The row's `eval` term is a `List<TimedMeasurement>` — every clock the occurrence was
+/// measured on, each tagged — so the seed cannot reach for "the duration" any more, and that
+/// is the point: which clock it wants is now a thing it has to say. It says it by calling
+/// `std.observation.observation_duration_of`, the same projection every `.dag` consumer uses,
+/// rather than walking the list here. A local walk would be a second copy of the lookup,
+/// including its ambiguity refusal, and the two would drift.
+///
+/// Returns `None` for a clock the producer did not sample, distinguished from a clock it
+/// sampled as zero. `MeasuredUnavailable` carries its cause and this returns `None` rather
+/// than `0`, which is the same `observation_measured_note` discipline the TSV's `unmeasured`
+/// cell keeps: a number that does not exist must not render as a small one.
+fn witness_cost_clock_nanos(
+    ctx: &v1_interpreter::InterpContext,
+    durations: &v1_interpreter::Value,
+    basis_constructor: &str,
+) -> Result<Option<u128>, String> {
+    use v1_interpreter::Value;
+    let basis = v1_interpreter::run_in_context_with_args(ctx, basis_constructor, &[], false)
+        .map_err(|e| format!("[witness-row-cost] REFUSED: {basis_constructor} failed: {e}"))?;
+    let measured = v1_interpreter::run_in_context_with_args(
+        ctx,
+        "observation_duration_of",
+        &[
+            (Some("durations".to_string()), durations.clone()),
+            (Some("basis".to_string()), basis),
+        ],
+        false,
+    )
+    .map_err(|e| {
+        format!(
+            "[witness-row-cost] REFUSED: observation_duration_of({basis_constructor}) failed: {e}"
+        )
+    })?;
+    let Value::Variant {
+        variant_name,
+        fields,
+        ..
+    } = measured
+    else {
+        return Err(
+            "[witness-row-cost] REFUSED: observation_duration_of returned a non-Measured value"
+                .to_string(),
+        );
+    };
+    if ctx.sym_eq(variant_name, "MeasuredUnavailable") {
+        return Ok(None);
+    }
+    if !ctx.sym_eq(variant_name, "MeasuredValue") {
+        return Err(format!(
+            "[witness-row-cost] REFUSED: observation_duration_of returned unknown variant {}",
+            ctx.resolve(variant_name)
+        ));
+    }
+    let value = ctx.field(&fields, "value").cloned().ok_or_else(|| {
+        "[witness-row-cost] REFUSED: MeasuredValue lacks its Nanosecond".to_string()
+    })?;
+    witness_cost_nanosecond_count(ctx, value, basis_constructor).map(Some)
 }
 
 fn witness_cost_nanosecond_count(
@@ -15496,8 +15963,9 @@ pub fn project_witness_cost_receipt(
         }
         for index in indices {
             let outcome = &summary.witness_outcomes[index];
-            let eval = witness_cost_nanosecond_value(
+            let eval = witness_cost_eval_durations(
                 &ctx,
+                summary.performance_receipts[index].cpu_nanos,
                 summary.performance_receipts[index].wall_nanos,
             )?;
             let mut args = vec![
@@ -15544,8 +16012,27 @@ pub fn project_witness_cost_receipt(
                 ClaimOutcome::TimedOut {
                     elapsed_ms,
                     budget_ms,
-                    ..
+                    kind,
                 } => {
+                    // The clock the deadline was enforced on travels WITH the pair, so a
+                    // reader of the event can tell a thread-CPU fail-stop from a wall
+                    // ceiling. The seed already held this fact as `BudgetKind` and used to
+                    // spend it on a prose label; `std.observation.TimedOut` now carries it.
+                    // The basis is selected by matching the typed enum and calling the
+                    // corresponding authored constructor — never recovered from a string.
+                    let basis_constructor = match kind {
+                        BudgetKind::Cpu => "clock_basis_cpu",
+                        BudgetKind::Wall => "clock_basis_wall",
+                    };
+                    let basis = run_in_context_with_args(&ctx, basis_constructor, &[], false)
+                        .map_err(|e| {
+                            format!(
+                                "[witness-row-cost] REFUSED: {basis_constructor} failed on \
+                                 {}::{}: {e}",
+                                outcome.entry, outcome.function
+                            )
+                        })?;
+                    args.push((Some("basis".to_string()), basis));
                     for (name, ms) in [("budget", *budget_ms), ("elapsed", *elapsed_ms)] {
                         let carrier = run_in_context_with_args(
                             &ctx,
@@ -15667,10 +16154,23 @@ pub fn project_witness_cost_receipt(
                     )
                 }
             };
+            // The receipt's cost column is WALL — the clock the witness threshold is stated
+            // on (operator ruling 2026-08-05) — and it is now SAID rather than assumed. The
+            // authored projection already refuses a witness whose wall figure is
+            // unavailable, so `None` here would mean the row reached this point without the
+            // one measurement the receipt exists to carry; that refuses rather than
+            // defaulting.
+            let eval_wall_nanos = witness_cost_clock_nanos(&ctx, &eval, "clock_basis_wall")?
+                .ok_or_else(|| {
+                    format!(
+                        "[witness-row-cost] REFUSED: projected row {row_entry}::{function} \
+                         carries no wall duration"
+                    )
+                })?;
             projected_rows.push((
                 row_entry,
                 function,
-                witness_cost_nanosecond_count(&ctx, eval, "eval")?,
+                eval_wall_nanos,
                 witness_cost_nanosecond_count(&ctx, resolve, "resolve")?,
                 witness_cost_nanosecond_count(&ctx, warm, "warm")?,
                 outcome,
@@ -16143,6 +16643,11 @@ fn witness_admission_explicit_consumer_keys() -> Vec<String> {
                 keys.push(key);
             }
         }
+        for key in commit_roster_witness_claim_keys().iter().cloned() {
+            if !keys.iter().any(|k| k == &key) {
+                keys.push(key);
+            }
+        }
         keys.sort();
         keys
     })
@@ -16182,53 +16687,495 @@ pub(crate) fn explicit_witness_admission_pairs() -> Vec<(String, String)> {
         .collect()
 }
 
-/// Phase 0(b): every deferred witness row must name an executing consumer (explicit roster,
-/// offline local recipe, or fixture explicit roster). Returns orphans — enrolled, zero consumers.
+// SCAFFOLD (§7 HAND-RUST — `cli_run_witness_deferral_freeze`): the seed realization of the
+// frozen path-deferral wall. Registered disposition, dissolution sequence and measured LOC delta:
+// `gunbc.cli_run_witness_deferral_freeze_scaffold` (authority `gunbc.witness_deferral_freeze`).
+// The .dag side being the authority does NOT exempt this realization — cli_run.rs is the largest
+// hand-maintained Rust wall in the program and is growing against its own hollowing plan, so this
+// block is accounted for rather than admitted quietly. DELETE WHEN: the frozen-deferral projection
+// is emitted or natively realized (then the source-scan helpers go), the classification path
+// follows it (then the rest goes), or the frozen population reaches zero (then all of it goes with
+// the freeze itself). Not a compiler_frontier `.dag` row: seed-Rust, counted here.
+pub(crate) const CLI_RUN_WITNESS_DEFERRAL_FREEZE_SCAFFOLD_MARKER: &str =
+    "cli_run_witness_deferral_freeze";
+
+/// The THIRD source of an executing consumer, and the one that was missing. `commit_gate_roster`
+/// carries `CommitWitnessClaim` rows at function grain; `project_ci_floor_witness_entries` and
+/// `project_falsifier_witness_entries` turn them into explicit entries that RUN, and explicit rows
+/// merge after discovery with no exclusion filter — so an enrolled witness under an offline path
+/// executes even though the path excludes it (the two-edit rule `enforcement_coverage_exclusion_note`
+/// records: offlining such a witness requires deleting its enrollment too).
+///
+/// Without this, the freeze wall would refuse 31 identities that already have a real consumer —
+/// a fail-closed FALSE POSITIVE, which is still a wrong answer. Only surfaces that execute count:
+/// `GitPrePushHook` is fmt-only since 2026-07-25 and runs no witness, so an enrollment naming only
+/// that surface is not a consumer.
+fn commit_roster_witness_claim_keys() -> &'static [String] {
+    static KEYS: OnceLock<Vec<String>> = OnceLock::new();
+    KEYS.get_or_init(|| {
+        let content = std::fs::read_to_string(workspace_root().join(COMMIT_WORKFLOW_AUTHORITY_REL))
+            .unwrap_or_else(|e| {
+                panic!("witness admission: failed to read {COMMIT_WORKFLOW_AUTHORITY_REL}: {e}")
+            });
+        commit_roster_witness_claim_keys_from_source(&content)
+    })
+}
+
+fn commit_roster_witness_claim_keys_from_source(content: &str) -> Vec<String> {
+    // The ROW head, not the bare constructor name: `CommitWitnessClaim {` also opens the coproduct
+    // declaration and every pattern-match arm over it, and one such arm's window happens to reach a
+    // prose `entry:` literal in a neighbouring note. A row is always a `check:` field of a
+    // `CommitCheckEnrollment`, so that prefix is the identity of a row rather than a guess about it.
+    const HEAD: &str = "check: CommitWitnessClaim {";
+    const EXECUTING_SURFACES: [&str; 2] = ["GithubActionsCiJob", "FalsifierCadenceJob"];
+    let mut keys: Vec<String> = Vec::new();
+    let mut cursor = 0usize;
+    while let Some(offset) = content[cursor..].find(HEAD) {
+        let at = cursor + offset;
+        cursor = at + HEAD.len();
+        let rest = &content[cursor..];
+        let Some(entry) = quoted_after_field(rest, "entry:") else {
+            panic!(
+                "witness admission: CommitWitnessClaim row at byte {at} of \
+                 {COMMIT_WORKFLOW_AUTHORITY_REL} has no parseable `entry:` literal"
+            );
+        };
+        let Some(list) = bracket_list_after_field(rest, "check_fns:") else {
+            panic!(
+                "witness admission: CommitWitnessClaim row `{entry}` in \
+                 {COMMIT_WORKFLOW_AUTHORITY_REL} has no parseable `check_fns:` list"
+            );
+        };
+        let Some(surfaces) = bracket_list_after_field(rest, "surfaces:") else {
+            panic!(
+                "witness admission: CommitWitnessClaim row `{entry}` in \
+                 {COMMIT_WORKFLOW_AUTHORITY_REL} has no parseable enrollment `surfaces:` list"
+            );
+        };
+        if !EXECUTING_SURFACES.iter().any(|s| surfaces.contains(s)) {
+            continue;
+        }
+        for function in quoted_literals(&list) {
+            let key = witness_admission_manifest_key(&entry, &function);
+            if !keys.iter().any(|k| k == &key) {
+                keys.push(key);
+            }
+        }
+    }
+    keys
+}
+
+/// The frozen legacy path-deferral population, read from the one `.dag` authority by the same
+/// interim source scan as the sibling rosters (`CLI_RUN_WITNESS_ADMISSION_SOURCE_SCAN_SCAFFOLD_MARKER`).
+///
+/// Fail-closed like its siblings: a `FrozenPathDeferral {` head that does not parse PANICS with
+/// its location rather than yielding no key, because a silently-dropped freeze row would refuse a
+/// legitimately frozen witness — and a silently-*added* one is impossible since keys only come
+/// from parsed heads.
+fn frozen_path_deferral_keys() -> &'static [String] {
+    static KEYS: OnceLock<Vec<String>> = OnceLock::new();
+    KEYS.get_or_init(|| {
+        let content =
+            std::fs::read_to_string(workspace_root().join(WITNESS_DEFERRAL_FREEZE_AUTHORITY_REL))
+                .unwrap_or_else(|e| {
+                    panic!(
+                        "witness deferral freeze: failed to read {WITNESS_DEFERRAL_FREEZE_AUTHORITY_REL}: {e}"
+                    )
+                });
+        frozen_path_deferral_keys_from_source(&content)
+    })
+}
+
+fn frozen_path_deferral_keys_from_source(content: &str) -> Vec<String> {
+    const HEAD: &str = "FrozenPathDeferral {";
+    let mut keys: Vec<String> = Vec::new();
+    let mut cursor = 0usize;
+    while let Some(offset) = content[cursor..].find(HEAD) {
+        let at = cursor + offset;
+        cursor = at + HEAD.len();
+        // `type FrozenPathDeferral {` is the declaration, not a row.
+        if content[..at].trim_end().ends_with("type") {
+            continue;
+        }
+        let rest = &content[cursor..];
+        let entry = quoted_after_field(rest, "entry:").unwrap_or_else(|| {
+            panic!(
+                "witness deferral freeze: FrozenPathDeferral head at byte {at} of \
+                 {WITNESS_DEFERRAL_FREEZE_AUTHORITY_REL} has no parseable `entry:` literal"
+            )
+        });
+        let list = bracket_list_after_field(rest, "functions:").unwrap_or_else(|| {
+            panic!(
+                "witness deferral freeze: FrozenPathDeferral row `{entry}` in \
+                 {WITNESS_DEFERRAL_FREEZE_AUTHORITY_REL} has no parseable `functions:` list"
+            )
+        });
+        let functions = quoted_literals(&list);
+        if functions.is_empty() {
+            panic!(
+                "witness deferral freeze: FrozenPathDeferral row `{entry}` declares an empty \
+                 function list — a freeze row covering nothing is a row that should be deleted"
+            );
+        }
+        for function in functions {
+            let key = witness_admission_manifest_key(&entry, &function);
+            if !keys.iter().any(|k| k == &key) {
+                keys.push(key);
+            }
+        }
+    }
+    keys
+}
+
+fn quoted_after_field(text: &str, field: &str) -> Option<String> {
+    let at = text.find(field)? + field.len();
+    let open = text[at..].find('"')? + at + 1;
+    let close = text[open..].find('"')? + open;
+    Some(text[open..close].to_string())
+}
+
+fn bracket_list_after_field(text: &str, field: &str) -> Option<String> {
+    let at = text.find(field)? + field.len();
+    let open = text[at..].find('[')? + at;
+    let close = text[open..].find(']')? + open;
+    Some(text[open + 1..close].to_string())
+}
+
+fn quoted_literals(text: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let bytes: Vec<char> = text.chars().collect();
+    let mut i = 0usize;
+    while i < bytes.len() {
+        if bytes[i] == '"' {
+            let mut j = i + 1;
+            let mut buf = String::new();
+            while j < bytes.len() && bytes[j] != '"' {
+                buf.push(bytes[j]);
+                j += 1;
+            }
+            if !buf.is_empty() {
+                out.push(buf);
+            }
+            i = j + 1;
+        } else {
+            i += 1;
+        }
+    }
+    out
+}
+
+/// Phase 0(b): every deferred witness row must name an executing consumer (explicit roster, or a
+/// fixture roster), and — since 2026-08-04 — a broad `OfflineLocalRecipe` path policy is no longer
+/// an answer on its own. A row that policy claims is admitted only while it sits in the frozen
+/// legacy population (`gunbc.witness_deferral_freeze`); anything new refuses.
+/// Per-row EXECUTION STANDING — what actually runs this witness. Mirrors the
+/// `WitnessExecutionStanding` coproduct in `std.witness_admission` arm for arm, and the split is
+/// the point: `LegacyFrozenPathDeferral` means TOLERATED BY THE MIGRATION RATCHET, never COVERED.
+/// A frozen row has no executing consumer — that is the entire content of its debt — so the two
+/// gates below are deliberately different rather than one success arm serving both questions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WitnessExecutionStanding {
+    HasExecutingConsumer,
+    LegacyFrozenPathDeferral,
+    UnclassifiedPathDeferral,
+    UnexecutedDeferredWitness,
+}
+
+/// One deferred row with its standing, so a caller can ask the coverage question and the floor
+/// question separately instead of receiving one boolean that answers neither honestly.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeferredRowStanding {
+    pub entry: String,
+    pub function: String,
+    pub standing: WitnessExecutionStanding,
+}
+
+pub fn classify_deferred_discovery_rows(
+    deferred_rows: &[DeferredDiscoveryRow],
+) -> Vec<DeferredRowStanding> {
+    classify_deferred_discovery_rows_in(
+        deferred_rows,
+        &witness_admission_explicit_consumer_keys(),
+        &witness_admission_offline_exclusion_substrings(),
+        &witness_admission_fixture_exclusion_substrings(),
+        frozen_path_deferral_keys(),
+    )
+}
+
+/// The same fold over supplied rosters — the grain the fixture controls plant into, so a control
+/// can hold the row fixed and move only freeze membership (the discriminator this wall adds).
+fn classify_deferred_discovery_rows_in(
+    deferred_rows: &[DeferredDiscoveryRow],
+    explicit: &[String],
+    offline: &[String],
+    fixture: &[String],
+    frozen: &[String],
+) -> Vec<DeferredRowStanding> {
+    deferred_rows
+        .iter()
+        .map(|row| {
+            let key = witness_admission_manifest_key(&row.entry, &row.function);
+            let standing = if explicit.iter().any(|k| k == &key) {
+                WitnessExecutionStanding::HasExecutingConsumer
+            } else if path_matches_any_substring(&row.entry, offline) {
+                if frozen.iter().any(|k| k == &key) {
+                    WitnessExecutionStanding::LegacyFrozenPathDeferral
+                } else {
+                    WitnessExecutionStanding::UnclassifiedPathDeferral
+                }
+            } else if path_matches_any_substring(&row.entry, fixture) {
+                WitnessExecutionStanding::HasExecutingConsumer
+            } else {
+                WitnessExecutionStanding::UnexecutedDeferredWitness
+            };
+            DeferredRowStanding {
+                entry: row.entry.clone(),
+                function: row.function.clone(),
+                standing,
+            }
+        })
+        .collect()
+}
+
+/// THE COVERAGE QUESTION. Only one arm means covered. A frozen row answers `false`, so nothing
+/// downstream asking "is this behavior exercised" receives an admission success for a witness that
+/// executes nowhere.
+pub fn witness_standing_has_executing_consumer(standing: WitnessExecutionStanding) -> bool {
+    matches!(standing, WitnessExecutionStanding::HasExecutingConsumer)
+}
+
+/// THE FLOOR GATE, a different question: may the floor proceed with this row today. It admits a
+/// real consumer unconditionally and additionally TOLERATES the frozen legacy debt — but the
+/// toleration is conditional on the roster axis, enforced by
+/// `refuse_frozen_path_deferral_additions` and `refuse_stale_frozen_path_deferrals` above, which
+/// stop the whole run when the baseline grows or rots. That is why this function does not silently
+/// widen: the frozen arm is only reachable while those two refusals are silent.
 pub fn collect_unexecuted_deferred_witnesses(
     deferred_rows: &[DeferredDiscoveryRow],
-) -> Vec<UnexecutedDeferredWitness> {
-    let explicit = witness_admission_explicit_consumer_keys();
+) -> Vec<DeferredAdmissionRefusal> {
+    refusals_from_standings(&classify_deferred_discovery_rows(deferred_rows))
+}
+
+fn refusals_from_standings(rows: &[DeferredRowStanding]) -> Vec<DeferredAdmissionRefusal> {
+    rows.iter()
+        .filter_map(|row| {
+            let cause = match row.standing {
+                WitnessExecutionStanding::UnclassifiedPathDeferral => {
+                    DeferredAdmissionCause::UnclassifiedPathDeferral
+                }
+                WitnessExecutionStanding::UnexecutedDeferredWitness => {
+                    DeferredAdmissionCause::UnexecutedDeferredWitness
+                }
+                WitnessExecutionStanding::HasExecutingConsumer
+                | WitnessExecutionStanding::LegacyFrozenPathDeferral => return None,
+            };
+            Some(DeferredAdmissionRefusal {
+                entry: row.entry.clone(),
+                function: row.function.clone(),
+                cause,
+            })
+        })
+        .collect()
+}
+
+/// The tolerated-but-uncovered population, counted so the debt is observable in the receipt rather
+/// than hidden inside a green gate. This is the number that must fall to zero, and it is a COUNT
+/// OF A DERIVED SET rather than a stored literal — nothing asserts it against a number.
+pub fn count_legacy_frozen_debt_rows(rows: &[DeferredRowStanding]) -> usize {
+    rows.iter()
+        .filter(|r| r.standing == WitnessExecutionStanding::LegacyFrozenPathDeferral)
+        .count()
+}
+
+/// The second direction of the identity join: a frozen row whose witness the tree no longer
+/// carries is a standing exemption for an identity nothing checks, so it refuses and must be
+/// deleted. Reads the filesystem and the pattern authority only — deliberately independent of the
+/// caller's source roots, so a scoped batch cannot make the whole freeze look stale.
+pub fn collect_stale_frozen_path_deferrals() -> Vec<(String, String, &'static str)> {
     let offline = witness_admission_offline_exclusion_substrings();
-    let fixture = witness_admission_fixture_exclusion_substrings();
-    let mut orphans = Vec::new();
-    for row in deferred_rows {
-        let key = witness_admission_manifest_key(&row.entry, &row.function);
-        if explicit.iter().any(|k| k == &key) {
+    let mut stale: Vec<(String, String, &'static str)> = Vec::new();
+    let mut decls_cache: std::collections::BTreeMap<String, Option<Vec<String>>> =
+        std::collections::BTreeMap::new();
+    for key in frozen_path_deferral_keys() {
+        let Some((entry, function)) = key.split_once("::") else {
+            continue;
+        };
+        if !path_matches_any_substring(entry, &offline) {
+            stale.push((
+                entry.to_string(),
+                function.to_string(),
+                "entry no longer matches any OfflineLocalRecipe path policy",
+            ));
             continue;
         }
-        if path_matches_any_substring(&row.entry, &offline)
-            || path_matches_any_substring(&row.entry, &fixture)
-        {
-            continue;
-        }
-        orphans.push(UnexecutedDeferredWitness {
-            entry: row.entry.clone(),
-            function: row.function.clone(),
+        let decls = decls_cache.entry(entry.to_string()).or_insert_with(|| {
+            std::fs::read_to_string(workspace_root().join(entry))
+                .ok()
+                .map(|c| {
+                    scan_test_decl_lines(&c)
+                        .into_iter()
+                        .map(|(name, _)| name)
+                        .collect()
+                })
         });
+        match decls {
+            None => stale.push((
+                entry.to_string(),
+                function.to_string(),
+                "entry file is absent",
+            )),
+            Some(names) if !names.iter().any(|n| n == function) => stale.push((
+                entry.to_string(),
+                function.to_string(),
+                "entry no longer declares this test decl",
+            )),
+            Some(_) => {}
+        }
     }
-    orphans
+    stale
+}
+
+/// The freeze is a MONOTONE debt contract, and this is what makes that a wall rather than a
+/// convention. The forward and backward identity joins keep the roster honest about the tree, but
+/// neither stops an author appending a row in the same change that adds the witness — which is the
+/// original escape hatch one level up, now with a typed carrier. So the roster's identity set may
+/// only SHRINK relative to the diff baseline.
+///
+/// Fail-closed on the baseline itself: an unresolvable base ref REFUSES rather than proceeding
+/// unchecked, because "I could not read the baseline" and "the baseline permits this" are different
+/// states. The one non-refusing arm is the base ref resolving while the roster file is ABSENT from
+/// it — that is the change introducing the freeze, where "may only shrink" has nothing to shrink
+/// from; it is decidable, it is reachable exactly once, and every later PR sees the file at base.
+pub fn collect_frozen_path_deferral_additions() -> Result<Vec<String>, String> {
+    let base = std::env::var("GUNBC_CI_DIFF_BASE").unwrap_or_else(|_| "origin/main".to_string());
+    collect_frozen_path_deferral_additions_against(&base)
+}
+
+/// The same gate against an explicit baseline — the grain the controls execute, so proving the
+/// git read path needs no environment mutation and no cross-test lock.
+pub fn collect_frozen_path_deferral_additions_against(base: &str) -> Result<Vec<String>, String> {
+    let root = workspace_root();
+    let run = |args: &[&str]| -> Result<std::process::Output, String> {
+        std::process::Command::new("git")
+            .args(args)
+            .current_dir(&root)
+            .output()
+            .map_err(|e| format!("git {args:?}: {e}"))
+    };
+    let commit = format!("{base}^{{commit}}");
+    let resolved = run(&["rev-parse", "--verify", "--quiet", &commit])?;
+    if !resolved.status.success() {
+        return Err(format!(
+            "WITNESS ADMISSION REFUSAL cause=FreezeBaselineUnobservable base={base} — the frozen \
+             path-deferral roster is a monotone debt contract and its baseline could not be read, \
+             so growth cannot be ruled out. Could-not-read and permits-this are different states \
+             and this arm refuses rather than conflating them. Fetch the base ref (git fetch \
+             origin main) or set GUNBC_CI_DIFF_BASE to a resolvable rev."
+        ));
+    }
+    let spec = format!("{base}:{WITNESS_DEFERRAL_FREEZE_AUTHORITY_REL}");
+    let shown = run(&["show", &spec])?;
+    if !shown.status.success() {
+        // Base resolves, path absent at base: the introducing change. Counted, never silent.
+        eprintln!(
+            "{} [freeze-monotonicity] {WITNESS_DEFERRAL_FREEZE_AUTHORITY_REL} is absent at \
+             base={base} — treating this change as the freeze point (the only arm with no \
+             baseline to shrink from; unreachable once the roster is on the base branch)",
+            floor_ts()
+        );
+        return Ok(Vec::new());
+    }
+    let base_keys =
+        frozen_path_deferral_keys_from_source(&String::from_utf8_lossy(&shown.stdout).into_owned());
+    Ok(frozen_path_deferral_additions_in(
+        frozen_path_deferral_keys(),
+        &base_keys,
+    ))
+}
+
+/// The pure fold the gate is built from — the grain the fixture controls plant into.
+fn frozen_path_deferral_additions_in(current: &[String], base: &[String]) -> Vec<String> {
+    current
+        .iter()
+        .filter(|k| !base.iter().any(|b| b == *k))
+        .cloned()
+        .collect()
+}
+
+fn refuse_frozen_path_deferral_additions(additions: &[String]) -> Result<(), String> {
+    if additions.is_empty() {
+        return Ok(());
+    }
+    let mut lines: Vec<String> = additions.iter().take(8).cloned().collect();
+    if additions.len() > 8 {
+        lines.push(format!("… and {} more added row(s)", additions.len() - 8));
+    }
+    Err(format!(
+        "WITNESS ADMISSION REFUSAL cause=FrozenPathDeferralGrew count={} — \
+         gunbc.witness_deferral_freeze gained identities relative to the diff baseline. The roster \
+         is the FROZEN legacy population, so it may only shrink: adding a row is re-opening the \
+         escape hatch it exists to close, because it admits a witness that executes nowhere. If \
+         this is a new or relocated witness, give it an exact row in gunbc.explicit_witness_admission \
+         naming the cadence that executes it; if it is genuinely a pre-existing identity the freeze \
+         missed, that is a bug in the freeze and the fix belongs in a change that says so. Added: {}",
+        additions.len(),
+        lines.join("; ")
+    ))
+}
+
+fn refuse_stale_frozen_path_deferrals(
+    stale: &[(String, String, &'static str)],
+) -> Result<(), String> {
+    if stale.is_empty() {
+        return Ok(());
+    }
+    let mut lines: Vec<String> = stale
+        .iter()
+        .take(8)
+        .map(|(entry, function, why)| format!("{function} ({entry}) — {why}"))
+        .collect();
+    if stale.len() > 8 {
+        lines.push(format!("… and {} more stale row(s)", stale.len() - 8));
+    }
+    Err(format!(
+        "WITNESS ADMISSION REFUSAL cause=StaleFrozenPathDeferral count={} — \
+         gunbc.witness_deferral_freeze row(s) name witnesses the tree no longer carries. A freeze \
+         row is a debt marker for one exact (entry, function); left behind it becomes a standing \
+         exemption the next witness to take that name inherits. Delete the listed row(s) in the \
+         change that removed or renamed the witness: {}",
+        stale.len(),
+        lines.join("; ")
+    ))
 }
 
 fn refuse_unexecuted_deferred_witnesses(
-    orphans: &[UnexecutedDeferredWitness],
+    orphans: &[DeferredAdmissionRefusal],
 ) -> Result<(), String> {
     if orphans.is_empty() {
         return Ok(());
     }
+    let unclassified = orphans
+        .iter()
+        .filter(|o| o.cause == DeferredAdmissionCause::UnclassifiedPathDeferral)
+        .count();
     let mut lines: Vec<String> = orphans
         .iter()
         .take(8)
-        .map(|o| format!("{} ({})", o.function, o.entry))
+        .map(|o| format!("{} [{}] ({})", o.function, o.cause.label(), o.entry))
         .collect();
     if orphans.len() > 8 {
         lines.push(format!("… and {} more orphan row(s)", orphans.len() - 8));
     }
     Err(format!(
-        "WITNESS ADMISSION REFUSAL cause=UnexecutedDeferredWitness count={} — enrolled \
+        "WITNESS ADMISSION REFUSAL count={} ({unclassified} UnclassifiedPathDeferral) — enrolled \
          witness row(s) excluded from discovery name zero executing consumers (Phase 0(b) \
-         admission invariant); each excluded row must be on falsifier_self_host_wet, \
-         bin_witness_wet, falsifier_rehomed_bin_wet, known_red_probe, offline, or fixture \
-         explicit roster: {}",
+         admission invariant). An UnexecutedDeferredWitness matches no policy at all: put it on \
+         falsifier_self_host_wet, bin_witness_wet, falsifier_rehomed_bin_wet, known_red_probe, or \
+         a fixture roster. An UnclassifiedPathDeferral sits under an OfflineLocalRecipe directory, \
+         which stopped being an admission answer on 2026-08-04: a directory cannot decide that a \
+         witness runs, so give it an exact row in gunbc.explicit_witness_admission naming the \
+         cadence that executes it — moving a file under a long/ or offline path removes it from \
+         per-PR discovery and executes it NOWHERE. Rows: {}",
         orphans.len(),
         lines.join("; ")
     ))
@@ -16239,12 +17186,15 @@ fn eprintln_deferred_discovery_rows(rows: &[DeferredDiscoveryRow]) {
         return;
     }
     let live = rows.iter().filter(|r| r.reads_live_tree).count();
+    let frozen_debt = count_legacy_frozen_debt_rows(&classify_deferred_discovery_rows(rows));
     let ts = floor_ts();
     eprintln!(
         "{ts} [deferred-discovery] {} witness row(s) excluded from per-PR discovery \
-         ({} declare ReadsLiveTree) — counted, not silent; run via long-lane / local recipe",
+         ({} declare ReadsLiveTree, {} are frozen legacy debt with NO executing consumer — \
+         tolerated by the migration ratchet, not covered) — counted, not silent",
         rows.len(),
-        live
+        live,
+        frozen_debt
     );
     for row in rows.iter().take(8) {
         eprintln!(
@@ -19610,6 +20560,10 @@ fn run_discovery_corpus_with_options_inner(
     };
     let admission_orphans = collect_unexecuted_deferred_witnesses(&deferred_rows);
     refuse_unexecuted_deferred_witnesses(&admission_orphans)?;
+    if !deferred_rows.is_empty() {
+        refuse_stale_frozen_path_deferrals(&collect_stale_frozen_path_deferrals())?;
+        refuse_frozen_path_deferral_additions(&collect_frozen_path_deferral_additions()?)?;
+    }
     eprintln_deferred_discovery_rows(&deferred_rows);
     set_phase(FloorPhase::Discovery, "discovery-roster");
     let selection_enabled = options.node_frontier_selection != NodeFrontierSelectionMode::Off;
@@ -20996,13 +21950,7 @@ fn run_discovery_rows(
             ClaimOutcome::Pass => summary.passed += 1,
             ClaimOutcome::Fail => {
                 let mut failure = format!("{} ({}) returned Bool(false)", row.function, row.entry);
-                if let Some(companion) = failure_receipt_companion(&row.function) {
-                    let receipt = run_claim_failure_receipt(ctx_ref, &companion);
-                    if !receipt.is_empty() {
-                        failure.push_str(" | ");
-                        failure.push_str(&receipt);
-                    }
-                }
+                append_failure_receipt_companion_loudness(&mut failure, ctx_ref, &row.function);
                 summary.failures.push(failure);
             }
             ClaimOutcome::NotBool { got } => summary.failures.push(format!(
@@ -22780,18 +23728,35 @@ mod node_frontier_plumbing_controls {
         );
     }
 
-    // Phase 0(b) admission invariant: every deferred witness row names an executing consumer.
+    // The live floor gate, and the claim is deliberately NOT "every deferred row has a consumer" —
+    // that is what the first shape of this test asserted, and it was false the moment the freeze
+    // started tolerating rows. What holds is: no row REFUSES, and the tolerated population is
+    // counted as UNCOVERED rather than folded into the green.
     #[test]
-    fn witness_admission_deferred_rows_have_consumers() {
+    fn witness_admission_deferred_rows_refuse_none_and_frozen_debt_is_counted_uncovered() {
         let ws = workspace_root();
         std::env::set_current_dir(&ws).expect("chdir workspace");
         let roots = setup_roots(&ws);
         let excludes = super::witness_exclusion_substrings();
         let deferred =
             super::collect_deferred_discovery_rows(&roots, &excludes).expect("deferred scan");
-        let orphans = super::collect_unexecuted_deferred_witnesses(&deferred);
+        let standings = super::classify_deferred_discovery_rows(&deferred);
+        let orphans = super::refusals_from_standings(&standings);
         super::refuse_unexecuted_deferred_witnesses(&orphans)
-            .unwrap_or_else(|e| panic!("live deferred corpus must admit every row: {e}"));
+            .unwrap_or_else(|e| panic!("live deferred corpus must contain no refusing row: {e}"));
+        let debt = super::count_legacy_frozen_debt_rows(&standings);
+        assert!(
+            debt > 0,
+            "the frozen legacy debt is non-empty today; a zero here means the freeze stopped \
+             being consulted, not that the debt was paid"
+        );
+        assert!(
+            standings
+                .iter()
+                .filter(|r| r.standing == super::WitnessExecutionStanding::LegacyFrozenPathDeferral)
+                .all(|r| !super::witness_standing_has_executing_consumer(r.standing)),
+            "every tolerated row must answer NO to the coverage question"
+        );
         let normalize = deferred
             .iter()
             .find(|r| r.function == "self_host_03_normalize_behavioral_receipt_holds")
@@ -22815,8 +23780,351 @@ mod node_frontier_plumbing_controls {
         };
         let orphans = super::collect_unexecuted_deferred_witnesses(&[orphan]);
         assert_eq!(orphans.len(), 1);
+        assert_eq!(
+            orphans[0].cause,
+            super::DeferredAdmissionCause::UnexecutedDeferredWitness
+        );
         let err = super::refuse_unexecuted_deferred_witnesses(&orphans).expect_err("orphan");
         assert!(err.contains("UnexecutedDeferredWitness"));
+    }
+
+    fn long_lane_row(function: &str) -> super::DeferredDiscoveryRow {
+        super::DeferredDiscoveryRow {
+            entry: "src/v2/test/claim/long/synthetic_freeze_probe_test.dag".to_string(),
+            function: function.to_string(),
+            exclude_reason: "test/claim/long/".to_string(),
+            reads_live_tree: false,
+        }
+    }
+
+    // THE WALL, and its discriminator. The row, the offline path policy and the rosters are held
+    // identical across both halves; only freeze membership moves. Before 2026-08-04 the offline
+    // pattern alone admitted this row, so the refusing half could not have been written.
+    #[test]
+    fn unfrozen_offline_path_row_refuses_as_unclassified_path_deferral() {
+        let offline = vec!["test/claim/long/".to_string()];
+        let row = long_lane_row("relocated_matrix_holds");
+        let refused = super::refusals_from_standings(&super::classify_deferred_discovery_rows_in(
+            std::slice::from_ref(&row),
+            &[],
+            &offline,
+            &[],
+            &[],
+        ));
+        assert_eq!(refused.len(), 1, "an unfrozen offline row must refuse");
+        assert_eq!(
+            refused[0].cause,
+            super::DeferredAdmissionCause::UnclassifiedPathDeferral
+        );
+        let err = super::refuse_unexecuted_deferred_witnesses(&refused).expect_err("refusal");
+        assert!(err.contains("UnclassifiedPathDeferral"));
+        assert!(err.contains("relocated_matrix_holds"));
+
+        let frozen = vec![super::witness_admission_manifest_key(
+            &row.entry,
+            &row.function,
+        )];
+        let standings = super::classify_deferred_discovery_rows_in(
+            std::slice::from_ref(&row),
+            &[],
+            &offline,
+            &[],
+            &frozen,
+        );
+        assert!(
+            super::refusals_from_standings(&standings).is_empty(),
+            "the same row inside the frozen population does not refuse"
+        );
+        // ...and it is TOLERATED, not COVERED. One success arm for both is the defect this split
+        // repaired: the floor may proceed while the coverage question still answers no.
+        assert_eq!(
+            standings[0].standing,
+            super::WitnessExecutionStanding::LegacyFrozenPathDeferral
+        );
+        assert!(
+            !super::witness_standing_has_executing_consumer(standings[0].standing),
+            "a frozen row must never read as covered"
+        );
+        assert_eq!(super::count_legacy_frozen_debt_rows(&standings), 1);
+    }
+
+    // A sibling function under the same frozen ENTRY is a different identity: the freeze is a
+    // join over (entry, function), so adding a test decl to an already-frozen file still refuses.
+    #[test]
+    fn new_function_in_a_frozen_entry_still_refuses() {
+        let offline = vec!["test/claim/long/".to_string()];
+        let frozen_row = long_lane_row("already_frozen_holds");
+        let frozen = vec![super::witness_admission_manifest_key(
+            &frozen_row.entry,
+            &frozen_row.function,
+        )];
+        let refused = super::refusals_from_standings(&super::classify_deferred_discovery_rows_in(
+            &[long_lane_row("added_after_the_freeze_holds")],
+            &[],
+            &offline,
+            &[],
+            &frozen,
+        ));
+        assert_eq!(refused.len(), 1);
+        assert_eq!(
+            refused[0].cause,
+            super::DeferredAdmissionCause::UnclassifiedPathDeferral
+        );
+    }
+
+    // An exact admission is total for the row it covers and needs no freeze row — the precedence
+    // witness_row_excluded_two_kinds_note states, exercised at the grain the wall reads.
+    #[test]
+    fn exact_admission_admits_an_offline_path_row_without_freeze_membership() {
+        let row = long_lane_row("exactly_admitted_holds");
+        let explicit = vec![super::witness_admission_manifest_key(
+            &row.entry,
+            &row.function,
+        )];
+        let refused = super::refusals_from_standings(&super::classify_deferred_discovery_rows_in(
+            &[row],
+            &explicit,
+            &["test/claim/long/".to_string()],
+            &[],
+            &[],
+        ));
+        assert!(refused.is_empty(), "{refused:?}");
+    }
+
+    // Scope control: FixtureExplicitRoster patterns are deliberately untouched by this wall.
+    #[test]
+    fn fixture_roster_path_rows_are_unaffected_by_the_freeze_wall() {
+        let row = super::DeferredDiscoveryRow {
+            entry: "dag/test/fixture/floor_skip/synthetic_control_test.dag".to_string(),
+            function: "floor_skip_control_holds".to_string(),
+            exclude_reason: "test/fixture/floor_skip/".to_string(),
+            reads_live_tree: false,
+        };
+        let refused = super::refusals_from_standings(&super::classify_deferred_discovery_rows_in(
+            &[row],
+            &[],
+            &[],
+            &["test/fixture/floor_skip/".to_string()],
+            &[],
+        ));
+        assert!(refused.is_empty(), "{refused:?}");
+    }
+
+    #[test]
+    fn frozen_path_deferral_source_scan_parses_inline_and_wrapped_rows() {
+        let source = concat!(
+            "type FrozenPathDeferral {\n  entry: NonEmptyStr\n  functions: List<String>\n}\n\n",
+            "data frozen_path_deferrals: List<FrozenPathDeferral> = [\n",
+            "  FrozenPathDeferral { entry: \"a/one_test.dag\", functions: [\"x_holds\"] },\n",
+            "  FrozenPathDeferral {\n    entry: \"b/two_test.dag\",\n    functions: [\n",
+            "      \"y_holds\", \"z_holds\"\n    ]\n  }\n]\n"
+        );
+        let keys = super::frozen_path_deferral_keys_from_source(source);
+        assert_eq!(
+            keys,
+            vec![
+                "a/one_test.dag::x_holds".to_string(),
+                "b/two_test.dag::y_holds".to_string(),
+                "b/two_test.dag::z_holds".to_string(),
+            ],
+            "the `type` declaration is not a row, and both row shapes parse"
+        );
+    }
+
+    // The freeze's second direction, live: every frozen identity must still exist in the tree and
+    // still be offline-classified. This is an identity join, never a count — a size comparison
+    // would go green on any pair of compensating edits.
+    #[test]
+    fn frozen_path_deferral_roster_carries_no_stale_rows() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let stale = super::collect_stale_frozen_path_deferrals();
+        super::refuse_stale_frozen_path_deferrals(&stale)
+            .unwrap_or_else(|e| panic!("frozen roster must join the live tree exactly: {e}"));
+    }
+
+    // The monotone half. Held fixed: the baseline. Moved: one identity, in each direction.
+    // A REMOVAL is the whole point of the contract and must never refuse; an ADDITION is the
+    // escape hatch reappearing inside the mechanism that closed it, and must.
+    #[test]
+    fn frozen_roster_may_shrink_but_never_grow_against_its_baseline() {
+        let base = vec![
+            "a/one_test.dag::x_holds".to_string(),
+            "a/one_test.dag::y_holds".to_string(),
+        ];
+        let unchanged = super::frozen_path_deferral_additions_in(&base, &base);
+        assert!(unchanged.is_empty(), "{unchanged:?}");
+
+        let shrunk = super::frozen_path_deferral_additions_in(&base[..1], &base);
+        assert!(
+            shrunk.is_empty(),
+            "removing a frozen row is the contract working: {shrunk:?}"
+        );
+
+        let mut grown = base.clone();
+        grown.push("src/v2/test/claim/long/relocated_test.dag::relocated_holds".to_string());
+        let added = super::frozen_path_deferral_additions_in(&grown, &base);
+        assert_eq!(
+            added,
+            vec!["src/v2/test/claim/long/relocated_test.dag::relocated_holds".to_string()]
+        );
+        let err =
+            super::refuse_frozen_path_deferral_additions(&added).expect_err("growth must refuse");
+        assert!(err.contains("FrozenPathDeferralGrew"));
+        assert!(err.contains("relocated_holds"));
+    }
+
+    // The git read path, executed rather than mocked: comparing the roster against a baseline that
+    // IS this commit must find no additions. It exercises rev-parse, `git show` and the parse of
+    // the base blob — the arms a pure fixture cannot reach.
+    #[test]
+    fn frozen_roster_monotonicity_reads_a_real_baseline() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let additions = super::collect_frozen_path_deferral_additions_against("HEAD")
+            .expect("HEAD baseline is readable");
+        assert!(
+            additions.is_empty(),
+            "the roster cannot have grown against itself: {additions:?}"
+        );
+    }
+
+    // THE DISCRIMINATING CASE, over the REAL roster rather than a hand-made pair: perturb the
+    // live authority's source by exactly the edit the escape hatch requires — one appended freeze
+    // row for a relocated witness — and the gate must name it. Perturbing the SOURCE rather than
+    // the file keeps the control hermetic; the git read path is proven separately.
+    #[test]
+    fn appending_a_row_to_the_live_roster_source_refuses() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let content =
+            std::fs::read_to_string(ws.join(super::WITNESS_DEFERRAL_FREEZE_AUTHORITY_REL))
+                .expect("read the live freeze authority");
+        let base = super::frozen_path_deferral_keys_from_source(&content);
+        assert!(
+            !base.is_empty(),
+            "the live roster must parse to a non-empty population, else this control is vacuous"
+        );
+        const ANCHOR: &str = "data frozen_path_deferrals: List<FrozenPathDeferral> = [";
+        let planted = content.replacen(
+            ANCHOR,
+            &format!(
+                "{ANCHOR}\n  FrozenPathDeferral {{ entry: \
+                 \"src/v2/test/claim/long/relocated_matrix_test.dag\", functions: \
+                 [\"relocated_matrix_holds\"] }},"
+            ),
+            1,
+        );
+        assert_ne!(
+            planted, content,
+            "the plant must actually change the source"
+        );
+        let current = super::frozen_path_deferral_keys_from_source(&planted);
+        let added = super::frozen_path_deferral_additions_in(&current, &base);
+        assert_eq!(
+            added,
+            vec![
+                "src/v2/test/claim/long/relocated_matrix_test.dag::relocated_matrix_holds"
+                    .to_string()
+            ],
+            "exactly the planted identity is reported, and nothing else moved"
+        );
+        let err =
+            super::refuse_frozen_path_deferral_additions(&added).expect_err("growth must refuse");
+        assert!(err.contains("FrozenPathDeferralGrew"));
+        assert!(err.contains("relocated_matrix_holds"));
+
+        // The green control on the same pair: unperturbed, the live roster reports no growth.
+        assert!(super::frozen_path_deferral_additions_in(&base, &base).is_empty());
+    }
+
+    // The third consumer source, and the surface filter that keeps it honest. `GitPrePushHook` is
+    // fmt-only since 2026-07-25 and runs no witness, so an enrollment naming only that surface is
+    // not a consumer and must not admit — otherwise the wall would be satisfied by an enrollment
+    // on a surface that executes nothing, which is the coverage-by-illusion tier one enum apart.
+    #[test]
+    fn commit_roster_claim_keys_parse_and_ignore_non_executing_surfaces() {
+        let source = concat!(
+            "  | CommitWitnessClaim { entry: String, check_fns: List<String>, kind: WitnessKind }\n",
+            "    CommitWitnessClaim { entry: _, check_fns: _, kind: _ } => false\n",
+            "  CommitCheckEnrollment {\n    check: CommitWitnessClaim {\n",
+            "      entry: \"src/v2/test/claim/long/a_test.dag\",\n",
+            "      check_fns: [\"ci_holds\"],\n      kind: CorpusWitnessKind\n    },\n",
+            "    surfaces: [GithubActionsCiJob]\n  },\n",
+            "  CommitCheckEnrollment {\n    check: CommitWitnessClaim {\n",
+            "      entry: \"src/v2/test/claim/long/b_test.dag\",\n",
+            "      check_fns: [\"falsifier_holds\"],\n      kind: CorpusWitnessKind\n    },\n",
+            "    surfaces: [FalsifierCadenceJob]\n  },\n",
+            "  CommitCheckEnrollment {\n    check: CommitWitnessClaim {\n",
+            "      entry: \"src/v2/test/claim/long/c_test.dag\",\n",
+            "      check_fns: [\"prepush_only_holds\"],\n      kind: CorpusWitnessKind\n    },\n",
+            "    surfaces: [GitPrePushHook]\n  }\n"
+        );
+        let keys = super::commit_roster_witness_claim_keys_from_source(source);
+        assert_eq!(
+            keys,
+            vec![
+                "src/v2/test/claim/long/a_test.dag::ci_holds".to_string(),
+                "src/v2/test/claim/long/b_test.dag::falsifier_holds".to_string(),
+            ],
+            "executing surfaces admit; the coproduct declaration and a pre-push-only row do not"
+        );
+    }
+
+    // The live half of the same fact: an enrolled witness under an offline path is admitted, and
+    // it is admitted by its ENROLLMENT rather than by the freeze — proven by its absence from the
+    // frozen population. Without the enrollment reader this row would refuse.
+    #[test]
+    fn commit_roster_enrolled_offline_witness_is_admitted_and_not_frozen() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        const ENTRY: &str = "src/v2/test/claim/long/parse_table_memo_governed_witness_test.dag";
+        const FUNCTION: &str = "witness_content_key_subject_stable";
+        let key = super::witness_admission_manifest_key(ENTRY, FUNCTION);
+        assert!(
+            super::commit_roster_witness_claim_keys()
+                .iter()
+                .any(|k| k == &key),
+            "the enrollment authority must name this identity"
+        );
+        assert!(
+            !super::frozen_path_deferral_keys().iter().any(|k| k == &key),
+            "an enrolled witness must NOT also be frozen — the freeze is for identities with no \
+             consumer, and carrying both would restate one fact in two places"
+        );
+        let row = super::DeferredDiscoveryRow {
+            entry: ENTRY.to_string(),
+            function: FUNCTION.to_string(),
+            exclude_reason: "test/claim/long/".to_string(),
+            reads_live_tree: false,
+        };
+        let refused = super::collect_unexecuted_deferred_witnesses(&[row]);
+        assert!(refused.is_empty(), "{refused:?}");
+    }
+
+    // Fail-closed on the baseline: unreadable is a refusal, never an unchecked pass.
+    #[test]
+    fn frozen_roster_monotonicity_refuses_an_unresolvable_baseline() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let err = super::collect_frozen_path_deferral_additions_against(
+            "refs/heads/no-such-baseline-for-freeze",
+        )
+        .expect_err("an unresolvable baseline must refuse");
+        assert!(err.contains("FreezeBaselineUnobservable"));
+    }
+
+    #[test]
+    fn stale_frozen_row_refusal_names_the_row_and_the_reason() {
+        let err = super::refuse_stale_frozen_path_deferrals(&[(
+            "src/v2/test/claim/long/departed_test.dag".to_string(),
+            "departed_holds".to_string(),
+            "entry file is absent",
+        )])
+        .expect_err("a stale freeze row must refuse");
+        assert!(err.contains("StaleFrozenPathDeferral"));
+        assert!(err.contains("departed_holds"));
+        assert!(err.contains("entry file is absent"));
     }
 
     #[test]
@@ -23868,6 +25176,60 @@ fn emit_source_root_read_witness(rec: &SourceRootReadRecord) -> Result<String, S
     ))
 }
 
+fn emit_source_content_hash_dag_for_text(source: &str) -> String {
+    let digest = crate::v1_rt::atom_identity_hash(source.to_string());
+    format!("Fnv1a64(Fnv1a64Structural {{ digest: \"{digest}\" }})")
+}
+
+fn emit_source_ref_dag(rec: &SourceRootReadRecord) -> Result<String, String> {
+    let path = dag_manifest_scalar_escape(&rec.file_path)?;
+    let hash = emit_source_content_hash_dag_for_text(&rec.source);
+    Ok(format!(
+        "SourceRef {{ path: \"{path}\", source_root: {}, content_hash: {hash} }}",
+        rec.source_root
+    ))
+}
+
+fn emit_source_ref_list_dag(records: &[SourceRootReadRecord]) -> Result<String, String> {
+    let mut nodes: Vec<String> = records
+        .iter()
+        .map(emit_source_ref_dag)
+        .collect::<Result<_, _>>()?;
+    let mut out = String::from("Empty");
+    while let Some(head) = nodes.pop() {
+        out = format!("Cons {{\n  head: {head},\n  tail: {out}\n}}");
+    }
+    Ok(out)
+}
+
+fn source_ref_identity_digest_hex(rec: &SourceRootReadRecord) -> String {
+    let path_hash = crate::v1_rt::atom_identity_hash(rec.file_path.clone());
+    let root_hash = crate::v1_rt::atom_identity_hash(rec.source_root.clone());
+    let storage = crate::v1_rt::hash_combine(path_hash, root_hash);
+    let content_hash = crate::v1_rt::atom_identity_hash(rec.source.clone());
+    crate::v1_rt::hash_combine(storage, content_hash)
+}
+
+fn source_ref_list_structural_digest_hex(records: &[SourceRootReadRecord]) -> String {
+    let mut acc = crate::v1_rt::atom_identity_hash("source-ref-closure-list".to_string());
+    for rec in records {
+        let ref_digest = source_ref_identity_digest_hex(rec);
+        acc = crate::v1_rt::hash_combine(acc, ref_digest);
+    }
+    acc
+}
+
+pub fn emit_source_ref_dag_for_path(
+    records: &[SourceRootReadRecord],
+    file_path: &str,
+) -> Result<String, String> {
+    let rec = records
+        .iter()
+        .find(|r| r.file_path.replace('\\', "/") == file_path.replace('\\', "/"))
+        .ok_or_else(|| format!("emit_source_ref_dag_for_path: no record for {file_path}"))?;
+    emit_source_ref_dag(rec)
+}
+
 fn emit_source_root_ingest_monoid(records: &[SourceRootReadRecord]) -> Result<String, String> {
     let mut witness_nodes: Vec<String> = records
         .iter()
@@ -24064,14 +25426,18 @@ pub fn emit_source_root_ingest_manifest(
     out.push_str("module v2.test.workflow.host_source_root_ingest_manifest\n\n\n");
     out.push_str("import v2.compiler.source_authority {\n");
     out.push_str("  DagSourceReadWitness,\n");
+    out.push_str("  DiscoveredSourceRefsDigestFromList,\n");
+    out.push_str("  SourceRef,\n");
     out.push_str("  SourceRootIngest,\n");
     out.push_str("  SourceRootCoverageComplete,\n");
     out.push_str("  SourceRootManifestElided,\n");
     out.push_str("  SourceRootProvenanceCoverageReceipt\n");
     out.push_str("}\n");
     out.push_str("import extdeps.communication.medium { Lossless, Medium }\n");
+    out.push_str("import std.content_hash { ContentHash, Fnv1a64, Fnv1a64Structural }\n");
     out.push_str("import v2.std.algebra { Cons, Empty }\n");
     out.push_str("import v2.std.artifact { Artifact, SourceFile }\n");
+    out.push_str("import v2.std.collection { List }\n");
     out.push_str("import v2.std.text { String }\n");
     // Each DagSourceReadWitness carries a grounded `source_root: SourceRootRef` (V2Tree/DagTree,
     // #5473/#5486), so the manifest must import the constructors it references or every witness
@@ -24080,6 +25446,8 @@ pub fn emit_source_root_ingest_manifest(
     // records (supersedes the earlier hardcoded-both-constructors form).
     if !inline_records.is_empty() {
         out.push_str(&emit_source_root_ref_import(inline_records));
+    } else if !records.is_empty() {
+        out.push_str(&emit_source_root_ref_import(records));
     }
     if entry_admission.is_some() {
         out.push_str("import v2.compiler.name_resolve {\n");
@@ -24089,6 +25457,7 @@ pub fn emit_source_root_ingest_manifest(
         out.push_str("  ResolutionSubject\n");
         out.push_str("}\n");
         out.push_str("import v2.std.algebra { Cons, Empty }\n");
+        out.push_str("import v2.std.collection { List }\n");
     }
     out.push('\n');
     out.push_str(&format!(
@@ -24111,6 +25480,10 @@ pub fn emit_source_root_ingest_manifest(
     let produced_row_count = inline_records.len();
     out.push_str(&format!("  ingest_read_count: {read_count},\n"));
     out.push_str(&format!("  produced_row_count: {produced_row_count},\n"));
+    out.push_str(&format!(
+        "  discovered_source_refs_digest: DiscoveredSourceRefsDigestFromList {{ digest: Fnv1a64Structural {{ digest: \"{}\" }} }},\n",
+        source_ref_list_structural_digest_hex(records)
+    ));
     if produced_row_count == read_count {
         out.push_str("  coverage: SourceRootCoverageComplete\n");
     } else {
@@ -24124,6 +25497,12 @@ pub fn emit_source_root_ingest_manifest(
         out.push_str("Empty\n");
     } else {
         out.push_str(&emit_source_root_ingest_monoid(inline_records)?);
+        out.push('\n');
+    }
+    if !records.is_empty() {
+        out.push('\n');
+        out.push_str("data host_source_root_closure_refs: List<SourceRef> = ");
+        out.push_str(&emit_source_ref_list_dag(records)?);
         out.push('\n');
     }
     if let Some(admission) = entry_admission {
@@ -25134,6 +26513,7 @@ mod discovery_summary_merge_tests {
                     subject_key: "subj-a".to_string(),
                     work_shape: "claim".to_string(),
                     wall_nanos: 1_000,
+                    cpu_nanos: 1_000,
                     eval_self_nanos: 1_000,
                     sample_count: 1,
                 },
@@ -25141,6 +26521,7 @@ mod discovery_summary_merge_tests {
                     subject_key: "subj-b".to_string(),
                     work_shape: "claim".to_string(),
                     wall_nanos: 50_000,
+                    cpu_nanos: 50_000,
                     eval_self_nanos: 50_000,
                     sample_count: 1,
                 },
@@ -25148,6 +26529,7 @@ mod discovery_summary_merge_tests {
                     subject_key: "subj-a".to_string(),
                     work_shape: "claim".to_string(),
                     wall_nanos: 5_000,
+                    cpu_nanos: 5_000,
                     eval_self_nanos: 5_000,
                     sample_count: 1,
                 },

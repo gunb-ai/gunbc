@@ -1,0 +1,34 @@
+module extdeps.languages.c.subject
+
+import std.types { String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "www.open-std.org/jtc1/sc22/wg14/"
+  }
+}
+
+data c_language_subject_note: String = "THE C LANGUAGE, cited to ISO/IEC JTC1/SC22/WG14 (verified live 2026-08-04 by fetching the cited locator and confirming its title and publisher from the response, per the D0 verify-or-refuse rule): the fetched committee page identifies itself as 'the international standardization working group for the programming language C' and designates the standard as 'ISO/IEC 9899: Programming Language C', noting C23 was adopted by ISO and IEC in 2024. WHY THE COMMITTEE PAGE AND NOT iso.org: the ISO catalogue refused this fetch with HTTP 403, so an iso.org locator could not be verified and is therefore not carried — the committee page is the authority that WAS readable, and citing what was actually verified is the rule this whole batch follows."
+
+type C
+  = | CTarget
+
+data c_language: C = CTarget
+
+data c_language_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.languages.c.subject",
+      decl_name: "c_language",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data extdeps_model_scope: ExternalModelScope = c_language_model_scope

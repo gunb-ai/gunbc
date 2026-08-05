@@ -25,6 +25,7 @@ import gunbc.test_module_hygiene {
   is_file_grain_function,
   ExplicitExpandInput,
   expand_explicit_pairs_or_refuse,
+  failure_receipt_companion,
   fixture_zero_enrolled_demotion,
   fixture_directory_prefix_bypass,
   fixture_cross_module_export_partial,
@@ -34,7 +35,10 @@ import gunbc.test_module_hygiene {
   fixture_dead_plain_data,
   fixture_plain_data_chain,
   fixture_orphan_plant,
+  fixture_failure_receipt_companion_pair,
+  fixture_failure_receipt_orphan,
 }
+import v2.std.optional { Present, Absent }
 import std.disposition { Scaffold, SingleAuthority }
 import std.types { Bool, String, List }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -155,6 +159,18 @@ test fn test_module_hygiene_equivalence_plain_data_chain_holds() -> Bool {
 
 test fn test_module_hygiene_equivalence_orphan_plant_holds() -> Bool {
   orphans_are(module: fixture_orphan_plant, expected: ["dark_unreachable_check"])
+}
+
+test fn test_module_hygiene_failure_receipt_companion_pair_holds() -> Bool {
+  orphans_are(module: fixture_failure_receipt_companion_pair, expected: [])
+    && match failure_receipt_companion(function: "witness_holds") {
+      Present { value: companion } => companion == "witness_failure_receipt"
+      Absent => false
+    }
+}
+
+test fn test_module_hygiene_failure_receipt_without_witness_refuses() -> Bool {
+  orphans_are(module: fixture_failure_receipt_orphan, expected: ["orphan_failure_receipt"])
 }
 
 data test_module_hygiene_unparsable_refuse_bridge_note: String = "Parse failure on a *_test.dag must refuse via check_orphan_helpers_or_err — executing receipt: cli_run.rs test_module_hygiene_bridge_equivalence_tests::orphan_collect_refuses_unparsable_test_dag (re-homed from deleted test_module_hygiene.rs)."

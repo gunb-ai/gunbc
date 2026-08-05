@@ -46,11 +46,23 @@ import std.observation {
   Refused,
   Failed,
   TimedOut,
+  ClockBasis,
+  CpuClock,
+  WallClock,
+  observation_wall,
+  observation_durations_wall,
+  TimedMeasurement,
+  clock_basis_eq,
+  observation_duration_of,
 }
 import v2.std.optional { Absent, Optional, Present }
 import v2.std.text { String }
 
 data witness_row_cost_spine_note: String = "Per-witness cost receipts (placement workstream #5 spine). THE RECORD is std.observation.ObservationEvent (progress-observation-design §2/§3c) — not a TSV schema and not WitnessTimingRow. Production shape is N+1 per entry: exactly ONE entry resolve-phase Concluded event (entry-level/shared resolve wall) plus one declaration-grain Concluded event per witness (eval wall + actual outcome; Refused distinct from Failed). RSS is MeasuredUnavailable with an explicit cause. The canonical event and joined receipt retain exact Nanosecond eval, resolve, and warm values; histogram, ordering, and attribution consume those exact values. The TSV/drift/placement wires are named Millisecond presentation and policy boundaries and may floor only there. The resolve column repeats the observed full entry resolve for each child — never divided across witnesses and never summed N times into a corpus total. W2 filters the SAME events via AttentionLevel/ObservationDensity (Ambient may suppress a render line while the complete receipt still retains the row). Basis values MUST cite an arm64 srv-fleet run id (never local x86). A row with no dated basis is BasisAbsent. Drift is falsifier-cadence counted, not merge-refusing. Executing consumers: dag/test/claim/witness_row_cost_drift_witness_test.dag and dag/test/claim/witness_row_cost_projection_witness_test.dag."
+
+data witness_decomposition_does_not_reduce_entry_cost_note: String = "DO NOT SPLIT A WITNESS EXPECTING ENTRY STARTUP TO GET CHEAPER (operator design note, 2026-08-05). Per-witness EVAL cost and per-entry RESOLVE/materialization cost are different terms, and this receipt carries them in different columns for exactly that reason. Splitting one witness fn into several does not divide the entry's resolve — it AMORTIZES one expensive resolve across more rows, so the per-row figure falls while the corpus cost does not. Reading a drop in per-row eval as a saving is therefore a measurement artifact of the split itself. MEASURED, on falsifier run 30824310833: 682 of 930 entries resolve at 1000ms or more (max 11223ms), and corpus totals are 1638s resolve against 3987s eval, the latter dominated by roughly a dozen enrolled behavioral receipts. The resolve column repeats the observed full entry resolve for each child (witness_row_cost_spine_note) precisely so it can never be divided across witnesses and mistaken for a per-row cost. THE REPEATED-RESOLVE TERM IS NOT THIS LANE'S: it belongs to the shared-floor / materialization program, where one index amortizes across many entries. Witness decomposition is justified by what a witness PROVES — one behavior per claim, discriminating REDs — never by an expected startup saving it cannot deliver."
+
+data witness_row_cost_clock_basis_note: String = "THE EVAL COLUMN IS WALL AND THE FAST-LANE CAP IS ENFORCED ON THREAD CPU — two clocks, and a threshold built on one selects a different population than the other kills. The column is named eval_wall_ms so the basis is visible rather than implied. The bound that keeps the wall figure useful: eval is single-threaded, so cpu is bounded above by wall, and a wall figure UNDER the cap therefore PROVES cpu under it. That is the firing direction of every dissolve-on trigger stated as 'lands under the fast-lane budget', so those stay decidable on the recorded number. The blind direction is ranking — how near the cap a row sits, and whether an over-cap wall figure reflects cpu at all — which is what a per-witness cost envelope needs. A row AT or PAST the cap is a censored measurement rather than a cost: its value is where the kill landed and the true figure is unbounded above. SEED STATUS: the seed receipt now records both clocks (gunbc#7820) but says which is which by FIELD NAME, which the 2026-08-05 operator ruling replaces with a basis carried on the measurement itself (ClockBasis = CpuClock | WallClock, and a basis on TimedOut so a crossing names its cap). DISSOLVE-ON: that authority lands in std.observation and this projection carries cpu and wall through it without confusing them."
 
 data witness_row_cost_basis_host_class_note: String = "Every signed basis row names host_class=srv_fleet_arm64 (the same idiom as gunbc_ci_floor_batch_clamp_note's 1000ms coefficient basis). When the fleet or governor width moves, basis rows re-sign from a new cited run — never a local measurement."
 
@@ -66,6 +78,7 @@ data witness_cost_event_role_note: String = "WitnessCostEventRole is the single 
 
 
 type WitnessRowCostDatedBasis {
+  clock: ClockBasis
   eval: Millisecond
   run_ref: String
 }
@@ -74,6 +87,9 @@ type WitnessRowCostVerdict
   = WithinBasis
   | DriftExceeded { observed: Millisecond, basis: Millisecond }
   | BasisAbsent
+  | BasisClockMismatch { observed: ClockBasis, basis: ClockBasis }
+
+data witness_row_cost_clock_mismatch_note: String = "THE WALL THIS WHOLE LANE EXISTS TO BUILD. A drift verdict compares an observed duration against a dated one, and before the clock became data nothing in the types said the two were read from the same clock — so comparing a thread-CPU figure against a wall baseline typechecked, produced a confident WithinBasis or DriftExceeded, and was wrong in a way no test could distinguish from right. That is not hypothetical: the fast-lane cap is enforced on thread CPU while every cost receipt recorded wall, and four sessions spent an evening comparing 1005 against 5004 and 2507 against 5003 without either number being incorrect. BasisClockMismatch is a FOURTH ARM and not a Bool collapse, for the same reason std.content_hash compare_content_hash answers ContentHashCrossFamilyIncomparable rather than false: an incomparable pair is neither within nor exceeding, and rendering it as either invents a verdict. It is also not BasisAbsent — a basis IS present, it is simply measured on a different clock, and the remedy differs (seed the missing basis versus fix the producer that handed over the wrong clock). WHY THE THRESHOLD SIDE STAYS WALL: operator ruling 2026-08-05 closed the witness-grain denominator as WALL, with thread CPU retained as the REMEDY DISCRIMINATOR rather than a second threshold arm — high wall with high CPU is algorithm or repeated evaluation, high wall with low CPU is waiting, I/O, subprocess or scheduling. So a CPU-clocked basis row is not forbidden by this type, it is simply not what the witness threshold is stated on, and handing one to this comparator against a wall observation now REFUSES instead of answering. WHERE THIS WALL DOES AND DOES NOT RUN, stated so the rung is not inflated (DESIGN section 4b): witness_row_cost_verdict is reached by dag/test/claim/witness_row_cost_drift_witness_test.dag, green by execution with a discriminating RED on BOTH sides of the ratio, so the refusal is proven to be decided by the clock rather than by the magnitude. It is NOT yet reached by the production falsifier-cadence receipt: the seed's write_witness_row_cost_drift_receipt_at calls only witness_row_cost_exceeds_basis, the bare ratio predicate, and rebuilds DriftExceeded / WithinBasis / BasisAbsent / ObservationAbsent in Rust, so the clock never crosses that seam and a cross-clock pair there would still answer. That comparison is nonetheless CORRECT today, and correct for a reason worth naming rather than trusting: both sides are wall, because the observed figure is PerformanceReceipt wall_nanos and every row in dag/gunbc/witness_row_cost_basis.tsv was seeded from that same pre-ruling receipt, which recorded no other clock. That is a fact about the current producers, not a property of the mechanism -- precisely the state this ruling exists to end. NEXT TRIGGER: the basis file carries its clock per row, the seed calls this verdict through the interpreter with the observed clock (constructing no carrier of its own, the discipline witness_cost_timed_out_seed_deferral_note already states for this seam), and the Rust arm reconstruction is DELETED rather than kept beside it -- a climb dissolves the lower-rung production machinery it obsoletes, and two spellings of one verdict is the fork this module refuses everywhere else."
 
 fn witness_row_cost_drift_ratio_numerator() -> Nat {
   2
@@ -85,12 +101,15 @@ fn witness_row_cost_exceeds_basis(observed: Millisecond, basis: Millisecond) -> 
 
 fn witness_row_cost_verdict(
   observed: Millisecond,
+  observed_clock: ClockBasis,
   basis: Optional<WitnessRowCostDatedBasis>,
 ) -> WitnessRowCostVerdict {
   match basis {
     Absent => BasisAbsent
     Present { value: b } =>
-      if witness_row_cost_exceeds_basis(observed: observed, basis: b.eval) {
+      if !clock_basis_eq(a: observed_clock, b: b.clock) {
+        BasisClockMismatch { observed: observed_clock, basis: b.clock }
+      } else if witness_row_cost_exceeds_basis(observed: observed, basis: b.eval) {
         DriftExceeded { observed: observed, basis: b.eval }
       } else {
         WithinBasis
@@ -224,7 +243,7 @@ fn witness_cost_unique_resolve_wall(
           match witness_cost_subject_entry(subject: event.subject) {
             Present { value: p } =>
               if p == entry {
-                witness_cost_measured_wall(wall: event.wall)
+                witness_cost_measured_wall(wall: observation_wall(event: event))
               } else {
                 acc
               }
@@ -242,11 +261,14 @@ fn witness_cost_unique_resolve_wall(
 type WitnessCostReceiptRow {
   entry: NonEmptyStr
   declaration: DeclarationRef
-  eval: Nanosecond
+  eval: List<TimedMeasurement>
   resolve: Nanosecond
   warm: Nanosecond
   outcome: ObservationOutcome
 }
+
+data witness_cost_row_eval_clocks_note: String = "The row's eval term carries EVERY clock the occurrence was measured on, each tagged, rather than one untagged number. WALL IS REQUIRED AND CPU IS NOT: the projection still refuses a witness whose wall figure is MeasuredUnavailable, because wall is what the witness threshold is stated on (operator ruling 2026-08-05) and a threshold with no measurement is the fabricated-plausible-output DESIGN section 5 forbids. Thread CPU rides beside it as the REMEDY DISCRIMINATOR, which is the only reason a second clock earns a column: a slow row with high CPU is algorithm or repeated evaluation, a slow row with low CPU is waiting, I/O, subprocess or scheduling, and one clock cannot tell an author which fix applies. Its absence is therefore an honest gap in what a producer sampled, not a refusal — the seed's run_claim_measured reads both from one run so production rows carry both, while a producer that genuinely sampled only wall says so by omission and observation_duration_of answers MeasuredUnavailable with that cause rather than a zero. The resolve and warm terms stay bare Nanosecond and stay WALL: an entry resolve is wall by construction (it is dominated by I/O the CPU clock cannot see) and witness_decomposition_does_not_reduce_entry_cost_note is the standing ruling that it is a different grain from this row entirely."
+
 
 type WitnessCostProjection
   = WitnessCostProjectionComplete { rows: List<WitnessCostReceiptRow> }
@@ -278,12 +300,12 @@ fn witness_cost_project_one_witness(
               cause: "parent resolve wall MeasuredUnavailable (refuse; never fabricate)" as NonEmptyStr
             }
           Present { value: resolve } =>
-            match witness_cost_measured_wall(wall: event.wall) {
+            match witness_cost_measured_wall(wall: observation_wall(event: event)) {
               Absent =>
                 WitnessCostProjectionRefused {
                   cause: "witness eval wall MeasuredUnavailable (refuse; never fabricate)" as NonEmptyStr
                 }
-              Present { value: eval } =>
+              Present { value: eval_wall } =>
                 match witness_cost_subject_declaration(subject: event.subject) {
                   Absent =>
                     WitnessCostProjectionRefused {
@@ -310,9 +332,9 @@ fn witness_cost_project_one_witness(
                               WitnessCostReceiptRow {
                                 entry: entry,
                                 declaration: decl,
-                                eval: eval,
+                                eval: event.durations,
                                 resolve: resolve,
-                                warm: witness_cost_warm(eval: eval, resolve: resolve),
+                                warm: witness_cost_warm(eval: eval_wall, resolve: resolve),
                                 outcome: outcome
                               }
                             ]
@@ -406,7 +428,7 @@ fn witness_cost_entry_resolve_event(
       ]
     },
     transition: Concluded { outcome: Done },
-    wall: MeasuredValue { value: resolve },
+    durations: observation_durations_wall(elapsed: resolve),
     rss: MeasuredUnavailable { cause: witness_cost_rss_unavailable_cause() }
   }
 }
@@ -425,7 +447,7 @@ fn witness_cost_nested_resolve_under_declaration_event(
       ]
     },
     transition: Concluded { outcome: Done },
-    wall: MeasuredValue { value: resolve },
+    durations: observation_durations_wall(elapsed: resolve),
     rss: MeasuredUnavailable { cause: witness_cost_rss_unavailable_cause() }
   }
 }
@@ -444,7 +466,7 @@ fn witness_cost_module_resolve_event(
       ]
     },
     transition: Concluded { outcome: Done },
-    wall: MeasuredValue { value: resolve },
+    durations: observation_durations_wall(elapsed: resolve),
     rss: MeasuredUnavailable { cause: witness_cost_rss_unavailable_cause() }
   }
 }
@@ -452,7 +474,7 @@ fn witness_cost_module_resolve_event(
 fn witness_cost_declaration_event(
   entry: NonEmptyStr,
   declaration: DeclarationRef,
-  eval: Nanosecond,
+  eval: List<TimedMeasurement>,
   outcome: ObservationOutcome,
 ) -> ObservationEvent {
   ObservationEvent {
@@ -463,7 +485,7 @@ fn witness_cost_declaration_event(
       ]
     },
     transition: Concluded { outcome: outcome },
-    wall: MeasuredValue { value: eval },
+    durations: eval,
     rss: MeasuredUnavailable { cause: witness_cost_rss_unavailable_cause() }
   }
 }
@@ -483,7 +505,7 @@ fn witness_cost_seed_done_event(
   entry: NonEmptyStr,
   module_path: NonEmptyStr,
   function: NonEmptyStr,
-  eval: Nanosecond,
+  eval: List<TimedMeasurement>,
 ) -> ObservationEvent {
   witness_cost_declaration_event(
     entry: entry,
@@ -497,7 +519,7 @@ fn witness_cost_seed_refused_event(
   entry: NonEmptyStr,
   module_path: NonEmptyStr,
   function: NonEmptyStr,
-  eval: Nanosecond,
+  eval: List<TimedMeasurement>,
   diagnostic: NonEmptyStr,
 ) -> ObservationEvent {
   witness_cost_declaration_event(
@@ -512,7 +534,7 @@ fn witness_cost_seed_failed_event(
   entry: NonEmptyStr,
   module_path: NonEmptyStr,
   function: NonEmptyStr,
-  eval: Nanosecond,
+  eval: List<TimedMeasurement>,
   error: NonEmptyStr,
 ) -> ObservationEvent {
   witness_cost_declaration_event(
@@ -523,7 +545,7 @@ fn witness_cost_seed_failed_event(
   )
 }
 
-data witness_cost_seed_timed_out_note: String = "A deadline-killed witness is TimedOut, never Failed and never Done. The distinction is not cosmetic: a killed row's recorded wall is its CEILING, not its cost — a censored measurement — so anything that reads it as a completed duration is reading a fabricated value. The concrete price was paid twice. The falsifier alert reported the whole run red and erased its green components (gunbc.floor_component_receipt), and the witness row-cost basis could not seed the corpus's most expensive row at all: resolution_divergence_silent_pick_gate_keystone_holds was killed at 900000ms but recorded a flat 900794ms, and seeding that under the 2x comparator would have pinned the row WithinBasis below ~1.8M ms forever, enshrining a deadline ceiling as normal cost. Upstream of this constructor the seed used to flatten the typed budget pair into a message string and the floor then recovered the classification by substring-matching that same prose (falsifier_failure_mode's .contains checks), whose fallback arm is WitnessRed — so rewording an error silently reclassified a budget refusal as a witness failure. Both budget clocks route here: cpu (thread CPU, the stride-poll metric) and wall (whole-receipt, counting subprocess I/O) are different states with different remedies, so the seed keeps them apart as BudgetKind and surfaces the label in the failure detail and the batch failure mode. It is deliberately NOT a field on this event: ObservationOutcome.TimedOut carries budget and elapsed only, and extending that sum is a change to load-bearing substrate (std.observation) that this lane does not carry the mandate for. The consequence is stated rather than hidden — an ObservationEvent alone does not say which clock expired; the seed-side detail does. Dissolve-on: if a consumer needs the clock from the event itself, that is the argument for taking the field to std.observation, not for widening it here. Parameters are Millisecond carriers, not bare Nat: the caller is what can get a unit wrong, and the seed constructs the carrier by calling millisecond(count:) across the boundary so the constructor stays the single authority."
+data witness_cost_seed_timed_out_note: String = "A deadline-killed witness is TimedOut, never Failed and never Done. The distinction is not cosmetic: a killed row's recorded wall is its CEILING, not its cost — a censored measurement — so anything that reads it as a completed duration is reading a fabricated value. The concrete price was paid twice. The falsifier alert reported the whole run red and erased its green components (gunbc.floor_component_receipt), and the witness row-cost basis could not seed the corpus's most expensive row at all: resolution_divergence_silent_pick_gate_keystone_holds was killed at 900000ms but recorded a flat 900794ms, and seeding that under the 2x comparator would have pinned the row WithinBasis below ~1.8M ms forever, enshrining a deadline ceiling as normal cost. Upstream of this constructor the seed used to flatten the typed budget pair into a message string and the floor then recovered the classification by substring-matching that same prose (falsifier_failure_mode's .contains checks), whose fallback arm is WitnessRed — so rewording an error silently reclassified a budget refusal as a witness failure. Both budget clocks route here: cpu (thread CPU, the stride-poll metric) and wall (whole-receipt, counting subprocess I/O) are different states with different remedies, so the seed keeps them apart as BudgetKind and surfaces the label in the failure detail and the batch failure mode. THAT DEFERRAL IS NOW DISCHARGED (2026-08-05, operator clock-basis ruling). This note used to say the clock was deliberately NOT a field on this event, because extending ObservationOutcome.TimedOut meant changing load-bearing substrate that lane held no mandate for, and it named the exact condition for revisiting: if a consumer needs the clock from the event itself, take the field to std.observation rather than widening it here. A consumer did, and the field went there. TimedOut now carries basis: ClockBasis, this constructor takes it as a parameter, and the seed passes the BudgetKind it already keeps rather than surfacing the clock only in prose. An ObservationEvent alone now DOES say which clock expired. Parameters are Millisecond carriers, not bare Nat: the caller is what can get a unit wrong, and the seed constructs the carrier by calling millisecond(count:) across the boundary so the constructor stays the single authority."
 
 data witness_cost_timed_out_seed_deferral_note: String = "PURE BOOTSTRAP RECEIPT for the seed-side Rust this constructor is fed by (review 45226 asked for it, correctly, and the sibling gunbc.floor_component_receipt seed_transport_deferral_note is the precedent it matches). WHAT IS ADDED: no new Rust file and no parallel authority — a variant on the existing ClaimOutcome sum in the already-seed-retained cli_run module (TimedOut carrying elapsed_ms/budget_ms/kind), the BudgetKind label pair, a BudgetRefusal projection field on ClaimResult so the fact survives the flattening into ok/detail, and discovery_budget_refusal which lifts that fact out of a discovery batch's witness_outcomes. WHAT IT REPLACES rather than accumulates: the two format!-into-RuntimeError sites and the reliance on falsifier_failure_mode's substring recovery of the classification — the change is net-negative on the seed's judgment surface, since the seed no longer decides what a budget message MEANS by reading its own prose. WHAT IS NOT IN RUST: the outcome vocabulary and the receipt shape, which are std.observation's ObservationOutcome and this module's projection; the seed constructs no carrier, calling millisecond(count:) through the interpreter and handing the resulting Millisecond back, so no flat-scalar duration crosses the seam. DEFERRED TO: the v1 exit finish line ZeroHandMaintainedRust, roadmap node v1-zero-hand-maintained-rust (gunbc.v1_deletion_plan v1_exit_finish_lines). CONCRETE DISSOLUTION: this transport deletes when witness execution is realized from .dag rather than interpreted in the seed bin (the witness-realization lane — emit witnesses to native code and schedule the runs through realization/materialization), at which point the budget deadline is enforced by the realized runner and the TimedOut event is constructed here directly instead of being marshalled across the interpreter boundary. Note this is a DIFFERENT trigger from witness_cost_seed_timed_out_note's, which concerns adding the clock kind to std.observation; that one widens the modeled outcome, this one deletes the seed transport, and neither implies the other."
 
@@ -531,7 +553,8 @@ fn witness_cost_seed_timed_out_event(
   entry: NonEmptyStr,
   module_path: NonEmptyStr,
   function: NonEmptyStr,
-  eval: Nanosecond,
+  eval: List<TimedMeasurement>,
+  basis: ClockBasis,
   budget: Millisecond,
   elapsed: Millisecond,
 ) -> ObservationEvent {
@@ -539,6 +562,6 @@ fn witness_cost_seed_timed_out_event(
     entry: entry,
     declaration: witness_cost_seed_declaration(module_path: module_path, function: function),
     eval: eval,
-    outcome: TimedOut { budget: budget, elapsed: elapsed }
+    outcome: TimedOut { basis: basis, budget: budget, elapsed: elapsed }
   )
 }

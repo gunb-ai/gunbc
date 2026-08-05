@@ -90,7 +90,9 @@ fn artifact_generate(a: GeneratedArtifact) -> ArtifactGenerationOutcome {
   }
 }
 
-fn artifact_extra_valid(a: GeneratedArtifact) -> Bool {
+data artifact_extra_valid_note: String = "P0 (operator-directed, 2026-08-05; loyal-ram-550 review of #7823): takes the ALREADY-COMPUTED generation outcome rather than calling artifact_generate itself. The two variants whose extra check depends on generation success (Stage0EmitPlanGeneratedDagArtifact, V1InterpreterDispatchGeneratedRsArtifact) used to call artifact_generate(a: a) a second time here, discarding the content and keeping only success/failure — one Filesystem.Read, but TWO artifact_generate calls per artifact for those two variants, contradicting gunbc.generated_artifact_observation's 'one artifact_generate per artifact' claim. Every caller now supplies the outcome it already produced (observe_generated_artifact reuses its own match result); no second entry point to generation remains."
+
+fn artifact_extra_valid(a: GeneratedArtifact, generated: ArtifactGenerationOutcome) -> Bool {
   match a {
     CiYamlArtifact => ci_yml_parses(path: artifact_path(a: a))
     FalsifierYamlArtifact => ci_yml_parses(path: artifact_path(a: a))
@@ -104,11 +106,11 @@ fn artifact_extra_valid(a: GeneratedArtifact) -> Bool {
     Stage0CrateLayoutGeneratedDagArtifact => true
     Stage0CrateLayoutGeneratedRsArtifact => true
     Stage0CratePartitionGeneratedDagArtifact => true
-    Stage0EmitPlanGeneratedDagArtifact => match artifact_generate(a: a) {
+    Stage0EmitPlanGeneratedDagArtifact => match generated {
       ArtifactGenerated { content: _ } => true
       ArtifactGenerationRefused { reason: _ } => false
     }
-    V1InterpreterDispatchGeneratedRsArtifact => match artifact_generate(a: a) {
+    V1InterpreterDispatchGeneratedRsArtifact => match generated {
       ArtifactGenerated { content: _ } => true
       ArtifactGenerationRefused { reason: _ } => false
     }

@@ -2,6 +2,7 @@ module test.claim.witness_row_cost_drift
 
 import gunbc.witness_row_cost {
   BasisAbsent,
+  BasisClockMismatch,
   DriftExceeded,
   WithinBasis,
   WitnessRowCostDatedBasis,
@@ -12,12 +13,14 @@ import std.logic { Bool }
 import std.nat { Nat }
 import std.measure { millisecond, millisecond_count }
 import v2.std.optional { Absent, Present }
+import std.observation { ClockBasis, CpuClock, WallClock, clock_basis_eq }
 import v2.std.text { String }
 
-data witness_row_cost_drift_note: String = "Executing consumer for the per-witness cost drift comparator (gunbc.witness_row_cost, placement #5 spine). THE PAIR IS THE PROOF: a synthetic row exceeding 2× its dated basis MUST produce DriftExceeded, and one within basis MUST NOT — either alone is satisfiable by a broken comparator. BasisAbsent is a third arm: no dated basis is typed and counted, never assume fine. Structural claims only here — every ms basis value in production rows must cite an arm64 fleet run id (witness_row_cost_basis_host_class_note). Consumers match WitnessRowCostVerdict directly (no Bool predicate dissolution)."
+data witness_row_cost_drift_note: String = "Executing consumer for the per-witness cost drift comparator (gunbc.witness_row_cost, placement #5 spine). THE PAIR IS THE PROOF: a synthetic row exceeding 2× its dated basis MUST produce DriftExceeded, and one within basis MUST NOT — either alone is satisfiable by a broken comparator. BasisAbsent is a third arm: no dated basis is typed and counted, never assume fine. Structural claims only here — every ms basis value in production rows must cite an arm64 fleet run id (witness_row_cost_basis_host_class_note). Consumers match WitnessRowCostVerdict directly (no Bool predicate dissolution). THE CROSS-CLOCK PAIR IS THE DISCRIMINATING CONTROL for the clock-basis wall (operator ruling 2026-08-05), and it takes TWO cases rather than one because a single case is satisfiable by a comparator that happens to be answering DriftExceeded for the wrong reason: 21 CPU against a 10 wall basis would exceed the 2x ratio and 20 CPU against the same basis would not, so the pair asserts that the SAME refusal arrives on both sides of the threshold and therefore that the refusal is decided by the clock rather than by the magnitude. Before this wall both cases returned a confident verdict about two different quantities."
 
-fn dated_basis(eval_ms: Nat, run_ref: String) -> WitnessRowCostDatedBasis {
+fn dated_basis(clock: ClockBasis, eval_ms: Nat, run_ref: String) -> WitnessRowCostDatedBasis {
   WitnessRowCostDatedBasis {
+    clock: clock,
     eval: millisecond(count: eval_ms),
     run_ref: run_ref,
   }
@@ -26,37 +29,72 @@ fn dated_basis(eval_ms: Nat, run_ref: String) -> WitnessRowCostDatedBasis {
 fn drift_red_control_exceeds_basis_holds() -> Bool {
   let v = witness_row_cost_verdict(
     observed: millisecond(count: 21),
-    basis: Present { value: dated_basis(eval_ms: 10, run_ref: "synthetic-red") },
+    observed_clock: WallClock,
+    basis: Present { value: dated_basis(clock: WallClock, eval_ms: 10, run_ref: "synthetic-red") },
   )
   match v {
     DriftExceeded { observed: o, basis: b } =>
       millisecond_count(m: o) == 21 && millisecond_count(m: b) == 10
     WithinBasis => false
     BasisAbsent => false
+    BasisClockMismatch { observed: _, basis: _ } => false
   }
 }
 
 fn within_basis_control_does_not_drift_holds() -> Bool {
   let v = witness_row_cost_verdict(
     observed: millisecond(count: 20),
-    basis: Present { value: dated_basis(eval_ms: 10, run_ref: "synthetic-within") },
+    observed_clock: WallClock,
+    basis: Present { value: dated_basis(clock: WallClock, eval_ms: 10, run_ref: "synthetic-within") },
   )
   match v {
     WithinBasis => true
     DriftExceeded { observed: _, basis: _ } => false
     BasisAbsent => false
+    BasisClockMismatch { observed: _, basis: _ } => false
   }
 }
 
 fn basis_absent_control_holds() -> Bool {
   let v = witness_row_cost_verdict(
     observed: millisecond(count: 999),
+    observed_clock: WallClock,
     basis: Absent,
   )
   match v {
     BasisAbsent => true
     WithinBasis => false
     DriftExceeded { observed: _, basis: _ } => false
+    BasisClockMismatch { observed: _, basis: _ } => false
+  }
+}
+
+fn cross_clock_comparison_refuses_rather_than_answering_holds() -> Bool {
+  let v = witness_row_cost_verdict(
+    observed: millisecond(count: 21),
+    observed_clock: CpuClock,
+    basis: Present { value: dated_basis(clock: WallClock, eval_ms: 10, run_ref: "synthetic-cross-clock") },
+  )
+  match v {
+    BasisClockMismatch { observed: o, basis: b } =>
+      clock_basis_eq(a: o, b: CpuClock) && clock_basis_eq(a: b, b: WallClock)
+    DriftExceeded { observed: _, basis: _ } => false
+    WithinBasis => false
+    BasisAbsent => false
+  }
+}
+
+fn cross_clock_refusal_is_not_reachable_by_the_within_arm_holds() -> Bool {
+  let v = witness_row_cost_verdict(
+    observed: millisecond(count: 20),
+    observed_clock: CpuClock,
+    basis: Present { value: dated_basis(clock: WallClock, eval_ms: 10, run_ref: "synthetic-cross-clock-within") },
+  )
+  match v {
+    BasisClockMismatch { observed: _, basis: _ } => true
+    WithinBasis => false
+    DriftExceeded { observed: _, basis: _ } => false
+    BasisAbsent => false
   }
 }
 
@@ -72,4 +110,6 @@ test fn witness_row_cost_drift_comparator_holds() -> Bool {
     && within_basis_control_does_not_drift_holds()
     && basis_absent_control_holds()
     && boundary_at_exactly_twice_is_not_drift_holds()
+    && cross_clock_comparison_refuses_rather_than_answering_holds()
+    && cross_clock_refusal_is_not_reachable_by_the_within_arm_holds()
 }

@@ -109,6 +109,26 @@ fn hand_authored_doc_path(b: HandAuthoredDocBind) -> String {
 data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
   HandAuthoredDocBind {
     home: PlanDoc,
+    slug: "witness-evidence-lifecycle-design",
+    primary_work: DeclarationRef { module_path: "v2.workflow.floor_discovery_producer", decl_name: "floor_discovery_process_dag_file", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "gunbc.ci_layer_roots", decl_name: "long_lane_exclusion_note", field: WholeDeclaration },
+      DeclarationRef { module_path: "gunbc.explicit_witness_admission", decl_name: "known_red_class_note", field: WholeDeclaration },
+      DeclarationRef { module_path: "v2.workflow.ci_floor_plan", decl_name: "falsifier_known_red_probe_batch_note", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "steps 3-5 land or are honestly retired (steps 1-2 are done: the modeling decision was signed by the operator 2026-08-04 and the typed direct-rust-door observation executes green). Remaining: census-before-routing in floor_discovery_process_dag_file, the attempt/evidence algebra retiring QuarantineProbeExpectRed and batch-wide expect_red inversion, and route derived from execution requirement — with test/claim/long DELETED as the terminal state per the operator step-5 ruling (it may persist as migration scaffolding meanwhile, but no new semantic dependence may be added to it, and operator visibility comes from a generated long-route projection rather than the directory name). Then the surviving policy rows migrate to DESIGN or a registered gunbc.plan.Plan row and this bind deletes with the doc." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "production-stage-origin-carrier-design",
+    primary_work: DeclarationRef { module_path: "v2.compiler.self_host.candidate_generation", decl_name: "mint_provenanced_rust_artifact", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "v2.compiler.self_host.fixture_synthetic_emission", decl_name: "fixture_synthetic_emission_note", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "B1-B4 land or are honestly retired: covered-form construction admission, call-occurrence population closure consuming the #7786 successor, production API migration removing raw stage outputs from qualification boundaries, and bypass closure for casts / module identity / fail-open lookup. The ProductionOriginClosureCertificate becomes constructible - constructor and consumer populations closed, fixture reachability zero, unknown-origin zero - at which point the carrier law lives in the substrate and this note deletes. If the census successor proves the class cannot close under the current sole_constructor mechanism, this note is superseded by the recut rather than deleted silently." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
     slug: "candidate-scoped-gates-atomic-landing",
     primary_work: DeclarationRef { module_path: "gunbc.extdeps_scope_frontier", decl_name: "legacy_manifest_freeze_sha", field: WholeDeclaration },
     additional_works: [DeclarationRef { module_path: "gunbc.ci_failure_class", decl_name: "merge_freshness_gating_status", field: WholeDeclaration }, DeclarationRef { module_path: "tools.floor_effect_gate_witness", decl_name: "emit_host_gate_passes", field: WholeDeclaration }, DeclarationRef { module_path: "gunbc.merge_admission", decl_name: "merge_admission_required_check_binding_dissolution_trigger", field: WholeDeclaration }],
@@ -402,6 +422,17 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
   },
   HandAuthoredDocBind {
     home: PlanDoc,
+    slug: "dag-prose-policy-audit",
+    primary_work: DeclarationRef { module_path: "v2.std.compilers.lexing", decl_name: "LexRule", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "v2.compiler.parse", decl_name: "ParseArtifact", field: WholeDeclaration },
+      DeclarationRef { module_path: "v2.extdeps.languages.dag", decl_name: "dag_line_comment_fidelity", field: WholeDeclaration },
+      DeclarationRef { module_path: "v2.test.round_trip.dag_comment_wall_test", decl_name: "dag_comment_wall_line_comment_refused", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the source-annotation carrier lands with its executed controls — line comments captured on a THIRD lexical channel (AnnotationRule, never TriviaRule and never an ordinary TokenRule) returning an authored wrapper around an unchanged semantic artifact, consuming no semantic occurrence identity, attached at module-item grain with trailing/body/unattached/block forms refusing, and erasure established by the seven D-C proofs rather than by emitted-byte equality alone (which cannot detect a moved occurrence-identity graph) — and the representation partition over the measured prose population completes; at which point a lexical audit over prose is superseded by a fold over the annotation graph and the typed populations beside it, and this doc plus its uncommitted instrument delete together (same trigger family as dag-note-prose-census)" },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
     slug: "dissolution-census-a-ci-layer-roots",
     primary_work: DeclarationRef { module_path: "gunbc.ci_layer_roots", decl_name: "witness_exclusion_frontier", field: WholeDeclaration },
     additional_works: [DeclarationRef { module_path: "v2.lens.enforcement.standing_intent", decl_name: "StandingIntent", field: WholeDeclaration }],
@@ -511,6 +542,16 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     primary_work: DeclarationRef { module_path: "v2.std.node", decl_name: "NodeKind", field: NamedField { field_name: "G1_planted_field_absent_control_RED" } },
     additional_works: [],
     dissolution: HasTrigger { text: "permanent discriminating control for feature:cited-symbol-resolution (operator ruling 2026-08-03): enrolled DeclarationRef names a real decl_facts row but a NamedField absent from its node — distinct refusal arm from declaration-absent and module-absent; never retires when production population is zero" },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "falsifier-memory-root-cause-diagnosis",
+    primary_work: DeclarationRef { module_path: "gunbc.falsifier_workflow", decl_name: "gunbc_falsifier_job_split_note", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "gunbc.falsifier_workflow", decl_name: "falsifier_workflow", field: WholeDeclaration },
+      DeclarationRef { module_path: "test.claim.falsifier_workflow_witness_test", decl_name: "falsifier_backstop_is_step_sum_plus_prelude", field: WholeDeclaration },
+    ],
+    dissolution: HasTrigger { text: "the falsifier-build→falsifier job split merges to main (P0 cgroup hygiene landed) AND Class B witness root-cause is landed on its carrier with the five named witnesses green on the falsifier cadence — then surviving facts migrate to DESIGN open-thread or a registered gunbc.plan.Plan row and this bind deletes with the doc." },
   },
 ]
 
