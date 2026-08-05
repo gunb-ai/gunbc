@@ -5,9 +5,22 @@ import extdeps.github.actions { WorkflowPermissions, PermissionLevel, PermRead, 
 import extdeps.github.app {
   GitHubAppPermission,
   GitHubPermissionAxis,
+  ActionsAxis,
+  ArtifactMetadataAxis,
+  AttestationsAxis,
+  CodeQualityAxis,
   ContentsAxis,
+  DeploymentsAxis,
+  DiscussionsAxis,
+  PackagesAxis,
+  PagesAxis,
+  PullRequestsAxis,
+  SecurityEventsAxis,
+  StatusesAxis,
+  VulnerabilityAlertsAxis,
   WorkflowsAxis,
   MetadataAxis,
+  RepositoryProjectsAxis,
   AdministrationAxis,
   OrganizationSelfHostedRunnersAxis,
   IssuesAxis,
@@ -47,6 +60,8 @@ import extdeps.github.actions_token {
   ActionsAccessReadOnly,
   ActionsAccessNotAvailable,
   axis_allowed_actions_access,
+  actions_access_set_admits,
+  actions_token_can_carry,
   effective_actions_grant
 }
 import extdeps.github.effect {
@@ -219,11 +234,45 @@ test fn witness_scope_unavailable_is_not_scope_none() -> Bool {
   let g = grant_with(contents: Present { value: PermWrite }, origin: SameRepositoryOrigin, policy: same_repo_policy)
   is_scope_unavailable(r: effective_actions_grant(grant: g, name: WorkflowsAxis))
     && is_scope_unavailable(r: effective_actions_grant(grant: g, name: MetadataAxis))
+    && is_scope_unavailable(r: effective_actions_grant(grant: g, name: RepositoryProjectsAxis))
     && is_scope_unavailable(r: effective_actions_grant(grant: g, name: AdministrationAxis))
     && is_scope_unavailable(r: effective_actions_grant(grant: g, name: OrganizationSelfHostedRunnersAxis))
     && is_none(r: effective_actions_grant(grant: g, name: IssuesAxis))
     && is_none(r: effective_actions_grant(grant: g, name: IdTokenAxis))
     && is_axis_not_modeled(r: effective_actions_grant(grant: g, name: ChecksAxis))
+}
+
+test fn witness_permissions_key_table_matches_cited_vocabulary() -> Bool {
+  actions_token_can_carry(name: ActionsAxis)
+    && actions_token_can_carry(name: ArtifactMetadataAxis)
+    && actions_token_can_carry(name: AttestationsAxis)
+    && actions_token_can_carry(name: ChecksAxis)
+    && actions_token_can_carry(name: CodeQualityAxis)
+    && actions_token_can_carry(name: ContentsAxis)
+    && actions_token_can_carry(name: DeploymentsAxis)
+    && actions_token_can_carry(name: DiscussionsAxis)
+    && actions_token_can_carry(name: IdTokenAxis)
+    && actions_token_can_carry(name: IssuesAxis)
+    && actions_token_can_carry(name: PackagesAxis)
+    && actions_token_can_carry(name: PagesAxis)
+    && actions_token_can_carry(name: PullRequestsAxis)
+    && actions_token_can_carry(name: SecurityEventsAxis)
+    && actions_token_can_carry(name: StatusesAxis)
+    && actions_token_can_carry(name: VulnerabilityAlertsAxis)
+    && !actions_token_can_carry(name: MetadataAxis)
+    && !actions_token_can_carry(name: RepositoryProjectsAxis)
+    && !actions_token_can_carry(name: WorkflowsAxis)
+    && !actions_token_can_carry(name: AdministrationAxis)
+    && !actions_token_can_carry(name: OrganizationSelfHostedRunnersAxis)
+}
+
+test fn witness_cited_access_levels_are_not_uniformly_read_write() -> Bool {
+  actions_access_set_admits(set: axis_allowed_actions_access(axis: IdTokenAxis), access: AppAccessWrite)
+    && !actions_access_set_admits(set: axis_allowed_actions_access(axis: IdTokenAxis), access: AppAccessRead)
+    && actions_access_set_admits(set: axis_allowed_actions_access(axis: VulnerabilityAlertsAxis), access: AppAccessRead)
+    && !actions_access_set_admits(set: axis_allowed_actions_access(axis: VulnerabilityAlertsAxis), access: AppAccessWrite)
+    && actions_access_set_admits(set: axis_allowed_actions_access(axis: ContentsAxis), access: AppAccessWrite)
+    && actions_access_set_admits(set: axis_allowed_actions_access(axis: ContentsAxis), access: AppAccessRead)
 }
 
 data workflow_effect: GitHubEffect = AdvanceRepositoryBranch {

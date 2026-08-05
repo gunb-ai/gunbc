@@ -56,7 +56,7 @@ fn axis_actions_permissions_key(axis: GitHubPermissionAxis) -> NonEmptyStr? {
     PackagesAxis => Present { value: "packages" }
     PagesAxis => Present { value: "pages" }
     PullRequestsAxis => Present { value: "pull-requests" }
-    RepositoryProjectsAxis => Present { value: "repository-projects" }
+    RepositoryProjectsAxis => none
     SecurityEventsAxis => Present { value: "security-events" }
     StatusesAxis => Present { value: "statuses" }
     VulnerabilityAlertsAxis => Present { value: "vulnerability-alerts" }
@@ -89,7 +89,7 @@ fn axis_allowed_actions_access(axis: GitHubPermissionAxis) -> ActionsAccessSet {
     PackagesAxis => ActionsAccessReadOrWrite
     PagesAxis => ActionsAccessReadOrWrite
     PullRequestsAxis => ActionsAccessReadOrWrite
-    RepositoryProjectsAxis => ActionsAccessReadOrWrite
+    RepositoryProjectsAxis => ActionsAccessNotAvailable
     SecurityEventsAxis => ActionsAccessReadOrWrite
     StatusesAxis => ActionsAccessReadOrWrite
     VulnerabilityAlertsAxis => ActionsAccessReadOnly
@@ -118,7 +118,7 @@ fn actions_access_set_admits(set: ActionsAccessSet, access: GitHubAppPermissionA
 }
 
 fn actions_token_can_carry(name: GitHubPermissionAxis) -> Bool {
-  match axis_actions_scope_name(axis: name) {
+  match axis_actions_permissions_key(axis: name) {
     Absent => false
     Present { value: _ } => match axis_allowed_actions_access(axis: name) {
       ActionsAccessNotAvailable => false
@@ -306,7 +306,7 @@ fn effective_actions_grant(
   grant: EffectiveActionsJobGrant,
   name: GitHubPermissionAxis
 ) -> ActionsGrantResolution {
-  match axis_actions_scope_name(axis: name) {
+  match axis_actions_permissions_key(axis: name) {
     Absent => ActionsGrantScopeUnavailable
     Present { value: _ } =>
       if !axis_modeled_by_workflow_permissions(axis: name) {
