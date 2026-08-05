@@ -145,35 +145,62 @@ fn all_overlap_residue_non_empty_diagnostics(d: NonEmptyDiagnostics) -> Bool {
     && all_overlap_residue_diagnostic_list(xs: d.tail)
 }
 
+data overlap_diagnostic_row_queue_merge_note: String = "parse_stage_head_from_overlap_row_queue_and_diagnostic and parse_stage_tail_from_overlap_row_queue_and_diagnostics pair plain NonEmptyDiagnostics overlap residues against a GrammarChoiceAmbiguityRow queue from overlap_residue_stage. Both sides derive from the same ambiguity_roster in grammar_validate_and_analyze today — count mismatch is unreachable in-tree. HeadAbsent arms silently narrow to NoParseDiagnosticEvidence (empty-observation narrow at this boundary if parallel representation diverges). Dissolve trigger: carry overlap evidence only on parse-stage diagnostics and delete this queue-merge path; then refuse on evidence deficit instead of narrowing."
+
+type OverlapQueueMergeAcc {
+  stages: FreeMonoid<ParseStageDiagnostic>
+  row_queue: FreeMonoid<GrammarChoiceAmbiguityRow>
+}
+
+fn overlap_row_queue_tail_after_pop(
+  row_queue: FreeMonoid<GrammarChoiceAmbiguityRow>
+) -> FreeMonoid<GrammarChoiceAmbiguityRow> {
+  match list_tail(xs: row_queue) {
+    TailAbsent => Empty
+    TailFound { tail: rest } => rest
+  }
+}
+
+fn overlap_queue_merge_acc_step(acc: OverlapQueueMergeAcc, diag: Diagnostic) -> OverlapQueueMergeAcc {
+  if diagnostic_reason_is_overlap_residue(d: diag) {
+    match list_head(xs: acc.row_queue) {
+      HeadFound { value: row } =>
+        OverlapQueueMergeAcc {
+          stages: list_snoc_item(
+            xs: acc.stages,
+            item: parse_overlap_residue_stage_diagnostic_at(at: diag.at, row: row)
+          ),
+          row_queue: overlap_row_queue_tail_after_pop(row_queue: acc.row_queue)
+        }
+      HeadAbsent =>
+        OverlapQueueMergeAcc {
+          stages: list_snoc_item(
+            xs: acc.stages,
+            item: parse_stage_diagnostic_from_diagnostic_only(d: diag)
+          ),
+          row_queue: acc.row_queue
+        }
+    }
+  } else {
+    OverlapQueueMergeAcc {
+      stages: list_snoc_item(
+        xs: acc.stages,
+        item: parse_stage_diagnostic_from_diagnostic_only(d: diag)
+      ),
+      row_queue: acc.row_queue
+    }
+  }
+}
+
 fn parse_stage_tail_from_overlap_row_queue_and_diagnostics(
   tail: FreeMonoid<Diagnostic>,
   row_queue: FreeMonoid<GrammarChoiceAmbiguityRow>
 ) -> FreeMonoid<ParseStageDiagnostic> {
   fold_list(
     xs: tail,
-    empty: Empty,
-    cons: fn(acc, diag) {
-      if diagnostic_reason_is_overlap_residue(d: diag) {
-        match list_head(xs: row_queue) {
-          HeadFound { value: row } =>
-            list_snoc_item(
-              xs: acc,
-              item: parse_overlap_residue_stage_diagnostic_at(
-                at: diag.at,
-                row: row
-              )
-            )
-          HeadAbsent =>
-            list_snoc_item(
-              xs: acc,
-              item: parse_stage_diagnostic_from_diagnostic_only(d: diag)
-            )
-        }
-      } else {
-        list_snoc_item(xs: acc, item: parse_stage_diagnostic_from_diagnostic_only(d: diag))
-      }
-    }
-  )
+    empty: OverlapQueueMergeAcc { stages: Empty, row_queue: row_queue },
+    cons: fn(acc, diag) { overlap_queue_merge_acc_step(acc: acc, diag: diag) }
+  ).stages
 }
 
 fn parse_stage_head_from_overlap_row_queue_and_diagnostic(
@@ -196,10 +223,7 @@ fn overlap_row_queue_after_overlap_head(
   row_queue: FreeMonoid<GrammarChoiceAmbiguityRow>
 ) -> FreeMonoid<GrammarChoiceAmbiguityRow> {
   if diagnostic_reason_is_overlap_residue(d: diag) {
-    match list_tail(xs: row_queue) {
-      TailAbsent => Empty
-      TailFound { tail: rest } => rest
-    }
+    overlap_row_queue_tail_after_pop(row_queue: row_queue)
   } else {
     row_queue
   }
