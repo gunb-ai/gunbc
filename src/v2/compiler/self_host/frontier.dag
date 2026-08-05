@@ -40,6 +40,7 @@ import v2.compiler.self_host.frontier_probe_types {
   FrontierProbeDetailAbsent,
   FrontierProbeReceipt,
   FrontierProbeStage,
+  NoFrontierProbeDetail,
   NameResolutionGap,
   ProbeStageAssemble,
   ProbeStageSemanticDerivation,
@@ -240,7 +241,8 @@ fn execution_measured_seed_retained_row(
       blocker_class: measured_blocker,
       located_stage: located_stage,
       located_reason: located_reason,
-      detail: FrontierProbeDetailAbsent
+      detail: FrontierProbeDetailAbsent,
+      assemble_detail: NoFrontierProbeDetail
     },
     tractability_rank: tractability_rank_for(closure_reads: closure_reads, blocker: measured_blocker)
   }

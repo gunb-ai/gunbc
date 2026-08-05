@@ -5,6 +5,10 @@ import v2.compiler.parse_engine_hooks {
   parse_engine_match_arm_body_production,
   parse_engine_match_arm_stmt_body_production
 }
+import v2.compiler.parse_diagnostic {
+  parse_overlap_residue_stage_diagnostic_at,
+  parse_stage_diagnostic_core
+}
 import v2.std.diagnostic {
   Accepted,
   ByteRange,
@@ -26,6 +30,7 @@ import v2.std.diagnostic {
   port_locus,
   rejected_with_pending
 }
+import v2.std.grammar_choice_ambiguity { GrammarChoiceAmbiguityRow }
 import v2.std.node {
   Atom,
   Conj,
@@ -1158,12 +1163,6 @@ type GrammarExprFirstFold {
   nullable: Bool
 }
 
-type GrammarChoiceAmbiguityRow {
-  production: Symbol
-  overlap_terminals: List<Symbol>
-  both_nullable: Bool
-}
-
 type GrammarFirstAnalysis {
   nullable_set: Set<Symbol>
   first_rows: Map<Symbol, List<Symbol>>
@@ -1327,6 +1326,8 @@ fn append_choice_ambiguity_row(
       xs: acc,
       item: GrammarChoiceAmbiguityRow {
         production: production,
+        left_first_terminals: left.terminals,
+        right_first_terminals: right.terminals,
         overlap_terminals: first_list_intersect(left: left.terminals, right: right.terminals),
         both_nullable: left.nullable && right.nullable
       }
@@ -1678,12 +1679,10 @@ fn grammar_nullable_ambiguity_rows(roster: List<GrammarChoiceAmbiguityRow>) -> L
   filter(xs: roster, predicate: fn(row) { row.both_nullable })
 }
 
-fn parse_grammar_choice_overlap_residue_diagnostic(at: Locus) -> Diagnostic {
-  Diagnostic {
-    reason: ^parse_grammar_choice_overlap_residue,
-    at: at,
-    correction: Unavailable { reason: ExternalContractUnknown }
-  }
+fn parse_grammar_choice_overlap_residue_diagnostic(at: Locus, row: GrammarChoiceAmbiguityRow) -> Diagnostic {
+  parse_stage_diagnostic_core(
+    d: parse_overlap_residue_stage_diagnostic_at(at: at, row: row)
+  )
 }
 
 fn diagnostics_from_diagnostic_list(items: List<Diagnostic>) -> Diagnostics {
@@ -1704,7 +1703,7 @@ fn grammar_overlap_residue_diagnostics(at: Locus, roster: List<GrammarChoiceAmbi
       xs: roster,
       empty: std.algebra.Empty,
       cons: fn(acc, row) {
-        list_snoc_item(xs: acc, item: parse_grammar_choice_overlap_residue_diagnostic(at: at))
+        list_snoc_item(xs: acc, item: parse_grammar_choice_overlap_residue_diagnostic(at: at, row: row))
       }
     )
   )

@@ -1,0 +1,206 @@
+module v2.compiler.self_host.frontier_probe_assemble_detail
+
+import std.algebra { FreeMonoid }
+import v2.std.algebra {
+  Empty,
+  HeadAbsent,
+  HeadFound,
+  TailAbsent,
+  TailFound,
+  fold_list,
+  is_empty,
+  list_head,
+  list_snoc_item,
+  list_tail
+}
+import v2.compiler.parse_diagnostic {
+  NonEmptyParseStageDiagnostics,
+  ParseStageDiagnostic,
+  list_head_value_or_self_parse_stage,
+  list_tail_or_empty_parse_stage,
+  non_empty_grammar_choice_ambiguity_rows_from_parse_stage
+}
+import v2.compiler.self_host.frontier_probe_types {
+  AssembleMissingModule,
+  AssembleRejectionCause,
+  AssembleRejectionDetail,
+  FrontierBlockerClass,
+  FrontierProbeAssembleDetail,
+  FrontierProbeDetail,
+  FrontierProbeReceipt,
+  GrammarChoiceOverlap,
+  MaskedAssembleRefusal,
+  MaskedAssembleRefusalWithoutEvidence,
+  MissingModuleIdentityUnavailable,
+  NonEmptySymbolChain,
+  OtherAssembleRefusal,
+  ProbeStageAssemble
+}
+import v2.std.diagnostic { Diagnostic, NonEmptyDiagnostics }
+import v2.std.optional { Absent, Optional, Present, optional_absent }
+import v2.std.qualified_name { QualifiedName }
+import v2.std.text { String }
+
+fn non_empty_symbol_chain_from_non_empty_parse_stage(
+  d: NonEmptyParseStageDiagnostics
+) -> NonEmptySymbolChain {
+  NonEmptySymbolChain {
+    head: d.head.diagnostic.reason,
+    tail: fold_list(
+      xs: d.tail,
+      empty: Empty,
+      cons: fn(acc, item) { list_snoc_item(xs: acc, item: item.diagnostic.reason) }
+    )
+  }
+}
+
+fn non_empty_symbol_chain_from_non_empty_diagnostics(
+  d: NonEmptyDiagnostics
+) -> NonEmptySymbolChain {
+  NonEmptySymbolChain {
+    head: d.head.reason,
+    tail: fold_list(
+      xs: d.tail,
+      empty: Empty,
+      cons: fn(acc, diag) { list_snoc_item(xs: acc, item: diag.reason) }
+    )
+  }
+}
+
+fn diagnostic_module_root_missing_qn_optional(d: Diagnostic) -> Optional<QualifiedName> {
+  optional_absent()
+}
+
+data diagnostic_module_root_missing_qn_stub_note: String = "diagnostic_module_root_missing_qn_optional is deliberately unavailable in this PR — it always returns Absent, so resolve_module_not_found assemble causes classify as MissingModuleIdentityUnavailable rather than AssembleMissingModule { requested }. FrontierProbeDetail.MissingModule (#7762) carries the structural QualifiedName on receipt.detail when frontier_probe_detail_from_diagnostic binds it. Parse-stage AssembleMissingModule awaits ModuleRootMissingEvidence on ParseDiagnosticEvidence without reintroducing the diagnostic.dag ↔ qualified_name import cycle. Dissolve trigger: wire parse-stage diagnostics to carry that evidence; then replace optional_absent() with extraction from ParseStageDiagnostic.evidence and map Present -> AssembleMissingModule { requested }."
+
+fn assemble_rejection_cause_from_parse_stage(
+  d: NonEmptyParseStageDiagnostics
+) -> AssembleRejectionCause {
+  if !is_empty(xs: d.tail) && (d.head.diagnostic.reason == ^parse_grammar_choice_overlap_residue) {
+    match non_empty_grammar_choice_ambiguity_rows_from_parse_stage(
+      d: NonEmptyParseStageDiagnostics { head: d.head, tail: Empty }
+    ) {
+      Present { value: overlap_evidence } =>
+        MaskedAssembleRefusal {
+          overlap_evidence: overlap_evidence,
+          remaining_chain: non_empty_symbol_chain_from_parse_stage_head(
+            head: list_head_value_or_self_parse_stage(head: d.head, tail: d.tail),
+            tail: list_tail_or_empty_parse_stage(tail: d.tail)
+          )
+        }
+      Absent =>
+        MaskedAssembleRefusalWithoutEvidence {
+          remaining_chain: non_empty_symbol_chain_from_parse_stage_head(
+            head: list_head_value_or_self_parse_stage(head: d.head, tail: d.tail),
+            tail: list_tail_or_empty_parse_stage(tail: d.tail)
+          )
+        }
+    }
+  } else if d.head.diagnostic.reason == ^resolve_module_not_found {
+    match diagnostic_module_root_missing_qn_optional(d: d.head.diagnostic) {
+      Present { value: requested } => AssembleMissingModule { requested: requested }
+      Absent => MissingModuleIdentityUnavailable
+    }
+  } else {
+    match non_empty_grammar_choice_ambiguity_rows_from_parse_stage(d: d) {
+      Present { value: rows } => GrammarChoiceOverlap { rows: rows }
+      Absent => OtherAssembleRefusal { reason: d.head.diagnostic.reason }
+    }
+  }
+}
+
+fn non_empty_symbol_chain_from_parse_stage_head(
+  head: ParseStageDiagnostic,
+  tail: FreeMonoid<ParseStageDiagnostic>
+) -> NonEmptySymbolChain {
+  NonEmptySymbolChain {
+    head: head.diagnostic.reason,
+    tail: fold_list(
+      xs: tail,
+      empty: Empty,
+      cons: fn(acc, item) { list_snoc_item(xs: acc, item: item.diagnostic.reason) }
+    )
+  }
+}
+
+fn assemble_rejection_cause_from_diagnostics(
+  d: NonEmptyDiagnostics
+) -> AssembleRejectionCause {
+  if !is_empty(xs: d.tail) && (d.head.reason == ^parse_grammar_choice_overlap_residue) {
+    MaskedAssembleRefusalWithoutEvidence {
+      remaining_chain: non_empty_symbol_chain_from_diagnostic_list(
+        head_diag: list_head_value_or_self(head: d.head, tail: d.tail),
+        tail: list_tail_or_empty_diagnostics(tail: d.tail)
+      )
+    }
+  } else if d.head.reason == ^resolve_module_not_found {
+    match diagnostic_module_root_missing_qn_optional(d: d.head) {
+      Present { value: requested } => AssembleMissingModule { requested: requested }
+      Absent => MissingModuleIdentityUnavailable
+    }
+  } else {
+    OtherAssembleRefusal { reason: d.head.reason }
+  }
+}
+
+fn non_empty_symbol_chain_from_diagnostic_list(
+  head_diag: Diagnostic,
+  tail: FreeMonoid<Diagnostic>
+) -> NonEmptySymbolChain {
+  NonEmptySymbolChain {
+    head: head_diag.reason,
+    tail: fold_list(
+      xs: tail,
+      empty: Empty,
+      cons: fn(acc, diag) { list_snoc_item(xs: acc, item: diag.reason) }
+    )
+  }
+}
+
+fn list_head_value_or_self(head: Diagnostic, tail: FreeMonoid<Diagnostic>) -> Diagnostic {
+  match list_head(xs: tail) {
+    HeadFound { value: diag } => diag
+    HeadAbsent => head
+  }
+}
+
+fn list_tail_or_empty_diagnostics(tail: FreeMonoid<Diagnostic>) -> FreeMonoid<Diagnostic> {
+  match list_tail(xs: tail) {
+    TailAbsent => Empty
+    TailFound { tail: rest } => rest
+  }
+}
+
+fn frontier_probe_assemble_detail_from_parse_stage(
+  d: NonEmptyParseStageDiagnostics
+) -> FrontierProbeAssembleDetail {
+  AssembleRejectionDetail {
+    rejection_chain: non_empty_symbol_chain_from_non_empty_parse_stage(d: d),
+    cause: assemble_rejection_cause_from_parse_stage(d: d)
+  }
+}
+
+fn frontier_probe_assemble_detail_from_rejection(
+  d: NonEmptyDiagnostics
+) -> FrontierProbeAssembleDetail {
+  AssembleRejectionDetail {
+    rejection_chain: non_empty_symbol_chain_from_non_empty_diagnostics(d: d),
+    cause: assemble_rejection_cause_from_diagnostics(d: d)
+  }
+}
+
+fn frontier_probe_receipt_from_assemble_rejection(
+  module_path: String,
+  blocker: FrontierBlockerClass,
+  diagnostics: NonEmptyDiagnostics,
+  detail: FrontierProbeDetail
+) -> FrontierProbeReceipt {
+  FrontierProbeReceipt {
+    module_path: module_path,
+    blocker_class: blocker,
+    located_stage: ProbeStageAssemble,
+    located_reason: diagnostics.head.reason,
+    detail: detail,
+    assemble_detail: frontier_probe_assemble_detail_from_rejection(d: diagnostics)
+  }
+}

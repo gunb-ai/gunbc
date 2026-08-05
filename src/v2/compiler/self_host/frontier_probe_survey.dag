@@ -13,7 +13,10 @@ import v2.compiler.self_host.frontier_probe_types {
   UnknownProbeCause,
   FixtureCemented,
   UpstreamSemanticRefusal,
-  frontier_blocker_class_matches
+  frontier_blocker_class_matches,
+  frontier_probe_receipt_blocker_class,
+  frontier_probe_receipt_located_reason,
+  frontier_probe_receipt_module_path
 }
 import v2.compiler.name_resolve { Admission }
 import v2.compiler.source_authority { SourceRootIngest }
@@ -46,7 +49,10 @@ fn count_receipts_with_located_reason(
     xs: xs,
     empty: 0,
     cons: fn(count, receipt) {
-      if frontier_probe_receipt_located_reason_eq(left: receipt.located_reason, right: target) {
+      if frontier_probe_receipt_located_reason_eq(
+        left: frontier_probe_receipt_located_reason(receipt: receipt),
+        right: target
+      ) {
         count + 1
       } else {
         count
@@ -63,7 +69,10 @@ fn count_receipts_with_blocker(
     xs: xs,
     empty: 0,
     cons: fn(count, receipt) {
-      if frontier_blocker_class_matches(blocker: receipt.blocker_class, target: target) {
+      if frontier_blocker_class_matches(
+        blocker: frontier_probe_receipt_blocker_class(receipt: receipt),
+        target: target
+      ) {
         count + 1
       } else {
         count
@@ -74,20 +83,26 @@ fn count_receipts_with_blocker(
 
 data frontier_probe_survey_has_unclassified_dispatch_note: String = "frontier_probe_survey_has_unclassified survives predicate dissolution because it is the existential UnknownProbeCause witness gate (any receipt still in the host-deferred / unclassified bucket), not a variant nickname for a single arm. The long-lane survey witness requires !has_unclassified before roster binding; dissolves when measured receipts eliminate the host UnknownProbeCause residue or the gate reads a typed survey-completeness carrier."
 
+fn frontier_probe_receipt_is_unknown_probe_cause(receipt: FrontierProbeReceipt) -> Bool {
+  match frontier_probe_receipt_blocker_class(receipt: receipt) {
+    UnknownProbeCause { reason: _ } => true
+    _ => false
+  }
+}
+
+fn frontier_probe_receipt_is_upstream_semantic_refusal(receipt: FrontierProbeReceipt) -> Bool {
+  match frontier_probe_receipt_blocker_class(receipt: receipt) {
+    UpstreamSemanticRefusal { diagnostic_class: _, diagnostic_name: _ } => true
+    _ => false
+  }
+}
+
 fn frontier_probe_survey_has_unclassified(xs: List<FrontierProbeReceipt>) -> Bool {
   fold_list(
     xs: xs,
     empty: false,
     cons: fn(found, receipt) {
-      found || match receipt.blocker_class {
-        UnknownProbeCause { reason: _ } => true
-        FixtureCemented => false
-        SelfEmitReady => false
-        NameResolutionGap => false
-        EmitSurfaceGap => false
-        RealizationGap => false
-        UpstreamSemanticRefusal { diagnostic_class: _, diagnostic_name: _ } => false
-      }
+      found || frontier_probe_receipt_is_unknown_probe_cause(receipt: receipt)
     }
   )
 }
@@ -109,9 +124,10 @@ fn count_upstream_semantic_refusal_receipts(xs: List<FrontierProbeReceipt>) -> I
     xs: xs,
     empty: 0,
     cons: fn(count, receipt) {
-      match receipt.blocker_class {
-        UpstreamSemanticRefusal { diagnostic_class: _, diagnostic_name: _ } => count + 1
-        _ => count
+      if frontier_probe_receipt_is_upstream_semantic_refusal(receipt: receipt) {
+        count + 1
+      } else {
+        count
       }
     }
   )
@@ -122,9 +138,10 @@ fn count_unknown_probe_cause_receipts(xs: List<FrontierProbeReceipt>) -> Int {
     xs: xs,
     empty: 0,
     cons: fn(count, receipt) {
-      match receipt.blocker_class {
-        UnknownProbeCause { reason: _ } => count + 1
-        _ => count
+      if frontier_probe_receipt_is_unknown_probe_cause(receipt: receipt) {
+        count + 1
+      } else {
+        count
       }
     }
   )
@@ -162,8 +179,11 @@ fn frontier_probe_survey_module_paths_unique_holds(xs: List<FrontierProbeReceipt
     empty: true,
     cons: fn(ok, receipt) {
       ok
-        && (receipt.module_path != "")
-        && (count_receipts_with_module_path(xs: xs, target: receipt.module_path) == 1)
+        && (frontier_probe_receipt_module_path(receipt: receipt) != "")
+        && (count_receipts_with_module_path(
+          xs: xs,
+          target: frontier_probe_receipt_module_path(receipt: receipt)
+        ) == 1)
     }
   )
 }
@@ -176,7 +196,7 @@ fn count_receipts_with_module_path(
     xs: xs,
     empty: 0,
     cons: fn(count, receipt) {
-      if receipt.module_path == target {
+      if frontier_probe_receipt_module_path(receipt: receipt) == target {
         count + 1
       } else {
         count
@@ -224,7 +244,10 @@ fn frontier_probe_survey_every_receipt_in_roster_holds(
     xs: survey,
     empty: true,
     cons: fn(ok, receipt) {
-      ok && roster_contains_module_path(paths: roster_paths, target: receipt.module_path)
+      ok && roster_contains_module_path(
+        paths: roster_paths,
+        target: frontier_probe_receipt_module_path(receipt: receipt)
+      )
     }
   )
 }
@@ -246,7 +269,7 @@ fn frontier_probe_survey_receipt_paths_match(
     xs: xs,
     empty: true,
     cons: fn(ok, receipt) {
-      ok && (receipt.module_path != "")
+      ok && (frontier_probe_receipt_module_path(receipt: receipt) != "")
     }
   )
 }
@@ -316,6 +339,6 @@ fn frontier_wave2_self_emit_ready_module_count(receipts: List<FrontierProbeRecei
 
 data frontier_probe_survey_dissolution_note: String = "Per-module receipts bind via host_frontier_probe_survey manifest generated by frontier_probe_survey bin; roster rows migrate from knowledge_attributed to execution_measured_seed_retained_row_from_probe_receipt when survey witness compiler_frontier_per_module_probe_survey_holds is green."
 
-data frontier_probe_survey_blocker_variant_emit_rust_gate_note: String = "HAND-RUST GATE receipt (review 46941 / v1.00_core compiler_diagnostic_seed_projection_note class): Lane E adds `UpstreamSemanticRefusal` to `FrontierBlockerClass`, which forces one new arm in `frontier_probe_survey.rs` `blocker_variant_emit` (+12 LOC mechanical coproduct exhaustiveness for manifest serialization). This arm deletes when the bin deletes on `^migrate_when_frontier_per_module_probe_receipt_binds`; no separate dissolution schedule."
+data frontier_probe_survey_blocker_variant_emit_rust_gate_note: String = "HAND-RUST GATE receipt (review 46941 / v1.00_core compiler_diagnostic_seed_projection_note class): Lane E adds `UpstreamSemanticRefusal` to `FrontierBlockerClass`, which forces one new arm in `frontier_probe_survey.rs` `blocker_variant_emit` (+12 LOC: 515→527, measured on main@9abf6243→HEAD). This is mechanical coproduct exhaustiveness for manifest serialization — not a decision-surface expansion of the P5 host loop (sweep order read, per-module `frontier_probe_emit_from_ingest`, manifest emit). The arm deletes exactly when the bin deletes on `^migrate_when_frontier_per_module_probe_receipt_binds`; no separate dissolution schedule."
 
-data frontier_probe_survey_transport_scaffold_note: String = "SCAFFOLD (§7 seed-retained HAND-RUST, P5 gate): `frontier_probe_survey` seed bin is the host-effect loop that runs `frontier_probe_emit_from_ingest` per `compiler_frontier_sweep_order` entry (single authority on `frontier.dag`, not a parallel Rust roster). CHECKABLE RECEIPT — census before=27 knowledge-attributed roster rows (`compiler_frontier_roster_count` on `frontier.dag`); census after shrink=0 hand-Rust LOC when all 27 rows bind execution-measured `FrontierProbeReceipt` via `host_frontier_probe_survey_manifest` (witness `compiler_frontier_per_module_probe_survey_holds` on `v2.test.long.compiler_frontier_per_module_probe`). Bin footprint: main@546 LOC baseline → 821 LOC on this PR (+275 LOC: overlay manifest generation `write_probe_overlay_manifest`, `FrontierProbeDetail` serialization `detail_variant_emit`, per-module probe orchestration `run_probe_for_module` / `write_probe_overlay_manifest` path — measured `wc -l` on `src/v1/stage0/src/bin/frontier_probe_survey.rs` at merge-base vs HEAD). The +12 `UpstreamSemanticRefusal` serialize arm is one slice of that delta (see `frontier_probe_survey_blocker_variant_emit_rust_gate_note`). CONCRETE DEFERRAL ROW — `gunbc.plans.wave2_prep_design` §2.3 census ratchet discipline + `gunbc.plans.v2_self_hosting` LANDED mechanism (#6464); dissolution trigger `^migrate_when_frontier_per_module_probe_receipt_binds` on `compiler_frontier_blocker_class_distribution_attribution`. Then delete this bin and fold transport into floor-enrolled `v2.workflow.frontier_probe_survey_transport` or a self-emitted survey kernel."
+data frontier_probe_survey_transport_scaffold_note: String = "SCAFFOLD (§7 seed-retained HAND-RUST, P5 gate): `frontier_probe_survey` seed bin is the host-effect loop that runs `frontier_probe_emit_from_ingest` per `compiler_frontier_sweep_order` entry (single authority on `frontier.dag`, not a parallel Rust roster). CHECKABLE RECEIPT — census before=27 knowledge-attributed roster rows (`compiler_frontier_roster_count` on `frontier.dag`); census after shrink=0 hand-Rust LOC when all 27 rows bind execution-measured `FrontierProbeReceipt` via `host_frontier_probe_survey_manifest` (witness `compiler_frontier_per_module_probe_survey_holds` on `v2.test.long.compiler_frontier_per_module_probe`). Bin footprint: 515 LOC baseline (main) → 527 LOC (+12 mechanical `UpstreamSemanticRefusal` serialize arm only; see `frontier_probe_survey_blocker_variant_emit_rust_gate_note`). CONCRETE DEFERRAL ROW — `gunbc.plans.wave2_prep_design` §2.3 census ratchet discipline + `gunbc.plans.v2_self_hosting` LANDED mechanism (#6464); dissolution trigger `^migrate_when_frontier_per_module_probe_receipt_binds` on `compiler_frontier_blocker_class_distribution_attribution`. Then delete this bin and fold transport into floor-enrolled `v2.workflow.frontier_probe_survey_transport` or a self-emitted survey kernel."

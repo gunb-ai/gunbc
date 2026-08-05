@@ -6,12 +6,10 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use v1_compiler::cli_run::{
-    discover_source_root_reads_for_entry, emit_source_ref_dag_for_path,
-    emit_source_root_ingest_manifest, parse_source_root_entry_admission, resolve_entry_graph,
+    discover_source_root_reads_for_entry, emit_source_root_ingest_manifest,
+    parse_source_root_entry_admission, resolve_entry_graph,
 };
-use v1_compiler::v1_interpreter::{
-    self, free_monoid_symbol_value_to_dotted_string, ExecutionMode, InterpContext, Value,
-};
+use v1_compiler::v1_interpreter::{self, ExecutionMode, InterpContext, Value};
 
 const PROBE_ENTRY: &str = "src/v2/test/claim/long/compiler_frontier_probe_entry_test.dag";
 const PROBE_RECEIPT_FN: &str = "frontier_probe_entry_receipt";
@@ -89,272 +87,10 @@ struct ProbeReceiptRow {
     blocker_variant: String,
     located_stage: String,
     located_reason: String,
-    detail: String,
+    assemble_detail_manifest: String,
+    rejection_chain: String,
+    overlap_roster_detail: String,
     probe_error: Option<String>,
-}
-
-fn dag_manifest_scalar_escape(s: &str) -> Result<String, String> {
-    if s.contains('{') || s.contains('}') {
-        return Err(format!(
-            "manifest scalar escape: '{{' and '}}' forbidden in {:?}",
-            s
-        ));
-    }
-    Ok(s.replace('\\', "\\\\").replace('"', "\\\""))
-}
-
-fn int_from_value(value: &Value) -> Result<i64, String> {
-    match value {
-        Value::Int(n) => Ok(*n),
-        other => Err(format!("expected Int, got {}", other.type_label_public())),
-    }
-}
-
-fn str_from_value(value: &Value) -> Result<String, String> {
-    match value {
-        Value::Str(s) => Ok(s.clone()),
-        other => Err(format!(
-            "expected String, got {}",
-            other.type_label_public()
-        )),
-    }
-}
-
-fn qualified_name_emit(value: &Value) -> Result<String, String> {
-    let dotted = free_monoid_symbol_value_to_dotted_string(value);
-    if dotted.is_empty() {
-        return Err("empty QualifiedName".to_string());
-    }
-    let escaped = dag_manifest_scalar_escape(&dotted)?;
-    Ok(format!(
-        "qualified_name_from_dotted_string(dotted: \"{escaped}\")"
-    ))
-}
-
-fn content_hash_emit(value: &Value, ctx: &InterpContext) -> Result<String, String> {
-    let digest = content_hash_digest_string(value, ctx)?;
-    let escaped = dag_manifest_scalar_escape(&digest)?;
-    Ok(format!(
-        "Fnv1a64(Fnv1a64Structural {{ digest: \"{escaped}\" }})"
-    ))
-}
-
-fn content_hash_digest_string(value: &Value, ctx: &InterpContext) -> Result<String, String> {
-    match value {
-        Value::Variant {
-            variant_name,
-            fields,
-            ..
-        } => {
-            let family = ctx.resolve(*variant_name);
-            if family != "Fnv1a64" {
-                return Err(format!(
-                    "unsupported ContentHash family {family} in survey manifest"
-                ));
-            }
-            if let Some(inner) = ctx.field(fields, "0") {
-                return digest_from_structural(inner, ctx);
-            }
-            for (_, field_value) in fields.iter() {
-                if let Ok(digest) = digest_from_structural(field_value, ctx) {
-                    return Ok(digest);
-                }
-            }
-            Err("Fnv1a64 variant missing structural payload".to_string())
-        }
-        Value::Record { type_name, .. } if ctx.resolve(*type_name) == "Fnv1a64Structural" => {
-            digest_from_structural(value, ctx)
-        }
-        other => Err(format!(
-            "expected ContentHash variant, got {}",
-            other.type_label_public()
-        )),
-    }
-}
-
-fn digest_from_structural(value: &Value, ctx: &InterpContext) -> Result<String, String> {
-    match value {
-        Value::Record { fields, .. } | Value::Variant { fields, .. } => {
-            let digest = ctx
-                .field(fields, "digest")
-                .ok_or_else(|| "Fnv1a64Structural missing digest".to_string())?;
-            str_from_value(digest)
-        }
-        other => Err(format!(
-            "expected Fnv1a64Structural record, got {}",
-            other.type_label_public()
-        )),
-    }
-}
-
-fn source_root_ref_emit(value: &Value, ctx: &InterpContext) -> Result<String, String> {
-    variant_name(ctx, value)
-}
-
-fn source_ref_emit(value: &Value, ctx: &InterpContext) -> Result<String, String> {
-    let path = str_from_value(record_field(ctx, value, "path")?)?;
-    let source_root = source_root_ref_emit(record_field(ctx, value, "source_root")?, ctx)?;
-    let content_hash = content_hash_emit(record_field(ctx, value, "content_hash")?, ctx)?;
-    let escaped_path = dag_manifest_scalar_escape(&path)?;
-    Ok(format!(
-        "SourceRef {{ path: \"{escaped_path}\", source_root: {source_root}, content_hash: {content_hash} }}"
-    ))
-}
-
-fn source_root_coverage_emit(value: &Value, ctx: &InterpContext) -> Result<String, String> {
-    match value {
-        Value::Variant {
-            variant_name,
-            fields,
-            ..
-        } => {
-            let name = ctx.resolve(*variant_name);
-            if name == "SourceRootCoverageComplete" || name == "SourceRootManifestAbsent" {
-                return Ok(name);
-            }
-            if name == "SourceRootManifestElided" {
-                let read_count = int_from_value(
-                    ctx.field(fields, "read_count")
-                        .ok_or_else(|| format!("{name} missing read_count"))?,
-                )?;
-                let cap = int_from_value(
-                    ctx.field(fields, "cap")
-                        .ok_or_else(|| format!("{name} missing cap"))?,
-                )?;
-                return Ok(format!("{name} {{ read_count: {read_count}, cap: {cap} }}"));
-            }
-            if name == "SourceRootRowsMissing" {
-                let read_count = int_from_value(
-                    ctx.field(fields, "read_count")
-                        .ok_or_else(|| format!("{name} missing read_count"))?,
-                )?;
-                let produced_row_count = int_from_value(
-                    ctx.field(fields, "produced_row_count")
-                        .ok_or_else(|| format!("{name} missing produced_row_count"))?,
-                )?;
-                return Ok(format!(
-                    "{name} {{ read_count: {read_count}, produced_row_count: {produced_row_count} }}"
-                ));
-            }
-            Err(format!("unknown SourceRootCoverage variant {name}"))
-        }
-        _ => Err(format!(
-            "expected SourceRootCoverage variant, got {}",
-            value.type_label_public()
-        )),
-    }
-}
-
-fn detail_variant_emit(value: &Value, ctx: &InterpContext) -> Result<String, String> {
-    match value {
-        Value::Variant {
-            variant_name,
-            fields,
-            ..
-        } => {
-            let name = ctx.resolve(*variant_name);
-            match name.as_str() {
-                "FrontierProbeDetailAbsent" => Ok(name),
-                "MissingModule" => {
-                    let requested = ctx
-                        .field(fields, "requested")
-                        .ok_or_else(|| format!("{name} missing requested"))?;
-                    Ok(format!(
-                        "{name} {{ requested: {} }}",
-                        qualified_name_emit(requested)?
-                    ))
-                }
-                "SourceRootManifestElidedProbe" => {
-                    let read_count = int_from_value(
-                        ctx.field(fields, "read_count")
-                            .ok_or_else(|| format!("{name} missing read_count"))?,
-                    )?;
-                    let cap = int_from_value(
-                        ctx.field(fields, "cap")
-                            .ok_or_else(|| format!("{name} missing cap"))?,
-                    )?;
-                    Ok(format!("{name} {{ read_count: {read_count}, cap: {cap} }}"))
-                }
-                "FrontierProbeClosurePopulationRefused" => {
-                    let cause = ctx
-                        .field(fields, "cause")
-                        .ok_or_else(|| format!("{name} missing cause"))?;
-                    Ok(format!("{name} {{ cause: {} }}", value_symbol_name(cause)?))
-                }
-                "FrontierProbeCoverageRefused" => {
-                    let coverage = ctx
-                        .field(fields, "coverage")
-                        .ok_or_else(|| format!("{name} missing coverage"))?;
-                    Ok(format!(
-                        "{name} {{ coverage: {} }}",
-                        source_root_coverage_emit(coverage, ctx)?
-                    ))
-                }
-                "SourceRefReadRefused" => {
-                    let source_ref = ctx
-                        .field(fields, "source_ref")
-                        .ok_or_else(|| format!("{name} missing source_ref"))?;
-                    let error = str_from_value(
-                        ctx.field(fields, "error")
-                            .ok_or_else(|| format!("{name} missing error"))?,
-                    )?;
-                    let escaped_error = dag_manifest_scalar_escape(&error)?;
-                    Ok(format!(
-                        "{name} {{ source_ref: {}, error: \"{escaped_error}\" }}",
-                        source_ref_emit(source_ref, ctx)?
-                    ))
-                }
-                "SourceRefContentHashMismatch" => {
-                    let source_ref = ctx
-                        .field(fields, "source_ref")
-                        .ok_or_else(|| format!("{name} missing source_ref"))?;
-                    let expected = ctx
-                        .field(fields, "expected")
-                        .ok_or_else(|| format!("{name} missing expected"))?;
-                    let observed = ctx
-                        .field(fields, "observed")
-                        .ok_or_else(|| format!("{name} missing observed"))?;
-                    Ok(format!(
-                        "{name} {{ source_ref: {}, expected: {}, observed: {} }}",
-                        source_ref_emit(source_ref, ctx)?,
-                        content_hash_emit(expected, ctx)?,
-                        content_hash_emit(observed, ctx)?
-                    ))
-                }
-                other => Err(format!("unsupported FrontierProbeDetail variant {other}")),
-            }
-        }
-        _ => Err(format!(
-            "expected FrontierProbeDetail variant, got {}",
-            value.type_label_public()
-        )),
-    }
-}
-
-fn survey_manifest_needs_detail_imports(rows: &[ProbeReceiptRow]) -> bool {
-    rows.iter()
-        .any(|row| row.detail != "FrontierProbeDetailAbsent")
-}
-
-fn survey_manifest_import_block(rows: &[ProbeReceiptRow]) -> String {
-    if !survey_manifest_needs_detail_imports(rows) {
-        return String::from(
-            "import v2.compiler.self_host.frontier_probe_types { FrontierProbeReceipt }\n\
-             import v2.std.algebra { Cons, Empty }\n\
-             import v2.std.collection { List }\n\
-             import v2.std.logic { Int }\n\n",
-        );
-    }
-    String::from(
-        "import v2.compiler.self_host.frontier_probe_types { FrontierProbeReceipt }\n\
-         import v2.compiler.source_authority { SourceRef, SourceRootCoverage }\n\
-         import std.content_hash { ContentHash, Fnv1a64, Fnv1a64Structural }\n\
-         import v2.std.algebra { Cons, Empty }\n\
-         import v2.std.collection { List }\n\
-         import v2.std.cross_tree.import_model { SourceRootRef, V2Tree, DagTree }\n\
-         import v2.std.logic { Int }\n\
-         import v2.std.qualified_name { qualified_name_from_dotted_string }\n\n",
-    )
 }
 
 struct HostFailureReasons {
@@ -483,6 +219,262 @@ fn blocker_variant_emit(blocker: &Value, ctx: &InterpContext) -> Result<String, 
     }
 }
 
+fn symbol_list_csv(value: &Value, ctx: &InterpContext) -> Result<String, String> {
+    let mut parts = Vec::new();
+    for item in free_monoid_elems(value, ctx)? {
+        parts.push(value_symbol_name(item)?);
+    }
+    Ok(parts.join(","))
+}
+
+fn non_empty_symbol_chain_csv_flat(value: &Value, ctx: &InterpContext) -> Result<String, String> {
+    let head = record_field(ctx, value, "head")?;
+    let tail = record_field(ctx, value, "tail")?;
+    let mut parts = vec![value_symbol_name(head)?];
+    for item in free_monoid_elems(tail, ctx)? {
+        parts.push(value_symbol_name(item)?);
+    }
+    Ok(parts.join(","))
+}
+
+fn grammar_choice_ambiguity_row_emit(value: &Value, ctx: &InterpContext) -> Result<String, String> {
+    let production = value_symbol_name(record_field(ctx, value, "production")?)?;
+    let left_list = symbol_list_dag_emit(record_field(ctx, value, "left_first_terminals")?, ctx)?;
+    let right_list = symbol_list_dag_emit(record_field(ctx, value, "right_first_terminals")?, ctx)?;
+    let overlap_list = symbol_list_dag_emit(record_field(ctx, value, "overlap_terminals")?, ctx)?;
+    let both_nullable = match record_field(ctx, value, "both_nullable")? {
+        Value::Bool(b) => {
+            if *b {
+                "true"
+            } else {
+                "false"
+            }
+        }
+        other => {
+            return Err(format!(
+                "both_nullable not Bool: {}",
+                other.type_label_public()
+            ));
+        }
+    };
+    Ok(format!(
+        "GrammarChoiceAmbiguityRow {{\n  production: {production},\n  left_first_terminals: {left_list},\n  right_first_terminals: {right_list},\n  overlap_terminals: {overlap_list},\n  both_nullable: {both_nullable}\n}}"
+    ))
+}
+
+fn symbol_list_dag_emit(value: &Value, ctx: &InterpContext) -> Result<String, String> {
+    let mut parts = Vec::new();
+    for item in free_monoid_elems(value, ctx)? {
+        parts.push(value_symbol_name(item)?);
+    }
+    let mut list = String::from("Empty");
+    while let Some(sym) = parts.pop() {
+        list = format!("Cons {{\n  head: {sym},\n  tail: {list}\n}}");
+    }
+    Ok(list)
+}
+
+fn non_empty_grammar_rows_emit(value: &Value, ctx: &InterpContext) -> Result<String, String> {
+    let head = grammar_choice_ambiguity_row_emit(record_field(ctx, value, "head")?, ctx)?;
+    let tail = record_field(ctx, value, "tail")?;
+    let mut tail_nodes: Vec<String> = Vec::new();
+    for item in free_monoid_elems(tail, ctx)? {
+        tail_nodes.push(grammar_choice_ambiguity_row_emit(item, ctx)?);
+    }
+    let mut list = String::from("Empty");
+    while let Some(node) = tail_nodes.pop() {
+        list = format!("Cons {{\n  head: {node},\n  tail: {list}\n}}");
+    }
+    Ok(format!(
+        "NonEmptyGrammarChoiceAmbiguityRows {{\n  head: {head},\n  tail: {list}\n}}"
+    ))
+}
+
+fn assemble_rejection_cause_emit(value: &Value, ctx: &InterpContext) -> Result<String, String> {
+    match value {
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } => {
+            let name = ctx.resolve(*variant_name);
+            if name == "GrammarChoiceOverlap" {
+                let rows = ctx
+                    .field(fields, "rows")
+                    .ok_or_else(|| format!("{name} missing rows"))?;
+                Ok(format!(
+                    "GrammarChoiceOverlap {{ rows: {} }}",
+                    non_empty_grammar_rows_emit(rows, ctx)?
+                ))
+            } else if name == "MaskedAssembleRefusal" {
+                let overlap_evidence = ctx
+                    .field(fields, "overlap_evidence")
+                    .ok_or_else(|| format!("{name} missing overlap_evidence"))?;
+                let remaining_chain = ctx
+                    .field(fields, "remaining_chain")
+                    .ok_or_else(|| format!("{name} missing remaining_chain"))?;
+                Ok(format!(
+                    "MaskedAssembleRefusal {{\n  overlap_evidence: {},\n  remaining_chain: {}\n}}",
+                    non_empty_grammar_rows_emit(overlap_evidence, ctx)?,
+                    non_empty_symbol_chain_emit(remaining_chain, ctx)?
+                ))
+            } else if name == "MaskedAssembleRefusalWithoutEvidence" {
+                let remaining_chain = ctx
+                    .field(fields, "remaining_chain")
+                    .ok_or_else(|| format!("{name} missing remaining_chain"))?;
+                Ok(format!(
+                    "MaskedAssembleRefusalWithoutEvidence {{\n  remaining_chain: {}\n}}",
+                    non_empty_symbol_chain_emit(remaining_chain, ctx)?
+                ))
+            } else if name == "MissingModule" {
+                let requested = ctx
+                    .field(fields, "requested")
+                    .ok_or_else(|| format!("{name} missing requested"))?;
+                Ok(format!(
+                    "MissingModule {{ requested: {} }}",
+                    qualified_name_emit(requested, ctx)?
+                ))
+            } else if name == "MissingModuleIdentityUnavailable" {
+                Ok("MissingModuleIdentityUnavailable".to_string())
+            } else if name == "OtherAssembleRefusal" {
+                let reason = ctx
+                    .field(fields, "reason")
+                    .ok_or_else(|| format!("{name} missing reason"))?;
+                Ok(format!(
+                    "OtherAssembleRefusal {{ reason: {} }}",
+                    value_symbol_name(reason)?
+                ))
+            } else {
+                Err(format!("unknown AssembleRejectionCause variant {name}"))
+            }
+        }
+        _ => Err("assemble cause not a variant".to_string()),
+    }
+}
+
+fn qualified_name_emit(value: &Value, ctx: &InterpContext) -> Result<String, String> {
+    let mut parts = Vec::new();
+    for item in free_monoid_elems(value, ctx)? {
+        parts.push(value_symbol_name(item)?);
+    }
+    let mut list = String::from("Empty");
+    while let Some(sym) = parts.pop() {
+        list = format!("Cons {{\n  head: {sym},\n  tail: {list}\n}}");
+    }
+    Ok(list)
+}
+
+fn assemble_detail_emit(value: &Value, ctx: &InterpContext) -> Result<String, String> {
+    match value {
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } => {
+            let name = ctx.resolve(*variant_name);
+            if name == "NoFrontierProbeDetail" {
+                Ok("NoFrontierProbeDetail".to_string())
+            } else if name == "AssembleRejectionDetail" {
+                let chain = ctx
+                    .field(fields, "rejection_chain")
+                    .ok_or_else(|| format!("{name} missing rejection_chain"))?;
+                let cause = ctx
+                    .field(fields, "cause")
+                    .ok_or_else(|| format!("{name} missing cause"))?;
+                Ok(format!(
+                    "AssembleRejectionDetail {{\n  rejection_chain: {},\n  cause: {}\n}}",
+                    non_empty_symbol_chain_emit(chain, ctx)?,
+                    assemble_rejection_cause_emit(cause, ctx)?
+                ))
+            } else {
+                Err(format!("unknown assemble_detail variant {name}"))
+            }
+        }
+        _ => Err("assemble_detail not a variant".to_string()),
+    }
+}
+
+fn non_empty_symbol_chain_emit(value: &Value, ctx: &InterpContext) -> Result<String, String> {
+    let head = value_symbol_name(record_field(ctx, value, "head")?)?;
+    let tail = symbol_list_dag_emit(record_field(ctx, value, "tail")?, ctx)?;
+    Ok(format!(
+        "NonEmptySymbolChain {{\n  head: {head},\n  tail: {tail}\n}}"
+    ))
+}
+
+fn overlap_roster_detail_from_assemble_detail(
+    value: &Value,
+    ctx: &InterpContext,
+) -> Result<String, String> {
+    match value {
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } if ctx.sym_eq(*variant_name, "AssembleRejectionDetail") => {
+            let cause = ctx
+                .field(fields, "cause")
+                .ok_or_else(|| "AssembleRejectionDetail missing cause".to_string())?;
+            match cause {
+                Value::Variant {
+                    variant_name: cause_name,
+                    fields: cause_fields,
+                    ..
+                } if ctx.sym_eq(*cause_name, "GrammarChoiceOverlap") => {
+                    let rows = ctx
+                        .field(cause_fields, "rows")
+                        .ok_or_else(|| "GrammarChoiceOverlap missing rows".to_string())?;
+                    overlap_rows_detail_from_rows_value(rows, ctx)
+                }
+                _ => Ok(String::new()),
+            }
+        }
+        _ => Ok(String::new()),
+    }
+}
+
+fn overlap_rows_detail_from_rows_value(
+    value: &Value,
+    ctx: &InterpContext,
+) -> Result<String, String> {
+    let mut rows = Vec::new();
+    let head = record_field(ctx, value, "head")?;
+    rows.push(head);
+    for item in free_monoid_elems(record_field(ctx, value, "tail")?, ctx)? {
+        rows.push(item);
+    }
+    let mut out = Vec::new();
+    for row in rows {
+        let production = value_symbol_name(record_field(ctx, row, "production")?)?;
+        let left = symbol_list_csv(record_field(ctx, row, "left_first_terminals")?, ctx)?;
+        let right = symbol_list_csv(record_field(ctx, row, "right_first_terminals")?, ctx)?;
+        let overlap = symbol_list_csv(record_field(ctx, row, "overlap_terminals")?, ctx)?;
+        out.push(format!(
+            "{production}|left={left}|right={right}|overlap={overlap}"
+        ));
+    }
+    Ok(out.join(";"))
+}
+
+fn rejection_chain_from_assemble_detail(
+    value: &Value,
+    ctx: &InterpContext,
+) -> Result<String, String> {
+    match value {
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } if ctx.sym_eq(*variant_name, "AssembleRejectionDetail") => {
+            let chain = ctx
+                .field(fields, "rejection_chain")
+                .ok_or_else(|| "AssembleRejectionDetail missing rejection_chain".to_string())?;
+            non_empty_symbol_chain_csv_flat(chain, ctx)
+        }
+        _ => Ok(String::new()),
+    }
+}
+
 fn extract_probe_receipt(value: &Value, ctx: &InterpContext) -> Result<ProbeReceiptRow, String> {
     let module_path = match record_field(ctx, value, "module_path")? {
         Value::Str(s) => s.clone(),
@@ -496,13 +488,18 @@ fn extract_probe_receipt(value: &Value, ctx: &InterpContext) -> Result<ProbeRece
     let blocker = record_field(ctx, value, "blocker_class")?;
     let stage = record_field(ctx, value, "located_stage")?;
     let reason = record_field(ctx, value, "located_reason")?;
-    let detail = record_field(ctx, value, "detail")?;
+    let assemble_detail = record_field(ctx, value, "assemble_detail")?;
+    let assemble_detail_manifest = assemble_detail_emit(assemble_detail, ctx)?;
+    let rejection_chain = rejection_chain_from_assemble_detail(assemble_detail, ctx)?;
+    let overlap_roster_detail = overlap_roster_detail_from_assemble_detail(assemble_detail, ctx)?;
     Ok(ProbeReceiptRow {
         module_path,
         blocker_variant: blocker_variant_emit(blocker, ctx)?,
         located_stage: variant_name(ctx, stage)?,
         located_reason: value_symbol_name(reason)?,
-        detail: detail_variant_emit(detail, ctx)?,
+        assemble_detail_manifest,
+        rejection_chain,
+        overlap_roster_detail,
         probe_error: None,
     })
 }
@@ -513,21 +510,21 @@ fn unknown_probe_row(module_path: &str, cause: &str) -> ProbeReceiptRow {
         blocker_variant: format!("UnknownProbeCause {{ reason: ^{cause} }}"),
         located_stage: "ProbeStageAssemble".to_string(),
         located_reason: format!("^{cause}"),
-        detail: "FrontierProbeDetailAbsent".to_string(),
+        assemble_detail_manifest: "NoFrontierProbeDetail".to_string(),
+        rejection_chain: String::new(),
+        overlap_roster_detail: String::new(),
         probe_error: Some(cause.to_string()),
     }
 }
 
-fn write_probe_overlay_manifest(
-    module_path: &str,
-    ingest_manifest: &Path,
-    entry_source_ref: &str,
-) -> Result<(), String> {
+fn write_probe_overlay_manifest(module_path: &str, ingest_manifest: &Path) -> Result<(), String> {
     let escaped = module_path.replace('\\', "/");
-    let append = format!(
-        "\ndata frontier_probe_entry_module_path: String = \"{escaped}\"\n\
-         data frontier_probe_entry_source_ref: SourceRef = {entry_source_ref}\n"
-    );
+    // The emitted ingest manifest already imports `String` in its header block
+    // (`host_source_root_ingest_content_hash: String`), and post-namespace-wave the
+    // grammar accepts imports ONLY in the header — a trailing `import` at EOF is now a
+    // parse error ("expected item declaration"). Append the `data` decl alone; String
+    // is already in scope.
+    let append = format!("\ndata frontier_probe_entry_module_path: String = \"{escaped}\"\n");
     let mut body =
         fs::read_to_string(ingest_manifest).map_err(|e| format!("read ingest manifest: {e}"))?;
     if body.contains("frontier_probe_entry_module_path") {
@@ -555,21 +552,17 @@ fn run_probe_for_module(
     fs::create_dir_all(&overlay_dir)
         .map_err(|e| format!("mkdir overlay {:?}: {e}", overlay_dir))?;
 
-    let mut discover_roots: Vec<String> =
-        WITNESS_LAYER_ROOTS.iter().map(|r| r.to_string()).collect();
-    for root in source_roots {
-        if !discover_roots.iter().any(|existing| existing == root) {
-            discover_roots.push(root.clone());
-        }
-    }
-    let records = discover_source_root_reads_for_entry(&discover_roots, module_path, &exclude)?;
+    let discover_root = source_roots
+        .first()
+        .cloned()
+        .unwrap_or_else(|| "src/v2".to_string());
+    let records = discover_source_root_reads_for_entry(&[discover_root], module_path, &exclude)?;
     let entry_source =
         fs::read_to_string(module_path).map_err(|e| format!("read entry {module_path}: {e}"))?;
     let admission = parse_source_root_entry_admission(&entry_source)?;
     let ingest_manifest = overlay_dir.join("host_source_root_ingest_manifest.dag");
     emit_source_root_ingest_manifest(&ingest_manifest, &records, Some(&admission))?;
-    let entry_source_ref = emit_source_ref_dag_for_path(&records, module_path)?;
-    write_probe_overlay_manifest(module_path, &ingest_manifest, &entry_source_ref)?;
+    write_probe_overlay_manifest(module_path, &ingest_manifest)?;
 
     let mut roots: Vec<String> = WITNESS_LAYER_ROOTS.iter().map(|r| r.to_string()).collect();
     roots.push(overlay_dir.to_string_lossy().into_owned());
@@ -583,12 +576,12 @@ fn run_probe_for_module(
 
 fn emit_receipt_row(row: &ProbeReceiptRow) -> String {
     format!(
-        "FrontierProbeReceipt {{\n  module_path: \"{}\",\n  blocker_class: {},\n  located_stage: {},\n  located_reason: {},\n  detail: {}\n}}",
+        "FrontierProbeReceipt {{\n  module_path: \"{}\",\n  blocker_class: {},\n  located_stage: {},\n  located_reason: {},\n  assemble_detail: {}\n}}",
         row.module_path.replace('\\', "/"),
         row.blocker_variant,
         row.located_stage,
         row.located_reason,
-        row.detail,
+        row.assemble_detail_manifest,
     )
 }
 
@@ -601,11 +594,14 @@ fn emit_survey_manifest(path: &Path, rows: &[ProbeReceiptRow]) -> Result<(), Str
     while let Some(head) = receipt_nodes.pop() {
         list = format!("Cons {{\n  head: {head},\n  tail: {list}\n}}");
     }
-    let imports = survey_manifest_import_block(rows);
     let body = format!(
         "// GENERATED by frontier_probe_survey — execution receipt table. Regenerate via frontier_probe_survey bin.\n\
          module v2.test.workflow.host_frontier_probe_survey_manifest\n\n\
-         {imports}\
+         import v2.compiler.self_host.frontier_probe_types {{ FrontierProbeReceipt }}\n\
+         import v2.std.grammar_choice_ambiguity {{ GrammarChoiceAmbiguityRow, NonEmptyGrammarChoiceAmbiguityRows }}\n\
+         import v2.std.algebra {{ Cons, Empty }}\n\
+         import v2.std.collection {{ List }}\n\
+         import v2.std.logic {{ Int }}\n\n\
          data host_frontier_probe_survey_module_count: Int = {}\n\n\
          data host_frontier_probe_survey: List<FrontierProbeReceipt> = {list}\n",
         rows.len()
@@ -617,7 +613,7 @@ fn emit_tsv(path: &Path, rows: &[ProbeReceiptRow]) -> Result<(), String> {
     let mut out = fs::File::create(path).map_err(|e| format!("create tsv: {e}"))?;
     writeln!(
         out,
-        "module\tself_emit_ready\tblocker_class\tlocated_stage\tlocated_reason\tprobe_error"
+        "module\tself_emit_ready\tblocker_class\tlocated_stage\tlocated_reason\trejection_chain\toverlap_roster_detail\tprobe_error"
     )
     .map_err(|e| format!("write tsv header: {e}"))?;
     for row in rows {
@@ -628,12 +624,14 @@ fn emit_tsv(path: &Path, rows: &[ProbeReceiptRow]) -> Result<(), String> {
         };
         writeln!(
             out,
-            "{}\t{}\t{}\t{}\t{}\t{}",
+            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
             row.module_path,
             self_emit,
             row.blocker_variant,
             row.located_stage,
             row.located_reason,
+            row.rejection_chain,
+            row.overlap_roster_detail,
             row.probe_error.as_deref().unwrap_or("")
         )
         .map_err(|e| format!("write tsv row: {e}"))?;
@@ -771,8 +769,12 @@ fn run() -> Result<ExitCode, ExitCode> {
         match run_probe_for_module(&source_roots, &survey_dir, module_path) {
             Ok(row) => {
                 eprintln!(
-                    "  blocker={} stage={} reason={}",
-                    row.blocker_variant, row.located_stage, row.located_reason
+                    "  blocker={} stage={} reason={} chain={} overlap={}",
+                    row.blocker_variant,
+                    row.located_stage,
+                    row.located_reason,
+                    row.rejection_chain,
+                    row.overlap_roster_detail
                 );
                 rows.push(row);
             }
