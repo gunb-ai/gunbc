@@ -38,6 +38,7 @@ import gunbc.roadmap_component {
   sandbox_client_js_source, sandbox_asset_path,
 }
 import gunbc.roadmap_sandbox { sandbox_page }
+import gunbc.roadmap_instrument_sandbox { instrument_sandbox_page }
 import gunbc.roadmap_static_site {
   roadmap_site_roadmap_md_body,
   roadmap_site_dispatch_json_body,
@@ -112,6 +113,7 @@ type RoadmapServeHandler
   | BeltDispatchHandler
   | DispatchAssetHandler
   | SandboxPageHandler
+  | InstrumentSandboxPageHandler
   | SandboxAssetHandler
   | SandboxEchoHandler
   | SessionsJsonHandler
@@ -146,6 +148,7 @@ fn roadmap_serve_route_specs() -> List<RoadmapServeRouteSpec> {
     RoadmapServeRouteSpec { method: GET, raw: "/workflow.json", handler: WorkflowJsonHandler },
     RoadmapServeRouteSpec { method: GET, raw: roadmap_dispatch_asset_path, handler: DispatchAssetHandler },
     RoadmapServeRouteSpec { method: GET, raw: "/sandbox", handler: SandboxPageHandler },
+    RoadmapServeRouteSpec { method: GET, raw: "/sandbox/instrument", handler: InstrumentSandboxPageHandler },
     RoadmapServeRouteSpec { method: GET, raw: sandbox_asset_path, handler: SandboxAssetHandler },
     RoadmapServeRouteSpec { method: POST, raw: "/sandbox/echo", handler: SandboxEchoHandler },
     RoadmapServeRouteSpec { method: POST, raw: "/dispatch/\{node_id\}", handler: BeltDispatchHandler },
@@ -396,6 +399,7 @@ fn roadmap_serve_invoke_for_instance(
       serve_dispatch_handler_response_for_instance(instance: instance, params: params)
     DispatchAssetHandler => serve_text_response(status: 200, content_type: text_javascript_utf8, body: dispatch_client_js_source())
     SandboxPageHandler => serve_page_response(page: sandbox_page())
+    InstrumentSandboxPageHandler => serve_page_response(page: instrument_sandbox_page())
     SandboxAssetHandler => serve_text_response(status: 200, content_type: text_javascript_utf8, body: sandbox_client_js_source())
     SandboxEchoHandler => sandbox_echo_response(request: request)
     SessionsJsonHandler => serve_sessions_response_for_instance(instance: instance)

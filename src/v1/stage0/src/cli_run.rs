@@ -15794,6 +15794,31 @@ fn witness_cost_eval_durations(
     .map_err(|e| format!("[witness-row-cost] REFUSED: eval duration constructor failed: {e}"))
 }
 
+/// One witness's cost row, as the authored projection produced it.
+///
+/// Was a seven-wide anonymous tuple, which is how `eval` came to mean "wall" by position and
+/// nothing else — the same defect one layer down from the field name `ObservationEvent.wall`
+/// that the 2026-08-05 clock-basis ruling retired. Naming the fields is what lets a SECOND
+/// clock ride here without either becoming "the third u128".
+#[derive(Debug, Clone)]
+pub struct WitnessRowCost {
+    pub entry: String,
+    pub function: String,
+    /// Wall, and required: the clock the witness threshold is stated on. The authored
+    /// projection refuses a witness that carries no wall figure, so this is never invented.
+    pub eval_wall_nanos: u128,
+    /// Thread CPU, and OPTIONAL — the remedy discriminator, not a second threshold (operator
+    /// ruling 2026-08-05). High wall with high CPU is algorithm or repeated evaluation; high
+    /// wall with low CPU is waiting, I/O, subprocess or scheduling. `None` means the producer
+    /// did not sample it, which renders as `unmeasured` and never as `0`: a clock that was not
+    /// read must not look like a fast one.
+    pub eval_cpu_nanos: Option<u128>,
+    pub resolve_nanos: u128,
+    pub warm_nanos: u128,
+    pub outcome: String,
+    pub detail: String,
+}
+
 fn witness_cost_string_field(
     ctx: &v1_interpreter::InterpContext,
     fields: &[(v1_interpreter::Symbol, v1_interpreter::Value)],
@@ -15907,7 +15932,7 @@ fn witness_cost_nanosecond_count(
 pub fn project_witness_cost_receipt(
     source_roots: &[String],
     summary: &DiscoverySummary,
-) -> Result<Vec<(String, String, u128, u128, u128, String, String)>, String> {
+) -> Result<Vec<WitnessRowCost>, String> {
     use v1_interpreter::{run_in_context_with_args, ExecutionMode, Value};
 
     if summary.performance_receipts.len() != summary.witness_outcomes.len() {
@@ -16185,15 +16210,21 @@ pub fn project_witness_cost_receipt(
                          carries no wall duration"
                     )
                 })?;
-            projected_rows.push((
-                row_entry,
+            // The CPU figure is read the same way and is allowed to be absent: production
+            // rows carry it because `run_claim_measured` samples both clocks from one run,
+            // and a producer that genuinely sampled only wall says so by omission rather
+            // than by a zero.
+            let eval_cpu_nanos = witness_cost_clock_nanos(&ctx, &eval, "clock_basis_cpu")?;
+            projected_rows.push(WitnessRowCost {
+                entry: row_entry,
                 function,
                 eval_wall_nanos,
-                witness_cost_nanosecond_count(&ctx, resolve, "resolve")?,
-                witness_cost_nanosecond_count(&ctx, warm, "warm")?,
+                eval_cpu_nanos,
+                resolve_nanos: witness_cost_nanosecond_count(&ctx, resolve, "resolve")?,
+                warm_nanos: witness_cost_nanosecond_count(&ctx, warm, "warm")?,
                 outcome,
-                outcome_detail,
-            ));
+                detail: outcome_detail,
+            });
         }
     }
     if projected_rows.len() != summary.witness_outcomes.len() {
@@ -16206,29 +16237,25 @@ pub fn project_witness_cost_receipt(
     Ok(projected_rows)
 }
 
-pub fn top_n_slowest_witnesses(
-    rows: &[(String, String, u128, u128, u128, String, String)],
-    n: usize,
-) -> Vec<(String, String, u128, u128, u128, String, String)> {
+pub fn top_n_slowest_witnesses(rows: &[WitnessRowCost], n: usize) -> Vec<WitnessRowCost> {
     let mut sorted = rows.to_vec();
     sorted.sort_by(|a, b| {
-        b.2.cmp(&a.2)
-            .then_with(|| a.1.cmp(&b.1))
-            .then_with(|| a.0.cmp(&b.0))
+        b.eval_wall_nanos
+            .cmp(&a.eval_wall_nanos)
+            .then_with(|| a.function.cmp(&b.function))
+            .then_with(|| a.entry.cmp(&b.entry))
     });
     sorted.truncate(n);
     sorted
 }
 
-pub fn compute_histogram_data(
-    rows: &[(String, String, u128, u128, u128, String, String)],
-) -> HistogramData {
+pub fn compute_histogram_data(rows: &[WitnessRowCost]) -> HistogramData {
     HistogramData {
         included: rows.len(),
         skipped: 0,
-        total: compute_percentiles(rows.iter().map(|row| row.4).collect()),
-        resolve: compute_percentiles(rows.iter().map(|row| row.3).collect()),
-        eval: compute_percentiles(rows.iter().map(|row| row.2).collect()),
+        total: compute_percentiles(rows.iter().map(|row| row.warm_nanos).collect()),
+        resolve: compute_percentiles(rows.iter().map(|row| row.resolve_nanos).collect()),
+        eval: compute_percentiles(rows.iter().map(|row| row.eval_wall_nanos).collect()),
     }
 }
 
@@ -26679,12 +26706,12 @@ mod discovery_summary_merge_tests {
         let rows =
             project_witness_cost_receipt(&source_roots(), &summary).expect("authored projection");
         assert_eq!(rows.len(), 2);
-        assert_eq!(rows[0].2, 7_000_000);
-        assert_eq!(rows[0].4, 107_000_000);
-        assert_eq!(rows[0].5, "Failed");
-        assert_eq!(rows[0].6, "returned Bool(false)");
-        assert_eq!(rows[1].5, "Refused");
-        assert_eq!(rows[1].6, "returned `String`, not Bool");
+        assert_eq!(rows[0].eval_wall_nanos, 7_000_000);
+        assert_eq!(rows[0].warm_nanos, 107_000_000);
+        assert_eq!(rows[0].outcome, "Failed");
+        assert_eq!(rows[0].detail, "returned Bool(false)");
+        assert_eq!(rows[1].outcome, "Refused");
+        assert_eq!(rows[1].detail, "returned `String`, not Bool");
     }
 
     #[test]
@@ -26713,20 +26740,23 @@ mod discovery_summary_merge_tests {
         let rows =
             project_witness_cost_receipt(&source_roots(), &summary).expect("authored projection");
         assert_eq!(rows.len(), 3);
-        assert_eq!(rows[0].1, "one_ns");
-        assert_eq!(rows[0].2, 1);
-        assert_eq!(rows[0].3, 7);
-        assert_eq!(rows[0].4, 8);
-        assert_eq!(rows[1].1, "sub_ms");
-        assert_eq!(rows[1].2, 999_999);
-        assert_eq!(rows[1].4, 1_000_006);
-        assert_eq!(rows[2].1, "one_ms");
-        assert_eq!(rows[2].2, 1_000_000);
-        assert_eq!(rows[2].4, 1_000_007);
+        assert_eq!(rows[0].function, "one_ns");
+        assert_eq!(rows[0].eval_wall_nanos, 1);
+        assert_eq!(rows[0].resolve_nanos, 7);
+        assert_eq!(rows[0].warm_nanos, 8);
+        assert_eq!(rows[1].function, "sub_ms");
+        assert_eq!(rows[1].eval_wall_nanos, 999_999);
+        assert_eq!(rows[1].warm_nanos, 1_000_006);
+        assert_eq!(rows[2].function, "one_ms");
+        assert_eq!(rows[2].eval_wall_nanos, 1_000_000);
+        assert_eq!(rows[2].warm_nanos, 1_000_007);
 
         let slowest = top_n_slowest_witnesses(&rows, rows.len());
         assert_eq!(
-            slowest.iter().map(|row| row.1.as_str()).collect::<Vec<_>>(),
+            slowest
+                .iter()
+                .map(|row| row.function.as_str())
+                .collect::<Vec<_>>(),
             vec!["one_ms", "sub_ms", "one_ns"]
         );
         let histogram = compute_histogram_data(&rows);
@@ -26806,10 +26836,10 @@ mod discovery_summary_merge_tests {
         let rows = project_witness_cost_receipt(&roots, &summary)
             .expect("real discovery summary must pass the authored projector");
         assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].0, entry);
-        assert_eq!(rows[0].1, function);
-        assert_eq!(rows[0].5, "Done");
-        assert_eq!(rows[0].6, "");
+        assert_eq!(rows[0].entry, entry);
+        assert_eq!(rows[0].function, function);
+        assert_eq!(rows[0].outcome, "Done");
+        assert_eq!(rows[0].detail, "");
     }
 }
 

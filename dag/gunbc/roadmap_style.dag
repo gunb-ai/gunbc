@@ -14,7 +14,7 @@ import gunbc.design.scale {
   radius_3, radius_999, border_1, border_2, measure_page, height_control, width_status,
 }
 import gunbc.design.theme {
-  Theme, day_theme, night_theme, theme_root_css, role_decl,
+  Theme, day_theme, night_theme, theme_root_css, theme_scoped_blocks, role_decl,
   CanvasRole, SurfaceRole, BorderRole, TextRole, TextDimRole,
   FigureRole, FocusRole, BoundaryRole,
 }
@@ -217,17 +217,11 @@ fn auditioner_root_css() -> String {
 }
 
 fn band_root_css() -> String {
-  join([
-    css_block(selector: ":root", decls: band_var_decls(rows: band_paints_for_theme(t: day_theme))),
-    css_block(
-      selector: join([":root[data-theme=\"", night_theme.name, "\"]"], ""),
-      decls: band_var_decls(rows: band_paints_for_theme(t: night_theme))),
-    join([
-      "@media (prefers-color-scheme: ", night_theme.scheme, ") { ",
-      css_block(selector: ":root:not([data-theme])", decls: band_var_decls(rows: band_paints_for_theme(t: night_theme))),
-      " }",
-    ], ""),
-  ], "\n")
+  theme_scoped_blocks(
+    base: day_theme,
+    alternate: night_theme,
+    decls_for: t => band_var_decls(rows: band_paints_for_theme(t: t)),
+  )
 }
 
 fn roadmap_rules() -> List<BuildRule> {
