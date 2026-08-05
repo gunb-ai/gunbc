@@ -8,7 +8,7 @@ description = "Integration tests for the v2 self-hosted compiler"
 
 [dependencies]
 im = { version = "15.1", features = ["serde"] }
-v1-compiler = { path = "../stage0", features = ["text_lookup_work_counter", "compile_contract_surface", "test_hooks"] }
+v1-compiler = { path = "../stage0", features = ["text_lookup_work_counter", "interp_test_witness", "test_hooks"] }
 
 [dev-dependencies]
 serde = { workspace = true }

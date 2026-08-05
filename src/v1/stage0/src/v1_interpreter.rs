@@ -133,39 +133,23 @@ thread_local! {
         const { std::cell::RefCell::new(None) };
 }
 
-#[cfg(any(test, feature = "interp_test_witness", feature = "compile_contract_surface"))]
+#[cfg(any(test, feature = "interp_test_witness"))]
 thread_local! {
     static CALL_ENV_DEPTH_PEAK: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
-/// Default-off arming for `compile_contract_surface`: release bins never set this; integration
-/// tests call `arm_call_env_depth_witness_for_test` before depth assertions. `interp_test_witness`
-/// keeps the legacy always-on behavior.
-#[cfg(all(feature = "compile_contract_surface", not(feature = "interp_test_witness")))]
+/// Default-off: release bins omit `interp_test_witness`; when the feature is present the hook
+/// is a guarded no-op until a test arms it.
+#[cfg(any(test, feature = "interp_test_witness"))]
 static CALL_ENV_DEPTH_WITNESS_ARMED: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
 
-#[cfg(any(test, feature = "interp_test_witness", feature = "compile_contract_surface"))]
+#[cfg(any(test, feature = "interp_test_witness"))]
 fn call_env_depth_witness_enabled() -> bool {
-    #[cfg(feature = "interp_test_witness")]
-    {
-        return true;
-    }
-    #[cfg(all(feature = "compile_contract_surface", not(feature = "interp_test_witness")))]
-    {
-        return CALL_ENV_DEPTH_WITNESS_ARMED.load(std::sync::atomic::Ordering::Relaxed);
-    }
-    #[cfg(all(
-        test,
-        not(any(feature = "interp_test_witness", feature = "compile_contract_surface"))
-    ))]
-    {
-        return true;
-    }
-    false
+    CALL_ENV_DEPTH_WITNESS_ARMED.load(std::sync::atomic::Ordering::Relaxed)
 }
 
-#[cfg(feature = "compile_contract_surface")]
+#[cfg(any(test, feature = "interp_test_witness"))]
 pub fn arm_call_env_depth_witness_for_test() {
     CALL_ENV_DEPTH_WITNESS_ARMED.store(true, std::sync::atomic::Ordering::Relaxed);
 }
@@ -185,7 +169,7 @@ fn with_lexical_base_env<R>(base: &Rc<Env>, f: impl FnOnce() -> R) -> R {
             }
         }
         let _guard = LexicalBaseGuard { prev };
-        #[cfg(any(test, feature = "interp_test_witness", feature = "compile_contract_surface"))]
+        #[cfg(any(test, feature = "interp_test_witness"))]
         if call_env_depth_witness_enabled() {
             CALL_ENV_DEPTH_PEAK.with(|peak| peak.set(0));
         }
@@ -201,7 +185,7 @@ fn lexical_base_env(caller_env: &Rc<Env>) -> Rc<Env> {
     })
 }
 
-#[cfg(any(test, feature = "interp_test_witness", feature = "compile_contract_surface"))]
+#[cfg(any(test, feature = "interp_test_witness"))]
 fn record_call_env_depth(env: &Env) {
     if !call_env_depth_witness_enabled() {
         return;
@@ -1854,21 +1838,13 @@ pub fn run_in_context_with_args(
 }
 
 /// Peak parent-chain depth observed across `call_function` frames in the last
-/// `run_in_context*` invocation (test witness for lexical-base scoping).
-/// With `compile_contract_surface` alone the instrumentation is absent and this reads 0.
-#[cfg(any(test, feature = "interp_test_witness", feature = "compile_contract_surface"))]
+/// `run_in_context*` invocation (test witness for lexical-base scoping; default-off until armed).
+#[cfg(any(test, feature = "interp_test_witness"))]
 pub fn call_env_depth_peak_snapshot() -> usize {
-    #[cfg(feature = "interp_test_witness")]
-    {
-        return CALL_ENV_DEPTH_PEAK.with(|peak| peak.get());
+    if !call_env_depth_witness_enabled() {
+        return 0;
     }
-    #[cfg(all(
-        feature = "compile_contract_surface",
-        not(feature = "interp_test_witness")
-    ))]
-    {
-        0
-    }
+    CALL_ENV_DEPTH_PEAK.with(|peak| peak.get())
 }
 
 fn build_initial_env(ctx: &InterpContext) -> InterpResult<Rc<Env>> {
@@ -2745,7 +2721,7 @@ fn cross_family_content_hash_straddle(a: &Value, b: &Value) -> Option<String> {
     }
 }
 
-#[cfg(any(test, feature = "interp_test_witness", feature = "compile_contract_surface"))]
+#[cfg(any(test, feature = "interp_test_witness"))]
 pub fn cross_family_content_hash_straddle_for_witness(a: &Value, b: &Value) -> Option<String> {
     cross_family_content_hash_straddle(a, b)
 }
@@ -7994,7 +7970,7 @@ fn fnv1a64_structural_value(digest: String, ctx: &InterpContext) -> Value {
 /// `==`-equal to a dag-authored `RestAuthenticated { scheme, digest: content_hash_atom(…) }`,
 /// so a drift on either side of the seam (mint shape, hash family, or preimage layout) goes
 /// red instead of silently failing every authenticated fixture match.
-#[cfg(any(test, feature = "interp_test_witness", feature = "compile_contract_surface"))]
+#[cfg(any(test, feature = "interp_test_witness"))]
 pub fn rest_authenticated_identity_for_witness(token: &str, ctx: &InterpContext) -> Value {
     rest_auth_identity_value(
         &AuthResolution::Resolved {

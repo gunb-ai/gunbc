@@ -7356,7 +7356,7 @@ pub fn build_multi_entry_index_with_shared_caches(
 }
 
 /// Test-only: whether `parse_cache` holds a path (pool census must not pre-fill it).
-#[cfg(any(test, feature = "interp_test_witness", feature = "compile_contract_surface"))]
+#[cfg(any(test, feature = "interp_test_witness"))]
 pub fn parse_cache_contains_path_for_test(index: &MultiEntryIndex, path: &str) -> bool {
     index
         .parse_cache
@@ -7365,12 +7365,12 @@ pub fn parse_cache_contains_path_for_test(index: &MultiEntryIndex, path: &str) -
         .any(|k| k == path || same_canonical_file(k, path))
 }
 
-#[cfg(any(test, feature = "interp_test_witness", feature = "compile_contract_surface"))]
+#[cfg(any(test, feature = "interp_test_witness"))]
 pub fn parse_cache_paths_for_test(index: &MultiEntryIndex) -> Vec<String> {
     index.parse_cache.borrow().keys().cloned().collect()
 }
 
-#[cfg(any(test, feature = "interp_test_witness", feature = "compile_contract_surface"))]
+#[cfg(any(test, feature = "interp_test_witness"))]
 pub fn typed_module_cache_len_for_test(index: &MultiEntryIndex) -> usize {
     index.typed_module_cache.borrow().len()
 }
@@ -7378,14 +7378,14 @@ pub fn typed_module_cache_len_for_test(index: &MultiEntryIndex) -> usize {
 /// Test-only projection of the durable typed-cache authority: the content keys whose
 /// computations populated this private index. A fresh, non-evicting test index makes
 /// this exactly the distinct-computation set without retaining request attribution.
-#[cfg(any(test, feature = "interp_test_witness", feature = "compile_contract_surface"))]
+#[cfg(any(test, feature = "interp_test_witness"))]
 pub fn typed_module_cache_content_keys_for_test(
     index: &MultiEntryIndex,
 ) -> std::collections::BTreeSet<String> {
     index.typed_module_cache.borrow().keys().cloned().collect()
 }
 
-#[cfg(any(test, feature = "interp_test_witness", feature = "compile_contract_surface"))]
+#[cfg(any(test, feature = "interp_test_witness"))]
 pub fn typed_cache_evictions_for_test(index: &MultiEntryIndex) -> u64 {
     index.typed_cache_evictions.get()
 }
@@ -7394,12 +7394,12 @@ pub fn typed_cache_evictions_for_test(index: &MultiEntryIndex) -> u64 {
 /// call sites use, so a test can observe that repeated calls against one
 /// `index` return the identical value even as the underlying signal moves —
 /// the property the 2026-07-21 fleet OOM fix depends on.
-#[cfg(any(test, feature = "interp_test_witness", feature = "compile_contract_surface"))]
+#[cfg(any(test, feature = "interp_test_witness"))]
 pub fn typed_module_cache_cap_for_test(index: &MultiEntryIndex) -> usize {
     typed_module_cache_cap(index)
 }
 
-#[cfg(any(test, feature = "interp_test_witness", feature = "compile_contract_surface"))]
+#[cfg(any(test, feature = "interp_test_witness"))]
 pub fn entry_closure_sources_len_for_test(index: &MultiEntryIndex) -> usize {
     index.entry_closure_sources.borrow().len()
 }
@@ -7409,7 +7409,7 @@ pub fn entry_closure_sources_len_for_test(index: &MultiEntryIndex) -> usize {
 /// gate warms the shared index Ephemerally (D0.1): modules cached, no per-entry graph
 /// pin — so the next per-entry resolve misses the memo and takes reconcile's ALL-HITS
 /// probe, the path D0.2's schedule-key registration lives on.
-#[cfg(any(test, feature = "interp_test_witness", feature = "compile_contract_surface"))]
+#[cfg(any(test, feature = "interp_test_witness"))]
 pub fn clear_resolved_graph_memo_for_test(index: &MultiEntryIndex) {
     index.resolved_graph_memo.borrow_mut().clear();
 }
@@ -7418,7 +7418,7 @@ pub fn clear_resolved_graph_memo_for_test(index: &MultiEntryIndex) {
 /// bypassing the process-global `GUNBC_SCHEDULE_RETENTION_EVICT` env — so the D0.4
 /// retain-all (`evict_enabled=false`) baseline can be exercised on a real index without
 /// racing that env against concurrently-running tests.
-#[cfg(any(test, feature = "interp_test_witness", feature = "compile_contract_surface"))]
+#[cfg(any(test, feature = "interp_test_witness"))]
 pub fn install_schedule_retention_for_test(
     index: &MultiEntryIndex,
     per_entry: Vec<(String, Vec<String>)>,
@@ -7428,12 +7428,12 @@ pub fn install_schedule_retention_for_test(
         Some(ScheduleRetention::armed(per_entry, evict_enabled));
 }
 
-#[cfg(any(test, feature = "interp_test_witness", feature = "compile_contract_surface"))]
+#[cfg(any(test, feature = "interp_test_witness"))]
 pub fn both_closure_edges_initialized_for_test(index: &MultiEntryIndex) -> bool {
     index.both_closure_edges.borrow().is_some()
 }
 
-#[cfg(any(test, feature = "interp_test_witness", feature = "compile_contract_surface"))]
+#[cfg(any(test, feature = "interp_test_witness"))]
 pub fn both_closure_bare_edge_rows_for_test(index: &MultiEntryIndex) -> usize {
     index
         .both_closure_edges
@@ -7443,12 +7443,12 @@ pub fn both_closure_bare_edge_rows_for_test(index: &MultiEntryIndex) -> usize {
         .unwrap_or(0)
 }
 
-#[cfg(any(test, feature = "interp_test_witness", feature = "compile_contract_surface"))]
+#[cfg(any(test, feature = "interp_test_witness"))]
 pub fn pool_qualified_fill_initialized_for_test(index: &MultiEntryIndex) -> bool {
     index.pool_qualified_fill.borrow().is_some()
 }
 
-#[cfg(any(test, feature = "interp_test_witness", feature = "compile_contract_surface"))]
+#[cfg(any(test, feature = "interp_test_witness"))]
 pub fn reset_pool_qualified_fill_for_test(index: &MultiEntryIndex) {
     *index.pool_qualified_fill.borrow_mut() = None;
 }
@@ -7555,12 +7555,12 @@ pub fn census_heads_body_traversal_refusal(node: &Rc<Node>) -> Option<String> {
     }
 }
 
-#[cfg(any(test, feature = "interp_test_witness", feature = "compile_contract_surface"))]
+#[cfg(any(test, feature = "interp_test_witness"))]
 pub fn census_heads_fn_stand_in_for_test() -> Rc<Node> {
     stripped_fn_body_marker()
 }
 
-#[cfg(any(test, feature = "interp_test_witness", feature = "compile_contract_surface"))]
+#[cfg(any(test, feature = "interp_test_witness"))]
 pub fn census_heads_module_node_for_test(module: Rc<Node>) -> Rc<Node> {
     census_heads_module_node(module)
 }

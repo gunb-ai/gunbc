@@ -62,8 +62,7 @@ test fn w_build_job_enrolls_compile_gate_after_release_build() -> Bool {
   (build >= 0) && (gate >= 0) && (build < gate)
 }
 
-test fn w_release_features_cover_test_crate_deps() -> Bool {
+test fn w_release_features_exclude_interp_test_witness_on_bins() -> Bool {
   string_contains(s: ci_release_features, pattern: "text_lookup_work_counter")
-    && string_contains(s: ci_release_features, pattern: "interp_test_witness")
-    && string_contains(s: ci_release_features, pattern: "test_hooks")
+    && !string_contains(s: ci_release_features, pattern: "interp_test_witness")
 }
