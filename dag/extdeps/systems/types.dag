@@ -1,7 +1,7 @@
 module extdeps.systems.types
 
 import std.types { NonEmptyStr, List, Int, Bool }
-import std.measure { ByteSize, Bandwidth, Watt, BitWidth }
+import std.measure { ByteSize, Bandwidth, Watt, BitWidth, HardwareThreadCount, hardware_thread_count_value }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 import extdeps.gpu.types { GpuModelCatalogRow }
@@ -22,7 +22,7 @@ data integrated_compute_system_scope_note: String = "A discrete CpuModelCatalogR
 
 type CpuCoreCluster {
   microarchitecture: NonEmptyStr
-  core_count: Int
+  core_count: HardwareThreadCount
 }
 
 type NetworkPortMedium = WiredEthernet | WirelessLan | ShortRangeWireless | SmartNic
@@ -51,5 +51,5 @@ type IntegratedComputeSystemCatalogRow {
 }
 
 fn integrated_compute_system_cpu_core_count(row: IntegratedComputeSystemCatalogRow) -> Int {
-  fold(row.cpu_core_clusters, init: 0, f: (acc, cluster) => acc + cluster.core_count)
+  fold(row.cpu_core_clusters, init: 0, f: (acc, cluster) => acc + hardware_thread_count_value(cluster.core_count))
 }

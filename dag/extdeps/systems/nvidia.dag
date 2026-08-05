@@ -62,8 +62,8 @@ data nvidia_gb10_gpu_catalog: GpuModelCatalogRow = GpuModelCatalogRow {
 }
 
 data dgx_spark_cpu_core_clusters: List<CpuCoreCluster> = [
-  CpuCoreCluster { microarchitecture: "Arm Cortex-X925", core_count: 10 },
-  CpuCoreCluster { microarchitecture: "Arm Cortex-A725", core_count: 10 },
+  CpuCoreCluster { microarchitecture: "Arm Cortex-X925", core_count: hardware_thread_count(10) },
+  CpuCoreCluster { microarchitecture: "Arm Cortex-A725", core_count: hardware_thread_count(10) },
 ]
 
 data dgx_spark_network_ports: List<SystemNetworkPort> = [
