@@ -6011,10 +6011,21 @@ fn validate_on_success_stage_admissibility(stages: &[Vec<Runnable>]) -> Vec<Stri
 /// `WalkPlan<NoWalkFinalization>` — a declaration, not a guarantee: the typechecker
 /// does not check return position, so the value is what decides, and the enrolled
 /// witnesses in v2.test.claim.ci_floor_plan_witness are what check the value.
+fn unexecuted_transport_obligations<'a>(
+    fin: &'a FloorFinalization,
+    batch_records: &[BatchRecord],
+) -> Vec<&'a TransportedObligation> {
+    fin.expected_obligations
+        .iter()
+        .filter(|obl| find_claim_result(batch_records, &obl.entry, &obl.function).is_none())
+        .collect()
+}
+
 fn validate_floor_finalization(
     fin: &FloorFinalization,
     plan_site: &str,
     batch_records: &[BatchRecord],
+    walk_truncated: bool,
 ) -> Vec<String> {
     let mut refusals = Vec::new();
     // Law 1 — semantic resolve OBLIGATIONS (gunbc.ci_materialization / 0B):
@@ -6034,30 +6045,44 @@ fn validate_floor_finalization(
              resolve(s) with resolve_nanos > 0 (expected at most 1 per rostered entry)"
         ));
     }
-    match derive_resolve_obligation_receipts(fin, batch_records) {
-        Ok(obligations) => {
-            if obligations.len() as i64 != fin.declared_resolve_count() {
-                refusals.push(format!(
-                    "floor resolve obligation count {} differs from transported {}: roster debt \
-                     changed - update expected_resolve_obligations at \
-                     {plan_site} WalkPlan.finalization \
-                     (the production floor projects gunbc.ci_materialization \
-                     ci_floor_expected_resolve_obligations(); a fixture declares its own)",
-                    obligations.len(),
-                    fin.declared_resolve_count()
-                ));
-            }
-            let mut seen = std::collections::HashSet::new();
-            for line in &obligations {
-                if !seen.insert(line.identity.clone()) {
+    let unexecuted = unexecuted_transport_obligations(fin, batch_records);
+    if walk_truncated && !unexecuted.is_empty() {
+        let listing = unexecuted
+            .iter()
+            .map(|obl| format!("{} ({}::{})", obl.identity, obl.entry, obl.function))
+            .collect::<Vec<_>>()
+            .join("; ");
+        refusals.push(format!(
+            "floor resolve obligations not fully scheduled: {} obligation subject(s) never ran \
+             (walk stopped before dependent batches); count law unevaluable — {listing}",
+            unexecuted.len(),
+        ));
+    } else {
+        match derive_resolve_obligation_receipts(fin, batch_records) {
+            Ok(obligations) => {
+                if obligations.len() as i64 != fin.declared_resolve_count() {
                     refusals.push(format!(
-                        "floor resolve obligation duplicate identity: {}",
-                        line.identity
+                        "floor resolve obligation count {} differs from transported {}: roster debt \
+                         changed - update expected_resolve_obligations at \
+                         {plan_site} WalkPlan.finalization \
+                         (the production floor projects gunbc.ci_materialization \
+                         ci_floor_expected_resolve_obligations(); a fixture declares its own)",
+                        obligations.len(),
+                        fin.declared_resolve_count()
                     ));
                 }
+                let mut seen = std::collections::HashSet::new();
+                for line in &obligations {
+                    if !seen.insert(line.identity.clone()) {
+                        refusals.push(format!(
+                            "floor resolve obligation duplicate identity: {}",
+                            line.identity
+                        ));
+                    }
+                }
             }
+            Err(msg) => refusals.push(msg),
         }
-        Err(msg) => refusals.push(msg),
     }
     // Law 2 — materialization disclosure (ci_floor_materialization_receipt_note):
     // receipt exists, keyed/unkeyed/duplicated parse, keyed nonzero. Read from the
@@ -6864,7 +6889,8 @@ fn run_walk(
     // materialization gate steps): validated AFTER the receipts wrote and BEFORE the
     // on-success stages, so a violation blocks admission instead of post-dating it.
     if let Some(fin) = floor_finalization {
-        let refusals = validate_floor_finalization(fin, plan_site, &batch_records);
+        let walk_truncated = batch_records.len() < batches.len();
+        let refusals = validate_floor_finalization(fin, plan_site, &batch_records, walk_truncated);
         if refusals.is_empty() {
             if !ordinary_failed {
                 eprintln!(
@@ -9164,7 +9190,7 @@ mod tests {
             selection_degradation: None,
             resolve_realization: None,
         });
-        let refusals = validate_floor_finalization(&fin, TEST_PLAN_SITE, &records);
+        let refusals = validate_floor_finalization(&fin, TEST_PLAN_SITE, &records, false);
         assert!(
             refusals
                 .iter()
@@ -9260,7 +9286,7 @@ mod tests {
                 }],
             },
         ];
-        let refusals = validate_floor_finalization(&fin, TEST_PLAN_SITE, &records);
+        let refusals = validate_floor_finalization(&fin, TEST_PLAN_SITE, &records, false);
         assert!(
             !refusals
                 .iter()
@@ -9324,7 +9350,7 @@ mod tests {
                 },
             ],
         }];
-        let refusals = validate_floor_finalization(&fin, TEST_PLAN_SITE, &records);
+        let refusals = validate_floor_finalization(&fin, TEST_PLAN_SITE, &records, false);
         assert!(
             refusals
                 .iter()
@@ -9337,7 +9363,7 @@ mod tests {
     fn floor_finalization_warm_native_includes_provider_receipt() {
         let fin = test_floor_finalization();
         let records = obligation_finalization_records(3, 0);
-        let refusals = validate_floor_finalization(&fin, TEST_PLAN_SITE, &records);
+        let refusals = validate_floor_finalization(&fin, TEST_PLAN_SITE, &records, false);
         assert!(
             !refusals
                 .iter()
@@ -9355,7 +9381,7 @@ mod tests {
                 computation_identity: "entry-closure:fixture".to_string(),
                 provider_id: String::new(),
             });
-        let refusals = validate_floor_finalization(&fin, TEST_PLAN_SITE, &records);
+        let refusals = validate_floor_finalization(&fin, TEST_PLAN_SITE, &records, false);
         assert!(
             refusals
                 .iter()
@@ -9373,7 +9399,7 @@ mod tests {
         partial[0]
             .results
             .retain(|r| r.function == "dag_compile_clean_gate_passes");
-        let refusals = validate_floor_finalization(&fin, TEST_PLAN_SITE, &partial);
+        let refusals = validate_floor_finalization(&fin, TEST_PLAN_SITE, &partial, false);
         assert!(
             refusals
                 .iter()
@@ -9381,7 +9407,7 @@ mod tests {
             "missing transported obligation must refuse: {refusals:?}"
         );
         let under = [finalization_record(&[])];
-        let refusals = validate_floor_finalization(&fin, TEST_PLAN_SITE, &under);
+        let refusals = validate_floor_finalization(&fin, TEST_PLAN_SITE, &under, false);
         assert!(
             refusals
                 .iter()
@@ -9391,10 +9417,39 @@ mod tests {
     }
 
     #[test]
+    fn floor_finalization_truncated_walk_reports_unevaluable_not_debt_change() {
+        let fin = test_floor_finalization();
+        let mut partial = obligation_finalization_records(5, 0);
+        partial[0]
+            .results
+            .retain(|r| r.function == "dag_compile_clean_gate_passes");
+        let refusals = validate_floor_finalization(&fin, TEST_PLAN_SITE, &partial, true);
+        assert!(
+            refusals.iter().any(|m| {
+                m.contains("obligations not fully scheduled")
+                    && m.contains("native_selected_logic_production_spec")
+            }),
+            "truncated walk must name never-ran obligations: {refusals:?}"
+        );
+        assert!(
+            !refusals
+                .iter()
+                .any(|m| m.contains("differs from transported")),
+            "truncated walk must not diagnose roster debt change: {refusals:?}"
+        );
+        assert!(
+            !refusals
+                .iter()
+                .any(|m| m.contains("floor resolve obligation missing")),
+            "truncated walk must not use missing-obligation debt wording: {refusals:?}"
+        );
+    }
+
+    #[test]
     fn floor_finalization_warm_native_satisfies_obligations_with_one_cold() {
         let fin = test_floor_finalization();
         let records = obligation_finalization_records(3, 0);
-        let refusals = validate_floor_finalization(&fin, TEST_PLAN_SITE, &records);
+        let refusals = validate_floor_finalization(&fin, TEST_PLAN_SITE, &records, false);
         assert!(
             !refusals
                 .iter()
@@ -9407,7 +9462,7 @@ mod tests {
     fn floor_finalization_matching_obligations_leaves_only_the_materialization_arm() {
         let fin = test_floor_finalization();
         let records = obligation_finalization_records(3, 9);
-        let refusals = validate_floor_finalization(&fin, TEST_PLAN_SITE, &records);
+        let refusals = validate_floor_finalization(&fin, TEST_PLAN_SITE, &records, false);
         assert!(
             !refusals
                 .iter()
