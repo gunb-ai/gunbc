@@ -13044,6 +13044,51 @@ mod budget_completion_tests {
     }
 
     #[test]
+    /// The enforced quantity must be RECORDED, not just spent. `run_claim_measured` computes
+    /// thread CPU, hands it to `budget_completion_outcome`, and — until this landed — dropped
+    /// it, so the cap was enforced on a number no artifact carried and no threshold built on
+    /// a cost receipt could select the population the cap kills.
+    ///
+    /// The two clocks are asserted to be INDEPENDENTLY carried: a receipt that stored one
+    /// value under both names would pass a weaker test while reintroducing the conflation.
+    fn performance_receipt_carries_the_enforced_cpu_clock_beside_wall() {
+        let receipt = v1_interpreter::performance_receipt_from_witness(
+            "subj".to_string(),
+            "claim",
+            9_000_000,
+            4_000_000,
+        );
+        assert_eq!(receipt.wall_nanos, 9_000_000, "wall is the measurement basis");
+        assert_eq!(receipt.cpu_nanos, 4_000_000, "cpu is the enforcement basis");
+        assert_ne!(
+            receipt.wall_nanos, receipt.cpu_nanos,
+            "the two clocks must be carried independently, not aliased"
+        );
+
+        // The bound that makes the wall figure useful in one direction only: eval is
+        // single-threaded, so cpu <= wall. A wall figure under the cap PROVES cpu under it
+        // (so existing "lands under the fast-lane budget" triggers were always decidable),
+        // while an over-cap wall figure proves nothing about cpu — the ranking direction the
+        // per-witness cost-envelope lane needs, and the reason wall alone was insufficient.
+        let budget_ms = 5u64;
+        assert!(
+            receipt.cpu_nanos <= receipt.wall_nanos,
+            "single-threaded eval: cpu must be bounded above by wall"
+        );
+        assert!(matches!(
+            budget_completion_outcome(Some(budget_ms), ClaimOutcome::Pass, receipt.cpu_nanos),
+            ClaimOutcome::Pass
+        ));
+        // Same occurrence, judged on wall, would have crossed — the two bases genuinely
+        // disagree here, which is why recording only one of them was a defect rather than a
+        // naming quibble.
+        assert!(matches!(
+            budget_completion_outcome(Some(budget_ms), ClaimOutcome::Pass, receipt.wall_nanos),
+            ClaimOutcome::TimedOut { .. }
+        ));
+    }
+
+    #[test]
     fn no_budget_never_converts() {
         assert!(matches!(
             budget_completion_outcome(None, ClaimOutcome::Pass, u128::MAX),

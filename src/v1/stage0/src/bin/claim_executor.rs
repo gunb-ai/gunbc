@@ -4571,10 +4571,31 @@ fn write_gate_warm_cost_receipt_at(
 }
 
 /// Per-witness cost receipt (Piece #5 spine): one row per discovery witness preserving
-/// `(entry, function, eval_ms, resolve_ms)` identity — the grain falsifier_cadence_surface_note
-/// requires before per-row placement is admissible. The complete machine-readable record is
-/// the TSV file; rendered streams may project a subset later (W2 ruling: one record, two
-/// projections). Fail-closed on write error.
+/// `(entry, function, eval_wall_ms, resolve_ms)` identity — the grain
+/// falsifier_cadence_surface_note requires before per-row placement is admissible. The
+/// complete machine-readable record is the TSV file; rendered streams may project a subset
+/// later (W2 ruling: one record, two projections). Fail-closed on write error.
+///
+/// TWO COLUMN CORRECTIONS (2026-08-05), both cases of a column that could not say what it
+/// meant:
+///
+/// 1. `eval_ms` -> `eval_wall_ms`. The figure is and always was WALL, while the fast-lane
+///    cap that kills these rows is enforced on THREAD CPU, so the old name invited a
+///    threshold built on this file to select a different population than the cap kills.
+///    Renaming is the honest half; the *enforced* quantity still does not appear here at
+///    all, because these rows project through `std.observation.ObservationEvent`, which
+///    carries wall and rss but no cpu. See `v1_interpreter::WITNESS_COST_CLOCK_BASIS_NOTE`
+///    for the bound that makes this narrower than it sounds (eval is single-threaded, so
+///    wall bounds cpu above: a row under the cap on wall is provably under on cpu) and for
+///    the std change that would close it.
+///
+/// 2. `outcome` and `detail` are now EMITTED rather than dropped. The row tuple always
+///    carried them; the writer discarded the last two fields. Because `discovery_claim_result`
+///    pushes selection-skipped rows into this same receipt with zero timings, a `0` in the
+///    eval column meant "never executed" OR "ran in under a millisecond" and the file could
+///    not distinguish them — the empty-observation narrow, in an artifact whose whole
+///    purpose is per-row cost. A census taken from a selection-applied per-PR run would have
+///    counted skipped rows as fast ones.
 fn write_witness_row_cost_receipt(batch_records: &[BatchRecord], emit_full_tsv_log: bool) -> bool {
     write_witness_row_cost_receipt_at(
         std::path::Path::new("target"),
@@ -4588,18 +4609,20 @@ fn write_witness_row_cost_receipt_at(
     batch_records: &[BatchRecord],
     emit_full_tsv_log: bool,
 ) -> bool {
-    let mut body = String::from("batch\tentry\tfunction\teval_ms\tresolve_ms\twarm_ms\n");
+    let mut body = String::from(
+        "batch\tentry\tfunction\teval_wall_ms\tresolve_ms\twarm_ms\toutcome\tdetail\n",
+    );
     let mut row_count = 0usize;
     for rec in batch_records {
         let n = rec.batch_index + 1;
         for result in &rec.results {
             for row in &result.witness_row_costs {
-                let eval_ms = row.2 / 1_000_000;
+                let eval_wall_ms = row.2 / 1_000_000;
                 let resolve_ms = row.3 / 1_000_000;
                 let warm_ms = row.4 / 1_000_000;
                 body.push_str(&format!(
-                    "{n}\t{}\t{}\t{eval_ms}\t{resolve_ms}\t{warm_ms}\n",
-                    row.0, row.1
+                    "{n}\t{}\t{}\t{eval_wall_ms}\t{resolve_ms}\t{warm_ms}\t{}\t{}\n",
+                    row.0, row.1, row.5, row.6
                 ));
                 row_count += 1;
             }
@@ -8858,6 +8881,7 @@ mod tests {
                 budget_ms: 900_000,
                 kind: BudgetKind::Wall,
             }),
+            selection_degradation: None,
         };
         // Sanity: the string classifier alone really would misclassify this detail.
         assert_eq!(
@@ -10757,6 +10781,7 @@ mod tests {
                     ),
                 ],
                 budget_refusal: None,
+                selection_degradation: None,
             }],
         }];
         assert!(write_floor_wet_witness_row_outcome_receipt_at(
@@ -10790,6 +10815,129 @@ mod tests {
         assert_ne!(passed_line, failed_line);
         assert_ne!(passed_line, skipped_line);
         assert_ne!(failed_line, skipped_line);
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    /// Fixture for the row-cost receipt: one row that EXECUTED in under a millisecond and
+    /// one row that was NEVER EXECUTED. Both floor to `0` in the millisecond eval column,
+    /// which is precisely the collision the receipt has to survive.
+    fn zero_eval_collision_records() -> Vec<BatchRecord> {
+        vec![BatchRecord {
+            batch_index: 0,
+            wall_nanos: 0,
+            clamp_ms: None,
+            unit_count: 2,
+            label: "collision".to_string(),
+            selection_tag: "applied",
+            is_wet: false,
+            results: vec![ClaimResult {
+                function: "discovery-corpus".to_string(),
+                entry: DISCOVERY_AGGREGATE_ENTRY.to_string(),
+                ok: true,
+                detail: String::new(),
+                wall_nanos: 0,
+                resolve_nanos: 0,
+                corpus_resolve_nanos: 0,
+                corpus_eval_nanos: 0,
+                corpus_witnesses: 2,
+                witness_row_costs: vec![
+                    // Executed, sub-millisecond: 500_000ns / 1_000_000 == 0.
+                    (
+                        "dag/test/claim/fast_test.dag".to_string(),
+                        "ran_in_under_a_millisecond".to_string(),
+                        500_000,
+                        0,
+                        0,
+                        "Done".to_string(),
+                        String::new(),
+                    ),
+                    // Never executed: pushed by `discovery_claim_result` with zero timings.
+                    (
+                        "dag/test/claim/skipped_test.dag".to_string(),
+                        "never_executed_at_all".to_string(),
+                        0,
+                        0,
+                        0,
+                        "selection-skipped".to_string(),
+                        "affected-set".to_string(),
+                    ),
+                ],
+                budget_refusal: None,
+                selection_degradation: None,
+            }],
+        }]
+    }
+
+    #[test]
+    /// The empty-observation narrow, closed at the artifact: a `0` in the eval column means
+    /// "ran in under a millisecond" OR "was never run", and before the outcome/detail columns
+    /// were emitted the receipt could not say which. A census taken from a selection-applied
+    /// per-PR run would have counted skipped rows as fast ones.
+    fn witness_row_cost_receipt_distinguishes_unexecuted_from_sub_millisecond() {
+        let base = std::env::temp_dir().join(format!(
+            "gunbc-row-cost-collision-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&base);
+        assert!(write_witness_row_cost_receipt_at(
+            &base,
+            &zero_eval_collision_records(),
+            false
+        ));
+        let path = base.join("floor-witness-row-cost-receipt.tsv");
+        let body = fs::read_to_string(&path).unwrap();
+
+        let executed = body
+            .lines()
+            .find(|l| l.contains("ran_in_under_a_millisecond"))
+            .expect("executed row");
+        let skipped = body
+            .lines()
+            .find(|l| l.contains("never_executed_at_all"))
+            .expect("skipped row");
+
+        // Both really do collide on every cost column — this is the premise, asserted rather
+        // than assumed, so the test still means something if the fixture timings change.
+        let cost_cols = |line: &str| {
+            let f: Vec<&str> = line.split('\t').collect();
+            (f[3].to_string(), f[4].to_string(), f[5].to_string())
+        };
+        assert_eq!(
+            cost_cols(executed),
+            cost_cols(skipped),
+            "premise: the two rows are indistinguishable on cost alone"
+        );
+        assert_eq!(cost_cols(executed).0, "0", "both floor to a zero eval column");
+
+        // ...and are nonetheless distinguishable, which is the whole point. This is the
+        // discriminating assertion: it goes RED if the outcome column is dropped again,
+        // because then the two lines differ only in their entry/function identity.
+        assert!(
+            executed.contains("\tDone\t"),
+            "executed row must carry its outcome: {executed}"
+        );
+        assert!(
+            skipped.contains("\tselection-skipped\t"),
+            "unexecuted row must say so: {skipped}"
+        );
+        assert_ne!(
+            executed.split('\t').nth(6),
+            skipped.split('\t').nth(6),
+            "outcome column must separate executed from unexecuted"
+        );
+
+        // The eval column is WALL and must say so: the fast-lane cap that kills these rows
+        // is enforced on thread CPU, so a bare `eval_ms` invites a threshold built on this
+        // file to select a different population than the cap kills.
+        let header = body.lines().next().expect("header");
+        assert!(
+            header.contains("eval_wall_ms"),
+            "eval column must name its clock: {header}"
+        );
+        assert!(
+            !header.contains("\teval_ms"),
+            "the clock-ambiguous spelling must not return: {header}"
+        );
         let _ = fs::remove_dir_all(&base);
     }
 
