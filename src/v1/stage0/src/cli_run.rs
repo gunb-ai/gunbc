@@ -7256,8 +7256,12 @@ pub struct MultiEntryIndex {
     /// (ordered typed-module content keys ⊕ compiler identity).
     rewired_modules_memo:
         RefCell<std::collections::HashMap<String, Rc<im::Vector<Rc<TypedModule>>>>>,
-    /// Counted fallbacks when a shared-view memo refuses (must be zero on acceptance).
-    entry_view_assembly_fallbacks: Cell<u64>,
+    closure_assembly_env_memo_hits: Cell<u64>,
+    closure_assembly_env_memo_misses: Cell<u64>,
+    root_assembly_env_memo_hits: Cell<u64>,
+    root_assembly_env_memo_misses: Cell<u64>,
+    rewired_modules_memo_hits: Cell<u64>,
+    rewired_modules_memo_misses: Cell<u64>,
 }
 
 /// Closure-grain assembly environment shared across every entry whose closure carries
@@ -7437,7 +7441,12 @@ fn new_multi_entry_index_shell(
         closure_assembly_env_memo: RefCell::new(std::collections::HashMap::new()),
         root_assembly_env_memo: RefCell::new(std::collections::HashMap::new()),
         rewired_modules_memo: RefCell::new(std::collections::HashMap::new()),
-        entry_view_assembly_fallbacks: Cell::new(0),
+        closure_assembly_env_memo_hits: Cell::new(0),
+        closure_assembly_env_memo_misses: Cell::new(0),
+        root_assembly_env_memo_hits: Cell::new(0),
+        root_assembly_env_memo_misses: Cell::new(0),
+        rewired_modules_memo_hits: Cell::new(0),
+        rewired_modules_memo_misses: Cell::new(0),
     }
 }
 
@@ -11811,15 +11820,66 @@ fn pool_bare_census(index: &MultiEntryIndex) -> Result<Rc<SymbolIndex>, String> 
     Ok(census)
 }
 
-fn record_entry_view_assembly_fallback(index: &MultiEntryIndex) {
-    index
-        .entry_view_assembly_fallbacks
-        .set(index.entry_view_assembly_fallbacks.get().saturating_add(1));
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EntryViewAssemblyMemoReceipt {
+    pub closure_env_keys: usize,
+    pub root_env_keys: usize,
+    pub rewired_modules_keys: usize,
+    pub closure_env_hits: u64,
+    pub closure_env_misses: u64,
+    pub root_env_hits: u64,
+    pub root_env_misses: u64,
+    pub rewired_modules_hits: u64,
+    pub rewired_modules_misses: u64,
 }
 
-#[cfg(any(test, feature = "interp_test_witness"))]
-pub fn entry_view_assembly_fallback_count_for_test(index: &MultiEntryIndex) -> u64 {
-    index.entry_view_assembly_fallbacks.get()
+pub fn entry_view_assembly_memo_receipt(index: &MultiEntryIndex) -> EntryViewAssemblyMemoReceipt {
+    let _ = entry_view_assembly_retention_note();
+    EntryViewAssemblyMemoReceipt {
+        closure_env_keys: index.closure_assembly_env_memo.borrow().len(),
+        root_env_keys: index.root_assembly_env_memo.borrow().len(),
+        rewired_modules_keys: index.rewired_modules_memo.borrow().len(),
+        closure_env_hits: index.closure_assembly_env_memo_hits.get(),
+        closure_env_misses: index.closure_assembly_env_memo_misses.get(),
+        root_env_hits: index.root_assembly_env_memo_hits.get(),
+        root_env_misses: index.root_assembly_env_memo_misses.get(),
+        rewired_modules_hits: index.rewired_modules_memo_hits.get(),
+        rewired_modules_misses: index.rewired_modules_memo_misses.get(),
+    }
+}
+
+fn entry_view_assembly_retention_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Retention for PR B entry-view assembly memos (closure/root env + rewired modules). \
+             These maps retain Rc<ClosureAssemblyEnv>, Rc<RootAssemblyEnv>, and rewired typed \
+             modules for every distinct semantic key for the MultiEntryIndex lifetime. They are \
+             NOT yet governed by schedule_retention eviction — a deliberate time-for-memory trade \
+             that must be priced in the 50-entry cohort and representative affected-floor receipts \
+             (peak RSS, cgroup peak, swap, memo key counts, hit/miss counts) before ready-for-review. \
+             Do not add further assembly memos until this row is honestly priced.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+fn entry_view_variant_base_cache_key_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Key completeness for closure/root variant-base caches (post inner-memo deletion). \
+             `closure_assembly_env_memo` keys on `closure_content_digest`, which hashes every \
+             (module_path, SourceFile.content) pair in the closure; `root_assembly_env_memo` \
+             keys on (closure_digest, source_tree_root). Those inputs fix the closure ModuleGraph, \
+             the per-file NewlineIndex map (insert-if-absent from the same content), the closure \
+             census `global_bare`, and — for roots — `tree_bare_census_for_root`. \
+             `build_global_bare_variant_locals` reads owner.connective, has_child_named, and \
+             stores binding.resolved; any output-relevant owner fact is already pinned by the \
+             closure content digest (or root-augmented census), not merely eligibility. Witness: \
+             entry_view_assembly_memo_witness_test \
+             `closure_content_digest_distinguishes_owner_fact_for_same_eligibility`.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
 }
 
 fn build_global_bare_variant_base_timed(
@@ -11869,9 +11929,19 @@ fn closure_assembly_env_for(
     graph: Rc<v1_compiler_resolve::ModuleGraph>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Result<Rc<ClosureAssemblyEnv>, String> {
+    let _ = entry_view_variant_base_cache_key_note();
     if let Some(hit) = index.closure_assembly_env_memo.borrow().get(closure_digest) {
+        index
+            .closure_assembly_env_memo_hits
+            .set(index.closure_assembly_env_memo_hits.get().saturating_add(1));
         return Ok(hit.clone());
     }
+    index.closure_assembly_env_memo_misses.set(
+        index
+            .closure_assembly_env_memo_misses
+            .get()
+            .saturating_add(1),
+    );
     let symbol_index_started = std::time::Instant::now();
     let closure_census =
         v1_compiler_infer::build_symbol_index_census(graph.modules.clone(), source_indices.clone());
@@ -11910,8 +11980,14 @@ fn root_assembly_env_for(
 ) -> Result<Rc<RootAssemblyEnv>, String> {
     let key = root_assembly_env_key(closure_digest, root);
     if let Some(hit) = index.root_assembly_env_memo.borrow().get(&key) {
+        index
+            .root_assembly_env_memo_hits
+            .set(index.root_assembly_env_memo_hits.get().saturating_add(1));
         return Ok(hit.clone());
     }
+    index
+        .root_assembly_env_memo_misses
+        .set(index.root_assembly_env_memo_misses.get().saturating_add(1));
     let root_symbol_index_started = std::time::Instant::now();
     let composed = v1_compiler_infer::symbol_index_with_bare_fill(
         closure_symbol_index.clone(),
@@ -11952,8 +12028,14 @@ fn rewire_typed_modules_cached(
     rewire_identity: &str,
 ) -> Rc<im::Vector<Rc<TypedModule>>> {
     if let Some(hit) = index.rewired_modules_memo.borrow().get(rewire_identity) {
+        index
+            .rewired_modules_memo_hits
+            .set(index.rewired_modules_memo_hits.get().saturating_add(1));
         return hit.clone();
     }
+    index
+        .rewired_modules_memo_misses
+        .set(index.rewired_modules_memo_misses.get().saturating_add(1));
     let rewire_started = std::time::Instant::now();
     let modules =
         v1_compiler_infer::rewire_type_env_parent_links(modules.clone(), source_indices.clone());
