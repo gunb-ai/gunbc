@@ -59,6 +59,7 @@ import gunbc.v1_complexity_capability_census {
   inventory_semantic_capability_count,
   inventory_identity_keys,
   inventory_identity_keys_distinct,
+  keys_are_distinct,
   call_graph_and_scc,
   summary_eviction,
   parser_progress_v1_walker,
@@ -68,7 +69,8 @@ import gunbc.v1_complexity_capability_census {
 
 data witness_note: String = "FAST-LANE structural hygiene for the C0(b1) v1 complexity INVENTORY. Exact DeclarationRef resolution against live decl_facts is deliberately NOT here — it costs a full witness-layer decl_facts scan and would breach the 5s fast-lane budget, the same reason test.claim.cited_symbol_resolution_witness_test keeps its resolution census in the long lane. That census is this roster's companion in test.claim.long.v1_complexity_capability_census_resolution_test. What this file proves is what is cheap and structural: every arm lands in exactly one work-state, EVERY arm has a controlled fixture including the ones no row inhabits, and routing metadata is drawn from typed vocabularies. The vacuity control moved to the long-lane companion with the lens imports it needed — see closure_cost_note."
 
-data closure_cost_note: String = "COST FINDING, measured on this PR (2026-08-05). An earlier revision of this file imported v2.lens.complexity, v2.lens.cost and v2.std.refinement to execute the vacuity control. No other witness under dag/test/claim imports them, so this file was the FIRST to drag the v2 lens closure into the per-PR witness layer — and the floor measured the consequence on an unrelated witness: roadmap_program_view_witness_test witness_live_constraint_present_iff_line_unaccepted ran 3901.9ms on green main and 5019ms on this PR, breaching the 5s fast-lane budget without its own semantic work changing. The lens imports moved to the long-lane companion with the control that needed them. Recorded rather than silently fixed because it is a measured instance of this program's own subject: a per-witness cost that is invisible until it lands on somebody else's budget, and a wall-clock threshold that reports the victim rather than the cause."
+data closure_cost_note: String = "COST FINDING, measured on this PR (2026-08-05), stated with its clock basis. An earlier revision of this file imported v2.lens.complexity, v2.lens.cost and v2.std.refinement to execute the vacuity control. No other witness under dag/test/claim imports them, so this file was the FIRST to drag the v2 lens closure into the per-PR witness layer — and the floor measured the consequence on an unrelated witness: roadmap_program_view_witness_test witness_live_constraint_present_iff_line_unaccepted recorded 3901.9ms on green main and 5019ms here, without its own semantic work changing. BASIS, per gunbc.witness_row_cost witness_row_cost_clock_basis_note (landed on main 2026-08-05, gunbc#7820): both figures are WALL and the fast-lane cap is enforced on thread CPU. The 3901.9ms baseline is therefore a real reading — eval is single-threaded, so a wall figure under the cap proves cpu under it. The 5019ms figure is NOT a cost: it is a CENSORED measurement whose value is where the kill landed, so the true figure is unbounded above. The honest claim is consequently weaker in one direction and stronger in the other: the regression is at least 1117ms and its actual size is unknown, and what is decided is only that the row crossed. Recorded rather than silently fixed because it is a measured instance of this program's own subject twice over — a per-witness cost invisible until it lands on somebody else's budget, and a threshold that reports the victim rather than the cause on a clock other than the one it enforces. The lens imports moved to the long-lane companion with the control that needed them."
+
 
 data green_by_vacancy_note: String = "The operator finding this file exists to answer. The previous revision's exhaustiveness check was green only because no row inhabited the DeliberatelyRetired arm — a check that would have failed the first time that declared arm was used. Fixtures below inhabit ALL SIX arms independently of the roster, so the partition is proven total over the type rather than over today's row set. Retired and SupersededByBetterModel have no roster row at all; they are proven here and nowhere else."
 
@@ -291,16 +293,12 @@ test fn w_distinctness_fold_reds_on_a_planted_duplicate() -> Bool {
     inventory_item_key(item: SemanticCapabilityItem { capability: CallGraphAndScc }),
     inventory_item_key(item: SemanticCapabilityItem { capability: AsymptoticClassAndDominance })
   ]
-  !keys_distinct(keys: planted) &&
-  keys_distinct(keys: dup_free) &&
+  !keys_are_distinct(keys: planted) &&
+  keys_are_distinct(keys: dup_free) &&
   inventory_item_key(item: LegacyHazardItem { hazard: SummaryEvictionHazard, of_capability: InterproceduralSummaryMemo }) !=
     inventory_item_key(item: LegacyHazardItem { hazard: SummaryEvictionHazard, of_capability: CallGraphAndScc })
 }
 
-fn keys_distinct(keys: List<String>) -> Bool {
-  fold(keys, init: true, f: (ok, k) =>
-    ok && fold(keys, init: 0, f: (n, other) => if other == k { n + 1 } else { n }) == 1)
-}
 
 data w_every_row_cites_the_seed_module_note: String = "Every row's v1_carrier must be a DeclarationRef into the seed module the census is about. This is the cheap structural half of citation hygiene; that the referenced declaration actually EXISTS is the long-lane resolution census's job, because deciding it requires the decl_facts scan."
 

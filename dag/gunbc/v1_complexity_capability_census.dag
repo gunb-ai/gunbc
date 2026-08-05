@@ -572,12 +572,14 @@ fn inventory_identity_keys() -> List<String> {
   })
 }
 
+fn key_occurrence_count(keys: List<String>, k: String) -> Nat {
+  fold(keys, init: 0, f: (n, other) => if other == k { n + 1 } else { n })
+}
+
+fn keys_are_distinct(keys: List<String>) -> Bool {
+  fold(keys, init: true, f: (ok, k) => ok && key_occurrence_count(keys: keys, k: k) == 1)
+}
+
 fn inventory_identity_keys_distinct() -> Bool {
-  fold(inventory_identity_keys(), init: true, f: fn(ok, k) {
-    if ok {
-      fold(inventory_identity_keys(), init: 0, f: fn(n, other) {
-        if other == k { n + 1 } else { n }
-      }) == 1
-    } else { false }
-  })
+  keys_are_distinct(keys: inventory_identity_keys())
 }
