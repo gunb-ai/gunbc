@@ -6046,15 +6046,20 @@ fn validate_floor_finalization(
         ));
     }
     let unexecuted = unexecuted_transport_obligations(fin, batch_records);
-    if walk_truncated && !unexecuted.is_empty() {
+    if !unexecuted.is_empty() {
         let listing = unexecuted
             .iter()
             .map(|obl| format!("{} ({}::{})", obl.identity, obl.entry, obl.function))
             .collect::<Vec<_>>()
             .join("; ");
+        let cause = if walk_truncated {
+            "walk stopped before dependent batches"
+        } else {
+            "obligation subject(s) never executed on a completed walk"
+        };
         refusals.push(format!(
             "floor resolve obligations not fully scheduled: {} obligation subject(s) never ran \
-             (walk stopped before dependent batches); count law unevaluable — {listing}",
+             ({cause}); count law unevaluable — {listing}",
             unexecuted.len(),
         ));
     } else {
@@ -9401,18 +9406,18 @@ mod tests {
             .retain(|r| r.function == "dag_compile_clean_gate_passes");
         let refusals = validate_floor_finalization(&fin, TEST_PLAN_SITE, &partial, false);
         assert!(
-            refusals
-                .iter()
-                .any(|m| m.contains("floor resolve obligation missing")),
-            "missing transported obligation must refuse: {refusals:?}"
+            refusals.iter().any(|m| {
+                m.contains("count law unevaluable")
+                    && m.contains("never executed on a completed walk")
+                    && m.contains("native_selected_logic_production_spec")
+            }),
+            "missing transported obligation on complete walk must refuse unevaluable: {refusals:?}"
         );
         let under = [finalization_record(&[])];
         let refusals = validate_floor_finalization(&fin, TEST_PLAN_SITE, &under, false);
         assert!(
-            refusals
-                .iter()
-                .any(|m| m.contains("floor resolve obligation missing")),
-            "missing obligations must refuse: {refusals:?}"
+            refusals.iter().any(|m| m.contains("count law unevaluable")),
+            "missing obligations on complete walk must refuse unevaluable: {refusals:?}"
         );
     }
 
@@ -9442,6 +9447,12 @@ mod tests {
                 .iter()
                 .any(|m| m.contains("floor resolve obligation missing")),
             "truncated walk must not use missing-obligation debt wording: {refusals:?}"
+        );
+        assert!(
+            refusals
+                .iter()
+                .any(|m| m.contains("walk stopped before dependent batches")),
+            "truncated walk must name truncation cause: {refusals:?}"
         );
     }
 
