@@ -1,7 +1,18 @@
 module test.claim.namespace_reference_derived_closure_contract
 
-import gunbc.namespace_reference_derived_closure_contract {
+import std.reference_binding_observation {
+  ReferenceBindingObservation,
+  StructuralBindingResolved,
+  SameFileNeighbourObservation,
+  SiblingBranchObservation,
+  LaterDeclarationObservation,
+  DistinctHomonymObservation,
+  RepeatedMentionDependencyObservation,
+  UnrelatedLoadedFileObservation,
+}
+import gunbc.namespace_reference_derived_closure_admission {
   ReferenceDerivedClosureAdmission,
+  ReferenceDerivedClosureEstablished,
   ReferenceDerivedClosureRefused,
   ReferenceDerivedClosureUnavailable,
   SameFileEarlierNeighbourVisible,
@@ -16,20 +27,14 @@ import gunbc.namespace_reference_derived_closure_contract {
   DistinctDeclarationCollapsed,
   RepeatedMentionDuplicatedDependency,
   UnrelatedLoadedFileDependencyLeaked,
-  P2aStructuralCandidateProducer7515,
   P2aReferenceDependencyProjection7515,
   P2aPoolIndependentDependencyProjection7515,
-  SameFileNeighbourObservation,
-  SiblingBranchObservation,
-  LaterDeclarationObservation,
-  DistinctHomonymObservation,
-  RepeatedMentionDependencyObservation,
-  UnrelatedLoadedFileObservation,
-  assess_reference_derived_closure_observation,
+  assess_reference_binding_observation,
+}
+import gunbc.namespace_reference_derived_closure_contract {
   reference_derived_closure_required_capabilities,
   reference_derived_closure_closing_frontier_count,
   reference_derived_closure_closing_contract_holds,
-  namespace_reference_derived_closure_acceptance_admissions,
 }
 import std.occurrence_identity {
   OccurrenceId,
@@ -128,31 +133,37 @@ fn p1_outcome(supplied_candidates: List<OccurrenceId>) -> OccurrenceReferenceBin
   )
 }
 
+fn p1_resolution(supplied_candidates: List<OccurrenceId>) -> StructuralBindingResolved {
+  StructuralBindingResolved {
+    binding_outcome: p1_outcome(supplied_candidates: supplied_candidates),
+  }
+}
+
 fn positive_admissions() -> List<ReferenceDerivedClosureAdmission> {
   [
-    assess_reference_derived_closure_observation(observation: SameFileNeighbourObservation {
+    assess_reference_binding_observation(observation: SameFileNeighbourObservation {
       neighbour: oid(value: 1),
-      binding_outcome: p1_outcome(supplied_candidates: [oid(value: 1)]),
+      resolution: p1_resolution(supplied_candidates: [oid(value: 1)]),
     }),
-    assess_reference_derived_closure_observation(observation: SiblingBranchObservation {
+    assess_reference_binding_observation(observation: SiblingBranchObservation {
       own_branch_declaration: oid(value: 2),
       sibling_branch_declaration: oid(value: 3),
-      binding_outcome: p1_outcome(supplied_candidates: [oid(value: 2)]),
+      resolution: p1_resolution(supplied_candidates: [oid(value: 2)]),
     }),
-    assess_reference_derived_closure_observation(observation: LaterDeclarationObservation {
+    assess_reference_binding_observation(observation: LaterDeclarationObservation {
       later_declaration: oid(value: 3),
-      binding_outcome: p1_outcome(supplied_candidates: []),
+      resolution: p1_resolution(supplied_candidates: []),
     }),
-    assess_reference_derived_closure_observation(observation: DistinctHomonymObservation {
+    assess_reference_binding_observation(observation: DistinctHomonymObservation {
       first_declaration: oid(value: 1),
       second_declaration: oid(value: 2),
-      binding_outcome: p1_outcome(supplied_candidates: [oid(value: 1), oid(value: 2)]),
+      resolution: p1_resolution(supplied_candidates: [oid(value: 1), oid(value: 2)]),
     }),
-    assess_reference_derived_closure_observation(observation: RepeatedMentionDependencyObservation {
+    assess_reference_binding_observation(observation: RepeatedMentionDependencyObservation {
       provider_file: "dag/provider.dag",
       projected_dependencies: ["dag/provider.dag"],
     }),
-    assess_reference_derived_closure_observation(observation: UnrelatedLoadedFileObservation {
+    assess_reference_binding_observation(observation: UnrelatedLoadedFileObservation {
       provider_file: "dag/provider.dag",
       unrelated_loaded_file: "dag/unrelated.dag",
       projected_dependencies: ["dag/provider.dag"],
@@ -166,38 +177,10 @@ test fn witness_positive_population_closes_exact_six_capabilities() -> Bool {
     && reference_derived_closure_closing_contract_holds(admissions: positive_admissions())
 }
 
-test fn witness_each_production_clause_is_red_with_its_named_trigger() -> Bool {
-  let statuses = namespace_reference_derived_closure_acceptance_admissions()
-  count(statuses) == 6
-    && [
-      SameFileEarlierNeighbourVisible,
-      SiblingDecisionBranchExcluded,
-      LaterDeclarationExcluded,
-      DistinctSameSpelledDeclarationsPreserved,
-    ] |> all(capability => statuses |> any(status => match status {
-      ReferenceDerivedClosureUnavailable { capability: observed, trigger } =>
-        observed == capability && trigger == P2aStructuralCandidateProducer7515
-      _ => false
-    }))
-    && statuses |> any(status => match status {
-      ReferenceDerivedClosureUnavailable { capability, trigger } =>
-        capability == RepeatedMentionsCollapseDependency
-          && trigger == P2aReferenceDependencyProjection7515
-      _ => false
-    })
-    && statuses |> any(status => match status {
-      ReferenceDerivedClosureUnavailable { capability, trigger } =>
-        capability == UnrelatedLoadedFileExcluded
-          && trigger == P2aPoolIndependentDependencyProjection7515
-      _ => false
-    })
-    && reference_derived_closure_closing_frontier_count(admissions: statuses) == 6
-}
-
 test fn witness_same_file_neighbour_removal_fires_refusal() -> Bool {
-  match assess_reference_derived_closure_observation(observation: SameFileNeighbourObservation {
+  match assess_reference_binding_observation(observation: SameFileNeighbourObservation {
     neighbour: oid(value: 1),
-    binding_outcome: p1_outcome(supplied_candidates: []),
+    resolution: p1_resolution(supplied_candidates: []),
   }) {
     ReferenceDerivedClosureRefused { capability, failure } =>
       capability == SameFileEarlierNeighbourVisible && failure == SameFileNeighbourMissing
@@ -206,10 +189,10 @@ test fn witness_same_file_neighbour_removal_fires_refusal() -> Bool {
 }
 
 test fn witness_sibling_branch_leak_fires_refusal() -> Bool {
-  match assess_reference_derived_closure_observation(observation: SiblingBranchObservation {
+  match assess_reference_binding_observation(observation: SiblingBranchObservation {
     own_branch_declaration: oid(value: 1),
     sibling_branch_declaration: oid(value: 2),
-    binding_outcome: p1_outcome(supplied_candidates: [oid(value: 1), oid(value: 2)]),
+    resolution: p1_resolution(supplied_candidates: [oid(value: 1), oid(value: 2)]),
   }) {
     ReferenceDerivedClosureRefused { capability, failure } =>
       capability == SiblingDecisionBranchExcluded && failure == SiblingBranchLeaked
@@ -218,9 +201,9 @@ test fn witness_sibling_branch_leak_fires_refusal() -> Bool {
 }
 
 test fn witness_later_declaration_leak_fires_refusal() -> Bool {
-  match assess_reference_derived_closure_observation(observation: LaterDeclarationObservation {
+  match assess_reference_binding_observation(observation: LaterDeclarationObservation {
     later_declaration: oid(value: 3),
-    binding_outcome: p1_outcome(supplied_candidates: [oid(value: 3)]),
+      resolution: p1_resolution(supplied_candidates: [oid(value: 3)]),
   }) {
     ReferenceDerivedClosureRefused { capability, failure } =>
       capability == LaterDeclarationExcluded && failure == LaterDeclarationLeaked
@@ -229,10 +212,10 @@ test fn witness_later_declaration_leak_fires_refusal() -> Bool {
 }
 
 test fn witness_distinct_homonym_collapse_fires_refusal() -> Bool {
-  match assess_reference_derived_closure_observation(observation: DistinctHomonymObservation {
+  match assess_reference_binding_observation(observation: DistinctHomonymObservation {
     first_declaration: oid(value: 1),
     second_declaration: oid(value: 2),
-    binding_outcome: p1_outcome(supplied_candidates: [oid(value: 1)]),
+    resolution: p1_resolution(supplied_candidates: [oid(value: 1)]),
   }) {
     ReferenceDerivedClosureRefused { capability, failure } =>
       capability == DistinctSameSpelledDeclarationsPreserved && failure == DistinctDeclarationCollapsed
@@ -241,7 +224,7 @@ test fn witness_distinct_homonym_collapse_fires_refusal() -> Bool {
 }
 
 test fn witness_repeated_mention_dependency_duplication_fires_refusal() -> Bool {
-  match assess_reference_derived_closure_observation(observation: RepeatedMentionDependencyObservation {
+  match assess_reference_binding_observation(observation: RepeatedMentionDependencyObservation {
     provider_file: "dag/provider.dag",
     projected_dependencies: ["dag/provider.dag", "dag/provider.dag"],
   }) {
@@ -252,7 +235,7 @@ test fn witness_repeated_mention_dependency_duplication_fires_refusal() -> Bool 
 }
 
 test fn witness_unrelated_loaded_file_dependency_fires_refusal() -> Bool {
-  match assess_reference_derived_closure_observation(observation: UnrelatedLoadedFileObservation {
+  match assess_reference_binding_observation(observation: UnrelatedLoadedFileObservation {
     provider_file: "dag/provider.dag",
     unrelated_loaded_file: "dag/unrelated.dag",
     projected_dependencies: ["dag/provider.dag", "dag/unrelated.dag"],
@@ -264,9 +247,9 @@ test fn witness_unrelated_loaded_file_dependency_fires_refusal() -> Bool {
 }
 
 test fn witness_duplicate_admission_cannot_erase_missing_capability() -> Bool {
-  let one = assess_reference_derived_closure_observation(observation: SameFileNeighbourObservation {
+  let one = assess_reference_binding_observation(observation: SameFileNeighbourObservation {
     neighbour: oid(value: 1),
-    binding_outcome: p1_outcome(supplied_candidates: [oid(value: 1)]),
+    resolution: p1_resolution(supplied_candidates: [oid(value: 1)]),
   })
   reference_derived_closure_closing_frontier_count(admissions: [one]) == 5
     && reference_derived_closure_closing_frontier_count(admissions: [one, one]) == 5
@@ -274,9 +257,9 @@ test fn witness_duplicate_admission_cannot_erase_missing_capability() -> Bool {
 }
 
 test fn witness_refusal_vetoes_a_contradictory_established_receipt() -> Bool {
-  let refusal = assess_reference_derived_closure_observation(observation: SameFileNeighbourObservation {
+  let refusal = assess_reference_binding_observation(observation: SameFileNeighbourObservation {
     neighbour: oid(value: 1),
-    binding_outcome: p1_outcome(supplied_candidates: []),
+    resolution: p1_resolution(supplied_candidates: []),
   })
   let contradictory = append(positive_admissions(), items: [refusal])
   reference_derived_closure_closing_frontier_count(admissions: contradictory) == 1

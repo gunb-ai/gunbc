@@ -1,6 +1,7 @@
 module v2.workflow.ci_floor_plan
 
 import std.execution_mode { Hermetic, Wet }
+import gunbc.explicit_witness_admission { known_red_probe_corpus_roster, known_red_probe_v1_envelope_roster }
 import gunbc.ci_layer_roots { witness_layer_roots, witness_exclusion_substrings, witness_discovery_scan_dirs, bin_witness_wet_entries, scoped_witness_batches, known_red_probe_roster, falsifier_silent_pick_gate_entries, falsifier_silent_pick_gate_roster, falsifier_rehomed_bin_wet_entries, falsifier_substrate_long_lane_entries }
 import v2.compiler.self_host.wet_receipt_enrollment {
   falsifier_self_host_wet_entries,
@@ -960,10 +961,10 @@ fn falsifier_self_host_wet_batch_enrolled() -> Bool {
     && (length(xs: falsifier_self_host_wet_entries()) > 0)
 }
 
-data falsifier_known_red_probe_batch_note: String = "Nightly falsifier batch 3 (Phase 0(b) admission invariant): the declared Hermetic probe lane for known-red quarantined witnesses (gunbc.ci_layer_roots known_red_probe_entries — see known_red_probe_note). Runs SelectionApplied after the wet self-host batch; EXPECT RED on main so greening is a counted un-quarantine event, never a hand discovery. Distinct from falsifier_self_host_wet (green-only SelfEmitted receipts)."
+data falsifier_known_red_probe_batch_note: String = "Nightly falsifier batch 3 (Phase 0(b) admission invariant): the declared Hermetic probe lane for known-red quarantined witnesses whose subject resolves under witness_layer_roots (gunbc.explicit_witness_admission known_red_probe_corpus_roster — see known_red_probe_note). Rows needing the dag plus src/v1 envelope (src/v1 paths and dag witnesses that import v1.*) run on the ordinary floor under v1_claim_scoped_known_red_probe_batch. Runs SelectionApplied after the wet self-host batch; EXPECT RED on main so greening is a counted un-quarantine event, never a hand discovery. Distinct from falsifier_self_host_wet (green-only SelfEmitted receipts)."
 
 fn falsifier_known_red_probe_batch_enrolled() -> Bool {
-  length(xs: known_red_probe_roster()) > 0
+  length(xs: known_red_probe_corpus_roster()) > 0
 }
 
 data falsifier_silent_pick_gate_batch_note: String = "Nightly falsifier batch 4 (#6967 consumption — see falsifier_silent_pick_gate_note in gunbc.ci_layer_roots): the declared Wet bin-execution lane for the resolution-divergence-census silent-pick refusal. Runs SelectionApplied after the known-red probe batch; claim_executor halts this batch if an earlier one fails (fail-closed), matching the other three falsifier batches. Whole-receipt wall budget: gunbc_falsifier_silent_pick_gate_receipt_wall_budget (900s dated basis, review #7199)."
@@ -1012,7 +1013,7 @@ fn gunbc_falsifier_known_red_probe_batch() -> Runnable {
   RunnableDiscoveryBatch {
     source_roots: corpus_source_roots(),
     scan_dirs: [],
-    explicit_entries: known_red_probe_roster(),
+    explicit_entries: known_red_probe_corpus_roster(),
     node_frontier_selection: SelectionApplied,
     exclude_substrings: [],
     discovery_scope_dirs: [],
@@ -1271,9 +1272,37 @@ fn gunbc_ci_floor_ordinary_batches() -> List<List<Runnable>> {
     enrolled: gunbc_pr_native_batch_enrolled(),
     batch: gunbc_pr_native_batch()
   )
-  fold(scoped_witness_batches, init: ordinary, f: fn(acc, batch) {
+  let with_scoped = fold(scoped_witness_batches, init: ordinary, f: fn(acc, batch) {
     list_snoc_item(xs: acc, item: [RunnableScopedWitnessBatch { batch: batch }])
   })
+  falsifier_batches_append_if_enrolled(
+    acc: with_scoped,
+    enrolled: v1_claim_scoped_known_red_probe_batch_enrolled(),
+    batch: gunbc_v1_claim_scoped_known_red_probe_batch()
+  )
+}
+
+data v1_claim_scoped_known_red_probe_batch_note: String = "Per-PR Hermetic expect_red lane for known-red CorpusWitnessKind rows whose subject needs the dag plus src/v1 envelope (gunbc.explicit_witness_admission known_red_probe_v1_envelope_roster: src/v1 paths plus dag witnesses that import v1.*). The falsifier's corpus-root probe batch cannot resolve these entries; running them there would treat resolve-refuse as expect-red success without executing the predicate (DESIGN section 5 specification-without-execution). This batch mirrors v1_claim_scoped_witness_batch's dag plus src/v1 source-root envelope and runs SelectionApplied on the ordinary floor. ENROLLMENT COUPLING: enrolling this batch (known_red_probe_v1_envelope_roster becomes non-empty) requires adding its companion positional row to gunbc.ci_spec gunbc_ci_floor_batch_clamp_params in the same change — the clamp table is unconditional data while this batch is conditionally enrolled, so a roster-only edit that enrolls the batch without the clamp row fails with floor batch clamp params must cover N scheduled batches."
+
+fn v1_claim_scoped_known_red_probe_batch_enrolled() -> Bool {
+  length(xs: known_red_probe_v1_envelope_roster()) > 0
+}
+
+fn gunbc_v1_claim_scoped_known_red_probe_batch() -> Runnable {
+  RunnableDiscoveryBatch {
+    source_roots: ["dag", "src/v1"],
+    scan_dirs: [],
+    explicit_entries: known_red_probe_v1_envelope_roster(),
+    node_frontier_selection: SelectionApplied,
+    exclude_substrings: [],
+    discovery_scope_dirs: [],
+    profile: runnable_resource_profile(
+      heavy_whole_tree_resolve: false,
+      spawns_host_compiler: false,
+      memory: runnable_memory_substantial(),
+      execution_mode: Hermetic
+    )
+  }
 }
 
 data gunbc_ci_witness_corpus_only_batches_note: String = "The pre-push local test gate (consumer: dag/gunbc/githooks_pre_push_emit.dag NEED_WITNESS). It is the SAME affected-set witness corpus CI runs (corpus_runnable_for(gunbc_ci_spec), SelectionApplied scoped to the push diff via the executor's git-diff observation), MINUS two lanes on purpose: (1) the whole-tree --target dag compile-clean gate (the compile-clean anchor batch of gunbc_ci_floor_plan, after the cheap-gate early batch) - infeasible per-push (~72min emit), CI-owned; and (2) the Wet execution + bin-witness lanes (execution_corpus_node / bin_witness_corpus_node) - they need prebuilt release witness bins and spawn a host compiler, so they stay CI-owned. This is a DECLARED scope narrowing, not a silent one (the enforcement-intent rule): the hermetic discovery corpus is the affected-set bulk and catches the resolve / typecheck / witness-logic red class before push; CI remains the whole wall. Selection stays fail-closed exactly as the floor (ci_spec_discovery_flip_note; compile_door_ledger; cli_run AFFECTED-SET REFUSAL): a diff-observation / provenance gap REFUSES with a typed, located diagnostic — it never widens to the whole corpus and never silently skips (DESIGN §5: refuse, never widen)."
