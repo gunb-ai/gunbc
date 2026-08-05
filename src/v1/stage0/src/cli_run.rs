@@ -4572,6 +4572,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::CallArgumentNameUnknown { .. } => "CallArgumentNameUnknown",
         CompilerDiagnostic::CallPositionalSurplus { .. } => "CallPositionalSurplus",
         CompilerDiagnostic::CallPositionalDeficit { .. } => "CallPositionalDeficit",
+        CompilerDiagnostic::CallArgumentDuplicate { .. } => "CallArgumentDuplicate",
         CompilerDiagnostic::CallNamedArgOnFunctionValue { .. } => "CallNamedArgOnFunctionValue",
         CompilerDiagnostic::OccurrenceTransportViolation { .. } => "OccurrenceTransportViolation",
         CompilerDiagnostic::SourceAnnotationRefused { .. } => "SourceAnnotationRefused",
@@ -4608,6 +4609,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::CallArgumentNameUnknown { argument, .. } => argument.clone(),
         CompilerDiagnostic::CallPositionalSurplus { callee, .. } => callee.clone(),
         CompilerDiagnostic::CallPositionalDeficit { parameter, .. } => parameter.clone(),
+        CompilerDiagnostic::CallArgumentDuplicate { argument, .. } => argument.clone(),
         CompilerDiagnostic::CallNamedArgOnFunctionValue { argument, .. } => argument.clone(),
         CompilerDiagnostic::OccurrenceTransportViolation { .. } => {
             "(occurrence-transport-refusal)".to_string()
