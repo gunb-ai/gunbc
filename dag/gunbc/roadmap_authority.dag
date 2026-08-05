@@ -39,6 +39,7 @@ import gunbc.roadmap_model {
 import gunbc.roadmap_acceptance_history_carrier {
   roadmap_acceptance_event_history_carrier_repo_path,
   load_roadmap_acceptance_event_history,
+  load_roadmap_acceptance_event_history_from_carrier_text,
   RoadmapAcceptanceEventHistoryLoaded,
   RoadmapAcceptanceEventHistoryLoadRefused,
 }
@@ -1946,6 +1947,17 @@ fn roadmap_acceptance_event_history_load() -> RoadmapAcceptanceEventHistoryLoad 
 
 data roadmap_acceptance_history_note: String = "roadmap_acceptance_event_history is the single authority for acceptance facts, loaded from dag/gunbc/roadmap_acceptance_event_history.jsonl (append-only JSONL carrier). roadmap_acceptance_receipts projects the live receipt set by replaying recorded and revoked events only — never a second editable receipt list; LoadRefused is a typed RoadmapAcceptanceReceiptsProjectionRefused, never an empty receipt list. New acceptance appends AcceptanceRecorded to the carrier; withdrawal appends AcceptanceRevoked naming the exact prior receipt, a disposition, and audit fields. Authored seal count/digest are deleted: prefix law is enforced by gunbc.roadmap_acceptance_history_observation parsing merge-base carrier content via git.Core.Show — a changed carrier without valid merge-base parse refuses AcceptanceHistoryIntegrityRefusedPriorHistoryObservation, never prior_history = []."
 
+fn roadmap_acceptance_receipts_from_carrier_text(text: String) -> RoadmapAcceptanceReceiptsProjection {
+  match load_roadmap_acceptance_event_history_from_carrier_text(text: text) {
+    RoadmapAcceptanceEventHistoryLoaded { events: events } =>
+      RoadmapAcceptanceReceiptsProjected {
+        receipts: project_live_acceptance_receipts(history: events),
+      }
+    RoadmapAcceptanceEventHistoryLoadRefused { detail: detail } =>
+      RoadmapAcceptanceReceiptsProjectionRefused { detail: detail }
+  }
+}
+
 fn roadmap_acceptance_receipts() -> RoadmapAcceptanceReceiptsProjection {
   match roadmap_acceptance_event_history_load() {
     RoadmapAcceptanceEventHistoryLoaded { events: events } =>
@@ -1992,6 +2004,17 @@ fn accepted_roadmap_nodes_projection() -> AcceptedRoadmapNodesProjection {
       }
     RoadmapAcceptanceReceiptsProjectionRefused { detail: detail } =>
       AcceptedRoadmapNodesProjectionRefused { detail: detail }
+  }
+}
+
+fn accepted_roadmap_node_ids_projection_from_carrier_text(text: String) -> AcceptedRoadmapNodeIdsProjection {
+  match roadmap_acceptance_receipts_from_carrier_text(text: text) {
+    RoadmapAcceptanceReceiptsProjected { receipts: receipts } =>
+      AcceptedRoadmapNodeIdsProjected {
+        ids: accepted_node_ids_from_receipts(receipts: receipts),
+      }
+    RoadmapAcceptanceReceiptsProjectionRefused { detail: detail } =>
+      AcceptedRoadmapNodeIdsProjectionRefused { detail: detail }
   }
 }
 
@@ -2227,6 +2250,33 @@ fn active_section_for_acceptance(focus: RoadmapFocus, accepted: List<RoadmapNode
         ],
       ),
     ),
+  }
+}
+
+fn accepted_node_ids_from_receipts(receipts: List<RoadmapAcceptanceReceipt>) -> List<RoadmapNodeId> {
+  declared_roadmap_nodes()
+    |> filter(n => node_accepted(receipts: receipts, rn: n))
+    |> map(n => n.node)
+}
+
+fn roadmap_authority_projection_from_carrier_text(text: String) -> RoadmapAuthorityProjection {
+  match roadmap_acceptance_receipts_from_carrier_text(text: text) {
+    RoadmapAcceptanceReceiptsProjected { receipts: receipts } =>
+      RoadmapAuthorityProjected {
+        doc: RoadmapDocument {
+          preamble: preamble(),
+          lead_lanes: [],
+          sections: [
+            active_section_for_acceptance(
+              focus: roadmap_focus_selection,
+              accepted: accepted_node_ids_from_receipts(receipts: receipts),
+            ),
+          ],
+        },
+        accepted: accepted_node_ids_from_receipts(receipts: receipts),
+      }
+    RoadmapAcceptanceReceiptsProjectionRefused { detail: detail } =>
+      RoadmapAuthorityProjectionRefused { detail: detail }
   }
 }
 

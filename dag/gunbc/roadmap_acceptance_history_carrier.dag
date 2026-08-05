@@ -23,6 +23,15 @@ fn parse_roadmap_acceptance_event_history_carrier(text: String) -> RoadmapAccept
   parse_roadmap_acceptance_event_history_jsonl(text: text)
 }
 
+fn load_roadmap_acceptance_event_history_from_carrier_text(text: String) -> RoadmapAcceptanceEventHistoryLoad {
+  match parse_roadmap_acceptance_event_history_carrier(text: text) {
+    RoadmapAcceptanceEventHistoryParsed { events: events } =>
+      RoadmapAcceptanceEventHistoryLoaded { events: events }
+    RoadmapAcceptanceEventHistoryParseRefused { detail: detail } =>
+      RoadmapAcceptanceEventHistoryLoadRefused { detail: detail }
+  }
+}
+
 fn load_roadmap_acceptance_event_history(path: String) -> RoadmapAcceptanceEventHistoryLoad {
   let read = Filesystem.Read(path: path)
   if !read.success {
@@ -30,12 +39,7 @@ fn load_roadmap_acceptance_event_history(path: String) -> RoadmapAcceptanceEvent
       detail: concat("carrier read refused: ", read.error),
     }
   } else {
-    match parse_roadmap_acceptance_event_history_carrier(text: read.content) {
-      RoadmapAcceptanceEventHistoryParsed { events: events } =>
-        RoadmapAcceptanceEventHistoryLoaded { events: events }
-      RoadmapAcceptanceEventHistoryParseRefused { detail: detail } =>
-        RoadmapAcceptanceEventHistoryLoadRefused { detail: detail }
-    }
+    load_roadmap_acceptance_event_history_from_carrier_text(text: read.content)
   }
 }
 

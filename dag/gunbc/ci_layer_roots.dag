@@ -88,7 +88,7 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
   WitnessExclusionRow {
     pattern: "roadmap_receipt_continuity_live_witness_test.dag",
     classification: OfflineLocalRecipe,
-    reason: "SUBSTANTIATED per-row: live_acceptance_history_integrity_holds_on_authority reaches git.Inspect.HeadCommit, git.Inspect.MergeBase, and git.Core.Show without mock_response, so the hermetic discovery envelope REFUSES rather than skipping. witness_missing_head_carrier_path_read_refuses uses Filesystem.Read on a deliberately missing path with no hermetic mock_response. The hermetic closing contract in roadmap_receipt_continuity_acceptance_test.dag keeps planted red controls only; this file executes the live git-observed integrity path and carrier read-refusal control on the per-PR wet corpora batch.",
+    reason: "SUBSTANTIATED per-row: live_acceptance_history_integrity_holds_on_authority reaches git.Inspect.HeadCommit, git.Inspect.MergeBase, and git.Core.Show without mock_response, so the hermetic discovery envelope REFUSES rather than skipping. The hermetic closing contract in roadmap_receipt_continuity_acceptance_test.dag keeps planted red controls only; this file executes the live git-observed integrity path on the per-PR wet corpora batch.",
     dissolve_on: "mock_response coverage lands for the git revision-addressed operations used by roadmap_acceptance_history_observation AND live assertions are re-checked under a fixed mock; or merge-base revision evaluation lands so hermetic fixtures can supply observed prior_history without live git. Either way this row deletes."
   },
   WitnessExclusionRow {
@@ -891,7 +891,6 @@ data bin_witness_wet_entries: List<ScheduleWitnessEntry> = [
   bin_wet(entry: "dag/test/claim/repo_local_git_config_real_execution_witness_test.dag", f: "repo_local_git_config_actuator_sets_local_bindings_by_real_execution"),
   bin_wet(entry: "dag/test/claim/stage0_rust_host_observation_live_witness_test.dag", f: "live_rust_observation_matches_actions_subject"),
   bin_wet(entry: "dag/test/claim/roadmap_receipt_continuity_live_witness_test.dag", f: "live_acceptance_history_integrity_holds_on_authority"),
-  bin_wet(entry: "dag/test/claim/roadmap_receipt_continuity_live_witness_test.dag", f: "witness_missing_head_carrier_path_read_refuses"),
   bin_wet(entry: "dag/test/claim/host_effect_plan_real_execution_witness_test.dag", f: "host_effect_plan_shell_witness_holds_by_real_execution"),
   bin_wet(entry: "dag/test/claim/effect_plan_bash_materialize_real_execution_witness_test.dag", f: "effect_plan_bash_two_declared_operations_execute"),
   bin_wet(entry: "dag/test/claim/effect_plan_bash_materialize_real_execution_witness_test.dag", f: "effect_plan_bash_fail_fast_prevents_later_operation_execution"),
