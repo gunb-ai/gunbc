@@ -16,6 +16,7 @@ type PrincipleId
   | SelectiveSpectacle
   | EmissionOverMaterial
   | BoundedAttraction
+  | PhysicalEnclosure
 
 type RegisterPrinciple {
   id: PrincipleId
@@ -73,7 +74,7 @@ data register_principles: List<RegisterPrinciple> = [
   },
   RegisterPrinciple {
     id: StillUntilTouched,
-    law: "Still until touched; always answers when touched. No ambient motion, ever.",
+    law: "The causal world remains still until caused; it always answers when touched. No subject moves without a cause — no ambient motion, ever.",
     enforced_by: principle_ref(module_path: "gunbc.design.material", decl_name: "BuildRule"),
   },
   RegisterPrinciple {
@@ -91,6 +92,11 @@ data register_principles: List<RegisterPrinciple> = [
     law: "Physical response moves the visual plate, never the hit region: attraction is bounded travel inside a fixed local field, settles on the register's one spring, gives keyboard focus the same focal identity without displacement, and renderer-local motion never advances domain state.",
     enforced_by: principle_ref(module_path: "gunbc.design.salience", decl_name: "AttractionField"),
   },
+  RegisterPrinciple {
+    id: PhysicalEnclosure,
+    law: "The enclosing instrument may exhibit bounded, preference-controlled physical character — drift, jitter, shift, impulse glitch — while the causal world it encloses stays still until caused: every channel is off-by-preference with a total off position, carries no domain fact, and the composed displacement of all channels stays below the register's attraction travel, so instrument character can never be mistaken for a real response.",
+    enforced_by: principle_ref(module_path: "gunbc.design.instrument_physical", decl_name: "displacement_admission"),
+  },
 ]
 
 fn principle_id_key(id: PrincipleId) -> String {
@@ -106,6 +112,7 @@ fn principle_id_key(id: PrincipleId) -> String {
     SelectiveSpectacle => "selective-spectacle"
     EmissionOverMaterial => "emission-over-material"
     BoundedAttraction => "bounded-attraction"
+    PhysicalEnclosure => "physical-enclosure"
   }
 }
 
