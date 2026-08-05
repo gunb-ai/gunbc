@@ -1,0 +1,17 @@
+module test.fixture.scaffold_disposition_census.decoys
+
+data decoy_module_note: String = "Two unrelated coproducts that both spell an arm literally Scaffold. Neither imports std.disposition — under the current import-scoped resolver a bare Scaffold reference here can only resolve to ONE of these local variants, never to std.disposition.Scaffold. This is the adversarial control that spelling is not type identity: a census that matches on the constructor lexeme Scaffold instead of the actual declared type Disposition would misclassify both specimens below as ScaffoldDecoded."
+
+type DecoyRecordDisposition
+  = Scaffold { note: String }
+  | Stable
+
+type DecoyNullaryDisposition
+  = Scaffold
+  | Retired
+
+data decoy_record_scaffold_specimen: DecoyRecordDisposition = Scaffold {
+  note: "record arm spelled Scaffold on an unrelated type; must classify NonDisposition"
+}
+
+data decoy_nullary_scaffold_specimen: DecoyNullaryDisposition = Scaffold
