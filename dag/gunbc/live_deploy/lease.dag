@@ -39,7 +39,6 @@ import gunbc.live_deploy.revision {
   deploy_target_lease_path,
   deploy_target_lease_dir,
 }
-import gunbc.fleet_intent { HostIdentity }
 import gunbc.live_deploy.coordination {
   DeployCoordinationSubject,
   CoordinationAdmission,
@@ -142,9 +141,12 @@ fn live_deploy_leased_command(
 
 data lease_outcome_note: String = "THREE OUTCOMES, AND THE CONFLICT IS NOT A FAILURE OF THIS DEPLOY. LeaseConflict means another holder owns the target for longer than the bound — the host is busy, this run mutated nothing, and the cause is separable from the wrapped command's own exit precisely because flock reports it on a distinct code. LeaseAcquiredExit carries the inner reconciliation's own exit through unchanged, so a Keep exits zero and a Refuse exits nonzero exactly as the inner entry decided; the lease adds no verdict of its own to a run that got the lock.\\n\\nThe conflict arm is a REFUSAL rather than a retry-in-place. Retrying here would re-enter the same wait with no new information and no counter, which is the absorbing shape DESIGN §5 forbids — the frequency of lease contention has to stay observable, because a rising rate is the signal that deploys have started overlapping again."
 
+data wrapped_exit_domain_is_closed_note: String = "THE WRAPPED PROGRAM'S EXIT DOMAIN IS CLOSED, SO CLASSIFICATION IS A WHITELIST AND NOT A PARTIAL BLACKLIST (operator ruling 2026-08-05). The wrapped command is `gunbc run`, whose exit space through std.process ProcessExit is exactly {0,1}. An earlier revision classified 111 as contention and 64..78 as launcher failure and let EVERYTHING ELSE fall through to 'the wrapped program ran' — so 126 (cannot execute), 127 (not found) and 128+N (killed by signal N) were reported as the inner reconciliation's own verdict. 'Inner reconciliation exit 127' is a sentence about a deploy that never started.\\n\\nBecause the domain is closed, the safe direction is to enumerate what the wrapped program can produce and treat everything else as abnormal. LeaseExecutionAbnormal may later split launcher failure, command-not-found and signal termination once the execution transport exposes those distinctly; today it at least stops them being attributed to the deployment decision. The sysexits arm is kept ahead of it because flock documents that range as its own, which is a stronger statement than 'not one of ours'."
+
 type LiveDeployLeaseOutcome
   = LeaseConflict { target_key: String, waited: Duration }
   | LeaseLauncherFailed { target_key: String, exit_code: Int }
+  | LeaseExecutionAbnormal { target_key: String, exit_code: Int }
   | LeaseAcquiredExit { exit_code: Int }
 
 fn live_deploy_lease_outcome(
@@ -166,9 +168,22 @@ fn live_deploy_lease_outcome(
         exit_code: exit_code,
       }
     } else {
-      LeaseAcquiredExit { exit_code: exit_code }
+      if wrapped_program_exit_domain_admits(exit_code: exit_code) {
+        LeaseAcquiredExit { exit_code: exit_code }
+      } else {
+        LeaseExecutionAbnormal {
+          target_key: deploy_target_key(target: invocation.target),
+          exit_code: exit_code,
+        }
+      }
     }
   }
+}
+
+data wrapped_program_exit_domain_note: String = "std.process ProcessExit renders ExitSuccess as 0 and every exit_failure as 1, so `gunbc run` cannot produce any other code. This function is the single place that states that closure, so widening it is a deliberate edit rather than a silent consequence of adding an arm somewhere else."
+
+fn wrapped_program_exit_domain_admits(exit_code: Int) -> Bool {
+  exit_code == 0 || exit_code == 1
 }
 
 fn live_deploy_lease_conflict_reason(outcome: LiveDeployLeaseOutcome) -> NonEmptyStr {
@@ -195,6 +210,17 @@ fn live_deploy_lease_conflict_reason(outcome: LiveDeployLeaseOutcome) -> NonEmpt
         ],
         ""
       ) as NonEmptyStr
+    LeaseExecutionAbnormal { target_key: k, exit_code: code } =>
+      join(
+        [
+          "deploy refused on target ",
+          k,
+          ": the leased command exited ",
+          to_string(code),
+          ", which is outside the wrapped program's closed exit domain of 0 or 1 — the deploy's own verdict was never produced, so this is an execution fault (cannot-execute, not-found, or death by signal) and not a deployment result"
+        ],
+        ""
+      ) as NonEmptyStr
     LeaseAcquiredExit { exit_code: _ } =>
       "deploy lease was acquired; this is not a conflict" as NonEmptyStr
   }
@@ -204,7 +230,7 @@ data lease_launcher_is_the_public_entry_note: String = "THE LAUNCHER IS WHAT CI 
 
 data live_deploy_apply_srv1_leased_entry_function: String = "live_deploy_apply_srv1_leased_wet"
 
-data live_deploy_apply_srv1_operator_leased_entry_function: String = "live_deploy_apply_srv1_operator_leased_wet"
+data live_deploy_retract_srv1_leased_entry_function: String = "live_deploy_retract_srv1_leased_wet"
 
 type LeaseLaunchCandidate
   = LaunchCandidateObserved { revision: CommitSha }
@@ -246,6 +272,12 @@ fn live_deploy_lease_launch_exit(
           outcome: LeaseLauncherFailed { target_key: k, exit_code: code }
         ) as String
       )
+    LeaseExecutionAbnormal { target_key: k, exit_code: code } =>
+      exit_failure(
+        reason: live_deploy_lease_conflict_reason(
+          outcome: LeaseExecutionAbnormal { target_key: k, exit_code: code }
+        ) as String
+      )
     LeaseAcquiredExit { exit_code: code } =>
       if code == 0 {
         ExitSuccess
@@ -270,14 +302,13 @@ data lease_coordination_subject_note: String = "THE ADMISSION IS DERIVED FROM OB
 
 fn live_deploy_coordination_subject(
   target: DeploymentTarget,
-  target_host: HostIdentity,
   lease_transport: CommandTransport,
   mutation_transport: HostEffectTransport,
 ) -> DeployCoordinationSubject {
   DeployCoordinationSubject {
     target: target,
-    lease_locus: command_transport_lease_locus(transport: lease_transport, target_host: target_host),
-    mutation_locus: host_effect_mutation_locus(transport: mutation_transport, target_host: target_host),
+    lease_locus: command_transport_lease_locus(transport: lease_transport),
+    mutation_locus: host_effect_mutation_locus(transport: mutation_transport),
     lease_extent: command_transport_lease_extent(transport: lease_transport),
     required_extent: deploy_required_extent,
     mutation_population: deploy_mutation_population(),
@@ -294,14 +325,31 @@ fn live_deploy_leased_mutation_kinds() -> List<DeployMutationKind> {
 data lease_launch_operation_note: String = "APPLY AND RETRACT ARE TWO ARMS OF ONE LEASED OPERATION, because they mutate the same slot, the same units, the same files, and the same route-adjacent domain. Leasing only apply left retract able to race a cutover while the apply process believed it held exclusive ownership — and the carrier note claimed 'every public mutation entry routes through the leased launcher' the whole time it was false (operator ruling 2026-08-05).\\n\\nThe candidate rides on the Apply arm only, because it is the thing apply decides about and retract has no candidate to compare. Making it a field of the operation rather than a parameter of the launcher is what keeps a retract from being launched with a meaningless candidate argument."
 
 type LiveDeployExclusiveOperation
-  = LeasedApply { candidate: CandidateRelease }
+  = LeasedApply
   | LeasedRetract
 
-fn live_deploy_operation_named_args(operation: LiveDeployExclusiveOperation) -> List<GunbcRunNamedArg> {
+data operation_resolution_note: String = "THE CANDIDATE IS RESOLVED HERE, NOT CARRIED IN BY THE CALLER, because this process is the one holding the checkout whose HEAD the candidate IS. An earlier revision made it a field of LeasedApply, which forced every entrypoint to hand in a value it did not have — and the placeholder that resulted would have crossed the lease boundary as a real argument.\\n\\nRetract resolves to no arguments, and that is a fact about retract rather than an omission: it has no candidate to compare, because it is not deciding whether to advance."
+
+type ResolvedLeaseOperation
+  = LeaseOperationResolved { named_args: List<GunbcRunNamedArg> }
+  | LeaseOperationRefused { cause: NonEmptyStr }
+
+fn resolve_lease_operation(operation: LiveDeployExclusiveOperation) -> ResolvedLeaseOperation {
   match operation {
-    LeasedApply { candidate: c } =>
-      [GunbcRunNamedArg { name: live_deploy_candidate_arg_name, value: c.revision as String }]
-    LeasedRetract => []
+    LeasedRetract => LeaseOperationResolved { named_args: [] }
+    LeasedApply =>
+      match observe_launch_candidate() {
+        LaunchCandidateRefused { cause: why } => LeaseOperationRefused { cause: why }
+        LaunchCandidateObserved { revision: rev } =>
+          LeaseOperationResolved {
+            named_args: [
+              GunbcRunNamedArg {
+                name: live_deploy_candidate_arg_name,
+                value: rev as String,
+              }
+            ]
+          }
+      }
   }
 }
 
@@ -309,7 +357,7 @@ fn live_deploy_leased_command_for_operation(
   invocation: LiveDeployExclusiveInvocation,
   source_roots: List<String>,
   inner_function: String,
-  operation: LiveDeployExclusiveOperation,
+  named_args: List<GunbcRunNamedArg>,
 ) -> ArgvCommand {
   flock_exclusive_command(
     lock_path: invocation.lock_path,
@@ -321,7 +369,7 @@ fn live_deploy_leased_command_for_operation(
         entry: live_deploy_apply_entry_path,
         function: inner_function,
         claim_run: false,
-        named_args: live_deploy_operation_named_args(operation: operation),
+        named_args: named_args,
       )
     ),
   )
@@ -343,7 +391,6 @@ data lease_namespace_mode_note: String = "0777 ON THE LEASE DIRECTORY IS DELIBER
 func live_deploy_launch_under_lease(
   inner_function: String,
   operation: LiveDeployExclusiveOperation,
-  target_host: HostIdentity,
   mutation_transport: HostEffectTransport,
 ) -> ProcessExit
   uses net: Network
@@ -351,36 +398,39 @@ func live_deploy_launch_under_lease(
   let lease_transport = LocalExec
   let subject = live_deploy_coordination_subject(
     target: Srv1Dashboard,
-    target_host: target_host,
     lease_transport: lease_transport,
     mutation_transport: mutation_transport,
   )
   match deploy_coordination_admission(subject: subject) {
     CoordinationRefused { cause: why } =>
       exit_failure(reason: coordination_refusal_reason(target: Srv1Dashboard, cause: why) as String)
-    CoordinationCovers => {
-      let invocation = live_deploy_exclusive_invocation(target: Srv1Dashboard)
-      let namespace = run_shell_command_exit_code(
-        command: live_deploy_lease_namespace_command(invocation: invocation),
-        transport: lease_transport,
-      )
-      if namespace != 0 {
-        exit_failure(reason: live_deploy_lease_namespace_refusal(exit_code: namespace))
-      } else {
-        live_deploy_lease_launch_exit(
-          invocation: invocation,
-          exit_code: run_shell_command_exit_code(
-            command: live_deploy_leased_command_for_operation(
-              invocation: invocation,
-              source_roots: witness_layer_roots,
-              inner_function: inner_function,
-              operation: operation,
-            ),
+    CoordinationCovers =>
+      match resolve_lease_operation(operation: operation) {
+        LeaseOperationRefused { cause: why } => exit_failure(reason: why as String)
+        LeaseOperationResolved { named_args: args } => {
+          let invocation = live_deploy_exclusive_invocation(target: Srv1Dashboard)
+          let namespace = run_shell_command_exit_code(
+            command: live_deploy_lease_namespace_command(invocation: invocation),
             transport: lease_transport,
-          ),
-        )
+          )
+          if namespace != 0 {
+            exit_failure(reason: live_deploy_lease_namespace_refusal(exit_code: namespace))
+          } else {
+            live_deploy_lease_launch_exit(
+              invocation: invocation,
+              exit_code: run_shell_command_exit_code(
+                command: live_deploy_leased_command_for_operation(
+                  invocation: invocation,
+                  source_roots: witness_layer_roots,
+                  inner_function: inner_function,
+                  named_args: args,
+                ),
+                transport: lease_transport,
+              ),
+            )
+          }
+        }
       }
-    }
   }
 }
 

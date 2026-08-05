@@ -32,7 +32,11 @@ import gunbc.live_deploy.intent { slot_revision_unrecorded_token }
 import gunbc.live_deploy.lease {
   live_deploy_launch_under_lease,
   live_deploy_apply_srv1_leased_entry_function,
-  live_deploy_apply_srv1_operator_leased_entry_function,
+  live_deploy_retract_srv1_leased_entry_function,
+  LiveDeployExclusiveOperation,
+  LeasedApply,
+  LeasedRetract,
+  CandidateRelease,
 }
 import extdeps.git.inspect
 import gunbc.output_policy { OutcomeIsData }
@@ -520,7 +524,7 @@ fn observe_routed_slot_revision(
   }
 }
 
-data slot_revision_parse_refuses_note: String = "A RECEIPT BODY THAT IS NOT A COMMIT SHA IS UNREADABLE, NOT ABSENT. sha1_hex_digest is the validating partial bridge from std.content_hash — exact 40-digit lowercase hex, refusing rather than folding case or length — so a truncated, half-written, or hand-edited receipt lands in the Unreadable arm and REFUSES the deploy. Treating it as 'no revision recorded' would let a corrupted file authorize a deploy that monotonicity would otherwise have stopped, which is the ⊥-as-ignorance-read-as-⊥-as-answer collapse DESIGN §5 names.\\n\\nThe unrecorded token is compared against the single constant the read script prints, so the two sides of that boundary cannot drift into disagreeing about what absence looks like."
+data slot_revision_parse_refuses_note: String = "A RECEIPT BODY THAT IS NOT A COMMIT SHA IS UNREADABLE, NOT ABSENT, AND NOTHING NORMALIZES IT FIRST. The read script `cat`s the file verbatim — an earlier revision ran `tr -d '[:space:]'` first, which deletes INTERNAL whitespace and so collapsed a receipt corrupted into whitespace-separated fragments into a well-formed 40-character sha (operator ruling 2026-08-05). sha1_hex_digest is the validating partial bridge from std.content_hash — exact 40-digit lowercase hex, refusing rather than folding case or length — so a truncated, half-written, or hand-edited receipt lands in the Unreadable arm and REFUSES the deploy. Treating it as 'no revision recorded' would let a corrupted file authorize a deploy that monotonicity would otherwise have stopped, which is the ⊥-as-ignorance-read-as-⊥-as-answer collapse DESIGN §5 names.\\n\\nThe unrecorded token is compared against the single constant the read script prints, so the two sides of that boundary cannot drift into disagreeing about what absence looks like."
 
 fn parse_slot_revision_stdout(stdout: String) -> ObservedDeployedRevision {
   if stdout == slot_revision_unrecorded_token {
@@ -530,7 +534,7 @@ fn parse_slot_revision_stdout(stdout: String) -> ObservedDeployedRevision {
       Present { value: _ } => DeployedRevisionRecorded { revision: stdout as CommitSha }
       Absent =>
         DeployedRevisionUnreadable {
-          cause: "the routed slot's revision receipt does not contain a 40-digit lowercase-hex commit sha; refusing rather than treating a corrupted receipt as an unrecorded slot" as NonEmptyStr
+          cause: "the routed slot's revision receipt is not exactly 40 lowercase-hex bytes; refusing rather than repairing a corrupted receipt into an authorization" as NonEmptyStr
         }
     }
   }
@@ -756,8 +760,7 @@ data public_entries_are_all_launchers_note: String = "EVERY PUBLIC MUTATION ENTR
 func live_deploy_apply_srv1_wet() -> ProcessExit {
   live_deploy_launch_under_lease(
     inner_function: live_deploy_apply_srv1_leased_entry_function,
-    operation: LeasedApply { candidate: CandidateRelease { revision: "" as CommitSha } },
-    target_host: srv1_deploy_target_host,
+    operation: LeasedApply,
     mutation_transport: ci_deploy_srv1_access.transport,
   )
 }
@@ -765,8 +768,7 @@ func live_deploy_apply_srv1_wet() -> ProcessExit {
 func live_deploy_apply_srv1_operator_wet() -> ProcessExit {
   live_deploy_launch_under_lease(
     inner_function: live_deploy_apply_srv1_leased_entry_function,
-    operation: LeasedApply { candidate: CandidateRelease { revision: "" as CommitSha } },
-    target_host: srv1_deploy_target_host,
+    operation: LeasedApply,
     mutation_transport: ci_deploy_srv1_operator_access.transport,
   )
 }
@@ -775,7 +777,6 @@ func live_deploy_retract_srv1_wet() -> ProcessExit {
   live_deploy_launch_under_lease(
     inner_function: live_deploy_retract_srv1_leased_entry_function,
     operation: LeasedRetract,
-    target_host: srv1_deploy_target_host,
     mutation_transport: ci_deploy_srv1_access.transport,
   )
 }
@@ -784,7 +785,6 @@ func live_deploy_retract_srv1_operator_wet() -> ProcessExit {
   live_deploy_launch_under_lease(
     inner_function: live_deploy_retract_srv1_leased_entry_function,
     operation: LeasedRetract,
-    target_host: srv1_deploy_target_host,
     mutation_transport: ci_deploy_srv1_operator_access.transport,
   )
 }

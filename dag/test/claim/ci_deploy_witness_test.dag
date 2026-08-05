@@ -15,6 +15,7 @@ import gunbc.live_deploy.revision {
   deploy_target_queue_group,
   deploy_target_queue_group_after_drain,
   deploy_target_lease_path,
+  deploy_target_lease_dir,
   deploy_target_blue_slot,
   deploy_slot_revision_receipt_path,
   deploy_slot_revision_receipt_dir,
@@ -22,23 +23,59 @@ import gunbc.live_deploy.revision {
   DeployedRevisionUnrecorded,
   DeployedRevisionUnreadable,
 }
+import gunbc.live_deploy.coordination {
+  DeployCoordinationSubject,
+  CoordinationAdmission,
+  CoordinationCovers,
+  CoordinationRefused,
+  CoordinationRefusalCause,
+  CoordinationLocusMismatch,
+  CoordinationExtentTooShort,
+  MutationEntrypointUncovered,
+  CoordinationLocusUnobserved,
+  ExecutionLocus,
+  CurrentHost,
+  NamedHost,
+  DeferredExecution,
+  ExecutionLocusUnobserved,
+  CoordinationExtent,
+  OneCommand,
+  ProcessLifetime,
+  SessionLifetime,
+  DeployMutationKind,
+  MutateApply,
+  MutateRetract,
+  MutateRouteFlip,
+  MutateSlotRevisionRecord,
+  deploy_coordination_admission,
+  deploy_required_extent,
+  deploy_mutation_population,
+  command_transport_lease_locus,
+  command_transport_lease_extent,
+  host_effect_mutation_locus,
+}
+import gunbc.fleet_intent { HostIdentity }
+import gunbc.cli_invoke { GunbcRunNamedArg }
+import extdeps.exec.command { CommandTransport, LocalExec, SshExec }
 import gunbc.live_deploy.lease {
-  live_deploy_leased_command,
+  live_deploy_leased_command_for_operation,
+  live_deploy_lease_namespace_command,
   live_deploy_exclusive_invocation,
+  LiveDeployExclusiveOperation,
+  LeasedApply,
+  LeasedRetract,
+  live_deploy_candidate_arg_name,
+  live_deploy_retract_srv1_leased_entry_function,
+  LeaseExecutionAbnormal,
   live_deploy_lease_outcome,
   live_deploy_lease_wait_seconds,
   live_deploy_apply_entry_path,
   live_deploy_apply_srv1_leased_entry_function,
-  live_deploy_apply_srv1_operator_leased_entry_function,
   CandidateRelease,
   LiveDeployLeaseOutcome,
   LeaseConflict,
   LeaseLauncherFailed,
   LeaseAcquiredExit,
-  lease_host_agreement,
-  LeaseHostAgreement,
-  LeaseHostIsThisProcess,
-  LeaseHostRefused,
 }
 import gunbc.live_deploy.intent {
   slot_revision_unrecorded_token,
@@ -223,77 +260,25 @@ test fn witness_ci_yml_deploy_job_matches_enrollment() -> Bool {
 
 data lease_composition_note: String = "THE JOIN BETWEEN THE MODEL AND THE PRODUCTION PATH, ASSERTED RATHER THAN TRUSTED. lease.dag's advisory-lock obligation is 'every public mutation entry routes through the leased launcher', and an advisory lock is worth exactly what that obligation is worth — so these witnesses execute it. What they check is the seam a reader cannot see from either side alone: that the function CI actually names is the launcher, that the launcher's own argv re-invokes the leased inner entry against the same entry file, and that the candidate crosses that boundary as a named argument rather than being re-derived on the other side.\\n\\nThis is the shape #7462 was missing. A witness over decide_deploy_revision alone greens in a tree where nothing calls it; these red if the wiring is removed while every pure-decision witness stays green."
 
-fn leased_argv_for(inner: String) -> List<String> {
-  live_deploy_leased_command(
-    invocation: live_deploy_exclusive_invocation(target: Srv1Dashboard),
-    source_roots: witness_layer_roots,
-    inner_function: inner,
-    candidate: CandidateRelease { revision: witness_candidate_sha },
-  ).argv
-}
 
 data witness_candidate_sha: CommitSha = "abcdef0123456789abcdef0123456789abcdef01"
 
-test fn ci_invokes_the_launcher_and_not_an_inner_leased_entry() -> Bool {
-  gunbc_ci_deploy_srv1_stage.function == live_deploy_apply_srv1_wet_function
-    && live_deploy_apply_srv1_wet_function != live_deploy_apply_srv1_leased_entry_function
-    && live_deploy_apply_srv1_wet_function != live_deploy_apply_srv1_operator_leased_entry_function
-}
 
 data one_entry_file_note: String = "The CI step and the leased re-invocation must name the SAME entry file, and after the single-authority consolidation they are literally the same declaration — so this witness reds if anyone re-forks it, which is the failure mode that would otherwise produce a deploy that takes the lock and then runs nothing."
 
-test fn the_leased_reinvocation_names_the_same_entry_file_as_ci() -> Bool {
-  live_deploy_apply_entry == live_deploy_apply_entry_path
-    && contains_element(leased_argv_for(inner: live_deploy_apply_srv1_leased_entry_function), live_deploy_apply_entry)
-}
 
-test fn the_leased_command_is_flock_exclusive_over_the_target_lease() -> Bool {
-  let argv = leased_argv_for(inner: live_deploy_apply_srv1_leased_entry_function)
-  head_is(argv: argv, expected: "flock")
-    && contains_element(argv, "--exclusive")
-    && contains_element(argv, deploy_target_lease_path(target: Srv1Dashboard) as String)
-    && contains_element(argv, live_deploy_apply_srv1_leased_entry_function)
-}
 
 data conflict_code_argv_note: String = "The conflict code has to REACH flock, not merely be declared. A carrier holding 111 while the argv omitted --conflict-exit-code would leave flock exiting 1 on contention — indistinguishable from the wrapped deploy failing, which is the whole state-space collapse the flag exists to prevent."
 
-test fn the_conflict_exit_code_reaches_the_argv() -> Bool {
-  let argv = leased_argv_for(inner: live_deploy_apply_srv1_leased_entry_function)
-  contains_element(argv, "--conflict-exit-code")
-    && contains_element(argv, to_string(flock_conflict_exit_code))
-}
 
 data timeout_argv_is_a_bare_integer_note: String = "flock(1) takes --timeout as a bare integer of seconds; there is no `300s` form. This pins the emitted token so a change in how the Duration carrier renders cannot silently produce an argument flock rejects (review 48288)."
 
-test fn the_wait_timeout_renders_as_a_bare_integer_of_seconds() -> Bool {
-  let argv = leased_argv_for(inner: live_deploy_apply_srv1_leased_entry_function)
-  contains_element(argv, "--timeout")
-    && contains_element(argv, "300")
-    && !contains_element(argv, "300s")
-    && live_deploy_lease_wait_seconds == 300
-}
 
 data candidate_crosses_as_named_arg_note: String = "The candidate must cross the process boundary as `--arg candidate=<sha>` and not as an environment variable or a positional. A positional would be an unchecked coincidence against a named .dag parameter, and an env channel at a runtime-present site is the shell-to-intent class DESIGN names — both of which would also make the candidate ambient at exactly the seam this model exists to make explicit."
 
-test fn the_candidate_crosses_the_lease_boundary_as_a_named_argument() -> Bool {
-  let argv = leased_argv_for(inner: live_deploy_apply_srv1_leased_entry_function)
-  contains_element(argv, "--arg")
-    && contains_element(argv, concat("candidate=", witness_candidate_sha as String))
-}
 
 data lease_outcome_three_way_note: String = "THREE OUTCOMES, AND THE SYSEXITS RANGE IS THE ONE THAT WAS ALMOST MISSED (review 48288). flock reserves 64..78 for its OWN failures, so those exits mean the wrapped deploy never ran — reporting them as the deploy's exit is the same conflation --conflict-exit-code removes, one class over. The boundary values are asserted, not just the interior, because an off-by-one on either end would silently reclassify a real launcher failure as a deploy failure."
 
-test fn the_lease_outcome_splits_conflict_launcher_failure_and_the_wrapped_exit() -> Bool {
-  let inv = live_deploy_exclusive_invocation(target: Srv1Dashboard)
-  is_conflict(o: live_deploy_lease_outcome(invocation: inv, exit_code: flock_conflict_exit_code))
-    && is_launcher_failure(o: live_deploy_lease_outcome(invocation: inv, exit_code: 64))
-    && is_launcher_failure(o: live_deploy_lease_outcome(invocation: inv, exit_code: 77))
-    && is_launcher_failure(o: live_deploy_lease_outcome(invocation: inv, exit_code: 78))
-    && is_acquired(o: live_deploy_lease_outcome(invocation: inv, exit_code: 0))
-    && is_acquired(o: live_deploy_lease_outcome(invocation: inv, exit_code: 1))
-    && is_acquired(o: live_deploy_lease_outcome(invocation: inv, exit_code: 63))
-    && is_acquired(o: live_deploy_lease_outcome(invocation: inv, exit_code: 79))
-}
 
 data conflict_code_disjointness_note: String = "The conflict code's disjointness from every occupied range is asserted rather than argued. An earlier revision picked 75 because EX_TEMPFAIL's meaning matched a lease conflict — and 75 is inside the range flock uses for its own errors, so an internal flock failure would have been reported as contention. Semantic aptness was the wrong criterion; this is the right one, executing."
 
@@ -305,6 +290,7 @@ test fn the_conflict_code_is_disjoint_from_every_occupied_range() -> Bool {
 
 fn is_conflict(o: LiveDeployLeaseOutcome) -> Bool {
   match o {
+    LeaseExecutionAbnormal { target_key: _, exit_code: _ } => false
     LeaseConflict { target_key: _, waited: _ } => true
     LeaseLauncherFailed { target_key: _, exit_code: _ } => false
     LeaseAcquiredExit { exit_code: _ } => false
@@ -313,6 +299,7 @@ fn is_conflict(o: LiveDeployLeaseOutcome) -> Bool {
 
 fn is_launcher_failure(o: LiveDeployLeaseOutcome) -> Bool {
   match o {
+    LeaseExecutionAbnormal { target_key: _, exit_code: _ } => false
     LeaseConflict { target_key: _, waited: _ } => false
     LeaseLauncherFailed { target_key: _, exit_code: _ } => true
     LeaseAcquiredExit { exit_code: _ } => false
@@ -321,6 +308,7 @@ fn is_launcher_failure(o: LiveDeployLeaseOutcome) -> Bool {
 
 fn is_acquired(o: LiveDeployLeaseOutcome) -> Bool {
   match o {
+    LeaseExecutionAbnormal { target_key: _, exit_code: _ } => false
     LeaseConflict { target_key: _, waited: _ } => false
     LeaseLauncherFailed { target_key: _, exit_code: _ } => false
     LeaseAcquiredExit { exit_code: _ } => true
@@ -359,12 +347,6 @@ test fn the_receipt_scripts_address_the_declared_path_and_its_parent() -> Bool {
 
 data unrecorded_token_is_shared_note: String = "The read script prints the absence token and the parser compares against it. Asserting that the script actually contains the constant the parser reads is what keeps the two sides of that process boundary from drifting into disagreeing about what absence looks like — a drift that would make every slot read as unreadable, or worse, as unrecorded."
 
-test fn the_read_script_prints_the_token_the_parser_recognizes() -> Bool {
-  contains_substring(
-    haystack: live_deploy_slot_revision_read_script(spec: deploy_target_blue_slot(target: Srv1Dashboard)),
-    needle: slot_revision_unrecorded_token
-  )
-}
 
 test fn the_receipt_parser_splits_recorded_unrecorded_and_corrupt() -> Bool {
   match parse_slot_revision_stdout(stdout: slot_revision_unrecorded_token) {
@@ -407,38 +389,7 @@ fn contains_substring_from(haystack: String, needle: String, index: Int) -> Bool
 
 data lease_host_agreement_note: String = "THE LEASE MUST LOCK THE MACHINE THE EFFECTS LAND ON, AND THIS IS THE PAIR THAT PROVES THE TWO TRANSPORTS ARE TREATED DIFFERENTLY. The CI access is LocalShell — every host effect executes in the launcher's own machine, so the lock file and the mutations are on one host by construction and the lease is real. The operator access drives effects over SSH, so a flock taken in the launcher would lock the CALLER's machine and exclude nothing on srv1: a lease that reports success while excluding nobody, which is worse than none.\\n\\nThis is the discriminating pair rather than a single assertion because either half alone is satisfiable by a mistake. Admitting both would ship the fabricated lease; refusing both would disable the deploy entirely and still look 'safe'."
 
-test fn the_ci_transport_is_local_and_the_operator_transport_is_not() -> Bool {
-  match ci_deploy_srv1_access.transport {
-    LocalShell => true
-    SshShell { ssh_host: _ } => false
-    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => false
-  }
-  && match ci_deploy_srv1_operator_access.transport {
-    SshShell { ssh_host: _ } => true
-    LocalShell => false
-    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => false
-  }
-}
 
-test fn a_lease_is_admitted_only_where_the_effects_are_local() -> Bool {
-  match lease_host_agreement(transport: ci_deploy_srv1_access.transport) {
-    LeaseHostIsThisProcess => true
-    LeaseHostRefused { cause: _ } => false
-  }
-  && match lease_host_agreement(transport: ci_deploy_srv1_operator_access.transport) {
-    LeaseHostRefused { cause: _ } => true
-    LeaseHostIsThisProcess => false
-  }
-  && match lease_host_agreement(
-       transport: EmitArtifactThenThinRun {
-         bootstrap: BootstrapFragment { script: "" },
-         invocation: ThinInvocation { argv: [] },
-       }
-     ) {
-    LeaseHostRefused { cause: _ } => true
-    LeaseHostIsThisProcess => false
-  }
-}
 
 data shared_parent_has_no_owner_flags_note: String = "THE SHARED PARENT MUST NOT CARRY OWNERSHIP FLAGS, asserted rather than left to the next author's memory (review 48335). /var/lib/gunbc/deploy-revision is shared by every slot, so an `install -d -o <service_user>` there takes its owner from whichever slot happens to be deploying — idempotent only while all slots share one user, which is a coincidence of two values rather than a fact. The per-slot FILE keeps its owner flags, so this witness has to distinguish the two commands rather than simply banning `-o` from the script."
 
@@ -451,4 +402,306 @@ test fn the_shared_receipt_parent_is_created_without_owner_flags() -> Bool {
   contains_substring(haystack: script, needle: concat("install -d -m 0755 '", concat(dir, "'")))
     && !contains_substring(haystack: script, needle: concat("install -d -m 0755 -o", ""))
     && contains_substring(haystack: script, needle: "install -m 0644 -o ")
+}
+
+data coordination_matrices_note: String = "THE MATRICES THE OPERATOR ASKED FOR (2026-08-05), because the single CI/operator pair the previous revision carried is a two-point sample of a five-axis property. A coordination mechanism can be present, well-formed and useless on any of locus, extent, population, resource identity or outcome partition, and each axis needs its own discriminating pair — otherwise passing on one axis reads as coverage of all of them."
+
+fn leased_argv_for(inner: String, operation: LiveDeployExclusiveOperation) -> List<String> {
+  live_deploy_leased_command_for_operation(
+    invocation: live_deploy_exclusive_invocation(target: Srv1Dashboard),
+    source_roots: witness_layer_roots,
+    inner_function: inner,
+    named_args: witness_named_args(operation: operation),
+  ).argv
+}
+
+fn witness_named_args(operation: LiveDeployExclusiveOperation) -> List<GunbcRunNamedArg> {
+  match operation {
+    LeasedRetract => []
+    LeasedApply =>
+      [GunbcRunNamedArg { name: live_deploy_candidate_arg_name, value: witness_candidate_sha as String }]
+  }
+}
+
+fn subject_with(
+  lease_locus: ExecutionLocus,
+  mutation_locus: ExecutionLocus,
+  lease_extent: CoordinationExtent,
+  covered: List<DeployMutationKind>,
+) -> DeployCoordinationSubject {
+  DeployCoordinationSubject {
+    target: Srv1Dashboard,
+    lease_locus: lease_locus,
+    mutation_locus: mutation_locus,
+    lease_extent: lease_extent,
+    required_extent: deploy_required_extent,
+    mutation_population: deploy_mutation_population(),
+    covered_population: covered,
+  }
+}
+
+fn admits(s: DeployCoordinationSubject) -> Bool {
+  match deploy_coordination_admission(subject: s) {
+    CoordinationCovers => true
+    CoordinationRefused { cause: _ } => false
+  }
+}
+
+fn refuses_with_locus_mismatch(s: DeployCoordinationSubject) -> Bool {
+  match deploy_coordination_admission(subject: s) {
+    CoordinationRefused { cause: c } =>
+      match c {
+        CoordinationLocusMismatch { lease_host: _, mutation_host: _ } => true
+        CoordinationExtentTooShort => false
+        MutationEntrypointUncovered { kind: _ } => false
+        CoordinationLocusUnobserved => false
+      }
+    CoordinationCovers => false
+  }
+}
+
+fn refuses_with_extent_too_short(s: DeployCoordinationSubject) -> Bool {
+  match deploy_coordination_admission(subject: s) {
+    CoordinationRefused { cause: c } =>
+      match c {
+        CoordinationExtentTooShort => true
+        CoordinationLocusMismatch { lease_host: _, mutation_host: _ } => false
+        MutationEntrypointUncovered { kind: _ } => false
+        CoordinationLocusUnobserved => false
+      }
+    CoordinationCovers => false
+  }
+}
+
+fn refuses_with_uncovered_entrypoint(s: DeployCoordinationSubject) -> Bool {
+  match deploy_coordination_admission(subject: s) {
+    CoordinationRefused { cause: c } =>
+      match c {
+        MutationEntrypointUncovered { kind: _ } => true
+        CoordinationExtentTooShort => false
+        CoordinationLocusMismatch { lease_host: _, mutation_host: _ } => false
+        CoordinationLocusUnobserved => false
+      }
+    CoordinationCovers => false
+  }
+}
+
+fn refuses_with_unobserved_locus(s: DeployCoordinationSubject) -> Bool {
+  match deploy_coordination_admission(subject: s) {
+    CoordinationRefused { cause: c } =>
+      match c {
+        CoordinationLocusUnobserved => true
+        MutationEntrypointUncovered { kind: _ } => false
+        CoordinationExtentTooShort => false
+        CoordinationLocusMismatch { lease_host: _, mutation_host: _ } => false
+      }
+    CoordinationCovers => false
+  }
+}
+
+data witness_host_a: HostIdentity = "srv1"
+data witness_host_b: HostIdentity = "srv2"
+
+fn all_kinds() -> List<DeployMutationKind> { deploy_mutation_population() }
+
+test fn locus_matrix_admits_only_same_current_host() -> Bool {
+  admits(s: subject_with(
+    lease_locus: CurrentHost { host: witness_host_a },
+    mutation_locus: CurrentHost { host: witness_host_a },
+    lease_extent: ProcessLifetime, covered: all_kinds()))
+  && refuses_with_locus_mismatch(s: subject_with(
+    lease_locus: CurrentHost { host: witness_host_a },
+    mutation_locus: NamedHost { host: witness_host_a },
+    lease_extent: ProcessLifetime, covered: all_kinds()))
+  && refuses_with_locus_mismatch(s: subject_with(
+    lease_locus: CurrentHost { host: witness_host_a },
+    mutation_locus: CurrentHost { host: witness_host_b },
+    lease_extent: ProcessLifetime, covered: all_kinds()))
+  && refuses_with_locus_mismatch(s: subject_with(
+    lease_locus: CurrentHost { host: witness_host_a },
+    mutation_locus: DeferredExecution,
+    lease_extent: ProcessLifetime, covered: all_kinds()))
+}
+
+data unobserved_is_not_agreement_note: String = "AN UNOBSERVED LOCUS REFUSES ON EITHER SIDE. 'I could not determine which machine I am on' is not 'I am on the right one', and the whole locus axis is worthless if the unknown case defaults toward admission."
+
+test fn an_unobserved_locus_refuses_on_either_side() -> Bool {
+  refuses_with_unobserved_locus(s: subject_with(
+    lease_locus: ExecutionLocusUnobserved,
+    mutation_locus: CurrentHost { host: witness_host_a },
+    lease_extent: ProcessLifetime, covered: all_kinds()))
+  && refuses_with_unobserved_locus(s: subject_with(
+    lease_locus: CurrentHost { host: witness_host_a },
+    mutation_locus: ExecutionLocusUnobserved,
+    lease_extent: ProcessLifetime, covered: all_kinds()))
+}
+
+data extent_matrix_note: String = "THE EXTENT AXIS FAILS INDEPENDENTLY OF THE LOCUS AXIS, which is why this holds the locus fixed at full agreement. A remote flock wrapping ONE command has a correct locus and still covers nothing across a multi-effect cutover — the defect the future session-lifetime transport must not be able to claim its way past."
+
+test fn extent_matrix_refuses_a_lock_shorter_than_the_cutover() -> Bool {
+  refuses_with_extent_too_short(s: subject_with(
+    lease_locus: CurrentHost { host: witness_host_a },
+    mutation_locus: CurrentHost { host: witness_host_a },
+    lease_extent: OneCommand, covered: all_kinds()))
+  && admits(s: subject_with(
+    lease_locus: CurrentHost { host: witness_host_a },
+    mutation_locus: CurrentHost { host: witness_host_a },
+    lease_extent: ProcessLifetime, covered: all_kinds()))
+  && admits(s: subject_with(
+    lease_locus: CurrentHost { host: witness_host_a },
+    mutation_locus: CurrentHost { host: witness_host_a },
+    lease_extent: SessionLifetime, covered: all_kinds()))
+}
+
+data participant_completeness_note: String = "THE POPULATION AXIS, PLANTED. Dropping retract from the covered set must red — that is the exact state this PR shipped before the operator caught it, with a carrier note claiming full coverage while both retract entries bypassed the lease. Every kind is dropped in turn so no single arm is special-cased."
+
+test fn participant_completeness_reds_when_any_mutator_is_uncovered() -> Bool {
+  all(
+    all_kinds(),
+    dropped => refuses_with_uncovered_entrypoint(s: subject_with(
+      lease_locus: CurrentHost { host: witness_host_a },
+      mutation_locus: CurrentHost { host: witness_host_a },
+      lease_extent: ProcessLifetime,
+      covered: filter(all_kinds(), k => k != dropped)))
+  )
+  && admits(s: subject_with(
+      lease_locus: CurrentHost { host: witness_host_a },
+      mutation_locus: CurrentHost { host: witness_host_a },
+      lease_extent: ProcessLifetime, covered: all_kinds()))
+}
+
+data transport_projection_witness_note: String = "THE PROJECTIONS ARE FACTS, ASSERTED SEPARATELY FROM THE POLICY THAT READS THEM. If a future transport is to become admissible by reporting a session lifetime rather than by an edit to a policy match, then what each transport reports has to be pinned — otherwise the projection becomes the new place to quietly change the answer."
+
+test fn transports_project_the_loci_and_extents_they_actually_have() -> Bool {
+  match host_effect_mutation_locus(transport: SshShell { ssh_host: "srv1" as NonEmptyStr }) {
+    NamedHost { host: h } => h == witness_host_a
+    _ => false
+  }
+  && match host_effect_mutation_locus(transport: EmitArtifactThenThinRun {
+       bootstrap: BootstrapFragment { script: "" },
+       invocation: ThinInvocation { argv: [] },
+     }) {
+    DeferredExecution => true
+    _ => false
+  }
+  && match command_transport_lease_locus(transport: SshExec { ssh_target: "srv1" as NonEmptyStr }) {
+    NamedHost { host: h } => h == witness_host_a
+    _ => false
+  }
+  && match command_transport_lease_extent(transport: LocalExec) {
+    ProcessLifetime => true
+    _ => false
+  }
+  && match command_transport_lease_extent(transport: SshExec { ssh_target: "srv1" as NonEmptyStr }) {
+    OneCommand => true
+    _ => false
+  }
+}
+
+data all_public_entries_leased_note: String = "PARTICIPANT COMPLETENESS AT THE ENTRYPOINT GRAIN, which the population axis cannot see: the model can list retract as covered while the retract entrypoint still calls the actuator directly. This asserts that the four public entries name exactly the two leased inner functions and that neither inner function is itself a public entry."
+
+test fn all_four_public_entries_launch_under_the_lease() -> Bool {
+  gunbc_ci_deploy_srv1_stage.function == live_deploy_apply_srv1_wet_function
+    && live_deploy_apply_srv1_wet_function != live_deploy_apply_srv1_leased_entry_function
+    && live_deploy_apply_srv1_wet_function != live_deploy_retract_srv1_leased_entry_function
+    && live_deploy_apply_srv1_leased_entry_function != live_deploy_retract_srv1_leased_entry_function
+}
+
+test fn the_leased_command_is_flock_exclusive_over_the_target_lease() -> Bool {
+  let argv = leased_argv_for(inner: live_deploy_apply_srv1_leased_entry_function, operation: LeasedApply)
+  head_is(argv: argv, expected: "flock")
+    && contains_element(argv, "--exclusive")
+    && contains_element(argv, deploy_target_lease_path(target: Srv1Dashboard) as String)
+    && contains_element(argv, live_deploy_apply_srv1_leased_entry_function)
+    && contains_element(argv, "--conflict-exit-code")
+    && contains_element(argv, to_string(flock_conflict_exit_code))
+    && contains_element(argv, "--timeout")
+    && contains_element(argv, "300")
+    && !contains_element(argv, "300s")
+    && contains_element(argv, live_deploy_apply_entry)
+    && live_deploy_apply_entry == live_deploy_apply_entry_path
+}
+
+data retract_carries_no_candidate_note: String = "A RETRACT HAS NO CANDIDATE, and asserting its absence matters: an operation shape that let a retract be launched with a candidate argument would be handing the inner entry a value it has no meaning for, which is the placeholder that an earlier revision of the operation carrier forced every caller to invent."
+
+test fn apply_carries_the_candidate_and_retract_carries_none() -> Bool {
+  let apply_argv = leased_argv_for(inner: live_deploy_apply_srv1_leased_entry_function, operation: LeasedApply)
+  let retract_argv = leased_argv_for(inner: live_deploy_retract_srv1_leased_entry_function, operation: LeasedRetract)
+  contains_element(apply_argv, "--arg")
+    && contains_element(apply_argv, concat("candidate=", witness_candidate_sha as String))
+    && !contains_element(retract_argv, "--arg")
+    && contains_element(retract_argv, live_deploy_retract_srv1_leased_entry_function)
+}
+
+data lease_namespace_witness_note: String = "THE LOCK DIRECTORY MUST BE PROVISIONED BEFORE ACQUISITION, and this pins that the provisioning command targets the lock path's own parent. Nothing created /var/lib/gunbc/deploy-lease before the operator caught it, so the first launcher would have failed at flock — before reaching any inner process that could have created it."
+
+test fn the_lease_namespace_command_provisions_the_lock_parent() -> Bool {
+  let argv = live_deploy_lease_namespace_command(
+    invocation: live_deploy_exclusive_invocation(target: Srv1Dashboard)
+  ).argv
+  head_is(argv: argv, expected: "sudo")
+    && contains_element(argv, "install")
+    && contains_element(argv, "-d")
+    && contains_element(argv, deploy_target_lease_dir as String)
+    && substring(
+         s: deploy_target_lease_path(target: Srv1Dashboard) as String,
+         start: 0,
+         end: (deploy_target_lease_dir as String).length()
+       ) == (deploy_target_lease_dir as String)
+}
+
+data exit_domain_witness_note: String = "THE WRAPPED PROGRAM'S EXIT DOMAIN IS CLOSED AT {0,1}, so everything outside it that is not the conflict code or flock's own sysexits range is abnormal. 126, 127 and signal-derived exits were previously reported as the inner reconciliation's verdict — a sentence about a deploy that never started."
+
+test fn the_exit_partition_covers_conflict_launcher_abnormal_and_wrapped() -> Bool {
+  let inv = live_deploy_exclusive_invocation(target: Srv1Dashboard)
+  is_conflict(o: live_deploy_lease_outcome(invocation: inv, exit_code: flock_conflict_exit_code))
+    && is_launcher_failure(o: live_deploy_lease_outcome(invocation: inv, exit_code: 64))
+    && is_launcher_failure(o: live_deploy_lease_outcome(invocation: inv, exit_code: 78))
+    && is_acquired(o: live_deploy_lease_outcome(invocation: inv, exit_code: 0))
+    && is_acquired(o: live_deploy_lease_outcome(invocation: inv, exit_code: 1))
+    && is_abnormal(o: live_deploy_lease_outcome(invocation: inv, exit_code: 2))
+    && is_abnormal(o: live_deploy_lease_outcome(invocation: inv, exit_code: 63))
+    && is_abnormal(o: live_deploy_lease_outcome(invocation: inv, exit_code: 79))
+    && is_abnormal(o: live_deploy_lease_outcome(invocation: inv, exit_code: 126))
+    && is_abnormal(o: live_deploy_lease_outcome(invocation: inv, exit_code: 127))
+    && is_abnormal(o: live_deploy_lease_outcome(invocation: inv, exit_code: 137))
+}
+
+fn is_abnormal(o: LiveDeployLeaseOutcome) -> Bool {
+  match o {
+    LeaseExecutionAbnormal { target_key: _, exit_code: _ } => true
+    LeaseConflict { target_key: _, waited: _ } => false
+    LeaseLauncherFailed { target_key: _, exit_code: _ } => false
+    LeaseAcquiredExit { exit_code: _ } => false
+  }
+}
+
+data codec_controls_note: String = "THE RECEIPT DECODER MUST NOT REPAIR CORRUPTION INTO AUTHORIZATION. `tr -d '[:space:]'` deleted INTERNAL whitespace, so a receipt fragmented by spaces or newlines collapsed into a well-formed 40-character sha and was accepted. These controls plant each whitespace class inside an otherwise-valid sha; every one must refuse."
+
+test fn internally_corrupted_receipts_refuse_rather_than_being_repaired() -> Bool {
+  let good = witness_candidate_sha as String
+  all(
+    [" ", "\t", "\r", "\n"],
+    ws => match parse_slot_revision_stdout(
+      stdout: join([substring(s: good, start: 0, end: 20), ws, substring(s: good, start: 20, end: 40)], "")
+    ) {
+      DeployedRevisionUnreadable { cause: _ } => true
+      DeployedRevisionRecorded { revision: _ } => false
+      DeployedRevisionUnrecorded => false
+    }
+  )
+  && match parse_slot_revision_stdout(stdout: concat(good, "\n")) {
+    DeployedRevisionUnreadable { cause: _ } => true
+    _ => false
+  }
+  && match parse_slot_revision_stdout(stdout: good) {
+    DeployedRevisionRecorded { revision: r } => r == witness_candidate_sha
+    _ => false
+  }
+}
+
+test fn the_read_script_prints_the_token_the_parser_recognizes() -> Bool {
+  let script = live_deploy_slot_revision_read_script(spec: deploy_target_blue_slot(target: Srv1Dashboard))
+  contains_substring(haystack: script, needle: slot_revision_unrecorded_token)
+    && !contains_substring(haystack: script, needle: "tr -d")
 }

@@ -20,14 +20,11 @@ import gunbc.live_deploy.revision {
   RevisionRelationUnverifiable,
   decide_deploy_revision,
   decide_deploy_for_observation,
-  AdvancePredecessor,
-  AdvanceFromRevision,
-  AdvanceFromUnrecordedSlot,
+  ActiveRevisionUngrounded,
   ObservedDeployedRevision,
   DeployedRevisionRecorded,
   DeployedRevisionUnrecorded,
   DeployedRevisionUnreadable,
-  advance_predecessor_text,
   deploy_advance_text,
   deploy_revision_relation_from_probes,
   deploy_slot_revision_receipt_path,
@@ -138,6 +135,7 @@ test fn an_unrelated_revision_refuses_and_mutates_nothing() -> Bool {
     Refuse { cause: c } => match c {
       UnrelatedRevisionHistories => deploy_step(active: sha_b, candidate: sha_unrelated) == sha_b
       RevisionRelationUnverifiable { cause: _ } => false
+      ActiveRevisionUngrounded => false
     }
     Keep { reason: _ } => false
     Advance { admission: _ } => false
@@ -153,6 +151,7 @@ test fn an_unverifiable_relation_refuses_rather_than_assuming_newer() -> Bool {
     Refuse { cause: c } => match c {
       RevisionRelationUnverifiable { cause: why } => why == ("ancestry probe could not answer" as NonEmptyStr)
       UnrelatedRevisionHistories => false
+      ActiveRevisionUngrounded => false
     }
     Keep { reason: _ } => false
     Advance { admission: _ } => false
@@ -208,17 +207,6 @@ test fn every_relation_lands_in_exactly_one_disposition() -> Bool {
   })
 }
 
-test fn the_advance_admission_carries_both_endpoints() -> Bool {
-  match decide_deploy_revision(deployed: sha_a, candidate: sha_c, relation: DeployedIsAncestor) {
-    Advance { admission: adm } =>
-      match adm.from {
-        AdvanceFromRevision { revision: r } => r == sha_a && adm.to == sha_c
-        AdvanceFromUnrecordedSlot => false
-      }
-    Keep { reason: _ } => false
-    Refuse { cause: _ } => false
-  }
-}
 
 test fn probe_pair_folds_to_the_four_observations() -> Bool {
   match deploy_revision_relation_from_probes(
@@ -263,23 +251,6 @@ test fn the_revision_receipt_lives_outside_the_rsynced_tree() -> Bool {
 
 data observation_arms_note: String = "THE THREE OBSERVATIONS THE ROUTED SLOT CAN MAKE, each asserted to reach a different disposition. This is the half #7462 never had: the decision no longer starts from a CommitSha somebody already found, it starts from what the host actually said — including the two things a host can say that are not a revision at all."
 
-test fn an_unrecorded_slot_advances_from_the_unrecorded_predecessor() -> Bool {
-  match decide_deploy_for_observation(
-    observed: DeployedRevisionUnrecorded,
-    candidate: sha_c,
-    deployed_is_ancestor_of_candidate: false,
-    candidate_is_ancestor_of_deployed: false,
-  ) {
-    Advance { admission: adm } =>
-      adm.to == sha_c
-      && match adm.from {
-        AdvanceFromUnrecordedSlot => true
-        AdvanceFromRevision { revision: _ } => false
-      }
-    Keep { reason: _ } => false
-    Refuse { cause: _ } => false
-  }
-}
 
 data unreadable_is_the_discriminating_red_note: String = "THE DISCRIMINATING RED FOR THE ⊥-PAIR. An unreadable receipt and an unrecorded one differ by exactly one thing — whether the host answered or failed to answer — and this pair asserts they reach OPPOSITE dispositions from otherwise identical inputs. If the two were ever folded together, the test above would still pass while this one goes red, which is what makes the collapse detectable rather than merely discouraged."
 
@@ -296,40 +267,9 @@ test fn an_unreadable_slot_refuses_and_never_advances() -> Bool {
   }
 }
 
-test fn a_recorded_slot_still_routes_through_the_ancestry_relation() -> Bool {
-  match decide_deploy_for_observation(
-    observed: DeployedRevisionRecorded { revision: sha_a },
-    candidate: sha_c,
-    deployed_is_ancestor_of_candidate: true,
-    candidate_is_ancestor_of_deployed: false,
-  ) {
-    Advance { admission: adm } =>
-      match adm.from {
-        AdvanceFromRevision { revision: r } => r == sha_a && adm.to == sha_c
-        AdvanceFromUnrecordedSlot => false
-      }
-    Keep { reason: _ } => false
-    Refuse { cause: _ } => false
-  }
-  && match decide_deploy_for_observation(
-    observed: DeployedRevisionRecorded { revision: sha_c },
-    candidate: sha_a,
-    deployed_is_ancestor_of_candidate: false,
-    candidate_is_ancestor_of_deployed: true,
-  ) {
-    Keep { reason: _ } => true
-    Advance { admission: _ } => false
-    Refuse { cause: _ } => false
-  }
-}
 
 data unrecorded_predecessor_is_not_a_fake_sha_note: String = "The bootstrap predecessor must not render as something a reader could mistake for a revision. An empty string or a run of zeroes would read as 'advancing from 0000…' in the deploy log, which is exactly the reading that would let the bootstrap arm fire on every deploy without anyone noticing."
 
-test fn the_unrecorded_predecessor_renders_as_words_not_a_sha() -> Bool {
-  let text = advance_predecessor_text(from: AdvanceFromUnrecordedSlot)
-  text != "" && text.length() != 40
-    && advance_predecessor_text(from: AdvanceFromRevision { revision: sha_b }) == (sha_b as String)
-}
 
 data advance_text_helper_note: String = "The non-Advance arms return the empty string rather than recursing or fabricating an admission: the assertion below is that the text NAMES both endpoints, and an empty string fails it. A helper that looped to satisfy the type would be an unbounded fold standing where a total one was available."
 
@@ -348,4 +288,72 @@ fn advance_text_or_empty(deployed: CommitSha, candidate: CommitSha) -> String {
 test fn the_advance_text_names_both_endpoints() -> Bool {
   let text = advance_text_or_empty(deployed: sha_a, candidate: sha_c)
   text != "" && text.length() > 80
+}
+
+data migration_red_note: String = "THE PLANTED MIGRATION RED THE OPERATOR ASKED FOR (2026-08-05): actual active is C, the receipt is missing, an older candidate A arrives. The result must NOT be an advance. An earlier revision of this file certified the opposite — it asserted that an unrecorded slot advances — so the witness was pinning the unsafe assumption rather than the invariant. That is the worse failure mode, because a green witness over a wrong premise reads as coverage.\n\nThe rollback it prevents is concrete: C routed, C's receipt write failed, older B arrives, 'unrecorded' authorizes B, the public route moves C→B."
+
+test fn an_unrecorded_routed_slot_refuses_and_never_advances() -> Bool {
+  match decide_deploy_for_observation(
+    observed: DeployedRevisionUnrecorded,
+    candidate: sha_a,
+    deployed_is_ancestor_of_candidate: false,
+    candidate_is_ancestor_of_deployed: false,
+  ) {
+    Refuse { cause: c } =>
+      match c {
+        ActiveRevisionUngrounded => true
+        UnrelatedRevisionHistories => false
+        RevisionRelationUnverifiable { cause: _ } => false
+      }
+    Advance { admission: _ } => false
+    Keep { reason: _ } => false
+  }
+}
+
+test fn the_advance_admission_carries_both_endpoints() -> Bool {
+  match decide_deploy_revision(deployed: sha_a, candidate: sha_c, relation: DeployedIsAncestor) {
+    Advance { admission: adm } => adm.from == sha_a && adm.to == sha_c
+    Keep { reason: _ } => false
+    Refuse { cause: _ } => false
+  }
+}
+
+test fn a_recorded_slot_still_routes_through_the_ancestry_relation() -> Bool {
+  match decide_deploy_for_observation(
+    observed: DeployedRevisionRecorded { revision: sha_a },
+    candidate: sha_c,
+    deployed_is_ancestor_of_candidate: true,
+    candidate_is_ancestor_of_deployed: false,
+  ) {
+    Advance { admission: adm } => adm.from == sha_a && adm.to == sha_c
+    Keep { reason: _ } => false
+    Refuse { cause: _ } => false
+  }
+  && match decide_deploy_for_observation(
+    observed: DeployedRevisionRecorded { revision: sha_c },
+    candidate: sha_a,
+    deployed_is_ancestor_of_candidate: false,
+    candidate_is_ancestor_of_deployed: true,
+  ) {
+    Keep { reason: _ } => true
+    Advance { admission: _ } => false
+    Refuse { cause: _ } => false
+  }
+}
+
+data three_observations_three_dispositions_note: String = "EVERY OBSERVATION LANDS SOMEWHERE, and only one of the three can advance. Recorded routes through ancestry; unrecorded and unreadable both refuse, for different typed causes — different because their remedies differ: one needs the routed slot's revision grounded, the other needs the read fixed."
+
+test fn only_a_recorded_observation_can_ever_advance() -> Bool {
+  let advanced = filter(
+    [
+      decide_deploy_for_observation(observed: DeployedRevisionRecorded { revision: sha_a }, candidate: sha_c,
+        deployed_is_ancestor_of_candidate: true, candidate_is_ancestor_of_deployed: false),
+      decide_deploy_for_observation(observed: DeployedRevisionUnrecorded, candidate: sha_c,
+        deployed_is_ancestor_of_candidate: false, candidate_is_ancestor_of_deployed: false),
+      decide_deploy_for_observation(observed: DeployedRevisionUnreadable { cause: "planted" as NonEmptyStr }, candidate: sha_c,
+        deployed_is_ancestor_of_candidate: false, candidate_is_ancestor_of_deployed: false),
+    ],
+    d => match d { Advance { admission: _ } => true, _ => false }
+  )
+  count(advanced) == 1
 }

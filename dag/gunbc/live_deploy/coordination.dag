@@ -9,7 +9,10 @@ import gunbc.host_effect {
   EmitArtifactThenThinRun,
 }
 import extdeps.exec.command { CommandTransport, LocalExec, SshExec }
+import v2.std.algebra { list_head, ListHeadResult, HeadFound, HeadAbsent }
 import gunbc.live_deploy.revision { DeploymentTarget, deploy_target_key }
+import gunbc.output_policy { ExpectSuccess }
+import extdeps.tools.hostname
 
 data coordination_coverage_note: String = "THE FAILURE CLASS THIS MODULE EXISTS FOR IS COORDINATION-COVERAGE MISMATCH (operator ruling 2026-08-05): a coordination mechanism is valid only when its resource identity, execution locus, lifetime, participant population, and outcome partition COVER the effects it claims to coordinate. Every one of those is an axis on which a lock can be present, well-formed, and still protect nothing.\\n\\nTHIS REPLACES A POLICY MATCH, AND THE REPLACEMENT IS THE POINT. The first repair of the SSH defect was `match transport { LocalShell => admit, SshShell => refuse }` — correct in its verdict and wrong in its form, because the safety property was encoded as a list of transport NAMES. Under that shape a future remote-session transport becomes admissible by someone editing `SshShell => false` to `SshShell => true`, which would also re-admit today's discrete-command SSH realization: the edit that adds the safe case cannot be distinguished from the edit that admits the unsafe one.\\n\\nSo transports PROJECT OBSERVATIONS and this module DECIDES. A transport says where its effects land and how long a lock taken through it survives; coverage is then derived by comparing those facts against what the operation requires. A future transport becomes admissible by supplying the right behavioural facts — never by being added to an allow-list.\\n\\nTHE AXES ARE SEPARATE BECAUSE THEY FAIL SEPARATELY, and this PR's own history is the evidence: a lock on the wrong HOST (locus), a lock spanning one command instead of the whole cutover (extent), and apply leased while retract bypassed it (population) are three distinct defects that a single Bool would have collapsed into one indistinguishable 'is it locked' question."
 
@@ -152,15 +155,11 @@ fn coordination_population_covers(
   mutation_population: List<DeployMutationKind>,
   covered: List<DeployMutationKind>,
 ) -> CoordinationAdmission {
-  match filter(mutation_population, k => !any(covered, c => c == k)) {
-    [] => CoordinationCovers
-    uncovered =>
-      match list_head(xs: uncovered) {
-        HeadAbsent => CoordinationCovers
-        HeadFound { value: k } =>
-          CoordinationRefused {
-            cause: MutationEntrypointUncovered { kind: deploy_mutation_kind_key(kind: k) }
-          }
+  match list_head(xs: filter(mutation_population, k => !any(covered, c => c == k))) {
+    HeadAbsent => CoordinationCovers
+    HeadFound { value: k } =>
+      CoordinationRefused {
+        cause: MutationEntrypointUncovered { kind: deploy_mutation_kind_key(kind: k) }
       }
   }
 }
@@ -184,17 +183,28 @@ fn deploy_coordination_admission(subject: DeployCoordinationSubject) -> Coordina
 
 data transport_projection_note: String = "TRANSPORTS PROJECT FACTS; THEY DO NOT DECIDE POLICY. Each arm answers only 'where do effects driven through me land' and 'how long does a lock taken through me survive', and the admission above derives coverage from those answers. That is what lets a future remote-session transport become admissible by reporting SessionLifetime on a NamedHost lease locus, without anyone editing a match arm from refuse to admit — and it is why re-admitting today's discrete-command SSH realization would require claiming a lifetime it does not have, which is a lie about behaviour rather than a policy edit."
 
-fn host_effect_mutation_locus(transport: HostEffectTransport, target_host: HostIdentity) -> ExecutionLocus {
+fn host_effect_mutation_locus(transport: HostEffectTransport) -> ExecutionLocus {
   match transport {
-    LocalShell => CurrentHost { host: target_host }
+    LocalShell => observed_current_host()
     SshShell { ssh_host: h } => NamedHost { host: h as String as HostIdentity }
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => DeferredExecution
   }
 }
 
-fn command_transport_lease_locus(transport: CommandTransport, target_host: HostIdentity) -> ExecutionLocus {
+data current_host_must_be_observed_note: String = "CurrentHost CARRIES AN OBSERVED HOSTNAME, NOT THE TARGET CONSTANT, and the difference is the whole honesty of the locus axis. An earlier revision returned `CurrentHost { host: target_host }` for LocalExec — which ASSERTS that this process is running on the target rather than establishing it. That happens to be true for the CI runner and would be false for anyone running the launcher elsewhere, so the model would have reported locus agreement on the strength of an assumption dressed as an observation: the exact substitution this module exists to make impossible.\\n\\nSo the local arm reads `hostname -s` and reports what it finds. A failed read is ExecutionLocusUnobserved, never a fallback to the target — 'I could not tell which machine I am on' is not 'I am on the right one'. Remote transports need no observation because NamedHost is already a statement that the effects land somewhere this process is not."
+
+fn observed_current_host() -> ExecutionLocus {
+  let read = os.Hostname.ReadShort(expect: ExpectSuccess)
+  if !read.success || read.value == "" {
+    ExecutionLocusUnobserved
+  } else {
+    CurrentHost { host: read.value as HostIdentity }
+  }
+}
+
+fn command_transport_lease_locus(transport: CommandTransport) -> ExecutionLocus {
   match transport {
-    LocalExec => CurrentHost { host: target_host }
+    LocalExec => observed_current_host()
     SshExec { ssh_target: h } => NamedHost { host: h as String as HostIdentity }
   }
 }

@@ -112,20 +112,19 @@ type KeepReason
   = AlreadyActive
   | CandidateSuperseded
 
+data active_revision_ungrounded_note: String = "A ROUTED SLOT WITH NO RECEIPT IS NOT AN EMPTY TARGET, AND CONFLATING THEM AUTHORIZES A ROLLBACK (operator ruling 2026-08-05). An earlier revision mapped DeployedRevisionUnrecorded straight to an unconditional advance, reasoning that with no prior revision there is nothing to move backward from and monotonicity is vacuous. That reasoning describes a DIFFERENT state than the one the arm actually observes: reaching this decision at all required a successful route observation, so a slot IS running and IS serving the public. There absolutely is a deployed revision — only its RECEIPT is absent.\\n\\nThe two states are:\\n  TargetAbsent — no public deployment exists; a bootstrap advance is safe because there is nothing to regress.\\n  ActiveRevisionUngrounded — a public deployment exists but its revision is not grounded; NO comparison is possible, so no advance can be justified.\\nOn srv1 the second is the only reachable one, because the route observation that precedes this decision would have refused otherwise.\\n\\nTHE CONCRETE ROLLBACK the old arm permitted, which is why this is a refusal and not a nicety: C is routed, C's receipt write failed, an older B arrives, the active receipt is absent, 'unrecorded' authorizes B, and the public route moves C→B. The crash window that produces the missing receipt is the same one the record-before-flip reordering closes, so the two repairs are halves of one defect.\\n\\nWHAT UNBLOCKS THE MIGRATION: grounding the routed slot's legacy revision — from the slot's own repository or process identity plus the existing surface verification — and writing the initial receipt before any candidate is considered. Until that observation exists this refuses, because the alternative is authorizing an arbitrary tree against an unknown one."
+
 type DeployRelationFailure
   = UnrelatedRevisionHistories
   | RevisionRelationUnverifiable { cause: NonEmptyStr }
+  | ActiveRevisionUngrounded
 
 data revision_advance_is_the_admission_note: String = "RevisionAdvance IS THE ADMISSION TOKEN, and it is `sole_constructor` so it cannot be forged from another module. That is the structural composition #7462 was missing: it landed a pure classifier and a witness file and changed no consumer, so 'the freshness precondition exists' was false at the system boundary — a function existed. Calling the classifier near the top of the apply path would repeat that mistake one level in, because the mutating cutover would remain independently callable and the guard would be a convention.\\n\\nInstead the cutover TAKES a RevisionAdvance: gunbc.live_deploy.apply live_deploy_blue_green_cutover_with_selection has it as a parameter and reads admission.to for the receipt it writes after the flip. The only values of that type in the corpus come out of decide_deploy_for_observation's Advance arm, so an unguarded mutation path does not typecheck. The wall consumed here is the existing cross-module `sole_constructor` refusal (SoleConstructorViolation) rather than a new checker; DESIGN §4b records that its completeness for every construction form is unverified, so the honest rung is accepted-refinement-with-executing-refusal.\\n\\nRUNG HONESTY, AT THE DECLARED GRAIN: what executes today is the CONSUMPTION side — the cutover cannot be called without an admission, and the witnesses assert that the three observations reach three distinct dispositions and that only Advance moves the active revision. What does NOT execute is a foreign-module forge attempt; the sole_constructor refusal is the substrate's, not this module's, and no RED here exercises it. Naming that keeps this row from citing a wall it does not itself demonstrate."
 
-data advance_predecessor_note: String = "THE PREDECESSOR IS A COPRODUCT, NOT A CommitSha, BECAUSE 'THE SLOT HAS NEVER RECORDED A REVISION' IS A REAL OBSERVATION AND NOT A MISSING ONE. On the first deploy after this lands, no slot carries a receipt — there is no prior revision, so there is no ancestry question and monotonicity is vacuous rather than violated. Spelling that as AdvanceFromUnrecordedSlot keeps it distinguishable from an ordinary advance in every downstream reader, so the rate at which deploys take the bootstrap arm stays observable.\\n\\nWHAT THIS TYPE MAKES UNWRITABLE, which is the whole reason it is a separate carrier from ObservedDeployedRevision: there is no arm here for an UNREADABLE receipt. 'I could not read the routed slot's revision' and 'the routed slot has recorded no revision' are the DESIGN §5 ⊥-as-ignorance / ⊥-as-answer pair, and only the second can become an admission. The first has no constructor into this type at all, so an unreadable receipt cannot be laundered into a deploy — it is refused by the shape rather than by a check that a later edit could drop.\\n\\nWHY THE BOOTSTRAP ARM CANNOT SILENTLY BECOME PERMANENT: the receipt write is inside the converged path, so a slot that fails to record its revision makes the deploy NotConverged and red. 'Unrecorded forever' therefore cannot happen quietly — it would have to survive a red on every single deploy.\\n\\n🟡 dissolve-on: the served process publishing the immutable identity it was launched with (deploy_slot_revision_receipt_note's own trigger). Once the routed slot always states a revision, this arm becomes unreachable and its witness flips from a bootstrap acceptance to a permanent regression control rather than retiring."
-
-type AdvancePredecessor
-  = AdvanceFromRevision { revision: CommitSha }
-  | AdvanceFromUnrecordedSlot
+data advance_predecessor_is_always_a_revision_note: String = "EVERY ADVANCE NOW HAS A REAL PREDECESSOR, so `from` is a CommitSha and there is no bootstrap arm. An earlier revision made it a coproduct with an AdvanceFromUnrecordedSlot case, on the reasoning that a slot with no receipt has no prior revision. That reasoning was wrong about the state it observed — the routed slot IS serving something — and once DeployedRevisionUnrecorded became a refusal (active_revision_ungrounded_note) the arm had no producer left.\\n\\nIt is DELETED rather than retained as an unreachable variant. A coproduct arm nothing can construct is a dead scaffold that reads as a supported case, and the next author to need a bootstrap would reach for it instead of building the grounding observation that is actually required."
 
 type RevisionAdvance sole_constructor {
-  from: AdvancePredecessor
+  from: CommitSha
   to: CommitSha
 }
 
@@ -154,7 +153,7 @@ fn decide_deploy_revision(
     DeployedIsAncestor =>
       Advance {
         admission: RevisionAdvance {
-          from: AdvanceFromRevision { revision: deployed },
+          from: deployed,
           to: candidate,
         }
       }
@@ -184,23 +183,9 @@ fn decide_deploy_for_observation(
         ),
       )
     DeployedRevisionUnrecorded =>
-      Advance {
-        admission: RevisionAdvance {
-          from: AdvanceFromUnrecordedSlot,
-          to: candidate,
-        }
-      }
+      Refuse { cause: ActiveRevisionUngrounded }
     DeployedRevisionUnreadable { cause: why } =>
       Refuse { cause: RevisionRelationUnverifiable { cause: why } }
-  }
-}
-
-data advance_predecessor_text_note: String = "The predecessor rendered for the deploy's own log line. The bootstrap arm says so in words rather than printing an empty or zero sha, because a reader who cannot tell 'advancing from nothing' from 'advancing from 0000…' is exactly the reader who will not notice the bootstrap arm firing on every deploy."
-
-fn advance_predecessor_text(from: AdvancePredecessor) -> String {
-  match from {
-    AdvanceFromRevision { revision: r } => r as String
-    AdvanceFromUnrecordedSlot => "(no revision recorded for the routed slot)"
   }
 }
 
@@ -208,7 +193,7 @@ fn deploy_advance_text(admission: RevisionAdvance) -> NonEmptyStr {
   join(
     [
       "deploy advancing srv1 dashboard from ",
-      advance_predecessor_text(from: admission.from),
+      admission.from as String,
       " to ",
       admission.to as String,
     ],
@@ -221,6 +206,8 @@ fn deploy_relation_failure_reason(cause: DeployRelationFailure) -> NonEmptyStr {
     UnrelatedRevisionHistories =>
       "deployed and candidate revisions share no ancestry (force-push, rewritten history, or foreign repository) — refusing rather than guessing which is newer" as NonEmptyStr
     RevisionRelationUnverifiable { cause: why } => why
+    ActiveRevisionUngrounded =>
+      "deploy refused: the routed slot is serving a revision that is not recorded, so there is nothing to compare this candidate against. A routed slot with no receipt is an UNGROUNDED deployed revision, not an absent one — advancing over it could move the public service backward. Ground the routed slot's revision and record it before deploying" as NonEmptyStr
   }
 }
 
