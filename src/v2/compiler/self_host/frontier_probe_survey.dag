@@ -18,7 +18,8 @@ import v2.compiler.self_host.frontier_probe_types {
   frontier_blocker_class_matches,
   frontier_survey_commit_tree_binding_holds,
   frontier_survey_executable_sha256_holds,
-  frontier_survey_source_roots_digest_holds
+  frontier_survey_source_roots_digest_holds,
+  frontier_probe_policy_revision
 }
 import std.realization_schedule { scoped_witness_exact_head_text_holds }
 import std.content_hash { ContentHash, ContentHashComparison, Fnv1a64, Fnv1a64Structural, compare_content_hash, ContentHashEqual }
@@ -150,9 +151,8 @@ data frontier_roster_measurement_census_at_9f978aa8df_note: String = "Dated cens
 data frontier_probe_exact_head_closeout_note: String = "Lane 1 exact-current-head closeout (sleek-pike-668): LAST of four — #7776 vocabulary merge first, then #7762 final, then #7767 assemble diagnostic payloads, then one authoritative 27/27 here. Both #7762 and #7767 are draft with open blockers; do not run 27/27 until both merge (#7762 ref-population gap — subjects can still be forged on today's probe). Definitive run: clean detached worktree; build receipt binding commit, tree, compiler sources, probe executable digest, source-root set, and probe-policy revision; every shard carries complete FrontierSurveySubject; all 27 subjects must compare exactly equal before aggregation. Prior interim audit at 9f978aa8df recorded execution_measurement=17, no_execution_measurement=10, self_emit_ready=0, emitter_produced=0 at that head only. Closeout completes when host_frontier_probe_survey_manifest is a well-formed FrontierSurveyManifest with 27 receipts at one subject, frontier.dag rows hand-authored from that manifest, compiler_frontier_per_module_probe_survey_holds greens, and the offline claim_batch recipe passes."
 
 fn frontier_survey_probe_policy_revision_holds(revision: ContentHash) -> Bool {
-  match revision {
-    Fnv1a64(structural) =>
-      frontier_survey_source_roots_digest_holds(digest: structural)
+  match compare_content_hash(left: revision, right: frontier_probe_policy_revision()) {
+    ContentHashEqual => true
     _ => false
   }
 }
