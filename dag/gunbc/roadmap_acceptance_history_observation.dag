@@ -48,6 +48,10 @@ fn git_refusal_detail(operation: String, stderr: String) -> String {
   }
 }
 
+fn git_show_path_absent_at_ref(stderr: String) -> Bool {
+  string_contains(s: trim(stderr), pattern: "does not exist in")
+}
+
 fn prior_history_from_carrier_text(carrier_text: String) -> RoadmapAcceptanceHistoryPriorObservation {
   match parse_roadmap_acceptance_event_history_carrier(text: carrier_text) {
     RoadmapAcceptanceEventHistoryParsed { events: events } =>
@@ -131,11 +135,20 @@ fn observe_roadmap_acceptance_history_prior(
           expect: ExpectSuccess,
         )
         if !base_manifest.success {
-          prior_history_from_merge_base_carrier_or_authority_bootstrap(
-            authority_repo_path: authority_repo_path,
-            baseline_sha: baseline.sha as String,
-            carrier_stderr: base_manifest.stderr,
-          )
+          if git_show_path_absent_at_ref(stderr: base_manifest.stderr) {
+            prior_history_from_merge_base_carrier_or_authority_bootstrap(
+              authority_repo_path: authority_repo_path,
+              baseline_sha: baseline.sha as String,
+              carrier_stderr: base_manifest.stderr,
+            )
+          } else {
+            PriorHistoryGitObservationRefused {
+              detail: git_refusal_detail(
+                operation: "git.Core.Show(merge-base carrier)",
+                stderr: base_manifest.stderr,
+              ),
+            }
+          }
         } else {
           let head_identity = content_hash_atom(value: head_manifest.content)
           let base_identity = content_hash_atom(value: base_manifest.content)
