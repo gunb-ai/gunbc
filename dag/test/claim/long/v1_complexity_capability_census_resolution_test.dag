@@ -17,7 +17,7 @@ import v2.std.decl_ref_resolution {
   DeclarationRefAmbiguous,
 }
 import gunbc.v1_complexity_capability_census {
-  v1_complexity_capability_roster,
+  v1_complexity_inventory_roster,
   capability_all_declaration_refs,
   capability_cited_carrier,
   call_graph_and_scc,
@@ -38,7 +38,7 @@ data census_resolution_modules: List<ModuleDeclarationFact> = module_declaration
 
 test fn census_every_declaration_ref_resolves_exactly() -> Bool {
   cited_declaration_ref_refusal_count(
-    refs: capability_all_declaration_refs(rows: v1_complexity_capability_roster),
+    refs: capability_all_declaration_refs(rows: v1_complexity_inventory_roster),
     facts: census_resolution_facts,
     modules: census_resolution_modules
   ) == 0

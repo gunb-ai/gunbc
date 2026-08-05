@@ -10,18 +10,33 @@ import gunbc.v1_complexity_capability_census {
   IntegrationWork,
   MigrationWork,
   RetirementWork,
-  CostAuthorityModule,
-  V2LensCost,
-  V2LensComplexity,
-  StdRealizationSchedule,
-  V1CompilerComplexity,
+  CostProgramRole,
+  RoleMigrationAuthority,
+  RoleAsymptoticProjection,
+  RoleRealizationAccounts,
+  RoleLegacyOracle,
+  CostMigrationDestination,
+  MigrateToV2LensCost,
+  MigrateToV2LensComplexity,
+  MigrateToStdRealizationSchedule,
+  CapabilityFactProducer,
+  FactsFromCostLens,
+  FactsFromV2Parser,
+  FactsFromSharedSubstrate,
   ParityPhase,
   ParityC1ExpressionAuthority,
   ParityC4Interprocedural,
   RetirementTrigger,
   RetiresWhenReplacementExecutes,
   RetiresWithSeedDeletion,
-  V1ComplexityCapability,
+  V1ComplexityInventoryRow,
+  V1ComplexityInventoryItem,
+  SemanticCapabilityItem,
+  LegacyHazardItem,
+  LegacyRealizationItem,
+  V1ComplexityResidueId,
+  SummaryEvictionHazard,
+  ParserProgressV1WalkerRealization,
   CompleteInV2,
   IntegrationOwed,
   MigrationOwed,
@@ -29,31 +44,37 @@ import gunbc.v1_complexity_capability_census {
   RetirementOwed,
   Retired,
   ParserProgressFactProduction,
-  ParserProgressV1Walker,
+  InterproceduralSummaryMemo,
   CallGraphAndScc,
-  SummaryEviction,
   AsymptoticClassAndDominance,
-  v1_complexity_capability_roster,
+  v1_complexity_inventory_roster,
   capability_work_kind,
   capability_work_owed,
   capability_cited_carrier,
   capability_work_count,
-  cost_authority_module_path,
+  cost_program_role_module_path,
+  cost_migration_destination_module_path,
+  inventory_item_key,
+  inventory_row_is_semantic_capability,
+  inventory_semantic_capability_count,
+  inventory_identity_keys,
+  inventory_identity_keys_distinct,
   call_graph_and_scc,
+  summary_eviction,
   parser_progress_v1_walker,
   parser_progress_fact_production,
   asymptotic_class_and_dominance,
 }
 
-data witness_note: String = "FAST-LANE structural hygiene for the C0(b1) capability roster. Exact DeclarationRef resolution against live decl_facts is deliberately NOT here — it costs a full witness-layer decl_facts scan and would breach the 5s fast-lane budget, the same reason test.claim.cited_symbol_resolution_witness_test keeps its resolution census in the long lane. That census is this roster's companion in test.claim.long.v1_complexity_capability_census_resolution_test. What this file proves is what is cheap and structural: every arm lands in exactly one work-state, EVERY arm has a controlled fixture including the ones no row inhabits, and routing metadata is drawn from typed vocabularies. The vacuity control moved to the long-lane companion with the lens imports it needed — see closure_cost_note."
+data witness_note: String = "FAST-LANE structural hygiene for the C0(b1) v1 complexity INVENTORY. Exact DeclarationRef resolution against live decl_facts is deliberately NOT here — it costs a full witness-layer decl_facts scan and would breach the 5s fast-lane budget, the same reason test.claim.cited_symbol_resolution_witness_test keeps its resolution census in the long lane. That census is this roster's companion in test.claim.long.v1_complexity_capability_census_resolution_test. What this file proves is what is cheap and structural: every arm lands in exactly one work-state, EVERY arm has a controlled fixture including the ones no row inhabits, and routing metadata is drawn from typed vocabularies. The vacuity control moved to the long-lane companion with the lens imports it needed — see closure_cost_note."
 
 data closure_cost_note: String = "COST FINDING, measured on this PR (2026-08-05). An earlier revision of this file imported v2.lens.complexity, v2.lens.cost and v2.std.refinement to execute the vacuity control. No other witness under dag/test/claim imports them, so this file was the FIRST to drag the v2 lens closure into the per-PR witness layer — and the floor measured the consequence on an unrelated witness: roadmap_program_view_witness_test witness_live_constraint_present_iff_line_unaccepted ran 3901.9ms on green main and 5019ms on this PR, breaching the 5s fast-lane budget without its own semantic work changing. The lens imports moved to the long-lane companion with the control that needed them. Recorded rather than silently fixed because it is a measured instance of this program's own subject: a per-witness cost that is invisible until it lands on somebody else's budget, and a wall-clock threshold that reports the victim rather than the cause."
 
 data green_by_vacancy_note: String = "The operator finding this file exists to answer. The previous revision's exhaustiveness check was green only because no row inhabited the DeliberatelyRetired arm — a check that would have failed the first time that declared arm was used. Fixtures below inhabit ALL SIX arms independently of the roster, so the partition is proven total over the type rather than over today's row set. Retired and SupersededByBetterModel have no roster row at all; they are proven here and nowhere else."
 
-fn fixture_complete() -> V1ComplexityCapability {
-  V1ComplexityCapability {
-    capability: AsymptoticClassAndDominance,
+fn fixture_complete() -> V1ComplexityInventoryRow {
+  V1ComplexityInventoryRow {
+    item: SemanticCapabilityItem { capability: AsymptoticClassAndDominance },
     v1_carrier: decl_ref(module_path: "v1.compiler.complexity", decl_name: "classify_complexity"),
     disposition: CompleteInV2 {
       carrier: decl_ref(module_path: "v2.lens.cost", decl_name: "asymptotic_class_of_cost"),
@@ -62,9 +83,9 @@ fn fixture_complete() -> V1ComplexityCapability {
   }
 }
 
-fn fixture_integration() -> V1ComplexityCapability {
-  V1ComplexityCapability {
-    capability: CallGraphAndScc,
+fn fixture_integration() -> V1ComplexityInventoryRow {
+  V1ComplexityInventoryRow {
+    item: SemanticCapabilityItem { capability: CallGraphAndScc },
     v1_carrier: decl_ref(module_path: "v1.compiler.complexity", decl_name: "build_scc_index"),
     disposition: IntegrationOwed {
       substrate_carrier: decl_ref(module_path: "std.graph", decl_name: "graph_multi_node_scc_members"),
@@ -74,21 +95,22 @@ fn fixture_integration() -> V1ComplexityCapability {
   }
 }
 
-fn fixture_migration() -> V1ComplexityCapability {
-  V1ComplexityCapability {
-    capability: SummaryEviction,
+fn fixture_migration() -> V1ComplexityInventoryRow {
+  V1ComplexityInventoryRow {
+    item: LegacyHazardItem { hazard: SummaryEvictionHazard, of_capability: InterproceduralSummaryMemo },
     v1_carrier: decl_ref(module_path: "v1.compiler.complexity", decl_name: "evict_summary"),
     disposition: MigrationOwed {
-      destination: V2LensCost,
+      destination: MigrateToV2LensCost,
+      producer: FactsFromCostLens,
       phase: ParityC1ExpressionAuthority,
       note: "fixture" as NonEmptyStr
     }
   }
 }
 
-fn fixture_superseded() -> V1ComplexityCapability {
-  V1ComplexityCapability {
-    capability: ParserProgressFactProduction,
+fn fixture_superseded() -> V1ComplexityInventoryRow {
+  V1ComplexityInventoryRow {
+    item: SemanticCapabilityItem { capability: ParserProgressFactProduction },
     v1_carrier: decl_ref(module_path: "v1.compiler.complexity", decl_name: "collect_parser_progress_edges"),
     disposition: SupersededByBetterModel {
       superseded_by: decl_ref(module_path: "std.termination", decl_name: "DescentEvidence"),
@@ -97,9 +119,9 @@ fn fixture_superseded() -> V1ComplexityCapability {
   }
 }
 
-fn fixture_retirement_owed() -> V1ComplexityCapability {
-  V1ComplexityCapability {
-    capability: ParserProgressV1Walker,
+fn fixture_retirement_owed() -> V1ComplexityInventoryRow {
+  V1ComplexityInventoryRow {
+    item: LegacyRealizationItem { realization: ParserProgressV1WalkerRealization, of_capability: ParserProgressFactProduction },
     v1_carrier: decl_ref(module_path: "v1.compiler.complexity", decl_name: "parser_state_expr_progress"),
     disposition: RetirementOwed {
       trigger: RetiresWhenReplacementExecutes { replacement: ParserProgressFactProduction },
@@ -108,9 +130,9 @@ fn fixture_retirement_owed() -> V1ComplexityCapability {
   }
 }
 
-fn fixture_retired() -> V1ComplexityCapability {
-  V1ComplexityCapability {
-    capability: ParserProgressV1Walker,
+fn fixture_retired() -> V1ComplexityInventoryRow {
+  V1ComplexityInventoryRow {
+    item: LegacyRealizationItem { realization: ParserProgressV1WalkerRealization, of_capability: ParserProgressFactProduction },
     v1_carrier: decl_ref(module_path: "v1.compiler.complexity", decl_name: "parser_state_expr_progress"),
     disposition: Retired {
       reason: "fixture — uninhabited by the roster, proven here so the arm is not green-by-vacancy" as NonEmptyStr
@@ -118,7 +140,7 @@ fn fixture_retired() -> V1ComplexityCapability {
   }
 }
 
-fn all_disposition_fixtures() -> List<V1ComplexityCapability> {
+fn all_disposition_fixtures() -> List<V1ComplexityInventoryRow> {
   [
     fixture_complete(),
     fixture_integration(),
@@ -187,7 +209,7 @@ test fn w_parser_progress_ruling_is_modeled_as_two_rows() -> Bool {
 }
 
 test fn w_every_roster_row_lands_in_exactly_one_work_kind() -> Bool {
-  fold(v1_complexity_capability_roster, init: true, f: (acc, c) =>
+  fold(v1_complexity_inventory_roster, init: true, f: (acc, c) =>
     let k = capability_work_kind(c: c)
     acc && (
       (k == NoWorkOwed && !capability_work_owed(c: c)) ||
@@ -198,30 +220,92 @@ test fn w_every_roster_row_lands_in_exactly_one_work_kind() -> Bool {
 data w_work_counts_sum_note: String = "An internal consistency join, not a tree-copied count: the four work-kind populations must exhaust the roster. No literal expected count appears — the assertion is that the parts sum to the whole, which stays true as rows are added and breaks if a kind is dropped from the projection."
 
 test fn w_work_kind_counts_exhaust_the_roster() -> Bool {
-  let n = length(xs: v1_complexity_capability_roster)
-  let none_owed = capability_work_count(rows: v1_complexity_capability_roster, kind: NoWorkOwed)
-  let integration = capability_work_count(rows: v1_complexity_capability_roster, kind: IntegrationWork)
-  let migration = capability_work_count(rows: v1_complexity_capability_roster, kind: MigrationWork)
-  let retirement = capability_work_count(rows: v1_complexity_capability_roster, kind: RetirementWork)
+  let n = length(xs: v1_complexity_inventory_roster)
+  let none_owed = capability_work_count(rows: v1_complexity_inventory_roster, kind: NoWorkOwed)
+  let integration = capability_work_count(rows: v1_complexity_inventory_roster, kind: IntegrationWork)
+  let migration = capability_work_count(rows: v1_complexity_inventory_roster, kind: MigrationWork)
+  let retirement = capability_work_count(rows: v1_complexity_inventory_roster, kind: RetirementWork)
   none_owed + integration + migration + retirement == n &&
   integration > 0 &&
   migration > 0 &&
   retirement > 0
 }
 
-data w_destinations_are_signed_vocabulary_note: String = "Routing metadata is drawn from the signed C0(a) ruling's closed vocabulary rather than spelled freehand. A non-empty string proves only that someone typed something; a CostAuthorityModule cannot name a module the ruling never named. This control asserts the vocabulary maps to the four signed module paths and nothing else."
+data w_destinations_are_signed_vocabulary_note: String = "Routing metadata is drawn from the signed C0(a) ruling's closed vocabulary rather than spelled freehand — and the ruling is carried on THREE axes, not one (operator review 2026-08-05). The discriminating half is the SECOND assertion: the role axis names the legacy oracle because the ruling assigns it a role, while the destination axis does not, so a row migrating INTO the deletion target has no constructor. Fusing the two, as the previous revision did, made that state writable. This control asserts each axis maps to exactly the module paths its own axis is allowed to name."
 
-test fn w_destination_vocabulary_matches_the_signed_ruling() -> Bool {
-  cost_authority_module_path(m: V2LensCost) == "v2.lens.cost" &&
-  cost_authority_module_path(m: V2LensComplexity) == "v2.lens.complexity" &&
-  cost_authority_module_path(m: StdRealizationSchedule) == "std.realization_schedule" &&
-  cost_authority_module_path(m: V1CompilerComplexity) == "v1.compiler.complexity"
+test fn w_role_and_destination_are_separate_axes() -> Bool {
+  cost_program_role_module_path(r: RoleMigrationAuthority) == "v2.lens.cost" &&
+  cost_program_role_module_path(r: RoleAsymptoticProjection) == "v2.lens.complexity" &&
+  cost_program_role_module_path(r: RoleRealizationAccounts) == "std.realization_schedule" &&
+  cost_program_role_module_path(r: RoleLegacyOracle) == "v1.compiler.complexity" &&
+  cost_migration_destination_module_path(d: MigrateToV2LensCost) == "v2.lens.cost" &&
+  cost_migration_destination_module_path(d: MigrateToV2LensComplexity) == "v2.lens.complexity" &&
+  cost_migration_destination_module_path(d: MigrateToStdRealizationSchedule) == "std.realization_schedule" &&
+  !fold([MigrateToV2LensCost, MigrateToV2LensComplexity, MigrateToStdRealizationSchedule], init: false, f: (acc, d) =>
+    acc || cost_migration_destination_module_path(d: d) == "v1.compiler.complexity")
+}
+
+data w_producer_is_independent_of_destination_note: String = "The live specimen that forced the third axis. Parser-progress facts are produced by the v2 PARSER and joined through std.termination; their accounting still lands in the cost authority. With one enum the row had to name v2.lens.cost as producer, contradicting its own explanation. This asserts the two axes actually differ on that row — if a future edit re-fuses them, the inequality reds."
+
+test fn w_parser_progress_producer_differs_from_its_destination() -> Bool {
+  match parser_progress_fact_production.disposition {
+    MigrationOwed { destination: d, producer: p, phase: _, note: _ } =>
+      d == MigrateToV2LensCost && p == FactsFromV2Parser && p != FactsFromCostLens
+    _ => false
+  }
+}
+
+data w_residues_are_not_capabilities_note: String = "The operator's peer-inflation finding, pinned. SummaryEviction and ParserProgressV1Walker previously sat as variants of the capability vocabulary, so counting capabilities counted two things that are not capabilities. They are now residue items carrying the capability they belong to. This asserts the semantic population is strictly smaller than the inventory, that the two residue rows are not semantic, and that each names its owning capability."
+
+test fn w_legacy_residues_are_not_semantic_capabilities() -> Bool {
+  let rows = length(xs: v1_complexity_inventory_roster)
+  let semantic = inventory_semantic_capability_count()
+  semantic < rows &&
+  semantic + 2 == rows &&
+  !inventory_row_is_semantic_capability(row: summary_eviction) &&
+  !inventory_row_is_semantic_capability(row: parser_progress_v1_walker) &&
+  (match summary_eviction.item {
+    LegacyHazardItem { hazard: h, of_capability: c } => h == SummaryEvictionHazard && c == InterproceduralSummaryMemo
+    _ => false
+  }) &&
+  (match parser_progress_v1_walker.item {
+    LegacyRealizationItem { realization: r, of_capability: c } => r == ParserProgressV1WalkerRealization && c == ParserProgressFactProduction
+    _ => false
+  })
+}
+
+data w_identity_distinctness_is_validated_note: String = "Stated as validation, not construction, because that is what it is (operator review 2026-08-05). A closed coproduct makes an identity outside the vocabulary unrepresentable; it does not stop a List from carrying one identity twice. This executes the distinctness fold over the live roster, and the paired control proves the fold is discriminating — a list with a planted duplicate must come back false, otherwise the green above would mean nothing."
+
+test fn w_roster_identities_are_distinct() -> Bool {
+  inventory_identity_keys_distinct() &&
+  length(xs: inventory_identity_keys()) == length(xs: v1_complexity_inventory_roster)
+}
+
+test fn w_distinctness_fold_reds_on_a_planted_duplicate() -> Bool {
+  let planted = [
+    inventory_item_key(item: SemanticCapabilityItem { capability: CallGraphAndScc }),
+    inventory_item_key(item: SemanticCapabilityItem { capability: AsymptoticClassAndDominance }),
+    inventory_item_key(item: SemanticCapabilityItem { capability: CallGraphAndScc })
+  ]
+  let dup_free = [
+    inventory_item_key(item: SemanticCapabilityItem { capability: CallGraphAndScc }),
+    inventory_item_key(item: SemanticCapabilityItem { capability: AsymptoticClassAndDominance })
+  ]
+  !keys_distinct(keys: planted) &&
+  keys_distinct(keys: dup_free) &&
+  inventory_item_key(item: LegacyHazardItem { hazard: SummaryEvictionHazard, of_capability: InterproceduralSummaryMemo }) !=
+    inventory_item_key(item: LegacyHazardItem { hazard: SummaryEvictionHazard, of_capability: CallGraphAndScc })
+}
+
+fn keys_distinct(keys: List<String>) -> Bool {
+  fold(keys, init: true, f: (ok, k) =>
+    ok && fold(keys, init: 0, f: (n, other) => if other == k { n + 1 } else { n }) == 1)
 }
 
 data w_every_row_cites_the_seed_module_note: String = "Every row's v1_carrier must be a DeclarationRef into the seed module the census is about. This is the cheap structural half of citation hygiene; that the referenced declaration actually EXISTS is the long-lane resolution census's job, because deciding it requires the decl_facts scan."
 
 test fn w_every_v1_carrier_targets_the_seed_module() -> Bool {
-  fold(v1_complexity_capability_roster, init: true, f: (acc, c) =>
+  fold(v1_complexity_inventory_roster, init: true, f: (acc, c) =>
     acc && (c.v1_carrier.module_path as String) == "v1.compiler.complexity")
 }
 
