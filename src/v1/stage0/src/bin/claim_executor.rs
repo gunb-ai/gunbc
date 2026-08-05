@@ -4897,10 +4897,34 @@ fn write_witness_row_cost_drift_receipt_at(
         String::from("batch\tentry\tfunction\tobserved_eval_ms\tbasis_eval_ms\tverdict\trun_ref\n");
     let mut drift_count = 0usize;
     let mut basis_absent_count = 0usize;
+    let mut observation_absent_count = 0usize;
     for rec in batch_records {
         let n = rec.batch_index + 1;
         for result in &rec.results {
             for row in &result.witness_row_costs {
+                // A row that never executed has no observation to compare. Flooring it to 0
+                // and running the comparator produced `WithinBasis` — a POSITIVE verdict that
+                // the row met its cost basis, derived entirely from a measurement that does
+                // not exist, and one that can never fail because 0 never exceeds anything.
+                // That is the fabricated zero of the sibling receipt promoted into a verdict,
+                // and it fails open: the drift wire silently passed unexecuted rows.
+                //
+                // `ObservationAbsent` is the mirror of the `BasisAbsent` arm already below —
+                // there a measurement exists with no basis to judge it, here a basis exists
+                // with no measurement to judge. Neither is a comparison, and neither is
+                // reported as one. Counted, so the population is visible rather than absorbed.
+                if row_measurement_is_absent(&row.5) {
+                    observation_absent_count += 1;
+                    let basis_cell = basis
+                        .get(&(row.0.clone(), row.1.clone()))
+                        .map(|b| b.eval_ms_basis.to_string())
+                        .unwrap_or_default();
+                    body.push_str(&format!(
+                        "{n}\t{}\t{}\t{UNMEASURED_CELL}\t{basis_cell}\tObservationAbsent\t\n",
+                        row.0, row.1
+                    ));
+                    continue;
+                }
                 let observed = row.2 / 1_000_000;
                 let key = (row.0.clone(), row.1.clone());
                 match basis.get(&key) {
@@ -4942,7 +4966,7 @@ fn write_witness_row_cost_drift_receipt_at(
         }
     }
     eprintln!(
-        "[witness-row-cost-drift] basis_absent={basis_absent_count} drift_exceeded={drift_count}"
+        "[witness-row-cost-drift] basis_absent={basis_absent_count} observation_absent={observation_absent_count} drift_exceeded={drift_count}"
     );
     for line in body.lines() {
         eprintln!("[witness-row-cost-drift] {line}");
@@ -4956,7 +4980,7 @@ fn write_witness_row_cost_drift_receipt_at(
         return false;
     }
     eprintln!(
-        "[receipt] floor witness row-cost drift: basis_absent={basis_absent_count} drift_exceeded={drift_count} (TSV: {})",
+        "[receipt] floor witness row-cost drift: basis_absent={basis_absent_count} observation_absent={observation_absent_count} drift_exceeded={drift_count} (TSV: {})",
         path.display()
     );
     true
@@ -11013,6 +11037,57 @@ mod tests {
         assert!(
             !header.contains(&"eval_ms"),
             "the clock-ambiguous spelling must not return: {header:?}"
+        );
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    /// A row that never executed must not receive a verdict about its cost. Flooring it to 0
+    /// and running the comparator yields `WithinBasis` — a positive claim that the row met
+    /// its basis, from a measurement that does not exist, and one that can NEVER fail because
+    /// 0 never exceeds anything. That is a fail-open verdict, not a conservative default.
+    fn drift_comparator_refuses_to_judge_an_unexecuted_row() {
+        let base = std::env::temp_dir().join(format!(
+            "gunbc-drift-absent-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = fs::remove_dir_all(&base);
+        // A basis EXISTS for the skipped row, so the comparator would otherwise have
+        // everything it needs to emit a (wrong) WithinBasis.
+        let basis_path = base.join("basis.tsv");
+        fs::create_dir_all(&base).unwrap();
+        fs::write(
+            &basis_path,
+            "entry\tfunction\teval_ms_basis\trun_ref\thost_class\n\
+             dag/test/claim/skipped_test.dag\tnever_executed_at_all\t50\trun-1\tsrv_fleet_arm64\n",
+        )
+        .unwrap();
+
+        assert!(write_witness_row_cost_drift_receipt_at(
+            &base,
+            &zero_eval_collision_records(),
+            &basis_path,
+            &["dag".to_string(), "src/v2".to_string()],
+        ));
+        let body = fs::read_to_string(base.join("floor-witness-row-cost-drift-receipt.tsv")).unwrap();
+        let skipped = body
+            .lines()
+            .find(|l| l.contains("never_executed_at_all"))
+            .expect("skipped row present — never silently dropped");
+
+        // The discriminating assertion: it goes RED if the comparator ever judges this row.
+        assert!(
+            skipped.contains("\tObservationAbsent\t"),
+            "an unexecuted row must refuse a verdict: {skipped}"
+        );
+        assert!(
+            !skipped.contains("WithinBasis"),
+            "an unexecuted row must never read as having met its basis: {skipped}"
+        );
+        assert!(
+            skipped.contains(&format!("\t{UNMEASURED_CELL}\t")),
+            "observed column must report absence, not 0: {skipped}"
         );
         let _ = fs::remove_dir_all(&base);
     }
