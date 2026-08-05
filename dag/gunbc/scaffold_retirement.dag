@@ -931,27 +931,6 @@ fn pilot_population_fully_accounted() -> Bool {
   all(pilot_scaffold_sites(), s => pilot_site_has_binding_or_exclusion(site: s))
 }
 
-fn first_tombstone_without_successor() -> RoadmapNodeIdentity? {
-  fold(
-    roadmap_tombstoned_identities(),
-    init: Absent,
-    f: fn(acc, row) {
-      match acc {
-        Present { value: _ } => acc
-        Absent =>
-          match row {
-            ActiveIdentity { identity: _, slug: _ } => Absent
-            TombstonedIdentity { identity, former_slug: _, superseded_by } =>
-              match superseded_by {
-                Absent => Present { value: identity }
-                Present { value: _ } => Absent
-              }
-          }
-      }
-    }
-  )
-}
-
 fn tombstoned_binding_refuses_without_successor(binding: ProposedScaffoldRetirementBinding) -> Bool {
   match admit_obligation_identity(identity: binding.obligation) {
     ObligationTombstonedWithoutSuccessor { identity: _ } => false
