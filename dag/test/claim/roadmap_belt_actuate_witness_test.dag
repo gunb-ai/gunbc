@@ -86,6 +86,7 @@ import gunbc.roadmap_belt_actuate {
   VerifyRecorded,
   VerifyWriteFailed,
   VerifyEvidenceUnreadable,
+  VerifyRefused,
   belt_dispatch_node_for_instance,
   belt_stop_node_for_instance,
   BeltStopResult, StopDisabled,
@@ -896,6 +897,7 @@ test fn verify_without_observable_subject_defers_instead_of_rerunning() -> Bool 
         && (string_contains(s: reason, pattern: "exact head")
             || string_contains(s: reason, pattern: "no node"))
     VerifyEvidenceUnreadable { node_id: _, detail: _ } => false
+    VerifyRefused { node_id: _, cause: _ } => false
     VerifyRecorded { node_id: _, verdict_key: _, detail: _ } => false
     VerifyWriteFailed { node_id: _, detail: _ } => false
   }
@@ -945,6 +947,7 @@ test fn agent_incomplete_attempt_defers_verification() -> Bool {
     VerifyDeferred { node_id: _, reason } =>
       string_contains(s: reason, pattern: "agent obligation is not satisfied")
     VerifyEvidenceUnreadable { node_id: _, detail: _ } => false
+    VerifyRefused { node_id: _, cause: _ } => false
     VerifyRecorded { node_id: _, verdict_key: _, detail: _ } => false
     VerifyWriteFailed { node_id: _, detail: _ } => false
   }
