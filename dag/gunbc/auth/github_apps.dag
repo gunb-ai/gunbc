@@ -10,6 +10,12 @@ import extdeps.github.app {
   GitHubAppInstallationId,
   GitHubAppInstallation,
   GitHubAppPermission,
+  ObservedGitHubPermission,
+  ObservedGitHubPermissionName,
+  observed_access_for,
+  observed_permission_name,
+  first_duplicated_observed_permission,
+  as_observed_permission,
   GitHubPermissionAxis,
   GitHubAppPermissionAccess,
   AppAccessRead,
@@ -90,6 +96,7 @@ type ObservedGitHubAppSigner {
 
 type SignerCustody
   = SignerCustodyObserved { signer: ObservedGitHubAppSigner }
+  | SignerMaterialAvailabilityUnobserved { app: DeclaredGitHubApp }
   | SignerMaterialAvailableForImport { source: SecretRef }
   | SignerKeyGenerationRequired { app: DeclaredGitHubApp }
   | SignerReadbackFailed { detail: NonEmptyStr }
@@ -104,7 +111,7 @@ fn app_key_settings_locator(app: DeclaredGitHubApp) -> Uri {
   }
 }
 
-data gunbai_bot_signer_custody: SignerCustody = SignerKeyGenerationRequired {
+data gunbai_bot_signer_custody: SignerCustody = SignerMaterialAvailabilityUnobserved {
   app: gunbai_bot_declared
 }
 
@@ -160,7 +167,7 @@ fn registration_missing_permissions(
 }
 
 fn installation_holds(installation: GitHubAppInstallation, required: GitHubAppPermission) -> Bool {
-  match permission_access_in(perms: installation.permissions, name: required.name) {
+  match observed_access_for(perms: installation.permissions, axis: required.name) {
     Absent => false
     Present { value: held } => permission_access_at_least(held: held, requested: required.access)
   }
@@ -187,10 +194,11 @@ fn registration_permission_rows(registration: ObservedAppRegistration) -> List<G
   }
 }
 
-fn installation_permission_rows(observed: ObservedInstallation) -> List<GitHubAppPermission> {
+fn installation_duplicate_observed_name(observed: ObservedInstallation) -> ObservedGitHubPermissionName? {
   match observed {
-    InstallationReadbackUnavailable { cause: _ } => []
-    InstallationReadback { installation } => installation.permissions
+    InstallationReadbackUnavailable { cause: _ } => none
+    InstallationReadback { installation } =>
+      first_duplicated_observed_permission(perms: installation.permissions)
   }
 }
 
@@ -198,13 +206,12 @@ fn first_duplicate_permission_name(
   registration: ObservedAppRegistration,
   observed: ObservedInstallation,
   required: List<GitHubAppPermission>
-) -> GitHubPermissionAxis? {
+) -> ObservedGitHubPermissionName? {
   let candidates = [
     required,
-    registration_permission_rows(registration: registration),
-    installation_permission_rows(observed: observed)
+    registration_permission_rows(registration: registration)
   ]
-  fold_list(
+  let authored_duplicate = fold_list(
     xs: candidates,
     empty: none,
     cons: fn(found, perms) {
@@ -214,6 +221,10 @@ fn first_duplicate_permission_name(
       }
     }
   )
+  match authored_duplicate {
+    Present { value: axis } => Present { value: observed_permission_name(axis: axis) }
+    Absent => installation_duplicate_observed_name(observed: observed)
+  }
 }
 
 fn app_control_plane_state(
@@ -250,6 +261,8 @@ fn sealed_control_plane_state(
   reason: NonEmptyStr
 ) -> GitHubAppControlPlaneState {
   match custody {
+    SignerMaterialAvailabilityUnobserved { app: _ } =>
+      SignerCustodyUnresolved { app: app, custody: custody }
     SignerMaterialAvailableForImport { source: _ } =>
       SignerCustodyUnresolved { app: app, custody: custody }
     SignerKeyGenerationRequired { app: _ } =>
@@ -325,7 +338,8 @@ type ActionOwner
   | OperatorOwner
 
 type GitHubAppMachineAction
-  = ImportSignerKeyVersion { app: DeclaredGitHubApp, source: SecretRef }
+  = DiscoverSignerMaterial { app: DeclaredGitHubApp }
+  | ImportSignerKeyVersion { app: DeclaredGitHubApp, source: SecretRef }
   | ReReadSignerCustody { app: DeclaredGitHubApp }
   | ReadBackAppRegistration { app: DeclaredGitHubApp }
   | ReadBackInstallation { app: DeclaredGitHubApp }
@@ -336,20 +350,35 @@ type GitHubAppOperatorAction
   | AcceptInstallationPermissions
   | GenerateAppSigningKey
 
+type ControlPlanePostcondition
+  = AppRegistrationRequestsPermissions { add: List<GitHubAppPermission> }
+  | InstallationHoldsPermissions { accept: List<GitHubAppPermission> }
+  | AppHasRegisteredSigningKey { app: DeclaredGitHubApp }
+
+type ObservationProducer
+  = ObservationProducerAbsent { required_observation: NonEmptyStr }
+  | ObservationProducerBound { producer: DeclarationRef }
+
 type GitHubAppNextAction
   = NoActionRequired
   | MachineActionRequired { action: GitHubAppMachineAction }
   | OperatorActionRequired {
       action: GitHubAppOperatorAction
       locator: Uri
-      permission_delta: List<GitHubAppPermission>
-      readback: DeclarationRef
+      postcondition: ControlPlanePostcondition
+      observation: ObservationProducer
     }
 
-data control_plane_readback_ref: DeclarationRef = DeclarationRef {
-  module_path: "gunbc.auth.github_apps",
-  decl_name: "app_control_plane_state",
-  field: WholeDeclaration
+data app_registration_observation: ObservationProducer = ObservationProducerAbsent {
+  required_observation: "GET /app installation and registration readback"
+}
+
+data installation_observation: ObservationProducer = ObservationProducerAbsent {
+  required_observation: "GET /app/installations/{installation_id}"
+}
+
+data signer_fingerprint_observation: ObservationProducer = ObservationProducerAbsent {
+  required_observation: "GET /app registered public key fingerprints"
 }
 
 fn control_plane_next_action(state: GitHubAppControlPlaneState) -> GitHubAppNextAction {
@@ -368,9 +397,11 @@ fn control_plane_next_action(state: GitHubAppControlPlaneState) -> GitHubAppNext
         OperatorActionRequired {
           action: GenerateAppSigningKey,
           locator: app_key_settings_locator(app: key_app),
-          permission_delta: [],
-          readback: control_plane_readback_ref
+          postcondition: AppHasRegisteredSigningKey { app: key_app },
+          observation: signer_fingerprint_observation
         }
+      SignerMaterialAvailabilityUnobserved { app: unobserved_app } =>
+        MachineActionRequired { action: DiscoverSignerMaterial { app: unobserved_app } }
     }
     AppRegistrationUnobserved { app } =>
       MachineActionRequired { action: ReadBackAppRegistration { app: app } }
@@ -380,15 +411,15 @@ fn control_plane_next_action(state: GitHubAppControlPlaneState) -> GitHubAppNext
       OperatorActionRequired {
         action: ApplyAppPermissionChange,
         locator: request.settings_locator,
-        permission_delta: request.add,
-        readback: control_plane_readback_ref
+        postcondition: AppRegistrationRequestsPermissions { add: request.add },
+        observation: app_registration_observation
       }
     InstallationPermissionApprovalPending { request } =>
       OperatorActionRequired {
         action: AcceptInstallationPermissions,
         locator: request.installation_locator,
-        permission_delta: request.accept,
-        readback: control_plane_readback_ref
+        postcondition: InstallationHoldsPermissions { accept: request.accept },
+        observation: installation_observation
       }
   }
 }
@@ -397,7 +428,7 @@ fn next_action_owner(action: GitHubAppNextAction) -> ActionOwner {
   match action {
     NoActionRequired => MachineOwner
     MachineActionRequired { action: _ } => MachineOwner
-    OperatorActionRequired { action: _, locator: _, permission_delta: _, readback: _ } => OperatorOwner
+    OperatorActionRequired { action: _, locator: _, postcondition: _, observation: _ } => OperatorOwner
   }
 }
 

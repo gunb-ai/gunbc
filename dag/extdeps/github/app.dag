@@ -45,7 +45,6 @@ type GitHubAppRegistration {
 type GitHubAppPermissionAccess
   = AppAccessRead
   | AppAccessWrite
-  | AppAccessAdmin
 
 type GitHubPermissionAxis
   = ActionsAxis
@@ -124,11 +123,63 @@ type GitHubAppPermission {
   access: GitHubAppPermissionAccess
 }
 
+type ObservedGitHubPermissionName { wire_name: NonEmptyStr }
+
+type ObservedGitHubPermission {
+  name: ObservedGitHubPermissionName
+  access: GitHubAppPermissionAccess
+}
+
+fn observed_permission_name(axis: GitHubPermissionAxis) -> ObservedGitHubPermissionName {
+  ObservedGitHubPermissionName { wire_name: permission_axis_wire_name(axis: axis) }
+}
+
+fn as_observed_permission(p: GitHubAppPermission) -> ObservedGitHubPermission {
+  ObservedGitHubPermission { name: observed_permission_name(axis: p.name), access: p.access }
+}
+
+fn observed_permission_name_eq(a: ObservedGitHubPermissionName, b: ObservedGitHubPermissionName) -> Bool {
+  a.wire_name == b.wire_name
+}
+
+fn observed_access_for(
+  perms: List<ObservedGitHubPermission>,
+  axis: GitHubPermissionAxis
+) -> GitHubAppPermissionAccess? {
+  let wanted = observed_permission_name(axis: axis)
+  fold(perms, init: none, f: fn(found, p) {
+    match found {
+      Present { value: v } => Present { value: v }
+      Absent => if observed_permission_name_eq(a: p.name, b: wanted) { Present { value: p.access } } else { none }
+    }
+  })
+}
+
+fn observed_permission_occurrences(
+  perms: List<ObservedGitHubPermission>,
+  name: ObservedGitHubPermissionName
+) -> Int {
+  fold(perms, init: 0, f: fn(n, p) { if observed_permission_name_eq(a: p.name, b: name) { n + 1 } else { n } })
+}
+
+fn first_duplicated_observed_permission(perms: List<ObservedGitHubPermission>) -> ObservedGitHubPermissionName? {
+  fold(perms, init: none, f: fn(found, p) {
+    match found {
+      Present { value: v } => Present { value: v }
+      Absent =>
+        if observed_permission_occurrences(perms: perms, name: p.name) > 1 {
+          Present { value: p.name }
+        } else {
+          none
+        }
+    }
+  })
+}
+
 fn permission_access_rank(access: GitHubAppPermissionAccess) -> Int {
   match access {
     AppAccessRead => 1
     AppAccessWrite => 2
-    AppAccessAdmin => 3
   }
 }
 
@@ -196,7 +247,7 @@ type GitHubAppInstallation {
   html_url: Uri
   account: GitHubUser
   repository_selection: GitHubAppRepositorySelectionMode
-  permissions: List<GitHubAppPermission>
+  permissions: List<ObservedGitHubPermission>
   subscribed_events: List<NonEmptyStr>
 }
 
@@ -217,9 +268,18 @@ type GitHubInstallationTokenRequest {
 
 fn requested_permissions(narrowing: GitHubInstallationPermissionNarrowing, installation: GitHubAppInstallation) -> List<GitHubAppPermission> {
   match narrowing {
-    PermissionNarrowingOmitted => installation.permissions
+    PermissionNarrowingOmitted => authored_subset_of(perms: installation.permissions)
     SelectedPermissions { permissions } => permissions
   }
+}
+
+fn authored_subset_of(perms: List<ObservedGitHubPermission>) -> List<GitHubAppPermission> {
+  fold(perms, init: [], f: fn(acc, p) {
+    match permission_axis_from_wire(name: p.name.wire_name) {
+      Absent => acc
+      Present { value: axis } => append(acc, items: [GitHubAppPermission { name: axis, access: p.access }])
+    }
+  })
 }
 
 fn permission_access_in(
@@ -246,7 +306,7 @@ fn permission_narrowing_is_within(
     xs: requested_permissions(narrowing: narrowing, installation: installation),
     empty: true,
     cons: fn(ok, r) {
-      ok && match permission_access_in(perms: installation.permissions, name: r.name) {
+      ok && match observed_access_for(perms: installation.permissions, axis: r.name) {
         Absent => false
         Present { value: held } => permission_access_at_least(held: held, requested: r.access)
       }

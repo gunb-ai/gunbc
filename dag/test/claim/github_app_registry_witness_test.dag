@@ -471,8 +471,7 @@ test fn witness_permission_access_order_is_asymmetric() -> Bool {
   permission_access_at_least(held: AppAccessWrite, requested: AppAccessRead)
     && permission_access_at_least(held: AppAccessRead, requested: AppAccessRead)
     && !permission_access_at_least(held: AppAccessRead, requested: AppAccessWrite)
-    && permission_access_at_least(held: AppAccessAdmin, requested: AppAccessWrite)
-    && !permission_access_at_least(held: AppAccessWrite, requested: AppAccessAdmin)
+
 }
 
 test fn witness_absent_permission_is_absent_not_read() -> Bool {

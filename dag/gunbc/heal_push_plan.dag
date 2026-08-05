@@ -27,7 +27,10 @@ import gunbc.auth.github_credential {
   PushBindingResolution,
   PushBindingResolved,
   PushCredentialBindingMissing,
-  PushCredentialLeaseUnresolved
+  PushCredentialLeaseUnresolved,
+  PushBindingStepKindUnsupported,
+  PushBindingActionMismatch,
+  PushBindingInputObservationRefused
 }
 import gunbc.ci_heal_credential { live_heal_push_binding_resolution, live_heal_control_plane }
 import gunbc.generated_artifact {
@@ -71,6 +74,9 @@ type HealPushRefusalCause
   | ActionsJobCredentialDeclaredAccessInvalid
   | PushBindingMissingOnCheckoutStep
   | PushBindingLeaseUnresolved
+  | PushBindingStepKindNotSupported
+  | PushBindingActionNotCheckout
+  | PushBindingInputObservationDuplicated
   | ManagedInstallationGrantUnobserved
   | ManagedCredentialSubjectMismatch
 
@@ -89,6 +95,9 @@ fn heal_push_refusal_cause_token(cause: HealPushRefusalCause) -> String {
     ActionsJobCredentialDeclaredAccessInvalid => "ActionsJobCredentialDeclaredAccessInvalid"
     PushBindingMissingOnCheckoutStep => "PushBindingMissingOnCheckoutStep"
     PushBindingLeaseUnresolved => "PushBindingLeaseUnresolved"
+    PushBindingStepKindNotSupported => "PushBindingStepKindNotSupported"
+    PushBindingActionNotCheckout => "PushBindingActionNotCheckout"
+    PushBindingInputObservationDuplicated => "PushBindingInputObservationDuplicated"
     ManagedInstallationGrantUnobserved => "ManagedInstallationGrantUnobserved"
     ManagedCredentialSubjectMismatch => "ManagedCredentialSubjectMismatch"
   }
@@ -184,6 +193,12 @@ fn plan_heal_push_from_binding(
       binding_refused_plan(artifacts: artifacts, cause: PushBindingMissingOnCheckoutStep)
     PushCredentialLeaseUnresolved { checkout_step: _ } =>
       binding_refused_plan(artifacts: artifacts, cause: PushBindingLeaseUnresolved)
+    PushBindingStepKindUnsupported { checkout_step: _ } =>
+      binding_refused_plan(artifacts: artifacts, cause: PushBindingStepKindNotSupported)
+    PushBindingActionMismatch { checkout_step: _ } =>
+      binding_refused_plan(artifacts: artifacts, cause: PushBindingActionNotCheckout)
+    PushBindingInputObservationRefused { checkout_step: _, duplicated_input: _ } =>
+      binding_refused_plan(artifacts: artifacts, cause: PushBindingInputObservationDuplicated)
   }
 }
 

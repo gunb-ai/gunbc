@@ -105,17 +105,14 @@ fn actions_access_set_admits(set: ActionsAccessSet, access: GitHubAppPermissionA
     ActionsAccessReadOrWrite => match access {
       AppAccessRead => true
       AppAccessWrite => true
-      AppAccessAdmin => false
     }
     ActionsAccessWriteOnly => match access {
       AppAccessRead => false
       AppAccessWrite => true
-      AppAccessAdmin => false
     }
     ActionsAccessReadOnly => match access {
       AppAccessRead => true
       AppAccessWrite => false
-      AppAccessAdmin => false
     }
   }
 }
@@ -279,11 +276,6 @@ fn resolve_declared_access(
     match declared {
       AppAccessRead => ActionsGrantResolved { access: AppAccessRead }
       AppAccessWrite => resolve_declared_write(grant: grant)
-      AppAccessAdmin => ActionsGrantDeclaredAccessInvalid {
-        axis: axis,
-        declared: declared,
-        allowed: axis_allowed_actions_access(axis: axis)
-      }
     }
   }
 }
