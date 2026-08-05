@@ -221,10 +221,10 @@ data two_decl_source: String = "module rt\n\n// about alpha\ndata alpha: String 
 
 test fn w_each_declaration_keeps_its_own_prose() -> Bool {
   admitted_row_count(source: two_decl_source) == 2 &&
-    rendered_source_for(source: two_decl_source, subject_name: "alpha", decl: declaration_text)
-      == "module rt\n\n// about alpha\ndata alpha: String = \"a\"\n" &&
-    rendered_source_for(source: two_decl_source, subject_name: "beta", decl: declaration_text)
-      == "module rt\n\n// about beta\ndata alpha: String = \"a\"\n"
+    rendered_source_for(source: two_decl_source, subject_name: "alpha", decl: declaration_text) ==
+      "module rt\n\n// about alpha\ndata alpha: String = \"a\"\n" &&
+    rendered_source_for(source: two_decl_source, subject_name: "beta", decl: declaration_text) ==
+      "module rt\n\n// about beta\ndata alpha: String = \"a\"\n"
 }
 
 data mixed_subject_note: String = "Construction refuses what the renderer's signature no longer has to trust. subject_annotation_blocks_for over a two-declaration graph yields only that subject's rows, and a subject carrying no rows yields Absent rather than an empty block list — so `render both declarations' prose above the first` has no value to construct, rather than being a misuse a caller must remember to avoid."

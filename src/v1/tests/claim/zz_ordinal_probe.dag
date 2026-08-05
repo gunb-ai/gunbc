@@ -1,0 +1,28 @@
+module v1.tests.claim.zz_ordinal_probe
+
+import std.types { Bool, Int, String }
+import std.occurrence_identity { OccurrenceId, OccurrenceTransport }
+import v1.compiler.tokenize { tokenize_artifact }
+import v1.compiler.parse { parse_with_table }
+import v1.std.core { build_newline_index, empty_intern_table, NewlineIndex }
+
+data a_src: String = "module rt\n\n// shared text\ndata alpha: String = \"a\"\n"
+data b_src: String = "module rt\n\n// shared text\ndata beta: String = \"a\"\n"
+
+fn transport_of(source: String) -> OccurrenceTransport {
+  let artifact = tokenize_artifact(source: source, file: "rt.dag")
+  parse_with_table(
+    tokens: artifact.tokens,
+    source_indices: map_insert(empty_map(), "rt.dag", build_newline_index(file: "rt.dag", source: source)),
+    intern_table: empty_intern_table(),
+  ).occurrence_transport
+}
+
+fn id_of(source: String, name: String) -> Int {
+  fold(transport_of(source: source).index.entries, init: 0 - 1,
+    f: (acc, e) => if e.projection.authored_name == name { e.projection.occurrence.value } else { acc })
+}
+
+test fn w_ordinals_collide() -> Bool {
+  id_of(source: a_src, name: "alpha") == id_of(source: b_src, name: "beta")
+}
