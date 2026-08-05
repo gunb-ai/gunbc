@@ -581,10 +581,7 @@ fn d4_wire_contract_labels() -> List<String> {
     "node_not_found",
     "already_done_signed_off",
     "observe_refused",
-<<<<<<< HEAD
     "authority_refused",
-=======
->>>>>>> e70f481fe34 (Retract false turn-started surface to account-ready standing.)
     "spawn_failed",
     "account_ready",
     "login_required",
