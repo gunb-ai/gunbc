@@ -2565,7 +2565,10 @@ fn run_batch_unit(
                 &falsifier_self_host_wet_budgets.hermetic_known_red_entry_paths,
                 &falsifier_self_host_wet_budgets.known_red_entry_paths,
             );
-            let execution_authority_source_roots = roots.clone();
+            // Narrow subject envelopes (dag+src/v1) still inherit the enclosing walk's
+            // source roots for executor-owned machinery — same contract as
+            // ScopedWitnessBatch.execution_authority InheritedWalkSourceRoots.
+            let execution_authority_source_roots = source_roots.clone();
             vec![run_discovery_batch_node(
                 roots,
                 execution_authority_source_roots,

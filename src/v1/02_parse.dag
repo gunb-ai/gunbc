@@ -1112,6 +1112,8 @@ fn stamp_parsed_inferred(
   }
 }
 
+data parsed_occurrence_role_expr_call_exclusion_note: String = "Occurrence transport for ExprCall (namespace-reference-derived-closure): make_call_expr keeps the callee identifier on the call node's authored_name when the callee is a bare ExprVar — children are argument expressions only. Named bare calls therefore record CallableOccurrence on the call node itself; only complex-callee calls (authored_name \"<expr>\") stay ParsedOccurrenceUnclassified. ExprCall children are never callee-reference carriers — stamp them all Unclassified so the first argument is not mis-tagged as the callee."
+
 fn parsed_occurrence_role_for_node(
   node: Node,
   requested: ParsedOccurrenceRole
@@ -1128,7 +1130,11 @@ fn parsed_occurrence_role_for_node(
         ExprMethodCall { method_semantics: _ } =>
           ParsedOccurrenceReference { category: MethodOccurrence }
         ExprCall { call_semantics: _, descent_evidence: _ } =>
-          ParsedOccurrenceReference { category: CallableOccurrence }
+          match node.name == "<expr>" {
+            true => ParsedOccurrenceUnclassified
+            false =>
+              ParsedOccurrenceReference { category: CallableOccurrence }
+          }
         NoExprData =>
           match node.body {
             Present { value: _ } =>
@@ -1230,12 +1236,11 @@ fn stamp_parsed_node_children(
 ) -> ParsedNodeListStampResult {
   match node.expr_data {
     ExprCall { call_semantics: _, descent_evidence: _ } =>
-      stamp_parsed_node_list_with_head_role(
+      stamp_parsed_node_list(
         nodes: node.children,
         ancestors: ancestors,
         ctx: ctx,
-        head_role: ParsedOccurrenceReference { category: CallableOccurrence },
-        tail_role: ParsedOccurrenceUnclassified
+        role: ParsedOccurrenceUnclassified
       )
     ExprLet =>
       stamp_parsed_node_list(

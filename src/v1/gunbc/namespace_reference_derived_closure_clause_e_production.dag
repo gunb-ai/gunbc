@@ -1,0 +1,96 @@
+module v1.gunbc.namespace_reference_derived_closure_clause_e_production
+
+import std.types { String, List, FilePath }
+import std.occurrence_binding_candidates {
+  AssembledCrossFileBindingClosureReady,
+  ReferenceDerivedClauseEProduction,
+  ReferenceDerivedClauseEProductionRefused,
+  ReferenceDerivedClauseEProductionRefusal,
+  ReferenceDerivedClauseEProductionAssemblyRefused,
+  ReferenceDerivedClauseEProductionConsumerParseRefused,
+  ReferenceDerivedClauseEProductionProviderParseRefused,
+  reference_derived_clause_e_production_from_assembled_closure,
+}
+import v1.gunbc.occurrence_binding_parser_walk {
+  parse_cross_file_binding_closure,
+  CrossFileBindingSourceRow,
+  ParsedCrossFileBindingClosureReady,
+  ParsedCrossFileBindingClosureRefused,
+  ParsedCrossFileBindingClosureConsumerParseRefused,
+  ParsedCrossFileBindingClosureProviderParseRefused,
+  ParsedCrossFileBindingClosureAssemblyRefused,
+  ParsedOccurrenceBindingModulePathAbsent,
+}
+
+data namespace_reference_derived_closure_clause_e_production_note: String = "N3-B clause-(e) parser-embedded scaffold seam — NOT ordinary loaded compilation closure production (B2). Literal app/consumer.dag and app/provider.dag sources are baked in for mechanism witnesses only; the _production suffix names the ReferenceDerivedClauseEProduction carrier entry point, not a production-grade observation source. Assessment lives in gunbc.namespace_cross_file_provenance_contract; row closure stays RED until B2. Dissolve: split or rename when ordinary loaded compilation closure lands."
+
+data namespace_reference_derived_closure_clause_e_parser_embedded_scaffold_note: String = "SCAFFOLD marker for review rung honesty: parser-embedded sources only. Do not treat this module as establishing row closure or B2 production."
+
+fn namespace_reference_derived_closure_clause_e_consumer_source() -> CrossFileBindingSourceRow {
+  CrossFileBindingSourceRow {
+    file: "app/consumer.dag",
+    source: "module app.consumer\n\nfn greet() -> Int {\n  helper()\n}\n\nfn greet_again() -> Int {\n  helper()\n}\n",
+  }
+}
+
+fn namespace_reference_derived_closure_clause_e_provider_sources() -> List<CrossFileBindingSourceRow> {
+  [
+    CrossFileBindingSourceRow {
+      file: "app/provider.dag",
+      source: "module app.provider\n\nfn helper() -> Int {\n  0\n}\n",
+    },
+  ]
+}
+
+fn reference_derived_clause_e_production_refusal_from_parsed_closure(
+  refusal: ParsedCrossFileBindingClosureRefusal,
+) -> ReferenceDerivedClauseEProductionRefusal {
+  match refusal {
+    ParsedCrossFileBindingClosureConsumerParseRefused { refusal: parse_refusal } =>
+      match parse_refusal {
+        ParsedOccurrenceBindingModulePathAbsent { file: file } =>
+          ReferenceDerivedClauseEProductionConsumerParseRefused {
+            file: file as FilePath,
+          },
+      }
+    ParsedCrossFileBindingClosureProviderParseRefused { refusal: parse_refusal } =>
+      match parse_refusal {
+        ParsedOccurrenceBindingModulePathAbsent { file: file } =>
+          ReferenceDerivedClauseEProductionProviderParseRefused {
+            file: file as FilePath,
+          },
+      }
+    ParsedCrossFileBindingClosureAssemblyRefused { refusal: assembly_refusal } =>
+      ReferenceDerivedClauseEProductionAssemblyRefused {
+        refusal: assembly_refusal,
+      },
+  }
+}
+
+fn namespace_reference_derived_closure_clause_e_production() -> ReferenceDerivedClauseEProduction {
+  match parse_cross_file_binding_closure(
+    consumer: namespace_reference_derived_closure_clause_e_consumer_source(),
+    providers: namespace_reference_derived_closure_clause_e_provider_sources(),
+  ) {
+    ParsedCrossFileBindingClosureReady {
+      transport: transport,
+      inputs: inputs,
+      module_files: module_files,
+      consumer_file: consumer_file,
+    } =>
+      reference_derived_clause_e_production_from_assembled_closure(
+        closure: AssembledCrossFileBindingClosureReady {
+          transport: transport,
+          inputs: inputs,
+          module_files: module_files,
+          consumer_file: consumer_file as FilePath,
+        },
+      )
+    ParsedCrossFileBindingClosureRefused { refusal: refusal } =>
+      ReferenceDerivedClauseEProductionRefused {
+        refusal: reference_derived_clause_e_production_refusal_from_parsed_closure(
+          refusal: refusal,
+        ),
+      }
+  }
+}

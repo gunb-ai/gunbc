@@ -3,6 +3,7 @@ module v1.gunbc.namespace_reference_derived_closure_production_observations
 import std.occurrence_identity { OccurrenceTransport, OccurrenceId }
 import std.occurrence_binding_candidates {
   OccurrenceBindingCandidateInputs,
+  ModuleLocalMemberExposure,
 }
 import std.reference_binding_observation {
   ReferenceBindingObservation,
@@ -26,6 +27,7 @@ import v1.gunbc.occurrence_binding_parser_walk {
   ParsedOccurrenceBindingSourceRefused,
   parse_authored_occurrence_binding_source,
   occurrence_binding_inputs_from_transport,
+  empty_intern_table,
   reference_named,
   declarations_named,
   references_named,
@@ -43,14 +45,19 @@ type NrdfcParsed
   | NrdfcParsedRefused
 
 fn nrdfc_parse(file: String, source: String) -> NrdfcParsed {
-  match parse_authored_occurrence_binding_source(file: file, source: source) {
-    ParsedOccurrenceBindingSourceRefused => NrdfcParsedRefused
-    ParsedOccurrenceBindingSourceReady { transport: transport, module_path: module_path } =>
+  match parse_authored_occurrence_binding_source(
+    file: file,
+    source: source,
+    intern_table: empty_intern_table(),
+  ) {
+    ParsedOccurrenceBindingSourceRefused { refusal: _ } => NrdfcParsedRefused
+    ParsedOccurrenceBindingSourceReady { transport: transport, module_path: module_path, intern_table: _ } =>
       NrdfcParsedReady {
         transport: transport,
         inputs: occurrence_binding_inputs_from_transport(
           module_path: module_path,
           transport: transport,
+          exposure_grounding: ModuleLocalMemberExposure,
         ),
       }
   }

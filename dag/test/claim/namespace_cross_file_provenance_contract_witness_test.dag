@@ -1,0 +1,367 @@
+module test.claim.namespace_cross_file_provenance_contract_witness_test
+
+import gunbc.namespace_cross_file_provenance_contract {
+  assess_controlled_two_mention_provenance_projection,
+  NamespaceCrossFileProvenanceEstablished,
+  NamespaceCrossFileProvenanceRefused,
+  BindingProvenanceCountWrong,
+  FileDependencyCountWrong,
+  DeclarationOccurrencesNotShared,
+  ReferenceOccurrencesNotDistinct,
+  ProvenanceProjectionInconsistent,
+  BoundPopulationInconsistentWithProvenance,
+  ProjectionBindingRefused,
+}
+import std.occurrence_identity { OccurrenceId }
+import std.occurrence_binding_candidates {
+  ReferenceDerivedClauseEProduction,
+  ReferenceDerivedClauseEProductionReady,
+  ReferenceDerivedDependencyProjectionReady,
+  CrossFileBindingProvenance,
+  DirectFileDependency,
+  BoundReferenceProvider,
+  AllReferencesBound,
+  ReferencePopulationRefused,
+  ReferenceBindingProjectionUnbound,
+}
+import std.types { Bool, FilePath, List }
+
+data namespace_cross_file_provenance_contract_witness_note: String = "Planted controls for namespace_cross_file_provenance_contract assess_controlled_two_mention_provenance_projection. Each refusal variant is exercised on a hand-built ReferenceDerivedClauseEProductionReady carrier using the full projection fields."
+
+fn contract_witness_consumer_file() -> FilePath {
+  "app/consumer.dag"
+}
+
+fn contract_witness_provider_file() -> FilePath {
+  "app/provider.dag"
+}
+
+fn contract_witness_ref_one() -> OccurrenceId {
+  OccurrenceId { value: 200 }
+}
+
+fn contract_witness_ref_two() -> OccurrenceId {
+  OccurrenceId { value: 201 }
+}
+
+fn contract_witness_declaration() -> OccurrenceId {
+  OccurrenceId { value: 300 }
+}
+
+fn contract_witness_declaration_alt() -> OccurrenceId {
+  OccurrenceId { value: 301 }
+}
+
+fn contract_witness_provenance(
+  reference_occurrence: OccurrenceId,
+  declaration_occurrence: OccurrenceId,
+) -> CrossFileBindingProvenance {
+  CrossFileBindingProvenance {
+    reference_occurrence: reference_occurrence,
+    declaration_occurrence: declaration_occurrence,
+    consumer_file: contract_witness_consumer_file(),
+    provider_file: contract_witness_provider_file(),
+  }
+}
+
+fn contract_witness_provider(
+  reference_occurrence: OccurrenceId,
+  declaration_occurrence: OccurrenceId,
+) -> BoundReferenceProvider {
+  BoundReferenceProvider {
+    reference_occurrence: reference_occurrence,
+    declaration_occurrence: declaration_occurrence,
+    consumer_module: "app.consumer",
+    provider_module: "app.provider",
+  }
+}
+
+fn contract_witness_file_dependency() -> DirectFileDependency {
+  DirectFileDependency {
+    consumer_file: contract_witness_consumer_file(),
+    provider_file: contract_witness_provider_file(),
+  }
+}
+
+fn contract_witness_production(
+  provenances: List<CrossFileBindingProvenance>,
+  dependencies: List<DirectFileDependency>,
+  providers: List<BoundReferenceProvider>,
+) -> ReferenceDerivedClauseEProduction {
+  ReferenceDerivedClauseEProductionReady {
+    projection: ReferenceDerivedDependencyProjectionReady {
+      binding_provenance: provenances,
+      file_dependencies: dependencies,
+      bound_population: AllReferencesBound { providers: providers },
+    },
+    consumer_file: contract_witness_consumer_file(),
+  }
+}
+
+fn contract_witness_controlled_production() -> ReferenceDerivedClauseEProduction {
+  contract_witness_production(
+    provenances: [
+      contract_witness_provenance(
+        reference_occurrence: contract_witness_ref_one(),
+        declaration_occurrence: contract_witness_declaration(),
+      ),
+      contract_witness_provenance(
+        reference_occurrence: contract_witness_ref_two(),
+        declaration_occurrence: contract_witness_declaration(),
+      ),
+    ],
+    dependencies: [contract_witness_file_dependency()],
+    providers: [
+      contract_witness_provider(
+        reference_occurrence: contract_witness_ref_one(),
+        declaration_occurrence: contract_witness_declaration(),
+      ),
+      contract_witness_provider(
+        reference_occurrence: contract_witness_ref_two(),
+        declaration_occurrence: contract_witness_declaration(),
+      ),
+    ],
+  )
+}
+
+test fn witness_substrate_establishes_controlled_scenario() -> Bool {
+  match assess_controlled_two_mention_provenance_projection(
+    production: contract_witness_controlled_production(),
+  ) {
+    NamespaceCrossFileProvenanceEstablished => true
+    _ => false
+  }
+}
+
+test fn witness_substrate_refuses_one_mention_only() -> Bool {
+  match assess_controlled_two_mention_provenance_projection(
+    production: contract_witness_production(
+      provenances: [
+        contract_witness_provenance(
+          reference_occurrence: contract_witness_ref_one(),
+          declaration_occurrence: contract_witness_declaration(),
+        ),
+      ],
+      dependencies: [contract_witness_file_dependency()],
+      providers: [
+        contract_witness_provider(
+          reference_occurrence: contract_witness_ref_one(),
+          declaration_occurrence: contract_witness_declaration(),
+        ),
+      ],
+    ),
+  ) {
+    NamespaceCrossFileProvenanceRefused {
+      failure: BindingProvenanceCountWrong { expected: 2, found: 1 },
+    } => true
+    _ => false
+  }
+}
+
+test fn witness_substrate_refuses_two_declarations_same_provider_file() -> Bool {
+  match assess_controlled_two_mention_provenance_projection(
+    production: contract_witness_production(
+      provenances: [
+        contract_witness_provenance(
+          reference_occurrence: contract_witness_ref_one(),
+          declaration_occurrence: contract_witness_declaration(),
+        ),
+        contract_witness_provenance(
+          reference_occurrence: contract_witness_ref_two(),
+          declaration_occurrence: contract_witness_declaration_alt(),
+        ),
+      ],
+      dependencies: [contract_witness_file_dependency()],
+      providers: [
+        contract_witness_provider(
+          reference_occurrence: contract_witness_ref_one(),
+          declaration_occurrence: contract_witness_declaration(),
+        ),
+        contract_witness_provider(
+          reference_occurrence: contract_witness_ref_two(),
+          declaration_occurrence: contract_witness_declaration_alt(),
+        ),
+      ],
+    ),
+  ) {
+    NamespaceCrossFileProvenanceRefused {
+      failure: DeclarationOccurrencesNotShared,
+    } => true
+    _ => false
+  }
+}
+
+test fn witness_substrate_refuses_duplicate_reference_occurrence() -> Bool {
+  match assess_controlled_two_mention_provenance_projection(
+    production: contract_witness_production(
+      provenances: [
+        contract_witness_provenance(
+          reference_occurrence: contract_witness_ref_one(),
+          declaration_occurrence: contract_witness_declaration(),
+        ),
+        contract_witness_provenance(
+          reference_occurrence: contract_witness_ref_one(),
+          declaration_occurrence: contract_witness_declaration(),
+        ),
+      ],
+      dependencies: [contract_witness_file_dependency()],
+      providers: [
+        contract_witness_provider(
+          reference_occurrence: contract_witness_ref_one(),
+          declaration_occurrence: contract_witness_declaration(),
+        ),
+        contract_witness_provider(
+          reference_occurrence: contract_witness_ref_one(),
+          declaration_occurrence: contract_witness_declaration(),
+        ),
+      ],
+    ),
+  ) {
+    NamespaceCrossFileProvenanceRefused {
+      failure: ReferenceOccurrencesNotDistinct,
+    } => true
+    _ => false
+  }
+}
+
+test fn witness_substrate_refuses_two_file_dependencies() -> Bool {
+  match assess_controlled_two_mention_provenance_projection(
+    production: contract_witness_production(
+      provenances: [
+        contract_witness_provenance(
+          reference_occurrence: contract_witness_ref_one(),
+          declaration_occurrence: contract_witness_declaration(),
+        ),
+        contract_witness_provenance(
+          reference_occurrence: contract_witness_ref_two(),
+          declaration_occurrence: contract_witness_declaration(),
+        ),
+      ],
+      dependencies: [
+        contract_witness_file_dependency(),
+        DirectFileDependency {
+          consumer_file: contract_witness_consumer_file(),
+          provider_file: "app/other_provider.dag",
+        },
+      ],
+      providers: [
+        contract_witness_provider(
+          reference_occurrence: contract_witness_ref_one(),
+          declaration_occurrence: contract_witness_declaration(),
+        ),
+        contract_witness_provider(
+          reference_occurrence: contract_witness_ref_two(),
+          declaration_occurrence: contract_witness_declaration(),
+        ),
+      ],
+    ),
+  ) {
+    NamespaceCrossFileProvenanceRefused {
+      failure: FileDependencyCountWrong { expected: 1, found: 2 },
+    } => true
+    _ => false
+  }
+}
+
+test fn witness_substrate_refuses_changed_declaration_identity_in_bound_population() -> Bool {
+  match assess_controlled_two_mention_provenance_projection(
+    production: contract_witness_production(
+      provenances: [
+        contract_witness_provenance(
+          reference_occurrence: contract_witness_ref_one(),
+          declaration_occurrence: contract_witness_declaration(),
+        ),
+        contract_witness_provenance(
+          reference_occurrence: contract_witness_ref_two(),
+          declaration_occurrence: contract_witness_declaration(),
+        ),
+      ],
+      dependencies: [contract_witness_file_dependency()],
+      providers: [
+        contract_witness_provider(
+          reference_occurrence: contract_witness_ref_one(),
+          declaration_occurrence: contract_witness_declaration(),
+        ),
+        contract_witness_provider(
+          reference_occurrence: contract_witness_ref_two(),
+          declaration_occurrence: contract_witness_declaration_alt(),
+        ),
+      ],
+    ),
+  ) {
+    NamespaceCrossFileProvenanceRefused {
+      failure: BoundPopulationInconsistentWithProvenance,
+    } => true
+    _ => false
+  }
+}
+
+test fn witness_substrate_refuses_projection_inconsistent_with_bound_population() -> Bool {
+  match assess_controlled_two_mention_provenance_projection(
+    production: contract_witness_production(
+      provenances: [
+        contract_witness_provenance(
+          reference_occurrence: contract_witness_ref_one(),
+          declaration_occurrence: contract_witness_declaration(),
+        ),
+        contract_witness_provenance(
+          reference_occurrence: contract_witness_ref_two(),
+          declaration_occurrence: contract_witness_declaration(),
+        ),
+      ],
+      dependencies: [
+        DirectFileDependency {
+          consumer_file: contract_witness_consumer_file(),
+          provider_file: "app/wrong_provider.dag",
+        },
+      ],
+      providers: [
+        contract_witness_provider(
+          reference_occurrence: contract_witness_ref_one(),
+          declaration_occurrence: contract_witness_declaration(),
+        ),
+        contract_witness_provider(
+          reference_occurrence: contract_witness_ref_two(),
+          declaration_occurrence: contract_witness_declaration(),
+        ),
+      ],
+    ),
+  ) {
+    NamespaceCrossFileProvenanceRefused {
+      failure: ProvenanceProjectionInconsistent,
+    } => true
+    _ => false
+  }
+}
+
+test fn witness_substrate_refuses_reference_population_refused() -> Bool {
+  match assess_controlled_two_mention_provenance_projection(
+    production: ReferenceDerivedClauseEProductionReady {
+      projection: ReferenceDerivedDependencyProjectionReady {
+        binding_provenance: [
+          contract_witness_provenance(
+            reference_occurrence: contract_witness_ref_one(),
+            declaration_occurrence: contract_witness_declaration(),
+          ),
+          contract_witness_provenance(
+            reference_occurrence: contract_witness_ref_two(),
+            declaration_occurrence: contract_witness_declaration(),
+          ),
+        ],
+        file_dependencies: [contract_witness_file_dependency()],
+        bound_population: ReferencePopulationRefused {
+          first_failure: ReferenceBindingProjectionUnbound {
+            occurrence: OccurrenceId { value: 99 },
+          },
+          more_failures: [],
+        },
+      },
+      consumer_file: contract_witness_consumer_file(),
+    },
+  ) {
+    NamespaceCrossFileProvenanceRefused {
+      failure: ProjectionBindingRefused { population: _ },
+    } => true
+    _ => false
+  }
+}

@@ -1,0 +1,61 @@
+module v1.tests.claim.namespace_reference_derived_closure_production_witness_test
+
+import v1.gunbc.namespace_reference_derived_closure_clause_e_production {
+  namespace_reference_derived_closure_clause_e_production,
+}
+import v1.gunbc.namespace_reference_derived_closure_contract_stage0_emit_anchor {
+  namespace_reference_derived_closure_contract_stage0_emit_anchor_dissolution,
+}
+import gunbc.namespace_cross_file_provenance_contract {
+  assess_controlled_two_mention_provenance_projection,
+  namespace_cross_file_provenance_substrate_contract_holds,
+  NamespaceCrossFileProvenanceEstablished,
+}
+import std.occurrence_binding_candidates {
+  ReferenceDerivedClauseEProductionReady,
+  ReferenceDerivedDependencyProjectionReady,
+}
+import std.types { Bool }
+
+data namespace_reference_derived_closure_production_witness_note: String = "Mechanism witnesses for namespace-cross-file-provenance clause-(e) substrate. Parser-embedded sources prove the ReferenceDerivedDependencyProjection carrier through assess_controlled_two_mention_provenance_projection — two distinct binding_provenance rows, one shared declaration occurrence, one collapsed file dependency. Row closure (witness_namespace_cross_file_provenance_closing_contract_holds) assesses assess_namespace_cross_file_provenance_row_closure with ParserEmbeddedSubstrateEvidence and stays RED until B2; substrate witnesses here may green without un-quarantining the closing witness. Parent contract emit anchor: namespace_reference_derived_closure_contract_stage0_emit_anchor_dissolution."
+
+test fn witness_clause_e_production_observation_establishes_capability() -> Bool {
+  match namespace_reference_derived_closure_clause_e_production() {
+    ReferenceDerivedClauseEProductionReady {
+      projection: ReferenceDerivedDependencyProjectionReady {
+        binding_provenance: provenances,
+        file_dependencies: dependencies,
+        bound_population: _,
+      },
+      consumer_file: _,
+    } =>
+      count(provenances) == 2
+        && count(dependencies) == 1
+        && match provenances |> first {
+          Present { value: first_provenance } =>
+            match provenances.skip(n: 1) |> first {
+              Present { value: second_provenance } =>
+                first_provenance.declaration_occurrence == second_provenance.declaration_occurrence
+                  && first_provenance.reference_occurrence != second_provenance.reference_occurrence
+              Absent => false
+            }
+          Absent => false
+        }
+    _ => false
+  }
+}
+
+test fn witness_clause_e_production_admission_established_holds() -> Bool {
+  namespace_cross_file_provenance_substrate_contract_holds(
+    production: namespace_reference_derived_closure_clause_e_production(),
+  )
+}
+
+test fn witness_clause_e_production_substrate_assess_established_holds() -> Bool {
+  match assess_controlled_two_mention_provenance_projection(
+    production: namespace_reference_derived_closure_clause_e_production(),
+  ) {
+    NamespaceCrossFileProvenanceEstablished => true
+    _ => false
+  }
+}

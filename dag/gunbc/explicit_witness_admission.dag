@@ -118,8 +118,15 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
     entry: "dag/test/claim/namespace_reference_derived_closure_acceptance_test.dag",
     f: "witness_namespace_reference_derived_closure_closing_contract_holds",
     kind: CorpusWitnessKind,
-    reason: "the discriminating closing validation for roadmap node namespace-reference-derived-closure, RED BY DESIGN while its six-clause production admission frontier carries typed unavailable rows naming #7515 and the Class-B pool-independence wall. The separately discovered fixture suite executes P1 and proves every clause rejects its planted wrong output; this witness imports no fixture admissions and is bound directly by namespace_reference_derived_closure_execution_contract, so zero implementation progress cannot verify as complete.",
+    reason: "the discriminating closing validation for roadmap node namespace-reference-derived-closure, RED BY DESIGN while its production admission seam carries a typed unavailable row for every clause. The separately discovered fixture suite executes P1 and proves every clause rejects its planted wrong output; this witness imports none of those fixtures. Bound directly by namespace_reference_derived_closure_execution_contract.",
     dissolve_on: "the production candidate producer and dependency projection establish all six ReferenceDerivedClosureCapability rows by execution — this row deletes in the completing change, promoting the unchanged acceptance witness to ordinary DiscoverySelection as the permanent namespace-derived-closure regression wall"
+  ),
+  known_red_probe(
+    entry: "src/v1/tests/claim/namespace_cross_file_provenance_acceptance_test.dag",
+    f: "witness_namespace_cross_file_provenance_closing_contract_holds",
+    kind: CorpusWitnessKind,
+    reason: "the discriminating ROW CLOSING validation for namespace-cross-file-provenance (N3-B). witness_namespace_cross_file_provenance_closing_contract_holds assesses assess_namespace_cross_file_provenance_row_closure with ParserEmbeddedSubstrateEvidence, which refuses AwaitingOrdinaryLoadedCompilationClosure until B2 — NOT assess_controlled_two_mention_provenance_projection. Substrate mechanism witnesses in namespace_reference_derived_closure_production_witness_test may green on the parser-embedded production seam without contradicting this known_red row; witness_namespace_cross_file_provenance_row_closure_awaits_ordinary_loaded_compilation is the positive control that the refusal is honest. Bound by namespace_cross_file_provenance_execution_contract.",
+    dissolve_on: "witness_namespace_cross_file_provenance_closing_contract_holds greens by execution on OrdinaryLoadedCompilationClosure production — promotes to ordinary discovery as the permanent cross-file-provenance regression wall"
   ),
   known_red_probe(
     entry: "src/v2/test/claim/schedule_occurrence_multiplicity_test.dag",

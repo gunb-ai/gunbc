@@ -427,10 +427,15 @@ fn gunbc_ci_floor_enrolled_runnable_labels_for(spec: CiSpec) -> List<String> {
     runnable_single_claim_function(r: runnable_for_node(node: node, spec: spec))
   })
   let spec_labels = concat(concat(gate_labels, corpus_labels), map(scoped_witness_batches, batch => "__scoped_witness_batch__"))
-  if gunbc_pr_native_batch_enrolled() {
+  let with_native = if gunbc_pr_native_batch_enrolled() {
     list_snoc_item(xs: spec_labels, item: runnable_single_claim_function(r: gunbc_pr_native_batch()))
   } else {
     spec_labels
+  }
+  if v1_claim_scoped_known_red_probe_batch_enrolled() {
+    list_snoc_item(xs: with_native, item: runnable_single_claim_function(r: gunbc_v1_claim_scoped_known_red_probe_batch()))
+  } else {
+    with_native
   }
 }
 
@@ -1290,7 +1295,7 @@ fn gunbc_ci_floor_ordinary_batches() -> List<List<Runnable>> {
   )
 }
 
-data v1_claim_scoped_known_red_probe_batch_note: String = "Per-PR Hermetic expect_red lane for known-red CorpusWitnessKind rows whose subject needs the dag plus src/v1 envelope (gunbc.explicit_witness_admission known_red_probe_v1_envelope_roster: src/v1 paths plus dag witnesses that import v1.*). The falsifier's corpus-root probe batch cannot resolve these entries; running them there would treat resolve-refuse as expect-red success without executing the predicate (DESIGN section 5 specification-without-execution). This batch mirrors v1_claim_scoped_witness_batch's dag plus src/v1 source-root envelope and runs SelectionApplied on the ordinary floor. ENROLLMENT COUPLING: enrolling this batch (known_red_probe_v1_envelope_roster becomes non-empty) requires adding its companion positional row to gunbc.ci_spec gunbc_ci_floor_batch_clamp_params in the same change — the clamp table is unconditional data while this batch is conditionally enrolled, so a roster-only edit that enrolls the batch without the clamp row fails with floor batch clamp params must cover N scheduled batches."
+data v1_claim_scoped_known_red_probe_batch_note: String = "Per-PR Hermetic expect_red lane for known-red CorpusWitnessKind rows whose subject needs the dag plus src/v1 envelope (gunbc.explicit_witness_admission known_red_probe_v1_envelope_roster: src/v1 paths plus dag witnesses that import v1.*). The falsifier's corpus-root probe batch cannot resolve these entries; running them there would treat resolve-refuse as expect-red success without executing the predicate (DESIGN section 5 specification-without-execution). This batch mirrors v1_claim_scoped_witness_batch's dag plus src/v1 witness-subject envelope. SelectionOff is deliberate: the roster is explicit-entry-only with no discovery scan_dirs, so affected-set selection has no skip surface — every enrolled row must execute every PR. SelectionApplied would arm the floor runner against the enclosing walk's witness_layer_roots (InheritedWalkSourceRoots) before the narrow subject resolve; measured on CI that pairing pinned a worker for 65 minutes at 15 GiB RSS plus 32 GiB swap on a single row without ever evaluating it (run 31005864132, batch 7). Post-discovery witness_row_cost projections still inherit walk roots via claim_executor execution authority. ENROLLMENT COUPLING: enrolling this batch (known_red_probe_v1_envelope_roster becomes non-empty) requires adding its companion positional row to gunbc.ci_spec gunbc_ci_floor_batch_clamp_params in the same change — the clamp table is unconditional data while this batch is conditionally enrolled, so a roster-only edit that enrolls the batch without the clamp row fails with floor batch clamp params must cover N scheduled batches."
 
 fn v1_claim_scoped_known_red_probe_batch_enrolled() -> Bool {
   length(xs: known_red_probe_v1_envelope_roster()) > 0
@@ -1301,7 +1306,7 @@ fn gunbc_v1_claim_scoped_known_red_probe_batch() -> Runnable {
     source_roots: ["dag", "src/v1"],
     scan_dirs: [],
     explicit_entries: known_red_probe_v1_envelope_roster(),
-    node_frontier_selection: SelectionApplied,
+    node_frontier_selection: SelectionOff,
     exclude_substrings: [],
     discovery_scope_dirs: [],
     profile: runnable_resource_profile(

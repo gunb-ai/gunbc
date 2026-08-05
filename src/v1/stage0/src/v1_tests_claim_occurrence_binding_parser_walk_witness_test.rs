@@ -5,23 +5,38 @@ use self::ObcpwParsed::*;
 use crate::std_occurrence_binding_candidates::AuthoredOrderIndexRefusal::MissingAuthoredOrderRow;
 use crate::std_occurrence_binding_candidates::BoundReferencePopulation::AllReferencesBound;
 use crate::std_occurrence_binding_candidates::DeclarationExposure::LexicalExposure;
+use crate::std_occurrence_binding_candidates::DeclarationExposureGrounding::ModuleLocalMemberExposure;
 use crate::std_occurrence_binding_candidates::DeclarationExposureIndexRefusal::MissingDeclarationExposure;
 use crate::std_occurrence_binding_candidates::DirectModuleDependencyBuild::DirectModuleDependencyListReady;
+use crate::std_occurrence_binding_candidates::ModulePathFileIndex::{
+    ModulePathFileIndexReady, ModulePathFileIndexRefused,
+};
 use crate::std_occurrence_binding_candidates::OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexReady;
 use crate::std_occurrence_binding_candidates::ReferenceBindingProjection::{
     ReferenceBindingProjectionAmbiguous, ReferenceBindingProjectionAuthoredOrderRefused,
     ReferenceBindingProjectionBound, ReferenceBindingProjectionExposureRefused,
     ReferenceBindingProjectionTransportRefused, ReferenceBindingProjectionUnbound,
 };
+use crate::std_occurrence_binding_candidates::ReferenceDerivedProviderFileProjection::ReferenceDerivedProviderFileProjectionReady;
+use crate::std_occurrence_binding_candidates::StructuralBindingIndexRefusal::{
+    StructuralBindingAuthoredOrderRefusal, StructuralBindingExposureRefusal,
+};
+pub use crate::std_occurrence_binding_candidates::StructuralBindingWalk;
+use crate::std_occurrence_binding_candidates::StructuralBindingWalk::{
+    StructuralBindingWalkReady, StructuralBindingWalkRefused,
+};
 pub use crate::std_occurrence_binding_candidates::{
     candidate_occurrence_ids_for_reference, direct_module_dependencies_from_bound_population,
-    occurrence_candidate_index_build, resolve_reference_binding_via_structural_candidates,
+    module_path_file_index_from_rows, occurrence_candidate_index_build,
+    reference_derived_provider_files_for_consumer,
+    resolve_reference_binding_via_structural_candidates,
 };
 pub use crate::std_occurrence_binding_candidates::{
     AuthoredOrderIndexRefusal, AuthoredOrderRow, BoundReferencePopulation, BoundReferenceProvider,
-    DeclarationExposure, DeclarationExposureIndexRefusal, DeclarationExposureRow,
-    DirectModuleDependencyBuild, OccurrenceBindingCandidateInputs, OccurrenceCandidateIndexBuild,
-    ReferenceBindingProjection,
+    DeclarationExposure, DeclarationExposureGrounding, DeclarationExposureIndexRefusal,
+    DeclarationExposureRow, DirectModuleDependencyBuild, ModulePathFileIndex,
+    OccurrenceBindingCandidateInputs, OccurrenceCandidateIndexBuild, ReferenceBindingProjection,
+    ReferenceDerivedProviderFileProjection, StructuralBindingIndexRefusal,
 };
 pub use crate::std_occurrence_identity::{
     AuthoredTokenOrdinal, DeclarationOccurrence, OccurrenceId, OccurrenceIndexEntry,
@@ -29,24 +44,23 @@ pub use crate::std_occurrence_identity::{
 };
 use crate::std_types::Bool::*;
 pub use crate::std_types::{Bool, List, NonEmptyStr};
+use crate::v1_gunbc_occurrence_binding_parser_walk::ParsedCrossFileBindingClosure::{
+    ParsedCrossFileBindingClosureReady, ParsedCrossFileBindingClosureRefused,
+};
 use crate::v1_gunbc_occurrence_binding_parser_walk::ParsedOccurrenceBindingSource::{
     ParsedOccurrenceBindingSourceReady, ParsedOccurrenceBindingSourceRefused,
 };
-use crate::v1_gunbc_occurrence_binding_parser_walk::StructuralBindingIndexRefusal::{
-    StructuralBindingAuthoredOrderRefusal, StructuralBindingExposureRefusal,
-};
-use crate::v1_gunbc_occurrence_binding_parser_walk::StructuralBindingWalk::{
-    StructuralBindingWalkReady, StructuralBindingWalkRefused,
-};
 pub use crate::v1_gunbc_occurrence_binding_parser_walk::{
     occurrence_binding_inputs_from_transport, occurrence_id_for_authored_name,
-    parse_authored_occurrence_binding_source, reference_named, structural_binding_walk,
+    parse_authored_occurrence_binding_source, parse_cross_file_binding_closure, reference_named,
+    structural_binding_walk,
 };
 pub use crate::v1_gunbc_occurrence_binding_parser_walk::{
-    ParsedOccurrenceBindingSource, StructuralBindingIndexRefusal, StructuralBindingWalk,
+    CrossFileBindingSourceRow, ParsedCrossFileBindingClosure, ParsedOccurrenceBindingSource,
 };
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
+pub use crate::v1_std_core::empty_intern_table;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -115,10 +129,16 @@ impl ObcpwParsed {
 }
 
 pub fn obcpw_parse(file: String, source: String) -> Rc<ObcpwParsed> {
-    match (*parse_authored_occurrence_binding_source(file.clone(), source.clone())).clone() {
-        ParsedOccurrenceBindingSource::ParsedOccurrenceBindingSourceRefused => {
-            Rc::new(ObcpwParsed::ObcpwParsedRefused)
-        }
+    match (*parse_authored_occurrence_binding_source(
+        file.clone(),
+        source.clone(),
+        empty_intern_table(),
+    ))
+    .clone()
+    {
+        ParsedOccurrenceBindingSource::ParsedOccurrenceBindingSourceRefused {
+            refusal: _, ..
+        } => Rc::new(ObcpwParsed::ObcpwParsedRefused),
         ParsedOccurrenceBindingSource::ParsedOccurrenceBindingSourceReady {
             transport,
             module_path,
@@ -129,6 +149,7 @@ pub fn obcpw_parse(file: String, source: String) -> Rc<ObcpwParsed> {
             inputs: occurrence_binding_inputs_from_transport(
                 module_path.clone(),
                 transport.clone(),
+                DeclarationExposureGrounding::ModuleLocalMemberExposure,
             ),
         }),
     }
@@ -1011,6 +1032,108 @@ pub fn parser_missing_authored_order_refuses_holds() -> bool {
                 _ => false,
             }),
         },
+    }
+}
+
+pub fn obcpw_cross_file_consumer_source() -> String {
+    "module app.consumer\n\nfn greet() -> Int {\n  helper()\n}\n\nfn greet_again() -> Int {\n  helper()\n}\n".to_string()
+}
+
+pub fn obcpw_cross_file_provider_source() -> String {
+    "module app.provider\n\nfn helper() -> Int {\n  0\n}\n".to_string()
+}
+
+pub fn obcpw_cross_file_nested_only_provider_source() -> String {
+    "module app.provider\n\nfn outer() -> Int {\n  let helper = 0\n  helper\n}\n".to_string()
+}
+
+pub fn parser_cross_file_nested_provider_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "B2 control: nested lexical helper in provider must not upgrade to RootExposure — consumer mentions helper cross-file and must not bind to the nested declaration.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn parser_cross_file_nested_provider_declaration_not_visible_holds() -> bool {
+    match (*parse_cross_file_binding_closure(
+        Rc::new(CrossFileBindingSourceRow {
+            file: "app/consumer.dag".to_string(),
+            source: obcpw_cross_file_consumer_source(),
+        }),
+        Rc::new(vec![Rc::new(CrossFileBindingSourceRow {
+            file: "app/provider.dag".to_string(),
+            source: obcpw_cross_file_nested_only_provider_source(),
+        })]),
+    ))
+    .clone()
+    {
+        ParsedCrossFileBindingClosure::ParsedCrossFileBindingClosureReady {
+            transport,
+            inputs,
+            ..
+        } => {
+            ((obcpw_bound_providers_named(transport.clone(), inputs.clone(), "helper".to_string())
+                .len() as i64)
+                == 0)
+        }
+        ParsedCrossFileBindingClosure::ParsedCrossFileBindingClosureRefused {
+            refusal: _, ..
+        } => false,
+    }
+}
+
+pub fn parser_cross_file_binding_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Cross-file parser merge + per-reference helper binding exercised by parser_cross_file_repeated_mentions_collapse_provider_file_holds under one graph-scoped intern_table. Dissolve-on: enroll in namespace_reference_derived_closure_parser_integration_holds when the aggregate witness greens.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn parser_cross_file_repeated_mentions_collapse_provider_file_holds() -> bool {
+    match (*parse_cross_file_binding_closure(
+        Rc::new(CrossFileBindingSourceRow {
+            file: "app/consumer.dag".to_string(),
+            source: obcpw_cross_file_consumer_source(),
+        }),
+        Rc::new(vec![Rc::new(CrossFileBindingSourceRow {
+            file: "app/provider.dag".to_string(),
+            source: obcpw_cross_file_provider_source(),
+        })]),
+    ))
+    .clone()
+    {
+        ParsedCrossFileBindingClosure::ParsedCrossFileBindingClosureReady {
+            transport,
+            inputs,
+            module_files: module_file_rows,
+            consumer_file,
+            ..
+        } => {
+            let providers = obcpw_bound_providers_named(
+                transport.clone(),
+                inputs.clone(),
+                "helper".to_string(),
+            );
+            (((providers.clone().len() as i64) == 2) && match (*module_path_file_index_from_rows(module_file_rows.clone())).clone() {
+    ModulePathFileIndex::ModulePathFileIndexReady { entries: module_files, .. } => match (*reference_derived_provider_files_for_consumer(Rc::new(BoundReferencePopulation::AllReferencesBound {
+    providers: providers.clone(),
+}), module_files.clone(), consumer_file.clone())).clone() {
+    ReferenceDerivedProviderFileProjection::ReferenceDerivedProviderFileProjectionReady { provider_files: provider_files, .. } => (((provider_files.clone().len() as i64) == 1) && match provider_files.clone().first().cloned() {
+    Some(provider_file) => (provider_file.clone() == "app/provider.dag".to_string()),
+    None => false,
+}),
+    _ => false,
+},
+    ModulePathFileIndex::ModulePathFileIndexRefused { refusal: _, .. } => false,
+})
+        }
+        ParsedCrossFileBindingClosure::ParsedCrossFileBindingClosureRefused {
+            refusal: _, ..
+        } => false,
     }
 }
 

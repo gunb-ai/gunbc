@@ -1,14 +1,12 @@
 module v1.gunbc.occurrence_binding_parser_walk
 
 import std.types { String, List, NonEmptyStr }
-import std.algebra { FreeMonoid, Empty, Cons }
 import std.occurrence_identity {
   OccurrenceId,
   OccurrenceIndexEntry,
   OccurrenceTransport,
   OccurrenceTransportRefusal,
   ReferenceOccurrence,
-  OccurrenceContainmentPath,
   DeclarationOccurrence,
   AuthoredTokenOrdinal,
 }
@@ -18,12 +16,18 @@ import std.occurrence_binding_candidates {
   DeclarationExposure,
   LexicalExposure,
   ModuleExposure,
+  RootExposure,
   AuthoredOrderRow,
+  ModulePathFileRow,
   OccurrenceBindingCandidateInputs,
   BoundReferencePopulation,
   OccurrenceModulePathIndexRefusal,
   DeclarationExposureIndexRefusal,
   AuthoredOrderIndexRefusal,
+  declaration_exposure_from_containment,
+  DeclarationExposureGrounding,
+  ModuleLocalMemberExposure,
+  CrossFileProviderExportedExposure,
   occurrence_candidate_index_build,
   OccurrenceCandidateIndexTransportRefused,
   OccurrenceCandidateIndexModulePathRefused,
@@ -33,6 +37,17 @@ import std.occurrence_binding_candidates {
   OccurrenceCandidateIndexReady,
   resolve_all_references_via_structural_candidates,
   bound_reference_population_from_projections,
+  CrossFileBindingClosureRow,
+  assemble_cross_file_binding_closure,
+  cross_file_binding_closure_row,
+  AssembledCrossFileBindingClosureReady,
+  AssembledCrossFileBindingClosureRefused,
+  AssembledCrossFileBindingClosureRefusal,
+  StructuralBindingWalk,
+  StructuralBindingWalkReady,
+  StructuralBindingWalkRefused,
+  StructuralBindingIndexRefusal,
+  structural_binding_walk,
 }
 import v1.compiler.tokenize { tokenize }
 import v1.compiler.parse {
@@ -42,69 +57,46 @@ import v1.compiler.parse {
 import v1.std.core {
   build_newline_index,
   empty_intern_table,
+  InternTable,
   NewlineIndex,
 }
 
-data occurrence_binding_parser_walk_authority_note: String = "Parser-to-P2-walk bridge (namespace-reference-derived-closure slice B): authored source is parsed through v1.compiler.parse.parse_with_table; OccurrenceTransport and module path come from the parser only. OccurrenceBindingCandidateInputs are projected from parser facts — module paths for every indexed occurrence, authored order from diagnostic_span.start (never OccurrenceId.value), and DeclarationExposure from containment shape (empty / single-ancestor => ModuleExposure, else LexicalExposure with parent scope). Category is never read for exposure. Index-build refusals are carried intact as StructuralBindingWalkRefused — never coarsened to a unit variant (blocker 6)."
+data occurrence_binding_parser_walk_authority_note: String = "Parser-to-P2-walk bridge (namespace-reference-derived-closure slice B): authored source is parsed through v1.compiler.parse.parse_with_table; OccurrenceTransport and module path come from the parser only. OccurrenceBindingCandidateInputs are projected from parser facts — module paths for every indexed occurrence, authored order from diagnostic_span.start (never OccurrenceId.value), and DeclarationExposure from containment shape (empty / single-ancestor => ModuleExposure, else LexicalExposure with parent scope). Category is never read for exposure. Index-build refusals are carried intact as StructuralBindingWalkRefused — never coarsened to a unit variant (blocker 6). Cross-file parse and assembly refusals likewise carry typed payloads through ParsedCrossFileBindingClosureRefused — never unit variants that erase ModulePathFileIndexRefusal or parse-site location."
+
+type ParsedOccurrenceBindingSourceRefusal
+  = ParsedOccurrenceBindingModulePathAbsent { file: String }
 
 type ParsedOccurrenceBindingSource
   = ParsedOccurrenceBindingSourceReady {
       transport: OccurrenceTransport,
       module_path: NonEmptyStr,
+      intern_table: InternTable,
     }
-  | ParsedOccurrenceBindingSourceRefused
+  | ParsedOccurrenceBindingSourceRefused {
+      refusal: ParsedOccurrenceBindingSourceRefusal,
+    }
 
 fn parse_authored_occurrence_binding_source(
   file: String,
-  source: String
+  source: String,
+  intern_table: InternTable,
 ) -> ParsedOccurrenceBindingSource {
   let index = build_newline_index(file: file, source: source)
   let parsed = parse_with_table(
     tokens: tokenize(source: source, file: file),
     source_indices: map_insert(empty_map(), file, index),
-    intern_table: empty_intern_table(),
+    intern_table: intern_table,
   )
   match parse_with_table_ready_module_path(parsed: parsed) {
-    Absent => ParsedOccurrenceBindingSourceRefused
+    Absent =>
+      ParsedOccurrenceBindingSourceRefused {
+        refusal: ParsedOccurrenceBindingModulePathAbsent { file: file },
+      }
     Present { value: module_path } =>
       ParsedOccurrenceBindingSourceReady {
         transport: parsed.occurrence_transport,
         module_path: module_path as NonEmptyStr,
-      }
-  }
-}
-
-data declaration_exposure_from_containment_note: String = "Exposure derivation site: inputs are containment prefix shape and module path only — OccurrenceCategory is not consulted. Ancestors are root-first (module … parent), per occurrence_ancestors_push. Empty or single-ancestor chain (direct module child) => ModuleExposure; nested declaration => LexicalExposure whose exposing_scope is the nearest ancestor (last in the root-first list) as terminal with that ancestor's prefix. Binder-as-own-path LexicalExposure (the hand-built §13 fixture shape) is correct only when uses nest under the binder in the parse tree (lets do; match-arm bodies currently do not — see parser_sibling_match_arm_pattern_binder_holds_note)."
-
-fn occurrence_containment_parent_scope(
-  ancestors: FreeMonoid<OccurrenceId>
-) -> OccurrenceContainmentPath? {
-  match reverse(ancestors) {
-    Empty => none
-    Cons { head: parent_terminal, tail: parent_ancestors_reversed } =>
-      Present {
-        value: OccurrenceContainmentPath {
-          ancestors: reverse(parent_ancestors_reversed),
-          terminal: parent_terminal,
-        },
-      }
-  }
-}
-
-fn declaration_exposure_from_containment(
-  module_path: NonEmptyStr,
-  containment: OccurrenceContainmentPath
-) -> DeclarationExposure {
-  match containment.ancestors {
-    Empty => ModuleExposure { module: module_path }
-    Cons { head: _, tail: Empty } =>
-      ModuleExposure { module: module_path }
-    Cons { head: _, tail: Cons { head: _, tail: _ } } =>
-      match occurrence_containment_parent_scope(ancestors: containment.ancestors) {
-        Present { value: exposing_scope } =>
-          LexicalExposure { exposing_scope: exposing_scope }
-        Absent =>
-          ModuleExposure { module: module_path }
+        intern_table: parsed.intern_table,
       }
   }
 }
@@ -122,7 +114,8 @@ data occurrence_binding_inputs_accumulator_note: String = "Input projection accu
 
 fn occurrence_binding_inputs_from_transport(
   module_path: NonEmptyStr,
-  transport: OccurrenceTransport
+  transport: OccurrenceTransport,
+  exposure_grounding: DeclarationExposureGrounding,
 ) -> OccurrenceBindingCandidateInputs {
   OccurrenceBindingCandidateInputs {
     module_paths: reverse(fold(
@@ -146,6 +139,7 @@ fn occurrence_binding_inputs_from_transport(
             exposure: declaration_exposure_from_containment(
               module_path: module_path,
               containment: declaration.containment,
+              grounding: exposure_grounding,
             ),
           },
         ], acc),
@@ -159,65 +153,159 @@ fn occurrence_binding_inputs_from_transport(
   }
 }
 
-data structural_binding_walk_refusal_note: String = "StructuralBindingWalkRefused wraps the exact index-build refusal payload (transport / module-path / exposure / authored-order / declaration-bucket). Coarse unit variants that discard nested refusal evidence are forbidden (operator blocker 6 / review on PR 7515)."
+data structural_binding_walk_refusal_note: String = "Re-export note: StructuralBindingWalk lives in std.occurrence_binding_candidates. Parser witnesses import through this module for historical enrollment only."
 
-type StructuralBindingIndexRefusal
-  = StructuralBindingTransportRefusal {
-      refusal: OccurrenceTransportRefusal,
+data cross_file_binding_closure_note: String = "Cross-file binding closure: parse consumer then providers through one graph-scoped intern_table / OccurrenceIdAllocator (occurrence_identity_scope_law — pattern_binder_declaration_node_test threads first.intern_table into the second parse). assemble_cross_file_binding_closure rekeys with one fresh old-id map per source scope before merge. Consumer exposure rows derive with ModuleLocalMemberExposure; provider rows derive with CrossFileProviderExportedExposure at declaration_exposure_from_containment — no post-hoc ModuleExposure upgrade."
+
+type CrossFileBindingSourceRow {
+  file: String
+  source: String
+}
+
+type ParsedCrossFileBindingClosureRefusal
+  = ParsedCrossFileBindingClosureConsumerParseRefused {
+      refusal: ParsedOccurrenceBindingSourceRefusal,
     }
-  | StructuralBindingModulePathRefusal {
-      refusal: OccurrenceModulePathIndexRefusal,
+  | ParsedCrossFileBindingClosureProviderParseRefused {
+      refusal: ParsedOccurrenceBindingSourceRefusal,
     }
-  | StructuralBindingExposureRefusal {
-      refusal: DeclarationExposureIndexRefusal,
-    }
-  | StructuralBindingAuthoredOrderRefusal {
-      refusal: AuthoredOrderIndexRefusal,
-    }
-  | StructuralBindingDeclarationBucketRefusal {
-      occurrence: OccurrenceId,
+  | ParsedCrossFileBindingClosureAssemblyRefused {
+      refusal: AssembledCrossFileBindingClosureRefusal,
     }
 
-type StructuralBindingWalk
-  = StructuralBindingWalkReady { population: BoundReferencePopulation }
-  | StructuralBindingWalkRefused { refusal: StructuralBindingIndexRefusal }
+type ParsedCrossFileBindingClosure
+  = ParsedCrossFileBindingClosureReady {
+      transport: OccurrenceTransport,
+      inputs: OccurrenceBindingCandidateInputs,
+      module_files: List<ModulePathFileRow>,
+      consumer_file: String,
+    }
+  | ParsedCrossFileBindingClosureRefused {
+      refusal: ParsedCrossFileBindingClosureRefusal,
+    }
 
-fn structural_binding_walk(
-  transport: OccurrenceTransport,
-  inputs: OccurrenceBindingCandidateInputs
-) -> StructuralBindingWalk {
-  match occurrence_candidate_index_build(transport: transport, inputs: inputs) {
-    OccurrenceCandidateIndexTransportRefused { refusal: refusal } =>
-      StructuralBindingWalkRefused {
-        refusal: StructuralBindingTransportRefusal { refusal: refusal },
-      }
-    OccurrenceCandidateIndexModulePathRefused { refusal: refusal } =>
-      StructuralBindingWalkRefused {
-        refusal: StructuralBindingModulePathRefusal { refusal: refusal },
-      }
-    OccurrenceCandidateIndexExposureRefused { refusal: refusal } =>
-      StructuralBindingWalkRefused {
-        refusal: StructuralBindingExposureRefusal { refusal: refusal },
-      }
-    OccurrenceCandidateIndexAuthoredOrderRefused { refusal: refusal } =>
-      StructuralBindingWalkRefused {
-        refusal: StructuralBindingAuthoredOrderRefusal { refusal: refusal },
-      }
-    OccurrenceCandidateIndexDeclarationBucketRefused { occurrence: occurrence } =>
-      StructuralBindingWalkRefused {
-        refusal: StructuralBindingDeclarationBucketRefusal {
-          occurrence: occurrence,
+type CrossFileProviderRowsAccum
+  = CrossFileProviderRowsAccumReady {
+      rows: List<CrossFileBindingClosureRow>,
+      intern_table: InternTable,
+    }
+  | CrossFileProviderRowsAccumRefused {
+      refusal: ParsedOccurrenceBindingSourceRefusal,
+    }
+
+fn cross_file_provider_rows_from_sources(
+  providers: List<CrossFileBindingSourceRow>,
+  intern_table: InternTable,
+) -> CrossFileProviderRowsAccum {
+  fold(
+    providers,
+    init: CrossFileProviderRowsAccumReady {
+      rows: [],
+      intern_table: intern_table,
+    },
+    f: (acc, provider_row) =>
+      match acc {
+        CrossFileProviderRowsAccumRefused { refusal: _ } => acc
+        CrossFileProviderRowsAccumReady { rows: rows, intern_table: table } =>
+          match parse_authored_occurrence_binding_source(
+            file: provider_row.file,
+            source: provider_row.source,
+            intern_table: table,
+          ) {
+            ParsedOccurrenceBindingSourceRefused { refusal: refusal } =>
+              CrossFileProviderRowsAccumRefused { refusal: refusal }
+            ParsedOccurrenceBindingSourceReady {
+              transport: provider_transport,
+              module_path: provider_module,
+              intern_table: next_table,
+            } =>
+              let base_inputs = occurrence_binding_inputs_from_transport(
+                module_path: provider_module,
+                transport: provider_transport,
+                exposure_grounding: CrossFileProviderExportedExposure,
+              )
+              CrossFileProviderRowsAccumReady {
+                rows: concat([
+                  cross_file_binding_closure_row(
+                    transport: provider_transport,
+                    module_path: provider_module,
+                    file_path: provider_row.file,
+                    exposure_rows: base_inputs.exposure_rows,
+                    module_paths: base_inputs.module_paths,
+                    authored_order_rows: base_inputs.authored_order_rows,
+                  ),
+                ], rows),
+                intern_table: next_table,
+              }
+          }
+      },
+  )
+}
+
+fn parse_cross_file_binding_closure(
+  consumer: CrossFileBindingSourceRow,
+  providers: List<CrossFileBindingSourceRow>
+) -> ParsedCrossFileBindingClosure {
+  match parse_authored_occurrence_binding_source(
+    file: consumer.file,
+    source: consumer.source,
+    intern_table: empty_intern_table(),
+  ) {
+    ParsedOccurrenceBindingSourceRefused { refusal: refusal } =>
+      ParsedCrossFileBindingClosureRefused {
+        refusal: ParsedCrossFileBindingClosureConsumerParseRefused {
+          refusal: refusal,
         },
       }
-    OccurrenceCandidateIndexReady { index: index } =>
-      StructuralBindingWalkReady {
-        population: bound_reference_population_from_projections(
-          projections: resolve_all_references_via_structural_candidates(
-            transport: transport,
-            index: index,
-            references: transport.references,
-          ),
+    ParsedOccurrenceBindingSourceReady {
+      transport: consumer_transport,
+      module_path: consumer_module,
+      intern_table: consumer_intern_table,
+    } =>
+      let consumer_row = CrossFileBindingClosureRow {
+        transport: consumer_transport,
+        inputs: occurrence_binding_inputs_from_transport(
+          module_path: consumer_module,
+          transport: consumer_transport,
+          exposure_grounding: ModuleLocalMemberExposure,
         ),
+        module_path: consumer_module,
+        file_path: consumer.file,
+      }
+      match cross_file_provider_rows_from_sources(
+        providers: providers,
+        intern_table: consumer_intern_table,
+      ) {
+        CrossFileProviderRowsAccumRefused { refusal: refusal } =>
+          ParsedCrossFileBindingClosureRefused {
+            refusal: ParsedCrossFileBindingClosureProviderParseRefused {
+              refusal: refusal,
+            },
+          }
+        CrossFileProviderRowsAccumReady { rows: provider_rows, intern_table: _ } =>
+          match assemble_cross_file_binding_closure(
+            consumer: consumer_row,
+            providers: provider_rows,
+          ) {
+            AssembledCrossFileBindingClosureReady {
+              transport: transport,
+              inputs: inputs,
+              module_files: module_files,
+              consumer_file: consumer_file,
+            } =>
+              ParsedCrossFileBindingClosureReady {
+                transport: transport,
+                inputs: inputs,
+                module_files: module_files,
+                consumer_file: consumer_file as String,
+              }
+            AssembledCrossFileBindingClosureRefused { refusal: refusal } =>
+              ParsedCrossFileBindingClosureRefused {
+                refusal: ParsedCrossFileBindingClosureAssemblyRefused {
+                  refusal: refusal,
+                },
+              }
+          }
       }
   }
 }

@@ -1,0 +1,33 @@
+module v1.tests.claim.namespace_cross_file_provenance_acceptance_test
+
+import gunbc.namespace_cross_file_provenance_contract {
+  namespace_cross_file_provenance_closing_contract_holds,
+  assess_namespace_cross_file_provenance_row_closure,
+  ParserEmbeddedSubstrateEvidence,
+  AwaitingOrdinaryLoadedCompilationClosure,
+  NamespaceCrossFileProvenanceRefused,
+}
+import v1.gunbc.namespace_reference_derived_closure_clause_e_production {
+  namespace_reference_derived_closure_clause_e_production,
+}
+import std.types { Bool }
+
+data namespace_cross_file_provenance_acceptance_note: String = "THE DISCRIMINATING CLOSING VALIDATION for roadmap node namespace-cross-file-provenance. Row closure refuses ParserEmbeddedSubstrateEvidence until B2 lands an ordinary loaded compilation closure observation; the mechanism substrate path is witnessed separately in namespace_reference_derived_closure_production_witness_test. Governed placement: src/v1/tests/claim because production calls parser transport outside witness_layer_roots."
+
+test fn witness_namespace_cross_file_provenance_closing_contract_holds() -> Bool {
+  namespace_cross_file_provenance_closing_contract_holds(
+    production: namespace_reference_derived_closure_clause_e_production(),
+  )
+}
+
+test fn witness_namespace_cross_file_provenance_row_closure_awaits_ordinary_loaded_compilation() -> Bool {
+  match assess_namespace_cross_file_provenance_row_closure(
+    production: namespace_reference_derived_closure_clause_e_production(),
+    source: ParserEmbeddedSubstrateEvidence,
+  ) {
+    NamespaceCrossFileProvenanceRefused {
+      failure: AwaitingOrdinaryLoadedCompilationClosure,
+    } => true
+    _ => false
+  }
+}

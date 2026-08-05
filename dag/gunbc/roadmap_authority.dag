@@ -276,6 +276,15 @@ fn namespace_reference_derived_closure_execution_contract() -> WorkItemExecution
   )
 }
 
+data namespace_cross_file_provenance_execution_contract_note: String = "THE CLOSING DISCRIMINATOR for namespace-cross-file-provenance (N3-B row closure). Binds witness_namespace_cross_file_provenance_closing_contract_holds (known_red until B2). Today namespace_cross_file_provenance_closing_contract_holds passes ParserEmbeddedSubstrateEvidence, which assess_namespace_cross_file_provenance_row_closure always refuses with AwaitingOrdinaryLoadedCompilationClosure — rung-honest RED, not a broken oracle. Positive control: witness_namespace_cross_file_provenance_row_closure_awaits_ordinary_loaded_compilation. B2 dissolves known_red by rewiring the closing call to OrdinaryLoadedCompilationClosure production; assess logic unchanged. Substrate mechanism witnesses live in namespace_reference_derived_closure_production_witness_test; planted contract controls in namespace_cross_file_provenance_contract_witness_test."
+
+fn namespace_cross_file_provenance_execution_contract() -> WorkItemExecutionContract {
+  gunbc_claim_execution_contract(
+    entry: "src/v1/tests/claim/namespace_cross_file_provenance_acceptance_test.dag" as FilePath,
+    function: "witness_namespace_cross_file_provenance_closing_contract_holds" as NonEmptyStr,
+  )
+}
+
 data v1_interpreter_primitive_roster_execution_contract_note: String = "THE CLOSING CHECK IS STRUCTURAL, NOT A POPULATION PIN, and that choice is the whole content of this binding. The node asks whether the interpreter's dispatch surface is ENUMERABLE and whether its roster can silently disagree with the dispatch; it does not ask how large the surface currently is. So the bound validation asserts properties that survive the roster legitimately growing -- named dispatch sites contribute derived rows, duplicate row keys refuse, shadows are exactly the known set BY NAME, every declared row carries its own dissolution trigger, an arm carrying no semantic primitive identity stays representable, and an unrecognised form label refuses rather than defaulting.\n\nBinding it to counts would have re-created at the acceptance layer the exact defect #7615 removed from the witness layer: the five deleted witnesses pinned live-population numbers copied from the tree, which DESIGN.md 5 rules is not an oracle, and they duly behaved as pure change detectors that redded main twice. A closing check that reds on legitimate growth is worse than one that does not exist, because it trains everyone to edit the number rather than read the change.\n\nThe validation can genuinely fail: removing a dispatch site, dropping a declared row's trigger, admitting an unknown form label, or letting a second arm identity shadow a spelling each red it. The detectors' own discriminating REDs and positive controls live in test.claim.v1_interpreter_primitive_surface_witness_test and execute beside it."
 
 fn v1_interpreter_primitive_roster_execution_contract() -> WorkItemExecutionContract {
@@ -694,7 +703,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "One ordinary compiled file producing all four observations, each case shown failing on its own, and the closing check written and bound."
       )
     ),
-    active_sized(
+    with_execution(active_sized(
       identity: "rn_4LT9SBW1EGKM3XQPZ7DVNC02J",
       id: "namespace-cross-file-provenance",
       owner: "namespace",
@@ -710,7 +719,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         out_of_scope: "No hand-written dependency statements, no falling back to searching everything currently loaded, and no discarding which particular mention produced which dependency. The same-file rules belong to the previous row.",
         handback: "One file's dependencies derived from its answers alone, matching what was written by hand, with both results kept separate and the closing check written and bound."
       )
-    ),
+    ), namespace_cross_file_provenance_execution_contract()),
     active_sized(
       identity: "rn_9WK5DZP6TAY2QN8XFVB13JMHR",
       id: "namespace-pool-independence",

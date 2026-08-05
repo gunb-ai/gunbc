@@ -1,0 +1,3 @@
+module gunbc.namespace_reference_derived_closure_production
+
+data namespace_reference_derived_closure_production_note: String = "DEPRECATED forwarding module — clause-(e) production lives in v1.gunbc.namespace_reference_derived_closure_clause_e_production because parser transport production requires the v1 parser pool. The contract aggregate imports that module directly. This module remains only for historical witness import paths until they migrate."

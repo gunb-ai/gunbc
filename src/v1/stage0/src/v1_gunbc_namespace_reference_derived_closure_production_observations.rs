@@ -2,7 +2,10 @@
 // Source module: v1.gunbc.namespace_reference_derived_closure_production_observations
 
 use self::NrdfcParsed::*;
-pub use crate::std_occurrence_binding_candidates::OccurrenceBindingCandidateInputs;
+use crate::std_occurrence_binding_candidates::DeclarationExposureGrounding::ModuleLocalMemberExposure;
+pub use crate::std_occurrence_binding_candidates::{
+    DeclarationExposureGrounding, OccurrenceBindingCandidateInputs,
+};
 pub use crate::std_occurrence_identity::{OccurrenceId, OccurrenceTransport};
 pub use crate::std_reference_binding_observation::structural_binding_resolution_from_candidates;
 use crate::std_reference_binding_observation::ReferenceBindingObservation::{
@@ -24,7 +27,7 @@ use crate::v1_gunbc_occurrence_binding_parser_walk::ParsedOccurrenceBindingSourc
     ParsedOccurrenceBindingSourceReady, ParsedOccurrenceBindingSourceRefused,
 };
 pub use crate::v1_gunbc_occurrence_binding_parser_walk::{
-    declarations_named, occurrence_binding_inputs_from_transport,
+    declarations_named, empty_intern_table, occurrence_binding_inputs_from_transport,
     parse_authored_occurrence_binding_source, reference_named, references_named,
 };
 use crate::v1_rt;
@@ -79,10 +82,16 @@ impl NrdfcParsed {
 }
 
 pub fn nrdfc_parse(file: String, source: String) -> Rc<NrdfcParsed> {
-    match (*parse_authored_occurrence_binding_source(file.clone(), source.clone())).clone() {
-        ParsedOccurrenceBindingSource::ParsedOccurrenceBindingSourceRefused => {
-            Rc::new(NrdfcParsed::NrdfcParsedRefused)
-        }
+    match (*parse_authored_occurrence_binding_source(
+        file.clone(),
+        source.clone(),
+        empty_intern_table(),
+    ))
+    .clone()
+    {
+        ParsedOccurrenceBindingSource::ParsedOccurrenceBindingSourceRefused {
+            refusal: _, ..
+        } => Rc::new(NrdfcParsed::NrdfcParsedRefused),
         ParsedOccurrenceBindingSource::ParsedOccurrenceBindingSourceReady {
             transport,
             module_path,
@@ -92,6 +101,7 @@ pub fn nrdfc_parse(file: String, source: String) -> Rc<NrdfcParsed> {
             inputs: occurrence_binding_inputs_from_transport(
                 module_path.clone(),
                 transport.clone(),
+                DeclarationExposureGrounding::ModuleLocalMemberExposure,
             ),
         }),
     }

@@ -30,7 +30,17 @@ import std.occurrence_binding_candidates {
   direct_module_dependencies_from_bound_population,
   occurrence_candidate_index_build,
   candidate_occurrence_ids_for_reference,
+  module_path_file_index_from_rows,
+  ModulePathFileIndexReady,
+  ModulePathFileIndexRefused,
+  reference_derived_provider_files_for_consumer,
+  ReferenceDerivedProviderFileProjectionReady,
+  StructuralBindingExposureRefusal,
+  StructuralBindingAuthoredOrderRefusal,
+  ModuleLocalMemberExposure,
 }
+import v1.std.core { empty_intern_table }
+
 import v1.gunbc.occurrence_binding_parser_walk {
   ParsedOccurrenceBindingSourceRefused,
   ParsedOccurrenceBindingSourceReady,
@@ -41,8 +51,10 @@ import v1.gunbc.occurrence_binding_parser_walk {
   occurrence_id_for_authored_name,
   StructuralBindingWalkReady,
   StructuralBindingWalkRefused,
-  StructuralBindingExposureRefusal,
-  StructuralBindingAuthoredOrderRefusal,
+  CrossFileBindingSourceRow,
+  parse_cross_file_binding_closure,
+  ParsedCrossFileBindingClosureReady,
+  ParsedCrossFileBindingClosureRefused,
 }
 
 data occurrence_binding_parser_walk_witness_note: String = "Parser integration witness (namespace-reference-derived-closure merge bar): every case begins at authored source, reaches the P2 structural walk through v1.compiler.parse.parse_with_table transport only — no hand-constructed OccurrenceTransport. Case 6 discharges projection law (A) only: repeated bound-reference providers for one declaration project to one DirectModuleDependency edge — not identity collapse, collector deduplication, or section-13 repeated-discovery collapse. Collector re-observation dedup (B) stays a distinct deferred debt on ProductionOccurrenceCollectorMissing. Case 7 parses once in one graph scope, preserves the parser-minted reference occurrence on the positive arm, and substitutes an occurrence id unknown within that same transport on the negative arm — never comparing allocator-local OccurrenceId values across standalone parses."
@@ -60,15 +72,20 @@ type ObcpwParsed
   | ObcpwParsedRefused
 
 fn obcpw_parse(file: String, source: String) -> ObcpwParsed {
-  match parse_authored_occurrence_binding_source(file: file, source: source) {
-    ParsedOccurrenceBindingSourceRefused => ObcpwParsedRefused
-    ParsedOccurrenceBindingSourceReady { transport: transport, module_path: module_path } =>
+  match parse_authored_occurrence_binding_source(
+    file: file,
+    source: source,
+    intern_table: empty_intern_table(),
+  ) {
+    ParsedOccurrenceBindingSourceRefused { refusal: _ } => ObcpwParsedRefused
+    ParsedOccurrenceBindingSourceReady { transport: transport, module_path: module_path, intern_table: _ } =>
       ObcpwParsedReady {
         transport: transport,
         module_path: module_path,
         inputs: occurrence_binding_inputs_from_transport(
           module_path: module_path,
           transport: transport,
+          exposure_grounding: ModuleLocalMemberExposure,
         ),
       }
   }
@@ -784,6 +801,96 @@ test fn parser_missing_authored_order_refuses_holds() -> Bool {
               _ => false
             }
       }
+  }
+}
+
+fn obcpw_cross_file_consumer_source() -> String {
+  "module app.consumer\n\nfn greet() -> Int {\n  helper()\n}\n\nfn greet_again() -> Int {\n  helper()\n}\n"
+}
+
+fn obcpw_cross_file_provider_source() -> String {
+  "module app.provider\n\nfn helper() -> Int {\n  0\n}\n"
+}
+
+fn obcpw_cross_file_nested_only_provider_source() -> String {
+  "module app.provider\n\nfn outer() -> Int {\n  let helper = 0\n  helper\n}\n"
+}
+
+data parser_cross_file_nested_provider_note: String = "B2 control: nested lexical helper in provider must not upgrade to RootExposure — consumer mentions helper cross-file and must not bind to the nested declaration."
+
+test fn parser_cross_file_nested_provider_declaration_not_visible_holds() -> Bool {
+  match parse_cross_file_binding_closure(
+    consumer: CrossFileBindingSourceRow {
+      file: "app/consumer.dag",
+      source: obcpw_cross_file_consumer_source(),
+    },
+    providers: [
+      CrossFileBindingSourceRow {
+        file: "app/provider.dag",
+        source: obcpw_cross_file_nested_only_provider_source(),
+      },
+    ],
+  ) {
+    ParsedCrossFileBindingClosureReady {
+      transport: transport,
+      inputs: inputs,
+      module_files: _,
+      consumer_file: _,
+    } =>
+      (obcpw_bound_providers_named(
+        transport: transport,
+        inputs: inputs,
+        name: "helper",
+      ) |> count) == 0
+    ParsedCrossFileBindingClosureRefused { refusal: _ } => false
+  }
+}
+
+data parser_cross_file_binding_note: String = "Cross-file parser merge + per-reference helper binding exercised by parser_cross_file_repeated_mentions_collapse_provider_file_holds under one graph-scoped intern_table. Dissolve-on: enroll in namespace_reference_derived_closure_parser_integration_holds when the aggregate witness greens."
+
+test fn parser_cross_file_repeated_mentions_collapse_provider_file_holds() -> Bool {
+  match parse_cross_file_binding_closure(
+    consumer: CrossFileBindingSourceRow {
+      file: "app/consumer.dag",
+      source: obcpw_cross_file_consumer_source(),
+    },
+    providers: [
+      CrossFileBindingSourceRow {
+        file: "app/provider.dag",
+        source: obcpw_cross_file_provider_source(),
+      },
+    ],
+  ) {
+    ParsedCrossFileBindingClosureReady {
+      transport: transport,
+      inputs: inputs,
+      module_files: module_file_rows,
+      consumer_file: consumer_file,
+    } =>
+      let providers = obcpw_bound_providers_named(
+        transport: transport,
+        inputs: inputs,
+        name: "helper",
+      )
+      (providers |> count) == 2
+        && match module_path_file_index_from_rows(rows: module_file_rows) {
+          ModulePathFileIndexReady { entries: module_files } =>
+            match reference_derived_provider_files_for_consumer(
+              population: AllReferencesBound { providers: providers },
+              module_files: module_files,
+              consumer_file: consumer_file,
+            ) {
+              ReferenceDerivedProviderFileProjectionReady { provider_files: provider_files } =>
+                (provider_files |> count) == 1
+                  && match provider_files |> first {
+                    Present { value: provider_file } => provider_file == "app/provider.dag"
+                    Absent => false
+                  }
+              _ => false
+            }
+          ModulePathFileIndexRefused { refusal: _ } => false
+        }
+    ParsedCrossFileBindingClosureRefused { refusal: _ } => false
   }
 }
 

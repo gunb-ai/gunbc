@@ -952,6 +952,11 @@ data v1_claim_scoped_witness_entries: List<ScheduleWitnessEntry> = [
     kind: CorpusWitnessKind,
   },
   ScheduleWitnessEntry {
+    entry: "src/v1/tests/claim/namespace_reference_derived_closure_production_witness_test.dag",
+    function: "",
+    kind: CorpusWitnessKind,
+  },
+  ScheduleWitnessEntry {
     entry: "src/v1/tests/claim/v1_complexity_eviction_hazard_test.dag",
     function: "",
     kind: CorpusWitnessKind,
