@@ -18,6 +18,7 @@ import std.content_hash { sha1_hex_digest }
 import v2.std.collection { Present, Absent }
 import gunbc.command_runner { run_shell_command_exit_code }
 import gunbc.ci_layer_roots { witness_layer_roots }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.roadmap_static_site { sh_single_quote }
 import gunbc.output_policy { ExpectSuccess }
 import gunbc.host_effect {
@@ -46,6 +47,11 @@ import gunbc.live_deploy.coordination {
   CoordinationCovers,
   CoordinationRefused,
   DeployMutator,
+  DeployMutationKind,
+  MutateApply,
+  MutateRetract,
+  MutateRouteFlip,
+  MutateSlotRevisionRecord,
   deploy_coordination_admission,
   coordination_refusal_reason,
   command_transport_lease_locus,
@@ -313,10 +319,28 @@ fn live_deploy_coordination_subject(
   }
 }
 
-data leased_participants_note: String = "WHAT THIS LEASE ACTUALLY COVERS, AT DECLARATION IDENTITY. Every public mutation entrypoint for this target launches under this lease — apply and retract alike — and the route flip and revision record execute inside the leased apply process, so each named declaration is covered. Listing PARTICIPANTS rather than kinds is what makes a fifth entrypoint performing an existing kind visible: under the kind grain a new route-flipping function found MutateRouteFlip already covered and the admission stayed green (participant_grain_note carries the ruling). This list is what goes red when the population names a declaration the launcher does not reach."
+data leased_participants_note: String = "THE COVERED SET IS AUTHORED HERE AND IS NOT AN ALIAS OF THE POPULATION (operator ruling 2026-08-05). An earlier revision returned deploy_mutation_population() verbatim, which made the production admission TAUTOLOGICAL: every participant added to the population was automatically declared covered, so the one subject that actually runs could never refuse. The drop-one witnesses proved the pure fold refuses when a test hands it a smaller covered list; they executed nothing about the composition the deploy uses, and the axis they were trusted for was inert exactly where it mattered.\\n\\nSo this enumerates what the LAUNCHER reaches, independently: the four public entries whose bodies are live_deploy_launch_under_lease, plus the two internal actuators that execute inside that leased process. Adding a row to the population without adding it here now refuses in production, not merely in a fixture.\\n\\nSTATED AT ITS REAL RUNG, because two authored lists compared at identity is not discovery: this makes an uncovered participant refuse ONCE SOMEONE LISTS IT in the population, and it does not find an entrypoint nobody listed. Both halves are hand-maintained, so the honest description is a debt contract over a roster, not a closed subject universe (DESIGN §5's oracle rule). 🟡 dissolve-on: a lens that discovers every declaration reaching a deploy mutation and SUPPLIES the population by call-edge analysis, at which point this list stays as the covered side and the join stops comparing two things the same author wrote."
+
+fn leased_participant_of(decl_name: String, kind: DeployMutationKind) -> DeployMutator {
+  DeployMutator {
+    declaration: DeclarationRef {
+      module_path: "gunbc.live_deploy.apply",
+      decl_name: decl_name,
+      field: WholeDeclaration,
+    },
+    kind: kind,
+  }
+}
 
 fn live_deploy_leased_participants() -> List<DeployMutator> {
-  deploy_mutation_population()
+  [
+    leased_participant_of(decl_name: "live_deploy_apply_srv1_wet", kind: MutateApply),
+    leased_participant_of(decl_name: "live_deploy_apply_srv1_operator_wet", kind: MutateApply),
+    leased_participant_of(decl_name: "live_deploy_retract_srv1_wet", kind: MutateRetract),
+    leased_participant_of(decl_name: "live_deploy_retract_srv1_operator_wet", kind: MutateRetract),
+    leased_participant_of(decl_name: "live_deploy_flip_route_to_recorded_candidate", kind: MutateRouteFlip),
+    leased_participant_of(decl_name: "live_deploy_record_slot_revision", kind: MutateSlotRevisionRecord),
+  ]
 }
 
 data lease_launch_operation_note: String = "APPLY AND RETRACT ARE TWO ARMS OF ONE LEASED OPERATION, because they mutate the same slot, the same units, the same files, and the same route-adjacent domain. Leasing only apply left retract able to race a cutover while the apply process believed it held exclusive ownership — and the carrier note claimed 'every public mutation entry routes through the leased launcher' the whole time it was false (operator ruling 2026-08-05).\\n\\nThe candidate rides on the Apply arm only, because it is the thing apply decides about and retract has no candidate to compare. Making it a field of the operation rather than a parameter of the launcher is what keeps a retract from being launched with a meaningless candidate argument."
@@ -470,7 +494,7 @@ fn lease_probe_step_refusal(step: String, expected: Int, observed: Int, lock: St
   }
 }
 
-data lease_probe_steps_note: String = "STEP A — acquire the free lock and run `true`, expecting 0: proves the object is openable and exclusively acquirable by THIS principal, which is the half that fails when the namespace does not exist or is not reachable. STEP B — hold it and, inside, attempt the same lock again, expecting the modeled conflict code: proves exclusion is real and reports on the code the outcome partition depends on. STEP C — acquire it again, expecting 0: proves the lock released when step B's process exited, which is the property that makes an expiry unnecessary.\\n\\nSTEP B WRITES A MARKER BEFORE ATTEMPTING THE NESTED LOCK, AND THE MARKER IS LOAD-BEARING (operator ruling 2026-08-05). Without it the sequence 0/111/0 can be produced by an UNRELATED holder: if some other deploy acquires the lock between A and B, B's OUTER flock returns the conflict code without ever running the nested attempt, and if that holder exits before C then C returns 0 — a passing probe that established nothing about self-contention. So B's inner command creates the marker AFTER the outer lock is held and BEFORE the nested attempt runs, and the outcome requires both the marker and the conflict code. An outer conflict now fails the probe instead of impersonating an inner one.\\n\\nSTEP D — the lock object is a directory and its parent is not writable by this principal. That is the property that makes the object's identity stable: a replaceable pathname passes A/B/C perfectly while providing no exclusion at all, because a new entrant recreates the path and locks a different inode (lock_object_is_a_directory_note carries the measured reproduction). Stated at its real rung: this proves THIS principal cannot unlink or rename the object, not that no principal can — root still can, and no probe run as an unprivileged account can establish otherwise."
+data lease_probe_steps_note: String = "STEP A — acquire the free lock and run `true`, expecting 0: proves the object is openable and exclusively acquirable by THIS principal, which is the half that fails when the namespace does not exist or is not reachable. STEP B — hold it and, inside, attempt the same lock again, expecting the modeled conflict code: proves exclusion is real and reports on the code the outcome partition depends on. STEP C — acquire it again, expecting 0: proves the lock released when step B's process exited, which is the property that makes an expiry unnecessary.\\n\\nSTEP B WRITES A MARKER BEFORE ATTEMPTING THE NESTED LOCK, AND THE MARKER IS LOAD-BEARING (operator ruling 2026-08-05). Without it the sequence 0/111/0 can be produced by an UNRELATED holder: if some other deploy acquires the lock between A and B, B's OUTER flock returns the conflict code without ever running the nested attempt, and if that holder exits before C then C returns 0 — a passing probe that established nothing about self-contention. So B's inner command creates the marker AFTER the outer lock is held and BEFORE the nested attempt runs, and the outcome requires both the marker and the conflict code. An outer conflict now fails the probe instead of impersonating an inner one.\\n\\nSTEP D — the lock object is a directory whose parent is not writable by this principal, AND THE CLAIM IT SUPPORTS IS NARROWER THAN AN EARLIER REVISION SAID (operator ruling 2026-08-05). The property being protected is that the object's IDENTITY cannot change under a live lease, because a replaceable pathname passes A/B/C perfectly while providing no exclusion (lock_object_is_a_directory_note carries the measured reproduction). What step D establishes is that the DAC permissions deny unlink and rename to this principal acting as itself.\\n\\nIt does NOT establish that this principal cannot replace the object, and saying so would be false against the principal's own modeled capabilities: gunbc.fleet_posix_accounts grants ghrunner NOPASSWD `rm` and `install`, and the generated sudoers lines scope the COMMAND PATH, not its arguments — so `sudo rm -rf <lock object>` followed by `sudo install -d` is within the grant. The honest scope is therefore a COOPERATIVE-CALLER model: the object cannot be replaced by accident, by an unprivileged co-tenant, or by ordinary deploy machinery, and a caller deliberately spending its sudo grant is outside what any probe run as that principal can refute.\\n\\n🟡 dissolve-on: argument-scoped privilege for the deploy principal — either a narrower sudoers entry naming the exact paths, or a helper that takes the operation rather than the argv — at which point replacement becomes unreachable rather than merely uncooperative, and this step can claim what its earlier revision claimed."
 
 func live_deploy_lease_contention_probe_wet() -> ProcessExit
   uses net: Network

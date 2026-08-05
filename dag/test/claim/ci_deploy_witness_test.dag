@@ -84,6 +84,7 @@ import gunbc.live_deploy.lease {
   live_deploy_lease_wait_seconds,
   live_deploy_apply_entry_path,
   live_deploy_apply_srv1_leased_entry_function,
+  live_deploy_leased_participants,
   CandidateRelease,
   LiveDeployLeaseOutcome,
   LeaseConflict,
@@ -94,6 +95,7 @@ import gunbc.live_deploy.intent {
   slot_revision_unrecorded_token,
   live_deploy_slot_revision_read_script,
   live_deploy_slot_revision_record_script,
+  slot_revision_receipt_exact_bytes,
 }
 import gunbc.live_deploy.apply {
   parse_slot_revision_stdout,
@@ -415,15 +417,20 @@ data lease_host_agreement_note: String = "THE LEASE MUST LOCK THE MACHINE THE EF
 
 data shared_parent_has_no_owner_flags_note: String = "THE SHARED PARENT MUST NOT CARRY OWNERSHIP FLAGS, asserted rather than left to the next author's memory (review 48335). /var/lib/gunbc/deploy-revision is shared by every slot, so an `install -d -o <service_user>` there takes its owner from whichever slot happens to be deploying — idempotent only while all slots share one user, which is a coincidence of two values rather than a fact. The per-slot FILE keeps its owner flags, so this witness has to distinguish the two commands rather than simply banning `-o` from the script."
 
-test fn the_shared_receipt_parent_is_created_without_owner_flags() -> Bool {
+data receipt_is_root_owned_note: String = "NEITHER THE RECEIPT NOR ITS PARENT CARRIES OWNER FLAGS, and the FILE half is the operator's second-review P0 (2026-08-05). It installed `-o <service_user> -g <service_user>` at 0644 — and 0644 grants the OWNER write — while the service user is the principal the serve unit and belt timer run as, and the deploy principal is a different account. So the monotonicity authority was writable by a long-lived process the model does not designate as its writer, and overwriting a routed slot's receipt with an older sha readmits a superseded candidate as an advance: the public service moves backward through the very file that exists to prevent it.\\n\\nThis asserts the absence of the capability rather than a policy about who should use it. Root places the file through the granted sudo install; everyone reads it at 0644; nobody but root writes it."
+
+test fn the_revision_receipt_and_its_parent_are_root_owned() -> Bool {
   let script = live_deploy_slot_revision_record_script(
     spec: deploy_target_blue_slot(target: Srv1Dashboard),
     revision: witness_candidate_sha,
   )
   let dir = deploy_slot_revision_receipt_dir as String
+  let service_user = deploy_target_blue_slot(target: Srv1Dashboard).service.service_user as String
   contains_substring(haystack: script, needle: concat("install -d -m 0755 '", concat(dir, "'")))
-    && !contains_substring(haystack: script, needle: concat("install -d -m 0755 -o", ""))
-    && contains_substring(haystack: script, needle: "install -m 0644 -o ")
+    && contains_substring(haystack: script, needle: "install -m 0644 \"$_gunbc_receipt_stage\"")
+    && !contains_substring(haystack: script, needle: "-o ")
+    && !contains_substring(haystack: script, needle: "-g ")
+    && !contains_substring(haystack: script, needle: service_user)
 }
 
 data coordination_matrices_note: String = "THE MATRICES THE OPERATOR ASKED FOR (2026-08-05), because the single CI/operator pair the previous revision carried is a two-point sample of a five-axis property. A coordination mechanism can be present, well-formed and useless on any of locus, extent, population, resource identity or outcome partition, and each axis needs its own discriminating pair — otherwise passing on one axis reads as coverage of all of them."
@@ -632,15 +639,6 @@ test fn transports_project_the_loci_and_extents_they_actually_have() -> Bool {
   }
 }
 
-data all_public_entries_leased_note: String = "PARTICIPANT COMPLETENESS AT THE ENTRYPOINT GRAIN, which the population axis cannot see: the model can list retract as covered while the retract entrypoint still calls the actuator directly. This asserts that the four public entries name exactly the two leased inner functions and that neither inner function is itself a public entry."
-
-test fn all_four_public_entries_launch_under_the_lease() -> Bool {
-  gunbc_ci_deploy_srv1_stage.function == live_deploy_apply_srv1_wet_function
-    && live_deploy_apply_srv1_wet_function != live_deploy_apply_srv1_leased_entry_function
-    && live_deploy_apply_srv1_wet_function != live_deploy_retract_srv1_leased_entry_function
-    && live_deploy_apply_srv1_leased_entry_function != live_deploy_retract_srv1_leased_entry_function
-}
-
 test fn the_leased_command_is_flock_exclusive_over_the_target_lease() -> Bool {
   let argv = leased_argv_for(inner: live_deploy_apply_srv1_leased_entry_function, operation: LeasedApply)
   head_is(argv: argv, expected: "flock")
@@ -712,6 +710,18 @@ fn is_abnormal(o: LiveDeployLeaseOutcome) -> Bool {
 
 data codec_controls_note: String = "THE RECEIPT DECODER MUST NOT REPAIR CORRUPTION INTO AUTHORIZATION. `tr -d '[:space:]'` deleted INTERNAL whitespace, so a receipt fragmented by spaces or newlines collapsed into a well-formed 40-character sha and was accepted. These controls plant each whitespace class inside an otherwise-valid sha; every one must refuse."
 
+data trailing_bytes_are_refused_in_script_note: String = "THE TRAILING-WHITESPACE REFUSAL IS ASSERTED AGAINST THE SCRIPT, BECAUSE THE PARSER NEVER SEES THOSE BYTES (operator ruling 2026-08-05). An earlier revision of this witness asserted parse_slot_revision_stdout(good + LF) is Unreadable. That call refuses — 41 characters are not 40 hex — but it describes a state production cannot reach: the wet shell transport applies `.trim_end()` to stdout before any decoder runs, so a receipt of 40 hex bytes plus LF, CR, space or TAB arrives already canonicalized and is ACCEPTED. The assertion passed while the property it was trusted for was false, which is specification-without-execution at the boundary rather than in the model.\\n\\nSo the exactness is enforced where it executes — the read script measures the file and exits nonzero unless it is exactly forty bytes — and this asserts that gate is in the script. Internal corruption stays a parser-level claim, because trimming does not touch it and the decoder genuinely is the boundary for that class."
+
+fn script_refuses_receipts_that_are_not_exactly_forty_bytes() -> Bool {
+  let script = live_deploy_slot_revision_read_script(spec: deploy_target_blue_slot(target: Srv1Dashboard))
+  contains_substring(haystack: script, needle: "wc -c <")
+    && contains_substring(
+         haystack: script,
+         needle: concat("-ne ", concat(to_string(slot_revision_receipt_exact_bytes), " ]; then exit 1"))
+       )
+    && slot_revision_receipt_exact_bytes == 40
+}
+
 test fn internally_corrupted_receipts_refuse_rather_than_being_repaired() -> Bool {
   let good = witness_candidate_sha as String
   all(
@@ -724,10 +734,7 @@ test fn internally_corrupted_receipts_refuse_rather_than_being_repaired() -> Boo
       DeployedRevisionUnrecorded => false
     }
   )
-  && match parse_slot_revision_stdout(stdout: concat(good, "\n")) {
-    DeployedRevisionUnreadable { cause: _ } => true
-    _ => false
-  }
+  && script_refuses_receipts_that_are_not_exactly_forty_bytes()
   && match parse_slot_revision_stdout(stdout: good) {
     DeployedRevisionRecorded { revision: r } => r == witness_candidate_sha
     _ => false
@@ -932,6 +939,8 @@ test fn the_violated_prefix_authorizes_a_backward_public_move() -> Bool {
     && all(landed.holds, h => h)
 }
 
+data covered_population_independence_note: String = "THE PRODUCTION COMPOSITION IS EXERCISED, NOT ONLY THE PURE FOLD (operator ruling 2026-08-05). This replaces all_four_public_entries_launch_under_the_lease, which asserted that the CI stage names the apply function and that three inner function NAMES differ from each other — it never examined the operator-apply body or either retract body, so the regression wall it was trusted for did not exist. Worse, live_deploy_leased_participants() returned deploy_mutation_population() verbatim, so the subject the deploy actually builds could not refuse for any input at all.\\n\\nSo this asserts the two authorities agree TODAY at identity grain, and then feeds the PRODUCTION covered list a population containing one more participant and requires a refusal. If the alias is ever restored, the second half greens vacuously and this reds. What it still does not do is verify that each named declaration's BODY reaches the launcher; that is the call-edge discovery the dissolve-on names."
+
 data planted_fifth_entrypoint_note: String = "THE CONTROL THE KIND GRAIN COULD NOT EXPRESS (operator ruling 2026-08-05). Under the previous shape both sides listed the same four KINDS, so a new public function performing an existing kind — say a fifth entrypoint that only flips the route — found MutateRouteFlip already covered and the admission stayed green while a real mutator sat outside the lease. Planting exactly that participant is the discriminating input: same kind, new declaration, must refuse. It reds if the join is ever weakened back to kinds."
 
 fn planted_route_flip_entrypoint() -> DeployMutator {
@@ -1030,4 +1039,20 @@ fn stage_index(order: List<CutoverStage>, stage: CutoverStage) -> Int {
     }
   )
   scan.found
+}
+
+test fn the_covered_population_is_not_an_alias_of_the_mutation_population() -> Bool {
+  let covered = live_deploy_leased_participants()
+  let population = deploy_mutation_population()
+  count(covered) == count(population)
+    && all(population, m => any(covered, c => deploy_mutator_key(m: c) == deploy_mutator_key(m: m)))
+    && refuses_with_uncovered_entrypoint(s: DeployCoordinationSubject {
+         target: Srv1Dashboard,
+         lease_locus: CurrentHost { host: witness_host_a },
+         mutation_locus: CurrentHost { host: witness_host_a },
+         lease_extent: ProcessLifetime,
+         required_extent: deploy_required_extent,
+         mutation_population: concat(population, [planted_route_flip_entrypoint()]),
+         covered_population: covered,
+       })
 }

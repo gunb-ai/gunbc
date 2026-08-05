@@ -215,13 +215,25 @@ type CutoverRouteOutcome
   = RouteNotFlipped
   | RoutePublished { reconciliation: Reconciliation<HostEffectIntent, HostEffectEvidence> }
 
+data capability_payload_is_sole_constructor_note: String = "THE PAYLOADS ARE sole_constructor SO ANOTHER MODULE CANNOT FABRICATE THEM, and an earlier revision of the note above claimed more than the types delivered (operator ruling 2026-08-05). It said only the predecessor stage can produce the capability. What was true was that the production FOLD respects the sequencing; what was not true is that the sequencing was structural — the outcome coproducts were ordinary, so any module holding a genuine RevisionAdvance could build CandidateRevisionRecorded itself and hand it to the stage function that constructs the protected VerifiedRecordedCandidate. The wall was one level shallower than the sentence describing it.\\n\\nMaking the PAYLOAD sole_constructor closes the cross-module half: RecordedCandidateEvidence and RoutedCandidateEvidence can only be constructed inside this module, so the fabrication path from outside does not typecheck.\\n\\nWHAT REMAINS TRUE AND WHAT DOES NOT, stated so the rung is not re-inflated. Within this module the evidence is still derived from `reconciliation_converged` on the stage's own result rather than returned BY the effect, so a future edit here could still construct it beside a failed record. That is mechanical prevention against other modules and ordinary sequencing discipline within this one — not the structural guarantee that the effect itself yields its evidence. 🟡 dissolve-on: live_deploy_record_slot_revision and live_deploy_verify_routed_candidate return their evidence directly, so the convergence Boolean stops being an input to capability construction anywhere."
+
+type RecordedCandidateEvidence sole_constructor {
+  admission: RevisionAdvance
+  slot: DeploymentSpec
+  revision: CommitSha
+}
+
+type RoutedCandidateEvidence sole_constructor {
+  slot: DeploymentSpec
+}
+
 type CandidateRecordOutcome
   = CandidateRevisionNotRecorded
-  | CandidateRevisionRecorded { admission: RevisionAdvance, slot: DeploymentSpec, revision: CommitSha }
+  | CandidateRevisionRecorded { evidence: RecordedCandidateEvidence }
 
 type RoutedVerifyOutcome
   = RoutedCandidateUnverified
-  | RoutedCandidateVerified { slot: DeploymentSpec }
+  | RoutedCandidateVerified { evidence: RoutedCandidateEvidence }
 
 type CutoverProgress {
   last: Reconciliation<HostEffectIntent, HostEffectEvidence>
@@ -304,12 +316,12 @@ fn live_deploy_run_cutover_stage(
             reason: "blue/green cutover refused: the route flip requires a recorded candidate, and no RecordCandidateRevision stage has produced one. Routing to a slot whose revision is not durably recorded is what lets a later candidate read a stale receipt and move the public service backward",
             applied: live_deploy_preflight_intent(access: access),
           }
-        CandidateRevisionRecorded { admission: adm, slot: recorded_slot, revision: rev } =>
+        CandidateRevisionRecorded { evidence: ev } =>
           live_deploy_flip_route_to_recorded_candidate(
             recorded: VerifiedRecordedCandidate {
-              admission: adm,
-              slot: recorded_slot,
-              revision: rev,
+              admission: ev.admission,
+              slot: ev.slot,
+              revision: ev.revision,
             },
             transport: transport,
             access: access,
@@ -332,7 +344,7 @@ fn live_deploy_run_cutover_stage(
             reason: "blue/green cutover refused: retiring the active runtime requires a VERIFIED routed candidate, and no VerifyRoutedCandidate stage has produced one. Stopping the old runtime on the strength of a zero exit from the route command is how a successful-looking flip takes the public service down",
             applied: live_deploy_preflight_intent(access: access),
           }
-        RoutedCandidateVerified { slot: _ } =>
+        RoutedCandidateVerified { evidence: _ } =>
           live_deploy_retract_via_transport(
             spec: deployment_retiring_slot_spec(spec: active),
             transport: transport,
@@ -421,7 +433,13 @@ fn live_deploy_run_cutover_stages(
 
 fn cutover_recorded_if_converged(ok: Bool, admission: RevisionAdvance, slot: DeploymentSpec) -> CandidateRecordOutcome {
   if ok {
-    CandidateRevisionRecorded { admission: admission, slot: slot, revision: admission.to }
+    CandidateRevisionRecorded {
+      evidence: RecordedCandidateEvidence {
+        admission: admission,
+        slot: slot,
+        revision: admission.to,
+      }
+    }
   } else {
     CandidateRevisionNotRecorded
   }
@@ -440,7 +458,7 @@ fn cutover_flip_if_converged(
 
 fn cutover_verified_if_converged(ok: Bool, slot: DeploymentSpec) -> RoutedVerifyOutcome {
   if ok {
-    RoutedCandidateVerified { slot: slot }
+    RoutedCandidateVerified { evidence: RoutedCandidateEvidence { slot: slot } }
   } else {
     RoutedCandidateUnverified
   }
@@ -803,6 +821,10 @@ fn ground_unrecorded_slot_revision(
   }
 }
 
+data unbound_grounding_refusal_reason: String = "the routed slot carries no revision receipt, and this deploy will not ground one from the slot's disk HEAD alone: `gunbc serve` binds its graph once at process start, so the running process can be serving a revision the tree no longer contains, and recording the tree's HEAD would manufacture a predecessor the public service is not actually at. A later candidate B with grounded < B < served would then be admitted as an advance and move the public service BACKWARD. Grounding requires binding the routed PROCESS to the slot's tree — a slot-local expected surface, or a commit identity the process publishes about itself — and neither exists yet. Refusing until it does (operator ruling 2026-08-05)."
+
+data grounding_is_unwired_pending_binding_note: String = "THE GROUNDING PRODUCER IS DELIBERATELY NOT REACHED, AND THIS IS A LIVENESS DEBT HELD OPEN ON PURPOSE (operator review 2026-08-05). It was wired in the previous round to close the migration deadlock, and the second review found that its observation is UNBOUND: `git rev-parse HEAD` in the slot's tree describes the DISK, while the receipt must describe what the routed PROCESS is serving, and the two diverge exactly when a sync is interrupted or lands out of order. Writing the disk HEAD as the active revision manufactures a false predecessor, which readmits the backward public move the whole receipt model exists to forbid — so the wired state was less safe than the deadlock it replaced.\\n\\nThe function and its read effect are retained rather than deleted because they are the INPUT half of the eventual binding: whatever proves the process/tree correspondence will still need the slot's commit. What is missing is the other half, and no arm here may substitute for it.\\n\\n🟡 dissolve-on: a GroundedRoutedRevision carrying process-surface evidence — either a slot-local expected surface rendered from the slot's own tree, or a commit identity the served process publishes about itself — at which point this arm calls the producer and the producer refuses only when that evidence fails to bind."
+
 data grounding_is_attempted_once_note: String = "THE RE-READ GOES THROUGH observe_routed_slot_revision AND ITS RESULT IS USED AS-IS, so this is not a retry loop and cannot recurse: grounding is attempted only from the Unrecorded arm of the FIRST observation, and if the re-read still reports Unrecorded — a receipt that was written and then read back absent — the caller refuses with ActiveRevisionUngrounded rather than grounding again. One attempt, then the ordinary decision."
 
 fn observe_or_ground_routed_slot_revision(
@@ -814,7 +836,9 @@ fn observe_or_ground_routed_slot_revision(
     DeployedRevisionRecorded { revision: r } => DeployedRevisionRecorded { revision: r }
     DeployedRevisionUnreadable { cause: why } => DeployedRevisionUnreadable { cause: why }
     DeployedRevisionUnrecorded =>
-      ground_unrecorded_slot_revision(active: active, transport: transport, access: access)
+      DeployedRevisionUnreadable {
+        cause: unbound_grounding_refusal_reason as NonEmptyStr
+      }
   }
 }
 

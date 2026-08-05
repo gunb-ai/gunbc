@@ -357,3 +357,23 @@ test fn only_a_recorded_observation_can_ever_advance() -> Bool {
   )
   count(advanced) == 1
 }
+
+data unbound_grounding_note: String = "AN UNRECORDED ROUTED SLOT REFUSES, AND THE PREVIOUS ROUND'S AUTOMATIC GROUNDING IS UNWIRED (operator review 2026-08-05). Grounding from the slot's disk HEAD was found unbound: `gunbc serve` binds its graph at process start, so the tree can name a revision the running process is not serving, and recording it manufactures a predecessor that readmits a backward public move. This asserts the refusal is what the decision reaches, so the unsafe state is unreachable while the binding is designed."
+
+test fn an_unrecorded_routed_slot_still_refuses_after_grounding_was_unwired() -> Bool {
+  match decide_deploy_for_observation(
+    observed: DeployedRevisionUnrecorded,
+    candidate: sha_b,
+    deployed_is_ancestor_of_candidate: true,
+    candidate_is_ancestor_of_deployed: false,
+  ) {
+    Refuse { cause: c } =>
+      match c {
+        ActiveRevisionUngrounded => true
+        UnrelatedRevisionHistories => false
+        RevisionRelationUnverifiable { cause: _ } => false
+      }
+    Advance { admission: _ } => false
+    Keep { reason: _ } => false
+  }
+}
