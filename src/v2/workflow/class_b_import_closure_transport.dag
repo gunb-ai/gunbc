@@ -9,19 +9,15 @@ import gunbc.class_b_import_closure_overlay {
 }
 import gunbc.declared_import_closure_binding {
   DeclaredImportClosureBindingObservation,
+  binding_source_is_listed_import,
   binding_refuses,
   row4_pool_coincidence_or_refuse
 }
 import std.logic { Bool }
 import std.types { String, List, NonEmptyStr }
-import tools.host_prelude {
-  ClaimRun,
-  run_gunbc_claims
-}
 
-data class_b_transport_note: String = "Executing consumer for the Class B import-closure witness (#6985). Rows 1-2 are discovery-enrolled test fns in dag/test/claim/rust_test_fixtures_import_closure_witness_test.dag and are replayed here via run_gunbc_claims. Rows 3-4 are ordinary funcs in THIS module — the gate's own assertions, not discovered test fns needing exclusion plus re-admission. The stripped overlay is derived at execution time via gunbc.class_b_import_closure_overlay; perturbation fixtures remain checked-in under fixtures/class_b_import_closure/perturbation_overlay/."
+data class_b_transport_note: String = "Executing consumer for the Class B import-closure witness (#6985). All four acceptance rows are ordinary funcs on this gate module and run from run_class_b_import_closure_gate via source_root_ingest_gate — not discovered test fns. Rows 3-4 derive the stripped overlay at execution time via gunbc.class_b_import_closure_overlay; perturbation fixtures remain checked-in under fixtures/class_b_import_closure/perturbation_overlay/."
 
-data class_b_witness_entry: String = "dag/test/claim/rust_test_fixtures_import_closure_witness_test.dag"
 data class_b_consumer_module: String = "v2.extdeps.languages.rust_test"
 data class_b_symbol: String = "rust_selection_policy_node"
 data class_b_perturbation_overlay_rel: String = "fixtures/class_b_import_closure/perturbation_overlay"
@@ -76,6 +72,21 @@ func class_b_observe_with_derived_stripped_overlay(
   }
 }
 
+func class_b_declared_import_closure_lists_rust_import() -> Bool {
+  binding_source_is_listed_import(
+    obs: class_b_observe_with_overlay(pool_roots: witness_layer_roots)
+  )
+}
+
+func class_b_ambient_pool_provider_preserves_listed_import() -> Bool {
+  let baseline = class_b_observe_with_overlay(pool_roots: witness_layer_roots)
+  let perturbed = class_b_observe_with_overlay(
+    pool_roots: concat([class_b_perturbation_overlay_rel], witness_layer_roots)
+  )
+  binding_source_is_listed_import(obs: baseline)
+    && binding_source_is_listed_import(obs: perturbed)
+}
+
 func class_b_stripped_import_closure_refuses_binding() -> Bool {
   binding_refuses(
     obs: class_b_observe_with_derived_stripped_overlay(include_perturbation: false)
@@ -89,14 +100,8 @@ func class_b_stripped_with_ambient_pool_coincidence_or_refuse() -> Bool {
 }
 
 func run_class_b_import_closure_gate() -> Bool {
-  let discovery_rows = run_gunbc_claims(
-    source_roots: witness_layer_roots,
-    claims: [
-      ClaimRun { entry: class_b_witness_entry, function: "declared_import_closure_lists_rust_import" },
-      ClaimRun { entry: class_b_witness_entry, function: "ambient_pool_provider_preserves_listed_import" }
-    ]
-  )
-  discovery_rows
+  class_b_declared_import_closure_lists_rust_import()
+    && class_b_ambient_pool_provider_preserves_listed_import()
     && class_b_stripped_import_closure_refuses_binding()
     && class_b_stripped_with_ambient_pool_coincidence_or_refuse()
 }
