@@ -447,6 +447,93 @@ pub fn annotation_block_grouping_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
+pub fn annotation_canonical_rendering_law_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "THE RENDERER'S OBLIGATION, stated here because it is the exact inverse of the grouping rule above and the two must not drift apart. A realization rendering a graph back to source MUST separate two consecutive rows sharing a subject by a BLANK LINE, and MUST render one row's embedded line breaks as adjacent annotation lines with no blank line between them.\n\nThat is not a formatting preference — it is what makes the round trip mean anything. The grouping fold reads a blank line as `these are two authored blocks` and adjacency as `this is one block spanning two lines`. A renderer that emitted the rows adjacently would produce source that re-parses as ONE row where the author wrote two, and the round trip would then certify the merge the grouping rule exists to prevent. The failure is silent and it is permanent, because the merged form is what gets written back.\n\nWhat this law does NOT fix is the delimiter: how an annotation line is spelled is a realization fact, so each realization owns the inverse of its own normalization step and states it beside that step.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn annotation_round_trip_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "WHAT AGREEMENT MEANS, and deliberately what it does not. Parse a source, render its graph, parse the result: the two graphs agree when they have the same rows in the same order, each row naming the same subject and carrying the same normalized text.\n\nEXACT SOURCE BYTES ARE NOT THE TARGET, and cannot be. Normalization strips the delimiter and at most one following space, so `//tight` and `// tight` both land as `tight` and the authored difference is gone before any renderer runs. A property demanding original bytes would be unsatisfiable against this carrier — not hard, unsatisfiable — so it would either never pass or be quietly weakened until it passed. The declared canonical form replaces it: the renderer emits ONE spelling, and the property asserts the graph survives, not the keystrokes.\n\nFOUR THINGS ARE THEREFORE EXCLUDED ON PURPOSE. Original delimiter spacing, because normalization already discarded it. Original byte offsets, because rendered source has its own. Raw node equality, because v1 nodes carry spans and a span-carrying comparison reports PROVENANCE differences as semantic ones. And origin spans on the rows themselves — this predicate compares subject and text only, for the same reason: a rendered source legitimately places the same annotation at a different offset, and a comparison that failed on that would be measuring the renderer's line arithmetic rather than whether the prose survived.\n\nORDER AND MULTIPLICITY ARE IN, not incidentally but because the carrier says they are its identity: two rows with the same text on the same subject are two annotations, and the first-written is first.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn annotation_subject_key_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "WHY AGREEMENT IS KEYED ON A STRING AND NOT ON OccurrenceId. An occurrence identity is unique within ONE graph-scoped allocator. Two separately parsed sources have two allocators, so equal id VALUES across them establish equal allocation ordinals and nothing else — a round trip comparing them directly would report `same subject` for two declarations that merely occupy the same position in their respective files.\n\nThat is not a hypothetical. Identical prose above `data alpha` in one source and above `data beta` in another source of the same shape yields the same ordinal for both, so an id-valued comparison agrees while the annotations name different declarations. The failure is a FALSE POSITIVE in the oracle, which is the direction that never gets noticed.\n\nSo agreement is stated over a caller-supplied key that is stable ACROSS parses. The realization decides what that key is, because only the realization knows: for the first .dag cut it is the authored declaration name, which is unique among one module's items and is exactly what a reader means by `the same subject`. A realization whose subjects are not uniquely named must supply a qualified key instead, and DISSOLVE-ON: when the containment tree is the single naming authority, the key becomes the containment path and uniqueness stops being a per-realization precondition.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct KeyedAnnotationRow {
+    pub subject_key: String,
+    pub text: String,
+}
+
+pub fn annotation_agreement_walk_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Walks both row lists together rather than comparing counts and then contents. A count check followed by a per-row check reads as equivalent and is not — it answers `same size` and `these rows match somewhere` as two separate questions, and neither pins ORDER. Consuming both lists in step makes position part of the comparison by construction.\n\nIt is a FOLD carrying the unconsumed right-hand rows, not a recursion over both. Graphs concatenate across compilation units, so row count scales with the corpus's whole prose population and a recursive comparison would make stack depth a function of how much prose the repository holds. The positional guarantee is identical either way; only the depth dependency differs.\n\nLength mismatch falls out of the walk rather than being checked separately: a right side that runs dry marks disagreement, and a right side with rows left over fails the final emptiness check.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct KeyedAnnotationRowWalk {
+    pub rest: Rc<Vec<Rc<KeyedAnnotationRow>>>,
+    pub agreed: bool,
+}
+
+pub fn keyed_annotation_rows_agree(
+    left: Rc<Vec<Rc<KeyedAnnotationRow>>>,
+    right: Rc<Vec<Rc<KeyedAnnotationRow>>>,
+) -> bool {
+    {
+        let walk = left.clone().iter().cloned().fold(
+            Rc::new(KeyedAnnotationRowWalk {
+                rest: right.clone(),
+                agreed: true,
+            }),
+            |acc: Rc<KeyedAnnotationRowWalk>, row: Rc<KeyedAnnotationRow>| match acc
+                .rest
+                .clone()
+                .first()
+                .cloned()
+            {
+                None => Rc::new(KeyedAnnotationRowWalk {
+                    rest: Rc::new(vec![]),
+                    agreed: false,
+                }),
+                Some(other) => Rc::new(KeyedAnnotationRowWalk {
+                    rest: Rc::new(
+                        acc.rest
+                            .clone()
+                            .iter()
+                            .cloned()
+                            .skip(1 as usize)
+                            .collect::<Vec<_>>(),
+                    ),
+                    agreed: ((acc.agreed.clone()
+                        && (row.subject_key.clone() == other.subject_key.clone()))
+                        && (row.text.clone() == other.text.clone())),
+                }),
+            },
+        );
+        (walk.agreed.clone() && ((walk.rest.clone().len() as i64) == 0))
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct AnnotationAttachAcc {
     pub rows: Rc<Vec<Rc<SourceAnnotationDebt>>>,
