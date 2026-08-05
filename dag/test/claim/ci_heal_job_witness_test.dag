@@ -200,6 +200,31 @@ test fn heal_commit_scope_is_auto_push_eligible_only() -> Bool {
     && (count(author_commit_required_committed_artifact_paths()) == 2)
 }
 
+// include-hidden-files governs any component under the upload root, and the
+// bundle copies each source path UNDER the artifact dir — so a path hidden at a
+// later segment is exactly as droppable as one hidden at the first. The negative
+// arms hold the predicate to segment-initial dots: an extension dot is not hidden.
+test fn heal_bundle_hidden_detection_sees_nested_components() -> Bool {
+  path_is_hidden(path: ".github/workflows/ci.yml")
+    && path_is_hidden(path: "docs/.nojekyll")
+    && path_is_hidden(path: "src/.config/settings.toml")
+    && !path_is_hidden(path: "docs/nojekyll")
+    && !path_is_hidden(path: "src/v2/compiler/03_normalize.dag")
+    && !path_is_hidden(path: "DESIGN.md")
+}
+
+// The packaging diagnostic must be reachable. GitHub runs `run:` under
+// `bash -eo pipefail`, so a post-hoc `[ ! -e ]` check after `cp` is dead in both
+// directions: cp failing aborts the script first, cp succeeding leaves the file
+// present. The typed diagnostic therefore has to hang off the failing command.
+test fn heal_bundle_incompleteness_diagnostic_is_reachable() -> Bool {
+  let script = gunbc_ci_heal_commit_push_script()
+  string_contains(s: script, pattern: "if ! cp \"$p\" \"")
+    && string_contains(s: script, pattern: "if ! mkdir -p \"")
+    && string_contains(s: script, pattern: "::error::HealRepairBundleIncomplete path=$p")
+    && !string_contains(s: script, pattern: "if [ ! -e \"")
+}
+
 test fn heal_git_add_is_existence_guarded() -> Bool {
   let script = gunbc_ci_heal_commit_push_script()
   string_contains(s: script, pattern: concat("if [ -e \"", artifact_path(a: GitignoreArtifact)))

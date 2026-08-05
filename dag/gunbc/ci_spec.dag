@@ -594,9 +594,8 @@ fn ci_heal_author_commit_package_lines() -> List<String> {
     "if [ -n \"$AUTHOR_COMMIT_DRIFT\" ]; then",
     concat("  rm -rf \"", concat(ci_heal_author_commit_artifact_dir, "\"")),
     "  for p in $AUTHOR_COMMIT_DRIFT; do",
-    concat("    mkdir -p \"", concat(ci_heal_author_commit_artifact_dir, "/$(dirname \"$p\")\"")),
-    concat("    cp \"$p\" \"", concat(ci_heal_author_commit_artifact_dir, "/$p\"")),
-    concat("    if [ ! -e \"", concat(ci_heal_author_commit_artifact_dir, "/$p\" ]; then echo \"::error::HealRepairBundleIncomplete path=$p\" >&2; exit 1; fi")),
+    concat("    if ! mkdir -p \"", concat(ci_heal_author_commit_artifact_dir, "/$(dirname \"$p\")\"; then echo \"::error::HealRepairBundleIncomplete path=$p\" >&2; exit 1; fi")),
+    concat("    if ! cp \"$p\" \"", concat(ci_heal_author_commit_artifact_dir, "/$p\"; then echo \"::error::HealRepairBundleIncomplete path=$p\" >&2; exit 1; fi")),
     "  done",
     concat(concat("  echo \"", ci_heal_author_commit_required_output), "=1\" >> \"$GITHUB_OUTPUT\""),
     "fi"

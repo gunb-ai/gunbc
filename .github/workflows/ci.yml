@@ -440,9 +440,8 @@ jobs:
           if [ -n "$AUTHOR_COMMIT_DRIFT" ]; then
             rm -rf "heal-author-commit-required"
             for p in $AUTHOR_COMMIT_DRIFT; do
-              mkdir -p "heal-author-commit-required/$(dirname "$p")"
-              cp "$p" "heal-author-commit-required/$p"
-              if [ ! -e "heal-author-commit-required/$p" ]; then echo "::error::HealRepairBundleIncomplete path=$p" >&2; exit 1; fi
+              if ! mkdir -p "heal-author-commit-required/$(dirname "$p")"; then echo "::error::HealRepairBundleIncomplete path=$p" >&2; exit 1; fi
+              if ! cp "$p" "heal-author-commit-required/$p"; then echo "::error::HealRepairBundleIncomplete path=$p" >&2; exit 1; fi
             done
             echo "heal_author_commit_required=1" >> "$GITHUB_OUTPUT"
           fi
