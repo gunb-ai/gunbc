@@ -149,6 +149,17 @@ test fn w_red_admission_with_wrong_tool_evidence_refuses() -> Bool {
   }
 }
 
+test fn w_red_admission_with_mismatched_host_refuses() -> Bool {
+  match admit_dgx_spark_deployment(
+    identity: srv6_reserved,
+    catalog: nvidia_dgx_spark_4tb_catalog,
+    identity_observation: Present { value: synthetic_device_identity_envelope() },
+  ) {
+    DgxSparkDeploymentRefused { reason: _ } => true
+    DgxSparkDeploymentAdmitted { deployment: _ } => false
+  }
+}
+
 fn synthetic_refused_outcome() -> FleetLifecycleOutcome {
   FleetLifecycleRefused {
     class: TransportAuthFailure { detail: "synthetic: SSH could not connect" }
