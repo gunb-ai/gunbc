@@ -7248,8 +7248,7 @@ pub struct MultiEntryIndex {
     /// Shared entry-view facts keyed by closure semantic input identity
     /// (`closure_content_digest`): the closure symbol index (census + pool qualified
     /// fill) and the once-per-closure variant-owner base derived from it.
-    closure_assembly_env_memo:
-        RefCell<std::collections::HashMap<String, Rc<ClosureAssemblyEnv>>>,
+    closure_assembly_env_memo: RefCell<std::collections::HashMap<String, Rc<ClosureAssemblyEnv>>>,
     /// Per-root composed symbol index + variant base keyed by
     /// `root_assembly_env_key(closure_digest, root)`.
     root_assembly_env_memo: RefCell<std::collections::HashMap<String, Rc<RootAssemblyEnv>>>,
@@ -7257,6 +7256,22 @@ pub struct MultiEntryIndex {
     /// (ordered typed-module content keys ⊕ compiler identity).
     rewired_modules_memo:
         RefCell<std::collections::HashMap<String, Rc<im::Vector<Rc<TypedModule>>>>>,
+    /// `build_global_bare_variant_locals` keyed by a digest of `global_bare`.
+    global_bare_variant_base_memo: RefCell<
+        std::collections::HashMap<
+            String,
+            Rc<HashMap<String, Rc<crate::v1_compiler_infer_env::TypeBinding>>>,
+        >,
+    >,
+    /// `build_type_name_export_index` keyed by `rewire_semantic_input_identity`.
+    type_name_export_index_memo: RefCell<
+        std::collections::HashMap<
+            String,
+            Rc<HashMap<String, Rc<v1_compiler_infer::TypeNameExportFacts>>>,
+        >,
+    >,
+    /// Counted fallbacks when a shared-view memo refuses (must be zero on acceptance).
+    entry_view_assembly_fallbacks: Cell<u64>,
 }
 
 /// Closure-grain assembly environment shared across every entry whose closure carries
@@ -7436,6 +7451,9 @@ fn new_multi_entry_index_shell(
         closure_assembly_env_memo: RefCell::new(std::collections::HashMap::new()),
         root_assembly_env_memo: RefCell::new(std::collections::HashMap::new()),
         rewired_modules_memo: RefCell::new(std::collections::HashMap::new()),
+        global_bare_variant_base_memo: RefCell::new(std::collections::HashMap::new()),
+        type_name_export_index_memo: RefCell::new(std::collections::HashMap::new()),
+        entry_view_assembly_fallbacks: Cell::new(0),
     }
 }
 
@@ -10914,8 +10932,14 @@ fn resolved_graph_from_sources_with_index(
     set_phase(FloorPhase::Typecheck, entry_file);
     let reconcile_attributed_before = resolve_stage_slot_snapshot().reconcile_attributed_total();
     let reconcile_started = std::time::Instant::now();
-    let typed =
-        reconcile_with_typed_cache(graph.clone(), source_indices.clone(), global_table, index)?;
+    let closure_digest = closure_content_digest(&sources);
+    let typed = reconcile_with_typed_cache(
+        graph.clone(),
+        source_indices.clone(),
+        global_table,
+        index,
+        &closure_digest,
+    )?;
     // Assembly `other` is derived only when the exclusive reconcile rows fit inside the
     // containing reconcile span. A timing overlap is an attribution refusal, never a
     // saturating clamp to a plausible zero.
@@ -11266,6 +11290,8 @@ fn finish_resolved_graph_assembly(
     diag_chunks: Vec<Rc<im::Vector<Rc<ErrorNode>>>>,
     binding_fork_counts: (usize, usize),
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    index: Option<&MultiEntryIndex>,
+    rewire_identity: Option<&str>,
 ) -> Result<Rc<ResolvedGraph>, String> {
     let (same_tree_fork_count, cross_tree_fork_count) = binding_fork_counts;
     let registry_started = std::time::Instant::now();
@@ -11292,23 +11318,39 @@ fn finish_resolved_graph_assembly(
         );
     }
     resolve_stage_slot_add(|s| s.assembly_diagnostics += diagnostics_started.elapsed().as_nanos());
-    let rewire_started = std::time::Instant::now();
-    let modules =
-        v1_compiler_infer::rewire_type_env_parent_links(modules.clone(), source_indices.clone());
-    resolve_stage_slot_add(|s| s.assembly_rewire_type_env += rewire_started.elapsed().as_nanos());
-    let rewire2_started = std::time::Instant::now();
-    let modules = v1_compiler_infer::rewire_type_env_import_str_binding_identity(
-        modules.clone(),
-        source_indices.clone(),
-    );
-    resolve_stage_slot_add(|s| {
-        s.assembly_rewire_import_str += rewire2_started.elapsed().as_nanos()
-    });
-    let rewire3_started = std::time::Instant::now();
-    let modules =
-        v1_compiler_infer::rewire_func_env_parent_links(modules.clone(), source_indices.clone());
-    resolve_stage_slot_add(|s| s.assembly_rewire_func_env += rewire3_started.elapsed().as_nanos());
-    resolve_stage_slot_add(|s| s.assembly_rewire += rewire_started.elapsed().as_nanos());
+    let modules = match (index, rewire_identity) {
+        (Some(index), Some(rewire_identity)) => {
+            rewire_typed_modules_cached(index, modules, source_indices.clone(), rewire_identity)
+        }
+        _ => {
+            let rewire_started = std::time::Instant::now();
+            let modules = v1_compiler_infer::rewire_type_env_parent_links(
+                modules.clone(),
+                source_indices.clone(),
+            );
+            resolve_stage_slot_add(|s| {
+                s.assembly_rewire_type_env += rewire_started.elapsed().as_nanos()
+            });
+            let rewire2_started = std::time::Instant::now();
+            let modules = v1_compiler_infer::rewire_type_env_import_str_binding_identity(
+                modules.clone(),
+                source_indices.clone(),
+            );
+            resolve_stage_slot_add(|s| {
+                s.assembly_rewire_import_str += rewire2_started.elapsed().as_nanos()
+            });
+            let rewire3_started = std::time::Instant::now();
+            let modules = v1_compiler_infer::rewire_func_env_parent_links(
+                modules.clone(),
+                source_indices.clone(),
+            );
+            resolve_stage_slot_add(|s| {
+                s.assembly_rewire_func_env += rewire3_started.elapsed().as_nanos()
+            });
+            resolve_stage_slot_add(|s| s.assembly_rewire += rewire_started.elapsed().as_nanos());
+            modules
+        }
+    };
     let emit_info_started = std::time::Instant::now();
     let has_v1_seed = v1_compiler_infer::corpus_has_v1_seed_source_indices(modules.clone());
     let emit_graph_info = v1_compiler_infer::build_emit_graph_info(modules.clone(), has_v1_seed);
@@ -11361,6 +11403,7 @@ fn try_reconcile_all_cache_hits(
         closure_path_to_authored_name_map(closure_modules, closure_names);
     let mut results: Vec<Option<Rc<v1_compiler_infer::TypecheckModuleResult>>> =
         vec![None; closure_modules.len()];
+    let mut module_content_keys: Vec<String> = vec![String::new(); closure_modules.len()];
     let probe_started = std::time::Instant::now();
     let mut pending: Vec<usize> = schedule.iter().flatten().copied().collect();
     let mut defer_pass = 0usize;
@@ -11402,6 +11445,7 @@ fn try_reconcile_all_cache_hits(
             // raw `span.file` for the parse/normalize/ownership/source-hash caches.
             index_record_schedule_module(index, &decl_file, &typed_key, &resolved.module.span.file);
             note_interface_hash(&mut interface_hash_by_name, mod_name, &tc_result);
+            module_content_keys[slot] = typed_key;
             results[slot] = Some(tc_result);
             progressed = true;
         }
@@ -11457,11 +11501,14 @@ fn try_reconcile_all_cache_hits(
         });
     }
 
+    let rewire_identity = rewire_semantic_input_identity(&module_content_keys);
     finish_resolved_graph_assembly(
         Rc::new(modules_vec),
         diag_chunks,
         (same_tree_fork_count, cross_tree_fork_count),
         source_indices,
+        Some(index),
+        Some(&rewire_identity),
     )
     .map(Some)
 }
@@ -11780,14 +11827,80 @@ fn pool_bare_census(index: &MultiEntryIndex) -> Result<Rc<SymbolIndex>, String> 
     Ok(census)
 }
 
-fn build_symbol_index_for_reconcile(
+fn record_entry_view_assembly_fallback(index: &MultiEntryIndex) {
+    index
+        .entry_view_assembly_fallbacks
+        .set(index.entry_view_assembly_fallbacks.get().saturating_add(1));
+}
+
+#[cfg(any(test, feature = "interp_test_witness"))]
+pub fn entry_view_assembly_fallback_count_for_test(index: &MultiEntryIndex) -> u64 {
+    index.entry_view_assembly_fallbacks.get()
+}
+
+fn global_bare_semantic_digest(
+    global_bare: &Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
+) -> String {
+    let mut keys: Vec<&String> = global_bare.keys().collect();
+    keys.sort_unstable();
+    let mut acc = v1_rt::atom_identity_hash("entry-view-global-bare-v1".to_string());
+    for key in keys {
+        acc = v1_rt::hash_combine(acc, v1_rt::atom_identity_hash(key.clone()));
+        if let Some(state) = global_bare.get(key) {
+            let state_tag = match state.as_ref() {
+                GlobalBareLookupState::GlobalBareUniqueBinding { module_path, .. } => {
+                    format!("unique:{module_path}")
+                }
+                GlobalBareLookupState::GlobalBareAmbiguousBinding { .. } => "ambiguous".to_string(),
+            };
+            acc = v1_rt::hash_combine(acc, v1_rt::atom_identity_hash(state_tag));
+        }
+    }
+    acc
+}
+
+fn global_bare_variant_base_cached(
     index: &MultiEntryIndex,
+    global_bare: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    slot: impl FnOnce(u128),
+) -> Rc<HashMap<String, Rc<crate::v1_compiler_infer_env::TypeBinding>>> {
+    let digest = global_bare_semantic_digest(&global_bare);
+    if let Some(hit) = index.global_bare_variant_base_memo.borrow().get(&digest) {
+        return hit.clone();
+    }
+    let started = std::time::Instant::now();
+    let built = v1_compiler_infer::build_global_bare_variant_locals(
+        global_bare.clone(),
+        source_indices.clone(),
+    );
+    slot(started.elapsed().as_nanos());
+    index
+        .global_bare_variant_base_memo
+        .borrow_mut()
+        .insert(digest, built.clone());
+    built
+}
+
+fn root_assembly_env_key(closure_digest: &str, root: &str) -> String {
+    v1_rt::hash_combine(
+        v1_rt::atom_identity_hash(closure_digest.to_string()),
+        v1_rt::atom_identity_hash(root.to_string()),
+    )
+}
+
+fn closure_assembly_env_for(
+    index: &MultiEntryIndex,
+    closure_digest: &str,
     graph: Rc<v1_compiler_resolve::ModuleGraph>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Result<Rc<SymbolIndex>, String> {
+) -> Result<Rc<ClosureAssemblyEnv>, String> {
+    if let Some(hit) = index.closure_assembly_env_memo.borrow().get(closure_digest) {
+        return Ok(hit.clone());
+    }
     let symbol_index_started = std::time::Instant::now();
-    let symbol_index =
-        v1_compiler_infer::build_symbol_index_census(graph.modules.clone(), source_indices);
+    let closure_census =
+        v1_compiler_infer::build_symbol_index_census(graph.modules.clone(), source_indices.clone());
     resolve_stage_slot_add(|s| {
         s.assembly_symbol_index += symbol_index_started.elapsed().as_nanos()
     });
@@ -11795,9 +11908,114 @@ fn build_symbol_index_for_reconcile(
     let pool_fill = pool_qualified_fill(index)?;
     resolve_stage_slot_add(|s| s.assembly_pool_fill += pool_fill_started.elapsed().as_nanos());
     let merge_started = std::time::Instant::now();
-    let merged = v1_compiler_infer::symbol_index_with_qualified_fill(symbol_index, pool_fill);
+    let symbol_index =
+        v1_compiler_infer::symbol_index_with_qualified_fill(closure_census, pool_fill);
     resolve_stage_slot_add(|s| s.assembly_symbol_index_merge += merge_started.elapsed().as_nanos());
-    Ok(merged)
+    let closure_variant_base = global_bare_variant_base_cached(
+        index,
+        symbol_index.global_bare.clone(),
+        source_indices.clone(),
+        |nanos| resolve_stage_slot_add(|s| s.assembly_variant_base += nanos),
+    );
+    let env = Rc::new(ClosureAssemblyEnv {
+        symbol_index,
+        closure_variant_base,
+    });
+    index
+        .closure_assembly_env_memo
+        .borrow_mut()
+        .insert(closure_digest.to_string(), env.clone());
+    Ok(env)
+}
+
+fn root_assembly_env_for(
+    index: &MultiEntryIndex,
+    closure_digest: &str,
+    root: &str,
+    closure_symbol_index: Rc<SymbolIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Result<Rc<RootAssemblyEnv>, String> {
+    let key = root_assembly_env_key(closure_digest, root);
+    if let Some(hit) = index.root_assembly_env_memo.borrow().get(&key) {
+        return Ok(hit.clone());
+    }
+    let root_symbol_index_started = std::time::Instant::now();
+    let composed = v1_compiler_infer::symbol_index_with_bare_fill(
+        closure_symbol_index.clone(),
+        tree_bare_census_for_root(index, root)?,
+    );
+    resolve_stage_slot_add(|s| {
+        s.assembly_root_symbol_index += root_symbol_index_started.elapsed().as_nanos()
+    });
+    let root_variant_base = global_bare_variant_base_cached(
+        index,
+        composed.global_bare.clone(),
+        source_indices.clone(),
+        |nanos| resolve_stage_slot_add(|s| s.assembly_root_variant_base += nanos),
+    );
+    let env = Rc::new(RootAssemblyEnv {
+        composed_symbol_index: composed,
+        root_variant_base,
+    });
+    index
+        .root_assembly_env_memo
+        .borrow_mut()
+        .insert(key, env.clone());
+    Ok(env)
+}
+
+fn rewire_semantic_input_identity(module_content_keys: &[String]) -> String {
+    let mut acc = v1_rt::atom_identity_hash("entry-view-rewire-v1".to_string());
+    for key in module_content_keys {
+        acc = v1_rt::hash_combine(acc, v1_rt::atom_identity_hash(key.clone()));
+    }
+    v1_rt::hash_combine(acc, transform_content_digest())
+}
+
+fn rewire_typed_modules_cached(
+    index: &MultiEntryIndex,
+    modules: Rc<im::Vector<Rc<TypedModule>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    rewire_identity: &str,
+) -> Rc<im::Vector<Rc<TypedModule>>> {
+    if let Some(hit) = index.rewired_modules_memo.borrow().get(rewire_identity) {
+        return hit.clone();
+    }
+    let type_name_index = {
+        let mut memo = index.type_name_export_index_memo.borrow_mut();
+        if let Some(hit) = memo.get(rewire_identity) {
+            hit.clone()
+        } else {
+            let built = v1_compiler_infer::build_type_name_export_index(Rc::new(
+                modules.iter().cloned().collect::<im::Vector<_>>(),
+            ));
+            memo.insert(rewire_identity.to_string(), built.clone());
+            built
+        }
+    };
+    let _ = type_name_index;
+    let rewire_started = std::time::Instant::now();
+    let modules =
+        v1_compiler_infer::rewire_type_env_parent_links(modules.clone(), source_indices.clone());
+    resolve_stage_slot_add(|s| s.assembly_rewire_type_env += rewire_started.elapsed().as_nanos());
+    let rewire2_started = std::time::Instant::now();
+    let modules = v1_compiler_infer::rewire_type_env_import_str_binding_identity(
+        modules.clone(),
+        source_indices.clone(),
+    );
+    resolve_stage_slot_add(|s| {
+        s.assembly_rewire_import_str += rewire2_started.elapsed().as_nanos()
+    });
+    let rewire3_started = std::time::Instant::now();
+    let modules =
+        v1_compiler_infer::rewire_func_env_parent_links(modules.clone(), source_indices.clone());
+    resolve_stage_slot_add(|s| s.assembly_rewire_func_env += rewire3_started.elapsed().as_nanos());
+    resolve_stage_slot_add(|s| s.assembly_rewire += rewire_started.elapsed().as_nanos());
+    index
+        .rewired_modules_memo
+        .borrow_mut()
+        .insert(rewire_identity.to_string(), modules.clone());
+    modules
 }
 
 fn reconcile_with_typed_cache(
@@ -11805,6 +12023,7 @@ fn reconcile_with_typed_cache(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
     index: &MultiEntryIndex,
+    closure_digest: &str,
 ) -> Result<Rc<ResolvedGraph>, String> {
     let mut module_index: Rc<HashMap<String, Rc<TypedModule>>> = v1_rt::rc_empty_map();
     let mut diag_chunks: Vec<Rc<im::Vector<Rc<ErrorNode>>>> = Vec::new();
@@ -11848,7 +12067,7 @@ fn reconcile_with_typed_cache(
     // closure census plus the whole-pool QUALIFIED underlay; each module that
     // actually typechecks additionally gets its OWN tree's bare census underlaid
     // (bare = own tree, qualified = whole pool, cross-tree bare stays refused),
-    // composed lazily per root in `tree_symbol_index_memo`.
+    // composed lazily per root via `root_assembly_env_for` on the shared index.
     //
     // Built AFTER the all-cache-hits shortcut (fix axis 2b,
     // docs/plans/floor-memory-pool-parse-regression-diagnosis.md §9): the shortcut
@@ -11856,28 +12075,10 @@ fn reconcile_with_typed_cache(
     // and any cold child whose closure fully hits the typed/cross-process caches —
     // must not pay the whole-pool census `pool_qualified_fill` performs. Genuine
     // misses reach the build below exactly as before.
-    let symbol_index =
-        build_symbol_index_for_reconcile(index, graph.clone(), source_indices.clone())?;
-    // Whole-closure variant-owner base for merge_global_bare_variant_locals
-    // (merge_global_bare_variant_locals_cost_note in v1.compiler.infer): eligibility
-    // depends only on (global_bare, si), so it is computed once per symbol index —
-    // once here for the closure index, once per composed per-root index below —
-    // instead of rescanning the census inside every module's build_module_context.
-    let variant_base_started = std::time::Instant::now();
-    let closure_variant_base = v1_compiler_infer::build_global_bare_variant_locals(
-        symbol_index.global_bare.clone(),
-        source_indices.clone(),
-    );
-    resolve_stage_slot_add(|s| {
-        s.assembly_variant_base += variant_base_started.elapsed().as_nanos()
-    });
-    let mut tree_symbol_index_memo: std::collections::HashMap<
-        String,
-        (
-            Rc<SymbolIndex>,
-            Rc<HashMap<String, Rc<crate::v1_compiler_infer_env::TypeBinding>>>,
-        ),
-    > = std::collections::HashMap::new();
+    let closure_env =
+        closure_assembly_env_for(index, closure_digest, graph.clone(), source_indices.clone())?;
+    let symbol_index = closure_env.symbol_index.clone();
+    let closure_variant_base = closure_env.closure_variant_base.clone();
     // Interface hashes of processed modules, for dependents' content keys — filled in
     // batch order (a batch's imports all live in earlier batches), read by
     // `typed_module_content_key` at each module's store lookup.
@@ -11893,6 +12094,7 @@ fn reconcile_with_typed_cache(
             Rc<v1_compiler_infer::TypecheckModuleResult>,
         )>,
     > = vec![None; closure_modules.len()];
+    let mut module_content_keys: Vec<String> = vec![String::new(); closure_modules.len()];
 
     for batch in &schedule {
         let mut pending: Vec<usize> = batch.clone();
@@ -11948,6 +12150,7 @@ fn reconcile_with_typed_cache(
                     &typed_key,
                     &resolved.module.span.file,
                 );
+                module_content_keys[slot] = typed_key.clone();
                 let parent_diags = if was_cache_hit {
                     Rc::new(im::Vector::new())
                 } else {
@@ -11979,37 +12182,19 @@ fn reconcile_with_typed_cache(
                         // modules keep the closure-only bare universe.
                         let (module_symbol_index, module_variant_base) =
                             match source_tree_root_of(&index.source_roots, &decl_file) {
-                                Some(root) => match tree_symbol_index_memo.get(&root) {
-                                    Some(hit) => hit.clone(),
-                                    None => {
-                                        let root_symbol_index_started = std::time::Instant::now();
-                                        let composed =
-                                            v1_compiler_infer::symbol_index_with_bare_fill(
-                                                symbol_index.clone(),
-                                                tree_bare_census_for_root(index, &root)?,
-                                            );
-                                        resolve_stage_slot_add(|s| {
-                                            s.assembly_root_symbol_index +=
-                                                root_symbol_index_started.elapsed().as_nanos()
-                                        });
-                                        // The composed index's global_bare = closure ∪ tree,
-                                        // so its variant base is computed from the composed
-                                        // map — once per root, beside the index it belongs to.
-                                        let root_variant_base_started = std::time::Instant::now();
-                                        let base =
-                                            v1_compiler_infer::build_global_bare_variant_locals(
-                                                composed.global_bare.clone(),
-                                                source_indices.clone(),
-                                            );
-                                        resolve_stage_slot_add(|s| {
-                                            s.assembly_root_variant_base +=
-                                                root_variant_base_started.elapsed().as_nanos()
-                                        });
-                                        tree_symbol_index_memo
-                                            .insert(root, (composed.clone(), base.clone()));
-                                        (composed, base)
-                                    }
-                                },
+                                Some(root) => {
+                                    let root_env = root_assembly_env_for(
+                                        index,
+                                        closure_digest,
+                                        &root,
+                                        symbol_index.clone(),
+                                        source_indices.clone(),
+                                    )?;
+                                    (
+                                        root_env.composed_symbol_index.clone(),
+                                        root_env.root_variant_base.clone(),
+                                    )
+                                }
                                 None => (symbol_index.clone(), closure_variant_base.clone()),
                             };
                         let module_tc_started = std::time::Instant::now();
@@ -12136,11 +12321,14 @@ fn reconcile_with_typed_cache(
         });
     }
 
+    let rewire_identity = rewire_semantic_input_identity(&module_content_keys);
     finish_resolved_graph_assembly(
         Rc::new(modules_vec),
         diag_chunks,
         (same_tree_fork_count, cross_tree_fork_count),
         source_indices,
+        Some(index),
+        Some(&rewire_identity),
     )
 }
 
