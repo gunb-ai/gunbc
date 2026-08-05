@@ -11,9 +11,12 @@ import extdeps.exec.command {
   shell_command_render,
 }
 import extdeps.shell
+import extdeps.shell.exec
 import gunbc.shell_bash_runner { shell_exec_via_bash }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data shell_exec_import_is_explicit_note: String = "THE shell.Exec IMPORT IS SPELLED, AND IT WAS NOT BEFORE. This module calls shell.Exec.Run but imported only `extdeps.shell`, so the operation resolved solely because some OTHER module in whatever closure happened to be assembled had already dragged extdeps.shell.exec into the pool. Reached from gunbc.live_deploy.apply that coincidence held (host_effect_realize imports it); reached from gunbc.live_deploy.lease it did not, and the module failed to resolve its own call with a method-existence diagnostic pointing at a Primitive receiver.\\n\\nThat is the pool-membership-coincidence class DESIGN's import-strip thread records: coverage that is accidental and non-compositional, where the same file resolves or refuses depending on who else is in the closure. Spelling the import makes this module's own reference self-sufficient. It does not widen meta-exec confinement — the module was already an authorized shell.Exec importer, which is exactly why the call type-checked wherever the pool happened to be right."
 
 data command_runner_scaffold: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,

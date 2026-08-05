@@ -60,6 +60,11 @@ import extdeps.exec.command { CommandTransport, LocalExec, SshExec }
 import gunbc.live_deploy.lease {
   live_deploy_leased_command_for_operation,
   live_deploy_lease_namespace_command,
+  live_deploy_lease_probe_command,
+  lease_probe_outcome,
+  LeaseProbeOutcome,
+  LeaseProbeHolds,
+  LeaseProbeRefused,
   live_deploy_exclusive_invocation,
   LiveDeployExclusiveOperation,
   LeasedApply,
@@ -704,4 +709,41 @@ test fn the_read_script_prints_the_token_the_parser_recognizes() -> Bool {
   let script = live_deploy_slot_revision_read_script(spec: deploy_target_blue_slot(target: Srv1Dashboard))
   contains_substring(haystack: script, needle: slot_revision_unrecorded_token)
     && !contains_substring(haystack: script, needle: "tr -d")
+}
+
+
+data lease_probe_fold_note: String = "THE PROBE'S OUTCOME FOLD, PINNED HERMETICALLY, so the wet run on srv1 has a regression control that does not need srv1. The three steps are 0 / conflict / 0, and each is asserted to refuse on its own — because a fold that accepted a wrong code at any step would report a working lease from a host where the lock does not work, which is the one thing the probe exists to rule out.\n\nThe fold is separated from the execution deliberately: the codes come from the real flock invocation at run time, and everything downstream of them is decidable here."
+
+fn probe_holds(o: LeaseProbeOutcome) -> Bool {
+  match o {
+    LeaseProbeHolds => true
+    LeaseProbeRefused { cause: _ } => false
+  }
+}
+
+test fn the_lease_probe_accepts_only_the_free_contended_free_sequence() -> Bool {
+  probe_holds(o: lease_probe_outcome(lock: "/l", free_before: 0, contended: flock_conflict_exit_code, free_after: 0))
+    && !probe_holds(o: lease_probe_outcome(lock: "/l", free_before: 1, contended: flock_conflict_exit_code, free_after: 0))
+    && !probe_holds(o: lease_probe_outcome(lock: "/l", free_before: flock_conflict_exit_code, contended: flock_conflict_exit_code, free_after: 0))
+    && !probe_holds(o: lease_probe_outcome(lock: "/l", free_before: 0, contended: 0, free_after: 0))
+    && !probe_holds(o: lease_probe_outcome(lock: "/l", free_before: 0, contended: 1, free_after: 0))
+    && !probe_holds(o: lease_probe_outcome(lock: "/l", free_before: 0, contended: flock_conflict_exit_code, free_after: flock_conflict_exit_code))
+    && !probe_holds(o: lease_probe_outcome(lock: "/l", free_before: 0, contended: flock_conflict_exit_code, free_after: 1))
+}
+
+data probe_uses_the_real_builder_note: String = "The probe's argv must be the deploy's own flock command, not a hand-spelled one — otherwise it proves that some flock invocation works on srv1 while leaving the command this model actually constructs unexercised. Step B nests the same builder inside itself, which is what makes the conflict come from this argv rather than from a bespoke one."
+
+test fn the_probe_argv_is_the_modeled_flock_command() -> Bool {
+  let inv = live_deploy_exclusive_invocation(target: Srv1Dashboard)
+  let outer = live_deploy_lease_probe_command(invocation: inv, inner: ["true"]).argv
+  head_is(argv: outer, expected: "flock")
+    && contains_element(outer, "--exclusive")
+    && contains_element(outer, "--nonblock")
+    && contains_element(outer, "--conflict-exit-code")
+    && contains_element(outer, to_string(flock_conflict_exit_code))
+    && contains_element(outer, deploy_target_lease_path(target: Srv1Dashboard) as String)
+    && contains_element(
+         live_deploy_lease_probe_command(invocation: inv, inner: outer).argv,
+         "--nonblock"
+       )
 }

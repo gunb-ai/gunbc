@@ -446,3 +446,103 @@ fn live_deploy_lease_namespace_refusal(exit_code: Int) -> String {
     ""
   )
 }
+
+data lease_contention_probe_note: String = "THE WET PRECONDITION (operator ruling 2026-08-05): prove on the real host, as the real principal, that the EXACT lock path this deploy uses can be opened, exclusively acquired, contended, and released. Everything else about the lease is typechecked and hermetically witnessed, which establishes that the argv is right and the outcome partition is total — and establishes nothing whatsoever about whether flock can actually take that lock on srv1. A lease that cannot be acquired is not a safety mechanism, it is a deploy that reds at the lock.\\n\\nTHREE STEPS, AND THE FIRST ONE IS WHAT MAKES THE SECOND READABLE. `flock --nonblock` conflicts on the SAME exit code whether the conflict came from the probe's own nested attempt or from an unrelated holder, so step B alone cannot distinguish 'contention works' from 'somebody else is deploying'. Step A establishes the lock is free before B claims to have contended with itself, and step C establishes it is free again afterwards — which is the release half, and the one a lock file left behind by a crashed holder would fail if flock(2)'s release semantics were not what the citation says.\\n\\nWHY --nonblock THROUGHOUT: a probe that waits converts a genuinely-held lock into a timeout, which reports as the probe hanging rather than as the host being busy. The probe wants an answer, not the lock.\\n\\nIT USES THE REAL COMMAND BUILDER. A hand-spelled flock line here would prove that SOME flock invocation works on srv1 while the deploy's own argv stayed unexercised — the specification-without-execution shape one level over, since the thing under test is precisely the command this model constructs.\\n\\nPROTOCOL RECEIPT, executed 2026-08-05 against util-linux flock on a writable scratch path: A=0, B=111, C=0 — the nested attempt in step B opens a new file description and therefore conflicts, and the outer invocation propagates the wrapped command's exit, so the modeled conflict code is what surfaces. That receipt validates the EXIT-CODE REASONING; it does not and cannot stand in for running this on srv1, where the open question is whether the deploy principal can provision and open the production lock path at all. This probe answers that question and is the thing that has to be run there."
+
+fn live_deploy_lease_probe_command(invocation: LiveDeployExclusiveInvocation, inner: List<String>) -> ArgvCommand {
+  flock_exclusive_command(
+    lock_path: invocation.lock_path,
+    wait: FlockFailImmediately,
+    command: inner,
+  )
+}
+
+type LeaseProbeOutcome
+  = LeaseProbeHolds
+  | LeaseProbeRefused { cause: NonEmptyStr }
+
+fn lease_probe_step_refusal(step: String, expected: Int, observed: Int, lock: String) -> LeaseProbeOutcome {
+  LeaseProbeRefused {
+    cause: join(
+      [
+        "lease probe failed at step ", step,
+        " on lock ", lock,
+        ": expected exit ", to_string(expected),
+        ", observed ", to_string(observed)
+      ],
+      ""
+    ) as NonEmptyStr
+  }
+}
+
+data lease_probe_steps_note: String = "STEP A — acquire the free lock and run `true`, expecting 0: proves the path is openable and exclusively acquirable by THIS principal, which is the half that fails when the namespace does not exist or is not writable. STEP B — hold it and, inside, attempt the same lock again, expecting the modeled conflict code: proves exclusion is real and reports on the code the outcome partition depends on. STEP C — acquire it again, expecting 0: proves the lock released when step B's process exited, which is the property that makes an expiry unnecessary."
+
+func live_deploy_lease_contention_probe_wet() -> ProcessExit
+  uses net: Network
+{
+  let invocation = live_deploy_exclusive_invocation(target: Srv1Dashboard)
+  let lock = invocation.lock_path as String
+  let namespace = run_shell_command_exit_code(
+    command: live_deploy_lease_namespace_command(invocation: invocation),
+    transport: LocalExec,
+  )
+  if namespace != 0 {
+    exit_failure(reason: live_deploy_lease_namespace_refusal(exit_code: namespace))
+  } else {
+    let free_before = run_shell_command_exit_code(
+      command: live_deploy_lease_probe_command(invocation: invocation, inner: ["true"]),
+      transport: LocalExec,
+    )
+    let contended = run_shell_command_exit_code(
+      command: live_deploy_lease_probe_command(
+        invocation: invocation,
+        inner: live_deploy_lease_probe_command(invocation: invocation, inner: ["true"]).argv,
+      ),
+      transport: LocalExec,
+    )
+    let free_after = run_shell_command_exit_code(
+      command: live_deploy_lease_probe_command(invocation: invocation, inner: ["true"]),
+      transport: LocalExec,
+    )
+    match lease_probe_outcome(
+      lock: lock,
+      free_before: free_before,
+      contended: contended,
+      free_after: free_after,
+    ) {
+      LeaseProbeHolds => ExitSuccess
+      LeaseProbeRefused { cause: why } => exit_failure(reason: why as String)
+    }
+  }
+}
+
+fn lease_probe_outcome(
+  lock: String,
+  free_before: Int,
+  contended: Int,
+  free_after: Int,
+) -> LeaseProbeOutcome {
+  if free_before != 0 {
+    lease_probe_step_refusal(step: "A (acquire a free lock)", expected: 0, observed: free_before, lock: lock)
+  } else {
+    if contended != flock_conflict_exit_code {
+      lease_probe_step_refusal(
+        step: "B (a second attempt while held must conflict)",
+        expected: flock_conflict_exit_code,
+        observed: contended,
+        lock: lock,
+      )
+    } else {
+      if free_after != 0 {
+        lease_probe_step_refusal(
+          step: "C (the lock must be free once the holder exits)",
+          expected: 0,
+          observed: free_after,
+          lock: lock,
+        )
+      } else {
+        LeaseProbeHolds
+      }
+    }
+  }
+}
