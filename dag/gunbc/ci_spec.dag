@@ -227,7 +227,7 @@ data gunbc_ci_compile_clean_clamp_note: String = "COMPILE-CLEAN LEG CLAMP (prelu
 
 data gunbc_ci_compile_clean_clamp: RunnableBatchClamp = RunnableBatchClamp { overhead: second(count: 60), per_unit: millisecond(count: 320) }
 
-data ci_release_features: String = "text_lookup_work_counter"
+data ci_release_features: String = "text_lookup_work_counter,interp_test_witness,test_hooks"
 
 fn ci_release_build_line() -> String {
   concat(
@@ -249,7 +249,7 @@ fn ci_fmt_gate_line() -> String {
   "\"$CARGO_BIN\" fmt --all --check"
 }
 
-data ci_v1_compiler_tests_compile_gate_note: String = "cargo check -p v1-compiler-tests --tests, RE-ENROLLED 2026-07-31 (operator ruling, PR #7490 repair): the nextest RUN half of commit_gate_rust_suite_removed_disposition stays retired (~37 GiB, seed-runtime red), but #7490's typecheck_module signature migration updated stage0 call sites and left four direct integration-test callers stale on main — compile breakage invisible to DagCompileCleanGate (dag-only) and the release build (v1-compiler stage0 only; v1-compiler-tests is a separate workspace crate). This is the fmt-amendment pattern applied to the missing COMPILE half: compile-only, no test execution, ~41s measured cold on the repair host — not RustMonolithGate re-enrollment. Placement: build job immediately after fmt, before the ~33min release build. Operation shape and shell scaffold: v2.workflow.ci_v1_compiler_tests_compile_gate_emit (extdeps.cargo_build cargo.Build.Check)."
+data ci_v1_compiler_tests_compile_gate_note: String = "cargo test -p v1-compiler-tests --release --no-run (compile-contract gate; no test execution), RE-ORDERED 2026-08-05 (operator ruling, PR A / fierce-heron-177): runs AFTER the release build so the gate reuses the release-profile v1-compiler artifact instead of forcing a second dev-profile compile. ci_release_features now carries interp_test_witness and test_hooks so the release build and the test crate share one effective feature set. Affected-set admission (pull_request only): compile_contract_admission_witness intersects the merge-base diff with src/v1/tests/**, src/v1/stage0/**, and the Cargo/toolchain build config; disjoint diffs skip with a typed CompileContractAdmissionReceipt (decision=Skip). Diff observation failure / empty diff / departed closure paths RUN unconditionally (fail-closed, never skip on unknown). push-to-main and scheduled controls run the gate unconditionally. Operation shape: v2.workflow.ci_v1_compiler_tests_compile_gate_emit (extdeps.cargo_build cargo.Build.Test)."
 
 fn ci_retry_body_run(command: String) -> Run {
   Run {
