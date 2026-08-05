@@ -11972,6 +11972,7 @@ mod tests {
                 ],
                 budget_refusal: None,
                 selection_degradation: None,
+                resolve_realization: None,
             }],
         }]
     }
