@@ -25050,6 +25050,60 @@ fn emit_source_root_read_witness(rec: &SourceRootReadRecord) -> Result<String, S
     ))
 }
 
+fn emit_source_content_hash_dag_for_text(source: &str) -> String {
+    let digest = crate::v1_rt::atom_identity_hash(source.to_string());
+    format!("Fnv1a64(Fnv1a64Structural {{ digest: \"{digest}\" }})")
+}
+
+fn emit_source_ref_dag(rec: &SourceRootReadRecord) -> Result<String, String> {
+    let path = dag_manifest_scalar_escape(&rec.file_path)?;
+    let hash = emit_source_content_hash_dag_for_text(&rec.source);
+    Ok(format!(
+        "SourceRef {{ path: \"{path}\", source_root: {}, content_hash: {hash} }}",
+        rec.source_root
+    ))
+}
+
+fn emit_source_ref_list_dag(records: &[SourceRootReadRecord]) -> Result<String, String> {
+    let mut nodes: Vec<String> = records
+        .iter()
+        .map(emit_source_ref_dag)
+        .collect::<Result<_, _>>()?;
+    let mut out = String::from("Empty");
+    while let Some(head) = nodes.pop() {
+        out = format!("Cons {{\n  head: {head},\n  tail: {out}\n}}");
+    }
+    Ok(out)
+}
+
+fn source_ref_identity_digest_hex(rec: &SourceRootReadRecord) -> String {
+    let path_hash = crate::v1_rt::atom_identity_hash(rec.file_path.clone());
+    let root_hash = crate::v1_rt::atom_identity_hash(rec.source_root.clone());
+    let storage = crate::v1_rt::hash_combine(path_hash, root_hash);
+    let content_hash = crate::v1_rt::atom_identity_hash(rec.source.clone());
+    crate::v1_rt::hash_combine(storage, content_hash)
+}
+
+fn source_ref_list_structural_digest_hex(records: &[SourceRootReadRecord]) -> String {
+    let mut acc = crate::v1_rt::atom_identity_hash("source-ref-closure-list".to_string());
+    for rec in records {
+        let ref_digest = source_ref_identity_digest_hex(rec);
+        acc = crate::v1_rt::hash_combine(acc, ref_digest);
+    }
+    acc
+}
+
+pub fn emit_source_ref_dag_for_path(
+    records: &[SourceRootReadRecord],
+    file_path: &str,
+) -> Result<String, String> {
+    let rec = records
+        .iter()
+        .find(|r| r.file_path.replace('\\', "/") == file_path.replace('\\', "/"))
+        .ok_or_else(|| format!("emit_source_ref_dag_for_path: no record for {file_path}"))?;
+    emit_source_ref_dag(rec)
+}
+
 fn emit_source_root_ingest_monoid(records: &[SourceRootReadRecord]) -> Result<String, String> {
     let mut witness_nodes: Vec<String> = records
         .iter()
@@ -25246,14 +25300,18 @@ pub fn emit_source_root_ingest_manifest(
     out.push_str("module v2.test.workflow.host_source_root_ingest_manifest\n\n\n");
     out.push_str("import v2.compiler.source_authority {\n");
     out.push_str("  DagSourceReadWitness,\n");
+    out.push_str("  DiscoveredSourceRefsDigestFromList,\n");
+    out.push_str("  SourceRef,\n");
     out.push_str("  SourceRootIngest,\n");
     out.push_str("  SourceRootCoverageComplete,\n");
     out.push_str("  SourceRootManifestElided,\n");
     out.push_str("  SourceRootProvenanceCoverageReceipt\n");
     out.push_str("}\n");
     out.push_str("import extdeps.communication.medium { Lossless, Medium }\n");
+    out.push_str("import std.content_hash { ContentHash, Fnv1a64, Fnv1a64Structural }\n");
     out.push_str("import v2.std.algebra { Cons, Empty }\n");
     out.push_str("import v2.std.artifact { Artifact, SourceFile }\n");
+    out.push_str("import v2.std.collection { List }\n");
     out.push_str("import v2.std.text { String }\n");
     // Each DagSourceReadWitness carries a grounded `source_root: SourceRootRef` (V2Tree/DagTree,
     // #5473/#5486), so the manifest must import the constructors it references or every witness
@@ -25262,6 +25320,8 @@ pub fn emit_source_root_ingest_manifest(
     // records (supersedes the earlier hardcoded-both-constructors form).
     if !inline_records.is_empty() {
         out.push_str(&emit_source_root_ref_import(inline_records));
+    } else if !records.is_empty() {
+        out.push_str(&emit_source_root_ref_import(records));
     }
     if entry_admission.is_some() {
         out.push_str("import v2.compiler.name_resolve {\n");
@@ -25271,6 +25331,7 @@ pub fn emit_source_root_ingest_manifest(
         out.push_str("  ResolutionSubject\n");
         out.push_str("}\n");
         out.push_str("import v2.std.algebra { Cons, Empty }\n");
+        out.push_str("import v2.std.collection { List }\n");
     }
     out.push('\n');
     out.push_str(&format!(
@@ -25293,6 +25354,10 @@ pub fn emit_source_root_ingest_manifest(
     let produced_row_count = inline_records.len();
     out.push_str(&format!("  ingest_read_count: {read_count},\n"));
     out.push_str(&format!("  produced_row_count: {produced_row_count},\n"));
+    out.push_str(&format!(
+        "  discovered_source_refs_digest: DiscoveredSourceRefsDigestFromList {{ digest: Fnv1a64Structural {{ digest: \"{}\" }} }},\n",
+        source_ref_list_structural_digest_hex(records)
+    ));
     if produced_row_count == read_count {
         out.push_str("  coverage: SourceRootCoverageComplete\n");
     } else {
@@ -25306,6 +25371,12 @@ pub fn emit_source_root_ingest_manifest(
         out.push_str("Empty\n");
     } else {
         out.push_str(&emit_source_root_ingest_monoid(inline_records)?);
+        out.push('\n');
+    }
+    if !records.is_empty() {
+        out.push('\n');
+        out.push_str("data host_source_root_closure_refs: List<SourceRef> = ");
+        out.push_str(&emit_source_ref_list_dag(records)?);
         out.push('\n');
     }
     if let Some(admission) = entry_admission {
