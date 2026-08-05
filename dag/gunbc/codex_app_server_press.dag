@@ -19,6 +19,8 @@ import extdeps.llm.codex_app_server {
   CodexAppServerThreadStart,
   CodexAppServerTurnStart,
   codex_app_server_initialize_request_line,
+  codex_app_server_account_read_request_line,
+  codex_app_server_rate_limits_read_request_line,
 }
 import gunbc.retained_shell_script { retained_foreign }
 import extdeps.shell
@@ -154,69 +156,119 @@ fn codex_press_outcome_operator_caption(outcome: CodexPressOutcome) -> String {
     CodexPressTurnStarted { receipt: _ } => "turn started"
     CodexPressLoginRequired { reason: _, frames: _ } => "login required"
     CodexPressUnavailable { reason: _ } => "unavailable"
-    CodexPressRefused { reason: _, frames: _ } => "refused"
+    CodexPressRefused { reason, frames: _ } =>
+      if (reason as String).contains("quota") {
+        "quota exhausted"
+      } else {
+        "refused"
+      }
   }
 }
 
-fn codex_press_initialize_script(executable: FilePath) -> String {
+data codex_press_frame_redaction_note: String = "Raw NDJSON frames retained for correlation must not carry credential or account-email bytes into UI/logs. Trip summaries store method identities and typed standing (auth present, quota standing), never email/token fields from account/read."
+
+fn codex_press_account_trip_script(executable: FilePath) -> String {
   concat(
-    "printf '%s\\n' '",
+    "set -e; FIFO=$(mktemp -u); OUT=$(mktemp); ERR=$(mktemp); mkfifo \"$FIFO\"; '",
     concat(
-      codex_app_server_initialize_request_line() as String,
+      executable as String,
       concat(
-        "' | '",
-        concat(executable as String, "' app-server --stdio"),
+        "' app-server --stdio <\"$FIFO\" >\"$OUT\" 2>\"$ERR\" & PID=$!; exec 3>\"$FIFO\"; ",
+        concat(
+          "printf '%s\\n' '",
+          concat(
+            codex_app_server_initialize_request_line() as String,
+            concat(
+              "' >&3; sleep 1; printf '%s\\n' '",
+              concat(
+                codex_app_server_account_read_request_line() as String,
+                concat(
+                  "' >&3; sleep 1; printf '%s\\n' '",
+                  concat(
+                    codex_app_server_rate_limits_read_request_line() as String,
+                    "' >&3; sleep 2; exec 3>&-; wait $PID || true; cat \"$OUT\"; rm -f \"$FIFO\" \"$OUT\" \"$ERR\"",
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
     ),
   )
 }
 
-fn stdout_looks_like_initialize_result(stdout: String) -> Bool {
-  stdout.contains("userAgent")
+fn redact_press_stdout_for_receipt(stdout: String) -> String {
+  if stdout.contains("userAgent") {
+    if stdout.contains("rate_limit_reached") {
+      "initialize_ok; account_read_ok; rate_limits_quota_reached"
+    } else if stdout.contains("\"account\"") {
+      "initialize_ok; account_read_ok; rate_limits_observed"
+    } else {
+      "initialize_ok; account_or_limits_incomplete"
+    }
+  } else {
+    "initialize_missing"
+  }
 }
 
-fn observe_codex_press_initialize(
+fn observe_codex_press_account_trip(
   binding: ProviderInterfaceBinding,
+  node_identity: RoadmapNodeIdentity,
+  attempt_key: AttemptKey,
+  turn_key: String,
+  head_sha: String,
 ) -> CodexPressOutcome {
   let script = retained_foreign(
-    body: codex_press_initialize_script(executable: binding.executable.path),
-    reason: "Codex app-server stdio initialize probe pending typed NDJSON transport" as NonEmptyStr,
+    body: codex_press_account_trip_script(executable: binding.executable.path),
+    reason: "Codex app-server held-open NDJSON trip pending typed stdio session transport" as NonEmptyStr,
   )
   let run = shell.Exec.Run(script: script)
+  let summary = redact_press_stdout_for_receipt(stdout: run.stdout)
   let frames = [
     CodexPressRawFrame {
       direction: "client_to_server" as NonEmptyStr,
-      body: codex_app_server_initialize_request_line() as String,
+      body: "initialize; account/read; account/rateLimits/read",
     },
     CodexPressRawFrame {
-      direction: "server_to_client" as NonEmptyStr,
-      body: run.stdout,
+      direction: "server_to_client_summary" as NonEmptyStr,
+      body: summary,
     },
   ]
   if run.success == false {
     CodexPressUnavailable {
-      reason: "codex app-server initialize exec refused" as NonEmptyStr,
+      reason: "codex app-server account trip exec refused" as NonEmptyStr,
     }
-  } else if stdout_looks_like_initialize_result(stdout: run.stdout) {
+  } else if summary.contains("initialize_missing") {
+    CodexPressRefused {
+      reason: "codex app-server trip missing initialize result" as NonEmptyStr,
+      frames: frames,
+    }
+  } else if (run.stdout as String).contains("login") && !(run.stdout as String).contains("\"account\"") {
+    CodexPressLoginRequired {
+      reason: "codex app-server account trip requires login" as NonEmptyStr,
+      frames: frames,
+    }
+  } else if summary.contains("quota_reached") {
+    CodexPressRefused {
+      reason: "codex quota exhausted at account/rateLimits/read" as NonEmptyStr,
+      frames: frames,
+    }
+  } else if summary.contains("account_read_ok") {
     CodexPressTurnStarted {
       receipt: CodexPressTerminalReceipt {
-        node_identity: codex_press_specimen_node_identity,
-        attempt_key: "pending-subject",
-        turn_key: "pending-subject",
-        head_sha: "",
+        node_identity: node_identity,
+        attempt_key: attempt_key,
+        turn_key: turn_key,
+        head_sha: head_sha,
         frames: frames,
         provider_thread_id: none,
         provider_turn_id: none,
       },
     }
-  } else if run.stdout.contains("login") {
-    CodexPressLoginRequired {
-      reason: "codex app-server initialize indicates authentication required" as NonEmptyStr,
-      frames: frames,
-    }
   } else {
     CodexPressRefused {
-      reason: "codex app-server initialize returned no JSON-RPC result" as NonEmptyStr,
+      reason: "codex app-server account trip incomplete" as NonEmptyStr,
       frames: frames,
     }
   }
@@ -241,25 +293,12 @@ fn press_codex_app_server_for_bundle(
     CodexPressBindingUnavailable { reason } =>
       CodexPressUnavailable { reason: reason }
     CodexPressStartAdmitted { start, itinerary: _ } =>
-      CodexPressTurnStarted {
-        receipt: CodexPressTerminalReceipt {
-          node_identity: start.node_identity,
-          attempt_key: start.attempt_key,
-          turn_key: start.turn_key,
-          head_sha: start.head_sha,
-          frames: [
-            CodexPressRawFrame {
-              direction: "client_to_server" as NonEmptyStr,
-              body: codex_app_server_initialize_request_line() as String,
-            },
-            CodexPressRawFrame {
-              direction: "bind_observation" as NonEmptyStr,
-              body: "initialize observed during observe_bind_codex_app_server_stdio",
-            },
-          ],
-          provider_thread_id: none,
-          provider_turn_id: none,
-        },
-      }
+      observe_codex_press_account_trip(
+        binding: start.binding,
+        node_identity: start.node_identity,
+        attempt_key: start.attempt_key,
+        turn_key: start.turn_key,
+        head_sha: start.head_sha,
+      )
   }
 }
