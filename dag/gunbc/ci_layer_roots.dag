@@ -712,22 +712,52 @@ fn witness_exclusion_patterns(rows: List<WitnessExclusionRow>) -> List<String> {
 fn witness_exclusion_row_waits_on_wet_lane_undarken(row: WitnessExclusionRow) -> Bool {
   string_contains(s: row.dissolve_on, pattern: "falsifier_self_host_wet_cadence_active")
     || (row.dissolve_on == excl_wet_integration_dissolve)
+    || string_contains(s: row.dissolve_on, pattern: "wet lane un-darken")
+    || string_contains(s: row.dissolve_on, pattern: "wet lane un-darkens")
+}
+
+data witness_exclusion_row_mentions_wet_lane_dark_state_note: String = "witness_exclusion_row_mentions_wet_lane_dark_state is a broader candidate net than witness_exclusion_row_waits_on_wet_lane_undarken's positive arms: any row whose dissolve_on names the falsifier_self_host_wet lane, the cadence flag, or an un-darken trigger in ANY spelling. A row caught by this net but not matched by the positive predicate is a THIRD spelling the positive predicate has not learned yet -- surfaced via falsifier_self_host_wet_dark_lane_unclassified_rows, not silently dropped (still-bat-561 review, 2026-08-05: a derived count is only as good as its predicate, and a predicate with an unclassified residue silently deflates exactly like a hand-typed ordinal goes stale). This is a candidate net, not a second authority: false positives here (a row that mentions the wet lane only as one arm of an unrelated OR-condition) are expected and are why v2.test.claim.witness_exclusion_reconciliation_test asserts the PROPERTY -- every candidate is claimed by exactly one arm -- rather than asserting any specific count."
+
+fn witness_exclusion_row_mentions_wet_lane_dark_state(row: WitnessExclusionRow) -> Bool {
+  string_contains(s: row.dissolve_on, pattern: "falsifier_self_host_wet")
+    || string_contains(s: row.dissolve_on, pattern: "un-darken")
+}
+
+fn falsifier_self_host_wet_dark_lane_waiting_rows() -> List<WitnessExclusionRow> {
+  fold(
+    witness_exclusion_frontier,
+    init: [],
+    f: fn(acc, row) {
+      if witness_exclusion_row_waits_on_wet_lane_undarken(row: row) { concat(acc, [row]) } else { acc }
+    }
+  )
 }
 
 fn falsifier_self_host_wet_dark_lane_waiting_patterns() -> List<String> {
-  witness_exclusion_patterns(
-    rows: fold(
-      witness_exclusion_frontier,
-      init: [],
-      f: fn(acc, row) {
-        if witness_exclusion_row_waits_on_wet_lane_undarken(row: row) { concat(acc, [row]) } else { acc }
-      }
-    )
-  )
+  witness_exclusion_patterns(rows: falsifier_self_host_wet_dark_lane_waiting_rows())
 }
 
 fn falsifier_self_host_wet_dark_lane_population() -> Int {
   falsifier_self_host_wet_dark_lane_waiting_patterns().length()
+}
+
+fn falsifier_self_host_wet_dark_lane_unclassified_rows() -> List<WitnessExclusionRow> {
+  fold(
+    witness_exclusion_frontier,
+    init: [],
+    f: fn(acc, row) {
+      if witness_exclusion_row_mentions_wet_lane_dark_state(row: row)
+        && !witness_exclusion_row_waits_on_wet_lane_undarken(row: row) {
+        concat(acc, [row])
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn falsifier_self_host_wet_dark_lane_unclassified_patterns() -> List<String> {
+  witness_exclusion_patterns(rows: falsifier_self_host_wet_dark_lane_unclassified_rows())
 }
 
 fn witness_exclusion_substrings() -> List<String> {
@@ -803,10 +833,10 @@ fn dispatch_bijection_real_roster_red_falsifier_self_host_wet_dark_note() -> Str
     concat(
       falsifier_self_host_wet_dark_lane_population() as String,
       concat(
-        " prior rows waiting on this exact trigger (dissolve_on containing `falsifier_self_host_wet_cadence_active`, or referentially equal to the shared excl_wet_integration_dissolve constant) BEFORE this note's own file is counted, since this note lives in prose rather than in a WitnessExclusionRow: ",
+        " prior rows waiting on this exact trigger (dissolve_on containing `falsifier_self_host_wet_cadence_active`, containing 'wet lane un-darken(s)', or referentially equal to the shared excl_wet_integration_dissolve constant) BEFORE this note's own file is counted, since this note lives in prose rather than in a WitnessExclusionRow: ",
         concat(
           join(falsifier_self_host_wet_dark_lane_waiting_patterns(), ", "),
-          ". Re-run witness_exclusion_row_waits_on_wet_lane_undarken over witness_exclusion_frontier for the current figure rather than trusting this sentence's count to stay fresh. DISSOLVE-ON: falsifier_self_host_wet_cadence_active flips true, or a build-verification workflow enrolls the wet rosters — the identical trigger as artifact_store_fs_witness_test.dag's dissolve_on above; this row joins that class rather than minting a second one. .github/workflows/falsifier-alert.yml alerts on exactly this lane's non-execution and is confirmed firing (issue #7737, open since 2026-08-03, heartbeating on sustained red) -- the open item is triage of that redness, owned by a different lane, not an alerting gap."
+          ". Re-run witness_exclusion_row_waits_on_wet_lane_undarken over witness_exclusion_frontier for the current figure rather than trusting this sentence's count to stay fresh. A THIRD spelling of the same trigger would silently deflate that count rather than error, so the predicate is backstopped by a wider candidate net (witness_exclusion_row_mentions_wet_lane_dark_state, matching any dissolve_on naming the falsifier_self_host_wet lane or an un-darken trigger in ANY phrasing): rows caught by the net but not by the three positive arms surface via falsifier_self_host_wet_dark_lane_unclassified_rows/_patterns instead of vanishing, and v2.test.claim.witness_exclusion_reconciliation_test asserts that list stays empty (a property -- every candidate claimed by exactly one arm -- not a count, per the operator ruling against asserting a tree-copied literal as a witness oracle). DISSOLVE-ON: falsifier_self_host_wet_cadence_active flips true, or a build-verification workflow enrolls the wet rosters — the identical trigger as artifact_store_fs_witness_test.dag's dissolve_on above; this row joins that class rather than minting a second one. .github/workflows/falsifier-alert.yml alerts on exactly this lane's non-execution and is confirmed firing (issue #7737, open since 2026-08-03, heartbeating on sustained red) -- the open item is triage of that redness, owned by a different lane, not an alerting gap."
         )
       )
     )
