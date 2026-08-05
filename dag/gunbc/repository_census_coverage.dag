@@ -1,0 +1,990 @@
+module gunbc.repository_census_coverage
+
+import std.types { String, NonEmptyStr, Bool, Int, List }
+import std.decl_ref { DeclarationRef }
+import std.content_hash {
+  Fnv1a64Structural,
+  content_hash_atom,
+  content_hash_eq_structural,
+  content_hash_combine_structural,
+  content_hash_tagged_structural,
+}
+import gunbc.repository_census_observation {
+  CensusSubjectKey,
+  RepositoryPopulation,
+  CensusMethodRunIdentity,
+  RepositoryCensusObservation,
+  census_tagged_identity,
+  census_declaration_ref_identity,
+  census_revision_identity,
+  census_method_run_identity,
+  repository_census_population_identity,
+  repository_census_observation_identity,
+  repository_census_subject_keys,
+}
+import gunbc.guarantee_measurement { MeasurementRevision }
+
+data repository_census_coverage_authority_note: String = "CENSUS-0B, the coverage and inference-ceiling stage (operator-directed 2026-08-04). 0A carries the observation FACT and deliberately says nothing about how much of the population was covered or what may be concluded. This module supplies exactly those two, and supplies them as RECEIPTS PRODUCED BY EXECUTED JOINS rather than as fields a caller fills in. What it does not supply is any domain claim: the strongest thing a carrier generic over rows can produce is a BOUND on what could be concluded, never the conclusion, which is why the output is named a ceiling."
+
+data repository_census_coverage_recut_note: String = "THE RULE THIS RECUT KEEPS, and every one of the five blockers behind it was one instance of it (operator ruling 2026-08-04, superseding the first cut of this module): THE CEILING MUST BE A FUNCTION OF ONE COHERENT EVIDENCE PACKAGE, NOT OF SEVERAL INDEPENDENTLY SUPPLIED VALUES THAT MERELY SIT NEAR EACH OTHER. Independently supplied evidence must JOIN ON EXACT IDENTITY before it can raise a conclusion. The first cut reconciled subject-key spellings while never comparing the two sides' population or revision, so two different repositories at two different revisions reconciled if their keys happened to be spelled alike, and the receipt then RECORDED both identities afterwards — recording a mismatch instead of refusing it. It detected duplicates on the observed side only, so a denominator of A, A against an observation of A reconciled cleanly. It let the ceiling take an observation and a coverage receipt as separate arguments, so a receipt for observation A raised an exhaustive ceiling for observation B. It let a capability be authored with no tie to the classifier that ran. And it made a shared-run self-join VISIBLE while nothing acted on it. The same move fixes all five, and it is a move this carrier already makes one level down: 0A derives rows_identity inside the constructor so no authored copy can disagree with the rows. This stage does that one level up — every input an inference reads is either derived from the package or joined to it on an exact identity, and a mismatch REFUSES rather than being recorded."
+
+fn census_subject_key_identity(key: CensusSubjectKey) -> Fnv1a64Structural {
+  census_tagged_identity(tag: "CensusSubjectKey" as NonEmptyStr, value: key as NonEmptyStr)
+}
+
+data repository_census_keyed_index_note: String = "SUBJECT SETS ARE BUILT AS A KEYED INDEX, NOT BY PAIRWISE LIST SCANS (operator ruling 2026-08-05). The first cut of this reconciliation appended to a growing list while collecting distinct keys, counted occurrences by rescanning the whole list once per distinct key, and then tested membership by rescanning again for every missing and every unexpected subject. Every one of those is a linear scan per element, so the reconciliation was QUADRATIC in the subject count. The 24-subject consumer in this tree does not expose it, which is exactly why it survived review — the population is too small for the shape to show — and DESIGN section 6 rules that a proven cost-shape defect is fixed regardless of the realized n, because n is small here is not a time-stable fact. Membership and duplicate detection now go through a Map keyed on the subject spelling, which the substrate primitive contracts price at work 1 per lookup and insert against the list scan's n. AUTHORED ORDER IS PRESERVED IN A LIST BESIDE THE MAP rather than recovered from it: map traversal order is host-unspecified, so every list this module returns — the distinct keys, the duplicates, the missing and the unexpected — is accumulated in the order the caller supplied, and the map is consulted ONLY for membership. That is the pattern the determinism thread prescribes and the reason no map_keys or map_values call appears here."
+
+data repository_census_keyed_roster_dissolution_note: String = "WHY THIS DOES NOT CALL std.keyed_roster, AND THE TRIGGER THAT DELETES THIS NOTE. keyed_roster_build is the repository's keyed-set construction authority and the obvious thing to reuse here, and it CANNOT deliver the property this module needs: it folds keyed_roster_insert_into_unique, which performs one linear keyed_row_find plus one growing concat per element, so it is itself quadratic — its own module note says so. The cause is its SIGNATURE, not its body: key_eq is an arbitrary caller-supplied fn K K to Bool, and an arbitrary predicate cannot be indexed, because a map keys on substrate identity and there is no way to consult key_eq without visiting every existing row. Measured on that function rather than modelled, at 256, 512 and 1024 synthetic distinct keys: 85ms, 318ms, 1273ms, so 3.74x then 4.00x per doubling against quadratic 4.00 and linear 2.00. So this module consumes the OTHER existing std pattern that already fits — std.occurrence_binding_candidates builds duplicate-refusing keyed indexes with map_get and map_insert and typed duplicate evidence carrying the first and conflicting values — rather than minting a set authority of its own. DISSOLVE-ON: std.keyed_roster is regrounded on a key-to-identity projection instead of an equality bundle, at which point keyed_roster_build becomes linear and this module consumes it directly and this note deletes. That regrounding is its own work item and deliberately not a rider here: it changes a std interface with six production consumers — std.roster_frontier, tools.dag_compile_clean_shard_roster, gunbc.doc_graph_roots, gunbc.commit_workflow, gunbc.non_fold_residue and v1.trait_derive_emit — all of which pay this same quadratic today."
+
+data repository_census_index_cost_note: String = "THE OPERATION COUNTS ARE INCREMENTED BY THE REAL FOLD, WHICH IS WHY THEY CANNOT DRIFT FROM IT. A cost claim measured by a second function that mirrors this one would be a claim about the mirror: it stays green while the real path regresses, the same way a hand-built Node fixture describes a module it has stopped resembling. So the counters live on the accumulator the production fold already threads, every increment sits on the branch that performs the operation it counts, and a witness reads them back from an ordinary index build. Removing an operation without decrementing its counter is not possible, because there is one site each.\n\nWHAT THESE COUNT, EXACTLY, so nobody reads more into them. map_lookups is one map_get per input key. map_inserts is one map_insert per newly seen key plus one per key at the moment it first repeats. key_prepends is one constant-work cons per key appended to either order list. order_reversals is the number of single linear passes taken at the end, which is two, one per order list. WHAT THEY DO NOT COUNT is the interpreter's internal copy volume inside concat or reverse: that is the substrate's per-operation cost, priced in the std.primitives contracts, and this module counts the OPERATIONS it issues rather than re-deriving what each costs. The claim the counters support is therefore about SHAPE — that the operation count grows in proportion to the subject count rather than to its square — which is the claim the recut was about."
+
+type CensusSubjectIndex {
+  seen: Map<String, Int>
+  distinct: List<CensusSubjectKey>
+  duplicated: List<CensusSubjectKey>
+  map_lookups: Int
+  map_inserts: Int
+  key_prepends: Int
+  order_reversals: Int
+}
+
+data repository_census_index_accumulation_note: String = "THE ORDER LISTS ARE BUILT BY PREPEND-THEN-REVERSE, NOT BY APPEND (operator ruling 2026-08-05). The first recut removed the quadratic LOOKUP and left a quadratic WRITE: append(acc, [key]) inside a fold copies the whole accumulated prefix on every step, so building n distinct keys copied 1 + 2 + ... + n items even though every lookup was already O(1). That is the same cost shape one axis over, and it is exactly the class the recut was supposed to leave — a fix that halves a defect and keeps its shape is not a fix. Prepending is a constant-work cons and the single reverse at the end is one linear pass, so total items copied is linear in n rather than quadratic. This is the accumulate-reversed-then-reverse idiom std.change, std.realization and std.occurrence_identity already use, so it is the corpus construction rather than a local invention. AUTHORED ORDER IS STILL EXACTLY PRESERVED: reverse of a reversed accumulation is the input order, which is what the determinism reading requires of these lists."
+
+type CensusSubjectIndexBuild {
+  seen: Map<String, Int>
+  distinct_reversed: List<CensusSubjectKey>
+  duplicated_reversed: List<CensusSubjectKey>
+  map_lookups: Int
+  map_inserts: Int
+  key_prepends: Int
+}
+
+fn census_subject_index_step(
+  build: CensusSubjectIndexBuild,
+  key: CensusSubjectKey,
+) -> CensusSubjectIndexBuild {
+  match map_get(build.seen, key as String) {
+    Present { value: prior } =>
+      if prior == 1 {
+        CensusSubjectIndexBuild {
+          seen: map_insert(build.seen, key as String, 2),
+          distinct_reversed: build.distinct_reversed,
+          duplicated_reversed: concat([key], build.duplicated_reversed),
+          map_lookups: build.map_lookups + 1,
+          map_inserts: build.map_inserts + 1,
+          key_prepends: build.key_prepends + 1,
+        }
+      } else {
+        CensusSubjectIndexBuild {
+          seen: build.seen,
+          distinct_reversed: build.distinct_reversed,
+          duplicated_reversed: build.duplicated_reversed,
+          map_lookups: build.map_lookups + 1,
+          map_inserts: build.map_inserts,
+          key_prepends: build.key_prepends,
+        }
+      }
+    Absent =>
+      CensusSubjectIndexBuild {
+        seen: map_insert(build.seen, key as String, 1),
+        distinct_reversed: concat([key], build.distinct_reversed),
+        duplicated_reversed: build.duplicated_reversed,
+        map_lookups: build.map_lookups + 1,
+        map_inserts: build.map_inserts + 1,
+        key_prepends: build.key_prepends + 1,
+      }
+  }
+}
+
+fn census_subject_index(keys: List<CensusSubjectKey>) -> CensusSubjectIndex {
+  let build = fold(
+    keys,
+    init: CensusSubjectIndexBuild {
+      seen: empty_map(),
+      distinct_reversed: [],
+      duplicated_reversed: [],
+      map_lookups: 0,
+      map_inserts: 0,
+      key_prepends: 0,
+    },
+    f: census_subject_index_step,
+  )
+  CensusSubjectIndex {
+    seen: build.seen,
+    distinct: reverse(build.distinct_reversed),
+    duplicated: reverse(build.duplicated_reversed),
+    map_lookups: build.map_lookups,
+    map_inserts: build.map_inserts,
+    key_prepends: build.key_prepends,
+    order_reversals: 2,
+  }
+}
+
+fn census_subject_index_operations(index: CensusSubjectIndex) -> Int {
+  let probes = index.map_lookups + index.map_inserts
+  probes + index.key_prepends + index.order_reversals
+}
+
+fn census_reconciliation_operations(
+  denominator_subjects: List<CensusSubjectKey>,
+  observed_subjects: List<CensusSubjectKey>,
+) -> Int {
+  let denominator_index = census_subject_index(keys: denominator_subjects)
+  let observation_index = census_subject_index(keys: observed_subjects)
+  let membership_probes = count(denominator_index.distinct) + count(observation_index.distinct)
+  let denominator_ops = census_subject_index_operations(index: denominator_index)
+  let observation_ops = census_subject_index_operations(index: observation_index)
+  denominator_ops + observation_ops + membership_probes
+}
+
+fn census_subject_key_in_index(index: CensusSubjectIndex, key: CensusSubjectKey) -> Bool {
+  match map_get(index.seen, key as String) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn census_distinct_subject_keys(keys: List<CensusSubjectKey>) -> List<CensusSubjectKey> {
+  census_subject_index(keys: keys).distinct
+}
+
+fn census_duplicated_subject_keys(keys: List<CensusSubjectKey>) -> List<CensusSubjectKey> {
+  census_subject_index(keys: keys).duplicated
+}
+
+fn pair_with(left: Fnv1a64Structural, right: Fnv1a64Structural) -> Fnv1a64Structural {
+  content_hash_combine_structural(left: left, right: right)
+}
+
+fn census_subject_keys_identity(subjects: List<CensusSubjectKey>) -> Fnv1a64Structural {
+  fold(
+    subjects,
+    init: content_hash_atom(value: "CensusSubjectKeysEmpty" as NonEmptyStr),
+    f: fn(acc, key) {
+      content_hash_tagged_structural(
+        tag: "CensusSubjectKeysStep" as NonEmptyStr,
+        payload: pair_with(left: acc, right: census_subject_key_identity(key: key)),
+      )
+    },
+  )
+}
+
+data repository_census_denominator_note: String = "THE DENOMINATOR IS AN OBSERVATION IN ITS OWN RIGHT, carrying the same population and revision as the census it will be joined against and its OWN run identity. It is not a list of expected keys handed to the reconciliation, because a bare list carries no statement about what population it enumerates, at which revision, or by which executed procedure — and those three are exactly what the join must compare before it may compare spellings. The enumeration run is separate from the classification run on purpose: a census whose denominator and rows came out of one procedure has not been checked against anything, and this module makes that condition a typed verdict rather than a diagnostic."
+
+type CensusDenominatorObservation sole_constructor {
+  population: RepositoryPopulation
+  observed_at_revision: MeasurementRevision
+  enumeration_run: CensusMethodRunIdentity
+  subjects: List<CensusSubjectKey>
+  subjects_identity: Fnv1a64Structural
+}
+
+fn census_denominator_observation(
+  population: RepositoryPopulation,
+  observed_at_revision: MeasurementRevision,
+  enumeration_run: CensusMethodRunIdentity,
+  subjects: List<CensusSubjectKey>,
+) -> CensusDenominatorObservation {
+  CensusDenominatorObservation {
+    population: population,
+    observed_at_revision: observed_at_revision,
+    enumeration_run: enumeration_run,
+    subjects: subjects,
+    subjects_identity: census_subject_keys_identity(subjects: subjects),
+  }
+}
+
+fn census_denominator_identity(denominator: CensusDenominatorObservation) -> Fnv1a64Structural {
+  let population = repository_census_population_identity(population: denominator.population)
+  let revision = census_revision_identity(revision: denominator.observed_at_revision)
+  let run = census_method_run_identity(method: denominator.enumeration_run)
+  let subjects = denominator.subjects_identity
+  pair_with(left: pair_with(left: population, right: revision), right: pair_with(left: run, right: subjects))
+}
+
+fn census_denominator_subject_count(denominator: CensusDenominatorObservation) -> Int {
+  count(denominator.subjects)
+}
+
+data repository_census_subject_resolution_note: String = "BLOCKER 1 — THE JOIN COMPARES POPULATION AND REVISION BEFORE IT COMPARES SPELLINGS, and until it does there is nothing a key match means. A subject key is a name within a population at a revision; two censuses of different repositories, different source-root populations, or different revisions can carry keys spelled identically while measuring unrelated things, and the first cut reconciled them. Worse, the receipt then recorded both identities, which reads as reconciliation and is not: recording a mismatch is not refusing it, and a mismatch recorded inside an exhaustive-looking receipt is more dangerous than one never written down. Resolution therefore runs FIRST and only CoverageSubjectsAligned reaches the key join. The aligned arm carries the two identities it established, so everything downstream reads the population and revision the join actually verified rather than either side's own copy."
+
+type CoverageSubjectResolution
+  = CoverageSubjectsAligned {
+      population_identity: Fnv1a64Structural
+      revision_identity: Fnv1a64Structural
+    }
+  | CoveragePopulationMismatch {
+      denominator_population_identity: Fnv1a64Structural
+      observation_population_identity: Fnv1a64Structural
+    }
+  | CoverageRevisionMismatch {
+      denominator_revision_identity: Fnv1a64Structural
+      observation_revision_identity: Fnv1a64Structural
+    }
+
+fn census_resolve_coverage_subjects(
+  denominator: CensusDenominatorObservation,
+  observation: RepositoryCensusObservation,
+) -> CoverageSubjectResolution {
+  let denominator_population = repository_census_population_identity(
+    population: denominator.population,
+  )
+  let observation_population = repository_census_population_identity(
+    population: observation.population,
+  )
+  let denominator_revision = census_revision_identity(revision: denominator.observed_at_revision)
+  let observation_revision = census_revision_identity(
+    revision: observation.observed_at_revision,
+  )
+  let population_aligned = content_hash_eq_structural(
+    left: denominator_population,
+    right: observation_population,
+  )
+  let revision_aligned = content_hash_eq_structural(
+    left: denominator_revision,
+    right: observation_revision,
+  )
+  if !population_aligned {
+    CoveragePopulationMismatch {
+      denominator_population_identity: denominator_population,
+      observation_population_identity: observation_population,
+    }
+  } else if !revision_aligned {
+    CoverageRevisionMismatch {
+      denominator_revision_identity: denominator_revision,
+      observation_revision_identity: observation_revision,
+    }
+  } else {
+    CoverageSubjectsAligned {
+      population_identity: denominator_population,
+      revision_identity: denominator_revision,
+    }
+  }
+}
+
+fn census_subject_resolution_is_aligned(resolution: CoverageSubjectResolution) -> Bool {
+  match resolution {
+    CoverageSubjectsAligned { population_identity: _, revision_identity: _ } => true
+    CoveragePopulationMismatch {
+      denominator_population_identity: _,
+      observation_population_identity: _,
+    } => false
+    CoverageRevisionMismatch {
+      denominator_revision_identity: _,
+      observation_revision_identity: _,
+    } => false
+  }
+}
+
+data repository_census_duplicate_note: String = "BLOCKER 2 — DUPLICATES ARE RESOLVED ON BOTH SIDES, because a denominator can repeat a subject exactly as an observation can. The first cut looked for duplicates only among the observed keys, so a denominator of A, A against an observation of A produced no missing key, no unexpected key and no duplicate, and reconciled — an exhaustive receipt over a population one of whose two entries was never measured because it was never two entries. A repeated denominator subject is not a harmless spelling: it means the enumeration counted something twice, so the denominator it establishes is wrong in the direction that makes coverage look complete."
+
+type CoverageDuplicateResolution
+  = NoDuplicateSubjects
+  | DenominatorDuplicated { denominator_duplicated: List<CensusSubjectKey> }
+  | ObservationDuplicated { observation_duplicated: List<CensusSubjectKey> }
+  | BothDuplicated {
+      denominator_duplicated: List<CensusSubjectKey>
+      observation_duplicated: List<CensusSubjectKey>
+    }
+
+fn census_resolve_duplicate_subjects(
+  denominator_subjects: List<CensusSubjectKey>,
+  observed_subjects: List<CensusSubjectKey>,
+) -> CoverageDuplicateResolution {
+  census_resolve_duplicates_from_indexes(
+    denominator_index: census_subject_index(keys: denominator_subjects),
+    observation_index: census_subject_index(keys: observed_subjects),
+  )
+}
+
+fn census_resolve_duplicates_from_indexes(
+  denominator_index: CensusSubjectIndex,
+  observation_index: CensusSubjectIndex,
+) -> CoverageDuplicateResolution {
+  let denominator_duplicated = denominator_index.duplicated
+  let observation_duplicated = observation_index.duplicated
+  let denominator_clean = count(denominator_duplicated) == 0
+  let observation_clean = count(observation_duplicated) == 0
+  if denominator_clean && observation_clean {
+    NoDuplicateSubjects
+  } else if observation_clean {
+    DenominatorDuplicated { denominator_duplicated: denominator_duplicated }
+  } else if denominator_clean {
+    ObservationDuplicated { observation_duplicated: observation_duplicated }
+  } else {
+    BothDuplicated {
+      denominator_duplicated: denominator_duplicated,
+      observation_duplicated: observation_duplicated,
+    }
+  }
+}
+
+fn census_duplicates_resolved_clean(duplicates: CoverageDuplicateResolution) -> Bool {
+  match duplicates {
+    NoDuplicateSubjects => true
+    DenominatorDuplicated { denominator_duplicated: _ } => false
+    ObservationDuplicated { observation_duplicated: _ } => false
+    BothDuplicated { denominator_duplicated: _, observation_duplicated: _ } => false
+  }
+}
+
+type CensusCoverageReconciliation
+  = CoverageReconciled { population_identity: Fnv1a64Structural, revision_identity: Fnv1a64Structural }
+  | CoverageSubjectsUnresolved { resolution: CoverageSubjectResolution }
+  | CoverageDuplicateSubjects { duplicates: CoverageDuplicateResolution }
+  | CoverageIncomplete { missing: List<CensusSubjectKey> }
+  | CoverageUnexpected { unexpected: List<CensusSubjectKey> }
+  | CoverageDiverged {
+      missing: List<CensusSubjectKey>
+      unexpected: List<CensusSubjectKey>
+      duplicates: CoverageDuplicateResolution
+    }
+
+fn census_reconcile_observation(
+  denominator: CensusDenominatorObservation,
+  observation: RepositoryCensusObservation,
+) -> CensusCoverageReconciliation {
+  let resolution = census_resolve_coverage_subjects(
+    denominator: denominator,
+    observation: observation,
+  )
+  match resolution {
+    CoverageSubjectsAligned {
+      population_identity: population_identity,
+      revision_identity: revision_identity,
+    } =>
+      census_reconcile_aligned_subjects(
+        denominator_subjects: denominator.subjects,
+        observed_subjects: repository_census_subject_keys(observation: observation),
+        population_identity: population_identity,
+        revision_identity: revision_identity,
+      )
+    CoveragePopulationMismatch {
+      denominator_population_identity: d,
+      observation_population_identity: o,
+    } =>
+      CoverageSubjectsUnresolved {
+        resolution: CoveragePopulationMismatch {
+          denominator_population_identity: d,
+          observation_population_identity: o,
+        },
+      }
+    CoverageRevisionMismatch {
+      denominator_revision_identity: d,
+      observation_revision_identity: o,
+    } =>
+      CoverageSubjectsUnresolved {
+        resolution: CoverageRevisionMismatch {
+          denominator_revision_identity: d,
+          observation_revision_identity: o,
+        },
+      }
+  }
+}
+
+fn census_reconcile_aligned_subjects(
+  denominator_subjects: List<CensusSubjectKey>,
+  observed_subjects: List<CensusSubjectKey>,
+  population_identity: Fnv1a64Structural,
+  revision_identity: Fnv1a64Structural,
+) -> CensusCoverageReconciliation {
+  let denominator_index = census_subject_index(keys: denominator_subjects)
+  let observation_index = census_subject_index(keys: observed_subjects)
+  let missing = denominator_index.distinct
+    |> filter(key => !census_subject_key_in_index(index: observation_index, key: key))
+  let unexpected = observation_index.distinct
+    |> filter(key => !census_subject_key_in_index(index: denominator_index, key: key))
+  let duplicates = census_resolve_duplicates_from_indexes(
+    denominator_index: denominator_index,
+    observation_index: observation_index,
+  )
+  let missing_kind = if count(missing) > 0 { 1 } else { 0 }
+  let unexpected_kind = if count(unexpected) > 0 { 1 } else { 0 }
+  let duplicate_kind = if census_duplicates_resolved_clean(duplicates: duplicates) { 0 } else { 1 }
+  let failure_kinds = missing_kind + unexpected_kind + duplicate_kind
+  if failure_kinds == 0 {
+    CoverageReconciled {
+      population_identity: population_identity,
+      revision_identity: revision_identity,
+    }
+  } else if failure_kinds > 1 {
+    CoverageDiverged { missing: missing, unexpected: unexpected, duplicates: duplicates }
+  } else if missing_kind == 1 {
+    CoverageIncomplete { missing: missing }
+  } else if unexpected_kind == 1 {
+    CoverageUnexpected { unexpected: unexpected }
+  } else {
+    CoverageDuplicateSubjects { duplicates: duplicates }
+  }
+}
+
+data repository_census_independence_note: String = "BLOCKER 5 — INDEPENDENCE IS A VERDICT THE CEILING READS, NOT A TELL A READER MAY IGNORE. The first cut exposed census_receipt_is_self_join so a holder could see that the denominator and the rows came from one run, and then nothing acted on it: a self-join still produced CoverageEstablished, and CoverageEstablished alone still produced the exhaustive ceiling. VISIBILITY IS NOT ENFORCEMENT — a body sentence saying independence is load-bearing while the code reads a boolean nobody consults is the same overstatement this carrier keeps being recut for. Three states, decided from what the runs actually carry. SharedRun: the two run identities are equal, so the denominator was never checked against anything. IndependenceUnestablished: the identities differ but both name the SAME classifier declaration, so this is one procedure invoked twice — a repeat, not a cross-check, and a systematic error in that procedure is reproduced identically on both sides. DistinctProcedureDenominatorEstablished: different declarations, which is the most this module can decide from declared structure. THE NAME SAYS ONLY WHAT IS ESTABLISHED (operator ruling 2026-08-05). This arm was called IndependentDenominatorEstablished while its own note conceded that two different declarations can still share a defect — a name claiming independence over evidence that establishes only DISTINCTNESS OF PROCEDURE, which is the overstatement class this carrier keeps being recut for, sitting in the identifier a reader trusts most. What the join actually decides from declared structure is that the denominator and the classification came from two different declarations. Whether those two procedures are independent in the sense that matters, sharing no common defect, is not decidable from structure and is not claimed. Only the established arm supports an exhaustive ceiling; the other two still support a population FLOOR, because a self-joined census does observe the rows it observed."
+
+type DenominatorIndependence
+  = DistinctProcedureDenominatorEstablished {
+      enumeration_classifier_identity: Fnv1a64Structural
+      classification_classifier_identity: Fnv1a64Structural
+    }
+  | SharedRun { run_identity: Fnv1a64Structural }
+  | IndependenceUnestablished { shared_classifier_identity: Fnv1a64Structural }
+
+fn census_resolve_independence(
+  enumeration_run: CensusMethodRunIdentity,
+  classification_run: CensusMethodRunIdentity,
+) -> DenominatorIndependence {
+  let enumeration_identity = census_method_run_identity(method: enumeration_run)
+  let classification_identity = census_method_run_identity(method: classification_run)
+  let enumeration_classifier = census_declaration_ref_identity(
+    reference: enumeration_run.classifier,
+  )
+  let classification_classifier = census_declaration_ref_identity(
+    reference: classification_run.classifier,
+  )
+  let same_run = content_hash_eq_structural(
+    left: enumeration_identity,
+    right: classification_identity,
+  )
+  let same_classifier = content_hash_eq_structural(
+    left: enumeration_classifier,
+    right: classification_classifier,
+  )
+  if same_run {
+    SharedRun { run_identity: enumeration_identity }
+  } else if same_classifier {
+    IndependenceUnestablished { shared_classifier_identity: enumeration_classifier }
+  } else {
+    DistinctProcedureDenominatorEstablished {
+      enumeration_classifier_identity: enumeration_classifier,
+      classification_classifier_identity: classification_classifier,
+    }
+  }
+}
+
+fn census_independence_is_established(independence: DenominatorIndependence) -> Bool {
+  match independence {
+    DistinctProcedureDenominatorEstablished {
+      enumeration_classifier_identity: _,
+      classification_classifier_identity: _,
+    } => true
+    SharedRun { run_identity: _ } => false
+    IndependenceUnestablished { shared_classifier_identity: _ } => false
+  }
+}
+
+data repository_census_exact_receipt_note: String = "THE RECEIPT HAS NO CONSTRUCTOR OTHER THAN A RECONCILED JOIN. It is sole_constructor, so no other module can write one; the only function in this module that returns one is census_establish_coverage, which returns it exclusively on the CoverageReconciled arm; and it takes no parameter a caller could use to assert exactness. So this census is complete is not a claim anyone can make — it is a value only an executed reconciliation hands you (DESIGN section 5, correctness by construction rather than validation). What it replaces is a nullary CompleteForDeclaredPopulation tag writable by anyone, beside a separately derived completeness fold nothing forced it to agree with. Every field here is DERIVED by that reconciliation from the two observations it joined: the population and revision identities are the ones ALIGNMENT established rather than either side's own copy, and independence is the resolved verdict rather than a boolean recomputed later from fields a reader might join differently."
+
+type ExactCoverageReceipt sole_constructor {
+  denominator_identity: Fnv1a64Structural
+  observation_identity: Fnv1a64Structural
+  population_identity: Fnv1a64Structural
+  revision_identity: Fnv1a64Structural
+  enumeration_run_identity: Fnv1a64Structural
+  classification_run_identity: Fnv1a64Structural
+  independence: DenominatorIndependence
+  covered_subject_count: Int
+}
+
+data repository_census_refusal_note: String = "THE REFUSAL ARM CARRIES THE OBSERVATION IDENTITY AND THE CLASSIFICATION RUN, for the reason blocker 3 exists. A ceiling must be derivable from the coverage outcome ALONE, on both arms — otherwise the floor path would need the observation supplied separately, and a separately supplied observation is exactly the second value that can disagree with the first. So a refusal is not merely the absence of a receipt: it is a located fact about WHICH observation failed to reconcile and why, and it is as joinable as the receipt is."
+
+type CensusCoverageOutcome
+  = CoverageEstablished { receipt: ExactCoverageReceipt }
+  | CoverageRefused {
+      observation_identity: Fnv1a64Structural
+      classification_run_identity: Fnv1a64Structural
+      reconciliation: CensusCoverageReconciliation
+    }
+
+fn census_establish_coverage(
+  denominator: CensusDenominatorObservation,
+  observation: RepositoryCensusObservation,
+) -> CensusCoverageOutcome {
+  let observed_subjects = repository_census_subject_keys(observation: observation)
+  let observation_identity = repository_census_observation_identity(observation: observation)
+  let classification_run_identity = census_method_run_identity(method: observation.method_run)
+  let reconciliation = census_reconcile_observation(
+    denominator: denominator,
+    observation: observation,
+  )
+  match reconciliation {
+    CoverageReconciled {
+      population_identity: population_identity,
+      revision_identity: revision_identity,
+    } =>
+      CoverageEstablished {
+        receipt: ExactCoverageReceipt {
+          denominator_identity: census_denominator_identity(denominator: denominator),
+          observation_identity: observation_identity,
+          population_identity: population_identity,
+          revision_identity: revision_identity,
+          enumeration_run_identity: census_method_run_identity(
+            method: denominator.enumeration_run,
+          ),
+          classification_run_identity: classification_run_identity,
+          independence: census_resolve_independence(
+            enumeration_run: denominator.enumeration_run,
+            classification_run: observation.method_run,
+          ),
+          covered_subject_count: count(observed_subjects),
+        },
+      }
+    CoverageSubjectsUnresolved { resolution: resolution } =>
+      CoverageRefused {
+        observation_identity: observation_identity,
+        classification_run_identity: classification_run_identity,
+        reconciliation: CoverageSubjectsUnresolved { resolution: resolution },
+      }
+    CoverageDuplicateSubjects { duplicates: duplicates } =>
+      CoverageRefused {
+        observation_identity: observation_identity,
+        classification_run_identity: classification_run_identity,
+        reconciliation: CoverageDuplicateSubjects { duplicates: duplicates },
+      }
+    CoverageIncomplete { missing: missing } =>
+      CoverageRefused {
+        observation_identity: observation_identity,
+        classification_run_identity: classification_run_identity,
+        reconciliation: CoverageIncomplete { missing: missing },
+      }
+    CoverageUnexpected { unexpected: unexpected } =>
+      CoverageRefused {
+        observation_identity: observation_identity,
+        classification_run_identity: classification_run_identity,
+        reconciliation: CoverageUnexpected { unexpected: unexpected },
+      }
+    CoverageDiverged { missing: m, unexpected: u, duplicates: d } =>
+      CoverageRefused {
+        observation_identity: observation_identity,
+        classification_run_identity: classification_run_identity,
+        reconciliation: CoverageDiverged { missing: m, unexpected: u, duplicates: d },
+      }
+  }
+}
+
+fn census_coverage_observation_identity(coverage: CensusCoverageOutcome) -> Fnv1a64Structural {
+  match coverage {
+    CoverageEstablished { receipt: receipt } => receipt.observation_identity
+    CoverageRefused {
+      observation_identity: observation_identity,
+      classification_run_identity: _,
+      reconciliation: _,
+    } => observation_identity
+  }
+}
+
+fn census_coverage_classification_run_identity(
+  coverage: CensusCoverageOutcome,
+) -> Fnv1a64Structural {
+  match coverage {
+    CoverageEstablished { receipt: receipt } => receipt.classification_run_identity
+    CoverageRefused {
+      observation_identity: _,
+      classification_run_identity: classification_run_identity,
+      reconciliation: _,
+    } => classification_run_identity
+  }
+}
+
+data repository_census_capability_note: String = "BLOCKER 4 — A CAPABILITY RECEIPT IS JOINED TO THE RUN AND CARRIES CONFORMANCE EVIDENCE. The first cut let CensusMethodCapability be authored with no tie to anything: its contract need not name the classifier that ran, its revision need not match the method run's, and ClassifiesDeclaredStructure mapped automatically to semantic fidelity. Its own note admitted this was the weak link and the ceiling consumed it anyway as if it were sufficient — a note beside an overstating claim, the third time on this carrier, which is why the shape rather than the prose is what changed. The receipt is now built ONLY from an observation plus a capability whose contract IS that observation's classifier, checked at identity grain; a contract naming any other declaration returns none, so the receipt cannot exist. Its method_run_identity and fidelity are DERIVED from the observation and the capability, never supplied. And conformance is the separate proposition that the classifier was demonstrated to discriminate: a control invocation of the same classifier at the same revision, where a discriminating input was refused AND a positive control was accepted. UNTIL CONFORMANCE IS ESTABLISHED THE SEMANTIC CEILING STAYS A FLOOR. That is deliberately strict: a structural classifier can classify the wrong thing, and its SHAPE is not evidence that it classified the intended subject."
+
+type CensusMethodCapability
+  = ClassifiesDeclaredStructure { contract: DeclarationRef }
+  | ReadsGeneratedArtifact { contract: DeclarationRef, artifact: MeasurementRevision }
+  | MatchesSourceText { contract: DeclarationRef }
+
+type CensusSubjectFidelity = SemanticSubjects | TextualMatchesOnly
+
+fn census_capability_contract(capability: CensusMethodCapability) -> DeclarationRef {
+  match capability {
+    ClassifiesDeclaredStructure { contract: contract } => contract
+    ReadsGeneratedArtifact { contract: contract, artifact: _ } => contract
+    MatchesSourceText { contract: contract } => contract
+  }
+}
+
+fn census_capability_fidelity(capability: CensusMethodCapability) -> CensusSubjectFidelity {
+  match capability {
+    ClassifiesDeclaredStructure { contract: _ } => SemanticSubjects
+    ReadsGeneratedArtifact { contract: _, artifact: _ } => SemanticSubjects
+    MatchesSourceText { contract: _ } => TextualMatchesOnly
+  }
+}
+
+fn census_capability_kind_tag(capability: CensusMethodCapability) -> NonEmptyStr {
+  match capability {
+    ClassifiesDeclaredStructure { contract: _ } => "ClassifiesDeclaredStructure" as NonEmptyStr
+    ReadsGeneratedArtifact { contract: _, artifact: _ } => "ReadsGeneratedArtifact" as NonEmptyStr
+    MatchesSourceText { contract: _ } => "MatchesSourceText" as NonEmptyStr
+  }
+}
+
+fn census_capability_identity(capability: CensusMethodCapability) -> Fnv1a64Structural {
+  let kind = content_hash_atom(value: census_capability_kind_tag(capability: capability))
+  let contract = census_declaration_ref_identity(
+    reference: census_capability_contract(capability: capability),
+  )
+  pair_with(left: kind, right: contract)
+}
+
+data repository_census_conformance_note: String = "CONFORMANCE IS DERIVED FROM EXECUTED CONTROL OUTCOMES, NEVER FROM AUTHORED BOOLEANS (operator ruling 2026-08-05, superseding the first shape of this carrier). The previous shape took discriminating_input_refused and positive_control_accepted as caller-supplied Bool, so ANY caller could pass true and true and receive a conformance value that then raised a semantic ceiling. The domain consumer in this repository computed those two honestly by running the controls, and that is exactly what made the defect invisible: the GENERIC CARRIER never required it, so the honesty lived in one consumer rather than in the type. That is the same author-supplied-answer class this whole module exists to close, committed one layer above the layer it closes it at — the third time on this carrier that a name stood where a receipt belonged.\n\nWHAT REPLACES IT. The carrier now consumes a CensusControlPair of two real CensusCoverageOutcome values and DERIVES the verdict. Four conditions must hold together and each is checked against structure rather than assertion: the discriminating control must have REFUSED, the positive control must have been ESTABLISHED, both outcomes must have come from the declared control run (joined on the classification run identity each outcome carries, so an outcome borrowed from an unrelated run cannot be presented), and the control run must be the same classifier at the same revision under a DIFFERENT invocation from the measurement. Only that join yields a CensusMethodConformanceReceipt, which is sole_constructor and has no other producer. Both halves remain required because either alone is satisfiable by a broken classifier: one that accepts everything passes the positive control, one that refuses everything passes the discriminating one.\n\nWHAT IS STILL NOT ESTABLISHED, unchanged and still the honest frontier: that the discriminating input was WELL CHOSEN. This carrier can prove a classifier discriminated between two inputs; it cannot prove the input it refused was the one worth refusing. That judgement belongs to whoever authored the control."
+
+type CensusControlPair {
+  control_run: CensusMethodRunIdentity
+  discriminating: CensusCoverageOutcome
+  positive: CensusCoverageOutcome
+}
+
+type CensusMethodConformanceReceipt sole_constructor {
+  control_run_identity: Fnv1a64Structural
+  method_run_identity: Fnv1a64Structural
+  discriminating_observation_identity: Fnv1a64Structural
+  positive_observation_identity: Fnv1a64Structural
+}
+
+type CensusConformanceOutcome
+  = CensusConformanceEstablished { receipt: CensusMethodConformanceReceipt }
+  | CensusConformanceControlOutcomesUnjoined {
+      control_run_identity: Fnv1a64Structural
+      discriminating_run_identity: Fnv1a64Structural
+      positive_run_identity: Fnv1a64Structural
+    }
+  | CensusConformanceControlNotDistinctFromMeasurement {
+      control_run_identity: Fnv1a64Structural
+      method_run_identity: Fnv1a64Structural
+    }
+  | CensusConformanceControlsDidNotDiscriminate {
+      discriminating: CensusCoverageOutcome
+      positive: CensusCoverageOutcome
+    }
+
+fn census_coverage_is_refused(coverage: CensusCoverageOutcome) -> Bool {
+  match coverage {
+    CoverageEstablished { receipt: _ } => false
+    CoverageRefused {
+      observation_identity: _,
+      classification_run_identity: _,
+      reconciliation: _,
+    } => true
+  }
+}
+
+fn census_control_run_is_distinct_from_measurement(
+  control_run: CensusMethodRunIdentity,
+  method_run: CensusMethodRunIdentity,
+) -> Bool {
+  let same_classifier = content_hash_eq_structural(
+    left: census_declaration_ref_identity(reference: control_run.classifier),
+    right: census_declaration_ref_identity(reference: method_run.classifier),
+  )
+  let same_revision = content_hash_eq_structural(
+    left: census_revision_identity(revision: control_run.classifier_revision),
+    right: census_revision_identity(revision: method_run.classifier_revision),
+  )
+  let same_invocation = content_hash_eq_structural(
+    left: control_run.invocation_identity,
+    right: method_run.invocation_identity,
+  )
+  same_classifier && same_revision && !same_invocation
+}
+
+fn census_control_outcomes_join_the_control_run(
+  pair: CensusControlPair,
+  control_run_identity: Fnv1a64Structural,
+) -> Bool {
+  let discriminating_joins = content_hash_eq_structural(
+    left: census_coverage_classification_run_identity(coverage: pair.discriminating),
+    right: control_run_identity,
+  )
+  let positive_joins = content_hash_eq_structural(
+    left: census_coverage_classification_run_identity(coverage: pair.positive),
+    right: control_run_identity,
+  )
+  discriminating_joins && positive_joins
+}
+
+fn census_method_conformance_receipt(
+  pair: CensusControlPair,
+  method_run: CensusMethodRunIdentity,
+) -> CensusConformanceOutcome {
+  let control_run_identity = census_method_run_identity(method: pair.control_run)
+  let method_run_identity = census_method_run_identity(method: method_run)
+  if !census_control_outcomes_join_the_control_run(
+    pair: pair,
+    control_run_identity: control_run_identity,
+  ) {
+    CensusConformanceControlOutcomesUnjoined {
+      control_run_identity: control_run_identity,
+      discriminating_run_identity: census_coverage_classification_run_identity(
+        coverage: pair.discriminating,
+      ),
+      positive_run_identity: census_coverage_classification_run_identity(
+        coverage: pair.positive,
+      ),
+    }
+  } else if !census_control_run_is_distinct_from_measurement(
+    control_run: pair.control_run,
+    method_run: method_run,
+  ) {
+    CensusConformanceControlNotDistinctFromMeasurement {
+      control_run_identity: control_run_identity,
+      method_run_identity: method_run_identity,
+    }
+  } else if census_coverage_is_refused(coverage: pair.discriminating)
+    && !census_coverage_is_refused(coverage: pair.positive) {
+    CensusConformanceEstablished {
+      receipt: CensusMethodConformanceReceipt {
+        control_run_identity: control_run_identity,
+        method_run_identity: method_run_identity,
+        discriminating_observation_identity: census_coverage_observation_identity(
+          coverage: pair.discriminating,
+        ),
+        positive_observation_identity: census_coverage_observation_identity(
+          coverage: pair.positive,
+        ),
+      },
+    }
+  } else {
+    CensusConformanceControlsDidNotDiscriminate {
+      discriminating: pair.discriminating,
+      positive: pair.positive,
+    }
+  }
+}
+
+fn census_conformance_receipt_of(outcome: CensusConformanceOutcome) -> CensusMethodConformanceReceipt? {
+  match outcome {
+    CensusConformanceEstablished { receipt: receipt } => Present { value: receipt }
+    CensusConformanceControlOutcomesUnjoined {
+      control_run_identity: _,
+      discriminating_run_identity: _,
+      positive_run_identity: _,
+    } => none
+    CensusConformanceControlNotDistinctFromMeasurement {
+      control_run_identity: _,
+      method_run_identity: _,
+    } => none
+    CensusConformanceControlsDidNotDiscriminate { discriminating: _, positive: _ } => none
+  }
+}
+
+type CensusMethodCapabilityReceipt sole_constructor {
+  method_run_identity: Fnv1a64Structural
+  contract: DeclarationRef
+  capability_identity: Fnv1a64Structural
+  fidelity: CensusSubjectFidelity
+  conformance: CensusMethodConformanceReceipt?
+}
+
+fn census_method_capability_receipt(
+  observation: RepositoryCensusObservation,
+  capability: CensusMethodCapability,
+  conformance: CensusMethodConformanceReceipt?,
+) -> CensusMethodCapabilityReceipt? {
+  let contract = census_capability_contract(capability: capability)
+  let method_run_identity = census_method_run_identity(method: observation.method_run)
+  let contract_names_the_classifier = content_hash_eq_structural(
+    left: census_declaration_ref_identity(reference: contract),
+    right: census_declaration_ref_identity(reference: observation.method_run.classifier),
+  )
+  let conformance_joins = census_conformance_joins_the_method_run(
+    conformance: conformance,
+    method_run_identity: method_run_identity,
+  )
+  let receipt = CensusMethodCapabilityReceipt {
+    method_run_identity: method_run_identity,
+    contract: contract,
+    capability_identity: census_capability_identity(capability: capability),
+    fidelity: census_capability_fidelity(capability: capability),
+    conformance: conformance,
+  }
+  if contract_names_the_classifier && conformance_joins {
+    Present { value: receipt }
+  } else {
+    none
+  }
+}
+
+data repository_census_conformance_rejoin_note: String = "THE CONFORMANCE RECEIPT IS RE-JOINED TO THIS OBSERVATION rather than trusted because it exists. A receipt proves that SOME measurement run had a distinct, discriminating control; it does not prove that run was THIS one. Without the re-join a caller could derive a valid receipt against method run A and attach it to a capability receipt for method run B, which is the borrowed-evidence shape the ceiling join closes one level up. Absent conformance is not a failure here — it produces a capability receipt whose ceiling stays a floor — so the arm returns true rather than refusing."
+
+fn census_conformance_joins_the_method_run(
+  conformance: CensusMethodConformanceReceipt?,
+  method_run_identity: Fnv1a64Structural,
+) -> Bool {
+  match conformance {
+    Absent => true
+    Present { value: receipt } =>
+      content_hash_eq_structural(
+        left: receipt.method_run_identity,
+        right: method_run_identity,
+      )
+  }
+}
+
+fn census_capability_receipt_conformance_established(
+  receipt: CensusMethodCapabilityReceipt,
+) -> Bool {
+  match receipt.conformance {
+    Absent => false
+    Present { value: _ } => true
+  }
+}
+
+data repository_census_ceiling_note: String = "BLOCKER 3 — THE CEILING IS A FUNCTION OF ONE PACKAGE, AND NO SEPARATELY SUPPLIED OBSERVATION EXISTS TO DISAGREE WITH IT. The first cut took capability, observation and coverage outcome as three arguments, turned any CoverageEstablished into coverage_established true, and never checked that the receipt was ABOUT the supplied observation — so a receipt for observation A beside observation B produced an exhaustive ceiling for B. There is now no observation parameter at all: the observation identity is DERIVED from the coverage outcome, on both arms. What remains is one join, and it refuses: the capability receipt's method_run_identity must equal the classification run identity the coverage outcome carries, or no ceiling exists. LIMITS ARE ENUMERATED RATHER THAN COLLAPSED, so a floor says which of the four conditions failed and a reader can tell a text-scan floor from a self-join floor from an unconformed one; that also keeps a degradation countable rather than absorbed (DESIGN section 5)."
+
+data repository_census_ceiling_refusal_note: String = "THE REFUSAL NAMES ITS CAUSE AND CARRIES BOTH IDENTITIES, and this replaces a declared frontier rather than adding to one (dissolution fired 2026-08-05 by the operator ruling that this recut touches the function). The previous shape answered an Optional, and none is not a typed located refusal: it said a ceiling could not be derived while saying nothing about which two runs failed to join, so a holder could neither report the mismatch nor count it. The frontier note recorded that the arm had exactly one cause today and that the SECOND cause would join it silently, because the signature already tolerated an unexplained none. That is now unwritable rather than merely unlikely: the outcome is a coproduct, so a second cause CANNOT be added without adding a variant a reader must handle, and the compiler is what enforces it instead of a note asking the next author to be careful (DESIGN section 5, a failure arm must refuse rather than widen, and a degradation must stay countable). The refusal carries the classification run identity the coverage outcome established and the method run identity the capability receipt claims, in that order, so the located fact is which receipt was presented against which coverage — not merely that something did not match. And the ceiling is now CONSTRUCTED ONLY ON THE JOINED ARM: the previous body built the value and then discarded it on failure, which meant a strength was computed for a package that had not been shown to be one package."
+
+data repository_census_limit_naming_note: String = "THE LIMIT NAME MATCHES THE ARM THAT PRODUCES IT, and this one was found by sweeping for the class rather than the instance. When DistinctProcedureDenominatorEstablished was renamed off its independence overclaim, its MIRROR survived one identifier away: the limit was still called DenominatorNotIndependent, asserting non-independence in general when what the join decides is only that the two procedures were not shown to be distinct declarations. A negative inherits the same evidence bound as the positive it negates — if structure cannot establish independence it cannot establish its absence either — so the limit now names the distinctness it actually decides."
+
+type CensusCeilingLimit
+  = CoverageNotEstablished
+  | DenominatorProcedureNotDistinct
+  | MethodConformanceUnobserved
+
+type CensusInferenceCeilingStrength
+  = ExhaustiveSemanticPopulation
+  | SemanticPopulationFloor
+  | ExhaustiveTextualMatches
+  | TextualMatchFloor
+
+type CensusInferenceCeiling sole_constructor {
+  strength: CensusInferenceCeilingStrength
+  observation_identity: Fnv1a64Structural
+  capability_identity: Fnv1a64Structural
+  limits: List<CensusCeilingLimit>
+}
+
+fn census_coverage_limits(coverage: CensusCoverageOutcome) -> List<CensusCeilingLimit> {
+  match coverage {
+    CoverageEstablished { receipt: receipt } =>
+      if census_independence_is_established(independence: receipt.independence) {
+        []
+      } else {
+        [DenominatorProcedureNotDistinct]
+      }
+    CoverageRefused {
+      observation_identity: _,
+      classification_run_identity: _,
+      reconciliation: _,
+    } => [CoverageNotEstablished]
+  }
+}
+
+fn census_ceiling_strength_for(
+  fidelity: CensusSubjectFidelity,
+  limits: List<CensusCeilingLimit>,
+) -> CensusInferenceCeilingStrength {
+  let unlimited = count(limits) == 0
+  match fidelity {
+    SemanticSubjects =>
+      if unlimited { ExhaustiveSemanticPopulation } else { SemanticPopulationFloor }
+    TextualMatchesOnly =>
+      if unlimited { ExhaustiveTextualMatches } else { TextualMatchFloor }
+  }
+}
+
+fn census_conformance_limits(
+  receipt: CensusMethodCapabilityReceipt,
+) -> List<CensusCeilingLimit> {
+  if census_capability_receipt_conformance_established(receipt: receipt) {
+    []
+  } else {
+    [MethodConformanceUnobserved]
+  }
+}
+
+fn census_ceiling_limits_for(
+  capability_receipt: CensusMethodCapabilityReceipt,
+  coverage: CensusCoverageOutcome,
+) -> List<CensusCeilingLimit> {
+  let coverage_limits = census_coverage_limits(coverage: coverage)
+  let conformance_limits = census_conformance_limits(receipt: capability_receipt)
+  append(coverage_limits, conformance_limits)
+}
+
+type CensusInferenceCeilingOutcome
+  = CensusCeilingDerived { ceiling: CensusInferenceCeiling }
+  | CensusCeilingRefusedRunMismatch {
+      coverage_classification_run_identity: Fnv1a64Structural
+      capability_method_run_identity: Fnv1a64Structural
+    }
+
+fn census_inference_ceiling(
+  capability_receipt: CensusMethodCapabilityReceipt,
+  coverage: CensusCoverageOutcome,
+) -> CensusInferenceCeilingOutcome {
+  let classification_run_identity = census_coverage_classification_run_identity(
+    coverage: coverage,
+  )
+  if content_hash_eq_structural(
+    left: capability_receipt.method_run_identity,
+    right: classification_run_identity,
+  ) {
+    let limits = census_ceiling_limits_for(
+      capability_receipt: capability_receipt,
+      coverage: coverage,
+    )
+    CensusCeilingDerived {
+      ceiling: CensusInferenceCeiling {
+        strength: census_ceiling_strength_for(
+          fidelity: capability_receipt.fidelity,
+          limits: limits,
+        ),
+        observation_identity: census_coverage_observation_identity(coverage: coverage),
+        capability_identity: capability_receipt.capability_identity,
+        limits: limits,
+      },
+    }
+  } else {
+    CensusCeilingRefusedRunMismatch {
+      coverage_classification_run_identity: classification_run_identity,
+      capability_method_run_identity: capability_receipt.method_run_identity,
+    }
+  }
+}
+
+fn census_ceiling_supports_semantic_subject_claim(ceiling: CensusInferenceCeiling) -> Bool {
+  match ceiling.strength {
+    ExhaustiveSemanticPopulation => true
+    SemanticPopulationFloor => true
+    ExhaustiveTextualMatches => false
+    TextualMatchFloor => false
+  }
+}
+
+fn census_ceiling_supports_semantic_absence(ceiling: CensusInferenceCeiling) -> Bool {
+  match ceiling.strength {
+    ExhaustiveSemanticPopulation => true
+    SemanticPopulationFloor => false
+    ExhaustiveTextualMatches => false
+    TextualMatchFloor => false
+  }
+}
+
+fn census_ceiling_supports_textual_absence(ceiling: CensusInferenceCeiling) -> Bool {
+  match ceiling.strength {
+    ExhaustiveSemanticPopulation => true
+    SemanticPopulationFloor => false
+    ExhaustiveTextualMatches => true
+    TextualMatchFloor => false
+  }
+}
+
+fn census_ceiling_is_floor_only(ceiling: CensusInferenceCeiling) -> Bool {
+  match ceiling.strength {
+    ExhaustiveSemanticPopulation => false
+    SemanticPopulationFloor => true
+    ExhaustiveTextualMatches => false
+    TextualMatchFloor => true
+  }
+}
+
+fn census_ceiling_has_limit(ceiling: CensusInferenceCeiling, limit: CensusCeilingLimit) -> Bool {
+  any(ceiling.limits, held => census_ceiling_limit_tag(limit: held) == census_ceiling_limit_tag(limit: limit))
+}
+
+fn census_ceiling_limit_tag(limit: CensusCeilingLimit) -> String {
+  match limit {
+    CoverageNotEstablished => "CoverageNotEstablished"
+    DenominatorProcedureNotDistinct => "DenominatorProcedureNotDistinct"
+    MethodConformanceUnobserved => "MethodConformanceUnobserved"
+  }
+}
