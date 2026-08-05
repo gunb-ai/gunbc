@@ -652,7 +652,7 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
   WitnessExclusionRow {
     pattern: "codex_package_delivery_wet_witness_test.dag",
     classification: OfflineLocalRecipe,
-    reason: "wet-integration class (wet_integration_offline_note posture): DownloadToFile + sha512sum DigestFile + npm cache add of admitted bytes + npm ci --offline --ignore-scripts; hermetic discovery refuses. Local recipe: gunbc run --claim-run on acquire_required_codex_tarball_sha512_matches_lock / acquire_target_closure_admits_wrapper_and_platform / materialize_codex_runtime_bundle_produces_executable.",
+    reason: "wet-integration class (wet_integration_offline_note posture): DownloadToFile + sha512sum DigestFile + npm cache add of admitted bytes + npm ci --offline --ignore-scripts; hermetic discovery refuses. Local recipe: gunbc run --claim-run on acquire_required_codex_tarball_sha512_matches_lock / acquire_exact_target_pair_admits_wrapper_and_platform / materialize_codex_runtime_bundle_produces_native_executable.",
     dissolve_on: excl_wet_integration_dissolve
   },
   WitnessExclusionRow {

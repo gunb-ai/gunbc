@@ -26,7 +26,6 @@ import extdeps.npm {
   NpmLockNodeFormUnsupportedCarrier,
   NpmRelativeLockPath,
   NpmRootLockPath,
-  NpmPlatformConstraint,
 }
 import extdeps.package {
   PackageLockGraph,
@@ -39,6 +38,7 @@ import extdeps.package {
   PackageLockNodeAbsent,
   PackageLockNodeDuplicate,
 }
+import extdeps.version { VersionIdentity }
 import extdeps.http.client
 import extdeps.shell
 import extdeps.filesystem.filesystem_io
@@ -221,7 +221,7 @@ type RegistryArtifactAcquisition
 type AdmittedPackageArtifactReceipt {
   lock_node_key: NonEmptyStr
   package_name: NonEmptyStr
-  version: NonEmptyStr
+  version: VersionIdentity
   source_locator: NonEmptyStr
   expected_digest: Sha512Digest
   observed_digest: Sha512Digest
@@ -266,7 +266,7 @@ fn acquire_and_admit_registry_artifact(
                   receipt: AdmittedPackageArtifactReceipt {
                     lock_node_key: lock_node_key,
                     package_name: artifact.package.name,
-                    version: artifact.version as String as NonEmptyStr,
+                    version: artifact.version,
                     source_locator: artifact.resolved.locator,
                     expected_digest: expected,
                     observed_digest: digest,
@@ -549,14 +549,7 @@ fn codex_target_package_lookup(
                 cause: "platform lock-node is root project, not registry artifact" as NonEmptyStr,
               }
             NpmRegistrySelected { artifact } =>
-              if node.metadata.flags.optional == false {
-                CodexTargetPackageWrongMetadata {
-                  key: path_key,
-                  cause: "platform lock-node is not marked optional" as NonEmptyStr,
-                }
-              } else {
-                CodexTargetPackageUnique { node: node, artifact: artifact }
-              }
+              CodexTargetPackageUnique { node: node, artifact: artifact }
           }
       }
     }
@@ -741,7 +734,7 @@ fn observe_admitted_package_set_identity(
   if wrote.success == false {
     none
   } else {
-    match sha512sum_observe_file(path: path) {
+    match sha512sum_observe_file(path: path as FilePath) {
       Sha512FileObserved { digest } =>
         Present { value: as_content_hash_sha512(digest: digest) }
       Sha512FileObservationRefused { cause: _ } => none
