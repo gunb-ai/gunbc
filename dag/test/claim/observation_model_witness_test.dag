@@ -71,6 +71,7 @@ import std.observation {
   Refused,
   Failed,
   TimedOut,
+  WallClock,
   Skipped,
   Final,
   ObservationTransition,
@@ -154,6 +155,8 @@ import std.observation {
   observation_no_op_attention,
   observation_no_op_symbol,
   observation_no_op_explanation,
+  observation_durations_wall,
+  observation_durations_wall_unavailable,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -190,9 +193,7 @@ fn obs_event(transition: ObservationTransition, wall_ms: Int) -> ObservationEven
   ObservationEvent {
     subject: obs_entry_subject(),
     transition: transition,
-    wall: MeasuredValue {
-      value: millisecond_to_nanosecond(m: millisecond(count: wall_ms))
-    },
+    durations: observation_durations_wall(elapsed: millisecond_to_nanosecond(m: millisecond(count: wall_ms))),
     rss: MeasuredUnavailable { cause: "cgroup memory.current unreadable in this fixture" as NonEmptyStr }
   }
 }
@@ -201,7 +202,7 @@ fn obs_event_ns(transition: ObservationTransition, wall: Nanosecond) -> Observat
   ObservationEvent {
     subject: obs_entry_subject(),
     transition: transition,
-    wall: MeasuredValue { value: wall },
+    durations: observation_durations_wall(elapsed: wall),
     rss: MeasuredUnavailable { cause: "cgroup memory.current unreadable in this fixture" as NonEmptyStr }
   }
 }
@@ -364,31 +365,31 @@ test fn w_attention_availability_precedence_and_causes_hold() -> Bool {
   let no_wall = ObservationEvent {
     subject: obs_entry_subject(),
     transition: Step { k: 1, n: 2 },
-    wall: MeasuredUnavailable { cause: "clock absent" as NonEmptyStr },
+    durations: observation_durations_wall_unavailable(cause: "clock absent" as NonEmptyStr),
     rss: MeasuredUnavailable { cause: "rss absent" as NonEmptyStr }
   }
   let done_no_wall = ObservationEvent {
     subject: obs_entry_subject(),
     transition: Concluded { outcome: Done },
-    wall: MeasuredUnavailable { cause: "clock absent" as NonEmptyStr },
+    durations: observation_durations_wall_unavailable(cause: "clock absent" as NonEmptyStr),
     rss: MeasuredUnavailable { cause: "rss absent" as NonEmptyStr }
   }
   let refused_no_wall = ObservationEvent {
     subject: obs_entry_subject(),
     transition: Concluded { outcome: Refused { diagnostic: "policy" as NonEmptyStr } },
-    wall: MeasuredUnavailable { cause: "clock absent" as NonEmptyStr },
+    durations: observation_durations_wall_unavailable(cause: "clock absent" as NonEmptyStr),
     rss: MeasuredUnavailable { cause: "rss absent" as NonEmptyStr }
   }
   let begin = ObservationEvent {
     subject: obs_entry_subject(),
     transition: Begin,
-    wall: MeasuredUnavailable { cause: "clock absent" as NonEmptyStr },
+    durations: observation_durations_wall_unavailable(cause: "clock absent" as NonEmptyStr),
     rss: MeasuredUnavailable { cause: "rss absent" as NonEmptyStr }
   }
   let refused = obs_event(transition: Concluded { outcome: Refused { diagnostic: "policy" as NonEmptyStr } }, wall_ms: 1)
   let failed = obs_event(transition: Concluded { outcome: Failed { error: "broken" as NonEmptyStr, output: "" } }, wall_ms: 1)
   let timed_out = obs_event(
-    transition: Concluded { outcome: TimedOut { basis: _, budget: millisecond(count: 1), elapsed: millisecond(count: 2) } },
+    transition: Concluded { outcome: TimedOut { basis: WallClock, budget: millisecond(count: 1), elapsed: millisecond(count: 2) } },
     wall_ms: 2
   )
   let done = obs_event(transition: Concluded { outcome: Done }, wall_ms: 500)
@@ -442,7 +443,7 @@ test fn w_attention_strict_facade_equals_measured_value_projection() -> Bool {
     obs_event(transition: Concluded { outcome: Refused { diagnostic: "policy" as NonEmptyStr } }, wall_ms: 1),
     obs_event(transition: Concluded { outcome: Failed { error: "broken" as NonEmptyStr, output: "" } }, wall_ms: 1),
     obs_event(
-      transition: Concluded { outcome: TimedOut { basis: _, budget: millisecond(count: 1), elapsed: millisecond(count: 2) } },
+      transition: Concluded { outcome: TimedOut { basis: WallClock, budget: millisecond(count: 1), elapsed: millisecond(count: 2) } },
       wall_ms: 2
     ),
     obs_event(transition: Concluded { outcome: Skipped { reason: "unaffected" as NonEmptyStr } }, wall_ms: 1),

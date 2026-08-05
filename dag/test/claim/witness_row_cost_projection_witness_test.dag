@@ -350,7 +350,7 @@ fn non_concluded_timing_event_refuses_holds() -> Bool {
   let begun = ObservationEvent {
     subject: concluded.subject,
     transition: Begin,
-    wall: concluded.wall,
+    durations: concluded.durations,
     rss: concluded.rss
   }
   match project_witness_cost_receipt(events: [
