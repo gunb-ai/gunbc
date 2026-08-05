@@ -15,8 +15,21 @@ import v2.std.optional { Optional }
 // prices a wall by.
 //
 // So the wall grows WITH the migration: each batch adds the paths it migrated to this roster in the
-// SAME change that migrates them, and a path is in scope only once its prose actually left. That makes
-// the roster a ledger of what has been discharged rather than a promise about what will be.
+// SAME change that migrates them. That makes the roster a ledger of work actually done rather than a
+// promise about what will be.
+//
+// A PATH IN SCOPE IS NOT A PATH WITH NO PROSE LEFT, and the distinction is load-bearing rather than
+// pedantic. `dag/extdeps/auth/` is enrolled by the batch that migrated five rows out of jwt.dag, and six
+// legacy rows still stand under it — two in jwt.dag whose subjects this batch could not reach, four in
+// oidc.dag. They stay editable in place, because introduction is keyed on the declaration NAME and an
+// edit removes and re-adds the same name. What enrollment buys is exactly one property: no NEW prose row
+// lands here. Waiting for a directory to be prose-free before defending it would let fresh debt
+// accumulate in the very files being cleaned, at the pace the cleanup runs.
+//
+// (An earlier revision of this paragraph said a path enters scope `only once its prose actually left`.
+// That was false of the first entry the same change enrolled — a claim in the authority contradicted by
+// the roster three lines below it, which is the §3 defect this lane exists to remove, in prose rather
+// than in a carrier.)
 //
 // MONOTONE, AND THAT IS A DECLARED RULE RATHER THAN AN ENFORCED ONE TODAY. A path may only ever be
 // ADDED here. Removing one lowers an error class's rung, so under DESIGN 4b meta-obligation 3 it
