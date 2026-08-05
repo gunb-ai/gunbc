@@ -178,9 +178,19 @@ data synthetic_ci_enrollment: HostEnrollmentIntent = HostEnrollmentIntent {
   participation: ci_runner_enrollment_participation,
 }
 
+fn cell_label_is_runner_only(c: HostPhaseCellStatus) -> Bool {
+  let l = c.cell.phase_label
+  l == "prefix:bmc-credential-converge" || l == "prefix:os-install-mechanism" || l == "prefix:os-install-actuated" || l == "P1:runner-deploy-slot" || l == "P1b:build-cache-provision" || l == "P3:green-place-readiness" || l == "P4:session-placement-enrollment"
+}
+
+fn cell_label_is_shared(c: HostPhaseCellStatus) -> Bool {
+  let l = c.cell.phase_label
+  l == "P0:host-identity-converge" || l == "P0:reach-secrets-network" || l == "P2:compute-fabric-enroll" || l == "P5:assimilation-complete-gate"
+}
+
 test fn witness_ci_program_selects_the_whole_spine() -> Bool {
-  program_step_count(program: assimilation_program_for(intent: synthetic_ci_enrollment))
-    == host_standup_spine.length()
+  let selected = program_step_count(program: assimilation_program_for(intent: synthetic_ci_enrollment))
+  selected == host_standup_spine.length()
 }
 
 test fn witness_inference_program_is_strictly_smaller_than_the_spine() -> Bool {
@@ -190,37 +200,22 @@ test fn witness_inference_program_is_strictly_smaller_than_the_spine() -> Bool {
 
 test fn witness_inference_enrollment_carries_no_runner_or_bmc_obligation() -> Bool {
   let cells = host_phase_cells_for_enrollment(intent: synthetic_inference_enrollment)
-  let forbidden = filter(
-    cells,
-    c => c.cell.phase_label == "prefix:bmc-credential-converge"
-      || c.cell.phase_label == "P1:runner-deploy-slot"
-      || c.cell.phase_label == "P1b:build-cache-provision"
-      || c.cell.phase_label == "P3:green-place-readiness"
-      || c.cell.phase_label == "P4:session-placement-enrollment",
-  )
+  let forbidden = filter(cells, c => cell_label_is_runner_only(c: c))
   forbidden.length() == 0
 }
 
 test fn witness_inference_enrollment_keeps_the_shared_obligations() -> Bool {
   let cells = host_phase_cells_for_enrollment(intent: synthetic_inference_enrollment)
-  let shared = filter(
-    cells,
-    c => c.cell.phase_label == "P0:host-identity-converge"
-      || c.cell.phase_label == "P5:assimilation-complete-gate",
-  )
-  shared.length() == 2
+  let shared = filter(cells, c => cell_label_is_shared(c: c))
+  shared.length() == 4 && cells.length() == 4
 }
 
 test fn witness_every_spine_step_is_claimed_by_some_participation() -> Bool {
-  let unclaimed = filter(
-    host_standup_spine,
-    s => !step_serves_participation(step: s, wanted: CiRunnerParticipation)
-      && !step_serves_participation(step: s, wanted: InferenceServingParticipation),
-  )
+  let unclaimed = filter(host_standup_spine, s => !step_serves_participation(step: s, wanted: CiRunnerParticipation) && !step_serves_participation(step: s, wanted: InferenceServingParticipation))
   unclaimed.length() == 0
 }
 
 test fn witness_program_scoping_preserves_the_runner_fleet_matrix() -> Bool {
-  host_fleet_phase_matrix(enrollments: fleet_subsumption_enrollments).length()
-    == fleet_subsumption_hosts.length() * host_standup_spine.length()
+  let cells = host_fleet_phase_matrix(enrollments: fleet_subsumption_enrollments).length()
+  cells == fleet_subsumption_hosts.length() * host_standup_spine.length()
 }
