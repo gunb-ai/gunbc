@@ -4,7 +4,7 @@ import std.types { Int, String, Bool }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.design.material {
   TimingToken, respond_fast, reveal_deliberate, settle_spring,
-  MotionTrigger, OnHover, OnActive, OnStateClass,
+  MotionTrigger, OnHover, OnActive, OnStateClass, css_trigger_for,
   BuildRule, StaticRule, ResponseRule, SelfResponse,
   CssDecl, decl,
   rest_scale_per_mille, press_scale_per_mille, hold_scale_per_mille,
@@ -14,6 +14,9 @@ import gunbc.design.state_response {
   StateChannel, RestChannel, ResponseChannel, ChannelScope, PerStateFamily, ConstantByLaw,
   StateVarRole, FillVar, InkVar, PressedVar,
   family_response_rules,
+}
+import gunbc.design.interaction_cause {
+  InteractionCause, PointerApproach, FocusAcquired, PressEngaged, ObservedStateEntered,
 }
 import gunbc.design.interaction {
   InteractionVerb, Approach, Dispatch, Await, Accept, Enter,
@@ -87,14 +90,14 @@ data roadmap_dispatch_detents: List<Detent> = concat(
   [
     Detent {
       state: detent_requested,
-      reach: ByTrigger { trigger: OnStateClass { class_name: dispatch_class_requested } },
+      reach: ByTrigger { cause: ObservedStateEntered { state_name: dispatch_class_requested } },
       travel: NoTravel,
       scale_per_mille: hold_scale_per_mille,
       turn_deg: 0,
     },
     Detent {
       state: detent_accepted,
-      reach: ByTrigger { trigger: OnStateClass { class_name: dispatch_class_ok } },
+      reach: ByTrigger { cause: ObservedStateEntered { state_name: dispatch_class_ok } },
       travel: NoTravel,
       scale_per_mille: rest_scale_per_mille,
       turn_deg: 0,
@@ -107,7 +110,7 @@ data roadmap_disclosure_detents: List<Detent> = [
   Detent { state: disclosure_detent_rest, reach: AtRest, travel: NoTravel, scale_per_mille: rest_scale_per_mille, turn_deg: 0 },
   Detent {
     state: disclosure_open_class,
-    reach: ByTrigger { trigger: OnStateClass { class_name: disclosure_open_class } },
+    reach: ByTrigger { cause: ObservedStateEntered { state_name: disclosure_open_class } },
     travel: NoTravel,
     scale_per_mille: rest_scale_per_mille,
     turn_deg: 90,
@@ -193,11 +196,11 @@ fn detent_rules(class_name: String, detents: List<Detent>, state: String, timing
       let transform = decl(prop: Transform, value: detent_transform_wire(d: d))
       match d.reach {
         AtRest => [ StaticRule { selector: ClassSelector { name: class_name }, decls: [transform] } ]
-        ByTrigger { trigger } => [
+        ByTrigger { cause } => [
           ResponseRule {
             subject: ClassSelector { name: class_name },
             shape: SelfResponse,
-            trigger: trigger,
+            trigger: css_trigger_for(cause: cause),
             transition_props: "transform",
             timing: timing,
             base_decls: [],
