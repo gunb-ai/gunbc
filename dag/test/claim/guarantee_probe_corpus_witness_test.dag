@@ -536,7 +536,7 @@ test fn dark_suite_dispositions_cover_migrated_v1_probes() -> Bool {
           }
         }
       },
-    ) == 7
+    ) == 8
 }
 
 test fn v2_frontier_identities_are_declared() -> Bool {
