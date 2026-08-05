@@ -130,13 +130,39 @@ fn prose_row_receipt_content(observation: ProseRowDiffObservation) -> String {
   }
 }
 
+// A FAILED RECEIPT WRITE REFUSES, and finding out why cost a probe run. Filesystem.Write returns
+// `success`, and an earlier revision of this body ignored it: in a worktree with no `target/` directory
+// the write silently did nothing and the gate went on to report its verdict, so the counted residue —
+// the ONLY observability this bounded scope has — could vanish with nothing counting the loss. That is
+// the deficit-with-zero-frequency shape DESIGN 5 forbids, authored into the very mechanism added to
+// prevent it.
+//
+// So the write is checked and its failure is a typed, located refusal naming the path and the host's
+// own error. The alternative considered and rejected was creating the directory: that turns a missing
+// scratch dir into a silent success and puts this gate back where it started, guessing about state it
+// did not observe. In CI `target/` always exists because the release build precedes the floor.
 func run_prose_row_introduction_gate_body() -> ProcessExit {
   let observation = prose_row_gate_observation()
-  Filesystem.Write(
+  let written = Filesystem.Write(
     path: prose_row_receipt_path,
     content: prose_row_receipt_content(observation: observation)
   )
-  prose_row_introduction_verdict(observation: observation)
+  if written.success {
+    prose_row_introduction_verdict(observation: observation)
+  } else {
+    exit_failure(
+      reason: concat(
+        "prose row introduction gate: could not write the counted residue receipt to ",
+        concat(
+          prose_row_receipt_path,
+          concat(
+            " — the out-of-scope prose population is the only observability this path-scoped wall has, so a run that cannot record it refuses rather than reporting a clean tree (DESIGN section 5). Host error: ",
+            written.error
+          )
+        )
+      )
+    )
+  }
 }
 
 // The loudness half, mirroring tools.extdeps_scope_placement_gate: the floor witness collapses this
