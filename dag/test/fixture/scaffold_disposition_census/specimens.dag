@@ -1,0 +1,131 @@
+module test.fixture.scaffold_disposition_census.specimens
+
+import std.disposition { Disposition, Terminal, Scaffold, ConstructionMechanism, SingleAuthority, RealizationDispatch, SubstrateMandatoryTag }
+import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField }
+
+data scaffold_disposition_census_fixture_pool_note: String = "Independently authored specimen pool for the exact scaffold disposition census (adhoc-220d7fd9-374, dashboard node). Every `data` declaration here is planted for a NAMED reason recorded as its own row in the sibling module expected_classification.dag — the oracle is authored before any classifier exists, so its counts are a true oracle, not a measurement copied from the tree (DESIGN 'witness cost derives from purpose' / 'completeness is an identity join' rulings). Blocked: the census consumer itself is out of scope for this pool — it is gated on the exact constructor/variant-value identity prerequisite in the decl_facts projection of data initializers (owned elsewhere), so nothing here decodes a Disposition value; the pool only has to exist and be well-formed."
+
+// -- NonDisposition: ordinary data with no relationship to std.disposition.Disposition --
+
+data plain_int_specimen: Int = 7
+
+data plain_string_specimen: String = "not a disposition"
+
+data bare_construction_mechanism_specimen: ConstructionMechanism = SingleAuthority
+
+// -- Terminal: a genuine outcome, distinct from ScaffoldDecodeRefused (the predecessor's bug
+// folded every Terminal row into refusal by testing for exactly two positional children) --
+
+data terminal_reason_a_specimen: Disposition = Terminal { reason: "closed by an explicit operator decision; no dissolution ever applies" }
+
+data terminal_reason_b_specimen: Disposition = Terminal { reason: "duplicate of an existing concept, retired rather than scaffolded" }
+
+// -- ScaffoldDecoded: full cross of ConstructionMechanism x DeclField bind grain (3x2 = 6),
+// plus a seventh specimen (original_for_alias_specimen) that doubles as an alias target below.
+// Every bind is self-referential (module_path + own decl_name), matching the precedent already
+// live in v2.std.decl_index's export_signature_facts_host_scaffold_dissolution_trigger. --
+
+data scaffold_single_authority_whole_specimen: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "test.fixture.scaffold_disposition_census.specimens",
+    decl_name: "scaffold_single_authority_whole_specimen",
+    field: WholeDeclaration
+  }
+}
+
+data scaffold_single_authority_named_specimen: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "test.fixture.scaffold_disposition_census.specimens",
+    decl_name: "scaffold_single_authority_named_specimen",
+    field: NamedField { field_name: "dissolves_to" }
+  }
+}
+
+data scaffold_realization_dispatch_whole_specimen: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "test.fixture.scaffold_disposition_census.specimens",
+    decl_name: "scaffold_realization_dispatch_whole_specimen",
+    field: WholeDeclaration
+  }
+}
+
+data scaffold_realization_dispatch_named_specimen: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "test.fixture.scaffold_disposition_census.specimens",
+    decl_name: "scaffold_realization_dispatch_named_specimen",
+    field: NamedField { field_name: "bind" }
+  }
+}
+
+data scaffold_substrate_mandatory_tag_whole_specimen: Disposition = Scaffold {
+  dissolves_to: SubstrateMandatoryTag,
+  bind: DeclarationRef {
+    module_path: "test.fixture.scaffold_disposition_census.specimens",
+    decl_name: "scaffold_substrate_mandatory_tag_whole_specimen",
+    field: WholeDeclaration
+  }
+}
+
+data scaffold_substrate_mandatory_tag_named_specimen: Disposition = Scaffold {
+  dissolves_to: SubstrateMandatoryTag,
+  bind: DeclarationRef {
+    module_path: "test.fixture.scaffold_disposition_census.specimens",
+    decl_name: "scaffold_substrate_mandatory_tag_named_specimen",
+    field: NamedField { field_name: "dissolves_to" }
+  }
+}
+
+data original_for_alias_specimen: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "test.fixture.scaffold_disposition_census.specimens",
+    decl_name: "original_for_alias_specimen",
+    field: WholeDeclaration
+  }
+}
+
+// -- ScaffoldDecodeRefused: three distinct causes, none of them Terminal and none of them a
+// clean Scaffold literal. Each cause is independently constructible without the blocked
+// reflection prerequisite -- a future classifier still needs to tell all three apart, but this
+// pool does not presuppose how. --
+
+// Cause 1: non-literal initializer, a bare reference aliasing another `data` declaration's value
+// rather than a Scaffold record literal.
+data aliased_disposition_specimen: Disposition = original_for_alias_specimen
+
+// Cause 2: non-literal initializer, a call expression rather than a Scaffold record literal.
+fn compute_disposition_specimen_value() -> Disposition {
+  Scaffold {
+    dissolves_to: RealizationDispatch,
+    bind: DeclarationRef {
+      module_path: "test.fixture.scaffold_disposition_census.specimens",
+      decl_name: "computed_disposition_specimen",
+      field: WholeDeclaration
+    }
+  }
+}
+
+data computed_disposition_specimen: Disposition = compute_disposition_specimen_value()
+
+// Cause 3: a well-formed Scaffold record literal whose `bind` target does not exist anywhere in
+// this fixture pool -- the bind is dangling, not the initializer shape.
+data dangling_bind_target_specimen: Disposition = Scaffold {
+  dissolves_to: SubstrateMandatoryTag,
+  bind: DeclarationRef {
+    module_path: "test.fixture.scaffold_disposition_census.specimens",
+    decl_name: "no_such_declaration_G1_dangling_bind_control_RED",
+    field: WholeDeclaration
+  }
+}
+
+// -- Out-of-scope-by-kind control: a `fn` declaration, proving kind-based exclusion is decidable
+// today without the blocked prerequisite (decl_facts already tags this ItemKind.FnItem, not
+// ItemKind.DataItem). compute_disposition_specimen_value above is the same control a second time.
+
+fn plain_fn_specimen(x: Int) -> Int {
+  x
+}
