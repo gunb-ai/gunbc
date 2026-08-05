@@ -1,0 +1,238 @@
+module test.claim.v1_complexity_capability_census_witness_test
+
+import extdeps.filesystem.filesystem_io
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.types { String, NonEmptyStr, Bool, List }
+import gunbc.v1_complexity_capability_census {
+  CitedSymbol,
+  V1ComplexityCapability,
+  V1ComplexityCapabilityDisposition,
+  AlreadyInV2,
+  AvailableInSharedSubstrate,
+  NeedsMigration,
+  SupersededByBetterModel,
+  DeliberatelyRetired,
+  DispositionDeferred,
+  v1_complexity_capability_roster,
+  capability_is_deferred,
+  capability_needs_migration,
+  capability_is_discharged,
+  capability_cited_carrier,
+  capability_migration_phase,
+  capability_deferred_question,
+  v1_complexity_source,
+  call_graph_and_scc,
+  descent_evidence_vocabulary,
+  concrete_input_evaluation,
+  summary_eviction,
+  cost_account_space_bridge,
+  parser_progress_analysis,
+  asymptotic_class_and_dominance,
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data witness_note: String = "Executable hygiene for the v1 complexity capability census (C0 deliverable (b) of docs/plans/v2-complexity-capability-parity.md). A census nobody checks against the code it censuses is coverage-by-illusion, and a capability inventory is exactly the artifact that reads plausibly while naming symbols that no longer exist — the failure the census itself found in the seed. So every claim resolves against the live tree: each row's v1 symbol must exist in src/v1/complexity.dag, each cited destination symbol must exist in the file its row names, and the four census findings are asserted by reading the carriers rather than by restating them in prose. No assertion compares a live population to a count copied from this tree (DESIGN §5 oracle rule); the roster-level check is an identity join over capability keys."
+
+data source_read_note: String = "Each source file is read exactly once into a path-keyed map and threaded through the folds. Reading per row would re-read a 4,857-line file once per capability — a copied-accumulator cost shape that DESIGN §6 says is always fixed regardless of the realized row count, since the row count is not a time-stable fact."
+
+fn census_sources() -> Map<String, String> {
+  empty_map()
+    |> map_insert("src/v1/complexity.dag", filesystem_read(path: "src/v1/complexity.dag").content)
+    |> map_insert("src/v2/lens/cost.dag", filesystem_read(path: "src/v2/lens/cost.dag").content)
+    |> map_insert("src/v2/lens/complexity.dag", filesystem_read(path: "src/v2/lens/complexity.dag").content)
+    |> map_insert("dag/std/graph.dag", filesystem_read(path: "dag/std/graph.dag").content)
+    |> map_insert("dag/std/termination.dag", filesystem_read(path: "dag/std/termination.dag").content)
+    |> map_insert("dag/std/induction.dag", filesystem_read(path: "dag/std/induction.dag").content)
+    |> map_insert("dag/std/computation.dag", filesystem_read(path: "dag/std/computation.dag").content)
+    |> map_insert("dag/std/realization_schedule.dag", filesystem_read(path: "dag/std/realization_schedule.dag").content)
+}
+
+data symbol_resolves_note: String = "Resolution is a containment read over the named file's text, which is the same decision a name-level grep makes and the reason DESIGN §3 rules that citations name symbols rather than positions: a stale NAME is decidable, a stale LINE is not reachable from the namespace tree at all. A file this witness does not read yields Absent from the map and resolves false — an unreadable citation refuses rather than passing by default."
+
+fn symbol_resolves(sources: Map<String, String>, file: String, symbol: String) -> Bool {
+  match map_get(sources, file) {
+    Present { value: content } => string_contains(s: content, pattern: symbol)
+    Absent => false
+  }
+}
+
+test fn w_every_rostered_v1_symbol_resolves_in_the_seed() -> Bool {
+  let sources = census_sources()
+  fold(v1_complexity_capability_roster, init: true, f: (acc, c) =>
+    acc && symbol_resolves(sources: sources, file: v1_complexity_source, symbol: c.v1_symbol))
+}
+
+test fn w_every_cited_destination_symbol_resolves() -> Bool {
+  let sources = census_sources()
+  fold(v1_complexity_capability_roster, init: true, f: (acc, c) =>
+    match capability_cited_carrier(c: c) {
+      Present { value: cs } =>
+        acc && symbol_resolves(sources: sources, file: cs.file, symbol: cs.symbol)
+      Absent => acc
+    })
+}
+
+data w_symbol_resolution_discriminates_note: String = "The RED control for both resolution checks above. A planted row citing a symbol that does not exist must NOT resolve — without this, a resolution check that always returned true would pass every row and prove nothing. The control is a controlled fixture: this witness authors both the input and the expected verdict, which is the oracle form DESIGN §5 sanctions."
+
+test fn w_symbol_resolution_discriminates() -> Bool {
+  let sources = census_sources()
+  let bogus_v1 = "this_symbol_does_not_exist_in_v1_complexity" as NonEmptyStr
+  let bogus_file = "dag/std/this_file_is_not_read_by_this_witness.dag"
+  !symbol_resolves(sources: sources, file: v1_complexity_source, symbol: bogus_v1) &&
+  !symbol_resolves(sources: sources, file: bogus_file, symbol: "asymptotic_class_of_cost") &&
+  symbol_resolves(sources: sources, file: v1_complexity_source, symbol: "classify_complexity")
+}
+
+type CapabilityKeyDistinctness {
+  seen: Map<String, Bool>
+  distinct: Bool
+}
+
+data w_capability_keys_are_distinct_note: String = "Completeness at identity grain, not by count (DESIGN §5): the roster must not carry one capability twice under the same key. A count assertion would be a snapshot of this tree; a distinctness join is a real property that a copy-pasted row breaks. Linear via a seen-map rather than a nested scan, and deliberately not via map_keys, whose host traversal order the determinism gate refuses."
+
+fn capability_keys_all_distinct(rows: List<V1ComplexityCapability>) -> Bool {
+  let build = fold(
+    rows,
+    init: CapabilityKeyDistinctness { seen: empty_map(), distinct: true },
+    f: (acc, c) =>
+      match map_get(acc.seen, c.capability) {
+        Present { value: _ } =>
+          CapabilityKeyDistinctness { seen: acc.seen, distinct: false }
+        Absent =>
+          CapabilityKeyDistinctness {
+            seen: map_insert(acc.seen, c.capability, true),
+            distinct: acc.distinct,
+          }
+      }
+  )
+  build.distinct
+}
+
+test fn w_capability_keys_are_distinct() -> Bool {
+  capability_keys_all_distinct(rows: v1_complexity_capability_roster)
+}
+
+test fn w_capability_key_distinctness_discriminates() -> Bool {
+  let planted = [asymptotic_class_and_dominance, asymptotic_class_and_dominance]
+  !capability_keys_all_distinct(rows: planted)
+}
+
+test fn w_every_migration_row_names_a_phase() -> Bool {
+  fold(v1_complexity_capability_roster, init: true, f: (acc, c) =>
+    if capability_needs_migration(c: c) {
+      acc && capability_migration_phase(c: c) != ""
+    } else {
+      acc
+    })
+}
+
+test fn w_every_deferred_row_names_an_open_question() -> Bool {
+  fold(v1_complexity_capability_roster, init: true, f: (acc, c) =>
+    if capability_is_deferred(c: c) {
+      acc && capability_deferred_question(c: c) != ""
+    } else {
+      acc
+    })
+}
+
+data w_disposition_partition_is_exhaustive_note: String = "Deferred, needs-migration and discharged are mutually exclusive and jointly cover the roster. This is what the closed sum buys: a row cannot be half-classified, so 'unclassified' is unrepresentable rather than merely unlikely. The check reds if a future arm is added without being routed through the three projections."
+
+test fn w_disposition_partition_is_exhaustive() -> Bool {
+  fold(v1_complexity_capability_roster, init: true, f: (acc, c) =>
+    let deferred = capability_is_deferred(c: c)
+    let migration = capability_needs_migration(c: c)
+    let discharged = capability_is_discharged(c: c)
+    acc &&
+    ((deferred && !migration && !discharged) ||
+     (!deferred && migration && !discharged) ||
+     (!deferred && !migration && discharged)))
+}
+
+data w_scc_is_already_shared_substrate_note: String = "CENSUS FINDING 1, executed. The parity note's capability table reads 'Call graph / SCC — v1 yes, v2 no', which would make it C4 migration work. The tree says otherwise: std.graph carries the SCC machinery, v1.complexity reaches it by import rather than defining it, and v2's lens modules import std.graph nowhere. So the owed work is consumption, not migration. The check reds in the direction that matters — if v1 ever defines its own SCC walker, or if std.graph loses the capability, the finding is no longer true."
+
+test fn w_scc_is_already_shared_substrate() -> Bool {
+  let sources = census_sources()
+  let v1 = filesystem_read(path: "src/v1/complexity.dag").content
+  let cost_lens = filesystem_read(path: "src/v2/lens/cost.dag").content
+  let complexity_lens = filesystem_read(path: "src/v2/lens/complexity.dag").content
+  symbol_resolves(sources: sources, file: "dag/std/graph.dag", symbol: "graph_multi_node_scc_members") &&
+  string_contains(s: v1, pattern: "import std.graph") &&
+  !string_contains(s: cost_lens, pattern: "import std.graph") &&
+  !string_contains(s: complexity_lens, pattern: "import std.graph") &&
+  capability_is_discharged(c: call_graph_and_scc) &&
+  !capability_needs_migration(c: call_graph_and_scc)
+}
+
+data w_descent_vocabulary_is_shared_but_walkers_are_not_note: String = "CENSUS FINDING 1b, executed — the split that bounds C4. The vocabulary a recursion bound is stated in (DescentEvidence, TerminationProof, LoweringTarget, CostBound) is shared substrate that v1 imports; what is genuinely seed-local is the walkers that PRODUCE it by traversing the v1 AST, which is why they are rostered separately as NeedsMigration. The tell that a walker is v1-coupled is its NewlineIndex source-index threading, asserted here so the distinction is executed rather than asserted in prose."
+
+test fn w_descent_vocabulary_is_shared_but_walkers_are_not() -> Bool {
+  let sources = census_sources()
+  let v1 = filesystem_read(path: "src/v1/complexity.dag").content
+  symbol_resolves(sources: sources, file: "dag/std/termination.dag", symbol: "DescentEvidence") &&
+  symbol_resolves(sources: sources, file: "dag/std/computation.dag", symbol: "lower_call_pattern") &&
+  symbol_resolves(sources: sources, file: "dag/std/induction.dag", symbol: "derive_bound") &&
+  string_contains(s: v1, pattern: "import std.termination") &&
+  string_contains(s: v1, pattern: "import std.induction") &&
+  capability_is_discharged(c: descent_evidence_vocabulary) &&
+  string_contains(s: v1, pattern: "fn collect_descent_vars") &&
+  string_contains(s: v1, pattern: "NewlineIndex")
+}
+
+data w_a_valuation_environment_exists_in_the_seed_note: String = "CENSUS FINDING 2, executed — the correction to the sibling note's correction 1, which states that no environment binding a size variable to a value exists 'anywhere in the tree'. The seed has one, and it is String-keyed. Asserting it here is what makes the correction a receipt rather than a claim: if the seed function were renamed or its signature changed, this reds and the census row is restated."
+
+test fn w_a_valuation_environment_exists_in_the_seed() -> Bool {
+  let v1 = filesystem_read(path: "src/v1/complexity.dag").content
+  let cost_lens = filesystem_read(path: "src/v2/lens/cost.dag").content
+  string_contains(s: v1, pattern: "fn eval_cost_expr_concrete") &&
+  string_contains(s: v1, pattern: "fn eval_size_expr_concrete") &&
+  string_contains(s: v1, pattern: "env: Map<String, Int>") &&
+  !string_contains(s: cost_lens, pattern: "eval_cost_expr_concrete") &&
+  capability_needs_migration(c: concrete_input_evaluation)
+}
+
+data w_summary_eviction_substitutes_a_proven_zero_note: String = "CENSUS FINDING 3, executed — the hazard that must not migrate. evict_summary overwrites an entry with a zero-cost, Proven summary instead of removing it, so a later lookup on an evicted function reads as 'costs nothing, proven' rather than 'not computed'. That is the state-space conflation DESIGN names and the zero-for-unmodelled arm the sibling note's honesty states forbid. This witness pins the defect as it exists today; when the migrated form removes or refuses instead, this check reds and the census row dissolves with it — the correct direction, since the row exists to stop the realization carrying across."
+
+test fn w_summary_eviction_substitutes_a_proven_zero() -> Bool {
+  let v1 = filesystem_read(path: "src/v1/complexity.dag").content
+  string_contains(s: v1, pattern: "fn evict_summary") &&
+  string_contains(s: v1, pattern: "cache_summary(table: table, func_name: func_name, summary: ComplexitySummary {") &&
+  capability_needs_migration(c: summary_eviction)
+}
+
+data w_derived_cost_basis_is_cited_but_unrepresentable_note: String = "CENSUS FINDING 4, executed — the receipt behind parity open question 3. The seed's own note says cost_account_space_from_summary fills 'CostAccount.space (basis Derived)'. Verified: the function returns a bare ByteSize?, v1.complexity does not import std.realization_schedule, and CostBasis carries only Predicted and Measured. So a derived basis is an intent already written down in the tree that the single authority cannot represent — which makes the three-valued widening a documented gap rather than a speculative one. When Derived lands on CostBasis this check reds, which is exactly when the census row should be restated."
+
+test fn w_derived_cost_basis_is_cited_but_unrepresentable() -> Bool {
+  let v1 = filesystem_read(path: "src/v1/complexity.dag").content
+  let schedule = filesystem_read(path: "dag/std/realization_schedule.dag").content
+  string_contains(s: v1, pattern: "basis Derived") &&
+  string_contains(s: v1, pattern: "fn cost_account_space_from_summary") &&
+  !string_contains(s: v1, pattern: "import std.realization_schedule") &&
+  string_contains(s: schedule, pattern: "type CostBasis") &&
+  string_contains(s: schedule, pattern: "Predicted") &&
+  string_contains(s: schedule, pattern: "Measured") &&
+  !string_contains(s: schedule, pattern: "| Derived") &&
+  capability_needs_migration(c: cost_account_space_bridge)
+}
+
+data w_the_deferred_row_is_the_operators_open_question_note: String = "The DispositionDeferred arm is deliberately narrow: a row may only defer to a question the design record already asks. This check binds the single deferred row to the parity note's open question 2 rather than letting deferral become a general-purpose escape from classifying. If the deferred population ever grows beyond questions the record poses, this is the check that should be tightened rather than the arm reused."
+
+test fn w_the_deferred_row_is_the_operators_open_question() -> Bool {
+  let parity_note = filesystem_read(path: "docs/plans/v2-complexity-capability-parity.md").content
+  capability_is_deferred(c: parser_progress_analysis) &&
+  !capability_needs_migration(c: parser_progress_analysis) &&
+  !capability_is_discharged(c: parser_progress_analysis) &&
+  string_contains(s: capability_deferred_question(c: parser_progress_analysis), pattern: "parser-progress") &&
+  string_contains(s: parity_note, pattern: "parser-progress")
+}
+
+data w_the_complexity_contract_is_still_audit_only_note: String = "The precondition the census is written against, executed rather than recalled: lens_contract_complexity is AuditOnly with NoConsumerWitness and a RatchetForever boundary, and complexity_variables_admits is the constant true. These are the two facts that make the parity verdict 'the cost half is live, the complexity half is not' true today. When C0 deliverable (c) re-classifies the boundary, this check reds — which is the signal that the census's framing needs restating, not a failure."
+
+test fn w_the_complexity_contract_is_still_audit_only() -> Bool {
+  let contract = filesystem_read(path: "src/v2/lens/enforcement/contract.dag").content
+  let complexity_lens = filesystem_read(path: "src/v2/lens/complexity.dag").content
+  string_contains(s: contract, pattern: "data lens_contract_complexity: LensContract") &&
+  string_contains(s: contract, pattern: "consumer_witness: NoConsumerWitness") &&
+  string_contains(s: contract, pattern: "class: RatchetForever") &&
+  string_contains(s: complexity_lens, pattern: "fn complexity_variables_admits")
+}

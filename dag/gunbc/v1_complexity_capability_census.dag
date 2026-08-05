@@ -1,0 +1,424 @@
+module gunbc.v1_complexity_capability_census
+
+import std.types { String, NonEmptyStr, Bool, List }
+import std.nat { Nat }
+
+data v1_complexity_capability_census_note: String = "C0 deliverable (b) of the v2 complexity capability parity program (docs/plans/v2-complexity-capability-parity.md phase 1): one typed inventory row per capability that src/v1/complexity.dag carries, each with a disposition drawn from a closed sum. The parity note names this census as the input that sizes its C4 slice — 'the C4 slice's size depends on how much of v1's SCC and parser logic is already discharged by landed shared substrate, and that is a C0 output, not a guess to make now'. This module is that output. It states no ruling: deliverable (a) (the authority ruling) and deliverable (c) (the RatchetForever re-classification) are operator decisions and are deliberately absent here. Every row cites the v1 symbol that realizes the capability and, where a destination exists, the symbol that carries it — checked by execution against the live tree, so a row naming a symbol that does not exist reds rather than reading plausibly."
+
+data census_method_note: String = "Method: symbols, not positions (DESIGN §3 — cite the symbol, not the position). Each row names a declaration; the witness resolves every named declaration against the file that should contain it. No row carries a line number, and no assertion compares a live population to a count copied from this tree (DESIGN §5 oracle rule) — completeness is checked as an identity join over capability keys, not as a tally."
+
+type CitedSymbol {
+  symbol: NonEmptyStr
+  file: NonEmptyStr
+}
+
+data cited_symbol_note: String = "A citation that a lens can decide. The symbol is the claim; the file is the place the witness looks for it, and is a convenience beside the symbol rather than the citation itself. A row whose symbol has been renamed or deleted reds — the failure mode this shape exists to make impossible is the one this very census found in the seed (see cost_account_space_bridge below: a note citing CostAccount and a Derived basis, where the function constructs no CostAccount and no Derived basis exists)."
+
+type V1ComplexityCapabilityDisposition
+  = AlreadyInV2 { carrier: CitedSymbol, note: NonEmptyStr }
+  | AvailableInSharedSubstrate { carrier: CitedSymbol, note: NonEmptyStr }
+  | NeedsMigration { destination_module: NonEmptyStr, phase: NonEmptyStr, note: NonEmptyStr }
+  | SupersededByBetterModel { superseded_by: CitedSymbol, note: NonEmptyStr }
+  | DeliberatelyRetired { reason: NonEmptyStr }
+  | DispositionDeferred { question: NonEmptyStr, decided_by: NonEmptyStr }
+
+data disposition_vocabulary_note: String = "Five of these six arms are the vocabulary the parity note's C0(b) declares. The sixth, DispositionDeferred, is a correction this census forces on that vocabulary: the parity note also carries open questions for operator review, and its question 2 asks whether parser-progress survives as a modeled capability or retires with the seed. With only the five declared arms, that row would have to be given a disposition nobody has decided — which is the fabricated-plausible-output class DESIGN §5 forbids, committed inside the artifact whose whole purpose is to stop guessing at capability status. DispositionDeferred refuses instead: it carries the open question and names who decides it, so the undecided population is counted and prioritizable rather than silently absorbed into a neighbouring arm. It is deliberately narrow — a row may only defer to a question the design record already asks."
+
+data disposition_payload_construction_note: String = "Every arm carries required non-empty payloads, so an unjustified disposition is unwritable rather than lens-caught (DESIGN §4b — construction over validation). AlreadyInV2 and AvailableInSharedSubstrate cannot be claimed without naming the carrier that discharges the capability; NeedsMigration cannot be claimed without naming a destination module and the phase that owns it; SupersededByBetterModel cannot be claimed without naming what supersedes it; DeliberatelyRetired cannot be claimed without a reason; DispositionDeferred cannot be claimed without an open question and a decider. There is no bare arm, so 'classified' and 'justified' are the same act."
+
+type V1ComplexityCapability {
+  capability: NonEmptyStr
+  v1_symbol: NonEmptyStr
+  disposition: V1ComplexityCapabilityDisposition
+}
+
+data v1_complexity_source: NonEmptyStr = "src/v1/complexity.dag" as NonEmptyStr
+
+data v2_cost_lens_source: NonEmptyStr = "src/v2/lens/cost.dag" as NonEmptyStr
+
+data asymptotic_class_and_dominance: V1ComplexityCapability = V1ComplexityCapability {
+  capability: "asymptotic-class-and-dominance" as NonEmptyStr,
+  v1_symbol: "classify_complexity" as NonEmptyStr,
+  disposition: AlreadyInV2 {
+    carrier: CitedSymbol {
+      symbol: "asymptotic_class_of_cost" as NonEmptyStr,
+      file: "src/v2/lens/cost.dag" as NonEmptyStr
+    },
+    note: "v2 carries AsymptoticClass, asymptotic_class_of_cost, asymptotic_class_dominates and asymptotic_class_lattice as a bounded lattice — the parity note's own table calls this row 'yes, and better factored'. No migration owed." as NonEmptyStr
+  }
+}
+
+data polynomial_degree_reading: V1ComplexityCapability = V1ComplexityCapability {
+  capability: "polynomial-degree-reading" as NonEmptyStr,
+  v1_symbol: "cost_expr_degree" as NonEmptyStr,
+  disposition: AlreadyInV2 {
+    carrier: CitedSymbol {
+      symbol: "add_polynomial_degree" as NonEmptyStr,
+      file: "src/v2/lens/cost.dag" as NonEmptyStr
+    },
+    note: "The polynomial reading — products add degrees, alternatives take the max — is carried in v2 by PolynomialDegree with add_polynomial_degree and max_polynomial_degree. v1's cost_expr_degree returns Int? over the richer CostExpr; the degree arithmetic itself does not migrate, only its inputs." as NonEmptyStr
+  }
+}
+
+data size_expression_algebra: V1ComplexityCapability = V1ComplexityCapability {
+  capability: "size-expression-algebra" as NonEmptyStr,
+  v1_symbol: "SizeExpr" as NonEmptyStr,
+  disposition: NeedsMigration {
+    destination_module: "v2.lens.cost" as NonEmptyStr,
+    phase: "parity C1 — one richer expression authority" as NonEmptyStr,
+    note: "v1 carries SizeConst/SizeVar/SizeLen/SizeAdd/SizeMax; v2 carries only SizeVariable { source: Node } — a size variable with no algebra over it. Per parity §6 the string-keyed SizeVar { name } and SizeLen { collection } re-ground onto DeclarationRef / ValueIdentity rather than carrying their String leaves across." as NonEmptyStr
+  }
+}
+
+data cost_expression_algebra: V1ComplexityCapability = V1ComplexityCapability {
+  capability: "cost-expression-algebra" as NonEmptyStr,
+  v1_symbol: "CostExpr" as NonEmptyStr,
+  disposition: NeedsMigration {
+    destination_module: "v2.lens.cost" as NonEmptyStr,
+    phase: "parity C1 — one richer expression authority" as NonEmptyStr,
+    note: "Verified against both carriers: v2's SymbolicCost has ConstantCost/LinearCost/LogCost/PolynomialCost/PolyLogCost/ExponentialCost/FactorialCost/SumCost/ProductCost/UnknownCost — no Max constructor, no binder-carrying Sum, no extern arm. Per the parity ruling SymbolicCost stays as the normalized asymptotic projection of the richer CostExpr; this is one authority at two levels of detail, never two competing cost types." as NonEmptyStr
+  }
+}
+
+data bounded_summation: V1ComplexityCapability = V1ComplexityCapability {
+  capability: "bounded-summation" as NonEmptyStr,
+  v1_symbol: "cost_loop" as NonEmptyStr,
+  disposition: NeedsMigration {
+    destination_module: "v2.lens.cost" as NonEmptyStr,
+    phase: "parity C1 — prerequisite for the sibling note's C2" as NonEmptyStr,
+    note: "CostSum { binder, upper, body } expresses the element-dependent fold body — Sigma over elements of cost(body(element)) — which v2's SumCost { lhs, rhs } cannot represent because it carries no binder. This is the shape an exact per-element count needs, and the sibling discrete-cost note names it as a prerequisite for its C2 rather than an optional cleanup." as NonEmptyStr
+  }
+}
+
+data retained_max_expression: V1ComplexityCapability = V1ComplexityCapability {
+  capability: "retained-max-expression" as NonEmptyStr,
+  v1_symbol: "cost_conditional" as NonEmptyStr,
+  disposition: NeedsMigration {
+    destination_module: "v2.lens.cost" as NonEmptyStr,
+    phase: "parity C1" as NonEmptyStr,
+    note: "v2 has symbolic_max as a lattice join that collapses two costs eagerly to the dominating one; v1 has CostMax as a retained constructor. The distinction is load-bearing for the sibling note's exact-at-input evaluator: an eagerly collapsed max has already discarded the arm that a known condition would have selected, so a retained Max is what makes 'charge only the taken arm' expressible without changing the existing fold's meaning." as NonEmptyStr
+  }
+}
+
+data work_and_span: V1ComplexityCapability = V1ComplexityCapability {
+  capability: "work-and-span" as NonEmptyStr,
+  v1_symbol: "cost_par" as NonEmptyStr,
+  disposition: NeedsMigration {
+    destination_module: "v2.lens.cost" as NonEmptyStr,
+    phase: "parity C2 — ComplexitySummary restored" as NonEmptyStr,
+    note: "v1 carries both axes on ComplexitySummary with cost_seq and cost_par as their composition laws; v2 carries neither. Neither axis derives the other, and std.realization_measurement already models the same asymmetry on the measured side, so a derived side carrying only work cannot be compared against it." as NonEmptyStr
+  }
+}
+
+data output_size_derivation: V1ComplexityCapability = V1ComplexityCapability {
+  capability: "output-size-derivation" as NonEmptyStr,
+  v1_symbol: "collection_output" as NonEmptyStr,
+  disposition: NeedsMigration {
+    destination_module: "v2.lens.cost" as NonEmptyStr,
+    phase: "parity C2" as NonEmptyStr,
+    note: "v1's ComplexitySummary.output_size is Map<String, CostExpr> keyed by a String output name with a single convention ('result'). Per parity §6 the String key re-grounds onto a modeled output identity; the capability — deriving how large a result is as a function of input size — has no v2 counterpart at all." as NonEmptyStr
+  }
+}
+
+data peak_space_derivation: V1ComplexityCapability = V1ComplexityCapability {
+  capability: "peak-space-derivation" as NonEmptyStr,
+  v1_symbol: "derive_peak_space" as NonEmptyStr,
+  disposition: NeedsMigration {
+    destination_module: "v2.lens.cost" as NonEmptyStr,
+    phase: "parity C2" as NonEmptyStr,
+    note: "peak_space = space_of(work) plus the retained output term, set only at the finalized per-function summary. v1 leaves it absent on intermediate and error summaries — a counted SpaceBoundUnknown frontier rather than a fabricated bound — which is the fail-closed posture the migrated form must preserve." as NonEmptyStr
+  }
+}
+
+data space_time_duality: V1ComplexityCapability = V1ComplexityCapability {
+  capability: "space-time-duality" as NonEmptyStr,
+  v1_symbol: "space_of" as NonEmptyStr,
+  disposition: NeedsMigration {
+    destination_module: "v2.lens.cost" as NonEmptyStr,
+    phase: "parity C2" as NonEmptyStr,
+    note: "The structural dual that makes peak space derivable from work rather than separately modeled: sequential steps release, so time's sum becomes space's max; concurrent steps co-reside, so time's max becomes space's sum; a fold's iterations release, so the summation collapses to its body's peak — the headline reducing fold is O(n) time and O(1) space. Migrating peak-space without this dual would re-derive space independently, which is the redundancy the dual exists to remove." as NonEmptyStr
+  }
+}
+
+data certainty_axis: V1ComplexityCapability = V1ComplexityCapability {
+  capability: "certainty-axis" as NonEmptyStr,
+  v1_symbol: "Certainty" as NonEmptyStr,
+  disposition: NeedsMigration {
+    destination_module: "v2.lens.cost" as NonEmptyStr,
+    phase: "parity C2, reconciled per parity §6" as NonEmptyStr,
+    note: "The capability — recording whether a derived bound is proven or conservative — is genuinely needed and absent from v2. Its FORM is constrained: parity §6 rules that Proven | Conservative reconciles with the existing DescentEvidence and measurement bases rather than being minted as a third confidence vocabulary. Migrating the axis is owed; minting the enum is not." as NonEmptyStr
+  }
+}
+
+data concrete_input_evaluation: V1ComplexityCapability = V1ComplexityCapability {
+  capability: "concrete-input-evaluation" as NonEmptyStr,
+  v1_symbol: "eval_cost_expr_concrete" as NonEmptyStr,
+  disposition: NeedsMigration {
+    destination_module: "v2.lens.cost" as NonEmptyStr,
+    phase: "discrete-cost C1 — the valuation environment" as NonEmptyStr,
+    note: "CENSUS CORRECTION to the sibling note's correction 1. That note states no binding environment mapping a size variable to a value exists 'anywhere in the tree'. The seed has one: eval_size_expr_concrete and eval_cost_expr_concrete both take env: Map<String, Int> and return Int?, refusing with Absent on CostUnknown / CostExtern / CostLog rather than fabricating a number. The accurate claim is narrower and more useful — the valuation seam is absent from V2, and the v1 one is String-keyed, which is exactly the anemic identity parity §6 forbids carrying across. So C1 inherits a working refusal posture to preserve and a key to re-ground, rather than starting from nothing." as NonEmptyStr
+  }
+}
+
+data interprocedural_summary_memo: V1ComplexityCapability = V1ComplexityCapability {
+  capability: "interprocedural-summary-memo" as NonEmptyStr,
+  v1_symbol: "get_or_compute_summary" as NonEmptyStr,
+  disposition: NeedsMigration {
+    destination_module: "v2.lens.cost" as NonEmptyStr,
+    phase: "parity C4 — interprocedural and recursive analysis" as NonEmptyStr,
+    note: "CostInternTable memoizes a ComplexitySummary per function so a summary is reused across call sites instead of recomputed. Per parity §6 its Map<String, ComplexitySummary> re-grounds onto declaration-keyed identity. See the summary-eviction row for the fail-open arm that must not migrate with it." as NonEmptyStr
+  }
+}
+
+data summary_eviction: V1ComplexityCapability = V1ComplexityCapability {
+  capability: "summary-eviction" as NonEmptyStr,
+  v1_symbol: "evict_summary" as NonEmptyStr,
+  disposition: NeedsMigration {
+    destination_module: "v2.lens.cost" as NonEmptyStr,
+    phase: "parity C4 — migrate the capability, not this realization" as NonEmptyStr,
+    note: "CENSUS HAZARD, found by reading the carrier. evict_summary does not remove an entry: it overwrites it with ComplexitySummary { work: CostConst 0, span: CostConst 0, output_size: empty, certainty: Proven }. So a later lookup_summary on an evicted function returns 'costs nothing, proven' rather than 'not computed' — the state-space conflation DESIGN names, and precisely the zero-for-unmodelled arm the sibling note's §7 forbids ('it never silently contributes zero for something it failed to model'). The eviction capability may migrate; this realization may not. The migrated form removes the entry or refuses, and the discriminating control is that an evicted summary must not read as a proven zero." as NonEmptyStr
+  }
+}
+
+data call_graph_and_scc: V1ComplexityCapability = V1ComplexityCapability {
+  capability: "call-graph-and-scc" as NonEmptyStr,
+  v1_symbol: "build_scc_index" as NonEmptyStr,
+  disposition: AvailableInSharedSubstrate {
+    carrier: CitedSymbol {
+      symbol: "graph_multi_node_scc_members" as NonEmptyStr,
+      file: "dag/std/graph.dag" as NonEmptyStr
+    },
+    note: "CENSUS CORRECTION to the parity note's §3 table, which reads 'Call graph / SCC — v1 yes, v2 no'. The concept is not seed-local: std.graph already carries CallGraph, GraphEdge, forward and reverse adjacency, dfs_finish_order, dfs_collect_component, graph_multi_node_scc_members, graph_cycle_members and is_valid_proof, and v1.complexity reaches them by import rather than defining them. v2's lens modules import std.graph nowhere. So the owed work is CONSUMPTION, not migration — materially smaller than porting v1's walkers, and this is the C0 output the parity note says sizes C4." as NonEmptyStr
+  }
+}
+
+data descent_evidence_vocabulary: V1ComplexityCapability = V1ComplexityCapability {
+  capability: "descent-evidence-vocabulary" as NonEmptyStr,
+  v1_symbol: "construct_termination_proof" as NonEmptyStr,
+  disposition: AvailableInSharedSubstrate {
+    carrier: CitedSymbol {
+      symbol: "DescentEvidence" as NonEmptyStr,
+      file: "dag/std/termination.dag" as NonEmptyStr
+    },
+    note: "std.termination owns DescentEvidence, RankingDimension, DescentSource, TerminationProof and ProofEdge, together with the lattice meet and evidence rank; v1.complexity imports all of them. The vocabulary a recursion bound is stated in is already shared and already consolidated onto its single authority — what remains seed-local is the derivation that produces it, tracked separately in the descent-derivation-walkers row." as NonEmptyStr
+  }
+}
+
+data cost_bound_vocabulary: V1ComplexityCapability = V1ComplexityCapability {
+  capability: "cost-bound-vocabulary" as NonEmptyStr,
+  v1_symbol: "SubValueRelation" as NonEmptyStr,
+  disposition: AvailableInSharedSubstrate {
+    carrier: CitedSymbol {
+      symbol: "derive_bound" as NonEmptyStr,
+      file: "dag/std/induction.dag" as NonEmptyStr
+    },
+    note: "std.induction carries SubValueRelation, CostBound with its Constant/Atomic/Forever/Error arms, AtomicCost, PolyCost, catamorphism_bound and derive_bound — a bound vocabulary derived from sub-value structure, imported by v1.complexity. Named here so C1 does not re-mint a cost-bound taxonomy that the shared substrate already carries; the do-not-re-mint list in the sibling note does not currently include it." as NonEmptyStr
+  }
+}
+
+data lowering_target_vocabulary: V1ComplexityCapability = V1ComplexityCapability {
+  capability: "lowering-target-vocabulary" as NonEmptyStr,
+  v1_symbol: "proof_to_call_pattern" as NonEmptyStr,
+  disposition: AvailableInSharedSubstrate {
+    carrier: CitedSymbol {
+      symbol: "lower_call_pattern" as NonEmptyStr,
+      file: "dag/std/computation.dag" as NonEmptyStr
+    },
+    note: "std.computation owns CallPattern, LoweringTarget, lower_call_pattern, size_bound_param, IterationDimension and ShrinkFactor; v1.complexity imports them. The recursion-shape vocabulary that a bounded recursive cost is computed against is shared substrate, not seed." as NonEmptyStr
+  }
+}
+
+data descent_derivation_walkers: V1ComplexityCapability = V1ComplexityCapability {
+  capability: "descent-derivation-walkers" as NonEmptyStr,
+  v1_symbol: "collect_descent_vars" as NonEmptyStr,
+  disposition: NeedsMigration {
+    destination_module: "v2.lens.cost" as NonEmptyStr,
+    phase: "parity C4 — the largest slice, now bounded by this row" as NonEmptyStr,
+    note: "This is what is genuinely seed-local: the walkers that PRODUCE the shared vocabulary by traversing the v1 AST — collect_descent_vars, classify_self_call_evidence, all_self_calls_descend, is_child_descent_expr, is_list_shrink_expr and their neighbours, each threading si: Map<String, NewlineIndex> and matching on v1 syntax. They do not port; they are re-expressed as a fold over the closed v2 Node kernel, which is why the parity ruling says do not port src/v1/complexity.dag wholesale. With the three shared-substrate rows above discharging the vocabulary, C4's real surface is this derivation layer plus the interprocedural memo." as NonEmptyStr
+  }
+}
+
+data recursion_pattern_classification: V1ComplexityCapability = V1ComplexityCapability {
+  capability: "recursion-pattern-classification" as NonEmptyStr,
+  v1_symbol: "classify_recursion_pattern" as NonEmptyStr,
+  disposition: NeedsMigration {
+    destination_module: "v2.lens.cost" as NonEmptyStr,
+    phase: "parity C4" as NonEmptyStr,
+    note: "Selects a LoweringTarget — worklist drain, tree descent, arithmetic repeat — from a function body and its termination proof, and bounded_recursive_cost then charges the per-iteration cost against it. The target vocabulary is shared (see lowering-target-vocabulary); the classifier is a v1-AST walker and migrates with the descent derivation layer." as NonEmptyStr
+  }
+}
+
+data parser_progress_analysis: V1ComplexityCapability = V1ComplexityCapability {
+  capability: "parser-progress-analysis" as NonEmptyStr,
+  v1_symbol: "collect_parser_progress_edges" as NonEmptyStr,
+  disposition: DispositionDeferred {
+    question: "Does parser-progress survive as a modeled capability, or retire with the seed? If the v2 parser reaches its bound through the generic descent facts, this is SupersededByBetterModel rather than NeedsMigration — parity note open question 2, which that note states materially changes C4's size." as NonEmptyStr,
+    decided_by: "operator review of docs/plans/v2-complexity-capability-parity.md open question 2" as NonEmptyStr
+  }
+}
+
+data collection_method_cost_shapes: V1ComplexityCapability = V1ComplexityCapability {
+  capability: "collection-method-cost-shapes" as NonEmptyStr,
+  v1_symbol: "cost_of_method_by_shape" as NonEmptyStr,
+  disposition: NeedsMigration {
+    destination_module: "v2.lens.cost" as NonEmptyStr,
+    phase: "parity C1 then C2 — shape vocabulary first, derivation second" as NonEmptyStr,
+    note: "Charges a collection method by its CostShape (constant, linear scan, iterate body, sort body) and its CollectionSizeEffect, resolving a callback's own cost into the per-element body. The shape vocabulary is shared substrate in std.algebra; the dispatch is keyed on v1's MethodSemantics, so the migrated form derives the shape from the closed Node kernel's Loop and fold seam rather than from a method-name table." as NonEmptyStr
+  }
+}
+
+data structural_bound_report: V1ComplexityCapability = V1ComplexityCapability {
+  capability: "structural-bound-report" as NonEmptyStr,
+  v1_symbol: "analyze_structural_bounds" as NonEmptyStr,
+  disposition: NeedsMigration {
+    destination_module: "v2.lens.complexity" as NonEmptyStr,
+    phase: "parity C6 — live consumers, then flip the mode" as NonEmptyStr,
+    note: "The consumer-facing surface: ComplexityViolation, StructuralBoundResult, ComplexityReport and build_complexity_report, which turn derived summaries into locatable findings. It is the shape parity C6 needs, because lens_contract_complexity is AuditOnly with NoConsumerWitness today and a mode flip without a consumer is the inert-lens lie." as NonEmptyStr
+  }
+}
+
+data cost_expression_rendering: V1ComplexityCapability = V1ComplexityCapability {
+  capability: "cost-expression-rendering" as NonEmptyStr,
+  v1_symbol: "format_cost_class" as NonEmptyStr,
+  disposition: NeedsMigration {
+    destination_module: "v2.lens.complexity" as NonEmptyStr,
+    phase: "parity C6 — presentation grain, gated on C1" as NonEmptyStr,
+    note: "simplify_cost, normalize_asymptotic, format_cost_class and parenthesize_additive_cost render a CostExpr for a diagnostic. Presentation grain and low priority, but it does not exist in v2 and a report nobody can read is not a consumer, so it is owed rather than retired. Gated on C1 because it renders the richer algebra." as NonEmptyStr
+  }
+}
+
+data size_variable_legend: V1ComplexityCapability = V1ComplexityCapability {
+  capability: "size-variable-legend" as NonEmptyStr,
+  v1_symbol: "build_legend" as NonEmptyStr,
+  disposition: NeedsMigration {
+    destination_module: "v2.lens.complexity" as NonEmptyStr,
+    phase: "parity C6 — presentation grain" as NonEmptyStr,
+    note: "Assigns short display names to size variables so a multi-variable bound reads as O(n*m) rather than repeating full identities, via build_legend, short_var_name, substitute_size and substitute_cost. Migrates as a rendering projection over grounded identities, never by re-introducing String-keyed size variables to make the rendering easy." as NonEmptyStr
+  }
+}
+
+data cost_account_space_bridge: V1ComplexityCapability = V1ComplexityCapability {
+  capability: "cost-account-space-bridge" as NonEmptyStr,
+  v1_symbol: "cost_account_space_from_summary" as NonEmptyStr,
+  disposition: NeedsMigration {
+    destination_module: "std.realization_schedule" as NonEmptyStr,
+    phase: "parity C5 — realization bridge" as NonEmptyStr,
+    note: "CENSUS FINDING — a live instance of the citation class DESIGN §3 names, and direct evidence for parity open question 3. The function's own note says it fills 'CostAccount.space (basis Derived)'. Verified against the tree: it returns a bare ByteSize?, constructs no CostAccount, and v1.complexity does not import std.realization_schedule at all — while std.realization_schedule's CostBasis is Predicted | Measured, with no Derived arm anywhere in the tree. So the seed already records an INTENT for a derived basis that the single authority cannot represent, and the name cost_account_space_from_summary is a nickname for what the function actually computes, a peak-space evaluation at a closed size environment. That makes the three-valued CostBasis widening a documented gap rather than a speculative widening — still an operator amendment, but now with a receipt." as NonEmptyStr
+  }
+}
+
+data v1_complexity_capability_roster: List<V1ComplexityCapability> = [
+  asymptotic_class_and_dominance,
+  polynomial_degree_reading,
+  size_expression_algebra,
+  cost_expression_algebra,
+  bounded_summation,
+  retained_max_expression,
+  work_and_span,
+  output_size_derivation,
+  peak_space_derivation,
+  space_time_duality,
+  certainty_axis,
+  concrete_input_evaluation,
+  interprocedural_summary_memo,
+  summary_eviction,
+  call_graph_and_scc,
+  descent_evidence_vocabulary,
+  cost_bound_vocabulary,
+  lowering_target_vocabulary,
+  descent_derivation_walkers,
+  recursion_pattern_classification,
+  parser_progress_analysis,
+  collection_method_cost_shapes,
+  structural_bound_report,
+  cost_expression_rendering,
+  size_variable_legend,
+  cost_account_space_bridge
+]
+
+data roster_completeness_note: String = "Completeness is an identity join, not a count (DESIGN §5). The roster's own hygiene properties are: every capability key is distinct, every v1 symbol resolves in src/v1/complexity.dag, and every cited destination symbol resolves in the file its row names. What this census does NOT claim is that the roster exhausts src/v1/complexity.dag's 201 declarations — it is a capability inventory, not a declaration inventory, and many declarations are helpers of a rostered capability rather than capabilities themselves. A declaration-grain completeness claim would need its own discovered, closed subject universe; asserting one here from a hand-authored list would be the quieter snapshot DESIGN §5 rejects."
+
+fn capability_is_deferred(c: V1ComplexityCapability) -> Bool {
+  match c.disposition {
+    AlreadyInV2 { carrier: _, note: _ } => false
+    AvailableInSharedSubstrate { carrier: _, note: _ } => false
+    NeedsMigration { destination_module: _, phase: _, note: _ } => false
+    SupersededByBetterModel { superseded_by: _, note: _ } => false
+    DeliberatelyRetired { reason: _ } => false
+    DispositionDeferred { question: _, decided_by: _ } => true
+  }
+}
+
+fn capability_needs_migration(c: V1ComplexityCapability) -> Bool {
+  match c.disposition {
+    AlreadyInV2 { carrier: _, note: _ } => false
+    AvailableInSharedSubstrate { carrier: _, note: _ } => false
+    NeedsMigration { destination_module: _, phase: _, note: _ } => true
+    SupersededByBetterModel { superseded_by: _, note: _ } => false
+    DeliberatelyRetired { reason: _ } => false
+    DispositionDeferred { question: _, decided_by: _ } => false
+  }
+}
+
+fn capability_is_discharged(c: V1ComplexityCapability) -> Bool {
+  match c.disposition {
+    AlreadyInV2 { carrier: _, note: _ } => true
+    AvailableInSharedSubstrate { carrier: _, note: _ } => true
+    NeedsMigration { destination_module: _, phase: _, note: _ } => false
+    SupersededByBetterModel { superseded_by: _, note: _ } => true
+    DeliberatelyRetired { reason: _ } => false
+    DispositionDeferred { question: _, decided_by: _ } => false
+  }
+}
+
+data capability_cited_carrier_note: String = "Returns the destination citation for the arms that carry one, so the witness can resolve every named symbol through a single seam rather than re-matching the coproduct per check. The arms that name no destination symbol — NeedsMigration names a module and a phase, DeliberatelyRetired a reason, DispositionDeferred a question — return Absent, and the witness only asserts resolution where a symbol was actually claimed. Absent here means 'this arm cites no symbol by construction', never 'the symbol could not be found'; the two are different states and the witness must not conflate them."
+
+fn capability_cited_carrier(c: V1ComplexityCapability) -> CitedSymbol? {
+  match c.disposition {
+    AlreadyInV2 { carrier: cs, note: _ } => Present { value: cs }
+    AvailableInSharedSubstrate { carrier: cs, note: _ } => Present { value: cs }
+    NeedsMigration { destination_module: _, phase: _, note: _ } => none
+    SupersededByBetterModel { superseded_by: cs, note: _ } => Present { value: cs }
+    DeliberatelyRetired { reason: _ } => none
+    DispositionDeferred { question: _, decided_by: _ } => none
+  }
+}
+
+fn capability_migration_phase(c: V1ComplexityCapability) -> String {
+  match c.disposition {
+    AlreadyInV2 { carrier: _, note: _ } => ""
+    AvailableInSharedSubstrate { carrier: _, note: _ } => ""
+    NeedsMigration { destination_module: _, phase: p, note: _ } => p
+    SupersededByBetterModel { superseded_by: _, note: _ } => ""
+    DeliberatelyRetired { reason: _ } => ""
+    DispositionDeferred { question: _, decided_by: _ } => ""
+  }
+}
+
+fn capability_deferred_question(c: V1ComplexityCapability) -> String {
+  match c.disposition {
+    AlreadyInV2 { carrier: _, note: _ } => ""
+    AvailableInSharedSubstrate { carrier: _, note: _ } => ""
+    NeedsMigration { destination_module: _, phase: _, note: _ } => ""
+    SupersededByBetterModel { superseded_by: _, note: _ } => ""
+    DeliberatelyRetired { reason: _ } => ""
+    DispositionDeferred { question: q, decided_by: _ } => q
+  }
+}
+
+fn v1_complexity_deferred_count() -> Nat {
+  fold(v1_complexity_capability_roster, init: 0, f: (acc, c) =>
+    if capability_is_deferred(c: c) { acc + 1 } else { acc })
+}
+
+fn v1_complexity_migration_count() -> Nat {
+  fold(v1_complexity_capability_roster, init: 0, f: (acc, c) =>
+    if capability_needs_migration(c: c) { acc + 1 } else { acc })
+}
+
+fn v1_complexity_discharged_count() -> Nat {
+  fold(v1_complexity_capability_roster, init: 0, f: (acc, c) =>
+    if capability_is_discharged(c: c) { acc + 1 } else { acc })
+}
+
+data census_reads_note: String = "The derived reads this census supports, none of them stored: how much of the parity program is already discharged by landed substrate (the AlreadyInV2 plus AvailableInSharedSubstrate population), how much is genuinely owed (NeedsMigration), and how much is blocked on a decision nobody has made (DispositionDeferred). The third number is the one that should be smallest and should shrink to zero at C0 sign-off; a census where it grows is a census being used to avoid deciding."
