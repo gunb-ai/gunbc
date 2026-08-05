@@ -49,6 +49,14 @@ import std.observation {
   AttentionBasis,
   Ambient,
   observation_attention,
+  ClockBasis,
+  CpuClock,
+  WallClock,
+  TimedMeasurement,
+  observation_duration_of,
+  observation_durations_wall,
+  observation_durations_cpu_and_wall,
+  clock_basis_eq,
 }
 import gunbc.observation_ci_render {
   InsideCollapsedGroup,
@@ -71,19 +79,57 @@ fn sample_entry() -> NonEmptyStr {
   "dag/test/claim/witness_row_cost_projection_witness_test.dag" as NonEmptyStr
 }
 
-fn witness_wall_ms(count: Nat) -> Nanosecond {
+fn witness_wall_ns(count: Nat) -> Nanosecond {
   millisecond_to_nanosecond(m: millisecond(count: count))
+}
+
+fn witness_wall_ms(count: Nat) -> Nanosecond {
+  witness_wall_ns(count: count)
+}
+
+fn witness_eval_ms(count: Nat) -> List<TimedMeasurement> {
+  observation_durations_wall(elapsed: witness_wall_ns(count: count))
+}
+
+fn witness_eval_ns(count: Nat) -> List<TimedMeasurement> {
+  observation_durations_wall(elapsed: nanosecond(count: count))
+}
+
+fn witness_eval_cpu_and_wall(cpu_ms: Nat, wall_ms: Nat) -> List<TimedMeasurement> {
+  observation_durations_cpu_and_wall(
+    cpu: witness_wall_ns(count: cpu_ms),
+    wall: witness_wall_ns(count: wall_ms)
+  )
 }
 
 fn witness_wall_ms_count(wall: Nanosecond) -> Nat {
   millisecond_count(m: nanosecond_to_millisecond_floor(n: wall))
 }
 
+fn row_clock_ns(row: WitnessCostReceiptRow, basis: ClockBasis) -> Nat {
+  match observation_duration_of(durations: row.eval, basis: basis) {
+    MeasuredValue { value: v } => nanosecond_count(n: v)
+    MeasuredUnavailable { cause: _ } => 0
+  }
+}
+
+fn row_clock_is_unavailable(row: WitnessCostReceiptRow, basis: ClockBasis) -> Bool {
+  match observation_duration_of(durations: row.eval, basis: basis) {
+    MeasuredValue { value: _ } => false
+    MeasuredUnavailable { cause: _ } => true
+  }
+}
+
+fn row_wall_ms_count(row: WitnessCostReceiptRow) -> Nat {
+  millisecond_count(m: nanosecond_to_millisecond_floor(n: nanosecond(count: row_clock_ns(row: row, basis: WallClock))))
+}
+
 fn two_events_project_one_exact_tsv_row_holds() -> Bool {
   let entry = sample_entry()
   let decl = sample_decl(name: "fast_witness")
   let resolve = witness_wall_ms(count: 100)
-  let eval = witness_wall_ms(count: 20)
+  let eval_wall = witness_wall_ms(count: 20)
+  let eval = witness_eval_ms(count: 20)
   let events: List<ObservationEvent> = [
     witness_cost_entry_resolve_event(entry: entry, resolve: resolve),
     witness_cost_declaration_event(entry: entry, declaration: decl, eval: eval, outcome: Done)
@@ -96,10 +142,10 @@ fn two_events_project_one_exact_tsv_row_holds() -> Bool {
         acc &&
         row.entry == entry &&
         row.declaration == decl &&
-        witness_wall_ms_count(wall: row.eval) == 20 &&
+        row_wall_ms_count(row: row) == 20 &&
         witness_wall_ms_count(wall: row.resolve) == 100 &&
         witness_wall_ms_count(wall: row.warm) == 120 &&
-        row.warm == witness_cost_warm(eval: eval, resolve: resolve) &&
+        row.warm == witness_cost_warm(eval: eval_wall, resolve: resolve) &&
         match row.outcome {
           Done => true
           Refused { diagnostic: _ } => false
@@ -119,7 +165,7 @@ fn missing_parent_resolve_refuses_holds() -> Bool {
     witness_cost_declaration_event(
       entry: entry,
       declaration: decl,
-      eval: witness_wall_ms(count: 20),
+      eval: witness_eval_ms(count: 20),
       outcome: Done
     )
   ]
@@ -139,7 +185,7 @@ fn multiple_parent_resolve_refuses_holds() -> Bool {
     witness_cost_declaration_event(
       entry: entry,
       declaration: decl,
-      eval: witness_wall_ms(count: 20),
+      eval: witness_eval_ms(count: 20),
       outcome: Done
     )
   ]
@@ -157,8 +203,8 @@ fn resolve_wall_is_shared_not_divided_holds() -> Bool {
   let resolve = witness_wall_ms(count: 100)
   let events: List<ObservationEvent> = [
     witness_cost_entry_resolve_event(entry: entry, resolve: resolve),
-    witness_cost_declaration_event(entry: entry, declaration: d1, eval: witness_wall_ms(count: 10), outcome: Done),
-    witness_cost_declaration_event(entry: entry, declaration: d2, eval: witness_wall_ms(count: 30), outcome: Done)
+    witness_cost_declaration_event(entry: entry, declaration: d1, eval: witness_eval_ms(count: 10), outcome: Done),
+    witness_cost_declaration_event(entry: entry, declaration: d2, eval: witness_eval_ms(count: 30), outcome: Done)
   ]
   match project_witness_cost_receipt(events: events) {
     WitnessCostProjectionRefused { cause: _ } => false
@@ -181,13 +227,13 @@ fn refused_outcome_distinct_from_failed_in_projection_holds() -> Bool {
     witness_cost_declaration_event(
       entry: entry,
       declaration: d_refused,
-      eval: witness_wall_ms(count: 5),
+      eval: witness_eval_ms(count: 5),
       outcome: Refused { diagnostic: "typed refuse" as NonEmptyStr }
     ),
     witness_cost_declaration_event(
       entry: entry,
       declaration: d_failed,
-      eval: witness_wall_ms(count: 5),
+      eval: witness_eval_ms(count: 5),
       outcome: Failed { error: "boom" as NonEmptyStr, output: "" }
     )
   ]
@@ -221,7 +267,7 @@ fn refused_outcome_distinct_from_failed_in_projection_holds() -> Bool {
 fn w2_ambient_suppress_retains_complete_receipt_row_holds() -> Bool {
   let entry = sample_entry()
   let decl = sample_decl(name: "ambient_w")
-  let eval = witness_wall_ms(count: 5)
+  let eval = witness_eval_ms(count: 5)
   let resolve = witness_wall_ms(count: 10)
   let witness_event = witness_cost_declaration_event(
     entry: entry,
@@ -245,7 +291,7 @@ fn w2_ambient_suppress_retains_complete_receipt_row_holds() -> Bool {
     WitnessCostProjectionComplete { rows: rows } =>
       count(rows) == 1 &&
       fold(rows, init: true, f: (acc, row) =>
-        acc && witness_wall_ms_count(wall: row.eval) == 5 &&
+        acc && row_wall_ms_count(row: row) == 5 &&
         witness_wall_ms_count(wall: row.resolve) == 10
       )
   }
@@ -282,7 +328,7 @@ fn malformed_nested_resolve_event_refuses_holds() -> Bool {
     witness_cost_declaration_event(
       entry: entry,
       declaration: decl,
-      eval: witness_wall_ms(count: 5),
+      eval: witness_eval_ms(count: 5),
       outcome: Done
     )
   ]
@@ -308,7 +354,7 @@ fn typed_event_role_extract_classifies_entry_and_declaration_holds() -> Bool {
   let child = witness_cost_declaration_event(
     entry: entry,
     declaration: decl,
-    eval: witness_wall_ms(count: 2),
+    eval: witness_eval_ms(count: 2),
     outcome: Done
   )
   match witness_cost_event_role(event: parent) {
@@ -330,8 +376,8 @@ fn duplicate_declaration_identity_refuses_holds() -> Bool {
   let decl = sample_decl("duplicate")
   let events: List<ObservationEvent> = [
     witness_cost_entry_resolve_event(entry: entry, resolve: witness_wall_ms(count: 10)),
-    witness_cost_declaration_event(entry: entry, declaration: decl, eval: witness_wall_ms(count: 1), outcome: Done),
-    witness_cost_declaration_event(entry: entry, declaration: decl, eval: witness_wall_ms(count: 2), outcome: Done)
+    witness_cost_declaration_event(entry: entry, declaration: decl, eval: witness_eval_ms(count: 1), outcome: Done),
+    witness_cost_declaration_event(entry: entry, declaration: decl, eval: witness_eval_ms(count: 2), outcome: Done)
   ]
   match project_witness_cost_receipt(events: events) {
     WitnessCostProjectionRefused { cause: c } =>
@@ -345,7 +391,7 @@ fn non_concluded_timing_event_refuses_holds() -> Bool {
     entry: sample_entry(),
     module_path: "test.claim.witness_row_cost_projection" as NonEmptyStr,
     function: "begun_only" as NonEmptyStr,
-    eval: witness_wall_ms(count: 1)
+    eval: witness_eval_ms(count: 1)
   )
   let begun = ObservationEvent {
     subject: concluded.subject,
@@ -371,14 +417,14 @@ fn native_seed_events_preserve_order_outcome_and_perturbation_holds() -> Bool {
       entry: entry,
       module_path: "test.claim.witness_row_cost_projection" as NonEmptyStr,
       function: "first_refused" as NonEmptyStr,
-      eval: witness_wall_ms(count: 7),
+      eval: witness_eval_ms(count: 7),
       diagnostic: "typed refusal" as NonEmptyStr
     ),
     witness_cost_seed_failed_event(
       entry: entry,
       module_path: "test.claim.witness_row_cost_projection" as NonEmptyStr,
       function: "second_failed" as NonEmptyStr,
-      eval: witness_wall_ms(count: 19),
+      eval: witness_eval_ms(count: 19),
       error: "runtime failure" as NonEmptyStr
     )
   ]
@@ -390,7 +436,7 @@ fn native_seed_events_preserve_order_outcome_and_perturbation_holds() -> Bool {
         concat(acc, concat(row.declaration.decl_name, ":"))
       ) == "first_refused:second_failed:" &&
       fold(rows, init: 0, f: (acc, row) =>
-        acc + witness_wall_ms_count(wall: row.eval)
+        acc + row_wall_ms_count(row: row)
       ) == 26 &&
       fold(rows, init: false, f: (acc, row) =>
         acc || match row.outcome {
@@ -426,19 +472,19 @@ fn exact_nanosecond_projection_and_same_millisecond_order_holds() -> Bool {
     witness_cost_declaration_event(
       entry: entry,
       declaration: one,
-      eval: nanosecond(count: 1),
+      eval: witness_eval_ns(count: 1),
       outcome: Done
     ),
     witness_cost_declaration_event(
       entry: entry,
       declaration: sub_ms,
-      eval: nanosecond(count: 999999),
+      eval: witness_eval_ns(count: 999999),
       outcome: Done
     ),
     witness_cost_declaration_event(
       entry: entry,
       declaration: one_ms,
-      eval: nanosecond(count: 1000000),
+      eval: witness_eval_ns(count: 1000000),
       outcome: Done
     )
   ]
@@ -450,7 +496,7 @@ fn exact_nanosecond_projection_and_same_millisecond_order_holds() -> Bool {
         concat(acc, concat(row.declaration.decl_name, ":"))
       ) == "one_ns:sub_ms:one_ms:" &&
       fold(rows, init: true, f: (acc, row) =>
-        let eval_ns = nanosecond_count(n: row.eval)
+        let eval_ns = row_clock_ns(row: row, basis: WallClock)
         let warm_ns = nanosecond_count(n: row.warm)
         acc &&
         nanosecond_count(n: row.resolve) == 7 &&
@@ -476,7 +522,8 @@ fn seed_timed_out_event_carries_the_pair_and_is_not_failed_holds() -> Bool {
       entry: entry,
       module_path: "test.claim.witness_row_cost_projection" as NonEmptyStr,
       function: "killed_at_deadline" as NonEmptyStr,
-      eval: witness_wall_ms(count: 900794),
+      eval: witness_eval_ms(count: 900794),
+      basis: WallClock,
       budget: millisecond(count: 900000),
       elapsed: millisecond(count: 900001)
     )
@@ -487,7 +534,9 @@ fn seed_timed_out_event_carries_the_pair_and_is_not_failed_holds() -> Bool {
       count(rows) == 1 &&
       fold(rows, init: false, f: (acc, row) =>
         acc || match row.outcome {
-          TimedOut { basis: _, budget: b, elapsed: e } =>
+          TimedOut { basis: k, budget: b, elapsed: e } =>
+            clock_basis_eq(a: k, b: WallClock) &&
+            !clock_basis_eq(a: k, b: CpuClock) &&
             millisecond_count(m: b) == 900000 && millisecond_count(m: e) == 900001
           Done => false
           Refused { diagnostic: _ } => false
@@ -505,7 +554,8 @@ fn timed_out_red_control_is_neither_done_nor_failed_holds() -> Bool {
     entry: entry,
     module_path: "test.claim.witness_row_cost_projection" as NonEmptyStr,
     function: "killed" as NonEmptyStr,
-    eval: witness_wall_ms(count: 5),
+    eval: witness_eval_ms(count: 5),
+    basis: CpuClock,
     budget: millisecond(count: 4),
     elapsed: millisecond(count: 5)
   )
@@ -528,6 +578,87 @@ fn timed_out_red_control_is_neither_done_nor_failed_holds() -> Bool {
   }
 }
 
+fn row_carries_both_clocks_and_does_not_confuse_them_holds() -> Bool {
+  let entry = sample_entry()
+  let decl = sample_decl(name: "two_clock_witness")
+  let events: List<ObservationEvent> = [
+    witness_cost_entry_resolve_event(entry: entry, resolve: witness_wall_ms(count: 100)),
+    witness_cost_declaration_event(
+      entry: entry,
+      declaration: decl,
+      eval: witness_eval_cpu_and_wall(cpu_ms: 3, wall_ms: 40),
+      outcome: Done
+    )
+  ]
+  match project_witness_cost_receipt(events: events) {
+    WitnessCostProjectionRefused { cause: _ } => false
+    WitnessCostProjectionComplete { rows: rows } =>
+      count(rows) == 1 &&
+      fold(rows, init: true, f: (acc, row) =>
+        acc &&
+        row_clock_ns(row: row, basis: WallClock) == nanosecond_count(n: witness_wall_ms(count: 40)) &&
+        row_clock_ns(row: row, basis: CpuClock) == nanosecond_count(n: witness_wall_ms(count: 3)) &&
+        row_clock_ns(row: row, basis: WallClock) != row_clock_ns(row: row, basis: CpuClock) &&
+        row_wall_ms_count(row: row) == 40 &&
+        witness_wall_ms_count(wall: row.warm) == 140
+      )
+  }
+}
+
+fn wall_only_row_reports_cpu_absent_rather_than_zero_holds() -> Bool {
+  let entry = sample_entry()
+  let decl = sample_decl(name: "wall_only_witness")
+  let events: List<ObservationEvent> = [
+    witness_cost_entry_resolve_event(entry: entry, resolve: witness_wall_ms(count: 100)),
+    witness_cost_declaration_event(
+      entry: entry,
+      declaration: decl,
+      eval: witness_eval_ms(count: 40),
+      outcome: Done
+    )
+  ]
+  match project_witness_cost_receipt(events: events) {
+    WitnessCostProjectionRefused { cause: _ } => false
+    WitnessCostProjectionComplete { rows: rows } =>
+      count(rows) == 1 &&
+      fold(rows, init: true, f: (acc, row) =>
+        acc &&
+        row_clock_is_unavailable(row: row, basis: CpuClock) &&
+        !row_clock_is_unavailable(row: row, basis: WallClock) &&
+        row_wall_ms_count(row: row) == 40
+      )
+  }
+}
+
+fn eval_with_no_wall_clock_refuses_rather_than_projecting_holds() -> Bool {
+  let entry = sample_entry()
+  let decl = sample_decl(name: "cpu_only_witness")
+  let events: List<ObservationEvent> = [
+    witness_cost_entry_resolve_event(entry: entry, resolve: witness_wall_ms(count: 100)),
+    witness_cost_declaration_event(
+      entry: entry,
+      declaration: decl,
+      eval: [TimedMeasurement { basis: CpuClock, elapsed: MeasuredValue { value: witness_wall_ms(count: 3) } }],
+      outcome: Done
+    )
+  ]
+  match project_witness_cost_receipt(events: events) {
+    WitnessCostProjectionComplete { rows: _ } => false
+    WitnessCostProjectionRefused { cause: _ } => true
+  }
+}
+
+fn two_readings_of_one_clock_refuse_rather_than_picking_holds() -> Bool {
+  let ambiguous: List<TimedMeasurement> = [
+    TimedMeasurement { basis: WallClock, elapsed: MeasuredValue { value: witness_wall_ms(count: 40) } },
+    TimedMeasurement { basis: WallClock, elapsed: MeasuredValue { value: witness_wall_ms(count: 90) } }
+  ]
+  match observation_duration_of(durations: ambiguous, basis: WallClock) {
+    MeasuredValue { value: _ } => false
+    MeasuredUnavailable { cause: _ } => true
+  }
+}
+
 test fn witness_row_cost_projection_holds() -> Bool {
   two_events_project_one_exact_tsv_row_holds() &&
   missing_parent_resolve_refuses_holds() &&
@@ -543,5 +674,10 @@ test fn witness_row_cost_projection_holds() -> Bool {
   native_seed_events_preserve_order_outcome_and_perturbation_holds() &&
   exact_nanosecond_projection_and_same_millisecond_order_holds() &&
   seed_timed_out_event_carries_the_pair_and_is_not_failed_holds() &&
-  timed_out_red_control_is_neither_done_nor_failed_holds()
+  timed_out_red_control_is_neither_done_nor_failed_holds() &&
+  row_carries_both_clocks_and_does_not_confuse_them_holds() &&
+  wall_only_row_reports_cpu_absent_rather_than_zero_holds() &&
+  eval_with_no_wall_clock_refuses_rather_than_projecting_holds() &&
+  two_readings_of_one_clock_refuse_rather_than_picking_holds()
 }
+

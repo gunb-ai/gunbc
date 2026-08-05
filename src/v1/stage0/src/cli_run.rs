@@ -15452,6 +15452,40 @@ fn witness_cost_nanosecond_value(
     .map_err(|e| format!("[witness-row-cost] REFUSED: nanosecond constructor failed: {e}"))
 }
 
+/// Hand the occurrence's two clocks over as ONE basis-tagged list, built by the authored
+/// constructor rather than assembled here.
+///
+/// The seed constructs no carrier: it calls `observation_durations_cpu_and_wall` across the
+/// interpreter boundary and passes the returned value straight through, exactly as it already
+/// does for `nanosecond` and `millisecond`. A `Value::List` of hand-built records would fork
+/// `std.observation`'s shape into Rust, which is the thing every note on this seam forbids.
+///
+/// Both clocks come from ONE run — `run_claim_measured` reads `thread_cpu_nanos` and
+/// `Instant::elapsed` around the same evaluation — so a row can never carry a CPU figure from
+/// one occurrence beside a wall figure from another. Order is fixed by the constructor's
+/// parameter names, not by position here, so a swap is a compile error rather than a silent
+/// exchange of the two magnitudes.
+fn witness_cost_eval_durations(
+    ctx: &v1_interpreter::InterpContext,
+    cpu_nanos: u128,
+    wall_nanos: u128,
+) -> Result<v1_interpreter::Value, String> {
+    let cpu = witness_cost_nanosecond_value(ctx, cpu_nanos)?;
+    let wall = witness_cost_nanosecond_value(ctx, wall_nanos)?;
+    v1_interpreter::run_in_context_with_args(
+        ctx,
+        "observation_durations_cpu_and_wall",
+        &[
+            (Some("cpu".to_string()), cpu),
+            (Some("wall".to_string()), wall),
+        ],
+        false,
+    )
+    .map_err(|e| {
+        format!("[witness-row-cost] REFUSED: eval duration constructor failed: {e}")
+    })
+}
+
 fn witness_cost_string_field(
     ctx: &v1_interpreter::InterpContext,
     fields: &[(v1_interpreter::Symbol, v1_interpreter::Value)],
@@ -15578,8 +15612,9 @@ pub fn project_witness_cost_receipt(
         }
         for index in indices {
             let outcome = &summary.witness_outcomes[index];
-            let eval = witness_cost_nanosecond_value(
+            let eval = witness_cost_eval_durations(
                 &ctx,
+                summary.performance_receipts[index].cpu_nanos,
                 summary.performance_receipts[index].wall_nanos,
             )?;
             let mut args = vec![
@@ -15626,8 +15661,27 @@ pub fn project_witness_cost_receipt(
                 ClaimOutcome::TimedOut {
                     elapsed_ms,
                     budget_ms,
-                    ..
+                    kind,
                 } => {
+                    // The clock the deadline was enforced on travels WITH the pair, so a
+                    // reader of the event can tell a thread-CPU fail-stop from a wall
+                    // ceiling. The seed already held this fact as `BudgetKind` and used to
+                    // spend it on a prose label; `std.observation.TimedOut` now carries it.
+                    // The basis is selected by matching the typed enum and calling the
+                    // corresponding authored constructor — never recovered from a string.
+                    let basis_constructor = match kind {
+                        BudgetKind::Cpu => "clock_basis_cpu",
+                        BudgetKind::Wall => "clock_basis_wall",
+                    };
+                    let basis = run_in_context_with_args(&ctx, basis_constructor, &[], false)
+                        .map_err(|e| {
+                            format!(
+                                "[witness-row-cost] REFUSED: {basis_constructor} failed on \
+                                 {}::{}: {e}",
+                                outcome.entry, outcome.function
+                            )
+                        })?;
+                    args.push((Some("basis".to_string()), basis));
                     for (name, ms) in [("budget", *budget_ms), ("elapsed", *elapsed_ms)] {
                         let carrier = run_in_context_with_args(
                             &ctx,
