@@ -34347,6 +34347,28 @@ mod witness_layer_roots_compile_clean_tests {
         });
     }
 
+    #[test]
+    fn regen_verify_gate_failure_detail_unavailable_without_prior_record() {
+        reset_regen_verify_gate_failure_detail_for_test();
+        assert!(
+            consume_regen_verify_gate_failure_detail()
+                .contains("gate body did not run in this process"),
+            "missing record must refuse with a located message, not imply an empty success verdict"
+        );
+    }
+
+    #[test]
+    fn regen_verify_gate_failure_detail_round_trips_recorded_reason() {
+        reset_regen_verify_gate_failure_detail_for_test();
+        record_regen_verify_gate_failure_detail(
+            "Changed generated file(s): v1_compiler_emit_rust.rs".to_string(),
+        );
+        assert_eq!(
+            consume_regen_verify_gate_failure_detail(),
+            "Changed generated file(s): v1_compiler_emit_rust.rs"
+        );
+    }
+
     /// §5 discriminating RED (end-to-end): real whole-tree compile with an injected broken module
     /// must refuse through install_floor_compile_clean_receipt → consume_floor_compile_clean_gate_verdict.
     /// Ignored in CI: ~minutes cold whole-tree compile; recorded execution receipt in PR #6361 body.
