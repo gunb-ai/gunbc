@@ -791,6 +791,9 @@ fn ensure_clean_tree() -> Result<(), String> {
 }
 
 fn frontier_probe_source_roots_digest_rust(source_roots: &[String]) -> String {
+    // SCAFFOLD — duplicates v2.compiler.self_host.frontier_probe_types
+    // frontier_probe_source_roots_digest (same structural fold). Dissolve-on: frontier_probe_survey
+    // self-emits from the .dag authority once emit crosses this module.
     source_roots
         .iter()
         .fold(
@@ -802,6 +805,8 @@ fn frontier_probe_source_roots_digest_rust(source_roots: &[String]) -> String {
 }
 
 fn frontier_probe_policy_revision_digest_rust() -> String {
+    // SCAFFOLD — duplicates frontier_probe_policy_revision() in frontier_probe_types.dag.
+    // Dissolve-on: same emit-crosses-module trigger as frontier_probe_source_roots_digest_rust.
     content_hash_atom("frontier-probe-survey-policy-v1".to_string())
         .digest
         .clone()

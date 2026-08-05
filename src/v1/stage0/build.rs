@@ -10,8 +10,13 @@ fn git_output(args: &[&str]) -> Option<String> {
 }
 
 fn main() {
+    // Re-run when git HEAD moves; also when this script or the survey bin change so
+    // BUILD_DIRTY is recomputed after local source edits (defense-in-depth — survey
+    // time ensure_clean_tree and verify_build_provenance still gate the run).
     println!("cargo:rerun-if-changed=.git/HEAD");
     println!("cargo:rerun-if-changed=.git/refs/heads");
+    println!("cargo:rerun-if-changed=build.rs");
+    println!("cargo:rerun-if-changed=src/bin/frontier_probe_survey.rs");
 
     let commit = git_output(&["rev-parse", "HEAD"]).unwrap_or_default();
     let tree = git_output(&["rev-parse", "HEAD^{tree}"]).unwrap_or_default();
