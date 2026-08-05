@@ -1254,6 +1254,12 @@ fn build_module_path_index_uncached(source_roots: &[String]) -> HashMap<String, 
         if manifest_stub_superseded_by_overlay(&rel, source_roots, root_idx) {
             return;
         }
+        // Mirror `build_module_index_primary_precedence`: root[0] is authoritative; later roots
+        // only contribute modules not already claimed (overlay / witness tmp-root pattern).
+        let pool_fill_only = source_roots.len() > 1 && root_idx > 0;
+        if pool_fill_only && index.contains_key(&binding.module_path) {
+            return;
+        }
         insert_module_path(&mut index, &binding.module_path, rel);
     });
     index
@@ -5826,6 +5832,27 @@ pub fn declared_import_closure_live_paths(
     ))
 }
 
+/// Whether `module_path` is indexed under primary-precedence `pool_roots`.
+#[cfg(feature = "test_hooks")]
+pub fn primary_precedence_pool_contains_module(pool_roots: &[String], module_path: &str) -> bool {
+    let index = build_multi_entry_index_primary_precedence(pool_roots);
+    index.source_files.contains_key(module_path)
+}
+
+/// Repo-relative paths of modules loaded for the entry's declared import closure.
+#[cfg(feature = "test_hooks")]
+pub fn declared_import_closure_source_paths(
+    pool_roots: &[String],
+    entry_path: &str,
+) -> Result<Vec<String>, String> {
+    let index = build_multi_entry_index_primary_precedence(pool_roots);
+    let sources = load_declared_import_closure_sources(&index, entry_path)?;
+    Ok(sources
+        .iter()
+        .map(|s| workspace_relative_repo_path(&s.path))
+        .collect())
+}
+
 #[cfg(feature = "test_hooks")]
 fn load_declared_import_closure_sources(
     index: &MultiEntryIndex,
@@ -5859,8 +5886,10 @@ pub fn compile_entry_on_declared_import_closure_only(
 }
 
 /// Pool-scoped variant: builds the module index from `pool_roots` but compiles only
-/// the entry's declared import-edge closure (or `entry_content_override` alone when
-/// simulating a zero-import entry for negative controls).
+/// the entry's declared import-edge closure. Use a tmp-root overlay (primary-precedence
+/// root[0]) when simulating a stripped entry so pool membership can affect resolution
+/// while the import closure stays entry-only; `entry_content_override` skips the pool
+/// entirely and is only for fast isolated negative controls without ambient pressure.
 #[cfg(feature = "test_hooks")]
 pub fn compile_declared_import_closure_only_with_pool(
     pool_roots: &[String],

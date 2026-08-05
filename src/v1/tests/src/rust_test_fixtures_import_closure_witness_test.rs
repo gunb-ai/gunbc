@@ -13,8 +13,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use v1_compiler::cli_run::{
     compile_declared_import_closure_only_with_pool, compile_entry_on_declared_import_closure_only,
-    cross_module_binding_receipts_for_symbols, CrossModuleBindingReceipt,
-    UnlistedImportBindingSource,
+    cross_module_binding_receipts_for_symbols, declared_import_closure_live_paths,
+    declared_import_closure_source_paths, primary_precedence_pool_contains_module,
+    CrossModuleBindingReceipt, UnlistedImportBindingSource,
 };
 use v1_compiler::v1_compiler_compile::ResolvedPipelineResult;
 use v1_compiler::v1_compiler_infer_items::ResolvedGraph;
@@ -25,6 +26,7 @@ const ENTRY_REL: &str = "src/v2/extdeps/languages/rust_test_fixtures.dag";
 const RUST_DAG_SUFFIX: &str = "src/v2/extdeps/languages/rust.dag";
 const RUST_MODULE: &str = "v2.extdeps.languages.rust";
 const CONSUMER_MODULE: &str = "v2.extdeps.languages.rust_test";
+const AMBIENT_LOADER_MODULE: &str = "v2.extdeps.languages.rust_pool_perturb_ambient";
 
 /// The four cross-module rust symbols that failed under pool-coincidence drift.
 const CLASS_B_RUST_BINDING_SYMBOLS: &[&str] = &[
@@ -69,6 +71,13 @@ fn write_pool_perturbation_fixtures(tmp: &std::path::Path) {
     fs::create_dir_all(ambient.parent().unwrap()).expect("tmpdir parents");
     fs::write(&ambient, AMBIENT_RUST_LOADER).expect("write ambient loader");
     fs::write(&decoy, HOMONYM_DECOY_MODULE).expect("write homonym decoy");
+}
+
+fn write_stripped_entry_overlay(tmp: &std::path::Path, stripped: &str) -> std::path::PathBuf {
+    let entry_path = tmp.join(ENTRY_REL);
+    fs::create_dir_all(entry_path.parent().unwrap()).expect("tmpdir parents");
+    fs::write(&entry_path, stripped).expect("write stripped entry overlay");
+    entry_path
 }
 
 fn hard_messages(resolved: &Rc<ResolvedPipelineResult>) -> Vec<String> {
@@ -265,7 +274,6 @@ fn negative_stripped_declared_import_closure_refuses_rust_bindings() {
 
 #[test]
 fn negative_stripped_refuses_even_when_ambient_pool_imports_rust() {
-    let entry = workspace_root().join(ENTRY_REL);
     let stripped = strip_import_block(&read_v2_file(ENTRY_REL));
     assert!(
         !stripped.contains("import v2.extdeps.languages.rust"),
@@ -282,13 +290,34 @@ fn negative_stripped_refuses_even_when_ambient_pool_imports_rust() {
         nanos
     ));
     write_pool_perturbation_fixtures(&dir);
+    let entry_path = write_stripped_entry_overlay(&dir, &stripped);
+    let pool_roots = perturbation_pool_roots(&dir);
+
+    assert!(
+        primary_precedence_pool_contains_module(&pool_roots, AMBIENT_LOADER_MODULE),
+        "ambient pool pressure: unrelated loader importing rust.dag must be indexed"
+    );
+    let closure_paths =
+        declared_import_closure_live_paths(&pool_roots, entry_path.to_str().unwrap())
+            .expect("declared import closure paths for stripped overlay");
+    assert!(
+        !closure_has_rust_dag(&closure_paths),
+        "declared import closure must stay entry-only; got {closure_paths:?}"
+    );
+    let loaded_paths =
+        declared_import_closure_source_paths(&pool_roots, entry_path.to_str().unwrap())
+            .expect("declared import closure sources");
+    assert!(
+        !closure_has_rust_dag(&loaded_paths),
+        "compiled sources must not pull rust.dag via declared import closure; got {loaded_paths:?}"
+    );
 
     let resolved = compile_declared_import_closure_only_with_pool(
-        &perturbation_pool_roots(&dir),
-        entry.to_str().unwrap(),
-        Some(&stripped),
+        &pool_roots,
+        entry_path.to_str().unwrap(),
+        None,
     )
-    .expect("compile stripped entry with ambient rust loader in pool");
+    .expect("compile stripped overlay with ambient rust loader in pool");
     let _ = fs::remove_dir_all(&dir);
 
     let rust_errors = class_b_rust_binding_errors(&hard_messages(&resolved));
