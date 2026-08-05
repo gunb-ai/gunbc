@@ -4,8 +4,9 @@ import std.types { Bool, NonEmptyStr, String }
 import std.nat { Nat }
 import std.measure { Millisecond, millisecond, millisecond_count, measure_add }
 import std.content_hash { Sha256Digest, Sha256DigestHex }
+import gunbc.ci_floor_population_evidence { LocalCiEvidenceSubjectWire }
 
-data ci_floor_population_settlement_receipt_note: String = "ONE SUBJECT-BOUND SETTLEMENT from an exact uploaded floor-evidence artifact (#7785 review). Walls and native counts live only here as harvested observations; MechanismEvidenceSettle is DERIVED in gunbc.ci_floor_population_reconcile from this receipt — never re-authored beside it. Identity binds source_head/tested commits, tree, Actions run/attempt/job, walk_attempt, manifest_body_digest, and uploaded_artifact_digest. Harvested from Actions run 30987560453 attempt 1 job ci (artifact ci-floor-population-receipts-30987560453-1-ci). Warm-hit stays Open: the banked control is same-process MultiEntryIndex reuse, not a two-process TYPECHECK_COMPUTE_COUNT receipt."
+data ci_floor_population_settlement_receipt_note: String = "ONE SUBJECT-BOUND SETTLEMENT from an exact uploaded floor-evidence artifact joined to the completed GitHub Actions job timestamps (#7785 review). Floor walls/native counts come from the attempt artifact; exclusive CI-job populations and ci_job_wall come from Actions step started_at/completed_at on the same run/attempt/job. MechanismEvidenceSettle and PopulationReconciliation are DERIVED in gunbc.ci_floor_population_reconcile — never re-authored beside this receipt. Identity binds source_head/tested commits, tree, Actions run/attempt/job, walk_attempt, manifest_body_digest, and uploaded_artifact_digest. Harvested from Actions run 30987560453 attempt 1 job ci (artifact ci-floor-population-receipts-30987560453-1-ci). Warm-hit stays Open: the banked control is same-process MultiEntryIndex reuse, not a two-process TYPECHECK_COMPUTE_COUNT receipt. Actions timestamps are second-grain (sub-second steps may read 0ms)."
 
 type ColdAdmissionBaselineReceipt {
   dated_subject: NonEmptyStr,
@@ -29,6 +30,15 @@ type BankedNativeTransitionObservation {
 type WarmHitStanding
   = WarmHitOpenCrossProcessReceiptAbsent {}
 
+type BankedExclusiveElapsed {
+  checkout_setup_ms: Nat,
+  release_bin_transfer_ms: Nat,
+  floor_wrapper_ms: Nat,
+  post_floor_observation_ms: Nat,
+  receipt_upload_ms: Nat,
+  ci_job_wall_ms: Nat,
+}
+
 type CiFloorPopulationSettlementReceipt {
   source_head_commit: NonEmptyStr,
   tested_commit: NonEmptyStr,
@@ -44,12 +54,37 @@ type CiFloorPopulationSettlementReceipt {
   admission: BankedAdmissionObservation,
   native_transition: BankedNativeTransitionObservation,
   warm_hit: WarmHitStanding,
+  exclusive_job: BankedExclusiveElapsed,
+  subject_wire: LocalCiEvidenceSubjectWire,
 }
 
 fn cold_admission_baseline_197130ms() -> ColdAdmissionBaselineReceipt {
   ColdAdmissionBaselineReceipt {
     dated_subject: "cold_admission_baseline_wall@ci_cost_arc_closeout_receipt subject (197130ms banked with HandHarvestedDatedAudit run 30863019228)" as NonEmptyStr,
     wall: millisecond(count: 197130),
+  }
+}
+
+fn exact_head_subject_wire() -> LocalCiEvidenceSubjectWire {
+  LocalCiEvidenceSubjectWire {
+    github_run_id: Present { value: "30987560453" },
+    github_run_attempt: Present { value: "1" },
+    github_job_key: Present { value: "ci" },
+    tested_commit: Present { value: "fa1a09e01b039310f516c207af4218f5e3301d2a" },
+    source_head_commit: Present { value: "1e85e017f1bb1c8df3c0c8d98f124bdc422c6ca2" },
+    tested_tree: Present { value: "4b2eaa2b4c35a9a02367841f16c8e1a9c0cfc4fb" },
+    walk_attempt_id: Present { value: "30987560453-1-ci" },
+  }
+}
+
+fn exact_head_exclusive_job_elapsed() -> BankedExclusiveElapsed {
+  BankedExclusiveElapsed {
+    checkout_setup_ms: 6000,
+    release_bin_transfer_ms: 8000,
+    floor_wrapper_ms: 2821000,
+    post_floor_observation_ms: 0,
+    receipt_upload_ms: 1000,
+    ci_job_wall_ms: 2840000,
   }
 }
 
@@ -83,6 +118,8 @@ fn exact_head_floor_population_settlement_receipt() -> CiFloorPopulationSettleme
       verdict: "fallback:native_realization_refused" as NonEmptyStr,
     },
     warm_hit: WarmHitOpenCrossProcessReceiptAbsent {},
+    exclusive_job: exact_head_exclusive_job_elapsed(),
+    subject_wire: exact_head_subject_wire(),
   }
 }
 

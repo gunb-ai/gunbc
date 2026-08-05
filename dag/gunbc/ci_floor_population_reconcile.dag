@@ -7,6 +7,7 @@ import gunbc.ci_floor_population_evidence { LocalCiEvidenceSubjectWire, local_su
 import gunbc.ci_floor_population_settlement_receipt {
   CiFloorPopulationSettlementReceipt,
   WarmHitOpenCrossProcessReceiptAbsent,
+  BankedExclusiveElapsed,
   exact_head_floor_population_settlement_receipt,
 }
 
@@ -308,6 +309,36 @@ fn warm_hit_settle_from_skip_counter(skip_proven: Bool?) -> MechanismEvidenceSet
     Present { value: true } => Delivered {}
     Present { value: false } => NotDelivered { reason: "warm Hit recomputed typecheck" as NonEmptyStr }
   }
+}
+
+fn exclusive_populations_from_banked_elapsed(
+  subject: LocalCiEvidenceSubjectWire,
+  e: BankedExclusiveElapsed
+) -> CiJobExclusivePopulations {
+  CiJobExclusivePopulations {
+    subject: subject,
+    checkout_setup: ObservedExclusiveWall { wall: millisecond(count: e.checkout_setup_ms) },
+    release_bin_transfer: ObservedExclusiveWall { wall: millisecond(count: e.release_bin_transfer_ms) },
+    floor_wrapper_elapsed: ObservedExclusiveWall { wall: millisecond(count: e.floor_wrapper_ms) },
+    post_floor_observation: ObservedExclusiveWall { wall: millisecond(count: e.post_floor_observation_ms) },
+    receipt_upload: ObservedExclusiveWall { wall: millisecond(count: e.receipt_upload_ms) },
+  }
+}
+
+fn exclusive_job_reconciliation_from_settlement_receipt(
+  r: CiFloorPopulationSettlementReceipt
+) -> PopulationReconciliation {
+  reconcile_ci_job_populations(
+    populations: exclusive_populations_from_banked_elapsed(
+      subject: r.subject_wire,
+      e: r.exclusive_job
+    ),
+    ci_job: millisecond(count: r.exclusive_job.ci_job_wall_ms)
+  )
+}
+
+fn current_exclusive_job_reconciliation() -> PopulationReconciliation {
+  exclusive_job_reconciliation_from_settlement_receipt(r: current_settlement_receipt())
 }
 
 fn admission_settle_from_settlement_receipt(

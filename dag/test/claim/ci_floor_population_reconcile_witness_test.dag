@@ -25,6 +25,7 @@ import gunbc.ci_floor_population_reconcile {
   current_native_fleet_settle,
   current_warm_hit_settle,
   current_settlement_receipt,
+  current_exclusive_job_reconciliation,
 }
 import gunbc.ci_floor_population_settlement_receipt {
   banked_admission_observed_total_ms,
@@ -189,5 +190,22 @@ test fn witness_warm_hit_delivered_when_skip_proven() -> Bool {
   match warm_hit_settle_from_skip_counter(skip_proven: Present { value: true }) {
     Delivered {} => true
     _ => false
+  }
+}
+
+test fn witness_exact_head_exclusive_job_reconciles_within_five_percent() -> Bool {
+  match current_exclusive_job_reconciliation() {
+    Reconciled { classified_wall: c, unattributed_wall: u, attribution_ratio_basis_points: bp } =>
+      millisecond_count(m: c) == 2836000
+        && millisecond_count(m: u) == 4000
+        && bp == 9985
+    _ => false
+  }
+}
+
+test fn red_exact_head_must_not_remain_missing_exclusive() -> Bool {
+  match current_exclusive_job_reconciliation() {
+    MissingRequiredObservation { owed: _ } => false
+    _ => true
   }
 }
