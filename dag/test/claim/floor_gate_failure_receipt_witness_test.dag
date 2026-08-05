@@ -1,0 +1,51 @@
+module test.claim.floor_gate_failure_receipt_witness
+
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import gunbc.test_module_hygiene { failure_receipt_companion, Optional, Present }
+import tools.dag_compile_clean_gate { dag_compile_clean_failure_reason }
+import tools.generated_artifact_gate { generated_artifact_drift_failure_reason }
+import tools.regen_verify_gate { regen_verify_failure_reason }
+
+data witness_note: String = "The failure-receipt companion channel (gunbc#7644 / v2.std.native_agreement) must name the located gate reason on Bool(false), not only return returned Bool(false). These controls pin the reason projection helpers and the _passes → _failure_receipt naming convention for the three floor gates that previously lacked companions."
+
+test fn dag_compile_clean_failure_reason_empty_only_on_success() -> Bool {
+  dag_compile_clean_failure_reason(exit: ExitSuccess) == ""
+    && dag_compile_clean_failure_reason(
+      exit: exit_failure(reason: "dag compile-clean gate failed: clean-tree compile over witness layer roots")
+    ) == "dag compile-clean gate failed: clean-tree compile over witness layer roots"
+}
+
+test fn generated_artifact_drift_failure_reason_empty_only_on_success() -> Bool {
+  generated_artifact_drift_failure_reason(exit: ExitSuccess) == ""
+    && string_contains(
+      s: generated_artifact_drift_failure_reason(
+        exit: exit_failure(reason: "generated-artifact drift/validation failed: .github/workflows/ci.yml")
+      ),
+      pattern: ".github/workflows/ci.yml"
+    )
+}
+
+test fn regen_verify_failure_reason_empty_only_on_success() -> Bool {
+  regen_verify_failure_reason(exit: ExitSuccess) == ""
+    && string_contains(
+      s: regen_verify_failure_reason(
+        exit: exit_failure(reason: "regen-verify gate failed: committed stage0 does not match a fresh single-pass regen (the §7 self-host fixed-point wall)")
+      ),
+      pattern: "regen-verify gate failed"
+    )
+}
+
+test fn floor_gate_failure_receipt_companion_names_holds() -> Bool {
+  match failure_receipt_companion(function: "dag_compile_clean_gate_passes") {
+    Present { value: companion } => companion == "dag_compile_clean_gate_failure_receipt"
+    _ => false
+  }
+    && match failure_receipt_companion(function: "generated_artifact_drift_gate_passes") {
+      Present { value: companion } => companion == "generated_artifact_drift_gate_failure_receipt"
+      _ => false
+    }
+    && match failure_receipt_companion(function: "regen_verify_gate_passes") {
+      Present { value: companion } => companion == "regen_verify_gate_failure_receipt"
+      _ => false
+    }
+}

@@ -17,6 +17,19 @@ func run_regen_verify_gate() -> ProcessExit {
   run_regen_verify_gate_body()
 }
 
+data regen_verify_failure_receipt_note: String = "The loudness half: the floor witness collapses this gate's ProcessExit to Bool via tools.ci_gates.exit_ok, so a regen-verify red reported only returned Bool(false) without the located reason run_regen_verify_gate_body already builds. This projects the SAME verdict (one authority, never a second decision path) into the claim_executor failure-receipt companion channel."
+
+fn regen_verify_failure_reason(exit: ProcessExit) -> String {
+  match exit {
+    ExitSuccess => ""
+    ExitFailure { code: _, reason: reason } => reason
+  }
+}
+
+func regen_verify_failure_receipt() -> String {
+  regen_verify_failure_reason(exit: run_regen_verify_gate_body())
+}
+
 func main() -> ProcessExit {
   run_regen_verify_gate_body()
 }
