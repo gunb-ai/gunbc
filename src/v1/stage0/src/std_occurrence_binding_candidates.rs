@@ -25,6 +25,7 @@ use self::ReferenceDerivedClauseEProduction::*;
 use self::ReferenceDerivedClauseEProductionRefusal::*;
 use self::ReferenceDerivedDependencyProjection::*;
 use self::ReferenceDerivedProviderFileProjection::*;
+use self::ReferenceDerivedProviderFilesForAssembledClosure::*;
 use self::Section13PopulationLawEvidence::*;
 use self::Section13PopulationLawId::*;
 use self::Section13PopulationLawRosterVerdict::*;
@@ -1453,7 +1454,16 @@ pub fn direct_module_dependencies_from_bound_population(
 pub fn module_path_file_row_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "ModulePathFileRow is the storage-realization join for cross-file binding provenance: one symbolic module path maps to exactly one authored file path. It is deliberately separate from OccurrenceModulePathRow (which names module membership only) and from import lists (which are transitional loading data, not naming authority). File projection refuses when either side of a bound reference lacks a row — never fabricates a path from module_to_filename heuristics at this seam. Duplicate identical rows are ModulePathFileDuplicateSame; conflicting paths for one module are ModulePathFileConflict — last-write-wins map_insert is forbidden.".to_string()
+            "ModulePathFileRow is the parser-embedded storage-realization join for cross-file binding provenance at the N3-B substrate seam: one symbolic module path maps to exactly one authored file path. Single authority for path⇄module binding is v2.compiler.source_authority.ModuleStorageBinding / ModuleStorageIndex (module_storage_binding_authority_note); this row is a scaffold projection of that fact from parser-walk inputs until B2 wires OrdinaryLoadedCompilationClosure through source_authority directly. Deliberately separate from OccurrenceModulePathRow (module membership only) and from import lists (transitional loading data). File projection refuses when either side of a bound reference lacks a row — never fabricates a path from module_to_filename heuristics at this seam. Duplicate identical rows are ModulePathFileDuplicateSame; conflicting paths for one module are ModulePathFileConflict — last-write-wins map_insert is forbidden.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn module_path_file_row_dissolution_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Dissolve-on: cross-file binding production consumes ModuleStorageBinding rows from v2.compiler.source_authority (module_storage_binding_module_dotted × module_storage_binding_file_path) on OrdinaryLoadedCompilationClosure; ModulePathFileRow, ModulePathFileIndex, and this note delete in the completing change. Until then parser-walk supplies rows with ParsedFromSource provenance only.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -2771,32 +2781,28 @@ pub fn reference_derived_dependency_projection_for_assembled_closure(
 }
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum ReferenceDerivedProviderFilesForAssembledClosure {
+    ReferenceDerivedProviderFilesForAssembledClosureReady {
+        provider_files: Rc<Vec<FilePath>>,
+    },
+    ReferenceDerivedProviderFilesForAssembledClosureRefused {
+        refusal: Rc<AssembledClosureDependencyProjectionRefusal>,
+    },
+}
+
 pub fn reference_derived_provider_files_for_assembled_closure(
     closure: Rc<AssembledCrossFileBindingClosure>,
-) -> Option<Rc<Vec<String>>> {
-    match (*reference_derived_dependency_projection_for_assembled_closure(closure.clone())).clone()
-    {
-        AssembledClosureDependencyProjection::AssembledClosureDependencyProjectionReady {
-            ref projection,
-            ..
-        } => {
-            let ReferenceDerivedDependencyProjection::ReferenceDerivedDependencyProjectionReady {
-                file_dependencies: dependencies,
-                ..
-            } = projection.as_ref()
-            else {
-                unreachable!()
-            };
-            Some(Rc::new({
-                let mut __result = Vec::new();
-                for edge in dependencies.clone().iter().cloned() {
-                    __result.push(edge.provider_file.clone());
-                }
-                __result
-            }))
-        }
-        _ => None,
-    }
+) -> Rc<ReferenceDerivedProviderFilesForAssembledClosure> {
+    match (*reference_derived_dependency_projection_for_assembled_closure(closure.clone())).clone() {
+    AssembledClosureDependencyProjection::AssembledClosureDependencyProjectionReady { ref projection, .. } => { let ReferenceDerivedDependencyProjection::ReferenceDerivedDependencyProjectionReady { file_dependencies: dependencies, .. } = projection.as_ref() else { unreachable!() }; Rc::new(ReferenceDerivedProviderFilesForAssembledClosure::ReferenceDerivedProviderFilesForAssembledClosureReady {
+    provider_files: Rc::new({ let mut __result = Vec::new(); for edge in dependencies.clone().iter().cloned() { __result.push(edge.provider_file.clone()); } __result }),
+}) },
+    AssembledClosureDependencyProjection::AssembledClosureDependencyProjectionRefused { refusal: refusal, .. } => Rc::new(ReferenceDerivedProviderFilesForAssembledClosure::ReferenceDerivedProviderFilesForAssembledClosureRefused {
+    refusal: refusal.clone(),
+}),
+}
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -2814,7 +2820,6 @@ pub enum ReferenceDerivedClauseEProductionRefusal {
     ReferenceDerivedClauseEProductionProviderParseRefused {
         file: FilePath,
     },
-    ReferenceDerivedClauseEProductionEmptyDependencies,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -2839,19 +2844,14 @@ pub fn reference_derived_clause_e_production_from_assembled_closure(
 }),
 }),
     AssembledCrossFileBindingClosure::AssembledCrossFileBindingClosureReady { consumer_file, .. } => match (*reference_derived_dependency_projection_for_assembled_closure(closure.clone())).clone() {
-    AssembledClosureDependencyProjection::AssembledClosureDependencyProjectionReady { ref projection, .. } => { let ReferenceDerivedDependencyProjection::ReferenceDerivedDependencyProjectionReady { binding_provenance: provenances, file_dependencies: dependencies, bound_population, .. } = projection.as_ref() else { unreachable!() }; match dependencies.clone().first().cloned() {
-    Some(_) => Rc::new(ReferenceDerivedClauseEProduction::ReferenceDerivedClauseEProductionReady {
+    AssembledClosureDependencyProjection::AssembledClosureDependencyProjectionReady { ref projection, .. } => { let ReferenceDerivedDependencyProjection::ReferenceDerivedDependencyProjectionReady { binding_provenance: provenances, file_dependencies: dependencies, bound_population, .. } = projection.as_ref() else { unreachable!() }; Rc::new(ReferenceDerivedClauseEProduction::ReferenceDerivedClauseEProductionReady {
     projection: Rc::new(ReferenceDerivedDependencyProjection::ReferenceDerivedDependencyProjectionReady {
     binding_provenance: provenances.clone(),
     file_dependencies: dependencies.clone(),
     bound_population: bound_population.clone(),
 }),
     consumer_file: consumer_file.clone(),
-}),
-    None => Rc::new(ReferenceDerivedClauseEProduction::ReferenceDerivedClauseEProductionRefused {
-    refusal: Rc::new(ReferenceDerivedClauseEProductionRefusal::ReferenceDerivedClauseEProductionEmptyDependencies),
-}),
-} },
+}) },
     AssembledClosureDependencyProjection::AssembledClosureDependencyProjectionRefused { refusal: refusal, .. } => Rc::new(ReferenceDerivedClauseEProduction::ReferenceDerivedClauseEProductionRefused {
     refusal: Rc::new(ReferenceDerivedClauseEProductionRefusal::ReferenceDerivedClauseEProductionProjectionRefused {
     refusal: refusal.clone(),

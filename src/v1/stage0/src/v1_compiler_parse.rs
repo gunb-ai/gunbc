@@ -2387,47 +2387,59 @@ pub fn stamp_parsed_inferred(
     }
 }
 
+pub fn parsed_occurrence_role_expr_call_exclusion_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Occurrence transport for ExprCall (namespace-reference-derived-closure): make_call_expr keeps the callee identifier on the call node's authored_name when the callee is a bare ExprVar — children are argument expressions only. Named bare calls therefore record CallableOccurrence on the call node itself; only complex-callee calls (authored_name \"<expr>\") stay ParsedOccurrenceUnclassified. ExprCall children are never callee-reference carriers — stamp them all Unclassified so the first argument is not mis-tagged as the callee.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn parsed_occurrence_role_for_node(
     node: Rc<Node>,
     requested: Rc<ParsedOccurrenceRole>,
 ) -> Rc<ParsedOccurrenceRole> {
     match (*requested.clone()).clone() {
-        ParsedOccurrenceRole::ParsedOccurrenceUnclassified => match (*node.expr_data.clone())
-            .clone()
-        {
-            ExprData::ExprLet => Rc::new(ParsedOccurrenceRole::ParsedOccurrenceDeclaration {
-                category: OccurrenceCategory::LexicalValueOccurrence,
-            }),
-            ExprData::ExprVar {
-                binding_kind: _, ..
-            } => Rc::new(ParsedOccurrenceRole::ParsedOccurrenceReference {
-                category: OccurrenceCategory::LexicalValueOccurrence,
-            }),
-            ExprData::ExprFieldAccess { summary: _, .. } => {
-                Rc::new(ParsedOccurrenceRole::ParsedOccurrenceReference {
-                    category: OccurrenceCategory::FieldOccurrence,
-                })
-            }
-            ExprData::ExprMethodCall {
-                method_semantics: _,
-                ..
-            } => Rc::new(ParsedOccurrenceRole::ParsedOccurrenceReference {
-                category: OccurrenceCategory::MethodOccurrence,
-            }),
-            ExprData::ExprCall { .. } => Rc::new(ParsedOccurrenceRole::ParsedOccurrenceReference {
-                category: OccurrenceCategory::CallableOccurrence,
-            }),
-            ExprData::NoExprData => match node.body.clone() {
-                Some(_) => match node.type_annotation.clone() {
-                    None => Rc::new(ParsedOccurrenceRole::ParsedOccurrenceDeclaration {
+        ParsedOccurrenceRole::ParsedOccurrenceUnclassified => {
+            match (*node.expr_data.clone()).clone() {
+                ExprData::ExprLet => Rc::new(ParsedOccurrenceRole::ParsedOccurrenceDeclaration {
+                    category: OccurrenceCategory::LexicalValueOccurrence,
+                }),
+                ExprData::ExprVar {
+                    binding_kind: _, ..
+                } => Rc::new(ParsedOccurrenceRole::ParsedOccurrenceReference {
+                    category: OccurrenceCategory::LexicalValueOccurrence,
+                }),
+                ExprData::ExprFieldAccess { summary: _, .. } => {
+                    Rc::new(ParsedOccurrenceRole::ParsedOccurrenceReference {
+                        category: OccurrenceCategory::FieldOccurrence,
+                    })
+                }
+                ExprData::ExprMethodCall {
+                    method_semantics: _,
+                    ..
+                } => Rc::new(ParsedOccurrenceRole::ParsedOccurrenceReference {
+                    category: OccurrenceCategory::MethodOccurrence,
+                }),
+                ExprData::ExprCall { .. } => match (node.name.clone() == "<expr>".to_string()) {
+                    true => Rc::new(ParsedOccurrenceRole::ParsedOccurrenceUnclassified),
+                    false => Rc::new(ParsedOccurrenceRole::ParsedOccurrenceReference {
                         category: OccurrenceCategory::CallableOccurrence,
                     }),
-                    Some(_) => Rc::new(ParsedOccurrenceRole::ParsedOccurrenceUnclassified),
                 },
-                None => Rc::new(ParsedOccurrenceRole::ParsedOccurrenceUnclassified),
-            },
-            _ => Rc::new(ParsedOccurrenceRole::ParsedOccurrenceUnclassified),
-        },
+                ExprData::NoExprData => match node.body.clone() {
+                    Some(_) => match node.type_annotation.clone() {
+                        None => Rc::new(ParsedOccurrenceRole::ParsedOccurrenceDeclaration {
+                            category: OccurrenceCategory::CallableOccurrence,
+                        }),
+                        Some(_) => Rc::new(ParsedOccurrenceRole::ParsedOccurrenceUnclassified),
+                    },
+                    None => Rc::new(ParsedOccurrenceRole::ParsedOccurrenceUnclassified),
+                },
+                _ => Rc::new(ParsedOccurrenceRole::ParsedOccurrenceUnclassified),
+            }
+        }
         _ => requested.clone(),
     }
 }
@@ -2528,13 +2540,10 @@ pub fn stamp_parsed_node_children(
     role: Rc<ParsedOccurrenceRole>,
 ) -> Rc<ParsedNodeListStampResult> {
     match (*node.expr_data.clone()).clone() {
-        ExprData::ExprCall { .. } => stamp_parsed_node_list_with_head_role(
+        ExprData::ExprCall { .. } => stamp_parsed_node_list(
             node.children.clone(),
             ancestors.clone(),
             ctx.clone(),
-            Rc::new(ParsedOccurrenceRole::ParsedOccurrenceReference {
-                category: OccurrenceCategory::CallableOccurrence,
-            }),
             Rc::new(ParsedOccurrenceRole::ParsedOccurrenceUnclassified),
         ),
         ExprData::ExprLet => stamp_parsed_node_list(
