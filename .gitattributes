@@ -8,6 +8,7 @@
 # then regenerate from merged authorities before commit (charter four-case policy row 1).
 
 .gitattributes merge=generated-artifact
+.githooks/generated-artifact-merge merge=generated-artifact
 .githooks/pre-commit merge=generated-artifact
 .githooks/pre-push merge=generated-artifact
 .github/live-deploy-srv1-apply.sh merge=generated-artifact
