@@ -58,16 +58,14 @@ test fn witness_ssh_transport_mismatch_refused() -> Bool {
   )
 }
 
-fn label_list_contains(labels: List<String>, needle: String) -> Bool {
-  fold(labels, init: false, f: (acc, l) => acc || (l == needle))
-}
+data label_membership_homonym_note: String = "THIS HELPER WAS A HOMONYM AND IT LOST ITS OWN NAME (found by execution 2026-08-05). It was declared here as label_list_contains(labels, needle) while gunbc.design.component declares label_list_contains(xs, x), and the call below bound to the OTHER module's declaration once a closure change dragged that module into the pool — surfacing as `call contract mismatch ... no parameter named 'labels' (declared: [xs, x])` at RUNTIME, in a witness whose own file was not edited.\n\nThat is the pool-membership-coincidence class DESIGN's import-strip thread records: a bare reference resolves by whoever else happens to be in the assembled closure, so the same file binds differently depending on unrelated work. Here it is sharper than the usual shape, because the losing declaration was the file's OWN — a module cannot rely on its own name.\n\nThe repair is to stop minting the homonym rather than to rename it. Both declarations were `does this list of strings contain this string`, which is a §2/§3 duplicate of a generic membership fold; using `any` directly removes the second name entirely instead of moving the collision one identifier over. The underlying resolver defect belongs to the namespace-only resolution lane and is not fixed here."
 
 test fn witness_deploy_stage_pins_srv1_runner_label() -> Bool {
   gunbc_ci_deploy_srv1_stage.runner == gunbc_ci_deploy_srv1_runner_spec()
     && match gunbc_ci_deploy_srv1_stage.runner {
       SelfHosted { labels: labels } =>
-        label_list_contains(labels: labels, needle: "srv1")
-          && label_list_contains(labels: labels, needle: "self-hosted")
+        any(labels, l => l == "srv1")
+          && any(labels, l => l == "self-hosted")
       _ => false
     }
 }
