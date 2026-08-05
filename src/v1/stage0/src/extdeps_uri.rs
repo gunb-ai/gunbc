@@ -12,6 +12,7 @@ use self::UriPercentOctetWire::*;
 use self::UriScheme::*;
 use self::UriUnicodeScalarConstruction::*;
 use self::UriUtf8OctetConstruction::*;
+use self::UriValidatedScalarConstruction::*;
 pub use crate::std_types::NonEmptyStr;
 pub use crate::std_unicode_types::{
     unicode_scalar, unicode_scalar_max_code_point, unicode_surrogate_first_code_point,
@@ -170,7 +171,7 @@ pub fn parse_href_scheme(url: String) -> Rc<ParsedHrefScheme> {
 pub fn uri_component_encode_authority_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "RFC 3986 section 2.1 percent-encoding (https://www.rfc-editor.org/rfc/rfc3986#section-2.1) realized by extdeps.uri uri_percent_encode_* over UriUnicodeScalar / UriUtf8Octet. RFC 3986 section 3.3 path grammar is cited at extdeps.uri_path extdeps_external_authority_anchor — same specification, distinct section facts, no parallel section module. UriUnicodeScalar { cp } is the raw carrier; UriValidatedScalar { admitted_cp: Int where unicode_scalar } is minted only by uri_unicode_scalar_construction and is not structurally interchangeable with UriUnicodeScalar. uri_percent_encode_admitted_scalar_wire accepts UriValidatedScalar only.".to_string()
+            "RFC 3986 section 2.1 percent-encoding (https://www.rfc-editor.org/rfc/rfc3986#section-2.1) realized by extdeps.uri uri_percent_encode_* over UriUnicodeScalar / UriUtf8Octet. RFC 3986 section 3.3 path grammar is cited at extdeps.uri_path extdeps_external_authority_anchor — same specification, distinct section facts, no parallel section module. UriUnicodeScalar { cp } is the raw carrier; UriValidatedScalar is sole_constructor with admitted_cp: Int and is minted only by uri_validated_scalar_construction (scalar-range and surrogate checks live in that constructor). uri_percent_encode_admitted_scalar_wire accepts UriValidatedScalar only.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -224,6 +225,31 @@ pub struct UriUnicodeScalar {
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct UriValidatedScalar {
     pub admitted_cp: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum UriValidatedScalarConstruction {
+    UriValidatedScalarConstructed(UriValidatedScalar),
+    UriValidatedScalarSurrogateRefused { cp: i64 },
+    UriValidatedScalarOutOfRangeRefused { cp: i64 },
+}
+impl UriValidatedScalarConstruction {
+    pub fn cp(&self) -> i64 {
+        match self {
+            UriValidatedScalarConstruction::UriValidatedScalarConstructed(_) => {
+                panic!("no cp on positional-payload variant")
+            }
+            UriValidatedScalarConstruction::UriValidatedScalarSurrogateRefused {
+                cp: __val,
+                ..
+            } => __val.clone(),
+            UriValidatedScalarConstruction::UriValidatedScalarOutOfRangeRefused {
+                cp: __val,
+                ..
+            } => __val.clone(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -445,31 +471,55 @@ pub fn uri_hex_nibble_wire(nibble: UriHexNibble) -> String {
     }
 }
 
-pub fn uri_unicode_scalar_construction(cp: i64) -> Rc<UriUnicodeScalarConstruction> {
+pub fn uri_validated_scalar_construction(cp: i64) -> Rc<UriValidatedScalarConstruction> {
     if (cp.clone() < 0) {
-        Rc::new(UriUnicodeScalarConstruction::UriUnicodeScalarOutOfRangeRefused { cp: cp.clone() })
+        Rc::new(
+            UriValidatedScalarConstruction::UriValidatedScalarOutOfRangeRefused { cp: cp.clone() },
+        )
     } else {
         if (cp.clone() > unicode_scalar_max_code_point()) {
             Rc::new(
-                UriUnicodeScalarConstruction::UriUnicodeScalarOutOfRangeRefused { cp: cp.clone() },
+                UriValidatedScalarConstruction::UriValidatedScalarOutOfRangeRefused {
+                    cp: cp.clone(),
+                },
             )
         } else {
             if ((cp.clone() >= unicode_surrogate_first_code_point())
                 && (cp.clone() <= unicode_surrogate_last_code_point()))
             {
                 Rc::new(
-                    UriUnicodeScalarConstruction::UriUnicodeScalarSurrogateRefused {
+                    UriValidatedScalarConstruction::UriValidatedScalarSurrogateRefused {
                         cp: cp.clone(),
                     },
                 )
             } else {
-                Rc::new(UriUnicodeScalarConstruction::UriUnicodeScalarConstructed(
-                    UriValidatedScalar {
-                        admitted_cp: cp.clone(),
-                    },
-                ))
+                Rc::new(
+                    UriValidatedScalarConstruction::UriValidatedScalarConstructed(
+                        UriValidatedScalar {
+                            admitted_cp: cp.clone(),
+                        },
+                    ),
+                )
             }
         }
+    }
+}
+
+pub fn uri_unicode_scalar_construction(cp: i64) -> Rc<UriUnicodeScalarConstruction> {
+    match (*uri_validated_scalar_construction(cp.clone())).clone() {
+        UriValidatedScalarConstruction::UriValidatedScalarSurrogateRefused { cp: c, .. } => {
+            Rc::new(
+                UriUnicodeScalarConstruction::UriUnicodeScalarSurrogateRefused { cp: c.clone() },
+            )
+        }
+        UriValidatedScalarConstruction::UriValidatedScalarOutOfRangeRefused { cp: c, .. } => {
+            Rc::new(
+                UriUnicodeScalarConstruction::UriUnicodeScalarOutOfRangeRefused { cp: c.clone() },
+            )
+        }
+        UriValidatedScalarConstruction::UriValidatedScalarConstructed(scalar) => Rc::new(
+            UriUnicodeScalarConstruction::UriUnicodeScalarConstructed(scalar.clone()),
+        ),
     }
 }
 
