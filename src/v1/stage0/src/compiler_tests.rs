@@ -536,6 +536,67 @@ mod compiler_tests {
     }
 
     #[test]
+    fn function_value_named_arg_wall_witness() {
+        // DISCRIMINATING RED for function_value_named_application_wall_note (04_infer).
+        // Named actuals on a body-scope callable (fn parameter / let binding) bypassed
+        // direct_call_shape_diags because body_locals shadowing skips sig lookup; the
+        // emitter cannot reorder them and labels are not validated.
+        let result = std::thread::Builder::new()
+            .stack_size(8 * 1024 * 1024)
+            .spawn(|| {
+                let compile_one = |path: &str, content: &str| {
+                    crate::v1_compiler_compile::compile_sources(
+                        std::rc::Rc::new(im::vector![std::rc::Rc::new(
+                            crate::v1_compiler_compile::SourceFile {
+                                path: path.to_string(),
+                                content: content.to_string(),
+                            }
+                        )]),
+                        crate::v1_compiler_artifact::RenderTarget::Rust,
+                    )
+                };
+                let named_on_param = compile_one(
+                    "named_on_param.dag",
+                    "module named_on_param\nfn apply(f: fn(a: Int, b: Int) -> Int, x: Int, y: Int) -> Int { f(a: x, b: y) }\n",
+                );
+                let named: Vec<_> = named_on_param.diagnostics.iter()
+                    .filter(|d| matches!(*d.diagnostic, crate::v1_std_core::CompilerDiagnostic::CallNamedArgOnFunctionValue { .. }))
+                    .collect();
+                assert!(
+                    named.len() >= 2,
+                    "named arguments on a function-value parameter must refuse at the compile seam, got: {:?}",
+                    named_on_param.diagnostics
+                );
+                assert!(
+                    named.iter().all(|d| crate::v1_std_core::is_error_diagnostic(d.diagnostic.clone())
+                        && crate::v1_std_core::is_interpreter_blocking_diagnostic(d.diagnostic.clone())),
+                    "CallNamedArgOnFunctionValue must BLOCK"
+                );
+                let positional = compile_one(
+                    "positional_on_param.dag",
+                    "module positional_on_param\nfn apply(f: fn(a: Int, b: Int) -> Int, x: Int, y: Int) -> Int { f(x, y) }\n",
+                );
+                assert!(
+                    positional.diagnostics.is_empty(),
+                    "positional calls on function values must stay silent, got: {:?}",
+                    positional.diagnostics
+                );
+                let direct_named = compile_one(
+                    "direct_named.dag",
+                    "module direct_named\nfn sub(a: Int, b: Int) -> Int { a - b }\nfn f() -> Int { sub(a: 10, b: 3) }\n",
+                );
+                assert!(
+                    direct_named.diagnostics.is_empty(),
+                    "named arguments on direct module fn calls must remain on the sibling wall, got: {:?}",
+                    direct_named.diagnostics
+                );
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("function_value_named_arg_wall_witness panicked");
+    }
+
+    #[test]
     fn method_existence_wall_witness() {
         // DISCRIMINATING RED for method_existence_wall_note. Before the wall an
         // unresolved method inherited the RECEIVER's type with no diagnostic, so

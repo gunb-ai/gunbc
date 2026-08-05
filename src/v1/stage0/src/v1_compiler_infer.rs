@@ -138,7 +138,8 @@ use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::CallSemantics::{LookupCallSemantics, PlainCallSemantics};
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::{
-    AmbiguousReference, CallArgumentNameUnknown, CallPositionalSurplus, FieldNotFound,
+    AmbiguousReference, CallArgumentNameUnknown, CallPositionalSurplus, CallNamedArgOnFunctionValue,
+    FieldNotFound,
     FrontierOccurrenceBudgetExceeded, InternalError, MethodExistenceFrontierAdmitted,
     MethodExistenceUndecided, MethodNotFound, MissingField, ReceiverTypeUnestablished,
     SoleConstructorViolation, TypeMismatch, UnresolvedType, VariantCollision,
@@ -2643,6 +2644,51 @@ pub fn direct_call_shape_diags(
             };
         v1_rt::concat(unknown_label_diags.clone(), surplus_diags.clone())
     }
+}
+
+pub fn function_value_call_named_arg_diags(
+    func_name: String,
+    typed_args: Rc<Vec<Rc<Node>>>,
+    type_env: Rc<TypeEnv>,
+    module_name: String,
+    body_locals: Rc<HashMap<String, bool>>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    match body_locals.get(&func_name) {
+        None => Rc::new(vec![]),
+        Some(_) => {
+            let source_indices = type_env.source_indices.clone();
+            Rc::new({
+                let mut __result = Vec::new();
+                for ta in typed_args.clone().iter().cloned() {
+                    __result.extend(
+                        (*match arg_name_at(ta.clone(), source_indices.clone()) {
+                            Some(label) => Rc::new(vec![make_error_node(
+                                Rc::new(CompilerDiagnostic::CallNamedArgOnFunctionValue {
+                                    callee: func_name.clone(),
+                                    argument: label.clone(),
+                                    span: ta.span.clone(),
+                                }),
+                                module_name.clone(),
+                            )]),
+                            None => Rc::new(vec![]),
+                        })
+                        .iter()
+                        .cloned(),
+                    );
+                }
+                __result
+            })
+        }
+    }
+}
+
+pub fn function_value_named_application_wall_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "WALL (DESIGN §5) — the direct-call label wall (direct_call_shape_wall_note, gunbc#7519) runs only when a module fn sig resolves at the ExprCall seam. Function-value calls route through body_locals shadowing (call_locals_shadow_note): a let-bound or parameter callee skips sig lookup, so named actuals were silently accepted while the emitter's order_typed_call_args cannot reorder them (lookup_func_sig_in_scope returns Absent) and labels are not validated against any declared parameter authority. This wall refuses every named actual when the callee is a body-scope binding — the function-value path — until declaration-identity join can validate labels against the underlying fn. Positional calls on function values stay allowed. Named actuals on direct module/builtin calls (sig resolved) remain on the sibling wall.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn direct_call_shape_wall_note() -> String {
@@ -5191,6 +5237,17 @@ pub fn infer_expr_body(
                         for air in arg_infer_results.clone().iter().cloned() {
                             __result.extend((*air.diagnostics.clone()).iter().cloned());
                         }
+                        __result.extend(
+                            (*function_value_call_named_arg_diags(
+                                func_name.clone(),
+                                typed_args.clone(),
+                                scope.type_env.clone(),
+                                scope.module_name.clone(),
+                                scope.body_locals.clone(),
+                            ))
+                            .iter()
+                            .cloned(),
+                        );
                         __result
                     });
                     let typed_arg_nodes = typed_args.clone();
