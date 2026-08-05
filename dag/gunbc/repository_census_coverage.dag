@@ -832,9 +832,11 @@ data repository_census_ceiling_note: String = "BLOCKER 3 — THE CEILING IS A FU
 
 data repository_census_ceiling_refusal_note: String = "THE REFUSAL NAMES ITS CAUSE AND CARRIES BOTH IDENTITIES, and this replaces a declared frontier rather than adding to one (dissolution fired 2026-08-05 by the operator ruling that this recut touches the function). The previous shape answered an Optional, and none is not a typed located refusal: it said a ceiling could not be derived while saying nothing about which two runs failed to join, so a holder could neither report the mismatch nor count it. The frontier note recorded that the arm had exactly one cause today and that the SECOND cause would join it silently, because the signature already tolerated an unexplained none. That is now unwritable rather than merely unlikely: the outcome is a coproduct, so a second cause CANNOT be added without adding a variant a reader must handle, and the compiler is what enforces it instead of a note asking the next author to be careful (DESIGN section 5, a failure arm must refuse rather than widen, and a degradation must stay countable). The refusal carries the classification run identity the coverage outcome established and the method run identity the capability receipt claims, in that order, so the located fact is which receipt was presented against which coverage — not merely that something did not match. And the ceiling is now CONSTRUCTED ONLY ON THE JOINED ARM: the previous body built the value and then discarded it on failure, which meant a strength was computed for a package that had not been shown to be one package."
 
+data repository_census_limit_naming_note: String = "THE LIMIT NAME MATCHES THE ARM THAT PRODUCES IT, and this one was found by sweeping for the class rather than the instance. When DistinctProcedureDenominatorEstablished was renamed off its independence overclaim, its MIRROR survived one identifier away: the limit was still called DenominatorNotIndependent, asserting non-independence in general when what the join decides is only that the two procedures were not shown to be distinct declarations. A negative inherits the same evidence bound as the positive it negates — if structure cannot establish independence it cannot establish its absence either — so the limit now names the distinctness it actually decides."
+
 type CensusCeilingLimit
   = CoverageNotEstablished
-  | DenominatorNotIndependent
+  | DenominatorProcedureNotDistinct
   | MethodConformanceUnobserved
 
 type CensusInferenceCeilingStrength
@@ -856,7 +858,7 @@ fn census_coverage_limits(coverage: CensusCoverageOutcome) -> List<CensusCeiling
       if census_independence_is_established(independence: receipt.independence) {
         []
       } else {
-        [DenominatorNotIndependent]
+        [DenominatorProcedureNotDistinct]
       }
     CoverageRefused {
       observation_identity: _,
@@ -982,7 +984,7 @@ fn census_ceiling_has_limit(ceiling: CensusInferenceCeiling, limit: CensusCeilin
 fn census_ceiling_limit_tag(limit: CensusCeilingLimit) -> String {
   match limit {
     CoverageNotEstablished => "CoverageNotEstablished"
-    DenominatorNotIndependent => "DenominatorNotIndependent"
+    DenominatorProcedureNotDistinct => "DenominatorProcedureNotDistinct"
     MethodConformanceUnobserved => "MethodConformanceUnobserved"
   }
 }

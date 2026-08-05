@@ -58,7 +58,7 @@ import gunbc.repository_census_coverage {
   CensusCeilingRefusedRunMismatch,
   CensusCeilingLimit,
   CoverageNotEstablished,
-  DenominatorNotIndependent,
+  DenominatorProcedureNotDistinct,
   MethodConformanceUnobserved,
   census_denominator_observation,
   census_denominator_identity,
@@ -1177,7 +1177,7 @@ test fn witness_a_self_joined_census_cannot_reach_an_exhaustive_ceiling() -> Boo
 test fn witness_a_self_joined_census_names_the_independence_limit() -> Bool {
   coverage_witness_ceiling_predicate(
     ceiling: coverage_witness_self_joined_ceiling(),
-    f: ceiling => census_ceiling_has_limit(ceiling: ceiling, limit: DenominatorNotIndependent),
+    f: ceiling => census_ceiling_has_limit(ceiling: ceiling, limit: DenominatorProcedureNotDistinct),
   )
 }
 
