@@ -1,0 +1,14 @@
+field	value
+after_commit	5be7d600efc21526a79e967e93912ada92826f6a
+base_arm	same tree as after_commit with base-arm-revert.patch applied (the two fill functions only)
+base_binary_sha256	2ddef20051bbed71c9a7c940e34f8926a126919dd9ceb55565ea36ef419d5547
+after_binary_sha256	2987a28d15b0f271b2b5506c99959ea1322c7a5025beb04c2e0899022205a1da
+binary	target/release/claim_batch, cargo build --release -p v1-compiler --bin claim_batch
+host_arch	aarch64
+host_cpus	128
+host_mem_total_gib	125
+host_cgroup	root (no per-run cgroup; cgroup peak not separable from the host on this box)
+memory_instrument	/proc/<pid>/status VmHWM sampled at 0.3s; kernel-tracked peak, not a sample maximum
+run_order	base-r1, after-r1, base-r2, after-r2 (interleaved, sequential, one run at a time)
+invocation	single process, single MultiEntryIndex: claim_batch --source-root dag --source-root src/v2 (--entry P --functions F) x50
+selection	none; the roster is the fixed cohort in cohort.tsv, identical in both arms
