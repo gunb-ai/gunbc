@@ -11,9 +11,9 @@ import v2.workflow.ci_floor_plan {
   gunbc_falsifier_substrate_long_lane_batch
 }
 
-data production_qualification_origin_probe_cadence_receipt_plan_note: String = "Head-bound composed-batch cadence receipt (wise-ram-22 / operator review): mirrors falsifier batch 3 (known-red probe, expect_red) then batch 6 (substrate-long, ordinary GREEN expectation) using the production plan's RunnableDiscoveryBatch values — not per-function claim_batch. Lives under test/fixture/ (discovery-excluded). Recipe: claim_executor --source-root dag --source-root src/v2 --plan-entry src/v2/test/fixture/production_qualification_origin_probe/cadence_receipt_plan.dag --plan-function production_qualification_origin_probe_cadence_receipt_plan"
+data production_qualification_origin_probe_cadence_receipt_plan_note: String = "Head-bound composed-batch cadence receipt (wise-ram-22 / operator review): mirrors falsifier batch 3 (known-red probe, expect_red) then batch 6 (substrate-long, ordinary GREEN expectation) using the production plan's RunnableDiscoveryBatch values — not per-function claim_batch. Function is named gunbc_falsifier_plan so claim_executor arms hermetic known-red inversion and substrate-long eval budget (the executor keys those off plan_function, not plan entry). Lives under test/fixture/ (discovery-excluded). Recipe: claim_executor --source-root dag --source-root src/v2 --plan-entry src/v2/test/fixture/production_qualification_origin_probe/cadence_receipt_plan.dag --plan-function gunbc_falsifier_plan"
 
-fn production_qualification_origin_probe_cadence_receipt_plan() -> WalkPlan<NoWalkFinalization> {
+fn gunbc_falsifier_plan() -> WalkPlan<NoWalkFinalization> {
   WalkPlan {
     pre_walk_execution: NoPreWalkExecution {},
     batches: [
