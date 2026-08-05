@@ -55,6 +55,7 @@ type HostEffect =
   | LiveDeployEnsureDependency { dep: DeploymentDependencyStep }
   | LiveDeployDigestReadback { port: Int }
   | LiveDeploySlotRevisionRead { spec: DeploymentSpec }
+  | LiveDeploySlotTreeHeadRead { spec: DeploymentSpec }
   | LiveDeploySlotRevisionRecord { spec: DeploymentSpec, revision: CommitSha }
   | DeployAccessPreflight {}
 

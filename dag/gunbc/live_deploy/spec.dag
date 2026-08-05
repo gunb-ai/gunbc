@@ -42,6 +42,7 @@ import gunbc.roadmap_dashboard_instance {
 import extdeps.http.server { HttpServerListenConfig }
 import product.network_topology { NetworkEndpoint }
 import gunbc.ownership { Ownership, Owned, Ensured }
+import v2.std.algebra { list_head, ListHeadResult, HeadFound, HeadAbsent }
 
 data live_deploy_spec_belt_b_note: String = "Belt B membership (docs/plans/gunbc-served-dashboard-design.md section 5): the service is `gunbc serve` (the seed binary), not an emitted node server.js, so the members flip — ServeBinary + GunbcSourceTree + DispatchWorktreeRoot in (paths from the ONE gunbc.host_layout authority the belt also projects), ServerScript and the NodeJsPackage dependency out (the Ensured nodejs is never torn down — R5; the stale /opt/gunbc/server.js file is left inert on disk and reaped when belt A's interim retires). Deploy principal is ghrunner (DeployRunnerPrincipal.job_user; unit_user=root is NOT the authorization principal). #7011 realization: tree sync AS service user via gunbc-tree-sync.service; six roster sudo grants (Wave C adds visudo for dropin gate). Wave C envelope: in-script preflight + roster-emitted sudoers dropin (gunbc.live_deploy.emit deploy_apply_preamble_shell)."
 
@@ -75,6 +76,34 @@ type DeploymentDependencyStep {
 type DeploymentStep
   = ArtifactStep { step: DeploymentArtifactStep }
   | Dependency { step: DeploymentDependencyStep }
+
+data source_tree_root_accessor_note: String = "THE SLOT'S SOURCE TREE IS ALREADY IN THE ROSTER, so reading it back is a projection rather than a second spelling. deployment_owned_steps builds the GunbcSourceTree member FROM instance.repo_root, and the legacy-revision grounding needs exactly that path to ask git what the slot is serving — re-deriving it from the instance at the grounding site would fork the fact the roster already carries, and would silently disagree the moment a slot's roster changed.\\n\\nThe absent arm is real, not defensive: a DeploymentSpec is a roster, and a roster with no source-tree member is a slot whose revision cannot be grounded from a tree. That refuses upstream rather than being defaulted here."
+
+type SourceTreeRoot
+  = SourceTreeRootAt { path: NonEmptyStr }
+  | SourceTreeRootAbsent
+
+fn deployment_source_tree_root(spec: DeploymentSpec) -> SourceTreeRoot {
+  let tree_steps = filter(
+    spec.steps,
+    st => match st {
+      ArtifactStep { step: a } =>
+        match a.kind {
+          GunbcSourceTree => true
+          _ => false
+        }
+      Dependency { step: _ } => false
+    }
+  )
+  match list_head(xs: tree_steps) {
+    HeadAbsent => SourceTreeRootAbsent
+    HeadFound { value: st } =>
+      match st {
+        ArtifactStep { step: a } => SourceTreeRootAt { path: a.path }
+        Dependency { step: _ } => SourceTreeRootAbsent
+      }
+  }
+}
 
 fn deployment_step_ownership(step: DeploymentStep) -> Ownership {
   match step {

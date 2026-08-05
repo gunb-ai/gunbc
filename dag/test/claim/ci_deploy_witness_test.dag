@@ -52,6 +52,8 @@ import gunbc.live_deploy.coordination {
   MutateRetract,
   MutateRouteFlip,
   MutateSlotRevisionRecord,
+  DeployMutator,
+  deploy_mutator_key,
   deploy_coordination_admission,
   deploy_required_extent,
   deploy_mutation_population,
@@ -60,6 +62,7 @@ import gunbc.live_deploy.coordination {
   host_effect_mutation_locus,
 }
 import gunbc.fleet_intent { HostIdentity }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.cli_invoke { GunbcRunNamedArg }
 import extdeps.exec.command { CommandTransport, LocalExec, SshExec }
 import gunbc.live_deploy.lease {
@@ -98,6 +101,7 @@ import gunbc.live_deploy.apply {
   PrepareCandidateSlot,
   RecordCandidateRevision,
   FlipRouteToCandidate,
+  VerifyRoutedCandidate,
   RetireActiveSlot,
   live_deploy_cutover_stage_order,
 }
@@ -445,7 +449,7 @@ fn subject_with(
   lease_locus: ExecutionLocus,
   mutation_locus: ExecutionLocus,
   lease_extent: CoordinationExtent,
-  covered: List<DeployMutationKind>,
+  covered: List<DeployMutator>,
 ) -> DeployCoordinationSubject {
   DeployCoordinationSubject {
     target: Srv1Dashboard,
@@ -471,7 +475,7 @@ fn refuses_with_locus_mismatch(s: DeployCoordinationSubject) -> Bool {
       match c {
         CoordinationLocusMismatch { lease_host: _, mutation_host: _ } => true
         CoordinationExtentTooShort => false
-        MutationEntrypointUncovered { kind: _ } => false
+        MutationEntrypointUncovered { participant: _ } => false
         CoordinationLocusUnobserved => false
       }
     CoordinationCovers => false
@@ -484,7 +488,7 @@ fn refuses_with_extent_too_short(s: DeployCoordinationSubject) -> Bool {
       match c {
         CoordinationExtentTooShort => true
         CoordinationLocusMismatch { lease_host: _, mutation_host: _ } => false
-        MutationEntrypointUncovered { kind: _ } => false
+        MutationEntrypointUncovered { participant: _ } => false
         CoordinationLocusUnobserved => false
       }
     CoordinationCovers => false
@@ -495,7 +499,7 @@ fn refuses_with_uncovered_entrypoint(s: DeployCoordinationSubject) -> Bool {
   match deploy_coordination_admission(subject: s) {
     CoordinationRefused { cause: c } =>
       match c {
-        MutationEntrypointUncovered { kind: _ } => true
+        MutationEntrypointUncovered { participant: _ } => true
         CoordinationExtentTooShort => false
         CoordinationLocusMismatch { lease_host: _, mutation_host: _ } => false
         CoordinationLocusUnobserved => false
@@ -509,7 +513,7 @@ fn refuses_with_unobserved_locus(s: DeployCoordinationSubject) -> Bool {
     CoordinationRefused { cause: c } =>
       match c {
         CoordinationLocusUnobserved => true
-        MutationEntrypointUncovered { kind: _ } => false
+        MutationEntrypointUncovered { participant: _ } => false
         CoordinationExtentTooShort => false
         CoordinationLocusMismatch { lease_host: _, mutation_host: _ } => false
       }
@@ -520,25 +524,37 @@ fn refuses_with_unobserved_locus(s: DeployCoordinationSubject) -> Bool {
 data witness_host_a: HostIdentity = "srv1"
 data witness_host_b: HostIdentity = "srv2"
 
-fn all_kinds() -> List<DeployMutationKind> { deploy_mutation_population() }
+fn all_participants() -> List<DeployMutator> { deploy_mutation_population() }
 
-test fn locus_matrix_admits_only_same_current_host() -> Bool {
+test fn locus_matrix_admits_exactly_the_same_machine_on_both_sides() -> Bool {
   admits(s: subject_with(
     lease_locus: CurrentHost { host: witness_host_a },
     mutation_locus: CurrentHost { host: witness_host_a },
-    lease_extent: ProcessLifetime, covered: all_kinds()))
+    lease_extent: ProcessLifetime, covered: all_participants()))
+  && admits(s: subject_with(
+    lease_locus: NamedHost { host: witness_host_a },
+    mutation_locus: NamedHost { host: witness_host_a },
+    lease_extent: SessionLifetime, covered: all_participants()))
+  && refuses_with_extent_too_short(s: subject_with(
+    lease_locus: NamedHost { host: witness_host_a },
+    mutation_locus: NamedHost { host: witness_host_a },
+    lease_extent: OneCommand, covered: all_participants()))
+  && refuses_with_locus_mismatch(s: subject_with(
+    lease_locus: NamedHost { host: witness_host_a },
+    mutation_locus: NamedHost { host: witness_host_b },
+    lease_extent: SessionLifetime, covered: all_participants()))
   && refuses_with_locus_mismatch(s: subject_with(
     lease_locus: CurrentHost { host: witness_host_a },
-    mutation_locus: NamedHost { host: witness_host_a },
-    lease_extent: ProcessLifetime, covered: all_kinds()))
+    mutation_locus: NamedHost { host: witness_host_b },
+    lease_extent: ProcessLifetime, covered: all_participants()))
   && refuses_with_locus_mismatch(s: subject_with(
     lease_locus: CurrentHost { host: witness_host_a },
     mutation_locus: CurrentHost { host: witness_host_b },
-    lease_extent: ProcessLifetime, covered: all_kinds()))
+    lease_extent: ProcessLifetime, covered: all_participants()))
   && refuses_with_locus_mismatch(s: subject_with(
     lease_locus: CurrentHost { host: witness_host_a },
     mutation_locus: DeferredExecution,
-    lease_extent: ProcessLifetime, covered: all_kinds()))
+    lease_extent: ProcessLifetime, covered: all_participants()))
 }
 
 data unobserved_is_not_agreement_note: String = "AN UNOBSERVED LOCUS REFUSES ON EITHER SIDE. 'I could not determine which machine I am on' is not 'I am on the right one', and the whole locus axis is worthless if the unknown case defaults toward admission."
@@ -547,11 +563,11 @@ test fn an_unobserved_locus_refuses_on_either_side() -> Bool {
   refuses_with_unobserved_locus(s: subject_with(
     lease_locus: ExecutionLocusUnobserved,
     mutation_locus: CurrentHost { host: witness_host_a },
-    lease_extent: ProcessLifetime, covered: all_kinds()))
+    lease_extent: ProcessLifetime, covered: all_participants()))
   && refuses_with_unobserved_locus(s: subject_with(
     lease_locus: CurrentHost { host: witness_host_a },
     mutation_locus: ExecutionLocusUnobserved,
-    lease_extent: ProcessLifetime, covered: all_kinds()))
+    lease_extent: ProcessLifetime, covered: all_participants()))
 }
 
 data extent_matrix_note: String = "THE EXTENT AXIS FAILS INDEPENDENTLY OF THE LOCUS AXIS, which is why this holds the locus fixed at full agreement. A remote flock wrapping ONE command has a correct locus and still covers nothing across a multi-effect cutover — the defect the future session-lifetime transport must not be able to claim its way past."
@@ -560,32 +576,32 @@ test fn extent_matrix_refuses_a_lock_shorter_than_the_cutover() -> Bool {
   refuses_with_extent_too_short(s: subject_with(
     lease_locus: CurrentHost { host: witness_host_a },
     mutation_locus: CurrentHost { host: witness_host_a },
-    lease_extent: OneCommand, covered: all_kinds()))
+    lease_extent: OneCommand, covered: all_participants()))
   && admits(s: subject_with(
     lease_locus: CurrentHost { host: witness_host_a },
     mutation_locus: CurrentHost { host: witness_host_a },
-    lease_extent: ProcessLifetime, covered: all_kinds()))
+    lease_extent: ProcessLifetime, covered: all_participants()))
   && admits(s: subject_with(
     lease_locus: CurrentHost { host: witness_host_a },
     mutation_locus: CurrentHost { host: witness_host_a },
-    lease_extent: SessionLifetime, covered: all_kinds()))
+    lease_extent: SessionLifetime, covered: all_participants()))
 }
 
-data participant_completeness_note: String = "THE POPULATION AXIS, PLANTED. Dropping retract from the covered set must red — that is the exact state this PR shipped before the operator caught it, with a carrier note claiming full coverage while both retract entries bypassed the lease. Every kind is dropped in turn so no single arm is special-cased."
+data participant_completeness_note: String = "THE POPULATION AXIS, PLANTED AT PARTICIPANT IDENTITY. Dropping retract from the covered set must red — that is the exact state this PR shipped before the operator caught it, with a carrier note claiming full coverage while both retract entries bypassed the lease. Every PARTICIPANT is dropped in turn, so no single declaration is special-cased, and the planted-fifth-entrypoint control below covers the case the kind grain could not see at all."
 
 test fn participant_completeness_reds_when_any_mutator_is_uncovered() -> Bool {
   all(
-    all_kinds(),
+    all_participants(),
     dropped => refuses_with_uncovered_entrypoint(s: subject_with(
       lease_locus: CurrentHost { host: witness_host_a },
       mutation_locus: CurrentHost { host: witness_host_a },
       lease_extent: ProcessLifetime,
-      covered: filter(all_kinds(), k => k != dropped)))
+      covered: filter(all_participants(), m => deploy_mutator_key(m: m) != deploy_mutator_key(m: dropped))))
   )
   && admits(s: subject_with(
       lease_locus: CurrentHost { host: witness_host_a },
       mutation_locus: CurrentHost { host: witness_host_a },
-      lease_extent: ProcessLifetime, covered: all_kinds()))
+      lease_extent: ProcessLifetime, covered: all_participants()))
 }
 
 data transport_projection_witness_note: String = "THE PROJECTIONS ARE FACTS, ASSERTED SEPARATELY FROM THE POLICY THAT READS THEM. If a future transport is to become admissible by reporting a session lifetime rather than by an edit to a policy match, then what each transport reports has to be pinned — otherwise the projection becomes the new place to quietly change the answer."
@@ -653,14 +669,14 @@ test fn apply_carries_the_candidate_and_retract_carries_none() -> Bool {
 
 data lease_namespace_witness_note: String = "THE LOCK DIRECTORY MUST BE PROVISIONED BEFORE ACQUISITION, and this pins that the provisioning command targets the lock path's own parent. Nothing created /var/lib/gunbc/deploy-lease before the operator caught it, so the first launcher would have failed at flock — before reaching any inner process that could have created it."
 
-test fn the_lease_namespace_command_provisions_the_lock_parent() -> Bool {
+test fn the_lease_namespace_command_provisions_the_lock_object() -> Bool {
   let argv = live_deploy_lease_namespace_command(
     invocation: live_deploy_exclusive_invocation(target: Srv1Dashboard)
   ).argv
   head_is(argv: argv, expected: "sudo")
     && contains_element(argv, "install")
     && contains_element(argv, "-d")
-    && contains_element(argv, deploy_target_lease_dir as String)
+    && contains_element(argv, deploy_target_lease_path(target: Srv1Dashboard) as String)
     && substring(
          s: deploy_target_lease_path(target: Srv1Dashboard) as String,
          start: 0,
@@ -735,13 +751,16 @@ fn probe_holds(o: LeaseProbeOutcome) -> Bool {
 }
 
 test fn the_lease_probe_accepts_only_the_free_contended_free_sequence() -> Bool {
-  probe_holds(o: lease_probe_outcome(lock: "/l", free_before: 0, contended: flock_conflict_exit_code, free_after: 0))
-    && !probe_holds(o: lease_probe_outcome(lock: "/l", free_before: 1, contended: flock_conflict_exit_code, free_after: 0))
-    && !probe_holds(o: lease_probe_outcome(lock: "/l", free_before: flock_conflict_exit_code, contended: flock_conflict_exit_code, free_after: 0))
-    && !probe_holds(o: lease_probe_outcome(lock: "/l", free_before: 0, contended: 0, free_after: 0))
-    && !probe_holds(o: lease_probe_outcome(lock: "/l", free_before: 0, contended: 1, free_after: 0))
-    && !probe_holds(o: lease_probe_outcome(lock: "/l", free_before: 0, contended: flock_conflict_exit_code, free_after: flock_conflict_exit_code))
-    && !probe_holds(o: lease_probe_outcome(lock: "/l", free_before: 0, contended: flock_conflict_exit_code, free_after: 1))
+  probe_holds(o: lease_probe_outcome(lock: "/l", cleared: 0, free_before: 0, contended: flock_conflict_exit_code, inner_ran: 0, free_after: 0, object_stable: 0))
+    && !probe_holds(o: lease_probe_outcome(lock: "/l", cleared: 1, free_before: 0, contended: flock_conflict_exit_code, inner_ran: 0, free_after: 0, object_stable: 0))
+    && !probe_holds(o: lease_probe_outcome(lock: "/l", cleared: 0, free_before: 1, contended: flock_conflict_exit_code, inner_ran: 0, free_after: 0, object_stable: 0))
+    && !probe_holds(o: lease_probe_outcome(lock: "/l", cleared: 0, free_before: flock_conflict_exit_code, contended: flock_conflict_exit_code, inner_ran: 0, free_after: 0, object_stable: 0))
+    && !probe_holds(o: lease_probe_outcome(lock: "/l", cleared: 0, free_before: 0, contended: 0, inner_ran: 0, free_after: 0, object_stable: 0))
+    && !probe_holds(o: lease_probe_outcome(lock: "/l", cleared: 0, free_before: 0, contended: 1, inner_ran: 0, free_after: 0, object_stable: 0))
+    && !probe_holds(o: lease_probe_outcome(lock: "/l", cleared: 0, free_before: 0, contended: flock_conflict_exit_code, inner_ran: 0, free_after: flock_conflict_exit_code, object_stable: 0))
+    && !probe_holds(o: lease_probe_outcome(lock: "/l", cleared: 0, free_before: 0, contended: flock_conflict_exit_code, inner_ran: 0, free_after: 1, object_stable: 0))
+    && !probe_holds(o: lease_probe_outcome(lock: "/l", cleared: 0, free_before: 0, contended: flock_conflict_exit_code, inner_ran: 1, free_after: 0, object_stable: 0))
+    && !probe_holds(o: lease_probe_outcome(lock: "/l", cleared: 0, free_before: 0, contended: flock_conflict_exit_code, inner_ran: 0, free_after: 0, object_stable: 1))
 }
 
 data probe_uses_the_real_builder_note: String = "The probe's argv must be the deploy's own flock command, not a hand-spelled one — otherwise it proves that some flock invocation works on srv1 while leaving the command this model actually constructs unexercised. Step B nests the same builder inside itself, which is what makes the conflict come from this argv rather than from a bespoke one."
@@ -809,6 +828,7 @@ fn crash_prefix_apply_stage(w: PrefixWorld, stage: CutoverStage) -> PrefixWorld 
         candidate_recorded: w.candidate_recorded,
         candidate_serves: w.candidate_serves,
       }
+    VerifyRoutedCandidate => w
     RetireActiveSlot => w
   }
 }
@@ -847,6 +867,7 @@ data crash_prefix_rejected_order: List<CutoverStage> = [
   PrepareCandidateSlot,
   FlipRouteToCandidate,
   RecordCandidateRevision,
+  VerifyRoutedCandidate,
   RetireActiveSlot,
 ]
 
@@ -909,4 +930,104 @@ test fn the_violated_prefix_authorizes_a_backward_public_move() -> Bool {
        }
     && any(crashed.holds, h => !h)
     && all(landed.holds, h => h)
+}
+
+data planted_fifth_entrypoint_note: String = "THE CONTROL THE KIND GRAIN COULD NOT EXPRESS (operator ruling 2026-08-05). Under the previous shape both sides listed the same four KINDS, so a new public function performing an existing kind — say a fifth entrypoint that only flips the route — found MutateRouteFlip already covered and the admission stayed green while a real mutator sat outside the lease. Planting exactly that participant is the discriminating input: same kind, new declaration, must refuse. It reds if the join is ever weakened back to kinds."
+
+fn planted_route_flip_entrypoint() -> DeployMutator {
+  DeployMutator {
+    declaration: DeclarationRef {
+      module_path: "gunbc.live_deploy.apply",
+      decl_name: "some_future_route_only_entrypoint",
+      field: WholeDeclaration,
+    },
+    kind: MutateRouteFlip,
+  }
+}
+
+test fn a_new_entrypoint_performing_a_covered_kind_still_refuses() -> Bool {
+  let planted = planted_route_flip_entrypoint()
+  let widened = concat(all_participants(), [planted])
+  any(all_participants(), m => m.kind == MutateRouteFlip)
+    && !any(all_participants(), m => deploy_mutator_key(m: m) == deploy_mutator_key(m: planted))
+    && refuses_with_uncovered_entrypoint(s: DeployCoordinationSubject {
+         target: Srv1Dashboard,
+         lease_locus: CurrentHost { host: witness_host_a },
+         mutation_locus: CurrentHost { host: witness_host_a },
+         lease_extent: ProcessLifetime,
+         required_extent: deploy_required_extent,
+         mutation_population: widened,
+         covered_population: all_participants(),
+       })
+}
+
+data future_remote_session_note: String = "THE ESCAPE HATCH THE MODULE ADVERTISES MUST ACTUALLY BE REACHABLE. coordination_coverage_note promises a future remote-session transport becomes admissible by REPORTING SessionLifetime rather than by editing a policy match. Under the previous locus fold that was false — every NamedHost lease locus refused before extent was consulted, so no lifetime value could admit it. This asserts the promise directly: same named host on both sides, session lifetime, admits; the same pair at one-command lifetime refuses on extent, which is where today's SSH realization correctly lands."
+
+test fn a_future_remote_session_is_admissible_without_a_policy_edit() -> Bool {
+  admits(s: subject_with(
+    lease_locus: NamedHost { host: witness_host_a },
+    mutation_locus: NamedHost { host: witness_host_a },
+    lease_extent: SessionLifetime, covered: all_participants()))
+  && refuses_with_extent_too_short(s: subject_with(
+    lease_locus: NamedHost { host: witness_host_a },
+    mutation_locus: NamedHost { host: witness_host_a },
+    lease_extent: OneCommand, covered: all_participants()))
+  && match command_transport_lease_extent(transport: SshExec { ssh_target: "srv1" as NonEmptyStr }) {
+       OneCommand => true
+       _ => false
+     }
+}
+
+data lock_object_witness_note: String = "THE LOCK OBJECT IS A DIRECTORY AND THE NAMESPACE IS NOT WORLD-WRITABLE. A replaceable pathname passes a free/contended/free probe perfectly while providing no exclusion — measured, and recorded in lock_object_is_a_directory_note. These pin the two facts that remove the replacement: the provisioning command creates the LOCK OBJECT itself (not merely its parent) so the object exists before anyone locks it, and it does so at 0755 rather than 0777, so no unprivileged principal can unlink or rename it."
+
+test fn the_lock_object_is_provisioned_as_a_stable_directory() -> Bool {
+  let argv = live_deploy_lease_namespace_command(
+    invocation: live_deploy_exclusive_invocation(target: Srv1Dashboard)
+  ).argv
+  let lock = deploy_target_lease_path(target: Srv1Dashboard) as String
+  head_is(argv: argv, expected: "sudo")
+    && contains_element(argv, "install")
+    && contains_element(argv, "-d")
+    && contains_element(argv, "0755")
+    && !contains_element(argv, "0777")
+    && contains_element(argv, lock)
+    && !string_contains(s: lock, pattern: ".lock")
+    && string_contains(s: lock, pattern: deploy_target_lease_dir as String)
+}
+
+data cutover_verifies_before_retiring_note: String = "RETIREMENT IS GATED ON A VERIFIED ROUTE, NOT ON A ZERO EXIT. The flip stage reports whether the `tailscale serve` command converged; that is not an observation that the public mapping moved. Without a verification stage between them, a command that succeeded while the mapping stayed stale is followed straight by stopping the runtime that is still routed. These assert the stage exists, sits between the flip and the retirement, and that the order is still the record-before-flip order the crash-prefix control depends on."
+
+test fn the_routed_candidate_is_verified_before_the_old_runtime_retires() -> Bool {
+  let order = live_deploy_cutover_stage_order
+  count(order) == 5
+    && stage_index(order: order, stage: RecordCandidateRevision) < stage_index(order: order, stage: FlipRouteToCandidate)
+    && stage_index(order: order, stage: FlipRouteToCandidate) < stage_index(order: order, stage: VerifyRoutedCandidate)
+    && stage_index(order: order, stage: VerifyRoutedCandidate) < stage_index(order: order, stage: RetireActiveSlot)
+}
+
+fn stage_key(stage: CutoverStage) -> String {
+  match stage {
+    PrepareCandidateSlot => "prepare"
+    RecordCandidateRevision => "record"
+    FlipRouteToCandidate => "flip"
+    VerifyRoutedCandidate => "verify"
+    RetireActiveSlot => "retire"
+  }
+}
+
+type StageIndexScan {
+  seen: Int
+  found: Int
+}
+
+fn stage_index(order: List<CutoverStage>, stage: CutoverStage) -> Int {
+  let scan = fold(
+    order,
+    init: StageIndexScan { seen: 0, found: 0 - 1 },
+    f: (acc, s) => StageIndexScan {
+      seen: acc.seen + 1,
+      found: if stage_key(stage: s) == stage_key(stage: stage) { acc.seen } else { acc.found },
+    }
+  )
+  scan.found
 }

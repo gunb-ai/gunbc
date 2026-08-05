@@ -103,25 +103,42 @@ fn execution_locus_host_text(locus: ExecutionLocus) -> String {
   }
 }
 
+data deferred_is_not_unobserved_note: String = "DEFERRED AND UNOBSERVED ARE DIFFERENT REFUSALS, and collapsing them would be the state-space conflation this module was built to avoid — committed briefly while making the locus fold symmetric on identity. 'The effects are handed to another process to run later' is a KNOWN locus that no lease held here can cover, which is a mismatch; 'I could not determine where these effects land' is ignorance, which is the unobserved arm. The two have different remedies — the first needs a different coordination mechanism, the second needs an observation to succeed — so they keep different causes."
+
 fn locus_machine_identity(locus: ExecutionLocus) -> ObservedMachine {
   match locus {
     CurrentHost { host: h } => MachineNamed { host: h }
     NamedHost { host: h } => MachineNamed { host: h }
-    DeferredExecution => MachineIndeterminate
-    ExecutionLocusUnobserved => MachineIndeterminate
+    DeferredExecution => MachineDeferred
+    ExecutionLocusUnobserved => MachineUnobserved
   }
 }
 
 type ObservedMachine
   = MachineNamed { host: HostIdentity }
-  | MachineIndeterminate
+  | MachineDeferred
+  | MachineUnobserved
 
 fn coordination_locus_covers(lease: ExecutionLocus, mutation: ExecutionLocus) -> CoordinationAdmission {
   match locus_machine_identity(locus: lease) {
-    MachineIndeterminate => CoordinationRefused { cause: CoordinationLocusUnobserved }
+    MachineUnobserved => CoordinationRefused { cause: CoordinationLocusUnobserved }
+    MachineDeferred =>
+      CoordinationRefused {
+        cause: CoordinationLocusMismatch {
+          lease_host: execution_locus_host_text(locus: lease),
+          mutation_host: execution_locus_host_text(locus: mutation),
+        }
+      }
     MachineNamed { host: lease_host } =>
       match locus_machine_identity(locus: mutation) {
-        MachineIndeterminate => CoordinationRefused { cause: CoordinationLocusUnobserved }
+        MachineUnobserved => CoordinationRefused { cause: CoordinationLocusUnobserved }
+        MachineDeferred =>
+          CoordinationRefused {
+            cause: CoordinationLocusMismatch {
+              lease_host: execution_locus_host_text(locus: lease),
+              mutation_host: execution_locus_host_text(locus: mutation),
+            }
+          }
         MachineNamed { host: mutation_host } =>
           if lease_host == mutation_host {
             CoordinationCovers

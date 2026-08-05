@@ -76,6 +76,7 @@ fn converge_cli_applied_knob_count(intent: HostEffectIntent, fallback: Int) -> I
     LiveDeployEnsureDependency { dep: _ } => fallback
     LiveDeployDigestReadback { port: _ } => fallback
     LiveDeploySlotRevisionRead { spec: _ } => fallback
+    LiveDeploySlotTreeHeadRead { spec: _ } => fallback
     LiveDeploySlotRevisionRecord { spec: _, revision: _ } => fallback
     DeployAccessPreflight {} => fallback
   }

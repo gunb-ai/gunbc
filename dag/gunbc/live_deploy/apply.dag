@@ -73,6 +73,7 @@ import gunbc.host_effect {
   LiveDeployDigestReadback,
   LiveDeploySlotRevisionRead,
   LiveDeploySlotRevisionRecord,
+  LiveDeploySlotTreeHeadRead,
   DeployAccessPreflight,
 }
 import gunbc.host_effect_realize { host_effect_apply_gated }
@@ -197,28 +198,85 @@ type CutoverStage
   = PrepareCandidateSlot
   | RecordCandidateRevision
   | FlipRouteToCandidate
+  | VerifyRoutedCandidate
   | RetireActiveSlot
 
 data live_deploy_cutover_stage_order: List<CutoverStage> = [
   PrepareCandidateSlot,
   RecordCandidateRevision,
   FlipRouteToCandidate,
+  VerifyRoutedCandidate,
   RetireActiveSlot,
 ]
 
-data route_outcome_is_its_own_coproduct_note: String = "NOT Optional<Reconciliation>. 'The route was never flipped' and 'the flip failed' are different states with different remedies — the first means the stage order does not publish at all and the deploy must refuse; the second is an ordinary non-converged stage the fold already short-circuits on and reports. Collapsing both onto Absent would be the state-space conflation DESIGN's failure-mode list names, and it would also make the refusal below unable to say which one happened."
+data capability_carrying_progress_note: String = "EACH STAGE'S PRODUCT IS A CAPABILITY THE NEXT STAGE CONSUMES, so ordering is enforced by what exists rather than by where the row happens to sit (operator ruling 2026-08-05). An earlier revision constructed VerifiedRecordedCandidate INSIDE the flip arm from the admission and the slot — values the flip already had — so the carrier's claim that 'routing to a slot whose identity is not durably recorded is unwritable' rested on the stage ORDER and its witness, not on the type. Reordering the row, or calling the flip arm directly, would have fabricated the capability from nothing.\\n\\nNow the record stage RETURNS the evidence and the flip stage matches on it: with CandidateRevisionNotRecorded there is no VerifiedRecordedCandidate to build and the arm refuses. The same shape carries forward one more step — the flip returns the published route, the verify stage consumes it and returns RoutedCandidateVerified, and retirement refuses without that. So each of the three dangerous transitions is gated on a value only its predecessor can produce.\\n\\nEvery one of these is a coproduct of its own rather than an Optional, for the reason route_outcome_is_its_own_coproduct_note gives: 'never reached' and 'failed' are different states with different remedies, and the refusal has to be able to say which."
 
 type CutoverRouteOutcome
   = RouteNotFlipped
   | RoutePublished { reconciliation: Reconciliation<HostEffectIntent, HostEffectEvidence> }
 
+type CandidateRecordOutcome
+  = CandidateRevisionNotRecorded
+  | CandidateRevisionRecorded { admission: RevisionAdvance, slot: DeploymentSpec, revision: CommitSha }
+
+type RoutedVerifyOutcome
+  = RoutedCandidateUnverified
+  | RoutedCandidateVerified { slot: DeploymentSpec }
+
 type CutoverProgress {
   last: Reconciliation<HostEffectIntent, HostEffectEvidence>
+  recorded: CandidateRecordOutcome
   flip: CutoverRouteOutcome
+  verified: RoutedVerifyOutcome
+}
+
+data verify_routed_candidate_note: String = "A ZERO EXIT FROM `tailscale serve` IS NOT AN OBSERVATION THAT THE ROUTE MOVED (operator ruling 2026-08-05). The flip stage emits the route command and reports whether the command converged; nothing re-read the public mapping afterwards. So a command that succeeded while the mapping stayed stale, was applied asynchronously, or landed somewhere unexpected would be followed immediately by RetireActiveSlot — stopping the runtime that is still publicly routed, which is the outage the blue/green order exists to prevent.\\n\\nThis stage re-reads Tailscale's own status and requires the root mount to carry EXACTLY the candidate slot's proxy: exactly one target, and that target the candidate's. Anything else refuses BEFORE retirement, which leaves both runtimes up — the safe residue, because the public route is whatever it actually is and the old process is still there to serve it.\\n\\nIt reuses the same status read and proxy projection the slot selection uses, so 'which slot is routed' has one answer in this module rather than two that could disagree."
+
+fn live_deploy_verify_routed_candidate(
+  candidate: DeploymentSpec,
+  transport: HostEffectTransport,
+  access: DeployAccess,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  match tailscale_serve_status_read(transport: transport) {
+    TailscaleServeStatusReadRefused { reason } =>
+      NotConverged {
+        reason: concat("routed-candidate verification refused: ", reason),
+        applied: live_deploy_preflight_intent(access: access),
+      }
+    TailscaleServeStatusObserved { json } => {
+      let proxies = tailscale_serve_status_proxy_targets(status_json: json, mount: ServeRootMount)
+      let want = tailscale_serve_proxy_url(endpoint: candidate.names.tailscale_serve_endpoint)
+      let hits = count(filter(proxies, p => p == want))
+      if count(proxies) == 1 && hits == 1 {
+        Converged {
+          evidence: ShellEffectApplied {
+            exit_code: 0,
+            stdout: concat("routed-candidate verified: root Proxy is ", want),
+          },
+          applied: live_deploy_preflight_intent(access: access),
+        }
+      } else {
+        NotConverged {
+          reason: join(
+            [
+              "routed-candidate verification refused: after the flip the root Tailscale Serve mount must carry exactly the candidate's Proxy ",
+              want,
+              "; observed-count=", to_string(count(proxies)),
+              " candidate-hits=", to_string(hits),
+              ". Refusing before retirement so the currently routed runtime keeps serving"
+            ],
+            ""
+          ),
+          applied: live_deploy_preflight_intent(access: access),
+        }
+      }
+    }
+  }
 }
 
 fn live_deploy_run_cutover_stage(
   stage: CutoverStage,
+  progress: CutoverProgress,
   active: DeploymentSpec,
   idle: DeploymentSpec,
   admission: RevisionAdvance,
@@ -240,31 +298,47 @@ fn live_deploy_run_cutover_stage(
         access: access,
       )
     FlipRouteToCandidate =>
-      live_deploy_flip_route_to_recorded_candidate(
-        recorded: VerifiedRecordedCandidate {
-          admission: admission,
-          slot: idle,
-          revision: admission.to,
-        },
-        transport: transport,
-        access: access,
-      )
+      match progress.recorded {
+        CandidateRevisionNotRecorded =>
+          NotConverged {
+            reason: "blue/green cutover refused: the route flip requires a recorded candidate, and no RecordCandidateRevision stage has produced one. Routing to a slot whose revision is not durably recorded is what lets a later candidate read a stale receipt and move the public service backward",
+            applied: live_deploy_preflight_intent(access: access),
+          }
+        CandidateRevisionRecorded { admission: adm, slot: recorded_slot, revision: rev } =>
+          live_deploy_flip_route_to_recorded_candidate(
+            recorded: VerifiedRecordedCandidate {
+              admission: adm,
+              slot: recorded_slot,
+              revision: rev,
+            },
+            transport: transport,
+            access: access,
+          )
+      }
+    VerifyRoutedCandidate =>
+      match progress.flip {
+        RouteNotFlipped =>
+          NotConverged {
+            reason: "blue/green cutover refused: routed-candidate verification requires a published route, and no FlipRouteToCandidate stage has produced one",
+            applied: live_deploy_preflight_intent(access: access),
+          }
+        RoutePublished { reconciliation: _ } =>
+          live_deploy_verify_routed_candidate(candidate: idle, transport: transport, access: access)
+      }
     RetireActiveSlot =>
-      live_deploy_retract_via_transport(
-        spec: deployment_retiring_slot_spec(spec: active),
-        transport: transport,
-        access: access,
-      )
-  }
-}
-
-fn cutover_flip_if_converged(
-  result: Reconciliation<HostEffectIntent, HostEffectEvidence>,
-) -> CutoverRouteOutcome {
-  if reconciliation_converged(r: result) {
-    RoutePublished { reconciliation: result }
-  } else {
-    RouteNotFlipped
+      match progress.verified {
+        RoutedCandidateUnverified =>
+          NotConverged {
+            reason: "blue/green cutover refused: retiring the active runtime requires a VERIFIED routed candidate, and no VerifyRoutedCandidate stage has produced one. Stopping the old runtime on the strength of a zero exit from the route command is how a successful-looking flip takes the public service down",
+            applied: live_deploy_preflight_intent(access: access),
+          }
+        RoutedCandidateVerified { slot: _ } =>
+          live_deploy_retract_via_transport(
+            spec: deployment_retiring_slot_spec(spec: active),
+            transport: transport,
+            access: access,
+          )
+      }
   }
 }
 
@@ -281,7 +355,9 @@ fn live_deploy_run_cutover_stages(
       evidence: ShellEffectApplied { exit_code: 0, stdout: "cutover: no stage executed yet" },
       applied: live_deploy_preflight_intent(access: access),
     },
+    recorded: CandidateRevisionNotRecorded,
     flip: RouteNotFlipped,
+    verified: RoutedCandidateUnverified,
   }
   let progress = fold(
     stages,
@@ -292,21 +368,40 @@ fn live_deploy_run_cutover_stages(
       } else {
         let result = live_deploy_run_cutover_stage(
           stage: stage,
+          progress: acc,
           active: active,
           idle: idle,
           admission: admission,
           transport: transport,
           access: access,
         )
+        let ok = reconciliation_converged(r: result)
         match stage {
+          PrepareCandidateSlot =>
+            CutoverProgress { last: result, recorded: acc.recorded, flip: acc.flip, verified: acc.verified }
+          RecordCandidateRevision =>
+            CutoverProgress {
+              last: result,
+              recorded: cutover_recorded_if_converged(ok: ok, admission: admission, slot: idle),
+              flip: acc.flip,
+              verified: acc.verified,
+            }
           FlipRouteToCandidate =>
             CutoverProgress {
               last: result,
-              flip: cutover_flip_if_converged(result: result),
+              recorded: acc.recorded,
+              flip: cutover_flip_if_converged(ok: ok, result: result),
+              verified: acc.verified,
             }
-          PrepareCandidateSlot => CutoverProgress { last: result, flip: acc.flip }
-          RecordCandidateRevision => CutoverProgress { last: result, flip: acc.flip }
-          RetireActiveSlot => CutoverProgress { last: result, flip: acc.flip }
+          VerifyRoutedCandidate =>
+            CutoverProgress {
+              last: result,
+              recorded: acc.recorded,
+              flip: acc.flip,
+              verified: cutover_verified_if_converged(ok: ok, slot: idle),
+            }
+          RetireActiveSlot =>
+            CutoverProgress { last: result, recorded: acc.recorded, flip: acc.flip, verified: acc.verified }
         }
       }
   )
@@ -321,6 +416,33 @@ fn live_deploy_run_cutover_stages(
           applied: live_deploy_preflight_intent(access: access),
         }
     }
+  }
+}
+
+fn cutover_recorded_if_converged(ok: Bool, admission: RevisionAdvance, slot: DeploymentSpec) -> CandidateRecordOutcome {
+  if ok {
+    CandidateRevisionRecorded { admission: admission, slot: slot, revision: admission.to }
+  } else {
+    CandidateRevisionNotRecorded
+  }
+}
+
+fn cutover_flip_if_converged(
+  ok: Bool,
+  result: Reconciliation<HostEffectIntent, HostEffectEvidence>,
+) -> CutoverRouteOutcome {
+  if ok {
+    RoutePublished { reconciliation: result }
+  } else {
+    RouteNotFlipped
+  }
+}
+
+fn cutover_verified_if_converged(ok: Bool, slot: DeploymentSpec) -> RoutedVerifyOutcome {
+  if ok {
+    RoutedCandidateVerified { slot: slot }
+  } else {
+    RoutedCandidateUnverified
   }
 }
 
@@ -626,6 +748,76 @@ fn observe_routed_slot_revision(
   }
 }
 
+data legacy_grounding_note: String = "THE MIGRATION PRODUCER, WITHOUT WHICH THE REFUSAL IS A DEADLOCK (operator ruling 2026-08-05). Making an unrecorded routed slot refuse closed a real rollback hole, and closed liveness with it: no slot carries a receipt today, receipts are written only after an admitted advance, and admission now requires a grounded receipt — so the first deploy after merge refuses, and so does every deploy after that. Safe and permanently stuck is not the state this change is for.\\n\\nSo an unrecorded routed slot is GROUNDED rather than accepted or refused outright: read the slot's own synced git HEAD, and if that yields a real sha, write it as the slot's first receipt and re-read through the ordinary path. The candidate is then classified against a grounded left-hand side by the same unchanged decision — a stale candidate still keeps, an unrelated one still refuses. Nothing about the ordering law is relaxed for the first run.\\n\\nEVERY FAILURE ARM STILL REFUSES. An unreadable tree, a non-repository, a HEAD that is not a sha, a failed receipt write, and a re-read that is still not Recorded all end at ActiveRevisionUngrounded or Unreadable. The grounding path can only ever turn 'unknown' into 'known'; it cannot turn 'unknown' into 'assume anything'.\\n\\nWHY NOT A ONE-TIME MANUAL SEED: it would make the permanent apply path depend on an undocumented external preparation step, so a fresh slot — a future green, a rebuilt host, a second target — would silently be back in the deadlock with nobody holding the knowledge that a hand-run command is required.\\n\\n🟡 dissolve-on: the served process publishes the identity it was launched with (deploy_slot_revision_receipt_note's own dissolve-on). At that point the active revision is read from the RUNNING process, grounding stops being a migration step, and this whole path deletes."
+
+fn ground_unrecorded_slot_revision(
+  active: DeploymentSpec,
+  transport: HostEffectTransport,
+  access: DeployAccess,
+) -> ObservedDeployedRevision {
+  let head = live_deploy_fold(
+    spec: active,
+    effect: LiveDeploySlotTreeHeadRead { spec: active },
+    transport: transport,
+    access: access,
+    fixture_actor: Absent,
+    fixture_host: Absent
+  )
+  match head {
+    NotConverged { reason: why, applied: _ } =>
+      DeployedRevisionUnreadable {
+        cause: concat(
+          "the routed slot carries no revision receipt and its source tree could not be read to ground one: ",
+          why
+        ) as NonEmptyStr
+      }
+    Converged { evidence: e, applied: _ } =>
+      match e {
+        ConvergePlanApplied { exit_code: _, stdout: _ } =>
+          DeployedRevisionUnreadable {
+            cause: "slot tree-head grounding returned converge-plan evidence, which cannot carry a revision" as NonEmptyStr
+          }
+        ShellEffectApplied { exit_code: _, stdout: out } =>
+          match sha1_hex_digest(hex: out) {
+            Absent =>
+              DeployedRevisionUnreadable {
+                cause: "the routed slot's tree HEAD is not exactly 40 lowercase-hex bytes, so the running revision cannot be grounded; refusing rather than recording a guess" as NonEmptyStr
+              }
+            Present { value: _ } => {
+              let written = live_deploy_record_slot_revision(
+                spec: active,
+                revision: out as CommitSha,
+                transport: transport,
+                access: access,
+              )
+              if !reconciliation_converged(r: written) {
+                DeployedRevisionUnreadable {
+                  cause: "the routed slot's revision was grounded from its tree but the initial receipt could not be written, so the next deploy would face the same ungrounded state" as NonEmptyStr
+                }
+              } else {
+                observe_routed_slot_revision(active: active, transport: transport, access: access)
+              }
+            }
+          }
+      }
+  }
+}
+
+data grounding_is_attempted_once_note: String = "THE RE-READ GOES THROUGH observe_routed_slot_revision AND ITS RESULT IS USED AS-IS, so this is not a retry loop and cannot recurse: grounding is attempted only from the Unrecorded arm of the FIRST observation, and if the re-read still reports Unrecorded — a receipt that was written and then read back absent — the caller refuses with ActiveRevisionUngrounded rather than grounding again. One attempt, then the ordinary decision."
+
+fn observe_or_ground_routed_slot_revision(
+  active: DeploymentSpec,
+  transport: HostEffectTransport,
+  access: DeployAccess,
+) -> ObservedDeployedRevision {
+  match observe_routed_slot_revision(active: active, transport: transport, access: access) {
+    DeployedRevisionRecorded { revision: r } => DeployedRevisionRecorded { revision: r }
+    DeployedRevisionUnreadable { cause: why } => DeployedRevisionUnreadable { cause: why }
+    DeployedRevisionUnrecorded =>
+      ground_unrecorded_slot_revision(active: active, transport: transport, access: access)
+  }
+}
+
 data slot_revision_parse_refuses_note: String = "A RECEIPT BODY THAT IS NOT A COMMIT SHA IS UNREADABLE, NOT ABSENT, AND NOTHING NORMALIZES IT FIRST. The read script `cat`s the file verbatim — an earlier revision ran `tr -d '[:space:]'` first, which deletes INTERNAL whitespace and so collapsed a receipt corrupted into whitespace-separated fragments into a well-formed 40-character sha (operator ruling 2026-08-05). sha1_hex_digest is the validating partial bridge from std.content_hash — exact 40-digit lowercase hex, refusing rather than folding case or length — so a truncated, half-written, or hand-edited receipt lands in the Unreadable arm and REFUSES the deploy. Treating it as 'no revision recorded' would let a corrupted file authorize a deploy that monotonicity would otherwise have stopped, which is the ⊥-as-ignorance-read-as-⊥-as-answer collapse DESIGN §5 names.\\n\\nThe unrecorded token is compared against the single constant the read script prints, so the two sides of that boundary cannot drift into disagreeing about what absence looks like."
 
 fn parse_slot_revision_stdout(stdout: String) -> ObservedDeployedRevision {
@@ -767,7 +959,7 @@ fn live_deploy_apply_srv1_with_access_for_candidate(
         BlueGreenSlotsSelected { active, idle: _ } =>
           live_deploy_decision_outcome(
             decision: decide_deploy_against_routed_slot(
-              observed: observe_routed_slot_revision(
+              observed: observe_or_ground_routed_slot_revision(
                 active: active,
                 transport: access.transport,
                 access: access,
