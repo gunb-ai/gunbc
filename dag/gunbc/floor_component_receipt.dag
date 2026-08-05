@@ -159,13 +159,24 @@ fn floor_component_outcome_of_tag(
 
 data floor_component_failure_mode_note: String = "The seed's failure-mode vocabulary (claim_executor falsifier_failure_mode: BudgetExceeded | Infra | WitnessRed, plus the no-failures case) mapped onto ObservationOutcome HERE rather than in Rust, so the classification sits under a witness and the seed transport carries no judgment of its own. BudgetExceeded becomes Refused, not Failed: a kill at a declared ceiling is the deliberate, located stop observation_refused_distinct_note defines Refused to mean, and its remedy (re-basis the dated ceiling, or fix the row's cost) differs from a broken witness's. UNKNOWN MODE REFUSES. The first version of this mapping lived in the seed with a `_ => failed` catch-all, which would have absorbed a newly added mode into `failed` silently — a widen with no diagnostic, exactly the absorbing fallback DESIGN section 5 forbids. Here an unmodelled mode returns absent, the row cannot be built, and the walk fails closed with the mode named."
 
+data floor_component_outcome_of_mode_single_authority_note: String = "ONE tag table, not two. An earlier revision of the failure-mode edge parsed the seed's tag twice — once to a FloorComponentFailureMode and once, separately, to an ObservationOutcome — so the tag vocabulary was written out in two parallel string tables that had to be edited together (caught by review 48341 on gunbc#7827, non-blocking; fixed here rather than left, because two representations of one vocabulary is the second-representation DESIGN 3 forbids and the fact that today's only caller invokes them back-to-back makes the drift local, not impossible). The outcome is now derived FROM THE MODE rather than from the tag, so the tag appears exactly once (floor_component_failure_mode_of) and the mode-to-outcome collapse appears exactly once here. A newly added mode is a compile error in this match instead of a silently unmapped string, which is the construction form of the fail-closed property the note above states. ModeUnrecorded REFUSES rather than being given an outcome: it is not a failure mode at all, it is the absence of a recorded one, so inventing an outcome for it would be the fabricated-plausible-output DESIGN 5 forbids. It is unreachable from the tag path by construction — floor_component_failure_mode_of never returns it — so the refusal is a total-match obligation, not a live arm."
+
+fn floor_component_outcome_of_mode(m: FloorComponentFailureMode, detail: NonEmptyStr) -> ObservationOutcome? {
+  match m {
+    ModeNoFailure => Present { value: Done }
+    ModeBudgetExceeded => Present { value: Refused { diagnostic: detail } }
+    ModeInfra => Present { value: Failed { error: detail, output: "" } }
+    ModeWitnessRed => Present { value: Failed { error: detail, output: "" } }
+    ModeNotReached => Present { value: Skipped { reason: detail } }
+    ModeUnrecorded => none
+  }
+}
+
 fn floor_component_outcome_of_failure_mode(mode: NonEmptyStr, detail: NonEmptyStr) -> ObservationOutcome? {
-  if (mode as String) == "none" { Present { value: Done } }
-  else if (mode as String) == "BudgetExceeded" { Present { value: Refused { diagnostic: detail } } }
-  else if (mode as String) == "Infra" { Present { value: Failed { error: detail, output: "" } } }
-  else if (mode as String) == "WitnessRed" { Present { value: Failed { error: detail, output: "" } } }
-  else if (mode as String) == "not_reached" { Present { value: Skipped { reason: detail } } }
-  else { none }
+  match floor_component_failure_mode_of(mode: mode) {
+    Absent => none
+    Present { value: m } => floor_component_outcome_of_mode(m: m, detail: detail)
+  }
 }
 
 fn floor_component_outcome_tag(o: ObservationOutcome) -> String {
@@ -280,12 +291,12 @@ fn floor_component_row_of_failure_mode(
   match floor_component_selection_of_tag(tag: selection_tag) {
     Absent => none
     Present { value: sel } =>
-      match floor_component_outcome_of_failure_mode(mode: failure_mode, detail: detail) {
+      match floor_component_failure_mode_of(mode: failure_mode) {
         Absent => none
-        Present { value: outcome } =>
-          match floor_component_failure_mode_of(mode: failure_mode) {
+        Present { value: mode } =>
+          match floor_component_outcome_of_mode(m: mode, detail: detail) {
             Absent => none
-            Present { value: mode } => Present {
+            Present { value: outcome } => Present {
               value: floor_component_row_of(
                 run_id: run_id,
                 index: index,
