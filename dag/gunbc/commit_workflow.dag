@@ -4,6 +4,7 @@ import gunbc.ci_gate {
   Gate,
   EmitHostGate, CheapClaimPoolGate,
   ExtdepsExternalAuthorityGate, DagCompileCleanGate, GeneratedArtifactDriftGate, ExtdepsScopePlacementGate,
+  ProseRowIntroductionGate,
   SourceRootIngestGate, RegenVerifyGate,
   SelfHostReadsRealBytesGate, SelfHostStalenessGate
 }
@@ -950,6 +951,10 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
     surfaces: [GithubActionsCiJob]
   },
   CommitCheckEnrollment {
+    check: CommitSpecGate { gate: ProseRowIntroductionGate },
+    surfaces: [GithubActionsCiJob]
+  },
+  CommitCheckEnrollment {
     check: CommitSpecGate { gate: SourceRootIngestGate },
     surfaces: [FalsifierCadenceJob]
   },
@@ -1661,6 +1666,7 @@ fn gate_eq(a: Gate, b: Gate) -> Bool {
     DagCompileCleanGate => match b { DagCompileCleanGate => true  _ => false }
     GeneratedArtifactDriftGate => match b { GeneratedArtifactDriftGate => true  _ => false }
     ExtdepsScopePlacementGate => match b { ExtdepsScopePlacementGate => true  _ => false }
+    ProseRowIntroductionGate => match b { ProseRowIntroductionGate => true  _ => false }
     SourceRootIngestGate => match b { SourceRootIngestGate => true  _ => false }
     RegenVerifyGate => match b { RegenVerifyGate => true  _ => false }
     SelfHostReadsRealBytesGate => match b { SelfHostReadsRealBytesGate => true  _ => false }

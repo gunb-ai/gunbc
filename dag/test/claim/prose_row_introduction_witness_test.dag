@@ -1,0 +1,164 @@
+module test.claim.prose_row_introduction_witness
+
+import std.types { Bool, Int, String, List }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import gunbc.prose_row_frontier {
+  ProseRowRef,
+  ProseRowDiffObservation, ProseRowsObserved, ProseRowDiffUnreadable,
+  prose_row_diff_observation, prose_rows_introduced,
+  prose_rows_refused, prose_rows_out_of_scope, prose_rows_render,
+  prose_row_decl_name,
+}
+import tools.prose_row_introduction_gate { prose_row_introduction_verdict }
+
+// The discriminating controls for the prose-row introduction wall, run against the REAL kernel and the
+// REAL verdict on synthetic diffs. Nothing here reads git: the gate keeps its decision pure precisely
+// so these can exercise the decision itself rather than a lookalike, and a control that perturbed more
+// than the property under test is how a wall passes with the wall deleted.
+//
+// The pairs matter more than any single claim. `refuses an introduction` alone is satisfied by a rule
+// that refuses everything, and `admits an edit` alone by a rule that refuses nothing; the two together
+// pin the name-set difference that makes this wall about NEW debt rather than about churn.
+
+fn diff_header(path: String) -> String {
+  concat(
+    "diff --git a/",
+    concat(path, concat(" b/", concat(path, concat("\nindex 1111111..2222222 100644\n--- a/", concat(path, concat("\n+++ b/", concat(path, "\n@@ -3,0 +4 @@\n")))))))
+  )
+}
+
+fn added_line(name: String) -> String {
+  concat("+data ", concat(name, ": String = \"prose\"\n"))
+}
+
+fn removed_line(name: String) -> String {
+  concat("-data ", concat(name, ": String = \"prose\"\n"))
+}
+
+data in_scope_path: String = "dag/extdeps/auth/probe.dag"
+
+data other_in_scope_path: String = "dag/extdeps/auth/moved_probe.dag"
+
+data out_of_scope_path: String = "dag/gunbc/probe.dag"
+
+fn observe(diff_text: String) -> ProseRowDiffObservation {
+  prose_row_diff_observation(diff_text: diff_text)
+}
+
+fn refused_of(diff_text: String) -> List<ProseRowRef> {
+  match observe(diff_text: diff_text) {
+    ProseRowDiffUnreadable { reason: _ } => []
+    ProseRowsObserved { added: added, removed: removed } =>
+      prose_rows_refused(introduced: prose_rows_introduced(added: added, removed: removed))
+  }
+}
+
+fn residue_of(diff_text: String) -> List<ProseRowRef> {
+  match observe(diff_text: diff_text) {
+    ProseRowDiffUnreadable { reason: _ } => []
+    ProseRowsObserved { added: added, removed: removed } =>
+      prose_rows_out_of_scope(introduced: prose_rows_introduced(added: added, removed: removed))
+  }
+}
+
+fn verdict_refuses(diff_text: String) -> Bool {
+  match prose_row_introduction_verdict(observation: observe(diff_text: diff_text)) {
+    ExitSuccess => false
+    ExitFailure { code: _, reason: _ } => true
+  }
+}
+
+// Rendering rather than counting, for the same reason the M1A attachment witness renders its rows: a
+// count admits a wrong row that preserves cardinality, and the failure this fold could plausibly
+// produce is a row attributed to the wrong path.
+data introduction_diff: String = concat(diff_header(path: in_scope_path), added_line(name: "probe_note"))
+
+test fn prose_row_introduced_in_scope_is_refused() -> Bool {
+  prose_rows_render(rows: refused_of(diff_text: introduction_diff)) == "dag/extdeps/auth/probe.dag probe_note"
+    && verdict_refuses(diff_text: introduction_diff)
+}
+
+// THE POSITIVE CONTROL FOR EDITS. Same path, same declaration name, removed and re-added — which is
+// exactly how an ordinary in-place edit of an existing prose row appears in a unified diff. It must
+// pass, or this wall taxes every change that touches prose it did not introduce.
+data edit_diff: String = concat(
+  diff_header(path: in_scope_path),
+  concat(removed_line(name: "probe_note"), added_line(name: "probe_note"))
+)
+
+test fn prose_row_edited_in_place_is_not_an_introduction() -> Bool {
+  (refused_of(diff_text: edit_diff) |> count) == 0
+    && !verdict_refuses(diff_text: edit_diff)
+}
+
+// THE POSITIVE CONTROL FOR MOVES. The name survives, the path does not — a file rename or a module
+// split. Keying introduction on the declaration NAME is what makes this pass; keying on the added line
+// or on the path would refuse every reorganisation of already-existing prose.
+data move_diff: String = concat(
+  concat(diff_header(path: in_scope_path), removed_line(name: "probe_note")),
+  concat(diff_header(path: other_in_scope_path), added_line(name: "probe_note"))
+)
+
+test fn prose_row_moved_between_files_is_not_an_introduction() -> Bool {
+  (refused_of(diff_text: move_diff) |> count) == 0
+    && !verdict_refuses(diff_text: move_diff)
+}
+
+// THE SCOPE BOUNDARY, ASSERTED IN BOTH DIRECTIONS. An identical introduction outside the migrated
+// paths must NOT refuse and must still be COUNTED. Asserting only the first half would be satisfied by
+// a kernel that dropped the row entirely, which is precisely the silent residue DESIGN 5 forbids a
+// bounded scope from producing.
+data out_of_scope_diff: String = concat(diff_header(path: out_of_scope_path), added_line(name: "probe_note"))
+
+test fn prose_row_introduced_out_of_scope_is_counted_not_refused() -> Bool {
+  (refused_of(diff_text: out_of_scope_diff) |> count) == 0
+    && !verdict_refuses(diff_text: out_of_scope_diff)
+    && prose_rows_render(rows: residue_of(diff_text: out_of_scope_diff)) == "dag/gunbc/probe.dag probe_note"
+}
+
+// A RENAME READS AS AN INTRODUCTION, and that is the declared answer rather than an accident of the
+// name key: the old name leaves and a new one arrives, so nothing distinguishes it from a fresh row.
+// A prose row being renamed is a prose row being touched by someone who could migrate it instead.
+data rename_diff: String = concat(
+  diff_header(path: in_scope_path),
+  concat(removed_line(name: "old_probe_note"), added_line(name: "new_probe_note"))
+)
+
+test fn prose_row_renamed_is_an_introduction() -> Bool {
+  prose_rows_render(rows: refused_of(diff_text: rename_diff)) == "dag/extdeps/auth/probe.dag new_probe_note"
+}
+
+// THE SHAPE BOUNDARY. The wall recognises one idiom, and the two nearest misses must not be swept in
+// with it: a `data` row that is not named `_note`, and a `_note`-named row that carries a real value
+// rather than prose. Widening past this is the general prose classifier the operator ruled must not
+// become a prerequisite.
+test fn only_the_prose_row_idiom_is_recognised() -> Bool {
+  match prose_row_decl_name(line: "data probe_note: String = \"prose\"") {
+    Absent => false
+    Present { value: name } =>
+      name == "probe_note"
+        && match prose_row_decl_name(line: "data probe: String = \"value\"") { Absent => true  Present { value: _ } => false }
+        && match prose_row_decl_name(line: "data probe_note: Int = 3") { Absent => true  Present { value: _ } => false }
+        && match prose_row_decl_name(line: "  data probe_note: String = \"indented\"") { Absent => true  Present { value: _ } => false }
+  }
+}
+
+// AN UNREADABLE DIFF REFUSES; AN EMPTY ONE DOES NOT. These are different states and collapsing them is
+// the empty-observation narrow: `I could not tell what changed` rendered as `nothing changed` is a
+// silently uncovered run, while an empty diff genuinely is the no-op change.
+data headerless_diff: String = "@@ -3,0 +4 @@\n+data probe_note: String = \"prose\"\n"
+
+test fn hunks_without_a_file_header_refuse_rather_than_reading_as_clean() -> Bool {
+  match observe(diff_text: headerless_diff) {
+    ProseRowDiffUnreadable { reason: _ } => verdict_refuses(diff_text: headerless_diff)
+    ProseRowsObserved { added: _, removed: _ } => false
+  }
+}
+
+test fn an_empty_diff_observes_nothing_and_admits() -> Bool {
+  match observe(diff_text: "") {
+    ProseRowDiffUnreadable { reason: _ } => false
+    ProseRowsObserved { added: added, removed: removed } =>
+      (added |> count) == 0 && (removed |> count) == 0 && !verdict_refuses(diff_text: "")
+  }
+}

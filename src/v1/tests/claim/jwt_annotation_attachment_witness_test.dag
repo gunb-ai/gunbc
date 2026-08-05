@@ -1,0 +1,110 @@
+module v1.tests.claim.jwt_annotation_attachment_witness
+
+import std.types { Bool, Int, String, List }
+import std.occurrence_identity { OccurrenceId, OccurrenceTransport }
+import extdeps.filesystem.filesystem_io
+import std.source_annotation {
+  AnnotationAttachmentResult,
+  annotation_attachment_result_graph,
+  annotation_attachment_result_refusals,
+  source_annotation_graph_rows
+}
+import v1.compiler.annotation_bind { bind_annotations }
+import v1.compiler.tokenize { tokenize_artifact }
+import v1.compiler.parse { parse_with_table }
+import v1.std.core { build_newline_index, empty_intern_table }
+
+data jwt_annotation_attachment_offline_recipe: String = "OFFLINE LOCAL RECIPE: target/release/claim_batch --source-root dag --source-root src/v1 --entry src/v1/tests/claim/jwt_annotation_attachment_witness_test.dag --functions jwt_annotations_attach_to_their_named_subjects,jwt_annotations_produce_no_refusals"
+
+// THE MIGRATED FILE, READ FROM DISK AND PARSED BY THE PRODUCTION FRONTEND.
+//
+// M1A's witnesses prove the capture channel, the attachment fold and the admission seam on synthetic
+// inputs; this proves the one fact none of them can — that the prose actually authored into
+// dag/extdeps/auth/jwt.dag lands on the declarations it describes. Zero refusals is already enforced
+// elsewhere by construction: admit_source_annotations withholds the graph and emits a blocking
+// diagnostic, so a refusal in this file fails the compile-clean gate. Refusals are asserted here anyway
+// because a witness that only checked attachment would pass on a graph that silently lost rows.
+//
+// IT ASSERTS SUBJECT NAMES, NOT OCCURRENCE IDS, for the reason v1_annotation_binding_test states: an id
+// is allocator-local, so an expected id is a transcription of what the parser happened to number things
+// on the day it was written, and the repair for its failure is to transcribe the new number — which
+// checks nothing.
+//
+// WITNESS COST: one file, read once and parsed once. The subject is exactly the five migrated blocks,
+// so the specimen is the requirement and nothing more.
+data jwt_source_path: String = "dag/extdeps/auth/jwt.dag"
+
+fn jwt_source() -> String {
+  filesystem_read(path: jwt_source_path).content
+}
+
+fn transport_of(source: String) -> OccurrenceTransport {
+  parse_with_table(
+    tokens: tokenize_artifact(source: source, file: jwt_source_path).tokens,
+    source_indices: map_insert(empty_map(), jwt_source_path, build_newline_index(file: jwt_source_path, source: source)),
+    intern_table: empty_intern_table(),
+  ).occurrence_transport
+}
+
+fn bound(source: String) -> AnnotationAttachmentResult {
+  bind_annotations(
+    transport: transport_of(source: source),
+    captures: tokenize_artifact(source: source, file: jwt_source_path).annotations,
+    source_length: string_length(s: source)
+  )
+}
+
+fn name_of(transport: OccurrenceTransport, id: OccurrenceId) -> String {
+  fold(
+    transport.index.entries,
+    init: "<unresolved>",
+    f: (acc, entry) =>
+      if entry.projection.occurrence.value == id.value { entry.projection.authored_name } else { acc }
+  )
+}
+
+// The first authored line of a block, which is what makes a mis-attachment legible. Comparing whole
+// block texts would make the expectation a transcription of the prose and would have to be re-authored
+// on every wording change, so it would decay into a change detector rather than a check.
+fn first_line(text: String) -> String {
+  match first(split(text, separator: "\n")) {
+    Absent => "<empty>"
+    Present { value: line } => line
+  }
+}
+
+// One rendering of every row rather than an indexed lookup: equality against a complete rendering fails
+// on any extra, missing, reordered or mis-merged row at once, and a row that should not be there is
+// exactly the failure this fold could plausibly produce.
+fn rendered_attachment() -> String {
+  let source = jwt_source()
+  let transport = transport_of(source: source)
+  fold(
+    source_annotation_graph_rows(graph: annotation_attachment_result_graph(result: bound(source: source))),
+    init: "",
+    f: (acc, row) =>
+      concat(acc, concat("|", concat(name_of(transport: transport, id: row.subject), concat("=", first_line(text: row.text)))))
+  )
+}
+
+data expected_attachment: String = concat(
+  "|NumericDate=NumericDate is RFC 7519 section 2: a JSON numeric value counting seconds from the UNIX epoch,",
+  concat(
+    "|NumericDateLifetime=The lifetime of two dates is only a whole number of seconds when BOTH are whole seconds, so the",
+    concat(
+      "|JwtCompactSerialization=RFC 7515 section 3.1: three base64url segments joined by dots — header, payload, signature. Branded",
+      concat(
+        "|JwtStringOrUri=RFC 7519 section 2 defines StringOrURI as any JSON string, with the added requirement that a value",
+        "|JwtAudience=aud IS A WIRE UNION AND THE FIRST CUT NORMALIZED IT AWAY. Section 4.1.3 states both forms: in the"
+      )
+    )
+  )
+)
+
+test fn jwt_annotations_attach_to_their_named_subjects() -> Bool {
+  rendered_attachment() == expected_attachment
+}
+
+test fn jwt_annotations_produce_no_refusals() -> Bool {
+  (annotation_attachment_result_refusals(result: bound(source: jwt_source())) |> count) == 0
+}

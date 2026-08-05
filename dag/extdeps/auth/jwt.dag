@@ -30,9 +30,9 @@ data jwt_registered_claims_note: String = "RFC 7519 REGISTERED CLAIMS BELONG TO 
 // Whole seconds stay exact Ints, which is what every arithmetic consumer here actually wants and what
 // every token observed on this fleet carries. A fractional value keeps its digits verbatim, because
 // converting them would need a decimal parse this module deliberately does not do — the same
-// describe-do-not-parse boundary jwt_verification_boundary_note draws. The consequence is that
-// arithmetic must MATCH, so a fractional date cannot be quietly truncated into a whole-second
-// subtraction; it refuses instead.
+// describe-do-not-parse boundary it keeps everywhere else, reading what a token says without ever
+// resolving or verifying it. The consequence is that arithmetic must MATCH, so a fractional date
+// cannot be quietly truncated into a whole-second subtraction; it refuses instead.
 type NumericDate
   = NumericDateWholeSeconds { seconds: Int }
   | NumericDateFractionalSeconds {
