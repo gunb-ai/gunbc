@@ -14812,7 +14812,7 @@ fn extract_bool_witness_transport(
     (entry, function)
 }
 
-fn defining_module_for_resolved_type(
+pub(crate) fn defining_module_for_resolved_type(
     graph: &ResolvedGraph,
     source_indices: &HashMap<String, Rc<NewlineIndex>>,
     type_name: &str,
@@ -14838,7 +14838,10 @@ fn defining_module_for_resolved_type(
     None
 }
 
-fn lookup_resolved_type_node(graph: &ResolvedGraph, type_name: &str) -> Option<Rc<Node>> {
+pub(crate) fn lookup_resolved_type_node(
+    graph: &ResolvedGraph,
+    type_name: &str,
+) -> Option<Rc<Node>> {
     for tm in graph.modules.iter() {
         if let Some(node) = lookup_type_by_name(tm.type_env.clone(), type_name.to_string()) {
             return Some(node);
@@ -14847,7 +14850,7 @@ fn lookup_resolved_type_node(graph: &ResolvedGraph, type_name: &str) -> Option<R
     None
 }
 
-fn declared_type_name_from_annotation(
+pub(crate) fn declared_type_name_from_annotation(
     source_indices: &HashMap<String, Rc<NewlineIndex>>,
     type_annotation: &Rc<Node>,
 ) -> Option<String> {
@@ -14860,7 +14863,7 @@ fn declared_type_name_from_annotation(
     }
 }
 
-fn resolved_decl_ref_from_type_name(
+pub(crate) fn resolved_decl_ref_from_type_name(
     graph: &ResolvedGraph,
     source_indices: &HashMap<String, Rc<NewlineIndex>>,
     name: &str,
@@ -14873,7 +14876,7 @@ fn resolved_decl_ref_from_type_name(
     })
 }
 
-fn resolved_initializer_decl_ref(
+pub(crate) fn resolved_initializer_decl_ref(
     graph: &ResolvedGraph,
     source_indices: &HashMap<String, Rc<NewlineIndex>>,
     body: &Rc<Node>,

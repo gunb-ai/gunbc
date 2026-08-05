@@ -130,18 +130,30 @@ fn ambiguous_candidate_projection_count(node: Node) -> Int {
   )
 }
 
-fn decl_fact_optional_by_qualified_name(qn: String, facts: List<DeclFact>) -> Optional<DeclFact> {
-  fold(facts, init: optional_absent(), f: fn(acc, fact) {
-    match acc {
-      Present { value: _ } => acc
-      Absent =>
-        if fact.qualified_name == qn {
-          optional_present(value: fact)
-        } else {
-          optional_absent()
-        }
+type DeclFactLookup
+  = DeclFactMissing
+  | DeclFactUnique { fact: DeclFact }
+  | DeclFactAmbiguous { candidates: List<DeclFact> }
+
+fn decl_fact_lookup_by_qualified_name(qn: String, facts: List<DeclFact>) -> DeclFactLookup {
+  fold(facts, init: DeclFactMissing, f: fn(acc, fact) {
+    if fact.qualified_name != qn {
+      acc
+    } else {
+      match acc {
+        DeclFactMissing => DeclFactUnique { fact: fact }
+        DeclFactUnique { fact: first } => DeclFactAmbiguous { candidates: list_snoc_item(xs: list_snoc_item(xs: std.algebra.Empty, item: first), item: fact) }
+        DeclFactAmbiguous { candidates: xs } => DeclFactAmbiguous { candidates: list_snoc_item(xs: xs, item: fact) }
+      }
     }
   })
+}
+
+fn decl_fact_optional_by_qualified_name(qn: String, facts: List<DeclFact>) -> Optional<DeclFact> {
+  match decl_fact_lookup_by_qualified_name(qn: qn, facts: facts) {
+    DeclFactUnique { fact: fact } => optional_present(value: fact)
+    _ => optional_absent()
+  }
 }
 
 fn data_initializer_is_record_projection(node: Node) -> Bool {

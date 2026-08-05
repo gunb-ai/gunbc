@@ -655,33 +655,11 @@ fn hoist_call_arg_string_literal_edges(
     }
 }
 
-fn is_uppercase_variant_spelling(name: &str) -> bool {
-    name.chars().next().is_some_and(|c| c.is_ascii_uppercase())
-}
-
-/// Nullary coproduct variant VALUE atom in declaration skeletons.
-///
-/// Infer-backed fn bodies: only stamped `VariantValueBinding`.
-/// Parse-only data-init marshal (`param_names` empty): uppercase leaf `ExprVar`
-/// spellings — the convention for nullary variant values in `.dag` surface syntax.
-fn should_emit_nullary_variant_value_atom(
-    node: &Rc<Node>,
-    name: &str,
-    param_names: &[String],
-    binding_kind: Option<&Rc<VarBindingKind>>,
-) -> bool {
-    if name.is_empty() || node_references_param(node, name, param_names) {
-        return false;
-    }
-    match binding_kind {
-        Some(bk) => matches!(bk.as_ref(), VarBindingKind::VariantValueBinding { .. }),
-        None => {
-            param_names.is_empty()
-                && matches!(node.expr_data.as_ref(), ExprData::ExprVar { .. })
-                && node.children.is_empty()
-                && is_uppercase_variant_spelling(name)
-        }
-    }
+fn should_emit_nullary_variant_value_atom(binding_kind: Option<&Rc<VarBindingKind>>) -> bool {
+    matches!(
+        binding_kind,
+        Some(bk) if matches!(bk.as_ref(), VarBindingKind::VariantValueBinding { .. })
+    )
 }
 
 fn marshal_generic(
@@ -706,12 +684,7 @@ fn marshal_generic(
         edges.push(edge_positional(ctx, atom_identity_node(ctx, &name)));
     } else if !name.is_empty() {
         if let ExprData::ExprVar { binding_kind } = node.expr_data.as_ref() {
-            if should_emit_nullary_variant_value_atom(
-                node,
-                &name,
-                param_names,
-                binding_kind.as_ref(),
-            ) {
+            if should_emit_nullary_variant_value_atom(binding_kind.as_ref()) {
                 edges.push(edge_positional(ctx, atom_identity_node(ctx, &name)));
             }
         }
@@ -1149,7 +1122,6 @@ fn marshal_decl_fact_node(
     item: &Rc<Node>,
     kind: ItemKind,
     si: &SourceIndices,
-    catalog: &crate::data_initializer_identity::CorpusTypeCatalog,
     qualified_name: &str,
 ) -> InterpResult<Value> {
     match kind {
@@ -1158,14 +1130,14 @@ fn marshal_decl_fact_node(
             Ok(fn_arrow_output_skeleton(ctx, si, item).unwrap_or_else(|| unit_type_node(ctx)))
         }
         ItemKind::DataItem => {
-            crate::data_initializer_identity::marshal_data_initializer_projection(
-                ctx,
-                item,
-                qualified_name,
-                &authored_name_at(si.clone(), item.clone()),
-                catalog,
-                si,
-            )
+            if ctx.lookup_typed_item(qualified_name).is_some() {
+                crate::data_initializer_identity::marshal_data_initializer_projection(
+                    ctx,
+                    qualified_name,
+                )
+            } else {
+                Ok(crate::data_initializer_identity::typechecked_subject_absent_projection(ctx))
+            }
         }
         _ => Ok(unit_type_node(ctx)),
     }
@@ -1255,7 +1227,6 @@ pub fn eval_export_signature_facts(
 
 pub fn eval_decl_facts(ctx: &InterpContext, pool_roots: &[String]) -> InterpResult<Value> {
     let facts = decl_facts_for_roots(pool_roots);
-    let catalog = crate::data_initializer_identity::CorpusTypeCatalog::build_for_pool(pool_roots);
     let mut rows = Vec::with_capacity(facts.len());
     for fact in facts {
         let node = marshal_decl_fact_node(
@@ -1263,7 +1234,6 @@ pub fn eval_decl_facts(ctx: &InterpContext, pool_roots: &[String]) -> InterpResu
             &fact.node,
             fact.kind,
             &fact.source_indices,
-            &catalog,
             &fact.qualified_name,
         )
         .map_err(|e| InterpError::TypeError {
