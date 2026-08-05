@@ -536,11 +536,9 @@ mod compiler_tests {
     }
 
     #[test]
-    fn function_value_named_arg_wall_witness() {
-        // DISCRIMINATING RED for function_value_named_application_wall_note (04_infer).
-        // Named actuals on a body-scope callable (fn parameter / let binding) bypassed
-        // direct_call_shape_diags because body_locals shadowing skips sig lookup; the
-        // emitter cannot reorder them and labels are not validated.
+    fn function_value_named_application_controls_witness() {
+        // Operator-required controls for higher-order named application (P0).
+        // Direct declaration calls keep named args; function-value calls are positional-only.
         let result = std::thread::Builder::new()
             .stack_size(8 * 1024 * 1024)
             .spawn(|| {
@@ -555,45 +553,103 @@ mod compiler_tests {
                         crate::v1_compiler_artifact::RenderTarget::Rust,
                     )
                 };
-                let named_on_param = compile_one(
-                    "named_on_param.dag",
-                    "module named_on_param\nfn apply(f: fn(a: Int, b: Int) -> Int, x: Int, y: Int) -> Int { f(a: x, b: y) }\n",
+                // 1. Direct declaration call with reordered named arguments -> ADMIT
+                let direct_reordered = compile_one(
+                    "direct_reordered.dag",
+                    "module direct_reordered\nfn sub(a: Int, b: Int) -> Int { a - b }\nfn witness() -> Int { sub(b: 3, a: 10) }\n",
                 );
-                let named: Vec<_> = named_on_param.diagnostics.iter()
+                assert!(
+                    direct_reordered.diagnostics.is_empty(),
+                    "direct declaration with reordered named args must ADMIT, got: {:?}",
+                    direct_reordered.diagnostics
+                );
+
+                // 2. Higher-order callback declared left/right, applied positionally -> ADMIT
+                let hof_positional = compile_one(
+                    "hof_positional.dag",
+                    "module hof_positional\nfn cmp(left: Int, right: Int) -> Bool { left < right }\nfn host(agree: fn(Int, Int) -> Bool) -> Bool { agree(1, 2) }\nfn witness() -> Bool { host(cmp) }\n",
+                );
+                assert!(
+                    hof_positional.diagnostics.is_empty(),
+                    "positional function-value application must ADMIT, got: {:?}",
+                    hof_positional.diagnostics
+                );
+
+                // 3. Higher-order named application without labeled function type -> REFUSE
+                let named_on_value = compile_one(
+                    "named_on_value.dag",
+                    "module named_on_value\nfn host(agree: fn(Int, Int) -> Bool) -> Bool { agree(a: 1, b: 2) }\n",
+                );
+                let named: Vec<_> = named_on_value.diagnostics.iter()
                     .filter(|d| matches!(*d.diagnostic, crate::v1_std_core::CompilerDiagnostic::CallNamedArgOnFunctionValue { .. }))
                     .collect();
                 assert!(
                     named.len() >= 2,
-                    "named arguments on a function-value parameter must refuse at the compile seam, got: {:?}",
-                    named_on_param.diagnostics
+                    "named args on function-value call must REFUSE, got: {:?}",
+                    named_on_value.diagnostics
                 );
                 assert!(
                     named.iter().all(|d| crate::v1_std_core::is_error_diagnostic(d.diagnostic.clone())
                         && crate::v1_std_core::is_interpreter_blocking_diagnostic(d.diagnostic.clone())),
                     "CallNamedArgOnFunctionValue must BLOCK"
                 );
-                let positional = compile_one(
-                    "positional_on_param.dag",
-                    "module positional_on_param\nfn apply(f: fn(a: Int, b: Int) -> Int, x: Int, y: Int) -> Int { f(x, y) }\n",
+
+                // 4. Wrong higher-order arity -> REFUSE
+                let wrong_arity = compile_one(
+                    "wrong_arity.dag",
+                    "module wrong_arity\nfn host(agree: fn(Int, Int) -> Bool) -> Bool { agree(1, 2, 3) }\n",
                 );
                 assert!(
-                    positional.diagnostics.is_empty(),
-                    "positional calls on function values must stay silent, got: {:?}",
-                    positional.diagnostics
+                    wrong_arity.diagnostics.iter().any(|d| matches!(
+                        *d.diagnostic,
+                        crate::v1_std_core::CompilerDiagnostic::CallPositionalSurplus { .. }
+                    )),
+                    "surplus args on function-value call must REFUSE, got: {:?}",
+                    wrong_arity.diagnostics
                 );
-                let direct_named = compile_one(
-                    "direct_named.dag",
-                    "module direct_named\nfn sub(a: Int, b: Int) -> Int { a - b }\nfn f() -> Int { sub(a: 10, b: 3) }\n",
+
+                // 5. Swapped positional callback arguments -> semantic RED (compile admits; order matters)
+                let semantic = compile_one(
+                    "semantic_swap.dag",
+                    "module semantic_swap\nfn cmp(left: Int, right: Int) -> Bool { left < right }\nfn host(agree: fn(Int, Int) -> Bool, a: Int, b: Int) -> Bool { agree(a, b) }\nfn correct_order() -> Bool { host(cmp, 1, 2) }\nfn swapped_order() -> Bool { host(cmp, 2, 1) }\n",
                 );
                 assert!(
-                    direct_named.diagnostics.is_empty(),
-                    "named arguments on direct module fn calls must remain on the sibling wall, got: {:?}",
-                    direct_named.diagnostics
+                    semantic.diagnostics.is_empty(),
+                    "swapped positional controls must compile clean for semantic RED, got: {:?}",
+                    semantic.diagnostics
+                );
+                let resolved = crate::v1_compiler_compile::compile_to_resolved(
+                    std::rc::Rc::new(im::vector![std::rc::Rc::new(
+                        crate::v1_compiler_compile::SourceFile {
+                            path: "semantic_swap.dag".to_string(),
+                            content: "module semantic_swap\nfn cmp(left: Int, right: Int) -> Bool { left < right }\nfn host(agree: fn(Int, Int) -> Bool, a: Int, b: Int) -> Bool { agree(a, b) }\nfn correct_order() -> Bool { host(cmp, 1, 2) }\nfn swapped_order() -> Bool { host(cmp, 2, 1) }\n".to_string(),
+                        }
+                    )]),
+                );
+                let graph = resolved.graph.as_ref().expect("graph");
+                let ctx = crate::cli_run::make_eval_context(
+                    graph,
+                    resolved.source_indices.clone(),
+                    crate::v1_interpreter::ExecutionMode::Wet,
+                );
+                let correct = crate::v1_interpreter::run_in_context(&ctx, "correct_order", false)
+                    .expect("correct_order should run");
+                let swapped = crate::v1_interpreter::run_in_context(&ctx, "swapped_order", false)
+                    .expect("swapped_order should run");
+                assert!(
+                    matches!(correct, crate::v1_interpreter::Value::Bool(true)),
+                    "correct positional order must be true, got {:?}",
+                    correct
+                );
+                assert!(
+                    matches!(swapped, crate::v1_interpreter::Value::Bool(false)),
+                    "swapped positional order must be false — semantic RED proving bind order, got {:?}",
+                    swapped
                 );
             })
             .expect("failed to spawn thread")
             .join();
-        result.expect("function_value_named_arg_wall_witness panicked");
+        result.expect("function_value_named_application_controls_witness panicked");
     }
 
     #[test]

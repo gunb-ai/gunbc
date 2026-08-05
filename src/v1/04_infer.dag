@@ -1569,12 +1569,13 @@ fn function_value_call_named_arg_diags(
   typed_args: List<Node>,
   type_env: TypeEnv,
   module_name: String,
-  body_locals: Map<String, Bool>
+  body_locals: Map<String, Bool>,
+  locals: Map<String, TypeBinding>
 ) -> List<ErrorNode> {
   match map_get(body_locals, func_name) {
     Absent => []
-    Present { value: _ } =>
-      typed_args |> flat_map(ta =>
+    Present { value: _ } => {
+      let named_diags = typed_args |> flat_map(ta =>
         match arg_name_at(n: ta, source_indices: type_env.source_indices) {
           Present { value: label } =>
             [make_error_node(
@@ -1582,6 +1583,30 @@ fn function_value_call_named_arg_diags(
               module_name: module_name)]
           Absent => []
         })
+      let arity_diags = match map_get(locals, func_name) {
+        Present { value: binding } =>
+          let param_count = binding.resolved.params |> count
+          if param_count > 0 {
+            let supplied = typed_args |> count
+            if supplied > param_count {
+              match typed_args |> skip(param_count) |> first {
+                Present { value: overflow } =>
+                  [make_error_node(
+                    diagnostic: CallPositionalSurplus {
+                      callee: func_name,
+                      supplied: supplied,
+                      capacity: param_count,
+                      span: overflow.span
+                    },
+                    module_name: module_name)]
+                Absent => []
+              }
+            } else { [] }
+          } else { [] }
+        Absent => []
+      }
+      concat(named_diags, arity_diags)
+    }
   }
 }
 
@@ -2750,7 +2775,8 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           typed_args: typed_args,
           type_env: scope.type_env,
           module_name: scope.module_name,
-          body_locals: scope.body_locals
+          body_locals: scope.body_locals,
+          locals: scope.locals
         )
       )
       let typed_arg_nodes = typed_args

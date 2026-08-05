@@ -138,11 +138,11 @@ use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::CallSemantics::{LookupCallSemantics, PlainCallSemantics};
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::{
-    AmbiguousReference, CallArgumentNameUnknown, CallPositionalSurplus, CallNamedArgOnFunctionValue,
-    FieldNotFound,
-    FrontierOccurrenceBudgetExceeded, InternalError, MethodExistenceFrontierAdmitted,
-    MethodExistenceUndecided, MethodNotFound, MissingField, ReceiverTypeUnestablished,
-    SoleConstructorViolation, TypeMismatch, UnresolvedType, VariantCollision,
+    AmbiguousReference, CallArgumentNameUnknown, CallNamedArgOnFunctionValue,
+    CallPositionalSurplus, FieldNotFound, FrontierOccurrenceBudgetExceeded, InternalError,
+    MethodExistenceFrontierAdmitted, MethodExistenceUndecided, MethodNotFound, MissingField,
+    ReceiverTypeUnestablished, SoleConstructorViolation, TypeMismatch, UnresolvedType,
+    VariantCollision,
 };
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v1_std_core::ExprData::{
@@ -2652,12 +2652,13 @@ pub fn function_value_call_named_arg_diags(
     type_env: Rc<TypeEnv>,
     module_name: String,
     body_locals: Rc<HashMap<String, bool>>,
+    locals: Rc<HashMap<String, Rc<TypeBinding>>>,
 ) -> Rc<Vec<Rc<ErrorNode>>> {
     match body_locals.get(&func_name) {
         None => Rc::new(vec![]),
         Some(_) => {
             let source_indices = type_env.source_indices.clone();
-            Rc::new({
+            let named_diags = Rc::new({
                 let mut __result = Vec::new();
                 for ta in typed_args.clone().iter().cloned() {
                     __result.extend(
@@ -2677,7 +2678,35 @@ pub fn function_value_call_named_arg_diags(
                     );
                 }
                 __result
-            })
+            });
+            let arity_diags = match locals.get(&func_name) {
+                None => Rc::new(vec![]),
+                Some(binding) => {
+                    let param_count = binding.resolved.params.len() as i64;
+                    if param_count > 0 {
+                        let supplied = typed_args.len() as i64;
+                        if supplied > param_count {
+                            match typed_args.iter().cloned().skip(param_count as usize).next() {
+                                Some(overflow) => Rc::new(vec![make_error_node(
+                                    Rc::new(CompilerDiagnostic::CallPositionalSurplus {
+                                        callee: func_name.clone(),
+                                        supplied,
+                                        capacity: param_count,
+                                        span: overflow.span.clone(),
+                                    }),
+                                    module_name.clone(),
+                                )]),
+                                None => Rc::new(vec![]),
+                            }
+                        } else {
+                            Rc::new(vec![])
+                        }
+                    } else {
+                        Rc::new(vec![])
+                    }
+                }
+            };
+            v1_rt::concat(named_diags.clone(), arity_diags.clone())
         }
     }
 }
@@ -5244,6 +5273,7 @@ pub fn infer_expr_body(
                                 scope.type_env.clone(),
                                 scope.module_name.clone(),
                                 scope.body_locals.clone(),
+                                scope.locals.clone(),
                             ))
                             .iter()
                             .cloned(),
