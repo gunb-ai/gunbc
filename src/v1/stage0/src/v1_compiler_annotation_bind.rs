@@ -364,6 +364,19 @@ pub fn authored_name_of(transport: Rc<OccurrenceTransport>, id: OccurrenceId) ->
         })
 }
 
+pub fn empty_keyed_rows_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Pins the element type of the accumulator's empty list. A bare `[]` in the fold's init leaves the element type unconstrained until the first push, and the emitter writes that unconstrained type into the closure signature it generates — so the seed compiles the accumulator as a list of unit and the fold no longer typechecks. Naming the empty list through a typed return is the one place the element type is stated.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn empty_keyed_rows() -> Rc<Vec<Rc<KeyedAnnotationRow>>> {
+    Rc::new(vec![])
+}
+
 pub fn keyed_annotation_rows(
     transport: Rc<OccurrenceTransport>,
     graph: Rc<SourceAnnotationGraph>,
@@ -372,8 +385,10 @@ pub fn keyed_annotation_rows(
         .iter()
         .cloned()
         .fold(
-            Some(Rc::new(vec![])),
-            |acc: Option<Rc<Vec<()>>>, row: Rc<SourceAnnotationDebt>| match acc.clone() {
+            Some(empty_keyed_rows()),
+            |acc: Option<Rc<Vec<Rc<KeyedAnnotationRow>>>>, row: Rc<SourceAnnotationDebt>| match acc
+                .clone()
+            {
                 None => None,
                 Some(rows) => match authored_name_of(transport.clone(), row.subject.clone()) {
                     None => None,
