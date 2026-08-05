@@ -9,6 +9,8 @@ import gunbc.witness_row_cost {
   witness_row_cost_migration_verdict,
   witness_row_cost_mandatory_migration_rows,
   witness_row_cost_mandatory_migration_count,
+  witness_row_cost_measurement_unavailable_rows,
+  witness_row_cost_measurement_unavailable_count,
 }
 import std.logic { Bool }
 import std.nat { Nat }
@@ -81,10 +83,39 @@ fn zero_over_threshold_rows_counts_zero_holds() -> Bool {
   witness_row_cost_mandatory_migration_count(rows: rows) == 0
 }
 
+fn sample_row_no_wall_measurement(name: String) -> WitnessCostReceiptRow {
+  WitnessCostReceiptRow {
+    entry: "dag/test/claim/witness_row_cost_migration_disclosure_witness_test.dag" as NonEmptyStr,
+    declaration: sample_decl(name: name),
+    eval: [],
+    resolve: millisecond_to_nanosecond(m: millisecond(count: 1)),
+    warm: millisecond_to_nanosecond(m: millisecond(count: 1)),
+    outcome: Done
+  }
+}
+
+// The gate-arming-on-ignorance regression (keen-ibex-349 review): an unmeasured row must count
+// as unavailable, never as mandatory nor as silently below threshold, and the two populations
+// (mandatory vs unavailable) must be tracked independently so a zero mandatory_count is never
+// mistaken for evidence that every row was genuinely measured.
+fn unavailable_rows_are_counted_separately_from_mandatory_holds() -> Bool {
+  let rows: List<WitnessCostReceiptRow> = [
+    sample_row(name: "fast_row", eval_ms: 12),
+    sample_row_no_wall_measurement(name: "unmeasured_row")
+  ]
+  witness_row_cost_mandatory_migration_count(rows: rows) == 0 &&
+    witness_row_cost_measurement_unavailable_count(rows: rows) == 1 &&
+    for_all(
+      xs: witness_row_cost_measurement_unavailable_rows(rows: rows),
+      predicate: row => row.declaration.decl_name == ("unmeasured_row" as NonEmptyStr)
+    )
+}
+
 test fn witness_row_cost_migration_disclosure_holds() -> Bool {
   authored_threshold_is_500ms_holds()
     && at_threshold_is_mandatory_migration_holds()
     && just_below_threshold_is_not_mandatory_holds()
     && rows_filter_and_count_agree_and_are_located_holds()
     && zero_over_threshold_rows_counts_zero_holds()
+    && unavailable_rows_are_counted_separately_from_mandatory_holds()
 }
