@@ -42,8 +42,8 @@ import gunbc.roadmap_static_site {
   roadmap_site_roadmap_md_body,
   roadmap_site_dispatch_json_body,
   roadmap_site_healthz_body,
-  page_render_refusal_body,
 }
+import gunbc.roadmap_site_surface_render { page_render_refusal_body }
 import gunbc.roadmap_belt_actuate {
   BeltDispatchResult,
   DispatchSpawned, DispatchAlreadyLive, DispatchNodeNotFound,
