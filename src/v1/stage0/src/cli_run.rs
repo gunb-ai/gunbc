@@ -4575,6 +4575,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::CallArgumentDuplicate { .. } => "CallArgumentDuplicate",
         CompilerDiagnostic::CallNamedArgOnFunctionValue { .. } => "CallNamedArgOnFunctionValue",
         CompilerDiagnostic::OccurrenceTransportViolation { .. } => "OccurrenceTransportViolation",
+        CompilerDiagnostic::SourceAnnotationRefused { .. } => "SourceAnnotationRefused",
     };
     let name = match d.diagnostic.as_ref() {
         CompilerDiagnostic::UnresolvedImport { module_path, .. } => module_path.clone(),
@@ -4612,6 +4613,23 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::CallNamedArgOnFunctionValue { argument, .. } => argument.clone(),
         CompilerDiagnostic::OccurrenceTransportViolation { .. } => {
             "(occurrence-transport-refusal)".to_string()
+        }
+        // The three refusal kinds are separate failure classes — a reader fixing
+        // "prose in the wrong place" needs to know WHICH wrong place, so they stay
+        // distinct in the histogram rather than collapsing to one annotation bucket.
+        CompilerDiagnostic::SourceAnnotationRefused { refusal, .. } => {
+            use crate::std_source_annotation::AnnotationAttachmentRefusal;
+            match refusal.as_ref() {
+                AnnotationAttachmentRefusal::UnattachedAtScopeEnd { .. } => {
+                    "(annotation-unattached)".to_string()
+                }
+                AnnotationAttachmentRefusal::TrailingNotModeled { .. } => {
+                    "(annotation-trailing)".to_string()
+                }
+                AnnotationAttachmentRefusal::BodyGrainNotModeled { .. } => {
+                    "(annotation-body-grain)".to_string()
+                }
+            }
         }
     };
     (class.to_string(), name)
@@ -15746,6 +15764,38 @@ fn witness_cost_nanosecond_value(
     .map_err(|e| format!("[witness-row-cost] REFUSED: nanosecond constructor failed: {e}"))
 }
 
+/// Hand the occurrence's two clocks over as ONE basis-tagged list, built by the authored
+/// constructor rather than assembled here.
+///
+/// The seed constructs no carrier: it calls `observation_durations_cpu_and_wall` across the
+/// interpreter boundary and passes the returned value straight through, exactly as it already
+/// does for `nanosecond` and `millisecond`. A `Value::List` of hand-built records would fork
+/// `std.observation`'s shape into Rust, which is the thing every note on this seam forbids.
+///
+/// Both clocks come from ONE run — `run_claim_measured` reads `thread_cpu_nanos` and
+/// `Instant::elapsed` around the same evaluation — so a row can never carry a CPU figure from
+/// one occurrence beside a wall figure from another. Order is fixed by the constructor's
+/// parameter names, not by position here, so a swap is a compile error rather than a silent
+/// exchange of the two magnitudes.
+fn witness_cost_eval_durations(
+    ctx: &v1_interpreter::InterpContext,
+    cpu_nanos: u128,
+    wall_nanos: u128,
+) -> Result<v1_interpreter::Value, String> {
+    let cpu = witness_cost_nanosecond_value(ctx, cpu_nanos)?;
+    let wall = witness_cost_nanosecond_value(ctx, wall_nanos)?;
+    v1_interpreter::run_in_context_with_args(
+        ctx,
+        "observation_durations_cpu_and_wall",
+        &[
+            (Some("cpu".to_string()), cpu),
+            (Some("wall".to_string()), wall),
+        ],
+        false,
+    )
+    .map_err(|e| format!("[witness-row-cost] REFUSED: eval duration constructor failed: {e}"))
+}
+
 fn witness_cost_string_field(
     ctx: &v1_interpreter::InterpContext,
     fields: &[(v1_interpreter::Symbol, v1_interpreter::Value)],
@@ -15761,6 +15811,67 @@ fn witness_cost_string_field(
             "[witness-row-cost] REFUSED: projected receipt row lacks {name}"
         )),
     }
+}
+
+/// Read ONE clock out of a row's tagged eval durations, through the authored projection.
+///
+/// The row's `eval` term is a `List<TimedMeasurement>` — every clock the occurrence was
+/// measured on, each tagged — so the seed cannot reach for "the duration" any more, and that
+/// is the point: which clock it wants is now a thing it has to say. It says it by calling
+/// `std.observation.observation_duration_of`, the same projection every `.dag` consumer uses,
+/// rather than walking the list here. A local walk would be a second copy of the lookup,
+/// including its ambiguity refusal, and the two would drift.
+///
+/// Returns `None` for a clock the producer did not sample, distinguished from a clock it
+/// sampled as zero. `MeasuredUnavailable` carries its cause and this returns `None` rather
+/// than `0`, which is the same `observation_measured_note` discipline the TSV's `unmeasured`
+/// cell keeps: a number that does not exist must not render as a small one.
+fn witness_cost_clock_nanos(
+    ctx: &v1_interpreter::InterpContext,
+    durations: &v1_interpreter::Value,
+    basis_constructor: &str,
+) -> Result<Option<u128>, String> {
+    use v1_interpreter::Value;
+    let basis = v1_interpreter::run_in_context_with_args(ctx, basis_constructor, &[], false)
+        .map_err(|e| format!("[witness-row-cost] REFUSED: {basis_constructor} failed: {e}"))?;
+    let measured = v1_interpreter::run_in_context_with_args(
+        ctx,
+        "observation_duration_of",
+        &[
+            (Some("durations".to_string()), durations.clone()),
+            (Some("basis".to_string()), basis),
+        ],
+        false,
+    )
+    .map_err(|e| {
+        format!(
+            "[witness-row-cost] REFUSED: observation_duration_of({basis_constructor}) failed: {e}"
+        )
+    })?;
+    let Value::Variant {
+        variant_name,
+        fields,
+        ..
+    } = measured
+    else {
+        return Err(
+            "[witness-row-cost] REFUSED: observation_duration_of returned a non-Measured value"
+                .to_string(),
+        );
+    };
+    if ctx.sym_eq(variant_name, "MeasuredUnavailable") {
+        return Ok(None);
+    }
+    if !ctx.sym_eq(variant_name, "MeasuredValue") {
+        return Err(format!(
+            "[witness-row-cost] REFUSED: observation_duration_of returned unknown variant {}",
+            ctx.resolve(variant_name)
+        ));
+    }
+    let value = ctx.field(&fields, "value").cloned().ok_or_else(|| {
+        "[witness-row-cost] REFUSED: MeasuredValue lacks its Nanosecond".to_string()
+    })?;
+    witness_cost_nanosecond_count(ctx, value, basis_constructor).map(Some)
 }
 
 fn witness_cost_nanosecond_count(
@@ -15872,8 +15983,9 @@ pub fn project_witness_cost_receipt(
         }
         for index in indices {
             let outcome = &summary.witness_outcomes[index];
-            let eval = witness_cost_nanosecond_value(
+            let eval = witness_cost_eval_durations(
                 &ctx,
+                summary.performance_receipts[index].cpu_nanos,
                 summary.performance_receipts[index].wall_nanos,
             )?;
             let mut args = vec![
@@ -15920,8 +16032,27 @@ pub fn project_witness_cost_receipt(
                 ClaimOutcome::TimedOut {
                     elapsed_ms,
                     budget_ms,
-                    ..
+                    kind,
                 } => {
+                    // The clock the deadline was enforced on travels WITH the pair, so a
+                    // reader of the event can tell a thread-CPU fail-stop from a wall
+                    // ceiling. The seed already held this fact as `BudgetKind` and used to
+                    // spend it on a prose label; `std.observation.TimedOut` now carries it.
+                    // The basis is selected by matching the typed enum and calling the
+                    // corresponding authored constructor — never recovered from a string.
+                    let basis_constructor = match kind {
+                        BudgetKind::Cpu => "clock_basis_cpu",
+                        BudgetKind::Wall => "clock_basis_wall",
+                    };
+                    let basis = run_in_context_with_args(&ctx, basis_constructor, &[], false)
+                        .map_err(|e| {
+                            format!(
+                                "[witness-row-cost] REFUSED: {basis_constructor} failed on \
+                                 {}::{}: {e}",
+                                outcome.entry, outcome.function
+                            )
+                        })?;
+                    args.push((Some("basis".to_string()), basis));
                     for (name, ms) in [("budget", *budget_ms), ("elapsed", *elapsed_ms)] {
                         let carrier = run_in_context_with_args(
                             &ctx,
@@ -16043,10 +16174,23 @@ pub fn project_witness_cost_receipt(
                     )
                 }
             };
+            // The receipt's cost column is WALL — the clock the witness threshold is stated
+            // on (operator ruling 2026-08-05) — and it is now SAID rather than assumed. The
+            // authored projection already refuses a witness whose wall figure is
+            // unavailable, so `None` here would mean the row reached this point without the
+            // one measurement the receipt exists to carry; that refuses rather than
+            // defaulting.
+            let eval_wall_nanos = witness_cost_clock_nanos(&ctx, &eval, "clock_basis_wall")?
+                .ok_or_else(|| {
+                    format!(
+                        "[witness-row-cost] REFUSED: projected row {row_entry}::{function} \
+                         carries no wall duration"
+                    )
+                })?;
             projected_rows.push((
                 row_entry,
                 function,
-                witness_cost_nanosecond_count(&ctx, eval, "eval")?,
+                eval_wall_nanos,
                 witness_cost_nanosecond_count(&ctx, resolve, "resolve")?,
                 witness_cost_nanosecond_count(&ctx, warm, "warm")?,
                 outcome,
@@ -25052,6 +25196,60 @@ fn emit_source_root_read_witness(rec: &SourceRootReadRecord) -> Result<String, S
     ))
 }
 
+fn emit_source_content_hash_dag_for_text(source: &str) -> String {
+    let digest = crate::v1_rt::atom_identity_hash(source.to_string());
+    format!("Fnv1a64(Fnv1a64Structural {{ digest: \"{digest}\" }})")
+}
+
+fn emit_source_ref_dag(rec: &SourceRootReadRecord) -> Result<String, String> {
+    let path = dag_manifest_scalar_escape(&rec.file_path)?;
+    let hash = emit_source_content_hash_dag_for_text(&rec.source);
+    Ok(format!(
+        "SourceRef {{ path: \"{path}\", source_root: {}, content_hash: {hash} }}",
+        rec.source_root
+    ))
+}
+
+fn emit_source_ref_list_dag(records: &[SourceRootReadRecord]) -> Result<String, String> {
+    let mut nodes: Vec<String> = records
+        .iter()
+        .map(emit_source_ref_dag)
+        .collect::<Result<_, _>>()?;
+    let mut out = String::from("Empty");
+    while let Some(head) = nodes.pop() {
+        out = format!("Cons {{\n  head: {head},\n  tail: {out}\n}}");
+    }
+    Ok(out)
+}
+
+fn source_ref_identity_digest_hex(rec: &SourceRootReadRecord) -> String {
+    let path_hash = crate::v1_rt::atom_identity_hash(rec.file_path.clone());
+    let root_hash = crate::v1_rt::atom_identity_hash(rec.source_root.clone());
+    let storage = crate::v1_rt::hash_combine(path_hash, root_hash);
+    let content_hash = crate::v1_rt::atom_identity_hash(rec.source.clone());
+    crate::v1_rt::hash_combine(storage, content_hash)
+}
+
+fn source_ref_list_structural_digest_hex(records: &[SourceRootReadRecord]) -> String {
+    let mut acc = crate::v1_rt::atom_identity_hash("source-ref-closure-list".to_string());
+    for rec in records {
+        let ref_digest = source_ref_identity_digest_hex(rec);
+        acc = crate::v1_rt::hash_combine(acc, ref_digest);
+    }
+    acc
+}
+
+pub fn emit_source_ref_dag_for_path(
+    records: &[SourceRootReadRecord],
+    file_path: &str,
+) -> Result<String, String> {
+    let rec = records
+        .iter()
+        .find(|r| r.file_path.replace('\\', "/") == file_path.replace('\\', "/"))
+        .ok_or_else(|| format!("emit_source_ref_dag_for_path: no record for {file_path}"))?;
+    emit_source_ref_dag(rec)
+}
+
 fn emit_source_root_ingest_monoid(records: &[SourceRootReadRecord]) -> Result<String, String> {
     let mut witness_nodes: Vec<String> = records
         .iter()
@@ -25248,14 +25446,18 @@ pub fn emit_source_root_ingest_manifest(
     out.push_str("module v2.test.workflow.host_source_root_ingest_manifest\n\n\n");
     out.push_str("import v2.compiler.source_authority {\n");
     out.push_str("  DagSourceReadWitness,\n");
+    out.push_str("  DiscoveredSourceRefsDigestFromList,\n");
+    out.push_str("  SourceRef,\n");
     out.push_str("  SourceRootIngest,\n");
     out.push_str("  SourceRootCoverageComplete,\n");
     out.push_str("  SourceRootManifestElided,\n");
     out.push_str("  SourceRootProvenanceCoverageReceipt\n");
     out.push_str("}\n");
     out.push_str("import extdeps.communication.medium { Lossless, Medium }\n");
+    out.push_str("import std.content_hash { ContentHash, Fnv1a64, Fnv1a64Structural }\n");
     out.push_str("import v2.std.algebra { Cons, Empty }\n");
     out.push_str("import v2.std.artifact { Artifact, SourceFile }\n");
+    out.push_str("import v2.std.collection { List }\n");
     out.push_str("import v2.std.text { String }\n");
     // Each DagSourceReadWitness carries a grounded `source_root: SourceRootRef` (V2Tree/DagTree,
     // #5473/#5486), so the manifest must import the constructors it references or every witness
@@ -25264,6 +25466,8 @@ pub fn emit_source_root_ingest_manifest(
     // records (supersedes the earlier hardcoded-both-constructors form).
     if !inline_records.is_empty() {
         out.push_str(&emit_source_root_ref_import(inline_records));
+    } else if !records.is_empty() {
+        out.push_str(&emit_source_root_ref_import(records));
     }
     if entry_admission.is_some() {
         out.push_str("import v2.compiler.name_resolve {\n");
@@ -25273,6 +25477,7 @@ pub fn emit_source_root_ingest_manifest(
         out.push_str("  ResolutionSubject\n");
         out.push_str("}\n");
         out.push_str("import v2.std.algebra { Cons, Empty }\n");
+        out.push_str("import v2.std.collection { List }\n");
     }
     out.push('\n');
     out.push_str(&format!(
@@ -25295,6 +25500,10 @@ pub fn emit_source_root_ingest_manifest(
     let produced_row_count = inline_records.len();
     out.push_str(&format!("  ingest_read_count: {read_count},\n"));
     out.push_str(&format!("  produced_row_count: {produced_row_count},\n"));
+    out.push_str(&format!(
+        "  discovered_source_refs_digest: DiscoveredSourceRefsDigestFromList {{ digest: Fnv1a64Structural {{ digest: \"{}\" }} }},\n",
+        source_ref_list_structural_digest_hex(records)
+    ));
     if produced_row_count == read_count {
         out.push_str("  coverage: SourceRootCoverageComplete\n");
     } else {
@@ -25308,6 +25517,12 @@ pub fn emit_source_root_ingest_manifest(
         out.push_str("Empty\n");
     } else {
         out.push_str(&emit_source_root_ingest_monoid(inline_records)?);
+        out.push('\n');
+    }
+    if !records.is_empty() {
+        out.push('\n');
+        out.push_str("data host_source_root_closure_refs: List<SourceRef> = ");
+        out.push_str(&emit_source_ref_list_dag(records)?);
         out.push('\n');
     }
     if let Some(admission) = entry_admission {

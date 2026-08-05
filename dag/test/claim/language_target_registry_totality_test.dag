@@ -13,6 +13,8 @@ import std.language_target_identity {
   resolve_target_for_surface,
 }
 import std.language_target_identity {
+  ExternalGrounding,
+  ProjectGrounding,
   registration_subject,
   LanguageIdLookup,
   LanguageIdResolved,
@@ -26,6 +28,8 @@ import std.language_target_identity {
 import gunbc.language_target_registry {
   registered_language_targets,
   dag_subject_ref,
+  typescript_language_subject_ref,
+  rust_language_subject_ref,
   english_subject_ref,
   registered_target_count,
   bash_display_name,
@@ -33,7 +37,8 @@ import gunbc.language_target_registry {
   english_display_name,
   lookup_language_id,
   every_projection_subject_is_registered,
-  bash_subject_ref,
+  gnu_bash_subject_ref,
+  registered_language_targets,
   language_target_surface_census,
   surface_census_row_count,
   identified_surface_count,
@@ -67,16 +72,31 @@ test fn bash_vocabulary_surface_joins_the_bash_subject() -> Bool {
     rows: language_target_surface_census,
     registry: registered_language_targets
   ) {
-    TargetResolved { target: t } => declaration_ref_eq(a: t, b: bash_subject_ref)
+    TargetResolved { target: t } => declaration_ref_eq(a: t, b: gnu_bash_subject_ref)
     TargetSurfaceUnregistered { surface: _ } => false
     TargetSurfaceAmbiguous { surface: _, candidates: _ } => false
     TargetNotRegistered { target: _ } => false
   }
 }
 
-test fn typescript_vocabulary_surface_is_visibly_unidentified() -> Bool {
+data vocabulary_surface_premise_inversion_note: String = "THIS TEST'S PREMISE INVERTED WHEN THE SUBJECTS LANDED, AND BOTH ARMS ARE KEPT LIVE. It previously asserted that extdeps.languages.typescript.program is visibly UNIDENTIFIED, which was true and worth pinning while Bash was the only registered subject — the TypeScript target vocabulary was confined by a lens around a module prefix with no upstream authority behind it. TypeScript is now a registered, cited subject, so that surface resolves, and asserting it is still unidentified would be asserting the registry had not done its job. The assertion is therefore re-aimed at the join it now makes. The unidentified arm is NOT retired with it — DESIGN section 4b's dissolution rule keeps the discriminating control enrolled when a class climbs — so machine_code takes over that duty in the test below, and it is a better control than the old one because its unidentified status is PERMANENT until the surface is decomposed, rather than pending someone authoring a citation."
+
+test fn typescript_vocabulary_surface_resolves_to_the_typescript_subject() -> Bool {
   match resolve_target_for_surface(
     surface: SurfaceModule { module_path: "extdeps.languages.typescript.program" },
+    rows: language_target_surface_census,
+    registry: registered_language_targets
+  ) {
+    TargetResolved { target: t } => declaration_ref_eq(a: t, b: typescript_language_subject_ref)
+    TargetSurfaceUnregistered { surface: _ } => false
+    TargetSurfaceAmbiguous { surface: _, candidates: _ } => false
+    TargetNotRegistered { target: _ } => false
+  }
+}
+
+test fn machine_code_surface_is_visibly_unidentified() -> Bool {
+  match resolve_target_for_surface(
+    surface: SurfaceModule { module_path: "v2.extdeps.languages.machine_code" },
     rows: language_target_surface_census,
     registry: registered_language_targets
   ) {
@@ -112,7 +132,8 @@ type GroundingArmsSeen {
 
 data both_arms_oracle_note: String = "This asserts what the test's NAME claims — that both grounding arms are inhabited — and is true at 3 targets or 300. It previously asserted registered_target_count() == 3, a literal copied from the tree standing in for the property, which DESIGN section 5 names directly: automating that literal collapses it to measure() == measure(), so the manual update was the test's entire content, and it would have gone red the moment the registry grew rather than when the property broke. Caught by fierce-heron-301 on the stacked PR and by cursor review 48132 here."
 
-data projection_direction_note: String = "Requirement D's controls, and the property they pin is DIRECTION rather than content. A projection FROM a registered subject is total (Bash has a display name); a lookup INTO the registry by a legacy key REFUSES when nothing claims it (rust, go, python and typescript all resolve nowhere, because none of them has a canonical subject yet). That asymmetry is what demotes LanguageId from an identity to an attribute: a consumer can still ask for a target's legacy id, but cannot use a legacy id AS a target without the registry either answering or refusing. The rust case is the discriminating one — std.languages genuinely carries a rust_language row, so a consumer treating that catalogue as a key space would resolve it; here it refuses, which is exactly the parallel identity being closed."
+data projection_direction_note: String = "Requirement D's controls, and the property they pin is DIRECTION rather than content: a projection FROM a registered subject is total, while a lookup INTO the registry by a legacy key REFUSES when nothing claims it. That asymmetry is what demotes LanguageId from an identity to an attribute. THIS NOTE PREVIOUSLY SAID 'rust, go, python and typescript all resolve nowhere, because none of them has a canonical subject yet' — true when written, false as of the D0 registrations, and it contradicted the rewritten assertions a few lines below in this same file (caught by review 48113). All four now resolve, because all four are registered subjects carrying a legacy id. The refusal arm is NOT weakened by that: it is now exercised by two live cases instead of a vacuous one — an id no projection claims at all, and the sharper case of 'bash', which refuses even though GNU Bash is a fully registered, cited subject, because std.languages has no bash row. A key that cannot name a registered subject is definitionally not that subject's identity, and that is now demonstrated on the corpus rather than asserted from an empty table."
+
 
 test fn projection_from_registered_subject_is_total() -> Bool {
   match bash_display_name() {
@@ -141,9 +162,19 @@ test fn every_projection_hangs_off_a_registered_subject() -> Bool {
   every_projection_subject_is_registered()
 }
 
-test fn red_legacy_language_id_is_not_an_identity_and_refuses() -> Bool {
+data legacy_id_direction_note: String = "THE SHARPEST AVAILABLE STATEMENT OF 'A LanguageId IS NOT AN IDENTITY', and it only became provable on a real row when the subjects landed. This test used to look up 'rust' and assert it REFUSED — true only because no projection claimed any legacy id yet, so it was really asserting the projection table was empty. Now rust IS claimed, and asserting refusal would assert the projection table is still broken. The two assertions below state the actual direction law from language_target_projection_law instead, and the second is the load-bearing one: GNU Bash is a fully registered, cited subject, and looking up 'bash' STILL REFUSES — because std.languages carries rust, go, python and typescript rows and no bash row, so the target this repository emits most has no legacy id at all. A key that cannot name a registered subject is definitionally not that subject's identity. That is a live corpus fact doing the work a fixture used to fake."
+
+test fn claimed_legacy_language_id_projects_to_its_subject() -> Bool {
   match lookup_language_id(language_id: "rust") {
-    LanguageIdUnregistered { language_id: l } => l == "rust"
+    LanguageIdResolved { target: t } => declaration_ref_eq(a: t, b: rust_language_subject_ref)
+    LanguageIdUnregistered { language_id: _ } => false
+    LanguageIdAmbiguous { language_id: _, first: _, second: _ } => false
+  }
+}
+
+test fn red_registered_subject_with_no_legacy_id_still_refuses_lookup() -> Bool {
+  match lookup_language_id(language_id: "bash") {
+    LanguageIdUnregistered { language_id: l } => l == "bash"
     LanguageIdResolved { target: _ } => false
     LanguageIdAmbiguous { language_id: _, first: _, second: _ } => false
   }
@@ -164,6 +195,8 @@ test fn project_grounded_target_derives_its_own_authority_as_subject() -> Bool {
     acc || declaration_ref_eq(a: registration_subject(registration: r), b: dag_subject_ref)
   })
 }
+
+data grounding_arm_coverage_oracle_note: String = "This test asserted registered_target_count() == 3 until the D0 subject rows landed. That literal was a MEASUREMENT COPIED FROM THE TREE standing in for the property the test is named after — DESIGN section 5's oracle rule names exactly this shape, and its review tell applies: automating the literal's update would collapse the assertion to measure() == measure(), so the manual update WAS the test's entire content. It also failed the moment the registry grew, which is a change detector reporting, not a wall refusing. Rewritten to assert the property directly: BOTH grounding arms are inhabited. That is what makes the coproduct exercised rather than half-dead, it is what the name claims, and it stays true at 3 targets or 300 without anyone editing a number."
 
 test fn registry_carries_both_grounding_arms() -> Bool {
   let arms = fold(registered_language_targets, init: GroundingArmsSeen { external: false, project: false }, f: fn(acc, r) {

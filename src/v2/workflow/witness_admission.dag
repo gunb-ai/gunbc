@@ -327,6 +327,11 @@ data witness_row_excluded_two_kinds_note: String = "A witness row leaves per-PR 
 
 fn witness_row_excluded_from_discovery(entry: String, function: String) -> Bool {
   explicit_witness_admission_covers(entry: entry, function: function)
+    || schedule_contains_entry(
+      xs: falsifier_substrate_long_lane_entries(),
+      entry: entry,
+      function: function
+    )
     || path_matches_any_substring(path: entry, subs: witness_exclusion_substrings())
 }
 

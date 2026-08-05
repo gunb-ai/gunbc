@@ -83,6 +83,10 @@ data nfr_reason_binding_outcome_resolution_wildcard: String = "StructuralBinding
 
 data nfr_dissolve_binding_outcome_resolution_wildcard: String = "assess_reference_binding_observation routes each StructuralBindingResolution variant to a distinct capability assessment without Absent collapse — total match lands with P0-2 factual carrier recut and the wildcard arm deletes with its row"
 
+data nfr_reason_content_hash_structural_refusal: String = "ContentHash family structural filter at SourceRef list digest boundary (PR #7762): only Fnv1a64Structural participates in population digest; other family arms refuse as SourceRefContentHashStructuralNonFnv1a64 rather than silently coercing cross-family hashes. Declared at landing so the ratchet re-arms."
+
+data nfr_dissolve_content_hash_structural_refusal: String = "SourceRef digest construction grounds each ContentHash family at inhabitance and the wildcard arm becomes a total match — row deletes with that fold (std.content_hash family grounding)"
+
 data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow {
     subject: PathSubject { path: "dag/gunbc/dispatch_selection.dag::offer_matches_request" },
@@ -158,6 +162,16 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     subject: PathSubject { path: "src/v2/lens/effect_reach.dag::sink_kind_eq" },
     reason: nfr_reason_structural_eq_backfill,
     trigger: TriggerProse { text: nfr_dissolve_derived_equality },
+  },
+  FrontierRow {
+    subject: PathSubject { path: "src/v2/compiler/source_authority.dag::discovered_source_refs_digest_eq" },
+    reason: nfr_reason_structural_eq_backfill,
+    trigger: TriggerProse { text: nfr_dissolve_derived_equality },
+  },
+  FrontierRow {
+    subject: PathSubject { path: "src/v2/compiler/source_authority.dag::source_ref_content_hash_structural" },
+    reason: nfr_reason_content_hash_structural_refusal,
+    trigger: TriggerProse { text: nfr_dissolve_content_hash_structural_refusal },
   },
   FrontierRow {
     subject: PathSubject { path: "src/v2/compiler/self_host/frontier_probe_types.dag::frontier_blocker_class_matches" },
@@ -588,6 +602,16 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     subject: PathSubject { path: "src/v2/lens/complexity.dag::complexity_bound_from_class" },
     reason: nfr_reason_mint_era,
     trigger: TriggerProse { text: nfr_dissolve_wildcard_total },
+  },
+  FrontierRow {
+    subject: PathSubject { path: "src/v2/lens/enforcement/complexity_contract_subject.dag::complexity_derived_kernel_claim_eq" },
+    reason: nfr_reason_structural_eq_mint,
+    trigger: TriggerProse { text: nfr_dissolve_derived_equality },
+  },
+  FrontierRow {
+    subject: PathSubject { path: "src/v2/lens/enforcement/complexity_contract_subject.dag::complexity_optimality_claim_eq" },
+    reason: nfr_reason_structural_eq_mint,
+    trigger: TriggerProse { text: nfr_dissolve_derived_equality },
   },
   FrontierRow {
     subject: PathSubject { path: "src/v2/lens/cost.dag::asymptotic_class_dominates" },
