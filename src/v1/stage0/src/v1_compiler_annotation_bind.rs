@@ -3,12 +3,14 @@
 
 pub use crate::std_occurrence_identity::{OccurrenceIndexEntry, OccurrenceTransport};
 use crate::std_source_annotation::AnnotationAdmission::{AnnotationsAdmitted, AnnotationsRefused};
+use crate::std_source_annotation::AnnotationAttachmentRefusal::*;
 pub use crate::std_source_annotation::{
     admit_annotations, attach_annotations, non_empty_refusals_all, source_annotation_graph_empty,
 };
 pub use crate::std_source_annotation::{
-    AnnotationAdmission, AnnotationAttachmentResult, AnnotationSubject,
-    NormalizedAnnotationCapture, SourceAnnotationGraph, UnboundAnnotationCapture,
+    AnnotationAdmission, AnnotationAttachmentRefusal, AnnotationAttachmentResult,
+    AnnotationSubject, NormalizedAnnotationCapture, SourceAnnotationGraph,
+    UnboundAnnotationCapture,
 };
 use crate::std_types::Bool::*;
 pub use crate::std_types::{Bool, List, SourceSpan};

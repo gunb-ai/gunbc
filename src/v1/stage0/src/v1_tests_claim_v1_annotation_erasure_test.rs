@@ -2,7 +2,9 @@
 // Source module: v1.tests.claim.v1_annotation_erasure_test
 
 pub use crate::std_occurrence_identity::occurrence_id_allocator_initial;
-pub use crate::std_occurrence_identity::{OccurrenceIdAllocator, OccurrenceTransport};
+pub use crate::std_occurrence_identity::{
+    OccurrenceIdAllocator, OccurrenceIndexEntry, OccurrenceTransport,
+};
 pub use crate::std_source_annotation::{
     annotation_attachment_result_graph, source_annotation_graph_rows,
 };
@@ -15,8 +17,8 @@ pub use crate::v1_compiler_parse::ParseWithTableResult;
 pub use crate::v1_compiler_tokenize::tokenize_artifact;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
-pub use crate::v1_std_core::InternTable;
 pub use crate::v1_std_core::{build_newline_index, empty_intern_table};
+pub use crate::v1_std_core::{InternTable, NewlineIndex};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};

@@ -104,25 +104,41 @@ pub fn token_count(source: String) -> i64 {
     (tokenize(source.clone(), "probe.dag".to_string()).len() as i64)
 }
 
-pub fn w_two_captures_preserved_in_source_order() -> bool {
-    {
-        let caps = captures(src_two_comments());
-        ((((caps.clone().len() as i64) == 2)
-            && (caps.clone()[(0) as usize]
-                .clone()
-                .clone()
-                .unwrap()
-                .lexeme
-                .clone()
-                == "// first".to_string()))
-            && (caps.clone()[(1) as usize]
-                .clone()
-                .clone()
-                .unwrap()
-                .lexeme
-                .clone()
-                == "// second".to_string()))
+pub fn portable_projection_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Captures are projected with fold rather than by indexing. `caps[0].value` reads correctly under the interpreter but emits as `caps[0].unwrap()` in Rust, where indexing a List yields the element itself and not an Option — a live interpreter-versus-emitter divergence that turns a green test into a compile error at regen. Folding is the spelling both realizations agree on.\n\nRendering the whole sequence is also the stronger assertion: it pins content AND order AND count at once, where indexing two positions says nothing about a third capture appearing between them.".to_string()
+        };
     }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn render_lexemes(caps: Rc<Vec<Rc<UnboundAnnotationCapture>>>) -> String {
+    caps.clone().iter().cloned().fold(
+        "".to_string(),
+        |acc: String, c: Rc<UnboundAnnotationCapture>| {
+            v1_rt::concat(acc, v1_rt::concat("|".to_string(), c.lexeme.clone()))
+        },
+    )
+}
+
+pub fn render_placements(caps: Rc<Vec<Rc<UnboundAnnotationCapture>>>) -> String {
+    caps.clone().iter().cloned().fold(
+        "".to_string(),
+        |acc: String, c: Rc<UnboundAnnotationCapture>| {
+            v1_rt::concat(
+                acc,
+                match c.placement.clone() {
+                    AnnotationPlacement::LeadingAfterLineIndent => "|LEADING".to_string(),
+                    AnnotationPlacement::TrailingAfterSemanticToken => "|TRAILING".to_string(),
+                },
+            )
+        },
+    )
+}
+
+pub fn w_two_captures_preserved_in_source_order() -> bool {
+    (render_lexemes(captures(src_two_comments())) == "|// first|// second".to_string())
 }
 
 pub fn w_captures_excluded_from_token_stream() -> bool {
@@ -134,25 +150,8 @@ pub fn w_eof_annotation_is_captured() -> bool {
 }
 
 pub fn w_leading_and_trailing_placements_differ() -> bool {
-    {
-        let leading = captures(src_leading());
-        let trailing = captures(src_trailing());
-        (((((leading.clone().len() as i64) == 1) && ((trailing.clone().len() as i64) == 1))
-            && (leading.clone()[(0) as usize]
-                .clone()
-                .clone()
-                .unwrap()
-                .placement
-                .clone()
-                == AnnotationPlacement::LeadingAfterLineIndent))
-            && (trailing.clone()[(0) as usize]
-                .clone()
-                .clone()
-                .unwrap()
-                .placement
-                .clone()
-                == AnnotationPlacement::TrailingAfterSemanticToken))
-    }
+    ((render_placements(captures(src_leading())) == "|LEADING".to_string())
+        && (render_placements(captures(src_trailing())) == "|TRAILING".to_string()))
 }
 
 pub fn w_slash_slash_inside_string_is_not_an_annotation() -> bool {

@@ -9,7 +9,9 @@ pub use crate::std_source_annotation::{
     annotation_attachment_result_graph, annotation_attachment_result_refusals,
     source_annotation_graph_rows,
 };
-pub use crate::std_source_annotation::{AnnotationAttachmentRefusal, AnnotationAttachmentResult};
+pub use crate::std_source_annotation::{
+    AnnotationAttachmentRefusal, AnnotationAttachmentResult, SourceAnnotationDebt,
+};
 use crate::std_types::Bool::*;
 pub use crate::std_types::{Bool, List};
 pub use crate::v1_compiler_annotation_bind::AdmittedSourceAnnotations;
@@ -20,6 +22,7 @@ pub use crate::v1_compiler_parse::parse_with_table;
 pub use crate::v1_compiler_tokenize::tokenize_artifact;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
+pub use crate::v1_std_core::NewlineIndex;
 pub use crate::v1_std_core::{build_newline_index, empty_intern_table};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
