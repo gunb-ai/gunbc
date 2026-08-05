@@ -1,0 +1,147 @@
+module test.fixture.scaffold_disposition_census.expected_classification
+
+import std.types { NonEmptyStr }
+import v2.std.decl_index { DeclFact, DataItem }
+import v2.lens.enforcement.receipts { enforcement_red_probe_body_leaf }
+
+data scaffold_disposition_census_oracle_note: String = "Independently authored expected-classification oracle for the exact scaffold disposition census (adhoc-220d7fd9-374). Authored against the sibling pool/ fixture pool (specimens.dag, decoy_record.dag, decoy_nullary.dag) BEFORE any classifier exists -- these rows are the oracle a future classifier must match, not a measurement of what it currently produces (DESIGN 'a literal copied from the current tree is not an oracle' / 'completeness is an identity join, not a count equality'). The four states are fixed: NonDisposition, Terminal, ScaffoldDecoded, ScaffoldDecodeRefused -- every data declaration in the pool lands in exactly one, and Terminal is a genuine outcome, never folded into ScaffoldDecodeRefused."
+
+data scaffold_disposition_census_fixture_pool_roots: List<String> = [
+  "dag/test/fixture/scaffold_disposition_census/pool"
+]
+
+type ScaffoldCensusState
+  = NonDisposition
+  | Terminal
+  | ScaffoldDecoded
+  | ScaffoldDecodeRefused
+
+type ExpectedScaffoldCensusRow {
+  qualified_name: String
+  expected_state: ScaffoldCensusState
+  rationale: NonEmptyStr
+}
+
+data scaffold_disposition_census_expected_rows: List<ExpectedScaffoldCensusRow> = [
+  ExpectedScaffoldCensusRow {
+    qualified_name: "test.fixture.scaffold_disposition_census.pool.specimens.plain_int_specimen",
+    expected_state: NonDisposition,
+    rationale: "declared type Int, unrelated to std.disposition.Disposition" as NonEmptyStr
+  },
+  ExpectedScaffoldCensusRow {
+    qualified_name: "test.fixture.scaffold_disposition_census.pool.specimens.plain_string_specimen",
+    expected_state: NonDisposition,
+    rationale: "declared type String, unrelated to std.disposition.Disposition" as NonEmptyStr
+  },
+  ExpectedScaffoldCensusRow {
+    qualified_name: "test.fixture.scaffold_disposition_census.pool.specimens.bare_construction_mechanism_specimen",
+    expected_state: NonDisposition,
+    rationale: "declared type ConstructionMechanism, the Scaffold-arm PAYLOAD type, not Disposition itself -- adjacent but distinct authority" as NonEmptyStr
+  },
+  ExpectedScaffoldCensusRow {
+    qualified_name: "test.fixture.scaffold_disposition_census.pool.decoy_record.decoy_record_scaffold_specimen",
+    expected_state: NonDisposition,
+    rationale: "declared type DecoyRecordDisposition, whose record arm is spelled Scaffold but is not std.disposition.Scaffold -- proves spelling is not type identity" as NonEmptyStr
+  },
+  ExpectedScaffoldCensusRow {
+    qualified_name: "test.fixture.scaffold_disposition_census.pool.decoy_nullary.decoy_nullary_scaffold_specimen",
+    expected_state: NonDisposition,
+    rationale: "declared type DecoyNullaryDisposition, whose nullary arm is spelled Scaffold but is not std.disposition.Scaffold" as NonEmptyStr
+  },
+  ExpectedScaffoldCensusRow {
+    qualified_name: "test.fixture.scaffold_disposition_census.pool.specimens.terminal_reason_a_specimen",
+    expected_state: Terminal,
+    rationale: "literal Terminal record initializer with a reason field -- a genuine outcome, must not be folded into ScaffoldDecodeRefused" as NonEmptyStr
+  },
+  ExpectedScaffoldCensusRow {
+    qualified_name: "test.fixture.scaffold_disposition_census.pool.specimens.terminal_reason_b_specimen",
+    expected_state: Terminal,
+    rationale: "second, distinct-reason Terminal literal -- proves Terminal classification is not a fluke of one specimen" as NonEmptyStr
+  },
+  ExpectedScaffoldCensusRow {
+    qualified_name: "test.fixture.scaffold_disposition_census.pool.specimens.scaffold_single_authority_whole_specimen",
+    expected_state: ScaffoldDecoded,
+    rationale: "literal Scaffold record with dissolves_to SingleAuthority and a WholeDeclaration bind -- axis cell (SingleAuthority, WholeDeclaration)" as NonEmptyStr
+  },
+  ExpectedScaffoldCensusRow {
+    qualified_name: "test.fixture.scaffold_disposition_census.pool.specimens.scaffold_single_authority_named_specimen",
+    expected_state: ScaffoldDecoded,
+    rationale: "axis cell (SingleAuthority, NamedField) -- bind field grain must be preserved distinctly from WholeDeclaration" as NonEmptyStr
+  },
+  ExpectedScaffoldCensusRow {
+    qualified_name: "test.fixture.scaffold_disposition_census.pool.specimens.scaffold_realization_dispatch_whole_specimen",
+    expected_state: ScaffoldDecoded,
+    rationale: "axis cell (RealizationDispatch, WholeDeclaration) -- dissolves_to value distinctness from SingleAuthority" as NonEmptyStr
+  },
+  ExpectedScaffoldCensusRow {
+    qualified_name: "test.fixture.scaffold_disposition_census.pool.specimens.scaffold_realization_dispatch_named_specimen",
+    expected_state: ScaffoldDecoded,
+    rationale: "axis cell (RealizationDispatch, NamedField)" as NonEmptyStr
+  },
+  ExpectedScaffoldCensusRow {
+    qualified_name: "test.fixture.scaffold_disposition_census.pool.specimens.scaffold_substrate_mandatory_tag_whole_specimen",
+    expected_state: ScaffoldDecoded,
+    rationale: "axis cell (SubstrateMandatoryTag, WholeDeclaration) -- third ConstructionMechanism value" as NonEmptyStr
+  },
+  ExpectedScaffoldCensusRow {
+    qualified_name: "test.fixture.scaffold_disposition_census.pool.specimens.scaffold_substrate_mandatory_tag_named_specimen",
+    expected_state: ScaffoldDecoded,
+    rationale: "axis cell (SubstrateMandatoryTag, NamedField) -- completes the 3x2 dissolves_to x bind-grain cross" as NonEmptyStr
+  },
+  ExpectedScaffoldCensusRow {
+    qualified_name: "test.fixture.scaffold_disposition_census.pool.specimens.original_for_alias_specimen",
+    expected_state: ScaffoldDecoded,
+    rationale: "a legitimate literal Scaffold in its own right, and also the aliasing target for aliased_disposition_specimen below" as NonEmptyStr
+  },
+  ExpectedScaffoldCensusRow {
+    qualified_name: "test.fixture.scaffold_disposition_census.pool.specimens.aliased_disposition_specimen",
+    expected_state: ScaffoldDecodeRefused,
+    rationale: "initializer is a bare reference to another data declaration, not a Scaffold record literal -- refuses, never silently follows the alias" as NonEmptyStr
+  },
+  ExpectedScaffoldCensusRow {
+    qualified_name: "test.fixture.scaffold_disposition_census.pool.specimens.computed_disposition_specimen",
+    expected_state: ScaffoldDecodeRefused,
+    rationale: "initializer is a call expression, not a Scaffold record literal -- refuses rather than evaluating the call" as NonEmptyStr
+  },
+  ExpectedScaffoldCensusRow {
+    qualified_name: "test.fixture.scaffold_disposition_census.pool.specimens.dangling_bind_target_specimen",
+    expected_state: ScaffoldDecodeRefused,
+    rationale: "well-formed Scaffold literal whose bind.decl_name does not exist in the pool -- refuses on the dangling bind, distinct cause from a non-literal initializer" as NonEmptyStr
+  }
+]
+
+data scaffold_disposition_census_identity_adversarial_controls_note: String = "Identity-adversarial controls: a declaration whose OWN identity is ambiguous or missing, distinct from the bind-target adversarial cases above (those are about std.decl_ref resolution; these are about resolving the census SUBJECT itself in decl_facts). Constructed as synthetic DeclFact rows, the same technique v2.lens.cited_symbol_resolution already uses for its planted_ambiguous_control (real duplicate-module fixtures are not constructible under the current 1:1 file-to-module parse snapshot)."
+
+data scaffold_census_planted_ambiguous_qualified_name: String = "test.fixture.scaffold_disposition_census.pool.specimens.g1_planted_ambiguous_scaffold_control_RED"
+
+data scaffold_census_planted_ambiguous_control_facts: List<DeclFact> = [
+  DeclFact {
+    qualified_name: scaffold_census_planted_ambiguous_qualified_name,
+    name: "g1_planted_ambiguous_scaffold_control_RED",
+    kind: DataItem,
+    node: enforcement_red_probe_body_leaf,
+    rel_path: "synthetic/scaffold_census_ambiguous_a.dag"
+  },
+  DeclFact {
+    qualified_name: scaffold_census_planted_ambiguous_qualified_name,
+    name: "g1_planted_ambiguous_scaffold_control_RED",
+    kind: DataItem,
+    node: enforcement_red_probe_body_leaf,
+    rel_path: "synthetic/scaffold_census_ambiguous_b.dag"
+  }
+]
+
+data scaffold_census_planted_missing_qualified_name: String = "test.fixture.scaffold_disposition_census.pool.specimens.g1_planted_missing_scaffold_control_RED"
+
+data scaffold_census_identity_adversarial_controls: List<ExpectedScaffoldCensusRow> = [
+  ExpectedScaffoldCensusRow {
+    qualified_name: scaffold_census_planted_ambiguous_qualified_name,
+    expected_state: ScaffoldDecodeRefused,
+    rationale: "two synthetic DeclFact rows share this qualified_name -- subject identity is ambiguous, must refuse distinctly rather than silently pick a first match" as NonEmptyStr
+  },
+  ExpectedScaffoldCensusRow {
+    qualified_name: scaffold_census_planted_missing_qualified_name,
+    expected_state: ScaffoldDecodeRefused,
+    rationale: "no decl_facts row anywhere in the fixture pool carries this qualified_name -- subject identity is missing, a distinct cause from ambiguous" as NonEmptyStr
+  }
+]
