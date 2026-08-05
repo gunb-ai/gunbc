@@ -141,6 +141,15 @@ data witness_row_cost_drift_site: CensusedEmitSite = CensusedEmitSite {
   }
 }
 
+data witness_row_cost_migration_disclosure_site: CensusedEmitSite = CensusedEmitSite {
+  marker: "[witness-row-cost-migration-disclosure]" as NonEmptyStr,
+  source_file: "src/v1/stage0/src/bin/claim_executor.rs" as NonEmptyStr,
+  disposition: CountedFrontierSite {
+    reason: "per-floor-pass mandatory-migration disclosure lines (gunbc.witness_row_cost's migration threshold gate) — per-row verdict plus a worst-5 summary, mirroring witness_row_cost_drift_site's shape; still a raw tag family" as NonEmptyStr,
+    dissolve_on: "fold into ObservationEvent-native emission once the disclosure speaks the observation vocabulary, same trigger as witness_row_cost_site/witness_row_cost_drift_site" as NonEmptyStr
+  }
+}
+
 data selection_degradation_site: CensusedEmitSite = CensusedEmitSite {
   marker: "[selection-degradation]" as NonEmptyStr,
   source_file: "src/v1/stage0/src/cli_run.rs" as NonEmptyStr,
