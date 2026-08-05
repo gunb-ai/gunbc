@@ -77,6 +77,8 @@ fn validate_hex16(digest: &str, field: &str) -> Result<(), String> {
     Ok(())
 }
 
+// Seed bridge only: `validate_hex16` gates wire input before this call; the modeled
+// `Fnv1a64StructuralDigestHex` refinement is not enforced at `Value` construction.
 fn fnv1a64_structural_value(digest: String, ctx: &InterpContext) -> Value {
     Value::Record {
         type_name: ctx.sym("Fnv1a64Structural"),

@@ -302,15 +302,29 @@ fn collect_module_surfaces(roots: &[String]) -> Result<Vec<ModuleSurface>, Strin
 
 pub(crate) fn failure_receipt_companion_from_authority(function: &str) -> Option<String> {
     let roots = super::default_source_roots();
-    let ctx = resolve_hygiene_ctx(&roots)
-        .expect("gunbc.test_module_hygiene must resolve for failure_receipt_companion");
+    let ctx = match resolve_hygiene_ctx(&roots) {
+        Ok(ctx) => ctx,
+        Err(detail) => {
+            eprintln!("failure_receipt_companion: hygiene resolve refused: {detail}");
+            return None;
+        }
+    };
     let args = [(
         Some("function".to_string()),
         v1_interpreter::Value::Str(function.to_string()),
     )];
-    let result =
-        v1_interpreter::run_in_context_with_args(&ctx, "failure_receipt_companion", &args, false)
-            .expect("failure_receipt_companion must be callable");
+    let result = match v1_interpreter::run_in_context_with_args(
+        &ctx,
+        "failure_receipt_companion",
+        &args,
+        false,
+    ) {
+        Ok(value) => value,
+        Err(detail) => {
+            eprintln!("failure_receipt_companion: call refused: {detail}");
+            return None;
+        }
+    };
     match &result {
         v1_interpreter::Value::Variant {
             type_name,
@@ -320,12 +334,15 @@ pub(crate) fn failure_receipt_companion_from_authority(function: &str) -> Option
         } if ctx.sym_eq(*type_name, "Optional") && ctx.sym_eq(*variant_name, "Present") => {
             match ctx.field(fields, "value") {
                 Some(v1_interpreter::Value::Str(companion)) => Some(companion.clone()),
-                other => panic!(
-                    "failure_receipt_companion Present value must be String, got {}",
-                    other
-                        .map(|v| ctx.format_value(v))
-                        .unwrap_or_else(|| "<missing>".to_string())
-                ),
+                other => {
+                    eprintln!(
+                        "failure_receipt_companion: Present value must be String, got {}",
+                        other
+                            .map(|v| ctx.format_value(v))
+                            .unwrap_or_else(|| "<missing>".to_string())
+                    );
+                    None
+                }
             }
         }
         v1_interpreter::Value::Variant {
@@ -333,10 +350,13 @@ pub(crate) fn failure_receipt_companion_from_authority(function: &str) -> Option
             variant_name,
             ..
         } if ctx.sym_eq(*type_name, "Optional") && ctx.sym_eq(*variant_name, "Absent") => None,
-        other => panic!(
-            "failure_receipt_companion returned {}, expected Optional<String>",
-            ctx.format_value(other)
-        ),
+        other => {
+            eprintln!(
+                "failure_receipt_companion: returned {}, expected Optional<String>",
+                ctx.format_value(other)
+            );
+            None
+        }
     }
 }
 
