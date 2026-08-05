@@ -32,23 +32,61 @@ fn census_subject_key_identity(key: CensusSubjectKey) -> Fnv1a64Structural {
   census_tagged_identity(tag: "CensusSubjectKey" as NonEmptyStr, value: key as NonEmptyStr)
 }
 
-fn census_subject_key_in(key: CensusSubjectKey, keys: List<CensusSubjectKey>) -> Bool {
-  any(keys, other => (other as String) == (key as String))
+data repository_census_keyed_index_note: String = "SUBJECT SETS ARE BUILT AS A KEYED INDEX, NOT BY PAIRWISE LIST SCANS (operator ruling 2026-08-05). The first cut of this reconciliation appended to a growing list while collecting distinct keys, counted occurrences by rescanning the whole list once per distinct key, and then tested membership by rescanning again for every missing and every unexpected subject. Every one of those is a linear scan per element, so the reconciliation was QUADRATIC in the subject count. The 24-subject consumer in this tree does not expose it, which is exactly why it survived review — the population is too small for the shape to show — and DESIGN section 6 rules that a proven cost-shape defect is fixed regardless of the realized n, because n is small here is not a time-stable fact. Membership and duplicate detection now go through a Map keyed on the subject spelling, which the substrate primitive contracts price at work 1 per lookup and insert against the list scan's n. AUTHORED ORDER IS PRESERVED IN A LIST BESIDE THE MAP rather than recovered from it: map traversal order is host-unspecified, so every list this module returns — the distinct keys, the duplicates, the missing and the unexpected — is accumulated in the order the caller supplied, and the map is consulted ONLY for membership. That is the pattern the determinism thread prescribes and the reason no map_keys or map_values call appears here."
+
+data repository_census_keyed_roster_dissolution_note: String = "WHY THIS DOES NOT CALL std.keyed_roster, AND THE TRIGGER THAT DELETES THIS NOTE. keyed_roster_build is the repository's keyed-set construction authority and the obvious thing to reuse here, and it CANNOT deliver the property this module needs: it folds keyed_roster_insert_into_unique, which performs one linear keyed_row_find plus one growing concat per element, so it is itself quadratic — its own module note says so. The cause is its SIGNATURE, not its body: key_eq is an arbitrary caller-supplied fn K K to Bool, and an arbitrary predicate cannot be indexed, because a map keys on substrate identity and there is no way to consult key_eq without visiting every existing row. Measured on that function rather than modelled, at 256, 512 and 1024 synthetic distinct keys: 85ms, 318ms, 1273ms, so 3.74x then 4.00x per doubling against quadratic 4.00 and linear 2.00. So this module consumes the OTHER existing std pattern that already fits — std.occurrence_binding_candidates builds duplicate-refusing keyed indexes with map_get and map_insert and typed duplicate evidence carrying the first and conflicting values — rather than minting a set authority of its own. DISSOLVE-ON: std.keyed_roster is regrounded on a key-to-identity projection instead of an equality bundle, at which point keyed_roster_build becomes linear and this module consumes it directly and this note deletes. That regrounding is its own work item and deliberately not a rider here: it changes a std interface with six production consumers — std.roster_frontier, tools.dag_compile_clean_shard_roster, gunbc.doc_graph_roots, gunbc.commit_workflow, gunbc.non_fold_residue and v1.trait_derive_emit — all of which pay this same quadratic today."
+
+type CensusSubjectIndex {
+  seen: Map<String, Int>
+  distinct: List<CensusSubjectKey>
+  duplicated: List<CensusSubjectKey>
 }
 
-fn census_subject_key_occurrences(key: CensusSubjectKey, keys: List<CensusSubjectKey>) -> Int {
-  count(filter(keys, other => (other as String) == (key as String)))
+fn census_subject_index_step(
+  index: CensusSubjectIndex,
+  key: CensusSubjectKey,
+) -> CensusSubjectIndex {
+  match map_get(index.seen, key as String) {
+    Present { value: prior } =>
+      if prior == 1 {
+        CensusSubjectIndex {
+          seen: map_insert(index.seen, key as String, 2),
+          distinct: index.distinct,
+          duplicated: append(index.duplicated, [key]),
+        }
+      } else {
+        index
+      }
+    Absent =>
+      CensusSubjectIndex {
+        seen: map_insert(index.seen, key as String, 1),
+        distinct: append(index.distinct, [key]),
+        duplicated: index.duplicated,
+      }
+  }
+}
+
+fn census_subject_index(keys: List<CensusSubjectKey>) -> CensusSubjectIndex {
+  fold(
+    keys,
+    init: CensusSubjectIndex { seen: empty_map(), distinct: [], duplicated: [] },
+    f: census_subject_index_step,
+  )
+}
+
+fn census_subject_key_in_index(index: CensusSubjectIndex, key: CensusSubjectKey) -> Bool {
+  match map_get(index.seen, key as String) {
+    Present { value: _ } => true
+    Absent => false
+  }
 }
 
 fn census_distinct_subject_keys(keys: List<CensusSubjectKey>) -> List<CensusSubjectKey> {
-  fold(keys, init: [], f: fn(acc, key) {
-    if census_subject_key_in(key: key, keys: acc) { acc } else { append(acc, [key]) }
-  })
+  census_subject_index(keys: keys).distinct
 }
 
 fn census_duplicated_subject_keys(keys: List<CensusSubjectKey>) -> List<CensusSubjectKey> {
-  census_distinct_subject_keys(keys: keys)
-    |> filter(key => census_subject_key_occurrences(key: key, keys: keys) > 1)
+  census_subject_index(keys: keys).duplicated
 }
 
 fn pair_with(left: Fnv1a64Structural, right: Fnv1a64Structural) -> Fnv1a64Structural {
@@ -190,8 +228,18 @@ fn census_resolve_duplicate_subjects(
   denominator_subjects: List<CensusSubjectKey>,
   observed_subjects: List<CensusSubjectKey>,
 ) -> CoverageDuplicateResolution {
-  let denominator_duplicated = census_duplicated_subject_keys(keys: denominator_subjects)
-  let observation_duplicated = census_duplicated_subject_keys(keys: observed_subjects)
+  census_resolve_duplicates_from_indexes(
+    denominator_index: census_subject_index(keys: denominator_subjects),
+    observation_index: census_subject_index(keys: observed_subjects),
+  )
+}
+
+fn census_resolve_duplicates_from_indexes(
+  denominator_index: CensusSubjectIndex,
+  observation_index: CensusSubjectIndex,
+) -> CoverageDuplicateResolution {
+  let denominator_duplicated = denominator_index.duplicated
+  let observation_duplicated = observation_index.duplicated
   let denominator_clean = count(denominator_duplicated) == 0
   let observation_clean = count(observation_duplicated) == 0
   if denominator_clean && observation_clean {
@@ -277,13 +325,15 @@ fn census_reconcile_aligned_subjects(
   population_identity: Fnv1a64Structural,
   revision_identity: Fnv1a64Structural,
 ) -> CensusCoverageReconciliation {
-  let missing = denominator_subjects
-    |> filter(key => !census_subject_key_in(key: key, keys: observed_subjects))
-  let unexpected = observed_subjects
-    |> filter(key => !census_subject_key_in(key: key, keys: denominator_subjects))
-  let duplicates = census_resolve_duplicate_subjects(
-    denominator_subjects: denominator_subjects,
-    observed_subjects: observed_subjects,
+  let denominator_index = census_subject_index(keys: denominator_subjects)
+  let observation_index = census_subject_index(keys: observed_subjects)
+  let missing = denominator_index.distinct
+    |> filter(key => !census_subject_key_in_index(index: observation_index, key: key))
+  let unexpected = observation_index.distinct
+    |> filter(key => !census_subject_key_in_index(index: denominator_index, key: key))
+  let duplicates = census_resolve_duplicates_from_indexes(
+    denominator_index: denominator_index,
+    observation_index: observation_index,
   )
   let missing_kind = if count(missing) > 0 { 1 } else { 0 }
   let unexpected_kind = if count(unexpected) > 0 { 1 } else { 0 }
