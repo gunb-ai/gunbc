@@ -21,7 +21,7 @@ use v1_compiler::cli_run::{
     top_n_slowest_witnesses, BudgetKind, ClaimOutcome, DiscoveryCorpusOptions, DiscoverySummary,
     DiscoveryWidthPolicy, FloorPhase, HistogramData, NodeFrontierSelectionMode, PhaseProfile,
     ResolutionDivergencePhase, ResolutionDivergencePhaseState, SelectionDegradationSnapshot,
-    TimingPercentiles, DEFAULT_SLOWEST_WITNESS_ATTRIBUTION_N,
+    TimingPercentiles, WitnessRowCost, DEFAULT_SLOWEST_WITNESS_ATTRIBUTION_N,
 };
 use v1_compiler::memory_governor::{
     binding_cap_cgroup_dir, binding_high_cgroup_dir, floor_budget_below_minimum_footprint,
@@ -1672,7 +1672,7 @@ struct ClaimResult {
     /// Number of discovery witnesses (non-zero only for discovery batch nodes).
     corpus_witnesses: usize,
     /// Per-witness eval+resolve identity preserved from discovery (empty for gate/single-claim rows).
-    witness_row_costs: Vec<(String, String, u128, u128, u128, String, String)>,
+    witness_row_costs: Vec<WitnessRowCost>,
     /// Set only when this row was killed at a budget, carrying the pair that explains it.
     ///
     /// `ok`/`detail` are a lossy flattening of `ClaimOutcome`, so without this the batch's
@@ -3015,7 +3015,7 @@ fn str_list_value(lines: &[String]) -> Value {
 /// Render the top-N slowest witnesses through `dag/gunbc/ci_render.dag`.
 fn render_slowest_witnesses(
     source_roots: &[String],
-    rows: &[(String, String, u128, u128, u128, String, String)],
+    rows: &[WitnessRowCost],
 ) -> Result<String, String> {
     if rows.is_empty() {
         return Ok(String::new());
@@ -3036,19 +3036,22 @@ fn render_slowest_witnesses(
             "slowest_witness_row",
             &[
                 (Some("rank".to_string()), Value::Int((i + 1) as i64)),
-                (Some("function".to_string()), Value::Str(row.1.clone())),
-                (Some("entry".to_string()), Value::Str(row.0.clone())),
+                (
+                    Some("function".to_string()),
+                    Value::Str(row.function.clone()),
+                ),
+                (Some("entry".to_string()), Value::Str(row.entry.clone())),
                 (
                     Some("eval_ns".to_string()),
-                    Value::Int(clamp_nanos_to_i64(row.2)),
+                    Value::Int(clamp_nanos_to_i64(row.eval_wall_nanos)),
                 ),
                 (
                     Some("resolve_ns".to_string()),
-                    Value::Int(clamp_nanos_to_i64(row.3)),
+                    Value::Int(clamp_nanos_to_i64(row.resolve_nanos)),
                 ),
                 (
                     Some("total_ns".to_string()),
-                    Value::Int(clamp_nanos_to_i64(row.4)),
+                    Value::Int(clamp_nanos_to_i64(row.warm_nanos)),
                 ),
             ],
             false,
@@ -3082,10 +3085,7 @@ fn render_slowest_witnesses(
     }
 }
 
-fn emit_slowest_witness_attribution(
-    source_roots: &[String],
-    rows: &[(String, String, u128, u128, u128, String, String)],
-) {
+fn emit_slowest_witness_attribution(source_roots: &[String], rows: &[WitnessRowCost]) {
     let n = slowest_witness_attribution_n().min(rows.len());
     if n == 0 {
         return;
@@ -3094,8 +3094,9 @@ fn emit_slowest_witness_attribution(
     match render_slowest_witnesses(source_roots, &top) {
         Ok(boxed) => {
             eprintln!("{boxed}");
-            let tail_eval_ms: u128 = top.iter().map(|r| r.2).sum::<u128>() / 1_000_000;
-            let total_eval_ms = rows.iter().map(|r| r.2).sum::<u128>() / 1_000_000;
+            let tail_eval_ms: u128 =
+                top.iter().map(|r| r.eval_wall_nanos).sum::<u128>() / 1_000_000;
+            let total_eval_ms = rows.iter().map(|r| r.eval_wall_nanos).sum::<u128>() / 1_000_000;
             let pct = if total_eval_ms == 0 {
                 0.0
             } else {
@@ -3407,7 +3408,7 @@ fn discovery_claim_result(
     detail: String,
     selection: NodeFrontierSelectionMode,
     summary: &DiscoverySummary,
-    projected: Result<Vec<(String, String, u128, u128, u128, String, String)>, String>,
+    projected: Result<Vec<WitnessRowCost>, String>,
 ) -> ClaimResult {
     // Per-row identity is load-bearing for the receipt spine: a compute failure OR an
     // incomplete row set must refuse the discovery claim (typed/located), never silently
@@ -3415,15 +3416,21 @@ fn discovery_claim_result(
     match projected {
         Ok(mut witness_row_costs) => {
             for row in &summary.selection_skipped_rows {
-                witness_row_costs.push((
-                    row.entry.clone(),
-                    row.function.clone(),
-                    0,
-                    0,
-                    0,
-                    "selection-skipped".to_string(),
-                    row.provenance.clone(),
-                ));
+                // Zeros here are placeholders the writer never renders: the row's own
+                // `selection-skipped` outcome routes every timing cell to UNMEASURED. The
+                // CPU slot is `None` for the stronger reason that it is not a placeholder
+                // at all — an unexecuted row has no clock reading of any kind, and the type
+                // now says so rather than leaving a zero to be believed.
+                witness_row_costs.push(WitnessRowCost {
+                    entry: row.entry.clone(),
+                    function: row.function.clone(),
+                    eval_wall_nanos: 0,
+                    eval_cpu_nanos: None,
+                    resolve_nanos: 0,
+                    warm_nanos: 0,
+                    outcome: "selection-skipped".to_string(),
+                    detail: row.provenance.clone(),
+                });
             }
             ClaimResult {
                 function,
@@ -5012,7 +5019,7 @@ fn write_witness_row_cost_receipt_at(
     emit_full_tsv_log: bool,
 ) -> bool {
     let mut body = String::from(
-        "batch\tentry\tfunction\teval_wall_ms\tresolve_ms\twarm_ms\toutcome\tdetail\n",
+        "batch\tentry\tfunction\teval_wall_ms\teval_cpu_ms\tresolve_ms\twarm_ms\toutcome\tdetail\n",
     );
     let mut row_count = 0usize;
     for rec in batch_records {
@@ -5028,19 +5035,33 @@ fn write_witness_row_cost_receipt_at(
                 //
                 // Note the two are genuinely different facts here: an executed witness may
                 // legitimately measure 0 ms (sub-millisecond), and those rows keep their `0`.
-                let cells = if row_measurement_is_absent(&row.5) {
-                    format!("{UNMEASURED_CELL}\t{UNMEASURED_CELL}\t{UNMEASURED_CELL}")
-                } else {
+                //
+                // `eval_cpu_ms` sits BESIDE `eval_wall_ms` rather than replacing it, and its
+                // job is to make the remedy readable from this file alone: a slow row with
+                // high CPU is algorithm or repeated evaluation, a slow row with low CPU is
+                // waiting, I/O, subprocess or scheduling (operator ruling 2026-08-05). It is
+                // not a second threshold — the witness threshold is stated on wall — and a
+                // clock the producer did not sample renders UNMEASURED for the same reason
+                // an unexecuted row does: an unread clock must not read as a fast one.
+                let cells = if row_measurement_is_absent(&row.outcome) {
                     format!(
-                        "{}\t{}\t{}",
-                        row.2 / 1_000_000,
-                        row.3 / 1_000_000,
-                        row.4 / 1_000_000
+                        "{UNMEASURED_CELL}\t{UNMEASURED_CELL}\t{UNMEASURED_CELL}\t{UNMEASURED_CELL}"
+                    )
+                } else {
+                    let cpu = match row.eval_cpu_nanos {
+                        Some(ns) => (ns / 1_000_000).to_string(),
+                        None => UNMEASURED_CELL.to_string(),
+                    };
+                    format!(
+                        "{}\t{cpu}\t{}\t{}",
+                        row.eval_wall_nanos / 1_000_000,
+                        row.resolve_nanos / 1_000_000,
+                        row.warm_nanos / 1_000_000
                     )
                 };
                 body.push_str(&format!(
                     "{n}\t{}\t{}\t{cells}\t{}\t{}\n",
-                    row.0, row.1, row.5, row.6
+                    row.entry, row.function, row.outcome, row.detail
                 ));
                 row_count += 1;
             }
@@ -5104,14 +5125,14 @@ fn write_floor_wet_witness_row_outcome_receipt_at(
         let batch = rec.batch_index + 1;
         for result in &rec.results {
             for row in &result.witness_row_costs {
-                let outcome = wet_witness_row_outcome_label(&row.5);
-                let detail = scoped_wire_text(&row.6);
+                let outcome = wet_witness_row_outcome_label(&row.outcome);
+                let detail = scoped_wire_text(&row.detail);
                 body.push_str(&format!(
                     "{}\n",
                     [
                         batch.to_string(),
-                        row.0.clone(),
-                        row.1.clone(),
+                        row.entry.clone(),
+                        row.function.clone(),
                         outcome.to_string(),
                         detail,
                     ]
@@ -5361,8 +5382,8 @@ fn write_witness_row_cost_drift_receipt_at(
                 // there a measurement exists with no basis to judge it, here a basis exists
                 // with no measurement to judge. Neither is a comparison, and neither is
                 // reported as one. Counted, so the population is visible rather than absorbed.
-                let key = (row.0.clone(), row.1.clone());
-                if drift_row_disposition(&row.5, basis.contains_key(&key))
+                let key = (row.entry.clone(), row.function.clone());
+                if drift_row_disposition(&row.outcome, basis.contains_key(&key))
                     == DriftRowDisposition::ObservationAbsent
                 {
                     observation_absent_count += 1;
@@ -5372,18 +5393,18 @@ fn write_witness_row_cost_drift_receipt_at(
                         .unwrap_or_default();
                     body.push_str(&format!(
                         "{n}\t{}\t{}\t{UNMEASURED_CELL}\t{basis_cell}\tObservationAbsent\t\n",
-                        row.0, row.1
+                        row.entry, row.function
                     ));
                     continue;
                 }
-                let observed = row.2 / 1_000_000;
+                let observed = row.eval_wall_nanos / 1_000_000;
                 let dated = basis.get(&key);
                 let verdict = match witness_row_cost_verdict_via_authority(&ctx, observed, dated) {
                     Ok(v) => v,
                     Err(e) => {
                         eprintln!(
                             "claim_executor: drift comparator refused for {}::{}: {e} — walk fails closed here",
-                            row.0, row.1
+                            row.entry, row.function
                         );
                         return false;
                     }
@@ -5401,7 +5422,7 @@ fn write_witness_row_cost_drift_receipt_at(
                 };
                 body.push_str(&format!(
                     "{n}\t{}\t{}\t{observed}\t{basis_cell}\t{verdict}\t{run_ref_cell}\n",
-                    row.0, row.1
+                    row.entry, row.function
                 ));
             }
         }
@@ -5422,6 +5443,146 @@ fn write_witness_row_cost_drift_receipt_at(
     }
     eprintln!(
         "[receipt] floor witness row-cost drift: basis_absent={basis_absent_count} observation_absent={observation_absent_count} clock_mismatch={clock_mismatch_count} drift_exceeded={drift_count} (TSV: {})",
+        path.display()
+    );
+    true
+}
+
+/// Single-authority projection: fetch `gunbc.witness_row_cost.witness_row_cost_migration_threshold_ms`
+/// once (never a hand-typed 500 in the seed — DESIGN §3) so the threshold cannot drift from the
+/// fast-lane budget authority it is derived from.
+fn witness_row_cost_migration_threshold_ms_via_authority(
+    ctx: &InterpContext,
+) -> Result<u128, String> {
+    match run_in_context_with_args(ctx, "witness_row_cost_migration_threshold_ms", &[], false) {
+        Ok(Value::Int(n)) if n >= 0 => Ok(n as u128),
+        Ok(other) => Err(format!(
+            "witness_row_cost_migration_threshold_ms returned {other}, expected non-negative Int (fail-closed)"
+        )),
+        Err(e) => Err(format!("witness_row_cost_migration_threshold_ms: {e}")),
+    }
+}
+
+/// Single-authority projection, mirroring `witness_row_cost_verdict_via_authority`:
+/// the threshold comparison lives entirely in `.dag`'s `witness_row_cost_migration_verdict`.
+/// Rust reads back the returned `MigrationDisclosureVerdict` coproduct's tag only.
+fn witness_row_cost_migration_verdict_via_authority(
+    ctx: &InterpContext,
+    observed_ms: u128,
+) -> Result<bool, String> {
+    let observed = millisecond_value(ctx, observed_ms)?;
+    match run_in_context_with_args(
+        ctx,
+        "witness_row_cost_migration_verdict",
+        &[(Some("observed".to_string()), observed)],
+        false,
+    ) {
+        Ok(Value::Variant { variant_name, .. }) => {
+            Ok(ctx.sym_eq(variant_name, "MandatoryMigration"))
+        }
+        Ok(other) => Err(format!(
+            "witness_row_cost_migration_verdict returned {other}, expected MigrationDisclosureVerdict variant (fail-closed)"
+        )),
+        Err(e) => Err(format!("witness_row_cost_migration_verdict: {e}")),
+    }
+}
+
+/// MANDATORY-MIGRATION DISCLOSURE (`witness_row_cost_migration_threshold_note`, gunbc.witness_row_cost):
+/// runs every floor pass (not gated to falsifier cadence — this is what surfaces an over-threshold
+/// witness before it ever trips the 5s fail-stop on an unrelated PR). Disclosure only: never fails
+/// the walk on a nonzero population. Both the threshold fetch and the per-row verdict are authority
+/// calls into `gunbc.witness_row_cost`; this function only serializes the resulting rows to a TSV
+/// and a log — it is strictly the receipt-writing seam, not a second decision surface.
+fn write_witness_row_cost_migration_disclosure_receipt_at(
+    base: &std::path::Path,
+    batch_records: &[BatchRecord],
+    source_roots: &[String],
+) -> bool {
+    let entry = "dag/gunbc/witness_row_cost.dag";
+    let (graph, indices) = match resolve_entry_graph(source_roots, entry) {
+        Ok(v) => v,
+        Err(m) => {
+            eprintln!(
+                "claim_executor: failed to resolve {entry} for migration disclosure (fail-closed):\n{m}"
+            );
+            return false;
+        }
+    };
+    let ctx = make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+    let threshold_ms = match witness_row_cost_migration_threshold_ms_via_authority(&ctx) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!(
+                "claim_executor: migration disclosure threshold fetch failed: {e} — walk fails closed here"
+            );
+            return false;
+        }
+    };
+
+    let mut body =
+        String::from("batch\tentry\tfunction\tobserved_eval_ms\tthreshold_ms\tverdict\n");
+    let mut mandatory_count = 0usize;
+    let mut worst: Vec<(u128, String, String)> = Vec::new();
+    let mut observation_absent_count = 0usize;
+    for rec in batch_records {
+        let n = rec.batch_index + 1;
+        for result in &rec.results {
+            for row in &result.witness_row_costs {
+                if row_measurement_is_absent(&row.outcome) {
+                    observation_absent_count += 1;
+                    body.push_str(&format!(
+                        "{n}\t{}\t{}\t\t{threshold_ms}\tObservationAbsent\n",
+                        row.entry, row.function
+                    ));
+                    continue;
+                }
+                let observed = row.eval_wall_nanos / 1_000_000;
+                let is_mandatory = match witness_row_cost_migration_verdict_via_authority(
+                    &ctx, observed,
+                ) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        eprintln!(
+                            "claim_executor: migration verdict refused for {}::{}: {e} — walk fails closed here",
+                            row.entry, row.function
+                        );
+                        return false;
+                    }
+                };
+                let verdict = if is_mandatory {
+                    mandatory_count += 1;
+                    worst.push((observed, row.entry.clone(), row.function.clone()));
+                    "MandatoryMigration"
+                } else {
+                    "BelowMigrationThreshold"
+                };
+                body.push_str(&format!(
+                    "{n}\t{}\t{}\t{observed}\t{threshold_ms}\t{verdict}\n",
+                    row.entry, row.function
+                ));
+            }
+        }
+    }
+    worst.sort_by(|a, b| b.0.cmp(&a.0));
+    worst.truncate(5);
+    for line in body.lines() {
+        eprintln!("[witness-row-cost-migration-disclosure] {line}");
+    }
+    for (ms, entry, function) in &worst {
+        eprintln!(
+            "[witness-row-cost-migration-disclosure] worst: {entry}::{function} observed={ms}ms threshold={threshold_ms}ms"
+        );
+    }
+    let path = base.join("floor-witness-row-cost-migration-disclosure-receipt.tsv");
+    if let Err(e) = std::fs::create_dir_all(base).and_then(|_| std::fs::write(&path, &body)) {
+        eprintln!(
+            "claim_executor: failed to write witness row-cost migration disclosure receipt {}: {e} — walk fails closed here",
+            path.display()
+        );
+        return false;
+    }
+    eprintln!(
+        "[receipt] floor witness row-cost migration disclosure: mandatory_migration={mandatory_count} observation_absent={observation_absent_count} threshold_ms={threshold_ms} (TSV: {})",
         path.display()
     );
     true
@@ -7258,6 +7419,22 @@ fn run_walk(
         true
     };
     trace_floor_phase("witness-row-cost-drift-receipt", "completed", "");
+    trace_floor_phase(
+        "witness-row-cost-migration-disclosure-receipt",
+        "started",
+        "",
+    );
+    let witness_row_cost_migration_disclosure_receipt_ok = !emit_ordinary_floor_receipts
+        || write_witness_row_cost_migration_disclosure_receipt_at(
+            std::path::Path::new("target"),
+            &batch_records,
+            source_roots,
+        );
+    trace_floor_phase(
+        "witness-row-cost-migration-disclosure-receipt",
+        "completed",
+        "",
+    );
     // Written on EVERY exit path, red included — a red run is precisely when the
     // alert needs to know which component failed (gunbc.floor_component_receipt).
     trace_floor_phase("floor-component-receipt", "started", "");
@@ -7294,6 +7471,7 @@ fn run_walk(
         || !witness_row_cost_receipt_ok
         || !wet_witness_row_outcome_receipt_ok
         || !witness_row_cost_drift_receipt_ok
+        || !witness_row_cost_migration_disclosure_receipt_ok
         || !selection_degradation_receipt_ok
         || !floor_component_receipt_ok
         || !materialization_receipt_ok;
@@ -12629,34 +12807,37 @@ mod tests {
                 corpus_eval_nanos: 0,
                 corpus_witnesses: 3,
                 witness_row_costs: vec![
-                    (
-                        "dag/test/claim/stage0_rust_host_observation_live_witness_test.dag"
+                    WitnessRowCost {
+                        entry: "dag/test/claim/stage0_rust_host_observation_live_witness_test.dag"
                             .to_string(),
-                        "planted_pass_wet_row".to_string(),
-                        1_000_000,
-                        0,
-                        0,
-                        "Done".to_string(),
-                        String::new(),
-                    ),
-                    (
-                        "dag/test/claim/planted_fail_wet_row_test.dag".to_string(),
-                        "planted_fail_wet_row".to_string(),
-                        500_000,
-                        0,
-                        0,
-                        "Failed".to_string(),
-                        "returned Bool(false)".to_string(),
-                    ),
-                    (
-                        "dag/other.dag".to_string(),
-                        "planted_selection_skip_wet_row".to_string(),
-                        0,
-                        0,
-                        0,
-                        "selection-skipped".to_string(),
-                        "affected-set".to_string(),
-                    ),
+                        function: "planted_pass_wet_row".to_string(),
+                        eval_wall_nanos: 1_000_000,
+                        eval_cpu_nanos: Some(800_000),
+                        resolve_nanos: 0,
+                        warm_nanos: 0,
+                        outcome: "Done".to_string(),
+                        detail: String::new(),
+                    },
+                    WitnessRowCost {
+                        entry: "dag/test/claim/planted_fail_wet_row_test.dag".to_string(),
+                        function: "planted_fail_wet_row".to_string(),
+                        eval_wall_nanos: 500_000,
+                        eval_cpu_nanos: Some(400_000),
+                        resolve_nanos: 0,
+                        warm_nanos: 0,
+                        outcome: "Failed".to_string(),
+                        detail: "returned Bool(false)".to_string(),
+                    },
+                    WitnessRowCost {
+                        entry: "dag/other.dag".to_string(),
+                        function: "planted_selection_skip_wet_row".to_string(),
+                        eval_wall_nanos: 0,
+                        eval_cpu_nanos: None,
+                        resolve_nanos: 0,
+                        warm_nanos: 0,
+                        outcome: "selection-skipped".to_string(),
+                        detail: "affected-set".to_string(),
+                    },
                 ],
                 budget_refusal: None,
                 selection_degradation: None,
@@ -12720,26 +12901,41 @@ mod tests {
                 corpus_eval_nanos: 0,
                 corpus_witnesses: 2,
                 witness_row_costs: vec![
-                    // Executed, sub-millisecond: 500_000ns / 1_000_000 == 0.
-                    (
-                        "dag/test/claim/fast_test.dag".to_string(),
-                        "ran_in_under_a_millisecond".to_string(),
-                        500_000,
-                        0,
-                        0,
-                        "Done".to_string(),
-                        String::new(),
-                    ),
+                    // Executed, sub-millisecond: 500_000ns / 1_000_000 == 0. Both clocks
+                    // sampled, as production rows are.
+                    WitnessRowCost {
+                        entry: "dag/test/claim/fast_test.dag".to_string(),
+                        function: "ran_in_under_a_millisecond".to_string(),
+                        eval_wall_nanos: 500_000,
+                        eval_cpu_nanos: Some(300_000),
+                        resolve_nanos: 0,
+                        warm_nanos: 0,
+                        outcome: "Done".to_string(),
+                        detail: String::new(),
+                    },
+                    // Executed, but only the wall clock was sampled — a real state for any
+                    // producer that is not `run_claim_measured`.
+                    WitnessRowCost {
+                        entry: "dag/test/claim/wall_only_test.dag".to_string(),
+                        function: "cpu_clock_not_sampled".to_string(),
+                        eval_wall_nanos: 4_000_000,
+                        eval_cpu_nanos: None,
+                        resolve_nanos: 0,
+                        warm_nanos: 0,
+                        outcome: "Done".to_string(),
+                        detail: String::new(),
+                    },
                     // Never executed: pushed by `discovery_claim_result` with zero timings.
-                    (
-                        "dag/test/claim/skipped_test.dag".to_string(),
-                        "never_executed_at_all".to_string(),
-                        0,
-                        0,
-                        0,
-                        "selection-skipped".to_string(),
-                        "affected-set".to_string(),
-                    ),
+                    WitnessRowCost {
+                        entry: "dag/test/claim/skipped_test.dag".to_string(),
+                        function: "never_executed_at_all".to_string(),
+                        eval_wall_nanos: 0,
+                        eval_cpu_nanos: None,
+                        resolve_nanos: 0,
+                        warm_nanos: 0,
+                        outcome: "selection-skipped".to_string(),
+                        detail: "affected-set".to_string(),
+                    },
                 ],
                 budget_refusal: None,
                 selection_degradation: None,
@@ -12774,16 +12970,28 @@ mod tests {
             .find(|l| l.contains("never_executed_at_all"))
             .expect("skipped row");
 
+        // Columns 3..7 are eval_wall_ms, eval_cpu_ms, resolve_ms, warm_ms.
         let cost_cols = |line: &str| {
             let f: Vec<&str> = line.split('\t').collect();
-            (f[3].to_string(), f[4].to_string(), f[5].to_string())
+            (
+                f[3].to_string(),
+                f[4].to_string(),
+                f[5].to_string(),
+                f[6].to_string(),
+            )
         };
 
-        // The executed row measured genuinely-zero milliseconds (500_000ns floors to 0). That
-        // is a real measurement and must survive as the number it is.
+        // The executed row measured genuinely-zero milliseconds (500_000ns wall, 300_000ns
+        // cpu, both floor to 0). Those are real measurements and must survive as the numbers
+        // they are.
         assert_eq!(
             cost_cols(executed),
-            ("0".to_string(), "0".to_string(), "0".to_string()),
+            (
+                "0".to_string(),
+                "0".to_string(),
+                "0".to_string(),
+                "0".to_string()
+            ),
             "a sub-millisecond row measured 0 and must report 0: {executed}"
         );
 
@@ -12796,11 +13004,12 @@ mod tests {
             (
                 UNMEASURED_CELL.to_string(),
                 UNMEASURED_CELL.to_string(),
+                UNMEASURED_CELL.to_string(),
                 UNMEASURED_CELL.to_string()
             ),
             "an unexecuted row must report absence, not a zero: {skipped}"
         );
-        for cell in [&absent.0, &absent.1, &absent.2] {
+        for cell in [&absent.0, &absent.1, &absent.2, &absent.3] {
             assert!(
                 cell.parse::<u128>().is_err(),
                 "an absent measurement must not parse as a number, or a census counts an \
@@ -12814,6 +13023,61 @@ mod tests {
             cost_cols(executed),
             absent,
             "executed and unexecuted must differ in the cost columns themselves"
+        );
+
+        // THE SAME COLLISION ONE COLUMN OVER. A row that RAN but whose CPU clock was never
+        // sampled has no cpu figure, and rendering `0` there would say the witness used no
+        // CPU at all — which reads as the strongest possible remedy signal (pure waiting)
+        // for a row about which nothing is known. It must render absence while its wall
+        // figure, which WAS measured, stays a number.
+        let wall_only = body
+            .lines()
+            .find(|l| l.contains("cpu_clock_not_sampled"))
+            .expect("wall-only row");
+        let (wall, cpu, _, _) = cost_cols(wall_only);
+        assert_eq!(
+            wall, "4",
+            "a measured wall figure must survive: {wall_only}"
+        );
+        assert_eq!(
+            cpu, UNMEASURED_CELL,
+            "an unsampled cpu clock must report absence, not 0: {wall_only}"
+        );
+        assert!(
+            cpu.parse::<u128>().is_err(),
+            "an absent cpu measurement must not parse as a number, or a remedy read counts \
+             an unsampled clock as an idle one: {cpu}"
+        );
+
+        // And the two clocks must not be aliases of one another: the executed fixture
+        // measured 500_000ns wall against 300_000ns cpu, so a producer that filled both
+        // columns from one figure would be invisible at millisecond grain here. Assert on
+        // the raw rows instead, where the distinction is representable.
+        let records = zero_eval_collision_records();
+        let fast = &records[0].results[0].witness_row_costs[0];
+        assert_eq!(fast.eval_wall_nanos, 500_000);
+        assert_eq!(fast.eval_cpu_nanos, Some(300_000));
+        assert_ne!(
+            Some(fast.eval_wall_nanos),
+            fast.eval_cpu_nanos,
+            "the two clocks are independent carriers, not one figure written twice"
+        );
+
+        // The header names the column, so a consumer joins on a name rather than on an
+        // index that silently shifted when it was inserted.
+        let header: Vec<&str> = body.lines().next().expect("header").split('\t').collect();
+        assert!(
+            header.contains(&"eval_cpu_ms"),
+            "the cpu column must be named in the header: {header:?}"
+        );
+        assert_eq!(
+            header
+                .iter()
+                .position(|c| *c == "eval_wall_ms")
+                .map(|i| i + 1),
+            header.iter().position(|c| *c == "eval_cpu_ms"),
+            "the two clocks belong side by side, so the remedy is readable from this file \
+             alone without joining another: {header:?}"
         );
 
         // The typed disposition still rides beside the number, so the cause stays recoverable

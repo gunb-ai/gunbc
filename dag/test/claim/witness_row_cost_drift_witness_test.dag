@@ -13,7 +13,7 @@ import std.logic { Bool }
 import std.nat { Nat }
 import std.measure { millisecond, millisecond_count }
 import v2.std.optional { Absent, Present }
-import std.observation { ClockBasis, CpuClock, WallClock, clock_basis_eq }
+import std.measure { ClockBasis, CpuClock, WallClock, clock_basis_eq }
 import v2.std.text { String }
 
 data witness_row_cost_drift_note: String = "Executing consumer for the per-witness cost drift comparator (gunbc.witness_row_cost, placement #5 spine). THE PAIR IS THE PROOF: a synthetic row exceeding 2× its dated basis MUST produce DriftExceeded, and one within basis MUST NOT — either alone is satisfiable by a broken comparator. BasisAbsent is a third arm: no dated basis is typed and counted, never assume fine. Structural claims only here — every ms basis value in production rows must cite an arm64 fleet run id (witness_row_cost_basis_host_class_note). Consumers match WitnessRowCostVerdict directly (no Bool predicate dissolution). THE CROSS-CLOCK PAIR IS THE DISCRIMINATING CONTROL for the clock-basis wall (operator ruling 2026-08-05), and it takes TWO cases rather than one because a single case is satisfiable by a comparator that happens to be answering DriftExceeded for the wrong reason: 21 CPU against a 10 wall basis would exceed the 2x ratio and 20 CPU against the same basis would not, so the pair asserts that the SAME refusal arrives on both sides of the threshold and therefore that the refusal is decided by the clock rather than by the magnitude. Before this wall both cases returned a confident verdict about two different quantities."

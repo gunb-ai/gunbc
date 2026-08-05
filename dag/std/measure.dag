@@ -2,7 +2,7 @@ module std.measure
 
 import std.currency { CurrencyCode }
 import std.nat { Nat }
-import std.types { Int }
+import std.types { Int, Bool, String, NonEmptyStr }
 import extdeps.units.iec_80000_13 { iec_kibi_factor, octet_bit_count }
 import extdeps.units.iso8601 { iso8601_seconds_per_minute, iso8601_minutes_per_hour }
 import extdeps.units.dimensionless {
@@ -226,6 +226,8 @@ type Hertz = Measure<Frequency, One, Nat>
 type HardwareThreadCount = Measure<Count, One, Nat>
 
 type CharacterCount = Measure<Count, One, Nat>
+
+type TokenCount = Measure<Count, One, Nat>
 
 type Millicore = Measure<Count, Milli, Nat>
 
@@ -460,6 +462,16 @@ fn character_count_value(c: CharacterCount) -> Nat {
   measure_count(c)
 }
 
+data token_count_note: String = "A count of LLM tokens is a COUNT of a unit on the same axis HardwareThreadCount and CharacterCount already instantiate, with a different thing being counted — so it is a fourth member of an existing family, not a new point in the type space. It lives HERE, beside its siblings, because Measure of Count at One over Nat takes only arguments std.measure already owns: an instantiation declared downstream would be a fourth name for a shape this module already names three times, which is the DESIGN section 3 fork. That is the distinction from extdeps.pricing.billing_units, whose MoneyRate aliases introduce their own phantom markers and are therefore genuinely new instantiations that CANNOT be written here without importing vendor vocabulary. Landed by review 48816 on gunbc#7851, which caught the alias minted in gunbc.econ.llm_attempt_receipt and correctly refused the billing_units citation offered for it. HONEST LIMIT, unchanged from the siblings: all four are structurally identical, so passing a TokenCount where a CharacterCount belongs is WRITABLE — the family buys reading clarity and one construction site each, never a wall."
+
+fn token_count(count: Nat) -> TokenCount {
+  Measure { count: count }
+}
+
+fn token_count_value(t: TokenCount) -> Nat {
+  measure_count(t)
+}
+
 fn millicore(count: Nat) -> Millicore {
   Measure { count: count }
 }
@@ -617,3 +629,44 @@ fn amortization_months_count(m: AmortizationMonths) -> Nat {
 data amortization_months_unit_note: String = "Count of calendar billing months for setup-fee amortization — a named Count carrier, not SI duration (cf. billing_month_as_hour_count for the hourly divisor convention only)."
 
 data amortization_months_dissolve_on: String = "dissolve-on: ground as calendar-month Duration sibling to billing_month_as_hour_count (one month-count authority for billing amortization + hourly divisor), or fold into extdeps.forex/pricing month facts when a second consumer appears — do not mint a third month wrapper."
+
+type ClockBasis
+  = CpuClock
+  | WallClock
+
+data measure_clock_basis_note: String = "WHICH CLOCK a duration was read from, carried as data rather than spelled in a field name (operator ruling 2026-08-05). The defect this closes is not recording one clock instead of two — recording BOTH is correct — it is a duration whose meaning lives only in the name of the field holding it. A figure called wall_nanos and a figure called cpu_nanos are two magnitudes that compare, add and threshold as if they were the same quantity, and nothing in the type stops it: the fast-lane cap is enforced on CPU while every cost receipt recorded wall, and four sessions spent an evening comparing 1005 against 5004, 2507 against 5003 and 7944 against 5018 -- every number correct, only the bases differing, and no test could have caught any of it. THE REPO ALREADY RULED ON THIS SHAPE one magnitude over: extdeps.pricing.object_storage byte_basis_note opens with 'the unit word is not the unit' and resolves vendor GB-vs-GiB ambiguity with a typed ByteBasis on the row, never a second field named gibibytes beside one named gigabytes. This is that resolution for clocks. TWO ARMS AND NOT THREE, deliberately, and this is where it DIVERGES from ByteBasis: ByteBasisUnstated exists because vendors publish rates without saying which byte they mean, so the ambiguity is an external fact we can only record. A clock basis is never external -- this repository takes its own measurements and always knows which clock it read -- so an Unstated arm would model an absence that cannot occur here, and an uninhabited arm is its own defect. Failing to READ a clock is a different fact and is carried by Measured on the value, not by a third basis."
+
+fn clock_basis_eq(a: ClockBasis, b: ClockBasis) -> Bool {
+  match a {
+    CpuClock =>
+      match b {
+        CpuClock => true
+        WallClock => false
+      }
+    WallClock =>
+      match b {
+        CpuClock => false
+        WallClock => true
+      }
+  }
+}
+
+fn clock_basis_cpu() -> ClockBasis {
+  CpuClock
+}
+
+fn clock_basis_wall() -> ClockBasis {
+  WallClock
+}
+
+data clock_basis_authority_reachability_note: String = "WHY THIS CARRIER LIVES IN std.measure AND NOT WHERE IT WAS FIRST DECLARED, generalized because the same authority hit the same wall twice in one day (2026-08-05). ClockBasis was minted in std.observation, the module whose events first needed it. Within hours it failed to be an authority twice, for two different reasons that look unrelated and are not. First it was internal, and gunbc's migration-policy carrier could not state its own basis without it being EXPORTED. Then std.realization_schedule -- which carried a forked second spelling, WitnessCostClock, that this lane was dissolving -- turned out to be UPSTREAM of std.observation through std.effect_grant and std.effects, so importing the authority created a cycle and the compiler refused it outright. A single authority that half the corpus cannot import is not a single authority. REACHABILITY IS PART OF WHAT MAKES SOMETHING AN AUTHORITY, not a deployment detail discovered afterwards, and it is the part nobody checks when minting one: declaring a concept once is assumed to settle it, when what actually settles it is every consumer being able to name it. The home is therefore chosen by who must reach it, not by who first needed it -- and here that answer is also the honest one on the merits, since which clock a duration was read from is a fact about the MEASUREMENT rather than about the observation event that happens to carry one, this module already owns the magnitudes the basis qualifies, and extdeps.pricing.object_storage ByteBasis is in-repo precedent for a basis living beside its magnitude. A METHOD NOTE, because the cycle was nearly missed: it was checked for by grepping the two files' direct imports, which showed no edge. That is a LOCAL instrument answering a question that is only decidable GLOBALLY, and it returned a confident wrong answer. Only the compiler could see it. When the question is transitive, only a transitive instrument answers it."
+
+data measure_clock_basis_seed_entry_note: String = "Two nullary constructors exist so the v1 seed can hand a ClockBasis across the interpreter boundary WITHOUT building a Value in Rust — the same discipline millisecond(count:) and nanosecond(count:) already carry at this seam, and the reason gunbc.witness_row_cost's seed notes give for it: a carrier assembled on the Rust side is a second copy of this module's shape, and it drifts silently. WHICH one the seed calls is chosen by matching its own typed BudgetKind, so the clock is never recovered from a label string; the function name is a symbol the seed selects, not prose it parses. They dissolve with the seed transport itself, on the witness-realization lane's trigger — when a realized runner enforces the deadline, it constructs the outcome here directly and has nothing to marshal."
+
+fn clock_basis_label(b: ClockBasis) -> NonEmptyStr {
+  match b {
+    CpuClock => "thread-CPU" as NonEmptyStr
+    WallClock => "wall" as NonEmptyStr
+  }
+}
+
