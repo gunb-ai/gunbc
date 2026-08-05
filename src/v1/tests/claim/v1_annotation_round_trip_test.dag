@@ -1,0 +1,169 @@
+module v1.tests.claim.v1_annotation_round_trip_test
+
+import std.types { Bool, Int, String, List }
+import std.occurrence_identity { OccurrenceTransport }
+import std.source_annotation {
+  SourceAnnotationDebt,
+  SourceAnnotationGraph,
+  annotation_attachment_result_graph,
+  annotation_attachment_result_refusals,
+  source_annotation_graph_rows,
+  source_annotation_graphs_agree
+}
+import v1.compiler.annotation_bind {
+  bind_annotations,
+  render_annotation_block,
+  render_line_comment_delimiter,
+  render_subject_annotation_blocks
+}
+import v1.compiler.tokenize { tokenize_artifact }
+import v1.compiler.parse { parse_with_table }
+import v1.std.core { build_newline_index, empty_intern_table, NewlineIndex }
+
+data v1_annotation_round_trip_offline_recipe: String = "OFFLINE LOCAL RECIPE: target/release/claim_batch --source-root dag --source-root src/v1 --entry src/v1/tests/claim/v1_annotation_round_trip_test.dag --functions w_two_blocks_survive_the_round_trip,w_a_renderer_without_the_blank_line_merges_them,w_one_block_spanning_two_lines_stays_one_block,w_identical_text_twice_stays_twice,w_authored_indentation_survives,w_an_empty_annotation_line_survives,w_round_trip_over_a_source_with_no_prose_is_not_evidence,w_the_fixture_actually_carried_prose"
+
+data v1_annotation_round_trip_note: String = "D-C property 7: parse, render, parse — the graph survives. What agreement means is single-authored in std.source_annotation as source_annotation_graphs_agree, so this file exercises the property rather than restating it; a second definition of `agree` living here is the fork that would let the two drift.
+
+THE PROPERTY IS OVER THE ANNOTATION CHANNEL, and the declaration text is held fixed to isolate it. That is the point rather than a shortcut: property 4 already proved on the other side that annotations do not perturb the semantic projection or the emitted bytes, so what is unproven — and what this file proves — is that the prose itself makes the trip. Re-emitting the declaration would put the whole .dag source emitter inside the oracle, and a failure would no longer say which half broke.
+
+WHY A ROUND TRIP IS EASY TO GREEN VACUOUSLY, and what stops it here. A source carrying no annotations round-trips perfectly: the empty graph agrees with the empty graph, and every arm passes while nothing is exercised. So the negative control below asserts that the empty case is NOT evidence, and every positive arm asserts its fixture produced a NONEMPTY graph before comparing. Agreement alone is never the whole assertion."
+
+fn transport_of(source: String) -> OccurrenceTransport {
+  parse_with_table(
+    tokens: tokenize_artifact(source: source, file: "rt.dag").tokens,
+    source_indices: map_insert(empty_map(), "rt.dag", build_newline_index(file: "rt.dag", source: source)),
+    intern_table: empty_intern_table(),
+  ).occurrence_transport
+}
+
+fn graph_of(source: String) -> SourceAnnotationGraph {
+  annotation_attachment_result_graph(
+    result: bind_annotations(
+      transport: transport_of(source: source),
+      captures: tokenize_artifact(source: source, file: "rt.dag").annotations,
+      source_length: string_length(s: source)
+    )
+  )
+}
+
+fn refusal_count(source: String) -> Int {
+  annotation_attachment_result_refusals(
+    result: bind_annotations(
+      transport: transport_of(source: source),
+      captures: tokenize_artifact(source: source, file: "rt.dag").annotations,
+      source_length: string_length(s: source)
+    )
+  ) |> count
+}
+
+fn row_count(source: String) -> Int {
+  source_annotation_graph_rows(graph: graph_of(source: source)) |> count
+}
+
+data declaration_note: String = "The fixed declaration every fixture hangs its prose on. One module-scope data row, because that is the population this feature exists to serve and the one the roster reaches."
+
+data declaration_text: String = "data alpha: String = \"a\"\n"
+
+data rendered_source_note: String = "Rebuilds a source from the CANONICAL rendering of a parsed graph: module header, the rendered blocks, then the same declaration. This is the render half of the round trip, and it deliberately uses render_subject_annotation_blocks — the production renderer — rather than assembling annotation lines locally, so a defect in the renderer reaches these claims instead of being papered over by test-local string building."
+
+fn rendered_source(source: String) -> String {
+  concat(
+    "module rt\n\n",
+    concat(
+      render_subject_annotation_blocks(rows: source_annotation_graph_rows(graph: graph_of(source: source))),
+      concat("\n", declaration_text)
+    )
+  )
+}
+
+fn round_trips(source: String) -> Bool {
+  source_annotation_graphs_agree(
+    left: graph_of(source: source),
+    right: graph_of(source: rendered_source(source: source))
+  )
+}
+
+data two_blocks_source: String = "module rt\n\n// first block\n\n// second block\ndata alpha: String = \"a\"\n"
+
+data one_block_source: String = "module rt\n\n// first line\n// second line\ndata alpha: String = \"a\"\n"
+
+data twice_source: String = "module rt\n\n// same text\n\n// same text\ndata alpha: String = \"a\"\n"
+
+data indented_source: String = "module rt\n\n//   indented\ndata alpha: String = \"a\"\n"
+
+data empty_line_source: String = "module rt\n\n// above\n//\n// below\ndata alpha: String = \"a\"\n"
+
+data bare_source: String = "module rt\n\ndata alpha: String = \"a\"\n"
+
+data discriminating_case_note: String = "THE CASE THAT DECIDES THE RENDERER, built first. Two blocks separated by a blank line must come back as two rows. The positive arm asserts exactly two rows before and after — not merely that the graphs agree — because agreement between two identically-merged graphs would also pass, and the count is what pins which shape survived."
+
+test fn w_two_blocks_survive_the_round_trip() -> Bool {
+  row_count(source: two_blocks_source) == 2 &&
+    row_count(source: rendered_source(source: two_blocks_source)) == 2 &&
+    round_trips(source: two_blocks_source)
+}
+
+data blank_line_is_load_bearing_note: String = "The RED control for the arm above: a renderer that joined the blocks with a single newline instead of a blank line. It is spelled out here rather than invoked because the production renderer does not offer the wrong behaviour — so this reconstructs it, and asserts the round trip would have MERGED two authored blocks into one. Without this arm, `two blocks survive` passes for a renderer that is right and also for one that is wrong in a way no other claim in this file observes."
+
+fn merged_rendering(source: String) -> String {
+  concat(
+    "module rt\n\n",
+    concat(
+      source_annotation_graph_rows(graph: graph_of(source: source))
+        |> map(row => render_annotation_block(text: row.text))
+        |> join(separator: "\n"),
+      concat("\n", declaration_text)
+    )
+  )
+}
+
+test fn w_a_renderer_without_the_blank_line_merges_them() -> Bool {
+  row_count(source: merged_rendering(source: two_blocks_source)) == 1 &&
+    !source_annotation_graphs_agree(
+      left: graph_of(source: two_blocks_source),
+      right: graph_of(source: merged_rendering(source: two_blocks_source))
+    )
+}
+
+test fn w_one_block_spanning_two_lines_stays_one_block() -> Bool {
+  row_count(source: one_block_source) == 1 &&
+    row_count(source: rendered_source(source: one_block_source)) == 1 &&
+    round_trips(source: one_block_source)
+}
+
+data multiplicity_note: String = "Order and multiplicity are the carrier's declared identity, so two rows with identical text must stay two rows. A renderer that deduplicated would still agree on subject and text for the survivor; only the count catches it."
+
+test fn w_identical_text_twice_stays_twice() -> Bool {
+  row_count(source: twice_source) == 2 &&
+    row_count(source: rendered_source(source: twice_source)) == 2 &&
+    round_trips(source: twice_source)
+}
+
+test fn w_authored_indentation_survives() -> Bool {
+  row_count(source: indented_source) == 1 &&
+    render_line_comment_delimiter(line: "  indented") == "//   indented" &&
+    round_trips(source: indented_source)
+}
+
+data empty_line_note: String = "A bare `//` inside a block. It is the case that decides the empty-line spelling: rendering it as `// ` would leave a trailing space for an editor to strip, and this asserts the bare form both renders and survives."
+
+test fn w_an_empty_annotation_line_survives() -> Bool {
+  render_line_comment_delimiter(line: "") == "//" &&
+    row_count(source: empty_line_source) == 1 &&
+    round_trips(source: empty_line_source)
+}
+
+data vacuous_green_note: String = "The guard against the whole file passing for the wrong reason. A source with no prose round-trips trivially — empty agrees with empty — so this asserts that agreement while proving the fixture carried NOTHING, which is what makes it evidence of nothing. Read together with the arm below it: agreement is only meaningful over a nonempty graph."
+
+test fn w_round_trip_over_a_source_with_no_prose_is_not_evidence() -> Bool {
+  row_count(source: bare_source) == 0 && round_trips(source: bare_source)
+}
+
+test fn w_the_fixture_actually_carried_prose() -> Bool {
+  row_count(source: two_blocks_source) > 0 &&
+    row_count(source: one_block_source) > 0 &&
+    row_count(source: twice_source) > 0 &&
+    row_count(source: indented_source) > 0 &&
+    row_count(source: empty_line_source) > 0 &&
+    refusal_count(source: two_blocks_source) == 0
+}
