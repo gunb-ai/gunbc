@@ -1113,6 +1113,7 @@ pub struct MutationCounters {
     pub set_insert_items_copied: u64,
     pub set_union_calls: u64,
     pub set_union_items_copied: u64,
+    pub uri_percent_encode_scalar_fragment_calls: u64,
 }
 
 impl fmt::Display for MutationCounters {
@@ -3615,6 +3616,9 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
         }
     };
     record_call_frequency(&func_name);
+    if func_name == "uri_percent_encode_scalar_fragment" {
+        ctx.mutation_counters.borrow_mut().uri_percent_encode_scalar_fragment_calls += 1;
+    }
 
     let arg_nodes = &node.children;
 

@@ -104,7 +104,7 @@ fn build() -> Int {
     );
 }
 
-fn uri_percent_encode_push_counters_for_scalar_count(
+fn uri_percent_encode_counters_for_scalar_count(
     scalar_count: usize,
 ) -> v1_interpreter::MutationCounters {
     let code_points: Vec<i64> = (0..scalar_count)
@@ -144,9 +144,25 @@ fn build() -> Bool {{
 }
 
 #[test]
-fn uri_percent_encode_code_points_accumulates_with_map_then_join() {
-    let small = uri_percent_encode_push_counters_for_scalar_count(5);
-    let large = uri_percent_encode_push_counters_for_scalar_count(50);
+fn uri_percent_encode_code_points_encodes_each_scalar_once() {
+    let five = uri_percent_encode_counters_for_scalar_count(5);
+    let fifty = uri_percent_encode_counters_for_scalar_count(50);
+    assert_eq!(
+        five.uri_percent_encode_scalar_fragment_calls, 5,
+        "five reserved scalars must encode exactly once each, got {}",
+        five.uri_percent_encode_scalar_fragment_calls
+    );
+    assert_eq!(
+        fifty.uri_percent_encode_scalar_fragment_calls, 50,
+        "fifty reserved scalars must encode exactly once each, got {}",
+        fifty.uri_percent_encode_scalar_fragment_calls
+    );
+}
+
+#[test]
+fn uri_percent_encode_code_points_accumulation_does_not_scale_list_push() {
+    let small = uri_percent_encode_counters_for_scalar_count(5);
+    let large = uri_percent_encode_counters_for_scalar_count(50);
     assert_eq!(
         large.list_push_calls, small.list_push_calls,
         "list_push_calls must not scale with encoded scalar count (5-scalar run={}, 50-scalar run={})",
