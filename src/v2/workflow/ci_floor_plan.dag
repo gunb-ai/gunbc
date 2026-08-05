@@ -278,6 +278,7 @@ fn gate_node(g: Gate) -> Node {
     DagCompileCleanGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_compile } }, children: [], occurrence_id: SyntheticOccurrence }
     GeneratedArtifactDriftGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_generated_artifact } }, children: [], occurrence_id: SyntheticOccurrence }
     ExtdepsScopePlacementGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_extdeps_scope_placement } }, children: [], occurrence_id: SyntheticOccurrence }
+    ProseRowIntroductionGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_prose_row_introduction } }, children: [], occurrence_id: SyntheticOccurrence }
     SourceRootIngestGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_sourceingest } }, children: [], occurrence_id: SyntheticOccurrence }
     RegenVerifyGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_regen_verify } }, children: [], occurrence_id: SyntheticOccurrence }
     SelfHostReadsRealBytesGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_self_host_reads_real_bytes } }, children: [], occurrence_id: SyntheticOccurrence }
