@@ -108,7 +108,7 @@ fn fleet_lifecycle_outcome_envelope(outcome: FleetLifecycleOutcome) -> FleetLife
 
 fn fleet_lifecycle_outcome_is_refused(outcome: FleetLifecycleOutcome) -> Bool {
   match outcome {
-    FleetLifecycleObserved { envelope: _ } => False
-    FleetLifecycleRefused { class: _ } => True
+    FleetLifecycleObserved { envelope: _ } => false
+    FleetLifecycleRefused { class: _ } => true
   }
 }
