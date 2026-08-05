@@ -21,6 +21,10 @@ import gunbc.guarantee_probe_corpus {
   method_green_probe,
   conformance_scalar_red_probe,
   conformance_green_probe,
+  sole_constructor_cross_module_class,
+  sole_ctor_forged_red_probe,
+  sole_ctor_green_probe,
+  sole_ctor_mint_fn_hole_probe,
   v2_frontier_red_probe,
   v2_frontier_green_probe,
   ProbeExpectation,
@@ -135,6 +139,14 @@ data conformance_scalar_red_source: String = "module probe_conformance_red\nfn f
 
 data conformance_green_source: String = "module probe_conformance_green\nfn a() -> Int { 42 }\nfn b() -> String { \"fine\" }\ndata c: Int = 7\nfn e(xs: List<Int>) -> Int? { xs |> first }\n"
 
+data sole_ctor_forged_source: String = "module probe_uri_sole_ctor_forged\nimport extdeps.uri {\n  UriValidatedScalar,\n  UriPercentEncodeBuilding,\n  UriPercentEncodeRefused,\n  uri_percent_encode_admitted_scalar_wire,\n}\nfn bypass() -> String {\n  match uri_percent_encode_admitted_scalar_wire(scalar: UriValidatedScalar { admitted_cp: 55296 }) {\n    UriPercentEncodeBuilding { wire: w } => w\n    UriPercentEncodeRefused { cause: _ } => \"refused\"\n  }\n}\n"
+
+data sole_ctor_green_source: String = "module probe_uri_sole_ctor_green\nimport extdeps.uri {\n  uri_validated_scalar_construction,\n  UriValidatedScalarConstructed,\n  UriValidatedScalarSurrogateRefused,\n  UriValidatedScalarOutOfRangeRefused,\n  uri_percent_encode_admitted_scalar_wire,\n  UriPercentEncodeBuilding,\n  UriPercentEncodeRefused,\n}\nfn legal() -> String {\n  match uri_validated_scalar_construction(cp: 65) {\n    UriValidatedScalarConstructed(scalar) =>\n      match uri_percent_encode_admitted_scalar_wire(scalar: scalar) {\n        UriPercentEncodeBuilding { wire: w } => w\n        UriPercentEncodeRefused { cause: _ } => \"refused\"\n      }\n    UriValidatedScalarSurrogateRefused { cp: _ } => \"surrogate\"\n    UriValidatedScalarOutOfRangeRefused { cp: _ } => \"range\"\n  }\n}\n"
+
+data sole_ctor_mint_fn_hole_source: String = "module probe_uri_sole_ctor_mint_hole\nimport extdeps.uri {\n  uri_validated_scalar_construction,\n  UriValidatedScalarConstructed,\n  UriValidatedScalarSurrogateRefused,\n  UriValidatedScalarOutOfRangeRefused,\n}\nfn bypass_via_mint() -> String {\n  match uri_validated_scalar_construction(cp: 55296) {\n    UriValidatedScalarConstructed(_) => \"constructed\"\n    UriValidatedScalarSurrogateRefused { cp: _ } => \"surrogate\"\n    UriValidatedScalarOutOfRangeRefused { cp: _ } => \"range\"\n  }\n}\n"
+
+data sole_constructor_probe_scope_note: String = "UriValidatedScalar (#7790) enrolled on the guarantee probe corpus, not a parallel compile_dag_rust_emit_check fork. Walled today: cross-module record literal construction of a sole_constructor type (SoleConstructorViolation). Green control: cross-module call to the exported mint uri_validated_scalar_construction with a legal scalar, then wire encode — must stay zero-diagnostics. Known hole, expecting-red: cross-module call to uri_validated_scalar_construction with an illegal scalar still compile-accepts; runtime refusal is not compile evidence. sole_constructor_mint_fn_hole_still_compile_clean witnesses the hole until the wall extends."
+
 test fn identity_registry_is_unique() -> Bool {
   guarantee_class_ids_unique(ids: guarantee_probe_class_ids())
     && guarantee_path_ids_unique(paths: guarantee_probe_paths())
@@ -232,6 +244,51 @@ test fn conformance_green_control_has_zero_diagnostics() -> Bool {
   match active_probe_row(probe: conformance_green_probe) {
     Present { value: row } =>
       probe_row_expectation_holds(census: census_of(source: conformance_green_source), row: row)
+    Absent => false
+  }
+}
+
+test fn sole_constructor_forged_literal_red_refuses() -> Bool {
+  let census = census_of(source: sole_ctor_forged_source)
+  match active_probe_row(probe: sole_ctor_forged_red_probe) {
+    Present { value: row } =>
+      probe_row_expectation_holds(census: census, row: row)
+        && match census_blocking_count_for_class(census: census, wanted: "SoleConstructorViolation") {
+          Present { value: n } => n >= 1
+          Absent => false
+        }
+    Absent => false
+  }
+}
+
+test fn sole_constructor_sanctioned_mint_green_control_has_zero_diagnostics() -> Bool {
+  match active_probe_row(probe: sole_ctor_green_probe) {
+    Present { value: row } =>
+      probe_row_expectation_holds(census: census_of(source: sole_ctor_green_source), row: row)
+    Absent => false
+  }
+}
+
+test fn sole_constructor_mint_fn_hole_still_compile_clean() -> Bool {
+  let census = census_of(source: sole_ctor_mint_fn_hole_source)
+  match active_probe_row(probe: sole_ctor_mint_fn_hole_probe) {
+    Present { value: row } =>
+      observation_is_clean(o: probe_observation_from_census(census: census))
+        && !probe_row_expectation_holds(census: census, row: row)
+    Absent => false
+  }
+}
+
+test fn sole_constructor_forged_red_does_not_satisfy_green_expectation() -> Bool {
+  let census = census_of(source: sole_ctor_forged_source)
+  match active_probe_row(probe: sole_ctor_forged_red_probe) {
+    Present { value: red_row } =>
+      match active_probe_row(probe: sole_ctor_green_probe) {
+        Present { value: green_row } =>
+          probe_row_expectation_holds(census: census, row: red_row)
+            && !probe_row_expectation_holds(census: census, row: green_row)
+        Absent => false
+      }
     Absent => false
   }
 }
