@@ -55,8 +55,8 @@ fn fleet_lifecycle_operation_tool_name(op: FleetLifecycleOperation) -> NonEmptyS
 
 fn fleet_lifecycle_requires_change_window(op: FleetLifecycleOperation) -> Bool {
   match fleet_lifecycle_operation_class(op: op) {
-    Collector => False
-    Controller => True
+    Collector => false
+    Controller => true
   }
 }
 
