@@ -1,41 +1,17 @@
 module gunbc.generated_artifact_observation
 
-import gunbc.generated_artifact { GeneratedArtifact, committed_generated_artifacts, artifact_path, artifact_eq }
+import gunbc.generated_artifact { GeneratedArtifact, committed_generated_artifacts, artifact_path }
 import gunbc.generated_artifact_emit { ArtifactGenerated, ArtifactGenerationRefused, artifact_generate, artifact_extra_valid }
 import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.generated_artifact_assessment {
+  GeneratedArtifactObservation, GeneratedArtifactObserved, GeneratedArtifactObservationRefused,
+  assess_generated_artifact_population
+}
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-data generated_artifact_observation_note: String = "P0 (operator-directed, 2026-08-05): the prior shape called artifact_generate up to four times and re-read the committed file a second time per artifact across gate_ok/red_receipt_ok, and the fast .dag witness independently called artifact_generate three more times per artifact to fake a drift with a live perturb — the semantic graph asking the same expensive fact repeatedly, cost and correctness riding on incidental memoization (operator ruling). This module is the single LIVE producer: one Filesystem.Read, one artifact_generate, one artifact_extra_valid per artifact, captured once as a typed receipt. Everything downstream — the drift/validation leaf, the population-identity group check, and CI's failure diagnostic — reads the retained receipt and never calls the producer again."
-
-type GeneratedArtifactObservation
-  = GeneratedArtifactObserved {
-      artifact: GeneratedArtifact,
-      path: String,
-      generated_content: String,
-      committed_content: String,
-      extra_validation: Bool
-    }
-  | GeneratedArtifactObservationRefused {
-      artifact: GeneratedArtifact,
-      path: String,
-      cause: String
-    }
-
-fn observation_artifact(o: GeneratedArtifactObservation) -> GeneratedArtifact {
-  match o {
-    GeneratedArtifactObserved { artifact, path: _, generated_content: _, committed_content: _, extra_validation: _ } => artifact
-    GeneratedArtifactObservationRefused { artifact, path: _, cause: _ } => artifact
-  }
-}
-
-fn observation_path(o: GeneratedArtifactObservation) -> String {
-  match o {
-    GeneratedArtifactObserved { artifact: _, path, generated_content: _, committed_content: _, extra_validation: _ } => path
-    GeneratedArtifactObservationRefused { artifact: _, path, cause: _ } => path
-  }
-}
+data generated_artifact_observation_note: String = "P0 (operator-directed, 2026-08-05; module-split per loyal-ram-550 review of #7823): the prior shape called artifact_generate up to four times and re-read the committed file a second time per artifact across gate_ok/red_receipt_ok, and the fast .dag witness independently called artifact_generate three more times per artifact to fake a drift with a live perturb — the semantic graph asking the same expensive fact repeatedly, cost and correctness riding on incidental memoization (operator ruling). This module is the ONLY live producer: one Filesystem.Read, one artifact_generate, one artifact_extra_valid per artifact, captured once as a typed receipt. The carrier type and every pure leaf/group/diagnostic predicate live in the sibling module gunbc.generated_artifact_assessment, which cannot import Filesystem or the generator — purity by construction, not by convention. This module depends on that one (never the reverse), so nothing here can be reached by an assessment."
 
 fn observe_generated_artifact(a: GeneratedArtifact) -> GeneratedArtifactObservation {
   let path = artifact_path(a: a)
@@ -62,67 +38,11 @@ fn observe_generated_artifact_population() -> List<GeneratedArtifactObservation>
   map(committed_generated_artifacts(), a => observe_generated_artifact(a: a))
 }
 
-data assess_generated_artifact_observation_note: String = "PURE LEAF (DESIGN section 6: do not test that the processor does math well). Reads only the retained receipt fields — no Filesystem, no artifact_generate. Clean iff generation succeeded, the committed read succeeded, the two byte strings are equal, and extra validation holds."
-
-fn assess_generated_artifact_observation(o: GeneratedArtifactObservation) -> Bool {
-  match o {
-    GeneratedArtifactObservationRefused { artifact: _, path: _, cause: _ } => false
-    GeneratedArtifactObserved { artifact: _, path: _, generated_content, committed_content, extra_validation } =>
-      (generated_content == committed_content) && extra_validation
-  }
-}
-
-data assess_generated_artifact_population_note: String = "PURE GROUP. `expected` is the identity roster (committed_generated_artifacts()); `observations` is the retained receipt population. Passes iff every expected identity is observed EXACTLY ONCE (no missing, no duplicate, no unknown observation outside the expected roster) and every observed receipt's leaf assessment holds. An identity join by artifact_eq, never a bare count equality (DESIGN section 5 oracle-independence ruling) — a population that lost one artifact and duplicated another would count-match while missing the defect."
-
-fn assess_generated_artifact_population(expected: List<GeneratedArtifact>, observations: List<GeneratedArtifactObservation>) -> Bool {
-  all(expected, e => count(filter(observations, o => artifact_eq(a: observation_artifact(o: o), b: e))) == 1)
-    && all(observations, o => any(expected, e => artifact_eq(a: observation_artifact(o: o), b: e)))
-    && all(observations, o => assess_generated_artifact_observation(o: o))
-}
+data assess_generated_artifact_live_population_note: String = "The one function that legitimately spans both sides — produce, then assess. Lives here (the producer side), never in gunbc.generated_artifact_assessment; a witness meant to be pure must not call it."
 
 fn assess_generated_artifact_live_population() -> Bool {
   assess_generated_artifact_population(
     expected: committed_generated_artifacts(),
     observations: observe_generated_artifact_population()
   )
-}
-
-data first_failing_observation_path_note: String = "PROJECTION over the retained receipt population — no producer call, no re-invocation of the leaf/group assessment's own inputs. Folds the SAME observations the group check already assessed to name the first one whose leaf assessment failed, or empty when every leaf passed."
-
-fn first_failing_observation_path(observations: List<GeneratedArtifactObservation>) -> String {
-  fold(observations, init: "", f: fn(acc, o) {
-    if acc == "" && !assess_generated_artifact_observation(o: o) { observation_path(o: o) } else { acc }
-  })
-}
-
-fn first_missing_expected_path(expected: List<GeneratedArtifact>, observations: List<GeneratedArtifactObservation>) -> String {
-  fold(expected, init: "", f: fn(acc, e) {
-    if acc == "" && count(filter(observations, o => artifact_eq(a: observation_artifact(o: o), b: e))) != 1 {
-      artifact_path(a: e)
-    } else {
-      acc
-    }
-  })
-}
-
-fn first_unknown_observation_path(expected: List<GeneratedArtifact>, observations: List<GeneratedArtifactObservation>) -> String {
-  fold(observations, init: "", f: fn(acc, o) {
-    if acc == "" && !any(expected, e => artifact_eq(a: observation_artifact(o: o), b: e)) {
-      observation_path(o: o)
-    } else {
-      acc
-    }
-  })
-}
-
-data first_failing_diagnostic_path_note: String = "The identity-join half of assess_generated_artifact_population can fail with every retained leaf clean (a missing, duplicate, or unknown identity) — a state first_failing_observation_path alone cannot name. This PROJECTION (still no producer call) tries leaf failure first, then a missing expected identity, then an unknown observed identity, so a group failure never surfaces as an empty diagnostic string."
-
-fn first_failing_diagnostic_path(expected: List<GeneratedArtifact>, observations: List<GeneratedArtifactObservation>) -> String {
-  match first_failing_observation_path(observations: observations) {
-    "" => match first_missing_expected_path(expected: expected, observations: observations) {
-      "" => first_unknown_observation_path(expected: expected, observations: observations)
-      missing => missing
-    }
-    leaf => leaf
-  }
 }

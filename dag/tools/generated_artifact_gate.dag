@@ -14,8 +14,10 @@ import gunbc.generated_artifact_emit {
   artifact_generate
 }
 import gunbc.generated_artifact_observation {
+  observe_generated_artifact_population
+}
+import gunbc.generated_artifact_assessment {
   GeneratedArtifactObservation,
-  observe_generated_artifact_population,
   assess_generated_artifact_population,
   first_failing_diagnostic_path
 }
