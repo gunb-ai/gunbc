@@ -15,8 +15,8 @@ use std::fs;
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
-use std::sync::OnceLock;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::OnceLock;
 
 static WRITE_TMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 
@@ -1667,10 +1667,9 @@ mod tests {
                     "loser must refuse, not overwrite: {err}"
                 );
             }
-            let body = fs::read_to_string(
-                floor_evidence_root("race").join("receipts/batch-wall.txt"),
-            )
-            .unwrap();
+            let body =
+                fs::read_to_string(floor_evidence_root("race").join("receipts/batch-wall.txt"))
+                    .unwrap();
             assert!(
                 body == "body-0\n" || body == "body-1\n",
                 "published body must be from the winning thread only, got {body:?}"
