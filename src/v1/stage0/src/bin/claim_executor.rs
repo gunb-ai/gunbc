@@ -2061,10 +2061,14 @@ fn stream_excerpt(bytes: &[u8]) -> String {
         return "<empty>".to_string();
     }
     let start = bytes.len().saturating_sub(MAX);
+    // Trim BEFORE flattening: a stream almost always ends in a newline, and replacing
+    // first leaves a dangling line marker with nothing after it.
     let tail = String::from_utf8_lossy(&bytes[start..])
-        .replace(['\n', '\r'], " ⏎ ")
         .trim()
-        .to_string();
+        .replace(['\n', '\r'], " ⏎ ");
+    if tail.is_empty() {
+        return "<whitespace only>".to_string();
+    }
     if start > 0 {
         format!("…(last {MAX} of {} bytes) {tail}", bytes.len())
     } else {
@@ -11885,9 +11889,18 @@ mod tests {
     #[test]
     fn stream_excerpt_keeps_the_tail_bounded_and_marks_truncation() {
         assert_eq!(stream_excerpt(b""), "<empty>");
+        // An absent stream and a stream that said nothing are different observations
+        // and neither may read as a message.
+        assert_eq!(stream_excerpt(b"\n \n"), "<whitespace only>");
+        // A stream almost always ends in a newline; the trailing marker must not
+        // survive as a line the process never wrote.
         assert_eq!(
             stream_excerpt(b"error: no such command\n"),
             "error: no such command"
+        );
+        assert_eq!(
+            stream_excerpt(b"first line\nsecond line\n"),
+            "first line ⏎ second line"
         );
         let long: Vec<u8> = std::iter::repeat(b'x')
             .take(4000)
