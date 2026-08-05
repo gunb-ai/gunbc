@@ -5228,9 +5228,11 @@ fn write_selection_degradation_receipt_at(
 /// SCAFFOLD (§7 seed-retained HAND-RUST — authority: `gunbc.ci_materialization`
 /// `compile_anchor_obligation_subject`, `native_bundle_obligation_subject`,
 /// `gunbc.floor_materialization` `floor_index_build_share_provider_id`;
-/// checkable receipt: `floor_resolve_obligation_seed_constants_match_dag_authority`;
-/// dissolve-on: witness-realization P4 executor cutover — obligation observation as
-/// modeled `.dag` effects / self-emitted constants).
+/// checkable receipt: `floor_resolve_obligation_seed_constants_match_dag_authority`
+/// (parses authority `.dag` sources — does not restate the five literals a third time);
+/// dissolve-on: `walk_plan_run_stage_claim_executor_seed_deferral` /
+/// `docs/plans/witness-realization-plan.md` P4 executor cutover — obligation
+/// observation expressed as modeled `.dag` walk effects, not HAND-Rust string forks).
 ///
 /// Semantic resolve obligations the floor roster owes each run — a closed universe,
 /// distinct from physical cold resolves performed (`resolve_nanos > 0`). Observed here;
