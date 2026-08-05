@@ -1,10 +1,10 @@
 module test.fixture.scaffold_disposition_census.expected_classification
 
-import std.types { String, NonEmptyStr }
+import std.types { NonEmptyStr }
 import v2.std.decl_index { DeclFact, DataItem }
 import v2.lens.enforcement.receipts { enforcement_red_probe_body_leaf }
 
-data scaffold_disposition_census_oracle_note: String = "Independently authored expected-classification oracle for the exact scaffold disposition census (adhoc-220d7fd9-374). Authored against the sibling specimens.dag/decoys.dag fixture pool BEFORE any classifier exists -- these rows are the oracle a future classifier must match, not a measurement of what it currently produces (DESIGN 'a literal copied from the current tree is not an oracle' / 'completeness is an identity join, not a count equality'). The four states are fixed: NonDisposition, Terminal, ScaffoldDecoded, ScaffoldDecodeRefused -- every `data` declaration in the pool lands in exactly one, and Terminal is a genuine outcome, never folded into ScaffoldDecodeRefused."
+data scaffold_disposition_census_oracle_note: String = "Independently authored expected-classification oracle for the exact scaffold disposition census (adhoc-220d7fd9-374). Authored against the sibling specimens.dag/decoys.dag fixture pool BEFORE any classifier exists -- these rows are the oracle a future classifier must match, not a measurement of what it currently produces (DESIGN 'a literal copied from the current tree is not an oracle' / 'completeness is an identity join, not a count equality'). The four states are fixed: NonDisposition, Terminal, ScaffoldDecoded, ScaffoldDecodeRefused -- every data declaration in the pool lands in exactly one, and Terminal is a genuine outcome, never folded into ScaffoldDecodeRefused."
 
 data scaffold_disposition_census_fixture_pool_roots: List<String> = [
   "dag/test/fixture/scaffold_disposition_census"
@@ -51,7 +51,7 @@ data scaffold_disposition_census_expected_rows: List<ExpectedScaffoldCensusRow> 
   ExpectedScaffoldCensusRow {
     qualified_name: "test.fixture.scaffold_disposition_census.specimens.terminal_reason_a_specimen",
     expected_state: Terminal,
-    rationale: "literal Terminal{reason} initializer -- a genuine outcome, must not be folded into ScaffoldDecodeRefused" as NonEmptyStr
+    rationale: "literal Terminal record initializer with a reason field -- a genuine outcome, must not be folded into ScaffoldDecodeRefused" as NonEmptyStr
   },
   ExpectedScaffoldCensusRow {
     qualified_name: "test.fixture.scaffold_disposition_census.specimens.terminal_reason_b_specimen",
@@ -61,7 +61,7 @@ data scaffold_disposition_census_expected_rows: List<ExpectedScaffoldCensusRow> 
   ExpectedScaffoldCensusRow {
     qualified_name: "test.fixture.scaffold_disposition_census.specimens.scaffold_single_authority_whole_specimen",
     expected_state: ScaffoldDecoded,
-    rationale: "literal Scaffold{dissolves_to: SingleAuthority, bind: ...WholeDeclaration} -- axis cell (SingleAuthority, WholeDeclaration)" as NonEmptyStr
+    rationale: "literal Scaffold record with dissolves_to SingleAuthority and a WholeDeclaration bind -- axis cell (SingleAuthority, WholeDeclaration)" as NonEmptyStr
   },
   ExpectedScaffoldCensusRow {
     qualified_name: "test.fixture.scaffold_disposition_census.specimens.scaffold_single_authority_named_specimen",
@@ -110,12 +110,7 @@ data scaffold_disposition_census_expected_rows: List<ExpectedScaffoldCensusRow> 
   }
 ]
 
-// -- Identity-adversarial controls: a declaration whose OWN identity is ambiguous or missing,
-// distinct from the bind-target adversarial cases above (those are about std.decl_ref
-// resolution; these are about resolving the census SUBJECT itself in decl_facts). Constructed as
-// synthetic DeclFact rows, the same technique v2.lens.cited_symbol_resolution already uses for
-// its planted_ambiguous_control (real duplicate-module fixtures are not constructible under the
-// current 1:1 file<->module parse snapshot).
+data scaffold_disposition_census_identity_adversarial_controls_note: String = "Identity-adversarial controls: a declaration whose OWN identity is ambiguous or missing, distinct from the bind-target adversarial cases above (those are about std.decl_ref resolution; these are about resolving the census SUBJECT itself in decl_facts). Constructed as synthetic DeclFact rows, the same technique v2.lens.cited_symbol_resolution already uses for its planted_ambiguous_control (real duplicate-module fixtures are not constructible under the current 1:1 file-to-module parse snapshot)."
 
 data scaffold_census_planted_ambiguous_qualified_name: String = "test.fixture.scaffold_disposition_census.specimens.g1_planted_ambiguous_scaffold_control_RED"
 
