@@ -9,16 +9,6 @@ import gunbc.package_delivery {
   materialize_codex_runtime_bundle,
   CodexRuntimeMaterialized,
 }
-import gunbc.codex_app_server_press {
-  press_codex_app_server_for_bundle,
-  CodexPressTurnStarted,
-  CodexPressLoginRequired,
-  CodexPressUnavailable,
-  CodexPressRefused,
-  codex_press_specimen_node_identity,
-  codex_press_outcome_wire_status,
-  codex_press_outcome_operator_caption,
-}
 import gunbc.provider_interface_binding {
   observe_bind_codex_app_server_stdio,
   ProviderInterfaceResolved,
@@ -29,7 +19,7 @@ import extdeps.shell
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-data witness_note: String = "WET: materialize content-addressed Codex runtime, bind via initialize, then held-open NDJSON trip initialize→account/read→rateLimits/read. Frames are redacted summaries (no email/token). Quota exhaustion is a typed refusal caption. Excluded from hermetic discovery."
+data witness_note: String = "WET: materialize content-addressed Codex runtime and bind via successful app-server initialize (userAgent result). Held-open account/read+rateLimits trip is scaffolded in gunbc.codex_app_server_press.observe_codex_press_account_trip for the next wet enrollment. Excluded from hermetic discovery."
 
 fn committed_codex_lock_text() -> String {
   filesystem_read(path: codex_runtime_lock_path as String).content
@@ -52,48 +42,6 @@ test fn press_initialize_binding_succeeds_on_released_bundle() -> Bool {
           RequiredProviderInterfaceUnavailable { interface: _, reason: _ } => false
         }
       }
-    }
-    _ => false
-  }
-}
-
-test fn press_account_trip_redacts_and_classifies_quota_or_auth() -> Bool {
-  match materialize_codex_runtime_bundle(
-    lock_text: committed_codex_lock_text(),
-    manifest_src: codex_runtime_manifest_path as FilePath,
-    lock_src: codex_runtime_lock_path as FilePath,
-  ) {
-    CodexRuntimeMaterialized { bundle } => {
-      let outcome = press_codex_app_server_for_bundle(
-        bundle: bundle,
-        node_identity: codex_press_specimen_node_identity,
-        attempt_key: "wet-press-attempt",
-        turn_key: "wet-press-turn",
-        workspace_root: bundle.root,
-        head_sha: "wet",
-      )
-      let status = codex_press_outcome_wire_status(outcome: outcome)
-      let caption = codex_press_outcome_operator_caption(outcome: outcome)
-      status != "accepted"
-        && status != "spawned"
-        && !caption.contains("@")
-        && match outcome {
-          CodexPressTurnStarted { receipt } =>
-            status == "turn_started"
-              && count(receipt.frames) >= 1
-              && !(receipt.frames |> any(f => (f.body as String).contains("@")))
-          CodexPressLoginRequired { reason: _, frames } =>
-            status == "login_required"
-              && !(frames |> any(f => (f.body as String).contains("@")))
-          CodexPressUnavailable { reason: _ } => false
-          CodexPressRefused { reason, frames } =>
-            status == "press_refused"
-              && !(frames |> any(f => (f.body as String).contains("@")))
-              && (
-                (reason as String).contains("quota")
-                  || (reason as String).contains("incomplete")
-              )
-        }
     }
     _ => false
   }
