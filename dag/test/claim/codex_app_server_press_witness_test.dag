@@ -25,10 +25,10 @@ import gunbc.codex_app_server_press {
   codex_press_outcome_wire_status,
   codex_press_outcome_operator_caption,
   redact_press_stdout_for_receipt,
-  CodexPressTurnStarted,
+  CodexPressAccountReady,
   CodexPressLoginRequired,
   CodexPressRefused,
-  CodexPressTerminalReceipt,
+  CodexAccountStandingReceipt,
 }
 import gunbc.provider_turn_adjudication {
   automatic_recovery_authorized,
@@ -195,8 +195,8 @@ test fn press_outcome_wire_status_is_not_dispatch_accepted() -> Bool {
   match fixture_digest() {
     Absent => false
     Present { value: digest } => {
-      let outcome = CodexPressTurnStarted {
-        receipt: CodexPressTerminalReceipt {
+      let outcome = CodexPressAccountReady {
+        receipt: CodexAccountStandingReceipt {
           node_identity: codex_press_specimen_node_identity,
           attempt_key: "a",
           turn_key: "t",
@@ -207,7 +207,7 @@ test fn press_outcome_wire_status_is_not_dispatch_accepted() -> Bool {
         },
       }
       let status = codex_press_outcome_wire_status(outcome: outcome)
-      status == "turn_started" && status != "accepted" && status != "spawned"
+      status == "account_ready" && status != "accepted" && status != "spawned"
     }
   }
 }

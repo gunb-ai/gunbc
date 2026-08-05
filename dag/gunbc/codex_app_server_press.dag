@@ -25,7 +25,7 @@ import extdeps.llm.codex_app_server {
 import gunbc.retained_shell_script { retained_foreign }
 import extdeps.shell
 
-data codex_press_note: String = "ONE press to one attributable attempt/turn using canonical roadmap AttemptKey."
+data codex_press_note: String = "Account-standing observation for the Codex app-server specimen. This module does NOT claim a provider turn: thread/start and turn/start are target itinerary only until a subjectful WorkerTurn binding lands. An account-ready result must never be labeled turn-started."
 
 data codex_press_specimen_node_identity: RoadmapNodeIdentity = "codex-app-server-press-vertical" as RoadmapNodeIdentity
 
@@ -40,14 +40,25 @@ type CodexPressStart {
 
 type CodexPressItinerary = List<CodexAppServerMethod>
 
-fn codex_press_method_itinerary() -> CodexPressItinerary {
+fn codex_press_account_trip_methods() -> CodexPressItinerary {
   [
     CodexAppServerInitialize,
     CodexAppServerAccountRead,
     CodexAppServerAccountRateLimitsRead,
-    CodexAppServerThreadStart,
-    CodexAppServerTurnStart,
   ]
+}
+
+data codex_press_turn_itinerary_target_note: String = "TARGET plan only — not executed by observe_codex_press_account_trip. A TurnStarted constructor must not exist until both thread/start and turn/start responses supply exact provider IDs joined to a WorkerTurn."
+
+fn codex_press_turn_itinerary_target() -> CodexPressItinerary {
+  concat(
+    codex_press_account_trip_methods(),
+    [CodexAppServerThreadStart, CodexAppServerTurnStart],
+  )
+}
+
+fn codex_press_method_itinerary() -> CodexPressItinerary {
+  codex_press_turn_itinerary_target()
 }
 
 type CodexPressStartAdmission
@@ -78,7 +89,7 @@ fn admit_codex_press_start(
           workspace_root: workspace_root,
           head_sha: head_sha,
         },
-        itinerary: codex_press_method_itinerary(),
+        itinerary: codex_press_account_trip_methods(),
       }
     RequiredProviderInterfaceUnavailable { interface: _, reason } =>
       CodexPressBindingUnavailable { reason: reason }
@@ -104,59 +115,57 @@ fn admit_codex_press_start_projected(
           workspace_root: workspace_root,
           head_sha: head_sha,
         },
-        itinerary: codex_press_method_itinerary(),
+        itinerary: codex_press_account_trip_methods(),
       }
     RequiredProviderInterfaceUnavailable { interface: _, reason } =>
       CodexPressBindingUnavailable { reason: reason }
   }
 }
 
-type CodexPressRawFrame {
-  direction: NonEmptyStr
-  body: String
+data codex_press_standing_summary_note: String = "Standing summaries are REDACTED projections of account-trip stdout, NOT retained raw NDJSON frames. Raw wire bytes, request IDs, and unknown notifications are not yet modeled; do not treat these strings as evidence stronger than a typed standing classification."
+
+type CodexAccountStandingSummary {
+  methods_attempted: NonEmptyStr
+  redacted_standing: String
 }
 
-type CodexPressTerminalReceipt {
+type CodexAccountStandingReceipt {
   node_identity: RoadmapNodeIdentity
   attempt_key: AttemptKey
-  turn_key: String
-  head_sha: String
-  frames: List<CodexPressRawFrame>
-  provider_thread_id: String?
-  provider_turn_id: String?
+  standing: CodexAccountStandingSummary
 }
 
 type CodexPressOutcome
-  = CodexPressTurnStarted {
-      receipt: CodexPressTerminalReceipt
+  = CodexPressAccountReady {
+      receipt: CodexAccountStandingReceipt
     }
   | CodexPressLoginRequired {
       reason: NonEmptyStr
-      frames: List<CodexPressRawFrame>
+      standing: CodexAccountStandingSummary
     }
   | CodexPressUnavailable {
       reason: NonEmptyStr
     }
   | CodexPressRefused {
       reason: NonEmptyStr
-      frames: List<CodexPressRawFrame>
+      standing: CodexAccountStandingSummary
     }
 
 fn codex_press_outcome_wire_status(outcome: CodexPressOutcome) -> String {
   match outcome {
-    CodexPressTurnStarted { receipt: _ } => "turn_started"
-    CodexPressLoginRequired { reason: _, frames: _ } => "login_required"
+    CodexPressAccountReady { receipt: _ } => "account_ready"
+    CodexPressLoginRequired { reason: _, standing: _ } => "login_required"
     CodexPressUnavailable { reason: _ } => "unavailable"
-    CodexPressRefused { reason: _, frames: _ } => "press_refused"
+    CodexPressRefused { reason: _, standing: _ } => "press_refused"
   }
 }
 
 fn codex_press_outcome_operator_caption(outcome: CodexPressOutcome) -> String {
   match outcome {
-    CodexPressTurnStarted { receipt: _ } => "turn started"
-    CodexPressLoginRequired { reason: _, frames: _ } => "login required"
+    CodexPressAccountReady { receipt: _ } => "account ready"
+    CodexPressLoginRequired { reason: _, standing: _ } => "login required"
     CodexPressUnavailable { reason: _ } => "unavailable"
-    CodexPressRefused { reason, frames: _ } =>
+    CodexPressRefused { reason, standing: _ } =>
       if (reason as String).contains("quota") {
         "quota exhausted"
       } else {
@@ -164,8 +173,6 @@ fn codex_press_outcome_operator_caption(outcome: CodexPressOutcome) -> String {
       }
   }
 }
-
-data codex_press_frame_redaction_note: String = "Raw NDJSON frames retained for correlation must not carry credential or account-email bytes into UI/logs. Trip summaries store method identities and typed standing (auth present, quota standing), never email/token fields from account/read."
 
 fn codex_press_account_trip_script(executable: FilePath) -> String {
   concat(
@@ -212,6 +219,13 @@ fn redact_press_stdout_for_receipt(stdout: String) -> String {
   }
 }
 
+fn account_standing_summary(redacted: String) -> CodexAccountStandingSummary {
+  CodexAccountStandingSummary {
+    methods_attempted: "initialize; account/read; account/rateLimits/read" as NonEmptyStr,
+    redacted_standing: redacted,
+  }
+}
+
 fn observe_codex_press_account_trip(
   binding: ProviderInterfaceBinding,
   node_identity: RoadmapNodeIdentity,
@@ -221,20 +235,11 @@ fn observe_codex_press_account_trip(
 ) -> CodexPressOutcome {
   let script = retained_foreign(
     body: codex_press_account_trip_script(executable: binding.executable.path),
-    reason: "Codex app-server held-open NDJSON trip pending typed stdio session transport" as NonEmptyStr,
+    reason: "Codex app-server account-standing trip pending typed stdio session transport" as NonEmptyStr,
   )
   let run = shell.Exec.Run(script: script)
   let summary = redact_press_stdout_for_receipt(stdout: run.stdout)
-  let frames = [
-    CodexPressRawFrame {
-      direction: "client_to_server" as NonEmptyStr,
-      body: "initialize; account/read; account/rateLimits/read",
-    },
-    CodexPressRawFrame {
-      direction: "server_to_client_summary" as NonEmptyStr,
-      body: summary,
-    },
-  ]
+  let standing = account_standing_summary(redacted: summary)
   if run.success == false {
     CodexPressUnavailable {
       reason: "codex app-server account trip exec refused" as NonEmptyStr,
@@ -242,34 +247,30 @@ fn observe_codex_press_account_trip(
   } else if summary.contains("initialize_missing") {
     CodexPressRefused {
       reason: "codex app-server trip missing initialize result" as NonEmptyStr,
-      frames: frames,
+      standing: standing,
     }
   } else if summary.contains("login_required") {
     CodexPressLoginRequired {
       reason: "codex app-server account trip requires login" as NonEmptyStr,
-      frames: frames,
+      standing: standing,
     }
   } else if summary.contains("quota_reached") {
     CodexPressRefused {
       reason: "codex quota exhausted at account/rateLimits/read" as NonEmptyStr,
-      frames: frames,
+      standing: standing,
     }
   } else if summary.contains("account_read_ok") {
-    CodexPressTurnStarted {
-      receipt: CodexPressTerminalReceipt {
+    CodexPressAccountReady {
+      receipt: CodexAccountStandingReceipt {
         node_identity: node_identity,
         attempt_key: attempt_key,
-        turn_key: turn_key,
-        head_sha: head_sha,
-        frames: frames,
-        provider_thread_id: none,
-        provider_turn_id: none,
+        standing: standing,
       },
     }
   } else {
     CodexPressRefused {
       reason: "codex app-server account trip incomplete" as NonEmptyStr,
-      frames: frames,
+      standing: standing,
     }
   }
 }
