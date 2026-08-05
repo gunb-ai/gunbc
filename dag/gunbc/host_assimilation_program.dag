@@ -21,18 +21,23 @@ import gunbc.host_standup {
   SessionPlacementEnrollment,
   StandupAssimilationComplete,
   host_standup_spine,
-  GreenPlacePinCoherentWitness,
-  GreenPlaceFromGunbcGate,
-  GreenPlacePinRefused,
-  GreenPlacePinGap,
-  green_place_pin_coherent_satisfied,
+  AssimilationCompleteInput,
+  NodeRegistered,
+  ResourcesPresent,
+  GreenPlacePinCoherent,
+  RunnerSlotHealthy,
+  AssimilationInputWitness,
+  InputSatisfied,
+  InputGap,
+  AssimilationObligation,
+  AssimilationCompleteGate,
+  AssimilationCompleteVerdict,
+  AssimilationIncomplete,
+  AssimilationComplete,
   host_standup_p3_green_place_input_witness,
-  host_standup_p5_default_green_place_gate_verdict,
-  host_standup_p5_green_place_noop_gate_authority,
-  host_standup_p5_green_place_marker_gate_authority,
-  host_standup_p5_desired_pin_authority,
+  assimilation_input_witness_from_green_place,
+  assimilation_complete,
   host_standup_p3_gunbc_pinned_tree_landed,
-  host_standup_p3_gunbc_pinned_tree_landing_gate,
 }
 import product.placement_supply { HostIdentity }
 
@@ -146,224 +151,66 @@ data ci_runner_enrollment_participation: List<FleetParticipation> = [CiRunnerPar
 
 data inference_serving_enrollment_participation: List<FleetParticipation> = [InferenceServingParticipation]
 
-type AssimilationCompletionObligation
-  = SpinePhaseFinished { label: String }
-  | NodeRegistration
-  | ResourcesPresent
-  | GreenPlacePinGateCoherent
-  | RunnerSlotHealthy
+data assimilation_completion_input_classification_note: String = "Completion obligations are derived from participation beside the phase classification tables above, not as fixed fields on AssimilationCompleteGate. CiRunnerParticipation requires all four AssimilationCompleteInput arms because a CI runner host must be node-registered, resources-present, green-place coherent via the gunbc gate (not merely P3 modeled), and runner-slot healthy. InferenceServingParticipation requires only NodeRegistered and ResourcesPresent: an inference appliance has no GitHub Actions runner slot to health-check and no dashboard green-place pin to coherence-check, so those inputs are not obligations and cannot be supplied without fabricating evidence. GreenPlacePinCoherent and RunnerSlotHealthy are CI-only because they gate facts about executing CI work (dashboard pin coherence, Actions slot enforcement), not generic host readiness."
 
-type AssimilationObligationWitness
-  = ObligationSatisfied
-  | ObligationRefused { reason: String }
-  | ObligationGap { interim_realization: String }
-  | GreenPlaceWitness { w: GreenPlacePinCoherentWitness }
+data shared_completion_inputs: List<AssimilationCompleteInput> = [
+  NodeRegistered,
+  ResourcesPresent,
+]
 
-type AssimilationObligationRow {
-  obligation: AssimilationCompletionObligation
-  witness: AssimilationObligationWitness
-}
+data ci_runner_only_completion_inputs: List<AssimilationCompleteInput> = [
+  GreenPlacePinCoherent,
+  RunnerSlotHealthy,
+]
 
-type AssimilationCompleteGate {
-  obligations: List<AssimilationObligationRow>
-}
-
-type AssimilationCompleteVerdict
-  = AssimilationComplete
-  | AssimilationIncomplete { obligation: AssimilationCompletionObligation, reason: String }
-
-data assimilation_completion_gate_note: String = "HOST-1: the completion gate is a DERIVED LIST of obligations, not a fixed product of four named fields. A fixed product silently omits new spine prerequisites -- BuildCacheProvision at P1b never entered the old AND(node_registered, resources_present, green_place_pin_coherent, runner_slot_healthy) gate, so adding a phase to the spine did not add a completion obligation until someone edited the product by hand. The roster is derived from the assimilation program: every prerequisite spine step (all program steps before StandupAssimilationComplete) plus participation-scoped extrinsic checks that are not spine phases (node registration, resources-present) and sub-checks that are stricter than phase-finished (green-place gunbc gate verdict, runner-slot health). An inference enrollment derives fewer obligations because its program is smaller; a CI enrollment derives the whole spine plus extrinsic checks. Adding a phase to the spine and classifying it in the participation tables automatically extends the roster -- construction, not validation."
-
-fn standup_step_is_terminal(step: HostStandupStep) -> Bool {
-  match step.phase {
-    Assimilation { phase: StandupAssimilationComplete } => true
-    Prefix { phase: _ } => false
-    Assimilation { phase: _ } => false
-  }
-}
-
-fn ci_runner_extrinsic_completion_obligations(participation: List<FleetParticipation>) -> List<AssimilationCompletionObligation> {
+fn assimilation_completion_inputs_for(participation: List<FleetParticipation>) -> List<AssimilationCompleteInput> {
   if participation_list_contains(ps: participation, wanted: CiRunnerParticipation) {
-    [NodeRegistration, ResourcesPresent, GreenPlacePinGateCoherent, RunnerSlotHealthy]
+    append(shared_completion_inputs, items: ci_runner_only_completion_inputs)
   } else {
-    []
+    shared_completion_inputs
   }
 }
 
-fn assimilation_completion_obligations_for(intent: HostEnrollmentIntent) -> List<AssimilationCompletionObligation> {
-  let program = assimilation_program_for(intent: intent)
-  let spine_obligations = map(
-    filter(program.steps, s => !standup_step_is_terminal(step: s)),
-    s => SpinePhaseFinished { label: s.label as String }
-  )
-  spine_obligations ++ ci_runner_extrinsic_completion_obligations(participation: intent.participation)
-}
-
-fn assimilation_completion_obligation_count(intent: HostEnrollmentIntent) -> Int {
-  assimilation_completion_obligations_for(intent: intent).length()
-}
-
-fn obligation_witness_satisfied(obligation: AssimilationCompletionObligation, witness: AssimilationObligationWitness) -> Bool {
-  match witness {
-    ObligationSatisfied => true
-    ObligationRefused { reason: _ } => false
-    ObligationGap { interim_realization: _ } => false
-    GreenPlaceWitness { w: pin } =>
-      match obligation {
-        GreenPlacePinGateCoherent => green_place_pin_coherent_satisfied(w: pin)
-        SpinePhaseFinished { label: _ } => false
-        NodeRegistration => false
-        ResourcesPresent => false
-        RunnerSlotHealthy => false
-      }
+fn default_unsatisfied_witness_for_input(input: AssimilationCompleteInput) -> AssimilationInputWitness {
+  match input {
+    NodeRegistered =>
+      InputGap { input: NodeRegistered, interim_realization: "ctrl:node_registry.mjs" }
+    ResourcesPresent =>
+      InputGap { input: ResourcesPresent, interim_realization: "ctrl:resources-present-unmodeled" }
+    GreenPlacePinCoherent =>
+      assimilation_input_witness_from_green_place(w: host_standup_p3_green_place_input_witness())
+    RunnerSlotHealthy =>
+      InputGap { input: RunnerSlotHealthy, interim_realization: "gunbc.runner_slot_enforcement until P1 converged" }
   }
 }
 
-fn green_place_pin_obligation_failure(w: GreenPlacePinCoherentWitness) -> AssimilationCompleteVerdict? {
-  match w {
-    GreenPlaceFromGunbcGate { gate_verdict: false, noop_satisfied_authority: _, marker_satisfied_authority: _, desired_pin_authority: _ } =>
-      Present {
-        value: AssimilationIncomplete {
-          obligation: GreenPlacePinGateCoherent,
-          reason: "host_standup:P5:green_place_pin_coherent: gunbc gate verdict false or unread — fail-closed, no pin re-derivation in spine"
-        }
-      }
-    GreenPlaceFromGunbcGate { gate_verdict: true, noop_satisfied_authority: _, marker_satisfied_authority: _, desired_pin_authority: _ } => Absent
-    GreenPlacePinRefused { reason: r } =>
-      Present { value: AssimilationIncomplete { obligation: GreenPlacePinGateCoherent, reason: r } }
-    GreenPlacePinGap { interim_realization: path } =>
-      Present {
-        value: AssimilationIncomplete {
-          obligation: GreenPlacePinGateCoherent,
-          reason: concat("host_standup:P5:gap-refused:", path)
-        }
-      }
-  }
-}
-
-fn obligation_row_failure(row: AssimilationObligationRow) -> AssimilationCompleteVerdict? {
-  match row.obligation {
-    GreenPlacePinGateCoherent =>
-      match row.witness {
-        GreenPlaceWitness { w: pin } => green_place_pin_obligation_failure(w: pin)
-        ObligationSatisfied => Absent
-        ObligationRefused { reason: r } =>
-          Present { value: AssimilationIncomplete { obligation: row.obligation, reason: r } }
-        ObligationGap { interim_realization: path } =>
-          Present {
-            value: AssimilationIncomplete {
-              obligation: row.obligation,
-              reason: concat("host_standup:P5:gap-refused:", path)
-            }
-          }
-      }
-    SpinePhaseFinished { label: _ } | NodeRegistration | ResourcesPresent | RunnerSlotHealthy =>
-      match row.witness {
-        ObligationSatisfied => Absent
-        ObligationRefused { reason: r } =>
-          Present { value: AssimilationIncomplete { obligation: row.obligation, reason: r } }
-        ObligationGap { interim_realization: path } =>
-          Present {
-            value: AssimilationIncomplete {
-              obligation: row.obligation,
-              reason: concat("host_standup:P5:gap-refused:", path)
-            }
-          }
-        GreenPlaceWitness { w: _ } =>
-          Present {
-            value: AssimilationIncomplete {
-              obligation: row.obligation,
-              reason: "host_standup:P5:witness-shape-mismatch"
-            }
-          }
-      }
-  }
-}
-
-fn assimilation_complete_first_failure(gate: AssimilationCompleteGate) -> AssimilationCompleteVerdict? {
-  fold_list(
-    xs: gate.obligations,
-    empty: Absent,
-    cons: fn(acc, row) {
-      if match acc {
-        Present { value: _ } => true
-        Absent => false
-      } {
-        acc
-      } else {
-        match obligation_row_failure(row: row) {
-          Present { value: v } => Present { value: v }
-          Absent => Absent
-        }
-      }
-    }
-  )
-}
-
-fn assimilation_complete(gate: AssimilationCompleteGate) -> AssimilationCompleteVerdict {
-  match assimilation_complete_first_failure(gate: gate) {
-    Present { value: v } => v
-    Absent => AssimilationComplete
-  }
-}
-
-fn assimilation_complete_all_satisfied(gate: AssimilationCompleteGate) -> Bool {
-  fold_list(
-    xs: gate.obligations,
-    empty: true,
-    cons: fn(acc, row) =>
-      acc && obligation_witness_satisfied(obligation: row.obligation, witness: row.witness)
-  )
-}
-
-fn default_unsatisfied_obligation_witness(obligation: AssimilationCompletionObligation) -> AssimilationObligationWitness {
-  match obligation {
-    GreenPlacePinGateCoherent => GreenPlaceWitness { w: host_standup_p3_green_place_input_witness() }
-    NodeRegistration => ObligationGap { interim_realization: "ctrl:node_registry.mjs" }
-    ResourcesPresent => ObligationGap { interim_realization: "ctrl:resources-present-unmodeled" }
-    RunnerSlotHealthy => ObligationGap { interim_realization: "gunbc.runner_slot_enforcement until P1 converged" }
-    SpinePhaseFinished { label: _ } => ObligationGap { interim_realization: "host_standup:phase-not-finished" }
-  }
-}
-
-fn default_obligation_row(obligation: AssimilationCompletionObligation) -> AssimilationObligationRow {
-  AssimilationObligationRow {
-    obligation: obligation,
-    witness: default_unsatisfied_obligation_witness(obligation: obligation),
-  }
-}
-
-fn host_standup_assimilation_gate_unsatisfied(intent: HostEnrollmentIntent) -> AssimilationCompleteGate {
+fn assimilation_gate_unsatisfied_for_participation(participation: List<FleetParticipation>) -> AssimilationCompleteGate {
   AssimilationCompleteGate {
     obligations: map(
-      assimilation_completion_obligations_for(intent: intent),
-      o => default_obligation_row(obligation: o)
+      assimilation_completion_inputs_for(participation: participation),
+      fn(wanted_input) {
+        AssimilationObligation {
+          input: wanted_input,
+          witness: default_unsatisfied_witness_for_input(input: wanted_input),
+        }
+      }
     ),
   }
 }
 
-data default_ci_assimilation_intent: HostEnrollmentIntent = HostEnrollmentIntent {
-  host: operator_host_srv3,
-  participation: ci_runner_enrollment_participation,
-}
-
 fn host_standup_default_assimilation_gate_unsatisfied() -> AssimilationCompleteGate {
-  host_standup_assimilation_gate_unsatisfied(intent: default_ci_assimilation_intent)
+  assimilation_gate_unsatisfied_for_participation(participation: ci_runner_enrollment_participation)
 }
 
 fn host_standup_p3_fail_closed_blocks_complete() -> Bool {
   !host_standup_p3_gunbc_pinned_tree_landed
-    && match assimilation_complete(gate: host_standup_default_assimilation_gate_unsatisfied()) {
-      AssimilationIncomplete { obligation: GreenPlacePinGateCoherent, reason: r } =>
+    && match assimilation_complete(
+      gate: host_standup_default_assimilation_gate_unsatisfied(),
+      required: assimilation_completion_inputs_for(participation: ci_runner_enrollment_participation),
+    ) {
+      AssimilationIncomplete { input: GreenPlacePinCoherent, reason: r } =>
         string_contains(s: r, pattern: "#5948")
       AssimilationComplete => false
-      AssimilationIncomplete { obligation: _, reason: _ } => true
+      AssimilationIncomplete { input: _, reason: _ } => true
     }
-}
-
-fn obligation_row_satisfied(obligation: AssimilationCompletionObligation) -> AssimilationObligationRow {
-  AssimilationObligationRow {
-    obligation: obligation,
-    witness: ObligationSatisfied,
-  }
 }
