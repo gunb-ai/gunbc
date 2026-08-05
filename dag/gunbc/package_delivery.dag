@@ -8,6 +8,9 @@ import std.content_hash {
   ContentHash,
   as_content_hash_sha512,
   Sha512Hash,
+  Sha256Hash,
+  Sha1Hash,
+  Fnv1a64,
 }
 import extdeps.npm {
   NpmRegistryIntegrity,
