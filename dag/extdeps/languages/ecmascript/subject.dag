@@ -1,0 +1,41 @@
+module extdeps.languages.ecmascript.subject
+
+import std.types { String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "tc39.es/ecma262/"
+  }
+}
+
+data ecmascript_language_further_authority_1: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "www.ecma-international.org/publications-and-standards/standards/ecma-262/"
+  }
+}
+
+data ecmascript_language_subject_note: String = "ECMASCRIPT, the Ecma-262 standard (verified live 2026-08-04 by fetching the cited locator and confirming its title and publisher from the response, per the D0 verify-or-refuse rule): the fetched document is the 'ECMAScript 2027 Language Specification', published by Ecma International and edited under TC39. This subject exists SEPARATELY from the TypeScript subject on purpose: ECMAScript is the runtime-semantic standard, TypeScript is an independently governed product that compiles to it, and DESIGN section 3's external-upstream decomposition keeps independently governed entities apart even when one targets the other. DESIGN's open decision 1 — whether ECMAScript is the runtime-semantic base the TypeScript target projects onto, or a deliberately separate model — is exactly a question about the relationship between these two subjects, and it stays open here; registering the subject does not decide it."
+
+type EcmaScript
+  = | EcmaScriptTarget
+
+data ecmascript_language: EcmaScript = EcmaScriptTarget
+
+data ecmascript_language_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.languages.ecmascript.subject",
+      decl_name: "ecmascript_language",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [ecmascript_language_further_authority_1]
+}
+
+data extdeps_model_scope: ExternalModelScope = ecmascript_language_model_scope

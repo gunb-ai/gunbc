@@ -1,0 +1,157 @@
+module gunbc.roadmap_site_surface_observe
+
+import std.types { String, NonEmptyStr, List }
+import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_combine_structural, content_hash_tagged_structural }
+import gunbc.roadmap_authority {
+  roadmap_authority_projection,
+  RoadmapAuthorityProjection,
+  RoadmapAuthorityProjected,
+  RoadmapAuthorityProjectionRefused,
+  expected_roadmap_md_for_projection,
+}
+import gunbc.roadmap_spawner { roadmap_dispatch_file_content_for_projection }
+import gunbc.roadmap_page {
+  roadmap_page_for_projection,
+  roadmap_daily_workspace_page_for_projection_observed,
+}
+import gunbc.roadmap_component { dispatch_client_js_source, roadmap_dispatch_asset_path }
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap_site_surface_types {
+  RoadmapSiteSurfaceArtifact,
+  RoadmapSiteSurfaceBundle,
+  LiveRoadmapSiteSurfaceBundle,
+  roadmap_site_surface_subject,
+}
+import gunbc.roadmap_site_surface_render {
+  roadmap_site_roadmap_url_path,
+  roadmap_site_dispatch_url_path,
+  roadmap_site_daily_url_path,
+  roadmap_site_full_url_path,
+  site_artifact_digest,
+  served_page_body,
+  healthz_body_from_surface_artifacts,
+}
+
+data roadmap_site_surface_observe_note: String = "THE SOLE LIVE OBSERVATION AUTHORITY for roadmap served-surface materialization. materialize_live_roadmap_site_surface_bundle is the only entry that loads acceptance history and projects roadmap authority for site-surface rendering; downstream consumers evaluate gunbc.roadmap_site_surface_expect predicates over the retained bundle."
+
+data roadmap_site_surface_producer_identity_note: String = "producer_identity names the observe/render implementation that produced a bundle, distinct from subject_identity (which roadmap snapshot) and bundle_identity (which rendered artifact population)."
+
+fn roadmap_site_surface_producer_identity() -> Fnv1a64Structural {
+  content_hash_atom(value: "gunbc.roadmap_site_surface_observe/v1" as NonEmptyStr)
+}
+
+fn acceptance_identity_from_accepted(accepted: List<RoadmapNodeId>) -> Fnv1a64Structural {
+  fold(accepted, init: content_hash_atom(value: "roadmap-acceptance-snapshot/v1" as NonEmptyStr), f: (acc, id) =>
+    content_hash_combine_structural(
+      left: acc,
+      right: content_hash_atom(value: id as NonEmptyStr),
+    )
+  )
+}
+
+fn subject_identity_for_projection(proj: RoadmapAuthorityProjection) -> Fnv1a64Structural {
+  match proj {
+    RoadmapAuthorityProjectionRefused { detail: detail } =>
+      content_hash_tagged_structural(
+        tag: "roadmap-site-surface-subject-refused/v1" as NonEmptyStr,
+        payload: content_hash_atom(value: detail as NonEmptyStr),
+      )
+    RoadmapAuthorityProjected { doc: _, accepted: accepted } =>
+      content_hash_combine_structural(
+        left: acceptance_identity_from_accepted(accepted: accepted),
+        right: content_hash_combine_structural(
+          left: site_artifact_digest(body: expected_roadmap_md_for_projection(proj: proj)),
+          right: site_artifact_digest(body: roadmap_dispatch_file_content_for_projection(proj: proj)),
+        ),
+      )
+  }
+}
+
+fn bundle_identity_from_artifacts(
+  roadmap: RoadmapSiteSurfaceArtifact,
+  dispatch: RoadmapSiteSurfaceArtifact,
+  daily: RoadmapSiteSurfaceArtifact,
+  full: RoadmapSiteSurfaceArtifact,
+  dispatch_js: RoadmapSiteSurfaceArtifact,
+) -> Fnv1a64Structural {
+  fold(
+    [roadmap.digest, dispatch.digest, daily.digest, full.digest, dispatch_js.digest],
+    init: content_hash_atom(value: "roadmap-site-surface-bundle/v1" as NonEmptyStr),
+    f: (acc, digest) => content_hash_combine_structural(left: acc, right: digest),
+  )
+}
+
+fn render_roadmap_site_surface_bundle_for_projection(proj: RoadmapAuthorityProjection) -> RoadmapSiteSurfaceBundle {
+  let subject_identity = subject_identity_for_projection(proj: proj)
+  let producer_identity = roadmap_site_surface_producer_identity()
+  let roadmap_body = expected_roadmap_md_for_projection(proj: proj)
+  let dispatch_body = roadmap_dispatch_file_content_for_projection(proj: proj)
+  let daily_body = served_page_body(
+    page: roadmap_daily_workspace_page_for_projection_observed(
+      proj: proj,
+      attempts: [],
+      attempts_refused: none,
+    )
+  )
+  let full_body = served_page_body(page: roadmap_page_for_projection(proj: proj))
+  let js_body = dispatch_client_js_source()
+  let roadmap = RoadmapSiteSurfaceArtifact {
+    url_path: roadmap_site_roadmap_url_path,
+    body: roadmap_body,
+    digest: site_artifact_digest(body: roadmap_body),
+  }
+  let dispatch = RoadmapSiteSurfaceArtifact {
+    url_path: roadmap_site_dispatch_url_path,
+    body: dispatch_body,
+    digest: site_artifact_digest(body: dispatch_body),
+  }
+  let daily = RoadmapSiteSurfaceArtifact {
+    url_path: roadmap_site_daily_url_path,
+    body: daily_body,
+    digest: site_artifact_digest(body: daily_body),
+  }
+  let full = RoadmapSiteSurfaceArtifact {
+    url_path: roadmap_site_full_url_path,
+    body: full_body,
+    digest: site_artifact_digest(body: full_body),
+  }
+  let dispatch_js = RoadmapSiteSurfaceArtifact {
+    url_path: roadmap_dispatch_asset_path as NonEmptyStr,
+    body: js_body,
+    digest: site_artifact_digest(body: js_body),
+  }
+  RoadmapSiteSurfaceBundle {
+    subject_identity: subject_identity,
+    producer_identity: producer_identity,
+    bundle_identity: bundle_identity_from_artifacts(
+      roadmap: roadmap,
+      dispatch: dispatch,
+      daily: daily,
+      full: full,
+      dispatch_js: dispatch_js,
+    ),
+    roadmap_md: roadmap,
+    dispatch_json: dispatch,
+    daily_html: daily,
+    full_html: full,
+    dispatch_js: dispatch_js,
+    healthz_body: healthz_body_from_surface_artifacts(
+      roadmap: roadmap,
+      dispatch: dispatch,
+      daily: daily,
+      full: full,
+      dispatch_js: dispatch_js,
+    ),
+  }
+}
+
+fn materialize_live_roadmap_site_surface_bundle() -> RoadmapSiteSurfaceBundle {
+  render_roadmap_site_surface_bundle_for_projection(proj: roadmap_authority_projection())
+}
+
+fn live_roadmap_site_surface_bundle() -> LiveRoadmapSiteSurfaceBundle {
+  LiveRoadmapSiteSurfaceBundle {
+    subject: roadmap_site_surface_subject,
+    bundle: materialize_live_roadmap_site_surface_bundle(),
+  }
+}

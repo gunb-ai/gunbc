@@ -6,6 +6,8 @@ data floor_three_quantities_note: String = "GRAIN (merry-moth-539, 2026-07-09) â
 
 data floor_index_build_share_provider_id: String = "process_shared_index"
 
+data floor_entry_walk_memo_provider_id: String = "walk_memo"
+
 data floor_index_build_identity: String = "union-index-build(dag,src/v2)"
 
 fn floor_executor_process_frame() -> std.materialization_ladder.Frame {
