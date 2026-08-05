@@ -1113,7 +1113,6 @@ pub struct MutationCounters {
     pub set_insert_items_copied: u64,
     pub set_union_calls: u64,
     pub set_union_items_copied: u64,
-    pub uri_percent_encode_scalar_fragment_calls: u64,
 }
 
 impl fmt::Display for MutationCounters {
@@ -3616,11 +3615,6 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
         }
     };
     record_call_frequency(&func_name);
-    if func_name == "uri_percent_encode_scalar_fragment" {
-        ctx.mutation_counters
-            .borrow_mut()
-            .uri_percent_encode_scalar_fragment_calls += 1;
-    }
 
     let arg_nodes = &node.children;
 
@@ -5285,8 +5279,7 @@ macro_rules! v1_algebra_method_arms {
                     let mut counters = $ctx.mutation_counters.borrow_mut();
                     if merged_items > 0 {
                         counters.list_concat_calls += 1;
-                        counters.list_concat_items_copied +=
-                            (items.len() + merged_items) as u64 + copied_items as u64;
+                        counters.list_concat_items_copied += copied_items as u64;
                     } else {
                         counters.list_push_calls += 1;
                     }
@@ -11874,7 +11867,19 @@ pub fn fold_caller_snapshot() -> Vec<(String, u64, u64, u64, &'static str)> {
 /// HashMap/HashSet write, per call. dissolve-on: the residual-hunt work item
 /// closes (adhoc-c328b166-bca) -- delete these recorders and their call
 /// sites, they are not a permanent profiler.
+static FORCE_FORENSICS_FOR_TEST: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+/// Enables call-frequency watchlist recording in unit tests without setting
+/// `GUNBC_FLATTEN_SITE_DUMP_SECS`. Production callers must not use this.
+pub fn set_call_frequency_forensics_for_test(enabled: bool) {
+    FORCE_FORENSICS_FOR_TEST.store(enabled, std::sync::atomic::Ordering::Relaxed);
+}
+
 fn residual_hunt_forensics_enabled() -> bool {
+    if FORCE_FORENSICS_FOR_TEST.load(std::sync::atomic::Ordering::Relaxed) {
+        return true;
+    }
     static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *ENABLED.get_or_init(|| std::env::var("GUNBC_FLATTEN_SITE_DUMP_SECS").is_ok())
 }
@@ -12007,6 +12012,7 @@ fn record_call_frequency(func_name: &str) {
         "parse_table_lookup",
         "parse_table_insert",
         "parse_choice_residue_backtrack",
+        "uri_percent_encode_scalar_fragment",
     ];
     let Some(key) = WATCHLIST.iter().find(|w| **w == func_name) else {
         return;
