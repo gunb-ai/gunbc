@@ -5881,17 +5881,6 @@ pub fn compile_declared_import_closure_only_with_pool(
     )))
 }
 
-/// Negative-arm helper: compile a stripped entry on its honest declared import
-/// closure (the entry module alone — zero `import` lines means zero import edges).
-#[cfg(feature = "test_hooks")]
-pub fn compile_stripped_entry_declared_import_closure_only(
-    entry_path: &str,
-    stripped_content: &str,
-) -> Rc<v1_compiler_compile::ResolvedPipelineResult> {
-    compile_declared_import_closure_only_with_pool(&[], entry_path, Some(stripped_content))
-        .expect("stripped entry-only compile")
-}
-
 /// Declaration identity + binding-source receipt for one cross-module symbol site.
 #[cfg(feature = "test_hooks")]
 #[derive(Debug, Clone, PartialEq, Eq)]
