@@ -5335,6 +5335,146 @@ fn write_witness_row_cost_drift_receipt_at(
     true
 }
 
+/// Single-authority projection: fetch `gunbc.witness_row_cost.witness_row_cost_migration_threshold_ms`
+/// once (never a hand-typed 500 in the seed — DESIGN §3) so the threshold cannot drift from the
+/// fast-lane budget authority it is derived from.
+fn witness_row_cost_migration_threshold_ms_via_authority(
+    ctx: &InterpContext,
+) -> Result<u128, String> {
+    match run_in_context_with_args(ctx, "witness_row_cost_migration_threshold_ms", &[], false) {
+        Ok(Value::Int(n)) if n >= 0 => Ok(n as u128),
+        Ok(other) => Err(format!(
+            "witness_row_cost_migration_threshold_ms returned {other}, expected non-negative Int (fail-closed)"
+        )),
+        Err(e) => Err(format!("witness_row_cost_migration_threshold_ms: {e}")),
+    }
+}
+
+/// Single-authority projection, mirroring `witness_row_cost_verdict_via_authority`:
+/// the threshold comparison lives entirely in `.dag`'s `witness_row_cost_migration_verdict`.
+/// Rust reads back the returned `MigrationDisclosureVerdict` coproduct's tag only.
+fn witness_row_cost_migration_verdict_via_authority(
+    ctx: &InterpContext,
+    observed_ms: u128,
+) -> Result<bool, String> {
+    let observed = millisecond_value(ctx, observed_ms)?;
+    match run_in_context_with_args(
+        ctx,
+        "witness_row_cost_migration_verdict",
+        &[(Some("observed".to_string()), observed)],
+        false,
+    ) {
+        Ok(Value::Variant { variant_name, .. }) => {
+            Ok(ctx.sym_eq(variant_name, "MandatoryMigration"))
+        }
+        Ok(other) => Err(format!(
+            "witness_row_cost_migration_verdict returned {other}, expected MigrationDisclosureVerdict variant (fail-closed)"
+        )),
+        Err(e) => Err(format!("witness_row_cost_migration_verdict: {e}")),
+    }
+}
+
+/// MANDATORY-MIGRATION DISCLOSURE (`witness_row_cost_migration_threshold_note`, gunbc.witness_row_cost):
+/// runs every floor pass (not gated to falsifier cadence — this is what surfaces an over-threshold
+/// witness before it ever trips the 5s fail-stop on an unrelated PR). Disclosure only: never fails
+/// the walk on a nonzero population. Both the threshold fetch and the per-row verdict are authority
+/// calls into `gunbc.witness_row_cost`; this function only serializes the resulting rows to a TSV
+/// and a log — it is strictly the receipt-writing seam, not a second decision surface.
+fn write_witness_row_cost_migration_disclosure_receipt_at(
+    base: &std::path::Path,
+    batch_records: &[BatchRecord],
+    source_roots: &[String],
+) -> bool {
+    let entry = "dag/gunbc/witness_row_cost.dag";
+    let (graph, indices) = match resolve_entry_graph(source_roots, entry) {
+        Ok(v) => v,
+        Err(m) => {
+            eprintln!(
+                "claim_executor: failed to resolve {entry} for migration disclosure (fail-closed):\n{m}"
+            );
+            return false;
+        }
+    };
+    let ctx = make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+    let threshold_ms = match witness_row_cost_migration_threshold_ms_via_authority(&ctx) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!(
+                "claim_executor: migration disclosure threshold fetch failed: {e} — walk fails closed here"
+            );
+            return false;
+        }
+    };
+
+    let mut body =
+        String::from("batch\tentry\tfunction\tobserved_eval_ms\tthreshold_ms\tverdict\n");
+    let mut mandatory_count = 0usize;
+    let mut worst: Vec<(u128, String, String)> = Vec::new();
+    let mut observation_absent_count = 0usize;
+    for rec in batch_records {
+        let n = rec.batch_index + 1;
+        for result in &rec.results {
+            for row in &result.witness_row_costs {
+                if row.5 == "selection-skipped" {
+                    observation_absent_count += 1;
+                    body.push_str(&format!(
+                        "{n}\t{}\t{}\t\t{threshold_ms}\tObservationAbsent\n",
+                        row.0, row.1
+                    ));
+                    continue;
+                }
+                let observed = row.2 / 1_000_000;
+                let is_mandatory = match witness_row_cost_migration_verdict_via_authority(
+                    &ctx, observed,
+                ) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        eprintln!(
+                            "claim_executor: migration verdict refused for {}::{}: {e} — walk fails closed here",
+                            row.0, row.1
+                        );
+                        return false;
+                    }
+                };
+                let verdict = if is_mandatory {
+                    mandatory_count += 1;
+                    worst.push((observed, row.0.clone(), row.1.clone()));
+                    "MandatoryMigration"
+                } else {
+                    "BelowMigrationThreshold"
+                };
+                body.push_str(&format!(
+                    "{n}\t{}\t{}\t{observed}\t{threshold_ms}\t{verdict}\n",
+                    row.0, row.1
+                ));
+            }
+        }
+    }
+    worst.sort_by(|a, b| b.0.cmp(&a.0));
+    worst.truncate(5);
+    for line in body.lines() {
+        eprintln!("[witness-row-cost-migration-disclosure] {line}");
+    }
+    for (ms, entry, function) in &worst {
+        eprintln!(
+            "[witness-row-cost-migration-disclosure] worst: {entry}::{function} observed={ms}ms threshold={threshold_ms}ms"
+        );
+    }
+    let path = base.join("floor-witness-row-cost-migration-disclosure-receipt.tsv");
+    if let Err(e) = std::fs::create_dir_all(base).and_then(|_| std::fs::write(&path, &body)) {
+        eprintln!(
+            "claim_executor: failed to write witness row-cost migration disclosure receipt {}: {e} — walk fails closed here",
+            path.display()
+        );
+        return false;
+    }
+    eprintln!(
+        "[receipt] floor witness row-cost migration disclosure: mandatory_migration={mandatory_count} observation_absent={observation_absent_count} threshold_ms={threshold_ms} (TSV: {})",
+        path.display()
+    );
+    true
+}
+
 /// ONE stage's own receipt, written before the next stage begins. The aggregate receipt
 /// below cannot substitute for it: written only after the whole sequence, it does not
 /// exist for stage N while stage N+1 is running, and a process death between the two
@@ -7166,6 +7306,22 @@ fn run_walk(
         true
     };
     trace_floor_phase("witness-row-cost-drift-receipt", "completed", "");
+    trace_floor_phase(
+        "witness-row-cost-migration-disclosure-receipt",
+        "started",
+        "",
+    );
+    let witness_row_cost_migration_disclosure_receipt_ok = !emit_ordinary_floor_receipts
+        || write_witness_row_cost_migration_disclosure_receipt_at(
+            std::path::Path::new("target"),
+            &batch_records,
+            source_roots,
+        );
+    trace_floor_phase(
+        "witness-row-cost-migration-disclosure-receipt",
+        "completed",
+        "",
+    );
     // Written on EVERY exit path, red included — a red run is precisely when the
     // alert needs to know which component failed (gunbc.floor_component_receipt).
     trace_floor_phase("floor-component-receipt", "started", "");
@@ -7202,6 +7358,7 @@ fn run_walk(
         || !witness_row_cost_receipt_ok
         || !wet_witness_row_outcome_receipt_ok
         || !witness_row_cost_drift_receipt_ok
+        || !witness_row_cost_migration_disclosure_receipt_ok
         || !selection_degradation_receipt_ok
         || !floor_component_receipt_ok
         || !materialization_receipt_ok;
