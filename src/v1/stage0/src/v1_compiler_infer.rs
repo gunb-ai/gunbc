@@ -15971,39 +15971,22 @@ pub fn build_symbol_index_census_nodes(
     }
 }
 
+pub fn underlay_fill_direction_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Fill composition overlays the CLOSURE onto the shared underlay, never the underlay onto the closure. Both directions denote the same map — union of the two key sets, closure value wins on the intersection — so the composed index is identical; only the cost shape differs, and the difference is the per-entry assembly tax the floor pays 842 times. The prior shape walked the UNDERLAY's key list (sorted_map_keys over the whole-pool qualified fill / whole-tree bare census), probed the accumulator per key, and path-copied an insert for every miss: O(|underlay|) work and O(|underlay|) retained HAMT nodes per entry, against an underlay that is a per-index memo and therefore constant while the closure varies. Overlaying instead starts from that shared memo (O(1) persistent clone) and pays O(|closure|) inserts, so the term scales with the entry's own closure — the quantity the entry is actually about. Measured surface this repairs (per-entry-assembly-decomposition-measurement.md, representative 50): symbol-index merge 29.2-30.1% and per-root symbol-index composition 17.9-18.2% of all assembly. DESIGN 6 bare-minimum-cost: a copied accumulator is fixed regardless of the realized n, and the identity of the two directions is what makes this a cost fix rather than a semantic change (witness: symbol_index_fill_overlay_direction_test - closure wins on a colliding key, underlay-only and closure-only keys both survive).".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn symbol_index_with_bare_fill(
     closure: Rc<SymbolIndex>,
     tree: Rc<SymbolIndex>,
 ) -> Rc<SymbolIndex> {
     {
-        let bare_keys = Rc::new(v1_rt::sorted_map_keys(&tree.global_bare.clone()));
-        let global2 = bare_keys.clone().iter().cloned().fold(
-            closure.global_bare.clone(),
-            |acc: Rc<HashMap<String, Rc<GlobalBareLookupState>>>, k: String| match v1_rt::map_get(
-                &acc,
-                k.clone(),
-            ) {
-                Some(_) => acc.clone(),
-                None => match v1_rt::map_get(&tree.global_bare.clone(), k.clone()) {
-                    Some(state) => v1_rt::rc_map_insert(acc.clone(), k.clone(), state.clone()),
-                    None => acc.clone(),
-                },
-            },
-        );
-        let service_keys = Rc::new(v1_rt::sorted_map_keys(&tree.services.clone()));
-        let services2 = service_keys.clone().iter().cloned().fold(
-            closure.services.clone(),
-            |acc: Rc<HashMap<String, Rc<ServiceCensusEntry>>>, k: String| match v1_rt::map_get(
-                &acc,
-                k.clone(),
-            ) {
-                Some(_) => acc.clone(),
-                None => match v1_rt::map_get(&tree.services.clone(), k.clone()) {
-                    Some(entry) => v1_rt::rc_map_insert(acc.clone(), k.clone(), entry.clone()),
-                    None => acc.clone(),
-                },
-            },
-        );
+        let global2 = v1_rt::rc_map_merge(tree.global_bare.clone(), closure.global_bare.clone());
+        let services2 = v1_rt::rc_map_merge(tree.services.clone(), closure.services.clone());
         Rc::new(SymbolIndex {
             entries: closure.entries.clone(),
             global_bare: global2.clone(),
@@ -16074,17 +16057,7 @@ pub fn symbol_index_with_qualified_fill(
     fill: Rc<SymbolIndex>,
 ) -> Rc<SymbolIndex> {
     {
-        let fill_keys = Rc::new(v1_rt::sorted_map_keys(&fill.entries.clone()));
-        let entries2 = fill_keys.clone().iter().cloned().fold(
-            closure.entries.clone(),
-            |acc: Rc<HashMap<String, Rc<Node>>>, k: String| match v1_rt::map_get(&acc, k.clone()) {
-                Some(_) => acc.clone(),
-                None => match v1_rt::map_get(&fill.entries.clone(), k.clone()) {
-                    Some(node) => v1_rt::rc_map_insert(acc.clone(), k.clone(), node.clone()),
-                    None => acc.clone(),
-                },
-            },
-        );
+        let entries2 = v1_rt::rc_map_merge(fill.entries.clone(), closure.entries.clone());
         Rc::new(SymbolIndex {
             entries: entries2.clone(),
             global_bare: closure.global_bare.clone(),
