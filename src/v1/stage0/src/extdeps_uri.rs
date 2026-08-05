@@ -6,8 +6,8 @@ use self::UriHexNibble::*;
 use self::UriHexNibbleConstruction::*;
 use self::UriPercentEncodeComponent::*;
 use self::UriPercentEncodeFoldState::*;
-use self::UriPercentEncodeFragmentsState::*;
 use self::UriPercentEncodeRefusalCause::*;
+use self::UriPercentEncodeScalarOutcome::*;
 use self::UriPercentOctetWire::*;
 use self::UriScheme::*;
 use self::UriUnicodeScalarConstruction::*;
@@ -820,13 +820,65 @@ pub fn uri_percent_encode_scalar_fragment(cp: i64) -> Rc<UriPercentEncodeFoldSta
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
-pub enum UriPercentEncodeFragmentsState {
-    UriPercentEncodeFragmentsBuilding {
-        fragments: Rc<Vec<String>>,
+pub enum UriPercentEncodeScalarOutcome {
+    UriPercentEncodeScalarEncoded {
+        wire: String,
     },
-    UriPercentEncodeFragmentsRefused {
+    UriPercentEncodeScalarRefused {
         cause: Rc<UriPercentEncodeRefusalCause>,
     },
+}
+
+pub fn uri_percent_encode_scalar_outcome(cp: i64) -> Rc<UriPercentEncodeScalarOutcome> {
+    match (*uri_percent_encode_scalar_fragment(cp.clone())).clone() {
+        UriPercentEncodeFoldState::UriPercentEncodeRefused { cause: cause, .. } => Rc::new(
+            UriPercentEncodeScalarOutcome::UriPercentEncodeScalarRefused {
+                cause: cause.clone(),
+            },
+        ),
+        UriPercentEncodeFoldState::UriPercentEncodeBuilding { wire: wire, .. } => Rc::new(
+            UriPercentEncodeScalarOutcome::UriPercentEncodeScalarEncoded { wire: wire.clone() },
+        ),
+    }
+}
+
+pub fn uri_percent_encode_outcomes_first_refusal(
+    outcomes: Rc<Vec<Rc<UriPercentEncodeScalarOutcome>>>,
+) -> Option<Rc<UriPercentEncodeRefusalCause>> {
+    outcomes.clone().iter().cloned().fold(
+        None,
+        |acc: _, outcome: Rc<UriPercentEncodeScalarOutcome>| match acc.clone() {
+            Some(_) => acc.clone(),
+            None => match (*outcome.clone()).clone() {
+                UriPercentEncodeScalarOutcome::UriPercentEncodeScalarRefused {
+                    cause: cause,
+                    ..
+                } => Some(cause.clone()),
+                UriPercentEncodeScalarOutcome::UriPercentEncodeScalarEncoded {
+                    wire: _, ..
+                } => None,
+            },
+        },
+    )
+}
+
+pub fn uri_percent_encode_outcome_wires(
+    outcomes: Rc<Vec<Rc<UriPercentEncodeScalarOutcome>>>,
+) -> Rc<Vec<String>> {
+    outcomes.clone().iter().cloned().fold(
+        Rc::new(vec![]),
+        |wires: Rc<Vec<String>>, outcome: Rc<UriPercentEncodeScalarOutcome>| match (*outcome
+            .clone())
+        .clone()
+        {
+            UriPercentEncodeScalarOutcome::UriPercentEncodeScalarEncoded { wire: wire, .. } => {
+                v1_rt::rc_list_push(wires.clone(), wire.clone())
+            }
+            UriPercentEncodeScalarOutcome::UriPercentEncodeScalarRefused { cause: _, .. } => {
+                wires.clone()
+            }
+        },
+    )
 }
 
 pub fn uri_percent_encode_code_points(code_points: Rc<Vec<i64>>) -> Rc<UriPercentEncodeComponent> {
@@ -835,55 +887,22 @@ pub fn uri_percent_encode_code_points(code_points: Rc<Vec<i64>>) -> Rc<UriPercen
             cause: Rc::new(UriPercentEncodeRefusalCause::UriPercentEncodeEmptyInputRefused),
         })
     } else {
-        match (*code_points.clone().iter().cloned().fold(
-            Rc::new(
-                UriPercentEncodeFragmentsState::UriPercentEncodeFragmentsBuilding {
-                    fragments: Rc::new(vec![]),
-                },
-            ),
-            |acc: Rc<UriPercentEncodeFragmentsState>, cp: i64| match (*acc.clone()).clone() {
-                UriPercentEncodeFragmentsState::UriPercentEncodeFragmentsRefused {
-                    cause: _,
-                    ..
-                } => acc.clone(),
-                UriPercentEncodeFragmentsState::UriPercentEncodeFragmentsBuilding {
-                    fragments: fragments,
-                    ..
-                } => match (*uri_percent_encode_scalar_fragment(cp.clone())).clone() {
-                    UriPercentEncodeFoldState::UriPercentEncodeRefused { cause: cause, .. } => {
-                        Rc::new(
-                            UriPercentEncodeFragmentsState::UriPercentEncodeFragmentsRefused {
-                                cause: cause.clone(),
-                            },
-                        )
-                    }
-                    UriPercentEncodeFoldState::UriPercentEncodeBuilding { wire: wire, .. } => {
-                        Rc::new(
-                            UriPercentEncodeFragmentsState::UriPercentEncodeFragmentsBuilding {
-                                fragments: v1_rt::concat(
-                                    Rc::new(vec![wire.clone()]),
-                                    fragments.clone(),
-                                ),
-                            },
-                        )
-                    }
-                },
-            },
-        ))
-        .clone()
         {
-            UriPercentEncodeFragmentsState::UriPercentEncodeFragmentsRefused {
-                cause: cause,
-                ..
-            } => Rc::new(UriPercentEncodeComponent::UriPercentComponentRefused {
-                cause: cause.clone(),
-            }),
-            UriPercentEncodeFragmentsState::UriPercentEncodeFragmentsBuilding {
-                fragments: fragments,
-                ..
-            } => Rc::new(UriPercentEncodeComponent::UriPercentComponentEncoded(
-                v1_rt::reverse(fragments.clone()).join(&"".to_string()),
-            )),
+            let outcomes = Rc::new({
+                let mut __result = Vec::new();
+                for cp in code_points.clone().iter().cloned() {
+                    __result.push(uri_percent_encode_scalar_outcome(cp.clone()));
+                }
+                __result
+            });
+            match uri_percent_encode_outcomes_first_refusal(outcomes.clone()) {
+                Some(cause) => Rc::new(UriPercentEncodeComponent::UriPercentComponentRefused {
+                    cause: cause.clone(),
+                }),
+                None => Rc::new(UriPercentEncodeComponent::UriPercentComponentEncoded(
+                    uri_percent_encode_outcome_wires(outcomes.clone()).join(&"".to_string()),
+                )),
+            }
         }
     }
 }

@@ -5285,7 +5285,8 @@ macro_rules! v1_algebra_method_arms {
                     let mut counters = $ctx.mutation_counters.borrow_mut();
                     if merged_items > 0 {
                         counters.list_concat_calls += 1;
-                        counters.list_concat_items_copied += copied_items as u64;
+                        counters.list_concat_items_copied +=
+                            (items.len() + merged_items) as u64 + copied_items as u64;
                     } else {
                         counters.list_push_calls += 1;
                     }

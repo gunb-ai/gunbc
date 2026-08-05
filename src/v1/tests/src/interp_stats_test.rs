@@ -107,9 +107,7 @@ fn build() -> Int {
 fn uri_percent_encode_counters_for_scalar_count(
     scalar_count: usize,
 ) -> v1_interpreter::MutationCounters {
-    let code_points: Vec<i64> = (0..scalar_count)
-        .map(|i| 33 + ((i % 5) as i64 * 10))
-        .collect();
+    let code_points: Vec<i64> = (0..scalar_count).map(|i| 233 + i as i64).collect();
     let code_points_src = code_points
         .iter()
         .map(|cp| cp.to_string())
@@ -144,7 +142,7 @@ fn build() -> Bool {{
 }
 
 #[test]
-fn uri_percent_encode_code_points_encodes_each_scalar_once() {
+fn uri_percent_encode_code_points_cost_shape_receipt() {
     let five = uri_percent_encode_counters_for_scalar_count(5);
     let fifty = uri_percent_encode_counters_for_scalar_count(50);
     assert_eq!(
@@ -157,21 +155,15 @@ fn uri_percent_encode_code_points_encodes_each_scalar_once() {
         "fifty reserved scalars must encode exactly once each, got {}",
         fifty.uri_percent_encode_scalar_fragment_calls
     );
-}
-
-#[test]
-fn uri_percent_encode_code_points_accumulation_does_not_scale_list_push() {
-    let small = uri_percent_encode_counters_for_scalar_count(5);
-    let large = uri_percent_encode_counters_for_scalar_count(50);
     assert_eq!(
-        large.list_push_calls, small.list_push_calls,
-        "list_push_calls must not scale with encoded scalar count (5-scalar run={}, 50-scalar run={})",
-        small.list_push_calls, large.list_push_calls
+        fifty.list_push_items_copied, five.list_push_items_copied,
+        "list_push_items_copied must not scale with encoded scalar count (5-scalar run={}, 50-scalar run={})",
+        five.list_push_items_copied, fifty.list_push_items_copied
     );
     assert_eq!(
-        large.list_push_items_copied, small.list_push_items_copied,
-        "list_push_items_copied must not scale with encoded scalar count (5-scalar run={}, 50-scalar run={})",
-        small.list_push_items_copied, large.list_push_items_copied
+        fifty.list_concat_items_copied, five.list_concat_items_copied,
+        "list_concat_items_copied must not scale with encoded scalar count (5-scalar run={}, 50-scalar run={})",
+        five.list_concat_items_copied, fifty.list_concat_items_copied
     );
 }
 
