@@ -4,16 +4,8 @@ import std.types { Bool, NonEmptyStr, String }
 import std.nat { Nat }
 import std.measure { Millisecond, millisecond, millisecond_count, measure_add }
 import std.content_hash { Sha256Digest, Sha256DigestHex }
-import gunbc.ci_floor_population_reconcile {
-  MechanismEvidenceSettle,
-  Delivered,
-  NotDelivered,
-  MissingArtifactOpen,
-  admission_settle_from_stage_walls,
-  native_fleet_settle_from_transition_counts,
-}
 
-data ci_floor_population_settlement_receipt_note: String = "ONE SUBJECT-BOUND SETTLEMENT from an exact uploaded floor-evidence artifact (#7785 review). Numbers and counts live only here as harvested observations; MechanismEvidenceSettle is DERIVED via gunbc.ci_floor_population_reconcile settle folds — never re-authored beside them. Identity binds source_head/tested commits, tree, Actions run/attempt/job, walk_attempt, manifest_body_digest, and uploaded_artifact_digest so a later hand edit of walls without matching digests is a different subject, not a silent rewrite of this one. Harvested from Actions run 30987560453 attempt 1 job ci (artifact ci-floor-population-receipts-30987560453-1-ci). Warm-hit stays Open: the banked control is same-process MultiEntryIndex reuse, not a two-process TYPECHECK_COMPUTE_COUNT receipt."
+data ci_floor_population_settlement_receipt_note: String = "ONE SUBJECT-BOUND SETTLEMENT from an exact uploaded floor-evidence artifact (#7785 review). Walls and native counts live only here as harvested observations; MechanismEvidenceSettle is DERIVED in gunbc.ci_floor_population_reconcile from this receipt — never re-authored beside it. Identity binds source_head/tested commits, tree, Actions run/attempt/job, walk_attempt, manifest_body_digest, and uploaded_artifact_digest. Harvested from Actions run 30987560453 attempt 1 job ci (artifact ci-floor-population-receipts-30987560453-1-ci). Warm-hit stays Open: the banked control is same-process MultiEntryIndex reuse, not a two-process TYPECHECK_COMPUTE_COUNT receipt."
 
 type ColdAdmissionBaselineReceipt {
   dated_subject: NonEmptyStr,
@@ -99,43 +91,6 @@ fn banked_admission_observed_total_ms(r: CiFloorPopulationSettlementReceipt) -> 
     a: measure_add(a: r.admission.capture_wall, b: r.admission.on_success_stage1_wall),
     b: r.admission.on_success_stage2_wall
   )
-}
-
-fn admission_settle_from_settlement_receipt(
-  r: CiFloorPopulationSettlementReceipt
-) -> MechanismEvidenceSettle {
-  admission_settle_from_stage_walls(
-    capture: r.admission.capture_wall,
-    stage1: Present { value: r.admission.on_success_stage1_wall },
-    stage2: Present { value: r.admission.on_success_stage2_wall },
-    cold_baseline: r.cold_admission_baseline.wall
-  )
-}
-
-fn native_fleet_settle_from_settlement_receipt(
-  r: CiFloorPopulationSettlementReceipt
-) -> MechanismEvidenceSettle {
-  match native_fleet_settle_from_transition_counts(
-    native_count: Present { value: r.native_transition.native_count },
-    fallback_count: Present { value: r.native_transition.fallback_count },
-    selected_count: Present { value: r.native_transition.selected_witness_count }
-  ) {
-    Delivered {} => Delivered {}
-    MissingArtifactOpen { owed } => MissingArtifactOpen { owed: owed }
-    NotDelivered { reason: _ } =>
-      NotDelivered { reason: r.native_transition.verdict }
-  }
-}
-
-fn warm_hit_settle_from_settlement_receipt(
-  r: CiFloorPopulationSettlementReceipt
-) -> MechanismEvidenceSettle {
-  match r.warm_hit {
-    WarmHitOpenCrossProcessReceiptAbsent {} =>
-      MissingArtifactOpen {
-        owed: "CrossProcessExecutionReceiptAbsent" as NonEmptyStr
-      }
-  }
 }
 
 fn banked_admission_total_matches_review_arithmetic(r: CiFloorPopulationSettlementReceipt) -> Bool {

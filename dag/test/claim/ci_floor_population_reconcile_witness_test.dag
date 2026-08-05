@@ -1,6 +1,6 @@
 module test.claim.ci_floor_population_reconcile_witness
 
-import std.types { Bool }
+import std.types { Bool, String, NonEmptyStr }
 import std.measure { millisecond, millisecond_count }
 import gunbc.ci_floor_population_reconcile {
   Delivered,
@@ -9,6 +9,7 @@ import gunbc.ci_floor_population_reconcile {
   MissingRequiredObservation,
   InsufficientAttribution,
   OverAttributed,
+  InvalidCiJobWall,
   Reconciled,
   harvested_subject_a_reconciliation,
   harvested_subject_a_nested_diagnostic_sum,
@@ -16,12 +17,19 @@ import gunbc.ci_floor_population_reconcile {
   over_attributed_specimen,
   remainder_false_green_specimen_refused,
   reconcile_exclusive_against_job_wall,
+  unattributed_within_five_percent,
   admission_settle_from_stage_walls,
   native_fleet_settle_from_transition_counts,
   warm_hit_settle_from_skip_counter,
   current_admission_settle,
   current_native_fleet_settle,
   current_warm_hit_settle,
+  current_settlement_receipt,
+}
+import gunbc.ci_floor_population_settlement_receipt {
+  banked_admission_observed_total_ms,
+  banked_admission_recovery_ms,
+  banked_admission_total_matches_review_arithmetic,
 }
 
 test fn witness_subject_a_missing_exclusive_observations() -> Bool {
@@ -71,11 +79,49 @@ test fn red_remainder_inflate_must_not_pass_bar() -> Bool {
   remainder_false_green_specimen_refused()
 }
 
-test fn witness_admission_missing_stages_is_open() -> Bool {
-  match current_admission_settle() {
-    MissingArtifactOpen { owed: _ } => true
+test fn witness_zero_ci_job_wall_refuses() -> Bool {
+  match reconcile_exclusive_against_job_wall(
+    classified: millisecond(count: 0),
+    ci_job: millisecond(count: 0)
+  ) {
+    InvalidCiJobWall {} => true
     _ => false
   }
+}
+
+test fn witness_exact_five_percent_boundary_reconciles() -> Bool {
+  unattributed_within_five_percent(unattributed_ms: 500, ci_job_ms: 10000)
+    && match reconcile_exclusive_against_job_wall(
+      classified: millisecond(count: 9500),
+      ci_job: millisecond(count: 10000)
+    ) {
+      Reconciled { classified_wall: _, unattributed_wall: u, attribution_ratio_basis_points: _ } =>
+        millisecond_count(m: u) == 500
+      _ => false
+    }
+}
+
+test fn red_just_over_five_percent_must_not_floor_to_pass() -> Bool {
+  !unattributed_within_five_percent(unattributed_ms: 501, ci_job_ms: 10000)
+    && match reconcile_exclusive_against_job_wall(
+      classified: millisecond(count: 9499),
+      ci_job: millisecond(count: 10000)
+    ) {
+      InsufficientAttribution { classified_wall: _, unattributed_wall: u, attribution_ratio_basis_points: _ } =>
+        millisecond_count(m: u) == 501
+      _ => false
+    }
+}
+
+test fn witness_admission_settled_delivered_from_banked_artifact() -> Bool {
+  let r = current_settlement_receipt()
+  banked_admission_total_matches_review_arithmetic(r: r)
+    && banked_admission_recovery_ms(r: r) == 78706
+    && millisecond_count(m: banked_admission_observed_total_ms(r: r)) == 118424
+    && match current_admission_settle() {
+      Delivered {} => true
+      _ => false
+    }
 }
 
 test fn witness_admission_delivered_when_stages_join_under_baseline() -> Bool {
@@ -102,9 +148,9 @@ test fn witness_admission_not_delivered_when_net_exceeds_baseline() -> Bool {
   }
 }
 
-test fn witness_native_missing_tsv_is_open() -> Bool {
+test fn witness_native_settled_not_delivered_from_banked_artifact() -> Bool {
   match current_native_fleet_settle() {
-    MissingArtifactOpen { owed: _ } => true
+    NotDelivered { reason } => reason as String == "fallback:native_realization_refused"
     _ => false
   }
 }
@@ -131,9 +177,10 @@ test fn witness_native_not_delivered_on_fallback() -> Bool {
   }
 }
 
-test fn witness_warm_hit_current_is_delivered() -> Bool {
+test fn witness_warm_hit_current_is_open_cross_process_absent() -> Bool {
   match current_warm_hit_settle() {
-    Delivered {} => true
+    MissingArtifactOpen { owed } =>
+      owed as String == "CrossProcessExecutionReceiptAbsent"
     _ => false
   }
 }

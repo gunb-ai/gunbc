@@ -287,11 +287,23 @@ fn registry_locator_matches_relpath(path: String, locator: FloorReceiptLocator) 
   match locator {
     ExactRelative { relative_path } => path == (relative_path as String)
     ReceiptFamily { relative_directory, filename_prefix, filename_suffix } => {
-      let dir = concat(relative_directory as String, "/")
-      string_contains(s: path, pattern: dir)
-        && string_contains(s: path, pattern: filename_prefix as String)
-        && string_contains(s: path, pattern: filename_suffix as String)
-        && !(string_contains(s: path, pattern: "*"))
+      let dir_prefix = concat(relative_directory as String, "/")
+      if string_contains(s: path, pattern: "*") {
+        false
+      } else if !starts_with(s: path, prefix: dir_prefix) {
+        false
+      } else {
+        let filename = substring(
+          s: path,
+          start: string_length(s: dir_prefix),
+          end: string_length(s: path)
+        )
+        !string_contains(s: filename, pattern: "/")
+          && starts_with(s: filename, prefix: filename_prefix as String)
+          && ends_with(s: filename, suffix: filename_suffix as String)
+          && string_length(s: filename)
+            >= string_length(s: filename_prefix as String) + string_length(s: filename_suffix as String)
+      }
     }
   }
 }

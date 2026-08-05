@@ -16,6 +16,14 @@ use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 use std::sync::OnceLock;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+static WRITE_TMP_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+fn unique_tmp_path(dest: &Path) -> PathBuf {
+    let n = WRITE_TMP_COUNTER.fetch_add(1, Ordering::Relaxed);
+    dest.with_extension(format!("tmp-{}-{}", std::process::id(), n))
+}
 
 pub const SCHEMA: &str = "gunbc.ci_floor_population_receipt_manifest.v5";
 pub const EVIDENCE_ROOT_PREFIX: &str = "target/floor-evidence";
@@ -332,7 +340,7 @@ pub fn write_floor_receipt(
     let obs_rel = observation_fragment_relpath(kind, relative_path);
     let obs_path = root.join(&obs_rel);
 
-    let receipt_tmp = path.with_extension(format!("tmp-{}", std::process::id()));
+    let receipt_tmp = unique_tmp_path(&path);
     let _ = fs::remove_file(&receipt_tmp);
     {
         let mut f = fs::OpenOptions::new()
@@ -354,7 +362,7 @@ pub fn write_floor_receipt(
         "{kind}\t{relative_path}\t{}\t{digest}\t{producer_phase}\n",
         body.len()
     );
-    let obs_tmp = obs_path.with_extension(format!("tmp-{}", std::process::id()));
+    let obs_tmp = unique_tmp_path(&obs_path);
     if let Err(e) = fs::write(&obs_tmp, obs_body.as_bytes()) {
         let _ = fs::remove_file(&receipt_tmp);
         return Err(format!("write {}: {e}", obs_tmp.display()));
@@ -1183,7 +1191,7 @@ mod tests {
     static CWD_LOCK: Mutex<()> = Mutex::new(());
 
     fn with_temp_cwd<F: FnOnce(&Path)>(f: F) {
-        let _guard = CWD_LOCK.lock().unwrap();
+        let _guard = CWD_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let tmp = std::env::temp_dir().join(format!(
             "floor-evidence-test-{}-{}",
             std::process::id(),
@@ -1655,7 +1663,7 @@ mod tests {
             assert_eq!(err_count, 1, "exactly one publish must refuse: {results:?}");
             for err in results.iter().filter_map(|r| r.as_ref().err()) {
                 assert!(
-                    err.contains("refused replacement"),
+                    err.contains("refused replacement") || err.contains("AlreadyExists"),
                     "loser must refuse, not overwrite: {err}"
                 );
             }

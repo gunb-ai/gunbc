@@ -104,23 +104,26 @@ test fn witness_cold_baseline() -> Bool {
   millisecond_count(m: cold_admission_baseline_wall()) == 197130
 }
 
-test fn witness_admission_net_open() -> Bool {
+test fn witness_admission_net_delivered() -> Bool {
   match admission_settle() {
-    CaptureMeasuredNetOpen {} => true
+    DeliveredAdmissionNet {} => true
+    _ => false
   }
 }
 
-test fn witness_native_fleet_rate_open() -> Bool {
+test fn witness_native_fleet_not_delivered() -> Bool {
   match native_fleet_settle() {
-    EnrollmentLandedFleetRateOpen {} => true
+    NotDeliveredNativeRealizationRefused {} => true
+    _ => false
   }
 }
 
-data witness_warm_hit_skip_proof_landed_note: String = "RENAMED from witness_warm_hit_partial (DESIGN §4b(4) — a probe that expected an open state and then closed flips to a permanent regression control, it does not retire): cross_process_hit_skips_semantic_recompute (v1_compiler_tests.resolve_cross_process_cache_test) now asserts TYPECHECK_COMPUTE_COUNT stays 0 on a warm cross-process disk-tier hit, green by execution. warm_hit_settle therefore reads ClosedSkipProofLanded, not PartiallyDeliveredSkipProofOpen. A future regression that reopens the skip-proof gap (or reverts this settle without re-landing the counter proof) must flip this assertion back, which is exactly the signal this test now exists to catch."
+data witness_warm_hit_open_cross_process_note: String = "Honest demotion (#7785 review): cross_process_hit_skips_semantic_recompute reuses one process address space (second MultiEntryIndex), so it is not a two-process skip receipt. warm_hit_settle is OpenCrossProcessExecutionReceiptAbsent until Process A publish+exit and Process B verified hit with TYPECHECK_COMPUTE_COUNT==0 execute in required CI. ClosedSkipProofLanded remains a reachable arm for that future climb."
 
-test fn witness_warm_hit_skip_proof_landed() -> Bool {
+test fn witness_warm_hit_open_cross_process_absent() -> Bool {
   match warm_hit_settle() {
-    ClosedSkipProofLanded {} => true
+    OpenCrossProcessExecutionReceiptAbsent {} => true
+    _ => false
   }
 }
 

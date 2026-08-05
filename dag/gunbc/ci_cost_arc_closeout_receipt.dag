@@ -29,13 +29,16 @@ type FullCorpusSubjectHarvest
   = NotHarvested {}
 
 type AdmissionSettle
-  = CaptureMeasuredNetOpen {}
+  = DeliveredAdmissionNet {}
+  | CaptureMeasuredNetOpen {}
 
 type NativeFleetSettle
-  = EnrollmentLandedFleetRateOpen {}
+  = NotDeliveredNativeRealizationRefused {}
+  | EnrollmentLandedFleetRateOpen {}
 
 type WarmHitSettle
-  = ClosedSkipProofLanded {}
+  = OpenCrossProcessExecutionReceiptAbsent {}
+  | ClosedSkipProofLanded {}
 
 type RetentionSettle
   = ClosedReject {}
@@ -162,15 +165,15 @@ fn assembly_root_variant_base_wall() -> Millisecond {
 }
 
 fn admission_settle() -> AdmissionSettle {
-  CaptureMeasuredNetOpen {}
+  DeliveredAdmissionNet {}
 }
 
 fn native_fleet_settle() -> NativeFleetSettle {
-  EnrollmentLandedFleetRateOpen {}
+  NotDeliveredNativeRealizationRefused {}
 }
 
 fn warm_hit_settle() -> WarmHitSettle {
-  ClosedSkipProofLanded {}
+  OpenCrossProcessExecutionReceiptAbsent {}
 }
 
 fn retention_settle() -> RetentionSettle {

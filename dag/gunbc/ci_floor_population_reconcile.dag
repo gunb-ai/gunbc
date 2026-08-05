@@ -4,6 +4,11 @@ import std.types { Bool, NonEmptyStr }
 import std.nat { Nat }
 import std.measure { Millisecond, millisecond, millisecond_count, measure_add, basis_point, basis_point_count }
 import gunbc.ci_floor_population_evidence { LocalCiEvidenceSubjectWire, local_subject_wire_incomplete }
+import gunbc.ci_floor_population_settlement_receipt {
+  CiFloorPopulationSettlementReceipt,
+  WarmHitOpenCrossProcessReceiptAbsent,
+  exact_head_floor_population_settlement_receipt,
+}
 
 type MechanismEvidenceSettle
   = Delivered {}
@@ -53,6 +58,7 @@ type PopulationReconciliation
       classified_wall: Millisecond,
       ci_job_wall: Millisecond
     }
+  | InvalidCiJobWall {}
 
 fn exclusive_observed_ms(o: ExclusiveElapsedObservation) -> Nat {
   match o {
@@ -119,19 +125,25 @@ fn attribution_ratio_basis_points(classified: Millisecond, ci_job: Millisecond) 
   }
 }
 
+fn unattributed_within_five_percent(unattributed_ms: Nat, ci_job_ms: Nat) -> Bool {
+  unattributed_ms * 10000 <= ci_job_ms * 500
+}
+
 fn reconcile_exclusive_against_job_wall(
   classified: Millisecond,
   ci_job: Millisecond
 ) -> PopulationReconciliation {
   let classified_ms = millisecond_count(m: classified)
   let ci_job_ms = millisecond_count(m: ci_job)
-  if classified_ms > ci_job_ms {
+  if ci_job_ms == 0 {
+    InvalidCiJobWall {}
+  } else if classified_ms > ci_job_ms {
     OverAttributed { classified_wall: classified, ci_job_wall: ci_job }
   } else {
-    let unattributed = millisecond(count: ci_job_ms - classified_ms)
+    let unattributed_ms = ci_job_ms - classified_ms
+    let unattributed = millisecond(count: unattributed_ms)
     let ratio = attribution_ratio_basis_points(classified: classified, ci_job: ci_job)
-    let unattributed_bp = basis_point_count(bp: basis_point(count: ((ci_job_ms - classified_ms) * 10000) / ci_job_ms))
-    if unattributed_bp <= 500 {
+    if unattributed_within_five_percent(unattributed_ms: unattributed_ms, ci_job_ms: ci_job_ms) {
       Reconciled {
         classified_wall: classified,
         unattributed_wall: unattributed,
@@ -298,23 +310,55 @@ fn warm_hit_settle_from_skip_counter(skip_proven: Bool?) -> MechanismEvidenceSet
   }
 }
 
-fn current_admission_settle() -> MechanismEvidenceSettle {
+fn admission_settle_from_settlement_receipt(
+  r: CiFloorPopulationSettlementReceipt
+) -> MechanismEvidenceSettle {
   admission_settle_from_stage_walls(
-    capture: millisecond(count: 110820),
-    stage1: none,
-    stage2: none,
-    cold_baseline: millisecond(count: 197130)
+    capture: r.admission.capture_wall,
+    stage1: Present { value: r.admission.on_success_stage1_wall },
+    stage2: Present { value: r.admission.on_success_stage2_wall },
+    cold_baseline: r.cold_admission_baseline.wall
   )
+}
+
+fn native_fleet_settle_from_settlement_receipt(
+  r: CiFloorPopulationSettlementReceipt
+) -> MechanismEvidenceSettle {
+  match native_fleet_settle_from_transition_counts(
+    native_count: Present { value: r.native_transition.native_count },
+    fallback_count: Present { value: r.native_transition.fallback_count },
+    selected_count: Present { value: r.native_transition.selected_witness_count }
+  ) {
+    Delivered {} => Delivered {}
+    MissingArtifactOpen { owed } => MissingArtifactOpen { owed: owed }
+    NotDelivered { reason: _ } =>
+      NotDelivered { reason: r.native_transition.verdict }
+  }
+}
+
+fn warm_hit_settle_from_settlement_receipt(
+  r: CiFloorPopulationSettlementReceipt
+) -> MechanismEvidenceSettle {
+  match r.warm_hit {
+    WarmHitOpenCrossProcessReceiptAbsent {} =>
+      MissingArtifactOpen {
+        owed: "CrossProcessExecutionReceiptAbsent" as NonEmptyStr
+      }
+  }
+}
+
+fn current_settlement_receipt() -> CiFloorPopulationSettlementReceipt {
+  exact_head_floor_population_settlement_receipt()
+}
+
+fn current_admission_settle() -> MechanismEvidenceSettle {
+  admission_settle_from_settlement_receipt(r: current_settlement_receipt())
 }
 
 fn current_native_fleet_settle() -> MechanismEvidenceSettle {
-  native_fleet_settle_from_transition_counts(
-    native_count: none,
-    fallback_count: none,
-    selected_count: none
-  )
+  native_fleet_settle_from_settlement_receipt(r: current_settlement_receipt())
 }
 
 fn current_warm_hit_settle() -> MechanismEvidenceSettle {
-  warm_hit_settle_from_skip_counter(skip_proven: Present { value: true })
+  warm_hit_settle_from_settlement_receipt(r: current_settlement_receipt())
 }
