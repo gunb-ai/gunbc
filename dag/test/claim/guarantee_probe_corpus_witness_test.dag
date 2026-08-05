@@ -581,7 +581,7 @@ test fn canonical_probe_resolution_refuses_duplicate_population() -> Bool {
 
 test fn dark_suite_dispositions_cover_migrated_v1_probes() -> Bool {
   let dispositions = guarantee_probe_dark_suite_dispositions()
-  count(dispositions) == 3
+  count(dispositions) == 4
     && fold_list(
       xs: dispositions,
       empty: 0,
@@ -597,7 +597,7 @@ test fn dark_suite_dispositions_cover_migrated_v1_probes() -> Bool {
           }
         }
       },
-    ) == 8
+    ) == 10
 }
 
 test fn v2_frontier_identities_are_declared() -> Bool {
