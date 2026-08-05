@@ -602,11 +602,7 @@ test fn dark_suite_dispositions_cover_migrated_v1_probes() -> Bool {
           }
         }
       },
-<<<<<<< HEAD
-    ) == 9
-=======
-    ) == 8
->>>>>>> origin/main
+    ) == 10
 }
 
 test fn v2_frontier_identities_are_declared() -> Bool {

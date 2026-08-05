@@ -317,7 +317,12 @@ type ProbeRowResolution
 fn guarantee_probe_rows() -> List<GuaranteeProbeRow> {
   [
     GuaranteeProbeRow {
-<<<<<<< HEAD
+      probe: call_deficit_red_probe,
+      class: call_label_surplus_class,
+      path: v1_compile_rust_path_id,
+      expectation: ExpectBlockingRefusal { diagnostic_class: "CallPositionalDeficit" as NonEmptyStr },
+    },
+    GuaranteeProbeRow {
       probe: call_duplicate_green_probe,
       class: call_label_surplus_class,
       path: v1_compile_rust_path_id,
@@ -328,12 +333,6 @@ fn guarantee_probe_rows() -> List<GuaranteeProbeRow> {
       class: call_label_surplus_class,
       path: v1_compile_rust_path_id,
       expectation: ExpectBlockingRefusal { diagnostic_class: "CallArgumentDuplicate" as NonEmptyStr },
-=======
-      probe: call_deficit_red_probe,
-      class: call_label_surplus_class,
-      path: v1_compile_rust_path_id,
-      expectation: ExpectBlockingRefusal { diagnostic_class: "CallPositionalDeficit" as NonEmptyStr },
->>>>>>> origin/main
     },
     GuaranteeProbeRow {
       probe: call_shape_green_probe,
