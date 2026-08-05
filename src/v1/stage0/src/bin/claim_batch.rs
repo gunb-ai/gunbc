@@ -716,6 +716,12 @@ fn run() -> Result<ExitCode, ExitCode> {
         "[resolve-summary] {} resolve(s) in {}ms; {} witness(es) in {}ms",
         timings.resolves, timings.resolve_ms, timings.witnesses, timings.witness_ms,
     );
+    {
+        let (gb_hits, gb_misses) = v1_compiler::cli_run::global_bare_variant_base_memo_receipt(&index);
+        eprintln!(
+            "[entry-view-assembly] global_bare_variant_base_memo hits={gb_hits} misses={gb_misses} cross_grain_hits={gb_hits}"
+        );
+    }
     // The expectation frontier: effect sites that dispatched WITHOUT declaring
     // `expect:`, counted at their located `service.op`. This receipt is the whole
     // reason `ExpectationDeclaration::UntracedDefault` is a value rather than a

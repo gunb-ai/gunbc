@@ -7264,6 +7264,10 @@ pub struct MultiEntryIndex {
             Rc<HashMap<String, Rc<crate::v1_compiler_infer_env::TypeBinding>>>,
         >,
     >,
+    /// Inner memo hits: coarse closure/root memos missed, but this digest was warm.
+    global_bare_variant_base_memo_hits: Cell<u64>,
+    /// Inner memo misses: first build for this digest in the index lifetime.
+    global_bare_variant_base_memo_misses: Cell<u64>,
     /// Counted fallbacks when a shared-view memo refuses (must be zero on acceptance).
     entry_view_assembly_fallbacks: Cell<u64>,
 }
@@ -7446,6 +7450,8 @@ fn new_multi_entry_index_shell(
         root_assembly_env_memo: RefCell::new(std::collections::HashMap::new()),
         rewired_modules_memo: RefCell::new(std::collections::HashMap::new()),
         global_bare_variant_base_memo: RefCell::new(std::collections::HashMap::new()),
+        global_bare_variant_base_memo_hits: Cell::new(0),
+        global_bare_variant_base_memo_misses: Cell::new(0),
         entry_view_assembly_fallbacks: Cell::new(0),
     }
 }
@@ -11831,6 +11837,13 @@ pub fn entry_view_assembly_fallback_count_for_test(index: &MultiEntryIndex) -> u
     index.entry_view_assembly_fallbacks.get()
 }
 
+pub fn global_bare_variant_base_memo_receipt(index: &MultiEntryIndex) -> (u64, u64) {
+    (
+        index.global_bare_variant_base_memo_hits.get(),
+        index.global_bare_variant_base_memo_misses.get(),
+    )
+}
+
 fn entry_view_global_bare_variant_base_memo_key_note() -> String {
     thread_local! {
         static CACHED: String = {
@@ -11921,8 +11934,20 @@ fn global_bare_variant_base_cached(
 ) -> Rc<HashMap<String, Rc<crate::v1_compiler_infer_env::TypeBinding>>> {
     let digest = global_bare_semantic_digest(&global_bare, source_indices.clone());
     if let Some(hit) = index.global_bare_variant_base_memo.borrow().get(&digest) {
+        index.global_bare_variant_base_memo_hits.set(
+            index
+                .global_bare_variant_base_memo_hits
+                .get()
+                .saturating_add(1),
+        );
         return hit.clone();
     }
+    index.global_bare_variant_base_memo_misses.set(
+        index
+            .global_bare_variant_base_memo_misses
+            .get()
+            .saturating_add(1),
+    );
     let started = std::time::Instant::now();
     let built = v1_compiler_infer::build_global_bare_variant_locals(
         global_bare.clone(),
