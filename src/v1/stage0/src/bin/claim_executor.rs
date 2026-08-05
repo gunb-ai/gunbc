@@ -1394,6 +1394,49 @@ struct FloorFinalization {
     expected_obligations: Vec<TransportedObligation>,
 }
 
+type ObligationSubjectKey = (String, String);
+type ObligationSubjectSet = std::collections::HashSet<ObligationSubjectKey>;
+
+fn obligation_subject_set(fin: Option<&FloorFinalization>) -> Option<ObligationSubjectSet> {
+    fin.map(|fin| {
+        fin.expected_obligations
+            .iter()
+            .map(|obl| (obl.entry.clone(), obl.function.clone()))
+            .collect()
+    })
+}
+
+fn is_rostered_obligation_subject(
+    subjects: &ObligationSubjectSet,
+    entry: &str,
+    function: &str,
+) -> bool {
+    subjects.contains(&(entry.to_string(), function.to_string()))
+}
+
+/// Attach the group's resolve-realization observation to the first rostered obligation
+/// subject in the resolve group — not the first arbitrary co-resident claim.
+fn take_group_observation_for_claim(
+    obligation_subjects: Option<&ObligationSubjectSet>,
+    entry: &str,
+    function: &str,
+    group_observation: &Option<ResolveRealizationObservation>,
+    group_observation_attached: &mut bool,
+) -> Option<ResolveRealizationObservation> {
+    if *group_observation_attached {
+        return None;
+    }
+    let rostered = match obligation_subjects {
+        None => true,
+        Some(subjects) => is_rostered_obligation_subject(subjects, entry, function),
+    };
+    if !rostered {
+        return None;
+    }
+    *group_observation_attached = true;
+    group_observation.clone()
+}
+
 impl FloorFinalization {
     /// Derived roster size — never a stored count literal (DESIGN §5).
     #[allow(dead_code)]
@@ -2463,6 +2506,7 @@ fn run_batch_unit(
     governor: Arc<MemoryGovernor>,
     fast_lane_eval_budget_ms: Option<u64>,
     falsifier_self_host_wet_budgets: FalsifierSelfHostWetBudgets,
+    obligation_subjects: Option<&ObligationSubjectSet>,
 ) -> Vec<ClaimResult> {
     match unit {
         BatchUnit::UnrunnableSentinel { function } => vec![ClaimResult {
@@ -2584,8 +2628,13 @@ fn run_batch_unit(
             // slot for the unit's lifetime so gate threads and discovery workers draw
             // from the same admission window instead of stacking unbounded.
             let mut slot = AdmittedSlot::acquire_blocking(&governor, &format!("gate-unit {entry}"));
-            let results =
-                run_shared_entry_claims(&source_roots, &entry, &functions, execution_mode);
+            let results = run_shared_entry_claims(
+                &source_roots,
+                &entry,
+                &functions,
+                execution_mode,
+                obligation_subjects,
+            );
             slot.note_unit_complete();
             results
         }
@@ -2597,6 +2646,7 @@ fn run_shared_entry_claims(
     entry: &str,
     functions: &[String],
     execution_mode: ExecutionMode,
+    obligation_subjects: Option<&ObligationSubjectSet>,
 ) -> Vec<ClaimResult> {
     let resolve_start = Instant::now();
     let (graph, source_indices) = match resolve_entry_graph(source_roots, entry) {
@@ -2626,7 +2676,8 @@ fn run_shared_entry_claims(
     let group_resolve_observation =
         Some(ResolveRealizationObservation::ColdResolvePerformed { resolve_nanos });
     let ctx = make_eval_context(&graph, source_indices, execution_mode);
-    let mut first = true;
+    let mut first_physical = true;
+    let mut group_observation_attached = false;
     functions
         .iter()
         .map(|function| {
@@ -2637,11 +2688,21 @@ fn run_shared_entry_claims(
             // witnesses sharing this ctx (byte-unbounded, 20GiB-class kills).
             v1_compiler::v1_interpreter::eval_call_memo_frame_exit(&ctx);
             let wall_nanos = claim_start.elapsed().as_nanos();
-            let (rn, observation) = if first {
-                first = false;
-                (resolve_nanos, group_resolve_observation.clone())
-            } else {
-                (0, None)
+            let (rn, observation) = {
+                let rn = if first_physical {
+                    first_physical = false;
+                    resolve_nanos
+                } else {
+                    0
+                };
+                let observation = take_group_observation_for_claim(
+                    obligation_subjects,
+                    entry,
+                    function,
+                    &group_resolve_observation,
+                    &mut group_observation_attached,
+                );
+                (rn, observation)
             };
             claim_result_for_outcome(
                 &ctx,
@@ -2665,6 +2726,7 @@ fn run_memo_shared_claims(
     functions: &[String],
     execution_mode: ExecutionMode,
     memo: &mut std::collections::HashMap<(String, ExecutionMode), InterpContext>,
+    obligation_subjects: Option<&ObligationSubjectSet>,
 ) -> Vec<ClaimResult> {
     let resolve_start = Instant::now();
     let mut fresh_resolve = false;
@@ -2715,7 +2777,8 @@ fn run_memo_shared_claims(
         })
     };
     let ctx = memo.get(&memo_key).expect("memo populated above");
-    let mut first = true;
+    let mut first_physical = true;
+    let mut group_observation_attached = false;
     functions
         .iter()
         .map(|function| {
@@ -2726,11 +2789,21 @@ fn run_memo_shared_claims(
             // groups, so per-witness release matters here most of all.
             v1_compiler::v1_interpreter::eval_call_memo_frame_exit(ctx);
             let wall_nanos = claim_start.elapsed().as_nanos();
-            let (rn, observation) = if first {
-                first = false;
-                (resolve_nanos, group_resolve_observation.clone())
-            } else {
-                (0, None)
+            let (rn, observation) = {
+                let rn = if first_physical {
+                    first_physical = false;
+                    resolve_nanos
+                } else {
+                    0
+                };
+                let observation = take_group_observation_for_claim(
+                    obligation_subjects,
+                    entry,
+                    function,
+                    &group_resolve_observation,
+                    &mut group_observation_attached,
+                );
+                (rn, observation)
             };
             claim_result_for_outcome(
                 ctx,
@@ -6170,12 +6243,6 @@ fn unexecuted_transport_obligations<'a>(
         .collect()
 }
 
-fn is_rostered_obligation_subject(fin: &FloorFinalization, entry: &str, function: &str) -> bool {
-    fin.expected_obligations
-        .iter()
-        .any(|obl| obl.entry == entry && obl.function == function)
-}
-
 /// Observed resolve-realization subjects not present in the transported roster — the
 /// derived-minus-roster direction of the identity join (DESIGN §5: completeness is
 /// identity join, not count equality).
@@ -6183,6 +6250,7 @@ fn unrostered_observed_obligation_subjects(
     fin: &FloorFinalization,
     batch_records: &[BatchRecord],
 ) -> Vec<(String, String)> {
+    let subjects = obligation_subject_set(Some(fin)).expect("fin provided");
     let mut seen = std::collections::HashSet::new();
     let mut surplus = Vec::new();
     for rec in batch_records {
@@ -6190,7 +6258,7 @@ fn unrostered_observed_obligation_subjects(
             if result.resolve_realization.is_none() {
                 continue;
             }
-            if is_rostered_obligation_subject(fin, &result.entry, &result.function) {
+            if is_rostered_obligation_subject(&subjects, &result.entry, &result.function) {
                 continue;
             }
             let key = format!("{}::{}", result.entry, result.function);
