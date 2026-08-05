@@ -650,7 +650,7 @@ mod compiler_tests {
 
     #[test]
     fn function_value_field_method_known_hole_probe() {
-        // KNOWN-HOLE PROBE (not a desired-behavior control): coverage path (1) in
+        // KNOWN-HOLE PROBE (not a desired-behavior control): coverage path (5) in
         // function_value_named_application_wall_note. cfg.callback(a:, b:) parses as
         // ExprMethodCall (make_call_expr on ExprFieldAccess), bypasses BOTH the
         // body_locals wall and #7519 direct_call_shape_diags. Today it compiles clean
