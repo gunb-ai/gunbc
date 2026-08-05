@@ -5081,10 +5081,7 @@ fn write_floor_wet_witness_row_outcome_receipt_at(
     trace_floor_phase(
         "wet-witness-row-outcome-receipt",
         "completed",
-        &format!(
-            "row_count={row_count} path={}",
-            path.display()
-        ),
+        &format!("row_count={row_count} path={}", path.display()),
     );
     true
 }
