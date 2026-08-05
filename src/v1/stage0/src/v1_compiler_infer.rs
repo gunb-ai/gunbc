@@ -2556,6 +2556,12 @@ pub fn call_arg_bound_param_at_binding_key_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct CallArgBoundParamAccum {
+    pub bound: Option<String>,
+    pub pos: i64,
+}
+
 pub fn call_arg_bound_param_at(
     idx: i64,
     typed_args: Rc<Vec<Rc<Node>>>,
@@ -2574,22 +2580,30 @@ pub fn call_arg_bound_param_at(
     .iter()
     .cloned()
     .fold(
-        (None, 0),
-        |acc: (Option<()>, i64), ta: Rc<Node>| match arg_name_at(ta.clone(), source_indices.clone())
-        {
-            Some(label) => (Some(label.clone()), acc.1.clone()),
-            None => (
-                positionally_eligible_names
+        Rc::new(CallArgBoundParamAccum {
+            bound: None,
+            pos: 0,
+        }),
+        |acc: Rc<CallArgBoundParamAccum>, ta: Rc<Node>| match arg_name_at(
+            ta.clone(),
+            source_indices.clone(),
+        ) {
+            Some(label) => Rc::new(CallArgBoundParamAccum {
+                bound: Some(label.clone()),
+                pos: acc.pos.clone(),
+            }),
+            None => Rc::new(CallArgBoundParamAccum {
+                bound: positionally_eligible_names
                     .clone()
                     .iter()
                     .cloned()
-                    .skip(acc.1.clone() as usize)
+                    .skip(acc.pos.clone() as usize)
                     .next(),
-                (acc.1.clone() + 1),
-            ),
+                pos: (acc.pos.clone() + 1),
+            }),
         },
     )
-    .0
+    .bound
     .clone()
 }
 

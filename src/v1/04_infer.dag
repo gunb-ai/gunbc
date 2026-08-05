@@ -1538,6 +1538,11 @@ fn param_binds_positionally(p: Node, source_indices: Map<String, NewlineIndex>) 
 
 data call_arg_bound_param_at_binding_key_note: String = "Runtime (v1_interpreter.rs call_function_inner) keys `bindings` differently per argument form: a NAMED actual is inserted under its own literal caller label (`bindings.insert(ctx.sym(name), ...)` — the raw label, never resolved through the underscore idiom to a declared name), while a POSITIONAL actual is inserted under the declared name it fills by running positional index (`bindings.insert(ctx.sym(&param_names[positional_idx]), ...)`). Two named actuals therefore collide only when they carry the SAME literal label, and a positional-then-named collision (`one(1, a: 2)`) only when the named label equals the positional slot's declared name (found by review 48724). Resolving a named actual's key through declared_names via call_arg_label_matches_param (the prior form of this function) is a DIFFERENT and wrong key: filter-then-first picks whichever declared param the caller-label test hits first in declaration order, and an underscore-named param (`_: Edge`) matches ANY label unconditionally, so a later exact-named actual (`child:` against declared `child`) could be shadowed into colliding with an unrelated earlier underscore-idiom actual (`e:` against declared `_`) even though the runtime keys them apart as \"e\" and \"child\" — the false positive measured live at src/v2/std/cardinality.dag's termination_proof_fold_step(acc:, e:, child:) call against fn termination_proof_fold_step(acc, _: Edge, child), which compiled clean before this correction and fails at this wall after it without the fix."
 
+type CallArgBoundParamAccum {
+  bound: String?
+  pos: Int
+}
+
 fn call_arg_bound_param_at(
   idx: Int,
   typed_args: List<Node>,
@@ -1545,12 +1550,12 @@ fn call_arg_bound_param_at(
   declared_names: List<String>,
   positionally_eligible_names: List<String>
 ) -> String? {
-  typed_args |> take(idx + 1) |> fold(init: { bound: none, pos: 0 }, f: (acc, ta) =>
+  typed_args |> take(idx + 1) |> fold(init: CallArgBoundParamAccum { bound: none, pos: 0 }, f: (acc, ta) =>
     match arg_name_at(n: ta, source_indices: source_indices) {
       Present { value: label } =>
-        ({ bound: Present { value: label }, pos: acc.pos })
+        (CallArgBoundParamAccum { bound: Present { value: label }, pos: acc.pos })
       Absent =>
-        ({ bound: positionally_eligible_names |> skip(acc.pos) |> first, pos: acc.pos + 1 })
+        (CallArgBoundParamAccum { bound: positionally_eligible_names |> skip(acc.pos) |> first, pos: acc.pos + 1 })
     }).bound
 }
 
