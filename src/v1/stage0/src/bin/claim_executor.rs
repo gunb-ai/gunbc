@@ -10999,14 +10999,20 @@ mod tests {
         // The eval column is WALL and must say so: the fast-lane cap that kills these rows
         // is enforced on thread CPU, so a bare `eval_ms` invites a threshold built on this
         // file to select a different population than the cap kills.
-        let header = body.lines().next().expect("header");
+        //
+        // Compared at COLUMN grain rather than by substring. A substring test is answering a
+        // question about column names with a question about characters, and the two only
+        // coincide by accident: `\teval_ms` happens not to occur inside `\teval_wall_ms`
+        // (review 48405 read it as though it did, which is a fair thing to misread and reason
+        // enough not to write it that way). Splitting on tabs asks the question directly.
+        let header: Vec<&str> = body.lines().next().expect("header").split('\t').collect();
         assert!(
-            header.contains("eval_wall_ms"),
-            "eval column must name its clock: {header}"
+            header.contains(&"eval_wall_ms"),
+            "eval column must name its clock: {header:?}"
         );
         assert!(
-            !header.contains("\teval_ms"),
-            "the clock-ambiguous spelling must not return: {header}"
+            !header.contains(&"eval_ms"),
+            "the clock-ambiguous spelling must not return: {header:?}"
         );
         let _ = fs::remove_dir_all(&base);
     }

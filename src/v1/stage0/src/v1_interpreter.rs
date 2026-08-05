@@ -12044,6 +12044,10 @@ pub struct PerformanceReceipt {
     /// no artifact in the tree recorded the number the cap reads, and any threshold built
     /// on a cost receipt selected a different population than the cap kills.
     ///
+    /// Recording both clocks is correct; what is provisional is that this one says which
+    /// clock it is only by its NAME. See `WITNESS_COST_CLOCK_BASIS_NOTE` for the ruled
+    /// model that replaces it (a basis-carrying measurement) and the dissolution trigger.
+    ///
     /// The useful bound, since eval is single-threaded and CPU is therefore bounded above
     /// by wall: a recorded wall UNDER the cap proves CPU under the cap, so budget triggers
     /// stated as "lands under the fast-lane budget" were always decidable from wall alone.
@@ -12056,16 +12060,28 @@ pub struct PerformanceReceipt {
 }
 
 pub const WITNESS_COST_CLOCK_BASIS_NOTE: &str = "\
-Witness cost carries TWO clocks and they are not interchangeable. wall_nanos is the \
-measurement basis; cpu_nanos is the enforcement basis (thread CPU, what the fast-lane cap \
-is compared against). Recording only wall meant the enforced quantity appeared in no \
-artifact. Eval is single-threaded, so cpu <= wall: a wall figure under the cap PROVES cpu \
-under the cap (firing direction, decidable), while an over-cap wall figure proves nothing \
-about cpu (ranking direction, blind). OPEN: the declaration-grain cost receipt projects \
-through std.observation.ObservationEvent, which carries wall and rss but no cpu, so \
-discovery-grain rows still record wall only. Closing that is a load-bearing std.observation \
-change (a third measured quantity beside wall and rss, and a clock basis on the TimedOut \
-outcome so a crossing says which cap it crossed) and is deliberately NOT improvised here.";
+Witness cost carries TWO clocks and they are not interchangeable. wall is the measurement \
+basis; cpu is the enforcement basis (thread CPU, what the fast-lane cap is compared \
+against). Recording only wall meant the enforced quantity appeared in no artifact. Eval is \
+single-threaded, so cpu <= wall: a wall figure under the cap PROVES cpu under the cap \
+(firing direction, decidable), while an over-cap wall figure proves nothing about cpu \
+(ranking direction, blind). \
+\
+RECORDING BOTH CLOCKS IS CORRECT AND IS NOT THE DEFECT (operator ruling 2026-08-05). The \
+defect a second bare field would introduce is a duration whose meaning lives only in its \
+field NAME. The ruled model is that each observed duration CARRIES ITS OWN BASIS -- \
+ClockBasis = CpuClock | WallClock, a basis-carrying elapsed measurement, and a basis on the \
+TimedOut outcome so a crossing says which cap it crossed. Under that model a receipt may \
+legitimately hold both a cpu and a wall observation, because neither is relying on its name \
+to say what it is. \
+\
+SEED DISPOSITION: the u128 fields below are seed instrumentation, and they are the ONLY \
+reason this note exists -- they carry their basis in a field name, which is exactly what the \
+ruled model replaces. They are retained because the enforced quantity had to stop being \
+dropped before the authority lands, and the seed is not where the authority belongs. \
+DISSOLVE-ON: ClockBasis lands in the std.observation authority and the declaration-grain \
+receipt projects cpu and wall through it; at that point these two bare fields are replaced \
+by basis-carrying measurements and this note is deleted with them.";
 
 pub fn subject_self_nanos_snapshot() -> HashMap<String, u128> {
     SUBJECT_SELF_NANOS.with(|m| m.borrow().clone())
