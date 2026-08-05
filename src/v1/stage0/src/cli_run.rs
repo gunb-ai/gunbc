@@ -7256,18 +7256,6 @@ pub struct MultiEntryIndex {
     /// (ordered typed-module content keys ⊕ compiler identity).
     rewired_modules_memo:
         RefCell<std::collections::HashMap<String, Rc<im::Vector<Rc<TypedModule>>>>>,
-    /// `build_global_bare_variant_locals` keyed by a digest of `global_bare` (see
-    /// `entry_view_global_bare_variant_base_memo_key_note`).
-    global_bare_variant_base_memo: RefCell<
-        std::collections::HashMap<
-            String,
-            Rc<HashMap<String, Rc<crate::v1_compiler_infer_env::TypeBinding>>>,
-        >,
-    >,
-    /// Inner memo hits: coarse closure/root memos missed, but this digest was warm.
-    global_bare_variant_base_memo_hits: Cell<u64>,
-    /// Inner memo misses: first build for this digest in the index lifetime.
-    global_bare_variant_base_memo_misses: Cell<u64>,
     /// Counted fallbacks when a shared-view memo refuses (must be zero on acceptance).
     entry_view_assembly_fallbacks: Cell<u64>,
 }
@@ -7449,9 +7437,6 @@ fn new_multi_entry_index_shell(
         closure_assembly_env_memo: RefCell::new(std::collections::HashMap::new()),
         root_assembly_env_memo: RefCell::new(std::collections::HashMap::new()),
         rewired_modules_memo: RefCell::new(std::collections::HashMap::new()),
-        global_bare_variant_base_memo: RefCell::new(std::collections::HashMap::new()),
-        global_bare_variant_base_memo_hits: Cell::new(0),
-        global_bare_variant_base_memo_misses: Cell::new(0),
         entry_view_assembly_fallbacks: Cell::new(0),
     }
 }
@@ -11837,34 +11822,16 @@ pub fn entry_view_assembly_fallback_count_for_test(index: &MultiEntryIndex) -> u
     index.entry_view_assembly_fallbacks.get()
 }
 
-pub fn global_bare_variant_base_memo_receipt(index: &MultiEntryIndex) -> (u64, u64) {
-    (
-        index.global_bare_variant_base_memo_hits.get(),
-        index.global_bare_variant_base_memo_misses.get(),
-    )
+fn build_global_bare_variant_base_timed(
+    global_bare: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    slot: impl FnOnce(u128),
+) -> Rc<HashMap<String, Rc<crate::v1_compiler_infer_env::TypeBinding>>> {
+    let started = std::time::Instant::now();
+    let built = v1_compiler_infer::build_global_bare_variant_locals(global_bare, source_indices);
+    slot(started.elapsed().as_nanos());
+    built
 }
-
-fn entry_view_global_bare_variant_base_memo_key_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Key completeness for `global_bare_variant_base_memo` (PR B entry-view assembly). \
-             `build_global_bare_variant_locals` branches only on (a) unique vs ambiguous and \
-             (b) for unique rows: owner.connective == Disj AND has_child_named(owner, name, \
-             source_indices). Ambiguous arm: collapsed to the flat tag `ambiguous` — \
-             key-complete because the fold never inserts for ambiguous bindings (`_ => acc`). \
-             Unique arm: digest carries `unique:{module_path}:eligible:{bool}` where eligible \
-             is exactly the predicate the builder reads (not an unexplained widening). Within one \
-             MultiEntryIndex, `note_source_hash` is insert-if-absent so each file's content is \
-             fixed for the index lifetime; paired with module-path collision honesty at index \
-             build, `module_path` in `GlobalBareUniqueBinding` identifies the owner node those \
-             two predicates inspect. Witness: entry_view_assembly_memo_witness_test \
-             `global_bare_variant_base_digest_distinguishes_variant_eligibility` (RED if \
-             eligibility diverges but digest does not).".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 fn entry_view_rewire_semantic_input_identity_note() -> String {
     thread_local! {
         static CACHED: String = {
@@ -11883,82 +11850,10 @@ fn entry_view_rewire_semantic_input_identity_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-fn global_bare_semantic_digest(
-    global_bare: &Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
-    let _ = entry_view_global_bare_variant_base_memo_key_note();
-    let mut keys: Vec<&String> = global_bare.keys().collect();
-    keys.sort_unstable();
-    let mut acc = v1_rt::atom_identity_hash("entry-view-global-bare-v2".to_string());
-    for key in keys {
-        acc = v1_rt::hash_combine(acc, v1_rt::atom_identity_hash(key.clone()));
-        if let Some(state) = global_bare.get(key) {
-            let state_tag = match state.as_ref() {
-                GlobalBareLookupState::GlobalBareUniqueBinding {
-                    module_path,
-                    binding,
-                } => {
-                    let owner = binding.resolved.clone();
-                    let eligible = owner.connective == Connective::Disj
-                        && has_child_named(owner, key.clone(), source_indices.clone());
-                    format!("unique:{module_path}:eligible:{eligible}")
-                }
-                GlobalBareLookupState::GlobalBareAmbiguousBinding { .. } => "ambiguous".to_string(),
-            };
-            acc = v1_rt::hash_combine(acc, v1_rt::atom_identity_hash(state_tag));
-        }
-    }
-    acc
-}
-
-#[cfg(any(test, feature = "interp_test_witness"))]
-pub fn global_bare_semantic_digest_for_test(
-    global_bare: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
-    global_bare_semantic_digest(&global_bare, source_indices)
-}
-
 #[cfg(any(test, feature = "interp_test_witness"))]
 pub fn rewire_semantic_input_identity_for_test(module_content_keys: &[String]) -> String {
     let _ = entry_view_rewire_semantic_input_identity_note();
     rewire_semantic_input_identity(module_content_keys)
-}
-
-fn global_bare_variant_base_cached(
-    index: &MultiEntryIndex,
-    global_bare: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    slot: impl FnOnce(u128),
-) -> Rc<HashMap<String, Rc<crate::v1_compiler_infer_env::TypeBinding>>> {
-    let digest = global_bare_semantic_digest(&global_bare, source_indices.clone());
-    if let Some(hit) = index.global_bare_variant_base_memo.borrow().get(&digest) {
-        index.global_bare_variant_base_memo_hits.set(
-            index
-                .global_bare_variant_base_memo_hits
-                .get()
-                .saturating_add(1),
-        );
-        return hit.clone();
-    }
-    index.global_bare_variant_base_memo_misses.set(
-        index
-            .global_bare_variant_base_memo_misses
-            .get()
-            .saturating_add(1),
-    );
-    let started = std::time::Instant::now();
-    let built = v1_compiler_infer::build_global_bare_variant_locals(
-        global_bare.clone(),
-        source_indices.clone(),
-    );
-    slot(started.elapsed().as_nanos());
-    index
-        .global_bare_variant_base_memo
-        .borrow_mut()
-        .insert(digest, built.clone());
-    built
 }
 
 fn root_assembly_env_key(closure_digest: &str, root: &str) -> String {
@@ -11990,8 +11885,7 @@ fn closure_assembly_env_for(
     let symbol_index =
         v1_compiler_infer::symbol_index_with_qualified_fill(closure_census, pool_fill);
     resolve_stage_slot_add(|s| s.assembly_symbol_index_merge += merge_started.elapsed().as_nanos());
-    let closure_variant_base = global_bare_variant_base_cached(
-        index,
+    let closure_variant_base = build_global_bare_variant_base_timed(
         symbol_index.global_bare.clone(),
         source_indices.clone(),
         |nanos| resolve_stage_slot_add(|s| s.assembly_variant_base += nanos),
@@ -12026,8 +11920,7 @@ fn root_assembly_env_for(
     resolve_stage_slot_add(|s| {
         s.assembly_root_symbol_index += root_symbol_index_started.elapsed().as_nanos()
     });
-    let root_variant_base = global_bare_variant_base_cached(
-        index,
+    let root_variant_base = build_global_bare_variant_base_timed(
         composed.global_bare.clone(),
         source_indices.clone(),
         |nanos| resolve_stage_slot_add(|s| s.assembly_root_variant_base += nanos),
