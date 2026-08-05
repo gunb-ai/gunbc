@@ -121,7 +121,7 @@ fn keyed_three_way_patch_insert_entry<K, V>(
     replaced: false,
     entries: [],
   }, f: fn(state, existing) {
-    if key_eq(a: existing.entry_key, b: entry.entry_key) {
+    if key_eq(existing.entry_key, entry.entry_key) {
       KeyedThreeWayInsertAcc {
         replaced: true,
         entries: concat(state.entries, [KeyedThreeWayEntry {
@@ -176,9 +176,9 @@ fn keyed_three_way_leaf<V>(
   desired: V,
   equal: fn(V, V) -> Bool,
 ) -> KeyedLeafVerdict<V> {
-  if equal(a: observed, b: desired) {
+  if equal(observed, desired) {
     KeyedUnchanged
-  } else { if equal(a: observed, b: base) {
+  } else { if equal(observed, base) {
     KeyedApplyHunk { from: base, to: desired }
   } else {
     KeyedConflict
@@ -197,7 +197,7 @@ fn keyed_leaf_verdict_join<V>(
       KeyedUnchanged => a
       KeyedConflict => KeyedConflict
       KeyedApplyHunk { from: fb, to: tb } =>
-        if equal(a: fa, b: fb) && equal(a: ta, b: tb) {
+        if equal(fa, fb) && equal(ta, tb) {
           a
         } else {
           KeyedConflict
@@ -209,7 +209,7 @@ fn keyed_leaf_verdict_join<V>(
       KeyedUnchanged => a
       KeyedConflict => KeyedConflict
       KeyedVerdictAdded { value: vb } =>
-        if equal(a: va, b: vb) {
+        if equal(va, vb) {
           a
         } else {
           KeyedConflict
@@ -221,7 +221,7 @@ fn keyed_leaf_verdict_join<V>(
       KeyedUnchanged => a
       KeyedConflict => KeyedConflict
       KeyedVerdictRemoved { value: vb } =>
-        if equal(a: va, b: vb) {
+        if equal(va, vb) {
           a
         } else {
           KeyedConflict
@@ -250,7 +250,7 @@ fn keyed_collect_keys<K, V>(
   key_eq: fn(K, K) -> Bool,
 ) -> List<K> {
   reverse(rows |> fold(init: [], f: fn(acc, row) {
-    if fold(acc, init: false, f: fn(found, k) { found || key_eq(a: k, b: row.row_key) }) {
+    if fold(acc, init: false, f: fn(found, k) { found || key_eq(k, row.row_key) }) {
       acc
     } else {
       concat([row.row_key], acc)
@@ -297,7 +297,7 @@ fn keyed_two_way_row<K, V>(
   match l {
     Present { value: lr } => match r {
       Present { value: rr } =>
-        if value_eq(a: lr.value, b: rr.value) {
+        if value_eq(lr.value, rr.value) {
           none
         } else {
           Present {
@@ -392,7 +392,7 @@ fn keyed_three_way_row_verdict<K, V>(
             equal: value_eq,
           )
         Absent =>
-          if value_eq(a: orow.value, b: brow.value) {
+          if value_eq(orow.value, brow.value) {
             KeyedVerdictRemoved { value: brow.value }
           } else {
             KeyedConflict
@@ -406,7 +406,7 @@ fn keyed_three_way_row_verdict<K, V>(
     Absent => match o {
       Present { value: orow } => match d {
         Present { value: drow } =>
-          if value_eq(a: orow.value, b: drow.value) {
+          if value_eq(orow.value, drow.value) {
             KeyedUnchanged
           } else {
             KeyedConflict
@@ -493,16 +493,16 @@ fn keyed_apply_patch<K, V>(
     match hunk {
       KeyedDiffAddedHunk { hunk_key: k, to: v } =>
         concat(
-          filter(acc, fn(row) { !key_eq(a: row.row_key, b: k) }),
+          filter(acc, fn(row) { !key_eq(row.row_key, k) }),
           [KeyedRow { row_key: k, value: v }],
         )
       KeyedDiffRemovedHunk { hunk_key: k, from: _ } =>
-        filter(acc, fn(row) { !key_eq(a: row.row_key, b: k) })
+        filter(acc, fn(row) { !key_eq(row.row_key, k) })
       KeyedDiffModifiedHunk { hunk_key: k, from: _, to: v } =>
         match keyed_row_find(rows: acc, wanted_key: k, key_eq: key_eq) {
           Present { value: row } =>
             concat(
-              filter(acc, fn(candidate) { !key_eq(a: candidate.row_key, b: k) }),
+              filter(acc, fn(candidate) { !key_eq(candidate.row_key, k) }),
               [keyed_apply_row(row: row, hunk: hunk)],
             )
           Absent => acc
@@ -545,19 +545,19 @@ fn keyed_diff_hunks_equal<K, V>(
   match left {
     KeyedDiffAddedHunk { hunk_key: lk, to: lv } => match right {
       KeyedDiffAddedHunk { hunk_key: rk, to: rv } =>
-        key_eq(a: lk, b: rk) && value_eq(a: lv, b: rv)
+        key_eq(lk, rk) && value_eq(lv, rv)
       _ => false
     }
     KeyedDiffRemovedHunk { hunk_key: lk, from: lv } => match right {
       KeyedDiffRemovedHunk { hunk_key: rk, from: rv } =>
-        key_eq(a: lk, b: rk) && value_eq(a: lv, b: rv)
+        key_eq(lk, rk) && value_eq(lv, rv)
       _ => false
     }
     KeyedDiffModifiedHunk { hunk_key: lk, from: lf, to: lt } => match right {
       KeyedDiffModifiedHunk { hunk_key: rk, from: rf, to: rt } =>
-        key_eq(a: lk, b: rk)
-          && value_eq(a: lf, b: rf)
-          && value_eq(a: lt, b: rt)
+        key_eq(lk, rk)
+          && value_eq(lf, rf)
+          && value_eq(lt, rt)
       _ => false
     }
   }
@@ -596,7 +596,7 @@ fn keyed_rows_snapshot_equal<K, V>(
   fold(keys, init: true, f: fn(ok, wanted_key) {
     match keyed_row_find(rows: left, wanted_key: wanted_key, key_eq: key_eq) {
       Present { value: lr } => match keyed_row_find(rows: right, wanted_key: wanted_key, key_eq: key_eq) {
-        Present { value: rr } => ok && value_eq(a: lr.value, b: rr.value)
+        Present { value: rr } => ok && value_eq(lr.value, rr.value)
         Absent => false
       }
       Absent => match keyed_row_find(rows: right, wanted_key: wanted_key, key_eq: key_eq) {

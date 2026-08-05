@@ -180,6 +180,7 @@ type CompilerDiagnostic
   | AmbiguousReference { name: String, candidates: List<String>, span: SourceSpan }
   | CallArgumentNameUnknown { callee: String, argument: String, declared: List<String>, span: SourceSpan }
   | CallPositionalSurplus { callee: String, supplied: Int, capacity: Int, span: SourceSpan }
+  | CallNamedArgOnFunctionValue { callee: String, argument: String, span: SourceSpan }
   | OccurrenceTransportViolation { refusal: OccurrenceTransportRefusal }
 
 type ErrorNode {
@@ -295,6 +296,7 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     AmbiguousReference { name: _, candidates: _, span: s } => s
     CallArgumentNameUnknown { callee: _, argument: _, declared: _, span: s } => s
     CallPositionalSurplus { callee: _, supplied: _, capacity: _, span: s } => s
+    CallNamedArgOnFunctionValue { callee: _, argument: _, span: s } => s
     OccurrenceTransportViolation { refusal: refusal } =>
       match occurrence_transport_refusal_diagnostic_span(refusal: refusal) {
         Present { value: span } => span
@@ -338,6 +340,8 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
       concat("call shape mismatch calling '", c, "': no parameter named '", a, "' (declared: [", join(ds, separator: ", "), "])")
     CallPositionalSurplus { callee: c, supplied: s, capacity: cap, span: _ } =>
       concat("call shape mismatch calling '", c, "': too many positional arguments: ", to_string(value: s), " supplied, ", to_string(value: cap), " positional parameter(s) declared")
+    CallNamedArgOnFunctionValue { callee: c, argument: a, span: _ } =>
+      concat("call shape mismatch calling function value '", c, "': named argument '", a, "' is not supported — use positional arguments")
     OccurrenceTransportViolation { refusal: refusal } =>
       occurrence_transport_refusal_diagnostic_message(refusal: refusal)
   }

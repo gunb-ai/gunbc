@@ -103,7 +103,7 @@ fn source_substring(source: SourceRef, start: Int, end: Int) -> String {
 
 fn source_scan_while(source: SourceRef, start: Int, pred: fn(Int) -> Bool) -> Int {
   if start >= source_len(source: source) { source_len(source: source) }
-  else if pred(ch: source.source_chars[start]) {
+  else if pred(source.source_chars[start]) {
     source_scan_while(source: source, start: start + 1, pred: pred)
   } else { start }
 }
