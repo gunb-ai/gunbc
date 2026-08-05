@@ -169,7 +169,17 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
     kind: ExecutionWitnessKind,
     reason: "SelfEmitted wet behavioral receipt, red on assemble (same cargo/shim closure refuse class as its parse_engine_hooks peer; cadence run 30126573464). Owner: #7199 falsifier lane / self-host assemble. This is the row whose file-grain pairing forced the documented workaround: the file's sibling declared_source_refs_complete_holds is offline, so classifying the FILE QuarantineProbeExpectRed would have orphaned it and the file was downgraded to OfflineLocalRecipe in prose instead. At exact grain the receipt is admitted here and the sibling keeps the file's path policy, with neither fact restating the other.",
     dissolve_on: "the local wet receipt greens under gunbc_falsifier_self_host_wet_receipt_wall_budget; this row deletes and the green wet SelfHostWetReceiptBinding restores"
-  )
+  ),
+  ExplicitWitnessAdmission {
+    witness: ScheduleWitnessEntry {
+      entry: "dag/test/claim/roadmap_program_view_witness_test.dag",
+      function: "witness_live_constraint_present_iff_line_unaccepted",
+      kind: CorpusWitnessKind
+    },
+    cadence: FalsifierSubstrateLongLane,
+    reason: "live_view() live-tree join exceeds the 5s per-PR fast-lane eval budget under host contention (run 30960560941: 5019ms eval, BudgetExceeded in discovery-corpus batch 3). Sibling witnesses in the same file stay per-PR discovered; only this function is slow.",
+    dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured cold run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt"
+  }
 ]
 
 fn explicit_witness_admission_matches(

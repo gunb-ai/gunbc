@@ -1199,6 +1199,12 @@ data falsifier_substrate_long_lane_rows: List<SubstrateLongLaneRow> = [
     function: "witness_production_admissions_close_contract_holds",
     reason: "v2_emitter_direct_rust_door_acceptance_admissions runs both production folds including ingest-path written-source assessment; exceeds 5s fast-lane budget. Closing frontier nonzero until ingest-path establishes WrittenSourceIndependentOfSeedEmitter (functional gap, not slowness alone)",
     dissolve_on: "production admissions close with frontier zero AND eval lands under gunbc_ci_fast_lane_witness_eval_budget — then re-enrolls per-PR discovery"
+  },
+  SubstrateLongLaneRow {
+    entry: "dag/test/claim/roadmap_program_view_witness_test.dag",
+    function: "witness_live_constraint_present_iff_line_unaccepted",
+    reason: "live_view() joins declared roadmap nodes, edges, receipts, and finish-line specs — measured ~3074ms cold locally but flaked at 5004ms in falsifier discovery-corpus batch 3 under host contention when ~6663 witnesses share the floor (run 30960560941, BudgetExceeded). Not caused by PR #7762 diff; borderline over the 5s fast-lane budget",
+    dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured cold run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt"
   }
 ]
 
