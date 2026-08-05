@@ -103,44 +103,11 @@ fn live_deploy_exclusive_invocation(target: DeploymentTarget) -> LiveDeployExclu
   }
 }
 
-data candidate_release_note: String = "THE CANDIDATE IS AN EXPLICIT VALUE, not 'whatever tree happens to be current'. It names the revision this invocation is trying to make live, and it crosses the lease's process boundary as a named argument so the inner reconciliation receives it as a parameter rather than re-deriving it. Re-deriving inside would reintroduce the defect the global tree-sync selector already demonstrated: the thing that decides which source is deployed must not be a piece of ambient host state that another concurrent run can rewrite."
-
-type CandidateRelease {
-  revision: CommitSha
-}
-
 data leased_argv_note: String = "The wrapped command is a second `gunbc run` against the SAME source roots and the same released binary, invoking the inner reconciliation entry under the lock. The candidate revision rides as `--arg candidate=<sha>`, which is the interpreter's named-argument channel rather than an environment variable — an env channel at a runtime-present site is the shell-to-intent class DESIGN names, and it would also make the candidate ambient exactly where this model is trying to make it explicit."
 
 data live_deploy_apply_entry_path: String = "dag/gunbc/live_deploy/apply.dag"
 
 data live_deploy_candidate_arg_name: NonEmptyStr = "candidate"
-
-fn live_deploy_leased_command(
-  invocation: LiveDeployExclusiveInvocation,
-  source_roots: List<String>,
-  inner_function: String,
-  candidate: CandidateRelease,
-) -> ArgvCommand {
-  flock_exclusive_command(
-    lock_path: invocation.lock_path,
-    wait: invocation.wait_bound,
-    command: concat(
-      [release_bin_rel_path(bin_name: gunbc_bin_name)],
-      gunbc_run_transport_argv_with_named_args(
-        source_roots: source_roots,
-        entry: live_deploy_apply_entry_path,
-        function: inner_function,
-        claim_run: false,
-        named_args: [
-          GunbcRunNamedArg {
-            name: live_deploy_candidate_arg_name,
-            value: candidate.revision as String,
-          }
-        ],
-      )
-    ),
-  )
-}
 
 data lease_outcome_note: String = "THREE OUTCOMES, AND THE CONFLICT IS NOT A FAILURE OF THIS DEPLOY. LeaseConflict means another holder owns the target for longer than the bound — the host is busy, this run mutated nothing, and the cause is separable from the wrapped command's own exit precisely because flock reports it on a distinct code. LeaseAcquiredExit carries the inner reconciliation's own exit through unchanged, so a Keep exits zero and a Refuse exits nonzero exactly as the inner entry decided; the lease adds no verdict of its own to a run that got the lock.\\n\\nThe conflict arm is a REFUSAL rather than a retry-in-place. Retrying here would re-enter the same wait with no new information and no counter, which is the absorbing shape DESIGN §5 forbids — the frequency of lease contention has to stay observable, because a rising rate is the signal that deploys have started overlapping again."
 

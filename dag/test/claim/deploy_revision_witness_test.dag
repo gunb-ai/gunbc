@@ -358,9 +358,9 @@ test fn only_a_recorded_observation_can_ever_advance() -> Bool {
   count(advanced) == 1
 }
 
-data unbound_grounding_note: String = "AN UNRECORDED ROUTED SLOT REFUSES, AND THE PREVIOUS ROUND'S AUTOMATIC GROUNDING IS UNWIRED (operator review 2026-08-05). Grounding from the slot's disk HEAD was found unbound: `gunbc serve` binds its graph at process start, so the tree can name a revision the running process is not serving, and recording it manufactures a predecessor that readmits a backward public move. This asserts the refusal is what the decision reaches, so the unsafe state is unreachable while the binding is designed."
+data unbound_grounding_note: String = "AN UNRECORDED ROUTED SLOT REFUSES WITH ITS OWN TYPED CAUSE, AND THE PREVIOUS ROUND'S AUTOMATIC GROUNDING IS DELETED (operator review 2026-08-05). Grounding from the slot's disk HEAD was found unbound: `gunbc serve` binds its graph at process start, so the tree can name a revision the running process is not serving, and recording it manufactures a predecessor that readmits a backward public move.\\n\\nTHIS IS THE PRODUCTION PATH AND NOT A NEIGHBOURING ONE, which is the half an earlier draft of the repair lost. That draft rewrote Unrecorded into Unreadable at the observation site, so the deploy refused with RevisionRelationUnverifiable while this witness went on asserting ActiveRevisionUngrounded — a passing assertion about a decision production no longer reached. The observation is now passed through unmodified, so the cause asserted here is the cause the deploy produces, and a future wrapper that degrades it reds."
 
-test fn an_unrecorded_routed_slot_still_refuses_after_grounding_was_unwired() -> Bool {
+test fn an_unrecorded_routed_slot_refuses_as_ungrounded() -> Bool {
   match decide_deploy_for_observation(
     observed: DeployedRevisionUnrecorded,
     candidate: sha_b,

@@ -85,7 +85,6 @@ import gunbc.live_deploy.lease {
   live_deploy_apply_entry_path,
   live_deploy_apply_srv1_leased_entry_function,
   live_deploy_leased_participants,
-  CandidateRelease,
   LiveDeployLeaseOutcome,
   LeaseConflict,
   LeaseLauncherFailed,

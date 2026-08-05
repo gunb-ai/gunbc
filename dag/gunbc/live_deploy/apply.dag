@@ -36,7 +36,6 @@ import gunbc.live_deploy.lease {
   LiveDeployExclusiveOperation,
   LeasedApply,
   LeasedRetract,
-  CandidateRelease,
 }
 import extdeps.git.inspect
 import gunbc.output_policy { OutcomeIsData }
@@ -73,7 +72,6 @@ import gunbc.host_effect {
   LiveDeployDigestReadback,
   LiveDeploySlotRevisionRead,
   LiveDeploySlotRevisionRecord,
-  LiveDeploySlotTreeHeadRead,
   DeployAccessPreflight,
 }
 import gunbc.host_effect_realize { host_effect_apply_gated }
@@ -766,81 +764,7 @@ fn observe_routed_slot_revision(
   }
 }
 
-data legacy_grounding_note: String = "THE MIGRATION PRODUCER, WITHOUT WHICH THE REFUSAL IS A DEADLOCK (operator ruling 2026-08-05). Making an unrecorded routed slot refuse closed a real rollback hole, and closed liveness with it: no slot carries a receipt today, receipts are written only after an admitted advance, and admission now requires a grounded receipt — so the first deploy after merge refuses, and so does every deploy after that. Safe and permanently stuck is not the state this change is for.\\n\\nSo an unrecorded routed slot is GROUNDED rather than accepted or refused outright: read the slot's own synced git HEAD, and if that yields a real sha, write it as the slot's first receipt and re-read through the ordinary path. The candidate is then classified against a grounded left-hand side by the same unchanged decision — a stale candidate still keeps, an unrelated one still refuses. Nothing about the ordering law is relaxed for the first run.\\n\\nEVERY FAILURE ARM STILL REFUSES. An unreadable tree, a non-repository, a HEAD that is not a sha, a failed receipt write, and a re-read that is still not Recorded all end at ActiveRevisionUngrounded or Unreadable. The grounding path can only ever turn 'unknown' into 'known'; it cannot turn 'unknown' into 'assume anything'.\\n\\nWHY NOT A ONE-TIME MANUAL SEED: it would make the permanent apply path depend on an undocumented external preparation step, so a fresh slot — a future green, a rebuilt host, a second target — would silently be back in the deadlock with nobody holding the knowledge that a hand-run command is required.\\n\\n🟡 dissolve-on: the served process publishes the identity it was launched with (deploy_slot_revision_receipt_note's own dissolve-on). At that point the active revision is read from the RUNNING process, grounding stops being a migration step, and this whole path deletes."
-
-fn ground_unrecorded_slot_revision(
-  active: DeploymentSpec,
-  transport: HostEffectTransport,
-  access: DeployAccess,
-) -> ObservedDeployedRevision {
-  let head = live_deploy_fold(
-    spec: active,
-    effect: LiveDeploySlotTreeHeadRead { spec: active },
-    transport: transport,
-    access: access,
-    fixture_actor: Absent,
-    fixture_host: Absent
-  )
-  match head {
-    NotConverged { reason: why, applied: _ } =>
-      DeployedRevisionUnreadable {
-        cause: concat(
-          "the routed slot carries no revision receipt and its source tree could not be read to ground one: ",
-          why
-        ) as NonEmptyStr
-      }
-    Converged { evidence: e, applied: _ } =>
-      match e {
-        ConvergePlanApplied { exit_code: _, stdout: _ } =>
-          DeployedRevisionUnreadable {
-            cause: "slot tree-head grounding returned converge-plan evidence, which cannot carry a revision" as NonEmptyStr
-          }
-        ShellEffectApplied { exit_code: _, stdout: out } =>
-          match sha1_hex_digest(hex: out) {
-            Absent =>
-              DeployedRevisionUnreadable {
-                cause: "the routed slot's tree HEAD is not exactly 40 lowercase-hex bytes, so the running revision cannot be grounded; refusing rather than recording a guess" as NonEmptyStr
-              }
-            Present { value: _ } => {
-              let written = live_deploy_record_slot_revision(
-                spec: active,
-                revision: out as CommitSha,
-                transport: transport,
-                access: access,
-              )
-              if !reconciliation_converged(r: written) {
-                DeployedRevisionUnreadable {
-                  cause: "the routed slot's revision was grounded from its tree but the initial receipt could not be written, so the next deploy would face the same ungrounded state" as NonEmptyStr
-                }
-              } else {
-                observe_routed_slot_revision(active: active, transport: transport, access: access)
-              }
-            }
-          }
-      }
-  }
-}
-
-data unbound_grounding_refusal_reason: String = "the routed slot carries no revision receipt, and this deploy will not ground one from the slot's disk HEAD alone: `gunbc serve` binds its graph once at process start, so the running process can be serving a revision the tree no longer contains, and recording the tree's HEAD would manufacture a predecessor the public service is not actually at. A later candidate B with grounded < B < served would then be admitted as an advance and move the public service BACKWARD. Grounding requires binding the routed PROCESS to the slot's tree — a slot-local expected surface, or a commit identity the process publishes about itself — and neither exists yet. Refusing until it does (operator ruling 2026-08-05)."
-
-data grounding_is_unwired_pending_binding_note: String = "THE GROUNDING PRODUCER IS DELIBERATELY NOT REACHED, AND THIS IS A LIVENESS DEBT HELD OPEN ON PURPOSE (operator review 2026-08-05). It was wired in the previous round to close the migration deadlock, and the second review found that its observation is UNBOUND: `git rev-parse HEAD` in the slot's tree describes the DISK, while the receipt must describe what the routed PROCESS is serving, and the two diverge exactly when a sync is interrupted or lands out of order. Writing the disk HEAD as the active revision manufactures a false predecessor, which readmits the backward public move the whole receipt model exists to forbid — so the wired state was less safe than the deadlock it replaced.\\n\\nThe function and its read effect are retained rather than deleted because they are the INPUT half of the eventual binding: whatever proves the process/tree correspondence will still need the slot's commit. What is missing is the other half, and no arm here may substitute for it.\\n\\n🟡 dissolve-on: a GroundedRoutedRevision carrying process-surface evidence — either a slot-local expected surface rendered from the slot's own tree, or a commit identity the served process publishes about itself — at which point this arm calls the producer and the producer refuses only when that evidence fails to bind."
-
-data grounding_is_attempted_once_note: String = "THE RE-READ GOES THROUGH observe_routed_slot_revision AND ITS RESULT IS USED AS-IS, so this is not a retry loop and cannot recurse: grounding is attempted only from the Unrecorded arm of the FIRST observation, and if the re-read still reports Unrecorded — a receipt that was written and then read back absent — the caller refuses with ActiveRevisionUngrounded rather than grounding again. One attempt, then the ordinary decision."
-
-fn observe_or_ground_routed_slot_revision(
-  active: DeploymentSpec,
-  transport: HostEffectTransport,
-  access: DeployAccess,
-) -> ObservedDeployedRevision {
-  match observe_routed_slot_revision(active: active, transport: transport, access: access) {
-    DeployedRevisionRecorded { revision: r } => DeployedRevisionRecorded { revision: r }
-    DeployedRevisionUnreadable { cause: why } => DeployedRevisionUnreadable { cause: why }
-    DeployedRevisionUnrecorded =>
-      DeployedRevisionUnreadable {
-        cause: unbound_grounding_refusal_reason as NonEmptyStr
-      }
-  }
-}
+data unrecorded_routed_slot_refuses_note: String = "AN UNRECORDED ROUTED SLOT REFUSES, AND THE GROUNDING PRODUCER THAT ONCE STOOD HERE IS DELETED RATHER THAN RETAINED (operator review 2026-08-05). A previous round wired a migration producer that read the slot's own git HEAD and wrote it as the first receipt, to close the liveness deadlock this refusal opens. Review found the observation UNBOUND: `gunbc serve` binds its graph once at process start, so the slot's tree can name a revision the running process is not serving, and the two diverge exactly when a sync is interrupted or lands out of order. Recording the disk HEAD as the active revision manufactures a predecessor the public service is not at, and a later candidate B with grounded < B < served is then admitted as an advance — the backward public move the whole receipt model exists to forbid. The wired state was less safe than the deadlock it replaced.\n\nIT IS DELETED, NOT KEPT AS THE INPUT HALF OF THE EVENTUAL BINDING. An unreferenced producer of exactly the unsafe value reads as a supported path, and the next author meeting the deadlock reaches for it instead of building the binding — the same argument that deleted AdvanceFromUnrecordedSlot in this PR rather than leaving it as an unconstructable arm. The LiveDeploySlotTreeHeadRead effect goes with it, for the same reason.\n\nSO THE OBSERVATION IS PASSED THROUGH UNMODIFIED and the decision's own arm refuses with ActiveRevisionUngrounded. An earlier draft of this repair rewrote Unrecorded into Unreadable here, which degraded a precise typed cause into a vague one AND made the witness that asserts the Unrecorded refusal describe a path production could no longer reach.\n\nTHE LIVENESS CONSEQUENCE IS REAL AND IS HELD OPEN DELIBERATELY: no slot carries a receipt today, so the first deploy after this merges refuses, and so does every deploy after it, until a receipt is grounded through evidence that binds the PROCESS to a revision. 🟡 dissolve-on: a slot-local expected surface rendered from the slot's own tree, or a commit identity the served process publishes about itself, at which point grounding is reintroduced as a producer whose refusal arm fires when that evidence fails to bind."
 
 data slot_revision_parse_refuses_note: String = "A RECEIPT BODY THAT IS NOT A COMMIT SHA IS UNREADABLE, NOT ABSENT, AND NOTHING NORMALIZES IT FIRST. The read script `cat`s the file verbatim — an earlier revision ran `tr -d '[:space:]'` first, which deletes INTERNAL whitespace and so collapsed a receipt corrupted into whitespace-separated fragments into a well-formed 40-character sha (operator ruling 2026-08-05). sha1_hex_digest is the validating partial bridge from std.content_hash — exact 40-digit lowercase hex, refusing rather than folding case or length — so a truncated, half-written, or hand-edited receipt lands in the Unreadable arm and REFUSES the deploy. Treating it as 'no revision recorded' would let a corrupted file authorize a deploy that monotonicity would otherwise have stopped, which is the ⊥-as-ignorance-read-as-⊥-as-answer collapse DESIGN §5 names.\\n\\nThe unrecorded token is compared against the single constant the read script prints, so the two sides of that boundary cannot drift into disagreeing about what absence looks like."
 
@@ -983,7 +907,7 @@ fn live_deploy_apply_srv1_with_access_for_candidate(
         BlueGreenSlotsSelected { active, idle: _ } =>
           live_deploy_decision_outcome(
             decision: decide_deploy_against_routed_slot(
-              observed: observe_or_ground_routed_slot_revision(
+              observed: observe_routed_slot_revision(
                 active: active,
                 transport: access.transport,
                 access: access,
