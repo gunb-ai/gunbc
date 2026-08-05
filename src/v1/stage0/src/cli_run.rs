@@ -11871,7 +11871,11 @@ fn entry_view_variant_base_cache_key_note() -> String {
              (module_path, SourceFile.content) pair in the closure; `root_assembly_env_memo` \
              keys on (closure_digest, source_tree_root). Those inputs fix the closure ModuleGraph, \
              the per-file NewlineIndex map (insert-if-absent from the same content), the closure \
-             census `global_bare`, and — for roots — `tree_bare_census_for_root`. \
+             census `global_bare`, and — for roots — `tree_bare_census_for_root` (whose inputs \
+             span the whole tree at that root, not the closure). The bare root name suffices \
+             because the MultiEntryIndex source set is fixed for the index lifetime, making \
+             that census index-invariant per root; any move to a mutable or incrementally \
+             populated index re-opens this key. \
              `build_global_bare_variant_locals` reads owner.connective, has_child_named, and \
              stores binding.resolved; any output-relevant owner fact is already pinned by the \
              closure content digest (or root-augmented census), not merely eligibility. Witness: \
