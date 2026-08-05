@@ -7778,29 +7778,11 @@ fn build_symbol_index_census_nodes(module_nodes: List<Node>, source_indices: Map
   census_with_resolved_fn_sigs(index: raw, source_indices: source_indices)
 }
 
+data underlay_fill_direction_note: String = "Fill composition overlays the CLOSURE onto the shared underlay, never the reverse. Both directions denote the same map (union of key sets, closure wins the intersection); only the cost grain differs — the underlay is a per-index memo, so walking its keys charges every entry O(|whole pool|) for an index that differs by its own closure. Receipt: docs/plans/fill-composition-overlay-direction-receipt.md. Witness: symbol_index_fill_overlay_direction_test."
+
 fn symbol_index_with_bare_fill(closure: SymbolIndex, tree: SymbolIndex) -> SymbolIndex {
-  let bare_keys = sorted_map_keys(tree.global_bare)
-  let global2 = fold(bare_keys, init: closure.global_bare, f: (acc, k) =>
-    match map_get(acc, k) {
-      Present { value: _ } => acc
-      Absent =>
-        match map_get(tree.global_bare, k) {
-          Present { value: state } => map_insert(acc, k, state)
-          Absent => acc
-        }
-    }
-  )
-  let service_keys = sorted_map_keys(tree.services)
-  let services2 = fold(service_keys, init: closure.services, f: (acc, k) =>
-    match map_get(acc, k) {
-      Present { value: _ } => acc
-      Absent =>
-        match map_get(tree.services, k) {
-          Present { value: entry } => map_insert(acc, k, entry)
-          Absent => acc
-        }
-    }
-  )
+  let global2 = map_merge(tree.global_bare, closure.global_bare)
+  let services2 = map_merge(tree.services, closure.services)
   SymbolIndex { entries: closure.entries, global_bare: global2, services: services2 }
 }
 
@@ -7835,17 +7817,7 @@ fn build_symbol_index_qualified_fill(modules: List<Node>, source_indices: Map<St
 }
 
 fn symbol_index_with_qualified_fill(closure: SymbolIndex, fill: SymbolIndex) -> SymbolIndex {
-  let fill_keys = sorted_map_keys(fill.entries)
-  let entries2 = fold(fill_keys, init: closure.entries, f: (acc, k) =>
-    match map_get(acc, k) {
-      Present { value: _ } => acc
-      Absent =>
-        match map_get(fill.entries, k) {
-          Present { value: node } => map_insert(acc, k, node)
-          Absent => acc
-        }
-    }
-  )
+  let entries2 = map_merge(fill.entries, closure.entries)
   SymbolIndex { entries: entries2, global_bare: closure.global_bare, services: closure.services }
 }
 
