@@ -722,6 +722,58 @@ fn witness_exclusion_patterns(rows: List<WitnessExclusionRow>) -> List<String> {
   fold(rows, init: [], f: fn(acc, row) { concat(acc, [row.pattern]) })
 }
 
+fn witness_exclusion_row_waits_on_wet_lane_undarken(row: WitnessExclusionRow) -> Bool {
+  string_contains(s: row.dissolve_on, pattern: "falsifier_self_host_wet_cadence_active")
+    || (row.dissolve_on == excl_wet_integration_dissolve)
+    || (row.dissolve_on == excl_behavioral_receipt_dissolve)
+    || string_contains(s: row.dissolve_on, pattern: "wet lane un-darken")
+    || string_contains(s: row.dissolve_on, pattern: "wet lane un-darkens")
+}
+
+data witness_exclusion_row_mentions_wet_lane_dark_state_note: String = "witness_exclusion_row_mentions_wet_lane_dark_state is a broader candidate net than witness_exclusion_row_waits_on_wet_lane_undarken's positive arms: any row whose dissolve_on names the falsifier_self_host_wet lane, the cadence flag, or an un-darken trigger in ANY spelling. A row caught by this net but not matched by the positive predicate is a THIRD spelling the positive predicate has not learned yet -- surfaced via falsifier_self_host_wet_dark_lane_unclassified_rows, not silently dropped (still-bat-561 review, 2026-08-05: a derived count is only as good as its predicate, and a predicate with an unclassified residue silently deflates exactly like a hand-typed ordinal goes stale). This is a candidate net, not a second authority: false positives here (a row that mentions the wet lane only as one arm of an unrelated OR-condition) are expected and are why v2.test.claim.witness_exclusion_reconciliation_test asserts the PROPERTY -- every candidate is claimed by exactly one arm -- rather than asserting any specific count."
+
+fn witness_exclusion_row_mentions_wet_lane_dark_state(row: WitnessExclusionRow) -> Bool {
+  string_contains(s: row.dissolve_on, pattern: "falsifier_self_host_wet")
+    || string_contains(s: row.dissolve_on, pattern: "un-darken")
+}
+
+fn falsifier_self_host_wet_dark_lane_waiting_rows() -> List<WitnessExclusionRow> {
+  fold(
+    witness_exclusion_frontier,
+    init: [],
+    f: fn(acc, row) {
+      if witness_exclusion_row_waits_on_wet_lane_undarken(row: row) { concat(acc, [row]) } else { acc }
+    }
+  )
+}
+
+fn falsifier_self_host_wet_dark_lane_waiting_patterns() -> List<String> {
+  witness_exclusion_patterns(rows: falsifier_self_host_wet_dark_lane_waiting_rows())
+}
+
+fn falsifier_self_host_wet_dark_lane_population() -> Int {
+  falsifier_self_host_wet_dark_lane_waiting_patterns().length()
+}
+
+fn falsifier_self_host_wet_dark_lane_unclassified_rows() -> List<WitnessExclusionRow> {
+  fold(
+    witness_exclusion_frontier,
+    init: [],
+    f: fn(acc, row) {
+      if witness_exclusion_row_mentions_wet_lane_dark_state(row: row)
+        && !witness_exclusion_row_waits_on_wet_lane_undarken(row: row) {
+        concat(acc, [row])
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn falsifier_self_host_wet_dark_lane_unclassified_patterns() -> List<String> {
+  witness_exclusion_patterns(rows: falsifier_self_host_wet_dark_lane_unclassified_rows())
+}
+
 fn witness_exclusion_substrings() -> List<String> {
   witness_exclusion_patterns(rows: witness_exclusion_frontier)
 }
@@ -791,6 +843,22 @@ data bin_witness_wet_note: String = "The remaining excluded entries are the BIN-
 data bin_witness_wet_per_row_actions_log_observation_gap_note: String = "COUNTED OBSERVATION GAP (measured 2026-08-02, PR #7698 acceptance receipt on run 30765850510 job 91544901889): per-row outcomes for bin_witness_wet_entries were not discriminable from the GitHub Actions job log after the hermetic discovery corpus completed — inherited worker stderr dropped on that transport, so grep found no ✓/PASS line for enrolled wet rows. A green `ci` job collapsed executed-and-passed, selection-skipped, and batch-not-reached into one indistinguishable surface (DESIGN §5 absorbing-fallback at the observation layer). MECHANISM LANDED: `claim_executor` writes `target/floor-wet-witness-row-outcome-receipt.tsv` on the ordinary floor worker and the coordinator replays `[wet-witness-row-outcome]` lines (outcome=passed | failed | selection-skipped) after worker exit, including on coordinator refusal paths when spawn fails. Dissolve-on: a measured CI job log grep shows `live_rust_observation_matches_actions_subject` with `outcome=passed` (or typed failed/selection-skipped) plus run/job IDs quoted in the acceptance receipt — not enrollment meta-tests alone."
 
 data falsifier_self_host_wet_note: String = "The nightly falsifier Wet follow-on batch (gunbc_falsifier_batches batch 2 in v2.workflow.ci_floor_plan): explicit ExecutionWitnessKind rows whose fns realize the emit->compile->run->equals-seed self-host behavioral receipt chain (cargo build, process execution, real gunbc emit) — too heavy and fidelity-sensitive for per-PR hermetic discovery. Gate-4 std/logic (self_host_logic_behavioral_witness_test.dag) is the inaugural template migrated out of bin_witness_wet_entries; compiler modules enroll via v2.compiler.self_host.wet_receipt_enrollment when their frontier row flips SelfEmitted (green-only — never known-red). Runs SelectionApplied (always run, not predict-only) after the hermetic affected-set falsifier sweep. Local recipe: claim_batch --wet --source-root dag --source-root src/v2 --entry <entry> --functions <csv>. Dissolve-on: per-module self-host receipts graduate to continuous CI only when the emit-on-demand / self-host cutover lane proves each module's receipt is cheap enough for per-PR admission — until then this scheduled lane is the sole live consumer."
+
+fn dispatch_bijection_real_roster_red_falsifier_self_host_wet_dark_note() -> String {
+  concat(
+    "CORRECTED 2026-08-05, count DERIVED not hand-typed (R1 closeout item TWO, gunbc#7828, session vivid-fox-586; correction and derivation directive from still-bat-561 / operator): this is NOT a structural hole in the enrollment axis. `src/v1/stage0/tests/interpreter_dispatch_bijection_real_roster_red.rs` (two tests proving, by real git clone + real `gunbc run ... main_wet` regen + real `cargo build -p v1-compiler`, that the roster<->handler-arm bijection at eval_builtin_inner stays exhaustive-by-construction over the REAL gunbc.v1_interpreter_primitive_surface roster and the REAL v1_interpreter.rs arm list — see interpreter_dispatch_bijection_compile_red.rs for the claim-A/claim-B distinction this discharges) is exactly the falsifier_self_host_wet CLASS above: cargo build, process execution, real gunbc emit. The axis has a citizen for it (falsifier_self_host_wet_entries / ExecutionWitnessKind); this check is simply not on that roster today because the roster's own lane is dark: falsifier_self_host_wet_cadence_active is false (src/v2/compiler/self_host/wet_receipt_enrollment.dag), same as the artifact_store_fs_witness_test.dag and direct_rust_door_write_compile_witness_test.dag exclusion rows above. Enrolling this check there today would satisfy a coverage argument while executing nowhere — the coverage-by-illusion this repo already treats as a lie (per the artifact_store_fs_witness_test.dag exclusion reason, verbatim). So the honest state, same as those rows: `#[ignore]`d (a cargo subprocess must never sit in per-PR CI discovery, per standing ruling), executing only by hand today, and counted here as ANOTHER row on the SAME dark-lane debt rather than a new one. NOT a hand-typed ordinal (a prior draft of this note said 'the twelfth row' — an operator-killed shape, since a written ordinal always goes stale and a derived population cannot): `falsifier_self_host_wet_dark_lane_population()` reads witness_exclusion_frontier itself and currently returns ",
+    concat(
+      falsifier_self_host_wet_dark_lane_population() as String,
+      concat(
+        " prior rows waiting on this exact trigger (dissolve_on containing `falsifier_self_host_wet_cadence_active`, containing 'wet lane un-darken(s)', or referentially equal to the shared excl_wet_integration_dissolve or excl_behavioral_receipt_dissolve constants) BEFORE this note's own file is counted, since this note lives in prose rather than in a WitnessExclusionRow: ",
+        concat(
+          join(falsifier_self_host_wet_dark_lane_waiting_patterns(), ", "),
+          ". Re-run witness_exclusion_row_waits_on_wet_lane_undarken over witness_exclusion_frontier for the current figure rather than trusting this sentence's count to stay fresh. A FIFTH spelling of the same trigger would silently deflate that count rather than error, so the predicate is backstopped by a wider candidate net (witness_exclusion_row_mentions_wet_lane_dark_state, matching any dissolve_on naming the falsifier_self_host_wet lane or an un-darken trigger in ANY phrasing): rows caught by the net but not by the four positive arms surface via falsifier_self_host_wet_dark_lane_unclassified_rows/_patterns instead of vanishing, and v2.test.claim.witness_exclusion_reconciliation_test asserts that list stays empty (a property -- every candidate claimed by exactly one arm -- not a count, per the operator ruling against asserting a tree-copied literal as a witness oracle). Correction 2026-08-05 (R1 closeout item TWO CI failure, gunbc#7825): the ten self_host_*_behavioral_witness_test.dag rows above share excl_behavioral_receipt_dissolve, whose text ('per-module receipts graduate to per-PR admission when proven cheap enough (falsifier_self_host_wet_note); row deletes') is the identical un-darken trigger phrased a fourth way; the net caught it correctly on first execution and this predicate had simply not learned that spelling yet -- exactly the outcome the net exists to surface, not a defect in the net. DISSOLVE-ON: falsifier_self_host_wet_cadence_active flips true, or a build-verification workflow enrolls the wet rosters — the identical trigger as artifact_store_fs_witness_test.dag's dissolve_on above; this row joins that class rather than minting a second one. .github/workflows/falsifier-alert.yml alerts on exactly this lane's non-execution and is confirmed firing (issue #7737, open since 2026-08-03, heartbeating on sustained red) -- the open item is triage of that redness, owned by a different lane, not an alerting gap."
+        )
+      )
+    )
+  )
+}
 
 fn bin_wet(entry: String, f: String) -> ScheduleWitnessEntry {
   ScheduleWitnessEntry { entry: entry, function: f, kind: ExecutionWitnessKind }
