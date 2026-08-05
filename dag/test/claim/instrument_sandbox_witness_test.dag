@@ -1,0 +1,127 @@
+module test.claim.instrument_sandbox_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { String, Bool, Int, List }
+import gunbc.roadmap_serve {
+  InstrumentSandboxPageHandler, roadmap_serve_invoke_for_instance,
+}
+import gunbc.roadmap_dashboard_instance { srv2_preview_dashboard_instance }
+import gunbc.roadmap_instrument_sandbox {
+  instrument_sandbox_page, instrument_css, instrument_rules,
+  instrument_emission_root_css, audition_card_class, audition_emission_var,
+}
+import gunbc.design.instrument_audition {
+  AuditionRestrained, AuditionExpressive, AuditionHero, audition_intensities,
+}
+import gunbc.design.instrument_physical { preference_default, instrument_displacement_px }
+import gunbc.design.theme { day_theme, night_theme }
+import extdeps.http.server { ServeHttpRequest, ServeHttpResponse, GET, media_type_wire_label }
+import extdeps.languages.html { HtmlEmitResult, EmitOk, EmitRejected, try_serialize_html_source }
+import gunbc.v1_deletion_plan { v1_exit_finish_lines }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data instrument_sandbox_witness_note: String = "The /sandbox/instrument path exists and renders REAL derived facts, which is the difference between this page and a picture of one. The discriminating content is V0's own claim text — it is authored in gunbc.v1_deletion_plan and nowhere else, so a page that fabricated its subjects could not contain it; the Why mode's refusal cause, which no fabricated surface would print; and the emission vars, which must be present under BOTH theme selectors because a glow pinned to one projection would go dark on the toggle. The RED that keeps the last one honest is that the emission var name appears in the day block, the data-theme block and the prefers-color-scheme block, not merely somewhere in the stylesheet."
+
+fn fixture_request(path: String) -> ServeHttpRequest {
+  ServeHttpRequest { method: GET, path: path, body: "" }
+}
+
+fn served() -> ServeHttpResponse {
+  roadmap_serve_invoke_for_instance(
+    instance: srv2_preview_dashboard_instance(),
+    handler: InstrumentSandboxPageHandler,
+    params: [],
+    request: fixture_request(path: "/sandbox/instrument"),
+  )
+}
+
+fn witness_the_instrument_path_serves_html() -> Bool {
+  let r = served()
+  r.status == 200
+    && media_type_wire_label(m: r.content_type) == "text/html; charset=utf-8"
+    && string_contains(s: r.body, pattern: "gunbc — instrument")
+}
+
+fn witness_the_page_renders_v0s_own_claim_text() -> Bool {
+  let r = served()
+  string_contains(s: r.body, pattern: "Compiler fixed point")
+    && string_contains(s: r.body, pattern: "v1-emitter-fixed-point")
+    && string_contains(
+         s: r.body,
+         pattern: "Matching the old compiler byte for byte is deliberately not the goal.",
+       )
+}
+
+fn witness_red_the_why_mode_prints_its_refusal_not_a_rationale() -> Bool {
+  let r = served()
+  string_contains(s: r.body, pattern: "why · compiler-fixed-point — refused:")
+    && string_contains(s: r.body, pattern: "no rationale carrier exists for a v1 finish line")
+}
+
+fn witness_the_page_carries_derived_roles_for_every_finish_line() -> Bool {
+  let r = served()
+  string_contains(s: r.body, pattern: "focal")
+    && string_contains(s: r.body, pattern: "supporting")
+    && string_contains(s: r.body, pattern: "ground")
+    && string_contains(s: r.body, pattern: "critical")
+    && string_contains(s: r.body, pattern: "active-refusals")
+    && count(v1_exit_finish_lines()) == 4
+}
+
+fn witness_all_three_audition_cards_render_with_their_verdicts() -> Bool {
+  let r = served()
+  count(audition_intensities) == 3
+    && string_contains(s: r.body, pattern: audition_card_class(i: AuditionRestrained))
+    && string_contains(s: r.body, pattern: audition_card_class(i: AuditionExpressive))
+    && string_contains(s: r.body, pattern: audition_card_class(i: AuditionHero))
+    && string_contains(s: r.body, pattern: "admitted · enclosure displacement")
+}
+
+fn emission_var_in_all_three_theme_blocks(name: String) -> Bool {
+  let css = instrument_emission_root_css()
+  let var_decl = concat("--", concat(name, ":"))
+  string_contains(s: css, pattern: var_decl)
+    && string_contains(s: css, pattern: concat(":root[data-theme=\"", night_theme.name))
+    && string_contains(s: css, pattern: "@media (prefers-color-scheme:")
+    && string_contains(s: css, pattern: ":root:not([data-theme])")
+}
+
+fn witness_emission_is_emitted_under_every_theme_selector() -> Bool {
+  emission_var_in_all_three_theme_blocks(name: audition_emission_var(i: AuditionExpressive))
+    && emission_var_in_all_three_theme_blocks(name: audition_emission_var(i: AuditionHero))
+}
+
+fn witness_red_the_restrained_variant_emits_no_glow() -> Bool {
+  string_contains(
+    s: instrument_emission_root_css(),
+    pattern: concat("--", concat(audition_emission_var(i: AuditionRestrained), ": none")),
+  )
+}
+
+fn witness_the_impulse_glitch_is_a_real_press_response() -> Bool {
+  let css = instrument_css()
+  string_contains(s: css, pattern: ".instrument-frame:active")
+    && string_contains(s: css, pattern: "translateY(-3px)")
+    && instrument_displacement_px(p: preference_default) == 6
+}
+
+fn witness_red_the_page_renders_the_impulse_admission_matrix() -> Bool {
+  let r = served()
+  string_contains(s: r.body, pattern: "host-accelerometer")
+    && string_contains(s: r.body, pattern: "availability-unknown → refused (availability-unknown)")
+    && string_contains(s: r.body, pattern: "permission-denied → refused (permission-denied)")
+    && string_contains(s: r.body, pattern: "present → admitted")
+}
+
+test fn instrument_sandbox_keystone_holds() -> Bool {
+  witness_the_instrument_path_serves_html()
+    && witness_the_page_renders_v0s_own_claim_text()
+    && witness_red_the_why_mode_prints_its_refusal_not_a_rationale()
+    && witness_the_page_carries_derived_roles_for_every_finish_line()
+    && witness_all_three_audition_cards_render_with_their_verdicts()
+    && witness_emission_is_emitted_under_every_theme_selector()
+    && witness_red_the_restrained_variant_emits_no_glow()
+    && witness_the_impulse_glitch_is_a_real_press_response()
+    && witness_red_the_page_renders_the_impulse_admission_matrix()
+}

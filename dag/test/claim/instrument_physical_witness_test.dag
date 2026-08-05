@@ -1,0 +1,263 @@
+module test.claim.instrument_physical_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { String, Bool, Int, List }
+import gunbc.design.instrument_physical {
+  InstrumentChannel, OpticalJitter, VerticalShift, BuoyantDrift, ImpulseGlitch,
+  channel_key, channel_may_carry_domain_fact,
+  ImpulseGlitchDuration, GlitchOff, GlitchShort, GlitchPersistent,
+  glitch_duration_key, glitch_is_armed, glitch_settle,
+  ChannelAmplitude, ChannelDisabled, ChannelAmplitudePx, amplitude_px,
+  InstrumentPreference, preference_still, preference_default, channel_amplitude,
+  instrument_displacement_px, instrument_displacement_max_px,
+  DisplacementAdmission, DisplacementAdmitted, DisplacementOverBudget, displacement_admission,
+  PhysicalImpulseSource, SyntheticImpulse, HostAccelerometer, HostDeviceMotion,
+  impulse_source_key,
+  SensorAvailability, SensorPresent, SensorAbsent, SensorPermissionNotRequested,
+  SensorPermissionDenied, SensorAvailabilityUnknown,
+  sensor_availability_key, sensor_may_deliver_impulses,
+  ImpulseAdmission, ImpulseAdmitted, ImpulseSourceUnavailable, ImpulseChannelDisabled,
+  admit_impulse,
+}
+import gunbc.design.instrument_audition {
+  AuditionIntensity, AuditionRestrained, AuditionExpressive, AuditionHero,
+  audition_intensity_key, audition_intensities,
+  AuditionEmission, AuditionNoEmission, AuditionEmits, audition_emission,
+  AuditionAttraction, AuditionNoAttraction, AuditionAttracts, audition_attraction,
+  AuditionAdmission, AuditionAdmitted, AuditionEmissionRefused,
+  AuditionAttractionOutsideEnvelope, AuditionDisplacementOverBudget, admit_audition,
+  ProgramReading, ReadingNoSubject, ReadingStatus, ReadingRemaining, ReadingUnavailable,
+  read_camera, reading_key,
+}
+import gunbc.design.instrument_camera {
+  ProgramCamera, camera_initial, camera_select, camera_set_mode, focus_finish_line,
+  FocusSubject, FinishLineFocused, Status, Remaining, Why,
+}
+import gunbc.design.salience {
+  SalienceRole, SalienceFocal, SalienceSupporting, attraction_travel_max_px,
+}
+import gunbc.v1_deletion_plan {
+  CompilerFixedPoint, InterpreterDeleted, v1_exit_finish_lines, v1_finish_line_key,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data instrument_physical_witness_note: String = "The physical-character amendment and the focal audition, each law with the control that reds it. The load-bearing pair: no instrument channel may carry a domain fact (total and constantly false, so a meaningful fifth channel cannot be added silently), and the COMPOSED displacement of every channel together stays below the register's existing attraction travel — the bound that makes instrument character structurally unable to imitate a real response. The audition's three intensities are admitted through the register's own emission, attraction and displacement gates rather than local bounds, and the Why mode's typed refusal is witnessed as a refusal rather than as text, because the entire point of that arm is that it does not fabricate a rationale nobody wrote."
+
+fn preference_over_budget() -> InstrumentPreference {
+  InstrumentPreference {
+    optical_jitter: ChannelAmplitudePx { px: 6 },
+    vertical_shift: ChannelAmplitudePx { px: 6 },
+    buoyant_drift: ChannelAmplitudePx { px: 6 },
+    impulse_glitch: ChannelAmplitudePx { px: 6 },
+    glitch_duration: GlitchPersistent,
+  }
+}
+
+fn witness_no_instrument_channel_may_carry_a_domain_fact() -> Bool {
+  !channel_may_carry_domain_fact(c: OpticalJitter)
+    && !channel_may_carry_domain_fact(c: VerticalShift)
+    && !channel_may_carry_domain_fact(c: BuoyantDrift)
+    && !channel_may_carry_domain_fact(c: ImpulseGlitch)
+}
+
+fn witness_every_channel_off_position_is_total() -> Bool {
+  instrument_displacement_px(p: preference_still) == 0
+    && amplitude_px(a: channel_amplitude(p: preference_still, c: OpticalJitter)) == 0
+    && amplitude_px(a: channel_amplitude(p: preference_still, c: VerticalShift)) == 0
+    && amplitude_px(a: channel_amplitude(p: preference_still, c: BuoyantDrift)) == 0
+    && amplitude_px(a: channel_amplitude(p: preference_still, c: ImpulseGlitch)) == 0
+    && !glitch_is_armed(g: preference_still.glitch_duration)
+}
+
+fn witness_composed_displacement_stays_under_the_register_attraction_travel() -> Bool {
+  instrument_displacement_max_px == attraction_travel_max_px
+    && instrument_displacement_px(p: preference_default) < attraction_travel_max_px
+    && match displacement_admission(p: preference_default) {
+         DisplacementAdmitted { total_px } => total_px == 6
+         DisplacementOverBudget { total_px, max_px } => false
+       }
+}
+
+fn witness_red_four_legal_channels_can_sum_to_an_illegal_instrument() -> Bool {
+  match displacement_admission(p: preference_over_budget()) {
+    DisplacementOverBudget { total_px, max_px } =>
+      total_px == 24 && max_px == attraction_travel_max_px
+    DisplacementAdmitted { total_px } => false
+  }
+}
+
+fn witness_glitch_vocabulary_is_the_cited_three_with_a_decaying_persistent() -> Bool {
+  glitch_duration_key(g: GlitchOff) == "off"
+    && glitch_duration_key(g: GlitchShort) == "short"
+    && glitch_duration_key(g: GlitchPersistent) == "persistent"
+    && !glitch_is_armed(g: GlitchOff)
+    && glitch_is_armed(g: GlitchShort)
+    && glitch_is_armed(g: GlitchPersistent)
+    && glitch_settle(g: GlitchPersistent).duration_ms > glitch_settle(g: GlitchShort).duration_ms
+}
+
+fn witness_only_a_present_sensor_delivers_impulses() -> Bool {
+  sensor_may_deliver_impulses(a: SensorPresent)
+    && !sensor_may_deliver_impulses(a: SensorAbsent)
+    && !sensor_may_deliver_impulses(a: SensorPermissionNotRequested)
+    && !sensor_may_deliver_impulses(a: SensorPermissionDenied)
+    && !sensor_may_deliver_impulses(a: SensorAvailabilityUnknown)
+}
+
+fn witness_red_an_uninterrogated_sensor_stays_distinct_from_a_missing_one() -> Bool {
+  sensor_availability_key(a: SensorAvailabilityUnknown) != sensor_availability_key(a: SensorAbsent)
+    && sensor_availability_key(a: SensorPermissionDenied) != sensor_availability_key(a: SensorAbsent)
+    && sensor_availability_key(a: SensorPermissionNotRequested) != sensor_availability_key(a: SensorPermissionDenied)
+    && match admit_impulse(p: preference_default, s: HostAccelerometer, sensor: SensorAvailabilityUnknown) {
+         ImpulseSourceUnavailable { source, availability } => availability == "availability-unknown"
+         ImpulseAdmitted { source, settle } => false
+         ImpulseChannelDisabled { source } => false
+       }
+}
+
+fn witness_the_synthetic_source_auditions_on_a_machine_with_no_sensor() -> Bool {
+  match admit_impulse(p: preference_default, s: SyntheticImpulse, sensor: SensorAbsent) {
+    ImpulseAdmitted { source, settle } => source == "synthetic" && settle.duration_ms > 0
+    ImpulseSourceUnavailable { source, availability } => false
+    ImpulseChannelDisabled { source } => false
+  }
+}
+
+fn witness_red_a_disabled_glitch_channel_refuses_a_real_impulse() -> Bool {
+  match admit_impulse(p: preference_still, s: SyntheticImpulse, sensor: SensorPresent) {
+    ImpulseChannelDisabled { source } => source == "synthetic"
+    ImpulseAdmitted { source, settle } => false
+    ImpulseSourceUnavailable { source, availability } => false
+  }
+}
+
+fn witness_red_a_denied_permission_refuses_with_its_own_cause() -> Bool {
+  match admit_impulse(p: preference_default, s: HostDeviceMotion, sensor: SensorPermissionDenied) {
+    ImpulseSourceUnavailable { source, availability } =>
+      source == "host-device-motion" && availability == "permission-denied"
+    ImpulseAdmitted { source, settle } => false
+    ImpulseChannelDisabled { source } => false
+  }
+}
+
+fn audition_admitted(i: AuditionIntensity) -> Bool {
+  match admit_audition(i: i, role: SalienceFocal, subject_key: "compiler-fixed-point") {
+    AuditionAdmitted { intensity, emission, attraction, displacement_px } =>
+      intensity == audition_intensity_key(i: i) && displacement_px <= attraction_travel_max_px
+    AuditionEmissionRefused { intensity, grant } => false
+    AuditionAttractionOutsideEnvelope { intensity } => false
+    AuditionDisplacementOverBudget { intensity, total_px, max_px } => false
+  }
+}
+
+fn witness_all_three_intensities_are_admitted_at_the_focal_role() -> Bool {
+  count(audition_intensities) == 3
+    && audition_admitted(i: AuditionRestrained)
+    && audition_admitted(i: AuditionExpressive)
+    && audition_admitted(i: AuditionHero)
+}
+
+fn witness_the_restrained_baseline_requests_no_emission_and_no_attraction() -> Bool {
+  match audition_emission(i: AuditionRestrained) {
+    AuditionNoEmission => match audition_attraction(i: AuditionRestrained) {
+      AuditionNoAttraction => true
+      AuditionAttracts { field } => false
+    }
+    AuditionEmits { spec } => false
+  }
+}
+
+fn witness_red_the_same_audition_refuses_at_a_supporting_role() -> Bool {
+  match admit_audition(i: AuditionHero, role: SalienceSupporting, subject_key: "compiler-fixed-point") {
+    AuditionEmissionRefused { intensity, grant } => intensity == "hero"
+    AuditionAdmitted { intensity, emission, attraction, displacement_px } => false
+    AuditionAttractionOutsideEnvelope { intensity } => false
+    AuditionDisplacementOverBudget { intensity, total_px, max_px } => false
+  }
+}
+
+fn witness_red_the_restrained_baseline_still_renders_at_a_supporting_role() -> Bool {
+  match admit_audition(i: AuditionRestrained, role: SalienceSupporting, subject_key: "compiler-fixed-point") {
+    AuditionAdmitted { intensity, emission, attraction, displacement_px } =>
+      intensity == "restrained" && displacement_px == 0
+    AuditionEmissionRefused { intensity, grant } => false
+    AuditionAttractionOutsideEnvelope { intensity } => false
+    AuditionDisplacementOverBudget { intensity, total_px, max_px } => false
+  }
+}
+
+fn witness_status_and_remaining_read_the_real_v0_facts() -> Bool {
+  let c = camera_select(c: camera_initial, f: focus_finish_line(l: CompilerFixedPoint))
+  let status = read_camera(camera: c, accepted: [])
+  let remaining = read_camera(camera: camera_set_mode(c: c, m: Remaining), accepted: [])
+  match status {
+    ReadingStatus { node, accepted, name } =>
+      node == "v1-emitter-fixed-point" && !accepted && name == "Compiler fixed point"
+    ReadingNoSubject => false
+    ReadingRemaining { name, claim, accepted } => false
+    ReadingUnavailable { mode, subject_key, cause } => false
+  }
+  && match remaining {
+    ReadingRemaining { name, claim, accepted } =>
+      name == "Compiler fixed point" && claim.length() > 0 && !accepted
+    ReadingNoSubject => false
+    ReadingStatus { node, accepted, name } => false
+    ReadingUnavailable { mode, subject_key, cause } => false
+  }
+}
+
+fn witness_acceptance_comes_from_the_authoritative_view_not_the_instrument() -> Bool {
+  let c = camera_select(c: camera_initial, f: focus_finish_line(l: InterpreterDeleted))
+  match read_camera(camera: c, accepted: ["v1-interpreter-delete"]) {
+    ReadingStatus { node, accepted, name } => accepted && node == "v1-interpreter-delete"
+    ReadingNoSubject => false
+    ReadingRemaining { name, claim, accepted } => false
+    ReadingUnavailable { mode, subject_key, cause } => false
+  }
+}
+
+fn witness_red_the_why_mode_refuses_instead_of_fabricating_a_rationale() -> Bool {
+  let c = camera_set_mode(
+    c: camera_select(c: camera_initial, f: focus_finish_line(l: CompilerFixedPoint)),
+    m: Why,
+  )
+  match read_camera(camera: c, accepted: []) {
+    ReadingUnavailable { mode, subject_key, cause } =>
+      mode == "why" && subject_key == "compiler-fixed-point" && cause.length() > 0
+    ReadingNoSubject => false
+    ReadingStatus { node, accepted, name } => false
+    ReadingRemaining { name, claim, accepted } => false
+  }
+}
+
+fn witness_red_a_drifted_subject_key_refuses_rather_than_reading_empty() -> Bool {
+  let c = ProgramCamera {
+    depth: camera_initial.depth,
+    mode: Status,
+    focus: FinishLineFocused { line_key: "no-such-finish-line" },
+  }
+  reading_key(r: read_camera(camera: c, accepted: [])) == "unavailable"
+    && reading_key(r: read_camera(camera: camera_initial, accepted: [])) == "no-subject"
+}
+
+test fn instrument_physical_keystone_holds() -> Bool {
+  witness_no_instrument_channel_may_carry_a_domain_fact()
+    && witness_every_channel_off_position_is_total()
+    && witness_composed_displacement_stays_under_the_register_attraction_travel()
+    && witness_red_four_legal_channels_can_sum_to_an_illegal_instrument()
+    && witness_glitch_vocabulary_is_the_cited_three_with_a_decaying_persistent()
+    && witness_only_a_present_sensor_delivers_impulses()
+    && witness_red_an_uninterrogated_sensor_stays_distinct_from_a_missing_one()
+    && witness_the_synthetic_source_auditions_on_a_machine_with_no_sensor()
+    && witness_red_a_disabled_glitch_channel_refuses_a_real_impulse()
+    && witness_red_a_denied_permission_refuses_with_its_own_cause()
+    && witness_all_three_intensities_are_admitted_at_the_focal_role()
+    && witness_the_restrained_baseline_requests_no_emission_and_no_attraction()
+    && witness_red_the_same_audition_refuses_at_a_supporting_role()
+    && witness_red_the_restrained_baseline_still_renders_at_a_supporting_role()
+    && witness_status_and_remaining_read_the_real_v0_facts()
+    && witness_acceptance_comes_from_the_authoritative_view_not_the_instrument()
+    && witness_red_the_why_mode_refuses_instead_of_fabricating_a_rationale()
+    && witness_red_a_drifted_subject_key_refuses_rather_than_reading_empty()
+}
