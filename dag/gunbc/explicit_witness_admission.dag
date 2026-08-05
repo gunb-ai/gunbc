@@ -218,18 +218,6 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
     kind: CorpusWitnessKind,
     reason: "Admitted RED: direct-door smoke is outside witness entry import closure without roster imports — repository-wide discovery requires call-occurrence substrate. Owner: witness-evidence-lifecycle lane.",
     dissolve_on: "whole-tree or call-occurrence substrate includes direct-door smoke without witness-import roster, this witness greens, and this row deletes"
-  ),
-  substrate_long_lane_admission(
-    entry: "dag/test/claim/rust_test_fixtures_import_closure_witness_test.dag",
-    f: "declared_import_closure_lists_rust_import",
-    reason: "Class B row 1 (#7835), cold-control pattern (c): falsifier long-lane backstop for selection misses; per-PR merge-blocking consumer is run_class_b_import_closure_gate on source_root_ingest_gate (same shape as compile-clean/regen cold controls). One observe_declared_import_closure_symbol_binding over class_b_declared_import_pool_roots. CI run 30986525413 measured 0.0ms when scheduled after row 2 (warm shared index); cold single-observe cost is substrate-long.",
-    dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured cold run with class_b_declared_import_pool_roots and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt"
-  ),
-  substrate_long_lane_admission(
-    entry: "dag/test/claim/rust_test_fixtures_import_closure_witness_test.dag",
-    f: "ambient_pool_provider_preserves_listed_import",
-    reason: "Class B row 2 (#7835), cold-control pattern (c): falsifier long-lane backstop for selection misses; per-PR merge-blocking consumer is run_class_b_import_closure_gate on source_root_ingest_gate. Two cold observe_declared_import_closure_symbol_binding calls (baseline + perturbed) over class_b_declared_import_pool_roots. CI run 30986525413 measured 48868.8ms (>5s fast-lane budget; ceiling — row 2 is the cold observe, row 1 was warm). Shrinking pool from witness_layer_roots (~3044 modules) to declared-import footprint (~696) is a stronger control, not a budget remedy.",
-    dissolve_on: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured cold run with class_b_declared_import_pool_roots and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt"
   )
 ]
 
