@@ -30,11 +30,12 @@ import gunbc.live_deploy.service_ready {
 import gunbc.live_deploy.intent {
   live_deploy_health_url_for_port,
 }
-import gunbc.roadmap_site_healthz_validate {
+import gunbc.roadmap_site_surface_observe { materialize_live_roadmap_site_surface_bundle }
+import gunbc.roadmap_site_surface_expect {
   roadmap_site_healthz_json_string_parses,
   roadmap_site_healthz_surface_is_current,
 }
-import gunbc.roadmap_static_site { roadmap_site_healthz_body }
+import gunbc.roadmap_site_surface_types { RoadmapSiteSurfaceBundle, HealthzEffectiveRead }
 import gunbc.live_deploy.spec {
   DeploymentSpec,
   deployment_spec_srv1,
@@ -70,11 +71,6 @@ type ServiceReadyEvidence {
 type ServiceReadyApplyEffect {
   unit: NonEmptyStr
   endpoint: NonEmptyStr
-}
-
-type HealthzEffectiveRead {
-  body: String
-  probe_error: String
 }
 
 fn service_ready_apply_effect() -> ServiceReadyApplyEffect {
@@ -165,21 +161,31 @@ fn healthz_refusal_reason(cause: HealthzRefusalCause) -> String {
   }
 }
 
-fn ground_service_ready_from_healthz(read: HealthzEffectiveRead) -> Grounding<ServiceReadyEvidence> {
+fn ground_service_ready_from_healthz_with_bundle(
+  read: HealthzEffectiveRead,
+  bundle: RoadmapSiteSurfaceBundle,
+) -> Grounding<ServiceReadyEvidence> {
   if read.probe_error != "" {
     DoesNotGround { reason: healthz_refusal_reason(cause: HealthzProbeFailed { detail: read.probe_error }) }
   } else if !healthz_body_groundable(body: read.body) {
     DoesNotGround { reason: healthz_refusal_reason(cause: HealthzBodyUnparseable { body: read.body }) }
-  } else if !roadmap_site_healthz_surface_is_current(observed_body: read.body) {
+  } else if !roadmap_site_healthz_surface_is_current(bundle: bundle, observed_body: read.body) {
     DoesNotGround {
       reason: healthz_refusal_reason(cause: HealthzSurfaceStale {
         observed: read.body,
-        expected: roadmap_site_healthz_body(),
+        expected: bundle.healthz_body,
       })
     }
   } else {
     Grounds { evidence: ServiceReadyEvidence { body: read.body } }
   }
+}
+
+fn ground_service_ready_from_healthz(read: HealthzEffectiveRead) -> Grounding<ServiceReadyEvidence> {
+  ground_service_ready_from_healthz_with_bundle(
+    read: read,
+    bundle: materialize_live_roadmap_site_surface_bundle(),
+  )
 }
 
 fn show_healthz_read_for_deploy(
@@ -208,19 +214,48 @@ fn show_healthz_read_for_deploy(
 
 data healthz_healthy_fixture_note: String = "The healthy fixture is the REAL healthz body, not a hand-spelled {\"status\":\"ok\"}. Once readiness means 'answering AND serving this tree', a fixture that merely parses is no longer a healthy read — it is precisely the stale-surface case — so a stand-in body would have made the converges-on-healthy witnesses assert the opposite of the contract. Its counterpart witness_stale_surface_read_does_not_ground keeps the hand-spelled body as the discriminating RED."
 
-fn show_healthz_read_fixture_healthy() -> ShowEffectiveRead<HealthzEffectiveRead> {
+fn show_healthz_read_fixture_healthy(bundle: RoadmapSiteSurfaceBundle) -> ShowEffectiveRead<HealthzEffectiveRead> {
   ReadObserved {
     value: HealthzEffectiveRead {
-      body: roadmap_site_healthz_body(),
+      body: bundle.healthz_body,
       probe_error: "",
     }
+  }
+}
+
+fn show_healthz_read_fixture_healthy_live() -> ShowEffectiveRead<HealthzEffectiveRead> {
+  show_healthz_read_fixture_healthy(bundle: materialize_live_roadmap_site_surface_bundle())
+}
+
+fn reconcile_service_ready_read_for_bundle(
+  read: ShowEffectiveRead<HealthzEffectiveRead>,
+  bundle: RoadmapSiteSurfaceBundle,
+  effect: ServiceReadyApplyEffect,
+) -> Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
+  match read {
+    ReadAbsent { reason: why } =>
+      reconcile_grounded(
+        apply_effect: effect,
+        show_read: read,
+        grounding: DoesNotGround { reason: why }
+      )
+    ReadObserved { value: observed } =>
+      reconcile_grounded(
+        apply_effect: effect,
+        show_read: read,
+        grounding: ground_service_ready_from_healthz_with_bundle(read: observed, bundle: bundle)
+      )
   }
 }
 
 fn reconcile_service_ready_read(
   read: ShowEffectiveRead<HealthzEffectiveRead>
 ) -> Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
-  reconcile_service_ready_read_for_effect(read: read, effect: service_ready_apply_effect())
+  reconcile_service_ready_read_for_bundle(
+    read: read,
+    bundle: materialize_live_roadmap_site_surface_bundle(),
+    effect: service_ready_apply_effect(),
+  )
 }
 
 fn reconcile_service_ready_read_for_effect(
@@ -238,7 +273,10 @@ fn reconcile_service_ready_read_for_effect(
       reconcile_grounded(
         apply_effect: effect,
         show_read: read,
-        grounding: ground_service_ready_from_healthz(read: observed)
+        grounding: ground_service_ready_from_healthz_with_bundle(
+          read: observed,
+          bundle: materialize_live_roadmap_site_surface_bundle(),
+        )
       )
   }
 }
@@ -258,8 +296,18 @@ fn live_deploy_service_ready_once_for_deploy(
   )
 }
 
+fn live_deploy_service_ready_once_for_bundle(
+  bundle: RoadmapSiteSurfaceBundle,
+) -> Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
+  reconcile_service_ready_read_for_bundle(
+    read: show_healthz_read_fixture_healthy(bundle: bundle),
+    bundle: bundle,
+    effect: service_ready_apply_effect(),
+  )
+}
+
 fn live_deploy_service_ready_once() -> Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
-  reconcile_service_ready_read(read: show_healthz_read_fixture_healthy())
+  live_deploy_service_ready_once_for_bundle(bundle: materialize_live_roadmap_site_surface_bundle())
 }
 
 fn capture_unit_diagnosis(

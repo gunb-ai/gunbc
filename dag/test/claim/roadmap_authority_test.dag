@@ -7,11 +7,17 @@ import gunbc.roadmap_authority {
   roadmap_authority_for,
   declared_roadmap_nodes,
   declared_roadmap_edges,
-  active_roadmap_nodes,
-  active_roadmap_edges,
+  active_roadmap_nodes_for_accepted,
+  active_roadmap_edges_for_accepted,
   roadmap_acceptance_receipts,
-  roadmap_acceptance_event_history,
-  accepted_roadmap_node_ids,
+  roadmap_acceptance_event_history_load,
+  RoadmapAcceptanceEventHistoryLoaded,
+  RoadmapAcceptanceEventHistoryLoadRefused,
+  RoadmapAcceptanceReceiptsProjected,
+  RoadmapAcceptanceReceiptsProjectionRefused,
+  accepted_roadmap_node_ids_projection,
+  AcceptedRoadmapNodeIdsProjected,
+  AcceptedRoadmapNodeIdsProjectionRefused,
   roadmap_authority,
   authored_merged_prs,
   observation_scoped_run_seed_growth_justification,
@@ -99,8 +105,25 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn nodes() -> List<RoadmapNode> { declared_roadmap_nodes() }
 fn edges() -> List<RoadmapEdge> { declared_roadmap_edges() }
-fn active_nodes() -> List<RoadmapNode> { active_roadmap_nodes() }
-fn active_edges() -> List<RoadmapEdge> { active_roadmap_edges() }
+fn active_nodes() -> List<RoadmapNode> {
+  match live_accepted_node_ids() {
+    Present { value: accepted } => active_roadmap_nodes_for_accepted(accepted: accepted)
+    Absent => []
+  }
+}
+fn active_edges() -> List<RoadmapEdge> {
+  match live_accepted_node_ids() {
+    Present { value: accepted } => active_roadmap_edges_for_accepted(accepted: accepted)
+    Absent => []
+  }
+}
+
+fn live_accepted_node_ids() -> List<RoadmapNodeId>? {
+  match accepted_roadmap_node_ids_projection() {
+    AcceptedRoadmapNodeIdsProjected { ids: ids } => Present { value: ids }
+    AcceptedRoadmapNodeIdsProjectionRefused { detail: _ } => Absent
+  }
+}
 
 fn tnid(s: String) -> RoadmapNodeId { s }
 fn tchash(s: String) -> Fnv1a64Structural { content_hash_atom(value: s as NonEmptyStr) }
@@ -283,33 +306,42 @@ test fn witness_every_declared_row_is_complete_unsigned_ticket() -> Bool {
 data live_state_count_transcription_note: String = "NO LIVE-STATE COUNT PINS IN THIS FILE, deliberately, and the deleted ones are named so the class does not creep back. Removed: `count(accepted) == 8` here, and `\"63 declared · 8 accepted · 55 active\"` in test.claim.roadmap_page_witness. Both TRANSCRIBED a number nobody decided — they mirrored whatever the live authority happened to hold, so authoring any correct roadmap row redded them (observed twice; the second was PR #7463, whose only content was two new rows). A pin like that reports 'the roadmap changed', which is not a defect, while the reviewer's habit becomes editing the number to match — a check satisfied by editing the declaration, which DESIGN §5 names as the tell that validation stood where construction was available. THE DISTINCTION THAT DECIDES WHETHER A COUNT MAY STAY: does the number come from a fixture the test CONSTRUCTS, or from live corpus state? test.claim.roadmap_altitude_witness renders `doc_html(nodes: [done_signed_node(), open_node()])` and asserts `1 open · 1 done` — that is the renderer computing from two known inputs, so it is a specification and it stays; deleting it would remove real coverage. Same for the observation render witnesses over replayed fixture blocks, and for structural counts that encode a design fact rather than a population (two workflow lamps, three static routes). WHAT SURVIVED THE DELETION HERE, and why nothing was lost: this witness's actual invariant is the RELATIONSHIP `count(active_nodes()) == count(nodes()) - count(accepted)`, which is magnitude-independent and still asserted; the eight per-id acceptance assertions also stay, because they pin WHICH acceptances exist and a dropped one is real history loss (scm_prerequisite_acceptance_note). Only the magnitude went. Replacing it with `string_contains(page, roadmap_counts_label())` was considered and rejected as the vacuous form — both sides derive from the same function, so it asserts the page contains what the page computed (operator ruling 2026-07-30: no vacuous or tautological testing)."
 
 test fn witness_active_set_is_declared_minus_accepted() -> Bool {
-  let accepted = accepted_roadmap_node_ids()
-  (accepted |> any(a => a == "namespace-occurrence-transport"))
-    && (accepted |> any(a => a == "pderive-typesafe-nullary-reflection"))
-    && (accepted |> any(a => a == "pderive-static-supplemental-contract"))
-    && (accepted |> any(a => a == "v1-test-hygiene-producer-retirement"))
-    && (accepted |> any(a => a == "2-scm-git-upstream-model"))
-    && (accepted |> any(a => a == "2-scm-mercurial-upstream-model"))
-    && (accepted |> any(a => a == "2-scm-pijul-upstream-model"))
-    && (accepted |> any(a => a == "2-claim-indexed-evidence"))
-    && (accepted |> any(a => a == "2-scm-compatibility-shape"))
-    && (accepted |> any(a => a == "2-scm-p0-landing-spine"))
-    && count(active_nodes()) == count(nodes()) - count(accepted)
-    && all(active_nodes(), n => !(accepted |> any(a => a == n.node)))
-    && all(accepted, a => id_exists(id: a))
+  match live_accepted_node_ids() {
+    Absent => false
+    Present { value: accepted } =>
+      (accepted |> any(a => a == "namespace-occurrence-transport"))
+        && (accepted |> any(a => a == "pderive-typesafe-nullary-reflection"))
+        && (accepted |> any(a => a == "pderive-static-supplemental-contract"))
+        && (accepted |> any(a => a == "v1-test-hygiene-producer-retirement"))
+        && (accepted |> any(a => a == "2-scm-git-upstream-model"))
+        && (accepted |> any(a => a == "2-scm-mercurial-upstream-model"))
+        && (accepted |> any(a => a == "2-scm-pijul-upstream-model"))
+        && (accepted |> any(a => a == "2-claim-indexed-evidence"))
+        && (accepted |> any(a => a == "2-scm-compatibility-shape"))
+        && (accepted |> any(a => a == "2-scm-p0-landing-spine"))
+        && count(active_nodes()) == count(nodes()) - count(accepted)
+        && all(active_nodes(), n => !(accepted |> any(a => a == n.node)))
+        && all(accepted, a => id_exists(id: a))
+  }
 }
 
 test fn witness_acceptance_receipts_are_valid_and_unique() -> Bool {
-  let receipts = roadmap_acceptance_receipts()
-  count(receipts) > 0
-    && all(receipts, r => count(receipts |> filter(x => x.node == r.node)) == 1)
-    && all(receipts, r => id_exists(id: r.node))
-    && all(receipts, r => all(declared_node(id: r.node as String), n => receipt_matches_node(r: r, rn: n)))
+  match roadmap_acceptance_receipts() {
+    RoadmapAcceptanceReceiptsProjectionRefused { detail: _ } => false
+    RoadmapAcceptanceReceiptsProjected { receipts: receipts } =>
+      count(receipts) > 0
+        && all(receipts, r => count(receipts |> filter(x => x.node == r.node)) == 1)
+        && all(receipts, r => id_exists(id: r.node))
+        && all(receipts, r => all(declared_node(id: r.node as String), n => receipt_matches_node(r: r, rn: n)))
+  }
 }
 
 test fn witness_accepted_parents_precede_dependents() -> Bool {
-  let accepted = accepted_roadmap_node_ids()
-  all(accepted, a => all(roadmap_parent_ids(edges: edges(), node: a), p => accepted |> any(x => x == p)))
+  match live_accepted_node_ids() {
+    Absent => false
+    Present { value: accepted } =>
+      all(accepted, a => all(roadmap_parent_ids(edges: edges(), node: a), p => accepted |> any(x => x == p)))
+  }
 }
 
 test fn witness_stale_criteria_digest_refuses_acceptance() -> Bool {
@@ -322,12 +354,17 @@ test fn witness_stale_criteria_digest_refuses_acceptance() -> Bool {
 }
 
 test fn witness_duplicate_receipts_refuse_acceptance() -> Bool {
-  let rs = roadmap_acceptance_receipts() |> filter(r => r.node == "namespace-occurrence-transport")
-  let victims = declared_node(id: "namespace-occurrence-transport")
-  count(rs) == 1
-    && count(victims) == 1
-    && all(victims, n => node_accepted(receipts: rs, rn: n))
-    && all(victims, n => !node_accepted(receipts: concat(rs, rs), rn: n))
+  match roadmap_acceptance_receipts() {
+    RoadmapAcceptanceReceiptsProjectionRefused { detail: _ } => false
+    RoadmapAcceptanceReceiptsProjected { receipts: all_receipts } => {
+      let rs = all_receipts |> filter(r => r.node == "namespace-occurrence-transport")
+      let victims = declared_node(id: "namespace-occurrence-transport")
+      count(rs) == 1
+        && count(victims) == 1
+        && all(victims, n => node_accepted(receipts: rs, rn: n))
+        && all(victims, n => !node_accepted(receipts: concat(rs, rs), rn: n))
+    }
+  }
 }
 
 test fn witness_unexecuted_or_undelivered_evidence_refuses_acceptance() -> Bool {
@@ -342,10 +379,17 @@ test fn witness_receipt_for_unknown_node_accepts_nothing() -> Bool {
   all(nodes(), n => !node_accepted(receipts: [ghost], rn: n))
 }
 
-data acceptance_receipt_continuity_witness_note: String = "THE WALL AGAINST SILENT RECEIPT DELETION (acceptance_receipt_continuity_wall_note). roadmap_acceptance_event_history is the single authority; roadmap_acceptance_receipts projects live receipts only. Live git-observed integrity executes in test.claim.roadmap_receipt_continuity_live_witness (ReadsLiveTree, bin_witness_wet_entries). RED controls in test.claim.roadmap_receipt_continuity_acceptance plant deleted history events, dual-deletion via prior-prefix refusal, wrong prior digest, revocation while live, duplicate revocations, exact revocation admit, criteria rewrite on the digest path, and planted git-refusal observation."
+data acceptance_receipt_continuity_witness_note: String = "THE WALL AGAINST SILENT RECEIPT DELETION (acceptance_receipt_continuity_wall_note). roadmap_acceptance_event_history loads from dag/gunbc/roadmap_acceptance_event_history.jsonl; roadmap_acceptance_receipts projects live receipts only. Live git-observed integrity executes in test.claim.roadmap_receipt_continuity_live_witness (ReadsLiveTree, bin_witness_wet_entries). RED controls in test.claim.roadmap_receipt_continuity_acceptance plant deleted events, prefix law, empty-prior bypass discriminant, digest-field mutation, wrong prior digest, revocation while live, duplicate revocations, exact revocation admit, criteria rewrite, git-refusal observation, and typed projection refusal chain."
+
+fn live_acceptance_event_history() -> List<RoadmapAcceptanceEvent> {
+  match roadmap_acceptance_event_history_load() {
+    RoadmapAcceptanceEventHistoryLoaded { events: events } => events
+    RoadmapAcceptanceEventHistoryLoadRefused { detail: _ } => []
+  }
+}
 
 test fn witness_vanished_receipt_without_revocation_refuses() -> Bool {
-  let prior = roadmap_acceptance_event_history()
+  let prior = live_acceptance_event_history()
   let current = prior
     |> filter(e =>
       match e {
@@ -357,7 +401,7 @@ test fn witness_vanished_receipt_without_revocation_refuses() -> Bool {
 }
 
 test fn witness_explicit_revocation_authorizes_vanished_receipt() -> Bool {
-  let prior = roadmap_acceptance_event_history()
+  let prior = live_acceptance_event_history()
   let receipt = first(
     project_live_acceptance_receipts(history: prior)
       |> filter(r => r.node == tnid(s: "namespace-occurrence-transport")),
@@ -374,8 +418,6 @@ test fn witness_explicit_revocation_authorizes_vanished_receipt() -> Bool {
   acceptance_history_extends_prior(prior: prior, current: current)
     && acceptance_history_integrity_holds(
       history: current,
-      sealed_event_count: count(current),
-      sealed_chain_digest: acceptance_history_chain_digest(events: current),
       prior_history: prior,
     )
 }
@@ -413,7 +455,10 @@ test fn witness_exit_model_finish_lines_bind_declared_terminals() -> Bool {
     && exit_line_bound_to(l: InterpreterDeleted, node: "v1-interpreter-delete")
     && exit_line_bound_to(l: ProductsV1Free, node: "v1-products-v1-free")
     && exit_line_bound_to(l: ZeroHandMaintainedRust, node: "v1-zero-hand-maintained-rust")
-    && v1_finish_lines_accepted_count(accepted: accepted_roadmap_node_ids()) == 0
+    && match live_accepted_node_ids() {
+      Absent => false
+      Present { value: accepted } => v1_finish_lines_accepted_count(accepted: accepted) == 0
+    }
 }
 
 test fn witness_completed_ticket_cannot_reenter_active_graph() -> Bool {
@@ -605,7 +650,9 @@ test fn witness_product_roots_have_no_false_roadmap_tool_dependency() -> Bool {
 data scm_prerequisite_witness_focus_note: String = "The accepted SCM sequence is checked against the authority rather than inferred from the focused markdown projection. P0 acceptance leaves the prerequisite spine as declared history; the operator-authored P1 node is the one active SCM slice and depends directly on P0. P2 and P3 remain absent rather than being implied by P1 activation. Carrier-path checks stay over the declared node population so accepting a node cannot erase its authority link."
 
 test fn witness_accepted_scm_sequence_activates_authored_p1_slice() -> Bool {
-  let accepted = accepted_roadmap_node_ids()
+  match live_accepted_node_ids() {
+    Absent => false
+    Present { value: accepted } =>
   node_has_carrier_path(path: "docs/plans/dag-scm-design.md")
     && node_count_with_carrier_path(path: "docs/plans/dag-scm-design.md") == 7
     && !node_has_carrier_path(path: "docs/plans/node-subtree-visibility-grants.md")
@@ -646,6 +693,7 @@ test fn witness_accepted_scm_sequence_activates_authored_p1_slice() -> Bool {
     }
     && !id_exists(id: "2-scm-node-merge")
     && !id_exists(id: "2-scm-design-partner-shadow")
+  }
 }
 
 test fn witness_namespace_reference_derived_closure_has_discriminating_contract() -> Bool {

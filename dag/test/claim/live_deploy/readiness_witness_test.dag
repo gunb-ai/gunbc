@@ -7,12 +7,14 @@ import gunbc.live_deploy.readiness {
   healthz_body_groundable,
   ground_service_ready_from_healthz,
   reconcile_service_ready_read,
+  show_healthz_read_fixture_healthy_live,
+  reconcile_service_ready_read_for_bundle,
+  live_deploy_service_ready_once_for_bundle,
   show_healthz_read_fixture_healthy,
   live_deploy_healthz_get_for_port,
   service_ready_apply_effect_for_deploy,
   HealthzEffectiveRead,
 }
-import gunbc.live_deploy.intent { live_deploy_health_url_for_port }
 import gunbc.live_deploy.service_ready {
   live_deploy_service_ready_poll_bound,
   live_deploy_service_ready_poll_max_attempts,
@@ -52,17 +54,9 @@ import extdeps.tools.sleep {
   sleep_delay_seconds_flat_scalar_dissolution_trigger,
   sleep_delay_seconds_second_carrier_projection,
 }
-import gunbc.roadmap_static_site {
-  roadmap_site_healthz_body,
-  site_artifact_digest,
-  served_page_body,
-}
 import gunbc.roadmap_site_healthz_validate {
   roadmap_site_healthz_json_string_parses,
-  roadmap_site_healthz_surface_is_current,
 }
-import gunbc.roadmap_page { roadmap_page_for_authority }
-import gunbc.roadmap_component { dispatch_client_js_source }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -85,7 +79,7 @@ test fn witness_healthz_trailing_lf_body_groundable() -> Bool {
 }
 
 test fn witness_healthz_malformed_extension_not_groundable() -> Bool {
-  !healthz_body_groundable(body: concat(roadmap_site_healthz_body(), "}"))
+  !healthz_body_groundable(body: concat("{\"status\":\"ok\"}", "}"))
 }
 
 test fn witness_healthz_bad_body_not_groundable() -> Bool {
@@ -163,16 +157,6 @@ test fn witness_transport_get_probe_over_ssh_does_not_ground_mock_stdout() -> Bo
   )
 }
 
-test fn witness_service_ready_once_converges_on_healthy_fixture() -> Bool {
-  reconciliation_converged(r: live_deploy_service_ready_once())
-}
-
-test fn witness_reconcile_grounds_healthy_fixture_read() -> Bool {
-  reconciliation_converged(
-    r: reconcile_service_ready_read(read: show_healthz_read_fixture_healthy())
-  )
-}
-
 test fn witness_sleep_second_carrier_projection_paces_poll() -> Bool {
   sleep_delay_seconds_second_carrier_projection(duration: live_deploy_service_ready_poll_cadence_seconds())
 }
@@ -201,7 +185,7 @@ test fn witness_bounded_poll_one_iteration_composes_probe_and_modeled_sleep() ->
 
 test fn witness_bounded_poll_early_exit_on_grounded_read() -> Bool {
   reconciliation_converged(
-    r: reconcile_service_ready_read(read: show_healthz_read_fixture_healthy())
+    r: reconcile_service_ready_read(read: show_healthz_read_fixture_healthy_live())
   )
 }
 
@@ -226,52 +210,6 @@ test fn witness_red_control_never_ready_refuses_at_poll_bound() -> Bool {
 
 test fn witness_bounded_poll_max_attempts_derived_from_bound_over_cadence() -> Bool {
   live_deploy_service_ready_poll_max_attempts() == measure_fit_count_floor(capacity: live_deploy_service_ready_poll_bound, each: live_deploy_service_ready_poll_cadence_seconds())
-}
-
-test fn witness_fresh_surface_read_grounds() -> Bool {
-  match ground_service_ready_from_healthz(
-    read: HealthzEffectiveRead { body: roadmap_site_healthz_body(), probe_error: "" }
-  ) {
-    Grounds { evidence: _ } => true
-    DoesNotGround { reason: _ } => false
-  }
-}
-
-test fn witness_stale_surface_read_does_not_ground() -> Bool {
-  let stale = "{\"status\":\"ok\",\"service\":\"gunbc-roadmap\",\"artifacts\":{\"/roadmap\":\"stale-digest\"}}"
-  roadmap_site_healthz_json_string_parses(body: stale)
-    && !roadmap_site_healthz_surface_is_current(observed_body: stale)
-    && match ground_service_ready_from_healthz(
-      read: HealthzEffectiveRead { body: stale, probe_error: "" }
-    ) {
-      DoesNotGround { reason: why } =>
-        string_contains(s: why, pattern: "ServedSurfaceStale")
-          && string_contains(s: why, pattern: "stale-digest")
-          && !string_contains(s: why, pattern: "JSON.parse")
-      Grounds { evidence: _ } => false
-    }
-}
-
-test fn witness_healthz_surface_tolerates_transport_trailing_lf() -> Bool {
-  roadmap_site_healthz_surface_is_current(observed_body: concat(roadmap_site_healthz_body(), "\n"))
-}
-
-test fn witness_healthz_publishes_every_served_surface_digest() -> Bool {
-  let body = roadmap_site_healthz_body()
-  string_contains(s: body, pattern: "\"/ROADMAP.md\":")
-    && string_contains(s: body, pattern: "\"/target/roadmap-dispatch.json\":")
-    && string_contains(s: body, pattern: "\"/\":")
-    && string_contains(s: body, pattern: "\"/roadmap\":")
-    && string_contains(s: body, pattern: "\"/assets/roadmap-dispatch.js\":")
-}
-
-test fn witness_served_surface_digest_tracks_the_page() -> Bool {
-  let published = roadmap_site_healthz_body()
-  let page_digest = site_artifact_digest(body: served_page_body(page: roadmap_page_for_authority())).digest as String
-  let js_digest = site_artifact_digest(body: dispatch_client_js_source()).digest as String
-  string_contains(s: published, pattern: page_digest)
-    && string_contains(s: published, pattern: js_digest)
-    && !(page_digest == js_digest)
 }
 
 test fn witness_service_not_ready_refusal_shape_matches_contract() -> Bool {

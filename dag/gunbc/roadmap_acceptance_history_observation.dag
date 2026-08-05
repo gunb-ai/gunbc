@@ -4,28 +4,37 @@ import extdeps.git.inspect
 import extdeps.git
 import gunbc.output_policy { ExpectSuccess }
 import gunbc.repo_identity { gunbc_merge_target_ref }
+import gunbc.roadmap_acceptance_history_carrier {
+  roadmap_acceptance_event_history_carrier_repo_path,
+  parse_roadmap_acceptance_event_history_carrier,
+  RoadmapAcceptanceEventHistoryParsed,
+  RoadmapAcceptanceEventHistoryParseRefused,
+}
+import gunbc.roadmap_acceptance_history_projection {
+  project_roadmap_acceptance_event_history_from_authority_text,
+  RoadmapAcceptanceHistoryProjected,
+  RoadmapAcceptanceHistoryProjectionRefused,
+}
 import gunbc.roadmap_model {
   RoadmapAcceptanceEvent,
   AcceptanceHistoryIntegrityVerdict,
   AcceptanceHistoryIntegrityHolds,
   AcceptanceHistoryIntegrityRefusedReplay,
   AcceptanceHistoryIntegrityRefusedVanishedWithoutRevocation,
-  AcceptanceHistoryIntegrityRefusedSealedPrefixDigest,
   AcceptanceHistoryIntegrityRefusedPriorPrefix,
   AcceptanceHistoryIntegrityRefusedPriorHistoryObservation,
   acceptance_history_integrity_verdict,
 }
-import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_eq_structural }
-import std.types { CommitSha, GitRef, String }
+import std.content_hash { content_hash_atom, content_hash_eq_structural, Fnv1a64Structural }
+import std.types { CommitSha, GitRef, Int, String }
 import v2.std.collection { List }
 
 data roadmap_acceptance_history_authority_repo_path: String = "dag/gunbc/roadmap_authority.dag"
 
-data roadmap_acceptance_history_prior_history_next_rung_trigger: String = "NEXT RUNG: evaluate roadmap_acceptance_event_history at the merge-base revision (git.Inspect.MergeBase between HEAD and gunbc_merge_target_ref, then project the authority module at that revision) so prior_history is the observed base-side event list. Until that substrate exists, this module compares revision-addressed authority file content identity only: an unchanged file at merge-base admits prior_history = current; a changed file without revision evaluation returns PriorHistoryRevisionEvaluationRequired and the live integrity path keeps prior_history empty so acceptance_history_extends_prior does not execute on production yet. PriorHistoryGitObservationRefused is a typed refusal on the integrity verdict (AcceptanceHistoryIntegrityRefusedPriorHistoryObservation) — never fabricated prior_history. Witness tests continue to supply non-empty prior_history fixtures for the deletion arms."
+data roadmap_acceptance_history_prior_history_next_rung_trigger: String = "DISSOLVED: merge-base prior_history parses dag/gunbc/roadmap_acceptance_event_history.jsonl via gunbc.roadmap_acceptance_history_carrier when the carrier exists at merge-base; when absent (carrier introduction on main) the typed bootstrap projects inline authority history via gunbc.roadmap_acceptance_history_projection. A changed carrier without a valid merge-base observation refuses AcceptanceHistoryIntegrityRefusedPriorHistoryObservation — never prior_history = []. git_show_path_absent_at_ref substring-matches both git stderr shapes for path absent at ref (tree miss: does not exist in; worktree-present-but-not-in-commit: exists on disk, but not in) until extdeps.git carries a typed path-absent-at-ref disposition. Remaining dissolve-on: delete both seed bridges when a modeled revision-addressed carrier ingest lands."
 
 type RoadmapAcceptanceHistoryPriorObservation
   = PriorHistoryObserved { prior: List<RoadmapAcceptanceEvent> }
-  | PriorHistoryRevisionEvaluationRequired { detail: String }
   | PriorHistoryGitObservationRefused { detail: String }
 
 fn git_refusal_detail(operation: String, stderr: String) -> String {
@@ -37,8 +46,59 @@ fn git_refusal_detail(operation: String, stderr: String) -> String {
   }
 }
 
+fn git_show_path_absent_at_ref(stderr: String) -> Bool {
+  let trimmed = trim(stderr)
+  string_contains(s: trimmed, pattern: "does not exist in")
+    || string_contains(s: trimmed, pattern: "exists on disk, but not in")
+}
+
+fn prior_history_from_carrier_text(carrier_text: String) -> RoadmapAcceptanceHistoryPriorObservation {
+  match parse_roadmap_acceptance_event_history_carrier(text: carrier_text) {
+    RoadmapAcceptanceEventHistoryParsed { events: events } =>
+      PriorHistoryObserved { prior: events }
+    RoadmapAcceptanceEventHistoryParseRefused { detail: detail } =>
+      PriorHistoryGitObservationRefused {
+        detail: concat("merge-base carrier parse refused: ", detail),
+      }
+  }
+}
+
+fn prior_history_from_authority_text(authority_text: String) -> RoadmapAcceptanceHistoryPriorObservation {
+  match project_roadmap_acceptance_event_history_from_authority_text(authority_text: authority_text) {
+    RoadmapAcceptanceHistoryProjected { events: events } =>
+      PriorHistoryObserved { prior: events }
+    RoadmapAcceptanceHistoryProjectionRefused { detail: detail } =>
+      PriorHistoryGitObservationRefused {
+        detail: concat("merge-base authority projection refused: ", detail),
+      }
+  }
+}
+
+fn prior_history_from_merge_base_carrier_or_authority_bootstrap(
+  authority_repo_path: String,
+  baseline_sha: String,
+  carrier_stderr: String,
+) -> RoadmapAcceptanceHistoryPriorObservation {
+  let base_authority = git.Core.Show(
+    ref: baseline_sha as GitRef,
+    path: authority_repo_path,
+    expect: ExpectSuccess,
+  )
+  if !base_authority.success {
+    PriorHistoryGitObservationRefused {
+      detail: git_refusal_detail(
+        operation: "git.Core.Show(merge-base carrier and authority)",
+        stderr: concat(carrier_stderr, concat("; ", base_authority.stderr)),
+      ),
+    }
+  } else {
+    prior_history_from_authority_text(authority_text: base_authority.content)
+  }
+}
+
 fn observe_roadmap_acceptance_history_prior(
   current_history: List<RoadmapAcceptanceEvent>,
+  carrier_repo_path: String,
   authority_repo_path: String,
   base_ref: String,
 ) -> RoadmapAcceptanceHistoryPriorObservation {
@@ -61,38 +121,41 @@ fn observe_roadmap_acceptance_history_prior(
     } else {
       let head_manifest = git.Core.Show(
         ref: revision as GitRef,
-        path: authority_repo_path,
+        path: carrier_repo_path,
         expect: ExpectSuccess,
       )
       if !head_manifest.success {
         PriorHistoryGitObservationRefused {
-          detail: git_refusal_detail(operation: "git.Core.Show(HEAD authority)", stderr: head_manifest.stderr),
+          detail: git_refusal_detail(operation: "git.Core.Show(HEAD carrier)", stderr: head_manifest.stderr),
         }
       } else {
         let base_manifest = git.Core.Show(
           ref: baseline.sha as GitRef,
-          path: authority_repo_path,
+          path: carrier_repo_path,
           expect: ExpectSuccess,
         )
         if !base_manifest.success {
-          PriorHistoryGitObservationRefused {
-            detail: git_refusal_detail(
-              operation: "git.Core.Show(merge-base authority)",
-              stderr: base_manifest.stderr,
-            ),
+          if git_show_path_absent_at_ref(stderr: base_manifest.stderr) {
+            prior_history_from_merge_base_carrier_or_authority_bootstrap(
+              authority_repo_path: authority_repo_path,
+              baseline_sha: baseline.sha as String,
+              carrier_stderr: base_manifest.stderr,
+            )
+          } else {
+            PriorHistoryGitObservationRefused {
+              detail: git_refusal_detail(
+                operation: "git.Core.Show(merge-base carrier)",
+                stderr: base_manifest.stderr,
+              ),
+            }
           }
         } else {
           let head_identity = content_hash_atom(value: head_manifest.content)
           let base_identity = content_hash_atom(value: base_manifest.content)
           if content_hash_eq_structural(left: head_identity, right: base_identity) {
-            PriorHistoryObserved { prior: current_history }
+            prior_history_from_carrier_text(carrier_text: head_manifest.content)
           } else {
-            PriorHistoryRevisionEvaluationRequired {
-              detail: concat(
-                "authority file changed between merge-base ",
-                concat(baseline.sha as String, concat(" and HEAD ", revision)),
-              ),
-            }
+            prior_history_from_carrier_text(carrier_text: base_manifest.content)
           }
         }
       }
@@ -100,13 +163,14 @@ fn observe_roadmap_acceptance_history_prior(
   }
 }
 
-data roadmap_acceptance_history_observation_invocation_note: String = "A function, not top-level data, so importing this module cannot reach git.Inspect.HeadCommit by import alone (gunbc.stage0_rust_host_observation host_observation_invocation_note)."
+data roadmap_acceptance_history_observation_invocation_note: String = "A function, not top-level data, so importing this module cannot reach git.Inspect.HeadCommit by import alone (gunbc.stage0_rust_host_observation host_observation_invocation_note). When HEAD and merge-base carrier identities match, prior_history is parsed from git.Core.Show(HEAD carrier) — not the working-tree load — so uncommitted local carrier edits refuse against the committed prior rather than self-matching."
 
 fn current_roadmap_acceptance_history_prior_observation(
   current_history: List<RoadmapAcceptanceEvent>,
 ) -> RoadmapAcceptanceHistoryPriorObservation {
   observe_roadmap_acceptance_history_prior(
     current_history: current_history,
+    carrier_repo_path: roadmap_acceptance_event_history_carrier_repo_path,
     authority_repo_path: roadmap_acceptance_history_authority_repo_path,
     base_ref: gunbc_merge_target_ref as String,
   )
@@ -115,28 +179,35 @@ fn current_roadmap_acceptance_history_prior_observation(
 fn acceptance_history_integrity_verdict_from_prior_observation(
   observation: RoadmapAcceptanceHistoryPriorObservation,
   history: List<RoadmapAcceptanceEvent>,
-  sealed_event_count: Int,
-  sealed_chain_digest: Fnv1a64Structural,
 ) -> AcceptanceHistoryIntegrityVerdict {
   match observation {
     PriorHistoryGitObservationRefused { detail: detail } =>
       AcceptanceHistoryIntegrityRefusedPriorHistoryObservation { detail: detail }
-    PriorHistoryRevisionEvaluationRequired { detail: _ } =>
-      acceptance_history_integrity_verdict(
-        history: history,
-        sealed_event_count: sealed_event_count,
-        sealed_chain_digest: sealed_chain_digest,
-        prior_history: [],
-      )
     PriorHistoryObserved { prior: prior } =>
       acceptance_history_integrity_verdict(
         history: history,
-        sealed_event_count: sealed_event_count,
-        sealed_chain_digest: sealed_chain_digest,
         prior_history: prior,
       )
   }
 }
+
+fn acceptance_history_integrity_holds_from_prior_observation_with_prior(
+  observation: RoadmapAcceptanceHistoryPriorObservation,
+  history: List<RoadmapAcceptanceEvent>,
+) -> Bool {
+  match acceptance_history_integrity_verdict_from_prior_observation(
+    observation: observation,
+    history: history,
+  ) {
+    AcceptanceHistoryIntegrityHolds => true
+    AcceptanceHistoryIntegrityRefusedReplay => false
+    AcceptanceHistoryIntegrityRefusedVanishedWithoutRevocation { receipt: _ } => false
+    AcceptanceHistoryIntegrityRefusedPriorPrefix { index: _ } => false
+    AcceptanceHistoryIntegrityRefusedPriorHistoryObservation { detail: _ } => false
+  }
+}
+
+data roadmap_acceptance_history_observation_bootstrap_compat_note: String = "SCAFFOLD (carrier-introduction window only): merge-base authority overlay still imports the sealed-prefix observation entry points deleted on HEAD. Bootstrap projection compiles that overlay against HEAD's transitive closure solely to evaluate roadmap_acceptance_event_history(); these compat rows satisfy the import surface and ignore sealed_event_count/sealed_chain_digest — prefix law is enforced by acceptance_history_integrity_verdict on observed prior, not the retired seal columns. Dissolve-on: modeled revision-addressed carrier ingest deletes the projection seed and these compat rows together."
 
 fn acceptance_history_integrity_holds_from_prior_observation(
   observation: RoadmapAcceptanceHistoryPriorObservation,
@@ -144,17 +215,10 @@ fn acceptance_history_integrity_holds_from_prior_observation(
   sealed_event_count: Int,
   sealed_chain_digest: Fnv1a64Structural,
 ) -> Bool {
-  match acceptance_history_integrity_verdict_from_prior_observation(
+  let _ = sealed_event_count
+  let _ = sealed_chain_digest
+  acceptance_history_integrity_holds_from_prior_observation_with_prior(
     observation: observation,
     history: history,
-    sealed_event_count: sealed_event_count,
-    sealed_chain_digest: sealed_chain_digest,
-  ) {
-    AcceptanceHistoryIntegrityHolds => true
-    AcceptanceHistoryIntegrityRefusedReplay => false
-    AcceptanceHistoryIntegrityRefusedVanishedWithoutRevocation { receipt: _ } => false
-    AcceptanceHistoryIntegrityRefusedSealedPrefixDigest => false
-    AcceptanceHistoryIntegrityRefusedPriorPrefix => false
-    AcceptanceHistoryIntegrityRefusedPriorHistoryObservation { detail: _ } => false
-  }
+  )
 }

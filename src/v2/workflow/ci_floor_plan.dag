@@ -11,7 +11,7 @@ import v2.compiler.self_host.wet_receipt_enrollment {
   falsifier_self_host_wet_known_red_batch_enrolled,
   falsifier_self_host_wet_known_red_roster
 }
-import gunbc.ci_materialization { ci_floor_declared_resolve_count }
+import gunbc.ci_materialization { ci_floor_expected_resolve_obligations, FloorFinalization }
 import gunbc.ci_spec {
   gunbc_ci_spec, gunbc_ci_regen_spec, CiSpec,
   ci_spec_with_discovery_scan_dirs,
@@ -98,7 +98,6 @@ import std.realization_schedule {
   NoWalkFinalization,
   NoFinalizationDeclared,
 }
-import gunbc.ci_materialization { FloorFinalization }
 import v2.lens.schedule_lens { walk_plan_schedule_lens_verdict_for_ci_floor, schedule_lens_batch_has_any_cheap_gate }
 import v2.std.lens_verdict { Holds, NotApplicable, Unrealized, Violation }
 import v2.workflow.executor {
@@ -111,6 +110,8 @@ import v2.workflow.realization_runner {
   runner_schedule_plan_from_dependencies,
   runner_schedule_store_covers_nodes
 }
+
+data ci_floor_plan_resolve_finalization_transport_note: String = "0B AUTHORITY SPLIT: WalkPlan.finalization.expected_resolve_obligations projects gunbc.ci_materialization ci_floor_expected_resolve_obligations() unchanged — this plan does NOT author a second obligation roster. claim_executor records ResolveRealizationObservation at reuse sites and joins observed rows to the transported subjects."
 
 data ci_floor_target_digest: ContentHash = content_hash_of_value(value: "gunbc-ci-floor-v1")
 data ci_floor_compile_gate_fn: String = "dag_compile_clean_gate_passes"
@@ -1427,7 +1428,7 @@ fn gunbc_ci_floor_plan() -> WalkPlan<FloorFinalization> {
     },
     batches: gunbc_ci_floor_ordinary_batches(),
     finalization: FloorFinalization {
-      declared_resolve_count: ci_floor_declared_resolve_count,
+      expected_resolve_obligations: ci_floor_expected_resolve_obligations(),
     },
     on_success_stages: gunbc_ci_on_success_stages(),
     ordinary_budget: Present { value: minute_to_millisecond(m: gunbc_ci_ordinary_floor_budget_minutes) },
