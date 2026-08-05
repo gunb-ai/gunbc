@@ -165,7 +165,7 @@ test fn falsifier_yaml_projection_evaluates() -> Bool {
 }
 
 test fn falsifier_cold_control_steps_follow_floor_in_job_order() -> Bool {
-  let steps = falsifier_job_steps()
+  let steps = falsifier_job_steps(job_id: "falsifier")
   let floor = step_index_of(steps: steps, name: "affected-set falsifier (predict-only cold run)")
   let compile_clean = step_index_of(steps: steps, name: "compile-clean whole-tree cold control (scoped-PR admission counterpart)")
   let native_cache = step_index_of(steps: steps, name: "native-cache cold control (warm-tier admission counterpart)")
