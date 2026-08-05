@@ -204,7 +204,7 @@ data audition_intensities: List<AuditionIntensity> = [AuditionRestrained, Auditi
 
 data reading_note: String = "THE CAMERA READS THE WORLD V0 ALREADY DERIVED, and the previous revision of this module did not — which is the defect worth recording rather than quietly fixing. It answered Status and Remaining out of gunbc.v1_deletion_plan's authored rows, and answered Why with a typed ReadingUnavailable carrying the cause 'no rationale carrier exists for a v1 finish line'. That cause was FALSE when it was written. gunbc.roadmap_program_view was already on this branch's base and its own header says the camera layers are deliberately absent because THAT module is the world the cameras look at; ConstraintView exists precisely to answer why-is-this-taking-so-long without inventing rationale prose. So the refusal was not the honest fail-closed arm its note claimed — it was the empty-observation narrow, rendering could-not-find as the verdict does-not-exist, in the module whose own notes warn against exactly that. It reached review green because nothing about a refusal looks wrong: no witness can tell a correct refusal from a lazy one without going and looking for the carrier, which is what nobody did. The lesson is cheap to state and was expensive here: before declaring a carrier absent, search for it."
 
-data reading_grain_note: String = "DEPTH SELECTS THE SUBJECT GRAIN, MODE SELECTS THE QUESTION, and the two are genuinely independent because V0 derives a RemainingShape and a ConstraintView at more than one grain. Program reads the whole program's shape; Outcome reads one FinishLineView; Front reads one contributing FrontView; Node reads the primary constraint's own subject. Evidence is deliberately NOT answered from these carriers: acceptance here comes from RoadmapAcceptanceReceipt rows, but the verification-receipt join that would let a camera show WHY a receipt was granted is test-only until the belt wiring lands, and gunbc.roadmap_program_view says so itself. That is a real absence with a named trigger, so Evidence refuses — and it is the one place in this module where a refusal is the correct answer rather than a search nobody performed."
+data reading_grain_note: String = "DEPTH SELECTS THE SUBJECT GRAIN, MODE SELECTS THE QUESTION, and the two are genuinely independent because V0 derives a RemainingShape and a ConstraintView at more than one grain. Program reads the whole program's shape — from view.remaining, at EVERY focus, which is a correction rather than a restatement: this sentence was written while read_camera_at routed a focused program detent into the line reader, so the claim held only with nothing selected and the page mislabelled outcome-grain rows as program ones (review 48719, fixed by making the program grain unrepresentable in SubjectDepth rather than by adding an arm — see subject_depth_note). Outcome reads one FinishLineView; Front reads one contributing FrontView; Node reads the primary constraint's own subject. Evidence is deliberately NOT answered from these carriers: acceptance here comes from RoadmapAcceptanceReceipt rows, but the verification-receipt join that would let a camera show WHY a receipt was granted is test-only until the belt wiring lands, and gunbc.roadmap_program_view says so itself. That is a real absence with a named trigger, so Evidence refuses — and it is the one place in this module where a refusal is the correct answer rather than a search nobody performed."
 
 type ProgramReading
   = ReadingNoSubject
@@ -245,19 +245,16 @@ fn read_constraint(subject_key: String, c: ConstraintView?, accepted: Bool) -> P
   }
 }
 
-fn read_line_view(lv: FinishLineView, camera: ProgramCamera) -> ProgramReading {
-  match camera.depth {
-    DepthProgram => match camera.mode {
-      ModeRemaining => ReadingOutcomeRemaining { name: lv.name, remaining: lv.remaining }
-      ModeStatus => ReadingOutcomeStatus {
-        name: lv.name,
-        node: lv.node as String,
-        accepted: lv.accepted,
-        open_fronts: lv.remaining.open_fronts,
-      }
-      ModeWhy => read_constraint(subject_key: lv.key, c: lv.constraint, accepted: lv.accepted)
-    }
-    DepthOutcome => match camera.mode {
+data subject_depth_note: String = "THE GRAIN THE LINE READER IS ALLOWED TO ANSWER AT, as a type rather than as a promise (review 48719, 2026-08-05). The bug it closes: read_line_view used to match ProgramDepth, so it carried a DepthProgram arm — and that arm was byte-identical to its DepthOutcome arm. read_camera_at then routed BOTH depths into it whenever a subject was focused, so the program detent silently produced outcome-grain readings while the page kept labelling the row program / …, and reading_grain_note's claim that Program reads the whole program's shape was true only when nothing was selected. That is the note-vs-code split this module has now produced three times, so the fix is not another corrected arm: the whole-program grain has no representation here at all. SubjectDepth enumerates exactly the grains that ARE a property of one finish line, DepthProgram cannot be projected into it, and read_line_view therefore cannot be handed the program grain by any caller. A DepthFront arm went with it, dead for a different reason — read_camera_at answers fronts through first_front_view, so the line reader's front arm had been unreachable since that fold landed."
+
+type SubjectDepth
+  = SubjectOutcome
+  | SubjectNode
+  | SubjectEvidence
+
+fn read_line_view(lv: FinishLineView, camera: ProgramCamera, d: SubjectDepth) -> ProgramReading {
+  match d {
+    SubjectOutcome => match camera.mode {
       ModeStatus => ReadingOutcomeStatus {
         name: lv.name,
         node: lv.node as String,
@@ -267,9 +264,8 @@ fn read_line_view(lv: FinishLineView, camera: ProgramCamera) -> ProgramReading {
       ModeRemaining => ReadingOutcomeRemaining { name: lv.name, remaining: lv.remaining }
       ModeWhy => read_constraint(subject_key: lv.key, c: lv.constraint, accepted: lv.accepted)
     }
-    DepthFront => read_front(lv: lv, camera: camera)
-    DepthNode => read_constraint(subject_key: lv.key, c: lv.constraint, accepted: lv.accepted)
-    DepthEvidence => ReadingUnavailable {
+    SubjectNode => read_constraint(subject_key: lv.key, c: lv.constraint, accepted: lv.accepted)
+    SubjectEvidence => ReadingUnavailable {
       mode: program_mode_key(m: camera.mode),
       subject_key: lv.key,
       cause: evidence_grain_cause,
@@ -365,10 +361,10 @@ fn read_camera_at(lv: FinishLineView, camera: ProgramCamera, view: V1DeletionPro
       init: read_front(lv: lv, camera: camera),
       f: (acc, fv) => read_front_view(fv: fv, camera: camera),
     )
-    DepthProgram => read_line_view(lv: lv, camera: camera)
-    DepthOutcome => read_line_view(lv: lv, camera: camera)
-    DepthNode => read_line_view(lv: lv, camera: camera)
-    DepthEvidence => read_line_view(lv: lv, camera: camera)
+    DepthProgram => read_program_depth(view: view, camera: camera)
+    DepthOutcome => read_line_view(lv: lv, camera: camera, d: SubjectOutcome)
+    DepthNode => read_line_view(lv: lv, camera: camera, d: SubjectNode)
+    DepthEvidence => read_line_view(lv: lv, camera: camera, d: SubjectEvidence)
   }
 }
 

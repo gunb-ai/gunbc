@@ -16,6 +16,22 @@ import gunbc.design.instrument_physical { preference_default, instrument_displac
 import gunbc.design.salience {
   SalienceRole, SalienceFocal, SalienceSupporting, SalienceGround, salience_key,
 }
+import gunbc.design.instrument_audition {
+  ProgramReading, ReadingNoSubject, ReadingProgramShape, ReadingOutcomeStatus,
+  ReadingOutcomeRemaining, ReadingConstraint, ReadingNoConstraint, ReadingFront,
+  ReadingUnavailable, read_camera,
+}
+import gunbc.design.instrument_camera {
+  ProgramCamera, ProgramDepth, ProgramMode, DepthProgram, DepthOutcome,
+  ModeStatus, ModeRemaining, FinishLineFocused,
+}
+import gunbc.roadmap_program_view {
+  V1DeletionProgramView, FinishLineView, RemainingShape, ProposedCarrierAbsent,
+  V1ConvergenceFront, NamespacePDeriveFront,
+}
+import gunbc.v1_deletion_plan { V1FinishLine, CompilerFixedPoint }
+import gunbc.roadmap_model { RoadmapNodeId }
+import v2.std.optional { Absent }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -103,10 +119,95 @@ fn witness_the_press_response_is_a_bounded_translation() -> Bool {
     && instrument_displacement_px(p: preference_default) == 6
 }
 
+data program_grain_fixture_note: String = "A PLANTED VIEW, because this claim's oracle must be independent of the live roadmap. The fixture's PROGRAM remaining and its one FINISH LINE's remaining are deliberately different numbers (open_fronts 7 versus 1, startable_now 5 versus 0), so a reader that collapses program grain onto outcome grain is caught by VALUE and not merely by variant — asserting the variant alone would still pass if some future arm returned a program-shaped reading built from the line's own shape. Cheap by construction: the record is built directly rather than derived through program_view, so this mechanism claim costs microseconds and stays per-PR while the live half runs on the falsifier lane."
+
+fn fixture_line_remaining() -> RemainingShape {
+  RemainingShape {
+    sequential_depth: 1, open_fronts: 1, startable_now: 0, in_flight: 0,
+    dependency_held: 0, contract_held: 0, unsized: 0,
+  }
+}
+
+fn fixture_program_remaining() -> RemainingShape {
+  RemainingShape {
+    sequential_depth: 9, open_fronts: 7, startable_now: 5, in_flight: 0,
+    dependency_held: 0, contract_held: 0, unsized: 0,
+  }
+}
+
+fn fixture_view() -> V1DeletionProgramView {
+  V1DeletionProgramView {
+    finish_lines: [
+      FinishLineView {
+        line: CompilerFixedPoint,
+        key: "compiler-fixed-point",
+        name: "Compiler fixed point",
+        claim: "fixture",
+        node: "fixture-node" as RoadmapNodeId,
+        accepted: false,
+        contributing_fronts: [NamespacePDeriveFront],
+        remaining: fixture_line_remaining(),
+        constraint: Absent,
+      },
+    ],
+    fronts: [],
+    remaining: fixture_program_remaining(),
+    proposed: ProposedCarrierAbsent,
+  }
+}
+
+fn focused_camera(m: ProgramMode, d: ProgramDepth) -> ProgramCamera {
+  ProgramCamera { depth: d, mode: m, focus: FinishLineFocused { line_key: "compiler-fixed-point" } }
+}
+
+data program_grain_witness_note: String = "The claim review 48719 found missing. With a subject FOCUSED, the program detent must still read the whole program's shape — before the fix read_camera_at routed a focused DepthProgram into read_line_view, whose DepthProgram arm was byte-identical to its DepthOutcome one, so the page rendered outcome-grain numbers under a program label. This reds on that exact behaviour: it demands the program's own remaining (open_fronts 7), which the collapsed reader could not produce because it only ever saw the line's 1."
+
+fn witness_the_program_detent_reads_program_grain_even_when_focused() -> Bool {
+  let status = read_camera(camera: focused_camera(m: ModeStatus, d: DepthProgram), view: fixture_view())
+  let remaining = read_camera(camera: focused_camera(m: ModeRemaining, d: DepthProgram), view: fixture_view())
+  match status {
+    ReadingProgramShape { remaining: rs } => rs.open_fronts == 7 && rs.startable_now == 5
+    ReadingNoSubject => false
+    ReadingOutcomeStatus { name, node, accepted, open_fronts } => false
+    ReadingOutcomeRemaining { name, remaining: r } => false
+    ReadingConstraint { subject, kind, headline, in_flight, depth } => false
+    ReadingNoConstraint { subject_key, reason } => false
+    ReadingFront { key, name, closed, gates_accepted, gates_total } => false
+    ReadingUnavailable { mode, subject_key, cause } => false
+  }
+    && match remaining {
+      ReadingProgramShape { remaining: rs } => rs.open_fronts == 7
+      ReadingNoSubject => false
+      ReadingOutcomeStatus { name, node, accepted, open_fronts } => false
+      ReadingOutcomeRemaining { name, remaining: r } => false
+      ReadingConstraint { subject, kind, headline, in_flight, depth } => false
+      ReadingNoConstraint { subject_key, reason } => false
+      ReadingFront { key, name, closed, gates_accepted, gates_total } => false
+      ReadingUnavailable { mode, subject_key, cause } => false
+    }
+}
+
+data outcome_grain_still_line_scoped_note: String = "The other half of the same law, so the fix cannot be satisfied by making EVERY depth answer program-grain: at outcome depth the reading must still be the LINE's shape (open_fronts 1), not the program's 7."
+
+fn witness_red_the_outcome_detent_still_reads_the_line() -> Bool {
+  match read_camera(camera: focused_camera(m: ModeRemaining, d: DepthOutcome), view: fixture_view()) {
+    ReadingOutcomeRemaining { name, remaining: r } => r.open_fronts == 1 && name == "Compiler fixed point"
+    ReadingNoSubject => false
+    ReadingProgramShape { remaining: rs } => false
+    ReadingOutcomeStatus { name, node, accepted, open_fronts } => false
+    ReadingConstraint { subject, kind, headline, in_flight, depth } => false
+    ReadingNoConstraint { subject_key, reason } => false
+    ReadingFront { key, name, closed, gates_accepted, gates_total } => false
+    ReadingUnavailable { mode, subject_key, cause } => false
+  }
+}
+
 test fn instrument_sandbox_keystone_holds() -> Bool {
   witness_the_served_role_is_the_derived_one()
     && witness_emission_is_present_exactly_when_the_admission_grants_it()
     && witness_red_a_refused_audition_paints_nothing()
     && witness_the_emission_var_occurs_inside_every_theme_block()
     && witness_the_press_response_is_a_bounded_translation()
+    && witness_the_program_detent_reads_program_grain_even_when_focused()
+    && witness_red_the_outcome_detent_still_reads_the_line()
 }
