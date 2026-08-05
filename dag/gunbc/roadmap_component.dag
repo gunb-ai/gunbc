@@ -132,11 +132,6 @@ fn dispatch_caption_set() -> List<String> {
   ], [
     concat(dispatch_ack_prefix, dispatch_ack_word),
     concat(dispatch_ack_prefix, belt_dispatch_disabled_status_label()),
-    dispatch_press_account_ready_caption,
-    dispatch_press_login_required_caption,
-    dispatch_press_unavailable_caption,
-    dispatch_press_refused_caption,
-    dispatch_press_quota_exhausted_caption,
   ])
 }
 
@@ -152,30 +147,15 @@ fn dispatch_reserved_width() -> String {
   css_length_wire(l: dispatch_reserved_length())
 }
 
-data dispatch_session_chip_note: String = "The POST acknowledgement and the session observation are two different captions because they are two different facts. An ok POST for legacy tmux spawn still renders `dispatch · accepted`. The Codex app-server press specimen currently returns account_ready | login_required | unavailable | press_refused (account standing only — thread/start and turn/start are not executed yet) and the client paints those operator captions (account ready / login required / unavailable / refused) — never `turn started`, and never dispatch · accepted with a dead retained session. Only the independent /sessions.json observation may show the session sentence for legacy paths; at A2 that sentence is DECIDED by gunbc.roadmap_presentation.session_facts_view and carried on the wire under `facts`.
+data dispatch_session_chip_note: String = "The POST acknowledgement and the session observation are two different captions because they are two different facts. An ok POST renders `dispatch · accepted`; only the independent /sessions.json observation may show the session sentence, and at A2 that sentence is DECIDED by gunbc.roadmap_presentation.session_facts_view and carried on the wire under `facts`.
 
 The observe-only posture independently renders `dispatch · disabled`; it is neither an accepted dispatch nor session evidence. Captions stay inside the reserved width derived from the caption set, so re-observation cannot reflow the row."
 
 data dispatch_ack_prefix: String = "dispatch · "
 data dispatch_ack_word: String = "accepted"
-data dispatch_press_account_ready_caption: String = "account ready"
-data dispatch_press_login_required_caption: String = "login required"
-data dispatch_press_unavailable_caption: String = "unavailable"
-data dispatch_press_refused_caption: String = "refused"
-data dispatch_press_quota_exhausted_caption: String = "quota exhausted"
 
 fn dispatch_ok_caption_for_status(status: String) -> String {
-  if status == "account_ready" {
-    dispatch_press_account_ready_caption
-  } else if status == "login_required" {
-    dispatch_press_login_required_caption
-  } else if status == "unavailable" {
-    dispatch_press_unavailable_caption
-  } else if status == "press_refused" {
-    dispatch_press_refused_caption
-  } else {
-    concat(dispatch_ack_prefix, dispatch_ack_word)
-  }
+  concat(dispatch_ack_prefix, dispatch_ack_word)
 }
 
 data sessions_route_path: String = "/sessions.json"
@@ -917,60 +897,27 @@ fn dispatch_terminal_apply_body() -> TsStmt {
         test: js_j_member(name: "caption"),
         consequent: js_j_member(name: "caption"),
         alternate: ts_cond(
-        test: ts_binop(
-          left: ts_ident(name: "s"),
-          op: "===",
-          right: ts_lit_str(value: "account_ready")),
-        consequent: ts_lit_str(value: dispatch_press_account_ready_caption),
-        alternate: ts_cond(
-          test: ts_binop(
-            left: ts_ident(name: "s"),
-            op: "===",
-            right: ts_lit_str(value: "login_required")),
-          consequent: ts_lit_str(value: dispatch_press_login_required_caption),
+          test: ts_ident(name: "ok"),
+          consequent: ts_lit_str(value: concat(dispatch_ack_prefix, dispatch_ack_word)),
           alternate: ts_cond(
-            test: ts_ident(name: "ok"),
-            consequent: ts_lit_str(value: concat(dispatch_ack_prefix, dispatch_ack_word)),
+            test: ts_binop(
+              left: ts_ident(name: "s"),
+              op: "===",
+              right: ts_lit_str(value: belt_dispatch_disabled_status_label())),
+            consequent: ts_binop(
+              left: ts_lit_str(value: dispatch_ack_prefix),
+              op: "+",
+              right: ts_ident(name: "s")),
             alternate: ts_cond(
               test: ts_binop(
-                left: ts_ident(name: "s"),
+                left: ts_ident(name: "band"),
                 op: "===",
-                right: ts_lit_str(value: belt_dispatch_disabled_status_label())),
-              consequent: ts_binop(
-                left: ts_lit_str(value: dispatch_ack_prefix),
-                op: "+",
-                right: ts_ident(name: "s")),
-              alternate: ts_cond(
-                test: ts_binop(
-                  left: ts_ident(name: "band"),
-                  op: "===",
-                  right: ts_lit_str(value: "fail")),
-                consequent: ts_cond(
-                  test: ts_binop(
-                    left: ts_ident(name: "s"),
-                    op: "===",
-                    right: ts_lit_str(value: "login_required")),
-                  consequent: ts_lit_str(value: dispatch_press_login_required_caption),
-                  alternate: ts_lit_str(value: dispatch_caption_fail)),
-                alternate: ts_cond(
-                  test: ts_binop(
-                    left: ts_ident(name: "s"),
-                    op: "===",
-                    right: ts_lit_str(value: "unavailable")),
-                  consequent: ts_lit_str(value: dispatch_press_unavailable_caption),
-                  alternate: ts_cond(
-                    test: ts_binop(
-                      left: ts_ident(name: "s"),
-                      op: "===",
-                      right: ts_lit_str(value: "press_refused")),
-                    consequent: ts_lit_str(value: dispatch_press_refused_caption),
-                    alternate: ts_lit_str(value: dispatch_caption_loud)),
-                ),
-              ),
+                right: ts_lit_str(value: "fail")),
+              consequent: ts_lit_str(value: dispatch_caption_fail),
+              alternate: ts_lit_str(value: dispatch_caption_loud),
             ),
           ),
         ),
-      ),
       ),
     )),
     js_classlist_call(method: "remove", arg: ts_lit_str(value: dispatch_class_requested)),
@@ -3835,15 +3782,7 @@ fn dispatch_state_display_text(state: ComponentState) -> String {
     IdleState => dispatch_caption_idle
     RequestedState => dispatch_caption_requested
     TerminalState { wire_label: wl, ok: ok } =>
-      if wl == "account_ready" {
-        dispatch_press_account_ready_caption
-      } else if wl == "login_required" {
-        dispatch_press_login_required_caption
-      } else if wl == "unavailable" {
-        dispatch_press_unavailable_caption
-      } else if wl == "press_refused" {
-        dispatch_press_refused_caption
-      } else if ok {
+      if ok {
         concat(dispatch_ack_prefix, dispatch_ack_word)
       } else if wl == belt_dispatch_disabled_status_label() {
         concat(dispatch_ack_prefix, wl)

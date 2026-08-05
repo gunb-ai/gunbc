@@ -51,8 +51,6 @@ import gunbc.roadmap_belt_actuate {
   BeltDispatchResult,
   DispatchSpawned, DispatchAlreadyLive, DispatchNodeNotFound,
   DispatchDisabled, DispatchNodeAlreadyDone, DispatchObserveRefused, DispatchAuthorityRefused, DispatchSpawnFailed,
-  DispatchPressAccountReady, DispatchPressLoginRequired,
-  DispatchPressUnavailable, DispatchPressRefused,
   belt_dispatch_node, belt_dispatch_node_for_instance,
   belt_dispatch_result_json_value,
   belt_dispatch_result_for_label,
@@ -254,14 +252,6 @@ fn belt_dispatch_status(r: BeltDispatchResult) -> HttpStatus {
     DispatchObserveRefused { node_id: _, reason: _ } => 503
     DispatchAuthorityRefused { node_id: _, detail: _ } => 503
     DispatchSpawnFailed { node_id: _, step: _, detail: _ } => 502
-    DispatchPressAccountReady {
-      node_id: _,
-      attempt_key: _,
-      caption: _,
-    } => 200
-    DispatchPressLoginRequired { node_id: _, reason: _ } => 401
-    DispatchPressUnavailable { node_id: _, reason: _ } => 503
-    DispatchPressRefused { node_id: _, reason: _ } => 502
   }
 }
 

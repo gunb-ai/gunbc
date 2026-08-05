@@ -24,8 +24,6 @@ import gunbc.roadmap_belt_actuate {
   BeltDispatchResult,
   DispatchSpawned, DispatchAlreadyLive, DispatchNodeNotFound,
   DispatchDisabled, DispatchNodeAlreadyDone, DispatchObserveRefused, DispatchAuthorityRefused, DispatchSpawnFailed,
-  DispatchPressAccountReady, DispatchPressLoginRequired,
-  DispatchPressUnavailable, DispatchPressRefused,
 }
 import gunbc.roadmap_dashboard_instance { srv2_preview_dashboard_instance }
 import gunbc.roadmap_component { instrument_tuner_asset_path }
@@ -145,14 +143,6 @@ test fn witness_dispatch_status_total() -> Bool {
     && belt_dispatch_status(r: DispatchObserveRefused { node_id: "n", reason: "r" }) == 503
     && belt_dispatch_status(r: DispatchAuthorityRefused { node_id: "n", detail: "d" }) == 503
     && belt_dispatch_status(r: DispatchSpawnFailed { node_id: "n", step: "git", detail: "d" }) == 502
-    && belt_dispatch_status(r: DispatchPressAccountReady {
-      node_id: "n",
-      attempt_key: "a",
-      caption: "account ready",
-    }) == 200
-    && belt_dispatch_status(r: DispatchPressLoginRequired { node_id: "n", reason: "r" }) == 401
-    && belt_dispatch_status(r: DispatchPressUnavailable { node_id: "n", reason: "r" }) == 503
-    && belt_dispatch_status(r: DispatchPressRefused { node_id: "n", reason: "r" }) == 502
 }
 
 test fn witness_preview_dispatch_refuses_before_effects() -> Bool {

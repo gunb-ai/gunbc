@@ -707,7 +707,24 @@ fn lock_path_key_rel(key: NpmLockPathKey) -> NonEmptyStr? {
 
 data codex_runtime_release_parent: NonEmptyStr = "/tmp/gunbc-codex-runtime" as NonEmptyStr
 
-data codex_runtime_bundle_receipt_note: String = "FULL cryptographic CodexRuntimeBundleReceipt: manifest + lock + target + admitted rows (canonicalized by lock-node key) + native executable digest + observed npm CLI version + ClientRequest schema identity from the bundled executable's generate-json-schema. Bundle root is a content-addressed release directory derived from receipt identity — not a leftover mktemp build tree. Host chmod a-w on the release tree is deliberately NOT applied: measured 2026-08-05, Codex app-server --stdio produces empty stdout against an a-w tree (bundled bubblewrap/vendor needs write); immutability is the content-addressed path + receipt identity, not filesystem write bits."
+data codex_runtime_receipt_sidecar_name: NonEmptyStr = ".gunbc-codex-runtime-receipt" as NonEmptyStr
+
+data codex_runtime_bundle_receipt_note: String = "FULL cryptographic CodexRuntimeBundleReceipt: installed manifest+lock digests (copies that drove npm ci) + target + digest-only admitted rows + installed-tree identity + native executable digest + npm+node toolchain + canonical full protocol-schema bundle identity from generate-json-schema. Bundle root is content-addressed under /tmp/gunbc-codex-runtime/<receipt-hex> with a .gunbc-codex-runtime-receipt sidecar; reuse requires sidecar+native digest read-back, never pathname trust alone. Host chmod a-w is deliberately NOT applied (Codex/bubblewrap needs write); durability is identity+read-back, not filesystem write bits."
+
+type PackageTreeEntryReceipt {
+  rel_path: NonEmptyStr
+  content_digest: Sha512Digest
+}
+
+type PackageMaterializedTreeReceipt {
+  entries: List<PackageTreeEntryReceipt>
+  tree_identity: ContentHash
+}
+
+type CodexBuildToolchainReceipt {
+  npm_cli_version: NonEmptyStr
+  node_version: NonEmptyStr
+}
 
 type CodexRuntimeBundleReceipt {
   manifest_digest: Sha512Digest
@@ -715,8 +732,9 @@ type CodexRuntimeBundleReceipt {
   target: CodexNpmRuntimeTarget
   admitted_packages: List<AdmittedPackageArtifactReceipt>
   admitted_package_set_identity: ContentHash
+  materialized_tree: PackageMaterializedTreeReceipt
   native_executable_digest: Sha512Digest
-  npm_cli_version: NonEmptyStr
+  toolchain: CodexBuildToolchainReceipt
   protocol_schema_identity: ContentHash
   receipt_identity: ContentHash
 }
@@ -815,6 +833,199 @@ fn observe_npm_cli_version() -> NonEmptyStr? {
   }
 }
 
+fn observe_node_cli_version() -> NonEmptyStr? {
+  let observed = node.Cli.Version()
+  if observed.success == false {
+    none
+  } else {
+    let trimmed = (observed.version as String).trim()
+    if trimmed == "" {
+      none
+    } else {
+      Present { value: trimmed as NonEmptyStr }
+    }
+  }
+}
+
+fn observe_codex_build_toolchain() -> CodexBuildToolchainReceipt? {
+  match observe_npm_cli_version() {
+    Absent => none
+    Present { value: npm_ver } =>
+      match observe_node_cli_version() {
+        Absent => none
+        Present { value: node_ver } =>
+          Present {
+            value: CodexBuildToolchainReceipt {
+              npm_cli_version: npm_ver,
+              node_version: node_ver,
+            },
+          }
+      }
+  }
+}
+
+fn package_tree_entry_canonical_line(entry: PackageTreeEntryReceipt) -> String {
+  concat(entry.rel_path as String, concat("\t", entry.content_digest.hex as String))
+}
+
+fn observe_package_materialized_tree(
+  root: FilePath,
+  work_dir: FilePath,
+) -> PackageMaterializedTreeReceipt? {
+  let script = retained_foreign(
+    body: concat(
+      "find '",
+      concat(root as String, "' -type f | sort"),
+    ),
+    reason: "Installed-tree file enumeration pending typed shell.Find.Files -type f enrollment" as NonEmptyStr,
+  )
+  let listed = shell.Exec.Run(script: script)
+  if listed.success == false {
+    none
+  } else {
+    let abs_paths = filter(
+      split(s: listed.stdout, delimiter: "\n"),
+      p => p != "",
+    )
+    let root_prefix = concat(root as String, "/")
+    let entries_acc = fold(
+      abs_paths,
+      init: Present { value: [] as List<PackageTreeEntryReceipt> },
+      f: (acc, abs) => match acc {
+        Absent => none
+        Present { value: so_far } => {
+          let rel =
+            if (abs as String).starts_with(prefix: root_prefix) {
+              substring(
+                s: abs as String,
+                start: root_prefix.length(),
+                end: (abs as String).length(),
+              )
+            } else {
+              abs as String
+            }
+          if (rel as String).starts_with(prefix: ".gunbc-") {
+            Present { value: so_far }
+          } else {
+            match observe_file_sha512(path: abs as FilePath) {
+              Absent => none
+              Present { value: digest } =>
+                Present {
+                  value: so_far |> list_push(
+                    PackageTreeEntryReceipt {
+                      rel_path: rel as NonEmptyStr,
+                      content_digest: digest,
+                    },
+                  ),
+                }
+            }
+          }
+        }
+      },
+    )
+    match entries_acc {
+      Absent => none
+      Present { value: entries } => {
+        let ordered = entries |> sort_by(e => e.rel_path as String)
+        let body = fold(
+          ordered,
+          init: "" as String,
+          f: (acc, entry) =>
+            concat(acc, concat(package_tree_entry_canonical_line(entry: entry), "\n")),
+        )
+        let path = concat(work_dir as String, "/materialized-tree.canonical")
+        let wrote = Filesystem.Write(path: path, content: body)
+        if wrote.success == false {
+          none
+        } else {
+          match sha512sum_observe_file(path: path as FilePath) {
+            Sha512FileObserved { digest } =>
+              Present {
+                value: PackageMaterializedTreeReceipt {
+                  entries: ordered,
+                  tree_identity: as_content_hash_sha512(digest: digest),
+                },
+              }
+            Sha512FileObservationRefused { cause: _ } => none
+          }
+        }
+      }
+    }
+  }
+}
+
+fn json_object_keys_unique(members: List<JsonKeyValue>) -> Bool {
+  match fold(
+    members,
+    init: Present { value: [] as List<String> },
+    f: (acc, m) => match acc {
+      Absent => none
+      Present { value: seen } =>
+        if any(seen, k => k == m.key) {
+          none
+        } else {
+          Present { value: seen |> list_push(m.key) }
+        }
+    },
+  ) {
+    Absent => false
+    Present { value: _ } => true
+  }
+}
+
+fn canonicalize_json_value(v: JsonValue) -> JsonValue? {
+  match v {
+    JsonNull => Present { value: JsonNull }
+    JsonBool { value: b } => Present { value: JsonBool { value: b } }
+    JsonNumber { lexeme: l } => Present { value: JsonNumber { lexeme: l } }
+    JsonString { value: s } => Present { value: JsonString { value: s } }
+    JsonArray { elements } => {
+      let mapped = fold(
+        elements,
+        init: Present { value: [] as List<JsonValue> },
+        f: (acc, el) => match acc {
+          Absent => none
+          Present { value: so_far } =>
+            match canonicalize_json_value(v: el) {
+              Absent => none
+              Present { value: c } => Present { value: so_far |> list_push(c) }
+            }
+        },
+      )
+      match mapped {
+        Absent => none
+        Present { value: els } => Present { value: JsonArray { elements: els } }
+      }
+    }
+    JsonObject { members } => {
+      if json_object_keys_unique(members: members) == false {
+        none
+      } else {
+        let sorted = members |> sort_by(m => m.key)
+        let mapped = fold(
+          sorted,
+          init: Present { value: [] as List<JsonKeyValue> },
+          f: (acc, m) => match acc {
+            Absent => none
+            Present { value: so_far } =>
+              match canonicalize_json_value(v: m.value) {
+                Absent => none
+                Present { value: cv } =>
+                  Present {
+                    value: so_far |> list_push(JsonKeyValue { key: m.key, value: cv }),
+                  }
+              }
+          },
+        )
+        match mapped {
+          Absent => none
+          Present { value: ms } => Present { value: JsonObject { members: ms } }
+        }
+      }
+    }
+  }
+}
+
 fn observe_protocol_schema_identity(
   native_executable: FilePath,
   work_dir: FilePath,
@@ -841,12 +1052,83 @@ fn observe_protocol_schema_identity(
     if gen.success == false {
       none
     } else {
-      match observe_file_sha512(
-        path: concat(schema_dir as String, "/ClientRequest.json") as FilePath,
-      ) {
-        Absent => none
-        Present { value: digest } =>
-          Present { value: as_content_hash_sha512(digest: digest) }
+      let list_script = retained_foreign(
+        body: concat(
+          "find '",
+          concat(schema_dir as String, "' -type f -name '*.json' | sort"),
+        ),
+        reason: "Protocol schema bundle file list pending typed Find enrollment" as NonEmptyStr,
+      )
+      let listed = shell.Exec.Run(script: list_script)
+      if listed.success == false {
+        none
+      } else {
+        let abs_paths = filter(
+          split(s: listed.stdout, delimiter: "\n"),
+          p => p != "",
+        )
+        if count(abs_paths) == 0 {
+          none
+        } else {
+          let schema_prefix = concat(schema_dir as String, "/")
+          let records_acc = fold(
+            abs_paths,
+            init: Present { value: "" as String },
+            f: (acc, abs) => match acc {
+              Absent => none
+              Present { value: so_far } => {
+                let rel =
+                  if (abs as String).starts_with(prefix: schema_prefix) {
+                    substring(
+                      s: abs as String,
+                      start: schema_prefix.length(),
+                      end: (abs as String).length(),
+                    )
+                  } else {
+                    abs as String
+                  }
+                let raw = Filesystem.Read(path: abs as String)
+                if raw.success == false {
+                  none
+                } else {
+                  match parse_json(s: raw.content) {
+                    Absent => none
+                    Present { value: parsed } =>
+                      match canonicalize_json_value(v: parsed) {
+                        Absent => none
+                        Present { value: canon } =>
+                          Present {
+                            value: concat(
+                              so_far,
+                              concat(
+                                rel,
+                                concat("\n", concat(serialize_json(v: canon), "\n")),
+                              ),
+                            ),
+                          }
+                      }
+                  }
+                }
+              }
+            },
+          )
+          match records_acc {
+            Absent => none
+            Present { value: body } => {
+              let path = concat(work_dir as String, "/protocol-schema-bundle.canonical")
+              let wrote = Filesystem.Write(path: path, content: body)
+              if wrote.success == false {
+                none
+              } else {
+                match sha512sum_observe_file(path: path as FilePath) {
+                  Sha512FileObserved { digest } =>
+                    Present { value: as_content_hash_sha512(digest: digest) }
+                  Sha512FileObservationRefused { cause: _ } => none
+                }
+              }
+            }
+          }
+        }
       }
     }
   }
@@ -861,34 +1143,51 @@ fn codex_runtime_bundle_receipt_canonical_body(
       match content_hash_sha512_hex(hash: receipt.protocol_schema_identity) {
         Absent => none
         Present { value: protocol_hex } =>
-          Present {
-            value: concat(
-              receipt.manifest_digest.hex as String,
-              concat(
-                "\n",
-                concat(
-                  receipt.lock_digest.hex as String,
+          match content_hash_sha512_hex(hash: receipt.materialized_tree.tree_identity) {
+            Absent => none
+            Present { value: tree_hex } =>
+              Present {
+                value: concat(
+                  receipt.manifest_digest.hex as String,
                   concat(
                     "\n",
                     concat(
-                      receipt.target.os as String,
+                      receipt.lock_digest.hex as String,
                       concat(
-                        "/",
+                        "\n",
                         concat(
-                          receipt.target.cpu as String,
+                          receipt.target.os as String,
                           concat(
-                            "\n",
+                            "/",
                             concat(
-                              set_hex,
+                              receipt.target.cpu as String,
                               concat(
                                 "\n",
                                 concat(
-                                  receipt.native_executable_digest.hex as String,
+                                  set_hex,
                                   concat(
                                     "\n",
                                     concat(
-                                      receipt.npm_cli_version as String,
-                                      concat("\n", protocol_hex),
+                                      tree_hex,
+                                      concat(
+                                        "\n",
+                                        concat(
+                                          receipt.native_executable_digest.hex as String,
+                                          concat(
+                                            "\n",
+                                            concat(
+                                              receipt.toolchain.npm_cli_version as String,
+                                              concat(
+                                                "\n",
+                                                concat(
+                                                  receipt.toolchain.node_version as String,
+                                                  concat("\n", protocol_hex),
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
                                     ),
                                   ),
                                 ),
@@ -900,8 +1199,7 @@ fn codex_runtime_bundle_receipt_canonical_body(
                     ),
                   ),
                 ),
-              ),
-            ),
+              }
           }
       }
   }
@@ -929,29 +1227,129 @@ fn observe_codex_runtime_bundle_receipt_identity(
   }
 }
 
+fn codex_runtime_receipt_sidecar_path(release_root: FilePath) -> FilePath {
+  concat(
+    release_root as String,
+    concat("/", codex_runtime_receipt_sidecar_name as String),
+  ) as FilePath
+}
+
+fn write_codex_runtime_receipt_sidecar(
+  release_root: FilePath,
+  receipt_identity: ContentHash,
+) -> Bool {
+  match content_hash_sha512_hex(hash: receipt_identity) {
+    Absent => false
+    Present { value: hex } => {
+      let wrote = Filesystem.Write(
+        path: codex_runtime_receipt_sidecar_path(release_root: release_root) as String,
+        content: hex,
+      )
+      wrote.success
+    }
+  }
+}
+
+fn read_codex_runtime_receipt_sidecar(release_root: FilePath) -> String? {
+  let read = Filesystem.Read(
+    path: codex_runtime_receipt_sidecar_path(release_root: release_root) as String,
+  )
+  if read.success == false {
+    none
+  } else {
+    let trimmed = (read.content as String).trim()
+    if trimmed == "" {
+      none
+    } else {
+      Present { value: trimmed }
+    }
+  }
+}
+
+type CodexRuntimeReleaseOutcome
+  = CodexRuntimeReleaseReady {
+      root: FilePath
+    }
+  | CodexRuntimeReleaseFailed {
+      cause: NonEmptyStr
+    }
+  | CodexRuntimeReleaseReuseMismatch {
+      existing_root: FilePath
+      cause: NonEmptyStr
+    }
+
 fn release_codex_runtime_bundle_immutable(
   build_root: FilePath,
-  receipt_identity: ContentHash,
-) -> FilePath? {
-  match content_hash_sha512_hex(hash: receipt_identity) {
-    Absent => none
+  receipt: CodexRuntimeBundleReceipt,
+  native_executable_rel: NonEmptyStr,
+) -> CodexRuntimeReleaseOutcome {
+  match content_hash_sha512_hex(hash: receipt.receipt_identity) {
+    Absent =>
+      CodexRuntimeReleaseFailed {
+        cause: "receipt identity is not SHA-512" as NonEmptyStr,
+      }
     Present { value: hex } => {
       let parent = codex_runtime_release_parent as FilePath
       let made = shell.Mkdir.Parents(path: parent)
       if made.success == false {
-        none
+        CodexRuntimeReleaseFailed {
+          cause: "release parent mkdir refused" as NonEmptyStr,
+        }
       } else {
         let dest = concat(parent as String, concat("/", hex)) as FilePath
         let already = shell.Test.IsDirectory(path: dest)
         if already.is_directory {
-          let _ = shell.Remove.RecursiveForce(path: build_root)
-          Present { value: dest }
+          match read_codex_runtime_receipt_sidecar(release_root: dest) {
+            Absent =>
+              CodexRuntimeReleaseReuseMismatch {
+                existing_root: dest,
+                cause: "existing release missing receipt sidecar" as NonEmptyStr,
+              }
+            Present { value: side_hex } =>
+              if side_hex != hex {
+                CodexRuntimeReleaseReuseMismatch {
+                  existing_root: dest,
+                  cause: "existing release sidecar identity mismatch" as NonEmptyStr,
+                }
+              } else {
+                let existing_native = concat(
+                  dest as String,
+                  concat("/", native_executable_rel as String),
+                ) as FilePath
+                match observe_file_sha512(path: existing_native) {
+                  Absent =>
+                    CodexRuntimeReleaseReuseMismatch {
+                      existing_root: dest,
+                      cause: "existing release native digest observation refused" as NonEmptyStr,
+                    }
+                  Present { value: observed } =>
+                    if (observed.hex as String) != (receipt.native_executable_digest.hex as String) {
+                      CodexRuntimeReleaseReuseMismatch {
+                        existing_root: dest,
+                        cause: "existing release native digest mismatch" as NonEmptyStr,
+                      }
+                    } else {
+                      let _ = shell.Remove.RecursiveForce(path: build_root)
+                      CodexRuntimeReleaseReady { root: dest }
+                    }
+                }
+              }
+          }
         } else {
           let moved = shell.Move.File(source: build_root, destination: dest)
           if moved.success == false {
-            none
+            CodexRuntimeReleaseFailed {
+              cause: "move build root to content-addressed release refused" as NonEmptyStr,
+            }
+          } else if write_codex_runtime_receipt_sidecar(
+            release_root: dest,
+            receipt_identity: receipt.receipt_identity,
+          ) == false {
+            CodexRuntimeReleaseFailed {
+              cause: "receipt sidecar write refused" as NonEmptyStr,
+            }
           } else {
-            Present { value: dest }
+            CodexRuntimeReleaseReady { root: dest }
           }
         }
       }
@@ -998,10 +1396,44 @@ type CodexRuntimeMaterialization
   | CodexRuntimeReleaseRefused {
       cause: NonEmptyStr
     }
+  | CodexRuntimeReleaseReuseMismatch {
+      existing_root: FilePath
+      cause: NonEmptyStr
+    }
+
+fn codex_runtime_materialization_refusal_reason(
+  outcome: CodexRuntimeMaterialization,
+) -> NonEmptyStr? {
+  match outcome {
+    CodexRuntimeMaterialized { bundle: _ } => none
+    CodexRuntimeLockRefused { admission: _ } =>
+      Present { value: "codex package-lock admission refused" as NonEmptyStr }
+    CodexRuntimeExactClosureRefused { closure: _ } =>
+      Present { value: "codex exact target closure refused" as NonEmptyStr }
+    CodexRuntimeTargetObservationRefused { observation: _ } =>
+      Present { value: "codex npm runtime target observation refused" as NonEmptyStr }
+    CodexRuntimeAcquisitionRefused { acquisition: _ } =>
+      Present { value: "codex registry artifact acquisition refused" as NonEmptyStr }
+    CodexRuntimeWorkspaceRefused { cause } => Present { value: cause }
+    CodexRuntimeCacheSeedRefused { path: _, stderr: _ } =>
+      Present { value: "codex isolated npm cache seed refused" as NonEmptyStr }
+    CodexRuntimeNpmCiOfflineRefused { stderr: _ } =>
+      Present { value: "codex npm ci --offline --ignore-scripts refused" as NonEmptyStr }
+    CodexRuntimeExecutableAbsent { path: _ } =>
+      Present { value: "codex native executable absent after offline install" as NonEmptyStr }
+    CodexRuntimePlatformPackageAbsent { path: _ } =>
+      Present { value: "codex platform package directory absent after offline install" as NonEmptyStr }
+    CodexRuntimeIdentityObservationRefused =>
+      Present { value: "codex admitted-package-set identity observation refused" as NonEmptyStr }
+    CodexRuntimeReceiptObservationRefused { cause } => Present { value: cause }
+    CodexRuntimeReleaseRefused { cause } => Present { value: cause }
+    CodexRuntimeReleaseReuseMismatch { existing_root: _, cause } => Present { value: cause }
+  }
+}
 
 type TargetClosureAcquisitionAcc
   = TargetClosureAcquisitionOk {
-      admitted: List<AdmittedPackageArtifactReceipt>
+      admitted: List<StagedAdmittedPackageArtifact>
     }
   | TargetClosureAcquisitionFailed {
       acquisition: RegistryArtifactAcquisition
@@ -1025,7 +1457,7 @@ fn acquire_and_admit_selected_pair(
         lock_node_key: w_key,
         dest_dir: dest_dir,
       ) {
-        RegistryArtifactAdmitted { receipt: w_receipt } =>
+        RegistryArtifactAdmitted { staged: w_staged } =>
           match platform {
             CodexSelectedNodeInstallScriptRefused { lock_node_key: _ } =>
               TargetClosureAcquisitionFailed {
@@ -1043,9 +1475,9 @@ fn acquire_and_admit_selected_pair(
                 lock_node_key: p_key,
                 dest_dir: dest_dir,
               ) {
-                RegistryArtifactAdmitted { receipt: p_receipt } =>
+                RegistryArtifactAdmitted { staged: p_staged } =>
                   TargetClosureAcquisitionOk {
-                    admitted: [w_receipt, p_receipt],
+                    admitted: [w_staged, p_staged],
                   }
                 other => TargetClosureAcquisitionFailed { acquisition: other }
               }
@@ -1057,26 +1489,171 @@ fn acquire_and_admit_selected_pair(
 
 fn seed_npm_cache_from_admitted(
   cache: FilePath,
-  admitted: List<AdmittedPackageArtifactReceipt>,
+  admitted: List<StagedAdmittedPackageArtifact>,
 ) -> FilePath? {
   fold(
     admitted,
     init: none,
-    f: (fail, receipt) => match fail {
+    f: (fail, staged) => match fail {
       Present { value: _ } => fail
       Absent => {
         let added = npm.Cache.Add(
           cache: cache,
-          tarball: receipt.local_artifact_path,
+          tarball: staged.local_artifact_path,
         )
         if added.success == false {
-          Present { value: receipt.local_artifact_path }
+          Present { value: staged.local_artifact_path }
         } else {
           none
         }
       }
     },
   )
+}
+
+fn durable_admitted_receipts(
+  staged: List<StagedAdmittedPackageArtifact>,
+) -> List<AdmittedPackageArtifactReceipt> {
+  map(staged, s => s.receipt)
+}
+
+fn finish_codex_runtime_materialization_after_install(
+  build_root: FilePath,
+  staging_dir: FilePath,
+  cache_dir: FilePath,
+  man_dest: FilePath,
+  lock_dest: FilePath,
+  native_path: FilePath,
+  native_executable_rel: NonEmptyStr,
+  platform_lock_key: NonEmptyStr,
+  selected_target: CodexNpmRuntimeTarget,
+  staged_admitted: List<StagedAdmittedPackageArtifact>,
+) -> CodexRuntimeMaterialization {
+  let durable = durable_admitted_receipts(staged: staged_admitted)
+  match observe_admitted_package_set_identity(
+    receipts: durable,
+    staging_dir: staging_dir,
+  ) {
+    Absent => CodexRuntimeIdentityObservationRefused
+    Present { value: set_id } =>
+      match observe_file_sha512(path: man_dest) {
+        Absent =>
+          CodexRuntimeReceiptObservationRefused {
+            cause: "installed manifest digest observation refused" as NonEmptyStr,
+          }
+        Present { value: man_digest } =>
+          match observe_file_sha512(path: lock_dest) {
+            Absent =>
+              CodexRuntimeReceiptObservationRefused {
+                cause: "installed lock digest observation refused" as NonEmptyStr,
+              }
+            Present { value: lock_digest } =>
+              match observe_file_sha512(path: native_path) {
+                Absent =>
+                  CodexRuntimeReceiptObservationRefused {
+                    cause: "native executable digest observation refused" as NonEmptyStr,
+                  }
+                Present { value: native_digest } =>
+                  match observe_codex_build_toolchain() {
+                    Absent =>
+                      CodexRuntimeReceiptObservationRefused {
+                        cause: "npm/node toolchain observation refused" as NonEmptyStr,
+                      }
+                    Present { value: toolchain } =>
+                      match observe_package_materialized_tree(
+                        root: build_root,
+                        work_dir: staging_dir,
+                      ) {
+                        Absent =>
+                          CodexRuntimeReceiptObservationRefused {
+                            cause: "installed tree identity observation refused" as NonEmptyStr,
+                          }
+                        Present { value: tree } =>
+                          match observe_protocol_schema_identity(
+                            native_executable: native_path,
+                            work_dir: build_root,
+                          ) {
+                            Absent =>
+                              CodexRuntimeReceiptObservationRefused {
+                                cause: "canonical protocol schema bundle identity observation refused" as NonEmptyStr,
+                              }
+                            Present { value: protocol_id } => {
+                              let ordered = sort_admitted_packages_by_lock_key(receipts: durable)
+                              let receipt0 = CodexRuntimeBundleReceipt {
+                                manifest_digest: man_digest,
+                                lock_digest: lock_digest,
+                                target: selected_target,
+                                admitted_packages: ordered,
+                                admitted_package_set_identity: set_id,
+                                materialized_tree: tree,
+                                native_executable_digest: native_digest,
+                                toolchain: toolchain,
+                                protocol_schema_identity: protocol_id,
+                                receipt_identity: set_id,
+                              }
+                              match observe_codex_runtime_bundle_receipt_identity(
+                                receipt_without_identity: receipt0,
+                                staging_dir: staging_dir,
+                              ) {
+                                Absent =>
+                                  CodexRuntimeReceiptObservationRefused {
+                                    cause: "receipt identity observation refused" as NonEmptyStr,
+                                  }
+                                Present { value: receipt_id } => {
+                                  let receipt = CodexRuntimeBundleReceipt {
+                                    manifest_digest: man_digest,
+                                    lock_digest: lock_digest,
+                                    target: selected_target,
+                                    admitted_packages: ordered,
+                                    admitted_package_set_identity: set_id,
+                                    materialized_tree: tree,
+                                    native_executable_digest: native_digest,
+                                    toolchain: toolchain,
+                                    protocol_schema_identity: protocol_id,
+                                    receipt_identity: receipt_id,
+                                  }
+                                  match release_codex_runtime_bundle_immutable(
+                                    build_root: build_root,
+                                    receipt: receipt,
+                                    native_executable_rel: native_executable_rel,
+                                  ) {
+                                    CodexRuntimeReleaseReady { root: release_root } => {
+                                      let _ = shell.Remove.RecursiveForce(path: staging_dir)
+                                      let _ = shell.Remove.RecursiveForce(path: cache_dir)
+                                      CodexRuntimeMaterialized {
+                                        bundle: CodexRuntimeBundle {
+                                          root: release_root,
+                                          native_executable_rel: native_executable_rel,
+                                          wrapper_executable_rel: codex_bundle_executable_rel,
+                                          platform_package_rel: platform_lock_key,
+                                          target: selected_target,
+                                          admitted_packages: ordered,
+                                          admitted_package_set_identity: set_id,
+                                          receipt: receipt,
+                                        },
+                                      }
+                                    }
+                                    CodexRuntimeReleaseFailed { cause } =>
+                                      CodexRuntimeReleaseRefused { cause: cause }
+                                    CodexRuntimeReleaseReuseMismatch {
+                                      existing_root,
+                                      cause,
+                                    } =>
+                                      CodexRuntimeReleaseReuseMismatch {
+                                        existing_root: existing_root,
+                                        cause: cause,
+                                      }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                      }
+                  }
+              }
+          }
+      }
+  }
 }
 
 fn materialize_codex_runtime_bundle(
@@ -1181,117 +1758,18 @@ fn materialize_codex_runtime_bundle(
                                 } else if plat_present.is_directory == false {
                                   CodexRuntimePlatformPackageAbsent { path: plat_path }
                                 } else {
-                                  match observe_admitted_package_set_identity(
-                                    receipts: admitted,
+                                  finish_codex_runtime_materialization_after_install(
+                                    build_root: build.path,
                                     staging_dir: staging.path,
-                                  ) {
-                                    Absent => CodexRuntimeIdentityObservationRefused
-                                    Present { value: set_id } =>
-                                      match observe_file_sha512(path: manifest_src) {
-                                        Absent =>
-                                          CodexRuntimeReceiptObservationRefused {
-                                            cause: "manifest digest observation refused" as NonEmptyStr,
-                                          }
-                                        Present { value: man_digest } =>
-                                          match observe_file_sha512(path: lock_src) {
-                                            Absent =>
-                                              CodexRuntimeReceiptObservationRefused {
-                                                cause: "lock digest observation refused" as NonEmptyStr,
-                                              }
-                                            Present { value: lock_digest } =>
-                                              match observe_file_sha512(path: native_path) {
-                                                Absent =>
-                                                  CodexRuntimeReceiptObservationRefused {
-                                                    cause: "native executable digest observation refused" as NonEmptyStr,
-                                                  }
-                                                Present { value: native_digest } =>
-                                                  match observe_npm_cli_version() {
-                                                    Absent =>
-                                                      CodexRuntimeReceiptObservationRefused {
-                                                        cause: "npm --version observation refused" as NonEmptyStr,
-                                                      }
-                                                    Present { value: npm_ver } =>
-                                                      match observe_protocol_schema_identity(
-                                                        native_executable: native_path,
-                                                        work_dir: build.path,
-                                                      ) {
-                                                        Absent =>
-                                                          CodexRuntimeReceiptObservationRefused {
-                                                            cause: "protocol schema identity observation refused" as NonEmptyStr,
-                                                          }
-                                                        Present { value: protocol_id } => {
-                                                          let ordered = sort_admitted_packages_by_lock_key(
-                                                            receipts: admitted,
-                                                          )
-                                                          let receipt0 = CodexRuntimeBundleReceipt {
-                                                            manifest_digest: man_digest,
-                                                            lock_digest: lock_digest,
-                                                            target: selected_target,
-                                                            admitted_packages: ordered,
-                                                            admitted_package_set_identity: set_id,
-                                                            native_executable_digest: native_digest,
-                                                            npm_cli_version: npm_ver,
-                                                            protocol_schema_identity: protocol_id,
-                                                            receipt_identity: set_id,
-                                                          }
-                                                          match observe_codex_runtime_bundle_receipt_identity(
-                                                            receipt_without_identity: receipt0,
-                                                            staging_dir: staging.path,
-                                                          ) {
-                                                            Absent =>
-                                                              CodexRuntimeReceiptObservationRefused {
-                                                                cause: "receipt identity observation refused" as NonEmptyStr,
-                                                              }
-                                                            Present { value: receipt_id } => {
-                                                              let receipt = CodexRuntimeBundleReceipt {
-                                                                manifest_digest: man_digest,
-                                                                lock_digest: lock_digest,
-                                                                target: selected_target,
-                                                                admitted_packages: ordered,
-                                                                admitted_package_set_identity: set_id,
-                                                                native_executable_digest: native_digest,
-                                                                npm_cli_version: npm_ver,
-                                                                protocol_schema_identity: protocol_id,
-                                                                receipt_identity: receipt_id,
-                                                              }
-                                                              match release_codex_runtime_bundle_immutable(
-                                                                build_root: build.path,
-                                                                receipt_identity: receipt_id,
-                                                              ) {
-                                                                Absent =>
-                                                                  CodexRuntimeReleaseRefused {
-                                                                    cause: "immutable content-addressed release refused" as NonEmptyStr,
-                                                                  }
-                                                                Present { value: release_root } => {
-                                                                  let _ = shell.Remove.RecursiveForce(
-                                                                    path: staging.path,
-                                                                  )
-                                                                  let _ = shell.Remove.RecursiveForce(
-                                                                    path: cache.path,
-                                                                  )
-                                                                  CodexRuntimeMaterialized {
-                                                                    bundle: CodexRuntimeBundle {
-                                                                      root: release_root,
-                                                                      native_executable_rel: native_executable_rel,
-                                                                      wrapper_executable_rel: codex_bundle_executable_rel,
-                                                                      platform_package_rel: platform_lock_key,
-                                                                      target: selected_target,
-                                                                      admitted_packages: ordered,
-                                                                      admitted_package_set_identity: set_id,
-                                                                      receipt: receipt,
-                                                                    },
-                                                                  }
-                                                                }
-                                                              }
-                                                            }
-                                                          }
-                                                        }
-                                                      }
-                                                  }
-                                              }
-                                          }
-                                      }
-                                  }
+                                    cache_dir: cache.path,
+                                    man_dest: man_dest,
+                                    lock_dest: lock_dest,
+                                    native_path: native_path,
+                                    native_executable_rel: native_executable_rel,
+                                    platform_lock_key: platform_lock_key,
+                                    selected_target: selected_target,
+                                    staged_admitted: admitted,
+                                  )
                                 }
                               }
                             }
