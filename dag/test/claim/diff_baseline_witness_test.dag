@@ -7,6 +7,7 @@ import gunbc.diff_baseline {
   DiffBaseline,
   DiffBaselineResolution,
   MergeTarget,
+  ExactReplayBoundary,
   PushBefore,
   PushParent,
   OperatorOverride,
@@ -16,8 +17,26 @@ import gunbc.diff_baseline {
   PushBeforeInputRefused,
   BaselineSelected,
   BaselineRefused,
+  BaselineSourceConflict,
   resolve_diff_baseline,
-  diff_baseline_ref
+  diff_baseline_ref,
+  diff_baseline_diff_base,
+  diff_baseline_diff_head,
+  diff_baseline_is_exact_replay
+}
+import gunbc.git_diff_change_window {
+  GitDiffWindowObservation,
+  GitDiffWindowObserved,
+  git_exact_diff_window_for_verification,
+}
+import std.types { GitRef }
+import extdeps.git.object_store {
+  git_sha1_object_id,
+  git_object_id_wire_hex,
+  GitObjectId,
+  GitSha1ObjectId,
+  Sha1Digest,
+  Sha1DigestHex
 }
 import gunbc.repo_identity { gunbc_merge_target_ref, gunbc_default_remote_name }
 import extdeps.git.hooks { zero_sha }
@@ -25,12 +44,43 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
+data planted_merge_base_sha: String = "abc123def4567890abc123def4567890abc12345"
+data planted_head_sha: String = "fedcba0987654321fedcba0987654321fedcba09"
+
+fn planted_oid(hex: String) -> GitObjectId {
+  match git_sha1_object_id(hex: hex) {
+    Present { value: oid } => oid
+    Absent =>
+      GitSha1ObjectId {
+        digest: Sha1Digest {
+          hex: planted_merge_base_sha as Sha1DigestHex
+        }
+      }
+  }
+}
+
+data planted_target_generation_sha: String = "1111111111111111111111111111111111111111"
+
+fn planted_diff_window() -> GitDiffWindowObservation {
+  Present {
+    value: GitDiffWindowObserved {
+      window: git_exact_diff_window_for_verification(
+        target: "origin/main" as GitRef,
+        target_generation: planted_oid(hex: planted_target_generation_sha),
+        base: planted_oid(hex: planted_merge_base_sha),
+        head: planted_oid(hex: planted_head_sha),
+      )
+    }
+  }
+}
+
 fn resolve_case(
   override_ref: String?,
   event_name: String,
   base_ref: String?,
   push_before: PushBeforeInput?,
-  head_sha: String?
+  head_sha: String?,
+  diff_window: GitDiffWindowObservation?
 ) -> DiffBaselineResolution {
   resolve_diff_baseline(
     event: CiDiffEvent {
@@ -38,7 +88,8 @@ fn resolve_case(
       event_name: event_name,
       base_ref: base_ref,
       push_before: push_before,
-      head_sha: head_sha
+      head_sha: head_sha,
+      diff_window: diff_window
     },
     push_parent_ref: gunbc_merge_target_ref,
     default_remote_name: gunbc_default_remote_name
@@ -48,10 +99,13 @@ fn resolve_case(
 fn arm_tag(res: DiffBaselineResolution) -> String {
   match res {
     BaselineSelected { baseline: MergeTarget { ref: _ } } => "merge_target"
+    BaselineSelected { baseline: ExactReplayBoundary { base: _, head: _, observed_relation: _ } } =>
+      "exact_replay"
     BaselineSelected { baseline: PushBefore { ref: _ } } => "push_before"
     BaselineSelected { baseline: PushParent { ref: _ } } => "push_parent"
     BaselineSelected { baseline: OperatorOverride { ref: _ } } => "operator_override"
     BaselineRefused { reason: _ } => "refused"
+    BaselineSourceConflict { window_detail: _, override_ref: _ } => "source_conflict"
   }
 }
 
@@ -59,7 +113,41 @@ fn selected_ref(res: DiffBaselineResolution) -> String {
   match res {
     BaselineSelected { baseline: b } => diff_baseline_ref(b: b) as String
     BaselineRefused { reason: _ } => "<<refused>>"
+    BaselineSourceConflict { window_detail: _, override_ref: _ } => "<<source_conflict>>"
   }
+}
+
+test fn witness_dashboard_exact_replay_arm_pins_typed_identities() -> Bool {
+  let res = resolve_case(
+    override_ref: none,
+    event_name: "pull_request",
+    base_ref: Present { value: "main" },
+    push_before: none,
+    head_sha: none,
+    diff_window: planted_diff_window()
+  )
+  match res {
+    BaselineSelected { baseline: b } =>
+      diff_baseline_is_exact_replay(b: b)
+        && diff_baseline_diff_base(b: b) == planted_merge_base_sha
+        && diff_baseline_diff_head(b: b, default_head: "HEAD") == planted_head_sha
+    BaselineRefused { reason: _ } => false
+    BaselineSourceConflict { window_detail: _, override_ref: _ } => false
+  }
+}
+
+test fn witness_pull_request_hex_branch_stays_remote_tracking() -> Bool {
+  let res = resolve_case(
+    override_ref: none,
+    event_name: "pull_request",
+    base_ref: Present { value: planted_merge_base_sha },
+    push_before: none,
+    head_sha: none,
+    diff_window: none
+  )
+  arm_tag(res: res) == "merge_target"
+    && selected_ref(res: res) == concat("origin/", planted_merge_base_sha)
+    && selected_ref(res: res) != planted_merge_base_sha
 }
 
 test fn witness_stacked_pr_selects_actual_base() -> Bool {
@@ -68,7 +156,8 @@ test fn witness_stacked_pr_selects_actual_base() -> Bool {
     event_name: "pull_request",
     base_ref: Present { value: "feature/B" },
     push_before: none,
-    head_sha: none
+    head_sha: none,
+    diff_window: none
   )
   arm_tag(res: res) == "merge_target"
     && selected_ref(res: res) == "origin/feature/B"
@@ -81,7 +170,8 @@ test fn witness_main_pr_equivalent_to_push_parent() -> Bool {
     event_name: "pull_request",
     base_ref: Present { value: "main" },
     push_before: none,
-    head_sha: none
+    head_sha: none,
+    diff_window: none
   )
   arm_tag(res: res) == "merge_target"
     && selected_ref(res: res) == "origin/main"
@@ -93,11 +183,12 @@ test fn witness_push_selects_before_sha() -> Bool {
     override_ref: none,
     event_name: "push",
     base_ref: none,
-    push_before: Present { value: PushBeforeSha { sha: "abc123def4567890abc123def4567890abc12345" } },
-    head_sha: Present { value: "fedcba0987654321fedcba0987654321fedcba09" }
+    push_before: Present { value: PushBeforeSha { sha: planted_merge_base_sha } },
+    head_sha: Present { value: planted_head_sha },
+    diff_window: none
   )
   arm_tag(res: res) == "push_before"
-    && selected_ref(res: res) == "abc123def4567890abc123def4567890abc12345"
+    && selected_ref(res: res) == planted_merge_base_sha
     && selected_ref(res: res) != (gunbc_merge_target_ref as String)
 }
 
@@ -108,7 +199,8 @@ test fn witness_push_absent_before_refuses() -> Bool {
       event_name: "push",
       base_ref: none,
       push_before: none,
-      head_sha: Present { value: "fedcba0987654321fedcba0987654321fedcba09" }
+      head_sha: Present { value: planted_head_sha },
+      diff_window: none
     )
   ) == "refused"
 }
@@ -124,7 +216,8 @@ test fn witness_push_observation_read_refusal_propagates() -> Bool {
           reason: "push event payload unreadable at /tmp/missing.json — no such file; halting the floor (AFFECTED-SET REFUSAL)"
         }
       },
-      head_sha: Present { value: "fedcba0987654321fedcba0987654321fedcba09" }
+      head_sha: Present { value: planted_head_sha },
+      diff_window: none
     )
   ) == "refused"
 }
@@ -140,7 +233,8 @@ test fn witness_push_observation_absent_propagates() -> Bool {
           reason: "push event before SHA absent — push event payload has no before member; halting the floor (AFFECTED-SET REFUSAL)"
         }
       },
-      head_sha: Present { value: "fedcba0987654321fedcba0987654321fedcba09" }
+      head_sha: Present { value: planted_head_sha },
+      diff_window: none
     )
   ) == "refused"
 }
@@ -156,7 +250,8 @@ test fn witness_push_observation_refusal_propagates() -> Bool {
           reason: "push event before SHA malformed — GITHUB_EVENT_PATH payload is not valid JSON; halting the floor (AFFECTED-SET REFUSAL)"
         }
       },
-      head_sha: Present { value: "fedcba0987654321fedcba0987654321fedcba09" }
+      head_sha: Present { value: planted_head_sha },
+      diff_window: none
     )
   ) == "refused"
 }
@@ -168,20 +263,22 @@ test fn witness_push_zero_before_refuses() -> Bool {
       event_name: "push",
       base_ref: none,
       push_before: Present { value: PushBeforeZeroShaInput },
-      head_sha: Present { value: "fedcba0987654321fedcba0987654321fedcba09" }
+      head_sha: Present { value: planted_head_sha },
+      diff_window: none
     )
   ) == "refused"
 }
 
 test fn witness_push_self_compare_refuses() -> Bool {
-  let sha = "abc123def4567890abc123def4567890abc12345"
+  let sha = planted_merge_base_sha
   arm_tag(
     res: resolve_case(
       override_ref: none,
       event_name: "push",
       base_ref: none,
       push_before: Present { value: PushBeforeSha { sha: sha } },
-      head_sha: Present { value: sha }
+      head_sha: Present { value: sha },
+      diff_window: none
     )
   ) == "refused"
 }
@@ -192,8 +289,9 @@ test fn witness_push_head_absent_refuses() -> Bool {
       override_ref: none,
       event_name: "push",
       base_ref: none,
-      push_before: Present { value: PushBeforeSha { sha: "abc123def4567890abc123def4567890abc12345" } },
-      head_sha: none
+      push_before: Present { value: PushBeforeSha { sha: planted_merge_base_sha } },
+      head_sha: none,
+      diff_window: none
     )
   ) == "refused"
 }
@@ -204,7 +302,8 @@ test fn witness_workflow_dispatch_keeps_todays_policy() -> Bool {
     event_name: "workflow_dispatch",
     base_ref: none,
     push_before: none,
-    head_sha: none
+    head_sha: none,
+    diff_window: none
   )
   arm_tag(res: res) == "push_parent"
     && selected_ref(res: res) == "origin/main"
@@ -216,7 +315,8 @@ test fn witness_bootstrap_no_event_is_push_parent() -> Bool {
     event_name: "",
     base_ref: none,
     push_before: none,
-    head_sha: none
+    head_sha: none,
+    diff_window: none
   )
   arm_tag(res: res) == "push_parent"
     && selected_ref(res: res) == "origin/main"
@@ -228,7 +328,8 @@ test fn witness_operator_override_is_typed_arm() -> Bool {
     event_name: "schedule",
     base_ref: none,
     push_before: none,
-    head_sha: none
+    head_sha: none,
+    diff_window: none
   )
   arm_tag(res: res) == "operator_override"
     && selected_ref(res: res) == "HEAD~20"
@@ -240,7 +341,8 @@ test fn witness_merge_group_uses_push_parent() -> Bool {
     event_name: "merge_group",
     base_ref: none,
     push_before: none,
-    head_sha: none
+    head_sha: none,
+    diff_window: none
   )
   arm_tag(res: res) == "push_parent"
     && selected_ref(res: res) == "origin/main"
@@ -252,7 +354,8 @@ test fn witness_schedule_no_override_is_push_parent() -> Bool {
     event_name: "schedule",
     base_ref: none,
     push_before: none,
-    head_sha: none
+    head_sha: none,
+    diff_window: none
   )
   arm_tag(res: res) == "push_parent"
     && selected_ref(res: res) == "origin/main"
@@ -265,7 +368,8 @@ test fn witness_unknown_event_refuses() -> Bool {
       event_name: "deployment_status",
       base_ref: none,
       push_before: none,
-      head_sha: none
+      head_sha: none,
+      diff_window: none
     )
   ) == "refused"
 }
@@ -277,7 +381,8 @@ test fn witness_pull_request_empty_base_refuses() -> Bool {
       event_name: "pull_request",
       base_ref: Present { value: "" },
       push_before: none,
-      head_sha: none
+      head_sha: none,
+      diff_window: none
     )
   ) == "refused"
 }
@@ -289,7 +394,8 @@ test fn witness_pull_request_absent_base_refuses() -> Bool {
       event_name: "pull_request",
       base_ref: none,
       push_before: none,
-      head_sha: none
+      head_sha: none,
+      diff_window: none
     )
   ) == "refused"
 }
