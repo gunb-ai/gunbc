@@ -1,6 +1,6 @@
 module gunbc.host_effect
 
-import std.types { String, Int, NonEmptyStr, List }
+import std.types { String, Int, NonEmptyStr, List, CommitSha }
 import std.content_hash { ContentHash }
 import std.cache_identity { CacheInterfaceId }
 import std.access { AccessDecision }
@@ -54,7 +54,11 @@ type HostEffect =
   | LiveDeployRetract { spec: DeploymentSpec }
   | LiveDeployEnsureDependency { dep: DeploymentDependencyStep }
   | LiveDeployDigestReadback { port: Int }
+  | LiveDeploySlotRevisionRead { spec: DeploymentSpec }
+  | LiveDeploySlotRevisionRecord { spec: DeploymentSpec, revision: CommitSha }
   | DeployAccessPreflight {}
+
+data live_deploy_slot_revision_effects_note: String = "TWO EFFECTS AND NOT ONE, because reading the routed slot's revision and recording a slot's revision sit on opposite sides of the mutation the deploy is deciding about. The read runs BEFORE any host mutation and its answer is what admits or refuses the deploy; the record runs AFTER the cutover has converged and its failure must make the deploy red. Fusing them into one read-modify-write effect would put the write on the path the decision has not yet authorized.\\n\\nThey are typed variants rather than ShellCommand for the reason the surrounding LiveDeploy* effects are: the intent is a fact about the deployment model, and leaving it as a raw script leaf at the call site would put the receipt path — the thing deploy_slot_revision_receipt_path exists to be the single authority for — back into a hand-spelled string beside it."
 
 type NodeControlPlane =
     HostOs { node: ComputeHost }

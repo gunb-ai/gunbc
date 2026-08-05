@@ -20,6 +20,8 @@ import gunbc.host_effect {
   LiveDeployRetract,
   LiveDeployEnsureDependency,
   LiveDeployDigestReadback,
+  LiveDeploySlotRevisionRead,
+  LiveDeploySlotRevisionRecord,
   DeployAccessPreflight,
   NodeControlPlane, HostOs, BmcController,
   Drive, OneShot, ConvergeLoop,
@@ -165,7 +167,7 @@ import extdeps.bmc.webui.nbd_proxy_serve {
   NbdProxyServeTransportIntent,
   bmcweb_session_login_curl_args,
 }
-import std.types { String, NonEmptyStr, List, Bool, Int }
+import std.types { String, NonEmptyStr, List, Bool, Int, CommitSha }
 
 type TypedReconcileKind = TypedReconcileFetch | TypedReconcileRemaster
 
@@ -195,6 +197,8 @@ type ResolvedHostEffectCell =
   | LiveDeployRetractOnHost { node: ComputeHost, spec: DeploymentSpec }
   | LiveDeployEnsureDependencyOnHost { node: ComputeHost, dep: DeploymentDependencyStep }
   | LiveDeployDigestReadbackOnHost { node: ComputeHost, port: Int }
+  | LiveDeploySlotRevisionReadOnHost { node: ComputeHost, spec: DeploymentSpec }
+  | LiveDeploySlotRevisionRecordOnHost { node: ComputeHost, spec: DeploymentSpec, revision: CommitSha }
   | IncompatibleCell { reason: String }
 
 fn converge_plan_identity_mismatch_reason(node: ComputeHost, policy: HostConverge) -> String {
@@ -233,6 +237,10 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
           LiveDeployEnsureDependencyOnHost { node: n, dep: d }
         LiveDeployDigestReadback { port: p } =>
           LiveDeployDigestReadbackOnHost { node: n, port: p }
+        LiveDeploySlotRevisionRead { spec: s } =>
+          LiveDeploySlotRevisionReadOnHost { node: n, spec: s }
+        LiveDeploySlotRevisionRecord { spec: s, revision: r } =>
+          LiveDeploySlotRevisionRecordOnHost { node: n, spec: s, revision: r }
         _ =>
           match effect {
             ShellCommand { script: s } =>

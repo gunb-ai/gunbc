@@ -104,8 +104,14 @@ type DeployRelationFailure
 
 data revision_advance_is_the_admission_note: String = "RevisionAdvance IS THE ADMISSION TOKEN, and it is `sole_constructor` so it cannot be forged from another module. That is the structural composition #7462 was missing: it landed a pure classifier and a witness file and changed no consumer, so 'the freshness precondition exists' was false at the system boundary — a function existed. Calling the classifier near the top of the apply path would repeat that mistake one level in, because the mutating cutover would remain independently callable and the guard would be a convention.\\n\\nInstead the cutover TAKES a RevisionAdvance. The only value of that type in the corpus comes out of decide_deploy_revision's Advance arm, so an unguarded mutation path does not typecheck. The wall consumed here is the existing cross-module `sole_constructor` refusal (SoleConstructorViolation) rather than a new checker; DESIGN §4b records that its completeness for every construction form is unverified, so the honest rung is accepted-refinement-with-executing-refusal, and the discriminating RED is the forge attempt from a foreign module."
 
+data advance_predecessor_note: String = "THE PREDECESSOR IS A COPRODUCT, NOT A CommitSha, BECAUSE 'THE SLOT HAS NEVER RECORDED A REVISION' IS A REAL OBSERVATION AND NOT A MISSING ONE. On the first deploy after this lands, no slot carries a receipt — there is no prior revision, so there is no ancestry question and monotonicity is vacuous rather than violated. Spelling that as AdvanceFromUnrecordedSlot keeps it distinguishable from an ordinary advance in every downstream reader, so the rate at which deploys take the bootstrap arm stays observable.\\n\\nWHAT THIS TYPE MAKES UNWRITABLE, which is the whole reason it is a separate carrier from ObservedDeployedRevision: there is no arm here for an UNREADABLE receipt. 'I could not read the routed slot's revision' and 'the routed slot has recorded no revision' are the DESIGN §5 ⊥-as-ignorance / ⊥-as-answer pair, and only the second can become an admission. The first has no constructor into this type at all, so an unreadable receipt cannot be laundered into a deploy — it is refused by the shape rather than by a check that a later edit could drop.\\n\\nWHY THE BOOTSTRAP ARM CANNOT SILENTLY BECOME PERMANENT: the receipt write is inside the converged path, so a slot that fails to record its revision makes the deploy NotConverged and red. 'Unrecorded forever' therefore cannot happen quietly — it would have to survive a red on every single deploy.\\n\\n🟡 dissolve-on: the served process publishing the immutable identity it was launched with (deploy_slot_revision_receipt_note's own trigger). Once the routed slot always states a revision, this arm becomes unreachable and its witness flips from a bootstrap acceptance to a permanent regression control rather than retiring."
+
+type AdvancePredecessor
+  = AdvanceFromRevision { revision: CommitSha }
+  | AdvanceFromUnrecordedSlot
+
 type RevisionAdvance sole_constructor {
-  from: CommitSha
+  from: AdvancePredecessor
   to: CommitSha
 }
 
@@ -113,6 +119,13 @@ type DeployDecision
   = Keep { reason: KeepReason }
   | Advance { admission: RevisionAdvance }
   | Refuse { cause: DeployRelationFailure }
+
+data observed_deployed_revision_note: String = "THE THREE THINGS THE ROUTED SLOT CAN SAY, kept apart because two of them are answers and one is an admission of ignorance. Recorded carries the revision the slot last converged to. Unrecorded means the receipt does not exist — a determinate fact about a slot that has never completed a deploy under this scheme. Unreadable means the read itself failed (permissions, I/O, a malformed receipt), which is NOT 'no revision' and must never be folded into it: collapsing them is exactly the absorbing shape that lets a broken observation present as a clean slate and re-admit an arbitrary tree.\\n\\nThe malformed case belongs with the failure arm rather than with Unrecorded for the same reason. A receipt whose contents are not a commit sha means something wrote it wrongly, and answering 'then nothing is deployed' would let a corrupted receipt authorize a deploy that monotonicity would otherwise have refused."
+
+type ObservedDeployedRevision
+  = DeployedRevisionRecorded { revision: CommitSha }
+  | DeployedRevisionUnrecorded
+  | DeployedRevisionUnreadable { cause: NonEmptyStr }
 
 data deploy_decision_superseded_is_success_note: String = "A SUPERSEDED CANDIDATE EXITS ZERO, and that is a correctness requirement rather than leniency. A naive guard refuses everything that is not a strict descendant, which turns the ORDINARY case — an older run finishing after a newer one — into a red. That fires on every rapid push pair, so it trains the operator to ignore deploy failures, which is the opposite of a safety property (operator ruling 2026-07-30). CandidateIsAncestor means a NEWER revision is already live: the fleet is in a strictly better state than this run would have produced, so there is nothing to do and nothing to report as failure.\\n\\nUnrelatedHistories and RelationUnverifiable are the only refusals. Refusing on unverifiable is the fail-closed direction: 'I could not determine whether this is newer' is NOT 'this is newer', and collapsing the two is the absorbing-fallback shape DESIGN §5 forbids.\\n\\nA SCHEDULER CANCELLATION IS NOT A DEPLOYMENT VERDICT. SchedulerCancelled(candidate) ≠ Keep{CandidateSuperseded}: the second is an observed ancestry fact, the first means only that GitHub removed a job. Nothing in this module may be produced from a cancellation, which is why the cancellation law lives on the queue side (a candidate may be discarded only when another surviving work item is proven to subsume it) and pending-replacement provides no such proof."
 
@@ -124,10 +137,69 @@ fn decide_deploy_revision(
   match relation {
     SameRevision => Keep { reason: AlreadyActive }
     CandidateIsAncestor => Keep { reason: CandidateSuperseded }
-    DeployedIsAncestor => Advance { admission: RevisionAdvance { from: deployed, to: candidate } }
+    DeployedIsAncestor =>
+      Advance {
+        admission: RevisionAdvance {
+          from: AdvanceFromRevision { revision: deployed },
+          to: candidate,
+        }
+      }
     UnrelatedHistories => Refuse { cause: UnrelatedRevisionHistories }
     RelationUnverifiable { cause: why } => Refuse { cause: RevisionRelationUnverifiable { cause: why } }
   }
+}
+
+data decide_for_observation_is_the_only_entry_note: String = "THE ONLY WAY INTO A DECISION FROM A LIVE OBSERVATION, and it is total over ObservedDeployedRevision so a new observation arm cannot be added without stating its disposition. The ancestry probes are supplied by the caller because they are effects, but they are only CONSULTED on the Recorded arm — the other two arms decide without reference to them, so a caller that cannot run the probes (because there is nothing to compare against) has nothing to fabricate.\\n\\nThis is the composition #7462 lacked. decide_deploy_revision alone still leaves 'what if the slot said nothing' to each caller's judgment, and a caller answering that question locally is a second decision authority — the fork DESIGN §3 forbids, in the one place where getting it wrong redeploys an arbitrary tree."
+
+fn decide_deploy_for_observation(
+  observed: ObservedDeployedRevision,
+  candidate: CommitSha,
+  deployed_is_ancestor_of_candidate: Bool,
+  candidate_is_ancestor_of_deployed: Bool,
+) -> DeployDecision {
+  match observed {
+    DeployedRevisionRecorded { revision: deployed } =>
+      decide_deploy_revision(
+        deployed: deployed,
+        candidate: candidate,
+        relation: deploy_revision_relation_from_probes(
+          deployed: deployed,
+          candidate: candidate,
+          deployed_is_ancestor_of_candidate: deployed_is_ancestor_of_candidate,
+          candidate_is_ancestor_of_deployed: candidate_is_ancestor_of_deployed,
+        ),
+      )
+    DeployedRevisionUnrecorded =>
+      Advance {
+        admission: RevisionAdvance {
+          from: AdvanceFromUnrecordedSlot,
+          to: candidate,
+        }
+      }
+    DeployedRevisionUnreadable { cause: why } =>
+      Refuse { cause: RevisionRelationUnverifiable { cause: why } }
+  }
+}
+
+data advance_predecessor_text_note: String = "The predecessor rendered for the deploy's own log line. The bootstrap arm says so in words rather than printing an empty or zero sha, because a reader who cannot tell 'advancing from nothing' from 'advancing from 0000…' is exactly the reader who will not notice the bootstrap arm firing on every deploy."
+
+fn advance_predecessor_text(from: AdvancePredecessor) -> String {
+  match from {
+    AdvanceFromRevision { revision: r } => r as String
+    AdvanceFromUnrecordedSlot => "(no revision recorded for the routed slot)"
+  }
+}
+
+fn deploy_advance_text(admission: RevisionAdvance) -> NonEmptyStr {
+  join(
+    [
+      "deploy advancing srv1 dashboard from ",
+      advance_predecessor_text(from: admission.from),
+      " to ",
+      admission.to as String,
+    ],
+    ""
+  ) as NonEmptyStr
 }
 
 fn deploy_relation_failure_reason(cause: DeployRelationFailure) -> NonEmptyStr {
