@@ -4,7 +4,13 @@ import std.types { NonEmptyStr, String, List, Bool }
 import std.integer { PositiveInt }
 import std.citation { CitationSelector, fragment_selector }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
-import extdeps.uri { Uri, Https, uri_percent_encode_component }
+import extdeps.uri {
+  Uri,
+  Https,
+  uri_percent_encode_component,
+  UriPercentComponentEncoded,
+  UriPercentComponentRefused,
+}
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -193,14 +199,27 @@ fn pdf_profile_parameter_wire(parameter: PdfProfileParameter) -> String {
   match parameter {
     OpenPage(PdfOpenPage { page: p }) => concat("page=", to_string(p))
     OpenNamedDest(PdfOpenNamedDest { name: n }) =>
-      concat("nameddest=", uri_percent_encode_component(value: n))
+      match uri_percent_encode_component(value: n) {
+        UriPercentComponentEncoded(encoded) => concat("nameddest=", encoded as String)
+        UriPercentComponentRefused { cause: _ } => "nameddest=REFUSED"
+      }
     OpenStructElem(PdfOpenStructElem { struct_id: id }) =>
-      concat("structelem=", uri_percent_encode_component(value: id))
+      match uri_percent_encode_component(value: id) {
+        UriPercentComponentEncoded(encoded) => concat("structelem=", encoded as String)
+        UriPercentComponentRefused { cause: _ } => "structelem=REFUSED"
+      }
     OpenZoom(PdfOpenZoom { scale_percent: p }) => concat("zoom=", to_string(p))
     OpenComment(PdfOpenComment { comment_id: id }) =>
-      concat("comment=", uri_percent_encode_component(value: id))
+      match uri_percent_encode_component(value: id) {
+        UriPercentComponentEncoded(encoded) => concat("comment=", encoded as String)
+        UriPercentComponentRefused { cause: _ } => "comment=REFUSED"
+      }
     OpenView(PdfOpenView { keyword: k, position: pos }) =>
-      concat(concat("view=", uri_percent_encode_component(value: k)), concat(",", pos))
+      match uri_percent_encode_component(value: k) {
+        UriPercentComponentEncoded(encoded) =>
+          concat(concat("view=", encoded as String), concat(",", pos))
+        UriPercentComponentRefused { cause: _ } => concat("view=REFUSED", concat(",", pos))
+      }
     OpenViewRect(PdfOpenViewRect { left: l, top: t, width: w, height: h }) =>
       concat(
         concat(
@@ -218,7 +237,10 @@ fn pdf_profile_parameter_wire(parameter: PdfProfileParameter) -> String {
         concat(",", to_string(b)),
       )
     OpenSearch(PdfOpenSearch { words: w }) =>
-      concat("search=", uri_percent_encode_component(value: w))
+      match uri_percent_encode_component(value: w) {
+        UriPercentComponentEncoded(encoded) => concat("search=", encoded as String)
+        UriPercentComponentRefused { cause: _ } => "search=REFUSED"
+      }
     OpenFdf(PdfOpenFdf { uri: u }) => concat("fdf=", u.locator)
   }
 }

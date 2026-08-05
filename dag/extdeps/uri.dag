@@ -92,7 +92,11 @@ fn parse_href_scheme(url: String) -> ParsedHrefScheme {
   }
 }
 
+<<<<<<< HEAD
 data uri_component_encode_authority_note: String = "RFC 3986 section 2.1 percent-encoding (https://www.rfc-editor.org/rfc/rfc3986#section-2.1) realized by extdeps.uri uri_percent_encode_* over UriUnicodeScalar / UriUtf8Octet. RFC 3986 section 3.3 path grammar is cited at extdeps.uri_path extdeps_external_authority_anchor — same specification, distinct section facts, no parallel section module. UriUnicodeScalar { cp } is the raw carrier; UriValidatedScalar is sole_constructor with admitted_cp: Int and is minted only by uri_validated_scalar_construction (scalar-range and surrogate checks live in that constructor). uri_percent_encode_admitted_scalar_wire accepts UriValidatedScalar only."
+=======
+data uri_component_encode_authority_note: String = "RFC 3986 URI-component percent-encoding for extdeps.uri. Unreserved ALPHA / DIGIT / -._~ pass through; reserved and non-ASCII code points encode as UTF-8 percent-octets. Callers (for example RFC 8118 wire serialization) import this authority; this note does not name them."
+>>>>>>> 39390038f (Fix URI encoder refusal semantics and regen extdeps_uri.rs.)
 
 type UriHexNibble
   = UriNibble0
@@ -115,6 +119,7 @@ type UriHexNibble
 type UriHexNibbleConstruction
   = UriHexNibbleConstructed(UriHexNibble)
   | UriHexNibbleOutOfRange { digit: Int }
+<<<<<<< HEAD
 
 type UriUnicodeScalar { cp: Int }
 
@@ -154,6 +159,8 @@ type UriPercentEncodeRefusalCause
 type UriPercentEncodeComponent
   = UriPercentComponentEncoded(NonEmptyStr)
   | UriPercentComponentRefused { cause: UriPercentEncodeRefusalCause }
+=======
+>>>>>>> 39390038f (Fix URI encoder refusal semantics and regen extdeps_uri.rs.)
 
 fn uri_component_is_unreserved(cp: Int) -> Bool {
   (cp >= 48 && cp <= 57)
@@ -215,6 +222,7 @@ fn uri_hex_nibble_wire(nibble: UriHexNibble) -> String {
     UriNibble7 => "7"
     UriNibble8 => "8"
     UriNibble9 => "9"
+<<<<<<< HEAD
     UriNibbleA => "A"
     UriNibbleB => "B"
     UriNibbleC => "C"
@@ -260,6 +268,34 @@ fn uri_percent_octet_wire(octet: UriUtf8Octet) -> UriPercentOctetWire {
     UriHexNibbleOutOfRange { digit: d } => UriPercentOctetNibbleOutOfRange { digit: d }
     UriHexNibbleConstructed(hi) =>
       match uri_hex_nibble_construction(d: octet.byte % 16) {
+=======
+    UriNibbleA => "a"
+    UriNibbleB => "b"
+    UriNibbleC => "c"
+    UriNibbleD => "d"
+    UriNibbleE => "e"
+    UriNibbleF => "f"
+  }
+}
+
+type UriPercentOctetWire
+  = UriPercentOctetEncoded { wire: String }
+  | UriPercentOctetNibbleOutOfRange { digit: Int }
+
+type UriPercentEncodeFoldState
+  = UriPercentEncodeBuilding { wire: String }
+  | UriPercentEncodeRefused { cause: UriHexNibbleConstruction }
+
+type UriPercentEncodeComponent
+  = UriPercentComponentEncoded(NonEmptyStr)
+  | UriPercentComponentRefused { cause: UriHexNibbleConstruction }
+
+fn uri_percent_octet_wire(byte: Int) -> UriPercentOctetWire {
+  match uri_hex_nibble_construction(d: byte / 16) {
+    UriHexNibbleOutOfRange { digit: d } => UriPercentOctetNibbleOutOfRange { digit: d }
+    UriHexNibbleConstructed(hi) =>
+      match uri_hex_nibble_construction(d: byte % 16) {
+>>>>>>> 39390038f (Fix URI encoder refusal semantics and regen extdeps_uri.rs.)
         UriHexNibbleOutOfRange { digit: d } => UriPercentOctetNibbleOutOfRange { digit: d }
         UriHexNibbleConstructed(lo) =>
           UriPercentOctetEncoded {
@@ -269,6 +305,7 @@ fn uri_percent_octet_wire(octet: UriUtf8Octet) -> UriPercentOctetWire {
   }
 }
 
+<<<<<<< HEAD
 fn uri_percent_encode_two_octets(lead: UriUtf8Octet, trail: UriUtf8Octet) -> UriPercentEncodeFoldState {
   match uri_percent_octet_wire(octet: lead) {
     UriPercentOctetEncoded { wire: w0 } =>
@@ -382,12 +419,45 @@ fn uri_percent_encode_admitted_scalar_wire(scalar: UriValidatedScalar) -> UriPer
                   UriUtf8OctetConstructed(b3) =>
                     uri_percent_encode_four_octets(b0: b0, b1: b1, b2: b2, b3: b3)
                 }
+=======
+fn uri_percent_encode_code_point_state(cp: Int) -> UriPercentEncodeFoldState {
+  if uri_component_is_unreserved(cp: cp) {
+    UriPercentEncodeBuilding { wire: from_code_point(cp: cp) }
+  } else if cp < 128 {
+    match uri_percent_octet_wire(byte: cp) {
+      UriPercentOctetEncoded { wire: w } => UriPercentEncodeBuilding { wire: w }
+      UriPercentOctetNibbleOutOfRange { digit: d } =>
+        UriPercentEncodeRefused { cause: UriHexNibbleOutOfRange { digit: d } }
+    }
+  } else if cp < 2048 {
+    match uri_percent_encode_code_point_state(cp: 192 + (cp / 64)) {
+      UriPercentEncodeRefused { cause: cause } => UriPercentEncodeRefused { cause: cause }
+      UriPercentEncodeBuilding { wire: lead } =>
+        match uri_percent_encode_code_point_state(cp: 128 + (cp % 64)) {
+          UriPercentEncodeRefused { cause: cause } => UriPercentEncodeRefused { cause: cause }
+          UriPercentEncodeBuilding { wire: trail } =>
+            UriPercentEncodeBuilding { wire: concat(lead, trail) }
+        }
+    }
+  } else {
+    match uri_percent_encode_code_point_state(cp: 224 + (cp / 4096)) {
+      UriPercentEncodeRefused { cause: cause } => UriPercentEncodeRefused { cause: cause }
+      UriPercentEncodeBuilding { wire: b0 } =>
+        match uri_percent_encode_code_point_state(cp: 128 + ((cp / 64) % 64)) {
+          UriPercentEncodeRefused { cause: cause } => UriPercentEncodeRefused { cause: cause }
+          UriPercentEncodeBuilding { wire: b1 } =>
+            match uri_percent_encode_code_point_state(cp: 128 + (cp % 64)) {
+              UriPercentEncodeRefused { cause: cause } => UriPercentEncodeRefused { cause: cause }
+              UriPercentEncodeBuilding { wire: b2 } =>
+                UriPercentEncodeBuilding { wire: concat(concat(b0, b1), b2) }
+>>>>>>> 39390038f (Fix URI encoder refusal semantics and regen extdeps_uri.rs.)
             }
         }
     }
   }
 }
 
+<<<<<<< HEAD
 fn uri_percent_encode_code_point(cp: Int) -> UriPercentEncodeComponent {
   match uri_unicode_scalar_construction(cp: cp) {
     UriUnicodeScalarSurrogateRefused { cp: c } =>
@@ -474,5 +544,25 @@ fn uri_percent_encode_code_points(code_points: List<Int>) -> UriPercentEncodeCom
           join(uri_percent_encode_outcome_wires(outcomes: outcomes), "") as NonEmptyStr,
         )
     }
+=======
+fn uri_percent_encode_component(value: NonEmptyStr) -> UriPercentEncodeComponent {
+  match fold(
+    (value as String) |> chars,
+    init: UriPercentEncodeBuilding { wire: "" },
+    f: fn(acc, cp) {
+      match acc {
+        UriPercentEncodeRefused { cause: _ } => acc
+        UriPercentEncodeBuilding { wire: prefix } =>
+          match uri_percent_encode_code_point_state(cp: cp) {
+            UriPercentEncodeRefused { cause: cause } => UriPercentEncodeRefused { cause: cause }
+            UriPercentEncodeBuilding { wire: encoded } =>
+              UriPercentEncodeBuilding { wire: concat(prefix, encoded) }
+          }
+      }
+    },
+  ) {
+    UriPercentEncodeRefused { cause: cause } => UriPercentComponentRefused { cause: cause }
+    UriPercentEncodeBuilding { wire: wire } => UriPercentComponentEncoded(wire as NonEmptyStr)
+>>>>>>> 39390038f (Fix URI encoder refusal semantics and regen extdeps_uri.rs.)
   }
 }

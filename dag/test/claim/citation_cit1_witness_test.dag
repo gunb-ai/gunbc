@@ -38,7 +38,15 @@ import gunbc.citation.pdf_safe_profile {
   BaseLocatorAlreadyCarriesFragmentFromRfc,
   SafeParameterConstructionRefusedInSequence,
 }
-import extdeps.uri { Uri, Https, uri_percent_encode_component }
+import extdeps.uri {
+  Uri,
+  Https,
+  uri_percent_encode_component,
+  UriPercentComponentEncoded,
+  UriPercentComponentRefused,
+  uri_hex_nibble_construction,
+  UriHexNibbleOutOfRange,
+}
 import std.types { Bool, NonEmptyStr }
 
 data witness_pdf_base_uri: Uri = Uri {
@@ -166,7 +174,17 @@ test fn pdf_profile_parameter_wire_encodes_space_in_nameddest() -> Bool {
 }
 
 test fn uri_percent_encode_component_round_trip_unreserved() -> Bool {
-  uri_percent_encode_component(value: "page-1_ok" as NonEmptyStr) == ("page-1_ok" as NonEmptyStr)
+  match uri_percent_encode_component(value: "page-1_ok" as NonEmptyStr) {
+    UriPercentComponentEncoded(encoded) => encoded == ("page-1_ok" as NonEmptyStr)
+    UriPercentComponentRefused { cause: _ } => false
+  }
+}
+
+test fn uri_hex_nibble_construction_refuses_out_of_range_digit() -> Bool {
+  match uri_hex_nibble_construction(d: 16) {
+    UriHexNibbleOutOfRange { digit: 16 } => true
+    _ => false
+  }
 }
 
 test fn pdf_open_fragment_selector_conforms_to_rfc_8118() -> Bool {
