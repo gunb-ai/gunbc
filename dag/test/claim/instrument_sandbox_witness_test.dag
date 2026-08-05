@@ -2,17 +2,13 @@ module test.claim.instrument_sandbox_witness
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { String, Bool, Int, List }
-import gunbc.roadmap_serve {
-  InstrumentSandboxPageHandler, roadmap_serve_invoke_for_instance,
-}
-import gunbc.roadmap_dashboard_instance { srv2_preview_dashboard_instance }
 import gunbc.roadmap_instrument_sandbox {
-  instrument_sandbox_page, instrument_css, instrument_css_at_role,
-  instrument_emission_root_css_for, audition_card_class, audition_emission_var,
-  audition_subject_key, audition_subject_role, live_program_view_result,
+  instrument_css, instrument_css_at_role,
+  instrument_emission_root_css_for, audition_emission_var,
+  audition_subject_key, audition_subject_role,
 }
 import gunbc.design.instrument_audition {
-  AuditionIntensity, AuditionRestrained, AuditionExpressive, AuditionHero, audition_intensities,
+  AuditionIntensity, AuditionRestrained, AuditionExpressive, AuditionHero,
   AuditionAdmission, AuditionAdmitted, AuditionEmissionRefused,
   AuditionAttractionOutsideEnvelope, AuditionDisplacementOverBudget, admit_audition,
 }
@@ -20,35 +16,12 @@ import gunbc.design.instrument_physical { preference_default, instrument_displac
 import gunbc.design.salience {
   SalienceRole, SalienceFocal, SalienceSupporting, SalienceGround, salience_key,
 }
-import gunbc.roadmap_program_view {
-  V1ProgramViewResult, ProgramViewDerived, ProgramViewRefused, V1DeletionProgramView,
-}
-import extdeps.http.server { ServeHttpRequest, ServeHttpResponse, GET, media_type_wire_label }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data instrument_sandbox_witness_note: String = "RESHAPED AROUND THE PRODUCTION JOINS, because the first set proved less than it claimed (review finding, 2026-08-05). Three of its claims were substring theatre: the role witness searched the page for the words focal / supporting / ground / critical, which any page mentioning salience contains whether or not a single role was derived; the theme-block helper checked that one variable existed somewhere and that three selectors existed somewhere, never that the variable appeared INSIDE each block; and the press witness equated one translateY rule with a realized CRT glitch. Worst of all, nothing tested the property that turned out to be broken — that a REFUSED audition cannot paint. The claims below hold the joins instead: the served role is the one the projection derived, emission is present exactly when the admission grants it and absent at every refusing role, the emission variable occurs inside all three theme blocks by position, and the page reads the live derived view rather than an authored list."
+data instrument_sandbox_witness_note: String = "RESHAPED AROUND THE PRODUCTION JOINS, because the first set proved less than it claimed (review finding, 2026-08-05). Three of its claims were substring theatre: the role witness searched the page for the words focal / supporting / ground / critical, which any page mentioning salience contains whether or not a single role was derived; the theme-block helper checked that one variable existed somewhere and that three selectors existed somewhere, never that the variable appeared INSIDE each block; and the press witness equated one translateY rule with a realized CRT glitch. Worst of all, nothing tested the property that turned out to be broken — that a REFUSED audition cannot paint."
 
-fn fixture_request(path: String) -> ServeHttpRequest {
-  ServeHttpRequest { method: GET, path: path, body: "" }
-}
-
-fn served() -> ServeHttpResponse {
-  roadmap_serve_invoke_for_instance(
-    instance: srv2_preview_dashboard_instance(),
-    handler: InstrumentSandboxPageHandler,
-    params: [],
-    request: fixture_request(path: "/sandbox/instrument"),
-  )
-}
-
-fn last_segment(s: String, marker: String) -> String {
-  fold(split(s: s, delimiter: marker), init: "", f: (acc, part) => part)
-}
-
-fn first_segment(s: String, marker: String) -> String {
-  fold(split(s: s, delimiter: marker), init: "", f: (acc, part) => if acc == "" { part } else { acc })
-}
+data mechanism_half_note: String = "THE MECHANISM HALF, and the split is measured rather than aesthetic. Every claim below is a property of the register's own gates — which role the projection derives, whether emission is granted, whether a refused role can paint, whether the emission variable lands inside each theme block — and each measured 0-2ms by execution (claim_batch attribution, 2026-08-05). None of them renders the served page or reads the live program view, which is why they are cheap and why they belong per-PR: the 2026-08-04 admission ruling holds that the mechanism half of a live-population subject is NEVER the part that gets deferred. The page-rendering and live-view claims measured 5074ms thread-CPU together, exceeded the fast-lane budget, and moved to dag/test/claim/long/instrument_sandbox_live_witness_test.dag with a declared ceiling and a named executing consumer — not deleted, and not left in a directory that quietly removes them from discovery. Read that file's header for the cost attribution and the dissolve-on that brings these back together."
 
 fn emission_var_ref(i: AuditionIntensity) -> String {
   concat("--", concat(audition_emission_var(i: i), ":"))
@@ -70,27 +43,12 @@ fn admission_grants(role: SalienceRole, i: AuditionIntensity) -> Bool {
   }
 }
 
-fn witness_the_instrument_path_serves_html() -> Bool {
-  let r = served()
-  r.status == 200
-    && media_type_wire_label(m: r.content_type) == "text/html; charset=utf-8"
-    && string_contains(s: r.body, pattern: "gunbc — instrument study")
-    && string_contains(s: r.body, pattern: "lang=\"en\"")
-    && string_contains(s: r.body, pattern: "width=device-width")
+fn last_segment(s: String, marker: String) -> String {
+  fold(split(s: s, delimiter: marker), init: "", f: (acc, part) => part)
 }
 
-data study_not_instrument_note: String = "The page must not describe itself as the operable instrument, and the header must not carry controls it cannot operate. The dead-control claim is checked against the MARKUP, not the whole document: the register stylesheet is inlined in a style element and legitimately contains .theme-toggle and .sound-toggle rules, so searching the raw body for those words finds the CSS and reds on a page that has no such buttons. The first version of this claim did exactly that and was wrong for a reason worth keeping — a negative substring assertion over a document that embeds its own stylesheet is testing the stylesheet."
-
-fn body_markup(r: ServeHttpResponse) -> String {
-  last_segment(s: r.body, marker: "</style>")
-}
-
-fn witness_the_page_calls_itself_a_study_and_carries_no_dead_controls() -> Bool {
-  let r = served()
-  let markup = body_markup(r: r)
-  string_contains(s: r.body, pattern: "instrument — static study")
-    && !string_contains(s: markup, pattern: "theme-toggle")
-    && !string_contains(s: markup, pattern: "sound-toggle")
+fn first_segment(s: String, marker: String) -> String {
+  fold(split(s: s, delimiter: marker), init: "", f: (acc, part) => if acc == "" { part } else { acc })
 }
 
 data derived_role_witness_note: String = "The load-bearing claim: the role the audition is admitted at is the one the projection derived for the selected subject, not a literal."
@@ -136,62 +94,19 @@ fn witness_the_emission_var_occurs_inside_every_theme_block() -> Bool {
     && string_contains(s: media_block, pattern: ":root:not([data-theme])")
 }
 
-data live_world_note: String = "The page reads the world V0 derives, live. If the projection refuses, the page renders the located causes rather than a smaller program."
+data press_css_note: String = "The CSS half of the press specimen — the bounded translation on the focusable control and the displacement budget behind it. The markup half (that the rendered page actually carries a button) needs the page, so it lives with the live claims; keeping the two halves apart is what lets the cheap half stay per-PR instead of riding the expensive one's budget."
 
-fn witness_the_page_reads_the_live_derived_program_view() -> Bool {
-  match live_program_view_result() {
-    ProgramViewDerived { view } => count(view.finish_lines) == 4 && count(view.fronts) > 0
-    ProgramViewRefused { causes } => false
-  }
-}
-
-fn witness_the_page_renders_real_remaining_and_constraint_readings() -> Bool {
-  let r = served()
-  string_contains(s: r.body, pattern: "program / remaining")
-    && string_contains(s: r.body, pattern: "outcome / status")
-    && string_contains(s: r.body, pattern: "node / why")
-    && string_contains(s: r.body, pattern: "open fronts")
-}
-
-data front_grain_witness_note: String = "The claim review 48579 found missing: the front grain renders the FIRST contributing front. The oracle is independent of the code under test — V0 derives the exemplar's contributing set as namespace-pderive then v2-generation, so the page must name the first front's own title and must NOT name the second's. A last-wins fold renders the second, which is exactly what the page did before the fix, so this claim reds on the real defect rather than on a restatement of the fix. Reading the rendered name rather than the selection function is deliberate: the defect was in what the page showed."
-
-fn witness_the_front_grain_shows_the_first_contributing_front() -> Bool {
-  let r = served()
-  string_contains(s: r.body, pattern: "front / status")
-    && string_contains(s: r.body, pattern: "Namespace / P-derive")
-    && !string_contains(s: body_markup(r: r), pattern: "V2 generation and admission")
-}
-
-data evidence_refusal_note: String = "Evidence depth refuses, and unlike the previous Why refusal this one is real: gunbc.roadmap_program_view records that the verification-receipt join is test-only, so no carrier can answer it yet. The witness pins the cause text so a future reader can tell this refusal from the fabricated one it replaced."
-
-fn witness_red_evidence_depth_refuses_with_its_real_cause() -> Bool {
-  let r = served()
-  string_contains(s: r.body, pattern: "evidence / status · compiler-fixed-point — unavailable:")
-    && string_contains(s: r.body, pattern: "verification-receipt join is test-only")
-}
-
-data press_is_a_press_note: String = "The press specimen is asserted as what it is — a bounded translation on a focusable control — and explicitly NOT as a realized CRT glitch. The keyboard claim is the one that matters: the specimen is a button, so it is reachable without a pointer."
-
-fn witness_the_press_specimen_is_a_bounded_translation_on_a_focusable_control() -> Bool {
-  let r = served()
+fn witness_the_press_response_is_a_bounded_translation() -> Bool {
   let css = instrument_css()
   string_contains(s: css, pattern: ".instrument-frame:active")
     && string_contains(s: css, pattern: "translateY(-3px)")
-    && string_contains(s: r.body, pattern: "<button")
-    && string_contains(s: r.body, pattern: "impulse transient")
     && instrument_displacement_px(p: preference_default) == 6
 }
 
 test fn instrument_sandbox_keystone_holds() -> Bool {
-  witness_the_instrument_path_serves_html()
-    && witness_the_page_calls_itself_a_study_and_carries_no_dead_controls()
-    && witness_the_served_role_is_the_derived_one()
+  witness_the_served_role_is_the_derived_one()
     && witness_emission_is_present_exactly_when_the_admission_grants_it()
     && witness_red_a_refused_audition_paints_nothing()
     && witness_the_emission_var_occurs_inside_every_theme_block()
-    && witness_the_page_reads_the_live_derived_program_view()
-    && witness_the_page_renders_real_remaining_and_constraint_readings()
-    && witness_the_front_grain_shows_the_first_contributing_front()
-    && witness_red_evidence_depth_refuses_with_its_real_cause()
-    && witness_the_press_specimen_is_a_bounded_translation_on_a_focusable_control()
+    && witness_the_press_response_is_a_bounded_translation()
 }

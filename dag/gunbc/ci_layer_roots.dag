@@ -429,6 +429,12 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     dissolve_on: excl_substrate_long_lane_dissolve
   },
   WitnessExclusionRow {
+    pattern: "long/instrument_sandbox_live_witness_test.dag",
+    classification: FalsifierSubstrateLongLane,
+    reason: excl_substrate_long_lane_reason,
+    dissolve_on: excl_substrate_long_lane_dissolve
+  },
+  WitnessExclusionRow {
     pattern: "synthetic_orphan_admission_witness_test.dag",
     classification: NoConsumer,
     reason: "deliberate no-consumer synthetic path: the admission RED control keys on this reserved (nonexistent) entry to prove enrolled-with-zero-consumers refuses (witness_admission_test, cli_run admission tests)",
@@ -1169,6 +1175,12 @@ data falsifier_substrate_long_lane_rows: List<SubstrateLongLaneRow> = [
     function: "witness_production_admissions_close_contract_holds",
     reason: "v2_emitter_direct_rust_door_acceptance_admissions runs both production folds including ingest-path written-source assessment; exceeds 5s fast-lane budget. Closing frontier nonzero until ingest-path establishes WrittenSourceIndependentOfSeedEmitter (functional gap, not slowness alone)",
     dissolve_on: "production admissions close with frontier zero AND eval lands under gunbc_ci_fast_lane_witness_eval_budget — then re-enrolls per-PR discovery"
+  },
+  SubstrateLongLaneRow {
+    entry: "dag/test/claim/long/instrument_sandbox_live_witness_test.dag",
+    function: "instrument_sandbox_live_keystone_holds",
+    reason: "5074ms thread-CPU measured in falsifier discovery batch 3 (run 30986055960, BudgetExceeded against the 5000ms fast-lane budget). Attribution by execution (claim_batch, loyal-bat-373, 2026-08-05) puts 18510 of 19098ms of one served-page render inside a single live_program_view_result call, so every claim that renders the page or reads the live view pays it once and the cheap register-gate claims do not — those stay per-PR in dag/test/claim/instrument_sandbox_witness_test.dag at 0-2ms each. NOT declared irreducible corpus breadth: the projection's inputs cost 263ms to build (25 declared roadmap nodes, edges, receipts, finish-line and front specs) and deriving over them costs 5132ms, roughly 20x, at n=25. The cost is diffuse rather than one hot spot — program_relax_to_fixpoint early-exits correctly and roadmap_dependency_graph is a trivial map, but program_depth_lookup folds every row with no early exit, membership is tested by linear any-scans at every level, reverse adjacency is rebuilt per finish line where roadmap_focus already hoists it, and program_dedupe_ids rescans its accumulator per element, all nested inside per-node/per-front/per-line maps",
+    dissolve_on: "gunbc.roadmap_program_view's derivation is restructured off nested linear scans onto keyed lookup and eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run — then these claims re-merge into dag/test/claim/instrument_sandbox_witness_test.dag per-PR and this row, the exclusion row, and dag/test/claim/long/instrument_sandbox_live_witness_test.dag delete together"
   }
 ]
 
