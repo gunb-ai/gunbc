@@ -2642,6 +2642,54 @@ pub fn direct_call_shape_diags(
             } else {
                 Rc::new(vec![])
             };
+        // Mirrors src/v1/04_infer.dag call_arg_bound_param_at / duplicate_label_diags
+        // (cursor review 48724 / 48732): the interpreter (v1_interpreter.rs
+        // call_function_inner) binds `bindings` by resolved parameter symbol
+        // regardless of whether the caller wrote an argument positionally or by
+        // label, and refuses a second insert into the same key. This seam must
+        // resolve the same key (the parameter a positional argument fills by its
+        // running positional index), not just compare caller label strings, or a
+        // mixed positional-then-named call to the same parameter compiles clean
+        // while the interpreter refuses it.
+        let positionally_eligible_names = Rc::new({
+            let mut __result = Vec::new();
+            for p in sig_params.clone().iter().cloned() {
+                if param_binds_positionally(p.clone(), source_indices.clone()) {
+                    __result.push(authored_name_at(source_indices.clone(), p.clone()));
+                }
+            }
+            __result
+        });
+        let call_arg_bound_param_at = |idx: i64,
+                                       typed_args: Rc<Vec<Rc<Node>>>,
+                                       source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+                                       declared_names: Rc<Vec<String>>,
+                                       positionally_eligible_names: Rc<Vec<String>>|
+         -> Option<String> {
+            let mut bound: Option<String> = None;
+            let mut pos: i64 = 0;
+            for ta in typed_args.clone().iter().cloned().take((idx + 1) as usize) {
+                match arg_name_at(ta.clone(), source_indices.clone()) {
+                    Some(label) => {
+                        bound = declared_names
+                            .clone()
+                            .iter()
+                            .cloned()
+                            .find(|pn| call_arg_label_matches_param(pn.clone(), label.clone()));
+                    }
+                    None => {
+                        bound = positionally_eligible_names
+                            .clone()
+                            .iter()
+                            .cloned()
+                            .skip(pos as usize)
+                            .next();
+                        pos += 1;
+                    }
+                }
+            }
+            bound
+        };
         let duplicate_label_diags = Rc::new({
             let mut __result = Vec::new();
             for pair in Rc::new(
@@ -2659,7 +2707,14 @@ pub fn direct_call_shape_diags(
                 __result.extend(
                     (*match arg_name_at(pair.1.clone(), source_indices.clone()) {
                         Some(label) => {
-                            let earlier_dup = {
+                            let current_bound = call_arg_bound_param_at(
+                                pair.0.clone(),
+                                typed_args.clone(),
+                                source_indices.clone(),
+                                declared_names.clone(),
+                                positionally_eligible_names.clone(),
+                            );
+                            let earlier_dup = current_bound.is_some() && {
                                 let mut __found = false;
                                 for other in Rc::new(
                                     typed_args
@@ -2673,16 +2728,14 @@ pub fn direct_call_shape_diags(
                                 .iter()
                                 .cloned()
                                 {
-                                    if ((other.0.clone() < pair.0.clone())
-                                        && match arg_name_at(
-                                            other.1.clone(),
+                                    if (other.0.clone() < pair.0.clone())
+                                        && (call_arg_bound_param_at(
+                                            other.0.clone(),
+                                            typed_args.clone(),
                                             source_indices.clone(),
-                                        ) {
-                                            Some(other_label) => {
-                                                (other_label.clone() == label.clone())
-                                            }
-                                            None => false,
-                                        })
+                                            declared_names.clone(),
+                                            positionally_eligible_names.clone(),
+                                        ) == current_bound)
                                     {
                                         __found = true;
                                         break;
