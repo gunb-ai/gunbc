@@ -1,0 +1,34 @@
+module extdeps.languages.yaml.subject
+
+import std.types { String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "yaml.org/spec/1.2.2/"
+  }
+}
+
+data yaml_format_subject_note: String = "YAML, cited to the YAML 1.2.2 specification (verified live 2026-08-04 by fetching the cited locator and confirming its title and publisher from the response, per the D0 verify-or-refuse rule): the fetched document is 'YAML Ain't Markup Language (YAML) version 1.2', revision 1.2.2 dated 1 October 2021, maintained by the YAML Language Development Team. The upstream states this revision makes no normative changes from YAML 1.2 and corrects errors and clarity only — so 1.2 is the normative content and 1.2.2 is the readable edition of it, which is why the locator names the revision while the subject stays revision-free."
+
+type Yaml
+  = | YamlTarget
+
+data yaml_format_subject: Yaml = YamlTarget
+
+data yaml_format_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.languages.yaml.subject",
+      decl_name: "yaml_format_subject",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data extdeps_model_scope: ExternalModelScope = yaml_format_model_scope

@@ -1,0 +1,311 @@
+module v2.lens.enforcement.complexity_contract_subject
+
+import v2.lens.common.construction_justification {
+  ConstructionJustification,
+  WallAfterGrounding,
+  RatchetForever
+}
+import std.disposition { SingleAuthority }
+import v2.std.collection { List }
+import v2.std.algebra { contains, for_all, fold_list, length }
+import v2.std.logic { Bool }
+import v2.std.integer { Int }
+
+data complexity_contract_subject_split_note: String = "C0(c) of the v2 complexity capability parity program (operator-ruled 2026-08-05). The former single lens_contract_complexity row carried RatchetForever over a MIXED population — decidable derived-kernel capability beside genuinely undecidable optimality residue. This module is the scope authority: two disjoint contract subjects with typed claim rosters forming ComplexityMixedRowClaim. What partition totality does and does not prove is stated in complexity_contract_subject_scope_note — read that note before quoting this carrier. The split is NOT an in-place class flip; each subject has its own LensContract row and LensIdV0. Dissolution for derived-kernel: ParityC2 ComplexitySummary restored on v2.lens.cost (SingleAuthority wall once the summary carrier exists and a live consumer is enrolled). Optimality stays permanent AuditOnly / RatchetForever."
+
+data complexity_contract_subject_scope_note: String = "Scope, stated so the partition witness cannot overclaim. PROVEN by this carrier and complexity_contract_subjects_partition_legacy_mixed_row: DerivedKernel and OptimalityResidue are disjoint; ComplexityDerivedKernelClaim and ComplexityOptimalityClaim are closed coproducts whose union is ComplexityMixedRowClaim; every variant in that union lands in exactly one subject roster via complexity_mixed_row_claim_subject; roster distinctness is validated by complexity_scope_roster_has_no_duplicates; and each replacement LensContract row carries the matching boundary class (WallAfterGrounding/SingleAuthority for derived-kernel, RatchetForever for optimality). ComplexityMixedRowClaim is an AUTHORED enumeration of what the deleted mixed row covered — nine derived-kernel variants and three optimality variants written here, not derived from lens_contract_complexity as it stood. NOT PROVEN: that this enumeration is complete over what lens_contract_complexity actually claimed. A claim the mixed row covered but this vocabulary omits would be dropped silently by the split; every witness in this lane would stay green and nothing here would red. C0(c2) — mixed-row claim totality — is the successor slice that closes this gap: derive the claim population from the deleted LensContract fact and its bound construction taxonomy, then join the authored rosters against that derived population so an omitted claim is detectable. Until C0(c2) lands, claim-vocabulary completeness is an explicit tracked stall, not an assertion of this carrier."
+
+type ComplexityContractSubject = DerivedKernel | OptimalityResidue
+
+type ComplexityDerivedKernelClaim
+  = AsymptoticCostProjection
+  | ComplexityClassComparison
+  | BoundedWorkSpanComposition
+  | BoundedSummation
+  | OutputSizeDerivation
+  | PeakSpaceDerivation
+  | BoundedInputEvaluation
+  | AcyclicInterproceduralSummary
+  | DescentGroundedSccAnalysis
+
+type ComplexityOptimalityClaim
+  = GlobalOptimality
+  | CompleteRewriteDiscovery
+  | UnrestrictedSemanticComplexityEquivalence
+
+type ComplexityMixedRowClaim
+  = DerivedClaim { claim: ComplexityDerivedKernelClaim }
+  | OptimalityClaim { claim: ComplexityOptimalityClaim }
+
+fn complexity_mixed_row_claim_subject(c: ComplexityMixedRowClaim) -> ComplexityContractSubject {
+  match c {
+    DerivedClaim { claim: _ } => DerivedKernel
+    OptimalityClaim { claim: _ } => OptimalityResidue
+  }
+}
+
+fn complexity_derived_kernel_claim_eq(
+  left: ComplexityDerivedKernelClaim,
+  right: ComplexityDerivedKernelClaim
+) -> Bool {
+  match left {
+    AsymptoticCostProjection => match right {
+      AsymptoticCostProjection => true
+      _ => false
+    }
+    ComplexityClassComparison => match right {
+      ComplexityClassComparison => true
+      _ => false
+    }
+    BoundedWorkSpanComposition => match right {
+      BoundedWorkSpanComposition => true
+      _ => false
+    }
+    BoundedSummation => match right {
+      BoundedSummation => true
+      _ => false
+    }
+    OutputSizeDerivation => match right {
+      OutputSizeDerivation => true
+      _ => false
+    }
+    PeakSpaceDerivation => match right {
+      PeakSpaceDerivation => true
+      _ => false
+    }
+    BoundedInputEvaluation => match right {
+      BoundedInputEvaluation => true
+      _ => false
+    }
+    AcyclicInterproceduralSummary => match right {
+      AcyclicInterproceduralSummary => true
+      _ => false
+    }
+    DescentGroundedSccAnalysis => match right {
+      DescentGroundedSccAnalysis => true
+      _ => false
+    }
+  }
+}
+
+fn complexity_optimality_claim_eq(
+  left: ComplexityOptimalityClaim,
+  right: ComplexityOptimalityClaim
+) -> Bool {
+  match left {
+    GlobalOptimality => match right {
+      GlobalOptimality => true
+      _ => false
+    }
+    CompleteRewriteDiscovery => match right {
+      CompleteRewriteDiscovery => true
+      _ => false
+    }
+    UnrestrictedSemanticComplexityEquivalence => match right {
+      UnrestrictedSemanticComplexityEquivalence => true
+      _ => false
+    }
+  }
+}
+
+fn complexity_contract_subject_eq(
+  left: ComplexityContractSubject,
+  right: ComplexityContractSubject
+) -> Bool {
+  match left {
+    DerivedKernel => match right {
+      DerivedKernel => true
+      OptimalityResidue => false
+    }
+    OptimalityResidue => match right {
+      DerivedKernel => false
+      OptimalityResidue => true
+    }
+  }
+}
+
+data complexity_derived_kernel_scope_statement: List<ComplexityDerivedKernelClaim> = [
+  AsymptoticCostProjection,
+  ComplexityClassComparison,
+  BoundedWorkSpanComposition,
+  BoundedSummation,
+  OutputSizeDerivation,
+  PeakSpaceDerivation,
+  BoundedInputEvaluation,
+  AcyclicInterproceduralSummary,
+  DescentGroundedSccAnalysis
+]
+
+data complexity_optimality_scope_statement: List<ComplexityOptimalityClaim> = [
+  GlobalOptimality,
+  CompleteRewriteDiscovery,
+  UnrestrictedSemanticComplexityEquivalence
+]
+
+data complexity_legacy_mixed_row_scope: List<ComplexityMixedRowClaim> = [
+  DerivedClaim { claim: AsymptoticCostProjection },
+  DerivedClaim { claim: ComplexityClassComparison },
+  DerivedClaim { claim: BoundedWorkSpanComposition },
+  DerivedClaim { claim: BoundedSummation },
+  DerivedClaim { claim: OutputSizeDerivation },
+  DerivedClaim { claim: PeakSpaceDerivation },
+  DerivedClaim { claim: BoundedInputEvaluation },
+  DerivedClaim { claim: AcyclicInterproceduralSummary },
+  DerivedClaim { claim: DescentGroundedSccAnalysis },
+  OptimalityClaim { claim: GlobalOptimality },
+  OptimalityClaim { claim: CompleteRewriteDiscovery },
+  OptimalityClaim { claim: UnrestrictedSemanticComplexityEquivalence }
+]
+
+data complexity_derived_kernel_boundary: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
+}
+
+data complexity_optimality_boundary: ConstructionJustification = ConstructionJustification {
+  class: RatchetForever
+}
+
+fn complexity_mixed_row_claim_belongs_to_subject(
+  claim: ComplexityMixedRowClaim,
+  subject: ComplexityContractSubject
+) -> Bool {
+  complexity_contract_subject_eq(
+    left: complexity_mixed_row_claim_subject(c: claim),
+    right: subject
+  )
+}
+
+fn complexity_scope_roster_has_no_duplicates(
+  claim: ComplexityDerivedKernelClaim,
+  planted_duplicate: ComplexityDerivedKernelClaim
+) -> Bool {
+  let roster = [
+    claim,
+    planted_duplicate
+  ]
+  fold_list(
+    xs: roster,
+    empty: true,
+    cons: fn(acc, item) {
+      if acc {
+        let prior_count = fold_list(
+          xs: roster,
+          empty: 0,
+          cons: fn(count, other) {
+            if complexity_derived_kernel_claim_eq(left: item, right: other) {
+              count + 1
+            } else {
+              count
+            }
+          }
+        )
+        prior_count == 1
+      } else {
+        false
+      }
+    }
+  )
+}
+
+fn complexity_derived_kernel_scope_has_no_duplicates() -> Bool {
+  complexity_scope_roster_has_no_duplicates(
+    claim: AsymptoticCostProjection,
+    planted_duplicate: ComplexityClassComparison
+  )
+    && fold_list(
+      xs: complexity_derived_kernel_scope_statement,
+      empty: true,
+      cons: fn(acc, item) {
+        if acc {
+          let prior_count = fold_list(
+            xs: complexity_derived_kernel_scope_statement,
+            empty: 0,
+            cons: fn(count, other) {
+              if complexity_derived_kernel_claim_eq(left: item, right: other) {
+                count + 1
+              } else {
+                count
+              }
+            }
+          )
+          prior_count == 1
+        } else {
+          false
+        }
+      }
+    )
+}
+
+fn complexity_optimality_scope_has_no_duplicates() -> Bool {
+  fold_list(
+    xs: complexity_optimality_scope_statement,
+    empty: true,
+    cons: fn(acc, item) {
+      if acc {
+        let prior_count = fold_list(
+          xs: complexity_optimality_scope_statement,
+          empty: 0,
+          cons: fn(count, other) {
+            if complexity_optimality_claim_eq(left: item, right: other) {
+              count + 1
+            } else {
+              count
+            }
+          }
+        )
+        prior_count == 1
+      } else {
+        false
+      }
+    }
+  )
+}
+
+fn complexity_derived_kernel_scope_is_distinct() -> Bool {
+  complexity_derived_kernel_scope_has_no_duplicates()
+}
+
+fn complexity_optimality_scope_is_distinct() -> Bool {
+  complexity_optimality_scope_has_no_duplicates()
+}
+
+fn complexity_legacy_row_claim_maps_to_declared_subject(claim: ComplexityMixedRowClaim) -> Bool {
+  match claim {
+    DerivedClaim { claim: dk } =>
+      contains(
+        xs: complexity_derived_kernel_scope_statement,
+        item: dk,
+        eq: complexity_derived_kernel_claim_eq
+      )
+    OptimalityClaim { claim: ok } =>
+      contains(
+        xs: complexity_optimality_scope_statement,
+        item: ok,
+        eq: complexity_optimality_claim_eq
+      )
+  }
+}
+
+fn complexity_contract_subjects_partition_legacy_mixed_row() -> Bool {
+  complexity_derived_kernel_scope_is_distinct()
+    && complexity_optimality_scope_is_distinct()
+    && for_all(
+      xs: complexity_legacy_mixed_row_scope,
+      predicate: fn(claim) { complexity_legacy_row_claim_maps_to_declared_subject(claim: claim) }
+    )
+    && length(xs: complexity_legacy_mixed_row_scope) == (length(xs: complexity_derived_kernel_scope_statement) + length(xs: complexity_optimality_scope_statement))
+}
+
+fn complexity_derived_kernel_boundary_is_wall_after_grounding() -> Bool {
+  match complexity_derived_kernel_boundary.class {
+    WallAfterGrounding { dissolves_to: _ } => true
+    _ => false
+  }
+}
+
+fn complexity_optimality_boundary_is_ratchet_forever() -> Bool {
+  match complexity_optimality_boundary.class {
+    RatchetForever => true
+    _ => false
+  }
+}

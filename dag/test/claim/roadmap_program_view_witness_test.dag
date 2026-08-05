@@ -30,6 +30,8 @@ import gunbc.roadmap_program_view {
 }
 import gunbc.roadmap_authority {
   declared_roadmap_nodes, declared_roadmap_edges, roadmap_acceptance_receipts,
+  RoadmapAcceptanceReceiptsProjected,
+  RoadmapAcceptanceReceiptsProjectionRefused,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -321,11 +323,18 @@ test fn witness_proposed_plane_carries_nothing_by_construction() -> Bool {
   }
 }
 
+fn live_receipts() -> List<RoadmapAcceptanceReceipt> {
+  match roadmap_acceptance_receipts() {
+    RoadmapAcceptanceReceiptsProjected { receipts: receipts } => receipts
+    RoadmapAcceptanceReceiptsProjectionRefused { detail: _ } => []
+  }
+}
+
 fn live_view() -> V1ProgramViewResult {
   v1_program_view(
     nodes: declared_roadmap_nodes(),
     edges: declared_roadmap_edges(),
-    receipts: roadmap_acceptance_receipts(),
+    receipts: live_receipts(),
     in_flight: [],
   )
 }
