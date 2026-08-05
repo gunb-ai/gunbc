@@ -1407,16 +1407,11 @@ fn string_field_from_record(
 ) -> Result<String, String> {
     match ctx.field(fields, field) {
         Some(Value::Str(s)) => Ok(s.clone()),
-        other => Err(format!(
-            "expected {field}: String, got {other:?}"
-        )),
+        other => Err(format!("expected {field}: String, got {other:?}")),
     }
 }
 
-fn parse_resolve_obligation_identity(
-    v: &Value,
-    ctx: &InterpContext,
-) -> Result<String, String> {
+fn parse_resolve_obligation_identity(v: &Value, ctx: &InterpContext) -> Result<String, String> {
     match v {
         Value::Variant { variant_name, .. } => Ok(ctx.resolve(*variant_name)),
         other => Err(format!(
@@ -1493,9 +1488,7 @@ fn finalization_from_value(
     match v {
         Value::Record {
             type_name, fields, ..
-        } if ctx.sym_eq(*type_name, "FloorFinalization") => {
-            Ok(Some(floor_from_fields(fields)?))
-        }
+        } if ctx.sym_eq(*type_name, "FloorFinalization") => Ok(Some(floor_from_fields(fields)?)),
         Value::Variant {
             variant_name,
             fields,
@@ -1657,7 +1650,9 @@ struct ClaimResult {
 /// Observation emitted where the executor actually decides cold vs shared reuse.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum ResolveRealizationObservation {
-    ColdResolvePerformed { resolve_nanos: u128 },
+    ColdResolvePerformed {
+        resolve_nanos: u128,
+    },
     SharedResolveSatisfied {
         computation_identity: String,
         provider_id: String,
@@ -2254,7 +2249,7 @@ fn run_native_bundle_unit(
         witness_row_costs: Vec::new(),
         budget_refusal: None,
         selection_degradation: None,
-            resolve_realization: None,
+        resolve_realization: None,
     };
     if execution_mode != ExecutionMode::Wet {
         return fail(
@@ -2590,7 +2585,7 @@ fn run_shared_entry_claims(
                     witness_row_costs: Vec::new(),
                     budget_refusal: None,
                     selection_degradation: None,
-            resolve_realization: None,
+                    resolve_realization: None,
                 })
                 .collect();
         }
@@ -2661,7 +2656,7 @@ fn run_memo_shared_claims(
                         witness_row_costs: Vec::new(),
                         budget_refusal: None,
                         selection_degradation: None,
-            resolve_realization: None,
+                        resolve_realization: None,
                     })
                     .collect();
             }
@@ -3361,11 +3356,11 @@ fn run_discovery_batch_node(
                         corpus_witnesses: summary.total,
                         witness_row_costs: Vec::new(),
                         budget_refusal: discovery_budget_refusal(&summary),
-                selection_degradation: Some(SelectionDegradationSnapshot::from_summary(
-                    node_frontier_selection,
-                    &summary,
-                )),
-                resolve_realization: None,
+                        selection_degradation: Some(SelectionDegradationSnapshot::from_summary(
+                            node_frontier_selection,
+                            &summary,
+                        )),
+                        resolve_realization: None,
                     };
                 }
             }
@@ -3526,11 +3521,11 @@ fn run_discovery_batch_node(
                         corpus_witnesses: summary.total,
                         witness_row_costs: Vec::new(),
                         budget_refusal: discovery_budget_refusal(&summary),
-                selection_degradation: Some(SelectionDegradationSnapshot::from_summary(
-                    node_frontier_selection,
-                    &summary,
-                )),
-                resolve_realization: None,
+                        selection_degradation: Some(SelectionDegradationSnapshot::from_summary(
+                            node_frontier_selection,
+                            &summary,
+                        )),
+                        resolve_realization: None,
                     };
                 }
             }
@@ -3596,7 +3591,7 @@ fn run_discovery_batch_node(
                     witness_row_costs: Vec::new(),
                     budget_refusal: None,
                     selection_degradation: None,
-            resolve_realization: None,
+                    resolve_realization: None,
                 }
             } else {
                 ClaimResult {
@@ -5444,14 +5439,13 @@ fn derive_resolve_obligation_receipts(
     fin.expected_obligations
         .iter()
         .map(|obl| {
-            let result = find_claim_result(batch_records, &obl.entry, &obl.function).ok_or_else(
-                || {
+            let result =
+                find_claim_result(batch_records, &obl.entry, &obl.function).ok_or_else(|| {
                     format!(
                         "floor resolve obligation missing: {} ({}::{})",
                         obl.identity, obl.entry, obl.function
                     )
-                },
-            )?;
+                })?;
             observation_to_obligation_line(obl, result)
         })
         .collect()
@@ -5496,10 +5490,7 @@ fn append_resolve_obligation_receipt_body(
         "unattributed_physical_resolves={unattributed_physical_resolves}\n"
     ));
     for line in &obligations {
-        let provider = line
-            .provider_id
-            .as_deref()
-            .unwrap_or("-");
+        let provider = line.provider_id.as_deref().unwrap_or("-");
         body.push_str(&format!(
             "obligation={} disposition={} resolve_nanos={} provider_id={} entry={} function={}\n",
             line.identity,
@@ -8986,7 +8977,7 @@ mod tests {
                     witness_row_costs: Vec::new(),
                     budget_refusal: None,
                     selection_degradation: None,
-            resolve_realization: None,
+                    resolve_realization: None,
                 })
                 .collect(),
         }
@@ -9002,8 +8993,9 @@ mod tests {
                 },
                 TransportedObligation {
                     identity: "NativeBundleEscapingEntry".to_string(),
-                    entry: "src/v2/test/claim/execution/native_selected_witness_bundle_production.dag"
-                        .to_string(),
+                    entry:
+                        "src/v2/test/claim/execution/native_selected_witness_bundle_production.dag"
+                            .to_string(),
                     function: "native_selected_logic_production_spec".to_string(),
                 },
             ],
@@ -9061,8 +9053,9 @@ mod tests {
                 },
                 ClaimResult {
                     function: "native_selected_logic_production_spec".to_string(),
-                    entry: "src/v2/test/claim/execution/native_selected_witness_bundle_production.dag"
-                        .to_string(),
+                    entry:
+                        "src/v2/test/claim/execution/native_selected_witness_bundle_production.dag"
+                            .to_string(),
                     ok: true,
                     detail: String::new(),
                     wall_nanos: 0,
@@ -9147,14 +9140,17 @@ mod tests {
     // step): transported obligation population must match observed realizations.
     #[test]
     fn floor_finalization_refuses_on_obligation_mismatch_both_directions() {
-        let fin = anchor_only_floor_finalization();
-        let over = obligation_finalization_records(5, 7);
-        let refusals = validate_floor_finalization(&fin, TEST_PLAN_SITE, &over);
+        let fin = test_floor_finalization();
+        let mut partial = obligation_finalization_records(5, 0);
+        partial[0]
+            .results
+            .retain(|r| r.function == "dag_compile_clean_gate_passes");
+        let refusals = validate_floor_finalization(&fin, TEST_PLAN_SITE, &partial);
         assert!(
             refusals
                 .iter()
-                .any(|m| m.contains("floor resolve obligation count 2 differs from transported 1")),
-            "over-count must refuse: {refusals:?}"
+                .any(|m| m.contains("floor resolve obligation missing")),
+            "missing transported obligation must refuse: {refusals:?}"
         );
         let under = [finalization_record(&[])];
         let refusals = validate_floor_finalization(&fin, TEST_PLAN_SITE, &under);
@@ -9185,7 +9181,9 @@ mod tests {
         let records = obligation_finalization_records(3, 9);
         let refusals = validate_floor_finalization(&fin, TEST_PLAN_SITE, &records);
         assert!(
-            !refusals.iter().any(|m| m.contains("differs from transported")),
+            !refusals
+                .iter()
+                .any(|m| m.contains("differs from transported")),
             "obligation law must be satisfied: {refusals:?}"
         );
         assert!(
@@ -11335,7 +11333,7 @@ mod tests {
                 ],
                 budget_refusal: None,
                 selection_degradation: None,
-            resolve_realization: None,
+                resolve_realization: None,
             }],
         }];
         assert!(write_floor_wet_witness_row_outcome_receipt_at(
