@@ -49,7 +49,7 @@ fn probe() -> String {
       concat(
         fold(t.declarations, init: "DECLS:", f: (acc, d) => concat(acc, render_decl(d: d))),
         concat(
-          concat("\nINDEX_ENTRIES=", to_string(count(t.index.entries))),
+          fold(t.index.entries, init: "\nINDEX:", f: (acc, e) => concat(acc, concat(concat("\n  id=", to_string(e.projection.occurrence.value)), concat(concat(" span=", to_string(e.projection.diagnostic_span.start)), concat("..", to_string(e.projection.diagnostic_span.end)))))),
           concat("\nREFS=", to_string(count(t.references)))
         )
       )
