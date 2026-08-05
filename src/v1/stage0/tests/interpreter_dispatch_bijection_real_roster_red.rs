@@ -14,11 +14,16 @@
 //!
 //! EXPENSIVE by construction (clone + real regen + real full-crate `cargo build`, twice) --
 //! `#[ignore]`d per the `route_a_emit_fresh_cargo_green_test.rs` precedent, and per the explicit
-//! ruling that a cargo subprocess must never sit in the per-PR CI discovery lane. Enrollment is
-//! the falsifier cadence (the same `affected-set-falsifier` schedule that already re-runs the
-//! full witness corpus cold every 4 hours, `gunbc.ci_spec`), invoked as
-//! `cargo test --release -p v1-compiler --test interpreter_dispatch_bijection_real_roster_red --
-//! --ignored`.
+//! ruling that a cargo subprocess must never sit in the per-PR CI discovery lane.
+//!
+//! ENROLLMENT: NOT the falsifier cadence -- executes only by hand today
+//! (`cargo test --release -p v1-compiler --test interpreter_dispatch_bijection_real_roster_red --
+//! --ignored`). The falsifier cadence's enrollment axis (`gunbc.commit_workflow`
+//! `CommitWitnessClaim`/`CommitSpecGate`, `bare_deenrollment_wall_note`) models only .dag-sourced
+//! witnesses; it has no member kind for a hand-authored Rust `#[test]`. This is a declared,
+//! named gap, not a silent one -- see `gunbc.commit_workflow`
+//! `rust_level_evidence_enrollment_axis_gap_note` for the full accounting and dissolution
+//! trigger. Do not read this test's presence in the tree as "enrolled on the falsifier cadence".
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
