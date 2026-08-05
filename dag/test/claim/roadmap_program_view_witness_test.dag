@@ -357,20 +357,6 @@ fn live_view() -> V1ProgramViewResult {
 
 data live_view_cached: V1ProgramViewResult = live_view()
 
-fn live_derived_view() -> V1DeletionProgramView {
-  match live_view_cached {
-    ProgramViewDerived { view } => view
-    ProgramViewRefused { causes: _ } => V1DeletionProgramView {
-      finish_lines: [], fronts: [],
-      remaining: RemainingShape {
-        sequential_depth: 0 - 1, open_fronts: 0 - 1, startable_now: 0 - 1,
-        in_flight: 0 - 1, dependency_held: 0 - 1, contract_held: 0 - 1, unsized: 0 - 1,
-      },
-      proposed: ProposedCarrierAbsent,
-    }
-  }
-}
-
 fn live_line_front_keys(view: V1DeletionProgramView, line_key: String) -> List<String> {
   fold(view.finish_lines, init: [], f: (acc, lv) =>
     if lv.key == line_key {
@@ -391,22 +377,28 @@ fn live_front_keys_are(view: V1DeletionProgramView, line_key: String, expected: 
 }
 
 test fn witness_live_contributing_fronts_are_the_derived_sets() -> Bool {
-  let view = live_derived_view()
-  live_front_keys_are(view: view, line_key: "compiler-fixed-point",
-    expected: [ "namespace-pderive", "v2-generation" ])
-    && live_front_keys_are(view: view, line_key: "interpreter-deleted",
-      expected: [ "namespace-pderive", "v2-generation", "materialization-cutover" ])
-    && live_front_keys_are(view: view, line_key: "products-v1-free",
-      expected: [ "namespace-pderive", "v2-generation", "honest-frontier", "materialization-cutover" ])
-    && live_front_keys_are(view: view, line_key: "zero-hand-maintained-rust",
-      expected: [ "namespace-pderive", "v2-generation", "honest-frontier", "materialization-cutover", "test-migration-tail" ])
+  match live_view_cached {
+    ProgramViewDerived { view } =>
+      live_front_keys_are(view: view, line_key: "compiler-fixed-point",
+        expected: [ "namespace-pderive", "v2-generation" ])
+        && live_front_keys_are(view: view, line_key: "interpreter-deleted",
+          expected: [ "namespace-pderive", "v2-generation", "materialization-cutover" ])
+        && live_front_keys_are(view: view, line_key: "products-v1-free",
+          expected: [ "namespace-pderive", "v2-generation", "honest-frontier", "materialization-cutover" ])
+        && live_front_keys_are(view: view, line_key: "zero-hand-maintained-rust",
+          expected: [ "namespace-pderive", "v2-generation", "honest-frontier", "materialization-cutover", "test-migration-tail" ])
+    ProgramViewRefused { causes: _ } => false
+  }
 }
 
 test fn witness_live_every_front_contributes_to_some_line() -> Bool {
-  let view = live_derived_view()
-  all(view.fronts, fv =>
-    any(view.finish_lines, lv =>
-      lv.contributing_fronts |> any(c => program_front_key(front: c) == fv.key)))
+  match live_view_cached {
+    ProgramViewDerived { view } =>
+      all(view.fronts, fv =>
+        any(view.finish_lines, lv =>
+          lv.contributing_fronts |> any(c => program_front_key(front: c) == fv.key)))
+    ProgramViewRefused { causes: _ } => false
+  }
 }
 
 fn probe_constraint_iff(lv: FinishLineView) -> Bool {
@@ -417,6 +409,9 @@ fn probe_constraint_iff(lv: FinishLineView) -> Bool {
 }
 
 test fn witness_live_constraint_present_iff_line_unaccepted() -> Bool {
-  let view = live_derived_view()
-  all(view.finish_lines, lv => probe_constraint_iff(lv: lv))
+  match live_view_cached {
+    ProgramViewDerived { view } =>
+      all(view.finish_lines, lv => probe_constraint_iff(lv: lv))
+    ProgramViewRefused { causes: _ } => false
+  }
 }
