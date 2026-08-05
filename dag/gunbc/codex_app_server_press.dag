@@ -230,8 +230,6 @@ fn observe_codex_press_account_trip(
   binding: ProviderInterfaceBinding,
   node_identity: RoadmapNodeIdentity,
   attempt_key: AttemptKey,
-  turn_key: String,
-  head_sha: String,
 ) -> CodexPressOutcome {
   let script = retained_foreign(
     body: codex_press_account_trip_script(executable: binding.executable.path),
@@ -298,8 +296,6 @@ fn press_codex_app_server_for_bundle(
         binding: start.binding,
         node_identity: start.node_identity,
         attempt_key: start.attempt_key,
-        turn_key: start.turn_key,
-        head_sha: start.head_sha,
       )
   }
 }
