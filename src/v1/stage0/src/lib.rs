@@ -136,6 +136,7 @@ pub mod v1_tests_claim_occurrence_binding_parser_walk_witness_test;
 pub mod v1_tests_claim_occurrence_identity_debt_receipt_test;
 pub mod v1_tests_claim_pattern_binder_declaration_node_test;
 pub mod v1_tests_claim_required_expr_newline_continuation_test;
+pub mod v1_tests_claim_v1_complexity_eviction_hazard_test;
 pub mod wt_a;
 pub mod wt_b;
 pub mod wt_common;
