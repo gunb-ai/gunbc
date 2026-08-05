@@ -13,7 +13,7 @@ import gunbc.codex_app_server_press {
   press_codex_app_server_for_bundle,
   codex_press_specimen_node_identity,
   codex_press_outcome_wire_status,
-  CodexPressTurnStarted,
+  CodexPressAccountReady,
   CodexPressLoginRequired,
   CodexPressUnavailable,
   CodexPressRefused,
@@ -41,7 +41,7 @@ fn frames_are_redacted(frames: List<CodexPressRawFrame>) -> Bool {
 }
 
 fn press_account_trip_outcome_is_attributable(status: String, reason: String) -> Bool {
-  if status == "turn_started" {
+  if status == "account_ready" {
     true
   } else if status == "login_required" {
     true
@@ -71,10 +71,10 @@ test fn press_account_trip_yields_turn_or_typed_refusal_with_redacted_frames() -
           workspace_root: "/tmp" as FilePath,
           head_sha: "wet",
         ) {
-          CodexPressTurnStarted { receipt } =>
+          CodexPressAccountReady { receipt } =>
             codex_press_outcome_wire_status(
-              outcome: CodexPressTurnStarted { receipt: receipt },
-            ) == "turn_started"
+              outcome: CodexPressAccountReady { receipt: receipt },
+            ) == "account_ready"
               && frames_are_redacted(frames: receipt.frames)
               && any(receipt.frames, f => (f.body as String).contains("account_read_ok"))
           CodexPressLoginRequired { reason, frames } =>
