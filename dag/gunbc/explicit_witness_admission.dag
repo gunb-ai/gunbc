@@ -20,6 +20,7 @@ import std.witness_admission {
   NoConsumer
 }
 import std.types { NonEmptyStr, String, List, Bool, Int }
+import std.algebra { Cons, Empty }
 
 data explicit_witness_admission_authority_note: String = "THE function-grain authority for exact witness admission. One row per admitted witness, carrying the witness identity, the cadence that executes it, and its own reason and dissolve_on. Everything else about that witness is DERIVED: the cadence roster the scheduler runs, the discovery exclusion, and the consumer manifest all read these rows; none of them is authored beside them. It replaces a DUAL REPRESENTATION carried until 2026-08-03 — a path-substring WitnessExclusionRow classified QuarantineProbeExpectRed (removing a whole FILE from discovery) sitting beside a probe_red(entry, f) roster row (enrolling one FUNCTION on the probe cadence). Those are not the same fact, but they were two hand-kept representations of one admission relationship with nothing deriving either from the other, and the reconciliation that guarded them was weaker than its name: it proved only that some scheduled row's entry CONTAINED the exclusion pattern as a substring. It proved neither exact identity, nor one schedule row per exclusion, nor reverse coverage, nor that every function hidden by the file-level exclusion had a consumer, nor that the pair deleted atomically. The cost was paid in a real merge: #7688 had to delete one exclusion/probe pair while hand-preserving two newly added ones, and taking either side wholesale would have dropped required admission rows with no conflict marker. The exact grain also dissolves the trade that forced the workaround: a green sibling in a quarantined file used to be excluded with it, so an author had to split the file or downgrade its classification and say so in prose (the receipt is the self_host_03_normalize exclusion row, whose reason reads that QuarantineProbeExpectRed on the file would orphan its sibling). A row here reaches exactly one function; siblings are untouched."
 
@@ -267,22 +268,67 @@ fn explicit_witness_admission_is_known_red(row: ExplicitWitnessAdmission) -> Boo
 }
 
 fn known_red_probe_roster_of_kind(kind: WitnessKind) -> List<ScheduleWitnessEntry> {
-  fold(
+  reverse(fold(
     explicit_witness_admissions,
-    init: [],
+    init: Empty,
     f: fn(acc, row) {
       if explicit_witness_admission_is_known_red(row: row)
         && witness_kind_eq(a: row.witness.kind, b: kind) {
-        concat(acc, [row.witness])
+        Cons { head: row.witness, tail: acc }
       } else {
         acc
       }
     }
+  ))
+}
+
+fn known_red_entry_is_v1_scoped(entry: String) -> Bool {
+  starts_with(s: entry, prefix: "src/v1/")
+}
+
+data known_red_v1_envelope_dag_entries: List<String> = []
+
+data known_red_v1_envelope_dag_entries_note: String = "dag/test/claim witnesses that import v1.* AND are enrolled QuarantineProbeExpectRed in explicit_witness_admissions — both are required for known_red_probe_v1_envelope_roster. Path prefix alone cannot detect v1 imports; this list names dag witnesses that need the dag plus src/v1 envelope beside v1_claim_scoped_witness_batch. Empty while no known-red row needs that envelope; enrolling a row here without the companion clamp row in gunbc_ci_floor_batch_clamp_params fails the ENROLLMENT COUPLING clause in v1_claim_scoped_known_red_probe_batch_note. Dissolve-on when closure-independent binding makes the envelope unnecessary."
+
+fn known_red_entry_is_v1_envelope_dag_entry(entry: String) -> Bool {
+  fold(
+    known_red_v1_envelope_dag_entries,
+    init: false,
+    f: fn(found, path) { found || (entry == path) }
   )
 }
 
+fn known_red_entry_needs_v1_envelope(entry: String) -> Bool {
+  known_red_entry_is_v1_scoped(entry: entry)
+    || known_red_entry_is_v1_envelope_dag_entry(entry: entry)
+}
+
 fn known_red_probe_corpus_roster() -> List<ScheduleWitnessEntry> {
-  known_red_probe_roster_of_kind(kind: CorpusWitnessKind)
+  reverse(fold(
+    known_red_probe_roster_of_kind(kind: CorpusWitnessKind),
+    init: Empty,
+    f: fn(acc, witness) {
+      if known_red_entry_needs_v1_envelope(entry: witness.entry) {
+        acc
+      } else {
+        Cons { head: witness, tail: acc }
+      }
+    }
+  ))
+}
+
+fn known_red_probe_v1_envelope_roster() -> List<ScheduleWitnessEntry> {
+  reverse(fold(
+    known_red_probe_roster_of_kind(kind: CorpusWitnessKind),
+    init: Empty,
+    f: fn(acc, witness) {
+      if known_red_entry_needs_v1_envelope(entry: witness.entry) {
+        Cons { head: witness, tail: acc }
+      } else {
+        acc
+      }
+    }
+  ))
 }
 
 fn known_red_probe_execution_roster() -> List<ScheduleWitnessEntry> {
