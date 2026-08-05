@@ -26,6 +26,7 @@ import gunbc.roadmap_program_view {
   FinishLineView, FrontView, V1DeletionProgramView,
   V1ProgramViewResult, ProgramViewDerived, ProgramViewRefused,
   ProgramViewRefusalCause, FinishLineNodeUnresolved, FrontGateUnresolved,
+  DuplicateAcceptanceReceipt,
   program_view, v1_program_view,
 }
 import gunbc.roadmap_authority {
@@ -257,6 +258,7 @@ test fn witness_red_misspelled_identities_refuse_with_located_causes() -> Bool {
         FinishLineNodeUnresolved { line_key, node } =>
           line_key == "compiler-fixed-point" && (node as String) == "fline-typo"
         FrontGateUnresolved { front_key: _, gate: _ } => false
+        DuplicateAcceptanceReceipt { node: _ } => false
       })
     ProgramViewDerived { view: _ } => false
   }
@@ -266,6 +268,7 @@ test fn witness_red_misspelled_identities_refuse_with_located_causes() -> Bool {
         FrontGateUnresolved { front_key, gate } =>
           front_key == "v2-generation" && (gate as String) == "fd-typo"
         FinishLineNodeUnresolved { line_key: _, node: _ } => false
+        DuplicateAcceptanceReceipt { node: _ } => false
       })
     ProgramViewDerived { view: _ } => false
   }
