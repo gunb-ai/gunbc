@@ -77,7 +77,7 @@ test fn scaffold_disposition_census_oracle_names_no_extra_declarations() -> Bool
 data scaffold_disposition_census_deliberately_incomplete_oracle_names_note: String = "RED control: the identity join above is not vacuously true because both sides happen to be large -- a smaller, deliberately incomplete name list fails the exact same containment check the real oracle passes, proving the check discriminates rather than trivially succeeding."
 
 data scaffold_disposition_census_deliberately_incomplete_oracle_names: List<String> = [
-  "test.fixture.scaffold_disposition_census.specimens.plain_int_specimen"
+  "test.fixture.scaffold_disposition_census.pool.specimens.plain_int_specimen"
 ]
 
 test fn scaffold_disposition_census_identity_join_discriminates_incomplete_oracle_red() -> Bool {
@@ -142,7 +142,7 @@ test fn scaffold_disposition_census_fn_kind_declarations_are_excluded_from_data_
   let fn_facts = filter(xs: scaffold_disposition_census_pool_facts, predicate: fn(f) { is_fn_item(fact: f) })
   length(xs: fn_facts) > 0
     && !any(xs: scaffold_disposition_census_pool_data_qualified_names, predicate: fn(qn) {
-      qn == "test.fixture.scaffold_disposition_census.specimens.plain_fn_specimen"
+      qn == "test.fixture.scaffold_disposition_census.pool.specimens.plain_fn_specimen"
     })
 }
 
