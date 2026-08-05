@@ -1149,19 +1149,22 @@ fn marshal_decl_fact_node(
     item: &Rc<Node>,
     kind: ItemKind,
     si: &SourceIndices,
+    catalog: &crate::data_initializer_identity::CorpusTypeCatalog,
+    qualified_name: &str,
 ) -> InterpResult<Value> {
     match kind {
         ItemKind::TypeItem => concept_decl_node(ctx, si, item),
         ItemKind::FnItem | ItemKind::FuncItem => {
             Ok(fn_arrow_output_skeleton(ctx, si, item).unwrap_or_else(|| unit_type_node(ctx)))
         }
-        ItemKind::DataItem => {
-            if let Some(body) = item.body.as_ref() {
-                Ok(marshal_fn_body_skeleton(ctx, body, &[], si))
-            } else {
-                Ok(unit_type_node(ctx))
-            }
-        }
+        ItemKind::DataItem => crate::data_initializer_identity::marshal_data_initializer_projection(
+            ctx,
+            item,
+            qualified_name,
+            &authored_name_at(si.clone(), item.clone()),
+            catalog,
+            si,
+        ),
         _ => Ok(unit_type_node(ctx)),
     }
 }
@@ -1250,9 +1253,17 @@ pub fn eval_export_signature_facts(
 
 pub fn eval_decl_facts(ctx: &InterpContext, pool_roots: &[String]) -> InterpResult<Value> {
     let facts = decl_facts_for_roots(pool_roots);
+    let catalog = crate::data_initializer_identity::CorpusTypeCatalog::build_for_pool(pool_roots);
     let mut rows = Vec::with_capacity(facts.len());
     for fact in facts {
-        let node = marshal_decl_fact_node(ctx, &fact.node, fact.kind, &fact.source_indices)
+        let node = marshal_decl_fact_node(
+            ctx,
+            &fact.node,
+            fact.kind,
+            &fact.source_indices,
+            &catalog,
+            &fact.qualified_name,
+        )
             .map_err(|e| InterpError::TypeError {
                 msg: format!(
                     "decl_facts: failed to marshal `{}` ({:?}) in `{}`: {e}",

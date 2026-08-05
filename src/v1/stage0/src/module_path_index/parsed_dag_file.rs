@@ -11,6 +11,7 @@ type SourceIndices = Rc<HashMap<String, Rc<NewlineIndex>>>;
 /// Parse-only module items for one `.dag` file (no resolve). Shared substrate for
 /// `decl_facts(roots)` (#5966) and emit-only corpus audits.
 pub struct ParsedDagFile {
+    pub module: Rc<Node>,
     pub items: Rc<im::Vector<Rc<Node>>>,
     pub source_indices: SourceIndices,
 }
@@ -29,6 +30,7 @@ pub fn parse_dag_file(path: &Path) -> Option<ParsedDagFile> {
     }
     let module = result.module.as_ref()?;
     Some(ParsedDagFile {
+        module: module.clone(),
         items: module.children.clone(),
         source_indices,
     })
