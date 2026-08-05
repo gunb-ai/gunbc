@@ -34,7 +34,7 @@ import gunbc.repository_census_coverage {
   ObservationDuplicated,
   BothDuplicated,
   DenominatorIndependence,
-  IndependentDenominatorEstablished,
+  DistinctProcedureDenominatorEstablished,
   SharedRun,
   IndependenceUnestablished,
   ExactCoverageReceipt,
@@ -44,7 +44,13 @@ import gunbc.repository_census_coverage {
   CensusMethodCapability,
   ClassifiesDeclaredStructure,
   MatchesSourceText,
-  CensusMethodConformanceObservation,
+  CensusControlPair,
+  CensusConformanceOutcome,
+  CensusConformanceEstablished,
+  CensusConformanceControlOutcomesUnjoined,
+  CensusConformanceControlNotDistinctFromMeasurement,
+  CensusConformanceControlsDidNotDiscriminate,
+  CensusMethodConformanceReceipt,
   CensusMethodCapabilityReceipt,
   CensusInferenceCeiling,
   CensusInferenceCeilingOutcome,
@@ -64,7 +70,11 @@ import gunbc.repository_census_coverage {
   census_resolve_independence,
   census_independence_is_established,
   census_establish_coverage,
-  census_conformance_observation,
+  census_method_conformance_receipt,
+  census_conformance_receipt_of,
+  census_coverage_is_refused,
+  census_reconciliation_operations,
+  census_distinct_subject_keys,
   census_method_capability_receipt,
   census_capability_receipt_conformance_established,
   census_coverage_classification_run_identity,
@@ -469,7 +479,7 @@ test fn witness_one_run_used_twice_is_a_shared_run() -> Bool {
     classification_run: coverage_witness_classification_run(),
   ) {
     SharedRun { run_identity: _ } => true
-    IndependentDenominatorEstablished {
+    DistinctProcedureDenominatorEstablished {
       enumeration_classifier_identity: _,
       classification_classifier_identity: _,
     } => false
@@ -492,7 +502,7 @@ test fn witness_two_invocations_of_one_classifier_do_not_establish_independence(
   ) {
     IndependenceUnestablished { shared_classifier_identity: _ } => true
     SharedRun { run_identity: _ } => false
-    IndependentDenominatorEstablished {
+    DistinctProcedureDenominatorEstablished {
       enumeration_classifier_identity: _,
       classification_classifier_identity: _,
     } => false
@@ -514,21 +524,79 @@ fn coverage_witness_capability_for(contract_name: String) -> CensusMethodCapabil
   ClassifiesDeclaredStructure { contract: coverage_witness_decl(name: contract_name) }
 }
 
-fn coverage_witness_conforming_control() -> CensusMethodConformanceObservation {
-  census_conformance_observation(
+data coverage_conformance_derivation_note: String = "THE CONFORMANCE FIXTURES BUILD REAL CONTROL OUTCOMES, because the carrier no longer accepts an assertion about them. Each control here is an actual census_establish_coverage run against a denominator: the discriminating control observes rows that do NOT reconcile with the declared subjects and must come back CoverageRefused, the positive control observes rows that DO and must come back CoverageEstablished. A fixture that simply claimed those two results is no longer expressible, which is the point of the recut."
+
+fn coverage_witness_control_outcome(
+  subjects: List<CensusSubjectKey>,
+  rows: List<CensusObservedRow>,
+  invocation: String,
+  revision: MeasurementRevision,
+) -> CensusCoverageOutcome {
+  census_establish_coverage(
+    denominator: coverage_witness_denominator_of(
+      population: coverage_witness_population,
+      revision: coverage_witness_revision,
+      subjects: subjects,
+    ),
+    observation: coverage_witness_observation_of(
+      population: coverage_witness_population,
+      revision: coverage_witness_revision,
+      rows: rows,
+      run: coverage_witness_run_at(
+        classifier: "coverage_witness_classifier",
+        invocation: invocation,
+        revision: revision,
+      ),
+    ),
+  )
+}
+
+fn coverage_witness_control_pair_at(
+  invocation: String,
+  revision: MeasurementRevision,
+) -> CensusControlPair {
+  CensusControlPair {
     control_run: coverage_witness_run_at(
       classifier: "coverage_witness_classifier",
-      invocation: "control",
-      revision: coverage_witness_revision,
+      invocation: invocation,
+      revision: revision,
     ),
-    discriminating_input_refused: true,
-    positive_control_accepted: true,
+    discriminating: coverage_witness_control_outcome(
+      subjects: coverage_witness_ab_subjects,
+      rows: [coverage_witness_row(name: "a")],
+      invocation: invocation,
+      revision: revision,
+    ),
+    positive: coverage_witness_control_outcome(
+      subjects: coverage_witness_ab_subjects,
+      rows: coverage_witness_ab_rows,
+      invocation: invocation,
+      revision: revision,
+    ),
+  }
+}
+
+fn coverage_witness_conformance_outcome_for(pair: CensusControlPair) -> CensusConformanceOutcome {
+  census_method_conformance_receipt(
+    pair: pair,
+    method_run: coverage_witness_classification_run(),
+  )
+}
+
+fn coverage_witness_conforming_control() -> CensusMethodConformanceReceipt? {
+  census_conformance_receipt_of(
+    outcome: coverage_witness_conformance_outcome_for(
+      pair: coverage_witness_control_pair_at(
+        invocation: "control",
+        revision: coverage_witness_revision,
+      ),
+    ),
   )
 }
 
 fn coverage_witness_receipt_exists(
   capability: CensusMethodCapability,
-  conformance: CensusMethodConformanceObservation?,
+  conformance: CensusMethodConformanceReceipt?,
 ) -> Bool {
   match census_method_capability_receipt(
     observation: coverage_witness_observation(rows: coverage_witness_ab_rows),
@@ -540,90 +608,300 @@ fn coverage_witness_receipt_exists(
   }
 }
 
+test fn witness_two_executed_controls_that_discriminate_yield_a_conformance_receipt() -> Bool {
+  match coverage_witness_conformance_outcome_for(
+    pair: coverage_witness_control_pair_at(
+      invocation: "control",
+      revision: coverage_witness_revision,
+    ),
+  ) {
+    CensusConformanceEstablished { receipt: _ } => true
+    CensusConformanceControlOutcomesUnjoined {
+      control_run_identity: _,
+      discriminating_run_identity: _,
+      positive_run_identity: _,
+    } => false
+    CensusConformanceControlNotDistinctFromMeasurement {
+      control_run_identity: _,
+      method_run_identity: _,
+    } => false
+    CensusConformanceControlsDidNotDiscriminate { discriminating: _, positive: _ } => false
+  }
+}
+
+test fn witness_a_control_pair_that_refused_nothing_does_not_establish_conformance() -> Bool {
+  let invocation = "control"
+  match coverage_witness_conformance_outcome_for(
+    pair: CensusControlPair {
+      control_run: coverage_witness_run_at(
+        classifier: "coverage_witness_classifier",
+        invocation: invocation,
+        revision: coverage_witness_revision,
+      ),
+      discriminating: coverage_witness_control_outcome(
+        subjects: coverage_witness_ab_subjects,
+        rows: coverage_witness_ab_rows,
+        invocation: invocation,
+        revision: coverage_witness_revision,
+      ),
+      positive: coverage_witness_control_outcome(
+        subjects: coverage_witness_ab_subjects,
+        rows: coverage_witness_ab_rows,
+        invocation: invocation,
+        revision: coverage_witness_revision,
+      ),
+    },
+  ) {
+    CensusConformanceControlsDidNotDiscriminate { discriminating: _, positive: _ } => true
+    CensusConformanceEstablished { receipt: _ } => false
+    CensusConformanceControlOutcomesUnjoined {
+      control_run_identity: _,
+      discriminating_run_identity: _,
+      positive_run_identity: _,
+    } => false
+    CensusConformanceControlNotDistinctFromMeasurement {
+      control_run_identity: _,
+      method_run_identity: _,
+    } => false
+  }
+}
+
+test fn witness_a_control_pair_that_accepted_nothing_does_not_establish_conformance() -> Bool {
+  let invocation = "control"
+  match coverage_witness_conformance_outcome_for(
+    pair: CensusControlPair {
+      control_run: coverage_witness_run_at(
+        classifier: "coverage_witness_classifier",
+        invocation: invocation,
+        revision: coverage_witness_revision,
+      ),
+      discriminating: coverage_witness_control_outcome(
+        subjects: coverage_witness_ab_subjects,
+        rows: [coverage_witness_row(name: "a")],
+        invocation: invocation,
+        revision: coverage_witness_revision,
+      ),
+      positive: coverage_witness_control_outcome(
+        subjects: coverage_witness_ab_subjects,
+        rows: [coverage_witness_row(name: "a")],
+        invocation: invocation,
+        revision: coverage_witness_revision,
+      ),
+    },
+  ) {
+    CensusConformanceControlsDidNotDiscriminate { discriminating: _, positive: _ } => true
+    CensusConformanceEstablished { receipt: _ } => false
+    CensusConformanceControlOutcomesUnjoined {
+      control_run_identity: _,
+      discriminating_run_identity: _,
+      positive_run_identity: _,
+    } => false
+    CensusConformanceControlNotDistinctFromMeasurement {
+      control_run_identity: _,
+      method_run_identity: _,
+    } => false
+  }
+}
+
+test fn witness_a_control_reusing_the_measured_invocation_establishes_no_conformance() -> Bool {
+  match coverage_witness_conformance_outcome_for(
+    pair: coverage_witness_control_pair_at(
+      invocation: "classify",
+      revision: coverage_witness_revision,
+    ),
+  ) {
+    CensusConformanceControlNotDistinctFromMeasurement {
+      control_run_identity: _,
+      method_run_identity: _,
+    } => true
+    CensusConformanceEstablished { receipt: _ } => false
+    CensusConformanceControlOutcomesUnjoined {
+      control_run_identity: _,
+      discriminating_run_identity: _,
+      positive_run_identity: _,
+    } => false
+    CensusConformanceControlsDidNotDiscriminate { discriminating: _, positive: _ } => false
+  }
+}
+
+test fn witness_a_control_at_another_revision_establishes_no_conformance() -> Bool {
+  match coverage_witness_conformance_outcome_for(
+    pair: coverage_witness_control_pair_at(
+      invocation: "control",
+      revision: coverage_witness_other_revision,
+    ),
+  ) {
+    CensusConformanceControlNotDistinctFromMeasurement {
+      control_run_identity: _,
+      method_run_identity: _,
+    } => true
+    CensusConformanceEstablished { receipt: _ } => false
+    CensusConformanceControlOutcomesUnjoined {
+      control_run_identity: _,
+      discriminating_run_identity: _,
+      positive_run_identity: _,
+    } => false
+    CensusConformanceControlsDidNotDiscriminate { discriminating: _, positive: _ } => false
+  }
+}
+
+test fn witness_control_outcomes_borrowed_from_another_run_are_unjoined() -> Bool {
+  match coverage_witness_conformance_outcome_for(
+    pair: CensusControlPair {
+      control_run: coverage_witness_run_at(
+        classifier: "coverage_witness_classifier",
+        invocation: "declared-control",
+        revision: coverage_witness_revision,
+      ),
+      discriminating: coverage_witness_control_outcome(
+        subjects: coverage_witness_ab_subjects,
+        rows: [coverage_witness_row(name: "a")],
+        invocation: "some-other-run",
+        revision: coverage_witness_revision,
+      ),
+      positive: coverage_witness_control_outcome(
+        subjects: coverage_witness_ab_subjects,
+        rows: coverage_witness_ab_rows,
+        invocation: "some-other-run",
+        revision: coverage_witness_revision,
+      ),
+    },
+  ) {
+    CensusConformanceControlOutcomesUnjoined {
+      control_run_identity: _,
+      discriminating_run_identity: _,
+      positive_run_identity: _,
+    } => true
+    CensusConformanceEstablished { receipt: _ } => false
+    CensusConformanceControlNotDistinctFromMeasurement {
+      control_run_identity: _,
+      method_run_identity: _,
+    } => false
+    CensusConformanceControlsDidNotDiscriminate { discriminating: _, positive: _ } => false
+  }
+}
+
 test fn witness_a_contract_naming_the_executed_classifier_yields_a_capability_receipt() -> Bool {
   coverage_witness_receipt_exists(
     capability: coverage_witness_capability_for(contract_name: "coverage_witness_classifier"),
-    conformance: Present { value: coverage_witness_conforming_control() },
+    conformance: coverage_witness_conforming_control(),
   )
 }
 
 test fn witness_a_contract_naming_another_declaration_yields_no_capability_receipt() -> Bool {
   !coverage_witness_receipt_exists(
     capability: coverage_witness_capability_for(contract_name: "coverage_witness_enumerator"),
-    conformance: Present { value: coverage_witness_conforming_control() },
+    conformance: coverage_witness_conforming_control(),
   )
 }
 
-test fn witness_a_control_at_another_revision_yields_no_capability_receipt() -> Bool {
-  !coverage_witness_receipt_exists(
-    capability: coverage_witness_capability_for(contract_name: "coverage_witness_classifier"),
-    conformance: Present {
-      value: census_conformance_observation(
-        control_run: coverage_witness_run_at(
-          classifier: "coverage_witness_classifier",
-          invocation: "control",
-          revision: coverage_witness_other_revision,
-        ),
-        discriminating_input_refused: true,
-        positive_control_accepted: true,
-      ),
-    },
+
+data coverage_cost_receipt_note: String = "THE COST RECEIPT COMPARES TWO REAL POPULATIONS AND COUNTS OPERATIONS, NOT MILLISECONDS. Wall-clock at two sizes is a change detector dominated by host load; an operation count is a property of the code that produced it and reproduces exactly on any machine. The counters are incremented by the production fold itself, so this witness reads back what the real reconciliation did rather than what a mirror of it would have done.\n\nWHY 24 AND 240. 24 is the live confinement-roster population, so the small case is the one this repository actually reconciles today; 240 is ten times it. A quadratic reconciliation answers the tenfold population with roughly a HUNDREDFOLD operation count, a linear one with roughly tenfold, and those two predictions are far enough apart that no tolerance argument is needed to tell them apart. The assertion is on the RATIO rather than on either absolute count, because an absolute count copied out of a current run is a tree-copied literal and would be a change detector in exactly the way DESIGN section 5 rejects.\n\nThe generator is deliberately dull — one distinct key per index, no duplicates — so the ratio measures the reconciliation and not a fixture's own shape."
+
+data coverage_cost_six: List<String> = ["a", "b", "c", "d", "e", "f"]
+data coverage_cost_four: List<String> = ["p", "q", "r", "s"]
+data coverage_cost_ten: List<String> = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]
+
+fn coverage_cost_cross(xs: List<String>, ys: List<String>) -> List<String> {
+  reverse(fold(ys, init: [], f: fn(outer, y) {
+    fold(xs, init: outer, f: fn(inner, x) { concat([join([x, "-", y], "")], inner) })
+  }))
+}
+
+fn coverage_cost_names_24() -> List<String> {
+  coverage_cost_cross(xs: coverage_cost_six, ys: coverage_cost_four)
+}
+
+fn coverage_cost_names_240() -> List<String> {
+  coverage_cost_cross(xs: coverage_cost_names_24(), ys: coverage_cost_ten)
+}
+
+fn coverage_cost_subjects(n: Int) -> List<CensusSubjectKey> {
+  let names = if n == 24 { coverage_cost_names_24() } else { coverage_cost_names_240() }
+  map(names, name => coverage_witness_key(name: name))
+}
+
+fn coverage_cost_operations(n: Int) -> Int {
+  let subjects = coverage_cost_subjects(n: n)
+  census_reconciliation_operations(
+    denominator_subjects: subjects,
+    observed_subjects: subjects,
   )
 }
 
-test fn witness_a_control_reusing_the_measured_invocation_yields_no_capability_receipt() -> Bool {
-  !coverage_witness_receipt_exists(
-    capability: coverage_witness_capability_for(contract_name: "coverage_witness_classifier"),
-    conformance: Present {
-      value: census_conformance_observation(
-        control_run: coverage_witness_classification_run(),
-        discriminating_input_refused: true,
-        positive_control_accepted: true,
-      ),
-    },
-  )
+test fn witness_the_cost_fixture_builds_the_two_declared_populations() -> Bool {
+  count(coverage_cost_subjects(n: 24)) == 24 && count(coverage_cost_subjects(n: 240)) == 240
 }
 
-test fn witness_a_control_that_refused_nothing_does_not_establish_conformance() -> Bool {
-  !census_conformance_established_for(
-    discriminating_input_refused: false,
-    positive_control_accepted: true,
-  )
+test fn witness_the_cost_fixture_subjects_are_distinct() -> Bool {
+  count(census_distinct_subject_keys(keys: coverage_cost_subjects(n: 240))) == 240
 }
 
-test fn witness_a_control_that_accepted_nothing_does_not_establish_conformance() -> Bool {
-  !census_conformance_established_for(
-    discriminating_input_refused: true,
-    positive_control_accepted: false,
-  )
+test fn witness_reconciliation_operations_grow_about_tenfold_for_ten_times_the_subjects() -> Bool {
+  let small = coverage_cost_operations(n: 24)
+  let large = coverage_cost_operations(n: 240)
+  large < small * 12 && large > small * 8
 }
 
-fn census_conformance_established_for(
-  discriminating_input_refused: Bool,
-  positive_control_accepted: Bool,
-) -> Bool {
-  match census_method_capability_receipt(
-    observation: coverage_witness_observation(rows: coverage_witness_ab_rows),
-    capability: coverage_witness_capability_for(contract_name: "coverage_witness_classifier"),
-    conformance: Present {
-      value: census_conformance_observation(
-        control_run: coverage_witness_run_at(
-          classifier: "coverage_witness_classifier",
-          invocation: "control",
-          revision: coverage_witness_revision,
-        ),
-        discriminating_input_refused: discriminating_input_refused,
-        positive_control_accepted: positive_control_accepted,
-      ),
-    },
-  ) {
-    Present { value: receipt } =>
-      census_capability_receipt_conformance_established(receipt: receipt)
-    Absent => false
-  }
+test fn witness_reconciliation_operations_are_nowhere_near_quadratic() -> Bool {
+  let small = coverage_cost_operations(n: 24)
+  let large = coverage_cost_operations(n: 240)
+  large * 4 < small * 100
+}
+
+data coverage_cost_red_control_note: String = "THE RED CONTROL IS THE QUADRATIC THE RECUT REMOVED, RE-EXPRESSED HERE AND ASSERTED TO FAIL THE SAME TEST. Without it, the ratio assertions above are satisfied by any fixture whose two populations happen to be close in cost, including a broken generator that returns the same list twice — they would be green because nothing varied, not because the reconciliation is linear. This control counts the pairwise scans the old implementation performed, runs it at the same two sizes, and asserts it BREACHES the same tenfold band the real path stays inside. If someone reintroduces the scan, the real assertions red; if the instrument stops discriminating, this one reds."
+
+type CoverageScanTally {
+  matched: Int
+  passed_over: Int
+}
+
+fn coverage_cost_scan_tally(n: Int) -> CoverageScanTally {
+  let subjects = coverage_cost_subjects(n: n)
+  fold(subjects, init: CoverageScanTally { matched: 0, passed_over: 0 }, f: fn(outer, key) {
+    fold(subjects, init: outer, f: fn(inner, other) {
+      if (other as String) == (key as String) {
+        CoverageScanTally { matched: inner.matched + 1, passed_over: inner.passed_over }
+      } else {
+        CoverageScanTally { matched: inner.matched, passed_over: inner.passed_over + 1 }
+      }
+    })
+  })
+}
+
+fn coverage_cost_pairwise_scan_operations(n: Int) -> Int {
+  let tally = coverage_cost_scan_tally(n: n)
+  tally.matched + tally.passed_over
+}
+
+test fn witness_the_scan_control_cost_is_every_pair_not_every_match() -> Bool {
+  let tally = coverage_cost_scan_tally(n: 24)
+  tally.matched == 24 && tally.passed_over == 552
+}
+
+test fn witness_the_pairwise_scan_control_breaches_the_linear_band() -> Bool {
+  let small = coverage_cost_pairwise_scan_operations(n: 24)
+  let large = coverage_cost_pairwise_scan_operations(n: 240)
+  large > small * 12
 }
 
 data coverage_blocker_three_note: String = "BLOCKER 3 WITNESSES. The ceiling takes no observation parameter, so there is no separately supplied observation that could disagree with the coverage receipt; the observation identity is derived from the outcome. What remains joinable is the capability receipt, and it must name the same classification run the coverage outcome carries or no ceiling exists at all."
+
+data coverage_conformance_per_observation_note: String = "THE CONFORMANCE IS DERIVED AGAINST THE OBSERVATION'S OWN RUN, and this fixture had to change for that reason. It previously reused one conforming control for every observation, which the carrier now refuses: a conformance receipt records the method run it was derived against, and the capability receipt re-joins on that identity, so a receipt earned against run A cannot be attached to an observation produced by run B. Deriving per observation is what an honest caller does; the fixture was relying on the borrowed-evidence shape the re-join closes."
+
+fn coverage_witness_conformance_for(
+  observation: RepositoryCensusObservation,
+) -> CensusMethodConformanceReceipt? {
+  census_conformance_receipt_of(
+    outcome: census_method_conformance_receipt(
+      pair: coverage_witness_control_pair_at(
+        invocation: "control",
+        revision: coverage_witness_revision,
+      ),
+      method_run: observation.method_run,
+    ),
+  )
+}
 
 fn coverage_witness_capability_receipt_for(
   observation: RepositoryCensusObservation,
@@ -631,7 +909,7 @@ fn coverage_witness_capability_receipt_for(
   census_method_capability_receipt(
     observation: observation,
     capability: coverage_witness_capability_for(contract_name: "coverage_witness_classifier"),
-    conformance: Present { value: coverage_witness_conforming_control() },
+    conformance: coverage_witness_conformance_for(observation: observation),
   )
 }
 
@@ -908,7 +1186,7 @@ fn coverage_witness_unconformed_ceiling() -> CensusInferenceCeiling? {
   match census_method_capability_receipt(
     observation: observation,
     capability: coverage_witness_capability_for(contract_name: "coverage_witness_classifier"),
-    conformance: Absent,
+    conformance: none,
   ) {
     Present { value: receipt } =>
       coverage_witness_ceiling_option(
@@ -945,7 +1223,7 @@ fn coverage_witness_textual_ceiling(rows: List<CensusObservedRow>) -> CensusInfe
     capability: MatchesSourceText {
       contract: coverage_witness_decl(name: "coverage_witness_classifier"),
     },
-    conformance: Present { value: coverage_witness_conforming_control() },
+    conformance: coverage_witness_conforming_control(),
   ) {
     Present { value: receipt } =>
       coverage_witness_ceiling_option(

@@ -36,42 +36,105 @@ data repository_census_keyed_index_note: String = "SUBJECT SETS ARE BUILT AS A K
 
 data repository_census_keyed_roster_dissolution_note: String = "WHY THIS DOES NOT CALL std.keyed_roster, AND THE TRIGGER THAT DELETES THIS NOTE. keyed_roster_build is the repository's keyed-set construction authority and the obvious thing to reuse here, and it CANNOT deliver the property this module needs: it folds keyed_roster_insert_into_unique, which performs one linear keyed_row_find plus one growing concat per element, so it is itself quadratic — its own module note says so. The cause is its SIGNATURE, not its body: key_eq is an arbitrary caller-supplied fn K K to Bool, and an arbitrary predicate cannot be indexed, because a map keys on substrate identity and there is no way to consult key_eq without visiting every existing row. Measured on that function rather than modelled, at 256, 512 and 1024 synthetic distinct keys: 85ms, 318ms, 1273ms, so 3.74x then 4.00x per doubling against quadratic 4.00 and linear 2.00. So this module consumes the OTHER existing std pattern that already fits — std.occurrence_binding_candidates builds duplicate-refusing keyed indexes with map_get and map_insert and typed duplicate evidence carrying the first and conflicting values — rather than minting a set authority of its own. DISSOLVE-ON: std.keyed_roster is regrounded on a key-to-identity projection instead of an equality bundle, at which point keyed_roster_build becomes linear and this module consumes it directly and this note deletes. That regrounding is its own work item and deliberately not a rider here: it changes a std interface with six production consumers — std.roster_frontier, tools.dag_compile_clean_shard_roster, gunbc.doc_graph_roots, gunbc.commit_workflow, gunbc.non_fold_residue and v1.trait_derive_emit — all of which pay this same quadratic today."
 
+data repository_census_index_cost_note: String = "THE OPERATION COUNTS ARE INCREMENTED BY THE REAL FOLD, WHICH IS WHY THEY CANNOT DRIFT FROM IT. A cost claim measured by a second function that mirrors this one would be a claim about the mirror: it stays green while the real path regresses, the same way a hand-built Node fixture describes a module it has stopped resembling. So the counters live on the accumulator the production fold already threads, every increment sits on the branch that performs the operation it counts, and a witness reads them back from an ordinary index build. Removing an operation without decrementing its counter is not possible, because there is one site each.\n\nWHAT THESE COUNT, EXACTLY, so nobody reads more into them. map_lookups is one map_get per input key. map_inserts is one map_insert per newly seen key plus one per key at the moment it first repeats. key_prepends is one constant-work cons per key appended to either order list. order_reversals is the number of single linear passes taken at the end, which is two, one per order list. WHAT THEY DO NOT COUNT is the interpreter's internal copy volume inside concat or reverse: that is the substrate's per-operation cost, priced in the std.primitives contracts, and this module counts the OPERATIONS it issues rather than re-deriving what each costs. The claim the counters support is therefore about SHAPE — that the operation count grows in proportion to the subject count rather than to its square — which is the claim the recut was about."
+
 type CensusSubjectIndex {
   seen: Map<String, Int>
   distinct: List<CensusSubjectKey>
   duplicated: List<CensusSubjectKey>
+  map_lookups: Int
+  map_inserts: Int
+  key_prepends: Int
+  order_reversals: Int
+}
+
+data repository_census_index_accumulation_note: String = "THE ORDER LISTS ARE BUILT BY PREPEND-THEN-REVERSE, NOT BY APPEND (operator ruling 2026-08-05). The first recut removed the quadratic LOOKUP and left a quadratic WRITE: append(acc, [key]) inside a fold copies the whole accumulated prefix on every step, so building n distinct keys copied 1 + 2 + ... + n items even though every lookup was already O(1). That is the same cost shape one axis over, and it is exactly the class the recut was supposed to leave — a fix that halves a defect and keeps its shape is not a fix. Prepending is a constant-work cons and the single reverse at the end is one linear pass, so total items copied is linear in n rather than quadratic. This is the accumulate-reversed-then-reverse idiom std.change, std.realization and std.occurrence_identity already use, so it is the corpus construction rather than a local invention. AUTHORED ORDER IS STILL EXACTLY PRESERVED: reverse of a reversed accumulation is the input order, which is what the determinism reading requires of these lists."
+
+type CensusSubjectIndexBuild {
+  seen: Map<String, Int>
+  distinct_reversed: List<CensusSubjectKey>
+  duplicated_reversed: List<CensusSubjectKey>
+  map_lookups: Int
+  map_inserts: Int
+  key_prepends: Int
 }
 
 fn census_subject_index_step(
-  index: CensusSubjectIndex,
+  build: CensusSubjectIndexBuild,
   key: CensusSubjectKey,
-) -> CensusSubjectIndex {
-  match map_get(index.seen, key as String) {
+) -> CensusSubjectIndexBuild {
+  match map_get(build.seen, key as String) {
     Present { value: prior } =>
       if prior == 1 {
-        CensusSubjectIndex {
-          seen: map_insert(index.seen, key as String, 2),
-          distinct: index.distinct,
-          duplicated: append(index.duplicated, [key]),
+        CensusSubjectIndexBuild {
+          seen: map_insert(build.seen, key as String, 2),
+          distinct_reversed: build.distinct_reversed,
+          duplicated_reversed: concat([key], build.duplicated_reversed),
+          map_lookups: build.map_lookups + 1,
+          map_inserts: build.map_inserts + 1,
+          key_prepends: build.key_prepends + 1,
         }
       } else {
-        index
+        CensusSubjectIndexBuild {
+          seen: build.seen,
+          distinct_reversed: build.distinct_reversed,
+          duplicated_reversed: build.duplicated_reversed,
+          map_lookups: build.map_lookups + 1,
+          map_inserts: build.map_inserts,
+          key_prepends: build.key_prepends,
+        }
       }
     Absent =>
-      CensusSubjectIndex {
-        seen: map_insert(index.seen, key as String, 1),
-        distinct: append(index.distinct, [key]),
-        duplicated: index.duplicated,
+      CensusSubjectIndexBuild {
+        seen: map_insert(build.seen, key as String, 1),
+        distinct_reversed: concat([key], build.distinct_reversed),
+        duplicated_reversed: build.duplicated_reversed,
+        map_lookups: build.map_lookups + 1,
+        map_inserts: build.map_inserts + 1,
+        key_prepends: build.key_prepends + 1,
       }
   }
 }
 
 fn census_subject_index(keys: List<CensusSubjectKey>) -> CensusSubjectIndex {
-  fold(
+  let build = fold(
     keys,
-    init: CensusSubjectIndex { seen: empty_map(), distinct: [], duplicated: [] },
+    init: CensusSubjectIndexBuild {
+      seen: empty_map(),
+      distinct_reversed: [],
+      duplicated_reversed: [],
+      map_lookups: 0,
+      map_inserts: 0,
+      key_prepends: 0,
+    },
     f: census_subject_index_step,
   )
+  CensusSubjectIndex {
+    seen: build.seen,
+    distinct: reverse(build.distinct_reversed),
+    duplicated: reverse(build.duplicated_reversed),
+    map_lookups: build.map_lookups,
+    map_inserts: build.map_inserts,
+    key_prepends: build.key_prepends,
+    order_reversals: 2,
+  }
+}
+
+fn census_subject_index_operations(index: CensusSubjectIndex) -> Int {
+  let probes = index.map_lookups + index.map_inserts
+  probes + index.key_prepends + index.order_reversals
+}
+
+fn census_reconciliation_operations(
+  denominator_subjects: List<CensusSubjectKey>,
+  observed_subjects: List<CensusSubjectKey>,
+) -> Int {
+  let denominator_index = census_subject_index(keys: denominator_subjects)
+  let observation_index = census_subject_index(keys: observed_subjects)
+  let membership_probes = count(denominator_index.distinct) + count(observation_index.distinct)
+  let denominator_ops = census_subject_index_operations(index: denominator_index)
+  let observation_ops = census_subject_index_operations(index: observation_index)
+  denominator_ops + observation_ops + membership_probes
 }
 
 fn census_subject_key_in_index(index: CensusSubjectIndex, key: CensusSubjectKey) -> Bool {
@@ -355,10 +418,10 @@ fn census_reconcile_aligned_subjects(
   }
 }
 
-data repository_census_independence_note: String = "BLOCKER 5 — INDEPENDENCE IS A VERDICT THE CEILING READS, NOT A TELL A READER MAY IGNORE. The first cut exposed census_receipt_is_self_join so a holder could see that the denominator and the rows came from one run, and then nothing acted on it: a self-join still produced CoverageEstablished, and CoverageEstablished alone still produced the exhaustive ceiling. VISIBILITY IS NOT ENFORCEMENT — a body sentence saying independence is load-bearing while the code reads a boolean nobody consults is the same overstatement this carrier keeps being recut for. Three states, decided from what the runs actually carry. SharedRun: the two run identities are equal, so the denominator was never checked against anything. IndependenceUnestablished: the identities differ but both name the SAME classifier declaration, so this is one procedure invoked twice — a repeat, not a cross-check, and a systematic error in that procedure is reproduced identically on both sides. IndependentDenominatorEstablished: different declarations, which is the most this module can decide from declared structure. That last one is honest about its own limit: two different declarations can still share a defect, and what is established is procedural independence, not correctness. Only the established arm supports an exhaustive ceiling; the other two still support a population FLOOR, because a self-joined census does observe the rows it observed."
+data repository_census_independence_note: String = "BLOCKER 5 — INDEPENDENCE IS A VERDICT THE CEILING READS, NOT A TELL A READER MAY IGNORE. The first cut exposed census_receipt_is_self_join so a holder could see that the denominator and the rows came from one run, and then nothing acted on it: a self-join still produced CoverageEstablished, and CoverageEstablished alone still produced the exhaustive ceiling. VISIBILITY IS NOT ENFORCEMENT — a body sentence saying independence is load-bearing while the code reads a boolean nobody consults is the same overstatement this carrier keeps being recut for. Three states, decided from what the runs actually carry. SharedRun: the two run identities are equal, so the denominator was never checked against anything. IndependenceUnestablished: the identities differ but both name the SAME classifier declaration, so this is one procedure invoked twice — a repeat, not a cross-check, and a systematic error in that procedure is reproduced identically on both sides. DistinctProcedureDenominatorEstablished: different declarations, which is the most this module can decide from declared structure. THE NAME SAYS ONLY WHAT IS ESTABLISHED (operator ruling 2026-08-05). This arm was called IndependentDenominatorEstablished while its own note conceded that two different declarations can still share a defect — a name claiming independence over evidence that establishes only DISTINCTNESS OF PROCEDURE, which is the overstatement class this carrier keeps being recut for, sitting in the identifier a reader trusts most. What the join actually decides from declared structure is that the denominator and the classification came from two different declarations. Whether those two procedures are independent in the sense that matters, sharing no common defect, is not decidable from structure and is not claimed. Only the established arm supports an exhaustive ceiling; the other two still support a population FLOOR, because a self-joined census does observe the rows it observed."
 
 type DenominatorIndependence
-  = IndependentDenominatorEstablished {
+  = DistinctProcedureDenominatorEstablished {
       enumeration_classifier_identity: Fnv1a64Structural
       classification_classifier_identity: Fnv1a64Structural
     }
@@ -390,7 +453,7 @@ fn census_resolve_independence(
   } else if same_classifier {
     IndependenceUnestablished { shared_classifier_identity: enumeration_classifier }
   } else {
-    IndependentDenominatorEstablished {
+    DistinctProcedureDenominatorEstablished {
       enumeration_classifier_identity: enumeration_classifier,
       classification_classifier_identity: classification_classifier,
     }
@@ -399,7 +462,7 @@ fn census_resolve_independence(
 
 fn census_independence_is_established(independence: DenominatorIndependence) -> Bool {
   match independence {
-    IndependentDenominatorEstablished {
+    DistinctProcedureDenominatorEstablished {
       enumeration_classifier_identity: _,
       classification_classifier_identity: _,
     } => true

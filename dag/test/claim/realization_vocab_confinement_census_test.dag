@@ -8,6 +8,11 @@ import gunbc.repository_census_observation {
   repository_census_subject_keys,
 }
 import gunbc.repository_census_coverage {
+  CensusConformanceEstablished,
+  CensusConformanceControlOutcomesUnjoined,
+  CensusConformanceControlNotDistinctFromMeasurement,
+  CensusConformanceControlsDidNotDiscriminate,
+  census_coverage_is_refused,
   CoverageEstablished,
   CoverageRefused,
   CensusInferenceCeiling,
@@ -34,7 +39,9 @@ import gunbc.realization_vocab_confinement_census {
   confinement_surface_denominator,
   confinement_surface_coverage,
   confinement_surface_defective_rows,
-  confinement_conformance_observation,
+  confinement_control_pair,
+  confinement_control_outcome,
+  confinement_conformance_outcome,
   confinement_capability_receipt,
   confinement_surface_ceiling,
   ConfinementSurfaceCeiling,
@@ -119,15 +126,31 @@ test fn witness_the_confinement_receipt_if_present_has_an_independent_denominato
 data confinement_conformance_witness_note: String = "THE CONFORMANCE CONTROLS ARE ASSERTED SEPARATELY FROM THE CEILING THEY FEED, so a red says whether the classifier stopped discriminating or whether something downstream broke. The discriminating half is the load-bearing one: it asserts that the census REFUSES a classification with one axis dropped, which is probe 5 turned into an enrolled control that re-runs on every affected change rather than a mutation in a worktree that no longer exists."
 
 test fn witness_the_discriminating_control_is_refused_by_the_census() -> Bool {
-  confinement_conformance_observation(
-    revision: confinement_witness_revision(),
-  ).discriminating_input_refused
+  census_coverage_is_refused(
+    coverage: confinement_control_pair(revision: confinement_witness_revision()).discriminating,
+  )
 }
 
 test fn witness_the_positive_control_is_accepted_by_the_census() -> Bool {
-  confinement_conformance_observation(
-    revision: confinement_witness_revision(),
-  ).positive_control_accepted
+  !census_coverage_is_refused(
+    coverage: confinement_control_pair(revision: confinement_witness_revision()).positive,
+  )
+}
+
+test fn witness_the_conformance_receipt_is_derived_from_the_two_control_outcomes() -> Bool {
+  match confinement_conformance_outcome(revision: confinement_witness_revision()) {
+    CensusConformanceEstablished { receipt: _ } => true
+    CensusConformanceControlOutcomesUnjoined {
+      control_run_identity: _,
+      discriminating_run_identity: _,
+      positive_run_identity: _,
+    } => false
+    CensusConformanceControlNotDistinctFromMeasurement {
+      control_run_identity: _,
+      method_run_identity: _,
+    } => false
+    CensusConformanceControlsDidNotDiscriminate { discriminating: _, positive: _ } => false
+  }
 }
 
 test fn witness_the_defective_control_rows_are_a_proper_subset_of_the_real_rows() -> Bool {
