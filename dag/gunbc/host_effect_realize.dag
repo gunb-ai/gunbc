@@ -102,6 +102,10 @@ import gunbc.live_deploy.emit {
   deployment_ensure_dependency_script,
 }
 import gunbc.roadmap_static_site { roadmap_site_digest_readback_script }
+import gunbc.live_deploy.intent {
+  live_deploy_slot_revision_read_script,
+  live_deploy_slot_revision_record_script,
+}
 import gunbc.host_build_cache_provision_script { build_cache_provision_shell_script }
 import gunbc.host_build_cache_catalog_gate {
   provision_build_cache_catalog_gate_verdict,
@@ -292,6 +296,10 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
               LiveDeployEnsureDependencyOnHost { node: n, dep: d }
             LiveDeployDigestReadback { port: p } =>
               LiveDeployDigestReadbackOnHost { node: n, port: p }
+            LiveDeploySlotRevisionRead { spec: s } =>
+              LiveDeploySlotRevisionReadOnHost { node: n, spec: s }
+            LiveDeploySlotRevisionRecord { spec: s, revision: r } =>
+              LiveDeploySlotRevisionRecordOnHost { node: n, spec: s, revision: r }
             DeployAccessPreflight {} =>
               IncompatibleCell {
                 reason: "host_effect: DeployAccessPreflight is intent-only (authorization gate record) and cannot be applied; typed mismatch, DESIGN section 5.",
@@ -351,6 +359,10 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
               IncompatibleCell { reason: "host_effect: LiveDeployEnsureDependency is in-band (actuator host shell mutation) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
             LiveDeployDigestReadback { port: _ } =>
               IncompatibleCell { reason: "host_effect: LiveDeployDigestReadback is in-band (actuator host shell readback) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+            LiveDeploySlotRevisionRead { spec: _ } =>
+              IncompatibleCell { reason: "host_effect: LiveDeploySlotRevisionRead is in-band (actuator host receipt read) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+            LiveDeploySlotRevisionRecord { spec: _, revision: _ } =>
+              IncompatibleCell { reason: "host_effect: LiveDeploySlotRevisionRecord is in-band (actuator host receipt write) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
             DeployAccessPreflight {} =>
               IncompatibleCell { reason: "host_effect: DeployAccessPreflight is intent-only (authorization gate record) and cannot target BmcController; typed mismatch, DESIGN section 5." }
           }
@@ -1669,6 +1681,37 @@ fn realize_live_deploy_digest_readback_on_host(
   )
 }
 
+fn realize_live_deploy_slot_revision_read_on_host(
+  spec: DeploymentSpec,
+  transport: HostEffectTransport,
+  intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  realize_shell_on_host(
+    script: retained_srvn(
+      body: live_deploy_slot_revision_read_script(spec: spec),
+      reason: "live_deploy routed-slot revision receipt read",
+    ),
+    transport: transport,
+    intent: intent,
+  )
+}
+
+fn realize_live_deploy_slot_revision_record_on_host(
+  spec: DeploymentSpec,
+  revision: CommitSha,
+  transport: HostEffectTransport,
+  intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  realize_shell_on_host(
+    script: retained_srvn(
+      body: live_deploy_slot_revision_record_script(spec: spec, revision: revision),
+      reason: "live_deploy routed-slot revision receipt write",
+    ),
+    transport: transport,
+    intent: intent,
+  )
+}
+
 fn host_effect_apply(target: NodeControlPlane, effect: HostEffect, evidence: IdempotencyEvidence, transport: HostEffectTransport) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   let intent = HostEffectIntent {
     target: target,
@@ -1716,6 +1759,10 @@ fn host_effect_apply(target: NodeControlPlane, effect: HostEffect, evidence: Ide
       realize_live_deploy_ensure_dependency_on_host(dep: d, transport: transport, intent: intent)
     LiveDeployDigestReadbackOnHost { node: _, port: p } =>
       realize_live_deploy_digest_readback_on_host(port: p, transport: transport, intent: intent)
+    LiveDeploySlotRevisionReadOnHost { node: _, spec: s } =>
+      realize_live_deploy_slot_revision_read_on_host(spec: s, transport: transport, intent: intent)
+    LiveDeploySlotRevisionRecordOnHost { node: _, spec: s, revision: r } =>
+      realize_live_deploy_slot_revision_record_on_host(spec: s, revision: r, transport: transport, intent: intent)
     RedfishOnBmc { node: _, action: _ } =>
       NotConverged { reason: "host_effect_apply: RedfishAction realization is a fail-closed Unimplemented stub in Phase A; neat-boar-71 realizes it over RedfishRest in Phase C. No plausible no-op for a power/boot action (DESIGN section 5).", applied: intent }
     IncompatibleCell { reason: why } => NotConverged { reason: why, applied: intent }
@@ -1872,6 +1919,10 @@ fn host_effect_apply_gated(
           realize_live_deploy_ensure_dependency_on_host(dep: d, transport: transport, intent: intent)
         LiveDeployDigestReadbackOnHost { node: _, port: p } =>
           realize_live_deploy_digest_readback_on_host(port: p, transport: transport, intent: intent)
+        LiveDeploySlotRevisionReadOnHost { node: _, spec: s } =>
+          realize_live_deploy_slot_revision_read_on_host(spec: s, transport: transport, intent: intent)
+        LiveDeploySlotRevisionRecordOnHost { node: _, spec: s, revision: r } =>
+          realize_live_deploy_slot_revision_record_on_host(spec: s, revision: r, transport: transport, intent: intent)
         RedfishOnBmc { node: _, action: _ } =>
           NotConverged { reason: "host_effect_apply: RedfishAction realization is a fail-closed Unimplemented stub in Phase A; neat-boar-71 realizes it over RedfishRest in Phase C. No plausible no-op for a power/boot action (DESIGN section 5).", applied: intent }
         IncompatibleCell { reason: why } => NotConverged { reason: why, applied: intent }
@@ -1929,6 +1980,8 @@ fn host_effect_drive_directive(r: Reconciliation<HostEffectIntent, HostEffectEvi
             LiveDeployRetractOnHost { node: _, spec: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             LiveDeployEnsureDependencyOnHost { node: _, dep: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             LiveDeployDigestReadbackOnHost { node: _, port: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
+            LiveDeploySlotRevisionReadOnHost { node: _, spec: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
+            LiveDeploySlotRevisionRecordOnHost { node: _, spec: _, revision: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             RedfishOnBmc { node: _, action: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
           }
       }

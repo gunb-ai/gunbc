@@ -59,9 +59,16 @@ type FlockWaitBound
   = FlockWaitSeconds { seconds: Duration }
   | FlockFailImmediately
 
+data flock_timeout_is_a_bare_integer_note: String = "flock(1) SPELLS --timeout AS A BARE INTEGER OF SECONDS, with the unit carried by the option's documented meaning rather than by the text — there is no `300s` form. So the seconds are projected through an explicit extractor whose return type is Int, and the argv renders that Int, rather than calling a generic to_string on a Duration and trusting whatever a magnitude carrier happens to render (review 48288).\\n\\nThe failure this removes is quiet in the worst way: a Duration that rendered `300s` would make flock reject its own argument, and the deploy would report a usage failure from the lock launcher on a run whose configuration never changed. Pinning the emitted argv in a witness is what keeps the projection honest if the carrier's rendering ever moves.\\n\\nDuration is `Int where range(min: 0)`, so the projection is the refinement's base value and NOT a cast — the substrate refuses `seconds as Int` here because there is no representation change to perform. Naming the projection anyway is what makes the Int-ness of the emitted token a stated requirement rather than an accident of today's carrier: if Duration ever became a record or a unit-tagged magnitude, this function is the one place that has to answer how flock's bare-integer argument is produced, and it would stop compiling rather than start emitting a suffix."
+
+fn flock_timeout_seconds_argument(seconds: Duration) -> Int {
+  seconds
+}
+
 fn flock_wait_argv(wait: FlockWaitBound) -> List<String> {
   match wait {
-    FlockWaitSeconds { seconds: s } => ["--timeout", to_string(s)]
+    FlockWaitSeconds { seconds: s } =>
+      ["--timeout", to_string(flock_timeout_seconds_argument(seconds: s))]
     FlockFailImmediately => ["--nonblock"]
   }
 }
@@ -89,4 +96,23 @@ fn flock_exclusive_command(
 
 fn flock_exit_is_lock_conflict(exit_code: Int) -> Bool {
   exit_code == flock_conflict_exit_code
+}
+
+data flock_launcher_failure_note: String = "THE SYSEXITS RANGE IS flock's OWN FAILURE CHANNEL, AND FOLDING IT INTO THE WRAPPED PROGRAM'S EXIT IS THE SAME CONFLATION -E EXISTS TO REMOVE, ONE CLASS OVER (review 48288). flock(1) documents that it uses sysexits.h codes for its own errors — a lock path it cannot open (EX_NOPERM 77), a usage error (EX_USAGE 64), a command it could not execute — and every one of those means THE WRAPPED COMMAND NEVER RAN. Reporting them as 'the wrapped program exited N' says a deploy failed when in fact no deploy was ever attempted, and it points diagnosis at the deployment instead of at the lock.\\n\\nThat is exactly the reasoning flock_conflict_exit_code_note applies to the conflict code, so leaving this arm fused would have kept one occupied range separated and silently re-fused the other. Three outcomes, not two: the lock was contended, the launcher itself failed, or the wrapped program ran and its exit is its own.\\n\\nWHY THE RANGE IS UNAMBIGUOUS HERE RATHER THAN GENERALLY: the wrapped program is `gunbc run`, whose exit space through std.process ProcessExit is exactly {0,1}, so nothing it can produce collides with 64..78. A caller wrapping a program that DOES exit in the sysexits range could not use this classification, which is a fact about that caller and is why the disjointness is asserted by witness rather than assumed."
+
+fn flock_exit_is_launcher_failure(exit_code: Int) -> Bool {
+  exit_code >= flock_sysexits_lowest && exit_code <= flock_sysexits_highest
+}
+
+data flock_launcher_failure_reason_note: String = "The diagnosis names the sysexits code rather than translating it, because flock does not document which of its internal failures maps to which code and inventing that table would be a second, unsourced authority over the upstream's behaviour. The code plus 'the wrapped command never ran' is the whole of what is actually known, and it is the part that changes where the operator looks."
+
+fn flock_launcher_failure_reason(exit_code: Int) -> String {
+  join(
+    [
+      "flock itself failed with sysexits code ",
+      to_string(exit_code),
+      " (flock(1) reserves 64..78 for its own errors), so the lock was not acquired and the wrapped command never ran"
+    ],
+    ""
+  )
 }

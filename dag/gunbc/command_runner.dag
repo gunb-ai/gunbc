@@ -1,7 +1,8 @@
 module gunbc.command_runner
 
-import std.types { List, String }
+import std.types { List, String, Int }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
+import gunbc.output_policy { OutcomeIsData }
 import std.resources { Network }
 import extdeps.exec.command {
   ArgvCommand,
@@ -24,6 +25,16 @@ data command_runner_scaffold: Disposition = Scaffold {
 }
 
 data command_runner_dissolution_trigger: String = "🟡 dissolve-on: run_shell_command — generic ArgvCommand runner routes the typed extdeps.exec.command shape through shell.Exec.Run via the shell_bash_runner heredoc transport; DISSOLVES WHEN host_effect_apply binds ArgvCommand execution as a typed transport handler and dag/gunbc/command_runner.dag retires its shell_exec_via_bash glue"
+
+data run_shell_command_observed_note: String = "THE EXIT CODE IS THE ANSWER FOR SOME CALLERS, WHICH IS WHY THIS SITS BESIDE run_shell_command RATHER THAN REPLACING IT. The sibling below folds every nonzero code into one exit_failure carrying stderr, which is right for a command whose only question is 'did it work'. It is wrong for a wrapper that reports a distinct condition on a distinct code — flock's --conflict-exit-code exists precisely so 'another holder owns the lease' and 'the wrapped program failed' stay separable, and a Bool at this boundary would re-fuse them one layer below the model that split them.\\n\\nSo this returns the observed code and lets the caller classify. It is deliberately not a second transport: both functions render through the same command_over_transport and the same shell.Exec.Run seam, so there is one execution path and two projections of its result.\\n\\nOutcomeIsData ADMISSIBILITY: the exit provably feeds a typed consumer at every call site — gunbc.live_deploy.lease live_deploy_lease_outcome folds it into LiveDeployLeaseOutcome — and this function returns an Int that is meaningless as a verdict on its own, never unit."
+
+func run_shell_command_exit_code(command: ArgvCommand, transport: CommandTransport) -> Int
+  uses net: Network
+{
+  let rendered = shell_command_render(command: command_over_transport(command: command, transport: transport))
+  let run = shell.Exec.Run(script: shell_exec_via_bash(body: rendered), expect: OutcomeIsData)
+  run.exit_code
+}
 
 func run_shell_command(command: ArgvCommand, transport: CommandTransport) -> ProcessExit
   uses net: Network

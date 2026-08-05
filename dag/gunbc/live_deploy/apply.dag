@@ -10,7 +10,32 @@ import gunbc.live_deploy.spec {
   deployment_route_spec,
   deployment_plan_listen_port,
 }
-import std.types { String }
+import std.types { String, NonEmptyStr, CommitSha, Bool, GitRef }
+import std.content_hash { sha1_hex_digest }
+import gunbc.live_deploy.revision {
+  DeploymentTarget,
+  Srv1Dashboard,
+  ObservedDeployedRevision,
+  DeployedRevisionRecorded,
+  DeployedRevisionUnrecorded,
+  DeployedRevisionUnreadable,
+  DeployDecision,
+  Keep,
+  Advance,
+  Refuse,
+  RevisionAdvance,
+  decide_deploy_for_observation,
+  deploy_keep_reason_text,
+  deploy_relation_failure_reason,
+}
+import gunbc.live_deploy.intent { slot_revision_unrecorded_token }
+import gunbc.live_deploy.lease {
+  live_deploy_launch_under_lease,
+  live_deploy_apply_srv1_leased_entry_function,
+  live_deploy_apply_srv1_operator_leased_entry_function,
+}
+import extdeps.git.inspect
+import gunbc.output_policy { OutcomeIsData }
 import gunbc.ci_deploy_access {
   ci_deploy_srv1_access,
   ci_deploy_srv1_operator_access,
@@ -120,8 +145,27 @@ fn tailscale_serve_status_read(transport: HostEffectTransport) -> TailscaleServe
 
 data blue_green_cutover_order_note: String = "Operator-signed 2026-08-01: straight to blue/green, no socket-activation interim. Tailscale's currently routed root Proxy selects active and idle from the two declared HostDashboardInstance slots. The candidate mutation is the slot footprint only; its existing readiness path polls /healthz until the digest proves it serves THIS source tree and then performs the deeper roadmap asset readback. Only after both converge does the route-only spec replay the scoped root endpoint toward the candidate. Old-slot retirement is route-free and runtime-only: it stops the old serve unit and belt timer but preserves the reusable slot files, worktrees, and published attempt evidence. Full retract remains a distinct operator action with the empty-directory refusal wall. Every pre-flip refusal returns before route mutation, leaving the old process mapped and serving; a post-flip retirement failure leaves the new process mapped, so absence is not a failure arm."
 
+data cutover_requires_the_admission_note: String = "THE ADMISSION IS A PARAMETER, WHICH IS WHY THIS IS A WALL AND NOT A CHECK. RevisionAdvance is `sole_constructor` in gunbc.live_deploy.revision, so the only values of that type in the corpus come out of decide_deploy_for_observation's Advance arm. A caller that wants to run this cutover has to have obtained one, and it cannot forge one from here — so 'mutate without deciding' does not typecheck rather than being forbidden by a convention someone has to remember.\\n\\nThe token is CONSUMED, not merely accepted: the receipt written after the flip carries admission.to, so the revision recorded for the routed slot is the one the decision admitted rather than whatever the caller happened to be holding. An admission that were only a permission slip would leave the two free to disagree, which is the same gap the global tree-sync selector opened between the tree a run believed it deployed and the tree it actually did.\\n\\nWHY THE RECEIPT WRITE IS INSIDE THE CONVERGED PATH AND NOT AFTER IT. A slot that serves a revision it did not record is invisible to the NEXT deploy's decision, which would then read the previous revision and classify a genuine advance as unrelated or superseded. So a failed record fails the deploy — loudly, on the run that caused it — instead of leaving a silent gap for a later run to trip over. It also closes the bootstrap arm honestly: AdvanceFromUnrecordedSlot cannot become the permanent state of the system without every deploy going red first."
+
+fn live_deploy_record_slot_revision(
+  spec: DeploymentSpec,
+  revision: CommitSha,
+  transport: HostEffectTransport,
+  access: DeployAccess,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  live_deploy_fold(
+    spec: spec,
+    effect: LiveDeploySlotRevisionRecord { spec: spec, revision: revision },
+    transport: transport,
+    access: access,
+    fixture_actor: Absent,
+    fixture_host: Absent
+  )
+}
+
 fn live_deploy_blue_green_cutover_with_selection(
   selection: BlueGreenSlotSelection,
+  admission: RevisionAdvance,
   transport: HostEffectTransport,
   access: DeployAccess,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
@@ -145,12 +189,22 @@ fn live_deploy_blue_green_cutover_with_selection(
         if !reconciliation_converged(r: flip) {
           flip
         } else {
-          let teardown = live_deploy_retract_via_transport(
-            spec: deployment_retiring_slot_spec(spec: active),
+          let recorded = live_deploy_record_slot_revision(
+            spec: idle,
+            revision: admission.to,
             transport: transport,
             access: access,
           )
-          if reconciliation_converged(r: teardown) { flip } else { teardown }
+          if !reconciliation_converged(r: recorded) {
+            recorded
+          } else {
+            let teardown = live_deploy_retract_via_transport(
+              spec: deployment_retiring_slot_spec(spec: active),
+              transport: transport,
+              access: access,
+            )
+            if reconciliation_converged(r: teardown) { flip } else { teardown }
+          }
         }
       }
     }
@@ -403,16 +457,195 @@ fn live_deploy_access_preflight() -> Reconciliation<HostEffectIntent, HostEffect
   live_deploy_access_preflight_for(access: ci_deploy_srv1_access)
 }
 
-fn live_deploy_apply_srv1_with_access(access: DeployAccess) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+data routed_slot_revision_read_note: String = "THE DEPLOYED REVISION IS READ FROM THE SLOT THE ROUTE POINTS AT, which is why this takes the ACTIVE spec out of the same selection the cutover uses rather than reading a global marker. Under blue/green there is no single slot that is 'the deployment' — whichever slot the public route selects is by definition the one serving the public, so its receipt is the revision the public is getting. Reading the idle slot would answer a question nobody asked, and reading a global file would answer with whatever the last writer intended regardless of which slot the route ended up on.\\n\\nThe read runs BEFORE any mutation, because its answer is what decides whether mutation happens at all. A read that ran after the slot was prepared would be describing a host this run had already changed."
+
+fn observe_routed_slot_revision(
+  active: DeploymentSpec,
+  transport: HostEffectTransport,
+  access: DeployAccess,
+) -> ObservedDeployedRevision {
+  let read = live_deploy_fold(
+    spec: active,
+    effect: LiveDeploySlotRevisionRead { spec: active },
+    transport: transport,
+    access: access,
+    fixture_actor: Absent,
+    fixture_host: Absent
+  )
+  match read {
+    NotConverged { reason: why, applied: _ } =>
+      DeployedRevisionUnreadable {
+        cause: concat(
+          "could not read the routed slot's revision receipt, so the deployed revision is unknown: ",
+          why
+        ) as NonEmptyStr
+      }
+    Converged { evidence: e, applied: _ } =>
+      match e {
+        ShellEffectApplied { exit_code: _, stdout: out } =>
+          parse_slot_revision_stdout(stdout: out)
+        ConvergePlanApplied { exit_code: _, stdout: _ } =>
+          DeployedRevisionUnreadable {
+            cause: "routed-slot revision read returned converge-plan evidence, which cannot carry a receipt body" as NonEmptyStr
+          }
+      }
+  }
+}
+
+data slot_revision_parse_refuses_note: String = "A RECEIPT BODY THAT IS NOT A COMMIT SHA IS UNREADABLE, NOT ABSENT. sha1_hex_digest is the validating partial bridge from std.content_hash — exact 40-digit lowercase hex, refusing rather than folding case or length — so a truncated, half-written, or hand-edited receipt lands in the Unreadable arm and REFUSES the deploy. Treating it as 'no revision recorded' would let a corrupted file authorize a deploy that monotonicity would otherwise have stopped, which is the ⊥-as-ignorance-read-as-⊥-as-answer collapse DESIGN §5 names.\\n\\nThe unrecorded token is compared against the single constant the read script prints, so the two sides of that boundary cannot drift into disagreeing about what absence looks like."
+
+fn parse_slot_revision_stdout(stdout: String) -> ObservedDeployedRevision {
+  if stdout == slot_revision_unrecorded_token {
+    DeployedRevisionUnrecorded
+  } else {
+    match sha1_hex_digest(hex: stdout) {
+      Present { value: _ } => DeployedRevisionRecorded { revision: stdout as CommitSha }
+      Absent =>
+        DeployedRevisionUnreadable {
+          cause: "the routed slot's revision receipt does not contain a 40-digit lowercase-hex commit sha; refusing rather than treating a corrupted receipt as an unrecorded slot" as NonEmptyStr
+        }
+    }
+  }
+}
+
+data ancestry_probe_note: String = "TWO PROBES IN OPPOSITE DIRECTIONS, because one cannot tell 'the candidate is older' from 'the histories are unrelated' — both answer no. The pair (deployed→candidate, candidate→deployed) folds to the four observations deploy_revision_relation_from_probes enumerates.\\n\\nOutcomeIsData IS THE CORRECT EXPECTATION AND ITS ADMISSIBILITY GUARD IS SATISFIED STRUCTURALLY. `git merge-base --is-ancestor` documents exit 1 as the answer 'no', so ExpectSuccess would classify an ordinary superseded candidate as a failed effect; the exit provably feeds a typed consumer, since the only thing this function returns is a DeployRevisionRelation-shaped pair of Bools consumed by decide_deploy_for_observation, never unit. Exit 128 — the probe itself could not run — is NOT folded into 'no': it is distinguished here and becomes RelationUnverifiable, which refuses.\\n\\nTHE PROBES RUN AGAINST THE LOCAL CHECKOUT, not the remote host, and that is correct in both transports: the checkout performing the deploy is the one holding the candidate revision, and the deployed sha is just a string to look up in that same object store. The deploy job checks out with fetch-depth 0, so any main ancestor resolves; a sha that does not resolve exits 128 and refuses, which is the fail-closed direction."
+
+type AncestryProbePair
+  = AncestryProbed { deployed_is_ancestor: Bool, candidate_is_ancestor: Bool }
+  | AncestryProbeRefused { cause: NonEmptyStr }
+
+fn probe_is_ancestor(ancestor: CommitSha, descendant: CommitSha) -> Int {
+  let probe = git.Inspect.MergeBaseIsAncestor(
+    ancestor: ancestor as GitRef,
+    descendant: descendant as GitRef,
+    expect: OutcomeIsData,
+  )
+  probe.exit_code
+}
+
+fn probe_ancestry_pair(deployed: CommitSha, candidate: CommitSha) -> AncestryProbePair {
+  let forward = probe_is_ancestor(ancestor: deployed, descendant: candidate)
+  let backward = probe_is_ancestor(ancestor: candidate, descendant: deployed)
+  if (forward != 0 && forward != 1) || (backward != 0 && backward != 1) {
+    AncestryProbeRefused {
+      cause: join(
+        [
+          "git merge-base --is-ancestor could not determine the relation between the deployed revision ",
+          deployed as String,
+          " and the candidate ",
+          candidate as String,
+          " (probe exits ",
+          to_string(forward),
+          "/",
+          to_string(backward),
+          "); refusing rather than assuming the candidate is newer"
+        ],
+        ""
+      ) as NonEmptyStr
+    }
+  } else {
+    AncestryProbed { deployed_is_ancestor: forward == 0, candidate_is_ancestor: backward == 0 }
+  }
+}
+
+data decision_from_observation_note: String = "THE ONE PLACE THE LIVE OBSERVATION MEETS THE PURE DECISION. Probing is skipped entirely when the slot recorded nothing or could not be read, because there is no pair of revisions to compare — running the probes anyway would need a fabricated second operand, which is the shape that turns a missing fact into a plausible one. A probe that cannot answer becomes RelationUnverifiable and therefore Refuse, never a default direction."
+
+fn decide_deploy_against_routed_slot(
+  observed: ObservedDeployedRevision,
+  candidate: CommitSha,
+) -> DeployDecision {
+  match observed {
+    DeployedRevisionRecorded { revision: deployed } =>
+      match probe_ancestry_pair(deployed: deployed, candidate: candidate) {
+        AncestryProbeRefused { cause: why } =>
+          decide_deploy_for_observation(
+            observed: DeployedRevisionUnreadable { cause: why },
+            candidate: candidate,
+            deployed_is_ancestor_of_candidate: false,
+            candidate_is_ancestor_of_deployed: false,
+          )
+        AncestryProbed { deployed_is_ancestor: fwd, candidate_is_ancestor: bwd } =>
+          decide_deploy_for_observation(
+            observed: observed,
+            candidate: candidate,
+            deployed_is_ancestor_of_candidate: fwd,
+            candidate_is_ancestor_of_deployed: bwd,
+          )
+      }
+    DeployedRevisionUnrecorded =>
+      decide_deploy_for_observation(
+        observed: observed,
+        candidate: candidate,
+        deployed_is_ancestor_of_candidate: false,
+        candidate_is_ancestor_of_deployed: false,
+      )
+    DeployedRevisionUnreadable { cause: _ } =>
+      decide_deploy_for_observation(
+        observed: observed,
+        candidate: candidate,
+        deployed_is_ancestor_of_candidate: false,
+        candidate_is_ancestor_of_deployed: false,
+      )
+  }
+}
+
+data keep_is_converged_not_skipped_note: String = "A KEEP IS Converged, SO IT EXITS ZERO — and it carries its counted reason as the evidence stdout rather than being silent. The rate at which candidates arrive superseded is the only in-band signal that ordering inversion is still happening, so a no-op that reports nothing would remove the measurement at the same moment it removes the symptom. Refuse is NotConverged and therefore red, and neither arm reaches any mutation: both return before the cutover is called."
+
+fn live_deploy_decision_outcome(
+  decision: DeployDecision,
+  selection: BlueGreenSlotSelection,
+  transport: HostEffectTransport,
+  access: DeployAccess,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  match decision {
+    Keep { reason: why } =>
+      Converged {
+        evidence: ShellEffectApplied { exit_code: 0, stdout: deploy_keep_reason_text(reason: why) as String },
+        applied: live_deploy_preflight_intent(access: access),
+      }
+    Refuse { cause: why } =>
+      NotConverged {
+        reason: deploy_relation_failure_reason(cause: why) as String,
+        applied: live_deploy_preflight_intent(access: access),
+      }
+    Advance { admission: adv } =>
+      live_deploy_blue_green_cutover_with_selection(
+        selection: selection,
+        admission: adv,
+        transport: transport,
+        access: access,
+      )
+  }
+}
+
+fn live_deploy_apply_srv1_with_access_for_candidate(
+  access: DeployAccess,
+  candidate: CommitSha,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   match tailscale_serve_status_read(transport: access.transport) {
     TailscaleServeStatusReadRefused { reason } =>
       NotConverged { reason: reason, applied: live_deploy_preflight_intent(access: access) }
-    TailscaleServeStatusObserved { json } =>
-      live_deploy_blue_green_cutover_with_selection(
-        selection: srv1_blue_green_slot_selection(status_json: json),
-        transport: access.transport,
-        access: access,
-      )
+    TailscaleServeStatusObserved { json } => {
+      let selection = srv1_blue_green_slot_selection(status_json: json)
+      match selection {
+        BlueGreenSlotSelectionRefused { reason } =>
+          NotConverged { reason: reason, applied: live_deploy_preflight_intent(access: access) }
+        BlueGreenSlotsSelected { active, idle: _ } =>
+          live_deploy_decision_outcome(
+            decision: decide_deploy_against_routed_slot(
+              observed: observe_routed_slot_revision(
+                active: active,
+                transport: access.transport,
+                access: access,
+              ),
+              candidate: candidate,
+            ),
+            selection: selection,
+            transport: access.transport,
+            access: access,
+          )
+      }
+    }
   }
 }
 
@@ -422,10 +655,6 @@ fn live_deploy_retract_srv1_with_access(access: DeployAccess) -> Reconciliation<
     transport: access.transport,
     access: access
   )
-}
-
-fn live_deploy_apply_srv1() -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  live_deploy_apply_srv1_with_access(access: ci_deploy_srv1_access)
 }
 
 fn live_deploy_retract_srv1() -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
@@ -443,12 +672,35 @@ fn live_deploy_reconciliation_exit(r: Reconciliation<HostEffectIntent, HostEffec
   }
 }
 
-fn live_deploy_wet_with_access(access: DeployAccess) -> ProcessExit {
-  let preflight = live_deploy_access_preflight_for(access: access)
-  if !reconciliation_converged(r: preflight) {
-    live_deploy_reconciliation_exit(r: preflight)
-  } else {
-    live_deploy_reconciliation_exit(r: live_deploy_apply_srv1_with_access(access: access))
+data candidate_arrives_as_a_parameter_note: String = "THE CANDIDATE CROSSES THE LEASE'S PROCESS BOUNDARY AS A NAMED ARGUMENT AND IS NOT RE-DERIVED HERE. The launcher observes HEAD once, in the checkout that is actually performing the deploy, and hands the value in; re-reading it inside would let the two halves of one deploy disagree about which revision they are deploying, which is precisely what the globally-mutable tree-sync selector already demonstrated on this host.\\n\\nIT IS VALIDATED RATHER THAN TRUSTED. The argument arrives as a String across a CLI boundary — the interpreter fabricates no coercion — so a value that is not a 40-digit lowercase-hex sha REFUSES before anything is observed or mutated. An unvalidated candidate would flow straight into the ancestry probes as a git ref, where a typo would exit 128 and refuse anyway, but at the wrong layer and with a diagnostic about git rather than about the argument."
+
+fn live_deploy_candidate_refusal(candidate: String) -> String {
+  join(
+    [
+      "deploy refused: --arg candidate=",
+      candidate,
+      " is not a 40-digit lowercase-hex commit sha; the leased deploy will not observe or mutate against an unvalidated candidate revision"
+    ],
+    ""
+  )
+}
+
+fn live_deploy_wet_with_access_for_candidate(access: DeployAccess, candidate: String) -> ProcessExit {
+  match sha1_hex_digest(hex: candidate) {
+    Absent => exit_failure(reason: live_deploy_candidate_refusal(candidate: candidate))
+    Present { value: _ } => {
+      let preflight = live_deploy_access_preflight_for(access: access)
+      if !reconciliation_converged(r: preflight) {
+        live_deploy_reconciliation_exit(r: preflight)
+      } else {
+        live_deploy_reconciliation_exit(
+          r: live_deploy_apply_srv1_with_access_for_candidate(
+            access: access,
+            candidate: candidate as CommitSha,
+          )
+        )
+      }
+    }
   }
 }
 
@@ -461,12 +713,22 @@ fn live_deploy_retract_wet_with_access(access: DeployAccess) -> ProcessExit {
   }
 }
 
+data leased_inner_entries_note: String = "THESE ARE THE INNER ENTRIES AND THEY ARE NOT THE PUBLIC ONES. Each runs UNDER the exclusive lease, invoked by the launcher below as the command flock wraps, and each takes its candidate as a parameter — so neither can be reached from CI or by an operator without the lock, because neither is what the workflow or the operator recipe names.\\n\\nThey remain callable in principle, which is the honest statement of what flock(2) gives: an ADVISORY lock excludes only callers that take it. That is why the launcher is the named public entry and these carry the `_leased` suffix — the obligation 'every public mutation entry routes through the leased launcher' is discharged by there being exactly two public entries and both being launchers, not by these being unreachable."
+
+func live_deploy_apply_srv1_leased_wet(candidate: String) -> ProcessExit {
+  live_deploy_wet_with_access_for_candidate(access: ci_deploy_srv1_access, candidate: candidate)
+}
+
+func live_deploy_apply_srv1_operator_leased_wet(candidate: String) -> ProcessExit {
+  live_deploy_wet_with_access_for_candidate(access: ci_deploy_srv1_operator_access, candidate: candidate)
+}
+
 func live_deploy_apply_srv1_wet() -> ProcessExit {
-  live_deploy_wet_with_access(access: ci_deploy_srv1_access)
+  live_deploy_launch_under_lease(inner_function: live_deploy_apply_srv1_leased_entry_function)
 }
 
 func live_deploy_apply_srv1_operator_wet() -> ProcessExit {
-  live_deploy_wet_with_access(access: ci_deploy_srv1_operator_access)
+  live_deploy_launch_under_lease(inner_function: live_deploy_apply_srv1_operator_leased_entry_function)
 }
 
 func live_deploy_retract_srv1_wet() -> ProcessExit {

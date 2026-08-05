@@ -1,6 +1,6 @@
 module gunbc.live_deploy.intent
 
-import std.types { String, NonEmptyStr, Int }
+import std.types { String, NonEmptyStr, Int, CommitSha, List }
 import std.disposition { Disposition, Scaffold, Terminal, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.measure { Second }
@@ -11,8 +11,12 @@ import gunbc.live_deploy.service_ready {
   live_deploy_service_ready_endpoint_authority,
   UnitDiagnosisUnavailable,
 }
-import gunbc.roadmap_static_site { roadmap_site_health_path }
+import gunbc.roadmap_static_site { roadmap_site_health_path, sh_single_quote }
 import gunbc.live_deploy.spec { DeploymentSpec, deployment_plan_listen_port }
+import gunbc.live_deploy.revision {
+  deploy_slot_revision_receipt_path,
+  deploy_slot_revision_receipt_dir,
+}
 
 type TransportCurlHealthzProbe {
   health_url: NonEmptyStr
@@ -76,5 +80,45 @@ fn live_deploy_unit_status_tail_command(unit: NonEmptyStr) -> String {
   concat(
     concat("systemctl status --no-pager --full ", unit as String),
     " 2>&1 | tail -n 40"
+  )
+}
+
+data slot_revision_receipt_transport_note: String = "THE RECEIPT SCRIPTS LIVE HERE AND NOT IN gunbc.live_deploy.revision, because that module is the DECISION authority and every witness over it runs hermetically. Giving it a shell dependency would put host-effect construction inside the one module whose whole value is being a pure fold from an observation to a disposition. The path is still revision.dag's — imported, never re-spelled — so there is exactly one place that knows where a slot records its revision.\\n\\nWHY THE READ DISTINGUISHES ABSENCE FROM FAILURE AT THE SCRIPT BOUNDARY. The three-way split ObservedDeployedRevision makes is only real if the shell can express it, so a missing file exits ZERO with the literal token below, and every other problem — an unreadable file, a failed dispatch, a transport error — exits nonzero and lands in the Unreadable arm. Encoding absence as a nonzero exit would fuse it with failure at the boundary and leave the typed split downstream describing a distinction the observation never carried.\\n\\nTHE CONTENT IS NORMALIZED, NOT REPAIRED. `tr -d` strips whitespace so a trailing newline from a hand-written receipt still parses; anything else that is not a 40-digit lowercase hex sha is REFUSED by sha1_hex_digest rather than coerced, so a corrupted receipt refuses the deploy instead of authorizing one."
+
+data slot_revision_unrecorded_token: String = "unrecorded"
+
+fn live_deploy_slot_revision_read_script(spec: DeploymentSpec) -> String {
+  let path = deploy_slot_revision_receipt_path(slot: spec) as String
+  join(
+    [
+      "set -euo pipefail\n",
+      "# routed-slot revision receipt read (gunbc.live_deploy.revision deploy_slot_revision_receipt_path)\n",
+      "_gunbc_receipt=", sh_single_quote(s: path), "\n",
+      "if [ ! -e \"$_gunbc_receipt\" ]; then printf '%s' ", sh_single_quote(s: slot_revision_unrecorded_token), "; exit 0; fi\n",
+      "printf '%s' \"$(tr -d '[:space:]' < \"$_gunbc_receipt\")\"\n",
+    ],
+    ""
+  )
+}
+
+data slot_revision_record_grants_note: String = "THE WRITE STAYS INSIDE THE SIX NOPASSWD GRANTS (gunbc.fleet_posix_accounts fleet_posix_ci_runner_sudo_grants — apt-get, install, visudo, systemctl, tailscale, rm). The deploy principal is the unprivileged CI-runner account and /var/lib/gunbc is not writable by it, so the receipt is staged into a mktemp file the runner owns and then placed with the GRANTED install, which also creates the parent directory with ownership at creation rather than a chown fixup. That is the same construction emit_deploy_principal_note records for every other deploy-owned path: the wrongly-owned intermediate state is unwritable rather than corrected afterwards.\\n\\nThe staged file is removed on the success path only. A failed install leaves it behind under the runner's own temp directory, which is the correct trade: `rm -f` after a failure would run under `set -e` having already lost the exit status, and a stray temp file is a diagnosable residue while a swallowed failure is not."
+
+fn live_deploy_slot_revision_record_script(spec: DeploymentSpec, revision: CommitSha) -> String {
+  let path = deploy_slot_revision_receipt_path(slot: spec) as String
+  let dir = deploy_slot_revision_receipt_dir as String
+  join(
+    [
+      "set -euo pipefail\n",
+      "# routed-slot revision receipt write (gunbc.live_deploy.revision deploy_slot_revision_receipt_path)\n",
+      "_gunbc_receipt_stage=\"$(mktemp)\"\n",
+      "printf '%s' ", sh_single_quote(s: revision as String), " > \"$_gunbc_receipt_stage\"\n",
+      "sudo -n install -d -m 0755 -o ", spec.service.service_user as String,
+      " -g ", spec.service.service_user as String, " ", sh_single_quote(s: dir), "\n",
+      "sudo -n install -m 0644 -o ", spec.service.service_user as String,
+      " -g ", spec.service.service_user as String,
+      " \"$_gunbc_receipt_stage\" ", sh_single_quote(s: path), "\n",
+      "rm -f \"$_gunbc_receipt_stage\"\n",
+    ],
+    ""
   )
 }

@@ -18,6 +18,7 @@ import gunbc.ci_layer_roots {
   witness_layer_roots,
   witness_discovery_scan_dirs
 }
+import gunbc.live_deploy.lease { live_deploy_apply_entry_path }
 import gunbc.cli_invoke {
   claim_executor_run_plan_shell,
   PlanFunction,
@@ -145,7 +146,10 @@ data gunbc_ci_floor_witness_entries: List<ScheduleWitnessEntry> = project_ci_flo
 
 data gunbc_ci_gates: List<Gate> = gunbc_ci_floor_gates
 
-data live_deploy_apply_entry: String = "dag/gunbc/live_deploy/apply.dag"
+data live_deploy_apply_entry_single_authority_note: String = "THE ENTRY FILE IS NAMED ONCE, IN THE LIVE-DEPLOY MODEL, AND READ HERE. It was declared here AND in gunbc.live_deploy.lease — two spellings of one fact, in the two places that must agree exactly: the CI step that invokes the launcher, and the launcher that re-invokes the same file under the lock. A fork between them would not be caught by a name-level read, because both would still name a real file; it would surface as a deploy that took the lease and then ran nothing (DESIGN §3)."
+
+data live_deploy_apply_entry: String = live_deploy_apply_entry_path
+
 data live_deploy_apply_srv1_wet_function: String = "live_deploy_apply_srv1_wet"
 
 data gunbc_ci_deploy_srv1_stage: DeployStage = {

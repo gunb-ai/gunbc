@@ -6,9 +6,19 @@ import extdeps.linux.flock {
   FlockWaitSeconds,
   flock_exclusive_command,
   flock_exit_is_lock_conflict,
+  flock_exit_is_launcher_failure,
+  flock_launcher_failure_reason,
   flock_conflict_exit_code,
 }
-import extdeps.exec.command { ArgvCommand }
+import extdeps.exec.command { ArgvCommand, CommandTransport, LocalExec }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.resources { Network }
+import std.content_hash { sha1_hex_digest }
+import v2.std.collection { Present, Absent }
+import gunbc.command_runner { run_shell_command_exit_code }
+import gunbc.ci_layer_roots { witness_layer_roots }
+import gunbc.output_policy { ExpectSuccess }
+import extdeps.git.inspect
 import gunbc.cli_invoke {
   GunbcRunNamedArg,
   gunbc_run_transport_argv_with_named_args,
@@ -24,7 +34,7 @@ import gunbc.live_deploy.revision {
 
 data lease_owns_the_critical_section_note: String = "THE DEPLOY ENTRY OWNS THE LEASE; GITHUB ACTIONS DOES NOT (operator ruling 2026-08-04). Putting `flock` in the workflow would make the CI path temporarily special: the operator entrypoint would stay outside the lock, and the split between 'the deploy CI runs' and 'the deploy an operator runs' would harden into two deployment systems. So the lock is realized here, inside the live-deploy model, and every public mutation entry routes through it.\\n\\nWHY THE LOCK MUST WRAP THE WHOLE PROCESS RATHER THAN THE MUTATION. The blue/green operation is one transaction — observe route, select active/idle, prepare idle, prove readiness and readback, flip route, verify the routed result, persist the receipt, retire the old runtime. The lock must be held BEFORE the route observation, because acquiring it only around mutation leaves the original observe-then-mutate race intact: two callers can both conclude the same slot is idle. It must still be held after the flip, because releasing at the flip lets another caller observe a deployment whose receipt is not yet recorded.\\n\\nWHY NOT AN Acquire/Release EFFECT PAIR. Each live-deploy mutation, readiness probe and readback is realized as its OWN host-effect invocation. A file descriptor taken by one of those shell processes is gone when that process exits, so a modeled AcquireLease effect would return success while holding nothing across the calls that follow — a lock that type-checks and excludes nobody. Process-grain is the first realization that is honestly exclusive, because flock(2) holds across exec and releases exactly on process exit."
 
-data lease_advisory_obligation_note: String = "flock(2) is ADVISORY, so this excludes only callers that take the same lock on the same path. That makes 'every public mutation entry routes through the leased launcher' a load-bearing obligation rather than a convention — one official entrypoint bypassing it makes the lease advisory in the bad sense. The composition witnesses assert that join rather than trusting it, and a planted direct call to an inner unleased entry is the discriminating RED."
+data lease_advisory_obligation_note: String = "flock(2) is ADVISORY, so this excludes only callers that take the same lock on the same path. That makes 'every public mutation entry routes through the leased launcher' a load-bearing obligation rather than a convention — one official entrypoint bypassing it makes the lease advisory in the bad sense.\\n\\nWHAT EXECUTES, STATED EXACTLY, because an earlier revision of this row promised more than it delivered. `test.claim.ci_deploy_witness` asserts that the function CI names IS the launcher and is distinct from both inner leased entries, that the launcher's argv is `flock --exclusive` over this target's lease path, that the conflict code and the bare-integer timeout reach that argv, and that the candidate crosses as `--arg candidate=<sha>`. Those red if the wiring is removed while every pure-decision witness stays green — which is the property that was missing when this carrier had no consumer at all.\\n\\nWHAT DOES **NOT** EXECUTE, named rather than implied: there is no planted-direct-call RED. The earlier revision of this note claimed one, and it did not exist — asserting it would mean a witness that rewrites the CI spec to name an inner entry and checks that the roster witness reds, which is a mutation of the very authority the witness reads. The honest rung here is therefore MECHANICALLY PREVENTABLE for the enrolled entrypoints and NOT structural: the inner `_leased_wet` entries stay callable by anything that invokes them directly, and no check in this repository stops that. NEXT-RUNG TRIGGER: reference-level visibility (the meta-exec confinement milestone), which makes the inner entries unreachable from outside this module by construction — not another runtime check, which would concede the bad state is writable."
 
 data lease_wait_bound_note: String = "THE WAIT MUST FIT INSIDE THE JOB, AND AN EARLIER REVISION OF THIS ROW DID NOT. It set 600s and claimed 'the job backstop is 10 minutes of its own on top', which is false: the job timeout covers checkout, artifact download, unpack and the deploy together, so by the time flock starts, less than 600s remain. GitHub would cancel the job before the typed lock-conflict outcome could be returned — converting the one signal --conflict-exit-code exists to preserve into an infrastructure-shaped kill (operator review 2026-08-04).\\n\\nSo the two budgets are now ONE derivation instead of two independent literals. The cutover envelope is the measured wall of a complete blue/green attempt; the wait admits at most one such cutover running ahead of this one; and gunbc.ci_workflow's deploy step and job backstop are computed FROM these, so the containment holds by construction rather than by a comment claiming it. Changing the envelope moves the caps with it; a wait that no longer fits is unwritable rather than merely wrong.\\n\\nENVELOPE BASIS: observed deploy job windows run 3m30s-4m40s end to end (srv1-deploy-serialization-and-false-greens.md §9.3), so 5 minutes is a real ceiling rather than a target. A conflict outliving the wait is a stuck holder — a defect to diagnose, not headroom to grant."
 
@@ -107,6 +117,7 @@ data lease_outcome_note: String = "THREE OUTCOMES, AND THE CONFLICT IS NOT A FAI
 
 type LiveDeployLeaseOutcome
   = LeaseConflict { target_key: String, waited: Duration }
+  | LeaseLauncherFailed { target_key: String, exit_code: Int }
   | LeaseAcquiredExit { exit_code: Int }
 
 fn live_deploy_lease_outcome(
@@ -122,7 +133,14 @@ fn live_deploy_lease_outcome(
       },
     }
   } else {
-    LeaseAcquiredExit { exit_code: exit_code }
+    if flock_exit_is_launcher_failure(exit_code: exit_code) {
+      LeaseLauncherFailed {
+        target_key: deploy_target_key(target: invocation.target),
+        exit_code: exit_code,
+      }
+    } else {
+      LeaseAcquiredExit { exit_code: exit_code }
+    }
   }
 }
 
@@ -139,7 +157,107 @@ fn live_deploy_lease_conflict_reason(outcome: LiveDeployLeaseOutcome) -> NonEmpt
         ],
         ""
       ) as NonEmptyStr
+    LeaseLauncherFailed { target_key: k, exit_code: code } =>
+      join(
+        [
+          "deploy refused on target ",
+          k,
+          ": ",
+          flock_launcher_failure_reason(exit_code: code),
+          " — this run mutated nothing"
+        ],
+        ""
+      ) as NonEmptyStr
     LeaseAcquiredExit { exit_code: _ } =>
       "deploy lease was acquired; this is not a conflict" as NonEmptyStr
+  }
+}
+
+data lease_launcher_is_the_public_entry_note: String = "THE LAUNCHER IS WHAT CI AND THE OPERATOR CALL, AND IT IS THE ONLY THING THEY CALL. Both public deploy entries in gunbc.live_deploy.apply are launchers; neither performs a deployment effect itself. That is how the advisory-lock obligation above is actually discharged — not by hoping callers remember the lock, but by the two named public entries both being this.\\n\\nWHY THE CANDIDATE IS OBSERVED HERE AND NOT INSIDE. This process holds the checkout that is performing the deploy, so HEAD here IS the revision being offered. Observing it once and passing it across the lease boundary as a named argument means the launcher and the leased reconciliation cannot disagree about which revision this run is deploying — the exact disagreement the globally-mutable tree-sync selector produced on this host, one layer up.\\n\\nHEAD IS OBSERVED BEFORE THE LOCK IS TAKEN, deliberately. It is a read of this process's own immutable checkout, not of the shared host, so nothing another deploy does can change the answer while we wait — and taking the lock first would hold it across a read that has nothing to do with the host."
+
+data live_deploy_apply_srv1_leased_entry_function: String = "live_deploy_apply_srv1_leased_wet"
+
+data live_deploy_apply_srv1_operator_leased_entry_function: String = "live_deploy_apply_srv1_operator_leased_wet"
+
+type LeaseLaunchCandidate
+  = LaunchCandidateObserved { revision: CommitSha }
+  | LaunchCandidateRefused { cause: NonEmptyStr }
+
+fn observe_launch_candidate() -> LeaseLaunchCandidate {
+  let head = git.Inspect.HeadCommit(expect: ExpectSuccess)
+  if !head.success {
+    LaunchCandidateRefused {
+      cause: "deploy refused: git.Inspect.HeadCommit could not observe the candidate revision of this checkout" as NonEmptyStr
+    }
+  } else {
+    match sha1_hex_digest(hex: head.sha as String) {
+      Absent =>
+        LaunchCandidateRefused {
+          cause: "deploy refused: git.Inspect.HeadCommit returned a value that is not a 40-digit lowercase-hex commit sha" as NonEmptyStr
+        }
+      Present { value: _ } => LaunchCandidateObserved { revision: head.sha as String as CommitSha }
+    }
+  }
+}
+
+data lease_launch_exit_note: String = "THE LEASE ADDS NO VERDICT OF ITS OWN TO A RUN THAT GOT THE LOCK. LeaseAcquiredExit carries the inner reconciliation's exit through unchanged, so a Keep still exits zero and a Refuse still exits nonzero exactly as the leased decision made them — the launcher is a scheduler, not a second adjudicator.\\n\\nA CONFLICT IS A REFUSAL AND NOT A RETRY. Re-entering the wait would consume the same bound again with no new information and no counter, which is the absorbing shape DESIGN §5 forbids: the frequency of lease contention has to stay observable, because a rising rate is the signal that deploys have started overlapping again."
+
+fn live_deploy_lease_launch_exit(
+  invocation: LiveDeployExclusiveInvocation,
+  exit_code: Int,
+) -> ProcessExit {
+  match live_deploy_lease_outcome(invocation: invocation, exit_code: exit_code) {
+    LeaseConflict { target_key: k, waited: w } =>
+      exit_failure(
+        reason: live_deploy_lease_conflict_reason(
+          outcome: LeaseConflict { target_key: k, waited: w }
+        ) as String
+      )
+    LeaseLauncherFailed { target_key: k, exit_code: code } =>
+      exit_failure(
+        reason: live_deploy_lease_conflict_reason(
+          outcome: LeaseLauncherFailed { target_key: k, exit_code: code }
+        ) as String
+      )
+    LeaseAcquiredExit { exit_code: code } =>
+      if code == 0 {
+        ExitSuccess
+      } else {
+        exit_failure(reason: live_deploy_leased_run_failed_reason(exit_code: code))
+      }
+  }
+}
+
+fn live_deploy_leased_run_failed_reason(exit_code: Int) -> String {
+  join(
+    [
+      "deploy failed under the exclusive lease (inner reconciliation exit ",
+      to_string(exit_code),
+      "); the lease was acquired, so this is this deploy's own verdict and not contention"
+    ],
+    ""
+  )
+}
+
+func live_deploy_launch_under_lease(inner_function: String) -> ProcessExit
+  uses net: Network
+{
+  match observe_launch_candidate() {
+    LaunchCandidateRefused { cause: why } => exit_failure(reason: why as String)
+    LaunchCandidateObserved { revision: rev } => {
+      let invocation = live_deploy_exclusive_invocation(target: Srv1Dashboard)
+      live_deploy_lease_launch_exit(
+        invocation: invocation,
+        exit_code: run_shell_command_exit_code(
+          command: live_deploy_leased_command(
+            invocation: invocation,
+            source_roots: witness_layer_roots,
+            inner_function: inner_function,
+            candidate: CandidateRelease { revision: rev },
+          ),
+          transport: LocalExec,
+        ),
+      )
+    }
   }
 }

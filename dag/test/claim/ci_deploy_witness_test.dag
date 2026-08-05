@@ -14,7 +14,43 @@ import gunbc.live_deploy.revision {
   Srv1Dashboard,
   deploy_target_queue_group,
   deploy_target_queue_group_after_drain,
+  deploy_target_lease_path,
+  deploy_target_blue_slot,
+  deploy_slot_revision_receipt_path,
+  deploy_slot_revision_receipt_dir,
+  DeployedRevisionRecorded,
+  DeployedRevisionUnrecorded,
+  DeployedRevisionUnreadable,
 }
+import gunbc.live_deploy.lease {
+  live_deploy_leased_command,
+  live_deploy_exclusive_invocation,
+  live_deploy_lease_outcome,
+  live_deploy_lease_wait_seconds,
+  live_deploy_apply_entry_path,
+  live_deploy_apply_srv1_leased_entry_function,
+  live_deploy_apply_srv1_operator_leased_entry_function,
+  CandidateRelease,
+  LiveDeployLeaseOutcome,
+  LeaseConflict,
+  LeaseLauncherFailed,
+  LeaseAcquiredExit,
+}
+import gunbc.live_deploy.intent {
+  slot_revision_unrecorded_token,
+  live_deploy_slot_revision_read_script,
+  live_deploy_slot_revision_record_script,
+}
+import gunbc.live_deploy.apply { parse_slot_revision_stdout }
+import gunbc.ci_layer_roots { witness_layer_roots }
+import v2.std.algebra { list_head, ListHeadResult, HeadFound, HeadAbsent }
+import extdeps.linux.flock {
+  flock_conflict_exit_code,
+  flock_conflict_exit_code_is_disjoint_from_reserved_ranges,
+  flock_exit_is_launcher_failure,
+  flock_exit_is_lock_conflict,
+}
+import std.types { CommitSha, String, List, Int, Bool }
 import gunbc.ci_workflow {
   gunbc_ci_deploy_step_timeout_minutes,
   gunbc_ci_deploy_job_backstop_timeout_minutes,
@@ -170,4 +206,188 @@ test fn witness_ci_yml_deploy_job_matches_enrollment() -> Bool {
   string_contains(s: yaml, pattern: "  deploy_dashboard_srv1:") == enrolled
     && string_contains(s: yaml, pattern: "Deploy dashboard to srv1 (live_deploy_apply_srv1_wet)") == enrolled
     && string_contains(s: yaml, pattern: live_deploy_apply_srv1_wet_function) == enrolled
+}
+
+data lease_composition_note: String = "THE JOIN BETWEEN THE MODEL AND THE PRODUCTION PATH, ASSERTED RATHER THAN TRUSTED. lease.dag's advisory-lock obligation is 'every public mutation entry routes through the leased launcher', and an advisory lock is worth exactly what that obligation is worth — so these witnesses execute it. What they check is the seam a reader cannot see from either side alone: that the function CI actually names is the launcher, that the launcher's own argv re-invokes the leased inner entry against the same entry file, and that the candidate crosses that boundary as a named argument rather than being re-derived on the other side.\\n\\nThis is the shape #7462 was missing. A witness over decide_deploy_revision alone greens in a tree where nothing calls it; these red if the wiring is removed while every pure-decision witness stays green."
+
+fn leased_argv_for(inner: String) -> List<String> {
+  live_deploy_leased_command(
+    invocation: live_deploy_exclusive_invocation(target: Srv1Dashboard),
+    source_roots: witness_layer_roots,
+    inner_function: inner,
+    candidate: CandidateRelease { revision: witness_candidate_sha },
+  ).argv
+}
+
+data witness_candidate_sha: CommitSha = "abcdef0123456789abcdef0123456789abcdef01"
+
+test fn ci_invokes_the_launcher_and_not_an_inner_leased_entry() -> Bool {
+  gunbc_ci_deploy_srv1_stage.function == live_deploy_apply_srv1_wet_function
+    && live_deploy_apply_srv1_wet_function != live_deploy_apply_srv1_leased_entry_function
+    && live_deploy_apply_srv1_wet_function != live_deploy_apply_srv1_operator_leased_entry_function
+}
+
+data one_entry_file_note: String = "The CI step and the leased re-invocation must name the SAME entry file, and after the single-authority consolidation they are literally the same declaration — so this witness reds if anyone re-forks it, which is the failure mode that would otherwise produce a deploy that takes the lock and then runs nothing."
+
+test fn the_leased_reinvocation_names_the_same_entry_file_as_ci() -> Bool {
+  live_deploy_apply_entry == live_deploy_apply_entry_path
+    && contains_element(leased_argv_for(inner: live_deploy_apply_srv1_leased_entry_function), live_deploy_apply_entry)
+}
+
+test fn the_leased_command_is_flock_exclusive_over_the_target_lease() -> Bool {
+  let argv = leased_argv_for(inner: live_deploy_apply_srv1_leased_entry_function)
+  head_is(argv: argv, expected: "flock")
+    && contains_element(argv, "--exclusive")
+    && contains_element(argv, deploy_target_lease_path(target: Srv1Dashboard) as String)
+    && contains_element(argv, live_deploy_apply_srv1_leased_entry_function)
+}
+
+data conflict_code_argv_note: String = "The conflict code has to REACH flock, not merely be declared. A carrier holding 111 while the argv omitted --conflict-exit-code would leave flock exiting 1 on contention — indistinguishable from the wrapped deploy failing, which is the whole state-space collapse the flag exists to prevent."
+
+test fn the_conflict_exit_code_reaches_the_argv() -> Bool {
+  let argv = leased_argv_for(inner: live_deploy_apply_srv1_leased_entry_function)
+  contains_element(argv, "--conflict-exit-code")
+    && contains_element(argv, to_string(flock_conflict_exit_code))
+}
+
+data timeout_argv_is_a_bare_integer_note: String = "flock(1) takes --timeout as a bare integer of seconds; there is no `300s` form. This pins the emitted token so a change in how the Duration carrier renders cannot silently produce an argument flock rejects (review 48288)."
+
+test fn the_wait_timeout_renders_as_a_bare_integer_of_seconds() -> Bool {
+  let argv = leased_argv_for(inner: live_deploy_apply_srv1_leased_entry_function)
+  contains_element(argv, "--timeout")
+    && contains_element(argv, "300")
+    && !contains_element(argv, "300s")
+    && live_deploy_lease_wait_seconds == 300
+}
+
+data candidate_crosses_as_named_arg_note: String = "The candidate must cross the process boundary as `--arg candidate=<sha>` and not as an environment variable or a positional. A positional would be an unchecked coincidence against a named .dag parameter, and an env channel at a runtime-present site is the shell-to-intent class DESIGN names — both of which would also make the candidate ambient at exactly the seam this model exists to make explicit."
+
+test fn the_candidate_crosses_the_lease_boundary_as_a_named_argument() -> Bool {
+  let argv = leased_argv_for(inner: live_deploy_apply_srv1_leased_entry_function)
+  contains_element(argv, "--arg")
+    && contains_element(argv, concat("candidate=", witness_candidate_sha as String))
+}
+
+data lease_outcome_three_way_note: String = "THREE OUTCOMES, AND THE SYSEXITS RANGE IS THE ONE THAT WAS ALMOST MISSED (review 48288). flock reserves 64..78 for its OWN failures, so those exits mean the wrapped deploy never ran — reporting them as the deploy's exit is the same conflation --conflict-exit-code removes, one class over. The boundary values are asserted, not just the interior, because an off-by-one on either end would silently reclassify a real launcher failure as a deploy failure."
+
+test fn the_lease_outcome_splits_conflict_launcher_failure_and_the_wrapped_exit() -> Bool {
+  let inv = live_deploy_exclusive_invocation(target: Srv1Dashboard)
+  is_conflict(o: live_deploy_lease_outcome(invocation: inv, exit_code: flock_conflict_exit_code))
+    && is_launcher_failure(o: live_deploy_lease_outcome(invocation: inv, exit_code: 64))
+    && is_launcher_failure(o: live_deploy_lease_outcome(invocation: inv, exit_code: 77))
+    && is_launcher_failure(o: live_deploy_lease_outcome(invocation: inv, exit_code: 78))
+    && is_acquired(o: live_deploy_lease_outcome(invocation: inv, exit_code: 0))
+    && is_acquired(o: live_deploy_lease_outcome(invocation: inv, exit_code: 1))
+    && is_acquired(o: live_deploy_lease_outcome(invocation: inv, exit_code: 63))
+    && is_acquired(o: live_deploy_lease_outcome(invocation: inv, exit_code: 79))
+}
+
+data conflict_code_disjointness_note: String = "The conflict code's disjointness from every occupied range is asserted rather than argued. An earlier revision picked 75 because EX_TEMPFAIL's meaning matched a lease conflict — and 75 is inside the range flock uses for its own errors, so an internal flock failure would have been reported as contention. Semantic aptness was the wrong criterion; this is the right one, executing."
+
+test fn the_conflict_code_is_disjoint_from_every_occupied_range() -> Bool {
+  flock_conflict_exit_code_is_disjoint_from_reserved_ranges()
+    && !flock_exit_is_launcher_failure(exit_code: flock_conflict_exit_code)
+    && flock_exit_is_lock_conflict(exit_code: flock_conflict_exit_code)
+}
+
+fn is_conflict(o: LiveDeployLeaseOutcome) -> Bool {
+  match o {
+    LeaseConflict { target_key: _, waited: _ } => true
+    LeaseLauncherFailed { target_key: _, exit_code: _ } => false
+    LeaseAcquiredExit { exit_code: _ } => false
+  }
+}
+
+fn is_launcher_failure(o: LiveDeployLeaseOutcome) -> Bool {
+  match o {
+    LeaseConflict { target_key: _, waited: _ } => false
+    LeaseLauncherFailed { target_key: _, exit_code: _ } => true
+    LeaseAcquiredExit { exit_code: _ } => false
+  }
+}
+
+fn is_acquired(o: LiveDeployLeaseOutcome) -> Bool {
+  match o {
+    LeaseConflict { target_key: _, waited: _ } => false
+    LeaseLauncherFailed { target_key: _, exit_code: _ } => false
+    LeaseAcquiredExit { exit_code: _ } => true
+  }
+}
+
+fn head_is(argv: List<String>, expected: String) -> Bool {
+  match list_head(xs: argv) {
+    HeadAbsent => false
+    HeadFound { value: first } => first == expected
+  }
+}
+
+fn contains_element(xs: List<String>, target: String) -> Bool {
+  any(xs, x => x == target)
+}
+
+data receipt_read_write_note: String = "The receipt read and write must address the SAME path, and it must be the path revision.dag declares — the two scripts are built independently and would otherwise be free to drift into writing where nothing reads. The directory is asserted to be the file's own prefix for the same reason: the write creates the parent before placing the file, and a parent that is not this file's parent creates a directory nobody uses while the install still fails."
+
+test fn the_receipt_scripts_address_the_declared_path_and_its_parent() -> Bool {
+  let slot = deploy_target_blue_slot(target: Srv1Dashboard)
+  let path = deploy_slot_revision_receipt_path(slot: slot) as String
+  let dir = deploy_slot_revision_receipt_dir as String
+  substring(s: path, start: 0, end: dir.length()) == dir
+    && path.length() > dir.length()
+    && contains_substring(haystack: live_deploy_slot_revision_read_script(spec: slot), needle: path)
+    && contains_substring(
+         haystack: live_deploy_slot_revision_record_script(spec: slot, revision: witness_candidate_sha),
+         needle: path
+       )
+    && contains_substring(
+         haystack: live_deploy_slot_revision_record_script(spec: slot, revision: witness_candidate_sha),
+         needle: witness_candidate_sha as String
+       )
+}
+
+data unrecorded_token_is_shared_note: String = "The read script prints the absence token and the parser compares against it. Asserting that the script actually contains the constant the parser reads is what keeps the two sides of that process boundary from drifting into disagreeing about what absence looks like — a drift that would make every slot read as unreadable, or worse, as unrecorded."
+
+test fn the_read_script_prints_the_token_the_parser_recognizes() -> Bool {
+  contains_substring(
+    haystack: live_deploy_slot_revision_read_script(spec: deploy_target_blue_slot(target: Srv1Dashboard)),
+    needle: slot_revision_unrecorded_token
+  )
+}
+
+test fn the_receipt_parser_splits_recorded_unrecorded_and_corrupt() -> Bool {
+  match parse_slot_revision_stdout(stdout: slot_revision_unrecorded_token) {
+    DeployedRevisionUnrecorded => true
+    DeployedRevisionRecorded { revision: _ } => false
+    DeployedRevisionUnreadable { cause: _ } => false
+  }
+  && match parse_slot_revision_stdout(stdout: witness_candidate_sha as String) {
+    DeployedRevisionRecorded { revision: r } => r == witness_candidate_sha
+    DeployedRevisionUnrecorded => false
+    DeployedRevisionUnreadable { cause: _ } => false
+  }
+  && match parse_slot_revision_stdout(stdout: "not-a-sha") {
+    DeployedRevisionUnreadable { cause: _ } => true
+    DeployedRevisionRecorded { revision: _ } => false
+    DeployedRevisionUnrecorded => false
+  }
+  && match parse_slot_revision_stdout(stdout: "") {
+    DeployedRevisionUnreadable { cause: _ } => true
+    DeployedRevisionRecorded { revision: _ } => false
+    DeployedRevisionUnrecorded => false
+  }
+}
+
+fn contains_substring(haystack: String, needle: String) -> Bool {
+  contains_substring_from(haystack: haystack, needle: needle, index: 0)
+}
+
+fn contains_substring_from(haystack: String, needle: String, index: Int) -> Bool {
+  if index + needle.length() > haystack.length() {
+    false
+  } else {
+    if substring(s: haystack, start: index, end: index + needle.length()) == needle {
+      true
+    } else {
+      contains_substring_from(haystack: haystack, needle: needle, index: index + 1)
+    }
+  }
 }
