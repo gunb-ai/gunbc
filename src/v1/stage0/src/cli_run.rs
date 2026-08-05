@@ -4567,6 +4567,9 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::OwnershipViolation { .. } => "OwnershipViolation",
         CompilerDiagnostic::VariantCollision { .. } => "VariantCollision",
         CompilerDiagnostic::SoleConstructorViolation { .. } => "SoleConstructorViolation",
+        CompilerDiagnostic::ConstructorCallAdmissionRefused { .. } => {
+            "ConstructorCallAdmissionRefused"
+        }
         CompilerDiagnostic::UnlistedImportUse { .. } => "UnlistedImportUse",
         CompilerDiagnostic::AmbiguousReference { .. } => "AmbiguousReference",
         CompilerDiagnostic::CallArgumentNameUnknown { .. } => "CallArgumentNameUnknown",
@@ -4603,6 +4606,10 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::OwnershipViolation { binding, .. } => binding.clone(),
         CompilerDiagnostic::VariantCollision { variant, .. } => variant.clone(),
         CompilerDiagnostic::SoleConstructorViolation { type_name, .. } => type_name.clone(),
+        CompilerDiagnostic::ConstructorCallAdmissionRefused {
+            constructor_decl_name,
+            ..
+        } => constructor_decl_name.clone(),
         CompilerDiagnostic::UnlistedImportUse { name, .. } => name.clone(),
         CompilerDiagnostic::AmbiguousReference { name, .. } => name.clone(),
         CompilerDiagnostic::CallArgumentNameUnknown { argument, .. } => argument.clone(),

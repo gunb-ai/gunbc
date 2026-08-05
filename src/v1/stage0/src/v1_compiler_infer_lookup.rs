@@ -160,6 +160,57 @@ pub fn borrowed_census_decl(type_env: Rc<TypeEnv>, name: String) -> Option<Rc<Bo
     }
 }
 
+pub fn func_decl_owner_module(func_env: Rc<ResolvedFuncEnv>, name: String) -> Option<String> {
+    match v1_rt::map_get(&func_env.local.clone(), name.clone()) {
+        Some(_) => Some(func_env.name.clone()),
+        None => match func_env.parents.clone().iter().cloned().fold(
+            None,
+            |found: _, p: Rc<ResolvedFuncEnv>| {
+                if (found.clone() != None) {
+                    found.clone()
+                } else {
+                    match v1_rt::map_get(&p.local.clone(), name.clone()) {
+                        Some(_) => Some(p.name.clone()),
+                        None => None,
+                    }
+                }
+            },
+        ) {
+            Some(owner) => Some(owner.clone()),
+            None => None,
+        },
+    }
+}
+
+pub fn func_decl_binding_for_call(
+    func_env: Rc<ResolvedFuncEnv>,
+    type_env: Rc<TypeEnv>,
+    name: String,
+) -> Option<Rc<BorrowedCensusDecl>> {
+    match lookup_binding_by_name_local(type_env.clone(), name.clone()) {
+        Some(binding) => Some(Rc::new(BorrowedCensusDecl {
+            owner_module_path: type_env.module_path.clone(),
+            node: binding.resolved.clone(),
+        })),
+        None => match borrowed_census_decl(type_env.clone(), name.clone()) {
+            Some(bd) => Some(bd.clone()),
+            None => match func_decl_owner_module(func_env.clone(), name.clone()) {
+                Some(owner) => match symbol_index_lookup(
+                    type_env.symbol_index.clone(),
+                    v1_rt::concat(v1_rt::concat(owner.clone(), ".".to_string()), name.clone()),
+                ) {
+                    Some(node) => Some(Rc::new(BorrowedCensusDecl {
+                        owner_module_path: owner.clone(),
+                        node: node.clone(),
+                    })),
+                    None => None,
+                },
+                None => None,
+            },
+        },
+    }
+}
+
 pub fn census_reserved_method_name_note() -> String {
     thread_local! {
         static CACHED: String = {

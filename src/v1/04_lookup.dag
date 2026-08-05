@@ -124,6 +124,63 @@ fn borrowed_census_decl(type_env: TypeEnv, name: String) -> BorrowedCensusDecl? 
   }
 }
 
+fn func_decl_owner_module(func_env: ResolvedFuncEnv, name: String) -> String? {
+  match map_get(func_env.local, name) {
+    Present { value: _ } => Present { value: func_env.name }
+    Absent =>
+      match fold(func_env.parents, init: none, f: (found, p) =>
+        if found != none { found }
+        else {
+          match map_get(p.local, name) {
+            Present { value: _ } => Present { value: p.name }
+            Absent => none
+          }
+        }
+      ) {
+        Present { value: owner } => Present { value: owner }
+        Absent => none
+      }
+  }
+}
+
+fn func_decl_binding_for_call(
+  func_env: ResolvedFuncEnv,
+  type_env: TypeEnv,
+  name: String
+) -> BorrowedCensusDecl? {
+  match lookup_binding_by_name_local(env: type_env, name: name) {
+    Present { value: binding } =>
+      Present {
+        value: BorrowedCensusDecl {
+          owner_module_path: type_env.module_path,
+          node: binding.resolved
+        }
+      }
+    Absent =>
+      match borrowed_census_decl(type_env: type_env, name: name) {
+        Present { value: bd } => Present { value: bd }
+        Absent =>
+          match func_decl_owner_module(func_env: func_env, name: name) {
+            Present { value: owner } =>
+              match symbol_index_lookup(
+                index: type_env.symbol_index,
+                qualified_name: concat(owner, ".", name)
+              ) {
+                Present { value: node } =>
+                  Present {
+                    value: BorrowedCensusDecl {
+                      owner_module_path: owner,
+                      node: node
+                    }
+                  }
+                Absent => none
+              }
+            Absent => none
+          }
+      }
+  }
+}
+
 data census_reserved_method_name_note: String = "Census precedence law (main-parity): the whole-pool census never serves an algebra method-template name (filter/any/contains/…) as a bare fn sig or tail callable. Those names belong to the known-method bridge in the ExprCall arm — a census sig for the UNLOADED v2.std.algebra typed filter(xs, f) as a plain call and the runtime died NoSuchFunction where main rewrote to the builtin method. Loaded providers are unaffected: lookup_resolved_sig runs before the census fallback."
 
 fn func_sig_from_global_bare(type_env: TypeEnv, name: String) -> ResolvedFuncSig? {
