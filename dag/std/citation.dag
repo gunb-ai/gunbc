@@ -266,12 +266,7 @@ fn text_position_selector(start: NonNegativeInt, end: NonNegativeInt) -> Citatio
       CitationSelectorRefused {
         cause: TextPositionEndBeforeStart { start: start, end: end },
       }
-    Equal =>
-      CitationSelectorConstructed(TextPositionSelectorVariant(TextPositionSelector {
-        start: start,
-        end: end,
-      }))
-    Greater =>
+    _ =>
       CitationSelectorConstructed(TextPositionSelectorVariant(TextPositionSelector {
         start: start,
         end: end,
