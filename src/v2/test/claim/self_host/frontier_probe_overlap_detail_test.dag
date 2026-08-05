@@ -20,6 +20,7 @@ import v2.std.grammar_choice_ambiguity {
 import v2.compiler.self_host.frontier_probe_assemble_detail {
   assemble_rejection_cause_from_parse_stage,
   frontier_probe_assemble_detail_from_parse_stage,
+  frontier_probe_assemble_detail_from_rejection_with_overlap_stage,
   frontier_probe_receipt_from_assemble_rejection
 }
 import v2.compiler.self_host.frontier_probe_types {
@@ -32,8 +33,8 @@ import v2.compiler.self_host.frontier_probe_types {
   frontier_probe_receipt_without_assemble_detail,
   RealizationGap
 }
-import v2.std.algebra { Cons, Empty }
-import v2.std.algebra { length }
+import v2.std.optional { Absent, Present, optional_absent, optional_present }
+import v2.std.algebra { Cons, Empty, length }
 import v2.std.logic { Bool }
 
 fn sample_overlap_row() -> GrammarChoiceAmbiguityRow {
@@ -124,20 +125,53 @@ test fn emit_stage_receipt_has_no_assemble_detail() -> Bool {
 }
 
 test fn assemble_receipt_carries_nonempty_rejection_chain() -> Bool {
+  let row = sample_overlap_row()
+  let stage = NonEmptyParseStageDiagnostics {
+    head: overlap_residue_stage_diagnostic(row: row),
+    tail: Empty
+  }
   let receipt = frontier_probe_receipt_from_assemble_rejection(
     module_path: "src/v2/compiler/example.dag",
     blocker: RealizationGap,
-    diagnostics: non_empty_diagnostics_from_parse_stage(
-      d: NonEmptyParseStageDiagnostics {
-        head: overlap_residue_stage_diagnostic(row: sample_overlap_row()),
-        tail: Empty
-      }
-    ),
-    detail: FrontierProbeDetailAbsent
+    diagnostics: non_empty_diagnostics_from_parse_stage(d: stage),
+    detail: FrontierProbeDetailAbsent,
+    overlap_residue_stage: optional_present(value: stage)
   )
   match receipt.assemble_detail {
-    AssembleRejectionDetail { rejection_chain: chain, cause: _ } =>
-      (chain.head == ^parse_grammar_choice_overlap_residue) && (length(xs: chain.tail) == 0)
+    AssembleRejectionDetail { rejection_chain: chain, cause: cause } =>
+      match cause {
+        GrammarChoiceOverlap { rows: rows } =>
+          (chain.head == ^parse_grammar_choice_overlap_residue)
+            && (length(xs: chain.tail) == 0)
+            && (rows.head.production == row.production)
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn overlap_stage_attaches_evidence_when_diagnostics_stripped() -> Bool {
+  let row = sample_overlap_row()
+  let stage = NonEmptyParseStageDiagnostics {
+    head: overlap_residue_stage_diagnostic(row: row),
+    tail: Empty
+  }
+  let stripped = non_empty_diagnostics_from_parse_stage(d: stage)
+  let detail = frontier_probe_assemble_detail_from_rejection_with_overlap_stage(
+    d: stripped,
+    overlap_residue_stage: optional_present(value: stage)
+  )
+  match detail {
+    AssembleRejectionDetail {
+      cause: GrammarChoiceOverlap { rows: rows },
+      rejection_chain: _
+    } =>
+      match rows {
+        NonEmptyGrammarChoiceAmbiguityRows {
+          head: bound,
+          tail: Empty
+        } => bound.production == row.production
+      }
     _ => false
   }
 }

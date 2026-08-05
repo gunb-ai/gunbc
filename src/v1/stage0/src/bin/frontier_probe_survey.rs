@@ -552,6 +552,17 @@ fn overlap_roster_detail_from_assemble_detail(
                         .ok_or_else(|| "GrammarChoiceOverlap missing rows".to_string())?;
                     overlap_rows_detail_from_rows_value(rows, ctx)
                 }
+                Value::Variant {
+                    variant_name: cause_name,
+                    fields: cause_fields,
+                    ..
+                } if ctx.sym_eq(*cause_name, "MaskedAssembleRefusal") => {
+                    let overlap_evidence =
+                        ctx.field(cause_fields, "overlap_evidence").ok_or_else(|| {
+                            "MaskedAssembleRefusal missing overlap_evidence".to_string()
+                        })?;
+                    overlap_rows_detail_from_rows_value(overlap_evidence, ctx)
+                }
                 _ => Ok(String::new()),
             }
         }

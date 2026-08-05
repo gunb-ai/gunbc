@@ -2333,6 +2333,21 @@ fn prepare_grammar(grammar: ParseGrammar) -> Outcome<PreparedGrammar> {
   }
 }
 
+fn overlap_residue_stage_from_prepared(prepared: PreparedGrammar) -> Optional<NonEmptyParseStageDiagnostics> {
+  match prepared {
+    PreparedVoidGrammar => optional_absent()
+    PreparedModeled { modeled: modeled } => modeled.overlap_residue_stage
+  }
+}
+
+fn overlap_residue_stage_from_parse_grammar(grammar: ParseGrammar) -> Optional<NonEmptyParseStageDiagnostics> {
+  match prepare_grammar(grammar: grammar) {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: prepared, diagnostics: _ } =>
+      overlap_residue_stage_from_prepared(prepared: prepared)
+  }
+}
+
 fn parse_module_prepared(
   tokens: TokenStream,
   prepared: PreparedGrammar,
