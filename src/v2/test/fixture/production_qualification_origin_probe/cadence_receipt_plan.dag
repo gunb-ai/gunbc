@@ -1,0 +1,28 @@
+module v2.test.fixture.production_qualification_origin_probe.cadence_receipt_plan
+
+import std.realization_schedule {
+  WalkPlan,
+  NoWalkFinalization,
+  NoFinalizationDeclared,
+  NoPreWalkExecution
+}
+import v2.workflow.ci_floor_plan {
+  gunbc_falsifier_known_red_probe_batch,
+  gunbc_falsifier_substrate_long_lane_batch
+}
+
+data production_qualification_origin_probe_cadence_receipt_plan_note: String = "Head-bound composed-batch cadence receipt (wise-ram-22 / operator review): mirrors falsifier batch 3 (known-red probe, expect_red) then batch 6 (substrate-long, ordinary GREEN expectation) using the production plan's RunnableDiscoveryBatch values — not per-function claim_batch. Lives under test/fixture/ (discovery-excluded). Recipe: claim_executor --source-root dag --source-root src/v2 --plan-entry src/v2/test/fixture/production_qualification_origin_probe/cadence_receipt_plan.dag --plan-function production_qualification_origin_probe_cadence_receipt_plan"
+
+fn production_qualification_origin_probe_cadence_receipt_plan() -> WalkPlan<NoWalkFinalization> {
+  WalkPlan {
+    pre_walk_execution: NoPreWalkExecution {},
+    batches: [
+      [gunbc_falsifier_known_red_probe_batch()],
+      [gunbc_falsifier_substrate_long_lane_batch()]
+    ],
+    finalization: NoFinalizationDeclared {},
+    on_success_stages: [],
+    ordinary_budget: none,
+    on_success_budget: none,
+  }
+}
