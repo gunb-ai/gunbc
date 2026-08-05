@@ -1775,6 +1775,40 @@ fn ct_call_shape_wall_witness_test() -> String {
     "    }\n\n")
 }
 
+fn ct_call_deficit_red_witness_test() -> String {
+  concat(
+    "    #[test]\n",
+    "    fn call_deficit_red_witness() {\n",
+    "        let result = std::thread::Builder::new()\n",
+    "            .stack_size(8 * 1024 * 1024)\n",
+    "            .spawn(|| {\n",
+    "                let compile_one = |path: &str, content: &str| {\n",
+    "                    crate::v1_compiler_compile::compile_sources(\n",
+    "                        std::rc::Rc::new(im::vector![std::rc::Rc::new(\n",
+    "                            crate::v1_compiler_compile::SourceFile {\n",
+    "                                path: path.to_string(),\n",
+    "                                content: content.to_string(),\n",
+    "                            }\n",
+    "                        )]),\n",
+    "                        crate::v1_compiler_artifact::RenderTarget::Rust,\n",
+    "                    )\n",
+    "                };\n",
+    "                let deficit = compile_one(\n",
+    "                    \"deficit.dag\",\n",
+    "                    \"module deficit\\nfn two(a: Int, b: Int) -> Int { a + b }\\nfn f() -> Int { two(1) }\\n\",\n",
+    "                );\n",
+    "                assert!(\n",
+    "                    deficit.diagnostics.iter().any(|d| matches!(*d.diagnostic, crate::v1_std_core::CompilerDiagnostic::CallPositionalDeficit { .. })),\n",
+    "                    \"a call supplying fewer required arguments than declared must refuse — the interpreter refuses the same call (missing required argument), got: {:?}\",\n",
+    "                    deficit.diagnostics\n",
+    "                );\n",
+    "            })\n",
+    "            .expect(\"failed to spawn thread\")\n",
+    "            .join();\n",
+    "        result.expect(\"call_deficit_red_witness panicked\");\n",
+    "    }\n\n")
+}
+
 fn ct_function_value_named_application_controls_witness_test() -> String {
   concat(
     "    #[test]\n",
@@ -2285,6 +2319,7 @@ fn compiler_tests_source() -> String {
     ct_pipeline_test(),
     ct_unlisted_import_use_witness_test(),
     ct_call_shape_wall_witness_test(),
+    ct_call_deficit_red_witness_test(),
     ct_function_value_named_application_controls_witness_test(),
     ct_function_value_field_method_known_hole_probe_test(),
     ct_method_existence_wall_witness_test(),

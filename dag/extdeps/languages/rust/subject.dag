@@ -1,0 +1,41 @@
+module extdeps.languages.rust.subject
+
+import std.types { String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "doc.rust-lang.org/reference/"
+  }
+}
+
+data rust_language_further_authority_1: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "www.rust-lang.org/"
+  }
+}
+
+data rust_language_subject_note: String = "THE RUST LANGUAGE, cited to The Rust Reference (verified live 2026-08-04 by fetching the cited locator and confirming its title and publisher from the response, per the D0 verify-or-refuse rule): the fetched document self-describes as 'the primary reference for the Rust programming language', is published by the Rust project at github.com/rust-lang/reference, and tracks each six-week language release. Rust has no ISO-style specification, so the Reference is the authority rather than a standard document — that is a fact about Rust's governance, not a gap in this citation. SUBJECT SCOPE: this is the LANGUAGE. Cargo and rustc are separate upstream products with their own governance and would take their own cited subject declarations if either is ever registered as a target in its own right. THE RUNTIME-CHECKER CENSUS ROW FOR CARGO IS NEVERTHELESS JOINED TO THIS SUBJECT, and an earlier revision of this sentence said the opposite (cursor review 48393). It argued the row was deliberately unidentified because a toolchain is not a language. That argument is true and irrelevant, which is the whole defect: a census row's subject answers WHICH TARGET THIS SURFACE REALIZES, not whether the tool IS the language. Cargo realizes Rust. The authority for that policy is one place, gunbc.language_target_registry runtime_checker_subject_note, and this carrier should never have carried a second, contradicting copy of it — the note reversed the reasoning in the same change that landed the join, and this sentence was left describing the world before it. Binding a surface to a target does not merge their identities; the module path is extdeps.cargo, not extdeps.rust.cargo, which was a file path transcribed as a module path and is corrected in the registry's census_path_resolution_note."
+
+type Rust
+  = | RustTarget
+
+data rust_language_subject: Rust = RustTarget
+
+data rust_language_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.languages.rust.subject",
+      decl_name: "rust_language_subject",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [rust_language_further_authority_1]
+}
+
+data extdeps_model_scope: ExternalModelScope = rust_language_model_scope

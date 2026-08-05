@@ -2057,6 +2057,76 @@ fn call_function_inner(
         }
     }
 
+    let caller_label_matches_param = |param_name: &str, arg_label: &str| {
+        param_name == arg_label
+            || param_name == "_"
+            || param_name
+                .strip_prefix('_')
+                .is_some_and(|stripped| stripped == arg_label)
+    };
+    let param_supplied_at_call = |pname: &str| {
+        if bindings.contains_key(&ctx.sym(pname)) {
+            return true;
+        }
+        for (opt_name, _) in args.iter() {
+            if let Some(label) = opt_name {
+                if caller_label_matches_param(pname, label) {
+                    return true;
+                }
+            }
+        }
+        false
+    };
+
+    let required_count = fn_node
+        .params
+        .iter()
+        .enumerate()
+        .filter(|(i, p)| {
+            param_node_default_value((*p).clone()).is_none()
+                && match p.children.first() {
+                    Some(type_expr) => {
+                        authored_name_at(ctx.si(), type_expr.clone()) != all_param_names[*i]
+                    }
+                    None => false,
+                }
+        })
+        .count();
+    let supplied_required = fn_node
+        .params
+        .iter()
+        .enumerate()
+        .filter(|(i, p)| {
+            param_node_default_value((*p).clone()).is_none()
+                && match p.children.first() {
+                    Some(type_expr) => {
+                        authored_name_at(ctx.si(), type_expr.clone()) != all_param_names[*i]
+                    }
+                    None => false,
+                }
+                && param_supplied_at_call(&all_param_names[*i])
+        })
+        .count();
+    for (i, param) in fn_node.params.iter().enumerate() {
+        let pname = &all_param_names[i];
+        let is_value_param = match param.children.first() {
+            Some(type_expr) => authored_name_at(ctx.si(), type_expr.clone()) != *pname,
+            None => false,
+        };
+        if is_value_param
+            && param_node_default_value(param.clone()).is_none()
+            && !param_supplied_at_call(pname)
+        {
+            return Err(InterpError::CallContractMismatch {
+                callee: fn_node.name.clone(),
+                detail: format!(
+                    "missing required argument '{}' ({} of {} required argument(s) supplied)",
+                    pname, supplied_required, required_count
+                ),
+            });
+        }
+    }
+
     let call_env = Env::extend(&lexical_base_env(env), bindings);
     #[cfg(any(test, feature = "interp_test_witness"))]
     record_call_env_depth(&call_env);
@@ -10230,6 +10300,30 @@ macro_rules! v1_builtin_arms {
                     }
                 };
                 Ok(Some(variant))
+            },
+
+            arm "free_call.parse_roadmap_acceptance_event_history_jsonl" { "parse_roadmap_acceptance_event_history_jsonl" } => {
+                let text = expect_str(
+                    $positional.first().copied(),
+                    "parse_roadmap_acceptance_event_history_jsonl text",
+                )?;
+                crate::cli_run::roadmap_acceptance_history_carrier::parse_roadmap_acceptance_event_history_jsonl_builtin(
+                    &text,
+                    $ctx,
+                )
+                .map(Some)
+            },
+
+            arm "free_call.project_roadmap_acceptance_event_history_from_authority_text_host" { "project_roadmap_acceptance_event_history_from_authority_text_host" } => {
+                let authority_text = expect_str(
+                    $positional.first().copied(),
+                    "project_roadmap_acceptance_event_history_from_authority_text_host authority_text",
+                )?;
+                crate::cli_run::project_roadmap_acceptance_event_history_from_authority_text_builtin(
+                    &authority_text,
+                    $ctx,
+                )
+                .map(Some)
             },
 
             // DECLARED SCAFFOLD supplying gunbc.stage0_emit_plan with SOURCE identities only.
