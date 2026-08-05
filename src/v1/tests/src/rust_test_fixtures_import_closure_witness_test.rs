@@ -119,26 +119,13 @@ fn positive_declared_import_closure_binds_rust_symbols() {
 }
 
 #[test]
-fn negative_stripped_declared_import_closure_excludes_rust_dag() {
+fn negative_stripped_declared_import_closure_refuses_rust_bindings() {
     let entry = workspace_root().join(ENTRY_REL);
     let stripped = strip_import_block(&read_v2_file(ENTRY_REL));
     assert!(
         !stripped.contains("import v2.extdeps.languages.rust"),
         "negative fixture must not retain the rust import block"
     );
-    // Zero import lines ⇒ declared import closure is the entry module alone.
-    let closure_paths = vec![ENTRY_REL.to_string()];
-    assert!(
-        !closure_has_rust_dag(&closure_paths),
-        "negative control: stripped entry's declared import closure must not include rust.dag"
-    );
-    let _ = (entry, stripped);
-}
-
-#[test]
-fn negative_stripped_declared_import_closure_refuses_rust_bindings() {
-    let entry = workspace_root().join(ENTRY_REL);
-    let stripped = strip_import_block(&read_v2_file(ENTRY_REL));
     let resolved =
         compile_stripped_entry_declared_import_closure_only(entry.to_str().unwrap(), &stripped);
     let rust_errors = class_b_rust_binding_errors(&hard_messages(&resolved));
