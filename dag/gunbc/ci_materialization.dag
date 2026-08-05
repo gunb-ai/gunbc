@@ -374,7 +374,7 @@ data floor_finalization_note: String = "The CI floor's post-batch contract, and 
 
 TWO LAWS, ONE FIELD. Materialization disclosure was briefly a `require_materialization_disclosure: Bool` beside the count, and that Bool was a writable bypass with a lie attached: the executor returned before checking the materialization receipt when it was false, while its success message — unconditional on the Bool — still reported that disclosure held. One consumer exists and it requires disclosure, so the `false` state was pre-authored for nobody. Disclosure is now INTRINSIC to the type: inhabiting FloorFinalization is what obligates both laws. A future consumer that genuinely needs resolve-count validation alone introduces its own finalization type when it exists, rather than being pre-authored as a bypass here (§5 — the state a check can be satisfied by editing away is the state that should not be writable).
 
-declared_resolve_count is Nat, not Int: a negative declared count has no meaning, and making it unrepresentable is cheaper than guaranteeing it mismatches later."
+expected_resolve_obligations is the transported closed universe (identity + subject per row); unattributed physical resolves are counted at entry grain — a cold resolve on a co-resident function of a rostered obligation entry is not unattributed (cheap gates and compile-clean share dag/tools/floor_effect_gate_witness.dag via walk_memo)."
 
 type FloorFinalization {
   expected_resolve_obligations: List<ResolveObligation>
