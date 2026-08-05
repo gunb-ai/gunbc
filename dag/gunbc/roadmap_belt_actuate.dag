@@ -4483,7 +4483,13 @@ type BeltDispatchResult
   | DispatchPressUnavailable { node_id: String, reason: String }
   | DispatchPressRefused { node_id: String, reason: String }
 
-data belt_codex_press_specimen_cutover_note: String = "FIRST CODEX PRESS SPECIMEN cutover: node identity codex-app-server-press-vertical routes through app-server JSON-RPC (materialize → bind via initialize → press outcome), never tmux + exec --json. Other nodes retain the legacy spawn path until their own cutover. UI captions for press outcomes are turn started | login required | unavailable | refused — never dispatch · accepted."
+fn belt_dispatch_press_refused_caption(reason: String) -> String {
+  if reason.contains("quota") {
+    "quota exhausted"
+  } else {
+    "refused"
+  }
+}
 
 fn belt_dispatch_codex_press_specimen(
   instance: HostDashboardInstance,
@@ -4864,7 +4870,7 @@ fn belt_dispatch_result_json_value(r: BeltDispatchResult) -> JsonValue {
         json_kv(key: "node_id", value: json_string(s: nid)),
         json_kv(key: "status", value: json_string(s: belt_dispatch_status_label(r: r))),
         json_kv(key: "reason", value: json_string(s: why)),
-        json_kv(key: "caption", value: json_string(s: "refused")),
+        json_kv(key: "caption", value: json_string(s: belt_dispatch_press_refused_caption(reason: why))),
       ])
   }
 }
