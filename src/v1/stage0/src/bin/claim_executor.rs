@@ -2243,12 +2243,16 @@ fn native_transport_observation(
         Some(Value::Str(s)) => s.clone(),
         _ => return Err("native transport result missing String `phase`".to_string()),
     };
+    let termination = transport_termination(ctx.field(fields, "termination"), ctx);
     Ok(NativeTransportObservation {
-        success: boolean("success")?,
+        // DERIVED, never a second field. The transport used to carry `success`
+        // alongside the exit code, which is one fact written twice; a receipt could
+        // then claim success beside a nonzero termination and nothing would notice.
+        success: matches!(termination, ProcessTermination::Exited(0)),
         compile_skipped: boolean("compile_skipped")?,
         stdout: octets("stdout_octets")?,
         phase,
-        termination: transport_termination(ctx.field(fields, "termination"), ctx),
+        termination,
         stderr: octets("stderr_octets")?,
         artifact_lookup_nanos: nanos("artifact_lookup_nanos")?,
         cold_compile_nanos: nanos("cold_compile_nanos")?,

@@ -10014,7 +10014,6 @@ fn emit_host_run_transport_cached_in_workspace(
     );
 
     let transport_result = |phase: &str,
-                            success: bool,
                             termination: Value,
                             stdout: &[u8],
                             stderr: &[u8],
@@ -10030,7 +10029,6 @@ fn emit_host_run_transport_cached_in_workspace(
             // dependent and broke .success lookups when #6904 shifted interning.
             fields: Rc::new(sorted_fields(vec![
                 (ctx.sym("phase"), Value::Str(phase.to_string())),
-                (ctx.sym("success"), Value::Bool(success)),
                 (ctx.sym("termination"), termination),
                 (ctx.sym("compile_skipped"), Value::Bool(compile_skipped)),
                 (
@@ -10098,7 +10096,6 @@ fn emit_host_run_transport_cached_in_workspace(
                 build_log.push(Value::Str(String::from_utf8_lossy(&out.stderr).to_string()));
                 return Ok(transport_result(
                     "build",
-                    false,
                     process_termination_value(&out.status, ctx),
                     &out.stdout,
                     &out.stderr,
@@ -10133,7 +10130,6 @@ fn emit_host_run_transport_cached_in_workspace(
         }
         return Ok(transport_result(
             "run",
-            out.status.success(),
             process_termination_value(&out.status, ctx),
             &out.stdout,
             &out.stderr,
@@ -10155,7 +10151,6 @@ fn emit_host_run_transport_cached_in_workspace(
     )));
     Ok(transport_result(
         "run_cached",
-        out.status.success(),
         process_termination_value(&out.status, ctx),
         &out.stdout,
         &out.stderr,
@@ -10215,7 +10210,6 @@ fn emit_host_run_transport_in_workspace(
     };
 
     let transport_result = |phase: &str,
-                            success: bool,
                             termination: Value,
                             stdout: &[u8],
                             stderr: &[u8],
@@ -10229,7 +10223,6 @@ fn emit_host_run_transport_in_workspace(
             // dependent and broke .success lookups when #6904 shifted interning.
             fields: Rc::new(sorted_fields(vec![
                 (ctx.sym("phase"), Value::Str(phase.to_string())),
-                (ctx.sym("success"), Value::Bool(success)),
                 (ctx.sym("termination"), termination),
                 (ctx.sym("compile_skipped"), Value::Bool(compile_skipped)),
                 (
@@ -10267,7 +10260,6 @@ fn emit_host_run_transport_in_workspace(
             build_log.push(Value::Str(String::from_utf8_lossy(&out.stderr).to_string()));
             return Ok(transport_result(
                 "build",
-                false,
                 process_termination_value(&out.status, ctx),
                 &out.stdout,
                 &out.stderr,
@@ -10285,7 +10277,6 @@ fn emit_host_run_transport_in_workspace(
     )));
     Ok(transport_result(
         "run",
-        out.status.success(),
         process_termination_value(&out.status, ctx),
         &out.stdout,
         &out.stderr,
