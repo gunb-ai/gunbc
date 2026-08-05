@@ -399,6 +399,7 @@ test fn witness_proposed_plane_carries_nothing_by_construction() -> Bool {
     }
   }
 }
+<<<<<<< HEAD
 test fn witness_fixture_every_front_contributes_to_some_line() -> Bool {
   let view = fx_derived(receipts: [], in_flight: [])
   all(view.fronts, fv =>
@@ -417,3 +418,5 @@ test fn witness_fixture_constraint_present_iff_line_unaccepted() -> Bool {
   let view = fx_derived(receipts: [], in_flight: [])
   all(view.finish_lines, lv => probe_constraint_iff(lv: lv))
 }
+=======
+>>>>>>> 2ade34dbc (WIP: Lane 4: direct-door behavioral qualification — CargoGreen to BehavioralE)
