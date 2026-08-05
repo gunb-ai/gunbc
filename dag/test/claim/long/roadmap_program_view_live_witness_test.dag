@@ -1,0 +1,95 @@
+module test.claim.long.roadmap_program_view_live
+
+import std.types { String, Bool, List }
+import gunbc.roadmap_program_view {
+  program_front_key,
+  FinishLineView, V1DeletionProgramView,
+  V1ProgramViewResult, ProgramViewDerived, ProgramViewRefused,
+  v1_program_view,
+}
+import gunbc.roadmap_model { RoadmapAcceptanceReceipt }
+import gunbc.roadmap_authority {
+  declared_roadmap_nodes, declared_roadmap_edges, roadmap_acceptance_receipts,
+  RoadmapAcceptanceReceiptsProjected,
+  RoadmapAcceptanceReceiptsProjectionRefused,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data roadmap_program_view_live_witness_note: String = "Live-tree joins for gunbc.roadmap_program_view (operator 5s rule 2026-07-12): v1_program_view over declared_roadmap_nodes/edges + roadmap_acceptance_receipts exceeds the per-PR discovery fast-lane eval budget as the roadmap corpus grows — witness_live_constraint_present_iff_line_unaccepted measured 5021ms on PR #7792 CI (2026-08-05). Identity-grain facts only: finish lines and gates resolve, contributing-front sets match derived membership, accepted-iff-no-constraint holds both directions. No live count pinned. LOCAL RECIPE: claim_batch --source-root dag --source-root src/v2 --entry dag/test/claim/long/roadmap_program_view_live_witness_test.dag --functions witness_live_program_view_derives_and_gates_resolve,witness_live_contributing_fronts_are_the_derived_sets,witness_live_every_front_contributes_to_some_line,witness_live_constraint_present_iff_line_unaccepted"
+
+fn live_receipts() -> List<RoadmapAcceptanceReceipt> {
+  match roadmap_acceptance_receipts() {
+    RoadmapAcceptanceReceiptsProjected { receipts: receipts } => receipts
+    RoadmapAcceptanceReceiptsProjectionRefused { detail: _ } => []
+  }
+}
+
+fn live_view() -> V1ProgramViewResult {
+  v1_program_view(
+    nodes: declared_roadmap_nodes(),
+    edges: declared_roadmap_edges(),
+    receipts: live_receipts(),
+    in_flight: [],
+  )
+}
+
+fn live_line_front_keys(view: V1DeletionProgramView, line_key: String) -> List<String> {
+  fold(view.finish_lines, init: [], f: (acc, lv) =>
+    if lv.key == line_key {
+      lv.contributing_fronts |> map(c => program_front_key(front: c))
+    } else { acc })
+}
+
+fn live_front_keys_are(view: V1DeletionProgramView, line_key: String, expected: List<String>) -> Bool {
+  live_line_front_keys(view: view, line_key: line_key) == expected
+}
+
+test fn witness_live_program_view_derives_and_gates_resolve() -> Bool {
+  match live_view() {
+    ProgramViewDerived { view } =>
+      count(view.finish_lines) == 4 && count(view.fronts) == 5
+    ProgramViewRefused { causes: _ } => false
+  }
+}
+
+test fn witness_live_contributing_fronts_are_the_derived_sets() -> Bool {
+  match live_view() {
+    ProgramViewRefused { causes: _ } => false
+    ProgramViewDerived { view } =>
+      live_front_keys_are(view: view, line_key: "compiler-fixed-point",
+        expected: [ "namespace-pderive", "v2-generation" ])
+        && live_front_keys_are(view: view, line_key: "interpreter-deleted",
+          expected: [ "namespace-pderive", "v2-generation", "materialization-cutover" ])
+        && live_front_keys_are(view: view, line_key: "products-v1-free",
+          expected: [ "namespace-pderive", "v2-generation", "honest-frontier", "materialization-cutover" ])
+        && live_front_keys_are(view: view, line_key: "zero-hand-maintained-rust",
+          expected: [ "namespace-pderive", "v2-generation", "honest-frontier", "materialization-cutover", "test-migration-tail" ])
+  }
+}
+
+test fn witness_live_every_front_contributes_to_some_line() -> Bool {
+  match live_view() {
+    ProgramViewRefused { causes: _ } => false
+    ProgramViewDerived { view } =>
+      all(view.fronts, fv =>
+        any(view.finish_lines, lv =>
+          lv.contributing_fronts |> any(c => program_front_key(front: c) == fv.key)))
+  }
+}
+
+fn probe_constraint_iff(lv: FinishLineView) -> Bool {
+  match lv.constraint {
+    Absent => lv.accepted
+    Present { value: _ } => !lv.accepted
+  }
+}
+
+test fn witness_live_constraint_present_iff_line_unaccepted() -> Bool {
+  match live_view() {
+    ProgramViewRefused { causes: _ } => false
+    ProgramViewDerived { view } =>
+      all(view.finish_lines, lv => probe_constraint_iff(lv: lv))
+  }
+}
