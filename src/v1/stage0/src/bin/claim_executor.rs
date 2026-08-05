@@ -1414,23 +1414,14 @@ fn is_rostered_obligation_subject(
     subjects.contains(&(entry.to_string(), function.to_string()))
 }
 
-/// Attach the group's resolve-realization observation to the first rostered obligation
-/// subject in the resolve group — not the first arbitrary co-resident claim.
+/// Attach the group's resolve-realization observation to the first claim in the
+/// resolve group. Roster membership is enforced later by
+/// `unrostered_observed_obligation_subjects`, not at attachment time.
 fn take_group_observation_for_claim(
-    obligation_subjects: Option<&ObligationSubjectSet>,
-    entry: &str,
-    function: &str,
     group_observation: &Option<ResolveRealizationObservation>,
     group_observation_attached: &mut bool,
 ) -> Option<ResolveRealizationObservation> {
     if *group_observation_attached {
-        return None;
-    }
-    let rostered = match obligation_subjects {
-        None => true,
-        Some(subjects) => is_rostered_obligation_subject(subjects, entry, function),
-    };
-    if !rostered {
         return None;
     }
     *group_observation_attached = true;
@@ -2506,7 +2497,6 @@ fn run_batch_unit(
     governor: Arc<MemoryGovernor>,
     fast_lane_eval_budget_ms: Option<u64>,
     falsifier_self_host_wet_budgets: FalsifierSelfHostWetBudgets,
-    obligation_subjects: Option<&ObligationSubjectSet>,
 ) -> Vec<ClaimResult> {
     match unit {
         BatchUnit::UnrunnableSentinel { function } => vec![ClaimResult {
@@ -2628,13 +2618,8 @@ fn run_batch_unit(
             // slot for the unit's lifetime so gate threads and discovery workers draw
             // from the same admission window instead of stacking unbounded.
             let mut slot = AdmittedSlot::acquire_blocking(&governor, &format!("gate-unit {entry}"));
-            let results = run_shared_entry_claims(
-                &source_roots,
-                &entry,
-                &functions,
-                execution_mode,
-                obligation_subjects,
-            );
+            let results =
+                run_shared_entry_claims(&source_roots, &entry, &functions, execution_mode);
             slot.note_unit_complete();
             results
         }
@@ -2646,7 +2631,6 @@ fn run_shared_entry_claims(
     entry: &str,
     functions: &[String],
     execution_mode: ExecutionMode,
-    obligation_subjects: Option<&ObligationSubjectSet>,
 ) -> Vec<ClaimResult> {
     let resolve_start = Instant::now();
     let (graph, source_indices) = match resolve_entry_graph(source_roots, entry) {
@@ -2696,9 +2680,6 @@ fn run_shared_entry_claims(
                     0
                 };
                 let observation = take_group_observation_for_claim(
-                    obligation_subjects,
-                    entry,
-                    function,
                     &group_resolve_observation,
                     &mut group_observation_attached,
                 );
@@ -2726,7 +2707,6 @@ fn run_memo_shared_claims(
     functions: &[String],
     execution_mode: ExecutionMode,
     memo: &mut std::collections::HashMap<(String, ExecutionMode), InterpContext>,
-    obligation_subjects: Option<&ObligationSubjectSet>,
 ) -> Vec<ClaimResult> {
     let resolve_start = Instant::now();
     let mut fresh_resolve = false;
@@ -2797,9 +2777,6 @@ fn run_memo_shared_claims(
                     0
                 };
                 let observation = take_group_observation_for_claim(
-                    obligation_subjects,
-                    entry,
-                    function,
                     &group_resolve_observation,
                     &mut group_observation_attached,
                 );
@@ -6544,7 +6521,6 @@ fn run_stage(
     falsifier_self_host_wet_budgets: &FalsifierSelfHostWetBudgets,
     clamp_params: Option<(u128, u128)>,
     budget_tighten_ms: Option<u128>,
-    obligation_subjects: Option<&ObligationSubjectSet>,
 ) -> StageRun {
     let units = group_batch_units(stage);
     // Arm the observation heartbeat feed at stage-enter: discovery leaves entry_total
@@ -6616,7 +6592,6 @@ fn run_stage(
             let roots = source_roots.to_vec();
             let unit_governor = governor.clone();
             let wet_budgets = falsifier_self_host_wet_budgets.clone();
-            let obligation_subjects_owned = obligation_subjects.cloned();
             let boxed: Box<dyn FnOnce() -> Vec<ClaimResult> + Send> = Box::new(move || {
                 run_batch_unit(
                     roots,
@@ -6624,7 +6599,6 @@ fn run_stage(
                     unit_governor,
                     fast_lane_eval_budget_ms,
                     wet_budgets,
-                    obligation_subjects_owned.as_ref(),
                 )
             });
             boxed
@@ -6641,14 +6615,8 @@ fn run_stage(
             ..
         } = unit
         {
-            let results = run_memo_shared_claims(
-                source_roots,
-                &entry,
-                &functions,
-                execution_mode,
-                memo,
-                obligation_subjects,
-            );
+            let results =
+                run_memo_shared_claims(source_roots, &entry, &functions, execution_mode, memo);
             memo_results.extend(results);
         }
     }
@@ -6663,7 +6631,6 @@ fn run_stage(
             governor.clone(),
             fast_lane_eval_budget_ms,
             falsifier_self_host_wet_budgets.clone(),
-            obligation_subjects,
         ));
     }
     // Collect all results before returning — the caller's PASS/FAIL prints must land
@@ -6923,7 +6890,6 @@ fn run_walk(
     let mut walk_memo: std::collections::HashMap<(String, ExecutionMode), InterpContext> =
         std::collections::HashMap::new();
     let memo_path_entries = memo_path_entry_keys(batches);
-    let obligation_subjects = obligation_subject_set(floor_finalization);
     for (bi, batch) in batches.iter().enumerate() {
         if ordinary_budget_ms
             .is_some_and(|budget| ordinary_start.elapsed().as_millis() >= u128::from(budget))
@@ -6968,7 +6934,6 @@ fn run_walk(
                 .copied()
                 .flatten(),
             budget_tighten_ms,
-            obligation_subjects.as_ref(),
         );
         for result in &batch_results {
             if result.ok {
@@ -7277,7 +7242,6 @@ fn run_walk(
                     // The arm-time validator refuses the profiles that would need one.
                     None,
                     budget_tighten_ms,
-                    obligation_subjects.as_ref(),
                 );
                 // A supplied clamp must have teeth. Stages pass None today (see the
                 // call above), so this is currently unreachable — it is wired now so that
@@ -11749,7 +11713,6 @@ mod tests {
             Arc::new(MemoryGovernor::from_environment(1)),
             None,
             FalsifierSelfHostWetBudgets::default(),
-            None,
         );
         assert_eq!(results.len(), 1);
         assert!(!results[0].ok, "unmapped sentinel must fail closed");
@@ -11875,7 +11838,6 @@ mod tests {
                     &entry,
                     std::slice::from_ref(f),
                     ExecutionMode::Hermetic,
-                    None,
                 )
                 .into_iter()
                 .map(|r| (r.function, r.ok, r.detail))
@@ -11893,7 +11855,6 @@ mod tests {
                     std::slice::from_ref(f),
                     ExecutionMode::Hermetic,
                     &mut memo,
-                    None,
                 )
                 .into_iter()
                 .map(|r| (r.function, r.ok, r.detail))
@@ -11932,7 +11893,6 @@ mod tests {
             &["witness_negligible_profile_is_not_heavy".to_string()],
             ExecutionMode::Hermetic,
             &mut memo,
-            None,
         );
         assert!(
             first[0].resolve_nanos > 0,
@@ -11948,7 +11908,6 @@ mod tests {
             &["witness_substantial_memory_forbids_corpus_co_residence".to_string()],
             ExecutionMode::Hermetic,
             &mut memo,
-            None,
         );
         assert_eq!(
             second[0].resolve_nanos, 0,
@@ -11977,7 +11936,6 @@ mod tests {
             &["witness_negligible_profile_is_not_heavy".to_string()],
             ExecutionMode::Hermetic,
             &mut memo,
-            None,
         );
         let warm = run_memo_shared_claims(
             &source_roots,
@@ -11985,7 +11943,6 @@ mod tests {
             &["witness_substantial_memory_forbids_corpus_co_residence".to_string()],
             ExecutionMode::Hermetic,
             &mut memo,
-            None,
         );
         assert_eq!(warm[0].resolve_nanos, 0);
         match warm[0].resolve_realization.as_ref() {
@@ -11999,102 +11956,16 @@ mod tests {
     }
 
     #[test]
-    fn take_group_observation_attaches_only_to_rostered_subject() {
-        let subjects: ObligationSubjectSet =
-            [("fixture.dag".to_string(), "rostered_fn".to_string())]
-                .into_iter()
-                .collect();
+    fn take_group_observation_attaches_first_claim_in_group() {
         let observation =
             Some(ResolveRealizationObservation::ColdResolvePerformed { resolve_nanos: 42 });
         let mut attached = false;
-        assert!(take_group_observation_for_claim(
-            Some(&subjects),
-            "fixture.dag",
-            "other_fn",
-            &observation,
-            &mut attached,
-        )
-        .is_none());
-        assert!(!attached);
         assert!(matches!(
-            take_group_observation_for_claim(
-                Some(&subjects),
-                "fixture.dag",
-                "rostered_fn",
-                &observation,
-                &mut attached,
-            ),
+            take_group_observation_for_claim(&observation, &mut attached),
             Some(ResolveRealizationObservation::ColdResolvePerformed { resolve_nanos: 42 })
         ));
         assert!(attached);
-        assert!(take_group_observation_for_claim(
-            Some(&subjects),
-            "fixture.dag",
-            "rostered_fn",
-            &observation,
-            &mut attached,
-        )
-        .is_none());
-    }
-
-    /// Co-resident gate claims on a shared entry resolve once but only rostered
-    /// obligation subjects carry resolve_realization — not the first arbitrary claim.
-    #[test]
-    fn obligation_observation_skips_non_rostered_co_residents() {
-        let root = workspace_root();
-        let source_roots = vec![
-            root.join("src/v2").to_string_lossy().into_owned(),
-            root.join("dag").to_string_lossy().into_owned(),
-        ];
-        let entry = root
-            .join("dag/test/claim/runnable_resource_profile_witness_test.dag")
-            .to_string_lossy()
-            .into_owned();
-        let rostered_fn = "witness_substantial_memory_forbids_corpus_co_residence".to_string();
-        let non_rostered_fn = "witness_negligible_profile_is_not_heavy".to_string();
-        let subjects: ObligationSubjectSet =
-            [(entry.clone(), rostered_fn.clone())].into_iter().collect();
-        let mode = ExecutionMode::Hermetic;
-
-        let cheap_only = run_shared_entry_claims(
-            &source_roots,
-            &entry,
-            &[non_rostered_fn.clone()],
-            mode,
-            Some(&subjects),
-        );
-        assert_eq!(cheap_only.len(), 1);
-        assert!(cheap_only[0].resolve_realization.is_none());
-
-        let mut memo = std::collections::HashMap::new();
-        let rostered_only = run_memo_shared_claims(
-            &source_roots,
-            &entry,
-            &[rostered_fn.clone()],
-            mode,
-            &mut memo,
-            Some(&subjects),
-        );
-        assert_eq!(rostered_only.len(), 1);
-        assert!(matches!(
-            rostered_only[0].resolve_realization,
-            Some(ResolveRealizationObservation::ColdResolvePerformed { .. })
-        ));
-
-        let co_resident = run_memo_shared_claims(
-            &source_roots,
-            &entry,
-            &[non_rostered_fn, rostered_fn],
-            mode,
-            &mut memo,
-            Some(&subjects),
-        );
-        assert_eq!(co_resident.len(), 2);
-        assert!(co_resident[0].resolve_realization.is_none());
-        assert!(matches!(
-            co_resident[1].resolve_realization,
-            Some(ResolveRealizationObservation::SatisfiedFromSharedPool { .. })
-        ));
+        assert!(take_group_observation_for_claim(&observation, &mut attached).is_none());
     }
 
     /// The committed basis file must actually load. A basis that parses to zero rows
