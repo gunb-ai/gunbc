@@ -2621,6 +2621,8 @@ fn run_shared_entry_claims(
         }
     };
     let resolve_nanos = resolve_start.elapsed().as_nanos();
+    let group_resolve_observation =
+        Some(ResolveRealizationObservation::ColdResolvePerformed { resolve_nanos });
     let ctx = make_eval_context(&graph, source_indices, execution_mode);
     let mut first = true;
     functions
@@ -2633,11 +2635,11 @@ fn run_shared_entry_claims(
             // witnesses sharing this ctx (byte-unbounded, 20GiB-class kills).
             v1_compiler::v1_interpreter::eval_call_memo_frame_exit(&ctx);
             let wall_nanos = claim_start.elapsed().as_nanos();
-            let rn = if first {
+            let (rn, observation) = if first {
                 first = false;
-                resolve_nanos
+                (resolve_nanos, group_resolve_observation.clone())
             } else {
-                0
+                (0, None)
             };
             claim_result_for_outcome(
                 &ctx,
@@ -2646,7 +2648,7 @@ fn run_shared_entry_claims(
                 outcome,
                 wall_nanos,
                 rn,
-                None,
+                observation,
             )
         })
         .collect()
@@ -2711,7 +2713,7 @@ fn run_memo_shared_claims(
         })
     };
     let ctx = memo.get(&memo_key).expect("memo populated above");
-    let mut first = fresh_resolve;
+    let mut first = true;
     functions
         .iter()
         .map(|function| {
@@ -11752,6 +11754,46 @@ mod tests {
             second[0].resolve_nanos, 0,
             "second call must cache-hit — resolve_entry_graph must NOT fire again"
         );
+    }
+
+    /// Warm memo reuse must attach SatisfiedFromSharedPool to the first claim in the
+    /// group — finalization reads resolve_realization from find_claim_result, not from
+    /// resolve_nanos alone. Goes RED if `first` is gated on `fresh_resolve`.
+    #[test]
+    fn memo_warm_attaches_shared_pool_observation_on_first_claim() {
+        let root = workspace_root();
+        let source_roots = vec![
+            root.join("src/v2").to_string_lossy().into_owned(),
+            root.join("dag").to_string_lossy().into_owned(),
+        ];
+        let entry = root
+            .join("dag/test/claim/runnable_resource_profile_witness_test.dag")
+            .to_string_lossy()
+            .into_owned();
+        let mut memo = std::collections::HashMap::new();
+        let _cold = run_memo_shared_claims(
+            &source_roots,
+            &entry,
+            &["witness_negligible_profile_is_not_heavy".to_string()],
+            ExecutionMode::Hermetic,
+            &mut memo,
+        );
+        let warm = run_memo_shared_claims(
+            &source_roots,
+            &entry,
+            &["witness_substantial_memory_forbids_corpus_co_residence".to_string()],
+            ExecutionMode::Hermetic,
+            &mut memo,
+        );
+        assert_eq!(warm[0].resolve_nanos, 0);
+        match warm[0].resolve_realization.as_ref() {
+            Some(ResolveRealizationObservation::SatisfiedFromSharedPool { provider_id, .. }) => {
+                assert_eq!(provider_id, FLOOR_ENTRY_WALK_MEMO_PROVIDER_ID);
+            }
+            other => panic!(
+                "warm memo first claim must carry SatisfiedFromSharedPool observation, got {other:?}"
+            ),
+        }
     }
 
     /// The committed basis file must actually load. A basis that parses to zero rows
