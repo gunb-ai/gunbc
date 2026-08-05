@@ -62,19 +62,19 @@ use crate::v1_std_core::UnaryOpKind::{Neg, Not};
 pub use crate::v1_std_core::{
     arg_name_at, arg_value, authored_name_at, empty_intern_table, error_type, expr_call_func_at,
     expr_var_name_at, field_access_base, field_access_field_at, field_access_spine,
-    field_binding_pattern, field_node_cardinality, field_node_default_value, field_node_from_key,
-    field_node_name_at, field_node_type_expr, file_transport_node, import_node, intern,
-    intern_table_with_authored_token_ordinals, is_compiler_error, is_container_type, kernel_span,
-    leaf_node_with_span, local_transport_node, make_arg_node, make_arm_node, make_error_node,
-    make_expr_error_node, make_expr_node, make_field_binding_node, make_field_init_node,
-    make_field_node, make_interp_part_node, make_named_expr_node, make_param_node,
-    make_pattern_binder_declaration_node, make_resource_use_node, make_span, make_text_part_node,
-    make_variant_node, module_node, no_span, node_name_span, param_node_default_value,
-    param_node_type_expr, pre_intern_tokens, rest_transport_node, service_config_properties,
-    shell_transport_node, transport_auth_basic_key, transport_body_key, transport_headers_key,
-    transport_method_key, transport_path_key, transport_path_template_key, transport_query_key,
-    transport_response_format_key, transport_stdin_key, transport_tls_key, transport_url_key,
-    variant_node_fields, variant_node_name_at, with_required_cardinality,
+    field_binding_pattern, field_init_node_value, field_node_cardinality, field_node_default_value,
+    field_node_from_key, field_node_name_at, field_node_type_expr, file_transport_node,
+    import_node, intern, intern_table_with_authored_token_ordinals, is_compiler_error,
+    is_container_type, kernel_span, leaf_node_with_span, local_transport_node, make_arg_node,
+    make_arm_node, make_error_node, make_expr_error_node, make_expr_node, make_field_binding_node,
+    make_field_init_node, make_field_node, make_interp_part_node, make_named_expr_node,
+    make_param_node, make_pattern_binder_declaration_node, make_resource_use_node, make_span,
+    make_text_part_node, make_variant_node, module_node, no_span, node_name_span,
+    param_node_default_value, param_node_type_expr, pre_intern_tokens, rest_transport_node,
+    service_config_properties, shell_transport_node, transport_auth_basic_key, transport_body_key,
+    transport_headers_key, transport_method_key, transport_path_key, transport_path_template_key,
+    transport_query_key, transport_response_format_key, transport_stdin_key, transport_tls_key,
+    transport_url_key, variant_node_fields, variant_node_name_at, with_required_cardinality,
 };
 pub use crate::v1_std_core::{
     Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData, ExprErrorKind,
@@ -474,6 +474,14 @@ pub struct FieldResult {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FieldInitResult {
     pub field: Rc<Node>,
+    pub tokens: Rc<TokenStream>,
+    pub ctx: Rc<ParseContext>,
+    pub err: Option<Rc<ErrorNode>>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct AdmitCallersResult {
+    pub props: Rc<Vec<Rc<Node>>>,
     pub tokens: Rc<TokenStream>,
     pub ctx: Rc<ParseContext>,
     pub err: Option<Rc<ErrorNode>>,
@@ -6085,6 +6093,66 @@ pub fn parse_fn_after_kw(
     }
 }
 
+pub fn admit_callers_property_nonempty(field: Rc<Node>) -> bool {
+    {
+        let list_val = field_init_node_value(field.clone());
+        ((list_val.children.clone().len() as i64) > 0)
+    }
+}
+
+pub fn parse_optional_admit_callers(
+    tokens: Rc<TokenStream>,
+    ctx: Rc<ParseContext>,
+) -> Rc<AdmitCallersResult> {
+    {
+        let tokens = skip_newlines(tokens.clone());
+        if tok_is_ident_text(
+            token_stream_first(tokens.clone()),
+            "admit_callers".to_string(),
+        ) {
+            {
+                let r = parse_field_init(tokens.clone(), ctx.clone());
+                if has_err(r.err.clone()) {
+                    return Rc::new(AdmitCallersResult {
+                        props: Rc::new(vec![]),
+                        tokens: r.tokens.clone(),
+                        ctx: r.ctx.clone(),
+                        err: r.err.clone(),
+                    });
+                }
+                if !admit_callers_property_nonempty(r.field.clone()) {
+                    {
+                        let span = field_init_node_value(r.field.clone()).span.clone();
+                        Rc::new(AdmitCallersResult {
+                            props: Rc::new(vec![]),
+                            tokens: r.tokens.clone(),
+                            ctx: r.ctx.clone(),
+                            err: Some(parse_error(
+                                "admit_callers requires at least one decl_ref caller".to_string(),
+                                span.clone(),
+                            )),
+                        })
+                    }
+                } else {
+                    Rc::new(AdmitCallersResult {
+                        props: Rc::new(vec![r.field.clone()]),
+                        tokens: skip_newlines(r.tokens.clone()),
+                        ctx: r.ctx.clone(),
+                        err: None,
+                    })
+                }
+            }
+        } else {
+            Rc::new(AdmitCallersResult {
+                props: Rc::new(vec![]),
+                tokens: tokens.clone(),
+                ctx: ctx.clone(),
+                err: None,
+            })
+        }
+    }
+}
+
 pub fn parse_fn_body_from_prefix(
     prefix: Rc<ItemPrefixResult>,
     start_span: Rc<SourceSpan>,
@@ -6118,6 +6186,18 @@ pub fn parse_fn_body_from_prefix(
             ident: None,
         });
         let tokens = skip_newlines(prefix.tokens.clone());
+        let admit_r = parse_optional_admit_callers(tokens.clone(), ctx.clone());
+        if has_err(admit_r.err.clone()) {
+            return Rc::new(ItemResult {
+                item: named_dummy.clone(),
+                tokens: admit_r.tokens.clone(),
+                ctx: admit_r.ctx.clone(),
+                err: admit_r.err.clone(),
+            });
+        }
+        let admit_props = admit_r.props.clone();
+        let tokens = admit_r.tokens.clone();
+        let ctx = admit_r.ctx.clone();
         let body_result = if tok_is_eq(token_stream_first(tokens.clone())) {
             {
                 let r = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectEq));
@@ -6170,7 +6250,7 @@ pub fn parse_fn_body_from_prefix(
             body: Some(body.clone()),
             connective: Connective::NoConnective,
             transport: None,
-            properties: Rc::new(vec![]),
+            properties: admit_props.clone(),
             type_annotation: None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
