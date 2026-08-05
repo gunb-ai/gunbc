@@ -1,0 +1,60 @@
+diff --git a/src/v1/stage0/src/v1_compiler_infer.rs b/src/v1/stage0/src/v1_compiler_infer.rs
+index fe5881e1500..73818d719b4 100644
+--- a/src/v1/stage0/src/v1_compiler_infer.rs
++++ b/src/v1/stage0/src/v1_compiler_infer.rs
+@@ -15985,8 +15985,34 @@ pub fn symbol_index_with_bare_fill(
+     tree: Rc<SymbolIndex>,
+ ) -> Rc<SymbolIndex> {
+     {
+-        let global2 = v1_rt::rc_map_merge(tree.global_bare.clone(), closure.global_bare.clone());
+-        let services2 = v1_rt::rc_map_merge(tree.services.clone(), closure.services.clone());
++        let bare_keys = Rc::new(v1_rt::sorted_map_keys(&tree.global_bare.clone()));
++        let global2 = bare_keys.clone().iter().cloned().fold(
++            closure.global_bare.clone(),
++            |acc: Rc<HashMap<String, Rc<GlobalBareLookupState>>>, k: String| match v1_rt::map_get(
++                &acc,
++                k.clone(),
++            ) {
++                Some(_) => acc.clone(),
++                None => match v1_rt::map_get(&tree.global_bare.clone(), k.clone()) {
++                    Some(state) => v1_rt::rc_map_insert(acc.clone(), k.clone(), state.clone()),
++                    None => acc.clone(),
++                },
++            },
++        );
++        let service_keys = Rc::new(v1_rt::sorted_map_keys(&tree.services.clone()));
++        let services2 = service_keys.clone().iter().cloned().fold(
++            closure.services.clone(),
++            |acc: Rc<HashMap<String, Rc<ServiceCensusEntry>>>, k: String| match v1_rt::map_get(
++                &acc,
++                k.clone(),
++            ) {
++                Some(_) => acc.clone(),
++                None => match v1_rt::map_get(&tree.services.clone(), k.clone()) {
++                    Some(entry) => v1_rt::rc_map_insert(acc.clone(), k.clone(), entry.clone()),
++                    None => acc.clone(),
++                },
++            },
++        );
+         Rc::new(SymbolIndex {
+             entries: closure.entries.clone(),
+             global_bare: global2.clone(),
+@@ -16057,7 +16083,17 @@ pub fn symbol_index_with_qualified_fill(
+     fill: Rc<SymbolIndex>,
+ ) -> Rc<SymbolIndex> {
+     {
+-        let entries2 = v1_rt::rc_map_merge(fill.entries.clone(), closure.entries.clone());
++        let fill_keys = Rc::new(v1_rt::sorted_map_keys(&fill.entries.clone()));
++        let entries2 = fill_keys.clone().iter().cloned().fold(
++            closure.entries.clone(),
++            |acc: Rc<HashMap<String, Rc<Node>>>, k: String| match v1_rt::map_get(&acc, k.clone()) {
++                Some(_) => acc.clone(),
++                None => match v1_rt::map_get(&fill.entries.clone(), k.clone()) {
++                    Some(node) => v1_rt::rc_map_insert(acc.clone(), k.clone(), node.clone()),
++                    None => acc.clone(),
++                },
++            },
++        );
+         Rc::new(SymbolIndex {
+             entries: entries2.clone(),
+             global_bare: closure.global_bare.clone(),

@@ -101,6 +101,7 @@ fn guarantee_probe_paths() -> List<GuaranteePath> {
 data call_label_surplus_class: GuaranteeClassId = "call-label-and-surplus" as GuaranteeClassId
 data method_established_surface_class: GuaranteeClassId = "method-established-surface" as GuaranteeClassId
 data declared_conformance_ground_class: GuaranteeClassId = "declared-conformance-ground-fragment" as GuaranteeClassId
+data sole_constructor_cross_module_class: GuaranteeClassId = "sole-constructor-cross-module" as GuaranteeClassId
 data v2_self_grounding_frontier_class: GuaranteeClassId = "v2-self-grounding-frontier" as GuaranteeClassId
 
 fn guarantee_probe_class_ids() -> List<GuaranteeClassId> {
@@ -108,6 +109,7 @@ fn guarantee_probe_class_ids() -> List<GuaranteeClassId> {
     call_label_surplus_class,
     declared_conformance_ground_class,
     method_established_surface_class,
+    sole_constructor_cross_module_class,
     v2_self_grounding_frontier_class,
   ]
 }
@@ -122,6 +124,10 @@ data method_green_probe: GuaranteeProbeId = "method-established-surface-green-co
 
 data conformance_scalar_red_probe: GuaranteeProbeId = "declared-conformance-ground-scalar-red" as GuaranteeProbeId
 data conformance_green_probe: GuaranteeProbeId = "declared-conformance-ground-green-control" as GuaranteeProbeId
+
+data sole_ctor_forged_red_probe: GuaranteeProbeId = "sole-constructor-cross-module-forged-red" as GuaranteeProbeId
+data sole_ctor_green_probe: GuaranteeProbeId = "sole-constructor-cross-module-green-control" as GuaranteeProbeId
+data sole_ctor_mint_fn_hole_probe: GuaranteeProbeId = "sole-constructor-mint-fn-cross-module-hole" as GuaranteeProbeId
 
 data v2_frontier_red_probe: GuaranteeProbeId = "v2-self-grounding-frontier-value-red" as GuaranteeProbeId
 data v2_frontier_green_probe: GuaranteeProbeId = "v2-self-grounding-frontier-derived-green" as GuaranteeProbeId
@@ -168,6 +174,7 @@ fn v1_compile_harness_source_paths() -> List<String> {
     "src/v1/04_infer.dag",
     "src/v1/04_method.dag",
     "src/v1/04_types.dag",
+    "dag/extdeps/uri.dag",
   ]
 }
 
@@ -280,6 +287,11 @@ fn guarantee_probe_dark_suite_dispositions() -> List<DarkSuiteWitnessDisposition
       dag_probes: [conformance_scalar_red_probe, conformance_green_probe],
       rust_retained_until: "gap-analysis-sec-11-item-9-finite-classification" as NonEmptyStr,
     },
+    MigratedToEnrolledDagProbe {
+      rust_witness: "sole_constructor_violation_outside_module" as NonEmptyStr,
+      dag_probes: [sole_ctor_forged_red_probe, sole_ctor_green_probe],
+      rust_retained_until: "gap-analysis-sec-11-item-9-finite-classification" as NonEmptyStr,
+    },
   ]
 }
 
@@ -356,6 +368,24 @@ fn guarantee_probe_rows() -> List<GuaranteeProbeRow> {
       class: method_established_surface_class,
       path: v1_compile_rust_path_id,
       expectation: ExpectBlockingRefusal { diagnostic_class: "MethodNotFound" as NonEmptyStr },
+    },
+    GuaranteeProbeRow {
+      probe: sole_ctor_forged_red_probe,
+      class: sole_constructor_cross_module_class,
+      path: v1_compile_rust_path_id,
+      expectation: ExpectBlockingRefusal { diagnostic_class: "SoleConstructorViolation" as NonEmptyStr },
+    },
+    GuaranteeProbeRow {
+      probe: sole_ctor_green_probe,
+      class: sole_constructor_cross_module_class,
+      path: v1_compile_rust_path_id,
+      expectation: ExpectZeroDiagnostics,
+    },
+    GuaranteeProbeRow {
+      probe: sole_ctor_mint_fn_hole_probe,
+      class: sole_constructor_cross_module_class,
+      path: v1_compile_rust_path_id,
+      expectation: ExpectBlockingRefusal { diagnostic_class: "SoleConstructorViolation" as NonEmptyStr },
     },
     GuaranteeProbeRow {
       probe: v2_frontier_green_probe,

@@ -16182,39 +16182,22 @@ pub fn build_symbol_index_census_nodes(
     }
 }
 
+pub fn underlay_fill_direction_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Fill composition overlays the CLOSURE onto the shared underlay, never the reverse. Both directions denote the same map (union of key sets, closure wins the intersection); only the cost grain differs — the underlay is a per-index memo, so walking its keys charges every entry O(|whole pool|) for an index that differs by its own closure. Receipt: docs/plans/fill-composition-overlay-direction-receipt.md. Witness: symbol_index_fill_overlay_direction_test.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn symbol_index_with_bare_fill(
     closure: Rc<SymbolIndex>,
     tree: Rc<SymbolIndex>,
 ) -> Rc<SymbolIndex> {
     {
-        let bare_keys = Rc::new(v1_rt::sorted_map_keys(&tree.global_bare.clone()));
-        let global2 = bare_keys.clone().iter().cloned().fold(
-            closure.global_bare.clone(),
-            |acc: Rc<HashMap<String, Rc<GlobalBareLookupState>>>, k: String| match v1_rt::map_get(
-                &acc,
-                k.clone(),
-            ) {
-                Some(_) => acc.clone(),
-                None => match v1_rt::map_get(&tree.global_bare.clone(), k.clone()) {
-                    Some(state) => v1_rt::rc_map_insert(acc.clone(), k.clone(), state.clone()),
-                    None => acc.clone(),
-                },
-            },
-        );
-        let service_keys = Rc::new(v1_rt::sorted_map_keys(&tree.services.clone()));
-        let services2 = service_keys.clone().iter().cloned().fold(
-            closure.services.clone(),
-            |acc: Rc<HashMap<String, Rc<ServiceCensusEntry>>>, k: String| match v1_rt::map_get(
-                &acc,
-                k.clone(),
-            ) {
-                Some(_) => acc.clone(),
-                None => match v1_rt::map_get(&tree.services.clone(), k.clone()) {
-                    Some(entry) => v1_rt::rc_map_insert(acc.clone(), k.clone(), entry.clone()),
-                    None => acc.clone(),
-                },
-            },
-        );
+        let global2 = v1_rt::rc_map_merge(tree.global_bare.clone(), closure.global_bare.clone());
+        let services2 = v1_rt::rc_map_merge(tree.services.clone(), closure.services.clone());
         Rc::new(SymbolIndex {
             entries: closure.entries.clone(),
             global_bare: global2.clone(),
@@ -16285,17 +16268,7 @@ pub fn symbol_index_with_qualified_fill(
     fill: Rc<SymbolIndex>,
 ) -> Rc<SymbolIndex> {
     {
-        let fill_keys = Rc::new(v1_rt::sorted_map_keys(&fill.entries.clone()));
-        let entries2 = fill_keys.clone().iter().cloned().fold(
-            closure.entries.clone(),
-            |acc: Rc<HashMap<String, Rc<Node>>>, k: String| match v1_rt::map_get(&acc, k.clone()) {
-                Some(_) => acc.clone(),
-                None => match v1_rt::map_get(&fill.entries.clone(), k.clone()) {
-                    Some(node) => v1_rt::rc_map_insert(acc.clone(), k.clone(), node.clone()),
-                    None => acc.clone(),
-                },
-            },
-        );
+        let entries2 = v1_rt::rc_map_merge(fill.entries.clone(), closure.entries.clone());
         Rc::new(SymbolIndex {
             entries: entries2.clone(),
             global_bare: closure.global_bare.clone(),
