@@ -138,8 +138,8 @@ thread_local! {
     static CALL_ENV_DEPTH_PEAK: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
-/// Default-off: release bins omit `interp_test_witness`; when the feature is present the hook
-/// is a guarded no-op until a test arms it.
+/// Default-off: when `interp_test_witness` is compiled in, the hook is a guarded no-op (one
+/// relaxed atomic load per `eval_call`) until a test arms it.
 #[cfg(any(test, feature = "interp_test_witness"))]
 static CALL_ENV_DEPTH_WITNESS_ARMED: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
