@@ -16,7 +16,7 @@ import gunbc.generated_artifact {
   classify_heal_repair_paths, path_requires_author_commit,
   registry_contains
 }
-import gunbc.generated_artifact_emit { artifact_extra_valid }
+import gunbc.generated_artifact_emit { artifact_extra_valid, artifact_generate }
 import gunbc.generated_artifact_assessment {
   GeneratedArtifactObservation, GeneratedArtifactObserved, GeneratedArtifactObservationRefused,
   assess_generated_artifact_observation, assess_generated_artifact_population,
@@ -269,15 +269,17 @@ test fn witness_heal_policy_workflow_artifacts_require_author_commit() -> Bool {
     && !path_requires_author_commit(path: ".gitignore")
 }
 
+data witness_extra_validation_wired_note: String = "P0 (operator-directed, 2026-08-05; loyal-ram-550 review of #7823): artifact_extra_valid now takes the already-computed generation outcome rather than generating internally, so this witness supplies it via one artifact_generate(a:) call per artifact — same shape the production observer uses, no second entry point to generation. Unchanged: this witness still generates the two large artifacts (Stage0EmitPlanGeneratedDagArtifact, V1InterpreterDispatchGeneratedRsArtifact) to answer their extra-validation bit, and CiYamlArtifact/FalsifierYamlArtifact's arms independently re-read their committed file from disk via ci_yml_parses(path:) rather than reusing content already read elsewhere in this standalone witness — both are pre-existing, unowned costs outside this PR's scope (loyal-ram-550 tracking separately), not something this edit introduces or hides."
+
 test fn witness_extra_validation_wired() -> Bool {
-  artifact_extra_valid(a: GitignoreArtifact)
-    && artifact_extra_valid(a: GitattributesArtifact)
-    && artifact_extra_valid(a: RoadmapArtifact)
-    && artifact_extra_valid(a: DesignArtifact)
-    && artifact_extra_valid(a: CiYamlArtifact)
-    && artifact_extra_valid(a: FalsifierYamlArtifact)
-    && artifact_extra_valid(a: Stage0CrateLayoutGeneratedDagArtifact)
-    && artifact_extra_valid(a: Stage0CrateLayoutGeneratedRsArtifact)
-    && artifact_extra_valid(a: Stage0EmitPlanGeneratedDagArtifact)
-    && artifact_extra_valid(a: V1InterpreterDispatchGeneratedRsArtifact)
+  artifact_extra_valid(a: GitignoreArtifact, generated: artifact_generate(a: GitignoreArtifact))
+    && artifact_extra_valid(a: GitattributesArtifact, generated: artifact_generate(a: GitattributesArtifact))
+    && artifact_extra_valid(a: RoadmapArtifact, generated: artifact_generate(a: RoadmapArtifact))
+    && artifact_extra_valid(a: DesignArtifact, generated: artifact_generate(a: DesignArtifact))
+    && artifact_extra_valid(a: CiYamlArtifact, generated: artifact_generate(a: CiYamlArtifact))
+    && artifact_extra_valid(a: FalsifierYamlArtifact, generated: artifact_generate(a: FalsifierYamlArtifact))
+    && artifact_extra_valid(a: Stage0CrateLayoutGeneratedDagArtifact, generated: artifact_generate(a: Stage0CrateLayoutGeneratedDagArtifact))
+    && artifact_extra_valid(a: Stage0CrateLayoutGeneratedRsArtifact, generated: artifact_generate(a: Stage0CrateLayoutGeneratedRsArtifact))
+    && artifact_extra_valid(a: Stage0EmitPlanGeneratedDagArtifact, generated: artifact_generate(a: Stage0EmitPlanGeneratedDagArtifact))
+    && artifact_extra_valid(a: V1InterpreterDispatchGeneratedRsArtifact, generated: artifact_generate(a: V1InterpreterDispatchGeneratedRsArtifact))
 }

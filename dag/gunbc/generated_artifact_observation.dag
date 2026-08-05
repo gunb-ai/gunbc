@@ -28,7 +28,7 @@ fn observe_generated_artifact(a: GeneratedArtifact) -> GeneratedArtifactObservat
           path: path,
           generated_content: content,
           committed_content: committed.content,
-          extra_validation: artifact_extra_valid(a: a)
+          extra_validation: artifact_extra_valid(a: a, generated: ArtifactGenerated { content: content })
         }
     }
   }
