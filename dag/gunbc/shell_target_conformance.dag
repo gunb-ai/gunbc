@@ -1,0 +1,62 @@
+module gunbc.shell_target_conformance
+
+import std.types { Bool, List, String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.roster_frontier { declaration_ref_eq }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data shell_conformance_join_note: String = "THE CONFORMANCE JOIN, homed in the product layer because it is a claim THIS repository makes about two upstream subjects, not a fact either of them owns (DESIGN section 3, external upstream decomposition; review relayed through the operator, 2026-08-04). The worked example in that section has exactly this shape: extdeps.whatwg.html_navigation is the standard, extdeps.browser.chromium the implementation, and gunbc.served_surface_browser_support the support policy and evidence join. Here extdeps.posix.shell_command_language is the standard, extdeps.languages.bash.subject the implementation, and this module the join. Storing the relation in either upstream module would make one independently governed entity carry a property of the other — the failure the previous shape had, with POSIX sitting in Bash's citation list. OBSERVATIONS PRODUCED BY THIS REPOSITORY ARE RECEIPTS IN THE OBSERVING LAYER: that is the same section's rule, and it is why the degree below is a claim with its own citation rather than a property authored inside GNU Bash's module."
+
+data gnu_bash_posix_conformance_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.gnu.org/software/bash/manual/bash.html#Bash-POSIX-Mode"
+  }
+}
+
+data conformance_degree_note: String = "TWO ARMS, ONE INHABITED, AND THE EMPTY ONE IS THE REFUSAL rather than a speculative variant. ConformanceUnstated is what a future row takes when the upstream says nothing about conforming — the fail-closed default, so silence is recorded as silence instead of being read as conformance. The inhabited arm is deliberately narrow and matches what the cited manual actually says: Bash is intended as a conformant implementation of the POSIX shell portion AND provides a strict mode that changes behaviour to match the standard more closely, which means the default shell is a SUPERSET and conformance is a mode rather than an unconditional property. Naming it that way is what keeps this from becoming the 'mostly supported' claim the language program exists to eliminate — a target that conforms only under a switch has a support profile with the switch in it."
+
+type ShellConformanceDegree
+  = ConformantSupersetWithStrictMode
+  | ConformanceUnstated
+
+type ShellConformanceFact {
+  implementation: DeclarationRef
+  specification: DeclarationRef
+  degree: ShellConformanceDegree
+  citation: ExternalAuthority
+}
+
+data gnu_bash_subject_ref: DeclarationRef = DeclarationRef {
+  module_path: "extdeps.languages.bash.subject",
+  decl_name: "gnu_bash",
+  field: WholeDeclaration
+}
+
+data posix_shell_subject_ref: DeclarationRef = DeclarationRef {
+  module_path: "extdeps.posix.shell_command_language",
+  decl_name: "posix_shell_command_language",
+  field: WholeDeclaration
+}
+
+data shell_conformance_facts: List<ShellConformanceFact> = [
+  ShellConformanceFact {
+    implementation: gnu_bash_subject_ref,
+    specification: posix_shell_subject_ref,
+    degree: ConformantSupersetWithStrictMode,
+    citation: gnu_bash_posix_conformance_authority
+  }
+]
+
+fn conformance_for_implementation(implementation: DeclarationRef) -> ShellConformanceFact? {
+  fold(shell_conformance_facts, init: none, f: fn(acc, c) {
+    if declaration_ref_eq(a: c.implementation, b: implementation) { Present { value: c } } else { acc }
+  })
+}
+
+fn implementation_and_specification_are_distinct_subjects() -> Bool {
+  fold(shell_conformance_facts, init: true, f: fn(acc, c) {
+    acc && !declaration_ref_eq(a: c.implementation, b: c.specification)
+  })
+}
