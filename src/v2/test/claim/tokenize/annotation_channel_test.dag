@@ -3,7 +3,6 @@ module v2.test.tokenize.annotation_channel
 import v2.std.text { String }
 import v2.std.logic { Bool }
 import v2.std.algebra { fold_list, length }
-import v2.std.collection { List }
 import std.source_annotation { LeadingAfterLineIndent, TrailingAfterSemanticToken }
 import v2.std.compilers.lexing {
   AnnotationRule, TokenRule, TriviaRule,
@@ -50,12 +49,16 @@ fn annotation_count(source: String) -> Int {
   length(xs: lex_artifact_annotations(artifact: artifact_of(source: source)))
 }
 
-fn token_lexemes(source: String) -> List<String> {
+fn token_text(source: String) -> String {
   fold_list(
     xs: token_stream_all(stream: lex_artifact_semantic_tokens(artifact: artifact_of(source: source))),
-    empty: [],
-    cons: fn(acc, t) { acc |> list_snoc_item(item: t.lexeme) }
+    empty: "",
+    cons: fn(acc, t) { concat(acc, t.lexeme) }
   )
+}
+
+fn token_count(source: String) -> Int {
+  length(xs: token_stream_all(stream: lex_artifact_semantic_tokens(artifact: artifact_of(source: source))))
 }
 
 test fn annotation_rule_routes_to_the_annotation_arm() -> Bool {
@@ -72,7 +75,7 @@ test fn walk_captures_the_annotation() -> Bool {
 }
 
 test fn semantic_tokens_are_unchanged_by_the_annotation() -> Bool {
-  token_lexemes(source: "a\n// note\nb\n") == token_lexemes(source: "a\nb\n")
+  token_text(source: "a\n// note\nb\n") == token_text(source: "a\nb\n")
 }
 
 test fn leading_and_trailing_placements_differ() -> Bool {
@@ -113,7 +116,7 @@ test fn source_without_annotations_captures_none() -> Bool {
 test fn lex_walk_projection_drops_annotations_but_keeps_tokens() -> Bool {
   match lex_walk(source: "a\n// note\nb\n", file: ^probe, rules: test_rules()) {
     v2.std.diagnostic.Accepted { value: stream, diagnostics: _ } =>
-      length(xs: token_stream_all(stream: stream)) == length(xs: token_lexemes(source: "a\nb\n"))
+      length(xs: token_stream_all(stream: stream)) == token_count(source: "a\nb\n")
     v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
