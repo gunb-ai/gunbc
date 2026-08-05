@@ -67,7 +67,7 @@ type WitnessSeam {
   consumer: String
 }
 
-data witness_cost_clock_note: String = "Which clock duration_ms names (operator msg_e24f4cab, 2026-08-04): run_claim_timed builds performance receipts from wall_nanos (performance_receipt_from_witness) while the per-witness eval budget gate consumes thread CPU nanos (budget_completion_outcome). Both are reported in milliseconds — without this tag a stored figure is not comparable to a threshold. claim_batch receipt logs cited on MeasuredAtExactSubject rows are WitnessCostWallEval unless re-measured on ThreadCpu."
+data witness_cost_clock_note: String = "Which clock the duration carrier names (operator msg_e24f4cab, 2026-08-04): run_claim_timed builds performance receipts from wall_nanos (performance_receipt_from_witness) while the per-witness eval budget gate consumes thread CPU nanos (budget_completion_outcome). Both cross as std.measure Millisecond — without the clock tag a stored figure is not comparable to a threshold. claim_batch receipt logs cited on MeasuredAtExactSubject rows are WitnessCostWallEval unless re-measured on ThreadCpu."
 
 type WitnessCostClock
   = WitnessCostWallEval
@@ -89,7 +89,7 @@ fn witness_cost_clock_eq(a: WitnessCostClock, b: WitnessCostClock) -> Bool {
 type WitnessCostBasis
   = MeasuredAtExactSubject {
       clock: WitnessCostClock,
-      duration_ms: Int,
+      duration: Millisecond,
       receipt: String
     }
   | EstimatedFromSiblingClass {
@@ -100,7 +100,7 @@ type WitnessCostBasis
 
 type ScheduledWitnessEnvelope {
   cadence: String
-  wall_budget_ms: Int
+  wall_budget: Millisecond
   max_staleness: String
 }
 

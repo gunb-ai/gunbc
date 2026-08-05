@@ -30,6 +30,7 @@ import gunbc.commit_workflow {
   CommitCheckEnrollment, CommitCheckKind,
   CommitSpecGate, CommitWitnessClaim, CommitCargoFmtCheck,
 }
+import std.measure { millisecond_count }
 import std.realization_schedule {
   WitnessKind, CorpusWitnessKind, ExecutionWitnessKind, NativeBundleWitnessKind,
   WitnessSeam, WitnessSpan, SpanUndeclared, SpanSeams, SpanEnrolled,
@@ -163,7 +164,7 @@ fn witness_cost_clock_content_hash_structural(clock: WitnessCostClock) -> Fnv1a6
 
 fn witness_cost_basis_content_hash_structural(basis: WitnessCostBasis) -> Fnv1a64Structural {
   match basis {
-    MeasuredAtExactSubject { clock, duration_ms, receipt } =>
+    MeasuredAtExactSubject { clock, duration, receipt } =>
       content_hash_combine_structural(
         left: content_hash_combine_structural(
           left: witness_cost_clock_content_hash_structural(clock: clock),
@@ -172,7 +173,7 @@ fn witness_cost_basis_content_hash_structural(basis: WitnessCostBasis) -> Fnv1a6
             payload: content_hash_atom(value: receipt)
           )
         ),
-        right: content_hash_atom(value: concat("", duration_ms))
+        right: content_hash_atom(value: concat("", millisecond_count(m: duration)))
       )
     EstimatedFromSiblingClass { clock, source_witness, basis } =>
       content_hash_combine_structural(
@@ -192,7 +193,7 @@ fn scheduled_witness_envelope_content_hash_structural(envelope: ScheduledWitness
   content_hash_combine_structural(
     left: content_hash_combine_structural(
       left: content_hash_atom(value: envelope.cadence),
-      right: content_hash_atom(value: concat("", envelope.wall_budget_ms))
+      right: content_hash_atom(value: concat("", millisecond_count(m: envelope.wall_budget)))
     ),
     right: content_hash_atom(value: envelope.max_staleness)
   )

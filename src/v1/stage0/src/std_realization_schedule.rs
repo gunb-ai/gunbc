@@ -113,7 +113,7 @@ pub struct WitnessSeam {
 pub fn witness_cost_clock_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Which clock duration_ms names (operator msg_e24f4cab, 2026-08-04): run_claim_timed builds performance receipts from wall_nanos (performance_receipt_from_witness) while the per-witness eval budget gate consumes thread CPU nanos (budget_completion_outcome). Both are reported in milliseconds — without this tag a stored figure is not comparable to a threshold. claim_batch receipt logs cited on MeasuredAtExactSubject rows are WitnessCostWallEval unless re-measured on ThreadCpu.".to_string()
+            "Which clock the duration carrier names (operator msg_e24f4cab, 2026-08-04): run_claim_timed builds performance receipts from wall_nanos (performance_receipt_from_witness) while the per-witness eval budget gate consumes thread CPU nanos (budget_completion_outcome). Both cross as std.measure Millisecond — without the clock tag a stored figure is not comparable to a threshold. claim_batch receipt logs cited on MeasuredAtExactSubject rows are WitnessCostWallEval unless re-measured on ThreadCpu.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -146,7 +146,7 @@ pub fn witness_cost_clock_eq(a: WitnessCostClock, b: WitnessCostClock) -> bool {
 pub enum WitnessCostBasis {
     MeasuredAtExactSubject {
         clock: WitnessCostClock,
-        duration_ms: i64,
+        duration: Millisecond,
         receipt: String,
     },
     EstimatedFromSiblingClass {
@@ -167,7 +167,7 @@ impl WitnessCostBasis {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ScheduledWitnessEnvelope {
     pub cadence: String,
-    pub wall_budget_ms: i64,
+    pub wall_budget: Millisecond,
     pub max_staleness: String,
 }
 
