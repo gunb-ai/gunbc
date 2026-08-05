@@ -553,6 +553,8 @@ fn git_observe_meta_shell_fragment() -> String {
   )
 }
 
+data integration_write_operations_note: String = "THE SIX WRITE/READ OPERATIONS BELOW MODEL GIT'S ORDINARY INTEGRATION SURFACE — stage, commit, branch checkout, merge, and the unmerged-stage read — each taking its repository as a parameter rather than inheriting the process's checkout, for the reason remote_url_takes_its_repository_as_a_parameter_note gives: an operation that answered for whatever directory the process happens to stand in would confirm a result for the wrong repository while looking entirely ordinary. They report exit_code and stderr and NOT a success Bool, per ls_remote_reports_termination_not_success_note: the seed derives exit_success as exactly exit_code == 0, so the pair would carry one fact twice and make a contradictory pair writable. That narrowing matters most for MergeNoEditInRepo, whose nonzero exit is an ANSWER rather than a failure — a caller asking whether a merge left the tree conflicted reads the code, and an operation pre-judging it as unsuccessful would decide something only the caller can. They declare no exit block, per ls_remote_carries_no_exit_block_note: those arms are parsed, re-emitted, and never realized, so authoring one here would mint a fresh declared-but-unrealized instance. Committer identity is deliberately not an input — a caller sets user.email and user.name through ConfigLocalSetInRepo, so identity stays one modeled binding rather than a second per-commit representation."
+
 service git.Core {
   operation CurrentBranch {
     input {}
@@ -824,6 +826,72 @@ service git.Core {
       0 => Unit
       nonzero => String "Init failed"
     }
+  }
+
+  operation AddAllInRepo {
+    input { repo: FilePath }
+    output {
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["git", "-C", "{repo}", "add", "-A"] }
+  }
+
+  operation CommitInRepo {
+    input { repo: FilePath, message: String }
+    output {
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["git", "-C", "{repo}", "commit", "-q", "-m", "{message}"] }
+  }
+
+  operation CheckoutNewBranchInRepo {
+    input { repo: FilePath, branch: String }
+    output {
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["git", "-C", "{repo}", "checkout", "-q", "-b", "{branch}"] }
+  }
+
+  operation CheckoutNewBranchAtInRepo {
+    input { repo: FilePath, branch: String, start_point: GitRef }
+    output {
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["git", "-C", "{repo}", "checkout", "-q", "-b", "{branch}", "{start_point}"] }
+  }
+
+  operation CheckoutBranchInRepo {
+    input { repo: FilePath, branch: String }
+    output {
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["git", "-C", "{repo}", "checkout", "-q", "{branch}"] }
+  }
+
+  operation MergeNoEditInRepo {
+    input { repo: FilePath, branch: String }
+    output {
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["git", "-C", "{repo}", "merge", "--no-edit", "{branch}"] }
+  }
+
+  operation LsFilesUnmergedInRepo {
+    input { repo: FilePath, path: String }
+    output {
+      entries: List<String> from "stdout_lines"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", "-C", "{repo}", "ls-files", "-u", "--", "{path}"] }
   }
 }
 
