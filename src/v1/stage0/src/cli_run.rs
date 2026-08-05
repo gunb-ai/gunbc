@@ -35104,6 +35104,54 @@ mod witness_layer_roots_compile_clean_tests {
         });
     }
 
+    /// Failure arm — diff observation failed still RUNs the gate (regen shape), but carries a
+    /// grep-countable label distinct from structural `run_class_b_gate` so routine observation
+    /// failures are observable in job logs without widening to skip.
+    #[test]
+    fn class_b_gate_skip_runs_with_countable_label_when_diff_observation_fails() {
+        with_env_test_lock(|| {
+            with_workspace_cwd(|| {
+                let _event = EnvGuard::set("GITHUB_EVENT_NAME", "pull_request");
+                let _ns =
+                    EnvGuard::set("GUNBC_CI_DIFF_NAME_STATUS", "Z\\000src/v1/whatever.rs\\000");
+                assert_eq!(
+                    class_b_import_closure_gate_skip_label_for_ci(),
+                    RUN_CLASS_B_GATE_DIFF_OBSERVATION_FAILED_LABEL
+                );
+                assert!(
+                    !class_b_import_closure_gate_not_affected_skip_for_ci(),
+                    "a failure arm must still run the gate, never skip"
+                );
+            });
+        });
+    }
+
+    /// The two failure run labels must stay distinguishable from each other and from the
+    /// structural run / skip labels so each deficit is separately countable in job logs.
+    #[test]
+    fn class_b_gate_skip_labels_are_distinct_and_countable() {
+        assert_ne!(
+            RUN_CLASS_B_GATE_LABEL,
+            RUN_CLASS_B_GATE_DIFF_OBSERVATION_FAILED_LABEL
+        );
+        assert_ne!(
+            RUN_CLASS_B_GATE_LABEL,
+            RUN_CLASS_B_GATE_INPUT_CLOSURE_FAILED_LABEL
+        );
+        assert_ne!(
+            RUN_CLASS_B_GATE_DIFF_OBSERVATION_FAILED_LABEL,
+            RUN_CLASS_B_GATE_INPUT_CLOSURE_FAILED_LABEL
+        );
+        assert_ne!(
+            CLASS_B_GATE_NOT_AFFECTED_SKIP_LABEL,
+            RUN_CLASS_B_GATE_DIFF_OBSERVATION_FAILED_LABEL
+        );
+        assert_ne!(
+            CLASS_B_GATE_NOT_AFFECTED_SKIP_LABEL,
+            RUN_CLASS_B_GATE_INPUT_CLOSURE_FAILED_LABEL
+        );
+    }
+
     /// Selection-control skip, the GREEN arm: a diff that touches nothing in the control
     /// suite's closure skips. Paired with the RUN arms below — that pair is what makes
     /// this a decision rather than a constant.
