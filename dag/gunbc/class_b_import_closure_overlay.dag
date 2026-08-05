@@ -1,0 +1,54 @@
+module gunbc.class_b_import_closure_overlay
+
+import extdeps.filesystem.filesystem_io
+import extdeps.shell
+import std.types { String, Bool, List }
+
+data class_b_overlay_note: String = "Derives the Class B stripped entry overlay from the live rust_test_fixtures.dag at execution time (#7817 strip_import_block property, moved to the executing transport/witness path). No checked-in copy of the live corpus file — the overlay is read from disk, the declared rust import block removed, and written under a caller-supplied overlay root so pool-membership coincidence cannot drift silently."
+
+data class_b_entry_rel: String = "src/v2/extdeps/languages/rust_test_fixtures.dag"
+data class_b_rust_import_prefix: String = "import v2.extdeps.languages.rust"
+
+type StripImportFoldState {
+  skipping: Bool
+  out: List<String>
+}
+
+fn strip_import_line_fold(acc: StripImportFoldState, line: String) -> StripImportFoldState {
+  if starts_with(s: line, prefix: class_b_rust_import_prefix) {
+    StripImportFoldState { skipping: true, out: acc.out }
+  } else if acc.skipping {
+    if line == "}" {
+      StripImportFoldState { skipping: false, out: acc.out }
+    } else {
+      acc
+    }
+  } else {
+    StripImportFoldState { skipping: false, out: concat(acc.out, [line]) }
+  }
+}
+
+fn strip_rust_test_fixtures_import_block(content: String) -> String {
+  let final_state = fold(
+    split(s: content, delimiter: "\n"),
+    init: StripImportFoldState { skipping: false, out: [] },
+    f: fn(acc, line) { strip_import_line_fold(acc: acc, line: line) }
+  )
+  join(final_state.out, "\n")
+}
+
+func class_b_materialize_stripped_entry_overlay(root: String, overlay_dir: String) -> Bool {
+  let live_path = concat(root, "/", class_b_entry_rel)
+  let overlay_path = concat(overlay_dir, "/", class_b_entry_rel)
+  let read = Filesystem.Read(path: live_path)
+  if read.success {
+    let parents = shell.Mkdir.Parents(path: overlay_path)
+    let write = Filesystem.Write(
+      path: overlay_path,
+      content: strip_rust_test_fixtures_import_block(content: read.content)
+    )
+    parents.success && write.success
+  } else {
+    false
+  }
+}

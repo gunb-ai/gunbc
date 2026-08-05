@@ -6625,7 +6625,9 @@ fn declared_import_closure_binding_value(
     match observation {
         crate::cli_run::DeclaredImportClosureBindingObservation::Observed(observed) => {
             let binding_source = match observed.binding_source {
-                Some(source) => optional_present(unlisted_import_binding_source_value(source, ctx), ctx),
+                Some(source) => {
+                    optional_present(unlisted_import_binding_source_value(source, ctx), ctx)
+                }
                 None => optional_absent(ctx),
             };
             Value::Variant {
@@ -6637,7 +6639,10 @@ fn declared_import_closure_binding_value(
                         ctx.sym("definer_module"),
                         Value::Str(observed.definer_module.unwrap_or_default()),
                     ),
-                    (ctx.sym("symbol_resolves"), Value::Bool(observed.symbol_resolves)),
+                    (
+                        ctx.sym("symbol_resolves"),
+                        Value::Bool(observed.symbol_resolves),
+                    ),
                     (
                         ctx.sym("blocking_hard_diagnostic_count"),
                         Value::Int(observed.blocking_hard_diagnostic_count),
