@@ -1395,6 +1395,8 @@ struct FloorFinalization {
 }
 
 impl FloorFinalization {
+    /// Derived roster size — never a stored count literal (DESIGN §5).
+    #[allow(dead_code)]
     fn declared_resolve_count(&self) -> i64 {
         self.expected_obligations.len() as i64
     }
@@ -6168,9 +6170,41 @@ fn unexecuted_transport_obligations<'a>(
         .collect()
 }
 
+fn is_rostered_obligation_subject(fin: &FloorFinalization, entry: &str, function: &str) -> bool {
+    fin.expected_obligations
+        .iter()
+        .any(|obl| obl.entry == entry && obl.function == function)
+}
+
+/// Observed resolve-realization subjects not present in the transported roster — the
+/// derived-minus-roster direction of the identity join (DESIGN §5: completeness is
+/// identity join, not count equality).
+fn unrostered_observed_obligation_subjects(
+    fin: &FloorFinalization,
+    batch_records: &[BatchRecord],
+) -> Vec<(String, String)> {
+    let mut seen = std::collections::HashSet::new();
+    let mut surplus = Vec::new();
+    for rec in batch_records {
+        for result in &rec.results {
+            if result.resolve_realization.is_none() {
+                continue;
+            }
+            if is_rostered_obligation_subject(fin, &result.entry, &result.function) {
+                continue;
+            }
+            let key = format!("{}::{}", result.entry, result.function);
+            if seen.insert(key) {
+                surplus.push((result.entry.clone(), result.function.clone()));
+            }
+        }
+    }
+    surplus
+}
+
 fn validate_floor_finalization(
     fin: &FloorFinalization,
-    plan_site: &str,
+    _plan_site: &str,
     batch_records: &[BatchRecord],
     walk_truncated: bool,
 ) -> Vec<String> {
@@ -6190,6 +6224,19 @@ fn validate_floor_finalization(
         refusals.push(format!(
             "floor resolve duplicate cold on obligation entry {entry}: {count} physical \
              resolve(s) with resolve_nanos > 0 (expected at most 1 per rostered entry)"
+        ));
+    }
+    let unrostered = unrostered_observed_obligation_subjects(fin, batch_records);
+    if !unrostered.is_empty() {
+        let listing = unrostered
+            .iter()
+            .map(|(entry, function)| format!("{entry}::{function}"))
+            .collect::<Vec<_>>()
+            .join("; ");
+        refusals.push(format!(
+            "floor resolve unknown obligation subject(s) observed: {} subject(s) not in \
+             transported expected_resolve_obligations — {listing}",
+            unrostered.len(),
         ));
     }
     let unexecuted = unexecuted_transport_obligations(fin, batch_records);
@@ -6212,17 +6259,6 @@ fn validate_floor_finalization(
     } else {
         match derive_resolve_obligation_receipts(fin, batch_records) {
             Ok(obligations) => {
-                if obligations.len() as i64 != fin.declared_resolve_count() {
-                    refusals.push(format!(
-                        "floor resolve obligation count {} differs from transported {}: roster debt \
-                         changed - update expected_resolve_obligations at \
-                         {plan_site} WalkPlan.finalization \
-                         (the production floor projects gunbc.ci_materialization \
-                         ci_floor_expected_resolve_obligations(); a fixture declares its own)",
-                        obligations.len(),
-                        fin.declared_resolve_count()
-                    ));
-                }
                 let mut seen = std::collections::HashSet::new();
                 for line in &obligations {
                     if !seen.insert(line.identity.clone()) {
@@ -7046,9 +7082,8 @@ fn run_walk(
         if refusals.is_empty() {
             if !ordinary_failed {
                 eprintln!(
-                    "claim_executor: floor contract finalized — resolve count matches transported {} \
-                     and materialization disclosure holds",
-                    fin.declared_resolve_count()
+                    "claim_executor: floor contract finalized — resolve obligation identity join \
+                     holds and materialization disclosure holds"
                 );
             }
         } else {
@@ -9459,6 +9494,85 @@ mod tests {
                 .iter()
                 .any(|m| m.contains("unattributed physical resolve")),
             "extra cold resolve must refuse: {refusals:?}"
+        );
+    }
+
+    #[test]
+    fn floor_finalization_refuses_unrostered_observed_obligation_subject_by_name() {
+        let fin = test_floor_finalization();
+        let mut records = obligation_finalization_records(3, 9);
+        records[0].results.push(ClaimResult {
+            function: "unexpected_surplus_witness".to_string(),
+            entry: "dag/test/claim/surplus_obligation_fixture.dag".to_string(),
+            ok: true,
+            detail: String::new(),
+            wall_nanos: 0,
+            resolve_nanos: 7,
+            corpus_resolve_nanos: 0,
+            corpus_eval_nanos: 0,
+            corpus_witnesses: 0,
+            witness_row_costs: Vec::new(),
+            budget_refusal: None,
+            selection_degradation: None,
+            resolve_realization: Some(ResolveRealizationObservation::ColdResolvePerformed {
+                resolve_nanos: 7,
+            }),
+        });
+        let refusals = validate_floor_finalization(&fin, TEST_PLAN_SITE, &records, false);
+        assert!(
+            refusals.iter().any(|m| {
+                m.contains("unknown obligation subject(s) observed")
+                    && m.contains(
+                        "dag/test/claim/surplus_obligation_fixture.dag::unexpected_surplus_witness",
+                    )
+            }),
+            "surplus observed subject must be named, not counted: {refusals:?}"
+        );
+        assert!(
+            !refusals
+                .iter()
+                .any(|m| m.contains("differs from transported")),
+            "count-equality debt message must not substitute for identity join: {refusals:?}"
+        );
+    }
+
+    #[test]
+    fn floor_finalization_names_unrostered_subject_when_roster_subject_also_missing() {
+        let fin = test_floor_finalization();
+        let mut records = obligation_finalization_records(5, 0);
+        records[0]
+            .results
+            .retain(|r| r.function == "dag_compile_clean_gate_passes");
+        records[0].results.push(ClaimResult {
+            function: "unexpected_surplus_witness".to_string(),
+            entry: "dag/test/claim/surplus_obligation_fixture.dag".to_string(),
+            ok: true,
+            detail: String::new(),
+            wall_nanos: 0,
+            resolve_nanos: 7,
+            corpus_resolve_nanos: 0,
+            corpus_eval_nanos: 0,
+            corpus_witnesses: 0,
+            witness_row_costs: Vec::new(),
+            budget_refusal: None,
+            selection_degradation: None,
+            resolve_realization: Some(ResolveRealizationObservation::ColdResolvePerformed {
+                resolve_nanos: 7,
+            }),
+        });
+        let refusals = validate_floor_finalization(&fin, TEST_PLAN_SITE, &records, false);
+        assert!(
+            refusals.iter().any(|m| {
+                m.contains("unknown obligation subject(s) observed")
+                    && m.contains("surplus_obligation_fixture.dag::unexpected_surplus_witness")
+            }),
+            "surplus must be named even when a roster subject is also missing: {refusals:?}"
+        );
+        assert!(
+            refusals
+                .iter()
+                .any(|m| m.contains("native_selected_logic_production_spec")),
+            "missing roster subject must still be named: {refusals:?}"
         );
     }
 
