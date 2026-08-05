@@ -1,7 +1,7 @@
 module extdeps.systems.types
 
 import std.types { NonEmptyStr, List, Int, Bool }
-import std.measure { ByteSize, Bandwidth, Watt, BitWidth, HardwareThreadCount, hardware_thread_count_value }
+import std.measure { ByteSize, Bandwidth, Watt, BitWidth, Hertz, HardwareThreadCount, hardware_thread_count_value }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 import extdeps.gpu.types { GpuModelCatalogRow }
@@ -42,7 +42,7 @@ type IntegratedComputeSystemCatalogRow {
   gpu: GpuModelCatalogRow
   memory: MemoryFacts
   memory_bus_width: BitWidth
-  memory_data_rate_mts: Int
+  memory_data_rate: Hertz
   memory_bandwidth: Bandwidth
   storage_capacity: ByteSize
   network_ports: List<SystemNetworkPort>
